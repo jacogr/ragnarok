@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""Audit private useful-span artifacts as inert data; never execute guest or retained native images."""
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+import zipfile
+from types import SimpleNamespace
+import io
+import tarfile
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'tools'))
+import pvm_eager_connected as useful
+import native_tests
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def git(revision,path):
+    assert path and not Path(path).is_absolute() and '..' not in Path(path).parts
+    return subprocess.check_output(['git','show',revision+':'+path],cwd=ROOT)
+
+
+def audit(folder):
+    candidates=list(folder.glob('tests/pvm-eager-connected/results.json'));assert len(candidates)==1
+    report=json.loads(candidates[0].read_text());assert report['status']=='passed',report.get('error')
+    architecture=report['architecture'];assert architecture in ('arm64','x86_64')
+    machine=183 if architecture=='arm64' else 62
+    assert report['host']==dict(system='Linux',machine='aarch64' if machine==183 else 'x86_64')
+    source,trial,controls=useful.configuration(report['runtime'],report['trial'],report['controls_source'])
+    assert report['original']==useful.ORIGINAL
+    assert subprocess.check_output(['git','show','-s','--format=%P',source],cwd=ROOT,text=True).split()==[useful.ORIGINAL]
+    for parent,child,path in ((source,trial,'src/pvm/internal/handler_stream.nim'),
+                              (trial,controls,useful.CONTROL)):
+        assert subprocess.check_output(['git','show','-s','--format=%P',child],cwd=ROOT,text=True).split()==[parent]
+        assert subprocess.check_output(['git','diff','--name-only',parent,child],cwd=ROOT,text=True).splitlines()==[path]
+    own=git(report['revision'],'tools/pvm_eager_connected.py')
+    assert digest(own)==report['harness_sources']['tools/pvm_eager_connected.py']
+    for path,wanted in report['harness_sources'].items():assert digest(git(report['revision'],path))==wanted
+    # The successful normal audit also checks every extracted payload against the API-sealed original ZIP.
+    archive=folder.with_suffix('.zip');meta=json.loads(archive.with_suffix('.json').read_text())
+    assert archive.stat().st_size==meta['size_in_bytes'] and 'sha256:'+digest(archive.read_bytes())==meta['digest']
+    with zipfile.ZipFile(archive) as z:
+        assert z.testzip() is None
+        for item in z.infolist():
+            if item.is_dir():continue
+            assert not Path(item.filename).is_absolute() and '..' not in Path(item.filename).parts
+            assert (folder/item.filename).read_bytes()==z.read(item)
+
+    def retained(path):
+        assert path.startswith('build/') and '..' not in Path(path).parts
+        result=folder/path.removeprefix('build/');assert result.is_file(),path
+        return result
+
+    def row(record, require_inline=True):
+        raw=retained(record['log']).read_text()
+        if 'output' in record:assert raw==record['output'],record['log']
+        else:assert not require_inline,'missing required inline output: '+record['log']
+        return record['command']
+
+    def elf(path,wanted):
+        raw=path.read_bytes();assert digest(raw)==wanted,path
+        assert len(raw)>=64 and raw[:7]==b'\x7fELF\x02\x01\x01' and int.from_bytes(raw[18:20],'little')==machine,path
+
+    fixture=git(controls,useful.CONTROL)
+    assert digest(fixture)==report['control_sha256']
+    assert retained('build/tests/pvm-eager-connected/control-adapter.nim').read_bytes()==fixture
+    source_count=0
+    for role,revision in (('current',source),('trial',trial)):
+        data=report['sources'][role];assert data['revision']==revision
+        roots=['src','native/pvm_jit']+(['tests/performance','tests/unit/codec','tests/unit/state','tests/support'] if role=='trial' else [])
+        raw_archive=subprocess.check_output(['git','archive',revision,*roots],cwd=ROOT)
+        with tarfile.open(fileobj=io.BytesIO(raw_archive)) as source_archive:
+            complete={item.name for item in source_archive if item.isfile()}
+        complete.add(useful.CONTROL)
+        assert set(data['files'])==complete,(role,'incomplete source map')
+        for path,wanted in data['files'].items():
+            raw=fixture if path==useful.CONTROL else git(revision,path)
+            if path=='src/pvm/step.nim':
+                projection=report['consumer_projections'][role]
+                assert projection['original_sha256']==digest(raw)
+                raw=useful.step_projection(raw.decode()).encode()
+                assert projection['projected_sha256']==digest(raw)
+                assert retained('build/tests/pvm-eager-connected/consumer-step.nim').read_bytes()==raw
+            assert digest(raw)==wanted,(role,path);source_count+=1
+    assert len(report['builds'])==12 and len(report['images'])==12
+    build_keys=set()
+    for built in report['builds']:
+        role,profile,repeat=built['role'],built['profile'],built['repeat']
+        key=(role,profile,repeat);assert key not in build_keys;build_keys.add(key)
+        run=built['run'];assert run['exit_code']==0
+        args=row(run)
+        assert args[1]=='c' and args[-1].endswith('/snapshot/'+useful.CONTROL)
+        assert [arg[3:] for arg in args if arg.startswith('-d:')]==['release',*useful.control_defines(architecture,profile,role)]
+        for flag in ('--mm:arc','--cc:clang','--opt:speed','--boundchecks:on',
+                     '--passC:-flto=thin','--passL:-flto=thin','--passL:-fuse-ld=lld','--passC:-D_GNU_SOURCE'):
+            assert flag in args,(key,flag)
+        assert not any('danger' in arg or 'checks:off' in arg or 'polkavmRuntime' in arg for arg in args)
+        name=f'{role}-{profile}-{repeat}';elf(retained('build/tests/pvm-eager-connected/'+name),report['images'][name])
+    assert build_keys=={(r,p,i) for r in ('current','trial') for p in ('native','refused','not-built') for i in range(2)}
+    for role in ('current','trial'):
+        for profile in ('native','refused','not-built'):
+            left,right=(retained(f'build/tests/pvm-eager-connected/{role}-{profile}-{i}').read_bytes() for i in range(2))
+            assert left==right,(role,profile)
+    keys=set()
+    for control in report['controls']:
+        role,profile,probe=control['role'],control['profile'],control['probe']
+        key=(role,profile,probe);assert key not in keys;keys.add(key)
+        run=control['run'];args=row(run)
+        assert len(args)==1 and args[0].endswith(f'/{role}-{profile}-0')
+        if probe:
+            assert useful.assertion_control(run),key
+        else:
+            assert useful.control_progress(run,architecture,profile,role)==control['progress'],key
+        assert control['passed'],key
+    assert keys=={(r,p,i) for r in ('current','trial') for p in ('native','refused','not-built') for i in (False,True)}
+    # Broader maintained gate rows vary by architecture; check every recorded command and intended owner refusal.
+    gate=report['native_gate'];assert len(gate)==(9 if machine==183 else 15)
+    recorded=0;omitted_inline=0
+    def records(value):
+        if isinstance(value,dict):
+            if 'command' in value and 'log' in value:
+                yield value
+            for child in value.values():yield from records(child)
+        elif isinstance(value,list):
+            for child in value:yield from records(child)
+    for run in records(gate):
+        args=row(run,require_inline=False);recorded+=1
+        if 'output' not in run:
+            # Maintained ARM successful build summaries deliberately omit inline output; raw logs are retained.
+            assert machine==183 and args[1]=='c' and run['exit_code']==0
+            omitted_inline+=1
+        if run['exit_code']:
+            assert args[1]=='c' and ('copy' in run['log'])
+            assert "'=dup' is not available for type <" in run['output']
+        assert not any('danger' in arg or 'checks:off' in arg for arg in args)
+    logs=folder/'tests/pvm-eager-connected/broader-gate'
+    assert (logs/'memory-run.log').read_text()==('ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n' if machine==183 else 'X86_EXECUTABLE_MEMORY_OK,1000\n')
+    if machine==183:
+        witness=(logs/'witness-run.log').read_text();refused=(logs/'witness-refused-run.log').read_text()
+        for marker,count in (('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507),('ARM_LOAD_WIDTH_LITERAL_CASES',24843)):
+            assert f'{marker},{count}\n' in witness and f'{marker},0\n' in refused
+        for text in (witness,refused):
+            for marker,count in (('ARM_STORE_FALLBACK_CONTROL_CASES',43904),('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360),('ARM_SELF_REGION_CASES',1920)):
+                assert f'{marker},{count}\n' in text
+        assert 'ARM_REGION_SCALAR_MATCH_CASES,111\n' in witness
+        assert 'TRANSFER_STATS,1,2\n' in witness and 'TRANSFER_STATS,0,0\n' in refused
+        owner_names=('ownership-stream','ownership-frame')
+    else:
+        for name,refused in (('x86-native',False),('x86-refused',True)):
+            text=(logs/(name+'-run.log')).read_text()
+            for marker,count in (('X86_REGISTER_CASES',2120),('X86_PREFIX_CASES',2984),('X86_HIGH_LITERAL_CASES',2070),('X86_BRANCH_LITERAL_CASES',1296),('X86_BRANCH_PREFIX_CASES',540),('X86_REGION_PREFIX_CASES',1440),('X86_CHECKED_THREE_SOURCE_CASES',3546),('X86_EXISTING_ROOT_SOURCE_CASES',6)):
+                assert f'{marker},{count}\n' in text
+            for marker,count in (('X86_RESIDENT_CONTEXT_CASES',1440),('X86_COMPACT_IMMEDIATE_CASES',3168),('X86_REGION_ARITHMETIC_CASES',2120)):
+                assert f'{marker},{0 if refused else count}\n' in text
+            assert 'X86_CACHE_REUSE_OK\n' in text
+        assert (logs/'arena-move-run.log').read_text()=='X86_ARENA_MOVE_OK,1000\n'
+        owner_names=('stream','frame')
+    for name in owner_names:assert (logs/(name+'-move-run.log')).read_text()=='0\n0\n'
+    import pvm_eager_useful_span as broader
+    native_broader_units=broader.BROADER_UNITS
+    assert tuple(r['suite'] for r in report['broader_units'])==native_broader_units
+    for unit in report['broader_units']:
+        suite=unit['suite'];run=unit['run'];assert run['exit_code']==0
+        args=row(run);backend='pvmArm64Jit' if machine==183 else 'pvmX86Jit'
+        selected=[backend]+([backend+'Refuse'] if suite.endswith('_refused') else [])
+        assert [arg.removeprefix('--forward:-d:') for arg in args if arg.startswith('--forward:-d:pvm')]==selected
+        for flag in ('--forward:--mm:arc','--forward:--cc:clang','--forward:-d:release','--forward:--boundchecks:on','--forward:--passC:-flto=thin','--forward:--passL:-flto=thin'):
+            assert flag in args,(suite,flag)
+        assert args[-2]=='test' and args[-1].endswith('/snapshot/'+native_tests.unit_source(suite).relative_to(ROOT).as_posix())
+        if suite in native_tests.ARC_SUITES:
+            arc=json.loads(retained('build/tests/pvm-eager-connected/arc-evidence/'+suite+'.json').read_text())
+            assert arc==unit['arc'] and arc['cycles']==1000 and arc['occupied_before']==arc['occupied_after']
+    assert report['broader_images']
+    for origin,image in report['broader_images'].items():
+        assert origin.startswith('build/tests/pvm-eager-connected/')
+        elf(retained(image['retained']),image['sha256'])
+    for path,image in report['static_fixtures'].items():
+        assert digest(git(trial,path))==image['sha256']
+        assert digest(retained(image['retained']).read_bytes())==image['sha256']
+    # Reuse the previously qualified normal-cohort auditor; all inputs are retained bytes and Git objects.
+    spec=importlib.util.spec_from_file_location('normal_audit',ROOT/'build/audit-eager-early.py')
+    normal=importlib.util.module_from_spec(spec);spec.loader.exec_module(normal)
+    bench=retained(report['benchmark']['path']);assert digest(bench.read_bytes())==report['benchmark']['sha256']
+    data=json.loads(bench.read_text());assert data['revision']==report['revision'] and data['trial_source']==trial
+    # The qualified old normal auditor replays exact private consumer projections, never executes native code.
+    normal.early=SimpleNamespace(**vars(normal.early))
+    normal.early.SHARED=source
+    normal.early.doom_projection=useful.doom_projection
+    normal.early.sieve_projection=useful.sieve_projection
+    original_git_bytes=normal.git_bytes
+    def projected_git_bytes(revision,path):
+        raw=original_git_bytes(revision,path)
+        return useful.step_projection(raw.decode()).encode() if revision in (source,trial) and path=='src/pvm/step.nim' else raw
+    normal.git_bytes=projected_git_bytes
+    normal_result=normal.audit(folder)
+    assert data['consumer_projections']==report['consumer_projections']
+    assert useful.connected_observations(data['reference']['run']['output'])==[dict(region_calls=0,completed_blocks=0)]*2
+    assert len(report['connected_runs'])==len(data['runs'])==156
+    for copied,actual in zip(report['connected_runs'],data['runs']):
+        assert {k:copied[k] for k in ('family','order','sample','role','discarded')}=={k:actual[k] for k in ('family','order','sample','role','discarded')}
+        assert copied['calls']==useful.connected_observations(actual['run']['output'])
+        for value,native in zip(copied['calls'],actual['native_work']):
+            assert value['region_calls']<=native['native_calls'] and value['completed_blocks']<=native['native_operations']
+    return dict(status='passed',architecture=architecture,head=report['revision'],runtime=source,trial=trial,
+                archive_sha256=meta['digest'],archive_bytes=meta['size_in_bytes'],
+                focused_report_sha256=digest(candidates[0].read_bytes()),benchmark_sha256=report['benchmark']['sha256'],
+                focused_builds=12,equal_pairs=6,focused_controls=12,focused_source_files=source_count,
+                broader_gate_rows=len(gate),broader_recorded_commands=recorded,broader_omitted_inline_outputs=omitted_inline,broader_suites=len(report['broader_units']),
+                broader_ELF_origins=len(report['broader_images']),static_fixtures=report['static_fixtures'],normal=normal_result,
+                limitations='No native execution by auditor. Compiler bytes and unretained guest/input bytes remain provenance only. Some maintained gate command exit/argument rows are not returned by the gate API; raw output logs, source-controlled sequencing and the successful overall report supply their evidence. Focused controls execute pair image0; both freshly rebuilt image bytes are identical. Full normal DOOM retained outputs are reference plus one two-call output per role; other process comparisons are in-process.')
+
+
+if __name__=='__main__':
+    base=Path(sys.argv[1]);results=[audit(p) for p in sorted(base.glob('pvm-eager-connected-*')) if p.is_dir()]
+    assert len(results)==2 and {r['architecture'] for r in results}=={'arm64','x86_64'}
+    assert len({r['head'] for r in results})==1
+    assert results[0]['normal']['raw_source_maps']==results[1]['normal']['raw_source_maps']
+    for result in results:del result['normal']['raw_source_maps']
+    output=base/'author-audit.json';output.write_text(json.dumps(results,indent=2)+'\n');print('PASS',output)

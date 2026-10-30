@@ -1,0 +1,396 @@
+{
+  "format_version": 1,
+  "status": "Historical experimental machinery preservation only; not adopted or newly qualified.",
+  "original_checkout": "/Users/jacogr/Projects/jacogr/ragnarok-pvm-native",
+  "source_refs": {
+    "codex/pvm-native-archive-standalone-54d74418": "54d74418d0f1c71523f7ded9cfa75e34a2e1e976",
+    "codex/pvm-native-archive-cohorts-aef172ac": "aef172ac2034d692d5e52c70fff945eeae96e019",
+    "codex/pvm-native-archive-doom-3aea063e": "3aea063e19aa861d628208e09c6a1d7a02189cd0",
+    "codex/pvm-native-archive-owner-9e6cabd4": "9e6cabd47288e209443466b77b85010b157ca3e0",
+    "codex/pvm-native-archive-policy-69ea78c8": "69ea78c8e44c4646ff183319c85f98086ea4ee5e"
+  },
+  "production_source": "8bcb461b866f0edb970b6542ad9823f9aaa3050a",
+  "polkavm_source": "69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa",
+  "toolchain": {
+    "path": "build/toolchain/nightly-63fed6cb4b2f59d34c9fbb18f1796e671e2024e4/nimony/bin/nimony",
+    "recorded_sha256": "bf61bfc2c5953de2d3236ddd99be61fce551809a57ce32ca6d34bbc6b1f8bd70"
+  },
+  "files": [
+    {
+      "group": "historical-ci-audits",
+      "target": "build/annotate-eager-visits.py",
+      "payload": "payloads/build/annotate-eager-visits.py.txt",
+      "bytes": 4234,
+      "sha256": "cc15594ce29f3f9bf948342ef0c0ffa95f68830b89c6675ff27a4590748425d2"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-connected.py",
+      "payload": "payloads/build/audit-connected.py.txt",
+      "bytes": 15311,
+      "sha256": "13d0f7b7b4d3ceb20281811426c008b7533a1352e79ccc635f0208cfa1006fca"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-doom-timing.py",
+      "payload": "payloads/build/audit-doom-timing.py.txt",
+      "bytes": 11860,
+      "sha256": "2195f4c96aa0992797a3eb2f062063d7dcb4ceba9cf2b307d8eb3cfbeb943b1e"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-eager-doom.py",
+      "payload": "payloads/build/audit-eager-doom.py.txt",
+      "bytes": 14308,
+      "sha256": "5b6272481aaca8c6ee09cffb65a493cb1000cf21b82baeb59e9b9217c1ce78ae"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-eager-early.py",
+      "payload": "payloads/build/audit-eager-early.py.txt",
+      "bytes": 13505,
+      "sha256": "6c48a36ef7bd5d474aae8ab45d007c8ca44ed2b516bab95cbcaf08609ae1b00f"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-eager-owner.py",
+      "payload": "payloads/build/audit-eager-owner.py.txt",
+      "bytes": 8833,
+      "sha256": "a4b785a92ef29b0a9d2a83f3b6fd5e75d23cb206557d0b45cd0574444e19f1b6"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-eager-visits.py",
+      "payload": "payloads/build/audit-eager-visits.py.txt",
+      "bytes": 6053,
+      "sha256": "aadcffc12ccdd21c1c42e2d493591dc2dd2414b9be188b4accad053cb4e9319d"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-public-policy.py",
+      "payload": "payloads/build/audit-public-policy.py.txt",
+      "bytes": 5939,
+      "sha256": "af082f2e7336dad7f18fb9f1ea4e4b6e65fe566a25265c11cd1647f8ef8d6978"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-pvm-handoffs.py",
+      "payload": "payloads/build/audit-pvm-handoffs.py.txt",
+      "bytes": 15266,
+      "sha256": "73d7a8d0b433c3b24d4be8816f034317935cbcb81797c12884800b12cc3a829f"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/audit-useful-span.py",
+      "payload": "payloads/build/audit-useful-span.py.txt",
+      "bytes": 12685,
+      "sha256": "f8dd304caf9e3651c8d84effb7fb3be851ed11faacbc2581e563b2c25c3ae26d"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/summarize-connected.py",
+      "payload": "payloads/build/summarize-connected.py.txt",
+      "bytes": 3450,
+      "sha256": "11ac2d56333dca77b8c620f213bc32667ff82e1d2c5ede5f9b4bfc0b29917fde"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/summarize-eager-trial.py",
+      "payload": "payloads/build/summarize-eager-trial.py.txt",
+      "bytes": 6428,
+      "sha256": "c315e5ca6bf9b07a0d2cec75af415e1067b3a17a60735121962f7a5765eae7f3"
+    },
+    {
+      "group": "historical-ci-audits",
+      "target": "build/summarize-useful-span.py",
+      "payload": "payloads/build/summarize-useful-span.py.txt",
+      "bytes": 2696,
+      "sha256": "40ea54522444a2c97b4198c900f45facf3409a12652aad31e7021f1af66409bf"
+    },
+    {
+      "group": "original-profile",
+      "target": "build/pvm-whole-pinky-profile/prepare.py",
+      "payload": "payloads/build/pvm-whole-pinky-profile/prepare.py.txt",
+      "bytes": 6498,
+      "sha256": "ed947e9a2c9e0b29bd5e8a8bf3f9b788c2554ac2f48117d2c7d81b111764989e"
+    },
+    {
+      "group": "original-profile",
+      "target": "build/pvm-whole-pinky-profile/run.py",
+      "payload": "payloads/build/pvm-whole-pinky-profile/run.py.txt",
+      "bytes": 3607,
+      "sha256": "fb959b6dea9a0b3002a3098ba27c56dd130378b047f8ea415fc43a638b663871"
+    },
+    {
+      "group": "original-profile",
+      "target": "build/pvm-whole-pinky-profile/attribute.py",
+      "payload": "payloads/build/pvm-whole-pinky-profile/attribute.py.txt",
+      "bytes": 4201,
+      "sha256": "a44383cf11c447d3db93893aa6138d45ee581ddbfd2ce64d78031029d3e198a8"
+    },
+    {
+      "group": "width-profile",
+      "target": "build/pvm-whole-width-profile/prepare.py",
+      "payload": "payloads/build/pvm-whole-width-profile/prepare.py.txt",
+      "bytes": 6898,
+      "sha256": "d2d29146b47949b4b8ed2a7bafc65fabdc6a23bfc480908cc7ef2b76cbf5e3b8"
+    },
+    {
+      "group": "width-profile",
+      "target": "build/pvm-whole-width-profile/run.py",
+      "payload": "payloads/build/pvm-whole-width-profile/run.py.txt",
+      "bytes": 3607,
+      "sha256": "aeea4c118891aa17a8562785a6e2e112ddf66d288712bfa1792cce780c718304"
+    },
+    {
+      "group": "width-profile",
+      "target": "build/pvm-whole-width-profile/attribute.py",
+      "payload": "payloads/build/pvm-whole-width-profile/attribute.py.txt",
+      "bytes": 4233,
+      "sha256": "aa9dfe16ea3a1f2c5aa94149794c459c0f1a08b403153f5988d67d7b99881e63"
+    },
+    {
+      "group": "cache-counter-diagnostic",
+      "target": "build/pvm-whole-final-cache-diagnostic/prepare.py",
+      "payload": "payloads/build/pvm-whole-final-cache-diagnostic/prepare.py.txt",
+      "bytes": 3909,
+      "sha256": "4225f7eaefbe07fb94ca98f3fd3fdd334440f2ad4a7d8dca26248f46824acc7e"
+    },
+    {
+      "group": "cache-counter-diagnostic",
+      "target": "build/pvm-whole-final-cache-diagnostic/run.py",
+      "payload": "payloads/build/pvm-whole-final-cache-diagnostic/run.py.txt",
+      "bytes": 3170,
+      "sha256": "889b389808dc93755b063e9ea73049b7a7dd70543b9f3455cf7ba20b7a76cae5"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-pinky-work/audit-completed-cohort.py",
+      "payload": "payloads/build/pvm-whole-pinky-work/audit-completed-cohort.py.txt",
+      "bytes": 5174,
+      "sha256": "a6ff1dc575fd175552427b6901165907ca78bc83f71f9746e80a23a52c18722f"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-pinky-work/render-report.py",
+      "payload": "payloads/build/pvm-whole-pinky-work/render-report.py.txt",
+      "bytes": 8755,
+      "sha256": "37bc79b10f79a285012d8d690ad92a8a8cce624bf41814182be3142fcc7fecd5"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-memory-experiment/audit-correctness-a596.py",
+      "payload": "payloads/build/pvm-whole-memory-experiment/audit-correctness-a596.py.txt",
+      "bytes": 3542,
+      "sha256": "7b3d9da30145b9f4f451eda12cb46bb3ebce6e13c6554a280fe19acbf25c49cf"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-memory-experiment/audit-compare.py",
+      "payload": "payloads/build/pvm-whole-memory-experiment/audit-compare.py.txt",
+      "bytes": 6277,
+      "sha256": "605f1774be2a4c1ea3e522e260d651b9dec93dd0c503eb12560dc45b46401700"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-width-work/audit-correctness.py",
+      "payload": "payloads/build/pvm-whole-width-work/audit-correctness.py.txt",
+      "bytes": 3591,
+      "sha256": "1411231a4c14045aa2b08f41a1825fa8c28c5bd99c102aaaa915d5ef456e1733"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-width-work/audit-compare.py",
+      "payload": "payloads/build/pvm-whole-width-work/audit-compare.py.txt",
+      "bytes": 7268,
+      "sha256": "4dd9014f74bc9e9189db24aa1519e948b983f4aa0a5afb170470f77a6726652b"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-fault-pc-work/audit-correctness.py",
+      "payload": "payloads/build/pvm-whole-fault-pc-work/audit-correctness.py.txt",
+      "bytes": 4051,
+      "sha256": "8d6f7f80c759d4563adb22881e5272fc383795a0a92c881d1fe66635488c08fd"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-fault-pc-work/audit-compare.py",
+      "payload": "payloads/build/pvm-whole-fault-pc-work/audit-compare.py.txt",
+      "bytes": 8144,
+      "sha256": "e6e6012c9c165e37c40984c55b32220030e113d6107c466594a3bdd0807fb605"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-read-cache-work/audit-correctness.py",
+      "payload": "payloads/build/pvm-whole-read-cache-work/audit-correctness.py.txt",
+      "bytes": 4896,
+      "sha256": "78bf0abae8447c5f8dbc57271dbe590729dc50cad879449743b0a413892a1a24"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-read-cache-work/audit-compare.py",
+      "payload": "payloads/build/pvm-whole-read-cache-work/audit-compare.py.txt",
+      "bytes": 9138,
+      "sha256": "83644c74ed1a6db6313b95f31750eb4f1f131bddbc96bcd263cca4716136477a"
+    },
+    {
+      "group": "standalone-audits",
+      "target": "build/pvm-whole-read-cache-work/analysis-before-timing.py",
+      "payload": "payloads/build/pvm-whole-read-cache-work/audit-compare.py.txt",
+      "bytes": 9138,
+      "sha256": "83644c74ed1a6db6313b95f31750eb4f1f131bddbc96bcd263cca4716136477a",
+      "alias_of": "build/pvm-whole-read-cache-work/audit-compare.py"
+    }
+  ],
+  "historical_ci": [
+    {
+      "name": "public-policy",
+      "run_id": 40891515646,
+      "source": "69ea78c8e44c4646ff183319c85f98086ea4ee5e",
+      "retained_path": "build/pvm-public-policy-evidence/40891515646",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40891515646"
+    },
+    {
+      "name": "eager-owner",
+      "run_id": 40903375793,
+      "source": "9e6cabd47288e209443466b77b85010b157ca3e0",
+      "retained_path": "build/pvm-eager-owner-evidence/40903375793",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40903375793"
+    },
+    {
+      "name": "eager-doom",
+      "run_id": 40915003409,
+      "source": "3aea063e19aa861d628208e09c6a1d7a02189cd0",
+      "retained_path": "build/pvm-eager-doom-evidence/40915003409",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40915003409"
+    },
+    {
+      "name": "early",
+      "run_id": 40926341145,
+      "source": "24fe538bcb7cdba57ec3555a003e74f03c4b3a89",
+      "retained_path": "build/pvm-eager-early-evidence/40926341145",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40926341145"
+    },
+    {
+      "name": "fast",
+      "run_id": 40931113794,
+      "source": "dbc32cc4a727e138279cf1e5aa7dcc9e859175a0",
+      "retained_path": "build/pvm-eager-fast-evidence/40931113794",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40931113794"
+    },
+    {
+      "name": "visits",
+      "run_id": 40935849365,
+      "source": "13902460d225b417fa683a289ad9193975d6e1ad",
+      "retained_path": "build/pvm-eager-visits-evidence/40935849365",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40935849365"
+    },
+    {
+      "name": "trial",
+      "run_id": 40943197683,
+      "source": "219deba33ea8b79cc1e8a9ec62b52cb5747aec36",
+      "retained_path": "build/pvm-eager-trial-evidence/40943197683",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40943197683"
+    },
+    {
+      "name": "handoffs",
+      "run_id": 40969195931,
+      "source": "8474bd954f91c4c34e1cb0cb134c90c39e9e1848",
+      "retained_path": "build/pvm-handoff-evidence/40969195931",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40969195931"
+    },
+    {
+      "name": "useful-span",
+      "run_id": 40980700138,
+      "source": "92eddbb3728d448d699b15192b914eca33253e87",
+      "retained_path": "build/pvm-eager-useful-span-evidence/40980700138",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40980700138"
+    },
+    {
+      "name": "connected",
+      "run_id": 40996115535,
+      "source": "aef172ac2034d692d5e52c70fff945eeae96e019",
+      "retained_path": "build/pvm-eager-connected-evidence/40996115535",
+      "url": "https://github.com/jacogr/ragnarok/actions/runs/40996115535"
+    }
+  ],
+  "standalone_runs": [
+    {
+      "name": "sieve",
+      "source": "2b2fd70cbefa8be5ccaca18ec9418924e61aaffe",
+      "retained_path": "build/pvm-whole-sieve-2b2fd70c-1793341170418977000",
+      "recorded_results_sha256": "872a5b96bedd9fbeb58a4045ff0dbacc9a0ef5b07c92b95eb0bce757a6b08809"
+    },
+    {
+      "name": "pinky",
+      "source": "cee9f9d72493fd25dfe8596817f0abdcca6e906a",
+      "retained_path": "build/pvm-whole-pinky-cee9f9d7-1793342825258719000",
+      "recorded_results_sha256": "11cd714e22d052cc2ed0511286cbf8cf95498da6e237c0221ebd04bd05136479"
+    },
+    {
+      "name": "memory-correctness",
+      "source": "a59654c35a54cf7c6bf0a04d10b908c21063a607",
+      "retained_path": "build/pvm-whole-memory-correctness-a59654c3-1793346485738061000",
+      "recorded_results_sha256": "36d9b7c03a552d66acf767dadd52803b11230426581997500d13dfbc697571c9"
+    },
+    {
+      "name": "memory-compare",
+      "source": "a59654c35a54cf7c6bf0a04d10b908c21063a607",
+      "retained_path": "build/pvm-whole-memory-compare-a59654c3-1793347385787385000",
+      "recorded_results_sha256": "40ad4444b27cd58bd8d7c046949eeadfa5e13718cd0ac45883bdbdc456946cf5"
+    },
+    {
+      "name": "width-correctness",
+      "source": "4d72ae5458773e9dd3b75b7fcb91fab8b5a18b14",
+      "retained_path": "build/pvm-whole-width-correctness-4d72ae54-1793355194503863000",
+      "recorded_results_sha256": "a6a88b4faa06c5b70164e7bd8d08a8081196ac3ced358b63863ad60e0c43402f"
+    },
+    {
+      "name": "width-compare",
+      "source": "4d72ae5458773e9dd3b75b7fcb91fab8b5a18b14",
+      "retained_path": "build/pvm-whole-width-compare-4d72ae54-1793355633688039000",
+      "recorded_results_sha256": "fac5fd172e120e0b0a7edcc1148463d24b118eab90f45799b5f43b557b7b3729"
+    },
+    {
+      "name": "fault-pc-compare",
+      "source": "6ac63280b792401cfabff0cefc3a61b3ebf51b94",
+      "retained_path": "build/pvm-whole-fault-pc-compare-6ac63280-1793357809969748000",
+      "recorded_results_sha256": "0bb00dfd2142d43fd327b6692d08da1888f9948bd8fa2cdaa0a1e844346c847f"
+    },
+    {
+      "name": "read-cache-correctness",
+      "source": "6af1af10dd070ae7a7217c82c45874d395d18fb5",
+      "retained_path": "build/pvm-whole-read-cache-correctness-6af1af10-1793360720186487000",
+      "recorded_results_sha256": "8b14378dd5f15d8af8a09e47a8c06e5e3f36d2686c6d9ff9c4033c7d23813a43"
+    },
+    {
+      "name": "read-cache-compare",
+      "source": "6af1af10dd070ae7a7217c82c45874d395d18fb5",
+      "retained_path": "build/pvm-whole-read-cache-compare-6af1af10-1793361600164158000",
+      "recorded_results_sha256": "fc7c470fead81cfa4cf7d999c2a4c52bec97eada27b639936976cdb40ac289fd"
+    }
+  ],
+  "additional_retained_paths": [
+    "build/pvm-whole-fault-pc-correctness-6ac63280-1793356572339683000/",
+    "build/pvm-whole-pinky-profile/",
+    "build/pvm-whole-width-profile/source-binding.json",
+    "build/pvm-whole-final-cache-diagnostic/verdict.json"
+  ],
+  "outcomes": {
+    "chunk_leases": "Rejected standalone experiment; preserved, not adopted.",
+    "width": "Kept for the standalone experiment; no production JIT gain inferred.",
+    "fault_pc": "Original strict rule DISCARD is immutable; later human assessment qualified KEEP for code footprint, with runtime tentative. General standalone baseline remains 6ac63280b792401cfabff0cefc3a61b3ebf51b94.",
+    "read_cache": "Original cross-workload rule DISCARD is immutable. Later human assessment: promising CONDITIONAL candidate pending representative DOOM evidence. Whole-image compiler cannot yet run DOOM. No further experiment is authorized by this preservation record."
+  },
+  "doom_timing_scope": {
+    "source": "4d524148afa6c42f620489d8cb95a86e7918220c",
+    "initial_run_id": 41004352868,
+    "ownership": "Transferred to JIT; archived audit-doom-timing.py is a historical helper, not a claim about the final or current DOOM cohort."
+  },
+  "excluded_local_prototypes": {
+    "build/pvm-whole-memory-experiment/derive.py": "Superseded by committed tools/pvm_whole_memory_projection.py.",
+    "build/pvm-whole-memory-experiment/repair-projection.py": "One-off source repair; not reusable measurement machinery.",
+    "build/pvm-whole-memory-experiment/audit-correctness.py": "Superseded by the explicitly source-bound audit-correctness-a596.py.",
+    "independent reviewer proof scripts": "Retained in artifact proof directories; not duplicated as native-authored source."
+  }
+}

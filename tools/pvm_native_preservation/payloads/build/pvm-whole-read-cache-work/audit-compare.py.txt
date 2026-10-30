@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Inert full retained-data audit: report every mean/median/range/pair and lifecycle, no metric selection."""
+import json,pathlib,sys,hashlib,tarfile,statistics
+root=pathlib.Path(__file__).resolve().parents[2];sys.path.insert(0,str(root/'tools'))
+from pvm_whole_read_cache import summarize,matrix
+folder=pathlib.Path(json.loads((root/'build/pvm-whole-read-cache-compare-latest.json').read_text())['path'])
+x=json.loads((folder/'results.json').read_text())
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+assert x['revision']=='6af1af10dd070ae7a7217c82c45874d395d18fb5'
+assert x['status']=='passed' and x['final_seal']=='passed' and len(x['runs'])==104
+assert x['summary']==summarize(x['runs'])
+assert [(r['guest'],r['order'],r['sample'],r['arm']) for r in x['runs']]==matrix()
+for name,wanted in x['identities'].items():assert sha(root/name)==wanted,name
+for key in ('compiler','clang'):assert sha(pathlib.Path(x[key]['path']))==x[key]['sha256']
+assert sha(root/x['source_archive']['path'])==x['source_archive']['sha256']
+with tarfile.open(root/x['source_archive']['path']) as tar:
+ members=tar.getmembers();assert len(members)==len(x['source_maps']) and len({m.name for m in members})==len(members)
+ for m in members:assert hashlib.sha256(tar.extractfile(m).read()).hexdigest()==x['source_maps'][m.name]
+for row in x['commands']+x['builds']:assert (root/row['log']).read_text()==row['output']
+assert len(x['builds'])==4 and all(b['exit_code']==0 for b in x['builds'])
+assert len(x['controls'])==6
+for row in x['controls']:
+ assert row['exit_code']!=0
+ assert ('whole-image ' in row['output'] and ' assertion control' in row['output']) or 'Pinky rendered frame byte' in row['output']
+assert all(r['run']['exit_code']==0 for r in x['runs'])
+assert sum(not r['discarded'] for r in x['runs'])==80
+assert sum(len(r['measured']['calls']) for r in x['runs'])==208
+for r in x['runs']:
+ if r['arm']=='fast':assert r['measured']['read_cache']==x['reviewed_cache_counts'][r['guest']]
+gate=json.loads((folder/'independent-gate/review.json').read_text())
+assert gate['revision']==x['revision'] and gate['source_correctness_gate']=='passed'
+assert gate['correctness_results_sha256']==sha(folder/'independent-gate/correctness-results.json')
+statistics_rows=[]
+for guest in ('pinky','sieve'):
+ for order in (0,1):
+  selected={(r['sample'],r['arm']):r['measured'] for r in x['runs'] if r['guest']==guest and r['order']==order and not r['discarded']}
+  for call in (0,1):
+   for clock in ('cpu_ns','elapsed_ns'):
+    values={a:[selected[s,a]['calls'][call][clock] for s in range(3,13)] for a in ('baseline','fast')}
+    distributions={a:dict(mean=statistics.mean(v),median=statistics.median(v),minimum=min(v),maximum=max(v),samples=10) for a,v in values.items()}
+    pairs=[dict(sample=s,baseline=selected[s,'baseline']['calls'][call][clock],variant=selected[s,'fast']['calls'][call][clock],baseline_over_variant=selected[s,'baseline']['calls'][call][clock]/selected[s,'fast']['calls'][call][clock]) for s in range(3,13)]
+    statistics_rows.append(dict(guest=guest,order=order,call=call,clock=clock,distributions=distributions,paired=pairs,paired_wins=sum(p['baseline']>p['variant'] for p in pairs),median_reduction_percent=100*(1-distributions['fast']['median']/distributions['baseline']['median']),mean_reduction_percent=100*(1-distributions['fast']['mean']/distributions['baseline']['mean'])))
+(folder/'all-retained-statistics.json').write_text(json.dumps(statistics_rows,indent=2)+'\n')
+images={g:{a:dict(bytes=(folder/(a+'-'+g)).stat().st_size,sha256=sha(folder/(a+'-'+g))) for a in ('baseline','fast')} for g in ('pinky','sieve')}
+receipt=dict(status='passed',kind='inert author comparison audit; practical tradeoff assessment and independent final review separate',revision=x['revision'],results_sha256=sha(folder/'results.json'),source_archive=x['source_archive'],archive_members=len(x['source_maps']),sealed_identities=len(x['identities']),fresh_processes=104,timed_calls=208,retained_owners=80,retained_calls=160,all_raw_logs_equal=True,all_source_input_image_compiler_seals=True,full_matrix_reparsed=True,all_retained_means_medians_ranges_pairs='all-retained-statistics.json',host_images=images,additional_declared_writer_fields_bytes=536,assessment='pending practical benefit/resource/maintenance assessment, no universal5%threshold',production_adoption=False)
+(folder/'author-audit.json').write_text(json.dumps(receipt,indent=2)+'\n')
+lines=['# Final bounded checked-helper page-cache experiment','',f'Measured source: `{x["revision"]}`. Author retained-data audit PASS; independent final audit pending.','', 'One fixed serial104-process208-call Pinky/sieve pair, both orders, first3 of13 owners per cell discarded and10 retained,2 calls per owner. Every remaining observation is retained. Both arms use accepted static-width plus compact-PC gasOFF execution; same work, memory checks and native image sizes.','', '## All retained invocation distributions (ms)','', '| Guest/order | Call/clock | Baseline median/mean | Variant median/mean | Median/mean reduction | Paired wins |','|---|---|---:|---:|---:|---:|']
+for s in statistics_rows:
+ b=s['distributions']['baseline'];v=s['distributions']['fast']
+ lines.append(f'| {s["guest"]}/{s["order"]} | {s["call"]}/{s["clock"].removesuffix("_ns")} | {b["median"]/1e6:.4f} / {b["mean"]/1e6:.4f} | {v["median"]/1e6:.4f} / {v["mean"]/1e6:.4f} | {s["median_reduction_percent"]:.2f}% / {s["mean_reduction_percent"]:.2f}% | {s["paired_wins"]}/10 |')
+lines+=['', 'Full min/max and every paired observation are retained in `all-retained-statistics.json`; original raw calls and scopes remain in results.json/logs. No post-hoc filtering, repeated cohort or cache-capacity sweep. There is no automatic5%acceptance cutoff; practical assessment must weigh all results, resource use, simplicity and correctness.','', '## Actual work and resources','', 'Pinky:4,934,271 checked loads/3,132,606 checked stores; sieve:11,272,390/4,203,132. Native code remains369,832/1,482,676 bytes in BOTH arms,3860/17871 static memory sites. All guest memory accesses still cross the original checked callback boundary.','', f'Variant cache hits/admissions/COW invalidations per call: `{x["reviewed_cache_counts"]}`; every timed count equals independent reviewed clocks-disabled correctness. Baseline diagnostic misses were613,063 Pinky/100,723 sieve. Counters are actual variant overhead, not native hits.', '', 'Additional declared fields per writer:64 typed page-owner references(512 bytes on thisARM64 target) plus3uint64 counters(24 bytes),536 bytes before allocator rounding. No extra page payload is copied. Every snapshot clears64 references before immutable publication; those costs and allocation/retirement are retained in the lifecycle scopes. Host images, hashes and byte sizes are in author-audit.json.','', '## Lifecycle CPU medians and means (ms)','', '| Guest/order | Arm | Construct med/mean | Input med/mean | Restore first med/mean | Restore reuse med/mean | Publish first med/mean | Publish reuse med/mean | Retire med/mean |','|---|---|---:|---:|---:|---:|---:|---:|---:|']
+for s in x['summary']:
+ for arm in ('baseline','fast'):
+  rows=s['arms'][arm]['retained_lifecycle']
+  def stats(key,index=None):
+   v=[(r[key] if index is None else r[key][index])['cpu_ns']/1e6 for r in rows];return f'{statistics.median(v):.4f} / {statistics.mean(v):.4f}'
+  lines.append(f'| {s["guest"]}/{s["order"]} | {arm} | {stats("constructor")} | {stats("input_prepare")} | {stats("writer_restore",0)} | {stats("writer_restore",1)} | {stats("immutable_publication",0)} | {stats("immutable_publication",1)} | {stats("image_retirement")} |')
+lines+=['', 'CPU and elapsed raw lifecycle values remain in results.json. Diagnostic echo happens before publication clocks. Final Program/Memory/writer destruction is not separately isolated. Both arms include symmetric private machine sources; baseline is production-exact after import relocation, variant adds only typed-owner cache logic. The aggregate includes helper/compiler code layout, cache accounting and owner promotion; no per-check or per-miss timing is isolated.','', 'All13registers, mapped bytes/perms, immutable source, single exit, Pinky245760-byte frame and sieve prime count are checked outside invocation timing. The source gate passed170balanced control images+12clocks-disabled guest calls; deliberately corrupted frames/assertions must fail. The old PolkaVM69e5 pin and production8bcb memory source are held. No production/JIT gain, policy/default/quota change or shared implementation is implied. SDK/sysroot/registry are not a fully retained build environment; compiler executables are hash/version identities.','']
+(folder/'summary.md').write_text('\n'.join(lines))
+print(json.dumps({k:v for k,v in receipt.items() if k!='host_images'},indent=2))
+for s in statistics_rows:
+ if s['clock']=='cpu_ns':print(s['guest'],s['order'],s['call'],s['distributions'],s['median_reduction_percent'],s['mean_reduction_percent'],s['paired_wins'])

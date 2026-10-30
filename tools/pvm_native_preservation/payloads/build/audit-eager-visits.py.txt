@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Data-only audit of original checked-PC replay artifacts and block annotations."""
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+import zipfile
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'tools'))
+from pvm_eager_visits import project,parse
+from pvm_eager_early import PUBLIC,SHARED,SHARED_PATHS
+
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+
+
+def original(revision,path):
+    assert path and not path.startswith('/') and '..' not in Path(path).parts
+    return subprocess.check_output(['git','show',revision+':'+path],cwd=ROOT)
+
+
+def audit(folder):
+    report=json.loads(next(p for p in folder.rglob('results.json') if p.parent.name=='pvm-eager-visits').read_text())
+    assert report['status']=='passed'
+    assert report['public_source']==PUBLIC and report['shared_source']==SHARED
+    zipped=folder.with_suffix('.zip');meta=json.loads(zipped.with_suffix('.json').read_text())
+    assert zipped.stat().st_size==meta['size_in_bytes'] and meta['digest']=='sha256:'+sha(zipped.read_bytes())
+    files=0
+    with zipfile.ZipFile(zipped) as archive:
+        for item in archive.infolist():
+            if item.is_dir():continue
+            assert (folder/item.filename).read_bytes()==archive.read(item)
+            files+=1
+    def retained(path):
+        paths=[p for p in folder.rglob(Path(path).name) if p.is_file()]
+        precise=[p for p in paths if p.as_posix().endswith('/'+path.removeprefix('build/'))]
+        paths=precise if precise else paths
+        assert len(paths)==1,(path,paths)
+        return paths[0]
+    tracked=0;elfs=0;provenance=[]
+    for path,wanted in report['identities'].items():
+        if path.startswith('build/'):
+            matches=[p for p in folder.rglob(Path(path).name) if p.is_file()]
+            if len(matches)==1:
+                data=matches[0].read_bytes();assert sha(data)==wanted,path
+                if data[:4]==b'\x7fELF':
+                    elfs+=1
+                    assert int.from_bytes(data[18:20],'little')=={'arm64':183,'x86_64':62}[report['host']['architecture']]
+            else:provenance.append(path)
+        elif path.startswith('vendor/polkavm/'):
+            repo=ROOT.parent/'ragnarok-pvm/vendor/polkavm'
+            raw=subprocess.check_output(['git','-C',str(repo),'show','69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa:'+path.removeprefix('vendor/polkavm/')])
+            assert sha(raw)==wanted
+        else:
+            assert sha(original(report['revision'],path))==wanted,path
+            tracked+=1
+    assert elfs==2
+    for path in SHARED_PATHS:
+        assert original(report['revision'],path)==original(SHARED,path)
+    driver=project(original(report['revision'],'tests/interop/pvm_doom_backends.nim').decode()).replace('../../src/','../../../src/')
+    assert retained('build/tests/pvm-eager-visits/visits.nim').read_text()==driver
+    for name in ('build','run'):
+        row=report[name];assert row['exit_code']==0 and retained(row['log']).read_text()==row['output']
+    flags=report['build']['command']
+    for flag in ('--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on',
+        '--passC:-flto=thin','--passL:-flto=thin','-d:pvmSourceSealingReceipt'):
+        assert flag in flags
+    visits=retained('call-0.visits')
+    parsed=parse(report['run']['output'],visits.read_text(),533657)
+    assert parsed==report['observed']
+    assert report['hosts_sha256']=='507b4f81d9e9c69d1dc5347278f82eb6802d9cdb26da70f2497d8411435696e7'
+    assert report['complete_state_sha256']=='1d675440502609ece2856b65fc4e4d457c0d3ebd75ddc1552eca44f6a1e15d89'
+    assert report['events_sha256']=='845a32d2f454cc3659ef8714f40974a3f5297f734a59d15b7c88794d3304c0cc'
+    assert report['frames'][0]['rgba_sha256']=='44f42f5bed248db9caadf2caf329a2857e1c54a084b69d6b44fba83df4e5422b'
+    assert len(report['controls'])==1
+    control=report['controls'][0]
+    assert control['exit_code']!=0 and 'DOOM backend assertion control' in control['output']
+    assert retained(control['log']).read_text()==control['output']
+    assert '3 passed; 0 failed' in retained('build.log').read_text()
+    # Independently regenerate GP blocks from the hash-matching guest bytes, without invoking any VM.
+    spec=importlib.util.spec_from_file_location('annotate',ROOT/'build/annotate-eager-visits.py')
+    annotation=importlib.util.module_from_spec(spec);spec.loader.exec_module(annotation)
+    annotated=annotation.annotate(ROOT.parent/'ragnarok-pvm/build/tests/pvm-doom/doom.polkavm',visits,
+        '6ba024eaba62a18732b40340f209523c3bc0bdca7e0cca4b121e4e1342a07f32',164363)
+    assert annotated==json.loads(visits.with_name('block-annotation.json').read_text())
+    return dict(status='passed',architecture=report['host']['architecture'],original_files=files,
+        tracked_git_inputs=tracked,retained_ELFs=elfs,source_visits=parsed['visits'],unique_pcs=parsed['unique_pcs'],
+        source_weighted_counts=parsed['weighted_source_visits'],
+        hot_deferred_block_starts=annotated['hottest_capacity_deferred_block_starts'][:5],
+        hottest_blocks=annotated['hottest_block_starts'][:3],provenance_only=provenance,
+        limitations='Checked source-dispatch visits, not actual native handoffs/coverage/time. Raw actual state/events/hosts unretained; verified recorded hashes/source assertions. Compiler/input hashes without bytes are provenance only.')
+
+
+if __name__=='__main__':
+    base=Path(sys.argv[1]);rows=[audit(p) for p in sorted(base.iterdir()) if p.is_dir() and p.name.startswith('pvm-eager-visits-')]
+    assert len(rows)==2 and rows[0]['source_visits']==rows[1]['source_visits']==12180040
+    maps=[]
+    for p in sorted(base.rglob('call-0.visits')):
+        maps.append({int(x.split(',')[0]):int(x.split(',')[2]) for x in p.read_text().splitlines()})
+    assert maps[0]==maps[1]
+    (base/'author-audit.json').write_text(json.dumps(rows,indent=2)+'\n')
+    print('PASS originalZIP/Git/ELF/log/class/counter/GPblock data-only audit:',base/'author-audit.json')

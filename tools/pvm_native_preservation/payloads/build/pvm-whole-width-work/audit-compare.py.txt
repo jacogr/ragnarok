@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Inert author audit/report of the one fixed native-memory comparison."""
+import json, pathlib, hashlib, tarfile, sys, statistics
+root=pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(root/'tools'))
+from pvm_whole_width import summarize, matrix
+folder=pathlib.Path(json.loads((root/'build/pvm-whole-width-compare-latest.json').read_text())['path'])
+x=json.loads((folder/'results.json').read_text())
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+assert x['revision']=='4d72ae5458773e9dd3b75b7fcb91fab8b5a18b14'
+assert x['status']=='passed' and x['final_seal']=='passed' and len(x['runs'])==104
+assert x['summary']==summarize(x['runs'])
+assert [(r['guest'],r['order'],r['sample'],r['arm']) for r in x['runs']]==matrix()
+for name,wanted in x['identities'].items():assert sha(root/name)==wanted,name
+for key in ('compiler','clang'):assert sha(pathlib.Path(x[key]['path']))==x[key]['sha256']
+assert sha(root/x['source_archive']['path'])==x['source_archive']['sha256']
+with tarfile.open(root/x['source_archive']['path']) as tar:
+ members=tar.getmembers();assert len(members)==len(x['source_maps']) and len({m.name for m in members})==len(members)
+ for m in members:assert hashlib.sha256(tar.extractfile(m).read()).hexdigest()==x['source_maps'][m.name]
+for row in x['commands']:assert (root/row['log']).read_text()==row['output']
+assert len(x['builds'])==4 and all(b['exit_code']==0 for b in x['builds'])
+assert len(x['controls'])==6
+for row in x['controls']:
+ assert row['exit_code']!=0
+ assert ('whole-image ' in row['output'] and ' assertion control' in row['output']) or 'Pinky rendered frame byte' in row['output']
+assert all(r['run']['exit_code']==0 for r in x['runs'])
+assert sum(not r['discarded'] for r in x['runs'])==80
+assert sum(len(r['measured']['calls']) for r in x['runs'])==208
+gate=json.loads((folder/'independent-gate/review.json').read_text())
+assert gate['revision']==x['revision'] and gate['source_correctness_gate']=='passed'
+assert gate['correctness_results_sha256']==sha(folder/'independent-gate/correctness-results.json')
+# Commit the conservative analysis rule before timing: every median gain exceeds5%, and at least
+# eight of ten paired retained owners improve in every guest/order/call/clock cell.
+consistent=all(v>1.05 for s in x['summary'] for v in s['baseline_over_fast']['cpu_ns']+s['baseline_over_fast']['elapsed_ns'])
+pair_checks=[]
+for guest in ('pinky','sieve'):
+ for order in (0,1):
+  selected={(r['sample'],r['arm']):r['measured'] for r in x['runs'] if r['guest']==guest and r['order']==order and not r['discarded']}
+  for call in (0,1):
+   for clock in ('cpu_ns','elapsed_ns'):
+    wins=sum(selected[sample,'baseline']['calls'][call][clock]>selected[sample,'fast']['calls'][call][clock] for sample in range(3,13))
+    pair_checks.append(dict(guest=guest,order=order,call=call,clock=clock,paired_wins=wins,pairs=10))
+consistent=consistent and all(r['paired_wins']>=8 for r in pair_checks)
+verdict='keep private direction' if consistent else 'discard this variant'
+receipt=dict(status='passed',kind='inert author comparison audit; independent final audit remains separate',revision=x['revision'],results_sha256=sha(folder/'results.json'),archive=x['source_archive'],archive_members=len(x['source_maps']),sealed_identities=len(x['identities']),fresh_processes=104,timed_calls=208,retained_owners=80,retained_calls=160,all_raw_logs_equal=True,all_source_input_image_compiler_seals=True,full_matrix_reparsed=True,verdict=verdict,production_adoption=False,decision_rule='All CPU+elapsed median ratios exceed1.05; at least8of10 paired wins in every guest/order/call/clock cell; fixed before timing',paired_checks=pair_checks)
+(folder/'author-audit.json').write_text(json.dumps(receipt,indent=2)+'\n')
+lines=['# Fixed-width checked callbacks: Pinky and sieve','',f'Revision: `{x["revision"]}`. Author audit PASS; independent final review pending.','', '## Invocation CPU medians (ms)','', '| Guest | Order | Baseline first/reuse | Variant first/reuse | Baseline / variant first/reuse |','|---|---|---:|---:|---:|']
+for s in x['summary']:
+ def ms(arm):return ' / '.join(f'{c["cpu_ns"]["median"]/1e6:.4f}' for c in s['arms'][arm]['calls'])
+ ratios=' / '.join(f'{v:.3f}x' for v in s['baseline_over_fast']['cpu_ns'])
+ lines.append(f'| {s["guest"]} | {"baseline then variant" if s["order"]==0 else "variant then baseline"} | {ms("baseline")} | {ms("fast")} | {ratios} |')
+lines+=['',f'Verdict: **{verdict}** under the fixed both-guests/both-orders policy. No production adoption.','', '104 fresh processes, two calls per image owner. First three owners per guest/order/arm discarded; ten retained. Both arms gas OFF; identical whole-image ownership and guest work. Each call restores the same initialized input, rather than continuing previous RAM. All registers, mapped bytes/permissions, immutable source, exits, Pinky framebuffer and sieve result are checked outside the invocation clock.','', '## Cost evidence','', 'Earlier separate Pinky sampling assigned 70.05% of all samples to checked helpers and 16.79% to the native bridge; 8.24% to generated guest instructions. Sampling included startup/correctness and does not yield exact per-call milliseconds or instruction costs.','', 'All actual guest memory operations still cross production checked callbacks. Pinky4,934,271 loads/3,132,606 stores; sieve11,272,390 loads/4,203,132 stores per call. Generated image sizes remain416,152 bytes for Pinky and1,697,128 bytes for sieve in both arms.', '', 'Only compile-time callback selection changes: eight typed fixed-width helpers call the existing static-width public production API. Original runtime width arguments, spills, status checks and callback accounting remain. Aggregate timing cannot isolate an individual helper check or spill.', '', '## Lifecycle CPU medians (ms)','', '| Guest/order | Arm | Construct | Input prepare | Restore first/reuse | Publish first/reuse | Retire |','|---|---|---:|---:|---:|---:|---:|']
+for s in x['summary']:
+ for arm in ('baseline','fast'):
+  rows=s['arms'][arm]['retained_lifecycle']
+  def med(key,i=None):return statistics.median([(r[key] if i is None else r[key][i])['cpu_ns'] for r in rows])/1e6
+  lines.append(f'| {s["guest"]}/{s["order"]} | {arm} | {med("constructor"):.4f} | {med("input_prepare"):.4f} | {med("writer_restore",0):.4f} / {med("writer_restore",1):.4f} | {med("immutable_publication",0):.4f} / {med("immutable_publication",1):.4f} | {med("image_retirement"):.4f} |')
+lines+=['', 'The original Pinky and sieve three-engine cohorts remain separate and unchanged. No fresh PolkaVM/current-JIT ratios are claimed. This is a local M1 Max ARM64 diagnostic on production 8bcb and old pin 69e5; no default, quota, gas, production emitter or upstream-pin changes. Compiler binaries are identified by hash/version; SDK/sysroot and registry dependencies are not a fully retained build environment. Final Program/Memory/writer destruction is not individually isolated.','']
+(folder/'summary.md').write_text('\n'.join(lines))
+print(json.dumps(receipt,indent=2))
+for s in x['summary']:
+ print(s['guest'],s['order'],{a:[round(c['cpu_ns']['median']/1e6,4) for c in s['arms'][a]['calls']] for a in ('baseline','fast')},s['baseline_over_fast'])

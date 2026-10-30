@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Run one clocks-disabled existing-cache diagnosis for both original fully checked guest inputs."""
+from pathlib import Path
+import sys,json,hashlib,os,tarfile,io
+root=Path(__file__).resolve().parents[2];folder=Path(__file__).resolve().parent;sys.path.insert(0,str(root/'tools'))
+from native_checks import NativeChecks
+checks=NativeChecks(folder)
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+manifest=json.loads((folder/'sources.json').read_text())
+for name,wanted in manifest['files'].items():assert sha(root/name)==wanted,name
+prior=root/'build/pvm-whole-fault-pc-compare-6ac63280-1793357809969748000';old=json.loads((prior/'results.json').read_text())
+for name,wanted in old['identities'].items():
+ if name=='spec/pvm-whole-fault-pc-experiment.md':continue
+ assert sha(root/name)==wanted,name
+files=[p for p in folder.iterdir() if p.is_file()];ids={str(p.relative_to(root)):sha(p) for p in files}
+(folder/'pre-execution.json').write_text(json.dumps(dict(accepted_results_sha256=sha(prior/'results.json'),accepted_archive=old['source_archive'],unchanged_prior_identities=1005,documentation_only_record='36c05be5b9f7d0db0507c8ac7ca482b44a0dbf93',files=ids),indent=2)+'\n')
+with tarfile.open(folder/'pre-execution.tar.gz','w:gz') as tar:
+ for p in files:
+  raw=p.read_bytes();info=tarfile.TarInfo(p.name);info.size=len(raw);tar.addfile(info,io.BytesIO(raw))
+rows=[]
+for guest,limit in [('pinky',1),('sieve',10000000)]:
+ location=prior/'inputs'/guest/str(limit)
+ env=dict(os.environ,RAGNAROK_PVM_GUEST=guest,RAGNAROK_PVM_SIEVE_INPUT=str(location/f'input-{limit}.bin'),RAGNAROK_PVM_SIEVE_EXPECTED=str(location/f'expected-{limit}.bin'),RAGNAROK_PVM_SIEVE_SAMPLES='2',RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',RAGNAROK_PVM_FRAME_ADDRESS=str(location/'frame-address.txt'),RAGNAROK_PVM_FRAME_BYTES=str(location/'frame-abgr.bin'))
+ row=checks.command([folder/guest],'actual-'+guest,environment=env);rows.append(row);(folder/'actual.json').write_text(json.dumps(rows,indent=2)+'\n');assert row['exit_code']==0,row['output'][-2000:]
+ lines=[s.split(',') for s in row['output'].splitlines()];assert ['CORRECTNESS_ONLY_CLOCKS_DISABLED','1'] in lines and lines[-1]==['WHOLE_PASS',str(limit)]
+ stats=[r for r in lines if r[0]=='WRITER_COUNTERS'];assert len(stats)==2
+ expected=[4934271,3132606] if guest=='pinky' else [11272390,4203132]
+ for i,r in enumerate(stats):
+  values=list(map(int,r[2:]));assert r[1]==str(i) and len(values)==9
+  assert sum(values[:4])==expected[0] and sum(values[4:7])==expected[1]
+ print(guest,dict(zip(manifest['counter_order'],values)),dict(load_miss_fraction=values[3]/expected[0],store_miss_fraction=values[6]/expected[1]))
+for name,wanted in ids.items():assert sha(root/name)==wanted,name
+(folder/'verdict.json').write_text(json.dumps(dict(status='passed',kind='counter diagnostic only, clocks disabled; zero timed comparisons',actual_guest_calls=4,rows=[dict(guest=g,output=r['output']) for (g,_),r in zip([('pinky',1),('sieve',10000000)],rows)],pre_execution_archive_sha256=sha(folder/'pre-execution.tar.gz')),indent=2)+'\n')

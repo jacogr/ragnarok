@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Read sealed CI evidence as inert data; never compile, link or execute retained native/guest images."""
+import hashlib
+import io
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tarfile
+import zipfile
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'tools'))
+import pvm_doom_timing as h
+from pvm_doom_attribution import tga_rgba
+
+
+def sha(raw):return hashlib.sha256(raw).hexdigest()
+def git(rev,path):return subprocess.check_output(['git','show',rev+':'+path],cwd=ROOT)
+
+
+def audit(folder):
+    report_path=folder/'tests/pvm-doom-timing/results.json'
+    d=json.loads(report_path.read_text());assert d['status']=='passed'
+    assert d['production']==h.MASTER and d['experimental_eager']==h.EAGER
+    assert d['protocol']=='doom-three-engines-untraced-v1'
+    assert (d['warmup_ticks'],d['calls_per_owner'],d['samples_per_order'],d['discarded_per_order'])==(1320,2,13,3)
+    arch=d['host']['architecture'];machine={'arm64':183,'x86_64':62}[arch]
+    base=folder.parent;archive=folder.with_suffix('.zip');meta=json.loads(archive.with_suffix('.json').read_text())
+    raw=archive.read_bytes();assert len(raw)==meta['size_in_bytes'] and 'sha256:'+sha(raw)==meta['digest']
+    payloads=0
+    with zipfile.ZipFile(archive) as z:
+        assert z.testzip() is None
+        for item in z.infolist():
+            if item.is_dir():continue
+            assert not Path(item.filename).is_absolute() and '..' not in Path(item.filename).parts
+            assert (folder/item.filename).read_bytes()==z.read(item);payloads+=1
+    def retained(path):
+        assert path.startswith('build/') and '..' not in Path(path).parts
+        result=folder/path.removeprefix('build/');assert result.is_file(),path
+        return result
+    def command(row):
+        assert retained(row['log']).read_text()==row['output'];return row['command']
+    def elf(path,expected):
+        raw=path.read_bytes();assert sha(raw)==expected
+        assert raw[:7]==b'\x7fELF\x02\x01\x01' and len(raw)>=64
+        assert int.from_bytes(raw[16:18],'little') in (2,3)
+        assert int.from_bytes(raw[18:20],'little')==machine
+    assert sha(git(d['revision'],'tools/pvm_doom_timing.py'))==d['identities']['tools/pvm_doom_timing.py']
+    for name,pin in d['pins'].items():assert json.loads(git(d['revision'],'spec/'+name))==pin
+    assert d['compiler']['sha256']==d['identities'][d['compiler']['path']]
+    command(d['rust_compiler']);assert 'rustc ' in d['rust_compiler']['output']
+    driver=h.project_native(git(d['production'],'tests/interop/pvm_doom_backends.nim').decode()).encode()
+    assert retained('build/tests/pvm-doom-timing/consumer.nim').read_bytes()==driver
+    source_checks=0
+    for role,rev in (('production',h.MASTER),('experimental',h.EAGER)):
+        source=d['source_maps'][role]
+        raw=subprocess.check_output(['git','archive',rev,'src','native/pvm_jit'],cwd=ROOT)
+        with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
+            complete={m.name:tar.extractfile(m).read() for m in tar if m.isfile()}
+        complete['benchmarks/doom.nim']=driver
+        assert set(source)==set(complete)
+        for name,raw in complete.items():assert source[name]==sha(raw);source_checks+=1
+    assert d['source_maps']['production']['benchmarks/doom.nim']==d['source_maps']['experimental']['benchmarks/doom.nim']
+    assert len(d['builds'])==4
+    seen=set();expected_backend='pvmArm64Jit' if arch=='arm64' else 'pvmX86Jit'
+    for row in d['builds']:
+        key=(row['endpoint'],row['repeat']);assert key not in seen;seen.add(key)
+        built=row['run'];assert built['exit_code']==0
+        args=command(built);assert args[1]=='c' and args[-1].endswith('/snapshot/benchmarks/doom.nim')
+        for flag in ('--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on','--passC:-flto=thin','--passL:-flto=thin','--passL:-fuse-ld=lld','--passC:-D_GNU_SOURCE'):
+            assert flag in args
+        assert [a[3:] for a in args if a.startswith('-d:')]==['release',expected_backend,'pvmSourceSealingReceipt','pvmArm64JitOwnerReceipt']
+        assert not any('danger' in a or 'checks:off' in a or 'polkavmRuntime' in a for a in args)
+        endpoint,repeat=key
+        path=retained(f'build/tests/pvm-doom-timing/{endpoint}-{repeat}')
+        elf(path,d['images'][endpoint])
+    assert seen=={(r,i) for r in ('production','experimental') for i in range(2)}
+    for role in ('production','experimental','reference'):
+        left=retained(f'build/tests/pvm-doom-timing/{role}-0');right=retained(f'build/tests/pvm-doom-timing/{role}-1')
+        assert left.read_bytes()==right.read_bytes();elf(left,d['images'][role])
+    ref=d['reference_sources'];assert ref['backend']=='Interpreter' and ref['step_tracing'] is False
+    assert len(ref['builds'])==2
+    for row in ref['builds']:
+        args=command(row);assert row['exit_code']==0
+        for flag in ('--release','--locked','--offline'):assert flag in args
+    for path,wanted in ref['original'].items():assert sha(git(d['revision'],path))==wanted
+    for path,wanted in ref['projected'].items():assert sha(retained(path).read_bytes())==wanted
+    projected=retained('build/tests/pvm-doom-timing/reference-source/src/main.rs').read_bytes()
+    assert projected==h.reference_projection(git(d['revision'],'tests/performance/polkavm_doom/src/main.rs').decode()).encode()
+    assert b'profile.set_step_tracing(false);' in projected and b'BackendKind::Interpreter' in projected
+    # Every retained byte has a report-bound input identity, including original immutable guest/source fixtures.
+    inputs={}
+    input_root=folder/'tests/pvm-doom-timing/retained-inputs'
+    for p in input_root.rglob('*'):
+        if p.is_file():
+            name=p.relative_to(input_root).as_posix();raw=p.read_bytes();assert sha(raw)==d['identities'][name];inputs[name]=raw
+    prefix='build/tests/pvm-doom/prepared/'
+    initial=inputs[prefix+'tick.input'];expected=inputs[prefix+'tick.expected']
+    assert initial[:8]==b'PVMDOM01' and expected[:8]==b'PVMDOME1'
+    wire=int.from_bytes(initial[8:12],'little');pages=int.from_bytes(initial[16:20],'little')
+    assert len(initial)==152+wire+pages*4101 and len(expected)==120+pages*4096
+    canonical=bytearray(bytes(8)+expected[8:16]+bytes(8)+b'\x01'+expected[16:120])
+    for page in range(pages):
+        at=152+wire+page*4101
+        canonical.extend(initial[at:at+5]);canonical.extend(expected[120+page*4096:120+(page+1)*4096])
+    oracle=folder/'tests/pvm-doom-timing/retained-output/reference-oracle'
+    assert (oracle/'call-0.state').read_bytes()==canonical
+    assert (oracle/'call-0.events').read_bytes()==inputs[prefix+'tick.events']
+    refrow=d['reference'];assert refrow['run']['exit_code']==0;command(refrow['run'])
+    observed=h.reference_observation(refrow['run']['output'],oracle,pages)
+    assert observed==refrow['observed']
+    assert observed['frames'][0]['rgba_sha256']==d['admission']['golden_rgba_sha256']
+    assert d['admission']['status']=='checks-passed' and d['admission']['warmup_ticks']==1320
+    admission=d['admission']
+    for path,wanted in admission['sources'].items():assert sha(git(d['revision'],path))==wanted
+    for name,wanted in admission['inputs'].items():assert sha(inputs[prefix+name])==wanted
+    assert admission['linked_sha256']==sha(inputs['build/tests/pvm-doom/doom.polkavm'])
+    wad='vendor/polkavm/examples/doom/roms/doom1.wad'
+    assert sha(inputs[wad])==d['pins']['pvm-doom-assets.json']['files']['examples/doom/roms/doom1.wad']
+    assert len(admission['builds'])==2 and len(admission['controls'])==6
+    for built in admission['builds']:
+        assert built['exit_code']==0;retained(built['log'])
+        if 'output' in built:assert retained(built['log']).read_text()==built['output']
+    for control in admission['controls']:
+        assert control['passed'] is True and control['run']['exit_code']!=0
+        raw=retained(control['run']['log']).read_text()
+        needle=('doom native assertion control' if control['engine']=='native' else 'doom reference assertion control') if control['control']=='assertions' else ('doom terminal gas mismatch' if control['engine']=='native' else 'DOOM terminal state mismatch') if control['control']=='state' else ('doom event payload mismatch' if control['engine']=='native' else 'DOOM event mismatch')
+        assert needle in raw
+    for engine in ('native','reference'):
+        for phase in ('init','tick'):
+            raw=retained(f'build/tests/pvm-doom/{engine}-{phase}.log').read_text()
+            assert raw==f"DOOM_OK,{engine},{phase},{admission['outputs'][phase]['bytes']}\n"
+    assert d['summary']==h.summarize(d['runs'])
+    roles={}
+    for row in d['runs']:
+        role=row['role'];assert row['run']['exit_code']==0
+        args=command(row['run']);assert args[0].endswith('/'+('reference-0' if role==h.ROLES[-1] else 'experimental-0' if role==h.ROLES[2] else 'production-0'))
+        out=folder/'tests/pvm-doom-timing/retained-output'/role
+        if role==h.ROLES[-1]:actual=h.reference_observation(row['run']['output'],out,pages)
+        else:
+            selected='interpreted' if role==h.ROLES[0] else 'jit' if role==h.ROLES[1] else 'compiled'
+            assert args[-2:]==['--pvm-backend',selected]
+            actual=h.native_observation(row['run']['output'],out,selected,pages,arch)
+        assert actual==row['observed'];h.compare(observed,actual,2)
+        for call in range(2):
+            for suffix in ('state','events','hosts'):
+                assert (out/f'call-{call}.{suffix}').read_bytes()==(oracle/f'call-{call}.{suffix}').read_bytes()
+        if role in roles and role==h.ROLES[2]:
+            # Construction CPU is frozen within an owner, but legitimately varies across fresh processes.
+            assert {k:v for k,v in actual['construction'].items() if k!='compilation_ns'}=={k:v for k,v in roles[role]['construction'].items() if k!='compilation_ns'}
+        roles[role]=actual
+    assert set(roles)==set(h.ROLES)
+    assertions=[r for r in d['controls'] if r['control']=='active-assertion'];assert len(assertions)==4
+    for row in assertions:
+        run=row['run'];assert run['exit_code']!=0;command(run)
+        needle='doom reference assertion control' if row['role']==h.ROLES[-1] else 'DOOM backend assertion control'
+        assert needle in run['output']
+    assert {r['control'] for r in d['controls'] if r.get('refused')}=={'changed-pixel','omitted-frame','reordered-frame'}
+    return dict(status='passed',head=d['revision'],architecture=arch,archive_sha256=meta['digest'],payloads=payloads,
+        report_sha256=sha(report_path.read_bytes()),source_files=source_checks,native_builds=4,reference_builds=2,
+        equal_pairs=3,retained_ELFs=6,measured_processes=104,measured_calls=208,active_assertions=4,
+        production_same_image=True,production=h.MASTER,experimental_eager=h.EAGER,cpu=d['cpu'],cpu_details=d['cpu_details'],
+        summary=d['summary'],historical_eager_scope='Exact historical composition, not policy-only isolation; current master differs in four shared PVM files and machine.nim.',limitations='No execution by auditor. Retained raw outputs are full oracle plus one two-call output per role; all process observations match those bytes and CI compares every raw output in-process. Native immutable publication remains inside calls; reference mutable instance ownership differs. Lifecycle sums are available disjoint scopes only, never equivalent totals.')
+
+
+if __name__=='__main__':
+    base=Path(sys.argv[1]);rows=[audit(p) for p in sorted(base.glob('pvm-doom-timing-*')) if p.is_dir()]
+    assert len(rows)==2 and {r['architecture'] for r in rows}=={'arm64','x86_64'}
+    assert len({r['head'] for r in rows})==1
+    (base/'author-audit.json').write_text(json.dumps(rows,indent=2)+'\n')
+    print('PASS bothCPU inert author audit')

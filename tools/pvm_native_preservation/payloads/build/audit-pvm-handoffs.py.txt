@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""Data-only author audit of retained handoff artifacts; never execute guest, C, or profiler code."""
+import collections
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tarfile
+import types
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'tools'))
+import pvm_eager_early as early
+import pvm_native_handoff_data as data
+import pvm_native_handoff_diagnostics as diagnostics
+import pvm_native_handoff_profile as cpu
+from pvm_doom_backends import observation,compare
+from pvm_eager_trial import native_work
+from pvm_instruction_profile import profile_counts,exclusive_costs
+
+
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+GIT_SOURCES={}
+GIT_FILES={}
+
+
+def git(revision,path):
+    if path.startswith(('src/','native/pvm_jit/')):
+        if revision not in GIT_SOURCES:
+            raw=subprocess.check_output(['git','archive',revision,'src','native/pvm_jit'],cwd=ROOT)
+            assert len(raw)<=128*1024**2
+            with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+                GIT_SOURCES[revision]={item.name:archive.extractfile(item).read() for item in archive if item.isfile()}
+        return GIT_SOURCES[revision][path]
+    key=(revision,path)
+    if key not in GIT_FILES:GIT_FILES[key]=subprocess.check_output(['git','show',revision+':'+path],cwd=ROOT)
+    return GIT_FILES[key]
+
+
+def audit(folder, partial=False):
+    report=json.loads((folder/'tests/pvm-native-handoffs/results.json').read_text())
+    normal=json.loads((folder/'tests/pvm-eager-early/results.json').read_text())
+    if partial:
+        assert report['status']=='incomplete' and report['error']=='ValueError: missing constructor or retirement'
+    else:
+        assert report['status']=='passed',report.get('error')
+    artifact=json.loads(folder.with_suffix('.json').read_text())
+    assert report['revision']==normal['revision']==artifact['workflow_run']['head_sha']
+    assert (report['current'],report['reverse'],report['diagnostic'],report['reverse_diagnostic'])==(
+        diagnostics.CURRENT,diagnostics.REVERSE,diagnostics.DIAGNOSTIC,diagnostics.REVERSE_DIAGNOSTIC)
+    # Only independently source-reviewed, immutable repository Python is loaded, never retained native bytes.
+    historical=types.ModuleType('historical_handoff_data')
+    exec(compile(git(report['revision'],'tools/pvm_native_handoff_data.py'),
+                 'immutable-reviewed-handoff-data','exec'),historical.__dict__)
+    mixed=hasattr(historical,'mixed_cpu_control_sources')
+    assert report['normal_cohort_sha256']==sha((folder/'tests/pvm-eager-early/results.json').read_bytes())
+    def retained(path):
+        return folder/path.removeprefix('build/')
+    def run(row):
+        assert retained(row['log']).read_text()==row['output'],row['log']
+    # Reuse the completed normal-cohort auditor, retaining its own scope/limits separately.
+    spec=importlib.util.spec_from_file_location('normal_audit',ROOT/'build/audit-eager-early.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    normal_audit=module.audit(folder)
+    identities=0
+    for path,wanted in report['identities'].items():
+        if path.startswith('build/'):
+            target=retained(path)
+            if not target.is_file():continue
+            raw=target.read_bytes()
+        elif path.startswith('vendor/'):
+            continue  # Already checked against its exact upstream Git object by the normal auditor.
+        else:raw=git(report['revision'],path)
+        assert sha(raw)==wanted,path
+        identities+=1
+    # Reconstruct every source projection from immutable Git bytes, independently of retained hashes.
+    source_count=0
+    for mode_endpoint,snapshot in report['sources'].items():
+        mode,endpoint=mode_endpoint.split('-')
+        for path,wanted in snapshot['files'].items():
+            if path.startswith('benchmarks/'):
+                family=Path(path).stem
+                project=early.doom_projection if family=='doom' else early.sieve_projection
+                original='tests/interop/pvm_doom_backends.nim' if family=='doom' else 'tests/performance/pvm_sieve.nim'
+                qualified=project(git(report['revision'],original).decode())
+                project=historical.profile_projection if mode=='profile' else historical.histogram_projection
+                raw=project(qualified,family).encode()
+                assert raw==(folder/'tests/pvm-native-handoffs'/f'{mode}-{endpoint}-{family}-adapter.nim').read_bytes()
+            else:
+                raw=git(snapshot['revision'],path)
+                if mode=='histogram' and path=='src/pvm/step.nim':raw=historical.step_projection(raw.decode()).encode()
+            assert sha(raw)==wanted,(mode_endpoint,path)
+            source_count+=1
+    for path,wanted in report['control_sources'].items():
+        raw=git(report['diagnostic'],path)
+        if path=='tests/performance/pvm_arm64_jit_witness.nim':raw=historical.arm_witness_projection(raw.decode()).encode()
+        assert sha(raw)==wanted,path
+        source_count+=1
+    pairs=collections.defaultdict(list)
+    for build in report['builds']:
+        row=build['run'];run(row);assert row['exit_code']==0
+        if 'repeat' in build:
+            command=row['command']
+            for flag in ('--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on','--passC:-flto=thin','--passL:-flto=thin'):
+                assert flag in command
+            image=folder/'tests/pvm-native-handoffs'/f"{build['name']}-{build['repeat']}"
+            raw=image.read_bytes();assert raw[:7]==b'\x7fELF\x02\x01\x01'
+            assert int.from_bytes(raw[18:20],'little')==183
+            pairs[build['name']].append(sha(raw))
+    assert len(pairs)==(13 if mixed else 12) and all(len(values)==2 and len(set(values))==1 for values in pairs.values())
+    assert len(report['controls'])==(20 if mixed else 19)
+    assert (folder/'tests/pvm-native-handoffs/include/pvm_profile_scope.h').read_bytes()==git(report['revision'],'tests/support/pvm_handoff_scope.h')
+    if mixed:
+        for name,text in historical.mixed_cpu_control_sources().items():
+            base=folder/'tests/pvm-native-handoffs'
+            path=base/'include'/name if name.endswith('.h') else base/name
+            assert path.read_text()==text
+    cg_controls={}
+    for control in report['controls']:
+        assert control['passed'],control['name']
+        row=control.get('run',control.get('result',{}).get('run'));run(row)
+        if control['name'] in ('operations-overflow','calls-overflow'):
+            assert diagnostics.overflow_control_passed(row,control['name'])
+        if control['name'].startswith('cpu-'):
+            expected={'cpu-selected':1,'cpu-absent':0,'cpu-twice':2,'cpu-mixed':1}[control['name']]
+            assert diagnostics.cpu_calibration_passed(control['result'],expected)
+            if control['name']=='cpu-mixed':assert diagnostics.mixed_cpu_control_passed(control['result'])
+        if control['name'].startswith('callgrind-'):
+            name=control['name'].removeprefix('callgrind-')
+            basename='cg-control-'+name+'.callgrind'+('.2' if name=='last' else '')
+            raw=(folder/'tests/pvm-native-handoffs'/basename).read_bytes()
+            assert sha(raw)==control['profile_sha256']
+            view=diagnostics.calibration_contexts(raw.decode())
+            assert diagnostics.calibration_passed(row,view,name!='absent')
+            cg_controls[name]=view
+    assert diagnostics.profile_counts(cg_controls['repeated'])['Ir']==2*diagnostics.profile_counts(cg_controls['selected'])['Ir']
+    assert diagnostics.last_call_calibration_passed(cg_controls['selected'],cg_controls['repeated'],cg_controls['last'])
+    golden=normal['reference']['observed']
+    gold=folder/'tests/pvm-eager-early/retained-output/reference'
+    length=(gold/'call-0.state').stat().st_size
+    pages=(length-129)//4101;assert 129+pages*4101==length
+    def actual(row,family,role,stored=None):
+        run(row);assert row['exit_code']==0
+        clean=diagnostics.clean_output(row['output'])
+        selected='jit' if role=='current-jit' else 'compiled'
+        item=dict(family=family,measured=early.timing(clean,family,selected))
+        baseline=next(r for r in normal['runs'] if r['family']==family and r['role']==role and r['order']==0 and r['sample']==0)
+        if family=='doom':
+            clean='\n'.join(line for line in clean.splitlines() if not line.startswith('EARLY_'))+'\n'
+            # Other CPU/profile invocations retain logs, not additional raw state copies: validate against the frozen bytes.
+            output=gold if stored is None else folder/'tests/pvm-native-handoffs/retained-output'/stored
+            item['observed']=observation(clean,output,selected,2,pages,'arm64')
+            compare(golden,item['observed'],2)
+            for call in range(2):
+                for suffix in ('state','events','hosts'):
+                    assert (output/f'call-{call}.{suffix}').read_bytes()==(gold/f'call-{call}.{suffix}').read_bytes()
+        assert native_work(item)==baseline['native_work']
+        assert diagnostics.frozen_construction(item)==diagnostics.frozen_construction(baseline)
+        return native_work(item)
+    histograms=[]
+    assert len(report['histograms'])==6
+    for group in report['histograms']:
+        counts=actual(group['run'],group['family'],group['role'],'histogram-'+group['role'] if group['family']=='doom' else None)
+        parsed=data.histogram_receipts(group['run']['output'],counts);assert parsed==group['calls']
+        for call in parsed:
+            kinds={kind:dict(calls=sum(b['calls'] for b in bins),operations=sum(b['operations'] for b in bins)) for kind,bins in call['bins'].items()}
+            bands={name:dict(calls=sum(b['calls'] for bins in call['bins'].values() for b in bins[first:last]),operations=sum(b['operations'] for bins in call['bins'].values() for b in bins[first:last]))
+                   for name,first,last in (('zero',0,1),('one',1,2),('two',2,3),('three',3,4),('4-7',4,8),('8-15',8,16),('16-31',16,32),('32-65',32,66),('66+',66,67))}
+            histograms.append(dict(family=group['family'],role=group['role'],call=call['call'],calls=call['native_calls'],operations=call['native_operations'],mean=call['native_operations']/call['native_calls'],kinds=kinds,bands=bands))
+    instructions=[]
+    assert len(report['instruction_profiles'])==(1 if partial else 6)
+    for group in report['instruction_profiles']:
+        actual(group['run'],group['family'],group['role'],'callgrind-'+group['role'] if group['family']=='doom' else None)
+        for name,wanted in group['raw_sha256'].items():assert sha((folder/'tests/pvm-native-handoffs'/name).read_bytes())==wanted
+        for index,phase in enumerate(('cold','reuse'),1):
+            text=(folder/'tests/pvm-native-handoffs'/f"cg-{group['family']}-{group['role']}.callgrind.{index}").read_text()
+            counts=profile_counts(text);own=exclusive_costs(text)
+            assert counts==group[phase] and own==group[phase+'_self']
+            instructions.append(dict(family=group['family'],role=group['role'],call=index-1,counts=counts,top_self=sorted(own.items(),key=lambda row:row[1].get('Ir',0),reverse=True)[:20]))
+    if partial:
+        return dict(status='author partial histogram audit passed; whole diagnostic run remains FAILED; independent actual review pending',revision=report['revision'],normal=normal_audit,source_files_checked=source_count,diagnostic_equal_pairs=len(pairs),controls=len(report['controls']),histograms=histograms,instruction_profiles=instructions,cpu_profiles='not accepted; first CPU log interleaves output buffers',scope='All original ZIP bytes sealed. Reconstructed reviewed historical Git projections, paired ELFs, actual native controls and complete histogram-state-counter receipts. First baseline-only instruction profile is not a comparative CPU mechanism. No new policy selected.')
+    # Recompute sampled IP attribution from retained ELF bytes and original map file offsets, without opening runner paths.
+    elfs={};cpu_totals=collections.defaultdict(collections.Counter)
+    def sampled(result):
+        row=result['run'];run(row)
+        batches=data.cpu_receipts(row['output'],len(result['raw_samples']));assert batches==result['raw_samples']
+        identities=result['samples']['elf_identities']
+        for original,identity in identities.items():
+            raw=retained(identity['retained']).read_bytes();assert sha(raw)==identity['sha256']
+            elfs[original]=cpu.elf_functions(raw)
+        for batch,wanted in zip(batches,result['samples']['calls']):
+            counts=collections.Counter()
+            for ip in batch['ips']:
+                mapping=next((m for m in batch['maps'] if m['first']<=ip<m['last']),None)
+                label='[unmapped instruction address]'
+                if mapping is not None:
+                    path=mapping['path'];label='[anonymous executable]' if not path else '[unresolved] '+path
+                    if path in identities:
+                        image=elfs[path];offset=ip-mapping['first']+mapping['offset']
+                        addresses={s['address']+offset-s['offset'] for s in image['segments'] if s['offset']<=offset<s['offset']+s['size']}
+                        names=sorted({name for first,last,name in image['functions'] if any(first<=a<last for a in addresses)})
+                        if names:label=' / '.join(names)+' ('+path+')'
+                counts[label]+=1
+            assert dict(counts)==wanted['self_samples'] and sum(counts.values())==wanted['samples']
+    for control in report['controls']:
+        if control['name'].startswith('cpu-'):sampled(control['result'])
+    assert len(report['cpu_profiles'])==30
+    for group in report['cpu_profiles']:
+        actual(group['run'],group['family'],group['role']);sampled(group)
+        for call in group['samples']['calls']:cpu_totals[group['family'],group['role'],call['call']].update(call['self_samples'])
+    cpu_summary=[]
+    for (family,role,call),counts in sorted(cpu_totals.items()):
+        total=sum(counts.values());assert total>=(100 if family=='sieve' else 20)
+        cpu_summary.append(dict(family=family,role=role,call=call,samples=total,top_self=counts.most_common(20)))
+    return dict(status='author data audit passed; independent actual review pending',revision=report['revision'],normal=normal_audit,source_files_checked=source_count,retained_identities_checked=identities,diagnostic_equal_pairs=len(pairs),controls=len(report['controls']),histograms=histograms,instruction_profiles=instructions,cpu_profiles=cpu_summary,scope='No retained executable or guest ran. User-IP samples may coalesce; aliases/unknowns explicit; no profile clocks accepted. Some raw process state/compiler/input bytes are provenance-only as disclosed by normal auditor.')
+
+
+if __name__=='__main__':
+    folder=Path(sys.argv[1]);partial='--partial-histograms' in sys.argv[2:];result=audit(folder,partial)
+    target=folder.parent/('partial-histogram-author-audit.json' if partial else 'author-audit.json');target.write_text(json.dumps(result,indent=2)+'\n')
+    print('PASS author data audit:',target)

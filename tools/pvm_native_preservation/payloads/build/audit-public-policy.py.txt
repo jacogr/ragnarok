@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Independently audit retained public-policy CI bytes without executing guest/native code."""
+import hashlib
+import json
+from pathlib import Path
+import struct
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = '5b3368a481f061b4bcdea71f381e83d863b14790'
+REVISION = '69ea78c8e44c4646ff183319c85f98086ea4ee5e'
+
+
+def git_bytes(path):
+    """Read the exact immutable source blob independently of the checked-out CI child."""
+    return subprocess.check_output(['git', 'show', SOURCE+':'+path], cwd=ROOT)
+
+
+def sha(data):
+    """Use the same digest algorithm on independent raw bytes."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def audit(folder, architecture):
+    """Bind reports to raw logs, all four actual ELFs, bridge bytes and immutable source."""
+    reports = list(folder.rglob('public-policy-results.json'))
+    assert len(reports) == 1, reports
+    report_path = reports[0]
+    report = json.loads(report_path.read_text())
+    assert report['status'] == 'passed', report.get('error')
+    assert report['revision'] == REVISION and report['source_revision'] == SOURCE
+    assert report['host']['system'] == 'Linux'
+    assert report['host']['architecture'] == architecture
+    assert report['toolchain'] == json.loads(git_bytes('spec/toolchain.json'))
+    assert len(report['runs']) == len(report['builds']) == 4
+    expected = {(profile, suite) for profile in ('plain', 'native')
+                for suite in ('app_pvm_backend', 'pvm_runtime_backends')}
+    assert {(r['profile'], r['suite']) for r in report['runs']} == expected
+    assert {(r['profile'], r['suite']) for r in report['builds']} == expected
+    file_paths = [p for p in folder.rglob('*') if p.is_file()]
+
+    def retained(path):
+        """Artifact roots may drop their common build prefix; unique basenames bind raw bytes."""
+        matches = [p for p in file_paths if p.name == Path(path).name]
+        assert len(matches) == 1, (path, matches)
+        return matches[0]
+
+    actual_images = []
+    for row in report['builds']+report['runs']:
+        # Raw process logs must exactly equal the JSON payload, including stderr and newlines.
+        result = row['run']
+        assert result['exit_code'] == 0
+        assert retained(result['log']).read_text() == result['output']
+        if 'image' in row:
+            # Each executable is an actual checked Linux ELF for the declared runner architecture.
+            executable = retained(row['image']).read_bytes()
+            assert executable[:6] == b'\x7fELF\x02\x01'
+            assert struct.unpack_from('<H', executable, 18)[0] == (183 if architecture == 'arm64' else 62)
+            digest = sha(executable)
+            assert digest == row['before_sha256'] == row['after_sha256']
+            assert result['output'].encode() == git_bytes('tests/unit/codec/test_'+row['suite']+'.output')
+            actual_images.append(dict(file=row['image'], sha256=digest))
+        else:
+            # Plain and native builds must preserve ARC, release optimization and bounds checks.
+            command = result['command']
+            assert all(flag in command for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on'))
+            defines = {item for item in command if item.startswith('-d:')}
+            expected_defines = {'-d:release'}
+            if row['profile'] == 'native':
+                # Native suites link the ordinary matching JIT and original optional PolkaVM bridge.
+                expected_defines.update({'-d:polkavmRuntime', '-d:pvmArm64Jit' if architecture == 'arm64' else '-d:pvmX86Jit'})
+                assert any('libragnarok_polkavm.so' in item and item.startswith('--passL:') for item in command)
+            assert defines == expected_defines, defines
+    bridge = report['retained_bridge']
+    assert sha(retained(bridge['file']).read_bytes()) == bridge['sha256']
+    verified_source = {}
+    provenance_only = {}
+    for path, digest in report['identities'].items():
+        # Absolute compiler/Clang inputs are provenance when their bytes are not retained.
+        if Path(path).is_absolute() or path.startswith('build/toolchain/'):
+            provenance_only[path] = digest
+        elif path.startswith('build/'):
+            # Independently rehash the copied original library or retained ELF for each build input.
+            artifact = retained(bridge['file']) if path.endswith('/libragnarok_polkavm.so') else retained(path)
+            assert sha(artifact.read_bytes()) == digest, path
+        else:
+            # Every tracked source/configuration hash is compared with exact original Git bytes.
+            assert sha(git_bytes(path)) == digest, path
+            verified_source[path] = digest
+    bridge_log = retained('build/polkavm/build.log').read_text()
+    assert 'test result: ok.' in bridge_log and '0 failed' in bridge_log
+    return dict(architecture=architecture, status='passed', source_revision=SOURCE,
+                ci_revision=REVISION, tracked_source_hashes=verified_source,
+                retained_images=actual_images, retained_bridge=bridge,
+                unretained_compiler_provenance=provenance_only)
+
+
+if __name__ == '__main__':
+    # Audit both independently downloaded artifacts, then require equal source inputs across hosts.
+    evidence = Path(sys.argv[1]).resolve()
+    results = [audit(evidence/('pvm-public-policy-'+arch+'-1'), arch)
+               for arch in ('arm64', 'x86_64')]
+    assert results[0]['tracked_source_hashes'] == results[1]['tracked_source_hashes']
+    output = evidence/'author-audit.json'
+    output.write_text(json.dumps(dict(status='passed', architectures=results), indent=2)+'\n')
+    print('PASS both architectures: eight retained actual ELFs, both bridges, exact logs/stdout/build flags and '+
+          str(len(results[0]['tracked_source_hashes']))+' equal tracked Git hashes per host; compiler/Clang bytes provenance only')

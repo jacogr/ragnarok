@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Count existing checked writer cache hits/misses only; clocks disabled, no memory semantics changed."""
+import sys,json,hashlib,pathlib,tarfile,io
+root=pathlib.Path(__file__).resolve().parents[2];folder=pathlib.Path(__file__).resolve().parent
+sys.path.insert(0,str(root/'tools'))
+from pvm_whole_fault_pc_projection import derive
+from pvm_whole_memory_projection import once
+paths=derive(folder,clocked=False)
+machine=(root/'src/pvm/machine.nim').read_text()
+machine=once(machine,'import ./program','import ../../src/pvm/program')
+fields=['loadWriteHits','loadSpareHits','loadReadHits','loadMisses','storeWriteHits','storeSpareHits','storeMisses','cowChunks','cowHeaders']
+machine=once(machine,'    writePrivate, spareWritePrivate: byte #', '    '+', '.join(fields)+': uint64 # Diagnostic counters only; never used for access decisions.\n    writePrivate, spareWritePrivate: byte #')
+for proc,next_proc,counter in [('loadWriterMiss','loadScalar','loadMisses'),('storeWriterMiss','privateMaskCovers','storeMisses')]:
+ first=machine.index('proc '+proc);past=machine.index(('proc ' if next_proc=='loadScalar' else 'func ')+next_proc,first)
+ body=machine[first:past];body=once(body,'  let start =','  inc writer.'+counter+'\n  let start =');machine=machine[:first]+body+machine[past:]
+first=machine.index('proc loadScalar[');past=machine.index('\nproc load*',first);body=machine[first:past]
+for name,counter in [('writable','loadWriteHits'),('spare','loadSpareHits'),('readable','loadReadHits')]:
+ anchor='    if '+name+' != nil and writer.'+{'writable':'writeTag','spare':'spareWriteTag','readable':'readTag'}[name]+' == tag:\n'
+ body=once(body,anchor,anchor+'      inc writer.'+counter+'\n')
+machine=machine[:first]+body+machine[past:]
+first=machine.index('proc storeScalar[');past=machine.index('\nproc store*',first);body=machine[first:past]
+body=once(body,'    # Only a mask bound','    inc writer.storeWriteHits\n    # Only a mask bound')
+body=once(body,'    # Spare facts travel','    inc writer.storeSpareHits\n    # Spare facts travel')
+machine=machine[:first]+body+machine[past:]
+first=machine.index('proc cloneWriterChunk');past=machine.index('\nproc prepareWriterSpan',first);body=machine[first:past]
+body=once(body,'  writer.readPage = nil','  inc writer.cowChunks\n  writer.readPage = nil')
+body=once(body,'  if writer.dirty[slot] == 0:\n','  if writer.dirty[slot] == 0:\n    inc writer.cowHeaders\n')
+machine=machine[:first]+body+machine[past:]
+machine+='\nproc writerCounters*(writer: ScalarMemoryWriter): array[9, uint64] =\n  ## Copied diagnostic observations never expose owned page/chunk storage.\n  ['+', '.join('writer.'+n for n in fields)+']\n'
+(folder/'private_machine.nim.inc').write_text(machine)
+native=(folder/'fast_image.nim').read_text();native=once(native,'import ../../src/pvm/[program, machine]','import ../../src/pvm/program\ninclude "./private_machine.nim.inc"');(folder/'fast_image.nim').write_text(native)
+for guest in ('pinky','sieve'):
+ p=folder/(guest+'.nim');text=p.read_text();text=once(text,'import ../../src/pvm/[program, machine]','import ../../src/pvm/program');text=once(text,'  let frozen = snapshotMemory(writer)','  let stats = writerCounters(writer)\n  echo "WRITER_COUNTERS,", sample'+''.join(', ",", stats['+str(i)+']' for i in range(9))+'\n  let frozen = snapshotMemory(writer)');p.write_text(text)
+files=[p for p in folder.iterdir() if p.is_file() and p.suffix in ('.py','.nim','.inc','.h')]
+(folder/'sources.json').write_text(json.dumps(dict(accepted_source='6ac63280b792401cfabff0cefc3a61b3ebf51b94',purpose='Existing helper cache diagnostic only; not comparative timing',counter_order=fields,files={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files}),indent=2)+'\n')
+print('COUNTER_SOURCES_READY',len(files))

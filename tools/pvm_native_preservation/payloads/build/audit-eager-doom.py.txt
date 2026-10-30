@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Independently audit retained continuing-DOOM data; never execute native guest artifacts."""
+import hashlib
+import json
+from pathlib import Path
+import struct
+import subprocess
+import sys
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+PUBLIC = '7369547d5cd51a06b80a1b31ad3acbad69bc6c8b'
+SHARED = '5719c065ec9fc037dfee739cc649cb66b905f7b6'
+RUNTIME = 'c7bac959994a05eac5d64619d0746736f68c8e77'
+REVISION = '3aea063e19aa861d628208e09c6a1d7a02189cd0'
+POLKA = '69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa'
+UPSTREAM = Path('/Users/jacogr/Projects/jacogr/ragnarok-pvm/vendor/polkavm')
+SHARED_PATHS = {'src/pvm/internal/'+n+'.nim' for n in ('handler_stream','arm64_jit','x86_jit','source_seal')}
+
+
+def sha(data):
+    """Hash raw independent bytes using the manifest's declared algorithm."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def blob(path, revision=REVISION):
+    """Read immutable Git data rather than executing or trusting archive source text."""
+    return subprocess.check_output(['git','show',revision+':'+path],cwd=ROOT)
+
+
+def asset(path):
+    """Read the pinned pristine PolkaVM Git object, independently of any working tree edits."""
+    return subprocess.check_output(['git','-C',str(UPSTREAM),'show',POLKA+':'+path])
+
+
+def golden(assets):
+    """Independently decode the exact uncompressed top-left 32-bit TGA after ordinary zstd data decompression."""
+    for path, expected in assets['files'].items():
+        assert sha(asset(path)) == expected, path
+    packed = asset('test-data/doom_01320.tga.zst')
+    raw = subprocess.run(['zstd','-d','-c'],input=packed,capture_output=True,check=True).stdout
+    width,height,depth = struct.unpack_from('<HHB',raw,12)
+    assert raw[1] == 0 and raw[2] == 2 and (width,height,depth) == (640,400,32)
+    assert raw[17]&0x30 == 0x20
+    pixels = raw[18+raw[0]:]
+    assert len(pixels) == width*height*4
+    rgba = bytearray(pixels)
+    rgba[0::4],rgba[2::4] = pixels[2::4],pixels[0::4]
+    rgba[3::4] = bytes([255])*(width*height)
+    return sha(rgba)
+
+
+def audit(evidence, architecture, expected_golden):
+    """Bind original ZIP bytes, exact sources, actual ELFs, stdout and bounded continuing receipts."""
+    name = 'pvm-eager-doom-'+architecture+'-1'
+    folder = evidence/name
+    meta = json.loads((evidence/(name+'-api.json')).read_text())
+    archive = evidence/(name+'.zip')
+    assert archive.stat().st_size == meta['size_in_bytes'] and 'sha256:'+sha(archive.read_bytes()) == meta['digest']
+    with zipfile.ZipFile(archive) as z:
+        entries = [i for i in z.infolist() if not i.is_dir()]
+        for item in entries:
+            assert (folder/item.filename).read_bytes() == z.read(item)
+
+    def retained(path):
+        """Resolve only the artifact's stripped common build prefix or its explicit retained copy."""
+        p = folder/path.removeprefix('build/')
+        assert p.is_file(), path
+        return p
+
+    outer = json.loads(retained('build/ci/eager-doom-provenance.json').read_text())
+    report = json.loads(retained('build/tests/pvm-doom-backends/results.json').read_text())
+    assert outer['status'] == report['status'] == 'passed' and outer['make_exit_code'] == 0
+    assert (outer['public_source'],outer['shared_source'],outer['runtime_source'],outer['revision']) == (PUBLIC,SHARED,RUNTIME,REVISION)
+    assert report['revision'] == REVISION
+    assert outer['host']['system'] == report['host']['system'] == 'Linux'
+    assert outer['host']['architecture'] == report['host']['architecture'] == architecture
+    assert report['calls'] == 2 and report['warmup_ticks'] == 1320 and report['protocol'] == 'doom-shared-eager-v1'
+    assert report['backends'] == ['polkavm-interpreted','jit','compiled']
+    assert [r['backend'] for r in report['runs']] == report['backends']
+    assert report['assets'] == json.loads(blob('spec/pvm-doom-assets.json'))
+    assert report['polkavm'] == json.loads(blob('spec/polkavm-pins.json'))
+    assert report['toolchain'] == json.loads(blob('spec/toolchain.json'))
+    assert set(outer['shared_blobs']) == SHARED_PATHS
+    for path,digest in outer['shared_blobs'].items():
+        assert blob(path,SHARED) == blob(path,RUNTIME) and sha(blob(path,SHARED)) == digest
+    upstream = report['upstream_admission']
+    assert upstream == json.loads(retained('build/tests/pvm-doom/results.json').read_text())
+    assert upstream['status'] == 'checks-passed' and upstream['mode'] == 'checks'
+    assert upstream['head'] == REVISION and upstream['warmup_ticks'] == 1320
+    assert upstream['golden_rgba_sha256'] == expected_golden
+    assert not upstream['timing_runs'] and not upstream['profiles']
+
+    generator = 'pvmArm64Jit' if architecture == 'arm64' else 'pvmX86Jit'
+    assert len(report['builds']) == 2
+    for i,row in enumerate(report['builds']):
+        assert row['exit_code'] == 0 and retained(row['log']).read_text() == row['output']
+        command = row['command']
+        for flag in ('--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on','--passC:-flto=thin','--passL:-flto=thin'):
+            assert flag in command
+        defines = {a[3:] for a in command if a.startswith('-d:')}
+        expected = {'release',generator} | ({'polkavmRuntime','pvmSourceSealingReceipt'} if i == 0 else set())
+        assert defines == expected
+    images = {}
+    for original,row in outer['retained'].items():
+        raw = retained('build/ci/'+row['file']).read_bytes()
+        assert sha(raw) == row['sha256'] == report['identities'][original]
+        assert raw[:6] == b'\x7fELF\x02\x01'
+        assert struct.unpack_from('<H',raw,18)[0] == (183 if architecture == 'arm64' else 62)
+        images[original] = row['sha256']
+    assert set(images) == {'build/tests/pvm-doom-backends/doom-backends','build/tests/pvm-doom-backends/doom-no-bridge','build/polkavm/release/libragnarok_polkavm.so'}
+
+    reference = report['runs'][0]['observed']
+    for row in report['runs']:
+        selected = row['backend'];run = row['run'];observed = row['observed']
+        assert run['exit_code'] == 0 and retained(run['log']).read_text() == run['output']
+        lines = run['output'].splitlines()
+        assert lines[-1] == 'DOOM_SEQUENCE_OK,'+selected+',2'
+        construction = None
+        if selected == 'compiled':
+            assert len(lines) == 6 and lines[0].startswith('DOOM_EAGER_PREPARED,')
+            fields = lines[0].split(',')[1:]
+            assert len(fields) == 11 and all(v.isascii() and v.isdecimal() and int(v)<2**64 for v in fields)
+            values = list(map(int,fields));sealed,nodes,work,pubs,code,clock,candidates,native,checked,deferred,passes = values
+            assert sealed == 1 and all((nodes,work,pubs,code,candidates,native,passes))
+            assert candidates == native+checked+deferred
+            for call in range(2):
+                assert lines[2+call*2] == 'DOOM_EAGER_REUSED,'+str(call)+','+','.join(fields)
+            construction = dict(zip(('nodes','preparation_units','publications','code_bytes','compilation_ns','source_entries','native_entries','checked_entries','capacity_deferred','compilation_passes'),values[1:]))
+            assert construction == observed['construction']
+            lines = [lines[1],lines[3],lines[-1]]
+        else:
+            assert len(lines) == 3 and 'construction' not in observed
+        assert len(observed['calls']) == 2 and len(observed['frames']) == report['frames_compared']
+        for call,line in enumerate(lines[:-1]):
+            fields = line.split(',');actual = observed['calls'][call]
+            assert len(fields) == 10 and fields[:4] == ['DOOM_CALL',str(call),selected,selected]
+            numbers = list(map(int,fields[4:]));gas,pubs,calls,ops,built,supported = numbers
+            assert numbers == [actual[k] for k in ('gas','fragments','native_calls','native_operations','jit_built','jit_platform_supported')]
+            assert built == supported == 1 and actual['call'] == call
+            if selected == 'polkavm-interpreted':
+                assert pubs == calls == ops == 0
+            else:
+                assert min(pubs,calls,ops) > 0
+            if construction is not None:
+                assert pubs == construction['publications']
+                if call:
+                    assert calls > observed['calls'][0]['native_calls'] and ops > observed['calls'][0]['native_operations']
+            for key in ('gas','state_sha256','events_sha256','hosts_sha256'):
+                assert actual[key] == reference['calls'][call][key]
+        assert observed['calls'][0]['events_sha256'] == report['identities']['build/tests/pvm-doom/prepared/tick.events']
+        assert observed['frames'] == reference['frames']
+        assert observed['frames'][0]['rgba_sha256'] == expected_golden
+        assert [f['index'] for f in observed['frames']] == list(range(len(observed['frames'])))
+        assert {f['call'] for f in observed['frames']} == {0,1}
+        assert all((f['width'],f['height']) == (640,400) for f in observed['frames'])
+
+    expected_controls = {'changed-pixel','omitted-frame','reordered-frame','assertions','wrong-backend','unavailable-bridge'}
+    assert {r['control'] for r in report['controls']} == expected_controls and len(report['controls']) == 6
+    needles = {'assertions':'DOOM backend assertion control','wrong-backend':'unsupported DOOM comparison backend',
+               'unavailable-bridge':'DOOM_BACKEND_UNAVAILABLE,polkavm-interpreted,BackendNotBuilt'}
+    for row in report['controls']:
+        assert row['refused']
+        if row['control'] in needles:
+            run = row['run'];text = retained(run['log']).read_text()
+            assert run['exit_code'] != 0 and text == run['output'] and needles[row['control']] in text
+        else:
+            assert row['diagnostic']
+    assert len(upstream['controls']) == 6
+    for row in upstream['controls']:
+        run = row['run'];text = retained(run['log']).read_text()
+        assert row['passed'] and run['exit_code'] != 0
+        needle = ('doom '+row['engine']+' assertion control' if row['control'] == 'assertions' else
+                  ('doom terminal gas mismatch' if row['control']=='state' else 'doom event payload mismatch')
+                  if row['engine']=='native' else
+                  ('DOOM terminal state mismatch' if row['control']=='state' else 'DOOM event mismatch'))
+        assert needle in text
+    for engine in ('native','reference'):
+        for phase in ('init','tick'):
+            assert retained('build/tests/pvm-doom/'+engine+'-'+phase+'.log').read_text() == f'DOOM_OK,{engine},{phase},{upstream["outputs"][phase]["bytes"]}\n'
+        assert retained('build/tests/pvm-doom/'+engine+'-restored.log').read_text() == f'DOOM_OK,{engine},tick,{upstream["outputs"]["tick"]["bytes"]}\n'
+    assert 'test result: ok. 3 passed; 0 failed;' in retained('build/polkavm/build.log').read_text()
+
+    tracked = set(subprocess.check_output(['git','ls-tree','-r','--name-only',REVISION],cwd=ROOT,text=True).splitlines())
+    verified,unretained = {},{}
+    for path,digest in report['identities'].items():
+        if path in tracked:
+            assert sha(blob(path)) == digest,path
+            verified[path] = digest
+        elif path in images:
+            assert images[path] == digest
+        elif path.startswith('vendor/polkavm/'):
+            assert sha(asset(path.removeprefix('vendor/polkavm/'))) == digest
+        else:
+            # Generated guest/fixture/compiler bytes excluded from artifacts remain bounded provenance only.
+            unretained[path] = digest
+    upstream_sources = {}
+    for path,digest in upstream['sources'].items():
+        assert sha(blob(path)) == digest,path
+        upstream_sources[path] = digest
+    for path,digest in outer['additional_identities'].items():
+        assert sha(blob(path)) == digest,path
+    for name,digest in upstream['inputs'].items():
+        assert report['identities']['build/tests/pvm-doom/prepared/'+name] == digest
+    assert report['identities']['build/tests/pvm-doom/doom.polkavm'] == upstream['linked_sha256']
+    return dict(status='passed',architecture=architecture,ci_revision=REVISION,zip_metadata=meta,
+                zip_files=len(entries),retained_images=images,tracked_source_hashes=verified,
+                upstream_source_hashes=upstream_sources,additional_identities=outer['additional_identities'],
+                calls=reference['calls'],frames=reference['frames'],compiled=report['runs'][-1]['observed'],
+                unretained_provenance=unretained,upstream_unretained_images=upstream['binaries'],
+                limitation='Raw guest states/events/frames and generated/reference preparation images are not archived; compare their qualified recorded hashes, source/control proofs and pinned independent golden without claiming an independent raw-state/frame rehash.')
+
+
+if __name__ == '__main__':
+    assert set(subprocess.check_output(['git','diff','--name-only',PUBLIC,RUNTIME],cwd=ROOT,text=True).splitlines()) == SHARED_PATHS
+    assert set(subprocess.check_output(['git','diff','--name-only',RUNTIME,REVISION],cwd=ROOT,text=True).splitlines()) == {'.github/workflows/ci.yml','tests/test_nimony_ci.py'}
+    evidence = Path(sys.argv[1]).resolve()
+    expected = golden(json.loads(blob('spec/pvm-doom-assets.json')))
+    results = [audit(evidence,arch,expected) for arch in ('arm64','x86_64')]
+    for key in ('tracked_source_hashes','upstream_source_hashes','additional_identities','frames'):
+        assert results[0][key] == results[1][key],key
+    for a,b in zip(results[0]['calls'],results[1]['calls']):
+        for key in ('gas','state_sha256','events_sha256','hosts_sha256'):
+            assert a[key] == b[key]
+    (evidence/'author-audit.json').write_text(json.dumps(dict(status='passed',independent_golden=expected,architectures=results),indent=2)+'\n')
+    print('PASS original ZIP/API/all files;4retainedELFs+2bridges;raw compiler/process/control logs;3engines×2continuingcalls;frozen11fields/live-native;state/gas/host/framehash equivalence;6controls+6upstreamcontrols perCPU;'+str(len(results[0]['tracked_source_hashes']))+' tracked main Git inputs/CPU;'+str(len(results[0]['upstream_source_hashes']))+' upstream Git inputs;extra3inputhashes;pinned69 assets+independentRGBA golden;bounded unretained data provenance explicit')

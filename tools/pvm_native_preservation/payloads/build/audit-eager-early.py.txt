@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Audit retained private early CPU evidence as data; never run retained binaries or guest code."""
+import hashlib
+import json
+from pathlib import Path
+import statistics
+import subprocess
+import sys
+import zipfile
+
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'tools'))
+import pvm_eager_early as early
+import pvm_eager_fast as fast
+from pvm_doom_backends import compare, observation
+from pvm_eager_trial import configuration, native_work
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def git_bytes(revision,path):
+    assert path and not path.startswith('/') and '..' not in Path(path).parts
+    return subprocess.check_output(['git','show',revision+':'+path],cwd=ROOT)
+
+
+def audit(folder):
+    paths=[p for p in folder.rglob('results.json') if p.parent.name=='pvm-eager-early']
+    assert len(paths)==1,paths
+    report=json.loads(paths[0].read_text())
+    assert report['status']=='passed',report.get('error')
+    assert report['protocol'] in ('private-early-hybrid-v1','private-early-hybrid-fast-v1',
+                                  'private-fixed-quota-eager-trial-v1')
+    is_fast=report['protocol']=='private-early-hybrid-fast-v1'
+    is_trial=report['protocol']=='private-fixed-quota-eager-trial-v1'
+    roles=('baseline-jit','compiled','polkavm-interpreted-fast') if is_fast else early.ROLES
+    policies={'baseline-jit':'jit','compiled':'compiled','polkavm-interpreted':'polkavm-interpreted'}
+    revisions=[('baseline',early.BASELINE),('current',report['runtime_source'])]
+    if is_trial:
+        roles,policies,endpoints,revisions=configuration(report['runtime_source'],report['trial_source'])
+        assert report['baseline']==report['runtime_source']
+        assert report['role_endpoints']==endpoints and report['endpoint_revisions']==dict(revisions)
+        changed=subprocess.check_output(['git','diff','--name-only',report['runtime_source'],report['trial_source']],cwd=ROOT,text=True).splitlines()
+        assert changed==['src/pvm/internal/handler_stream.nim']
+        local_patch=subprocess.check_output(['git','diff','--full-index',report['runtime_source'],report['trial_source'],'--',changed[0]],cwd=ROOT,text=True)
+        # Git chooses abbreviation width from its object store; validate both prefixes against full blob IDs.
+        index_lines=[line for line in report['trial_patch'].splitlines() if line.startswith('index ')]
+        assert len(index_lines)==1
+        prefixes=index_lines[0].split()[1].split('..');assert len(prefixes)==2
+        for revision,prefix in zip((report['runtime_source'],report['trial_source']),prefixes):
+            assert 7<=len(prefix)<=40 and all(c in '0123456789abcdef' for c in prefix)
+            full=subprocess.check_output(['git','rev-parse',revision+':'+changed[0]],cwd=ROOT,text=True).strip()
+            assert full.startswith(prefix)
+        without_index=lambda patch:'\n'.join(line for line in patch.splitlines() if not line.startswith('index '))
+        assert without_index(report['trial_patch'])==without_index(local_patch)
+    else: assert report['baseline']==early.BASELINE
+    assert report['public_source']==early.PUBLIC and report['shared_source']==early.SHARED
+    assert report['host']['system']=='Linux' and report['host']['architecture'] in ('arm64','x86_64')
+    archive=[p for p in folder.parent.glob('*.zip') if report['host']['architecture'] in p.name]
+    if archive:
+        assert len(archive)==1
+        meta=json.loads(archive[0].with_suffix('.json').read_text())
+        assert meta['size_in_bytes']==archive[0].stat().st_size
+        assert meta['digest']=='sha256:'+sha(archive[0].read_bytes())
+        with zipfile.ZipFile(archive[0]) as z:
+            for info in z.infolist():
+                if not info.is_dir(): assert (folder/info.filename).read_bytes()==z.read(info)
+    runtime=report['runtime_source']
+    assert set(subprocess.check_output(['git','diff','--name-only',early.PUBLIC,runtime],cwd=ROOT,text=True).splitlines())==set(early.SHARED_PATHS)
+    for path in early.SHARED_PATHS: assert git_bytes(runtime,path)==git_bytes(early.SHARED,path)
+
+    def found(path):
+        candidates=[p for p in folder.rglob(Path(path).name) if p.is_file()]
+        suffix=path.removeprefix('build/')
+        precise=[p for p in candidates if p.as_posix().endswith('/'+suffix)]
+        return precise if precise else candidates
+
+    def retained(path):
+        candidates=found(path)
+        assert len(candidates)==1,(path,candidates)
+        return candidates[0]
+
+    git_count=0
+    provenance_only=[]
+    elf_count=0
+    for path,wanted in report['identities'].items():
+        if path.startswith('build/'):
+            candidates=found(path)
+            if len(candidates)==1:
+                data=candidates[0].read_bytes()
+                assert sha(data)==wanted,path
+                if data[:4]==b'\x7fELF':
+                    assert len(data)>=64 and data[4:7]==bytes((2,1,1)),path
+                    assert int.from_bytes(data[18:20],'little')==(
+                        183 if report['host']['architecture']=='arm64' else 62),path
+                    elf_count+=1
+            else:
+                provenance_only.append(path)
+        elif path.startswith('vendor/'):
+            # Pinned external fixtures are checked independently from the recorded vendor commit.
+            upstream=ROOT/'vendor/polkavm'
+            if not (upstream/'.git').exists(): upstream=ROOT.parent/'ragnarok-pvm/vendor/polkavm'
+            actual=subprocess.check_output(['git','-C',str(upstream),'show',
+                '69e5b87c9888bc4f94cabdadc9661cf68a1bfbfa:'+path.removeprefix('vendor/polkavm/')])
+            assert sha(actual)==wanted,path
+        else:
+            assert sha(git_bytes(report['revision'],path))==wanted,path
+            git_count+=1
+    assert elf_count==(13 if is_fast else 9),elf_count
+    if is_fast:
+        ci_root=report['builds'][0]['run']['command'][-1].split('/build/tests/pvm-eager-early/')[0]
+        assert ci_root.startswith('/')
+        for family,crate,project,main in (('doom','polkavm_doom',fast.doom_projection,'main.rs'),
+                                        ('sieve','polkavm',fast.sieve_projection,'sieve.rs')):
+            data=report['fast_reference'][family]
+            assert data['step_tracing'] is False and data['backend']=='Interpreter'
+            generated={}
+            for path,wanted in data['original'].items():
+                original=git_bytes(report['revision'],path)
+                assert sha(original)==wanted
+                name=Path(path).name
+                text=original.decode()
+                if name==main: text=project(text)
+                if name=='Cargo.toml': text=text.replace('../../../vendor/polkavm/',ci_root+'/vendor/polkavm/')
+                generated[name]=text.encode()
+            for path,wanted in data['projected'].items():
+                raw=retained(path).read_bytes()
+                assert sha(raw)==wanted and raw==generated[Path(path).name],path
+            assert retained(f'fast-{family}-0').read_bytes()==retained(f'fast-{family}-1').read_bytes()
+            assert len(data['builds'])==2
+            for row in data['builds']:
+                assert row['exit_code']==0 and retained(row['log']).read_text()==row['output']
+                assert row['command'][:6]==['rustup','run',data['rust'],'cargo','build','--release']
+                assert '--locked' in row['command'] and '--offline' in row['command']
+    for endpoint,revision in revisions:
+        projected={
+            'benchmarks/doom.nim':early.doom_projection(git_bytes(early.PUBLIC,'tests/interop/pvm_doom_backends.nim').decode()),
+            'benchmarks/sieve.nim':early.sieve_projection(git_bytes(early.PUBLIC,'tests/performance/pvm_sieve.nim').decode())}
+        for path,wanted in report['source_maps'][endpoint].items():
+            if path in projected:
+                assert sha(projected[path].encode())==wanted
+                family=Path(path).stem
+                assert retained(endpoint+'-'+family+'-adapter.nim').read_text()==projected[path]
+            else:
+                assert sha(git_bytes(revision,path))==wanted,(endpoint,path)
+        for family in ('doom','sieve'):
+            left,right=(retained(f'{endpoint}-{family}-{i}').read_bytes() for i in range(2))
+            assert left==right and sha(left)==report['images'][endpoint+'-'+family]
+    assert len(report['builds'])==8
+    for built in report['builds']:
+        row=built['run']; assert row['exit_code']==0
+        assert retained(row['log']).read_text()==row['output']
+        flags=row['command']
+        for flag in ('--mm:arc','--cc:clang','-d:release','--opt:speed','--boundchecks:on',
+                     '--passC:-flto=thin','--passL:-flto=thin','-d:polkavmRuntime',
+                     '-d:pvmSourceSealingReceipt','-d:pvmArm64JitOwnerReceipt'):
+            assert flag in flags,flag
+        assert not any('danger' in flag or 'checks:off' in flag for flag in flags)
+    rows=report['runs'];assert len(rows)==156,len(rows)
+    keys=set()
+    for row in rows:
+        key=(row['family'],row['order'],row['sample'],row['role']);assert key not in keys;keys.add(key)
+        assert row['discarded']==(row['sample']<3)
+        run=row['run'];assert run['exit_code']==0
+        assert retained(run['log']).read_text()==run['output']
+        measured=(fast.timing(run['output'],row['family']) if row['role']=='polkavm-interpreted-fast'
+            else early.timing(run['output'],row['family'],policies[row['role']]))
+        assert measured==row['measured']
+        if is_trial: assert row['native_work']==native_work(row)
+        if row['family']=='doom':
+            compare(report['reference']['observed'],row['observed'],2)
+    expected={(f,o,s,r) for f in ('doom','sieve') for o in range(2) for s in range(13) for r in roles}
+    assert keys==expected
+    for row in report['summary']:
+        measured=[r['measured'] for r in rows if all(r[k]==row[k] for k in ('family','order','role')) and not r['discarded']]
+        assert len(measured)==10
+        scopes=dict(constructor=[r['constructor_cpu_ns'] for r in measured],
+            cold=[r['calls_cpu_ns'][0] for r in measured],reuse=[r['calls_cpu_ns'][1] for r in measured],
+            retirement=[r['retirement_cpu_ns'] for r in measured])
+        for scope,values in scopes.items():
+            assert row['cpu_ns'][scope]==dict(median=statistics.median(values),minimum=min(values),maximum=max(values),samples=10)
+    assert len(report['summary'])==12
+    assert len(report['controls'])==(14 if is_fast else 13 if is_trial else 11),report['controls']
+    for control in report['controls']:
+        assert control.get('passed',control.get('refused',False))
+        if 'run' in control:
+            run=control['run'];assert run['exit_code']!=0
+            assert retained(run['log']).read_text()==run['output']
+    assert report['reference']['observed']['frames'][0]['rgba_sha256']==report['doom_admission']['golden_rgba_sha256']
+    abi=retained('build.log').read_text()
+    assert '3 passed; 0 failed' in abi
+    if is_trial:
+        outputs=retained('retained-output/reference/call-0.state').parent.parent
+        length=(outputs/'reference/call-0.state').stat().st_size
+        assert length>=129 and (length-129)%4101==0
+        pages=(length-129)//4101
+        source=report['reference']
+        clean='\n'.join(line for line in source['run']['output'].splitlines() if not line.startswith('EARLY_'))+'\n'
+        assert observation(clean,outputs/'reference','polkavm-interpreted',2,pages,report['host']['architecture'])==source['observed']
+        for role in roles:
+            row=next(r for r in rows if r['family']=='doom' and r['role']==role and r['order']==0 and r['sample']==0)
+            clean='\n'.join(line for line in row['run']['output'].splitlines() if not line.startswith('EARLY_'))+'\n'
+            assert observation(clean,outputs/role,policies[role],2,pages,report['host']['architecture'])==row['observed']
+            for call in range(2):
+                for suffix in ('state','events','hosts'):
+                    assert (outputs/role/f'call-{call}.{suffix}').read_bytes()==(outputs/'reference'/f'call-{call}.{suffix}').read_bytes()
+    return dict(architecture=report['host']['architecture'],status='passed',retained_ELFs=elf_count,
+        git_inputs=git_count,measured_processes=len(rows),measured_calls=len(rows)*2,
+        raw_source_maps=report['source_maps'],summary=report['summary'],provenance_only=provenance_only,
+        limitations=('Trial retains reference plus one actual two-call DOOM state/event/host output per role; all independently rehashed and compared. Other process outputs checked in-process only. ' if is_trial else 'No raw guest states/events/pixels retained for independent rehash; original report records in-process exact byte comparison. ')+'Compiler/input identities without retained bytes remain provenance only. No execution by audit.')
+
+
+if __name__=='__main__':
+    base=Path(sys.argv[1])
+    results=[audit(folder) for folder in sorted(base.iterdir()) if folder.is_dir() and folder.name.startswith(('pvm-eager-early-','pvm-eager-trial-'))]
+    assert len(results)==2
+    assert results[0]['raw_source_maps']==results[1]['raw_source_maps']
+    for result in results: del result['raw_source_maps']
+    target=base/'author-audit.json';target.write_text(json.dumps(results,indent=2)+'\n')
+    print('PASS independent byte/Git/log/counter/sample rehash:',target)

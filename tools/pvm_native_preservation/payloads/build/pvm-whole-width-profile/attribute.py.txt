@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Attribute exclusive sampled leaves using retained live native base/PC intervals and actual helper stacks."""
+import pathlib,re,json,bisect,collections
+folder=pathlib.Path(__file__).resolve().parent
+raw=(folder/'sample.txt').read_text();graph=raw.split('Call graph:\n',1)[1].split('Total number in stack',1)[0]
+base,size=[int(x) for x in next(line for line in (folder/'actual.log').read_text().splitlines() if line.startswith('PROFILE_IMAGE,')).split(',')[1:]]
+regions=[]
+for line in (folder/'native-map.csv').read_text().splitlines():
+ start,end,kind=line.split(',');regions.append((int(start),int(end),kind))
+regions.sort();assert regions[0][0]==0
+assert all(a[1]==b[0] for a,b in zip(regions,regions[1:])), 'cold map has an uncovered or overlapping executable instruction'
+starts=[r[0] for r in regions];nodes=[];stack=[];roots=[]
+for line in graph.splitlines():
+ match=re.match(r'^([ +!:|]*)([0-9]+) (.*)$',line)
+ if not match:continue
+ column=len(match[1]);count=int(match[2]);label=match[3]
+ while stack and nodes[stack[-1]]['column']>=column:stack.pop()
+ parent=stack[-1] if stack else None
+ node=dict(column=column,count=count,label=label,parent=parent,children=[])
+ index=len(nodes);nodes.append(node)
+ if parent is None:roots.append(index)
+ else:nodes[parent]['children'].append(index)
+ stack.append(index)
+counts=collections.Counter();leaves=[]
+for index,node in enumerate(nodes):
+ exclusive=node['count']-sum(nodes[i]['count'] for i in node['children'])
+ assert exclusive>=0,(node,exclusive)
+ if exclusive==0:continue
+ ancestry=[];current=index
+ while current is not None:
+  ancestry.append(nodes[current]['label']);current=nodes[current]['parent']
+ label=node['label'];address=re.search(r'\[0x([0-9a-fA-F]+)\]',label);pc=int(address[1],16) if address else None
+ offset=pc-base if pc is not None and base<=pc<base+size else None
+ if offset is not None:
+  at=bisect.bisect_right(starts,offset)-1;start,end,kind=regions[at];assert start<=offset<end,(offset,regions[at]);category='native/'+kind
+ elif any(re.search(r'checkedLoad[1248]?_',a) for a in ancestry):category='checked-helper/load-inclusive'
+ elif any(re.search(r'checkedStore[1248]?_',a) for a in ancestry):category='checked-helper/store-inclusive'
+ elif any('loadWriterMiss_' in a or 'writerScalar_' in a for a in ancestry):category='checked-helper/load-without-callback-frame'
+ elif any('storeWriterMiss_' in a or 'prepareWriterSpan_' in a or 'cloneWriterChunk_' in a for a in ancestry):category='checked-helper/store-without-callback-frame'
+ elif any('checkFrame_' in a or 'checkMemory_' in a for a in ancestry):category='outside-timer/correctness'
+ elif any('dyld' in a for a in ancestry[:1]):category='outside-timer/loader'
+ else:category='other-unattributed'
+ counts[category]+=exclusive;leaves.append(dict(samples=exclusive,label=label,pc=pc,native_offset=offset,category=category,ancestry=ancestry))
+total=sum(nodes[i]['count'] for i in roots);assert sum(counts.values())==total
+result=dict(kind='exclusive OS sample attribution; diagnostic, not exact scoped CPU time',total_samples=total,root_counts=[nodes[i]['count'] for i in roots],native_base=base,native_size=size,executable_regions=len(regions),categories={name:dict(samples=count,percent=100*count/total) for name,count in counts.most_common()},native_samples=sum(v for k,v in counts.items() if k.startswith('native/')),checked_helper_samples=sum(v for k,v in counts.items() if k.startswith('checked-helper/')),scope='All main-thread samples, including startup/correctness. Exclusive leaves avoid double counting. Native regions are cold-emitter PC intervals; helper categories include their actual descendant frames. No arithmetic scaling to exactly38ms.',limitations='Statistical six-second1ms diagnostic; async sampling/unwind and startup bias remain. Coarse native-PC categories cannot charge microarchitectural call/spill stall cost exactly. No performance inference from call counts alone.')
+(folder/'attribution.json').write_text(json.dumps(result,indent=2)+'\n');(folder/'exclusive-leaves.json').write_text(json.dumps(leaves,indent=2)+'\n');print(json.dumps(result,indent=2))

@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Data-only GP basic-block annotation of retained source visits; never executes a guest or native binary."""
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+
+def natural(data,at):
+    assert 0<=at<len(data)
+    head=data[at];tail=0;mask=128
+    while tail<8 and head&mask:
+        tail+=1;mask>>=1
+    assert at+1+tail<=len(data)
+    value=0 if tail==8 else (head&(mask-1))<<(8*tail)
+    value|=int.from_bytes(data[at+1:at+1+tail],'little')
+    assert tail==0 or value>=1<<(7*tail)
+    return value,at+1+tail
+
+
+def code_section(data):
+    assert 14<=len(data)<=16777216 and data[:5]==b'PVM\x00\x03'
+    assert int.from_bytes(data[5:13],'little')==len(data)
+    at=13;wire=None;previous=0;optional=False
+    while at<len(data):
+        kind=data[at];at+=1
+        if kind==0:
+            assert at==len(data) and wire is not None
+            return wire
+        if kind<128:
+            assert not optional and previous<kind<=6
+            previous=kind
+        else: optional=True
+        length,at=natural(data,at)
+        assert length<=2**32-1 and length<=len(data)-at
+        if kind==6:
+            assert wire is None and 0<length<=4194304
+            wire=data[at:at+length]
+        at+=length
+    raise ValueError('missing artifact terminator')
+
+
+def block_map(wire):
+    jumps,at=natural(wire,0);assert at<len(wire) and jumps<=1048576
+    width=wire[at];at+=1;assert width<=4
+    length,at=natural(wire,at);assert 0<length<=4194304
+    at+=jumps*width
+    assert at+length+(length+7)//8==len(wire)
+    code=wire[at:at+length];mask=wire[at+length:]
+    if length%8: assert mask[-1]>>(length%8)==0
+    pcs=[i for i in range(length) if mask[i//8]&(1<<(i%8))]
+    assert pcs and pcs[0]==0 and all(b-a<=25 for a,b in zip(pcs,pcs[1:]))
+    terminators={0,1,40,50,180,*range(80,91),*range(170,176)}
+    assert code[pcs[-1]] in {0,40,50,80,180}
+    starts={};start=0;previous=None
+    for pc in pcs:
+        if previous is not None and code[previous] in terminators:start=pc
+        starts[pc]=start;previous=pc
+    return code,starts
+
+
+def annotate(blob,visits,expected_sha,candidates):
+    raw=blob.read_bytes();assert hashlib.sha256(raw).hexdigest()==expected_sha
+    code,blocks=block_map(code_section(raw));assert len(blocks)==candidates
+    rows={}
+    for line in visits.read_text().splitlines():
+        pc,kind,count=map(int,line.split(','));assert pc in blocks and kind in (0,1,2) and count>0 and pc not in rows
+        rows[pc]=dict(pc=pc,kind=kind,visits=count)
+    grouped={}
+    for pc,row in rows.items():
+        start=blocks[pc]
+        if start not in grouped:
+            entry=rows.get(start)
+            grouped[start]=dict(block_pc=start,checked_dispatch_visits=0,unique_visited_source_pcs=0,
+                checked_start_pc_visits=entry['visits'] if entry else 0,
+                start_pc_kind=entry['kind'] if entry else None,opcode_at_start=code[start])
+        grouped[start]['checked_dispatch_visits']+=row['visits']
+        grouped[start]['unique_visited_source_pcs']+=1
+    return dict(scope='GP block annotation of checked source-dispatch visits, not native handoffs/coverage or timing',
+        artifact_sha256=expected_sha,code_bytes=len(code),instruction_starts=len(blocks),
+        unique_visited_blocks=len(grouped),
+        hottest_block_starts=sorted(grouped.values(),key=lambda r:(-r['checked_start_pc_visits'],r['block_pc']))[:30],
+        hottest_capacity_deferred_block_starts=sorted((r for r in grouped.values() if r['start_pc_kind']==2),
+            key=lambda r:(-r['checked_start_pc_visits'],r['block_pc']))[:30])
+
+
+if __name__=='__main__':
+    artifact=Path('/Users/jacogr/Projects/jacogr/ragnarok-pvm/build/tests/pvm-doom/doom.polkavm')
+    expected='6ba024eaba62a18732b40340f209523c3bc0bdca7e0cca4b121e4e1342a07f32'
+    folder=Path(sys.argv[1]);results=[]
+    for visits in sorted(folder.rglob('call-0.visits')):
+        item=annotate(artifact,visits,expected,164363)
+        target=visits.with_name('block-annotation.json');target.write_text(json.dumps(item,indent=2)+'\n')
+        results.append(dict(file=str(target),top=item['hottest_capacity_deferred_block_starts'][:5]))
+    assert len(results)==2
+    print(json.dumps(results,indent=2))

@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Render the sole retained initial Pinky cohort; no native execution or new measurements."""
+import json,pathlib,statistics
+root=pathlib.Path(__file__).resolve().parents[2]
+folder=pathlib.Path(json.loads((root/'build/pvm-whole-pinky-latest.json').read_text())['path'])
+x=json.loads((folder/'results.json').read_text());a=json.loads((folder/'author-audit.json').read_text())
+lines=['# Initial whole-image ARM64 Pinky comparison','',
+'Sole prespecified local cohort on Apple M1 Max / Darwin ARM64. Source `'+x['revision']+'`; current production source `'+x['production']+'`.',
+'', '**Whole image has gas OFF; current JIT and explicitly untraced PolkaVM Interpreter have gas ON. Ownership/publication scopes differ. These are diagnostic call ratios, with no equivalent production throughput, full-semantics or adoption claim.**',
+'', '## Exact workload and correctness','',
+'Pinned unchanged Pinky NES guest, PolkaVM `'+x['fixture']['polkavm_commit']+'`. Upstream benchmark_initialize runs nine NES frames, including Select input to start autosolve. The maintained reference initializes outside guest-call clocks and freezes the actual 143 mapped pages. Each measured run_checked(1) calls the original benchmark_run once: one additional NES frame plus 256×240 ABGR framebuffer conversion. Every repeat resets identical initialized memory and registers; native code/prepared owner/reference module is reused. This measures the same next frame repeatedly, not continuing NES frames or the upstream stock benchmark score.',
+'', 'All 156 timed calls passed full 13-register, page count/permission/byte, immutable input/source and terminal checks. Whole-image calls halt at PC 0 with one real native completion exit. Gas is deliberately excluded from whole-image comparison. Actual framebuffer pointer 209440 and all 245760 output bytes were checked outside execution clocks in all roles. Frame SHA-256 `'+x['frame_oracle']['sha256']+'`. This oracle comes from the pinned public reference getter and is not an independent NES golden. Return value 1 alone is only a completion marker.',
+'', 'The reference queries its genuine get_framebuffer export after the full terminal snapshot, outside all run clocks, before dropping that instance. Whole image and JIT read the actual immutable published framebuffer; they do not run a guest getter. Source-bound negative controls deliberately corrupt one framebuffer byte and require each actual image to fail the frame comparison. All three assertion probes also fail as intended. Native ownership/control regressions pass: 23 executable images created and destroyed.',
+'', 'The continuous compiler and production memory primitives are unchanged from the reviewed sieve experiment. Every genuine source instruction compiles or the image is rejected; there is no interpreter evaluator fallback. Pinky compiles 10576 instructions into a 416152-byte native image. Per timed call: 4934271 actual checked load callbacks + 3132606 checked store callbacks = 8066877 helper crossings; one real native exit. Static source host-opcode count is zero, the compiler has no host callback surface, and successful completion has zero host or guest-block handoff exits. This host-boundary zero follows from the closed source/compiler surface, rather than an independently instrumented host-handler counter.',
+'', '## Initial ratios','',
+'One fixed serial forward/reverse matrix: 13 fresh processes per role/order, first 3 discarded, 10 retained; two calls per owner. 78 fresh timed processes / 156 timed calls total; 60 retained processes / 120 retained calls. Order 0: whole → JIT → reference; order 1 reverses roles. No repeated cohort or ratio-driven tuning.',
+'', '| Order | Role | Call | CPU median [min,max] ms | Elapsed median [min,max] ms |', '| --- | --- | --- | ---: | ---: |']
+def metric(v):return f"{v['median']/1e6:.3f} [{v['minimum']/1e6:.3f}, {v['maximum']/1e6:.3f}]"
+for order in x['summary']:
+ for role,v in order['roles'].items():
+  for i,c in enumerate(v['calls']):lines.append(f"| {order['order']} | {role} | {'first' if i==0 else 'reuse'} | {metric(c['cpu_ns'])} | {metric(c['elapsed_ns'])} |")
+lines+=['','| Order | Reference / whole CPU median, first / reuse | Reference / JIT CPU median, first / reuse |','| --- | ---: | ---: |']
+for order in x['summary']:
+ ratios=order['cpu_over_untraced_reference'];whole=ratios['whole-image-gas-off'];jit=ratios['current-jit-gas-on'];lines.append(f"| {order['order']} | {1/whole[0]:.4f}× / {1/whole[1]:.4f}× | {1/jit[0]:.4f}× / {1/jit[1]:.4f}× |")
+lines+=['', 'The initial result is about 1.88–1.89× reference/whole-image under these gas/scope differences. It does not reproduce the cited upstream approximately 30× interpreted/compiled ratio. The completed same-machine sieve cohort remains separately sealed (about 4.74× reference/whole), with different guest work. These observations do not isolate a cause. Eight million checked-memory crossings are a concrete profiling hypothesis; their cost, native bridges/spills and generated guest instructions require separate attribution before optimization.',
+'', '## Preparation and lifecycle','',
+'CPU/elapsed medians in ms, ten retained owners per role/order. Native full-image construction/publication precedes its first call. Current JIT may compile during its first measured call and includes immutable publication inside execution. Whole-image writer restore and publication are outside execution. Reference uses fresh mutable instances and reuses its module; its nine-frame initialization (including initialized-instance setup) is outside call timing and occurs once per process. Its module constructor includes framebuffer-export lookup. Final writer destruction, Program/Memory retirement and general process startup are not individually isolated. Raw process CPU/elapsed is retained; no equivalent lifecycle total is constructed. Missing reference elapsed scopes remain unavailable, and genuine sub-resolution zeros are retained.',
+'', '| Order | Role | Scope | CPU median ms | Elapsed median ms |','| --- | --- | --- | ---: | ---: |']
+for order in x['summary']:
+ for role,v in order['roles'].items():
+  by={}
+  for owner in v['retained_lifecycle_scopes']:
+   for name,value in owner.items():
+    for i,item in enumerate(value if isinstance(value,list) else [value]):by.setdefault(name+(f' call{i}' if isinstance(value,list) else ''),[]).append(item)
+  for name,values in by.items():
+   cpu=statistics.median(v['cpu_ns'] for v in values)/1e6;walls=[v['elapsed_ns'] for v in values if v['elapsed_ns'] is not None];wall=f'{statistics.median(walls)/1e6:.6f}' if walls else 'unavailable';lines.append(f"| {order['order']} | {role} | {name} | {cpu:.6f} | {wall} |")
+lines+=['','## Host builds','','Compiler-process CPU includes waited children and may exceed elapsed with parallel compiler work. These are separate from guest preparation/execution.','','| Build | CPU seconds | Elapsed seconds |','| --- | ---: | ---: |']
+for b in x['builds']:lines.append(f"| {pathlib.Path(b['log']).name} | {b['process_cpu_ns']/1e9:.3f} | {b['process_elapsed_ns']/1e9:.3f} |")
+lines+=['','## Provenance and review','',
+'Author inert source/archive/hash/log/arithmetic and framebuffer-layout audit PASS: `author-audit.json`. It reuses the author parser; independent source/actual review is separate and pending. Source archive has 1603 original members; 1619 final source/input/image identities are sealed. Final post-cohort source/input/image/compiler seal passed. Full actual logs, images, frame/input/expected bytes, private projected consumers and consumed source archive are retained.',
+'', 'Results SHA-256 `'+a['results_sha256']+'`; source archive SHA-256 `'+x['source_archive']['sha256']+'`. Nimony pin `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, compiler SHA-256 `'+x['compiler']['sha256']+'`. Guest fixture SHA-256 `'+x['fixture']['artifact_sha256']+'`. Exact Rust/Clang identities, commands, source maps and image hashes are in results.json.',
+'', x['provenance_limits'],
+'', 'The dynamically generated executable instruction buffer is retired rather than retained as a separate raw buffer; source/compiler identity, image byte size, code-generation source and actual execution witnesses are preserved. Linux/x86 executable mappings were not exercised. This covers the required frozen Pinky instruction surface, not all PVM semantics. Production shared emitter files, memory implementation, gas/default/quota policies and #1811 HOLD are unchanged. No public adoption PR is required for this private experiment.']
+(folder/'summary.md').write_text('\n'.join(lines)+'\n')
+print('REPORT',folder/'summary.md')

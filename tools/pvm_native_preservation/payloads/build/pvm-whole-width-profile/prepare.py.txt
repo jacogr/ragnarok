@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Derive cold-only native PC map instrumentation; preserve emitted instructions and helper bodies."""
+import pathlib,hashlib,json
+root=pathlib.Path(__file__).resolve().parents[2];folder=pathlib.Path(__file__).resolve().parent
+original=(root/'build/pvm-whole-width-correctness-4d72ae54-1793355194503863000/fast_image.nim').read_text();text=original
+text=text.replace('import std/assertions','import std/[assertions, syncio, envvars]')
+text=text.replace('  Builder = object', '  ProfileRegion = object ## Cold generated-PC attribution only; no generated instruction or guest state changes.\n    first, past: int\n    kind: string\n  Builder = object')
+text=text.replace('    tableLoads: seq[int]', '    tableLoads: seq[int]\n    regions: seq[ProfileRegion]')
+text=text.replace('proc createdCountNative()', 'proc codeAddress(handle: nil pointer): uint64 {.cdecl, importc: "pvm_profile_code_address", header: "pvm_whole_image.h".}\n\nproc createdCountNative()')
+# These marks only read the builder length at cold compile time; they never append ARM words.
+start=text.index('proc emitMemory(');end=text.index('\nproc enter(',start);body=text[start:end]
+body=body.replace('  setPc(builder.words, uint64(item.address))','  let pcStart = builder.words.len\n  setPc(builder.words, uint64(item.address))')
+body=body.replace('  for i in 0..<3: storeWord', '  builder.regions.add(ProfileRegion(first: pcStart, past: builder.words.len, kind: "bridge-pc"))\n  let saveStart = builder.words.len\n  for i in 0..<3: storeWord')
+body=body.replace('  emitImmediate(builder.words, 1, uint64(item.x)', '  builder.regions.add(ProfileRegion(first: saveStart, past: builder.words.len, kind: "bridge-save"))\n  let argumentsStart = builder.words.len\n  emitImmediate(builder.words, 1, uint64(item.x)')
+body=body.replace('  builder.words.add(0xd63f0180', '  builder.regions.add(ProfileRegion(first: argumentsStart, past: builder.words.len, kind: "bridge-arguments"))\n  let callStart = builder.words.len\n  builder.words.add(0xd63f0180')
+body=body.replace('  for i in 0..<3: loadWord', '  builder.regions.add(ProfileRegion(first: callStart, past: builder.words.len, kind: "bridge-call"))\n  let restoreStart = builder.words.len\n  for i in 0..<3: loadWord')
+body=body.replace('  loadWord(builder.words, 12, 31, 96)','  builder.regions.add(ProfileRegion(first: restoreStart, past: builder.words.len, kind: "bridge-restore"))\n  let statusStart = builder.words.len\n  loadWord(builder.words, 12, 31, 96)')
+body=body.replace('  if access.isLoad:\n    if access.isSigned:', '  builder.regions.add(ProfileRegion(first: statusStart, past: builder.words.len, kind: "bridge-status"))\n  let resultStart = builder.words.len\n  if access.isLoad:\n    if access.isSigned:')
+body+='\n  if builder.words.len > resultStart:\n    builder.regions.add(ProfileRegion(first: resultStart, past: builder.words.len, kind: "bridge-load-result"))\n'
+text=text[:start]+body+text[end:]
+text=text.replace('tableLoads: @[])','tableLoads: @[], regions: @[])')
+text=text.replace('  var compiled = 0\'u64','  builder.regions.add(ProfileRegion(first: 0, past: builder.words.len, kind: "entry"))\n  var compiled = 0\'u64')
+text=text.replace('    if instructionMemoryOperands(decoded).width > 0:', '    let guestStart = builder.words.len\n    if instructionMemoryOperands(decoded).width > 0:')
+text=text.replace('    if builder.words.len >= 8000000:', '    if instructionMemoryOperands(decoded).width == 0:\n      builder.regions.add(ProfileRegion(first: guestStart, past: builder.words.len, kind: "guest-instructions"))\n    if builder.words.len >= 8000000:')
+text=text.replace('  finish(builder)','  let terminalStart = builder.words.len\n  finish(builder)\n  builder.regions.add(ProfileRegion(first: terminalStart, past: builder.words.len, kind: "terminal"))')
+# Dump the exact generated words before invocation; the live owner keeps the published base valid.
+needle='  image.owner.handle = handle'
+replacement='''  var mapping = ""
+  for region in builder.regions:
+    mapping.add($uint64(region.first*4) & "," & $uint64(region.past*4) & "," & region.kind & "\\n")
+  var rawCode = ""
+  for word in builder.words:
+    for octet in 0..<4: rawCode.add(char(byte((word shr (octet*8)) and 255)))
+  try:
+    writeFile(getEnv("RAGNAROK_WHOLE_PROFILE_MAP"), mapping)
+    writeFile(getEnv("RAGNAROK_WHOLE_PROFILE_CODE"), rawCode)
+  except:
+    assert false, "profile code/map retention"
+  echo "PROFILE_IMAGE,", codeAddress(handle), ",", uint64(builder.words.len*4)
+  image.owner.handle = handle'''
+assert text.count(needle)==1;text=text.replace(needle,replacement)
+# Both hot helper bodies are byte-identical source; all original emitMemory lines survive in order.
+for first,last in [('proc checkedLoad(', 'proc emitMemory(')]:
+ assert original[original.index(first):original.index(last)]==text[text.index(first):text.index(last)]
+old=original[original.index('proc emitMemory('):original.index('\nproc enter(')]
+for line in old.splitlines(): assert line in body,line
+(folder/'pvm_profile_image.nim').write_text(text)
+header='''/* Private diagnostic-only live code address; original ownership and call ABI retained. */
+#include "'''+str(root/'build/pvm-whole-width-correctness-4d72ae54-1793355194503863000/pvm_whole_image.h')+'''"
+static uint64_t pvm_profile_code_address(void *handle) {
+    if (!handle) abort();
+    return (uint64_t)(uintptr_t)((pvm_whole_image *)handle)->code;
+}
+'''
+(folder/'pvm_whole_image.h').write_text(header)
+driver=(root/'tests/performance/pvm_whole_pinky.nim').read_text().replace('import ./pvm_whole_image','import ./pvm_profile_image').replace('include "./pvm_whole_frame.nim.inc"','include "../../tests/performance/pvm_whole_frame.nim.inc"')
+driver=driver.replace('["", "1", "2", "3", "13"]','["160"]')
+begin=driver.index('let samples = ');end=driver.index('\necho "WHOLE_GAS_DISABLED',begin)
+driver=driver[:begin]+'let samples = 160\n'+driver[end:]
+(folder/'profile.nim').write_text(driver)
+files=[folder/'prepare.py',folder/'pvm_profile_image.nim',folder/'pvm_whole_image.h',folder/'profile.nim',root/'build/pvm-whole-width-correctness-4d72ae54-1793355194503863000/fast_image.nim',root/'build/pvm-whole-width-correctness-4d72ae54-1793355194503863000/pvm_whole_image.h',root/'tests/performance/pvm_whole_pinky.nim',root/'tests/performance/pvm_whole_frame.nim.inc']
+(folder/'sources.json').write_text(json.dumps(dict(purpose='Separately labelled sampling diagnostic, width-specialized baseline; not a repeat of the fixed comparison',base='4d72ae5458773e9dd3b75b7fcb91fab8b5a18b14',hot_helpers_byte_identical=True,original_memory_emission_lines_retained=True,calls=160,files={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files}),indent=2)+'\n')
+print('COLD_MAP_SOURCES_READY',len(files))

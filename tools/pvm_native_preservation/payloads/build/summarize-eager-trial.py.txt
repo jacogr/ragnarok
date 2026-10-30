@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Summarize retained fixed-quota native CI measurements as data; never execute an artifact."""
+import json
+from pathlib import Path
+import statistics
+import sys
+
+
+def interval(values, scale=1):
+    """Display a range of process-order medians; raw sample spreads remain in the JSON."""
+    return f'{min(values)/scale:.3f}–{max(values)/scale:.3f}'
+
+
+def summarize(base):
+    """Keep constructor/call clocks and actual native work separate across CPUs, workloads and orders."""
+    paths=sorted(base.rglob('pvm-eager-early/results.json'))
+    assert len(paths)==2
+    reports=[json.loads(path.read_text()) for path in paths]
+    assert {r['host']['architecture'] for r in reports}=={'arm64','x86_64'}
+    assert all(r['status']=='passed' and r['protocol']=='private-fixed-quota-eager-trial-v1' for r in reports)
+    assert len({r['revision'] for r in reports})==1
+    assert len({r['runtime_source'] for r in reports})==1
+    assert len({r['trial_source'] for r in reports})==1
+    roles=('current-jit','compiled','trial-compiled')
+    output=dict(status='author audit pending',run=40943197683,revision=reports[0]['revision'],
+        current=reports[0]['runtime_source'],trial=reports[0]['trial_source'],groups=[])
+    lines=['# Fixed-quota reverse-admission sensitivity trial','',
+        '[CI run 40943197683](https://github.com/jacogr/ragnarok/actions/runs/40943197683). '
+        f"Harness `{output['revision']}`, current runtime `{output['current']}`, trial `{output['trial']}`.",'',
+        'Both actual CPU jobs passed. Author and independent actual audit verdicts must be recorded separately.','',
+        'The trial reverses cold whole-block traversal only. Emitters, eligibility, quotas and semantics are fixed. '
+        'Physical stream/code placement also changes, so CPU differences cannot be attributed to admission pressure alone.','',
+        '## Process CPU milliseconds','',
+        'Each cell is the range of the two process-order medians. Each median uses ten fresh processes after '
+        'three discarded samples; every process constructs one owner and makes two calls. Raw sample minima/maxima '
+        'and all discarded samples remain in the original reports.','',
+        '| CPU / workload | Phase | Current JIT | Current eager | Trial eager | Trial/current eager |',
+        '|---|---|---:|---:|---:|---:|']
+    for report in sorted(reports,key=lambda r:r['host']['architecture']):
+        cpu=report['host']['architecture']
+        for family in ('doom','sieve'):
+            for phase in ('constructor','cold','reuse'):
+                values={role:[next(g for g in report['summary'] if g['family']==family and
+                    g['order']==order and g['role']==role)['cpu_ns'][phase]['median']
+                    for order in range(2)] for role in roles}
+                ratios=[a/b for a,b in zip(values['trial-compiled'],values['compiled'])]
+                lines.append('| '+' | '.join([cpu+' / '+family,phase,
+                    *(interval(values[role],1000000) for role in roles),interval(ratios)+'×'])+' |')
+                output['groups'].append(dict(cpu=cpu,family=family,phase=phase,
+                    order_medians_cpu_ns=values,trial_current_eager_ratios=ratios))
+    lines+=['','## Actual completed native work','',
+        'Counts are completed native operations per invocation, not source-instruction coverage percentages. '
+        'Ranges below include every fresh process in both orders, including discarded CPU samples.','',
+        '| CPU / workload | Call | Current JIT operations | Current eager operations | Trial eager operations |',
+        '|---|---:|---:|---:|---:|']
+    work=[]
+    for report in sorted(reports,key=lambda r:r['host']['architecture']):
+        cpu=report['host']['architecture']
+        for family in ('doom','sieve'):
+            for call in range(2):
+                counts={role:[r['native_work'][call]['native_operations'] for r in report['runs']
+                    if r['family']==family and r['role']==role] for role in roles}
+                assert all(len(rows)==26 for rows in counts.values())
+                display=[f'{min(counts[role]):,}–{max(counts[role]):,}' for role in roles]
+                lines.append('| '+' | '.join([cpu+' / '+family,str(call),*display])+' |')
+                work.append(dict(cpu=cpu,family=family,call=call,
+                    native_operations={role:dict(minimum=min(rows),maximum=max(rows),median=statistics.median(rows))
+                        for role,rows in counts.items()}))
+    output['actual_native_work']=work
+    lines+=['','## Scope and evidence limits','',
+        '- Current JIT and current eager select different public policies in the same unchanged runtime image. '
+        'Only trial eager selects the changed runtime.',
+        '- Constructor CPU brackets newPreparedProgram from an already decoded owner. Call CPU includes internal '
+        'restore/reset, execution, host callbacks and immutable publication. No separate internal phase clocks are invented.',
+        '- DOOM call 1 continues call 0 memory and does different gameplay work. Sieve restores its immutable input '
+        'on each call. Cold/reuse differences do not isolate a cache benefit.',
+        '- Every DOOM process compares complete state, ordered events, hosts and frames to the fresh two-call '
+        'reference. First-tick upstream oracle and RGBA golden checks remain. One actual full two-call output per '
+        'role plus the reference is retained for independent rehash; other process outputs have in-process comparisons.',
+        '- All runs use native Linux with checked release ARC/Clang ThinLTO. No guest or retained executable ran locally.',
+        '- Reverse traversal is a sensitivity experiment. No general admission policy, measured savings beyond the '
+        'reported CPU scopes, full native coverage, or shared performance acceptance is implied.','',
+        '## Runner identity','']
+    for report in sorted(reports,key=lambda r:r['host']['architecture']):
+        lines.append(f"- {report['host']['architecture']}: {report['cpu']}")
+    (base/'trial-summary.json').write_text(json.dumps(output,indent=2)+'\n')
+    (base/'summary.md').write_text('\n'.join(lines)+'\n')
+    print(base/'summary.md')
+
+
+if __name__=='__main__':
+    summarize(Path(sys.argv[1]))

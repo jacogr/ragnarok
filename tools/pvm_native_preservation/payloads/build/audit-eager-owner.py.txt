@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Audit raw eager-owner CI evidence and source bindings without executing native artifacts."""
+import hashlib
+import json
+from pathlib import Path
+import struct
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+PUBLIC = 'ccd2e63b93c2804664660c9115b87512232bc352'
+SHARED = '5719c065ec9fc037dfee739cc649cb66b905f7b6'
+RUNTIME = 'fc164c1b8488bd372ade074e1332a9e967c7c435'
+REVISION = '9e6cabd47288e209443466b77b85010b157ca3e0'
+SHARED_PATHS = {'src/pvm/internal/'+name+'.nim' for name in
+                ('handler_stream', 'arm64_jit', 'x86_jit', 'source_seal')}
+
+
+def git_bytes(path, revision=RUNTIME):
+    """Read exact source bytes from Git rather than trusting CI's reported digest."""
+    return subprocess.check_output(['git', 'show', revision+':'+path], cwd=ROOT)
+
+
+def sha(data):
+    """Hash independently retained original bytes."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def audit(folder, architecture):
+    """Audit nine actual images, exact process verdicts and source provenance on one host."""
+    reports = list(folder.rglob('eager-owner-results.json'))
+    assert len(reports) == 1, reports
+    report = json.loads(reports[0].read_text())
+    assert report['status'] == 'passed', report.get('error')
+    assert (report['public_source'], report['shared_source'], report['runtime_source'],
+            report['revision']) == (PUBLIC, SHARED, RUNTIME, REVISION)
+    assert report['host']['system'] == 'Linux' and report['host']['architecture'] == architecture
+    assert report['toolchain'] == json.loads(git_bytes('spec/toolchain.json'))
+    assert set(report['shared_blobs']) == SHARED_PATHS
+    for path, digest in report['shared_blobs'].items():
+        # Every overlaid shared file must exactly match both the owner-supplied commit and runtime tree.
+        original = git_bytes(path, SHARED)
+        assert original == git_bytes(path) and sha(original) == digest, path
+    assert len(report['builds']) == 9 and len(report['runs']) == 8 and len(report['controls']) == 1
+    expected = {(profile, suite) for profile in ('plain', 'native')
+                for suite in ('app_pvm_backend', 'pvm_runtime_backends', 'pvm_compiled')}
+    expected.update({('refused', 'pvm_compiled'), ('wrong-host', 'pvm_compiled')})
+    assert {(r['profile'], r['suite']) for r in report['runs']} == expected
+    files = [p for p in folder.rglob('*') if p.is_file()]
+
+    def retained(path):
+        """Artifact prefix stripping is allowed only when a basename identifies one original file."""
+        matches = [p for p in files if p.name == Path(path).name]
+        assert len(matches) == 1, (path, matches)
+        return matches[0]
+
+    generator = 'pvmArm64Jit' if architecture == 'arm64' else 'pvmX86Jit'
+    wrong = 'pvmX86Jit' if architecture == 'arm64' else 'pvmArm64Jit'
+    expected_defines = {}
+    for profile, suite in expected:
+        # Exact compilation flags bind the ordinary plain control and each positive/refusal witness.
+        defines = set() if profile == 'plain' else {'polkavmRuntime', 'pvmSourceSealingReceipt', generator}
+        if profile == 'native' and suite == 'pvm_compiled':
+            defines.add('pvmCompiledPositiveWitness')
+        elif profile == 'refused':
+            defines.update({generator+'Refuse', 'pvmCompiledUnavailableWitness'})
+        elif profile == 'wrong-host':
+            defines.remove(generator)
+            defines.update({wrong, 'pvmCompiledUnavailableWitness'})
+        expected_defines[(profile, suite)] = defines
+    expected_defines[('positive-refusal-control', 'pvm_compiled')] = {
+        generator, 'polkavmRuntime', 'pvmSourceSealingReceipt', generator+'Refuse',
+        'pvmCompiledPositiveWitness'}
+    assert {(r['profile'], r['suite']) for r in report['builds']} == set(expected_defines)
+    for row in report['builds']:
+        # Each raw compiler log must agree with JSON and use ARC, checked release and Clang ThinLTO.
+        result = row['run']
+        assert result['exit_code'] == 0
+        assert retained(result['log']).read_text() == result['output']
+        command = result['command']
+        for flag in ('--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
+                     '--passC:-flto=thin', '--passL:-flto=thin'):
+            assert flag in command, (row['profile'], flag)
+        actual = {a[3:] for a in command if a.startswith('-d:')}
+        assert actual == expected_defines[(row['profile'], row['suite'])] | {'release'}, actual
+        if row['profile'] != 'plain':
+            assert any(a.startswith('--passL:') and a.endswith('/libragnarok_polkavm.so') for a in command)
+    images, arc_rows = [], []
+    for row in report['runs']+report['controls']:
+        # Never execute the downloaded binary; independently rehash its bytes and inspect its ELF machine.
+        result = row['run']
+        assert retained(result['log']).read_text() == result['output']
+        raw = retained(row['image']).read_bytes()
+        assert raw[:6] == b'\x7fELF\x02\x01'
+        assert struct.unpack_from('<H', raw, 18)[0] == (183 if architecture == 'arm64' else 62)
+        digest = sha(raw)
+        assert digest == row['before_sha256'] == row['after_sha256']
+        images.append(dict(file=row['image'], sha256=digest))
+        if row['profile'] == 'positive-refusal-control':
+            # A disabled assertion or wrong refusal reason invalidates this negative control.
+            assert result['exit_code'] != 0
+            assert 'compiled positive source facility required BackendUnavailable' in result['output']
+        else:
+            assert result['exit_code'] == 0
+            assert result['output'].encode() == git_bytes('tests/unit/codec/test_'+row['suite']+'.output')
+            if row['suite'] == 'pvm_compiled':
+                arc = row['arc']
+                raw_arc = retained(arc['file']).read_bytes()
+                assert sha(raw_arc) == arc['sha256']
+                observed = json.loads(raw_arc)
+                assert observed == arc['observed'] and observed['cycles'] == 1000
+                assert observed['occupied_before'] == observed['occupied_after']
+                arc_rows.append(dict(profile=row['profile'], observed=observed, sha256=arc['sha256']))
+    assert len(arc_rows) == 4
+    bridge = report['retained_bridge']
+    assert sha(retained(bridge['file']).read_bytes()) == bridge['sha256']
+    tracked, provenance = {}, {}
+    for path, digest in report['identities'].items():
+        # Compiler/Clang hashes remain provenance: those original executable bytes were not retained.
+        if Path(path).is_absolute() or path.startswith('build/toolchain/'):
+            provenance[path] = digest
+        elif path.startswith('build/'):
+            artifact = retained(bridge['file']) if path.endswith('/libragnarok_polkavm.so') else retained(path)
+            assert sha(artifact.read_bytes()) == digest, path
+        else:
+            assert sha(git_bytes(path)) == digest, path
+            tracked[path] = digest
+    log = retained('build/polkavm/build.log').read_text()
+    assert 'test result: ok. 3 passed; 0 failed;' in log
+    return dict(status='passed', architecture=architecture, public_source=PUBLIC, shared_source=SHARED,
+                runtime_source=RUNTIME, ci_revision=REVISION, tracked_source_hashes=tracked,
+                retained_images=images, retained_bridge=bridge, arc_rows=arc_rows,
+                unretained_compiler_provenance=provenance,
+                arc_reporting_helper_git_provenance=sha(git_bytes('tests/support/arc_evidence.nim')))
+
+
+if __name__ == '__main__':
+    # Exact tree boundaries are checked independently of the run's own scripts and JSON claims.
+    changed = subprocess.check_output(['git', 'diff', '--name-only', PUBLIC, RUNTIME], cwd=ROOT,
+                                      text=True).splitlines()
+    assert set(changed) == SHARED_PATHS
+    changed_ci = subprocess.check_output(['git', 'diff', '--name-only', RUNTIME, REVISION], cwd=ROOT,
+                                         text=True).splitlines()
+    assert set(changed_ci) == {'.github/workflows/ci.yml', 'tests/test_nimony_ci.py'}
+    evidence = Path(sys.argv[1]).resolve()
+    results = [audit(evidence/('pvm-eager-owner-'+arch+'-1'), arch) for arch in ('arm64', 'x86_64')]
+    assert results[0]['tracked_source_hashes'] == results[1]['tracked_source_hashes']
+    (evidence/'author-audit.json').write_text(json.dumps(dict(status='passed', architectures=results), indent=2)+'\n')
+    print('PASS both architectures: 18 actual retained ELFs/2 original bridges/exact logs+outputs+flags/'+
+          '8 ARC observations/precise refusals+assertion controls/'+str(len(results[0]['tracked_source_hashes']))+
+          ' equal tracked Git hashes per host; compiler/Clang and ARC-reporting helper bounded provenance noted')

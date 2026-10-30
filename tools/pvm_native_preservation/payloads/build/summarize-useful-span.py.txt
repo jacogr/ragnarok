@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Summarize qualified uninstrumented CPU scopes and actual work without calling it source coverage."""
+import json
+from pathlib import Path
+import statistics
+import sys
+
+base=Path(sys.argv[1])
+rows=[]
+for folder in sorted(base.glob('pvm-eager-useful-span-*')):
+    if not folder.is_dir():continue
+    focus=json.loads((folder/'tests/pvm-eager-useful-span/results.json').read_text())
+    normal=json.loads((folder/'tests/pvm-eager-early/results.json').read_text())
+    assert focus['status']==normal['status']=='passed'
+    assert focus['revision']==normal['revision'] and focus['trial']==normal['trial_source']
+    for family in ('doom','sieve'):
+        for order in (0,1):
+            roles={}
+            for role in ('current-jit','compiled','trial-compiled'):
+                summary=next(r for r in normal['summary'] if (r['family'],r['order'],r['role'])==(family,order,role))
+                work=[r['native_work'] for r in normal['runs'] if (r['family'],r['order'],r['role'])==(family,order,role) and not r['discarded']]
+                assert len(work)==10 and all(len(r)==2 for r in work)
+                calls=[]
+                for call in range(2):
+                    native_calls=[w[call]['native_calls'] for w in work]
+                    native_ops=[w[call]['native_operations'] for w in work]
+                    calls.append(dict(native_calls=dict(minimum=min(native_calls),median=statistics.median(native_calls),maximum=max(native_calls)),native_operations=dict(minimum=min(native_ops),median=statistics.median(native_ops),maximum=max(native_ops)),operations_per_native_call=statistics.median([o/c for o,c in zip(native_ops,native_calls)])))
+                roles[role]=dict(cpu_ms={scope:value['median']/1e6 for scope,value in summary['cpu_ns'].items()},calls=calls)
+            cpu_change={scope:(roles['trial-compiled']['cpu_ms'][scope]/roles['compiled']['cpu_ms'][scope]-1)*100 for scope in ('constructor','cold','reuse','retirement')}
+            rows.append(dict(architecture=focus['architecture'],family=family,order=order,roles=roles,trial_cpu_change_percent=cpu_change))
+(base/'overview.json').write_text(json.dumps(rows,indent=2)+'\n')
+print('arch guest order current_ctor trial_ctor current_cold trial_cold current_reuse trial_reuse trial_reuse_pct jit_reuse')
+for r in rows:
+    current=r['roles']['compiled']['cpu_ms'];trial=r['roles']['trial-compiled']['cpu_ms'];jit=r['roles']['current-jit']['cpu_ms']
+    print(r['architecture'],r['family'],r['order'],*(f'{v:.3f}' for v in (current['constructor'],trial['constructor'],current['cold'],trial['cold'],current['reuse'],trial['reuse'],r['trial_cpu_change_percent']['reuse'],jit['reuse'])))

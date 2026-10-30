@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""One separately labelled OS sampling diagnostic of 160 identical checked Pinky calls; no ratio retiming."""
+import pathlib,subprocess,os,json,time,hashlib,resource
+root=pathlib.Path(__file__).resolve().parents[2];folder=pathlib.Path(__file__).resolve().parent
+cohort=root/'build/pvm-whole-pinky-cee9f9d7-1793342825258719000';inputs=cohort/'inputs/1';binary=folder/'whole-pinky-profile'
+manifest=json.loads((folder/'sources.json').read_text())
+for name,wanted in manifest['files'].items():assert hashlib.sha256((root/name).read_bytes()).hexdigest()==wanted,name
+input_ids={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs.iterdir() if p.is_file()}
+env=dict(os.environ,RAGNAROK_PVM_GUEST='pinky',RAGNAROK_PVM_SIEVE_INPUT=str(inputs/'input-1.bin'),RAGNAROK_PVM_SIEVE_EXPECTED=str(inputs/'expected-1.bin'),RAGNAROK_PVM_SIEVE_SAMPLES='160',RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',RAGNAROK_PVM_FRAME_ADDRESS=str(inputs/'frame-address.txt'),RAGNAROK_PVM_FRAME_BYTES=str(inputs/'frame-abgr.bin'),RAGNAROK_WHOLE_PROFILE_MAP=str(folder/'native-map.csv'),RAGNAROK_WHOLE_PROFILE_CODE=str(folder/'native-code.bin'))
+started=time.monotonic_ns();usage=resource.getrusage(resource.RUSAGE_CHILDREN)
+with (folder/'actual.log').open('w') as output:
+ process=subprocess.Popen([str(binary)],cwd=root,env=env,stdout=output,stderr=subprocess.STDOUT)
+ command=['/usr/bin/sample',str(process.pid),'6','1','-mayDie','-fullPaths','-file',str(folder/'sample.txt')]
+ sample=subprocess.run(command,cwd=root,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=40)
+ (folder/'sample-tool.log').write_text(sample.stdout)
+ code=process.wait(timeout=60)
+after=resource.getrusage(resource.RUSAGE_CHILDREN)
+raw=(folder/'actual.log').read_text();rows=[line.split(',') for line in raw.splitlines()];exits=[r for r in rows if r[0]=='WHOLE_EXIT'];frames=[r for r in rows if r[0]=='PINKY_FRAME']
+assert code==0 and rows[-1]==['WHOLE_PASS','1'],raw[-1200:]
+assert len(exits)==160 and len(frames)==160
+assert all(r[1:7]==[str(i),'1','0','1','4934271','3132606'] for i,r in enumerate(exits))
+assert all(r[1:]==[str(i),'209440','245760'] for i,r in enumerate(frames))
+assert [r for r in rows if r[0]=='WHOLE_IMAGE'][0][1:3]==['416152','10576']
+assert sample.returncode==0,sample.stdout
+for name,wanted in input_ids.items():assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()==wanted,name
+result=dict(purpose='Separate sampled diagnostic; not initial benchmark cohort, no comparative speedup claim',source_manifest=manifest,inputs=input_ids,binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),native_code_sha256=hashlib.sha256((folder/'native-code.bin').read_bytes()).hexdigest(),native_code_bytes=(folder/'native-code.bin').stat().st_size,pid=process.pid,sample_command=command,sample_exit=sample.returncode,guest_process_exit=code,correct_checked_calls=160,loads_per_call=4934271,stores_per_call=3132606,native_exits_per_call=1,frame_bytes_per_call=245760,total_elapsed_ns=time.monotonic_ns()-started,combined_child_cpu_ns=round(((after.ru_utime+after.ru_stime)-(usage.ru_utime+usage.ru_stime))*1e9),scope='OS samples include execution plus outside-timer checks/setup/retirement; attribute separately, never treat sample counts as exact scoped CPU time')
+(folder/'actual.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps({k:v for k,v in result.items() if k not in ('source_manifest','inputs')},indent=2));print('SAMPLE_TAIL',(folder/'sample.txt').read_text()[-1600:])

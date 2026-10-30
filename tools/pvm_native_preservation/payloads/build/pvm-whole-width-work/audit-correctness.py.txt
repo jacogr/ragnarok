@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Inert author audit of the exact-head clocks-disabled memory gate; never qualifies timing."""
+import pathlib,json,hashlib,tarfile
+root=pathlib.Path(__file__).resolve().parents[2];latest=json.loads((root/'build/pvm-whole-width-correctness-latest.json').read_text());folder=pathlib.Path(latest['path']);x=json.loads((folder/'results.json').read_text())
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+assert x['revision']=='4d72ae5458773e9dd3b75b7fcb91fab8b5a18b14' and x['status']=='correctness_passed' and x['final_seal']=='passed'
+assert x['runs']==[] and len(x['builds'])==5 and len(x['controls'])==13
+for name,wanted in x['identities'].items():assert sha(root/name)==wanted,name
+for name in ('compiler','clang'):assert sha(pathlib.Path(x[name]['path']))==x[name]['sha256']
+archive=root/x['source_archive']['path'];assert sha(archive)==x['source_archive']['sha256']
+with tarfile.open(archive) as tar:
+ members=tar.getmembers();assert len(members)==len(x['source_maps']) and len({m.name for m in members})==len(members)
+ for m in members:assert hashlib.sha256(tar.extractfile(m).read()).hexdigest()==x['source_maps'][m.name]
+for row in x['builds']+x['controls']:
+ assert (root/row['log']).read_text()==row['output']
+assert all(b['exit_code']==0 for b in x['builds'])
+controls=x['controls'];assert controls[0]['exit_code']==0 and controls[0]['output'].splitlines()[-1]=='WHOLE_CONTROLS_PASS,126,126'
+rows=controls[0]['output'].splitlines()
+assert sum(r.startswith('WIDTH_CALLBACK_CONTROL,') for r in rows)==44
+assert sum(r.startswith('WIDTH_ALIAS_EPOCH_CONTROL,') for r in rows)==4
+positive=[]
+for row in controls[1:7]:
+ assert row['exit_code']==0
+ stem=pathlib.Path(row['log']).stem;_,guest,arm,limit=stem.split('-');limit=int(limit);rows=[r.split(',') for r in row['output'].splitlines()]
+ assert rows.count(['CORRECTNESS_ONLY_CLOCKS_DISABLED','1'])==1 and rows[-1]==['WHOLE_PASS',str(limit)]
+ total=[4934271,3132606] if guest=='pinky' else [954,348] if limit==1000 else [11272390,4203132]
+ expected=[2929099,2291825,2005172,840781] if guest=='pinky' else [833,296,121,52] if limit==1000 else [8198545,3817698,3073845,385434]
+ exits=[r for r in rows if r[0]=='WHOLE_EXIT'];assert len(exits)==2
+ assert all(r[1:]==[str(i),'1','0','1',*map(str,total),'0','0'] for i,r in enumerate(exits))
+ paths=[r for r in rows if r[0]=='WHOLE_MEMORY_PATH']
+ assert not paths
+ if guest=='pinky':assert all(['PINKY_FRAME',str(i),'209440','245760'] in rows for i in range(2))
+ positive.append(dict(guest=guest,arm=arm,limit=limit,actual_calls=2,total_memory=total,native_fast_paths=None))
+for row in controls[7:]:
+ assert row['exit_code']!=0
+ assert ('whole-image ' in row['output'] and ' assertion control' in row['output']) or 'Pinky rendered frame byte' in row['output']
+receipt=dict(status='passed',kind='inert author correctness audit; independent source/actual review is separate',revision=x['revision'],correctness_results_sha256=sha(folder/'results.json'),source_archive=x['source_archive'],archive_members=len(x['source_maps']),sealed_identities=len(x['identities']),builds=5,controls=13,guest_correctness_calls=12,control_images_created=126,control_images_destroyed=126,timed_runs=0,guest_clocks='disabled; zero fields explicitly ineligible for timing',positive_guests=positive,all_source_input_image_compiler_seals=True,all_build_control_raw_logs_equal=True)
+(folder/'author-audit.json').write_text(json.dumps(receipt,indent=2)+'\n');print(json.dumps(receipt,indent=2))

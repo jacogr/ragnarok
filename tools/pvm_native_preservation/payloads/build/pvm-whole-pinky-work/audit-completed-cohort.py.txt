@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+"""Inert author audit of retained source, images, raw logs and fixed-cohort arithmetic."""
+import hashlib, importlib.util, json, pathlib, statistics, sys, tarfile
+root=pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(root/'tools'))
+import pvm_whole_sieve as harness
+folder=pathlib.Path(json.loads((root/'build/pvm-whole-pinky-latest.json').read_text())['path'])
+data=json.loads((folder/'results.json').read_text())
+def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+assert data['revision']=='cee9f9d72493fd25dfe8596817f0abdcca6e906a'
+assert data['status']=='passed' and data['final_seal']=='passed'
+assert data['performance_equivalent_to_production'] is False
+assert data['summary']==harness.summarize(data['runs'],'pinky')
+assert len(data['runs'])==78 and len(data['builds'])==4 and len(data['controls'])==9
+assert all(row['exit_code']==0 for row in data['builds'])
+for path,wanted in data['identities'].items(): assert sha(root/path)==wanted,path
+for path,wanted in data['external_compilers'].items(): assert sha(pathlib.Path(path))==wanted,path
+assert sha(pathlib.Path(data['compiler']['path']))==data['compiler']['sha256']
+archive=root/data['source_archive']['path']
+assert sha(archive)==data['source_archive']['sha256']
+with tarfile.open(archive) as tar:
+    members=tar.getmembers()
+    assert len(members)==len(data['source_maps'])
+    assert len({x.name for x in members})==len(members)
+    for member in members:
+        assert member.isfile() and member.name in data['source_maps']
+        assert hashlib.sha256(tar.extractfile(member).read()).hexdigest()==data['source_maps'][member.name]
+for row in data['builds']+data['controls']+[x['run'] for x in data['runs']]:
+    assert (root/row['log']).read_text()==row['output'],row['log']
+controls=data['controls']
+assert controls[0]['exit_code']==0 and controls[0]['output'].splitlines()[-1]=='WHOLE_CONTROLS_PASS,23,23'
+assert controls[2]['exit_code']==0 and controls[2]['output'].splitlines()[-1]=='WHOLE_PASS,1'
+for row,needle in zip(controls[3:6],('whole-image pinky assertion control','pvm sieve native assertion control','sieve reference assertion control')):
+    assert row['exit_code']!=0 and needle in row['output']
+for run in data['runs']:
+    assert run['run']['exit_code']==0
+    assert run['run']['process_cpu_ns']>0 and run['run']['process_elapsed_ns']>0
+whole=[x for x in data['runs'] if x['role']==harness.ROLES[0]]
+assert len(whole)==26
+assert all(x['measured']['code_bytes']==416152 and x['measured']['compiled_instructions']==10576 for x in whole)
+assert all(x['measured']['native_exits']==[1,1] and x['measured']['checked_helpers']==[[4934271,3132606]]*2 for x in whole)
+for row,needle in zip(controls[6:],('Pinky rendered frame byte','Pinky rendered frame byte','Pinky rendered frame mismatch')):
+    assert row['exit_code']!=0 and needle in row['output']
+frame=(folder/'inputs/1/frame-abgr.bin').read_bytes();address=int((folder/'inputs/1/frame-address.txt').read_text())
+assert address==209440 and len(frame)==245760 and sha(folder/'inputs/1/frame-abgr.bin')==data['frame_oracle']['sha256']
+raw=(folder/'inputs/1/input-1.bin').read_bytes();expected=(folder/'inputs/1/expected-1.bin').read_bytes()
+import struct
+wire,entry,limit,pages=struct.unpack_from('<IIII',raw,8)
+assert raw[:8]==b'PVMSIV01' and expected[:8]==b'PVMSIE01' and pages==143 and limit==1
+assert len(raw)==136+wire+pages*4101 and len(expected)==120+pages*4096
+assert struct.unpack_from('<Q',expected,16+7*8)[0]==1
+memory={}
+for i in range(pages):
+    at=136+wire+i*4101;index=struct.unpack_from('<I',raw,at)[0];permission=raw[at+4]
+    assert permission in (1,2) and index not in memory
+    memory[index]=expected[120+i*4096:120+(i+1)*4096]
+assert bytes(memory[(address+i)//4096][(address+i)%4096] for i in range(len(frame)))==frame
+assert len(set(frame))>1
+receipt=dict(status='passed',kind='inert author audit; reuses author parser; independent review separate',
+    revision=data['revision'],results_sha256=sha(folder/'results.json'),source_archive_sha256=sha(archive),
+    source_archive_members=len(data['source_maps']),sealed_identities=len(data['identities']),
+    timed_processes=78,timed_guest_calls=156,retained_processes=60,retained_guest_calls=120,
+    native_whole_timed_calls=52,native_whole_total_exits=52,
+    native_whole_checked_loads_per_call=4934271,native_whole_checked_stores_per_call=3132606,
+    native_whole_checked_helpers_per_call=8066877,whole_control_created=23,whole_control_destroyed=23,
+    arithmetic='both-order medians/min/max and discard policy exactly recomputed from raw rows',
+    logs='all build, control and run logs byte equal retained rows',
+    gas_and_ownership_equivalent=False,framebuffer_address=address,framebuffer_bytes=len(frame),framebuffer_sha256=sha(folder/'inputs/1/frame-abgr.bin'),framebuffer_oracle='reference-derived actual rendered output, not independent NES golden',provenance_limits=data['provenance_limits'])
+(folder/'author-audit.json').write_text(json.dumps(receipt,indent=2)+'\n')
+print(json.dumps(receipt,indent=2))
