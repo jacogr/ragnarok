@@ -54,17 +54,17 @@ def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-
     """Use identical native-owner framing for both compared public JIT roles and strict lifecycle parsers."""
     if protocol not in ('matched-owner-v1', 'matched-owner-policy-v2'):
         raise ValueError('Unknown application comparison protocol')
-    current_policy = protocol == 'matched-owner-policy-v2' and role in ('interpreter', 'jit')
+    current_policy = protocol == 'matched-owner-policy-v2' and role in ('interpreter', 'baseline_interpreter', 'jit')
     counters = None
     policy = None
     doom = case in ('init','tick')
     if role in ('baseline','jit') or current_policy or (role=='core' and doom):
         output,counters = owner_receipt(output,case)
     if current_policy:
-        output,policy = policy_receipt(output, 'interpreted' if role == 'interpreter' else 'jit')
+        output,policy = policy_receipt(output, 'interpreted' if role in ('interpreter', 'baseline_interpreter') else 'jit')
         if any(counters[key] != policy[key] for key in ('fragments','calls','operations')):
             raise ValueError('Policy and native owner counters disagree')
-        if role == 'interpreter' and any(counters.values()):
+        if role in ('interpreter', 'baseline_interpreter') and any(counters.values()):
             raise ValueError('Forced interpreter published native owner activity')
     if role=='reference':
         parsed = reference_lifecycle_samples(output,case,event_bytes) if doom else parse_process_output(output,'polkavm_interpreter',limit,guest=case)
@@ -92,7 +92,7 @@ def application_defines(architecture, role, has_x86):
     """Historical pre-x86 sources keep their checked fallback; current interpreter/JIT use identical build flags."""
     if architecture not in ('arm64','x86_64'):
         raise ValueError('Unsupported native application architecture')
-    if architecture == 'x86_64' and (role != 'baseline' or has_x86):
+    if architecture == 'x86_64' and (role not in ('baseline', 'baseline_interpreter') or has_x86):
         return ['pvmX86Jit']
     return ['pvmArm64Jit']
 
@@ -102,11 +102,16 @@ def run(architecture="arm64", build=None, baseline=None):
     if not application_host(architecture, platform.system(), platform.machine()):
         raise SystemExit('Application experiment requires its actual supported native host')
     folder = BUILD if build is None else Path(build)
+    paired_interpreter = os.environ.get('PVM_INTERPRETER_PAIR') == '1'
+    if paired_interpreter and baseline is None and BASELINE is None:
+        raise ValueError('Paired interpreter comparison requires an exact baseline SHA')
+    roles = ('interpreter', 'baseline_interpreter', 'baseline', 'jit', 'core', 'reference') if paired_interpreter else ROLES
     baseline = baseline_revision(BASELINE if baseline is None else baseline)
     folder.mkdir(parents=True,exist_ok=True)
     report = dict(status='incomplete',architecture=architecture,baseline=baseline,platform=platform.platform(),cpu=cpu_model(),
                   builds=[],sources={},controls=[],runs=[],comparison_protocol='matched-owner-policy-v2',
-                  policies=dict(interpreter='interpreted', jit='jit', baseline='matching available native build; checked fallback without x86 support',
+                  paired_interpreter=paired_interpreter,
+                  policies=dict(interpreter='interpreted', baseline_interpreter='interpreted', jit='jit', baseline='matching available native build; checked fallback without x86 support',
                                 core='retained core JIT', reference='polkavm-interpreted'))
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     (folder/'summary.md').write_text('Application comparison incomplete.\n')
@@ -118,6 +123,8 @@ def run(architecture="arm64", build=None, baseline=None):
     report['toolchain'] = json.loads((ROOT/'spec/toolchain.json').read_text())
     report['source_revisions'] = dict(baseline=baseline, interpreter=report['revision'],
                                     jit=report['revision'], core=report['revision'])
+    if paired_interpreter:
+        report['source_revisions']['baseline_interpreter'] = baseline
     report['driver_revision'] = report['revision']
     fixtures = prepare_inputs(checks,folder/'inputs')
     # Reuse maintained pinned-source/asset/ROM/link/host controls before fresh application timings.
@@ -147,11 +154,11 @@ def run(architecture="arm64", build=None, baseline=None):
                  cases[4][2],cases[4][3]]:
         ids[path]=digest(path)
     images = {}
-    for role in ROLES[:-1]:
+    for role in roles[:-1]:
         canonical = folder/'snapshot'
         if canonical.exists(): shutil.rmtree(canonical)
         canonical.mkdir()
-        if role=='baseline':
+        if role in ('baseline', 'baseline_interpreter'):
             raw=subprocess.check_output(['git','archive',baseline,'src','native/pvm_jit'],cwd=ROOT)
             with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
                 for member in archive.getmembers():
@@ -171,7 +178,7 @@ def run(architecture="arm64", build=None, baseline=None):
             driver.write_text(snapshot_imports(text, canonical/'src/pvm'))
             defines=application_defines(architecture, role, (canonical/'src/pvm/internal/x86_jit.nim').is_file())
             # All public policy roles need identical code-generation settings, including out-of-clock coverage receipts.
-            if role in ('interpreter','baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
+            if role in ('interpreter','baseline_interpreter','baseline','jit') or (role=='core' and family=='doom'): defines+=['pvmArm64JitOwnerReceipt']
             if role=='core' and family=='kernel': defines+=['pvmArm64JitControlReceipt']
             pair=[]
             for repeat in range(2):
@@ -189,9 +196,13 @@ def run(architecture="arm64", build=None, baseline=None):
     # Current public policies must differ only at runtime: exact sources, flags and executable bytes agree.
     if report['sources']['interpreter'] != report['sources']['jit']:
         raise ValueError('Current policy source cohorts differ')
+    if paired_interpreter and report['sources']['baseline_interpreter'] != report['sources']['baseline']:
+        raise ValueError('Baseline policy source cohorts differ')
     for family in ('kernel','doom'):
         if images['interpreter',family].read_bytes() != images['jit',family].read_bytes():
             raise ValueError('Current interpreted/JIT policy images differ')
+        if paired_interpreter and images['baseline_interpreter',family].read_bytes() != images['baseline',family].read_bytes():
+            raise ValueError('Baseline interpreted/JIT policy images differ')
     report['equal_policy_image_control'] = True
     # An unchanged source cohort is an A/A control: role naming must never change either public executable image.
     report['equal_source_control'] = report['sources']['baseline'] == report['sources']['jit']
@@ -212,9 +223,9 @@ def run(architecture="arm64", build=None, baseline=None):
                      RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'),RAGNAROK_PVM_DOOM_PHASE=case,
                      RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'))
             if not doom: env.update(RAGNAROK_PVM_SIEVE_INPUT=str(data),RAGNAROK_PVM_SIEVE_EXPECTED=str(expected))
-            for role in (ROLES if order==0 else ROLES[::-1]):
+            for role in (roles if order==0 else roles[::-1]):
                 # Historical and retained-core roles never inherit a caller's current public policy override.
-                env['RAGNAROK_PVM_BACKEND'] = {'interpreter':'interpreted','jit':'jit'}.get(role, '')
+                env['RAGNAROK_PVM_BACKEND'] = {'interpreter':'interpreted','baseline_interpreter':'interpreted','jit':'jit'}.get(role, '')
                 env['RAGNAROK_PVM_DOOM_LIFECYCLE']='1' if role=='reference' and doom else '0'
                 args=[images[role,family]] if role!='reference' else ([reference_doom,'run',DOOM/'doom.polkavm',env['RAGNAROK_PVM_DOOM_ROM'],DOOM/'prepared',case] if doom else [reference,'--sieve',artifact if case=='sieve' else ROOT/f'tests/fixtures/{"pvm-pinky" if case=="pinky" else "pvm-guests"}/{case}.polkavm',data.parent,limit,13])
                 if order==0:
@@ -243,7 +254,9 @@ def run(architecture="arm64", build=None, baseline=None):
                 report['runs'].append(dict(case=case,limit=limit,order=order,role=role,run=row,parsed=parsed))
                 unchanged(ids)
                 (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
-    if len(report['runs'])!=70 or len(report['controls'])!=115: raise ValueError('Incomplete application cohort')
+    expected_controls = sum(4 if case in ('init','tick') else 3 for case,_,_,_ in cases)*len(roles)
+    if len(report['runs'])!=2*len(cases)*len(roles) or len(report['controls'])!=expected_controls:
+        raise ValueError('Incomplete application cohort')
     if not any(r['parsed']['native']['operations']>0 for r in report['runs'] if r['role']=='jit'):
         raise ValueError('No native public execution')
     if os.environ.get('PVM_JIT_PROCESS_REPLAYS') == '1':
@@ -252,16 +265,21 @@ def run(architecture="arm64", build=None, baseline=None):
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
     report['status']='passed'
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
-    lines=['CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.','',
-           '| Case | Public interpreter | Public previous JIT | Public current JIT | Retained core JIT | PolkaVM interpreted call | Current / interpreter | Current / reference |',
-           '|---|---:|---:|---:|---:|---:|---:|---:|']
+    lines=['CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.','']
+    columns = ['Public interpreter']
+    if paired_interpreter: columns.append('Public previous interpreter')
+    columns += ['Public previous JIT', 'Public current JIT', 'Retained core JIT',
+                'PolkaVM interpreted call', 'Current / interpreter', 'Current / reference']
+    if paired_interpreter: columns.append('Interpreter / previous interpreter')
+    lines += ['| Case | '+' | '.join(columns)+' |', '|---|'+'---:|'*len(columns)]
     for case,limit,_,_ in cases:
-        columns=[[] for _ in range(7)]
+        values_by_column=[[] for _ in columns]
         for order in range(2):
-            medians={role:statistics.median(next(r for r in report['runs'] if (r['case'],r['limit'],r['order'],r['role'])==(case,limit,order,role))['parsed']['execution']['samples'][i]['cpu_ns'] for i in range(3,13)) for role in ROLES}
-            values=[*[f'{medians[role]/1e6:.3f}' for role in ROLES],f'{medians["jit"]/medians["interpreter"]:.3f}',f'{medians["jit"]/medians["reference"]:.3f}']
-            for col,value in zip(columns,values): col.append(value)
-        lines.append('| '+case+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in columns)+' |')
+            medians={role:statistics.median(next(r for r in report['runs'] if (r['case'],r['limit'],r['order'],r['role'])==(case,limit,order,role))['parsed']['execution']['samples'][i]['cpu_ns'] for i in range(3,13)) for role in roles}
+            values=[*[f'{medians[role]/1e6:.3f}' for role in roles],f'{medians["jit"]/medians["interpreter"]:.3f}',f'{medians["jit"]/medians["reference"]:.3f}']
+            if paired_interpreter: values.append(f'{medians["interpreter"]/medians["baseline_interpreter"]:.3f}')
+            for column,value in zip(values_by_column,values): column.append(value)
+        lines.append('| '+case+' '+str(limit)+' | '+' | '.join(' / '.join(c) for c in values_by_column)+' |')
     lines += lifecycle_sections(report).splitlines()
     lines += replay_summary(report).splitlines()
     (folder/'summary.md').write_text('\n'.join(lines)+'\n')
