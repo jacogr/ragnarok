@@ -1,0 +1,11 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "fixtures": [
+    "jamnp_audit"
+  ],
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}
