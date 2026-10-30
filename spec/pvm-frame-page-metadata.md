@@ -79,6 +79,12 @@ Private reproducibility receipts and full raw controls are under
 `411213a23223c5568b4d38047cca592b0dadc689`. Subsequent changes add evidence prose and
 restore the diagnostic source observer's explicit actual-permission comparison against the
 independent witness; execution paths are unchanged. Final focused CI qualifies that corrected
-observer together with the complete native witnesses.
+observer together with the complete native witnesses. The core lifecycle benchmark also calls
+`checkFlatSource` with its independent fixture images outside all clocks, using the legacy
+one-argument helper only when compiling against archived pre-metadata owners. Its final-RAM
+reference checker and its original-source checker remain separate obligations. The corrected
+exact driver passes local archived-parent/native/forced-refusal builds, thirteen complete
+CPU/RAM/source samples per role and assertion-negative controls. Positive native coverage and
+zero refused coverage are checked; no timing claim uses these compatibility runs.
 Focused Linux ARM comparison remains required. Broad CI is reserved for the final integration
 boundary after local and focused qualification.

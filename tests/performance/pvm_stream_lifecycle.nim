@@ -78,6 +78,12 @@ for sample in 0..<samples:
   assert uint64(frame.info.gas) == word(expected, 8, 8)
   for i in 0..<13: assert uint64(frame.info.registers[i]) == word(expected, 16+i*8, 8)
   checkFlatReference(frame, expected)
+  when declared(MemoryPageSlot):
+    # Independent fixture bytes still witness the original source after metadata-only frame retention.
+    checkFlatSource(frame, images)
+  else:
+    # Archived comparison owners retain their original one-argument source observer.
+    checkFlatSource(frame)
   echo "PHASE,", guest, ",", sample, ",", before-beforeReset, ",", elapsed, ",",
       afterPublication-afterExecution, ",", afterPublication-beforeReset
   echo "PHASE_CACHE,", guest, ",", sample, ",", flatNodes(frame), ",", flatPreparationUnits(frame),
