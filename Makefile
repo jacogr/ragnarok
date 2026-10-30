@@ -665,3 +665,8 @@ profile-pvm-x86-jit:
 check-pvm-doom-timing: check-inventory toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_timing.py
+
+# Private local ARM64 whole-program sieve; gas is disabled only for the standalone diagnostic image.
+.PHONY: check-pvm-whole-sieve
+check-pvm-whole-sieve: check-inventory toolchain rust-tools
+	$(PYTHON) tools/pvm_whole_sieve.py
