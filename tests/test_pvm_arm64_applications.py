@@ -2,15 +2,31 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Reject foreign, partial and impossible native-owner evidence in the local application protocol."""
 from pathlib import Path
+import os
 import sys
 import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from pvm_arm64_jit_applications import owner_receipt, parse_run
+from pvm_arm64_jit_applications import application_defines, owner_receipt, parse_run, run
 
 
 class NativeOwnerReceiptTests(unittest.TestCase):
+    def test_paired_interpreter_requires_a_fixed_baseline(self):
+        """An opt-in comparison cannot silently use HEAD or a moving remote as its baseline."""
+        with patch.dict(os.environ, {'PVM_INTERPRETER_PAIR': '1'}), \
+                patch('pvm_arm64_jit_applications.BASELINE', None), \
+                patch('pvm_arm64_jit_applications.application_host', return_value=True):
+            with self.assertRaisesRegex(ValueError, 'exact baseline SHA'):
+                run()
+
+    def test_baseline_interpreter_uses_baseline_native_build_profile(self):
+        """The paired baseline may differ only by runtime policy, including the pre-x86 fallback."""
+        for architecture, has_x86 in (('arm64', False), ('x86_64', False), ('x86_64', True)):
+            with self.subTest(architecture=architecture, has_x86=has_x86):
+                self.assertEqual(application_defines(architecture, 'baseline_interpreter', has_x86),
+                                 application_defines(architecture, 'baseline', has_x86))
+
     def test_complete_receipt_preserves_original_protocol(self):
         """Coverage counters supplement the unchanged complete-state timing protocol; they cannot replace it."""
         body,counters=owner_receipt('original\nARM_OWNER,tick,2,20,80,128,1000,10,8\n','tick')
@@ -36,6 +52,7 @@ class NativeOwnerReceiptTests(unittest.TestCase):
         """Current interpreted/JIT roles seal policy and owner counters, while archived v1 framing stays usable."""
         for role, requested, counts, actual in (
                 ('interpreter', 'interpreted', '0,0,0,0,0,0,0', 'interpreted'),
+                ('baseline_interpreter', 'interpreted', '0,0,0,0,0,0,0', 'interpreted'),
                 ('jit', 'jit', '2,20,80,128,1000,10,8', 'jit'),
                 ('jit', 'jit', '1,3,0,128,1000,0,0', 'interpreted')):
             fallback = int(requested == 'jit')
@@ -54,10 +71,12 @@ class NativeOwnerReceiptTests(unittest.TestCase):
                               protocol='matched-owner-policy-v2')
         # Zero operations cannot disguise code publication in the forced-interpreted owner.
         with patch('pvm_arm64_jit_applications.parse_public', return_value={}):
-            with self.assertRaisesRegex(ValueError, 'native owner activity'):
-                parse_run('full-state\nPVM_POLICY,1,interpreted,1,1,0,interpreted,0,0,0\n'+
-                          'ARM_OWNER,tick,0,0,0,0,1,0,0\n', 'interpreter', 'tick', 0,
-                          protocol='matched-owner-policy-v2')
+            for role in ('interpreter', 'baseline_interpreter'):
+                with self.subTest(role=role), self.assertRaisesRegex(ValueError,
+                        'native owner activity'):
+                    parse_run('full-state\nPVM_POLICY,1,interpreted,1,1,0,interpreted,0,0,0\n'+
+                              'ARM_OWNER,tick,0,0,0,0,1,0,0\n', role, 'tick', 0,
+                              protocol='matched-owner-policy-v2')
 
     def test_foreign_partial_and_noninteger_receipts(self):
         """Only the selected phase's complete bounded scalar receipt can claim native execution."""

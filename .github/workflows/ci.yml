@@ -30,6 +30,11 @@ name: CI
         type: string
         default: ""
         required: false
+      pvm_interpreter_pair:
+        description: Compare the explicit interpreted policy with the supplied baseline in the PVM application cohort
+        type: boolean
+        default: false
+        required: false
 
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
@@ -720,6 +725,7 @@ jobs:
       PVM_CI_SYSTEM: Linux
       PVM_CI_ARCH: ${{ matrix.family.group }}
       PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
+      PVM_INTERPRETER_PAIR: ${{ inputs.pvm_interpreter_pair && '1' || '0' }}
       PVM_JIT_PROCESS_REPLAYS: ${{ (inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-replay') && '1' || '0' }}
     steps:
       - *checkout
@@ -730,6 +736,8 @@ jobs:
           python3 - <<'PYBASE'
           import os,re,subprocess
           baseline=os.environ.get('PVM_COMPARE_PREPARED_BASE','')
+          if os.environ.get('PVM_INTERPRETER_PAIR')=='1' and not baseline:
+              raise ValueError('Paired interpreter comparison requires an exact baseline SHA')
           if baseline:
               if re.fullmatch(r'[0-9a-f]{40}',baseline) is None:
                   raise ValueError('Prepared baseline must be a full lowercase commit SHA')

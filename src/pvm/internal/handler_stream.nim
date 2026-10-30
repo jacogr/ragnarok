@@ -287,6 +287,25 @@ proc flatFusedRegisters[First, Second: static[int]](f: var FlatFrame, off: uint3
   f.info.registers[index] = value
   next+1
 
+proc flatRegisterRun(f: var FlatFrame, off: uint32): uint32 =
+  ## Execute a sealed straight-line register span in one checked call. Every later node remains
+  ## addressable for an interior entry and for the temporary source-attempt barrier.
+  let count = f.arguments[int(off)].y and 0x00ffffff'u32
+  assert count >= 4 and uint64(off)+uint64(count) <= uint64(f.handlers.len)
+  var current = off
+  let finish = off+count
+  while current < finish:
+    if current == f.barrier: return flatBudget(f, current)
+    let args = f.arguments[int(current)]
+    let opcode = byte(args.y shr 24)
+    var index: range[0..12] = 0
+    var value = RegisterValue(0)
+    if not computeRegisterOperands(args.slots, args.x, opcode, f.info.registers, index, value):
+      return flatLocal(f, current, oracle.StepError.UnsupportedInstruction)
+    f.info.registers[index] = value
+    inc current
+  finish
+
 func signedLess(a, b: uint64): bool =
   ## Compare unsigned register bits in signed order by flipping their sign bits.
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
@@ -1273,6 +1292,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   var index = start
   var first = true
   var pairedPrevious = false
+  var runRemaining = 0
   while index < f.plan.facts.len:
     let fact = f.plan.facts[index]
     let coordinate = uint32(f.handlers.len)
@@ -1313,8 +1333,30 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     var selected = fact.handler
     assert selected != nil
     if fact.opcode != 2:
+      var args = fact.args
+      var inRun = false
+      if runRemaining > 0:
+        # The start node owns the direct checked loop; later nodes retain their original handlers.
+        inRun = true
+        args.y = uint32(fact.opcode) shl 24
+        dec runRemaining
+      elif not f.plan.allowNative and not pairedPrevious and isRegisterOpcode(fact.opcode) and
+          fact.fallthrough:
+        # Only explicit interpretation uses this path. Native scanners keep their original
+        # handler identities, while the sealed source facts determine this run exactly once.
+        var length = 1
+        while length < 0x00ffffff and index+length < f.plan.facts.len and
+            isRegisterOpcode(f.plan.facts[index+length].opcode) and
+            f.plan.facts[index+length].fallthrough:
+          inc length
+        if length >= 4:
+          selected = flatRegisterRun
+          # Register workers read only x and the sealed slots; the run word also carries its opcode.
+          args.y = (uint32(fact.opcode) shl 24) or uint32(length)
+          runRemaining = length-1
       # Pairs never overlap: the second node stays the original handler, so no recursive handler chain can form.
-      if not pairedPrevious and fact.fallthrough:
+      if not inRun and selected != flatRegisterRun and not pairedPrevious and
+          fact.fallthrough:
         let first = if isRegisterOpcode(fact.opcode): flatRegisterPairHandler(
             fact.opcode) else: flatMemoryPairHandler(fact.opcode)
         if first != nil:
@@ -1329,7 +1371,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           pairedPrevious = true
         else: pairedPrevious = false
       else: pairedPrevious = false
-      if selected != nil: flatEmit(f, selected, fact.args, uint32(index))
+      if selected != nil: flatEmit(f, selected, args, uint32(index))
     if fact.ending: break
     inc index
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):

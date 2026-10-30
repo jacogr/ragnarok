@@ -42,14 +42,23 @@ def lifecycle_sections(report):
         return output
 
     lines = ['','All following CPU values are milliseconds, forward / reverse. Constructors and cold calls are separate from reused calls.']
-    lines += table('Public owner construction and cold sample zero',[
-        ('Interpreter owner','interpreter',lambda p:p['execution']['preparation_ns'][0],True),
+    owner_columns = [
+        ('Interpreter owner','interpreter',lambda p:p['execution']['preparation_ns'][0],True)]
+    if report.get('paired_interpreter'):
+        owner_columns.append(('Previous interpreter owner','baseline_interpreter',
+                              lambda p:p['execution']['preparation_ns'][0],True))
+    owner_columns += [
         ('Previous owner','baseline',lambda p:p['execution']['preparation_ns'][0],True),
         ('Current owner','jit',lambda p:p['execution']['preparation_ns'][0],True),
-        ('Interpreter cold','interpreter',lambda p:p['execution']['samples'][0]['cpu_ns'],True),
+        ('Interpreter cold','interpreter',lambda p:p['execution']['samples'][0]['cpu_ns'],True)]
+    if report.get('paired_interpreter'):
+        owner_columns.append(('Previous interpreter cold','baseline_interpreter',
+                              lambda p:p['execution']['samples'][0]['cpu_ns'],True))
+    owner_columns += [
         ('Previous cold','baseline',lambda p:p['execution']['samples'][0]['cpu_ns'],True),
         ('Current cold','jit',lambda p:p['execution']['samples'][0]['cpu_ns'],True),
-        ('Reference cold call','reference',lambda p:p['execution']['samples'][0]['cpu_ns'],True)])
+        ('Reference cold call','reference',lambda p:p['execution']['samples'][0]['cpu_ns'],True)]
+    lines += table('Public owner construction and cold sample zero',owner_columns)
     lines += table('Retained core construction and reused lifecycle; these are not public-call ratios',[
         ('Facts constructor','core',lambda p:p['execution']['preparation_ns'][0],True),
         ('Memory/frame constructor','core',lambda p:p['execution']['preparation_ns'][1],True),
