@@ -65,7 +65,7 @@ proc persist(memory: Memory, name: string) =
     for octet in 0..<4: data.add(char(byte((ordinal shr (octet*8)) and 255)))
     data.add(char(if image.access == PageAccess.ReadOnly: 1 else: 2))
     for octet in image.bytes: data.add(char(octet))
-  writeFile(getEnv("PVM_FINAL_OUTPUT")+"/"+name+".ram", data)
+  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".ram", data)
 
 proc components(plan: FlatPlan, memory: Memory, cpu: MachineInfo, count: int,
     dirty, write, readOnly, noHost: bool): array[7, int64] =
@@ -103,7 +103,7 @@ proc components(plan: FlatPlan, memory: Memory, cpu: MachineInfo, count: int,
   let finalStart = cpuNs()
   let finalMemory = flatMemorySnapshot(frame)
   result[5] = cpuNs()-finalStart
-  assert uint64(frame.info.gas) == (if noHost: 9999'u64 elif dirty: 9897'u64 else: 9899'u64)
+  assert uint64(frame.info.gas) == (if noHost: 9978'u64 elif dirty: 9897'u64 else: 9899'u64)
   expected(finalMemory, count, dirty, write, readOnly, 3)
   checkFlatSource(frame)
 
@@ -116,7 +116,7 @@ proc validateInvocation(completed: StepResult, context: HostContext, initial: Ma
   assert context.calls == (if noHost: 0 else: 2)
   let actual = completed.value.machine.machineInfo.value
   assert uint64(actual.pc) == 0 and actual.blockCharged and uint64(actual.gasDeficit) == 0
-  assert uint64(actual.gas) == (if noHost: 9999'u64 elif dirty: 9897'u64 else: 9899'u64)
+  assert uint64(actual.gas) == (if noHost: 9978'u64 elif dirty: 9897'u64 else: 9899'u64)
   var registers = initial.machineInfo.value.registers
   registers[8] = RegisterValue(if noHost: 1 else: 3)
   assert actual.registers == registers

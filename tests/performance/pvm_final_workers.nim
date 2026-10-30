@@ -9,7 +9,8 @@ import ../../src/pvm/host/fetch as host_fetch
 import ../../src/pvm/refinement_exports
 import ../../src/state/refinement/[bootstrap as refinement_bootstrap, outcome as refinement_outcome]
 import ../../src/state/accumulation/[machine as accumulation_machine,
-    dispatch as accumulation_dispatch, invocation as accumulation_invocation]
+    dispatch as accumulation_dispatch, invocation as accumulation_invocation,
+    service as accumulation_service]
 import ../../src/codec/[bounded, composite, c2_records]
 import ../../src/codec/work/report as work_report
 import ../support/[pvm_refinement_outcome, pvm_accumulation_context, pvm_accumulation_program]
@@ -23,7 +24,7 @@ proc persistMachine(machine: Machine, name: string) =
   var words = $uint64(cpu.pc) & "," & $uint64(cpu.gas) & "," & $uint64(cpu.gasDeficit) & "," &
       $cpu.blockCharged
   for value in cpu.registers: words.add("," & $uint64(value))
-  writeFile(getEnv("PVM_FINAL_OUTPUT")+"/"+name+".cpu", words+"\n")
+  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".cpu", words & "\n")
   let images = memoryImages(machine.memoryOf.value).value
   var bytes = newStringOfCap(images.len*4101)
   for page in 0..<images.len:
@@ -31,7 +32,7 @@ proc persistMachine(machine: Machine, name: string) =
     for octet in 0..<4: bytes.add(char(byte((uint32(image.index) shr (octet*8)) and 255)))
     bytes.add(char(if image.access == PageAccess.ReadOnly: 1 else: 2))
     for value in image.bytes: bytes.add(char(value))
-  writeFile(getEnv("PVM_FINAL_OUTPUT")+"/"+name+".ram", bytes)
+  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".ram", bytes)
 
 proc preparationMetrics(source: Program): array[4, int64] =
   ## Keep all temporary prepared handles inside one lifetime before checking ARC retirement from its caller.
@@ -57,7 +58,7 @@ proc preparationProbe(source: Program, name: string) =
     assert getOccupiedMem() == occupied
     rows.add($sample & "," & $observed[0] & "," & $lifetime & "," & $observed[1] & "," &
         $observed[2] & "," & $observed[3] & "\n")
-  writeFile(getEnv("PVM_FINAL_OUTPUT")+"/"+name+".preparation", rows)
+  writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".preparation", rows)
 
 
 type CallMetrics = object
@@ -94,14 +95,24 @@ proc measuredRefinement(selected: RefinementFixtureSource, worker: ExecutionWork
   initialized = default(RefinementBootstrapResult[PreparedRefinementBootstrap])
   result.retire = cpuNs()-retirement
 
-proc measuredAccumulation(selected: PreparedAccumulationInvocation, worker: ExecutionWorker,
+proc admitAccumulation(selected: AccumulationFixtureSource): PreparedAccumulationInvocation =
+  ## Resolve the actual service/code against its original state, then admit the collision-checked invocation.
+  let service = prepareAccumulationService(selected.inputs, selected.index, selected.state,
+      selected.slot, selected.config)
+  assert service.error == AccumulationServiceError.None
+  let invocation = prepareAccumulationInvocation(service.value, selected.entropy, selected.limit)
+  assert invocation.error == AccumulationInvocationError.None
+  invocation.value
+
+proc measuredAccumulation(selected: AccumulationFixtureSource, worker: ExecutionWorker,
     alternate: bool): CallMetrics =
   ## Actual public initialization/dispatch and full terminal CPU consumption, with no escaping RAM/context owner.
   result = default(CallMetrics)
   let limits = InitializationLimits(envelope: InitializationByteLimit(4096),
       program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))
   let before = cpuNs()
-  var initialized = initializeAccumulationMachine(selected, limits, worker)
+  var admitted = admitAccumulation(selected)
+  var initialized = initializeAccumulationMachine(admitted, limits, worker)
   result.prepare = cpuNs()-before
   assert initialized.error == AccumulationMachineError.None
   let fetch = FetchAccumulationLimits(items: ElementLimit(0), bytes: ByteLimit(1),
@@ -126,6 +137,7 @@ proc measuredAccumulation(selected: PreparedAccumulationInvocation, worker: Exec
   let retirement = cpuNs()
   completed = default(AccumulationDispatchResult)
   initialized = default(AccumulationMachineResult[PreparedAccumulationMachine])
+  admitted = default(PreparedAccumulationInvocation)
   result.retire = cpuNs()-retirement
 
 proc main() =
@@ -154,12 +166,12 @@ proc main() =
   # Synthetic complete sources are created once before the actual production bootstrap/initialization clocks.
   let firstRefinement = refinementFixtureSource(refinementCode)
   let otherRefinement = refinementFixtureSource(refinementCode, writable = @[31'u8, 32, 33])
-  let firstAccumulation = pvmBootstrap(guestEnvelope(accumulationCode), 10000,
+  let firstAccumulation = pvmBootstrapSource(guestEnvelope(accumulationCode), 10000,
       includeContexts = true)
-  let otherAccumulation = pvmBootstrap(guestEnvelope(accumulationCode, @[91'u8]), 10000,
+  let otherAccumulation = pvmBootstrapSource(guestEnvelope(accumulationCode, @[91'u8]), 10000,
       includeContexts = true)
   let missedRefinement = refinementFixtureSource(alternateRefinement, writable = @[31'u8, 32, 33])
-  let missedAccumulation = pvmBootstrap(guestEnvelope(alternateAccumulation, @[91'u8]), 10000,
+  let missedAccumulation = pvmBootstrapSource(guestEnvelope(alternateAccumulation, @[91'u8]), 10000,
       includeContexts = true)
   let retained = getEnv("PVM_FINAL_ROLE") == "retained"
   when not defined(pvmWorkerCandidate): assert not retained
@@ -220,7 +232,7 @@ proc main() =
             persistMachine(initialized.value.bootstrapMachine.value, name & "-initial")
             var output = $uint64(completed.value.refinementInfo.value.gasUsed) & "\n"
             for value in bytes: output.add(char(value))
-            writeFile(getEnv("PVM_FINAL_OUTPUT")+"/"+name+".normalized", output)
+            writeFile(getEnv("PVM_FINAL_OUTPUT") & "/" & name & ".normalized", output)
           if call == 0: earlier = completed.value
           assert earlier.refinementOutput.value == @[21'u8, 22, 23]
           let retirement = cpuNs()
@@ -234,9 +246,9 @@ proc main() =
               program: ProgramByteLimit(256), jumps: JumpCountLimit(0), pages: PageLimit(5))
           let prepareStart = cpuNs()
           when defined(pvmWorkerCandidate):
-            var initialized = initializeAccumulationMachine(selected, limits, worker)
+            var initialized = initializeAccumulationMachine(admitAccumulation(selected), limits, worker)
           else:
-            var initialized = initializeAccumulationMachine(selected, limits)
+            var initialized = initializeAccumulationMachine(admitAccumulation(selected), limits)
           prepareNs += cpuNs()-prepareStart
           assert initialized.error == AccumulationMachineError.None
           let source = initialized.value.accumulationMachine.value

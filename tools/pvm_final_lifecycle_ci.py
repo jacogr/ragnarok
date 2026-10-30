@@ -30,6 +30,7 @@ def digest(path):
 
 def fixture_source(text):
     """Expose existing test-only authenticated inputs, excluding fixture manufacture from production clocks."""
+    original = text
     old = '): PreparedRefinementBootstrap ='
     if text.count(old) != 1 or text.count('proc refinementFixture*(') != 1:
         raise ValueError('unexpected fixture factory shape')
@@ -56,7 +57,30 @@ def fixture_source(text):
                    '  ## Test-only original complete inputs; this confers no execution certificate.\n'
                    '  state*: StateStoreSnapshot\n  package*: OwnedWorkPackage\n'
                    '  parameters*: Parameters\n  limits*: RefinementBootstrapLimits\n\n')
-    return text[:index]+declaration+text[index:]
+    end = text.index("\nproc refinementPrice", index)
+    return original+"\n"+declaration+text[index:end]+"\n"
+
+
+def accumulation_fixture_source(text):
+    """Append a test-only raw-input factory; original fixtures and all production admission remain unchanged."""
+    start = text.index('proc pvmBootstrap*(')
+    end = text.index('\nproc pvmParameters*(', start)
+    body = text[start:end]
+    if body.count('): PreparedAccumulationInvocation =') != 1:
+        raise ValueError('Unexpected accumulation factory shape')
+    body = body.replace('proc pvmBootstrap*(', 'proc pvmBootstrapSource*(', 1).replace(
+        '): PreparedAccumulationInvocation =', '): AccumulationFixtureSource =', 1)
+    tail = body.index('  let service = prepareAccumulationService(')
+    body = body[:tail]+('  AccumulationFixtureSource(inputs: inputs, state: state, slot: slot,\n'
+        '    index: InvocationServiceIndex(if precedingService: 1 else: 0),\n'
+        '    config: AccumulationServiceConfig(codeLimit: ServiceCodeLimit(code.len),\n'
+        '      preimageBytes: ByteLimit(preimage.len)), entropy: entropy, limit: ServiceProbeLimit(probes))\n')
+    declaration = ('type AccumulationFixtureSource* = object\n'
+        '  ## Original complete immutable state/batch inputs; this is not a service or invocation certificate.\n'
+        '  inputs*: PreparedAccumulationInputs\n  state*: StateStoreSnapshot\n'
+        '  slot*: HeaderSlot\n  index*: InvocationServiceIndex\n'
+        '  config*: AccumulationServiceConfig\n  entropy*: StateEntropyWord\n  limit*: ServiceProbeLimit\n\n')
+    return text+'\n'+declaration+body
 
 
 def snapshot(revision, canonical):
@@ -74,6 +98,8 @@ def snapshot(revision, canonical):
     fixture = canonical/'tests/support/pvm_refinement_outcome.nim'
     original = fixture.read_text()
     fixture.write_text(fixture_source(original))
+    fixture = canonical/'tests/support/pvm_accumulation_context.nim'
+    fixture.write_text(accumulation_fixture_source(fixture.read_text()))
     return {str(path.relative_to(canonical)): digest(path) for path in sorted(canonical.rglob('*'))
             if path.is_file()}
 
@@ -143,7 +169,7 @@ def main():
             ['reverse','retained','worker'],['reverse','one-shot','worker']],
         case_order='forward ascending, reverse descending; three warmups per row/case',
         timings='process CPU nanoseconds; identical ELF for all modes of each family')
-    scopes = dict(worker='Actual public bootstrap/initialize + invocation/dispatch + normalized output/CPU consumption + complete call-local ARC retirement, plus worker construction/retirement. Fixture creation, full retained-state qualification, file I/O and diagnostics excluded. This is bounded small-guest caller-pipeline throughput, not complete package/block processing.',
+    scopes = dict(worker='Actual refinement bootstrap or accumulation service/invocation admission + initialize + invocation/dispatch + normalized output/CPU consumption + complete call-local ARC retirement, plus worker construction/retirement. Complete immutable fixture/state and prepared batch-input manufacture, full retained-state qualification, file I/O and diagnostics excluded. Per-call accumulation service/code/seed admission remains inside initialization clocks. This is bounded small-guest caller-pipeline throughput, not complete package/block processing.',
         worker_phases='Initialization, dispatch and explicit owner reset are diagnostic subsets; E2E also includes local normalization, constant assertions and remaining procedure cleanup. Same timing/proof overhead in both modes.',
         memory='Prepared public invocation through final publication and separate complete result/context reset; full CPU/RAM/host snapshot validation and I/O outside clocks. Initial immutable RAM capture and code/plan preparation excluded.',
         components='One flat frame per row: entry, guest execution, host publication, host immutable one-byte write, resumption and final publication. Component-frame/temporary teardown is not assigned to a component.',
