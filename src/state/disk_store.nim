@@ -70,8 +70,10 @@ const
 
 proc `=copy`*(destination: var DiskStateStore, source: DiskStateStore) {.error.}
   ## The composite owner may never duplicate either native backend or its retirement obligation.
+
 proc `=dup`*(source: DiskStateStore): DiskStateStore {.error.}
   ## Actual lowering must refuse implicit duplication, including non-last-use sink calls.
+
 proc `=wasMoved`*(store: var DiskStateStore) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(store.journal)
@@ -99,40 +101,50 @@ proc `=destroy`*(store: DiskStateStore) =
 func error*[T](outcome: DiskStoreResult[T]): DiskStoreError =
   ## Inspect success without granting access to another variant's payload.
   outcome.status
+
 func value*[T](outcome: DiskStoreResult[T]): T {.inline,
     requires: outcome.status == DiskStoreError.None.} =
   ## Only a fully published or independently trusted restored state can escape.
   outcome.completed
+
 func stateError*[T](outcome: DiskStoreResult[T]): StateStoreError {.requires:
     outcome.status == DiskStoreError.StateFailure.} =
   ## Preserve actual StateStore validation, policy and required-hash failures.
   outcome.stateReason
+
 func exportError*[T](outcome: DiskStoreResult[T]): TrieError {.requires:
     outcome.status == DiskStoreError.ExportFailure.} =
   ## Inspect only a refused bounded detached export.
   outcome.exportReason
+
 func fileError*[T](outcome: DiskStoreResult[T]): FileError {.requires:
     outcome.status == DiskStoreError.FileFailure.} =
   ## Preserve uncertain append and lifecycle errors without flattening them to missing data.
   outcome.fileReason
+
 func repositoryError*[T](outcome: DiskStoreResult[T]): RepositoryError {.requires:
     outcome.status == DiskStoreError.RepositoryFailure.} =
   ## Inspect only actual trusted-leaf restoration failures.
   outcome.repositoryReason
+
 func error*[T](outcome: DiskIoResult[T]): FileError =
   ## Context and durability consumers inspect the same native file error domain for every layout.
   outcome.status
+
 func value*[T](outcome: DiskIoResult[T]): T {.inline, requires: outcome.status == FileError.None.} =
   ## No failed/default result grants context bytes or a synchronization receipt.
   outcome.completed
+
 func nativeFailure*[T](outcome: DiskStoreResult[T]): FullPagedNativeResult[bool] {.requires:
     outcome.status == DiskStoreError.NativeFailure.} =
   ## Preserve exact native graph, codec, construction or lifecycle causes behind a selected failure.
   outcome.nativeReason
+
 func pagedFailure*[T](outcome: DiskStoreResult[T]): PagedStateResult[bool] {.requires:
     outcome.status == DiskStoreError.PagedFailure.} =
   ## Bounded complete-map staging failures retain their original state/export/geometry causes.
   outcome.pagedReason
+
 func nativeFailed[T, U](outcome: FullPagedNativeResult[U]): DiskStoreResult[T] {.requires:
     outcome.error != FullPagedNativeError.None.} =
   ## Actual file failures keep the existing startup/recovery domain; other native stages remain distinguishable.
@@ -140,19 +152,23 @@ func nativeFailed[T, U](outcome: FullPagedNativeResult[U]): DiskStoreResult[T] {
     DiskStoreResult[T](status: DiskStoreError.FileFailure, fileReason: outcome.fileError)
   else:
     DiskStoreResult[T](status: DiskStoreError.NativeFailure, nativeReason: outcome.failure)
+
 func pagedFailed[T, U](outcome: PagedStateResult[U]): DiskStoreResult[T] {.requires:
     outcome.error != PagedStateError.None.} =
   ## Native failures preserve the facade's exact IO uncertainty domain; private staging grants no prefix.
   if outcome.error == PagedStateError.NativeFailure: nativeFailed[T, bool](outcome.nativeFailure)
   else: DiskStoreResult[T](status: DiskStoreError.PagedFailure, pagedReason: outcome.failure)
+
 proc failPaged(store: DiskStateStore) =
   ## Only the excluded IO owner or startup mutates this private uncertainty latch; host getters perform no disk operations.
   let cache = store.pagedCache
   if cache != nil: cache.healthy = false # Already retained complete snapshots remain independently readable.
+
 proc copyContext(bytes: openArray[byte]): seq[byte] =
   ## Callers prove configured context and host extents before allocating detached immutable-cache transport.
   result = newSeq[byte](bytes.len)
   for index in 0..<bytes.len: result[index] = bytes[index] # No caller-owned mutable backing enters the cache.
+
 func contextFits(size: uint64, config: FullPagedNativeConfig, previous = false): bool =
   ## Bound the complete opaque envelope and its additional resident metadata copies before allocation.
   let overhead = uint64(PagedContextPrefix)+(if previous: uint64(
@@ -161,6 +177,7 @@ func contextFits(size: uint64, config: FullPagedNativeConfig, previous = false):
   let physical = uint64(config.limits.dataset.bytes)
   size > 0 and overhead <= cap and size <= cap-overhead and overhead <= physical and size <=
       physical-overhead
+
 proc encodePagedContext(context: openArray[byte], previous: FullPagedManifest,
     config: FullPagedNativeConfig): DiskStoreResult[seq[byte]] =
   ## Only a completely selected prior manifest may identify an old artifact; no directory-derived cleanup target is inferred.
@@ -187,6 +204,7 @@ proc encodePagedContext(context: openArray[byte], previous: FullPagedManifest,
   for index in 0..<context.len: bytes[prefix+index] = context[
       index] # Stable input is copied; no caller backing escapes.
   DiskStoreResult[seq[byte]](status: DiskStoreError.None, completed: bytes)
+
 proc decodePagedContext(bytes: openArray[byte], selected: FullPagedManifest,
     config: FullPagedNativeConfig): DiskStoreResult[PagedDiskContext] =
   ## Complete native authentication precedes strict envelope decoding; metadata alone grants no old-file deletion authority.
@@ -242,32 +260,40 @@ proc decodePagedContext(bytes: openArray[byte], selected: FullPagedManifest,
 func opened*(store: DiskStateStore): bool =
   ## Poisoned owners remain opened until the caller explicitly retires their native resources.
   store.journal.opened or store.paged.opened
+
 func pagedStorage*(store: DiskStateStore): bool =
   ## Only an acquired explicitly selected paged owner enables mode-specific retained-root publication.
   store.pagedMode and store.paged.opened
+
 func applicationContextLimit*(store: DiskStateStore): ByteLimit =
   ## Host encoding reserves predecessor metadata before constructing a bounded application history payload.
   if not store.pagedMode: return store.limits.contextBytes # Legacy callers retain their existing exact frame limit.
   let cap = uint64(store.pagedConfig.limits.contextBytes)
   if cap <= uint64(PagedDiskContextOverhead): return ByteLimit(0)
   ByteLimit(cap-uint64(PagedDiskContextOverhead))
+
 func databasePath*(store: DiskStateStore): string {.requires: store.opened.} =
   ## Copy the exact selected native path; this performs no IO and grants no second writer lease.
   store.location
+
 func historyCleanupError*(store: DiskStateStore): HistoryError {.requires: store.opened.} =
   ## Inspect confirmed-publication reclamation diagnostics only while the storage owner is not borrowed by a worker.
   store.historyCleanup
+
 proc recordHistoryCleanup*(store: var DiskStateStore,
     reason: HistoryError) {.requires: store.opened.} =
   ## The excluded owner records cleanup uncertainty separately from accepted canonical publication.
   store.historyCleanup = reason
+
 func checkedHistorySelection*(store: DiskStateStore): CheckedHistorySelection {.requires: store.opened.} =
   ## Return only passive cached metadata; absence forces independent selected-suffix admission before historical IO.
   store.historical
+
 proc recordHistorySelection*(store: var DiskStateStore,
     selection: CheckedHistorySelection) {.requires: store.opened and selection.initialized.} =
   ## The excluded owner caches a fully checked selection only after its matching canonical context is confirmed.
   store.historical = selection
+
 proc close*(store: var DiskStateStore): FileError =
   ## Retire the exclusive lock exactly once; independently held memory snapshots remain readable.
   if not store.opened: return FileError.Uninitialized # Preserve the existing closed-owner refusal.
@@ -286,6 +312,7 @@ proc close*(store: var DiskStateStore): FileError =
   store.historical = default(CheckedHistorySelection)
   store.limits = default(JournalLimits)
   reason
+
 proc snapshot*(store: DiskStateStore): DiskStoreResult[StateStoreSnapshot] =
   ## Refuse fresh reads after uncertain IO while already retained views keep their immutable bytes.
   if not store.opened: return default(DiskStoreResult[StateStoreSnapshot])
@@ -305,6 +332,7 @@ proc snapshot*(store: DiskStateStore): DiskStoreResult[StateStoreSnapshot] =
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
       stateReason: current.error)
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: current.value)
+
 proc generation*(store: DiskStateStore): DiskStoreResult[RepositoryGeneration] =
   ## Return a local ordinal only after the journal confirms a usable published owner.
   if not store.opened: return default(DiskStoreResult[RepositoryGeneration])
@@ -325,6 +353,7 @@ proc generation*(store: DiskStateStore): DiskStoreResult[RepositoryGeneration] =
       fileReason: current.error)
   DiskStoreResult[RepositoryGeneration](status: DiskStoreError.None,
     completed: current.value.generation)
+
 proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     source: StateStoreSnapshot, limits: JournalLimits,
     schema = StorageSchema.FullNodesV1, context: openArray[byte] = []): DiskStoreResult[
@@ -356,6 +385,7 @@ proc initializeDiskStateStore*(store: var DiskStateStore, path: string, chain: S
   store.location = path
   store.historyCleanup = HistoryError.None
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
+
 proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
     policy: StateStoreLimits, limits: JournalLimits, repair: bool,
@@ -406,6 +436,7 @@ proc acquireDiskStateStore(store: var DiskStateStore, path: string, chain: Stora
   store.historyCleanup = HistoryError.None
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: restored)
+
 proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
     policy: StateStoreLimits, limits: JournalLimits,
@@ -413,6 +444,7 @@ proc openDiskStateStore*(store: var DiskStateStore, path: string, chain: Storage
   ## Read strictly without repair; independently supplied root/generation choose the only admissible head.
   acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy, limits, false,
       schema, false)
+
 proc recoverDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
     policy: StateStoreLimits, limits: JournalLimits,
@@ -429,6 +461,7 @@ proc openLocalDiskStateStore*(store: var DiskStateStore, path: string, chain: St
   ## The application must additionally bind selected context to its configured profile and restored map.
   acquireDiskStateStore(store, path, chain, default(StateRoot), RepositoryGeneration(0),
     policy, limits, false, StorageSchema.FullStateV1, true)
+
 proc snapshotContext*(store: DiskStateStore): DiskIoResult[seq[byte]] =
   ## Return detached opaque metadata selected by the exact same durable generation as the complete map.
   if store.pagedMode:
@@ -440,6 +473,7 @@ proc snapshotContext*(store: DiskStateStore): DiskIoResult[seq[byte]] =
   let captured = store.journal.snapshotContext
   if captured.error != FileError.None: return DiskIoResult[seq[byte]](status: captured.error)
   DiskIoResult[seq[byte]](status: FileError.None, completed: captured.value)
+
 proc replayPagedTarget(store: var DiskStateStore, source: FullPagedManifest,
     prepared: PreparedPagedState, context: openArray[byte]): DiskStoreResult[bool] =
   ## Reproduce exact candidate and staging bytes, retire one old descriptor, then permit one ordinary authoring attempt.
@@ -480,6 +514,7 @@ proc replayPagedTarget(store: var DiskStateStore, source: FullPagedManifest,
       fileReason: retired.value.retirementError)
     cache.pending = false
   DiskStoreResult[bool](status: DiskStoreError.None, completed: true)
+
 proc commitState(store: var DiskStateStore, expected, target: StateStoreSnapshot,
     context: openArray[byte], history: openArray[StateStoreSnapshot],
         replay: bool): DiskStoreResult[StateStoreSnapshot] =
@@ -577,6 +612,7 @@ proc commitState(store: var DiskStateStore, expected, target: StateStoreSnapshot
       fileReason: published.error)
   store.state = candidate # Only a confirmed durable frame authorizes the exact prepared memory owner.
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: target)
+
 proc apply*(store: var DiskStateStore,
     writes: openArray[StateWrite]): DiskStoreResult[StateStoreSnapshot] =
   ## Ordinary node-only updates stage privately; contextual applications must supply prepared head context.
@@ -591,6 +627,7 @@ proc apply*(store: var DiskStateStore,
     return DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.StateFailure,
       stateReason: changed.error)
   store.commit(before.value, changed.value)
+
 proc synchronize*(store: var DiskStateStore): DiskIoResult[StorageDurability] =
   ## Confirm fresh file/directory barriers without granting any additional canonical block authority.
   if store.pagedMode:
@@ -610,6 +647,7 @@ proc commit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
         StateStoreSnapshot] =
   ## Ordinary publication preserves forensic files and refuses pending predecessor retirement.
   commitState(store, expected, target, context, history, false)
+
 proc retryPagedCommit*(store: var DiskStateStore, expected, target: StateStoreSnapshot,
     context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
         StateStoreSnapshot] =
@@ -620,6 +658,7 @@ proc retryPagedCommit*(store: var DiskStateStore, expected, target: StateStoreSn
     status: DiskStoreError.FileFailure,
     fileReason: FileError.UnsupportedLayout)
   commitState(store, expected, target, context, history, true)
+
 proc restoreDiskSnapshot*(store: DiskStateStore, expected: StateRoot,
     policy: StateStoreLimits): DiskStoreResult[StateStoreSnapshot] =
   ## Reconstruct an explicitly bound historical complete map without changing live selection or generation.
@@ -674,6 +713,7 @@ proc journalPolicy(limits: ManagedLimits): JournalLimits =
   ## Ordinary commit budgets stay identical when a managed layout owns the physical files.
   JournalLimits(repository: limits.repository, bytes: limits.journalBytes,
       contextBytes: limits.contextBytes)
+
 proc initializeManagedDiskStateStore*(store: var DiskStateStore, path: string,
     chain: StorageChainId, source: StateStoreSnapshot, limits: ManagedLimits,
         schema = StorageSchema.FullNodesV1,
@@ -726,6 +766,7 @@ proc initializeManagedDiskStateStore*(store: var DiskStateStore, path: string,
   store.location = path
   store.historyCleanup = HistoryError.None
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
+
 proc openManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
     policy: StateStoreLimits, limits: ManagedLimits,
@@ -733,11 +774,13 @@ proc openManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: 
   ## An explicitly selected managed layout still requires the supplied exact root/generation authority.
   acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy,
     journalPolicy(limits), false, schema, false, true, limits)
+
 proc openLocalManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     policy: StateStoreLimits, limits: ManagedLimits): DiskStoreResult[StateStoreSnapshot] =
   ## Local restart resumes its validated contextual head; application context authentication remains required.
   acquireDiskStateStore(store, path, chain, default(StateRoot), RepositoryGeneration(0), policy,
     journalPolicy(limits), false, StorageSchema.FullStateV1, true, true, limits)
+
 proc recoverManagedDiskStateStore*(store: var DiskStateStore, path: string, chain: StorageChainId,
     expectedRoot: StateRoot, expectedGeneration: RepositoryGeneration,
     policy: StateStoreLimits, limits: ManagedLimits,
@@ -745,6 +788,7 @@ proc recoverManagedDiskStateStore*(store: var DiskStateStore, path: string, chai
   ## Recovery remains explicit and cannot discard a complete successor in either physical layout.
   acquireDiskStateStore(store, path, chain, expectedRoot, expectedGeneration, policy,
     journalPolicy(limits), true, schema, false, true, limits)
+
 proc compactDiskStateStore*(store: var DiskStateStore, expected: StateStoreSnapshot,
     roots: openArray[StateRoot]): DiskStoreResult[ManagedCompaction] =
   ## Physical maintenance keeps the exact public state identity and requires explicit retained roots.
@@ -765,6 +809,7 @@ proc compactDiskStateStore*(store: var DiskStateStore, expected: StateStoreSnaps
     return DiskStoreResult[ManagedCompaction](status: DiskStoreError.FileFailure,
         fileReason: compacted.error)
   DiskStoreResult[ManagedCompaction](status: DiskStoreError.None, completed: compacted.value)
+
 proc managedDiskUsage*(store: DiskStateStore): DiskIoResult[ManagedUsage] =
   ## Managed maintenance counters are unavailable for explicitly selected paged storage.
   if store.pagedMode: return DiskIoResult[ManagedUsage](status: FileError.UnsupportedLayout)
@@ -864,18 +909,21 @@ proc initializePagedDisk(store: var DiskStateStore, path: string,
   store.historyCleanup = HistoryError.None
   adopted = true
   DiskStoreResult[StateStoreSnapshot](status: DiskStoreError.None, completed: source)
+
 proc initializePagedDiskStateStore*(store: var DiskStateStore, path: string,
     source: StateStoreSnapshot, config: FullPagedNativeConfig, transport: PagedStateLimits,
     context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
         StateStoreSnapshot] =
   ## Exclusive fresh bootstrap never infers permission to remove an existing namespace.
   initializePagedDisk(store, path, source, config, transport, context, history, false)
+
 proc resumePagedDiskStateStore*(store: var DiskStateStore, path: string,
     source: StateStoreSnapshot, config: FullPagedNativeConfig, transport: PagedStateLimits,
     context: openArray[byte], history: openArray[StateStoreSnapshot] = []): DiskStoreResult[
         StateStoreSnapshot] =
   ## Only independently supplied complete genesis/import state authorizes explicit exact bootstrap replay.
   initializePagedDisk(store, path, source, config, transport, context, history, true)
+
 proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
     chain: StorageChainId, policy: StateStoreLimits, config: FullPagedNativeConfig,
     transport: PagedStateLimits): DiskStoreResult[StateStoreSnapshot] =
@@ -924,11 +972,13 @@ proc openLocalPagedDiskStateStore*(store: var DiskStateStore, path: string,
 func ready*(job: PreparedPagedRetirement): bool =
   ## Read only passive job metadata; no pin or live writer borrow escapes its owner.
   job.owner != nil and job.current.initialized and job.previous.initialized
+
 func pagedRetirementPending*(store: DiskStateStore): bool =
   ## Host observation is memory-only and requires the existing graph exclusion whenever a worker owns the store.
   let cache = store.pagedCache
   if cache == nil: return false # A default/closed facade owns no pending descriptor.
   store.pagedMode and cache.pending
+
 proc preparePagedRetirement*(store: DiskStateStore): DiskStoreResult[PreparedPagedRetirement] =
   ## Capture exact authenticated metadata while idle; the job cannot be replayed against a reopened incarnation.
   let cache = store.pagedCache
@@ -944,6 +994,7 @@ proc preparePagedRetirement*(store: DiskStateStore): DiskStoreResult[PreparedPag
   DiskStoreResult[PreparedPagedRetirement](status: DiskStoreError.None,
     completed: PreparedPagedRetirement(owner: cache, current: cache.selected,
         previous: cache.previous))
+
 proc commitPagedRetirement*(store: var DiskStateStore,
     job: PreparedPagedRetirement): DiskStoreResult[FullPagedReclamation] =
   ## Excluded IO retires one exact predecessor; failures never undo an already confirmed canonical publication.

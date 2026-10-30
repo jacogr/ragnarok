@@ -49,11 +49,14 @@ type
 
 proc `=copy`*(destination: var ManagedRepository, source: ManagedRepository) {.error.}
   ## Native leases cannot be implicitly duplicated by ARC.
+
 proc `=dup`*(source: ManagedRepository): ManagedRepository {.error.}
   ## Actual lowering must reject a second retirement authority.
+
 proc requireClosed(repository: ManagedRepository) {.requires: not repository.active.} =
   ## Close remains explicit while native failures can be reported.
   discard
+
 proc `=wasMoved`*(repository: var ManagedRepository) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(repository.directory)
@@ -75,28 +78,35 @@ proc `=destroy`*(repository: ManagedRepository) =
   `=destroy`(repository.directory)
   `=destroy`(repository.memory)
   `=destroy`(repository.context)
+
 func error*[T](outcome: ManagedResult[T]): FileError =
   ## Inspect the selected outer refusal alone.
   outcome.status
+
 func value*[T](outcome: ManagedResult[T]): T {.inline, requires: outcome.status ==
     FileError.None.} =
   ## Only a fully completed operation exposes its payload.
   outcome.completed
+
 func batchFailure*[T](outcome: ManagedResult[T]): RepositoryResult[RepositoryView] {.requires:
     outcome.status == FileError.InvalidBatch.} =
   ## Retain the actual failed preparation rather than fabricating a repository result.
   outcome.batchReason
+
 func frameError*[T](outcome: ManagedResult[T]): FrameError {.requires:
     outcome.status == FileError.InvalidFrame.} =
   ## Expose only the selected frame failure.
   outcome.frameReason
+
 func opened*(repository: ManagedRepository): bool =
   ## Lifecycle polling reads a scalar; graph access still requires exclusive owner access.
   repository.active
+
 func snapshotLimits(limits: ManagedLimits): SnapshotLimits =
   ## Preserve the caller's complete graph policy verbatim across snapshot admission.
   SnapshotLimits(repository: limits.repository, roots: limits.roots,
     context: limits.contextBytes, bytes: limits.snapshotBytes)
+
 func snapshotFailure(reason: SnapshotError): FileError =
   ## Classify identity/budget/backend errors without accepting a malformed snapshot prefix.
   case reason
@@ -104,6 +114,7 @@ func snapshotFailure(reason: SnapshotError): FileError =
   of SnapshotError.LimitExceeded: FileError.LimitExceeded
   of SnapshotError.BackendFailure: FileError.BackendFailure
   else: FileError.InvalidJournal
+
 proc retire(repository: var ManagedRepository): FileError =
   ## Failed acquisition and explicit close release each native resource exactly once.
   var reason = FileError.None
@@ -115,15 +126,18 @@ proc retire(repository: var ManagedRepository): FileError =
   repository.context = @[]
   repository.active = false
   reason
+
 proc close*(repository: var ManagedRepository): FileError =
   ## Retained immutable views survive explicit native retirement.
   if not repository.active: return FileError.Uninitialized
   retire(repository)
+
 proc snapshot*(repository: ManagedRepository): ManagedResult[RepositoryView] =
   ## Uncertain IO refuses fresh reads without revoking previously held immutable views.
   if not repository.active: return ManagedResult[RepositoryView](status: FileError.Uninitialized)
   if repository.poisoned: return ManagedResult[RepositoryView](status: FileError.RecoveryRequired)
   ManagedResult[RepositoryView](status: FileError.None, completed: repository.memory.snapshot.value)
+
 proc snapshotContext*(repository: ManagedRepository): ManagedResult[seq[byte]] =
   ## Return detached metadata from the same serialized selected revision.
   if not repository.active: return ManagedResult[seq[byte]](status: FileError.Uninitialized)
@@ -131,11 +145,13 @@ proc snapshotContext*(repository: ManagedRepository): ManagedResult[seq[byte]] =
   var context = newSeq[byte](repository.context.len)
   for index, octet in repository.context: context[index] = octet
   ManagedResult[seq[byte]](status: FileError.None, completed: context)
+
 proc physicalEpoch*(repository: ManagedRepository): ManagedResult[ManagedEpoch] =
   ## Physical generations never masquerade as state publication generations.
   if not repository.active: return ManagedResult[ManagedEpoch](status: FileError.Uninitialized)
   if repository.poisoned: return ManagedResult[ManagedEpoch](status: FileError.RecoveryRequired)
   ManagedResult[ManagedEpoch](status: FileError.None, completed: repository.epoch)
+
 proc initializeManagedRepository*(repository: var ManagedRepository, path: string,
     chain: StorageChainId, selection: RepositorySelection, context: openArray[byte],
     limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
@@ -182,6 +198,7 @@ proc initializeManagedRepository*(repository: var ManagedRepository, path: strin
   repository.active = true # Only the synchronized manifest grants a selected live revision.
   adopted = true
   FileError.None
+
 proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, contextual: bool): bool =
   ## Explicit repair permits only a plausible incomplete final frame, never complete corrupt bytes.
   let remaining = bytes.len-offset
@@ -192,6 +209,7 @@ proc incompleteTail(bytes: openArray[byte], offset: int, limit: ByteLimit, conte
   let minimumBody = uint64(TrieExportHeaderBytes)+(if contextual: 8'u64 else: 0'u64)
   if maximum < 48 or length < minimumBody or length > maximum-48: return false
   length+48 > uint64(remaining)
+
 proc acquire(repository: var ManagedRepository, path: string, chain: StorageChainId,
     limits: ManagedLimits, schema: StorageSchema, repair: bool,
     expectedGeneration: RepositoryGeneration, expectedRoot: StateRoot): FileError =
@@ -276,16 +294,19 @@ proc acquire(repository: var ManagedRepository, path: string, chain: StorageChai
   repository.active = true
   adopted = true
   FileError.None
+
 proc openManagedRepository*(repository: var ManagedRepository, path: string, chain: StorageChainId,
     limits: ManagedLimits, schema = StorageSchema.FullNodesV1): FileError =
   ## Normal restart requires every selected frame; incomplete tails require an explicit recovery call.
   acquire(repository, path, chain, limits, schema, false, RepositoryGeneration(0), default(StateRoot))
+
 proc recoverManagedRepository*(repository: var ManagedRepository, path: string,
     chain: StorageChainId, limits: ManagedLimits, expectedGeneration: RepositoryGeneration,
         expectedRoot: StateRoot,
     schema = StorageSchema.FullNodesV1): FileError =
   ## Authorize only an exact independently retained complete prefix before truncating an incomplete append.
   acquire(repository, path, chain, limits, schema, true, expectedGeneration, expectedRoot)
+
 proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch: TrieExport,
     context: openArray[byte] = []): ManagedResult[RepositoryView] =
   ## Prepare privately, append and synchronize the bound journal, then expose the exact prepared revision.
@@ -323,6 +344,7 @@ proc publish*(repository: var ManagedRepository, expected: RepositoryView, batch
   repository.memory = working
   repository.context = selectedContext
   ManagedResult[RepositoryView](status: FileError.None, completed: prepared.value)
+
 proc synchronize*(repository: var ManagedRepository): ManagedResult[StorageDurability] =
   ## Reconfirm the journal and stable directory boundaries; uncertainty requires reopening.
   if not repository.active: return ManagedResult[StorageDurability](status: FileError.Uninitialized)
@@ -335,6 +357,7 @@ proc synchronize*(repository: var ManagedRepository): ManagedResult[StorageDurab
     return ManagedResult[StorageDurability](status: reason)
   ManagedResult[StorageDurability](status: FileError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
 proc compact*(repository: var ManagedRepository, expected: RepositoryView,
     roots: openArray[StateRoot]): ManagedResult[ManagedCompaction] =
   ## Replace the physical epoch under one stable lease; state root/generation/context never advance.
@@ -408,6 +431,7 @@ proc compact*(repository: var ManagedRepository, expected: RepositoryView,
   ManagedResult[ManagedCompaction](status: FileError.None, completed: ManagedCompaction(epoch: next,
     generation: selected.generation, reclaimedNodes: plan.reclaimableNodes,
     reclaimedValueBytes: plan.reclaimableValueBytes, cleanup: cleanup))
+
 proc cleanupRetiredEpoch*(repository: var ManagedRepository, epoch: ManagedEpoch): FileError =
   ## Explicitly retry deletion of one caller-selected earlier epoch; never scan or remove the selected pair.
   if not repository.active: return FileError.Uninitialized
@@ -417,6 +441,7 @@ proc cleanupRetiredEpoch*(repository: var ManagedRepository, epoch: ManagedEpoch
   let journal = removeManagedFile(repository.directory, ManagedFileKind.Journal, epoch)
   if journal != FileError.None: return journal
   removeManagedFile(repository.directory, ManagedFileKind.Snapshot, epoch)
+
 proc discardManagedStaging*(repository: var ManagedRepository): FileError =
   ## A validated selected owner may explicitly discard only CURRENT.next and its immediate unselected successor.
   if not repository.active: return FileError.Uninitialized
@@ -428,6 +453,7 @@ proc discardManagedStaging*(repository: var ManagedRepository): FileError =
   let journal = removeManagedFile(repository.directory, ManagedFileKind.Journal, next)
   if journal != FileError.None: return journal
   removeManagedFile(repository.directory, ManagedFileKind.Snapshot, next)
+
 proc usage*(repository: ManagedRepository): ManagedResult[ManagedUsage] =
   ## Inspect cached selected extents and scalar revision metadata without IO, hashing or graph detachment.
   if not repository.active: return ManagedResult[ManagedUsage](status: FileError.Uninitialized)

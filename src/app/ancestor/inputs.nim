@@ -26,14 +26,17 @@ type
 func error*(outcome: AncestorInputResult): AncestorInputError =
   ## Inspect structural capture status without extracting headers.
   outcome.status
+
 func fileError*(outcome: AncestorInputResult): AtomicFileError {.inline,
     requires: outcome.status == AncestorInputError.FileFailure.} =
   ## Inspect only a failed regular-file read, including its bounded-growth refusal.
   outcome.fileReason
+
 func headerError*(outcome: AncestorInputResult): HeaderError {.inline,
     requires: outcome.status == AncestorInputError.HeaderFailure.} =
   ## Preserve the actual configured header decoder's failure.
   outcome.headerReason
+
 proc headers*(outcome: AncestorInputResult): seq[OwnedHeader] {.requires:
     outcome.status == AncestorInputError.None.} =
   ## Return independent sequence storage retaining immutable sealed owners in supplied order.

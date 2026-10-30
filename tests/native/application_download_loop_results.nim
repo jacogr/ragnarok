@@ -4,8 +4,8 @@
 ## Default adoption extraction and forgotten explicit Services-borrow retirement remain strict runtime contracts.
 
 import std/[cmdline, syncio, assertions]
-import "../../src/quic/block/download/loop" as block_download_loop
-import "../../src/quic/block/download/stream" as block_download_stream
+import "../../src/jamnp-s/block/download/loop" as block_download_loop
+import "../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../src/app/[services, options]
 import ../../src/app/download/schedule as download_schedule
 import "../../src/app/block/input" as block_input

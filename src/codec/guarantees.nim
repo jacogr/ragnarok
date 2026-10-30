@@ -68,21 +68,23 @@ type
 func error*[T](value: GuaranteeResult[T]): GuaranteeError =
   ## Read a generic guarantee outcome without permitting callers to retag its private state.
   value.status
+
 func value*[T](value: GuaranteeResult[T]): T {.inline, requires: value.status ==
     GuaranteeError.None.} =
   ## Only complete operations expose their value, owner or progress metadata.
   value.completed
+
 func guaranteeFailure*[T](reason: GuaranteeError): GuaranteeResult[T] {.requires: reason !=
     GuaranteeError.None.} =
   ## Sibling adapters may report a failure, never manufacture success without a completed value.
   GuaranteeResult[T](status: reason)
 
-# Validate chain ceilings before byte access; the same validator domain applies to assurances.
 proc validConfig(config: GuaranteeConfig): bool {.raises: [].} =
+  ## Validate chain ceilings before byte access; the same validator domain applies to assurances.
   assurances.validConfig(AssuranceConfig(cores: config.cores, validators: config.validators))
 
-# Preserve existing report framing/canonicality failures while keeping unrelated owner errors private.
 proc reportError(error: CompositeError): GuaranteeError {.raises: [].} =
+  ## Preserve existing report framing/canonicality failures while keeping unrelated owner errors private.
   case error
   of CompositeError.Truncated: GuaranteeError.Truncated # A required nested field is absent.
   of CompositeError.NonCanonical: GuaranteeError.NonCanonical # A nested set/count is not canonical.
@@ -91,10 +93,10 @@ proc reportError(error: CompositeError): GuaranteeError {.raises: [].} =
   of CompositeError.InvalidTag: GuaranteeError.InvalidTag # A work-result alternative is unsupported.
   else: GuaranteeError.InvalidReport # No other status describes a usable decoded report here.
 
-# Scan a single record at a private absolute frame offset; optional prior-core ordering preserves extrinsic error precedence.
 proc scanRecord(input: openArray[byte], start: int, config: GuaranteeConfig,
                 previousCore: uint64 = 0, ordered: bool = false): GuaranteeResult[
                     ScannedGuarantee] {.raises: [].} =
+  ## Scan a single record at a private absolute frame offset; optional prior-core ordering preserves extrinsic error precedence.
   var cursor = start
   var record: ScannedGuarantee = default(ScannedGuarantee)
   # Canonical numbers advance private parser state only after complete prefix validation.
@@ -163,8 +165,8 @@ proc scanRecord(input: openArray[byte], start: int, config: GuaranteeConfig,
   record.endCursor = cursor
   GuaranteeResult[ScannedGuarantee](status: GuaranteeError.None, completed: record)
 
-# Read all records without allocation or writes; private coordinates never leave the subsequent capture call.
 proc scan(input: openArray[byte], config: GuaranteeConfig): GuaranteeResult[Scan] {.raises: [].} =
+  ## Read all records without allocation or writes; private coordinates never leave the subsequent capture call.
   # Invalid chain configuration cannot authorize an empty result or inspect attacker data.
   if not validConfig(config): return GuaranteeResult[Scan](status: GuaranteeError.InvalidConfig)
   var cursor = 0
@@ -224,8 +226,8 @@ proc decodeGuarantees*(input: openArray[byte], config: GuaranteeConfig): Guarant
     completed: GuaranteesRead(owner: OwnedGuarantees(data: data), count: data.values.len,
         consumed: data.consumed))
 
-# Compare addresses by distance so even empty or near-address-limit ranges need no overflowing endpoint sum.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
+  ## Compare addresses by distance so even empty or near-address-limit ranges need no overflowing endpoint sum.
   # Empty ranges cannot alias and require no valid element address.
   if an == 0 or bn == 0: return false
   let left = cast[uint](a)
@@ -234,10 +236,10 @@ proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool {.raises: [].} =
   if left <= right: right-left < uint(an)
   else: left-right < uint(bn) # Reverse when the mutable destination comes first.
 
-# Validate and charge one owned source record into its enclosing byte extent without allocating.
 proc chargeRecord(value: Guarantee, config: GuaranteeConfig, required: var int,
                   previousCore: uint64 = 0, ordered: bool = false): GuaranteeResult[
                       uint64] {.raises: [].} =
+  ## Validate and charge one owned source record into its enclosing byte extent without allocating.
   let report = ownedReportInfo(value.report)
   # Default report handles are not encodable as successfully validated empty reports.
   if report.error != OwnershipError.None: return GuaranteeResult[uint64](
@@ -270,9 +272,9 @@ proc chargeRecord(value: Guarantee, config: GuaranteeConfig, required: var int,
     return GuaranteeResult[uint64](status: GuaranteeError.LimitExceeded)
   GuaranteeResult[uint64](status: GuaranteeError.None, completed: core)
 
-# Validate every report owner, credential and frame extent before authorizing a byte write.
 proc measure(values: openArray[Guarantee], config: GuaranteeConfig): GuaranteeResult[
     int] {.raises: [].} =
+  ## Validate every report owner, credential and frame extent before authorizing a byte write.
   # Configuration and count ceilings precede access to any possibly default report owner.
   if not validConfig(config): return GuaranteeResult[int](status: GuaranteeError.InvalidConfig)
   if values.len > int(uint64(config.cores)): return GuaranteeResult[int](
@@ -290,9 +292,9 @@ proc measure(values: openArray[Guarantee], config: GuaranteeConfig): GuaranteeRe
       status: GuaranteeError.LimitExceeded)
   GuaranteeResult[int](status: GuaranteeError.None, completed: required)
 
-# Commit one fully preflighted stable record; output/report disjointness is proved by the enclosing encoder.
 proc writeRecord(value: Guarantee, output: var openArray[byte], cursor: var int,
                  required: int) {.raises: [].} =
+  ## Commit one fully preflighted stable record; output/report disjointness is proved by the enclosing encoder.
   let report = encodeOwnedReport(value.report, output.toOpenArray(cursor, required-1))
   assert report.error == OwnershipError.None
   cursor += report.value

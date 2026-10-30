@@ -66,13 +66,16 @@ type
 func error*[T](outcome: FullPagedResult[T]): FullPagedError =
   ## Observe only the selected success/failure reason.
   outcome.status
+
 func value*[T](outcome: FullPagedResult[T]): T {.inline,
     requires: outcome.status == FullPagedError.None.} =
   ## Extract only complete selected payloads.
   outcome.completed
+
 func refused[T](reason: FullPagedError): FullPagedResult[T] =
   ## Failed results never retain a partial scalar or allocation.
   FullPagedResult[T](status: reason)
+
 func codecReason(reason: PagedCodecError): FullPagedError =
   ## Shared geometry has no format identity; translate only its bounded arithmetic verdict.
   case reason
@@ -80,6 +83,7 @@ func codecReason(reason: PagedCodecError): FullPagedError =
   of PagedCodecError.LimitExceeded: FullPagedError.LimitExceeded
   of PagedCodecError.LengthOverflow: FullPagedError.LengthOverflow
   else: FullPagedError.InvalidFormat
+
 func fullPagedGeometry*(count, payload: uint64, limits: PagedLimits,
     context = 0'u64): FullPagedResult[PagedGeometry] =
   ## Each canonical full record uses at least 72 bytes; shared geometry owns only page arithmetic.
@@ -87,6 +91,7 @@ func fullPagedGeometry*(count, payload: uint64, limits: PagedLimits,
   let shape = pagedGeometry(count, payload, limits, context)
   if shape.error != PagedCodecError.None: return refused[PagedGeometry](codecReason(shape.error))
   FullPagedResult[PagedGeometry](status: FullPagedError.None, completed: shape.value)
+
 func compareFullHash*(left, right: array[32, byte]): int =
   ## Full 256-bit lexical identity must never mask the physical left-child bit.
   for index in 0..<32:
@@ -94,62 +99,78 @@ func compareFullHash*(left, right: array[32, byte]): int =
     if left[index] < right[index]: return -1
     if left[index] > right[index]: return 1
   0
+
 func number(input: openArray[byte], offset: int): uint64 =
   ## Fixed callers prove eight addressable bytes before decoding little-endian scalars.
   result = 0
   for index in 0..<8:
     # Shifts are bounded to 56 and never depend on hostile integer widths.
     result = result or (uint64(input[offset+index]) shl (8*index))
+
 proc put(output: var openArray[byte], offset: int, value: uint64) =
   ## Fixed callers prove destination extents before little-endian encoding.
   for index in 0..<8:
     # Each octet is narrowed only after masking to its representable range.
     output[offset+index] = byte((value shr (8*index)) and 255)
+
 func hashAt(input: openArray[byte], offset: int): array[32, byte] =
   ## All callers supply a preflighted fixed metadata or record extent.
   result = default(array[32, byte])
   for index in 0..<32: result[index] = input[offset+index] # Copy scalar identities only.
+
 proc putHash(output: var openArray[byte], offset: int, value: array[32, byte]) =
   ## Copy one complete identity without retaining mutable source storage.
   for index in 0..<32: output[offset+index] = value[index] # The fixed destination was preflighted.
+
 func zeros(input: openArray[byte], first, stop: int): bool =
   ## Callers preflight a half-open fixed extent; reserved bytes have exactly one representation.
   for index in first..<stop:
     if input[index] != 0: return false # Any nonzero reserved octet refuses.
   true
+
 func magic(input: openArray[byte], expected: string): bool =
   ## Every identity starts with a canonical zero-padded 32-byte schema label.
   for index, character in expected:
     if input[index] != byte(character): return false # No alternate format or fallback.
   zeros(input, expected.len, 32)
+
 proc putMagic(output: var openArray[byte], expected: string) =
   ## Fresh zero-filled buffers provide the canonical remainder of the 32-byte label.
   for index, character in expected: output[index] = byte(character) # Labels fit their fixed slot.
+
 func initialized*(header: FullPagedHeader): bool =
   ## Default metadata grants no addressing or retained-root claim.
   header.ready
+
 func geometry*(header: FullPagedHeader): PagedGeometry {.requires: header.ready.} =
   ## Return scalar-only checked geometry.
   header.shape
+
 func chainId*(header: FullPagedHeader): StorageChainId {.requires: header.ready.} =
   ## Return the independently expected chain binding.
   header.chain
+
 func root*(header: FullPagedHeader): StateRoot {.requires: header.ready.} =
   ## Return the selected complete root claim, pending complete graph admission.
   header.selected
+
 func epoch*(header: FullPagedHeader): ManagedEpoch {.requires: header.ready.} =
   ## Return positive physical selection identity.
   header.physical
+
 func generation*(header: FullPagedHeader): RepositoryGeneration {.requires: header.ready.} =
   ## Ordinary generation is independent of physical compaction epochs.
   header.ordinary
+
 func len*(header: FullPagedHeader): int {.requires: header.ready.} =
   ## Root inventory is bounded independently from the physical record count.
   header.count
+
 func retainedRoot*(header: FullPagedHeader, index: int): FullPagedRoot {.requires:
     header.ready and index >= 0 and index < header.count.} =
   ## Return a scalar claim, never a mutable array view.
   header.roots[index]
+
 func initFullPagedHeader*(chain: StorageChainId, selected: StateRoot, epoch: ManagedEpoch,
     generation: RepositoryGeneration, count, payload: uint64, roots: openArray[FullPagedRoot],
     limits: PagedLimits, context = 0'u64): FullPagedResult[FullPagedHeader] =
@@ -176,6 +197,7 @@ func initFullPagedHeader*(chain: StorageChainId, selected: StateRoot, epoch: Man
     header.roots[index] = claim
   if not found: return refused[FullPagedHeader](FullPagedError.WrongRoot)
   FullPagedResult[FullPagedHeader](status: FullPagedError.None, completed: header)
+
 proc bytes*(header: FullPagedHeader): array[PagedPageBytes, byte] {.requires: header.ready.} =
   ## Encode the entire header page with zero padding and a fixed bounded root inventory.
   result = default(array[PagedPageBytes, byte])
@@ -195,6 +217,7 @@ proc bytes*(header: FullPagedHeader): array[PagedPageBytes, byte] {.requires: he
     put(result, offset+32, header.roots[index].entries)
     put(result, offset+40, header.roots[index].nodes)
     put(result, offset+48, header.roots[index].valueBytes)
+
 func decodeFullPagedHeader*(input: openArray[byte], chain: StorageChainId, root: StateRoot,
     limits: PagedLimits, contextLimit = ByteLimit(0)): FullPagedResult[FullPagedHeader] =
   ## Prove exact extent and root-count bounds before interpreting any root offset.
@@ -227,15 +250,19 @@ func decodeFullPagedHeader*(input: openArray[byte], chain: StorageChainId, root:
   initFullPagedHeader(chain, root, ManagedEpoch(number(input, 64)),
     RepositoryGeneration(number(input, 72)), number(input, 112), number(input, 120),
     roots.toOpenArray(0, int(count)-1), limits, context)
+
 func digest*(row: FullPagedRow): StateNodeHash {.requires: row.ready.} =
   ## A physical address always includes every hash bit.
   row.digest
+
 func offset*(row: FullPagedRow): uint64 {.requires: row.ready.} =
   ## Payload-relative offsets are admitted independently of native file addressing.
   row.start
+
 func byteLength*(row: FullPagedRow): uint64 {.requires: row.ready.} =
   ## Exact span bounds one record transfer.
   row.size
+
 func initFullPagedRow*(shape: PagedGeometry, digest: StateNodeHash, offset,
     size: uint64): FullPagedResult[FullPagedRow] =
   ## Validate subtraction before arithmetic and reject the reserved empty physical identity.
@@ -245,21 +272,25 @@ func initFullPagedRow*(shape: PagedGeometry, digest: StateNodeHash, offset,
     return refused[FullPagedRow](FullPagedError.InvalidFormat)
   FullPagedResult[FullPagedRow](status: FullPagedError.None,
     completed: FullPagedRow(ready: true, digest: digest, start: offset, size: size))
+
 proc bytes*(row: FullPagedRow): array[PagedDescriptorBytes, byte] {.requires: row.ready.} =
   ## A row contains full hash, offset, length and sixteen canonical zero bytes.
   result = default(array[PagedDescriptorBytes, byte])
   putHash(result, 0, array[32, byte](row.digest))
   put(result, 32, row.start)
   put(result, 40, row.size)
+
 func decodeFullPagedRow*(input: openArray[byte], shape: PagedGeometry): FullPagedResult[FullPagedRow] =
   ## Only a complete fixed descriptor can grant a bounded payload span.
   if input.len != PagedDescriptorBytes: return refused[FullPagedRow](FullPagedError.InvalidFormat)
   if not zeros(input, 48, 64): return refused[FullPagedRow](FullPagedError.InvalidFormat)
   initFullPagedRow(shape, StateNodeHash(hashAt(input, 0)), number(input, 32), number(input, 40))
+
 func initFullPagedIndexScan*(shape: PagedGeometry): FullPagedIndexScan =
   ## Default/uninitialized geometry cannot be upgraded by feeding descriptor bytes.
   FullPagedIndexScan(status: (if shape.initialized: FullPagedError.None else:
     FullPagedError.Uninitialized), shape: shape)
+
 proc admit*(scan: var FullPagedIndexScan, input: openArray[byte]): FullPagedResult[FullPagedRow] =
   ## Sticky first refusal prevents resuming after any malformed ordering or coverage prefix.
   if scan.status != FullPagedError.None: return refused[FullPagedRow](scan.status)
@@ -279,6 +310,7 @@ proc admit*(scan: var FullPagedIndexScan, input: openArray[byte]): FullPagedResu
   scan.ending += row.size
   inc scan.seen
   decoded
+
 proc finish*(scan: var FullPagedIndexScan): FullPagedError =
   ## Exact cardinality and coverage are mandatory, including the empty index case.
   if scan.status != FullPagedError.None: return scan.status
@@ -286,6 +318,7 @@ proc finish*(scan: var FullPagedIndexScan): FullPagedError =
     scan.status = FullPagedError.InvalidFormat
   scan.done = true
   scan.status
+
 proc hashBytes(input: openArray[byte]): FullPagedResult[FullPagedDigest] =
   ## A backend failure has no fabricated checksum value.
   let hashed = blake2b256(input)
@@ -293,6 +326,7 @@ proc hashBytes(input: openArray[byte]): FullPagedResult[FullPagedDigest] =
       FullPagedError.BackendFailure)
   FullPagedResult[FullPagedDigest](status: FullPagedError.None,
     completed: FullPagedDigest(array[32, byte](hashed.value)))
+
 proc fullPagedLeafDigest*(shape: PagedGeometry, page: PageOrdinal,
     input: openArray[byte]): FullPagedResult[FullPagedDigest] =
   ## Page-role and extent validation precede fixed workspace hashing in the full-format domain.
@@ -304,6 +338,7 @@ proc fullPagedLeafDigest*(shape: PagedGeometry, page: PageOrdinal,
   put(scratch, LeafDomain.len, uint64(page))
   for index in 0..<PagedPageBytes: scratch[LeafDomain.len+8+index] = input[index] # Fixed bounded page.
   hashBytes(scratch)
+
 proc fullPagedPaddingDigest*(shape: PagedGeometry, page: PageOrdinal): FullPagedResult[
     FullPagedDigest] =
   ## Nonphysical tree leaves cannot authenticate a real page, even if it is all zero.
@@ -314,6 +349,7 @@ proc fullPagedPaddingDigest*(shape: PagedGeometry, page: PageOrdinal): FullPaged
   for index, character in PadDomain: scratch[index] = byte(character) # Separate padding domain.
   put(scratch, PadDomain.len, uint64(page))
   hashBytes(scratch)
+
 proc fullPagedNodeDigest*(left, right: FullPagedDigest): FullPagedResult[FullPagedDigest] =
   ## Ordered children have a separate full-format internal-node domain.
   var scratch = default(array[NodeDomain.len+64, byte])
@@ -321,6 +357,7 @@ proc fullPagedNodeDigest*(left, right: FullPagedDigest): FullPagedResult[FullPag
   putHash(scratch, NodeDomain.len, array[32, byte](left))
   putHash(scratch, NodeDomain.len+32, array[32, byte](right))
   hashBytes(scratch)
+
 proc encodeFullPagedManifest*(header: FullPagedHeader,
     tree: FullPagedDigest): FullPagedResult[FullPagedManifest] =
   ## Local metadata selects exact full bytes; complete graph authority remains separate.
@@ -330,6 +367,7 @@ proc encodeFullPagedManifest*(header: FullPagedHeader,
       chain: header.chain, selected: header.selected,
       physical: header.physical, ordinary: header.ordinary, pages: header.shape.dataPages,
       extent: header.shape.byteLength, tree: tree))
+
 proc bytes*(manifest: FullPagedManifest): FullPagedResult[array[FullPagedManifestBytes, byte]] =
   ## Hash only the fixed manifest prefix and propagate provider refusal before returning bytes.
   if not manifest.ready: return refused[array[FullPagedManifestBytes, byte]](
@@ -348,18 +386,23 @@ proc bytes*(manifest: FullPagedManifest): FullPagedResult[array[FullPagedManifes
   putHash(output, 160, array[32, byte](sum.value))
   FullPagedResult[array[FullPagedManifestBytes, byte]](status: FullPagedError.None,
       completed: output)
+
 func root*(manifest: FullPagedManifest): StateRoot {.requires: manifest.ready.} =
   ## Passive selected posterior root becomes usable only after its owning native graph and application context are checked.
   manifest.selected
+
 func pageRoot*(manifest: FullPagedManifest): FullPagedDigest {.requires: manifest.ready.} =
   ## Capture local page authority before any subsequent random read.
   manifest.tree
+
 func epoch*(manifest: FullPagedManifest): ManagedEpoch {.requires: manifest.ready.} =
   ## Read only the admitted positive selection epoch.
   manifest.physical
+
 func byteLength*(manifest: FullPagedManifest): uint64 {.requires: manifest.ready.} =
   ## A native reader must additionally check actual held identity and EOF.
   manifest.extent
+
 proc decodeFullPagedManifest*(input: openArray[byte], header: FullPagedHeader): FullPagedResult[
     FullPagedManifest] =
   ## Exact schema and every header binding precede checksum adoption; no light manifest is accepted.
@@ -384,6 +427,7 @@ proc decodeFullPagedManifest*(input: openArray[byte], header: FullPagedHeader): 
   if array[32, byte](sum.value) != hashAt(input, 160):
     return refused[FullPagedManifest](FullPagedError.ChecksumMismatch)
   encodeFullPagedManifest(header, FullPagedDigest(hashAt(input, 128)))
+
 proc recordHash(record: TrieRecord): FullPagedError =
   ## Exact JAM hashing preserves physical children in transport while applying protocol B masking only here.
   var encoded = default(EncodedStateNode)
@@ -400,6 +444,7 @@ proc recordHash(record: TrieRecord): FullPagedError =
   if array[32, byte](hashed.value) != array[32, byte](
       record.digest): return FullPagedError.HashMismatch
   FullPagedError.None
+
 proc encodeFullPagedRecord*(record: TrieRecord, perValue: ByteLimit): FullPagedResult[seq[byte]] =
   ## Validate every unused field and allocation bound before hashing or encoding one detached record.
   if record.kind notin {TrieRecordKind.Leaf, TrieRecordKind.Branch} or
@@ -436,6 +481,7 @@ proc encodeFullPagedRecord*(record: TrieRecord, perValue: ByteLimit): FullPagedR
     putHash(output, 33, array[32, byte](record.left))
     putHash(output, 65, array[32, byte](record.right))
   FullPagedResult[seq[byte]](status: FullPagedError.None, completed: output)
+
 proc decodeFullPagedRecord*(input: openArray[byte], expected: StateNodeHash,
     perValue: ByteLimit): FullPagedResult[TrieRecord] =
   ## Exact record framing and expected complete address precede bounded allocation and node hashing.
@@ -501,6 +547,7 @@ proc decodeFullPagedSelection*(input: openArray[byte], chain: StorageChainId, ro
       selected: root,
       physical: ManagedEpoch(epoch), ordinary: RepositoryGeneration(number(input, 104)),
       pages: pages, extent: extent, tree: FullPagedDigest(hashAt(input, 128))))
+
 func generation*(manifest: FullPagedManifest): RepositoryGeneration {.requires: manifest.ready.} =
   ## Read ordinary full-repository generation independently of the physical epoch.
   manifest.ordinary

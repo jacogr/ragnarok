@@ -31,26 +31,32 @@ type
       executionReason: AccountReviewExecutionResult
     else:
       discard                      # Defaults and invalid source handles grant no review.
+
 func error*[T](outcome: CurrentReviewResult[T]): CurrentReviewError =
   ## Observe the immutable selection without granting retagging.
   outcome.status
+
 func value*[T](outcome: CurrentReviewResult[T]): T {.inline, requires: outcome.status ==
     CurrentReviewError.None.} =
   ## Extract only successful complete review/observation owners.
   outcome.completed
+
 func profileError*[T](outcome: CurrentReviewResult[T]): EconomicProfileError {.inline,
     requires: outcome.status == CurrentReviewError.ProfileFailure.} =
   ## Read only an actual original parameter capture refusal.
   outcome.profileReason
+
 func preparationFailure*[T](outcome: CurrentReviewResult[T]): AccountReviewPlanResult[
     StateAccountReviewPlan] {.inline, requires: outcome.status ==
     CurrentReviewError.PreparationFailure.} =
   ## Preserve complete hash-free admission/report failure before content execution.
   outcome.preparationReason
+
 func executionFailure*[T](outcome: CurrentReviewResult[T]): AccountReviewExecutionResult {.inline,
     requires: outcome.status == CurrentReviewError.ExecutionFailure.} =
   ## Preserve only the real targeted predicate/join refusal with no successful prefix.
   outcome.executionReason
+
 proc planCurrentReview*(source: CurrentStateSerialization,
     limits: AccountReviewPlanLimits): CurrentReviewResult[CurrentReviewPlan] =
   ## Admit all original-source report work and rates before content hashing; execution accepts no replacement source or policy.
@@ -68,12 +74,14 @@ proc planCurrentReview*(source: CurrentStateSerialization,
         preparationReason: plan) # Complete report admission remains before any content work.
   CurrentReviewResult[CurrentReviewPlan](status: CurrentReviewError.None,
     completed: CurrentReviewPlan(initialized: true, source: source, plan: plan.value))
+
 proc currentReviewPlanInfo*(source: CurrentReviewPlan): CurrentReviewResult[AccountReviewPlanInfo] =
   ## Observe copied admitted work/coverage while keeping the original source and rate owners private.
   if not source.initialized:
     return CurrentReviewResult[AccountReviewPlanInfo](status: CurrentReviewError.InvalidPlan)
   CurrentReviewResult[AccountReviewPlanInfo](status: CurrentReviewError.None,
     completed: source.plan.reviewPlanInfo.value)
+
 proc executeCurrentReview*(source: CurrentReviewPlan): CurrentReviewResult[ReviewedCurrentState] =
   ## Retry original targeted content predicates against exactly the already admitted immutable source.
   if not source.initialized:
@@ -84,6 +92,7 @@ proc executeCurrentReview*(source: CurrentReviewPlan): CurrentReviewResult[Revie
       executionReason: review) # An execution failure leaves the frozen source/policies available for a later retry.
   CurrentReviewResult[ReviewedCurrentState](status: CurrentReviewError.None,
     completed: ReviewedCurrentState(initialized: true, source: source.source, review: review.value))
+
 proc failedCurrentReview[T, U](outcome: CurrentReviewResult[T]): CurrentReviewResult[
     U] {.requires: outcome.status != CurrentReviewError.None.} =
   ## Preserve every genuine failed alternative when a one-shot wrapper changes its successful payload type.
@@ -112,6 +121,7 @@ proc failedCurrentReview[T, U](outcome: CurrentReviewResult[T]): CurrentReviewRe
   of CurrentReviewError.None:
     assert false # The checked entry contract forbids dropping a successful original payload.
     CurrentReviewResult[U](status: CurrentReviewError.Uninitialized)
+
 proc reviewCurrentState*(source: CurrentStateSerialization,
     limits: AccountReviewPlanLimits): CurrentReviewResult[ReviewedCurrentState] =
   ## Preserve the one-shot API while using the same frozen admission/execution path and original typed causes.
@@ -119,6 +129,7 @@ proc reviewCurrentState*(source: CurrentStateSerialization,
   if plan.error != CurrentReviewError.None:
     return failedCurrentReview[CurrentReviewPlan, ReviewedCurrentState](plan)
   executeCurrentReview(plan.value)
+
 proc reviewedCurrentSource*(source: ReviewedCurrentState): CurrentReviewResult[
     CurrentStateSerialization] =
   ## Retain the exact qualified source and its original parameter/producer chain.
@@ -126,6 +137,7 @@ proc reviewedCurrentSource*(source: ReviewedCurrentState): CurrentReviewResult[
     return CurrentReviewResult[CurrentStateSerialization](status: CurrentReviewError.Uninitialized)
   CurrentReviewResult[CurrentStateSerialization](status: CurrentReviewError.None,
       completed: source.source)
+
 proc currentAccountReview*(source: ReviewedCurrentState): CurrentReviewResult[StateAccountReview] =
   ## Retain the same-inventory targeted observations without inferring a universal funding invariant.
   if not source.initialized:

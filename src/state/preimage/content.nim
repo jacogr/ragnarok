@@ -28,23 +28,28 @@ type
       ordinal: InventoryPreimageIndex
     else:
       discard
+
 func error*[T](outcome: PreimageContentResult[T]): PreimageContentError =
   ## Read the reason without allowing callers to retag a failure.
   outcome.status
+
 func value*[T](outcome: PreimageContentResult[T]): T {.inline,
     requires: outcome.status == PreimageContentError.None.} =
   ## Only complete successful validation exposes source-bearing authority.
   outcome.completed
+
 func failedService*[T](outcome: PreimageContentResult[T]): ServiceIndex {.inline,
     requires: outcome.status in {PreimageContentError.BackendFailure,
         PreimageContentError.HashMismatch}.} =
   ## A real hash attempt identifies its original service, unlike a preflight refusal.
   outcome.service
+
 func failedPreimage*[T](outcome: PreimageContentResult[T]): InventoryPreimageIndex {.inline,
     requires: outcome.status in {PreimageContentError.BackendFailure,
         PreimageContentError.HashMismatch}.} =
   ## The preimage ordinal is local to the failed service in the original inventory.
   outcome.ordinal
+
 proc auditPreimageContent*(source: StateInventory,
     limits: PreimageContentLimits): PreimageContentResult[CheckedPreimageContent] =
   ## Preflight every captured extent before copying a value or requesting a content hash.
@@ -93,6 +98,7 @@ proc auditPreimageContent*(source: StateInventory,
     completed: CheckedPreimageContent(source: source,
       info: PreimageContentInfo(preimages: uint64(limits.preimages)-remaining, bytes: uint64(
           limits.totalBytes)-bytes)))
+
 proc contentInfo*(checked: CheckedPreimageContent): PreimageContentResult[PreimageContentInfo] =
   ## Copy only completed bounded hashing observations.
   if checked.source.inventoryInfo.error != StateInventoryError.None:
@@ -100,6 +106,7 @@ proc contentInfo*(checked: CheckedPreimageContent): PreimageContentResult[Preima
         status: PreimageContentError.Uninitialized) # Default certificate.
   PreimageContentResult[PreimageContentInfo](status: PreimageContentError.None,
       completed: checked.info)
+
 proc contentInventory*(checked: CheckedPreimageContent): PreimageContentResult[StateInventory] =
   ## Retain the original exact owner without constructing a new equal source.
   if checked.source.inventoryInfo.error != StateInventoryError.None:

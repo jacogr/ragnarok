@@ -7,8 +7,8 @@ import std/posix/posix
 import ../../src/app/[options, services, chain, candidate]
 import ../../src/app/download/[policy as download_policy, schedule as download_schedule]
 import "../../src/app/block/input" as block_input
-import "../../src/quic/block/download/loop" as block_download_loop
-import "../../src/quic/block/download/stream" as block_download_stream
+import "../../src/jamnp-s/block/download/loop" as block_download_loop
+import "../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../src/state/store

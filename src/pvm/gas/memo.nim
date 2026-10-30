@@ -33,6 +33,7 @@ type
 func error*[T](r: GasMemoResult[T]): GasMemoError =
   ## Inspect status without permitting caller retagging or payload forgery.
   r.status
+
 func value*[T](r: GasMemoResult[T]): T {.inline, requires: r.status == GasMemoError.None.} =
   ## Return only the complete selected value; failed/default alternatives contain no successful payload.
   r.completed
@@ -55,11 +56,13 @@ func matchesProgram*(memo: GasMemo, source: Program): bool =
   if memo.data == nil: return false
   let data = memo.data
   data.source == source
+
 func programOf*(memo: GasMemo): GasMemoResult[Program] =
   ## A copied child remains valid after the last memo handle retires; defaults expose no fabricated source.
   if memo.data == nil: return GasMemoResult[Program](status: GasMemoError.InvalidProgram)
   let data = memo.data
   GasMemoResult[Program](status: GasMemoError.None, completed: data.source)
+
 func gasMemoInfo*(memo: GasMemo): GasMemoResult[GasMemoInfo] =
   ## Observe bounded occupancy and immutable policy by value; earlier observations do not change as facts accumulate.
   if memo.data == nil: return GasMemoResult[GasMemoInfo](status: GasMemoError.InvalidProgram)

@@ -36,10 +36,12 @@ type
 func error*[T](outcome: AuditableBundleResult[T]): AuditableBundleError =
   ## Inspect only the selected reason, with no writable discriminator.
   outcome.status
+
 func value*[T](outcome: AuditableBundleResult[T]): T
     {.requires: outcome.status == AuditableBundleError.None.} =
   ## Extract only a fully completed successful value.
   outcome.completed
+
 proc bundleInfo*(bundle: AuditableBundle): AuditableBundleResult[AuditableBundleInfo] =
   ## Copy nominal identity and section extents without exposing retained byte storage.
   let data = bundle.data
@@ -47,12 +49,14 @@ proc bundleInfo*(bundle: AuditableBundle): AuditableBundleResult[AuditableBundle
       status: AuditableBundleError.Uninitialized)
   AuditableBundleResult[AuditableBundleInfo](status: AuditableBundleError.None,
       completed: data.info)
+
 proc bundleSource*(bundle: AuditableBundle): AuditableBundleResult[InputRefinement] =
   ## Retain the original completed execution; callers cannot substitute later inputs or report identity.
   let data = bundle.data
   if data == nil: return AuditableBundleResult[InputRefinement](
       status: AuditableBundleError.Uninitialized)
   AuditableBundleResult[InputRefinement](status: AuditableBundleError.None, completed: data.source)
+
 proc bundleBytes*(bundle: AuditableBundle): AuditableBundleResult[seq[byte]] =
   ## Return an independent complete wire copy; no writable descriptor aliases private bytes.
   let data = bundle.data
@@ -61,6 +65,7 @@ proc bundleBytes*(bundle: AuditableBundle): AuditableBundleResult[seq[byte]] =
   var copied = newSeq[byte](data.wire.len)
   for index in 0..<copied.len: copied[index] = data.wire[index] # Scalar bytes copy by value.
   AuditableBundleResult[seq[byte]](status: AuditableBundleError.None, completed: copied)
+
 proc charge(total: var uint64, amount: uint64, limit: ByteLimit): AuditableBundleError =
   ## Preserve a bounded total on refusal; prove E4/native and local representability before adding.
   let ceiling = min(uint64(high(uint32)), uint64(high(int)))
@@ -68,6 +73,7 @@ proc charge(total: var uint64, amount: uint64, limit: ByteLimit): AuditableBundl
   if amount > uint64(limit)-total: return AuditableBundleError.LimitExceeded
   total += amount # Every earlier successful charge proves total lies within both ceilings.
   AuditableBundleError.None
+
 proc prepareAuditableBundle*(source: InputRefinement, limit: ByteLimit): AuditableBundleResult[
     AuditableBundle] =
   ## Derive all bytes from original executed sources; preflight complete wire extents before copying any payload.

@@ -40,10 +40,12 @@ type
 func error*[T](outcome: ExportCommitmentResult[T]): ExportCommitmentError =
   ## Read the selected reason without permitting retagging.
   outcome.status
+
 func value*[T](outcome: ExportCommitmentResult[T]): T
     {.requires: outcome.status == ExportCommitmentError.None.} =
   ## Extract only a complete selected result.
   outcome.completed
+
 proc commitmentInfo*(commitment: ExportCommitment): ExportCommitmentResult[ExportCommitmentInfo] =
   ## Copy immutable aggregate facts only from a completed owner.
   let data = commitment.data
@@ -51,12 +53,14 @@ proc commitmentInfo*(commitment: ExportCommitment): ExportCommitmentResult[Expor
       status: ExportCommitmentError.Uninitialized)
   ExportCommitmentResult[ExportCommitmentInfo](status: ExportCommitmentError.None,
       completed: data.info)
+
 proc commitmentSource*(commitment: ExportCommitment): ExportCommitmentResult[ReportIdentity] =
   ## Retain the exact original report identity rather than accepting a replacement source tuple.
   let data = commitment.data
   if data == nil: return ExportCommitmentResult[ReportIdentity](
       status: ExportCommitmentError.Uninitialized)
   ExportCommitmentResult[ReportIdentity](status: ExportCommitmentError.None, completed: data.source)
+
 proc commitmentPage*(commitment: ExportCommitment, index: ExportPageIndex): ExportCommitmentResult[FetchSegment] =
   ## Copy one complete paged-proof segment; counts and sibling order follow pinned GP E(path, leaves).
   let data = commitment.data
@@ -95,6 +99,7 @@ proc commitmentPage*(commitment: ExportCommitment, index: ExportPageIndex): Expo
       inc cursor
   # At most 6 siblings plus 64 leaves and two short counts occupy 2242 of 4104 bytes.
   ExportCommitmentResult[FetchSegment](status: ExportCommitmentError.None, completed: FetchSegment(bytes))
+
 proc prepareExportCommitment*(source: ReportIdentity,
     limits: ExportCommitmentLimits): ExportCommitmentResult[ExportCommitment] =
   ## Hash only normalized final exports in package order; no public constructor accepts detached segment bytes.

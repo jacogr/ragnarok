@@ -37,26 +37,32 @@ type
 func error*(outcome: AccumulationChainResult): AccumulationChainError =
   ## Observe the selected phase without granting mutation of its private discriminator.
   outcome.status
+
 func value*(outcome: AccumulationChainResult): BlockSnapshot {.inline,
     requires: outcome.status == AccumulationChainError.None.} =
   ## Retain only the fully installed child with its exact applied-state version.
   outcome.completed
+
 func stateError*(outcome: AccumulationChainResult): StateStoreError {.inline,
     requires: outcome.status == AccumulationChainError.StateFailure.} =
   ## Inspect only a failed target snapshot lookup.
   outcome.stateReason
+
 func applicationFailure*(outcome: AccumulationChainResult): AccumulationStateResult {.inline,
     requires: outcome.status == AccumulationChainError.ApplicationFailure.} =
   ## Preserve the actual failed state application and its guarded nested phase reasons.
   outcome.applicationReason
+
 func headerError*(outcome: AccumulationChainResult): HeaderError {.inline,
     requires: outcome.status == AccumulationChainError.HeaderFailure.} =
   ## Inspect only a failed admitted-header metadata or encoding operation.
   outcome.headerReason
+
 func captureError*(outcome: AccumulationChainResult): GenesisError {.inline,
     requires: outcome.status == AccumulationChainError.CaptureFailure.} =
   ## Inspect only a failed structural child capture, with no partially retained child.
   outcome.captureReason
+
 func viewError*(outcome: AccumulationChainResult): ViewAdvanceError {.inline,
     requires: outcome.status == AccumulationChainError.ViewFailure.} =
   ## Inspect only an actual failed direct-child append.

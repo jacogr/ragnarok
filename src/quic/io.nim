@@ -45,29 +45,37 @@ type
     descriptor*: cint
     failed*: bool
 
-# Socket creation/configuration calls bind public OS headers, never compiler/runtime internals.
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: SocketHeader.}
-# Addresses are borrowed synchronously and use the family-specific byte extent.
+  ## Socket creation/configuration calls bind public OS headers, never compiler/runtime internals.
+
 proc bindSocket(fd: cint, address: pointer, length: SockLen): cint {.importc: "bind",
     header: SocketHeader.}
-# Query the actual assigned port after a successful ephemeral bind.
+  ## Addresses are borrowed synchronously and use the family-specific byte extent.
+
 proc socketName(fd: cint, address: pointer, length: ptr SockLen): cint {.importc: "getsockname",
     header: SocketHeader.}
-# Datagram syscalls never retain caller/native-library buffers after returning.
+  ## Query the actual assigned port after a successful ephemeral bind.
+
 proc sendTo(fd: cint, data: pointer, length: csize_t, flags: cint, address: pointer,
     addressLength: SockLen): int {.importc: "sendto", header: SocketHeader.}
-# One nonblocking datagram read, with a copied source address for native-language scope validation.
+  ## Datagram syscalls never retain caller/native-library buffers after returning.
+
 proc receiveFrom(fd: cint, data: pointer, length: csize_t, flags: cint, address: pointer,
     addressLength: ptr SockLen): int {.importc: "recvfrom", header: SocketHeader.}
-# Native byte-order helpers use the public platform declarations.
+  ## One nonblocking datagram read, with a copied source address for native-language scope validation.
+
 proc hostPort(port: uint16): uint16 {.importc: "ntohs", header: AddressHeader.}
-# Convert ports for either loopback family.
+  ## Native byte-order helpers use the public platform declarations.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: AddressHeader.}
-# IPv4 address conversion remains independent of host endianness.
+  ## Convert ports for either loopback family.
+
 proc networkAddress(address: uint32): uint32 {.importc: "htonl", header: AddressHeader.}
-# A bounded readiness wait borrows at most two entries and never creates worker threads.
+  ## IPv4 address conversion remains independent of host endianness.
+
 proc poll(entries: ptr PollEntry, count: culong, timeout: cint): cint {.importc: "poll",
     header: PollHeader.}
+  ## A bounded readiness wait borrows at most two entries and never creates worker threads.
 
 let
   # Descriptor inheritance constants are absent from this nightly's POSIX convenience exports.
@@ -80,8 +88,8 @@ let
   PollHangup {.importc: "POLLHUP", header: PollHeader.}: cshort
   PollInvalid {.importc: "POLLNVAL", header: PollHeader.}: cshort
 
-# One stack-local family-sized destination; padding and IPv6 flow/scope fields start at zero.
 proc address(ipv6: bool, port: uint16): Sockaddr_storage =
+  ## One stack-local family-sized destination; padding and IPv6 flow/scope fields start at zero.
   result = default(Sockaddr_storage)
   if ipv6:
     # ::1 is the controlled-topology IPv6 destination used by the original proof.
@@ -102,8 +110,8 @@ proc address(ipv6: bool, port: uint16): Sockaddr_storage =
       # BSD sockaddr_in exposes its length through the public POSIX binding.
       a.sin_len = uint8(sizeof(Sockaddr_in))
 
-# Use the actual family-specific structure extent for every address syscall.
 proc addressSize(ipv6: bool): SockLen =
+  ## Use the actual family-specific structure extent for every address syscall.
   SockLen(if ipv6: sizeof(Address6) else: sizeof(Sockaddr_in))
 
 proc newDispatcher*(): Dispatcher =
@@ -118,15 +126,17 @@ proc close*(dispatcher: Dispatcher) =
 proc port*(endpoint: UdpEndpoint): uint16 =
   ## Return the copied assigned port without exporting a mutable native address.
   endpoint.portValue
+
 proc descriptor*(endpoint: UdpEndpoint): cint =
   ## Readiness routing compares copied descriptor identities only during the same synchronous dispatch.
   endpoint.descriptor
+
 proc isOpen*(endpoint: UdpEndpoint): bool =
   ## Observe whether this endpoint currently owns an OS descriptor.
   endpoint.opened
 
-# Remove an exact descriptor before close; no endpoint pointer is retained by the dispatcher.
 proc retire(dispatcher: Dispatcher, fd: cint) =
+  ## Remove an exact descriptor before close; no endpoint pointer is retained by the dispatcher.
   for i in 0..<dispatcher.count:
     # Compaction keeps a retired descriptor out of every future synchronous wait.
     if dispatcher.descriptors[i] == fd:
@@ -134,8 +144,8 @@ proc retire(dispatcher: Dispatcher, fd: cint) =
       dispatcher.descriptors[i] = dispatcher.descriptors[dispatcher.count]
       return
 
-# A descriptor has exactly one endpoint owner; explicit moves are allowed, copies are not.
 proc `=copy`*(destination: var UdpEndpoint, source: UdpEndpoint) {.error: "UdpEndpoint owns one descriptor".}
+  ## A descriptor has exactly one endpoint owner; explicit moves are allowed, copies are not.
 
 proc `=dup`*(source: UdpEndpoint): UdpEndpoint {.error.}
   ## Implicit duplication cannot duplicate native retirement authority.

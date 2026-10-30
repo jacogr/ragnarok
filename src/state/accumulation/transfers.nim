@@ -41,6 +41,7 @@ func error*[T](outcome: AccumulationTransferCollectionResult[
     T]): AccumulationTransferCollectionError =
   ## Inspect the selected reason without permitting result retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationTransferCollectionResult[T]): T {.inline,
     requires: outcome.status == AccumulationTransferCollectionError.None.} =
   ## Extract only complete selected success under optimized native contracts.

@@ -4,7 +4,7 @@
 ## Default/selected results and nested alternatives retain strict runtime contracts with genuine success controls.
 
 import std/[cmdline, syncio, assertions]
-import "../../src/quic/block/download/session" as block_download_session
+import "../../src/jamnp-s/block/download/session" as block_download_session
 import ../../src/app/[services, options]
 import ../../src/app/download/schedule as download_schedule
 import "../../src/app/block/input" as block_input

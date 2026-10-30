@@ -17,17 +17,21 @@ type
     of None: completed: LogicalCodeAvailability
     of CodeFailure: codeReason: CodeAvailabilityResult[StateCodeAvailability]
     else: discard # Default and missing original source grant no code owner.
+
 func error*(outcome: LogicalCodeResult): LogicalCodeError =
   ## Observe the selected immutable stage without granting its payload.
   outcome.status
+
 func value*(outcome: LogicalCodeResult): LogicalCodeAvailability {.inline,
     requires: outcome.status == LogicalCodeError.None.} =
   ## Retain only the fully audited original-source pair.
   outcome.completed
+
 func codeFailure*(outcome: LogicalCodeResult): CodeAvailabilityResult[
     StateCodeAvailability] {.inline, requires: outcome.status == LogicalCodeError.CodeFailure.} =
   ## Preserve genuine selected code quota, linkage, content and backend causes.
   outcome.codeReason
+
 proc auditLogicalCodeAvailability*(source: CurrentLogicalState,
     limits: CodeAvailabilityLimits): LogicalCodeResult =
   ## Derive time and complete inventory from the same original producer, never caller policy rates or a revalidated companion compact owner.
@@ -41,9 +45,11 @@ proc auditLogicalCodeAvailability*(source: CurrentLogicalState,
       status: LogicalCodeError.CodeFailure, codeReason: codes)
   LogicalCodeResult(status: LogicalCodeError.None, completed: LogicalCodeAvailability(
       initialized: true, logical: source, codes: codes.value))
+
 proc logicalCodeSource*(source: LogicalCodeAvailability): CurrentLogicalState {.requires: source.initialized.} =
   ## Retain original producer/profile/raw-key provenance only from a completed availability pair.
   source.logical
+
 proc logicalCodeTable*(source: LogicalCodeAvailability): StateCodeAvailability {.requires: source.initialized.} =
   ## Retain only the original-current compact table; the independently revalidated raw-key companion remains distinct.
   source.codes

@@ -60,10 +60,12 @@ type
 func error*[T](outcome: CurrentAccumulationRoundResult[T]): CurrentAccumulationRoundError =
   ## Inspect the selected alternative without granting mutation.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationRoundResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationRoundError.None.} =
   ## Extract complete round/phase ownership only after selected success.
   outcome.completed
+
 proc runCurrentBlockAccumulationRound*(round: BlockAccumulationRound, parameters: Parameters,
     limits: CurrentAccumulationRoundLimits): CurrentAccumulationRoundResult[
         PreparedCurrentAccumulationRound] =
@@ -194,6 +196,7 @@ proc currentRoundGuests*(round: PreparedCurrentAccumulationRound): CurrentAccumu
   let guests = data.globals.globalStageProvisions.value.provisionStageAccounts.value.accountStageGuests.value
   CurrentAccumulationRoundResult[BlockAccumulationGuests](
       status: CurrentAccumulationRoundError.None, completed: guests)
+
 proc currentRoundSnapshot*(round: PreparedCurrentAccumulationRound): CurrentAccumulationRoundResult[
     StateStoreSnapshot] =
   ## Retain the complete selected private round map without claiming final whole-block publication.

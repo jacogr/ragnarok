@@ -55,24 +55,28 @@ type
 func error*[T](outcome: AccumulationInputResult[T]): AccumulationInputError =
   ## Inspect failure without exposing writable result storage.
   outcome.status
+
 func value*[T](outcome: AccumulationInputResult[T]): T {.inline,
     requires: outcome.status == AccumulationInputError.None.} =
   ## Extract only selected success, preserving runtime and compiler guard enforcement.
   outcome.completed
+
 func kind*(input: InvocationInput): AccumulationKind =
   ## Inspect the actual C.2 alternative before accessing its payload.
   input.inputKind
+
 func transfer*(input: InvocationInput): DeferredTransfer {.requires: input.inputKind ==
     AccumulationKind.Transfer.} =
   ## Copy a transfer only after selecting the transfer alternative.
   input.transferValue
+
 func operand*(input: InvocationInput): OwnedOperand {.requires: input.inputKind ==
     AccumulationKind.Operand.} =
   ## Retain an operand only after selecting the operand alternative.
   input.operandValue
 
-## Sort numeric service IDs, then transfers, operands and allowance rows, retaining source ordinals.
 func compareRow(a, b: InputRow): int =
+  ## Sort numeric service IDs, then transfers, operands and allowance rows, retaining source ordinals.
   if uint32(a.service) < uint32(b.service): return -1 # Numeric service enumeration.
   if uint32(a.service) > uint32(b.service): return 1 # Larger service follows.
   if a.category < b.category: return -1 # Transfers precede report operands.

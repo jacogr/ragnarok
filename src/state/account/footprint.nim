@@ -20,13 +20,16 @@ type
       completed: AccountFootprint
     else:
       discard
+
 func error*(outcome: AccountFootprintResult): AccountFootprintError =
   ## Inspect arithmetic refusal without exposing mutable discriminators.
   outcome.status
+
 func value*(outcome: AccountFootprintResult): AccountFootprint {.inline,
     requires: outcome.status == AccountFootprintError.None.} =
   ## Extract only representable protocol fields under checked optimized contracts.
   outcome.completed
+
 func calculateAccountFootprint*(shape: AccountFootprintShape): AccountFootprintResult =
   ## Preimage payloads do not add independent footprint: requests reserve their advertised byte length.
   if shape.storage > uint64(high(uint32)) or

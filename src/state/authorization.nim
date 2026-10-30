@@ -43,8 +43,8 @@ func value*[T](outcome: AuthorizationTransitionResult[T]): T {.inline,
   ## Extract only complete success; failure/default payloads do not exist.
   outcome.completed
 
-## Preserve policy and native-extent failures; other codec failures identify invalid supplied state.
 func codecError(reason: AuthorizationError): AuthorizationTransitionError =
+  ## Preserve policy and native-extent failures; other codec failures identify invalid supplied state.
   case reason
   of AuthorizationError.None: AuthorizationTransitionError.None # Complete codec success only.
   of AuthorizationError.InvalidConfig: AuthorizationTransitionError.InvalidConfig # Do not infer profiles.
@@ -52,8 +52,8 @@ func codecError(reason: AuthorizationError): AuthorizationTransitionError =
   of AuthorizationError.LengthOverflow: AuthorizationTransitionError.LengthOverflow # Never narrow unsafe extents.
   else: AuthorizationTransitionError.InvalidState # Invalid owners, kinds, shapes and framing are not state.
 
-## Preserve store initialization, absence, policy and primitive refusal without manufacturing a commitment.
 func storeError(reason: StateStoreError): AuthorizationTransitionError =
+  ## Preserve store initialization, absence, policy and primitive refusal without manufacturing a commitment.
   case reason
   of StateStoreError.None: AuthorizationTransitionError.None # Only a complete atomic commit succeeds.
   of StateStoreError.Uninitialized: AuthorizationTransitionError.Uninitialized # Default handles are not empty states.

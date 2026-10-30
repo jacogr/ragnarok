@@ -64,34 +64,42 @@ type
 func error*(outcome: AccumulationRunnerResult): AccumulationRunnerError =
   ## Inspect the selected alternative without permitting retagging.
   outcome.status
+
 func value*(outcome: AccumulationRunnerResult): CompletedBlockAccumulation {.inline,
     requires: outcome.status == AccumulationRunnerError.None.} =
   ## Retain the complete existing execution owner only after selected success.
   outcome.completed
+
 func serviceError*(outcome: AccumulationRunnerResult): AccumulationServiceError {.inline,
     requires: outcome.status == AccumulationRunnerError.ServiceFailure.} =
   ## Inspect the exact service resolution refusal.
   outcome.serviceReason
+
 func invocationError*(outcome: AccumulationRunnerResult): AccumulationInvocationError {.inline,
     requires: outcome.status == AccumulationRunnerError.InvocationFailure.} =
   ## Inspect the exact bound bootstrap refusal.
   outcome.invocationReason
+
 func contextError*(outcome: AccumulationRunnerResult): AccumulationContextError {.inline,
     requires: outcome.status == AccumulationRunnerError.ContextFailure.} =
   ## Inspect the exact bound population/chapter refusal.
   outcome.contextReason
+
 func machineError*(outcome: AccumulationRunnerResult): AccumulationMachineError {.inline,
     requires: outcome.status == AccumulationRunnerError.MachineFailure.} =
   ## Inspect the exact initialization refusal without a partial CPU.
   outcome.machineReason
+
 func skipError*(outcome: AccumulationRunnerResult): AccumulationSkipError {.inline,
     requires: outcome.status == AccumulationRunnerError.SkipFailure.} =
   ## Inspect the certified skip constructor's refusal.
   outcome.skipReason
+
 func dispatchFailure*(outcome: AccumulationRunnerResult): AccumulationDispatchResult {.inline,
     requires: outcome.status == AccumulationRunnerError.DispatchFailure.} =
   ## Retain only the failed dispatcher result and its existing guarded nested engine reason.
   outcome.dispatchReason
+
 func completionFailure*(outcome: AccumulationRunnerResult):
     AccumulationExecutionResult[CompletedBlockAccumulation] {.inline,
     requires: outcome.status == AccumulationRunnerError.CompletionFailure.} =

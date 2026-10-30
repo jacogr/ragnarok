@@ -7,9 +7,9 @@
 
 import ../[machine, step]
 
-# Subtract a fixed, bounded protocol cost without signed narrowing or unsigned underflow.
-# Underfunding drains the complete unsigned balance to zero.
 func charged(gas: MachineGas, cost: uint64, registers: RegisterFile, memory: Memory): HostResponse =
+  ## Subtract a fixed, bounded protocol cost without signed narrowing or unsigned underflow.
+  ## Underfunding drains the complete unsigned balance to zero.
   let available = uint64(gas)
   if available < cost:
     # The failed comparison selects zero without unsigned subtraction.

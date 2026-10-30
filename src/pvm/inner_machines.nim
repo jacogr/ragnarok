@@ -61,6 +61,7 @@ type
 func executed*(info: InnerMachineInfo): bool =
   ## Newly created machines have no executed engine receipt; only a completed segment selects one.
   info.executionComplete
+
 func backend*(info: InnerMachineInfo): PvmBackend {.requires: info.executionComplete.} =
   ## Inspect the engine that actually completed the last segment, after checking executed.
   info.backendValue
@@ -68,22 +69,27 @@ func backend*(info: InnerMachineInfo): PvmBackend {.requires: info.executionComp
 func error*[T](outcome: InnerMachineResult[T]): InnerMachineError =
   ## Inspect the reason without writable tag access.
   outcome.status
+
 func value*[T](outcome: InnerMachineResult[T]): T
     {.requires: outcome.status == InnerMachineError.None.} =
   ## Extract only complete successful owners or transitions, including protocol-error responses.
   outcome.completed
+
 func executionError*[T](outcome: InnerMachineResult[T]): StepError
     {.requires: outcome.status == InnerMachineError.ExecutionFailure.} =
   ## Extract only a nested engine's exact local refusal, without fabricated frame or map progress.
   outcome.reason
+
 proc captureInnerMachines*(limits: InnerMachineLimits): InnerMachines =
   ## Capture finite caller policies beside an explicitly empty map, with no guest slots implicitly present.
   InnerMachines(data: MapData(slots: @[], modules: @[], bytes: 0, limits: limits))
+
 proc innerMachineCount*(machines: InnerMachines): InnerMachineResult[uint32] =
   ## Copy the actual map cardinality; missing owners cannot masquerade as empty.
   let data = machines.data
   if data == nil: return InnerMachineResult[uint32](status: InnerMachineError.InvalidContext)
   InnerMachineResult[uint32](status: InnerMachineError.None, completed: uint32(data.slots.len))
+
 proc innerMachine*(machines: InnerMachines, id: InnerMachineId): InnerMachineResult[
     InnerMachineInfo] =
   ## Inspect a full-width guest identifier without narrowing before the protocol-domain check.

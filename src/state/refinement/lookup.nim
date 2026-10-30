@@ -36,6 +36,7 @@ type
 func error*[T](outcome: HistoricalLookupResult[T]): HistoricalLookupError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: HistoricalLookupResult[T]): T {.inline,
     requires: outcome.status == HistoricalLookupError.None.} =
   ## Extract only selected complete success, retaining its immutable children.
@@ -69,6 +70,7 @@ func available(history: RequestHistory, anchor: LookupSlot): bool =
 func present*(preimage: HistoricalPreimage): bool =
   ## Distinguish absence from an available zero-byte preimage.
   preimage.selected
+
 func value*(preimage: HistoricalPreimage): StateValue {.requires: preimage.selected.} =
   ## Retain immutable bytes only for the present alternative; copying remains separately bounded.
   preimage.stored

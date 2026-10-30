@@ -40,27 +40,33 @@ type
       stateReason: StateStoreError
     else:
       discard # No synthetic initialized empty map/ring after refusal.
+
 func error*[T](outcome: CurrentAccumulationReadyResult[T]): CurrentAccumulationReadyError =
   ## Inspect only the immutable selected reason.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationReadyResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationReadyError.None.} =
   ## Extract only complete selected ownership or copied observations.
   outcome.completed
+
 func codecFailure*[T](outcome: CurrentAccumulationReadyResult[T]): WorkQueueError {.inline,
     requires: outcome.status == CurrentAccumulationReadyError.CodecFailure.} =
   ## Preserve the actual original-parent ring capture refusal.
   outcome.codecReason
+
 func projectionFailure*[T](outcome: CurrentAccumulationReadyResult[T]): AccumulationReadyResult[
     AccumulationReadyProjection] {.inline,
 
 requires: outcome.status == CurrentAccumulationReadyError.ProjectionFailure.} =
   ## Preserve the actual failed pure ready equation, never a successful prefix.
   outcome.projectionReason
+
 func stateFailure*[T](outcome: CurrentAccumulationReadyResult[T]): StateStoreError {.inline,
     requires: outcome.status == CurrentAccumulationReadyError.StateFailure.} =
   ## Preserve only the actual private successor-store refusal.
   outcome.stateReason
+
 proc prepareCurrentAccumulationReady*(source: PreparedCurrentAccumulationFinalization,
     config: AccumulationReadyConfig): CurrentAccumulationReadyResult[
         PreparedCurrentAccumulationReady] =

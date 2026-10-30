@@ -14,11 +14,11 @@ import ../../../src/app/download/schedule as download_schedule
 import "../../../src/app/current/block/input" as current_block_input
 import ../../../src/app/current/download/[command as current_download_command,
     policy as current_download_policy]
-import ../../../src/quic/current/sync as current_sync
-import "../../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../../src/quic/current/block/download/peers" as current_block_download_peers
-import "../../../src/quic/current/block/download/stream" as current_block_download_stream
-import ../../../src/quic/announcements
+import "../../../src/jamnp-s/current/sync" as current_sync
+import "../../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../../src/jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
+import "../../../src/jamnp-s/announcements"
 import ../../../src/codec/[bounded, header, block_codec]
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/assurances

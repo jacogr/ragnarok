@@ -63,22 +63,27 @@ type
 func error*[T](outcome: BlockActivityResult[T]): BlockActivityError =
   ## Inspect the immutable selected outcome.
   outcome.status
+
 func value*[T](outcome: BlockActivityResult[T]): T {.inline,
     requires: outcome.status == BlockActivityError.None.} =
   ## Extract only selected complete success under checked optimized builds.
   outcome.completed
+
 func coreError*[T](outcome: BlockActivityResult[T]): CoreActivityError {.inline,
     requires: outcome.status == BlockActivityError.CoreFailure.} =
   ## Read only the genuine selected core producer failure.
   outcome.coreReason
+
 func validatorError*[T](outcome: BlockActivityResult[T]): ValidatorActivityError {.inline,
     requires: outcome.status == BlockActivityError.ValidatorFailure.} =
   ## Read only the genuine selected validator producer failure.
   outcome.validatorReason
+
 func codecError*[T](outcome: BlockActivityResult[T]): ActivityError {.inline,
     requires: outcome.status == BlockActivityError.CodecFailure.} =
   ## Read only a genuine canonical C(13) encoding refusal.
   outcome.codecReason
+
 func stateError*[T](outcome: BlockActivityResult[T]): StateStoreError {.inline,
     requires: outcome.status == BlockActivityError.StateFailure.} =
   ## Read only the genuine private publication refusal.
@@ -89,12 +94,14 @@ proc blockActivityInfo*(plan: PreparedBlockActivity): BlockActivityResult[Activi
   let data = plan.data
   if data == nil: return BlockActivityResult[ActivityInfo](status: BlockActivityError.Uninitialized)
   BlockActivityResult[ActivityInfo](status: BlockActivityError.None, completed: data.info)
+
 proc blockActivityProfile*(plan: PreparedBlockActivity): BlockActivityResult[ActivityConfig] =
   ## Copy the profile derived from source-bound producers for exact output decoding.
   let data = plan.data
   if data == nil: return BlockActivityResult[ActivityConfig](
       status: BlockActivityError.Uninitialized)
   BlockActivityResult[ActivityConfig](status: BlockActivityError.None, completed: data.profile)
+
 proc blockActivitySource*(plan: PreparedBlockActivity): BlockActivityResult[
     PreparedServiceActivity] =
   ## Retain the exact finalized service activity graph after caller handles retire.
@@ -103,11 +110,13 @@ proc blockActivitySource*(plan: PreparedBlockActivity): BlockActivityResult[
       status: BlockActivityError.Uninitialized)
   BlockActivityResult[PreparedServiceActivity](status: BlockActivityError.None,
       completed: data.source)
+
 proc blockActivityEntry*(plan: PreparedBlockActivity): BlockActivityResult[StateEntry] =
   ## Copy canonical entry bytes; caller edits cannot alter retained preparation or later publication.
   let data = plan.data
   if data == nil: return BlockActivityResult[StateEntry](status: BlockActivityError.Uninitialized)
   BlockActivityResult[StateEntry](status: BlockActivityError.None, completed: data.entry)
+
 proc publishedActivitySource*(plan: PublishedBlockActivity): BlockActivityResult[
     PreparedBlockActivity] =
   ## Retain the exact opaque preparation that authorized this successor.
@@ -116,6 +125,7 @@ proc publishedActivitySource*(plan: PublishedBlockActivity): BlockActivityResult
       status: BlockActivityError.Uninitialized)
   BlockActivityResult[PreparedBlockActivity](status: BlockActivityError.None,
       completed: data.source)
+
 proc publishedActivityState*(plan: PublishedBlockActivity): BlockActivityResult[
     StateStoreSnapshot] =
   ## Retain the complete private successor; no mutable store or partial light mapping escapes.

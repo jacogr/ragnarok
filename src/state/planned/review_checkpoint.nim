@@ -29,31 +29,38 @@ type
       executionReason: AccountReviewExecutionResult
     else:
       discard # Missing policy/default alternatives retain no source or complete review.
+
 func error*(outcome: PlannedReviewCheckpointResult): PlannedReviewCheckpointError =
   ## Inspect the immutable selected stage.
   outcome.status
+
 func value*(outcome: PlannedReviewCheckpointResult): StateAccountReview {.inline,
     requires: outcome.status == PlannedReviewCheckpointError.None.} =
   ## Only fully restored, prepared and executed same-source evidence yields a review.
   outcome.completed
+
 func serializationFailure*(outcome: PlannedReviewCheckpointResult): ValidatedCheckpointResult {.inline,
     requires: outcome.status == PlannedReviewCheckpointError.SerializationFailure.} =
   ## Preserve only the genuine failed serialization stage and its original guarded nested reason.
   outcome.serializationReason
+
 func inventoryFailure*(outcome: PlannedReviewCheckpointResult): StateInventoryResult[
     StateInventory] {.inline, requires: outcome.status ==
     PlannedReviewCheckpointError.InventoryFailure.} =
   ## Preserve only the genuine failed inventory stage and its original guarded nested reason.
   outcome.inventoryReason
+
 func preparationFailure*(outcome: PlannedReviewCheckpointResult): AccountReviewPlanResult[
     StateAccountReviewPlan] {.inline, requires: outcome.status ==
     PlannedReviewCheckpointError.PreparationFailure.} =
   ## Preserve only the genuine failed preparation stage and its original guarded nested reason.
   outcome.preparationReason
+
 func executionFailure*(outcome: PlannedReviewCheckpointResult): AccountReviewExecutionResult {.inline,
     requires: outcome.status == PlannedReviewCheckpointError.ExecutionFailure.} =
   ## Preserve only the genuine failed execution stage and its original guarded nested reason.
   outcome.executionReason
+
 proc decodePlannedReviewCheckpoint*(input: openArray[byte], expected: StateRoot,
     services: openArray[StateService], profile: StateProfile, economics: StateEconomicProfile,
     limits: PlannedReviewCheckpointLimits): PlannedReviewCheckpointResult =

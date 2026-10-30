@@ -23,9 +23,11 @@ import "../state/block/transition" as block_transition
 import ../state/safrole/transition as safrole_transition
 import ../bandersnatch/bandersnatch
 import ../crypto/[primitives, validator_keys]
-import ../quic/[devnet, protocol, announcements]
-import "../quic/current/block/download/peers" as current_block_download_peers
-import ../quic/sync_targets
+import "../jamnp-s/devnet"
+import "../jamnp-s/protocol"
+import "../jamnp-s/announcements"
+import "../jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../jamnp-s/sync_targets"
 import ../lib/atomic/file as atomic_file
 
 proc number(text: string, maximum: uint64, output: var uint64): bool =
@@ -38,18 +40,22 @@ proc number(text: string, maximum: uint64, output: var uint64): bool =
     if digit > maximum or output > (maximum-digit) div 10: return false
     output = output*10+digit
   true
+
 proc bytes(text: string): seq[byte] =
   ## Exact UTF8 configuration/diagnostic bytes pass unchanged to atomic publication.
   result = newSeq[byte](text.len)
   for index, character in text: result[index] = byte(character)
+
 proc text(bytes: seq[byte]): string =
   ## Bounded regular-file input remains owned throughout strict chain configuration decoding.
   result = newString(bytes.len)
   for index, octet in bytes: result[index] = char(octet)
+
 proc nowMs(): uint64 =
   ## The development clock uses a common explicit Unix origin with real six-second GP slots.
   let current = getTime()
   uint64(current.toUnix)*1000+uint64(current.nanosecond div 1000000)
+
 proc diagnostic(outcome: CurrentCandidateResult): string =
   ## Stage-specific causes remain visible without extracting any rejected partial state.
   result = $outcome.error
@@ -67,6 +73,7 @@ proc announced(head: BlockSnapshot): AnnouncedBlock =
   ## Convert actual installed header identity into detached announcement metadata, never finality authority.
   AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.blockHash)),
     slot: HeaderSlot(head.slot))
+
 proc sampleTargets(targets: var SyncTargets, peers: CurrentDownloadPeers,
     identities: seq[DownloadPeerId], view: ChainView, now: uint64,
     pending: bool): SyncTargetProgress =
@@ -76,6 +83,7 @@ proc sampleTargets(targets: var SyncTargets, peers: CurrentDownloadPeers,
     if not targets.observePeer(identity, peers.incarnation(identity), peers.announcements(identity)):
       return default(SyncTargetProgress) # A missing/duplicate observation never preserves old readiness.
   if pending: targets.pending() else: targets.evaluate(view)
+
 proc publishHead(network: var DevnetNetwork, peers: var CurrentDownloadPeers,
     view: ChainView, anchor: AnnouncedBlock): bool =
   ## Actual durable admission precedes both detached server and client-side head publication.
@@ -110,6 +118,7 @@ proc admit(chain: var ApplicationChain, raw: seq[byte], limits: CurrentCandidate
   chain.installPrepared(prepared.value)
   log(logging, LogTarget.Application, LogLevel.Info, "Imported block, " & chain.describeHead)
   true
+
 proc observation(chain: ApplicationChain, folder: string, index: int, source: string): bool =
   ## Complete checkpoints are observations, while the validated block journal remains restart authority.
   let parent = chain.chainView.bestBlock.value

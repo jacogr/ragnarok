@@ -45,18 +45,22 @@ type
 func error*(outcome: BlockReportResult): BlockReportError =
   ## Inspect stage selection without allowing caller mutation.
   outcome.status
+
 func value*(outcome: BlockReportResult): BlockReportUpdate {.inline,
     requires: outcome.status == BlockReportError.None.} =
   ## Extract a complete immutable update only after every implemented stage and publication succeeds.
   outcome.completed
+
 func stageError*(outcome: BlockReportResult): BlockTransitionResult {.inline,
     requires: outcome.status == BlockReportError.StageFailure.} =
   ## Inspect the selected earlier admission/disputes/Safrole/assurance refusal.
   outcome.stageReason
+
 func reportError*(outcome: BlockReportResult): ReportAdmissionResult[AdmittedReports] {.inline,
     requires: outcome.status == BlockReportError.ReportFailure.} =
   ## Inspect the selected report refusal, preserving its own exact child cause.
   outcome.reportReason
+
 func publicationError*(outcome: BlockReportResult): StateStoreError {.inline,
     requires: outcome.status == BlockReportError.PublicationFailure.} =
   ## Inspect only a refused final store publication's resource/hash cause.

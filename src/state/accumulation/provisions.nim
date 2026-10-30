@@ -44,13 +44,14 @@ type
 func error*[T](outcome: AccumulationProvisionResult[T]): AccumulationProvisionError =
   ## Inspect refusal without allowing result retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationProvisionResult[T]): T {.inline,
     requires: outcome.status == AccumulationProvisionError.None.} =
   ## Extract only selected success under runtime/compiler contracts.
   outcome.completed
 
-## Canonical set transport orders numeric services, then complete raw byte strings including proper prefixes.
 func compareRow(a, b: UnionRow): int =
+  ## Canonical set transport orders numeric services, then complete raw byte strings including proper prefixes.
   if uint32(a.service) < uint32(b.service): return -1 # Service IDs are numeric, not little-endian wire strings.
   if uint32(a.service) > uint32(b.service): return 1
   for i in 0..<min(a.bytes.len, b.bytes.len):

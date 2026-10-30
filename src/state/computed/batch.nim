@@ -42,10 +42,12 @@ type
 func error*[T](outcome: ComputedBatchResult[T]): ComputedBatchError =
   ## Inspect selection without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedBatchResult[T]): T
     {.requires: outcome.status == ComputedBatchError.None.} =
   ## Preserve complete-success extraction under optimized compilation.
   outcome.completed
+
 proc computedBatchInfo*(batch: ComputedGuaranteeBatch): ComputedBatchResult[ComputedBatchInfo] =
   ## Copy lengths without exposing retained mutable storage.
   let data = batch.data
@@ -54,6 +56,7 @@ proc computedBatchInfo*(batch: ComputedGuaranteeBatch): ComputedBatchResult[Comp
   ComputedBatchResult[ComputedBatchInfo](status: ComputedBatchError.None,
     completed: ComputedBatchInfo(guarantees: data.sources.len, reporters: data.reporters.len,
       bytes: uint64(data.wire.len)))
+
 proc computedBatchSourceAt*(batch: ComputedGuaranteeBatch,
     index: ComputedBatchIndex): ComputedBatchResult[ComputedGuaranteeEnvelope] =
   ## Share one original immutable certificate after a full-width range check.
@@ -64,6 +67,7 @@ proc computedBatchSourceAt*(batch: ComputedGuaranteeBatch,
       ComputedGuaranteeEnvelope](status: ComputedBatchError.InvalidIndex)
   ComputedBatchResult[ComputedGuaranteeEnvelope](status: ComputedBatchError.None,
     completed: data.sources[int(uint64(index))])
+
 proc computedBatchReporterAt*(batch: ComputedGuaranteeBatch,
     index: ComputedBatchReporterIndex): ComputedBatchResult[StateEdKey] =
   ## Copy one full lexicographically ordered unique reporter identity.
@@ -73,6 +77,7 @@ proc computedBatchReporterAt*(batch: ComputedGuaranteeBatch,
       status: ComputedBatchError.InvalidIndex)
   ComputedBatchResult[StateEdKey](status: ComputedBatchError.None,
     completed: data.reporters[int(uint64(index))])
+
 proc computedBatchBytes*(batch: ComputedGuaranteeBatch): ComputedBatchResult[seq[byte]] =
   ## Copy the entire canonical guarantees extrinsic encoding into independent caller storage.
   let data = batch.data
@@ -80,6 +85,7 @@ proc computedBatchBytes*(batch: ComputedGuaranteeBatch): ComputedBatchResult[seq
   var copied = newSeq[byte](data.wire.len)
   for i in 0..<copied.len: copied[i] = data.wire[i] # Copy exactly the retained canonical encoding.
   ComputedBatchResult[seq[byte]](status: ComputedBatchError.None, completed: copied)
+
 func compare(left, right: StateEdKey): int =
   ## Compare every byte of the actual identity without interpreting curve encodings.
   let a = array[32, byte](left)
@@ -88,9 +94,11 @@ func compare(left, right: StateEdKey): int =
     if a[i] < b[i]: return -1 # First differing octet determines canonical set order.
     if a[i] > b[i]: return 1 # Equal prefixes do not collapse distinct identities.
   0
+
 proc stage(source: ComputedGuaranteeEnvelope): TransitionBoundComputedReport =
   ## Caller first validates the closed envelope owner; all retained intermediate selections are complete.
   source.computedEnvelopeSource.value.computedCredentialSource.value.computedGuarantorSource.value.computedRosterSource.value
+
 proc prepareComputedBatch*(sources: openArray[ComputedGuaranteeEnvelope],
     limits: ComputedBatchLimits): ComputedBatchResult[ComputedGuaranteeBatch] =
   ## Preflight shared authority, canonical cores and complete budgets before allocating retained variable output.

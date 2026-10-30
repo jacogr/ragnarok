@@ -21,17 +21,21 @@ type
     of ReviewFailure: reviewReason: CurrentReviewResult[ReviewedCurrentState]
     of PreparationFailure: preparationReason: CurrentReviewResult[CurrentReviewPlan]
     else: discard # No default or invalid source supplies a pair.
+
 func error*[T](outcome: LogicalReviewResult[T]): LogicalReviewError =
   ## Observe only immutable selected alternatives.
   outcome.status
+
 func value*[T](outcome: LogicalReviewResult[T]): T {.inline, requires: outcome.status ==
     LogicalReviewError.None.} =
   ## Extract only the completed original-source pair or a guarded retained member.
   outcome.completed
+
 func reviewFailure*[T](outcome: LogicalReviewResult[T]): CurrentReviewResult[
     ReviewedCurrentState] {.inline, requires: outcome.status == LogicalReviewError.ReviewFailure.} =
   ## Preserve original parameter, admission and targeted predicate execution failures.
   outcome.reviewReason
+
 proc reviewLogicalState*(source: CurrentLogicalState,
     limits: AccountReviewPlanLimits): LogicalReviewResult[ReviewedLogicalState] =
   ## Only original current serialization supplies review input; caller cannot replace economic rates or substitute the raw-key compact capture.
@@ -44,6 +48,7 @@ proc reviewLogicalState*(source: CurrentLogicalState,
         reviewReason: reviewed)
   LogicalReviewResult[ReviewedLogicalState](status: LogicalReviewError.None,
     completed: ReviewedLogicalState(initialized: true, logical: source, reviewed: reviewed.value))
+
 proc reviewedLogicalSource*(source: ReviewedLogicalState): LogicalReviewResult[
     CurrentLogicalState] =
   ## Retain original complete logical/source/raw-key provenance without granting a mixed-inventory join.
@@ -51,6 +56,7 @@ proc reviewedLogicalSource*(source: ReviewedLogicalState): LogicalReviewResult[
     return LogicalReviewResult[CurrentLogicalState](status: LogicalReviewError.Uninitialized)
   LogicalReviewResult[CurrentLogicalState](status: LogicalReviewError.None,
       completed: source.logical)
+
 proc logicalCurrentReview*(source: ReviewedLogicalState): LogicalReviewResult[
     ReviewedCurrentState] =
   ## Retain only the targeted report certified on the original current compact inventory and actual full Parameters.
@@ -65,6 +71,7 @@ func preparationFailure*[T](outcome: LogicalReviewResult[T]): CurrentReviewResul
 requires: outcome.status == LogicalReviewError.PreparationFailure.} =
   ## Observe only the actual original-current profile or full report-admission refusal.
   outcome.preparationReason
+
 proc planLogicalReview*(source: CurrentLogicalState,
     limits: AccountReviewPlanLimits): LogicalReviewResult[LogicalReviewPlan] =
   ## Freeze complete original-current admission/rates beside the same logical provenance before content execution.
@@ -77,6 +84,7 @@ proc planLogicalReview*(source: CurrentLogicalState,
       preparationReason: prepared)
   LogicalReviewResult[LogicalReviewPlan](status: LogicalReviewError.None,
     completed: LogicalReviewPlan(initialized: true, logical: source, prepared: prepared.value))
+
 proc executeLogicalReview*(source: LogicalReviewPlan): LogicalReviewResult[ReviewedLogicalState] =
   ## Accept only the admitted original target; later caller quota or source changes cannot replace its predicates.
   if not source.initialized:
@@ -88,12 +96,14 @@ proc executeLogicalReview*(source: LogicalReviewPlan): LogicalReviewResult[Revie
   LogicalReviewResult[ReviewedLogicalState](status: LogicalReviewError.None,
     completed: ReviewedLogicalState(initialized: true, logical: source.logical,
         reviewed: reviewed.value))
+
 proc logicalReviewPlanSource*(source: LogicalReviewPlan): LogicalReviewResult[CurrentLogicalState] =
   ## Retain only the original complete logical owner whose current inventory supplied frozen admission.
   if not source.initialized:
     return LogicalReviewResult[CurrentLogicalState](status: LogicalReviewError.InvalidPlan)
   LogicalReviewResult[CurrentLogicalState](status: LogicalReviewError.None,
       completed: source.logical)
+
 proc logicalReviewPlanInfo*(source: LogicalReviewPlan): LogicalReviewResult[AccountReviewPlanInfo] =
   ## Copy the fixed admitted work/coverage ledger without exposing mutable source or policy storage.
   if not source.initialized:

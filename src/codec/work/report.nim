@@ -77,23 +77,27 @@ type
 func error*(value: ReportResult): CompositeError =
   ## Read the full-report outcome without permitting retagging.
   value.status
+
 func error*(value: ReportHeaderResult): CompositeError =
   ## Read the fixed-header outcome without exposing a writable discriminator.
   value.status
+
 func value*(value: ReportResult): WorkReport {.inline, requires: value.status ==
     CompositeError.None.} =
   ## Only complete report decoding exposes copied fields and caller-bound spans.
   value.decodedValue
+
 func consumed*(value: ReportResult): int {.inline, requires: value.status == CompositeError.None.} =
   ## Only complete report decoding may advance the input cursor.
   value.byteConsumed
+
 func value*(value: ReportHeaderResult): ReportHeader {.inline, requires: value.status ==
     CompositeError.None.} =
   ## Failed/default fixed headers cannot expose default nominal identities.
   value.decodedValue
 
-# Validate GP 0.8.0 valcount independently of state-dependent active-set equality.
 proc validErasureShards(value: ErasureShards): bool {.raises: [].} =
+  ## Validate GP 0.8.0 valcount independently of state-dependent active-set equality.
   uint16(value) >= 6 and uint16(value) <= 1023 and uint16(value) mod 3 == 0
 
 proc decodeReportHeader*(input: openArray[byte]): ReportHeaderResult {.raises: [].} =
@@ -169,8 +173,8 @@ proc encodeReportHeader*(source: ReportHeader, output: var openArray[
   for i in 0..<32: output[240+i] = value.lookupStateRoot.bytes[i]
   compositeWritten(272)
 
-# Compare package hash bytes lexicographically; equality is not strict order and therefore rejects duplicates.
 proc reportHashLess(a, b: PackageHash): bool {.raises: [].} =
+  ## Compare package hash bytes lexicographically; equality is not strict order and therefore rejects duplicates.
   # Host integer endianness must never affect canonical set or dictionary order.
   for i in 0..<32:
     # The first unequal octet decides order; identical hashes fall through to false.
@@ -269,6 +273,8 @@ proc decodeReportBorrowed*(input: openArray[byte], coreCount: uint64): ReportRes
 
 proc measureReportBorrowed*(value: WorkReport, poolSize: int,
     coreCount: uint64): CompositeWrite {.raises: [].} =
+  ## Measure a borrowed report after validating its domains, counts and spans, without writing
+  ## output.
   # Header-domain checks precede all size measurement and preserve encoder atomicity.
   if not validErasureShards(value.header.erasureShards) or
       uint64(value.header.erasureShards) div 3 > coreCount:
@@ -316,8 +322,8 @@ proc measureReportBorrowed*(value: WorkReport, poolSize: int,
     required += size
   compositeWritten(required)
 
-# Commit one canonical natural into a proven complete destination extent; no allocations are required.
 proc reportPutNatural(number: uint64, output: var openArray[byte], cursor: var int) {.raises: [].} =
+  ## Commit one canonical natural into a proven complete destination extent; no allocations are required.
   let encoded = natural.encode(JamNatural(number))
   # All target bytes belong to the enclosing encoder's preflighted extent.
   for i in 0..<encoded.len: output[cursor+i] = encoded.bytes[i]

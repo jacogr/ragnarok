@@ -18,10 +18,12 @@ const
 func putNumber(bytes: var openArray[byte], offset: int, value: uint64) =
   ## Fixed callers prove the full E8 destination before bounded narrowing and shifts.
   for index in 0..<8: bytes[offset+index] = byte((value shr (index*8)) and 255)
+
 func number(bytes: openArray[byte], offset: int): uint64 =
   ## Fixed callers prove a complete E8 field before reading it.
   result = 0
   for index in 0..<8: result = result or (uint64(bytes[offset+index]) shl (index*8))
+
 proc matches(snapshot: BlockSnapshot, row: HistoryRow): bool =
   ## Exact identity checks do not allocate body-sized buffers or substitute a detached state map.
   if array[32, byte](snapshot.blockHash) != array[32, byte](row.blockHash) or
@@ -30,6 +32,7 @@ proc matches(snapshot: BlockSnapshot, row: HistoryRow): bool =
       snapshot.slot != row.slot or snapshot.hasBlockBody != row.hasBody:
     return false
   not row.hasBody or snapshot.blockBodyDigest == array[32, byte](row.bodyDigest)
+
 proc prepareSnapshotHistory*(cursor: HistoryCursor,
     saved: BlockSnapshotResult): HistoryResult[HistoryAppend] =
   ## Bind only a completely captured snapshot; live callers pass their genuine privately prepared child.
@@ -40,6 +43,7 @@ proc prepareSnapshotHistory*(cursor: HistoryCursor,
   prepareHistoryAppend(cursor, HistoryBlockHash(array[32, byte](snapshot.blockHash)),
     HistoryBlockHash(array[32, byte](snapshot.parentHash)), snapshot.stateRoot, snapshot.slot,
     snapshot.hasBlockBody, body)
+
 proc encodeHistoricalRecord*(append: HistoryAppend, saved: BlockSnapshotResult,
     limit: ByteLimit): HistoryResult[seq[byte]] =
   ## Fully encode before IO; the existing canonical checkpoint encoding supplies complete-state bytes.
@@ -74,6 +78,7 @@ proc encodeHistoricalRecord*(append: HistoryAppend, saved: BlockSnapshotResult,
   for position, octet in headBytes: bytes[HistoricalRecordPrefixBytes+position] = octet
   for position, octet in stateBytes: bytes[HistoricalRecordPrefixBytes+headBytes.len+position] = octet
   historySuccess(bytes)
+
 proc decodeHistoricalRecord*(bytes: openArray[byte], expected: HistoryRow,
     cursor: HistoryCursor, parameters: Parameters, policy: StateStoreLimits,
     limit: ByteLimit): HistoryResult[ApplicationChain] =
@@ -114,6 +119,7 @@ proc decodeHistoricalRecord*(bytes: openArray[byte], expected: HistoryRow,
   if not matches(head.value.chainView.bestBlock.value, expected):
     return historyFailure[ApplicationChain](HistoryError.ChecksumMismatch)
   historySuccess(head.value)
+
 proc readHistoricalSnapshot*(selection: CheckedHistorySelection, ordinal: HistoryOrdinal,
     parameters: Parameters, policy: StateStoreLimits, limit: ByteLimit): HistoryResult[
         ApplicationChain] =
@@ -123,6 +129,7 @@ proc readHistoricalSnapshot*(selection: CheckedHistorySelection, ordinal: Histor
   let bytes = selection.readHistoryRecord(row.value, limit)
   if bytes.error != HistoryError.None: return historyFailure[ApplicationChain](bytes.error)
   decodeHistoricalRecord(bytes.value, row.value, selection.historyCursor, parameters, policy, limit)
+
 proc readHistoricalSnapshot*(selection: CheckedHistorySelection, hash: HistoryBlockHash,
     parameters: Parameters, policy: StateStoreLimits, limit: ByteLimit): HistoryResult[
         ApplicationChain] =

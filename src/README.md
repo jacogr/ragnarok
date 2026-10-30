@@ -25,7 +25,8 @@ Each folder's README describes its modules, usage, contracts and verification.
 | [`crypto/`](crypto/README.md) | Hash/signature primitives and protocol transcript composition |
 | [`lib/`](lib/README.md) | Shared JSON output and bounded atomic file utilities |
 | [`pvm/`](pvm/README.md) | Program decoding, immutable machine memory and bounded execution |
-| [`quic/`](quic/README.md) | Nonblocking transport, authenticated peer sessions and download dispatch |
+| [`jamnp-s/`](jamnp-s/README.md) | JAM identities, protocol framing, authenticated peer sessions and download dispatch |
+| [`quic/`](quic/README.md) | Nonblocking UDP readiness and the underlying QUIC/TLS transport |
 | [`mcp/`](mcp/README.md) | Optional read-only MCP tools for agent chain queries |
 | [`rpc/`](rpc/README.md) | Optional WebSocket JSON-RPC queries and subscriptions |
 | [`state/`](state/README.md) | Complete-state snapshots, transitions and execution composition |

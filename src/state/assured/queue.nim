@@ -37,18 +37,22 @@ type
 func error*[T](outcome: AssuredQueueResult[T]): AssuredQueueError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: AssuredQueueResult[T]): T {.requires: outcome.status ==
     AssuredQueueError.None.} =
   ## Extract complete success under checked optimized contracts.
   outcome.completed
+
 func admissionFailure*[T](outcome: AssuredQueueResult[T]): ReportAdmissionResult[
     AdmittedReports] {.requires: outcome.status == AssuredQueueError.AdmissionFailure.} =
   ## Preserve the real refused admission and its independently guarded nested reason.
   outcome.admissionReason
+
 func queueFailure*[T](outcome: AssuredQueueResult[T]): AccumulationQueueResult[
     BlockAccumulationQueue] {.requires: outcome.status == AssuredQueueError.QueueFailure.} =
   ## Preserve the actual failed maintained queue planner without exposing completed admission.
   outcome.queueReason
+
 proc assuredQueueSource*(queue: AssuredAccumulationQueue): AssuredQueueResult[
     AssuredComputedReports] =
   ## Share original computed predecessor and authenticated assurance authority after caller handles retire.
@@ -56,6 +60,7 @@ proc assuredQueueSource*(queue: AssuredAccumulationQueue): AssuredQueueResult[
   if data == nil: return AssuredQueueResult[AssuredComputedReports](
       status: AssuredQueueError.Uninitialized)
   AssuredQueueResult[AssuredComputedReports](status: AssuredQueueError.None, completed: data.source)
+
 proc assuredQueuePlan*(queue: AssuredAccumulationQueue): AssuredQueueResult[
     BlockAccumulationQueue] =
   ## Share the actual source-bound block queue, never a copied priority observation.
@@ -63,6 +68,7 @@ proc assuredQueuePlan*(queue: AssuredAccumulationQueue): AssuredQueueResult[
   if data == nil: return AssuredQueueResult[BlockAccumulationQueue](
       status: AssuredQueueError.Uninitialized)
   AssuredQueueResult[BlockAccumulationQueue](status: AssuredQueueError.None, completed: data.plan)
+
 proc assuredQueueAdmission*(queue: AssuredAccumulationQueue): AssuredQueueResult[AdmittedReports] =
   ## Derive the real completed admission from the retained maintained queue.
   let data = queue.data
@@ -70,12 +76,14 @@ proc assuredQueueAdmission*(queue: AssuredAccumulationQueue): AssuredQueueResult
       status: AssuredQueueError.Uninitialized)
   AssuredQueueResult[AdmittedReports](status: AssuredQueueError.None,
       completed: data.plan.accumulationAdmission.value)
+
 proc assuredQueueParameters*(queue: AssuredAccumulationQueue): AssuredQueueResult[Parameters] =
   ## Inherit the whole original parameter tuple; callers cannot replace individual execution policies.
   let data = queue.data
   if data == nil: return AssuredQueueResult[Parameters](status: AssuredQueueError.Uninitialized)
   AssuredQueueResult[Parameters](status: AssuredQueueError.None,
       completed: data.source.computedAssuranceParameters.value)
+
 proc prepareAssuredQueue*(source: AssuredComputedReports,
     config: AssuredQueueConfig): AssuredQueueResult[AssuredAccumulationQueue] =
   ## Bind original semantic controls and retained ancestry, then admit and plan from actual assurance outputs without publishing.

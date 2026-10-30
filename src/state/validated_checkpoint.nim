@@ -31,20 +31,24 @@ type
 func error*(outcome: ValidatedCheckpointResult): ValidatedCheckpointError =
   ## Inspect the active phase without exposing raw discriminators or mutable source storage.
   outcome.status
+
 func value*(outcome: ValidatedCheckpointResult): ValidatedStateManifest {.inline,
     requires: outcome.status == ValidatedCheckpointError.None.} =
   ## Extract only a complete expected-root-bound serialization witness.
   outcome.completed
+
 func checkpointError*(outcome: ValidatedCheckpointResult): CheckpointError {.inline,
     requires: outcome.status == ValidatedCheckpointError.CheckpointFailure.} =
   ## Preserve exact format, resource, backend and independently expected-root refusal.
   outcome.checkpointReason
+
 func globalFailure*(outcome: ValidatedCheckpointResult): GlobalStateResult[
     ValidatedGlobalState] {.inline,
 
 requires: outcome.status == ValidatedCheckpointError.GlobalFailure.} =
   ## Return only the actual failed global result, retaining missing/invalid/resource distinctions.
   outcome.globalReason
+
 func manifestFailure*(outcome: ValidatedCheckpointResult): StateManifestResult[
     ValidatedStateManifest] {.inline,
 

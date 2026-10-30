@@ -29,33 +29,40 @@ type
       auditReason: AccountAuditResult
     else:
       discard
+
 func error*(outcome: PlannedAccountCheckpointResult): PlannedAccountCheckpointError =
   ## Inspect the immutable selected phase.
   outcome.status
+
 func value*(outcome: PlannedAccountCheckpointResult): CheckedAccountInvariants {.inline,
     requires: outcome.status == PlannedAccountCheckpointError.None.} =
   ## Only all successful phases grant a retained restored complete-source account certificate.
   outcome.completed
+
 func serializationFailure*(outcome: PlannedAccountCheckpointResult): ValidatedCheckpointResult {.inline,
     requires: outcome.status == PlannedAccountCheckpointError.SerializationFailure.} =
   ## Expose only the actual failed serialization phase, including its existing guarded nested reasons.
   outcome.serializationReason
+
 func inventoryFailure*(outcome: PlannedAccountCheckpointResult): StateInventoryResult[
     StateInventory] {.inline,
 
 requires: outcome.status == PlannedAccountCheckpointError.InventoryFailure.} =
   ## Expose only the actual failed inventory phase, including its existing guarded nested reasons.
   outcome.inventoryReason
+
 func planningFailure*(outcome: PlannedAccountCheckpointResult): AccountAuditPlanResult[
     StateAccountAuditPlan] {.inline,
 
 requires: outcome.status == PlannedAccountCheckpointError.PlanningFailure.} =
   ## Expose only the actual failed planning phase, including its existing guarded nested reasons.
   outcome.planningReason
+
 func auditFailure*(outcome: PlannedAccountCheckpointResult): AccountAuditResult {.inline,
     requires: outcome.status == PlannedAccountCheckpointError.AuditFailure.} =
   ## Expose only the actual failed audit phase, including its existing guarded nested reasons.
   outcome.auditReason
+
 proc decodePlannedAccountCheckpoint*(input: openArray[byte], expected: StateRoot,
     services: openArray[StateService], profile: StateProfile,
     limits: PlannedAccountCheckpointLimits): PlannedAccountCheckpointResult =

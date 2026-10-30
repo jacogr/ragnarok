@@ -68,62 +68,75 @@ type
 func error*[T](outcome: AccountReviewPlanResult[T]): AccountReviewPlanError =
   ## Read the selected immutable preparation/execution stage.
   outcome.status
+
 func value*[T](outcome: AccountReviewPlanResult[T]): T {.inline, requires: outcome.status ==
     AccountReviewPlanError.None.} =
   ## Only complete success authorizes extraction of the prepared plan or final review.
   outcome.completed
+
 func admissionFailure*[T](outcome: AccountReviewPlanResult[T]): AccountAuditPlanResult[
     StateAccountAuditPlan] {.inline, requires: outcome.status ==
     AccountReviewPlanError.AdmissionFailure.} =
   ## Preserve only the genuine failed admission stage, including its original guarded nested reason.
   outcome.admissionReason
+
 func directoryFailure*[T](outcome: AccountReviewPlanResult[T]): ServiceDirectoryResult[
     StateServiceDirectory] {.inline, requires: outcome.status ==
     AccountReviewPlanError.DirectoryFailure.} =
   ## Preserve only the genuine failed directory stage, including its original guarded nested reason.
   outcome.directoryReason
+
 func footprintFailure*[T](outcome: AccountReviewPlanResult[T]): FootprintAuditResult[
     CheckedAccountFootprints] {.inline, requires: outcome.status ==
     AccountReviewPlanError.FootprintFailure.} =
   ## Preserve only the genuine failed footprint stage, including its original guarded nested reason.
   outcome.footprintReason
+
 func supervisionFailure*[T](outcome: AccountReviewPlanResult[T]): SupervisionTableResult[
     StateSupervisionTable] {.inline, requires: outcome.status ==
     AccountReviewPlanError.SupervisionFailure.} =
   ## Preserve only the genuine failed supervision stage, including its original guarded nested reason.
   outcome.supervisionReason
+
 func economicsFailure*[T](outcome: AccountReviewPlanResult[T]): EconomicsTableResult[
     StateEconomicsTable] {.inline, requires: outcome.status ==
     AccountReviewPlanError.EconomicsFailure.} =
   ## Preserve only the genuine failed economics stage, including its original guarded nested reason.
   outcome.economicsReason
+
 func error*(outcome: AccountReviewExecutionResult): AccountReviewExecutionError =
   ## Read the selected immutable preparation/execution stage.
   outcome.status
+
 func value*(outcome: AccountReviewExecutionResult): StateAccountReview {.inline,
     requires: outcome.status == AccountReviewExecutionError.None.} =
   ## Only complete success authorizes extraction of the prepared plan or final review.
   outcome.completed
+
 func linkageFailure*(outcome: AccountReviewExecutionResult): PreimageLinkageResult[
     CheckedPreimageLinkage] {.inline, requires: outcome.status ==
     AccountReviewExecutionError.LinkageFailure.} =
   ## Preserve only the genuine failed linkage stage, including its original guarded nested reason.
   outcome.linkageReason
+
 func contentFailure*(outcome: AccountReviewExecutionResult): PreimageContentResult[
     CheckedPreimageContent] {.inline, requires: outcome.status ==
     AccountReviewExecutionError.ContentFailure.} =
   ## Preserve only the genuine failed content stage, including its original guarded nested reason.
   outcome.contentReason
+
 func invariantFailure*(outcome: AccountReviewExecutionResult): AccountInvariantResult[
     CheckedAccountInvariants] {.inline, requires: outcome.status ==
     AccountReviewExecutionError.InvariantFailure.} =
   ## Preserve only the genuine failed invariant stage, including its original guarded nested reason.
   outcome.invariantReason
+
 func reviewFailure*(outcome: AccountReviewExecutionResult): AccountReviewResult[
     StateAccountReview] {.inline, requires: outcome.status ==
     AccountReviewExecutionError.ReviewFailure.} =
   ## Preserve only the genuine failed review stage, including its original guarded nested reason.
   outcome.reviewReason
+
 proc reviewPlanInfo*(plan: StateAccountReviewPlan): AccountReviewPlanResult[AccountReviewPlanInfo] =
   ## Default plans expose no fabricated observations; successful copies retain frozen completed facts.
   if not plan.initialized:
@@ -131,6 +144,7 @@ proc reviewPlanInfo*(plan: StateAccountReviewPlan): AccountReviewPlanResult[Acco
         status: AccountReviewPlanError.Uninitialized)
   AccountReviewPlanResult[AccountReviewPlanInfo](status: AccountReviewPlanError.None,
       completed: plan.info)
+
 proc planAccountReview*(source: StateInventory, profile: StateEconomicProfile,
     limits: AccountReviewPlanLimits): AccountReviewPlanResult[StateAccountReviewPlan] =
   ## Admit every account content policy and complete all hash-free reports before a plan can escape.
@@ -169,6 +183,7 @@ proc planAccountReview*(source: StateInventory, profile: StateEconomicProfile,
   AccountReviewPlanResult[StateAccountReviewPlan](status: AccountReviewPlanError.None,
     completed: StateAccountReviewPlan(initialized: true, source: source, limits: limits,
       footprints: footprint.value, supervision: supervision.value, economics: economics.value, info: info))
+
 proc executeAccountReview*(plan: StateAccountReviewPlan): AccountReviewExecutionResult =
   ## Accept no replacement inventory, profile or policy; prepared reports already completed their bounds and arithmetic.
   if not plan.initialized:

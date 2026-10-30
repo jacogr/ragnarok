@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "Peer"}
 
-import ../../../src/quic/session
+import "../../../src/jamnp-s/session"
 var hidden: session.Peer

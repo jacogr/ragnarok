@@ -37,18 +37,22 @@ type
 func error*(outcome: RefinementExportResult): RefinementExportError =
   ## Inspect the reason without exposing a writable discriminator.
   outcome.status
+
 func value*(outcome: RefinementExportResult): ExportTransition
     {.requires: outcome.status == RefinementExportError.None.} =
   ## Extract only a completed response/successor pair.
   outcome.completed
+
 proc captureRefinementExports*(offset: ExportOffset): RefinementExports =
   ## Retain the caller's full-width package offset with an explicitly empty ordered sequence.
   RefinementExports(data: ExportData(offset: offset, segments: @[]))
+
 proc count*(exports: RefinementExports): ExportCount {.requires: exports.data != nil.} =
   ## Inspect only initialized immutable export owners.
   let data = exports.data
   assert data != nil # Retain the checked owner for compiler flow analysis.
   ExportCount(uint64(data.segments.len))
+
 proc segment*(exports: RefinementExports, index: ExportCount): FetchSegment
     {.requires: exports.data != nil and uint64(index) < uint64(exports.data.segments.len).} =
   ## Return an independent fixed-size value; no mutable storage view escapes the owner.

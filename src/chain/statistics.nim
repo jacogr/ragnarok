@@ -24,6 +24,7 @@ type
 func error*(value: StatisticsReadResult): StatisticsReadError =
   ## Inspect success or failure without granting mutable access to the result.
   value.status
+
 func value*(value: StatisticsReadResult): StateValue {.requires: value.status ==
     StatisticsReadError.None.} =
   ## Extract only a complete successful immutable view.

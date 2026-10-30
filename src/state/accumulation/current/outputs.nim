@@ -36,16 +36,19 @@ type
 func error*[T](outcome: CurrentAccumulationOutputsResult[T]): CurrentAccumulationOutputsError =
   ## Inspect only the selected immutable reason.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationOutputsResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationOutputsError.None.} =
   ## Extract only complete selected values and immutable owners.
   outcome.completed
+
 func historyFailure*[T](outcome: CurrentAccumulationOutputsResult[
     T]): HistoryTransitionError {.inline,
 
 requires: outcome.status == CurrentAccumulationOutputsError.HistoryFailure.} =
   ## Inspect only an actual explicit root-derivation refusal.
   outcome.historyReason
+
 func comparePair(left, right: AccumulationOutput): int =
   ## Numeric service then lexicographic commitment preserves distinct outputs from the same service.
   if uint32(left.service) < uint32(right.service): return -1
@@ -56,6 +59,7 @@ func comparePair(left, right: AccumulationOutput): int =
     if a[index] < b[index]: return -1 # Fixed byte order is independent of native integer endianness.
     if a[index] > b[index]: return 1 # Pair equality requires both identity and every commitment octet.
   0
+
 proc prepareCurrentAccumulationOutputs*(source: CompletedCurrentAccumulationSequence,
     limits: CurrentAccumulationOutputLimits): CurrentAccumulationOutputsResult[
         PreparedCurrentAccumulationOutputs] =
@@ -115,6 +119,7 @@ proc prepareCurrentAccumulationOutputs*(source: CompletedCurrentAccumulationSequ
       config: limits.log, info: CurrentAccumulationOutputsInfo(entries: entries, outcomes: int(
           outcomes),
         visits: present, outputs: unique, encodedBytes: encodedBytes))))
+
 proc currentOutputsInfo*(outputs: PreparedCurrentAccumulationOutputs): CurrentAccumulationOutputsResult[
     CurrentAccumulationOutputsInfo] =
   ## Copy complete observations without exposing mutable pair storage.
@@ -123,6 +128,7 @@ proc currentOutputsInfo*(outputs: PreparedCurrentAccumulationOutputs): CurrentAc
       status: CurrentAccumulationOutputsError.Uninitialized) # Defaults have no log observations.
   CurrentAccumulationOutputsResult[CurrentAccumulationOutputsInfo](
       status: CurrentAccumulationOutputsError.None, completed: data.info)
+
 proc currentOutputsSource*(outputs: PreparedCurrentAccumulationOutputs): CurrentAccumulationOutputsResult[
     CompletedCurrentAccumulationSequence] =
   ## Retain the exact terminal current sequence independently of caller handles.
@@ -131,6 +137,7 @@ proc currentOutputsSource*(outputs: PreparedCurrentAccumulationOutputs): Current
       status: CurrentAccumulationOutputsError.Uninitialized) # No synthetic terminal provenance.
   CurrentAccumulationOutputsResult[CompletedCurrentAccumulationSequence](
       status: CurrentAccumulationOutputsError.None, completed: data.source)
+
 proc currentOutputAt*(outputs: PreparedCurrentAccumulationOutputs,
     index: OutputLogIndex): CurrentAccumulationOutputsResult[AccumulationOutput] =
   ## Extract an independent fixed pair after full-width ordinal validation.
@@ -142,6 +149,7 @@ proc currentOutputAt*(outputs: PreparedCurrentAccumulationOutputs,
       status: CurrentAccumulationOutputsError.InvalidIndex) # Prove narrowing and access before reading storage.
   CurrentAccumulationOutputsResult[AccumulationOutput](status: CurrentAccumulationOutputsError.None,
       completed: data.values[int(uint64(index))])
+
 proc currentOutputsEntry*(outputs: PreparedCurrentAccumulationOutputs): CurrentAccumulationOutputsResult[StateEntry] =
   ## Encode fresh independent C16 bytes; this projection publishes no state.
   let data = outputs.data
@@ -152,6 +160,7 @@ proc currentOutputsEntry*(outputs: PreparedCurrentAccumulationOutputs): CurrentA
       status: CurrentAccumulationOutputsError.LimitExceeded) # Retain complete codec refusal atomically.
   CurrentAccumulationOutputsResult[StateEntry](status: CurrentAccumulationOutputsError.None,
       completed: encoded.value)
+
 proc currentOutputsRoot*(outputs: PreparedCurrentAccumulationOutputs): CurrentAccumulationOutputsResult[
     AccumulationRoot] =
   ## Explicitly hash the complete selected union through the existing well-balanced history primitive.

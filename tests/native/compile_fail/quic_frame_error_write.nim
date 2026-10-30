@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "error"}
 
-import ../../../src/quic/protocol
+import "../../../src/jamnp-s/protocol"
 var result = default(FrameResult)
 result.error = FrameError.None

@@ -8,6 +8,6 @@
 
 # @@Verification={"group": "privacy", "expected": "completed"}
 
-import ../../../src/quic/protocol
+import "../../../src/jamnp-s/protocol"
 var result = default(LengthResult)
 discard result.completed

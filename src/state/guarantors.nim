@@ -47,6 +47,7 @@ type
 func error*[T](outcome: GuarantorResult[T]): GuarantorError =
   ## Read status without granting mutation of the discriminator.
   outcome.status
+
 func value*[T](outcome: GuarantorResult[T]): T {.inline,
     requires: outcome.status == GuarantorError.None.} =
   ## Supported contracts reject default/refused result extraction in checked optimized builds.
@@ -98,15 +99,15 @@ proc shuffledIndex*(owner: GuarantorPermutation, index: StateValidatorIndex): Gu
   GuarantorResult[StateValidatorIndex](status: GuarantorError.None, completed: StateValidatorIndex(
       data.indices[int(uint64(index))]))
 
-## Compare exact Ed25519 identity bytes, without curve interpretation.
 func compare(a, b: array[32, byte]): int =
+  ## Compare exact Ed25519 identity bytes, without curve interpretation.
   for i in 0..<32:
     if a[i] < b[i]: return -1 # First unequal octet establishes canonical order.
     if a[i] > b[i]: return 1 # Greater identities follow smaller ones.
   0
 
-## Search the already checked canonical posterior offender set; never retain its borrowed storage.
 proc excluded(key: StateEdKey, offenders: openArray[OffenderKey]): bool =
+  ## Search the already checked canonical posterior offender set; never retain its borrowed storage.
   var first = 0
   var last = offenders.len
   while first < last:
@@ -119,10 +120,10 @@ proc excluded(key: StateEdKey, offenders: openArray[OffenderKey]): bool =
       first = middle+1 # Continue in the larger half.
   false
 
-## Build one rotation privately after profile, owner and population validation.
 proc table(roster: ValidatorStateSnapshot, entropy: StateEntropyWord, slot: uint64,
     offenders: openArray[OffenderKey], config: GuarantorConfig): GuarantorResult[seq[
         GuarantorAssignment]] =
+  ## Build one rotation privately after profile, owner and population validation.
   let count = validatorCount(roster).value
   let shuffled = shuffleValidatorIndices(ValidatorCount(count), entropy, config.roster.validators)
   if shuffled.error != GuarantorError.None:

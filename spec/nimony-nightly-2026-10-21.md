@@ -312,7 +312,7 @@ current-download cases, four nonempty-preimage cases, four original-ancestry acq
 and five validator-rotation cases. Their existing independent TLS/map witnesses, fixture hashes,
 request counts, durable-history checks, restart and refusal verdicts were retained. Inventory,
 pinned formatting of all 31 incoming Nim files and the Linux x86-64 semantic check of
-`src/quic/current/block/download/loop.nim` passed. Diff checks passed.
+`src/jamnp-s/current/block/download/loop.nim` passed. Diff checks passed.
 
 These are selected compatibility/runtime results on macOS ARM64. No full E2E plan, new storage
 performance measurement or Linux runtime run is claimed. Earlier broad Python/compiler-guard

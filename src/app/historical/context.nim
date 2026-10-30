@@ -20,12 +20,15 @@ func hasHistoricalContext*(bytes: openArray[byte]): bool =
   for index, character in ContextMagic:
     if bytes[index] != byte(character): return false
   true
+
 func historicalCursor*(context: HistoricalContext): HistoryCursor =
   ## Default contexts return a default uninitialized cursor, which grants no file access.
   context.cursor
+
 proc chainContext*(context: HistoricalContext): seq[byte] =
   ## Copy only the bounded rolling context; the archive itself stays on disk.
   context.live
+
 proc encodeHistoricalContext*(cursor: HistoryCursor, live: openArray[byte],
     limit: ByteLimit): HistoryResult[seq[byte]] =
   ## Admit the full output before allocating or copying any live header/body payload.
@@ -46,6 +49,7 @@ proc encodeHistoricalContext*(cursor: HistoryCursor, live: openArray[byte],
   for index in 0..<8: bytes[offset+index] = byte((uint64(live.len) shr (index*8)) and 255)
   for index, octet in live: bytes[HistoricalContextPrefixBytes+index] = octet
   historySuccess(bytes)
+
 proc decodeHistoricalContext*(bytes: openArray[byte], chain: StorageChainId,
     limit: ByteLimit): HistoryResult[HistoricalContext] =
   ## Fixed bounds and exact remaining extent precede bounded payload allocation; recursion cannot grow with disk bytes.

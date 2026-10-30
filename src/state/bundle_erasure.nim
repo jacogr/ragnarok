@@ -35,22 +35,26 @@ type
 func error*[T](outcome: BundleErasureResult[T]): BundleErasureError =
   ## Inspect the selected reason without exposing a writable variant tag.
   outcome.status
+
 func value*[T](outcome: BundleErasureResult[T]): T
     {.requires: outcome.status == BundleErasureError.None.} =
   ## Extract only a complete selected success.
   outcome.completed
+
 proc bundleErasureInfo*(bundle: BundleErasure): BundleErasureResult[BundleErasureInfo] =
   ## Copy fixed facts without exposing retained encoded storage.
   let data = bundle.data
   if data == nil: return BundleErasureResult[BundleErasureInfo](
       status: BundleErasureError.Uninitialized)
   BundleErasureResult[BundleErasureInfo](status: BundleErasureError.None, completed: data.info)
+
 proc bundleErasureSource*(bundle: BundleErasure): BundleErasureResult[ErasureLayout] =
   ## Retain the exact original completed layout rather than accepting substitute geometry or bytes.
   let data = bundle.data
   if data == nil: return BundleErasureResult[ErasureLayout](
       status: BundleErasureError.Uninitialized)
   BundleErasureResult[ErasureLayout](status: BundleErasureError.None, completed: data.source)
+
 proc bundleErasureChunk*(bundle: BundleErasure, index: ErasureShardIndex): BundleErasureResult[seq[byte]] =
   ## Copy one complete systematic or parity chunk using its full-width validator ordinal.
   let data = bundle.data
@@ -63,6 +67,7 @@ proc bundleErasureChunk*(bundle: BundleErasure, index: ErasureShardIndex): Bundl
   var copied = newSeq[byte](count)
   for position in 0..<count: copied[position] = data.encoded[first+position]
   BundleErasureResult[seq[byte]](status: BundleErasureError.None, completed: copied)
+
 proc prepareBundleErasure*(source: ErasureLayout, limits: BundleErasureLimits): BundleErasureResult[
     BundleErasure] =
   ## Preflight aggregate output/workspace and every word-column product before payload extraction or allocation.

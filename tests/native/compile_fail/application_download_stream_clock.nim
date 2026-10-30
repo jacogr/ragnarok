@@ -4,7 +4,7 @@
 ## A transfer duration cannot accidentally be supplied as an absolute dispatcher tick.
 # @@Verification={"group": "nominal", "expected": "DownloadTick", "early": ["expire", "[5] expected: DownloadTick but got: DownloadTimeout"]}
 
-import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../../src/quic/transport
 import "../../../src/app/block/download" as block_download
 var route = default(BlockDownloadStream)

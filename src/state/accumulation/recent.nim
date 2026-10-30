@@ -51,26 +51,32 @@ type
 func error*[T](outcome: AccumulationRecentResult[T]): AccumulationRecentError =
   ## Read a reason without permitting retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationRecentResult[T]): T {.inline,
     requires: outcome.status == AccumulationRecentError.None.} =
   ## Extract only selected complete success under checked optimized contracts.
   outcome.completed
+
 func headerError*[T](outcome: AccumulationRecentResult[T]): HeaderError {.inline,
     requires: outcome.status == AccumulationRecentError.HeaderFailure.} =
   ## Inspect only a selected exact-header encoding refusal.
   outcome.headerReason
+
 func codecError*[T](outcome: AccumulationRecentResult[T]): HistoryError {.inline,
     requires: outcome.status == AccumulationRecentError.CodecFailure.} =
   ## Inspect only a selected recent-history capture refusal.
   outcome.codecReason
+
 func historyError*[T](outcome: AccumulationRecentResult[T]): HistoryTransitionError {.inline,
     requires: outcome.status == AccumulationRecentError.HistoryFailure.} =
   ## Inspect only a selected history transition refusal.
   outcome.historyReason
+
 func outputError*[T](outcome: AccumulationRecentResult[T]): HistoryTransitionError {.inline,
     requires: outcome.status == AccumulationRecentError.OutputFailure.} =
   ## Inspect only a selected output-root derivation refusal.
   outcome.historyReason
+
 func stateError*[T](outcome: AccumulationRecentResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationRecentError.StateFailure.} =
   ## Inspect only a selected private publication refusal.

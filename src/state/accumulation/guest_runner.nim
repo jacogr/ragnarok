@@ -76,46 +76,57 @@ type
 func error*(outcome: AccumulationGuestResult): AccumulationGuestError =
   ## Inspect the selected reason without granting retagging or mutable source access.
   outcome.status
+
 func value*(outcome: AccumulationGuestResult): PreparedAccumulationCoverage {.inline,
     requires: outcome.status == AccumulationGuestError.None.} =
   ## Extract only completely covered original/non-executing providers under checked optimized contracts.
   outcome.completed
+
 func serviceFailure*(outcome: AccumulationGuestResult): AccumulationServiceError {.inline,
     requires: outcome.status == AccumulationGuestError.ServiceFailure.} =
   ## Inspect only the actual refused service preparation; other variants expose no inactive reason payload.
   outcome.serviceReason
+
 func invocationFailure*(outcome: AccumulationGuestResult): AccumulationInvocationError {.inline,
     requires: outcome.status == AccumulationGuestError.InvocationFailure.} =
   ## Inspect only the actual refused invocation bootstrap; other variants expose no inactive reason payload.
   outcome.invocationReason
+
 func contextFailure*(outcome: AccumulationGuestResult): AccumulationContextError {.inline,
     requires: outcome.status == AccumulationGuestError.ContextFailure.} =
   ## Inspect only the actual refused initial context capture; other variants expose no inactive reason payload.
   outcome.contextReason
+
 func machineFailure*(outcome: AccumulationGuestResult): AccumulationMachineError {.inline,
     requires: outcome.status == AccumulationGuestError.MachineFailure.} =
   ## Inspect only the actual refused machine initialization; other variants expose no inactive reason payload.
   outcome.machineReason
+
 func dispatchFailure*(outcome: AccumulationGuestResult): AccumulationDispatchResult {.inline,
     requires: outcome.status == AccumulationGuestError.DispatchFailure.} =
   ## Inspect only the actual refused actual failed dispatch; other variants expose no inactive reason payload.
   outcome.dispatchReason
+
 func outcomeFailure*(outcome: AccumulationGuestResult): AccumulationOutcomeError {.inline,
     requires: outcome.status == AccumulationGuestError.OutcomeFailure.} =
   ## Inspect only the actual refused terminal normalization; other variants expose no inactive reason payload.
   outcome.outcomeReason
+
 func skipFailure*(outcome: AccumulationGuestResult): AccumulationSkipError {.inline,
     requires: outcome.status == AccumulationGuestError.SkipFailure.} =
   ## Inspect only the actual refused code-unavailable completion; other variants expose no inactive reason payload.
   outcome.skipReason
+
 func absentFailure*(outcome: AccumulationGuestResult): AccumulationAbsentError {.inline,
     requires: outcome.status == AccumulationGuestError.AbsentFailure.} =
   ## Inspect only the actual refused absent-account completion; other variants expose no inactive reason payload.
   outcome.absentReason
+
 func annulmentFailure*(outcome: AccumulationGuestResult): AccumulationAnnulmentError {.inline,
     requires: outcome.status == AccumulationGuestError.AnnulmentFailure.} =
   ## Inspect only the actual refused original conflict selection; other variants expose no inactive reason payload.
   outcome.annulmentReason
+
 func coverageFailure*(outcome: AccumulationGuestResult): AccumulationCoverageError {.inline,
     requires: outcome.status == AccumulationGuestError.CoverageFailure.} =
   ## Inspect only the actual refused complete provider coverage; other variants expose no inactive reason payload.

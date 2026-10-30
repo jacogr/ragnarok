@@ -26,10 +26,12 @@ type
 func error*[T](outcome: CheckpointFileResult[T]): CheckpointFileError =
   ## Inspect the outer boundary without extracting state or an unrelated format reason.
   outcome.status
+
 func value*[T](outcome: CheckpointFileResult[T]): T {.inline,
     requires: outcome.status == CheckpointFileError.None.} =
   ## A restored payload is available only after file completion and full decoder success.
   outcome.completed
+
 func checkpointError*[T](outcome: CheckpointFileResult[T]): CheckpointError {.requires:
     outcome.status == CheckpointFileError.InvalidCheckpoint.} =
   ## Preserve an actual inner decoder refusal; other alternatives have no such diagnostic.

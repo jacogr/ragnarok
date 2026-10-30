@@ -1,7 +1,9 @@
 # Nonblocking JAM networking
 
 `src/quic/transport.nim` maintains a narrow adapter over pristine pinned LSQUIC/BoringSSL through
-`native/quic/`. Nim owns identity, DER/certificate observations, ALPN/framing and CE 143 policy.
+`native/quic/`. `src/jamnp-s/` owns JAM identity checks, ALPN use, framing and stream policy.
+The [compliance inventory](../spec/jamnp-compliance.md) distinguishes implemented paths from
+missing pinned protocol behavior.
 One bounded POSIX readiness dispatcher handles nonblocking UDP, bounded transport batches and application deadlines.
 Callbacks borrow stable owners synchronously; no thread is created per connection or stream.
 

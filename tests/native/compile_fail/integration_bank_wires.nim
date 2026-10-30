@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "wires"}
 
-import ../../../src/quic/integration
+import "../../../src/jamnp-s/integration"
 import ../../../src/codec/owned
 var bank = default(IntegrationBank)
 discard bank.wires

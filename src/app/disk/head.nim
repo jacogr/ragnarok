@@ -36,17 +36,21 @@ const
 func error*[T](outcome: DiskHeadResult[T]): DiskHeadError =
   ## Read a typed stage refusal without exposing a default payload.
   outcome.status
+
 func value*[T](outcome: DiskHeadResult[T]): T {.inline,
     requires: outcome.status == DiskHeadError.None.} =
   ## Only fully encoded or matching structurally restored context grants access.
   outcome.completed
+
 func number(bytes: openArray[byte], offset: int): uint64 =
   ## All internal callers prove complete E8 fields before reading any octet.
   result = 0
   for index in 0..<8: result = result or (uint64(bytes[offset+index]) shl (index*8))
+
 proc putNumber(bytes: var seq[byte], offset: int, value: uint64) =
   ## Fixed prefix allocation precedes every generation/header-length write.
   for index in 0..<8: bytes[offset+index] = byte((value shr (index*8)) and 255)
+
 proc encodeDiskHead*(owner: ApplicationChain, chain: StorageChainId,
     generation: RepositoryGeneration, limit: ByteLimit): DiskHeadResult[seq[byte]] =
   ## Capture matching canonical facts and owned header bytes before any disk publication begins.
@@ -90,6 +94,7 @@ proc encodeDiskHead*(owner: ApplicationChain, chain: StorageChainId,
     let body = selected.blockBody # Extent was admitted before copying immutable bytes.
     for index, octet in body: bytes[prefix+info.value.consumed+index] = octet
   DiskHeadResult[seq[byte]](status: DiskHeadError.None, completed: bytes)
+
 proc restoreDiskHead*(bytes: openArray[byte], chain: StorageChainId,
     generation: RepositoryGeneration, configuration: Parameters, state: StateStoreSnapshot,
     limit: ByteLimit): DiskHeadResult[ApplicationChain] =

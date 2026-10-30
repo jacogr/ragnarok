@@ -40,16 +40,19 @@ type
 func error*[T](outcome: ReportIdentityResult[T]): ReportIdentityError =
   ## Inspect the reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ReportIdentityResult[T]): T
     {.requires: outcome.status == ReportIdentityError.None.} =
   ## Extract only a fully selected successful value.
   outcome.completed
+
 proc identityInfo*(identity: ReportIdentity): ReportIdentityResult[ReportIdentityInfo] =
   ## Copy fixed fields without exposing retained storage or detachable authority.
   let data = identity.data
   if data == nil: return ReportIdentityResult[ReportIdentityInfo](
       status: ReportIdentityError.Uninitialized)
   ReportIdentityResult[ReportIdentityInfo](status: ReportIdentityError.None, completed: data.info)
+
 proc identitySource*(identity: ReportIdentity): ReportIdentityResult[AuthorizedRefinement] =
   ## Retain the exact matching authorization/refinement/digest provenance.
   let data = identity.data
@@ -57,6 +60,7 @@ proc identitySource*(identity: ReportIdentity): ReportIdentityResult[AuthorizedR
       status: ReportIdentityError.Uninitialized)
   ReportIdentityResult[AuthorizedRefinement](status: ReportIdentityError.None,
       completed: data.source)
+
 proc identityLookupAt*(identity: ReportIdentity, index: ReportLookupIndex): ReportIdentityResult[
     SegmentLookup] =
   ## Check full-width ordinals before narrowing into fixed private storage.
@@ -67,6 +71,7 @@ proc identityLookupAt*(identity: ReportIdentity, index: ReportLookupIndex): Repo
     return ReportIdentityResult[SegmentLookup](status: ReportIdentityError.InvalidIndex)
   ReportIdentityResult[SegmentLookup](status: ReportIdentityError.None, completed: data.lookup[int(
       uint64(index))])
+
 proc identityRoot*(identity: ReportIdentity, key: PackageHash): ReportIdentityResult[SegmentRoot] =
   ## Resolve only a validated dictionary key; success does not authenticate the associated commitment.
   let data = identity.data
@@ -79,12 +84,14 @@ proc identityRoot*(identity: ReportIdentity, key: PackageHash): ReportIdentityRe
       return ReportIdentityResult[SegmentRoot](status: ReportIdentityError.None,
           completed: data.lookup[index].segmentRoot)
   ReportIdentityResult[SegmentRoot](status: ReportIdentityError.MissingKey)
+
 proc less(a, b: PackageHash): bool =
   ## Compare wire octets lexicographically without platform integer endianness.
   # Equality falls through; the first differing octet alone decides canonical order.
   for index in 0..<32:
     if a.bytes[index] != b.bytes[index]: return a.bytes[index] < b.bytes[index]
   false
+
 proc prepareReportIdentity*(source: AuthorizedRefinement, lookup: openArray[SegmentLookup],
     limits: ReportIdentityLimits): ReportIdentityResult[ReportIdentity] =
   ## Borrow stable lookup pairs synchronously; derive every other field from the original execution owner.

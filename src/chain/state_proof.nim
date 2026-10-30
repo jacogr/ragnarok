@@ -7,12 +7,14 @@ import ./genesis
 import ../state/[trie_proof, snapshot_proof]
 import ../state/proof/[service as proof_service, plan as proof_plan]
 import ../codec/state/[layout as state_layout, trie as state_trie]
+
 proc generateBlockStateProof*(selected: BlockSnapshotResult, query: StateKey,
     mapLimits: StateTrieLimits, limits: StateProofLimits): StateProofResult[StateProof] =
   ## A guarded block result retains its exact complete map; default/refused selection has no empty fallback.
   if selected.error != GenesisError.None:
     return proofFailure[StateProof](StateProofError.Uninitialized)
   generateStateProof(selected.value.stateSnapshot, query, mapLimits, limits)
+
 proc verifyBlockStateProof*(selected: BlockSnapshotResult, proof: StateProof, query: StateKey,
     limits: StateProofLimits): StateProofResult[VerifiedStateLookup] =
   ## Use the selected block's posterior map commitment, which differs from its header's parent-state root.

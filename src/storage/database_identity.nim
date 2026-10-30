@@ -33,16 +33,20 @@ type
 func error*[T](outcome: IdentityResult[T]): IdentityError =
   ## Inspect a refusal without granting payload access.
   outcome.status
+
 func value*[T](outcome: IdentityResult[T]): T {.inline,
     requires: outcome.status == IdentityError.None.} =
   ## Extract only complete checked bytes or an initialized identity.
   outcome.completed
+
 func fullStateIdentity*(chain: StorageChainId, schema = StorageSchema.FullNodesV1): DatabaseIdentity =
   ## Bind the full-state schema to an explicit scalar chain identity without IO or defaults.
   DatabaseIdentity(chain: chain, schema: schema, initialized: true)
+
 func chainId*(identity: DatabaseIdentity): StorageChainId {.requires: identity.initialized.} =
   ## Copy the identity domain without exposing initialization or mutable storage fields.
   identity.chain
+
 proc encodeDatabaseIdentity*(identity: DatabaseIdentity, limit: ByteLimit): IdentityResult[seq[byte]] =
   ## Hash one fixed prefix only after lifecycle and output-byte preflight.
   if not identity.initialized: return IdentityResult[seq[byte]](status: IdentityError.Uninitialized)
@@ -61,6 +65,7 @@ proc encodeDatabaseIdentity*(identity: DatabaseIdentity, limit: ByteLimit): Iden
   let checksum = array[32, byte](hashed.value)
   for i in 0..<32: output[IdentityPrefix+i] = checksum[i]
   IdentityResult[seq[byte]](status: IdentityError.None, completed: output)
+
 proc decodeDatabaseIdentity*(input: openArray[byte], expected: StorageChainId,
     limit: ByteLimit, schema = StorageSchema.FullNodesV1): IdentityResult[DatabaseIdentity] =
   ## Refuse unknown mode/schema, exact-width corruption and a different independently selected chain.

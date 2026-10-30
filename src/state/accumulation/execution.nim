@@ -72,8 +72,8 @@ func batchFailure*[T](outcome: AccumulationExecutionResult[T]):
   ## Inspect the actual refused parent result; its existing nested reason contracts remain enforced.
   outcome.failed
 
-# Canonical gas sequence ordering is numeric service order, independent of caller execution order.
 func compareUsage(left, right: AccumulationGasUsage): int =
+  ## Canonical gas sequence ordering is numeric service order, independent of caller execution order.
   if uint32(left.service) < uint32(right.service): return -1
   if uint32(left.service) > uint32(right.service): return 1
   0

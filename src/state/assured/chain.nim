@@ -36,49 +36,59 @@ type
 func error*[T](outcome: AssuredChainResult[T]): AssuredChainError =
   ## Inspect selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: AssuredChainResult[T]): T {.requires: outcome.status ==
     AssuredChainError.None.} =
   ## Extract only a fully installed child receipt under optimized contracts.
   outcome.completed
+
 func stateError*[T](outcome: AssuredChainResult[T]): StateStoreError {.requires: outcome.status ==
     AssuredChainError.StateFailure.} =
   ## Inspect only a failed live-target lookup.
   outcome.stateReason
+
 func publicationFailure*[T](outcome: AssuredChainResult[
     T]): AccumulationPublicationResult {.requires: outcome.status ==
     AssuredChainError.PublicationFailure.} =
   ## Preserve the complete failed private publication and its selected nested cause.
   outcome.publicationReason
+
 func headerError*[T](outcome: AssuredChainResult[T]): HeaderError {.requires: outcome.status ==
     AssuredChainError.HeaderFailure.} =
   ## Inspect only failed actual-header metadata or canonical encoding.
   outcome.headerReason
+
 func captureError*[T](outcome: AssuredChainResult[T]): GenesisError {.requires: outcome.status ==
     AssuredChainError.CaptureFailure.} =
   ## Inspect only a failed structural child capture.
   outcome.captureReason
+
 func viewError*[T](outcome: AssuredChainResult[T]): ViewAdvanceError {.requires: outcome.status ==
     AssuredChainError.ViewFailure.} =
   ## Inspect only an actual direct-child append refusal.
   outcome.viewReason
+
 proc assuredChainSource*(advanced: AdvancedAssuredChain): AssuredChainResult[ComposedAssuredState] =
   ## Retain actual authenticated assurance, execution and complete composition authority after caller handles retire.
   let data = advanced.data
   if data == nil: return AssuredChainResult[ComposedAssuredState](
       status: AssuredChainError.Uninitialized)
   AssuredChainResult[ComposedAssuredState](status: AssuredChainError.None, completed: data.source)
+
 proc assuredChainSnapshot*(advanced: AdvancedAssuredChain): AssuredChainResult[StateStoreSnapshot] =
   ## Share the exact adopted complete map without copying payloads or substituting an equal-root owner.
   let data = advanced.data
   if data == nil: return AssuredChainResult[StateStoreSnapshot](
       status: AssuredChainError.Uninitialized)
   AssuredChainResult[StateStoreSnapshot](status: AssuredChainError.None, completed: data.snapshot)
+
 proc assuredChainBlock*(advanced: AdvancedAssuredChain): AssuredChainResult[BlockSnapshot] =
   ## Share the actual fully installed child, never a caller-supplied observation.
   let data = advanced.data
   if data == nil: return AssuredChainResult[BlockSnapshot](
       status: AssuredChainError.Uninitialized)
   AssuredChainResult[BlockSnapshot](status: AssuredChainError.None, completed: data.child)
+
 proc advanceAssuredChain*(state: var StateStore, view: var ChainView,
     source: ComposedAssuredState): AssuredChainResult[AdvancedAssuredChain] =
   ## Check retained parents/domains, privately publish/capture/append, then replace both single-threaded handles without callbacks.

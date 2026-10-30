@@ -22,22 +22,27 @@ type
       checkpointReason: CheckpointError
     else:
       discard # No incomplete payload escapes a refusal.
+
 func error*[T](outcome: ApplicationCheckpointResult[T]): ApplicationCheckpointError =
   ## Inspect the outer status without exposing a mismatched payload or nested reason.
   outcome.status
+
 func value*[T](outcome: ApplicationCheckpointResult[T]): T {.inline, requires: outcome.status ==
     ApplicationCheckpointError.None.} =
   ## Only complete success grants independently owned bytes or restored state.
   outcome.completed
+
 func identityError*[T](outcome: ApplicationCheckpointResult[
     T]): ApplicationCheckpointIdentityError {.inline, requires: outcome.status ==
     ApplicationCheckpointError.IdentityFailure.} =
   ## Preserve only an actual capture/metadata refusal.
   outcome.identityReason
+
 func checkpointError*[T](outcome: ApplicationCheckpointResult[T]): CheckpointError {.inline,
     requires: outcome.status == ApplicationCheckpointError.CheckpointFailure.} =
   ## Preserve only an actual complete-map codec refusal.
   outcome.checkpointReason
+
 proc encodeApplicationCheckpoint*(owner: ApplicationChain,
     limit: ByteLimit): ApplicationCheckpointResult[seq[byte]] =
   ## Prove the entire output extent against both caller and host ceilings before the final allocation.

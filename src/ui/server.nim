@@ -30,24 +30,42 @@ type
     fd, root: cint
     connections: array[MaxConnections, Connection]
 
-# Synchronous POSIX calls borrow only bounded storage; accepted sockets are always nonblocking.
 proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
+  ## Synchronous POSIX calls borrow only bounded storage; accepted sockets are always nonblocking.
+
 proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
+  ## Bind the descriptor to the borrowed socket address, returning the native status.
+
 proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
+  ## Enable incoming connections with the requested native listen backlog.
+
 proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
     header: "<sys/socket.h>".}
+  ## Accept one incoming connection without retaining the optional peer-address pointers.
+
 proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
+  ## Read socket bytes into the caller-owned buffer and return the native byte count or error.
+
 proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
+  ## Send from a borrowed byte buffer and return the native byte count or error.
+
 proc setOption(fd, level, option: cint, value: pointer,
     size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
+  ## Apply one native socket option from the borrowed option-value buffer.
+
 proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
     header: "<arpa/inet.h>".}
+  ## Parse an IP address into caller-owned native storage using the selected address family.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
+  ## Convert a host-order port to the native network byte order.
+
 proc openRelative(fd: cint, path: cstring, flags: cint): cint {.importc: "openat",
     header: "<fcntl.h>".}
+  ## Open a path relative to the supplied directory descriptor using the selected flags.
 let
   GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
   SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
@@ -62,8 +80,9 @@ when defined(macosx):
 else:
   let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint # Protect each Linux send.
 
-# Copying a composite owner would duplicate root, socket and streaming-file ownership.
 proc `=copy`*(destination: var UiServer, source: UiServer) {.error: "UI Server owns descriptors".}
+  ## Copying a composite owner would duplicate root, socket and streaming-file ownership.
+
 proc `=dup`*(source: UiServer): UiServer {.error.}
   ## Implicit duplication cannot duplicate native retirement authority.
 
@@ -91,8 +110,8 @@ proc `=destroy`*(server: UiServer) =
     if slot.fileOpened: discard posix.close(slot.file)
   `=destroy`(server.connections)
 
-# Slot reuse clears all file/socket ownership and response state.
 proc close(slot: var Connection) =
+  ## Slot reuse clears all file/socket ownership and response state.
   if slot.opened: discard posix.close(slot.fd)
   if slot.fileOpened: discard posix.close(slot.file)
   slot = default(Connection)
@@ -105,8 +124,8 @@ proc close*(server: var UiServer) =
   server.opened = false
   server.rootOpened = false
 
-# Configure socket ownership flags before accepting or writing any bytes.
 proc nonblocking(fd: cint): bool =
+  ## Configure socket ownership flags before accepting or writing any bytes.
   let flags = fcntl(fd, F_GETFL, 0)
   let descriptorFlags = fcntl(fd, GetFd, 0)
   if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or
@@ -150,8 +169,8 @@ proc start*(server: var UiServer, port: uint16, directory = ""): bool =
     return false
   true
 
-# Decode one bounded request target; reject traversal, controls, backslashes and malformed escapes.
 proc staticPath(target: string): string =
+  ## Decode one bounded request target; reject traversal, controls, backslashes and malformed escapes.
   result = ""
   if target.len == 0 or target[0] != '/': return
   var decoded = ""
@@ -177,8 +196,8 @@ proc staticPath(target: string): string =
     if part.len == 0 or part in [".", ".."]: return "" # Reject before opening any component.
   decoded[1..^1]
 
-# Walk descriptor-relative components with O_NOFOLLOW to prevent symlink and rename escapes.
 proc openFile(root: cint, path: string): cint =
+  ## Walk descriptor-relative components with O_NOFOLLOW to prevent symlink and rename escapes.
   var parent = root
   var owned = false
   defer:
@@ -196,8 +215,8 @@ proc openFile(root: cint, path: string): cint =
     owned = true
   -1
 
-# Use browser-compatible MIME types for common static assets; unknown files remain binary.
 proc contentType(path: string): string =
+  ## Use browser-compatible MIME types for common static assets; unknown files remain binary.
   let lower = path.toLowerAscii()
   if lower.endsWith(".html"): "text/html; charset=utf-8"
   elif lower.endsWith(".css"): "text/css; charset=utf-8"
@@ -212,8 +231,8 @@ proc contentType(path: string): string =
   elif lower.endsWith(".txt"): "text/plain; charset=utf-8"
   else: "application/octet-stream"
 
-# HTTP quality values use integer thousandths, avoiding floats and unchecked numeric parsing.
 proc quality(value: string): int =
+  ## HTTP quality values use integer thousandths, avoiding floats and unchecked numeric parsing.
   if value == "0": return 0
   if value == "1": return 1000
   if value.len < 2 or value.len > 5 or value[0] notin {'0', '1'} or value[1] != '.': return -1
@@ -225,8 +244,8 @@ proc quality(value: string): int =
     scale = scale div 10
   if value[0] == '1': 1000 else: resultValue
 
-# Explicit gzip exclusion wins over wildcard acceptance; missing/empty headers do not opt in.
 proc acceptsGzip(value: string): bool =
+  ## Explicit gzip exclusion wins over wildcard acceptance; missing/empty headers do not opt in.
   var explicit = -1
   var wildcard = -1
   for item in value.split(','): # The request header budget also bounds this list and its allocations.
@@ -246,28 +265,28 @@ proc acceptsGzip(value: string): bool =
         explicit = if explicit < 0: weight else: min(explicit, weight)
   if explicit >= 0: explicit > 0 else: wildcard > 0
 
-# Every response closes the connection; bounded headers never reflect request data.
 proc response(status, kind: string, length: int64, encoded = false): string =
+  ## Every response closes the connection; bounded headers never reflect request data.
   "HTTP/1.1 " & status & "\r\nContent-Type: " & kind & "\r\nContent-Length: " & $length &
     "\r\nVary: Accept-Encoding\r\n" & (if encoded: "Content-Encoding: gzip\r\n" else: "") &
     "Connection: close\r\nX-Content-Type-Options: nosniff\r\n\r\n"
 
-# Lookup returns an internal manifest index or absence; generated paths are immutable build inputs.
 proc embeddedIndex(path: string): int =
+  ## Lookup returns an internal manifest index or absence; generated paths are immutable build inputs.
   for i in 0..<EmbeddedPaths.len: # Manifest order is deterministic and contains no duplicate paths.
     if EmbeddedPaths[i] == path: return i
   -1
 
-# Copy at most one chunk from immutable program data, avoiding a whole-asset copy per request.
 proc readEmbedded(slot: var Connection) =
+  ## Copy at most one chunk from immutable program data, avoiding a whole-asset copy per request.
   let count = int(min(slot.remaining, int64(ChunkBytes)))
   for i in 0..<count: # The manifest length and saved offset bound every access.
     slot.output.add(EmbeddedData[slot.assetIndex][slot.position + i])
   slot.position += count
   slot.remaining -= int64(count)
 
-# Parse only complete, bounded HTTP/1.1 GET/HEAD headers with no body or ambiguous framing.
 proc process(slot: var Connection, root: cint) =
+  ## Parse only complete, bounded HTTP/1.1 GET/HEAD headers with no body or ambiguous framing.
   let ending = slot.input.find("\r\n\r\n")
   if ending < 0:
     if slot.input.len >= MaxHeader: slot.close() # Partial headers cannot retain a slot indefinitely.

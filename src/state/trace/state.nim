@@ -27,10 +27,12 @@ type
 func error*[T](outcome: TraceStateResult[T]): TraceStateError =
   ## Inspect the selected immutable reason without authorizing a payload.
   outcome.status
+
 func value*[T](outcome: TraceStateResult[T]): T {.inline,
     requires: outcome.status == TraceStateError.None.} =
   ## Extract only a completely validated successful alternative.
   outcome.completed
+
 func fail[T](reason: TraceStateError): TraceStateResult[T] =
   ## Centralize failed construction without creating a success-shaped prefix.
   TraceStateResult[T](status: reason)
@@ -116,11 +118,13 @@ proc traceStateInfo*(state: TraceState): TraceStateResult[TraceStateInfo] =
   TraceStateResult[TraceStateInfo](status: TraceStateError.None,
       completed: TraceStateInfo(consumed: data.wire.len, entries: commitment.entries,
           root: commitment.root))
+
 proc traceStateSnapshot*(state: TraceState): TraceStateResult[StateStoreSnapshot] =
   ## Retain the exact recomputed immutable full map; this supplies no logical or chain qualification.
   let data = state.data
   if data == nil: return fail[StateStoreSnapshot](TraceStateError.InvalidOwner)
   TraceStateResult[StateStoreSnapshot](status: TraceStateError.None, completed: data.snapshot)
+
 proc copyTraceState*(state: TraceState, bytes: ByteLimit): TraceStateResult[seq[byte]] =
   ## Copy the original validated prefix in original record order; the caller may freely mutate its detached output.
   let data = state.data

@@ -11,7 +11,7 @@
 
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]
-import ../../../src/quic/integration
+import "../../../src/jamnp-s/integration"
 import ../../../src/codec/owned
 
 # Faults affect only this test-linked observer; production hashes still use the maintained primitive ABI.

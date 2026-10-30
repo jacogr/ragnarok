@@ -7,6 +7,7 @@ import ../checkpoint/identity as checkpoint_identity
 import ../../rpc/light_source
 import ../../codec/header
 import ../../state/proof/view as proof_view
+
 proc captureLightRpcHead*(head: LightApplicationHead): RpcLightSourceResult =
   ## Preflight the entire trusted header window before copying bounded wire; RPC capture grants no new root/chain authority.
   var records: seq[RpcLightHeaderInput] = @[]

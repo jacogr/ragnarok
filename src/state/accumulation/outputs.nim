@@ -71,8 +71,8 @@ func historyError*[T](outcome: AccumulationOutputsResult[T]): HistoryTransitionE
   ## Inspect only an actual refusal from explicit history-root derivation.
   outcome.historyReason
 
-# Pair-set order compares numeric service first, then the fixed commitment octets lexicographically.
 func compareOutput(left, right: AccumulationOutput): int =
+  ## Pair-set order compares numeric service first, then the fixed commitment octets lexicographically.
   if uint32(left.service) < uint32(right.service): return -1
   if uint32(left.service) > uint32(right.service): return 1
   let a = array[32, byte](left.commitment)
@@ -213,9 +213,9 @@ proc prepareAccumulationOutputs*(source: CompletedBlockAccumulation,
       executions: count, values: values,
       config: limits.log, encodedBytes: encodedBytes)))
 
-# Bound every retained batch descriptor and aggregate outcome count before appending or inspecting outcomes.
 proc appendBatch(batches: var seq[PreparedAccumulationBatch], executions: var uint64,
     batch: PreparedAccumulationBatch, limits: AccumulationOutputHistoryLimits): bool =
+  ## Bound every retained batch descriptor and aggregate outcome count before appending or inspecting outcomes.
   let count = uint64(batch.batchInfo.value.executions)
   if uint64(batches.len) >= uint64(limits.rounds) or
       batches.len >= high(int) div sizeof(PreparedAccumulationBatch):
@@ -227,11 +227,11 @@ proc appendBatch(batches: var seq[PreparedAccumulationBatch], executions: var ui
   batches.add(batch)
   true
 
-# Normalize only the mathematical pair union, never the already terminal-selected PVM outcomes.
 proc collectHistory(batches: seq[PreparedAccumulationBatch], executions: uint64,
     source: CompletedBlockAccumulation, continuation: CompletedAccumulationContinuation,
     reentry: CompletedAccumulationReentry, config: OutputLogConfig):
     AccumulationOutputsResult[PreparedAccumulationOutputs] =
+  ## Normalize only the mathematical pair union, never the already terminal-selected PVM outcomes.
   template fail() =
     return AccumulationOutputsResult[PreparedAccumulationOutputs](
       status: AccumulationOutputsError.LimitExceeded)
@@ -282,9 +282,9 @@ proc collectHistory(batches: seq[PreparedAccumulationBatch], executions: uint64,
           executions),
       values: values, config: config, encodedBytes: encodedBytes)))
 
-# Derive the first two rounds from one authenticated continuation, never from independently supplied batches.
 proc appendInitial(batches: var seq[PreparedAccumulationBatch], executions: var uint64,
     source: CompletedAccumulationContinuation, limits: AccumulationOutputHistoryLimits): bool =
+  ## Derive the first two rounds from one authenticated continuation, never from independently supplied batches.
   let initial = source.executionContinuation.value.continuationPlan.value.continuationSource.value
   appendBatch(batches, executions, source.executionBatch.value, limits) and
     appendBatch(batches, executions, initial.executionBatch.value, limits)

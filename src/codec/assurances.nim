@@ -49,17 +49,21 @@ type
 func error*(value: AssuranceWriteResult): AssuranceError =
   ## Read encoder outcomes without allowing safe callers to retag the private result.
   value.status
+
 func error*(value: AssuranceDecodeResult): AssuranceError =
   ## Read decoder/inspection outcomes; failure contains no progress or records.
   value.status
+
 func written*(value: AssuranceWriteResult): int {.inline, requires: value.status ==
     AssuranceError.None.} =
   ## Only a completely committed encode exposes its byte extent.
   value.byteWritten
+
 func count*(value: AssuranceDecodeResult): int {.inline, requires: value.status ==
     AssuranceError.None.} =
   ## Only a complete validated prefix exposes the number of records in caller storage or inspection.
   value.recordCount
+
 func consumed*(value: AssuranceDecodeResult): int {.inline, requires: value.status ==
     AssuranceError.None.} =
   ## Only successful decode/inspection may advance a caller's wire cursor.
@@ -71,8 +75,8 @@ proc validConfig*(config: AssuranceConfig): bool {.raises: [].} =
     uint64(config.validators) >= 6 and uint64(config.validators) <= 3*uint64(config.cores) and
     uint64(config.validators) mod 3 == 0
 
-# Compare address distances, avoiding overflowing address-end sums and empty-span pointer access.
 proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].} =
+  ## Compare address distances, avoiding overflowing address-end sums and empty-span pointer access.
   # An empty span borrows no bytes.
   if aLen == 0 or bLen == 0: return false
   let left = cast[uint](a)
@@ -83,9 +87,9 @@ proc overlaps(a: pointer, aLen: int, b: pointer, bLen: int): bool {.raises: [].}
     # Reversing the addresses requires the other span's extent.
     left - right < uint(bLen)
 
-# Validate one record in index/order/padding precedence without writing caller storage.
 proc recordError(value: Assurance, config: AssuranceConfig,
     previous: int): AssuranceError {.raises: [].} =
+  ## Validate one record in index/order/padding precedence without writing caller storage.
   # A fixed E2 index may still be outside the configured validator set.
   if uint64(value.validator) >= uint64(config.validators): return AssuranceError.InvalidValidator
   # Canonical assurances are unique and strictly ascending by validator.
@@ -101,8 +105,8 @@ proc recordError(value: Assurance, config: AssuranceConfig,
       return AssuranceError.NonCanonical
   AssuranceError.None
 
-# Read fixed owned fields only after the caller proves the complete record extent.
 proc readRecord(input: openArray[byte], start, width: int): Assurance {.raises: [].} =
+  ## Read fixed owned fields only after the caller proves the complete record extent.
   # Explicit zero initialization also clears storage beyond the configured wire bitfield width.
   result = default(Assurance)
   # Hash bytes retain wire identity order.

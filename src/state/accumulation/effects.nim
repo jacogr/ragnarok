@@ -221,14 +221,15 @@ type
 func error*[T](outcome: AccumulationEffectResult[T]): AccumulationEffectError =
   ## Inspect success/failure without permitting retagging or mutable access.
   outcome.status
+
 func value*[T](outcome: AccumulationEffectResult[T]): T {.inline,
     requires: outcome.status == AccumulationEffectError.None.} =
   ## Extract selected success under compiler/runtime contracts, including optimized execution.
   outcome.completed
 
-# Build an unpublished successor sharing frozen components; each operation replaces only its selected fields.
 proc successorData(previous: EffectData, accounts: StateStoreSnapshot,
     selfMetadata = false, globalOnly = false): EffectData =
+  ## Build an unpublished successor sharing frozen components; each operation replaces only its selected fields.
   var scope = previous.accountScope
   if not globalOnly and not sameStateSnapshot(previous.accounts, accounts):
     # Only explicit metadata operations certify self-only successors; unsupported ancestry is sticky.
@@ -427,9 +428,9 @@ proc copyStorageFactKey*(fact: AccumulationStorageFact,
       i] # Mutating detached output cannot alter this fact or future checkpoints.
   AccumulationEffectResult[seq[byte]](status: AccumulationEffectError.None, completed: copied)
 
-# Bound unique nonmetadata keys before allocating a trace or hashing its prospective map.
 proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite]):
     AccumulationEffectResult[AccountKeysData] =
+  ## Bound unique nonmetadata keys before allocating a trace or hashing its prospective map.
   if previous.accountScope == AccumulationAccountScope.Unsupported or uint64(
       previous.accountKeyLimit) == 0:
     return AccumulationEffectResult[AccountKeysData](status: AccumulationEffectError.None,
@@ -474,9 +475,9 @@ proc prepareSelfAccountKeys(previous: EffectData, writes: openArray[StateWrite])
   AccumulationEffectResult[AccountKeysData](status: AccumulationEffectError.None,
     completed: AccountKeysData(keys: keys))
 
-# Prepare the entire unique membership extension before publishing any associated account write.
 proc prepareModifiedAccounts(previous: EffectData, additions: openArray[ServiceIndex]):
     AccumulationEffectResult[ModifiedAccountsData] =
+  ## Prepare the entire unique membership extension before publishing any associated account write.
   if uint64(previous.modifiedLimit) == 0:
     return AccumulationEffectResult[ModifiedAccountsData](status: AccumulationEffectError.None,
         completed: previous.modified) # Disabled tracking preserves earlier local execution behavior.
@@ -511,10 +512,10 @@ proc prepareModifiedAccounts(previous: EffectData, additions: openArray[ServiceI
   AccumulationEffectResult[ModifiedAccountsData](status: AccumulationEffectError.None,
       completed: ModifiedAccountsData(values: values))
 
-# Bound and copy unique account/key pairs before any associated candidate map can be published.
 proc prepareAccountWriteFacts(previous: EffectData, additions: openArray[
     AccumulationAccountWriteFact]):
     AccumulationEffectResult[AccountWriteFactsData] =
+  ## Bound and copy unique account/key pairs before any associated candidate map can be published.
   if uint64(previous.writeFactLimit) == 0:
     return AccumulationEffectResult[AccountWriteFactsData](status: AccumulationEffectError.None,
         completed: previous.writeFacts) # Disabled capture preserves earlier execution behavior.
@@ -558,6 +559,8 @@ proc prepareAccountWriteFacts(previous: EffectData, additions: openArray[
 
 proc prepareAccountWriteFacts(previous: EffectData, service: ServiceIndex, writes: openArray[StateWrite]):
     AccumulationEffectResult[AccountWriteFactsData] =
+  ## Capture bounded service/key write facts without retaining account values; honor disabled
+  ## capture.
   if uint64(previous.writeFactLimit) == 0:
     return AccumulationEffectResult[AccountWriteFactsData](status: AccumulationEffectError.None,
         completed: previous.writeFacts) # Avoid descriptor allocation when capture is disabled.
@@ -570,9 +573,9 @@ proc prepareAccountWriteFacts(previous: EffectData, service: ServiceIndex, write
         key: write.key) # Values stay in the account map, not in this fixed proof.
   prepareAccountWriteFacts(previous, facts)
 
-# Bind the prepared self-key proof only after the same operation's account writes fully succeed.
 proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
     keys: AccountKeysData): EffectData =
+  ## Bind the prepared self-key proof only after the same operation's account writes fully succeed.
   result = successorData(previous, accounts)
   if previous.accountScope != AccumulationAccountScope.Unsupported and uint64(
       previous.accountKeyLimit) != 0:
@@ -581,9 +584,9 @@ proc selfAccountData(previous: EffectData, accounts: StateStoreSnapshot,
       previous.accountScope else: AccumulationAccountScope.SelfEntries # Self writers preserve existing membership proofs.
     result.accountKeys = keys
 
-# Bound fixed creation provenance before any candidate account map is hashed or published.
 proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestKey: StateKey):
     AccumulationEffectResult[CreatedAccountsData] =
+  ## Bound fixed creation provenance before any candidate account map is hashed or published.
   if uint64(previous.createdLimit) == 0:
     return AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
       completed: previous.created) # Disabled tracing never changes local new-call success; enabled facts survive unrelated scope gates.
@@ -602,9 +605,9 @@ proc prepareCreatedAccount(previous: EffectData, service: ServiceIndex, requestK
   AccumulationEffectResult[CreatedAccountsData](status: AccumulationEffectError.None,
     completed: CreatedAccountsData(values: values))
 
-# Bound successful-ejection membership before allocating proof storage or hashing the candidate map.
 proc prepareDeletedAccount(previous: EffectData, service: ServiceIndex):
     AccumulationEffectResult[DeletedAccountsData] =
+  ## Bound successful-ejection membership before allocating proof storage or hashing the candidate map.
   if uint64(previous.deletedLimit) == 0:
     return AccumulationEffectResult[DeletedAccountsData](status: AccumulationEffectError.None,
       completed: previous.deleted) # Disabled tracing retains the earlier local ejection behavior.
@@ -1129,9 +1132,9 @@ proc recordAccumulationProvision*(effects: AccumulationEffects, service: Service
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
       exceptional: data.exceptional)))
 
-## Subtract an exact 128-bit product from a budget of at most 2^65-2 tokens.
-## Limb products and their carry sums are bounded before arithmetic; no saturation impersonates equality.
 proc consumeDeposit(low, upper: var uint64, count, rate: uint64): bool =
+  ## Subtract an exact 128-bit product from a budget of at most 2^65-2 tokens.
+  ## Limb products and their carry sums are bounded before arithmetic; no saturation impersonates equality.
   let mask = 0xffffffff'u64
   let p0 = (count and mask)*(rate and mask)
   let p1 = (count and mask)*(rate shr 32)
@@ -1150,9 +1153,9 @@ proc consumeDeposit(low, upper: var uint64, count, rate: uint64): bool =
     low -= productLow
   true
 
-## Consume the same exact three deposit terms for both funding and minimum-balance queries.
 proc consumeAccountDeposit(metadata: ServiceMetadata, parameters: Parameters,
     low, upper: var uint64): bool =
+  ## Consume the same exact three deposit terms for both funding and minimum-balance queries.
   for term in [(1'u64, parameters.get(depositPerAccount)),
       (uint64(metadata.storageItems), parameters.get(depositPerItem)),
       (uint64(metadata.storageBytes), parameters.get(depositPerByte))]:
@@ -1161,9 +1164,9 @@ proc consumeAccountDeposit(metadata: ServiceMetadata, parameters: Parameters,
       return false # FULL includes products larger than the complete available budget.
   true
 
-## Compare the deposit with both balance components plus gratis using a bounded two-limb sum.
-## Three full-width terms need at most two carry bits; subtraction never narrows the protocol domains.
 proc funded(metadata: ServiceMetadata, parameters: Parameters): bool =
+  ## Compare the deposit with both balance components plus gratis using a bounded two-limb sum.
+  ## Three full-width terms need at most two carry bits; subtraction never narrows the protocol domains.
   var low = 0'u64
   var upper = 0'u64
   for amount in [uint64(metadata.balance), uint64(metadata.supervisorBalance), uint64(
@@ -1233,9 +1236,9 @@ proc effectAccountInfo*(context: AccumulationEffectContext, service: ServiceInde
   AccumulationEffectResult[array[AccumulationAccountInfoBytes, byte]](
     status: AccumulationEffectError.None, completed: bytes)
 
-# Decode one bounded current record without hashing or fabricating a missing participant.
 proc currentAccountMetadata(accounts: StateStoreSnapshot, service: ServiceIndex):
     AccumulationEffectResult[ServiceMetadata] =
+  ## Decode one bounded current record without hashing or fabricating a missing participant.
   let found = accounts.lookup(chapterServiceKey(StateChapter(255), service))
   if found.error == StateStoreError.MissingKey:
     return AccumulationEffectResult[ServiceMetadata](
@@ -1253,9 +1256,9 @@ proc currentAccountMetadata(accounts: StateStoreSnapshot, service: ServiceIndex)
   AccumulationEffectResult[ServiceMetadata](status: AccumulationEffectError.None,
       completed: decoded.value.metadata)
 
-# Effective supervision binds the designated service incarnation; missing/recreated accounts fall back to self.
 proc effectiveSupervisor(accounts: StateStoreSnapshot, service: ServiceIndex,
     metadata: ServiceMetadata): AccumulationEffectResult[ServiceIndex] =
+  ## Effective supervision binds the designated service incarnation; missing/recreated accounts fall back to self.
   if uint32(metadata.supervisor) == uint32(service):
     return AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None,
         completed: service) # Self designation and fallback select the same authority.
@@ -1272,9 +1275,9 @@ proc effectiveSupervisor(accounts: StateStoreSnapshot, service: ServiceIndex,
     service # Reusing an ID with a different creation slot cannot inherit authority.
   AccumulationEffectResult[ServiceIndex](status: AccumulationEffectError.None, completed: selected)
 
-# Non-privileged mutations admit the service itself or its current effective supervisor, before namespace work.
 proc authorizedAccountMetadata(previous: EffectData,
     service: ServiceIndex): AccumulationEffectResult[ServiceMetadata] =
+  ## Non-privileged mutations admit the service itself or its current effective supervisor, before namespace work.
   let self = previous.initial.contextInfo.value.service
   let selected = currentAccountMetadata(previous.accounts, service)
   if selected.error != AccumulationEffectError.None:
@@ -1415,8 +1418,8 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
   recordAccumulationStorage(effects, key, value, parameters, limit,
       current.initial.contextInfo.value.service)
 
-# Numeric order canonicalizes the host's set independently of little-endian wire ordering.
 func comparePrivilege(left, right: AlwaysAccumulate): int =
+  ## Numeric order canonicalizes the host's set independently of little-endian wire ordering.
   if uint32(left.service) < uint32(right.service): return -1 # Smaller service precedes larger service.
   if uint32(left.service) > uint32(right.service): return 1 # No subtraction or signed narrowing.
   if uint64(left.gas) < uint64(right.gas): return -1 # Group identical pairs for set deduplication.
@@ -2504,6 +2507,7 @@ proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreima
   AccumulationEffectResult[AccumulationEffects](status: AccumulationEffectError.None,
     completed: AccumulationEffects(data: PairData(source: data.source, regular: current,
         exceptional: data.exceptional)))
+
 proc recordAccumulationForget*(effects: AccumulationEffects, hash: ServicePreimageHash,
     length: RequestLength, parameters: Parameters): AccumulationEffectResult[AccumulationEffects] =
   ## Preserve self-only callers through the same bounded canonical target operation.

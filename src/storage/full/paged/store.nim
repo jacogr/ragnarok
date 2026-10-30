@@ -81,28 +81,37 @@ type
     ready: bool
     absentBefore: bool
     retirement: FileError
+
 func opened*(writer: FullPagedWriter): bool =
   ## Default/moved/closed writers have no native retirement authority.
   let data = writer.data
   data != nil and data.active
+
 func opened*(candidate: FullPagedCandidate): bool =
   ## Both forensic and sealed candidates own their independent file descriptor until close.
   let data = candidate.data
   data != nil and data.active
+
 proc `=copy`*(destination: var FullPagedWriter, source: FullPagedWriter) {.error.}
   ## Writer leases and selected native descriptors have exactly one close owner.
+
 proc `=dup`*(source: FullPagedWriter): FullPagedWriter {.error.}
   ## Actual lowering rejects implicit writer retirement duplication.
+
 proc `=copy`*(destination: var FullPagedCandidate, source: FullPagedCandidate) {.error.}
   ## Prepared capabilities cannot be duplicated through composite ARC copies.
+
 proc `=dup`*(source: FullPagedCandidate): FullPagedCandidate {.error.}
   ## A second native owner would invalidate exact candidate retirement authority.
+
 proc closed(writer: FullPagedWriter) {.requires: not writer.opened.} =
   ## Live leases require explicit error-aware retirement.
   discard
+
 proc closed(candidate: FullPagedCandidate) {.requires: not candidate.opened.} =
   ## Even failed authoring must retire its forensic descriptor explicitly.
   discard
+
 proc `=wasMoved`*(writer: var FullPagedWriter) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(writer.data)
@@ -111,6 +120,7 @@ proc `=destroy`*(writer: FullPagedWriter) =
   ## Default/moved values release only their managed private reference; live resources require close.
   closed(writer)
   `=destroy`(writer.data)
+
 proc `=wasMoved`*(candidate: var FullPagedCandidate) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(candidate.data)
@@ -119,17 +129,22 @@ proc `=destroy`*(candidate: FullPagedCandidate) =
   ## A retained incarnation reference never grants destructor permission to silently close live native resources.
   closed(candidate)
   `=destroy`(candidate.data)
+
 func opened*(reader: FullPagedReader): bool =
   ## Default, moved and closed values own no retirement obligation.
   let data = reader.data
   data != nil and data.active
+
 proc `=copy`*(destination: var FullPagedReader, source: FullPagedReader) {.error.}
   ## Independent readers require independent native opens and shared pins.
+
 proc `=dup`*(source: FullPagedReader): FullPagedReader {.error.}
   ## Actual ARC lowering must reject hidden duplication of a native retirement owner.
+
 proc closed(reader: FullPagedReader) {.requires: not reader.opened.} =
   ## A live native descriptor cannot silently disappear through a destructor.
   discard
+
 proc `=wasMoved`*(reader: var FullPagedReader) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(reader.data)
@@ -138,41 +153,51 @@ proc `=destroy`*(reader: FullPagedReader) =
   ## Moved/default values are harmless; a live native owner requires explicit error-aware close.
   closed(reader)
   `=destroy`(reader.data)
+
 func error*[T](outcome: FullPagedNativeResult[T]): FullPagedNativeError =
   ## Observe only the selected native result alternative.
   outcome.status
+
 func value*[T](outcome: FullPagedNativeResult[T]): T {.inline,
     requires: outcome.status == FullPagedNativeError.None.} =
   ## Success is mandatory before extracting a reader operation or passive receipt.
   outcome.completed
+
 func fileError*[T](outcome: FullPagedNativeResult[T]): FileError {.requires:
     outcome.status == FullPagedNativeError.FileFailure.} =
   ## Read only a selected native-resource cause.
   outcome.fileCause
+
 func codecError*[T](outcome: FullPagedNativeResult[T]): FullPagedError {.requires:
     outcome.status == FullPagedNativeError.CodecFailure.} =
   ## Shape/checksum/identity failures remain distinct from incomplete graph failures.
   outcome.codecCause
+
 func graphError*[T](outcome: FullPagedNativeResult[T]): FullPagedStreamError {.requires:
     outcome.status == FullPagedNativeError.GraphFailure.} =
   ## Missing records are graph corruption, never a successful absent lookup.
   outcome.graphCause
+
 func graphCodecError*[T](outcome: FullPagedNativeResult[T]): FullPagedError {.requires:
     outcome.status == FullPagedNativeError.GraphFailure.} =
   ## Non-codec graph refusals preserve only an uninitialized subordinate codec reason.
   outcome.graphCodec
+
 func fileFailed[T](reason: FileError): FullPagedNativeResult[T] =
   ## No native IO refusal carries success metadata.
   FullPagedNativeResult[T](status: FullPagedNativeError.FileFailure, fileCause: reason)
+
 func codecFailed[T](reason: FullPagedError): FullPagedNativeResult[T] =
   ## Local manifest/header refusal cannot grant graph authority.
   FullPagedNativeResult[T](status: FullPagedNativeError.CodecFailure, codecCause: reason)
+
 func graphFailed[T, U](outcome: FullPagedStreamResult[U]): FullPagedNativeResult[T] =
   ## Preserve graph failure and its selected local codec cause without copying inactive variants.
   let reason = if outcome.error == FullPagedStreamError.CodecFailure: outcome.codecError else:
     FullPagedError.Uninitialized
   FullPagedNativeResult[T](status: FullPagedNativeError.GraphFailure,
     graphCause: outcome.error, graphCodec: reason)
+
 proc close*(reader: var FullPagedReader): FileError =
   ## Mark ownership retired before the single native close; EINTR never retries a reused descriptor number.
   let data = reader.data
@@ -180,6 +205,7 @@ proc close*(reader: var FullPagedReader): FileError =
   data.active = false
   reader.data = nil
   if data.file.opened: data.file.close else: FileError.None
+
 proc openReader(reader: var FullPagedReader, path: string, config: FullPagedNativeConfig,
     expected: FullPagedManifest, explicitEpoch: bool): FullPagedNativeResult[bool] =
   ## One shared-pin admission path binds either exact CURRENT or an independently supplied complete epoch manifest.
@@ -231,14 +257,17 @@ proc openReader(reader: var FullPagedReader, path: string, config: FullPagedNati
   if retired != FileError.None: return fileFailed[bool](retired)
   reader.data = ReaderData(file: move(file), checked: admitted.value.value, active: true)
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+
 proc openFullPagedReader*(reader: var FullPagedReader, path: string,
     config: FullPagedNativeConfig): FullPagedNativeResult[bool] =
   ## Strict CURRENT startup uses an independent shared pin, complete graph admission and exact selection reread.
   openReader(reader, path, config, default(FullPagedManifest), false)
+
 proc openFullPagedEpochReader*(reader: var FullPagedReader, path: string,
     config: FullPagedNativeConfig, expected: FullPagedManifest): FullPagedNativeResult[bool] =
   ## Reopen one independently known immutable epoch after restart; no directory scan or inferred historical root is allowed.
   openReader(reader, path, config, expected, true)
+
 proc selected*(reader: FullPagedReader): FullPagedNativeResult[FullPagedManifest] =
   ## A passive selected receipt describes this held reader, independent of later CURRENT changes.
   let data = reader.data
@@ -248,6 +277,7 @@ proc selected*(reader: FullPagedReader): FullPagedNativeResult[FullPagedManifest
   if checked != FileError.None: return fileFailed[FullPagedManifest](checked)
   FullPagedNativeResult[FullPagedManifest](status: FullPagedNativeError.None,
     completed: data.checked.manifest)
+
 proc lookup*(reader: FullPagedReader, root: StateRoot,
     key: StateKey): FullPagedNativeResult[FullPagedLookup] =
   ## Owned presence/absence results outlive reader close; an unknown retained root is an explicit refusal.
@@ -257,9 +287,11 @@ proc lookup*(reader: FullPagedReader, root: StateRoot,
   let found = data.file.lookupFullFile(data.checked, root, key)
   if found.error != FullPagedStreamError.None: return graphFailed[FullPagedLookup, FullPagedLookup](found)
   FullPagedNativeResult[FullPagedLookup](status: FullPagedNativeError.None, completed: found.value)
+
 func refused[T](reason: FullPagedNativeError): FullPagedNativeResult[T] =
   ## Ordinary refusal reasons carry no typed failure payload or fallback native owner.
   FullPagedNativeResult[T](status: reason)
+
 func buildFailed[T](outcome: FullPagedBuildResult): FullPagedNativeResult[T] =
   ## Preserve authoring and selected subordinate diagnostics without granting a partially built artifact.
   let codec = if outcome.error == FullPagedBuildError.CodecFailure: outcome.codecError else:
@@ -270,14 +302,17 @@ func buildFailed[T](outcome: FullPagedBuildResult): FullPagedNativeResult[T] =
     FullPagedError.Uninitialized
   FullPagedNativeResult[T](status: FullPagedNativeError.BuildFailure,
     buildCause: outcome.error, buildCodec: codec, buildGraph: graph, buildGraphCodec: graphCodec)
+
 func buildError*[T](outcome: FullPagedNativeResult[T]): FullPagedBuildError {.requires:
     outcome.status == FullPagedNativeError.BuildFailure.} =
   ## Observe only a selected construction refusal.
   outcome.buildCause
+
 func buildCodecError*[T](outcome: FullPagedNativeResult[T]): FullPagedError {.requires:
     outcome.status == FullPagedNativeError.BuildFailure.} =
   ## Non-codec construction failures carry only Uninitialized in this subordinate slot.
   outcome.buildCodec
+
 func rejected[T, U](outcome: FullPagedNativeResult[U]): FullPagedNativeResult[T] {.requires:
     outcome.status != FullPagedNativeError.None.} =
   ## Composite operations preserve the exact selected refusal while changing only their successful payload type.
@@ -291,18 +326,23 @@ func rejected[T, U](outcome: FullPagedNativeResult[U]): FullPagedNativeResult[T]
       buildCause: outcome.buildCause, buildCodec: outcome.buildCodec,
       buildGraph: outcome.buildGraph, buildGraphCodec: outcome.buildGraphCodec)
   refused[T](outcome.error)
+
 func manifest*(receipt: FullPagedPublication): FullPagedManifest {.requires: receipt.ready.} =
   ## Confirmed file/directory synchronization precedes this passive selected receipt.
   receipt.selected
+
 func retirementError*(receipt: FullPagedPublication): FileError {.requires: receipt.ready.} =
   ## Retirement uncertainty does not erase an already confirmed durable selection.
   receipt.retirement
+
 func writerUsable*(receipt: FullPagedPublication): bool {.requires: receipt.ready.} =
   ## False requires explicit close/reopen even though selection is confirmed.
   receipt.usable
+
 func durability*(receipt: FullPagedPublication): StorageDurability {.requires: receipt.ready.} =
   ## This receipt attests completed OS barriers, without claiming hardware power-loss qualification.
   StorageDurability.FileAndDirectorySynced
+
 proc close*(candidate: var FullPagedCandidate): FileError =
   ## Closing a failed or sealed candidate never deletes its forensic physical artifact.
   let data = candidate.data
@@ -316,6 +356,7 @@ proc close*(candidate: var FullPagedCandidate): FileError =
     let retired = data.pending.close
     if reason == FileError.None: reason = retired
   reason
+
 proc close*(writer: var FullPagedWriter): FileError =
   ## Retire the selected file and stable lease once; independently retained readers/candidates remain separate.
   let data = writer.data
@@ -329,6 +370,7 @@ proc close*(writer: var FullPagedWriter): FileError =
     let retired = data.directory.close
     if reason == FileError.None: reason = retired
   reason
+
 proc current(data: WriterData): FileError =
   ## A remembered source is usable only while the exact lease, selected bytes and immutable inode remain held.
   if not data.active: return FileError.Uninitialized
@@ -351,6 +393,7 @@ proc current(data: WriterData): FileError =
   let pinned = data.head.check
   if pinned != FileError.None: data.poisoned = true
   pinned
+
 proc validateHead(data: WriterData): FullPagedNativeResult[bool] =
   ## Complete source graph admission is repeated before authoring or selecting any successor.
   let held = current(data)
@@ -361,6 +404,7 @@ proc validateHead(data: WriterData): FullPagedNativeResult[bool] =
   if admitted.value.error != FullPagedStreamError.None:
     return graphFailed[bool, CheckedFullPagedArtifact](admitted.value)
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+
 proc selected*(writer: FullPagedWriter): FullPagedNativeResult[FullPagedManifest] =
   ## Passive metadata never repairs stale CURRENT or revives an uncertain writer.
   let data = writer.data
@@ -370,6 +414,7 @@ proc selected*(writer: FullPagedWriter): FullPagedNativeResult[FullPagedManifest
   if held != FileError.None: return fileFailed[FullPagedManifest](held)
   FullPagedNativeResult[FullPagedManifest](status: FullPagedNativeError.None,
       completed: data.checked.manifest)
+
 proc acquireWriter(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, local: bool): FullPagedNativeResult[bool] =
   ## One lease guards exact CURRENT/header/complete-graph admission; local context and independent imports remain explicit separate entry points.
@@ -423,22 +468,26 @@ proc acquireWriter(writer: var FullPagedWriter, path: string,
   data.selected = true
   writer.data = data
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+
 proc openFullPagedWriter*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig): FullPagedNativeResult[bool] =
   ## Independent root selection remains mandatory for external import or explicitly expected storage opens.
   acquireWriter(writer, path, config, false)
+
 proc openLocalFullPagedWriter*(writer: var FullPagedWriter, path: string, chain: StorageChainId,
     limits: FullPagedStreamLimits, construction: FullPagedConstructionLimits,
     replayBytes: ByteLimit): FullPagedNativeResult[bool] =
   ## Recover one V2 local complete graph under its exclusive lease; callers must still bind context/profile/history before adoption.
   acquireWriter(writer, path, FullPagedNativeConfig(chain: chain, limits: limits,
     construction: construction, replayBytes: replayBytes), true)
+
 func buildLimits(config: FullPagedNativeConfig): FullPagedBuildLimits =
   ## Inherited admission policy cannot be substituted by a separate construction-budget object.
   let work = config.construction
   FullPagedBuildLimits(admission: config.limits, producerCalls: work.producerCalls,
     ioCalls: work.ioCalls, hashes: work.hashes, readBytes: work.readBytes,
     writeBytes: work.writeBytes)
+
 proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoot,
     roots: openArray[FullPagedRoot], producer: nil FullPagedProducer, count, payload: uint64,
     initial: bool, compaction = false, context: openArray[byte] = []): FullPagedNativeResult[
@@ -511,6 +560,7 @@ proc prepare(data: WriterData, candidate: var FullPagedCandidate, root: StateRoo
   artifact.sealed = true
   FullPagedNativeResult[StorageDurability](status: FullPagedNativeError.None,
     completed: StorageDurability.FileAndDirectorySynced)
+
 proc prepareFullPagedReplacement*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     root: StateRoot, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
     count, payload: uint64, context: openArray[byte] = []): FullPagedNativeResult[
@@ -519,6 +569,7 @@ proc prepareFullPagedReplacement*(writer: var FullPagedWriter, candidate: var Fu
   let data = writer.data
   if data == nil: return refused[StorageDurability](FullPagedNativeError.Uninitialized)
   prepare(data, candidate, root, roots, producer, count, payload, false, context = context)
+
 proc prepareFullPagedCompaction*(writer: var FullPagedWriter,
     candidate: var FullPagedCandidate): FullPagedNativeResult[StorageDurability] =
   ## Full root union, ordinary generation and physical bytes derive only from the held checked source.
@@ -534,14 +585,17 @@ proc prepareFullPagedCompaction*(writer: var FullPagedWriter,
     roots[index] = source.retainedRoot(index)
   prepare(data, candidate, source.root, roots.toOpenArray(0, source.len-1), nil,
     source.geometry.entries, source.geometry.payloadBytes, false, true)
+
 proc commitGuard(data: WriterData, artifact: CandidateData): proc(): FileError {.closure.} =
   ## Capture stable exact source/target owners for the final post-staging, pre-rename identity check.
+
   proc beforeRename(): FileError {.closure.} =
     ## No stale manifest or replaced file gains selection authority after target synchronization.
     let source = if artifact.initial: data.directory.initialAbsent else: current(data)
     if source != FileError.None: return source
     artifact.file.check
   beforeRename
+
 proc publish*(writer: var FullPagedWriter, candidate: var FullPagedCandidate): FullPagedNativeResult[
     FullPagedPublication] =
   ## Revalidate complete source/target and exact incarnation before atomic file/directory-synchronized selection.
@@ -608,6 +662,7 @@ proc publish*(writer: var FullPagedWriter, candidate: var FullPagedCandidate): F
   FullPagedNativeResult[FullPagedPublication](status: FullPagedNativeError.None,
     completed: FullPagedPublication(ready: true, selected: data.checked.manifest,
       retirement: retirement, usable: not data.poisoned))
+
 proc initializeFullPagedWriter*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
     count, payload: uint64, context: openArray[byte] = []): FullPagedNativeResult[
@@ -652,15 +707,19 @@ proc epochReceipt*(reader: FullPagedReader): FullPagedNativeResult[FullPagedEpoc
   FullPagedNativeResult[FullPagedEpochReceipt](status: FullPagedNativeError.None,
     completed: FullPagedEpochReceipt(ready: true, header: data.checked.header,
       selected: data.checked.manifest, identity: identity.value, limits: data.checked.limits))
+
 func alreadyAbsent*(receipt: FullPagedReclamation): bool {.requires: receipt.ready.} =
   ## Idempotent synchronized absence is distinct from unlinking a captured old inode during this call.
   receipt.absentBefore
+
 func retirementError*(receipt: FullPagedReclamation): FileError {.requires: receipt.ready.} =
   ## A confirmed unlink/directory barrier is not erased by later descriptor retirement failure.
   receipt.retirement
+
 func durability*(receipt: FullPagedReclamation): StorageDurability {.requires: receipt.ready.} =
   ## Successful already-absent retries also perform an actual directory synchronization.
   StorageDurability.FileAndDirectorySynced
+
 func policy(limits: FullPagedStreamLimits): array[16, uint64] =
   ## Bind every dataset/trie/history/cache/workspace/scratch/work scalar exactly, including zero allowances.
   [uint64(limits.dataset.entries), uint64(limits.dataset.bytes), uint64(limits.trie.items),
@@ -669,6 +728,7 @@ func policy(limits: FullPagedStreamLimits): array[16, uint64] =
     uint64(limits.scratchBytes), uint64(limits.work.ioCalls), uint64(limits.work.hashes),
     uint64(limits.work.visits), uint64(limits.work.readBytes), uint64(limits.work.writeBytes),
     uint64(limits.contextBytes)]
+
 proc reclaimEpoch(writer: var FullPagedWriter, previous, expected: FullPagedManifest,
     receipt: FullPagedEpochReceipt, capturedIdentity: bool): FullPagedNativeResult[
         FullPagedReclamation] =
@@ -762,6 +822,7 @@ proc reclaim*(writer: var FullPagedWriter, receipt: FullPagedEpochReceipt,
   ## Captured reader authority requires the exact original inode even after all owning readers retire.
   if not receipt.ready: return refused[FullPagedReclamation](FullPagedNativeError.InvalidCandidate)
   reclaimEpoch(writer, receipt.selected, expected, receipt, true)
+
 proc reclaimExpectedEpoch*(writer: var FullPagedWriter, previous,
     expected: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
   ## An independently authenticated old manifest authorizes exact content, not an inode remembered before restart.
@@ -774,9 +835,11 @@ proc sameManifest(left, right: FullPagedManifest): bool =
   let a = left.bytes
   let b = right.bytes
   a.error == FullPagedError.None and b.error == FullPagedError.None and a.value == b.value
+
 func comparisonLimits(config: FullPagedNativeConfig): PagedWorkLimits =
   ## Each fixed-page comparison has explicit finite IO/read ceilings, separate from graph admission.
   PagedWorkLimits(ioCalls: config.construction.ioCalls, readBytes: config.construction.readBytes)
+
 proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
     expectedSource: FullPagedManifest, target: FullPagedHeader,
     producer: nil FullPagedProducer, initial: bool, context: openArray[byte] = []): FullPagedNativeResult[bool] =
@@ -881,6 +944,7 @@ proc prepareCleanup(data: WriterData, candidate: var FullPagedCandidate,
   artifact.active = true
   candidate.data = artifact
   FullPagedNativeResult[bool](status: FullPagedNativeError.None, completed: true)
+
 proc prepareFullPagedCleanup*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     expectedSource: FullPagedManifest, target: FullPagedHeader,
     producer: nil FullPagedProducer, context: openArray[byte] = []): FullPagedNativeResult[bool] =
@@ -888,6 +952,7 @@ proc prepareFullPagedCleanup*(writer: var FullPagedWriter, candidate: var FullPa
   let data = writer.data
   if data == nil: return refused[bool](FullPagedNativeError.Uninitialized)
   prepareCleanup(data, candidate, expectedSource, target, producer, false, context)
+
 proc discardFullPagedCandidate*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     expectedSource: FullPagedManifest): FullPagedNativeResult[FullPagedReclamation] =
   ## Every source, epoch and staging preflight must pass before unlink; uncertainty poisons the writer.
@@ -972,6 +1037,7 @@ proc discardFullPagedCandidate*(writer: var FullPagedWriter, candidate: var Full
   let retired = candidate.close
   FullPagedNativeResult[FullPagedReclamation](status: FullPagedNativeError.None,
     completed: FullPagedReclamation(ready: true, absentBefore: absent, retirement: retired))
+
 proc resumeFullPagedInitialization*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, roots: openArray[FullPagedRoot], producer: nil FullPagedProducer,
     count, payload: uint64, context: openArray[byte] = []): FullPagedNativeResult[
@@ -1037,6 +1103,7 @@ proc rootInfo*(reader: FullPagedReader, root: StateRoot): FullPagedNativeResult[
           completed: claim)
   FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.GraphFailure,
     graphCause: FullPagedStreamError.UnknownRoot, graphCodec: FullPagedError.Uninitialized)
+
 proc visitEntries*(reader: FullPagedReader, root: StateRoot, visitor: nil FullPagedEntryVisitor,
     budget: FullPagedWorkLimits): FullPagedNativeResult[FullPagedCounts] =
   ## Borrow sorted complete-root values synchronously under this reader's immutable pin; caller stages output until full success.
@@ -1048,6 +1115,7 @@ proc visitEntries*(reader: FullPagedReader, root: StateRoot, visitor: nil FullPa
     return graphFailed[FullPagedCounts, FullPagedCounts](streamed)
   FullPagedNativeResult[FullPagedCounts](status: FullPagedNativeError.None,
       completed: streamed.value)
+
 proc visitEntries*(reader: FullPagedReader, root: StateRoot,
     visitor: nil FullPagedEntryVisitor): FullPagedNativeResult[FullPagedCounts] =
   ## Default traversal retains the originally admitted finite work policy, never an unbounded producer allowance.
@@ -1072,6 +1140,7 @@ proc readContext*(reader: FullPagedReader, budget: FullPagedWorkLimits): FullPag
       FullPagedContext](captured)
   FullPagedNativeResult[FullPagedContext](status: FullPagedNativeError.None,
       completed: captured.value)
+
 proc readContext*(writer: FullPagedWriter, budget: FullPagedWorkLimits): FullPagedNativeResult[
     FullPagedContext] =
   ## Startup may inspect the already admitted selected immutable head while holding the exclusive writer lease.
@@ -1102,6 +1171,7 @@ proc rootInfo*(writer: FullPagedWriter, root: StateRoot): FullPagedNativeResult[
           completed: claim)
   FullPagedNativeResult[FullPagedRoot](status: FullPagedNativeError.GraphFailure,
     graphCause: FullPagedStreamError.UnknownRoot, graphCodec: FullPagedError.Uninitialized)
+
 proc visitEntries*(writer: FullPagedWriter, root: StateRoot, visitor: nil FullPagedEntryVisitor,
     budget: FullPagedWorkLimits): FullPagedNativeResult[FullPagedCounts] =
   ## Synchronously borrow the immutable selected head; callers stage every value privately until traversal completes.
@@ -1114,6 +1184,7 @@ proc visitEntries*(writer: FullPagedWriter, root: StateRoot, visitor: nil FullPa
       FullPagedCounts](streamed)
   FullPagedNativeResult[FullPagedCounts](status: FullPagedNativeError.None,
       completed: streamed.value)
+
 proc visitEntries*(writer: FullPagedWriter, root: StateRoot,
     visitor: nil FullPagedEntryVisitor): FullPagedNativeResult[FullPagedCounts] =
   ## Omitted traversal budgets preserve every originally admitted finite work ceiling.

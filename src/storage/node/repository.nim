@@ -91,12 +91,15 @@ type
 func graphWords(count: int): int =
   ## Round a nonnegative inventory length without an overflow-prone count+63 addition.
   count div 64+(if count mod 64 == 0: 0 else: 1)
+
 func marked(bits: seq[uint64], index: int): bool {.inline.} =
   ## Callers supply validated physical positions; unused high bits never authorize another record.
   (bits[index div 64] and (1'u64 shl (index mod 64))) != 0
+
 proc mark(bits: var seq[uint64], index: int) {.inline.} =
   ## Set only an existing validated physical slot in private traversal scratch.
   bits[index div 64] = bits[index div 64] or (1'u64 shl (index mod 64))
+
 proc unmark(bits: var seq[uint64], index: int) {.inline.} =
   ## Per-root reset clears exactly the positions collected by the preceding complete graph traversal.
   bits[index div 64] = bits[index div 64] and not (1'u64 shl (index mod 64))
@@ -104,23 +107,28 @@ proc unmark(bits: var seq[uint64], index: int) {.inline.} =
 func error*[T](outcome: RepositoryResult[T]): RepositoryError =
   ## Observe only the selected reason.
   outcome.status
+
 func value*[T](outcome: RepositoryResult[T]): T {.inline,
     requires: outcome.status == RepositoryError.None.} =
   ## Extract only a successful complete operation.
   outcome.completed
+
 proc takeValue*[T](outcome: var RepositoryResult[T]): T {.inline,
     requires: outcome.status == RepositoryError.None.} =
   ## Transfer one successful owner without copying; the consumed result retains no payload or authority.
   result = move(outcome.completed)
   outcome = RepositoryResult[T](status: RepositoryError.Uninitialized)
+
 func recordError*[T](outcome: RepositoryResult[T]): RecordError {.requires:
     outcome.status == RepositoryError.InvalidRecords.} =
   ## Inspect only a selected physical-record integrity refusal.
   outcome.recordReason
+
 func trieError*[T](outcome: RepositoryResult[T]): TrieError {.requires:
     outcome.status == RepositoryError.TrieFailure.} =
   ## Inspect only a selected failed standalone trie reconstruction.
   outcome.trieReason
+
 func compareHash(left, right: StateNodeHash): int =
   ## Full physical addresses use fixed lexical order.
   let a = array[32, byte](left)
@@ -129,13 +137,16 @@ func compareHash(left, right: StateNodeHash): int =
     if a[i] < b[i]: return -1 # First different byte fixes address order.
     if a[i] > b[i]: return 1
   0
+
 proc compareRecord(left, right: StoredRecord): int =
   ## Sort records without comparing or copying raw payloads in the comparator.
   compareHash(left.digest, right.digest)
+
 func payloadBytes(record: StoredRecord): int {.inline.} =
   ## Mixed physical inventories count no value bytes for a branch and never read an inactive variant.
   if record.kind == TrieRecordKind.Leaf: record.payload.len
   else: 0
+
 func sameRecord(left: StoredRecord, right: TrieRecord): bool =
   ## Transport preflight has established canonical unused fields; compare every active physical field.
   if left.kind != right.kind or compareHash(left.digest, right.digest) != 0: return false
@@ -143,6 +154,7 @@ func sameRecord(left: StoredRecord, right: TrieRecord): bool =
     array[31, byte](left.key) == array[31, byte](right.key) and left.payload == right.payload
   else:
     compareHash(left.left, right.left) == 0 and compareHash(left.right, right.right) == 0
+
 proc storeRecord(source: TrieRecord): StoredRecord =
   ## Only fully validated raw records enter this private constructor; mutable leaf payloads still copy.
   if source.kind == TrieRecordKind.Leaf:
@@ -154,6 +166,7 @@ proc storeRecord(source: TrieRecord): StoredRecord =
   else:
     result = StoredRecord(kind: TrieRecordKind.Branch, digest: source.digest,
       left: source.left, right: source.right)
+
 proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
   ## Synchronous local decoding supplies canonical owned records; only leaf payload ownership transfers.
   if source.kind == TrieRecordKind.Leaf:
@@ -162,9 +175,11 @@ proc storeDecodedRecord(source: var TrieRecord): StoredRecord =
   else:
     result = StoredRecord(kind: TrieRecordKind.Branch, digest: source.digest,
       left: source.left, right: source.right)
+
 proc prepareImageRecords(stage: var ImageRecordStage, info: RecordCollectionInfo) =
   ## The codec has bounded this exact count; reserve private cell references without repeating input inspection.
   stage.records = newSeqOfCap[StoredRecord](int(info.records))
+
 proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): bool =
   ## Accumulate private immutable owners while leaving all later codec integrity checks observable.
   if stage.failure != RepositoryError.None: return true
@@ -175,6 +190,7 @@ proc acceptImageRecord(stage: var ImageRecordStage, record: var TrieRecord): boo
   stage.bytes += uint64(record.payload.len)
   stage.records.add(storeDecodedRecord(record))
   true
+
 proc copyRecord(source: StoredRecord): TrieRecord =
   ## Reconstruct canonical detached transport, initializing unused fields to zero/empty on both forms.
   if source.kind == TrieRecordKind.Leaf:
@@ -186,6 +202,7 @@ proc copyRecord(source: StoredRecord): TrieRecord =
   else:
     result = TrieRecord(kind: TrieRecordKind.Branch, digest: source.digest,
       left: source.left, right: source.right)
+
 proc position(records: seq[StoredRecord], digest: StateNodeHash): int =
   ## Binary search uses subtraction-based midpoints and full address equality.
   var first = 0
@@ -197,12 +214,14 @@ proc position(records: seq[StoredRecord], digest: StateNodeHash): int =
     elif order > 0: stop = middle # Search only smaller remaining addresses.
     else: return middle
   -1
+
 func hashPrefix(digest: StateNodeHash, bits: int): int =
   ## Bounded private widths use at most two bytes; they never substitute for complete address equality.
   let raw = array[32, byte](digest)
   if bits == 4: int(raw[0]) shr 4
   elif bits == 8: int(raw[0])
   else: (int(raw[0]) shl 4) or (int(raw[1]) shr 4)
+
 proc newRepositoryTable(records: var seq[StoredRecord]): RepositoryTable =
   ## Consume sorted cells; small tables avoid 2 KiB headers while large tables bound typical search intervals.
   let bits = if records.len < 256: 4 elif records.len < 16384: 8 else: 12
@@ -228,6 +247,7 @@ proc position(table: RepositoryTable, digest: StateNodeHash): int =
     elif order > 0: stop = middle
     else: return middle
   -1
+
 proc graph(table: RepositoryTable, digest: StateNodeHash, depth: int,
     prefix: array[31, byte], limits: StateTrieLimits, visit: var GraphVisit,
     counts: var GraphCounts): RepositoryError =
@@ -313,22 +333,27 @@ proc newNodeRepository*(limits: RepositoryLimits): NodeRepository =
   ## Open an initialized empty in-memory owner; allocation exhaustion keeps the fail-stop policy.
   var records: seq[StoredRecord] = @[]
   NodeRepository(head: RepositoryData(table: newRepositoryTable(records), limits: limits))
+
 func opened*(repository: NodeRepository): bool =
   ## Observe lifecycle without exporting the mutable publication handle.
   repository.head != nil
+
 proc close*(repository: var NodeRepository): RepositoryError =
   ## Release this handle once; independently retained views and copied handles remain valid.
   if repository.head == nil: return RepositoryError.Uninitialized
   repository.head = nil
   RepositoryError.None
+
 proc snapshot*(repository: NodeRepository): RepositoryResult[RepositoryView] =
   ## Retain the current complete version independently of the originating owner.
   let head = repository.head
   if head == nil: return RepositoryResult[RepositoryView](status: RepositoryError.Uninitialized)
   RepositoryResult[RepositoryView](status: RepositoryError.None, completed: RepositoryView(data: head))
+
 func initialized*(view: RepositoryView): bool =
   ## Test a read handle before another storage component accepts ownership of it.
   view.data != nil
+
 func matches*(view, other: RepositoryView): bool =
   ## Compare initialized immutable owner identity in constant space/time; equal roots/generations grant no binding.
   ## Default views never match, including each other; retained views remain comparable after source close.
@@ -339,21 +364,25 @@ proc commitment*(view: RepositoryView): StateTrieCommitment {.requires: view.dat
   let data = view.data
   assert data != nil # Keep one contract-proved owner stable for nullable analysis.
   data.commitment
+
 proc generation*(view: RepositoryView): RepositoryGeneration {.requires: view.data != nil.} =
   ## Return the local publication ordinal; it grants no chain authority.
   let data = view.data
   assert data != nil
   data.generation
+
 proc storedNodes*(view: RepositoryView): int {.requires: view.data != nil.} =
   ## Count retained physical addresses, including nodes of prior revisions pending explicit reclamation.
   let data = view.data
   assert data != nil
   data.table.records.len
+
 proc repositoryLimits*(view: RepositoryView): RepositoryLimits {.requires: view.data != nil.} =
   ## Copy the exact immutable physical/codec policy for bounded consumers; no record storage escapes.
   let data = view.data
   assert data != nil
   data.limits
+
 proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[TrieRecord] =
   ## Missing physical data is distinct from an empty child and from a default read view.
   let data = view.data
@@ -366,6 +395,7 @@ proc lookupNode*(view: RepositoryView, digest: StateNodeHash): RepositoryResult[
 func transportDigest(record: TrieRecord): StateNodeHash =
   ## Private publication traversal projects only the fixed address from an untrusted raw transport.
   record.digest
+
 proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
     batch: RecordBatchInfo, count: int, bytes: uint64, added: var seq[StoredRecord],
     touched: openArray[T], address: proc(record: T): StateNodeHash {.nimcall.}): RepositoryResult[
@@ -420,6 +450,7 @@ proc admitPublication[T](repository: var NodeRepository, head: RepositoryData,
 func storedDigest(record: StoredRecord): StateNodeHash =
   ## The private staged-publication path exposes only an immutable cell's fixed physical identity.
   record.digest
+
 proc preparePublicationRecords(stage: var PublicationStage, info: RecordCollectionInfo) =
   ## Whole-input preflight bounded this count; new-cell capacity also respects inherited physical headroom.
   let maximum = uint64(stage.head.limits.records)
@@ -427,6 +458,7 @@ proc preparePublicationRecords(stage: var PublicationStage, info: RecordCollecti
   let available = if retained < maximum: maximum-retained else: 0'u64
   stage.added = newSeqOfCap[StoredRecord](int(min(info.records, available)))
   stage.touched = newSeqOfCap[StoredRecord](int(info.records))
+
 proc acceptPublicationRecord(stage: var PublicationStage, record: var TrieRecord): bool =
   ## Continue codec hashing after repository refusal; base/generation and quota precedence resolve afterward.
   let limits = stage.head.limits
@@ -449,6 +481,7 @@ proc acceptPublicationRecord(stage: var PublicationStage, record: var TrieRecord
     stage.added.add(cell) # Only new decoded owners enter the private merge inventory.
   stage.touched.add(cell)
   true
+
 proc publishBatch(repository: var NodeRepository, expected: RepositoryView,
     batch: TrieExport): RepositoryResult[RepositoryView] =
   ## Raw mutable transports always require independent integrity and complete graph admission.
@@ -550,6 +583,7 @@ proc restoreStateEntries*(view: RepositoryView, expected: StateRoot,
     limits: StateTrieLimits): RepositoryResult[seq[StateEntry]] =
   ## Extract only the selected complete mapping under independently supplied root authority.
   collectStateEntries(view, expected, limits, true)
+
 proc restoreHistoricalStateEntries*(view: RepositoryView, expected: StateRoot,
     limits: StateTrieLimits): RepositoryResult[seq[StateEntry]] =
   ## Verify and copy a complete explicitly selected historical root without changing the current head.
@@ -580,25 +614,30 @@ proc synchronize*(repository: NodeRepository): RepositoryResult[StorageDurabilit
 func initialized*(selection: RepositorySelection): bool =
   ## Query success ownership before accessing a retention plan's scalar observations.
   selection.data != nil
+
 func matches*(selection: RepositorySelection, view: RepositoryView): bool =
   ## Compare exact immutable source owners, never just a root or local generation.
   let data = selection.data
   data != nil and data.source.matches(view)
+
 proc retainedNodes*(selection: RepositorySelection): int {.requires: selection.initialized.} =
   ## Count unique physical records needed by the selected root union.
   let data = selection.data
   assert data != nil
   data.indices.len
+
 proc retainedValueBytes*(selection: RepositorySelection): uint64 {.requires: selection.initialized.} =
   ## Count unique retained leaf payload bytes, without multiplying shared nodes across roots.
   let data = selection.data
   assert data != nil
   data.valueBytes
+
 proc reclaimableNodes*(selection: RepositorySelection): int {.requires: selection.initialized.} =
   ## Count source records outside the root union; this observation performs no reclamation.
   let data = selection.data
   assert data != nil
   data.source.storedNodes-data.indices.len
+
 proc reclaimableValueBytes*(selection: RepositorySelection): uint64 {.requires: selection.initialized.} =
   ## Count source payload bytes outside the union, under the source's already checked total.
   let data = selection.data
@@ -606,6 +645,7 @@ proc reclaimableValueBytes*(selection: RepositorySelection): uint64 {.requires: 
   let source = data.source.data
   assert source != nil
   source.valueBytes-data.valueBytes
+
 proc retainedRoots*(selection: RepositorySelection): seq[
     StateRoot] {.requires: selection.initialized.} =
   ## Return detached root identities; their presence grants no chain or finality authority.
@@ -615,6 +655,7 @@ proc retainedRoots*(selection: RepositorySelection): seq[
   for index in 0..<data.roots.len: roots[index] = data.roots[
       index] # No mutable alias to the accepted plan escapes.
   roots
+
 proc compareRoot(left, right: StateRoot): int =
   ## Root inventories use the same complete lexical identity order as physical addresses.
   compareHash(StateNodeHash(array[32, byte](left)), StateNodeHash(array[32, byte](right)))
@@ -690,11 +731,13 @@ proc commitment*(selection: RepositorySelection): StateTrieCommitment {.requires
   let data = selection.data
   assert data != nil
   data.source.commitment
+
 proc generation*(selection: RepositorySelection): RepositoryGeneration {.requires: selection.initialized.} =
   ## Copy the source generation without creating a new publication or chain identity.
   let data = selection.data
   assert data != nil
   data.source.generation
+
 proc exportRepositorySelection*(selection: RepositorySelection,
     limits: TrieExportLimits): RepositoryResult[seq[TrieRecord]] =
   ## Detach the validated root union in physical address order after exact descriptor/payload preflight.
@@ -731,6 +774,7 @@ proc exportRepositoryImage*(selection: RepositorySelection, limits: TrieExportLi
     completed: RepositoryImage(generation: data.source.generation,
       commitment: data.source.commitment,
       roots: ordered, collection: RecordCollection(records: exported.value)))
+
 proc imageRecordLimits(limits: RepositoryLimits, encoded: ByteLimit): RecordLimits =
   ## Complete images use aggregate physical union budgets rather than one target's export ceiling.
   result = limits.codec
@@ -853,6 +897,7 @@ proc retainedRootCount*(selection: RepositorySelection): int {.requires: selecti
   let data = selection.data
   assert data != nil
   data.roots.len
+
 proc measureRepositorySelection*(selection: RepositorySelection,
     limits: RecordLimits): RepositoryResult[int] =
   ## Preflight the exact record-collection extent without hashing, detaching records or allocating output.

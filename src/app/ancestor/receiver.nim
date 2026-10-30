@@ -35,20 +35,26 @@ type
 proc `=copy`*(destination: var AncestorReceiver, source: AncestorReceiver) {.error:
     "AncestorReceiver owns reception".}
   ## Mutable buffer offsets and generation cancellation must never acquire a second owner.
+
 proc `=dup`*(source: AncestorReceiver): AncestorReceiver {.error.}
   ## Explicit duplication is forbidden through the actual owned sequence lowering too.
+
 proc `==`*(left, right: AncestorReceiveId): bool {.borrow.}
   ## Compare only local receiver generations.
+
 func stage*(receiver: AncestorReceiver): AncestorReceiveStage =
   ## Read scalar state without borrowing or exposing payload storage.
   receiver.state
+
 func error*[T](outcome: AncestorReceiveResult[T]): AncestorReceiveError =
   ## Inspect success/refusal without exposing its private tag.
   outcome.status
+
 func value*[T](outcome: AncestorReceiveResult[T]): T {.inline, requires:
     outcome.status == AncestorReceiveError.None.} =
   ## Extract only a checked generation or exact captured request.
   outcome.completed
+
 func failure*(receiver: AncestorReceiver): AncestorReceiveError {.requires:
     receiver.state == AncestorReceiveStage.Failed.} =
   ## Observe the selected terminal framing reason after callback retirement.

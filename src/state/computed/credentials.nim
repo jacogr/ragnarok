@@ -37,14 +37,17 @@ type
 func error*[T](outcome: ComputedCredentialResult[T]): ComputedCredentialError =
   ## Read selected status without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedCredentialResult[T]): T
     {.requires: outcome.status == ComputedCredentialError.None.} =
   ## Preserve complete successful extraction in optimized builds.
   outcome.completed
+
 func assignmentError*[T](outcome: ComputedCredentialResult[T]): ComputedGuarantorError
     {.requires: outcome.status == ComputedCredentialError.AssignmentFailure.} =
   ## Inspect only a selected assignment refusal, without exposing a successful credential prefix.
   outcome.assignmentReason
+
 proc computedCredentialSource*(bound: CredentialedComputedReport): ComputedCredentialResult[
     ComputedGuarantors] =
   ## Share exact authenticated assignment and original computed transcript provenance.
@@ -53,6 +56,7 @@ proc computedCredentialSource*(bound: CredentialedComputedReport): ComputedCrede
       status: ComputedCredentialError.Uninitialized)
   ComputedCredentialResult[ComputedGuarantors](status: ComputedCredentialError.None,
       completed: data.source)
+
 proc computedCredentialInfo*(bound: CredentialedComputedReport): ComputedCredentialResult[
     ComputedCredentialInfo] =
   ## Copy fixed slot/count facts while leaving retained metadata immutable.
@@ -61,6 +65,7 @@ proc computedCredentialInfo*(bound: CredentialedComputedReport): ComputedCredent
       status: ComputedCredentialError.Uninitialized)
   ComputedCredentialResult[ComputedCredentialInfo](status: ComputedCredentialError.None,
       completed: data.info)
+
 proc computedCredentialAt*(bound: CredentialedComputedReport,
     index: ComputedCredentialIndex): ComputedCredentialResult[GuaranteeCredential] =
   ## Copy an independently mutable fixed credential after checking its owner-relative ordinal.
@@ -71,6 +76,7 @@ proc computedCredentialAt*(bound: CredentialedComputedReport,
       GuaranteeCredential](status: ComputedCredentialError.InvalidIndex)
   ComputedCredentialResult[GuaranteeCredential](status: ComputedCredentialError.None,
       completed: data.records[int(uint64(index))])
+
 proc verifyComputedCredentials*(source: ComputedGuarantors, slot: GuaranteeSlot,
     credentials: openArray[GuaranteeCredential]): ComputedCredentialResult[
         CredentialedComputedReport] =

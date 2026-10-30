@@ -57,30 +57,36 @@ func error*[T](outcome: CurrentAccumulationFinalizationResult[
     T]): CurrentAccumulationFinalizationError =
   ## Inspect only the immutable selected reason.
   outcome.status
+
 func value*[T](outcome: CurrentAccumulationFinalizationResult[T]): T {.inline,
     requires: outcome.status == CurrentAccumulationFinalizationError.None.} =
   ## Extract only complete selected success.
   outcome.completed
+
 func outputFailure*[T](outcome: CurrentAccumulationFinalizationResult[
     T]): CurrentAccumulationOutputsResult[PreparedCurrentAccumulationOutputs] {.inline,
 
 requires: outcome.status == CurrentAccumulationFinalizationError.OutputFailure.} =
   ## Preserve the actual failed terminal pair union, never its successful prefix.
   outcome.outputReason
+
 func queueFailure*[T](outcome: CurrentAccumulationFinalizationResult[T]): WorkQueueError {.inline,
     requires: outcome.status == CurrentAccumulationFinalizationError.QueueFailure.} =
   ## Preserve the actual parent C15 decoder refusal.
   outcome.queueReason
+
 func projectionFailure*[T](outcome: CurrentAccumulationFinalizationResult[
     T]): AccumulationHistoryResult[AccumulationHistoryProjection] {.inline,
 
 requires: outcome.status == CurrentAccumulationFinalizationError.ProjectionFailure.} =
   ## Preserve the actual failed pure history projection.
   outcome.projectionReason
+
 func stateFailure*[T](outcome: CurrentAccumulationFinalizationResult[T]): StateStoreError {.inline,
     requires: outcome.status == CurrentAccumulationFinalizationError.StateFailure.} =
   ## Preserve the actual atomic private-store refusal.
   outcome.stateReason
+
 proc prepareCurrentAccumulationFinalization*(accounts: PreparedCurrentAccumulationAccounts,
     config: CurrentAccumulationFinalizationConfig): CurrentAccumulationFinalizationResult[
         PreparedCurrentAccumulationFinalization] =

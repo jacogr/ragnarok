@@ -40,13 +40,16 @@ type
     case status: ServiceIdentityHistoryError
     of None: completed: T
     else: discard # Only the selected immutable reason survives refusal.
+
 func error*[T](outcome: ServiceIdentityHistoryResult[T]): ServiceIdentityHistoryError =
   ## Observe only the selected capture or lookup status.
   outcome.status
+
 func value*[T](outcome: ServiceIdentityHistoryResult[T]): T {.inline,
     requires: outcome.status == ServiceIdentityHistoryError.None.} =
   ## Extract only a complete source-bound history or validated detached observation.
   outcome.completed
+
 proc captureServiceIdentityHistory*(source: CompletedCurrentAccumulationSequence,
     limits: ServiceIdentityHistoryLimits): ServiceIdentityHistoryResult[ServiceIdentityHistory] =
   ## Admit the entire selected descriptor ledger before either output array allocation; never rerun a guest or hash a map.
@@ -121,6 +124,7 @@ proc captureServiceIdentityHistory*(source: CompletedCurrentAccumulationSequence
       deletions: deletedRows, info: ServiceIdentityHistoryInfo(entries: info.value.entries,
         outcomes: int(outcomeBudget-outcomes), creations: c, deletions: d,
         bytes: creationBytes+deletionCount*uint64(sizeof(ServiceDeletionRow)))))
+
 proc serviceIdentityHistoryInfo*(history: ServiceIdentityHistory): ServiceIdentityHistoryResult[
     ServiceIdentityHistoryInfo] =
   ## Inspect exact selected coverage without granting mutable arrays.
@@ -129,6 +133,7 @@ proc serviceIdentityHistoryInfo*(history: ServiceIdentityHistory): ServiceIdenti
         status: ServiceIdentityHistoryError.InvalidSource)
   ServiceIdentityHistoryResult[ServiceIdentityHistoryInfo](status: ServiceIdentityHistoryError.None,
       completed: history.info)
+
 proc serviceIdentityHistorySource*(history: ServiceIdentityHistory): ServiceIdentityHistoryResult[
     CompletedCurrentAccumulationSequence] =
   ## Retain the authentic completed producer graph under its original execution bounds.
@@ -137,6 +142,7 @@ proc serviceIdentityHistorySource*(history: ServiceIdentityHistory): ServiceIden
         status: ServiceIdentityHistoryError.InvalidSource)
   ServiceIdentityHistoryResult[CompletedCurrentAccumulationSequence](
       status: ServiceIdentityHistoryError.None, completed: history.source)
+
 proc serviceIdentityCreationAt*(history: ServiceIdentityHistory,
     index: ServiceCreationIndex): ServiceIdentityHistoryResult[ServiceCreationRow] =
   ## Validate initialization and the complete full-width ordinal before copying one fixed observation.
@@ -148,6 +154,7 @@ proc serviceIdentityCreationAt*(history: ServiceIdentityHistory,
         status: ServiceIdentityHistoryError.InvalidIndex)
   ServiceIdentityHistoryResult[ServiceCreationRow](status: ServiceIdentityHistoryError.None,
     completed: history.creations[int(uint64(index))])
+
 proc serviceIdentityDeletionAt*(history: ServiceIdentityHistory,
     index: ServiceDeletionIndex): ServiceIdentityHistoryResult[ServiceDeletionRow] =
   ## Validate initialization and the complete full-width ordinal before copying one fixed observation.

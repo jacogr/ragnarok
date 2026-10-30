@@ -44,80 +44,99 @@ type
     bytes: uint64
     limits: StateStoreLimits
     reason: StateStoreError
+
 func error*[T](outcome: PagedStateResult[T]): PagedStateError =
   ## Inspect only the selected transport/restore stage.
   outcome.status
+
 func value*[T](outcome: PagedStateResult[T]): T {.inline, requires: outcome.status ==
     PagedStateError.None.} =
   ## Only complete success exposes an immutable transport, native receipt or ordinary complete StateStore.
   outcome.completed
+
 func stateError*[T](outcome: PagedStateResult[T]): StateStoreError {.requires: outcome.status ==
     PagedStateError.StateFailure.} =
   ## Preserve actual complete-store construction and callback-copy policy refusals.
   outcome.stateCause
+
 func exportError*[T](outcome: PagedStateResult[T]): TrieError {.requires: outcome.status ==
     PagedStateError.ExportFailure.} =
   ## Preserve the original bounded full-trie export diagnostic.
   outcome.exportCause
+
 func geometryError*[T](outcome: PagedStateResult[T]): PagedCodecError {.requires: outcome.status ==
     PagedStateError.GeometryFailure.} =
   ## Encoded output geometry is independent of resident transport staging policy.
   outcome.geometryCause
+
 func codecError*[T](outcome: PagedStateResult[T]): FullPagedError {.requires: outcome.status ==
     PagedStateError.CodecFailure.} =
   ## Selected manifest encoding failures never become stale-view or root-trust decisions.
   outcome.codecCause
+
 func nativeFailure*[T](outcome: PagedStateResult[T]): FullPagedNativeResult[
     bool] {.requires: outcome.status == PagedStateError.NativeFailure.} =
   ## The guarded native failure conversion contains reasons alone, never an erased publication success.
   outcome.nativeCause
+
 func refused[T](reason: PagedStateError): PagedStateResult[T] =
   ## Plain lifecycle/policy/conflict refusals contain no usable transport prefix.
   PagedStateResult[T](status: reason)
+
 func nativeFailed[T, U](outcome: FullPagedNativeResult[U]): PagedStateResult[
     T] {.requires: outcome.error != FullPagedNativeError.None.} =
   ## Composite errors retain the exact original native stage and subordinate causes.
   PagedStateResult[T](status: PagedStateError.NativeFailure, nativeCause: outcome.failure)
+
 func initialized*(prepared: PreparedPagedState): bool =
   ## Default transport cannot authorize any producer or native publication.
   prepared.data != nil
+
 proc root*(prepared: PreparedPagedState): StateRoot {.requires: prepared.data != nil.} =
   ## This complete-map commitment still needs independent caller trust at native initialization.
   let data = prepared.data
   assert data != nil # Preserve the guarded owner proof for the local alias.
   data.root
+
 proc recordCount*(prepared: PreparedPagedState): uint64 {.requires: prepared.data != nil.} =
   ## Final unique physical records differ from the bounded staging count across retained snapshots.
   let data = prepared.data
   assert data != nil # Preserve the guarded owner proof for the local alias.
   uint64(data.records.len)
+
 proc payloadBytes*(prepared: PreparedPagedState): uint64 {.requires: prepared.data != nil.} =
   ## Canonical full-record transport extent excludes section padding and page tree.
   let data = prepared.data
   assert data != nil # Preserve the guarded owner proof for the local alias.
   data.payload
+
 proc byteLength*(prepared: PreparedPagedState): uint64 {.requires: prepared.data != nil.} =
   ## Return the exact derived final physical artifact extent.
   let data = prepared.data
   assert data != nil # Preserve the guarded owner proof for the local alias.
   data.fileBytes
+
 proc roots*(prepared: PreparedPagedState): seq[FullPagedRoot] {.requires: prepared.data != nil.} =
   ## Detach mutable scalar claims; caller mutations cannot alter future producer/publication behavior.
   let data = prepared.data
   assert data != nil # Preserve the guarded owner proof for the local alias.
   result = newSeq[FullPagedRoot](data.roots.len)
   for index in 0..<result.len: result[index] = data.roots[index] # At most64 immutable root claims.
+
 proc compareRecord(a, b: TrieRecord): int =
   ## Sorting complete hashes never masks physical left-child identity.
   compareFullHash(array[32, byte](a.digest), array[32, byte](b.digest))
+
 proc compareRoot(a, b: FullPagedRoot): int =
   ## Full header root inventory has one strict canonical ordering.
   compareFullHash(array[32, byte](a.root), array[32, byte](b.root))
+
 proc sameRecord(a, b: TrieRecord): bool =
   ## Equal protocol addresses cannot choose between conflicting complete physical transports.
   a.kind == b.kind and array[31, byte](a.key) == array[31, byte](b.key) and
     array[32, byte](a.left) == array[32, byte](b.left) and
     array[32, byte](a.right) == array[32, byte](b.right) and a.payload == b.payload
+
 proc preparePagedState*(source: StateStoreSnapshot, history: openArray[StateStoreSnapshot],
     limits: PagedStateLimits): PagedStateResult[PreparedPagedState] =
   ## Preflight every borrowed immutable source before allocating copied record/value transport; retain no original map owners.
@@ -210,10 +229,12 @@ proc preparePagedState*(source: StateStoreSnapshot, history: openArray[StateStor
   PagedStateResult[PreparedPagedState](status: PagedStateError.None,
     completed: PreparedPagedState(data: PreparedData(root: source.commitment.root, roots: roots,
       records: records, payload: payload, fileBytes: shape.value.byteLength)))
+
 proc producer*(prepared: PreparedPagedState): FullPagedProducer {.requires: prepared.data != nil.} =
   ## An owned immutable transport can safely outlive source maps and be replayed for explicit native cleanup.
   let data = prepared.data
   assert data != nil # Preserve the guarded owner proof for the local alias.
+
   proc next(pass: int, ordinal: uint64, output: var TrieRecord): FullPagedProducerStep {.closure.} =
     ## Mutable producer outputs are detached; an external caller cannot mutate private prepared backing storage.
     assert data != nil # This owned callback retains the immutable prepared backing.
@@ -224,6 +245,7 @@ proc producer*(prepared: PreparedPagedState): FullPagedProducer {.requires: prep
     for index in 0..<stored.payload.len: output.payload[index] = stored.payload[index] # Owned output bytes only.
     FullPagedProducerStep.Item
   next
+
 proc initializePagedStateStore*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, prepared: PreparedPagedState, context: openArray[byte] = [
         ]): PagedStateResult[FullPagedPublication] =
@@ -237,6 +259,7 @@ proc initializePagedStateStore*(writer: var FullPagedWriter, path: string,
   if initialized.error != FullPagedNativeError.None:
     return nativeFailed[FullPagedPublication, FullPagedPublication](initialized)
   PagedStateResult[FullPagedPublication](status: PagedStateError.None, completed: initialized.value)
+
 proc resumePagedStateInitialization*(writer: var FullPagedWriter, path: string,
     config: FullPagedNativeConfig, prepared: PreparedPagedState, context: openArray[byte] = [
         ]): PagedStateResult[FullPagedPublication] =
@@ -250,6 +273,7 @@ proc resumePagedStateInitialization*(writer: var FullPagedWriter, path: string,
   if initialized.error != FullPagedNativeError.None:
     return nativeFailed[FullPagedPublication, FullPagedPublication](initialized)
   PagedStateResult[FullPagedPublication](status: PagedStateError.None, completed: initialized.value)
+
 proc preparePagedStateReplacement*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     expected: FullPagedManifest, prepared: PreparedPagedState, context: openArray[byte] = [
         ]): PagedStateResult[StorageDurability] =
@@ -274,8 +298,10 @@ proc preparePagedStateReplacement*(writer: var FullPagedWriter, candidate: var F
   if preparedNative.error != FullPagedNativeError.None:
     return nativeFailed[StorageDurability, StorageDurability](preparedNative)
   PagedStateResult[StorageDurability](status: PagedStateError.None, completed: preparedNative.value)
+
 proc restoreVisitor(stage: RestoreStage): FullPagedEntryVisitor =
   ## Copy only within independently selected complete-map ceilings; callback state never becomes a published store.
+
   proc visit(ordinal: uint64, key: StateKey, value: openArray[byte]): bool {.closure.} =
     ## Unexpected delivery shape and retained-value limits refuse before indexing or copying output.
     if ordinal != uint64(stage.next) or stage.next >= stage.entries.len:
@@ -293,6 +319,7 @@ proc restoreVisitor(stage: RestoreStage): FullPagedEntryVisitor =
     stage.bytes += size
     true
   visit
+
 proc restoreStage(claim: FullPagedRoot, limits: StateStoreLimits): PagedStateResult[RestoreStage] =
   ## Native complete-root claims preflight bounded private staging before any value callback or allocation.
   if claim.entries > uint64(limits.trie.items) or claim.nodes > uint64(limits.trie.nodes) or
@@ -303,6 +330,7 @@ proc restoreStage(claim: FullPagedRoot, limits: StateStoreLimits): PagedStateRes
   PagedStateResult[RestoreStage](status: PagedStateError.None,
     completed: RestoreStage(entries: newSeq[StateEntry](int(claim.entries)), limits: limits,
       reason: StateStoreError.None))
+
 proc finishRestore(stage: RestoreStage, expected: StateRoot, limits: StateStoreLimits,
     streamed: FullPagedNativeResult[FullPagedCounts]): PagedStateResult[StateStore] =
   ## A complete successful traversal and independently recomputed full-map root precede publication of any ordinary store.

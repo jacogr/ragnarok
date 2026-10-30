@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "privacy", "expected": "value"}
 
-import ../../../src/quic/integration
+import "../../../src/jamnp-s/integration"
 import ../../../src/codec/owned
 var checked = default(IntegrationResult[int])
 checked.value = 0

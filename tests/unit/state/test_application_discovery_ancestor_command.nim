@@ -8,8 +8,8 @@ import ../../../src/app/download/[command as download_command, policy as downloa
     schedule as download_schedule]
 import "../../../src/app/block/input" as block_input
 import ../../../src/app/[options, chain, candidate, services]
-import "../../../src/quic/block/download/loop" as block_download_loop
-import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/jamnp-s/block/download/loop" as block_download_loop
+import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/report/[admission as report_admission, anchors as report_anchors]

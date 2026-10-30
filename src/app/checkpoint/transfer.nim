@@ -20,37 +20,47 @@ type PreparedApplicationCheckpoint* = object ## Only ready owners retain exact c
     checkpointReason: CheckpointError
   else:
     discard # Default and failed preparation retain only selected reasons.
+
 proc `=copy`*(destination: var PreparedApplicationCheckpoint,
     source: PreparedApplicationCheckpoint) {.error.}
   ## Encoded bytes must never acquire another implicit owner across an I/O boundary.
+
 proc `=dup`*(source: PreparedApplicationCheckpoint): PreparedApplicationCheckpoint {.error.}
   ## Actual ARC lowering independently rejects implicit duplication.
+
 proc `=wasMoved`*(prepared: var PreparedApplicationCheckpoint) {.nodestroy, inline.} =
   ## A moved source loses readiness without freeing the sole buffer now owned by its destination.
   prepared.status = ApplicationCheckpointError.Uninitialized
+
 proc `=destroy`*(prepared: PreparedApplicationCheckpoint) =
   ## Only the active ready alternative owns managed bytes; context and reasons are fixed scalar data.
   if prepared.status == ApplicationCheckpointError.None:
     `=destroy`(prepared.bytes) # Retire the sole buffer exactly once.
+
 func error*(prepared: PreparedApplicationCheckpoint): ApplicationCheckpointError =
   ## Inspect preparation without granting byte or context access.
   prepared.status
+
 func identityError*(prepared: PreparedApplicationCheckpoint): ApplicationCheckpointIdentityError {.inline,
     requires: prepared.status == ApplicationCheckpointError.IdentityFailure.} =
   ## Only actual failed context capture/encoding carries this reason.
   prepared.identityReason
+
 func checkpointError*(prepared: PreparedApplicationCheckpoint): CheckpointError {.inline,
     requires: prepared.status == ApplicationCheckpointError.CheckpointFailure.} =
   ## Only actual complete-map refusal carries this reason.
   prepared.checkpointReason
+
 func identity*(prepared: PreparedApplicationCheckpoint): ApplicationCheckpointIdentity {.inline,
     requires: prepared.status == ApplicationCheckpointError.None.} =
   ## Copy fixed context without retaining a canonical map, header or history.
   prepared.context
+
 func byteLength*(prepared: PreparedApplicationCheckpoint): int {.inline,
     requires: prepared.status == ApplicationCheckpointError.None.} =
   ## Observe bounded extent without exposing mutable or borrowed byte storage.
   prepared.bytes.len
+
 proc prepareApplicationCheckpoint*(owner: ApplicationChain,
     limit: ByteLimit): PreparedApplicationCheckpoint =
   ## Synchronous preparation must run outside transport callbacks; only independent encoded bytes survive return.
@@ -68,11 +78,13 @@ proc prepareApplicationCheckpoint*(owner: ApplicationChain,
         checkpointReason: encoded.checkpointError)
   else:
     PreparedApplicationCheckpoint(status: encoded.error) # Refused extent/default inputs retain no buffer or graph.
+
 proc publish*(prepared: PreparedApplicationCheckpoint, path: string,
     limit: ByteLimit): AtomicFileError =
   ## Borrow the sole complete bytes for existing durable single-file replacement; failed/moved owners never touch a path.
   if prepared.status != ApplicationCheckpointError.None: return AtomicFileError.Uninitialized
   replaceAtomicFile(path, prepared.bytes, limit)
+
 proc publish*(prepared: PreparedApplicationCheckpoint, writer: var AtomicFileWriter,
     limit: ByteLimit): AtomicFileError =
   ## A cooperative raw owner supplies serialized publication without retaining a canonical application graph.

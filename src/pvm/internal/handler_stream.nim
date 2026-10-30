@@ -118,7 +118,10 @@ type FlatPublication = object
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
+    ## Reject copying an owner that contains exclusive native JIT resources.
+
   proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
+    ## Reject duplication of an owner that contains exclusive native JIT resources.
 
 const flatStop = high(uint32)
 
@@ -160,6 +163,7 @@ func flatSext32(x: uint32): uint64 {.inline.} =
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   proc flatArmPrepare(f: var FlatFrame, origin: uint32)
     ## Cold suffix preparation may replace eligible entries with native fragments.
+
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
     ## Only an observed, fully validated closed cycle may authorize a connected native loop.
 
@@ -234,6 +238,7 @@ proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
   selected(f, next)
 
 proc flatChargeFailure[Error: static[oracle.StepError]](f: var FlatFrame, off: uint32): uint32 =
+  ## Preserve attempt-limit precedence and allow already-paid blocks past unused price failures.
   if f.remaining == 0:
     # Source-attempt exhaustion wins before a failed unused price on a newly reached header.
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
@@ -283,6 +288,7 @@ proc flatFusedRegisters[First, Second: static[int]](f: var FlatFrame, off: uint3
   next+1
 
 func signedLess(a, b: uint64): bool =
+  ## Compare unsigned register bits in signed order by flipping their sign bits.
   (a xor 0x8000000000000000'u64) < (b xor 0x8000000000000000'u64)
 
 # Evaluate the condition against the original register file; decoding already saturated register IDs.
@@ -2624,7 +2630,10 @@ type FlatSealedInfo* = object
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
+    ## Reject copying an owner that contains exclusive native JIT resources.
+
   proc `=dup`*(source: FlatStream): FlatStream {.error.}
+    ## Reject duplication of an owner that contains exclusive native JIT resources.
 
 proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
   ## The source-preparation facility is not built yet, independently of ordinary lazy JIT support.

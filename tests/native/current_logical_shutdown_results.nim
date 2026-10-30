@@ -17,10 +17,10 @@ import ../../src/app/logical/source_export as logical_source_export
 import ../../src/app/candidate
 import ../../src/app/disk/worker as disk_worker
 import ../../src/app/download/schedule as download_schedule
-import "../../src/quic/current/block/download/loop" as current_block_download_loop
-import "../../src/quic/current/block/download/session" as current_block_download_session
-import "../../src/quic/current/block/download/peers" as current_block_download_peers
-import "../../src/quic/current/block/download/stream" as current_block_download_stream
+import "../../src/jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../src/jamnp-s/current/block/download/session" as current_block_download_session
+import "../../src/jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../../src/jamnp-s/current/block/download/stream" as current_block_download_stream
 import ../../src/state/store
 import ../../src/state/current/logical as current_logical
 import ../../src/state/accumulation/current/update as accumulation_current_update

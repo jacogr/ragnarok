@@ -46,10 +46,12 @@ type
 func error*[T](outcome: ComputedLookupResult[T]): ComputedLookupError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedLookupResult[T]): T
     {.requires: outcome.status == ComputedLookupError.None.} =
   ## Guard selected successful extraction in optimized execution.
   outcome.completed
+
 proc computedLookupSource*(bound: LookupAnchoredComputedReport): ComputedLookupResult[
     RecentComputedReport] =
   ## Share the exact original recent/report/state/block provenance.
@@ -58,6 +60,7 @@ proc computedLookupSource*(bound: LookupAnchoredComputedReport): ComputedLookupR
       status: ComputedLookupError.Uninitialized)
   ComputedLookupResult[RecentComputedReport](status: ComputedLookupError.None,
       completed: data.source)
+
 proc computedLookupInfo*(bound: LookupAnchoredComputedReport): ComputedLookupResult[
     ComputedLookupInfo] =
   ## Copy complete match/resource facts without exposing writable chain storage.
@@ -65,6 +68,7 @@ proc computedLookupInfo*(bound: LookupAnchoredComputedReport): ComputedLookupRes
   if data == nil: return ComputedLookupResult[ComputedLookupInfo](
       status: ComputedLookupError.Uninitialized)
   ComputedLookupResult[ComputedLookupInfo](status: ComputedLookupError.None, completed: data.info)
+
 proc computedLookupHeader*(bound: LookupAnchoredComputedReport,
     index: ComputedAncestorIndex): ComputedLookupResult[OwnedHeader] =
   ## Check the full nominal ordinal before narrowing into immutable retained chain storage.
@@ -75,6 +79,7 @@ proc computedLookupHeader*(bound: LookupAnchoredComputedReport,
     return ComputedLookupResult[OwnedHeader](status: ComputedLookupError.InvalidIndex) # Never mask or wrap caller indices.
   ComputedLookupResult[OwnedHeader](status: ComputedLookupError.None, completed: data.headers[int(
       uint64(index))])
+
 proc checkComputedLookupAnchor*(source: RecentComputedReport, older: openArray[OwnedHeader],
     limits: ComputedLookupLimits): ComputedLookupResult[LookupAnchoredComputedReport] =
   ## Derive clock/profile/endpoint, preflight all scratch and check the entire chain before retaining any success.

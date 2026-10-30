@@ -5,7 +5,7 @@
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
 import std/[strutils, syncio]
-import "../../../quic/current/block/download/loop" as current_block_download_loop
+import "../../../jamnp-s/current/block/download/loop" as current_block_download_loop
 import ../logical/startup as current_logical_startup
 import ../../candidate
 import ../../../codec/bounded
@@ -67,14 +67,17 @@ include ../namespace_policy_fields
 func error*(outcome: CurrentDownloadPolicyResult): CurrentDownloadPolicyError =
   ## Defaults/refusals never authorize startup or policy extraction.
   outcome.status
+
 func value*(outcome: CurrentDownloadPolicyResult): CurrentDownloadLoopLimits {.requires:
     outcome.status == CurrentDownloadPolicyError.None.} =
   ## Copy only a complete policy; stage semantics remain the existing stages' responsibility.
   outcome.policy
+
 func fieldName*(outcome: CurrentDownloadPolicyResult): string {.requires:
     outcome.status != CurrentDownloadPolicyError.None.} =
   ## Explain only an actual failure without exposing partial numeric configuration.
   outcome.field
+
 proc refused(reason: CurrentDownloadPolicyError, field = ""): CurrentDownloadPolicyResult =
   ## Construct a payload-free failed/default alternative.
   CurrentDownloadPolicyResult(status: reason, field: field)
@@ -213,24 +216,30 @@ proc loadCurrentDownloadPolicy*(path: string): CurrentDownloadPolicyResult {.rai
   let reason = readPolicyFile(path, text)
   if reason != CurrentDownloadPolicyError.None: return refused(reason)
   decodeCurrentDownloadPolicy(text)
+
 func error*(outcome: CurrentLogicalPolicyResult): CurrentDownloadPolicyError =
   ## Default and failed logical policy results have no usable budgets.
   outcome.status
+
 func value*(outcome: CurrentLogicalPolicyResult): CurrentLogicalStartupLimits {.inline,
     requires: outcome.status == CurrentDownloadPolicyError.None.} =
   ## Return only a complete explicit policy snapshot; startup and State stages still enforce each budget.
   outcome.policy
+
 func fieldName*(outcome: CurrentLogicalPolicyResult): string {.inline,
     requires: outcome.status != CurrentDownloadPolicyError.None.} =
   ## Inspect the bounded actual failed field without exposing a successful prefix.
   outcome.field
+
 proc logicalRefused(reason: CurrentDownloadPolicyError, field = ""): CurrentLogicalPolicyResult =
   ## Construct only the failed alternative of the logical policy result.
   CurrentLogicalPolicyResult(status: reason, field: field)
+
 proc encodeCurrentLogicalPolicy*(policy: CurrentLogicalStartupLimits): string =
   ## Emit every required logical resource leaf without selecting any resource defaults.
   result = LogicalPolicyHeader & "\n"
   currentLogicalPolicyFields(policy, result, writeField)
+
 proc decodeCurrentLogicalPolicy*(text: string): CurrentLogicalPolicyResult =
   ## Reuse the original canonical lexical scanner, then require the entire independent logical schema.
   var input = scanPolicy(text, LogicalPolicyHeader)
@@ -243,6 +252,7 @@ proc decodeCurrentLogicalPolicy*(text: string): CurrentLogicalPolicyResult =
     if not entry.used: return logicalRefused(CurrentDownloadPolicyError.UnknownField, entry.name)
   if input.error != CurrentDownloadPolicyError.None: return logicalRefused(input.error, input.field)
   CurrentLogicalPolicyResult(status: CurrentDownloadPolicyError.None, policy: policy)
+
 proc loadCurrentLogicalPolicy*(path: string): CurrentLogicalPolicyResult {.raises.} =
   ## Complete bounded file snapshot is decoded atomically; extra/growing input refuses before startup.
   var text = ""
@@ -253,22 +263,27 @@ proc loadCurrentLogicalPolicy*(path: string): CurrentLogicalPolicyResult {.raise
 func error*(outcome: CurrentNamespacePolicyResult): CurrentDownloadPolicyError =
   ## Defaults/refusals never grant namespace capture or continuation policies.
   outcome.status
+
 func value*(outcome: CurrentNamespacePolicyResult): CurrentNamespacePolicy {.inline,
     requires: outcome.status == CurrentDownloadPolicyError.None.} =
   ## Extract only the entire explicit reviewed resource schema.
   outcome.policy
+
 func fieldName*(outcome: CurrentNamespacePolicyResult): string {.inline,
     requires: outcome.status != CurrentDownloadPolicyError.None.} =
   ## Expose only an actual bounded refusal diagnostic.
   outcome.field
+
 proc namespaceRefused(reason: CurrentDownloadPolicyError,
     field = ""): CurrentNamespacePolicyResult =
   ## Construct no partial configuration on any failed parser branch.
   CurrentNamespacePolicyResult(status: reason, field: field)
+
 proc encodeCurrentNamespacePolicy*(policy: CurrentNamespacePolicy): string =
   ## Serialize every reviewed namespace leaf under one distinct explicit opt-in version.
   result = NamespacePolicyHeader & "\n"
   currentNamespacePolicyFields(policy, result, writeField)
+
 proc decodeCurrentNamespacePolicy*(text: string): CurrentNamespacePolicyResult =
   ## Reuse canonical bounded lexical admission, require every leaf and refuse unknown/duplicate/overflow input before publication.
   var input = scanPolicy(text, NamespacePolicyHeader)
@@ -284,12 +299,14 @@ proc decodeCurrentNamespacePolicy*(text: string): CurrentNamespacePolicyResult =
     return namespaceRefused(CurrentDownloadPolicyError.InvalidPolicy,
         "storage.entries/requests.entries") # Namespace mode cannot ever qualify with its mandatory history owners disabled.
   CurrentNamespacePolicyResult(status: CurrentDownloadPolicyError.None, policy: policy)
+
 proc loadCurrentNamespacePolicy*(path: string): CurrentNamespacePolicyResult {.raises.} =
   ## Bounded independent policy-file capture precedes Services, databases and outgoing transport.
   var text = ""
   let reason = readPolicyFile(path, text)
   if reason != CurrentDownloadPolicyError.None: return namespaceRefused(reason)
   decodeCurrentNamespacePolicy(text)
+
 proc configureCurrentNamespaces*(candidate: var CurrentCandidateLimits,
     policy: CurrentNamespacePolicy) =
   ## Change only explicitly supplied namespace capture/retention fields; existing execution, account membership and store ceilings remain independently configured.

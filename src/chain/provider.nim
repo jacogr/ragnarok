@@ -50,6 +50,7 @@ type
 func error*(outcome: ViewFinalizeResult): ViewFinalizeError =
   ## Inspect finality selection without allowing discriminator mutation.
   outcome.status
+
 func value*(outcome: ViewFinalizeResult): ChainView {.requires: outcome.status ==
     ViewFinalizeError.None.} =
   ## Extract a successful immutable replacement only after checking the result.
@@ -62,6 +63,7 @@ func finalizedBlock*(view: ChainView): BlockSnapshotResult =
 func error*(outcome: ViewAdvanceResult): ViewAdvanceError {.inline.} =
   ## Read the outcome without exposing a mutable discriminator.
   outcome.status
+
 func value*(outcome: ViewAdvanceResult): ChainView {.requires: outcome.status ==
     ViewAdvanceError.None.} =
   ## Extract the replacement view only after selecting success.
@@ -70,6 +72,7 @@ func value*(outcome: ViewAdvanceResult): ChainView {.requires: outcome.status ==
 func validHistoryLimit*(limit: ElementLimit): bool =
   ## Prove a positive owner container fits host addressing before any count conversion/allocation.
   uint64(limit) > 0 and uint64(limit) <= uint64(high(int) div sizeof(BlockSnapshotResult))
+
 func retentionLimit*(view: ChainView): ElementLimit =
   ## Copy the configured snapshot window; an uninitialized view has no retention policy.
   view.capacity
@@ -78,13 +81,16 @@ func headerContext(saved: BlockSnapshot): ValidationHeaderContext =
   ## Project only immutable sealed-header ownership and cached scalar link identity.
   ValidationHeaderContext(header: saved.header, hash: saved.blockHash, parent: saved.parentHash,
       slot: saved.slot)
+
 func validationHeaderCount*(view: ChainView): int =
   ## Header-only validation anchors do not count as retained complete historical states.
   view.validation.len
+
 func validationHeaderAt*(view: ChainView, index: ValidationHeaderIndex): ValidationHeaderContext {.requires:
     int(index) >= 0 and int(index) < view.validation.len.} =
   ## Copy one bounded owner/fact projection without exporting mutable cache storage.
   view.validation[int(index)]
+
 proc genesisView*(source: GenesisResult,
     limit = ElementLimit(MaxRetainedBlocks)): ChainView =
   ## Seed a history from a successful immutable genesis owner; absent/invalid inputs produce an empty view.
@@ -102,6 +108,7 @@ proc fuzzSeedView*(source: GenesisResult): ChainView =
         source.value)], snapshot: @[source],
 
 fuzzOrigin: true) # Explicit test origin cannot be erased through genesisView.
+
 func fuzzOnly*(view: ChainView): bool =
   ## Expose only the immutable domain, never a public retagging operation.
   view.fuzzOrigin
@@ -120,6 +127,7 @@ type ChainViewRetentionInfo* = object ## Fixed copied accounting bounds explicit
   history*, owners*: int
   finalized*: bool
   bytes*: uint64
+
 func viewRetentionInfo*(view: ChainView): ChainViewRetentionInfo =
   ## Inspect private slots directly, avoiding temporary copies of each snapshot's key/service indexes.
   var bytes = uint64(sizeof(ChainView)) + uint64(view.snapshot.len) * uint64(sizeof(
@@ -140,6 +148,7 @@ func viewRetentionInfo*(view: ChainView): ChainViewRetentionInfo =
       bytes += extent # Do not wrap the fixed-width budget reported to request admission.
   ChainViewRetentionInfo(history: view.snapshot.len, owners: view.snapshot.len + (
       if finalized: 1 else: 0), finalized: finalized, bytes: bytes)
+
 func bestBlockContext*(view: ChainView): BlockSnapshotContext {.requires: view.snapshot.len > 0.} =
   ## Return fixed original head facts and shared immutable handles without copying any private indexes.
   blockSnapshotContext(view.snapshot[^1])
@@ -161,8 +170,8 @@ func parentOf*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
     return unavailableGenesis() # A historical parent cannot be inferred for an unknown child.
   view.blockAt(child.value.parentHash)
 
-## Compare exact retained block state and complete parameters, without hashing or copying map payloads.
 func sameRetainedBlock(left, right: BlockSnapshot): bool =
+  ## Compare exact retained block state and complete parameters, without hashing or copying map payloads.
   left.fuzzSeedOnly == right.fuzzSeedOnly and
     array[32, byte](left.blockHash) == array[32, byte](right.blockHash) and
     sameStateSnapshot(left.stateSnapshot, right.stateSnapshot) and left.sameParameters(right) and
@@ -260,10 +269,12 @@ proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
             fuzzOrigin: view.fuzzOrigin))
 
 type RetainedBlockIndex* = distinct int ## Oldest-to-newest ordinal belongs only to this immutable retained view.
+
 func retainedBlockAt*(view: ChainView, index: RetainedBlockIndex): BlockSnapshotResult =
   ## Copy an owner-bound retained block; defaults and out-of-window ordinals remain unavailable.
   if int(index) < 0 or int(index) >= view.snapshot.len: return unavailableGenesis()
   view.snapshot[int(index)]
+
 proc restoreLocalChainView*(history: openArray[BlockSnapshotResult],
     finalized = unavailableGenesis(), limit = ElementLimit(MaxRetainedBlocks)): ViewAdvanceResult =
   ## Restore a previously validated local bounded history; this is not a consensus or import verifier.
@@ -314,9 +325,11 @@ proc withRetentionLimit*(view: ChainView, limit: ElementLimit): ViewAdvanceResul
 func hasHistoricalIndex*(view: ChainView): bool =
   ## Disk histories use their disk cursor rather than enabling this memory-resident historical tree.
   view.historical.initialized
+
 func historicalCursor*(view: ChainView): HistoryCursor {.requires: view.hasHistoricalIndex.} =
   ## Fixed metadata describes the separate historical index without copying archive entries.
   view.historical.historyCursor
+
 proc withHistoricalPolicy*(view: ChainView, policy: HistoryPolicy): HistoryResult[ChainView] =
   ## Configure memory-backend history without changing protocol lookup context or complete current state.
   if view.snapshot.len == 0: return historyFailure[ChainView](HistoryError.Uninitialized)
@@ -326,6 +339,7 @@ proc withHistoricalPolicy*(view: ChainView, policy: HistoryPolicy): HistoryResul
   var next = view
   next.historical = selected.value
   historySuccess(next)
+
 func historicalBlockAt*(view: ChainView, hash: BlockHash): BlockSnapshotResult =
   ## User historical lookup applies the selected window plus explicit finality; protocol blockAt stays independent.
   if not view.historical.initialized: return view.blockAt(hash)

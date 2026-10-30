@@ -70,15 +70,18 @@ func error*[T](outcome: AccumulationLaterRunnerResult[T]): AccumulationLaterRunn
   ## Read a selected reason; a default result is Uninitialized, never an empty successful round.
   if outcome.succeeded: AccumulationLaterRunnerError.None
   else: outcome.refusal.status
+
 func value*[T](outcome: AccumulationLaterRunnerResult[T]): T {.inline,
     requires: outcome.succeeded.} =
   ## Retain only explicitly selected complete success under optimized contracts.
   outcome.completed
+
 func serviceError*[T](outcome: AccumulationLaterRunnerResult[T]): AccumulationServiceError {.inline,
     requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.ServiceFailure.} =
   ## Inspect only an actual service-resolution refusal.
   outcome.refusal.serviceReason
+
 func invocationError*[T](outcome: AccumulationLaterRunnerResult[
     T]): AccumulationInvocationError {.inline,
 
@@ -86,21 +89,25 @@ requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.InvocationFailure.} =
   ## Inspect only an actual entropy/bootstrap refusal.
   outcome.refusal.invocationReason
+
 func contextError*[T](outcome: AccumulationLaterRunnerResult[T]): AccumulationContextError {.inline,
     requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.ContextFailure.} =
   ## Inspect only an actual context preparation refusal.
   outcome.refusal.contextReason
+
 func machineError*[T](outcome: AccumulationLaterRunnerResult[T]): AccumulationMachineError {.inline,
     requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.MachineFailure.} =
   ## Inspect only an actual machine initialization refusal.
   outcome.refusal.machineReason
+
 func skipError*[T](outcome: AccumulationLaterRunnerResult[T]): AccumulationSkipError {.inline,
     requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.SkipFailure.} =
   ## Inspect only the certified skip constructor's refusal.
   outcome.refusal.skipReason
+
 func dispatchFailure*[T](outcome: AccumulationLaterRunnerResult[
     T]): AccumulationDispatchResult {.inline,
 
@@ -108,12 +115,14 @@ requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.DispatchFailure.} =
   ## Retain the genuinely failed dispatcher result, including its selected engine reason.
   outcome.refusal.dispatchReason
+
 func continuationFailure*[T](outcome: AccumulationLaterRunnerResult[T]):
     AccumulationContinuationExecutionResult[CompletedAccumulationContinuation] {.inline,
     requires: not outcome.succeeded and outcome.refusal.status ==
         AccumulationLaterRunnerError.ContinuationFailure.} =
   ## Retain the failed continuation completion result and its guarded nested reasons.
   outcome.refusal.continuationReason
+
 func reentryFailure*[T](outcome: AccumulationLaterRunnerResult[T]):
     AccumulationReentryExecutionResult[CompletedAccumulationReentry] {.inline,
     requires: not outcome.succeeded and outcome.refusal.status ==

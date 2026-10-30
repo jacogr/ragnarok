@@ -49,13 +49,14 @@ type
 func error*[T](value: AuthorizationResult[T]): AuthorizationError =
   ## Failure reasons do not authorize entries, owners, hashes, counts or consumed progress.
   value.status
+
 func value*[T](value: AuthorizationResult[T]): T {.inline, requires: value.status ==
     AuthorizationError.None.} =
   ## Public and internal completed values require explicit successful selection in optimized builds too.
   value.completed
 
-## Validate configuration-derived descriptor and minimum wire extents without multiplying untrusted sizes.
 proc validate(kind: AuthorizationKind, config: AuthorizationConfig): AuthorizationError =
+  ## Validate configuration-derived descriptor and minimum wire extents without multiplying untrusted sizes.
   # The nightly permits unchecked enum casts; no other representation may select a namespace or row schema.
   if ord(kind) > ord(AuthorizationKind.Queues):
     return AuthorizationError.InvalidTag
@@ -69,9 +70,9 @@ proc validate(kind: AuthorizationKind, config: AuthorizationConfig): Authorizati
     return AuthorizationError.LimitExceeded # Even empty pools require one count byte per configured core.
   AuthorizationError.None
 
-## Charge a row's protocol cardinality, aggregate hash budget and full framed byte extent.
 proc charge(kind: AuthorizationKind, count: uint64, prefix: int, config: AuthorizationConfig,
             layout: var Layout): AuthorizationError =
+  ## Charge a row's protocol cardinality, aggregate hash budget and full framed byte extent.
   if (kind == AuthorizationKind.Pools and count > 8) or
       (kind == AuthorizationKind.Queues and count != 80):
     return AuthorizationError.InvalidCount # Pools allow 0..8; queues have exactly 80, without deduplication.
@@ -87,8 +88,8 @@ proc charge(kind: AuthorizationKind, count: uint64, prefix: int, config: Authori
     return AuthorizationError.LimitExceeded # Policy includes all pool count prefixes.
   AuthorizationError.None
 
-## Read canonical pool counts, mapping primitive framing failures without exposing partial progress.
 proc poolCount(input: openArray[byte]): AuthorizationResult[tuple[count: uint64, prefix: int]] =
+  ## Read canonical pool counts, mapping primitive framing failures without exposing partial progress.
   let parsed = natural.decode(input)
   if not parsed.ok:
     # Incomplete counts and complete overlong forms remain distinct failure-only results.

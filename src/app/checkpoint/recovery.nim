@@ -27,17 +27,21 @@ type
       fileReason: ApplicationCheckpointFileResult[StateStore]
     else:
       discard # Missing trust and mismatches retain no recovered graph.
+
 func error*(outcome: ApplicationRecoveryResult): ApplicationRecoveryError =
   ## Inspect status without exposing result construction or replacement state.
   outcome.status
+
 func value*(outcome: ApplicationRecoveryResult): ApplicationChain {.inline,
     requires: outcome.status == ApplicationRecoveryError.None.} =
   ## Only successful recovery permits canonical startup.
   outcome.completed
+
 func stateError*(outcome: ApplicationRecoveryResult): StateStoreError {.inline,
     requires: outcome.status == ApplicationRecoveryError.StateFailure.} =
   ## Preserve an actual absent or refused complete map.
   outcome.stateReason
+
 proc recoverApplicationChain*(state: StateStoreSnapshot, sealedHeader: openArray[byte],
     expected: ApplicationCheckpointIdentity): ApplicationRecoveryResult =
   ## The operator supplies independent trust; never derive it from the map or checkpoint being recovered.
@@ -64,6 +68,7 @@ func envelopeFailure*(outcome: ApplicationRecoveryResult): ApplicationCheckpoint
     StateStore] {.inline, requires: outcome.status == ApplicationRecoveryError.EnvelopeFailure.} =
   ## Preserve precise context/identity/map failure without returning any recovered state.
   outcome.envelopeReason
+
 proc decodeRecoveryCheckpoint*(bytes, sealedHeader: openArray[byte],
     expected: ApplicationCheckpointIdentity, limits: StateStoreLimits,
     limit: ByteLimit): ApplicationRecoveryResult =
@@ -80,6 +85,7 @@ func fileFailure*(outcome: ApplicationRecoveryResult): ApplicationCheckpointFile
     StateStore] {.inline, requires: outcome.status == ApplicationRecoveryError.FileFailure.} =
   ## Preserve bounded native/context/map read errors without granting a recovered owner.
   outcome.fileReason
+
 proc loadRecoveryCheckpoint*(path: string, sealedHeader: openArray[byte],
     expected: ApplicationCheckpointIdentity, limits: StateStoreLimits,
     limit: ByteLimit): ApplicationRecoveryResult =

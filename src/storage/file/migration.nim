@@ -17,6 +17,7 @@ type
     case status: FileError
     of None: seed: MigrationSeed
     else: discard
+
 proc captureMigration(source: FileRepository, chain: StorageChainId,
     roots: openArray[StateRoot], limits: ManagedLimits): MigrationCapture =
   ## Require a live legacy source, then bind chain/schema/current revision and the explicit complete root union.
@@ -38,6 +39,7 @@ proc captureMigration(source: FileRepository, chain: StorageChainId,
       status: FileError.InvalidRetention)
   MigrationCapture(status: FileError.None, seed: MigrationSeed(selection: selection.value,
     context: context.value, schema: schema.value))
+
 proc migrateFileRepository*(source: FileRepository, destination: var ManagedRepository,
     path: string, chain: StorageChainId, roots: openArray[StateRoot],
         limits: ManagedLimits): FileError =
@@ -47,6 +49,7 @@ proc migrateFileRepository*(source: FileRepository, destination: var ManagedRepo
   if captured.status != FileError.None: return captured.status
   let seed = captured.seed
   initializeManagedRepository(destination, path, chain, seed.selection, seed.context, limits, seed.schema)
+
 proc migrateFileRepository*(source: FileRepository, destination: var FileRepository,
     path: string, chain: StorageChainId, roots: openArray[StateRoot],
         limits: ManagedLimits): FileError =

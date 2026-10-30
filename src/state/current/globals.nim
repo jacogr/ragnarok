@@ -21,18 +21,22 @@ type
       globalReason: GlobalStateResult[ValidatedGlobalState]
     else:
       discard # No default/failed result grants qualified ownership.
+
 func error*[T](outcome: CurrentGlobalsResult[T]): CurrentGlobalsError =
   ## Observe the selected immutable reason.
   outcome.status
+
 func value*[T](outcome: CurrentGlobalsResult[T]): T {.inline, requires: outcome.status ==
     CurrentGlobalsError.None.} =
   ## Only complete initialized qualification authorizes extraction.
   outcome.completed
+
 func globalFailure*[T](outcome: CurrentGlobalsResult[T]): GlobalStateResult[
     ValidatedGlobalState] {.inline, requires: outcome.status ==
     CurrentGlobalsError.GlobalFailure.} =
   ## Preserve only the original genuinely failed global result and its guarded nested reason.
   outcome.globalReason
+
 proc qualifyCurrentGlobals*(profile: DerivedCurrentProfile,
     limits: GlobalStateLimits): CurrentGlobalsResult[CurrentGlobalSerialization] =
   ## Admit all sixteen cached extents before whole-global value copies; prior C9 projection had its own independent limits.
@@ -49,6 +53,7 @@ proc qualifyCurrentGlobals*(profile: DerivedCurrentProfile,
   CurrentGlobalsResult[CurrentGlobalSerialization](status: CurrentGlobalsError.None,
     completed: CurrentGlobalSerialization(initialized: true, profile: profile,
         globals: globals.value))
+
 proc qualifiedCurrentProfile*(source: CurrentGlobalSerialization): CurrentGlobalsResult[
     DerivedCurrentProfile] =
   ## Return the exact original projection, including the full parameter tuple and producer identity.
@@ -56,6 +61,7 @@ proc qualifiedCurrentProfile*(source: CurrentGlobalSerialization): CurrentGlobal
     return CurrentGlobalsResult[DerivedCurrentProfile](status: CurrentGlobalsError.Uninitialized)
   CurrentGlobalsResult[DerivedCurrentProfile](status: CurrentGlobalsError.None,
       completed: source.profile)
+
 proc qualifiedGlobals*(source: CurrentGlobalSerialization): CurrentGlobalsResult[
     ValidatedGlobalState] =
   ## Retain the original all-chapter source without claiming validation of remaining service rows.

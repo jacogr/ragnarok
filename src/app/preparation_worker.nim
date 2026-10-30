@@ -52,11 +52,14 @@ type
 
 proc `=copy`*(destination: var PreparationWorker, source: PreparationWorker) {.error.}
   ## A native thread and its borrowed stack addresses have exactly one owner.
+
 proc `=dup`*(source: PreparationWorker): PreparationWorker {.error.}
   ## Composite owners must reject duplication explicitly.
+
 proc requireClosed(worker: PreparationWorker) {.requires: not worker.started.} =
   ## Destruction cannot silently abandon a thread borrowing host memory.
   discard
+
 proc `=wasMoved`*(worker: var PreparationWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
@@ -88,13 +91,16 @@ proc `=destroy`*(worker: PreparationWorker) =
 func error*(admission: PreparationAdmission): PreparationError =
   ## Observe admission without granting ticket authority.
   admission.status
+
 func value*(admission: PreparationAdmission): PreparationTicket {.inline,
     requires: admission.status == PreparationError.None.} =
   ## Only admitted work grants a ticket.
   admission.ticket
+
 func kind*(completion: PreparationCompletion): PreparationCompletionKind =
   ## Observe default/cancelled results without extracting preparation.
   completion.status
+
 func value*(completion: PreparationCompletion): BlockInputResult {.inline,
     requires: completion.status == PreparationCompletionKind.Completed.} =
   ## The pipeline's own guarded result retains all typed failures and finalized success.

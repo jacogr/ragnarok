@@ -36,10 +36,12 @@ type
 func error*[T](outcome: ImportJustificationResult[T]): ImportJustificationError =
   ## Inspect the reason without a writable discriminator.
   outcome.status
+
 func value*[T](outcome: ImportJustificationResult[T]): T
     {.requires: outcome.status == ImportJustificationError.None.} =
   ## Extract only a completely selected successful value.
   outcome.completed
+
 proc verifiedImportInfo*(verified: VerifiedImport): ImportJustificationResult[VerifiedImportInfo] =
   ## Copy nominal identity/geometry facts without exposing proof authority for rebinding.
   let data = verified.data
@@ -47,6 +49,7 @@ proc verifiedImportInfo*(verified: VerifiedImport): ImportJustificationResult[Ve
       status: ImportJustificationError.Uninitialized)
   ImportJustificationResult[VerifiedImportInfo](status: ImportJustificationError.None,
       completed: data.info)
+
 proc verifiedImportSegment*(verified: VerifiedImport): ImportJustificationResult[FetchSegment] =
   ## Return a fixed value copy; caller mutation cannot modify the verified leaf.
   let data = verified.data
@@ -54,6 +57,7 @@ proc verifiedImportSegment*(verified: VerifiedImport): ImportJustificationResult
       status: ImportJustificationError.Uninitialized)
   ImportJustificationResult[FetchSegment](status: ImportJustificationError.None,
       completed: data.segment)
+
 proc verifiedImportPath*(verified: VerifiedImport): ImportJustificationResult[seq[SegmentRoot]] =
   ## Return independent root-to-leaf siblings, retaining no borrowed sequence descriptor.
   let data = verified.data
@@ -64,6 +68,7 @@ proc verifiedImportPath*(verified: VerifiedImport): ImportJustificationResult[se
       index] # Fixed hashes copy by value without writable aliasing.
   ImportJustificationResult[seq[SegmentRoot]](status: ImportJustificationError.None,
       completed: path)
+
 proc verifiedImportProof*(verified: VerifiedImport): ImportJustificationResult[seq[byte]] =
   ## Encode the complete canonical length-prefixed path used in an auditable bundle, without extra segment framing.
   let data = verified.data
@@ -75,6 +80,7 @@ proc verifiedImportProof*(verified: VerifiedImport): ImportJustificationResult[s
   for index in 0..<data.path.len:
     for octet in 0..<32: wire[prefix.len+index*32+octet] = data.path[index].bytes[octet]
   ImportJustificationResult[seq[byte]](status: ImportJustificationError.None, completed: wire)
+
 proc verifyImportSegment*(root: SegmentRoot, index: ImportIndex, segment: FetchSegment,
     path: openArray[SegmentRoot], limits: ImportJustificationLimits): ImportJustificationResult[
         VerifiedImport] =

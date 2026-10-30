@@ -71,50 +71,61 @@ type
     key: StateKey
     raw: seq[byte]
     present, original, produced: bool
+
 func error*(outcome: LogicalContinuationResult): LogicalContinuationError =
   ## Observe the immutable selected continuation stage.
   outcome.status
+
 func value*(outcome: LogicalContinuationResult): CurrentLogicalState {.inline,
     requires: outcome.status == LogicalContinuationError.None.} =
   ## Complete original current qualification alone grants a retained logical successor.
   outcome.completed
+
 func identityFailure*(outcome: LogicalContinuationResult): CurrentIdentityResult[
     PreservedCurrentIdentities] {.inline, requires: outcome.status ==
     LogicalContinuationError.IdentityFailure.} =
   ## Preserve actual original state/view/Parameters/resource refusal; accepted identity changes never appear as a failed source prefix.
   outcome.identityReason
+
 func preimageError*(outcome: LogicalContinuationResult): ServiceValueError {.inline,
     requires: outcome.status == LogicalContinuationError.PreimageFailure.} =
   ## Preserve only a genuine canonical preimage-key derivation refusal.
   outcome.preimageReason
+
 func metadataError*(outcome: LogicalContinuationResult): ServiceMetadataError {.inline,
     requires: outcome.status == LogicalContinuationError.MetadataFailure.} =
   ## Preserve exact current metadata decoding refusal.
   outcome.metadataReason
+
 func requestError*(outcome: LogicalContinuationResult): RequestError {.inline,
     requires: outcome.status == LogicalContinuationError.RequestFailure.} =
   ## Preserve actual request key or history decoding refusal.
   outcome.requestReason
+
 func profileFailure*(outcome: LogicalContinuationResult): CurrentProfileResult[
     DerivedCurrentProfile] {.inline, requires: outcome.status ==
     LogicalContinuationError.ProfileFailure.} =
   ## Preserve independently bounded original-current profile qualification refusal.
   outcome.profileReason
+
 func globalsFailure*(outcome: LogicalContinuationResult): CurrentGlobalsResult[
     CurrentGlobalSerialization] {.inline, requires: outcome.status ==
     LogicalContinuationError.GlobalsFailure.} =
   ## Preserve exact all-global decoding refusal on the original successor.
   outcome.globalsReason
+
 func stateFailure*(outcome: LogicalContinuationResult): CurrentStateResult[
     CurrentStateSerialization] {.inline, requires: outcome.status ==
     LogicalContinuationError.StateFailure.} =
   ## Preserve complete actual-map mismatch, including unsupported added namespaces.
   outcome.stateReason
+
 func logicalFailure*(outcome: LogicalContinuationResult): CurrentLogicalResult[
     CurrentLogicalState] {.inline, requires: outcome.status ==
     LogicalContinuationError.LogicalFailure.} =
   ## Preserve late raw-key/current-bound capture refusal without successful prefix authority.
   outcome.logicalReason
+
 proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalInventory,
     binding: CurrentIdentityResult[PreservedCurrentIdentities], update: PreparedCurrentChainUpdate,
     limits: LogicalContinuationLimits): LogicalContinuationResult =
@@ -661,6 +672,7 @@ proc continueLogical[kind: static[ContinuationKind]](original: SuppliedLogicalIn
     return LogicalContinuationResult(status: LogicalContinuationError.LogicalFailure,
         logicalReason: logical)
   LogicalContinuationResult(status: LogicalContinuationError.None, completed: logical.value)
+
 proc continueCurrentStorage*(parent: SelectedLogicalParent, update: PreparedCurrentChainUpdate,
     limits: LogicalContinuationLimits): LogicalContinuationResult =
   ## Seed only the exact original configured logical parent; caller-supplied successor declarations are unnecessary.
@@ -669,6 +681,7 @@ proc continueCurrentStorage*(parent: SelectedLogicalParent, update: PreparedCurr
     return LogicalContinuationResult(status: LogicalContinuationError.InvalidParent)
   continueLogical[ContinuationKind.StorageOnly](original.value, preserveCurrentIdentities(parent,
       update, limits.identity), update, limits)
+
 proc continueCurrentStorage*(prior: CurrentLogicalState, update: PreparedCurrentChainUpdate,
     limits: LogicalContinuationLimits): LogicalContinuationResult =
   ## Continue from the genuine prior completed logical owner with full original view/Parameters checks before supported identity reconciliation.
@@ -686,6 +699,7 @@ proc continueCurrentNamespaces*(parent: SelectedLogicalParent, update: PreparedC
     return LogicalContinuationResult(status: LogicalContinuationError.InvalidParent)
   continueLogical[ContinuationKind.StorageAndRequests](original.value, preserveCurrentIdentities(
       parent, update, limits.identity), update, limits)
+
 proc continueCurrentNamespaces*(prior: CurrentLogicalState, update: PreparedCurrentChainUpdate,
     limits: LogicalContinuationLimits): LogicalContinuationResult =
   ## Repeated actual successors retain original completed logical provenance; no replacement producer history or supplied successor array is accepted.

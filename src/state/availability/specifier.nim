@@ -44,10 +44,12 @@ type
 func error*[T](outcome: AvailabilityCommitmentResult[T]): AvailabilityCommitmentError =
   ## Read the selected reason without exposing writable variant fields.
   outcome.status
+
 func value*[T](outcome: AvailabilityCommitmentResult[T]): T
     {.requires: outcome.status == AvailabilityCommitmentError.None.} =
   ## Extract only a complete selected success.
   outcome.completed
+
 proc availabilityInfo*(owner: AvailabilityCommitment): AvailabilityCommitmentResult[
     AvailabilityCommitmentInfo] =
   ## Copy fixed specifier/resource facts from a completed immutable owner.
@@ -56,6 +58,7 @@ proc availabilityInfo*(owner: AvailabilityCommitment): AvailabilityCommitmentRes
       status: AvailabilityCommitmentError.Uninitialized)
   AvailabilityCommitmentResult[AvailabilityCommitmentInfo](status: AvailabilityCommitmentError.None,
       completed: data.info)
+
 proc availabilitySource*(owner: AvailabilityCommitment): AvailabilityCommitmentResult[
     ExportErasure] =
   ## Retain the exact original executed bundle/export encoding rather than allowing detached replacements.
@@ -64,6 +67,7 @@ proc availabilitySource*(owner: AvailabilityCommitment): AvailabilityCommitmentR
       status: AvailabilityCommitmentError.Uninitialized)
   AvailabilityCommitmentResult[ExportErasure](status: AvailabilityCommitmentError.None,
       completed: data.source)
+
 proc availabilityShard*(owner: AvailabilityCommitment,
     index: ErasureShardIndex): AvailabilityCommitmentResult[AvailabilityShardInfo] =
   ## Copy both validator hashes after checking the full-width index before arithmetic or narrowing.
@@ -81,16 +85,19 @@ proc availabilityShard*(owner: AvailabilityCommitment,
     exports[position] = data.leaves[first+32+position]
   AvailabilityCommitmentResult[AvailabilityShardInfo](status: AvailabilityCommitmentError.None,
     completed: AvailabilityShardInfo(bundleHash: Blake2bHash(bundle), exportRoot: Blake2bHash(exports)))
+
 func treeCalls(count: uint64): uint64 =
   ## Count GP well-balanced hash calls without treating internal singleton leaves as hashes.
   if count == 0: 0'u64
   elif count == 1: 1'u64
   else: count-1
+
 func treeBytes(count, width: uint64): uint64 =
   ## Sum raw leaf bytes, four-byte node prefixes and hashed-child edges exactly once.
   if count == 0: 0'u64
   elif count == 1: width
   else: count*width+4*(count-1)+32*(count-2)
+
 proc nodeHash(bytes: openArray[byte], width, first, count: int): AvailabilityCommitmentResult[Blake2bHash] =
   ## Hash a non-singleton GP N subtree; singleton children contribute raw leaves without separate hashing.
   let left = (count+1) div 2
@@ -121,6 +128,7 @@ proc nodeHash(bytes: openArray[byte], width, first, count: int): AvailabilityCom
         status: AvailabilityCommitmentError.BackendFailure)
   AvailabilityCommitmentResult[Blake2bHash](status: AvailabilityCommitmentError.None,
       completed: hashed.value)
+
 proc balancedRoot(bytes: openArray[byte], width, count: int): AvailabilityCommitmentResult[Blake2bHash] =
   ## Apply WB's empty/singleton special cases before the unpadded raw-leaf N transform.
   if count == 0:
@@ -134,6 +142,7 @@ proc balancedRoot(bytes: openArray[byte], width, count: int): AvailabilityCommit
     return AvailabilityCommitmentResult[Blake2bHash](status: AvailabilityCommitmentError.None,
         completed: hashed.value)
   nodeHash(bytes, width, 0, count)
+
 proc prepareAvailabilityCommitment*(source: ExportErasure,
     limits: AvailabilityCommitmentLimits): AvailabilityCommitmentResult[AvailabilityCommitment] =
   ## Preflight complete memory/hash work before extracting any chunk or computing a validator prefix.

@@ -32,14 +32,17 @@ type
 func error*[T](outcome: AncestorResponseResult[T]): AncestorResponseError =
   ## Inspect the selected success/refusal without exposing its discriminator.
   outcome.status
+
 func value*[T](outcome: AncestorResponseResult[T]): T {.inline, requires:
     outcome.status == AncestorResponseError.None.} =
   ## Extract only the successfully constructed immutable request or response owner.
   outcome.completed
+
 func blockError*[T](outcome: AncestorResponseResult[T]): FrameResult[BlockRead] {.inline,
     requires: outcome.status == AncestorResponseError.BlockFailure.} =
   ## Preserve the complete existing block decoder failure, including its selected component cause.
   outcome.blockReason
+
 proc headers*(response: AncestorResponse): seq[OwnedHeader] =
   ## Return independent sequence storage; default owners expose no context.
   let data = response.data

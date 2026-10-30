@@ -67,10 +67,12 @@ type BlockSnapshotResult* = GenesisResult ## Generic name for the same guarded c
 func error*(value: GenesisResult): GenesisError =
   ## Read status without exposing the discriminator to mutation.
   value.status
+
 func value*(value: GenesisResult): BlockSnapshot {.requires: value.status ==
     GenesisError.None.} =
   ## Extract only a successful chain snapshot.
   value.completed
+
 func blockSnapshotContext*(outcome: BlockSnapshotResult): BlockSnapshotContext
     {.requires: outcome.status == GenesisError.None.} =
   ## Project fixed facts/immutable handles directly, without copying the snapshot's key/service indexes.
@@ -80,6 +82,7 @@ func blockSnapshotContext*(outcome: BlockSnapshotResult): BlockSnapshotContext
 type BlockSnapshotRetentionInfo* = object ## Copied exact index-array extents exclude shared immutable state/header payloads and fixed wrapper bytes.
   keys*, services*: int
   indexBytes*: uint64
+
 func blockSnapshotRetention*(outcome: BlockSnapshotResult): BlockSnapshotRetentionInfo
     {.requires: outcome.status == GenesisError.None.} =
   ## Project private array lengths without returning/copying the snapshot indexes; capture bounds each count to 16384.
@@ -91,42 +94,52 @@ func blockSnapshotRetention*(outcome: BlockSnapshotResult): BlockSnapshotRetenti
 func unavailableGenesis*(): GenesisResult =
   ## Construct an explicit unavailable result for absent snapshot/configuration.
   GenesisResult(status: GenesisError.Unavailable)
+
 func invalidGenesis*(): GenesisResult =
   ## Construct a failed result for malformed explicit configuration.
   GenesisResult(status: GenesisError.Invalid)
+
 func blockHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} =
   ## Return the copied block identity.
   value.identity
+
 func hasBlockBody*(value: BlockSnapshot): bool =
   ## A header-only seed or legacy history never implies an available complete block.
   value.ready and value.body != nil
+
 func blockBodyLength*(value: BlockSnapshot): int {.requires: value.hasBlockBody.} =
   ## Inspect exact retained extent before admitting a copied body against the caller's budget.
   let body = value.body
   assert body != nil
   body.wire.len
+
 func blockBodyDigest*(value: BlockSnapshot): array[32, byte] {.requires: value.hasBlockBody.} =
   ## Copy cached complete-byte identity for historical index admission without allocating body-sized storage.
   let body = value.body
   assert body != nil
   body.digest
+
 proc blockBody*(value: BlockSnapshot): seq[byte] {.requires: value.hasBlockBody.} =
   ## Return an independent byte copy; callers cannot mutate the snapshot's immutable storage.
   let body = value.body
   assert body != nil
   body.wire
+
 func sameBlockBody*(left, right: BlockSnapshot): bool =
   ## Compare availability and cached complete-byte identity without allocating body-sized copies.
   let a = left.body
   let b = right.body
   if a == nil or b == nil: return a == nil and b == nil
   a.digest == b.digest
+
 func parentHash*(value: BlockSnapshot): BlockHash {.requires: value.ready.} =
   ## Return the header's claimed parent identity; only a provider lookup establishes parent availability.
   value.parentIdentity
+
 func priorStateRoot*(value: BlockSnapshot): StateRoot {.requires: value.ready.} =
   ## Return the header's prior root, distinct from the captured posterior state commitment.
   value.priorCommitment
+
 func sameParameters*(left, right: BlockSnapshot): bool {.requires: left.ready and right.ready.} =
   ## Compare complete protocol tuples so retained history cannot silently mix startup chain profiles.
   sameParameterProfile(left.configuration, right.configuration)
@@ -142,30 +155,39 @@ func stateSnapshot*(value: BlockSnapshot): StateStoreSnapshot {.requires: value.
 func header*(value: BlockSnapshot): OwnedHeader {.requires: value.ready.} =
   ## Retain the validated immutable sealed-header owner, independent of the genesis handle lifetime.
   value.sealedHeader
+
 func cores*(value: BlockSnapshot): CoreCount {.requires: value.ready.} =
   ## Return the retained core configuration used to decode this snapshot.
   value.corePopulation
+
 func activeValidators*(value: BlockSnapshot): ValidatorCount {.requires: value.ready.} =
   ## Return the copied active validator population from the exactly decoded C(8) roster.
   value.activePopulation
+
 func basicPieceLength*(value: BlockSnapshot): ErasurePieceLength {.requires: value.ready.} =
   ## Return the cached GP 0.8.0 basic piece length, independent of optional pending-roster state.
   value.pieceLength
+
 func segmentPieces*(value: BlockSnapshot): SegmentPieceCount {.requires: value.ready.} =
   ## Return the exact number of basic pieces in a segment; capture proves positive divisibility.
   SegmentPieceCount(4104 div uint64(value.pieceLength))
+
 func ticketAttempts*(value: BlockSnapshot): RpcTicketAttempts {.requires: value.ready.} =
   ## Return the cached RPC ticket limit, or its documented zero when C(4) cannot be derived.
   value.ticketLimit
+
 func epochSlots*(value: BlockSnapshot): EpochSlots {.requires: value.ready.} =
   ## Return the captured epoch-ring length used to decode retained ready state.
   value.epochLength
+
 func slot*(value: BlockSnapshot): uint32 {.requires: value.ready.} =
   ## Return the copied genesis timeslot.
   value.timeslot
+
 func serviceCount*(value: BlockSnapshot): int {.requires: value.ready.} =
   ## Return the bounded number of structurally valid service accounts discovered at capture.
   value.services.len
+
 func serviceAt*(value: BlockSnapshot, index: ServiceListIndex): ServiceIndex {.requires: value.ready and
     int(index) >= 0 and int(index) < value.services.len.} =
   ## Return a copied ID by owner-bound ordinal; no mutable sequence or detached view escapes.
@@ -174,13 +196,14 @@ func serviceAt*(value: BlockSnapshot, index: ServiceListIndex): ServiceIndex {.r
 func keyCount*(value: BlockSnapshot): int {.requires: value.ready.} =
   ## Return the number of exact serialized keys retained with this snapshot.
   value.keys.len
+
 func keyAt*(value: BlockSnapshot, index: StateKeyIndex): StateKey {.requires: value.ready and
     int(index) >= 0 and int(index) < value.keys.len.} =
   ## Copy one key without exporting mutable index storage.
   value.keys[int(index)]
 
-## Compare full serialized keys by unsigned octet order, independent of Base64 spelling.
 func compareStateKey(left, right: StateKey): int =
+  ## Compare full serialized keys by unsigned octet order, independent of Base64 spelling.
   let a = array[31, byte](left)
   let b = array[31, byte](right)
   for index in 0..<31:
@@ -202,21 +225,21 @@ proc keyAfter*(value: BlockSnapshot, key: StateKey): StateKeyIndex {.requires: v
       high = middle # Preserve the first possible strictly greater key.
   StateKeyIndex(low)
 
-## Copy the store's already sorted fixed keys without copying values or sorting a second time.
 proc captureKeys(state: StateStoreSnapshot): seq[StateKey] =
+  ## Copy the store's already sorted fixed keys without copying values or sorting a second time.
   result = newSeq[StateKey](state.commitment.entries)
   for index in 0..<result.len:
     result[index] = state.keyAt(StateEntryIndex(index)).value # Commitment and owner establish the exact extent.
 
-## Sort numeric IDs rather than the little-endian interleaved serialized account keys.
 proc compareService(left, right: ServiceIndex): int =
+  ## Sort numeric IDs rather than the little-endian interleaved serialized account keys.
   if uint32(left) < uint32(right): return -1 # Smaller numeric IDs precede larger IDs.
   if uint32(left) > uint32(right): return 1 # Preserve the complete unsigned domain.
   0
 
-## Discover only exact C(255, service) keys with complete supported metadata in a validated bounded map.
-## Borrow input solely during capture; the returned scalar sequence owns no caller aliases.
 proc discoverServices(state: StateStoreSnapshot): seq[ServiceIndex] =
+  ## Discover only exact C(255, service) keys with complete supported metadata in a validated bounded map.
+  ## Borrow input solely during capture; the returned scalar sequence owns no caller aliases.
   result = @[]
   for index in 0..<state.commitment.entries:
     let entryKey = state.keyAt(StateEntryIndex(index)).value
@@ -244,9 +267,9 @@ proc lookup*(value: BlockSnapshot, key: StateKey): StateStoreResult[StateValue] 
   ## Read a serialized key from this retained snapshot; the view owns its lifetime, and default owners fail.
   store.lookup(value.state, key)
 
-## Select GP ecoriginalshards from an already validated active roster, then return twice that count.
-## At most 342 candidates are checked; no allocation or erasure encoding occurs here.
 proc capturePieceLength(validators: ValidatorCount): ErasurePieceLength =
+  ## Select GP ecoriginalshards from an already validated active roster, then return twice that count.
+  ## At most 342 candidates are checked; no allocation or erasure encoding occurs here.
   let count = uint64(validators)
   assert count >= 6 and count <= 1023 and count mod 3 == 0
   var shards = count div 3 + 1
@@ -254,11 +277,11 @@ proc capturePieceLength(validators: ValidatorCount): ErasurePieceLength =
     dec shards # One always divides 2052, so the search terminates before a zero divisor.
   ErasurePieceLength(2 * shards)
 
-## Derive the advertised limit from complete C(4), borrowing only a validated immutable store.
-## Missing, malformed or policy-limited optional state maps to the documented RPC zero placeholder.
-## This checks serialization, not key validity, ticket eligibility or Safrole consensus transitions.
 proc captureTicketAttempts(state: StateStoreSnapshot, cores: CoreCount,
     epoch: EpochSlots): RpcTicketAttempts =
+  ## Derive the advertised limit from complete C(4), borrowing only a validated immutable store.
+  ## Missing, malformed or policy-limited optional state maps to the documented RPC zero placeholder.
+  ## This checks serialization, not key validity, ticket eligibility or Safrole consensus transitions.
   let slots = uint64(epoch)
   if slots == 0 or slots > 4096:
     return RpcTicketAttempts(0) # Bound schedule and accumulator work independently of wire size.
@@ -351,10 +374,12 @@ proc captureSnapshot(wire: openArray[byte], state: StateStoreSnapshot,
 func fuzzSeedOnly*(value: BlockSnapshot): bool =
   ## A marked seed can initialize only a fuzz-domain view, never an ordinary genesis view.
   value.ready and value.fuzzSeed
+
 proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
   ## Ordinary snapshots require exact equality between header slot and posterior state clock.
   captureSnapshot(wire, state, parameters, false)
+
 proc withBlockBody*(snapshot: BlockSnapshot, wire: openArray[byte]): BlockSnapshotResult =
   ## Bind a complete canonical block to an exact snapshot header; this structural helper grants no execution authority.
   if not snapshot.ready or wire.len == 0:
@@ -385,6 +410,7 @@ proc withBlockBody*(snapshot: BlockSnapshot, wire: openArray[byte]): BlockSnapsh
   var retained = snapshot
   retained.body = BlockBodyData(wire: copied, digest: array[32, byte](digest.value))
   GenesisResult(status: GenesisError.None, completed: retained)
+
 proc withBlockBody*(snapshot: BlockSnapshot, source: OwnedBlock): BlockSnapshotResult =
   ## Retain only bytes from the producer's actual admitted owner, excluding rejected traffic and transport frames.
   let info = blockInfo(source)
@@ -392,6 +418,7 @@ proc withBlockBody*(snapshot: BlockSnapshot, source: OwnedBlock): BlockSnapshotR
   var wire = newSeq[byte](info.value.consumed)
   if encodeOwnedBlock(source, wire).error != FrameError.None: return invalidGenesis()
   withBlockBody(snapshot, wire)
+
 proc captureFuzzSeedSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
   ## Preserve the explicit fuzz-v1 genesis-like pair exactly, retaining all structural bounds and a permanent seed marker.

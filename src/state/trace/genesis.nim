@@ -30,18 +30,22 @@ type
 func error*[T](outcome: TraceGenesisResult[T]): TraceGenesisError =
   ## Inspect only the selected immutable stage.
   outcome.status
+
 func value*[T](outcome: TraceGenesisResult[T]): T {.inline,
     requires: outcome.status == TraceGenesisError.None.} =
   ## Extract only a completely validated owner, detached bytes or copied observation.
   outcome.completed
+
 func headerFailure*[T](outcome: TraceGenesisResult[T]): HeaderResult[HeaderRead] {.inline,
     requires: outcome.status == TraceGenesisError.HeaderFailure.} =
   ## Preserve the original failed structural header result without authorizing a header prefix.
   outcome.headerReason
+
 func stateFailure*[T](outcome: TraceGenesisResult[T]): TraceStateError {.inline,
     requires: outcome.status == TraceGenesisError.StateFailure.} =
   ## Preserve the genuine complete-map/root refusal without a successful state owner.
   outcome.stateReason
+
 func fail[T](reason: TraceGenesisError): TraceGenesisResult[T] =
   ## Centralize plain failure construction without manufacturing a success-shaped prefix.
   TraceGenesisResult[T](status: reason)
@@ -85,16 +89,19 @@ proc traceGenesisBytes*(source: TraceGenesis): TraceGenesisResult[int] =
   let data = source.data
   if data == nil: return fail[int](TraceGenesisError.InvalidOwner)
   TraceGenesisResult[int](status: TraceGenesisError.None, completed: data.consumed)
+
 proc traceGenesisHeader*(source: TraceGenesis): TraceGenesisResult[OwnedHeader] =
   ## Retain the original schema-qualified header after the enclosing genesis owner retires.
   let data = source.data
   if data == nil: return fail[OwnedHeader](TraceGenesisError.InvalidOwner)
   TraceGenesisResult[OwnedHeader](status: TraceGenesisError.None, completed: data.header)
+
 proc traceGenesisState*(source: TraceGenesis): TraceGenesisResult[TraceState] =
   ## Retain the exact recomputed complete opaque map, without inventing raw logical namespace identities.
   let data = source.data
   if data == nil: return fail[TraceState](TraceGenesisError.InvalidOwner)
   TraceGenesisResult[TraceState](status: TraceGenesisError.None, completed: data.state)
+
 proc copyTraceGenesis*(source: TraceGenesis, bytes: ByteLimit): TraceGenesisResult[seq[byte]] =
   ## Prove complete output capacity before copying either immutable child into detached wire.
   let data = source.data

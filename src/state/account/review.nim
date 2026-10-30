@@ -26,13 +26,16 @@ type
       completed: T
     else:
       discard
+
 func error*[T](outcome: AccountReviewResult[T]): AccountReviewError =
   ## Inspect the immutable selected alternative.
   outcome.status
+
 func value*[T](outcome: AccountReviewResult[T]): T {.inline,
     requires: outcome.status == AccountReviewError.None.} =
   ## No failed/default join grants a completed account review or component prefix.
   outcome.completed
+
 proc joinAccountReview*(invariants: CheckedAccountInvariants,
     supervision: StateSupervisionTable, economics: StateEconomicsTable): AccountReviewResult[
         StateAccountReview] =
@@ -59,12 +62,14 @@ proc joinAccountReview*(invariants: CheckedAccountInvariants,
       info: AccountReviewInfo(invariants: invariants.accountInvariantInfo.value,
         supervision: supervision.supervisionTableInfo.value,
         economics: economics.economicTableInfo.value)))
+
 proc accountReviewInfo*(review: StateAccountReview): AccountReviewResult[AccountReviewInfo] =
   ## Copy or retain the original completed info evidence without exposing mutable review storage.
   if review.invariants.accountInvariantInventory.error != AccountInvariantError.None:
     return AccountReviewResult[AccountReviewInfo](
         status: AccountReviewError.Uninitialized) # Default review has no complete evidence.
   AccountReviewResult[AccountReviewInfo](status: AccountReviewError.None, completed: review.info)
+
 proc reviewInvariants*(review: StateAccountReview): AccountReviewResult[CheckedAccountInvariants] =
   ## Copy or retain the original completed invariants evidence without exposing mutable review storage.
   if review.invariants.accountInvariantInventory.error != AccountInvariantError.None:
@@ -72,6 +77,7 @@ proc reviewInvariants*(review: StateAccountReview): AccountReviewResult[CheckedA
         status: AccountReviewError.Uninitialized) # Default review has no complete evidence.
   AccountReviewResult[CheckedAccountInvariants](status: AccountReviewError.None,
       completed: review.invariants)
+
 proc reviewSupervision*(review: StateAccountReview): AccountReviewResult[StateSupervisionTable] =
   ## Copy or retain the original completed supervision evidence without exposing mutable review storage.
   if review.invariants.accountInvariantInventory.error != AccountInvariantError.None:
@@ -79,6 +85,7 @@ proc reviewSupervision*(review: StateAccountReview): AccountReviewResult[StateSu
         status: AccountReviewError.Uninitialized) # Default review has no complete evidence.
   AccountReviewResult[StateSupervisionTable](status: AccountReviewError.None,
       completed: review.supervision)
+
 proc reviewEconomics*(review: StateAccountReview): AccountReviewResult[StateEconomicsTable] =
   ## Copy or retain the original completed economics evidence without exposing mutable review storage.
   if review.invariants.accountInvariantInventory.error != AccountInvariantError.None:
@@ -86,12 +93,14 @@ proc reviewEconomics*(review: StateAccountReview): AccountReviewResult[StateEcon
         status: AccountReviewError.Uninitialized) # Default review has no complete evidence.
   AccountReviewResult[StateEconomicsTable](status: AccountReviewError.None,
       completed: review.economics)
+
 proc reviewInventory*(review: StateAccountReview): AccountReviewResult[StateInventory] =
   ## Retain the exact original complete inventory without granting independent root trust.
   let source = review.invariants.accountInvariantInventory
   if source.error != AccountInvariantError.None:
     return AccountReviewResult[StateInventory](status: AccountReviewError.Uninitialized) # No default provenance.
   AccountReviewResult[StateInventory](status: AccountReviewError.None, completed: source.value)
+
 proc reviewEconomicProfile*(review: StateAccountReview): AccountReviewResult[StateEconomicProfile] =
   ## Retain the exact explicitly selected configuration of the successful economic component.
   if review.invariants.accountInvariantInventory.error != AccountInvariantError.None:

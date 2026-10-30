@@ -38,25 +38,30 @@ type
 func error*[T](outcome: AccumulationAccountStageResult[T]): AccumulationAccountStageError =
   ## Read the selected reason without allowing retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationAccountStageResult[T]): T {.inline, requires: outcome.status ==
     AccumulationAccountStageError.None.} =
   ## Extract only a fully bound successful owner or observation.
   outcome.completed
+
 func selectionFailure*[T](outcome: AccumulationAccountStageResult[
     T]): AccumulationAccountSelectionError {.inline, requires: outcome.status ==
     AccumulationAccountStageError.SelectionFailure.} =
   ## Inspect only the genuine selected selectionReason refusal.
   outcome.selectionReason
+
 func creationFailure*[T](outcome: AccumulationAccountStageResult[
     T]): AccumulationCreationError {.inline, requires: outcome.status ==
     AccumulationAccountStageError.CreationFailure.} =
   ## Inspect only the genuine selected creationReason refusal.
   outcome.creationReason
+
 func writeFailure*[T](outcome: AccumulationAccountStageResult[
     T]): SelectedAccountWriteError {.inline, requires: outcome.status ==
     AccumulationAccountStageError.WriteFailure.} =
   ## Inspect only the genuine selected writeReason refusal.
   outcome.writeReason
+
 func storeFailure*[T](outcome: AccumulationAccountStageResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationAccountStageError.StoreFailure.} =
   ## Inspect only the genuine selected storeReason refusal.

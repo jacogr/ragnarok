@@ -57,18 +57,22 @@ type
 func error*[T](outcome: AccumulationTimesResult[T]): AccumulationTimesError =
   ## Read a reason without exposing writable tags.
   outcome.status
+
 func value*[T](outcome: AccumulationTimesResult[T]): T {.inline,
     requires: outcome.status == AccumulationTimesError.None.} =
   ## Extract only selected complete success under checked optimized contracts.
   outcome.completed
+
 func statisticsError*[T](outcome: AccumulationTimesResult[T]): AccumulationStatisticsError {.inline,
     requires: outcome.status == AccumulationTimesError.StatisticsFailure.} =
   ## Inspect only a selected certified-statistics refusal.
   outcome.statisticsReason
+
 func metadataError*[T](outcome: AccumulationTimesResult[T]): ServiceMetadataError {.inline,
     requires: outcome.status == AccumulationTimesError.MetadataFailure.} =
   ## Inspect only a selected fixed metadata codec refusal.
   outcome.metadataReason
+
 func stateError*[T](outcome: AccumulationTimesResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationTimesError.StateFailure.} =
   ## Inspect only a selected private atomic-publication refusal.

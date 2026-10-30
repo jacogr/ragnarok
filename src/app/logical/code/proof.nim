@@ -36,33 +36,41 @@ type
     of PlanFailure: planReason: ProofPlanError
     of QueryFailure: queryReason: LogicalProofResult
     else: discard # Defaults, invalid plans and local resource failures are payload-free.
+
 func error*[T](outcome: LogicalCodeProofResult[T]): LogicalCodeProofError =
   ## Observe only the immutable selected stage.
   outcome.status
+
 func value*[T](outcome: LogicalCodeProofResult[T]): T {.inline, requires: outcome.status ==
     LogicalCodeProofError.None.} =
   ## Extract a successful source-bound selector, observation or query only.
   outcome.completed
+
 func codeFailure*[T](outcome: LogicalCodeProofResult[T]): LogicalCodeResult {.inline,
     requires: outcome.status == LogicalCodeProofError.CodeFailure.} =
   ## Preserve genuine original-source audit refusal without a default catalogue.
   outcome.codeReason
+
 func preimageError*[T](outcome: LogicalCodeProofResult[T]): ServiceValueError {.inline,
     requires: outcome.status == LogicalCodeProofError.PreimageKeyFailure.} =
   ## Preserve actual preimage namespace derivation refusal separately from request-key failures.
   outcome.preimageReason
+
 func requestError*[T](outcome: LogicalCodeProofResult[T]): RequestError {.inline,
     requires: outcome.status == LogicalCodeProofError.KeyFailure.} =
   ## Preserve mandatory actual-length request-key derivation refusal.
   outcome.keyReason
+
 func planError*[T](outcome: LogicalCodeProofResult[T]): ProofPlanError {.inline,
     requires: outcome.status == LogicalCodeProofError.PlanFailure.} =
   ## Preserve the existing immutable selector capture's refusal.
   outcome.planReason
+
 func queryFailure*[T](outcome: LogicalCodeProofResult[T]): LogicalProofResult {.inline,
     requires: outcome.status == LogicalCodeProofError.QueryFailure.} =
   ## Preserve independent selected-view and generic proof work refusal.
   outcome.queryReason
+
 proc planLogicalCodeProof*(source: CurrentLogicalState, service: ServiceIndex,
     limits: LogicalCodeProofLimits): LogicalCodeProofResult[LogicalCodeProof] =
   ## Admit the maximum four-key selector before the complete availability audit copies or hashes content; no caller-selected hash, length or slot is accepted.
@@ -107,23 +115,27 @@ proc planLogicalCodeProof*(source: CurrentLogicalState, service: ServiceIndex,
       keys: plan.value,
       info: LogicalCodeProofInfo(code: info, slot: table.codeAvailabilityInfo.value.slot,
           keys: plan.value.len)))
+
 proc logicalCodeProofInfo*(plan: LogicalCodeProof): LogicalCodeProofResult[LogicalCodeProofInfo] =
   ## Copy fixed semantic selector observations; code bytes remain in the original immutable owner.
   if not plan.initialized: return LogicalCodeProofResult[LogicalCodeProofInfo](
       status: LogicalCodeProofError.InvalidPlan)
   LogicalCodeProofResult[LogicalCodeProofInfo](status: LogicalCodeProofError.None,
       completed: plan.info)
+
 proc logicalCodeProofSource*(plan: LogicalCodeProof): LogicalCodeProofResult[CurrentLogicalState] =
   ## Retain the original source for existing managed proof submission outside native graph leases.
   if not plan.initialized: return LogicalCodeProofResult[CurrentLogicalState](
       status: LogicalCodeProofError.InvalidPlan)
   LogicalCodeProofResult[CurrentLogicalState](status: LogicalCodeProofError.None,
       completed: plan.source)
+
 proc logicalCodeProofKeys*(plan: LogicalCodeProof): LogicalCodeProofResult[StateProofPlan] =
   ## Retain only exact metadata/time/preimage/actual-length dependencies for independent planned response verification.
   if not plan.initialized: return LogicalCodeProofResult[StateProofPlan](
       status: LogicalCodeProofError.InvalidPlan)
   LogicalCodeProofResult[StateProofPlan](status: LogicalCodeProofError.None, completed: plan.keys)
+
 proc captureLogicalCodeProofQuery*(plan: LogicalCodeProof,
     limits: LogicalProofLimits): LogicalCodeProofResult[ProofQuery] =
   ## Existing independent full-map/view/path/hash/wire policies apply without allowing a replacement source or selector.

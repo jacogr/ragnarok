@@ -7,7 +7,7 @@
 ## rejection diagnostic and exit status.
 
 import std/[assertions, cmdline, syncio]
-import ../../src/quic/integration
+import "../../src/jamnp-s/integration"
 import ../../src/codec/owned
 
 # Only the isolated observer-linked probe can inject a primitive refusal.

@@ -26,12 +26,15 @@ type
 func ok*(value: DecodeResult): bool =
   ## The outcome is always readable, but cannot be changed to manufacture a successful result.
   value.success
+
 func value*(value: DecodeResult): JamNatural {.inline, requires: value.success.} =
   ## Return copied decoded data only after the caller establishes success.
   value.decodedValue
+
 func consumed*(value: DecodeResult): range[1..9] {.inline, requires: value.success.} =
   ## A failed natural never publishes a prefix extent that could advance a cursor.
   value.byteConsumed
+
 func error*(value: DecodeResult): DecodeError {.inline, requires: not value.success.} =
   ## Successful results have no error payload; select failure before asking for its reason.
   value.failureReason

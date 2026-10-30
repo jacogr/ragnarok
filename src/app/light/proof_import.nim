@@ -36,42 +36,52 @@ type
     of ViewFailure: viewCause: ProofViewError
     of ProofFailure: proofCause: StateProofError
     else: discard # Plain admission refusals own no payload.
+
 func error*[T](outcome: LightImportResult[T]): LightImportError =
   ## Read the selected admission/decoding/authentication stage without exposing a prefix.
   outcome.status
+
 func value*[T](outcome: LightImportResult[T]): T {.inline, requires: outcome.status ==
     LightImportError.None.} =
   ## Checked success alone exposes a completely admitted or authenticated owner.
   outcome.completed
+
 func viewError*[T](outcome: LightImportResult[T]): ProofViewError {.requires: outcome.status ==
     LightImportError.ViewFailure.} =
   ## Preserve exact canonical framing, retention or view-capture refusal.
   outcome.viewCause
+
 func proofError*[T](outcome: LightImportResult[T]): StateProofError {.requires: outcome.status ==
     LightImportError.ProofFailure.} =
   ## Cryptographic/path/value refusal never becomes an authenticated absent result.
   outcome.proofCause
+
 func valid*(request: LightProofImport): bool =
   ## Default requests own no independently selected root or wire.
   request.data != nil
+
 func valid*(proofs: ImportedLightProofs): bool =
   ## Only successful whole-request authentication grants usable facts.
   proofs.data != nil
+
 proc identity*(proofs: ImportedLightProofs): ApplicationCheckpointIdentity {.requires: proofs.data != nil.} =
   ## Exact checkpoint binding lets the host refuse stale ingestion even when two headers share a posterior root.
   let data = proofs.data
   assert data != nil
   data.selected
+
 proc batch*(proofs: ImportedLightProofs): VerifiedStateProofBatch {.requires: proofs.data != nil.} =
   ## Immutable genuinely verified facts retain no mutable transport or native pin.
   let data = proofs.data
   assert data != nil
   data.verified
+
 proc estimatedHashes*(request: LightProofImport): ElementLimit {.requires: request.data != nil.} =
   ## Conservative admission counts both complete verification passes, independently of bounded wire/value bytes.
   let data = request.data
   assert data != nil
   ElementLimit(data.estimated)
+
 proc captureLightProofImport*(head: LightApplicationHead, wire: openArray[byte],
     limits: LightProofImportLimits): LightImportResult[LightProofImport] =
   ## Fixed canonical RPV1 prefix/count checks precede private wire copying; no proof parsing or hashing occurs here.
@@ -104,6 +114,7 @@ proc captureLightProofImport*(head: LightApplicationHead, wire: openArray[byte],
   LightImportResult[LightProofImport](status: LightImportError.None,
     completed: LightProofImport(data: ImportData(selected: head.current.value.identity,
       wire: copied, limits: limits, estimated: count*perQuery)))
+
 proc executeLightProofImport*(request: LightProofImport): LightImportResult[ImportedLightProofs] =
   ## Decode/authenticate every fact privately under independent root authority, then return one exact bound verified batch.
   let data = request.data

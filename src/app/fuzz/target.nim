@@ -43,27 +43,34 @@ let
   TerminateSignal {.importc: "SIGTERM", header: "<signal.h>".}: cint
 
 var stopFlag: cint = 0 ## Only scalar lock-free atomic operations access this process-wide signal flag.
+
 proc stopRequested(number: cint) {.cdecl.} =
   ## No allocation, logging, IO or ARC operation occurs in signal context.
   atomicStore(stopFlag, 1)
+
 proc installSignal(number: cint, handler: SignalHandler): SignalHandler {.importc: "signal",
     header: "<signal.h>".}
   ## Restore each original process handler before returning from the dedicated target command.
+
 proc effectiveUid(): uint32 {.importc: "geteuid", header: "<unistd.h>".}
   ## Runtime data paths must belong to the effective user.
+
 func error*(outcome: FuzzTargetResult): FuzzTargetError =
   ## Read only the immutable selected startup reason.
   outcome.status
+
 func value*(outcome: FuzzTargetResult): FuzzTargetConfig {.inline,
     requires: outcome.status == FuzzTargetError.None.} =
   ## Extract the complete detached policy only after successful startup validation.
   outcome.config
+
 func pathValid(path: string): bool =
   ## Keep bounded absolute native paths free of NUL/control truncation.
   if path.len == 0 or path.len > 1024 or path[0] != '/': return false
   for c in path:
     if ord(c) < 32 or ord(c) == 127: return false # No hidden native pathname suffix can be ignored.
   true
+
 proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
     candidate: CurrentCandidateLimits, writes: ElementLimit,
         writeBytes: ByteLimit): FuzzTargetResult =
@@ -128,10 +135,12 @@ proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
     socket: FuzzSocketConfig(path: environment.socketPath, timeoutMs: 30000, peer: peer,
         limits: wire),
     backend: backend, dataPath: environment.dataPath))
+
 proc text(bytes: openArray[byte]): string =
   ## Copy bounded configuration bytes without altering their JSON/policy representation.
   result = newString(bytes.len)
   for index, octet in bytes: result[index] = char(octet) # Complete input extent bounds every output assignment.
+
 proc budget(text: string, maximum: uint64, value: var uint64): bool =
   ## Parse a canonical unsigned bounded count before multiply/add can wrap.
   value = 0
@@ -142,12 +151,15 @@ proc budget(text: string, maximum: uint64, value: var uint64): bool =
     if value > (maximum-digit) div 10: return false
     value = value*10+digit
   value <= maximum
+
 proc createNativeDirectory(path: cstring, mode: Mode): cint {.importc: "mkdir",
     header: "<sys/stat.h>".}
   ## The native binary creates selected runtime paths without a shell or external process.
+
 proc directoryStatus(path: cstring, status: var FileStatus): cint {.importc: "stat",
     header: "<sys/stat.h>".}
   ## Ancestor lookup follows ordinary OS aliases such as macOS /tmp; the selected leaf is checked separately.
+
 proc ensureDirectory(path: string, depth: int): bool =
   ## Bounded recursive parent creation uses0700 from the first visible inode; existing parents stay unchanged.
   if depth > 512 or not pathValid(path): return false
@@ -157,6 +169,7 @@ proc ensureDirectory(path: string, depth: int): bool =
   let parent = parentDir(path)
   if parent == path or not ensureDirectory(parent, depth+1): return false
   createNativeDirectory(nativePath.toCString(), Mode(0o700)) == 0
+
 proc prepareDirectory(path: string): bool =
   ## Only explicitly selected, runtime-owned non-symlink directories may become private startup storage.
   if not ensureDirectory(path, 0): return false
@@ -165,6 +178,7 @@ proc prepareDirectory(path: string): bool =
   if readStatus(nativePath.toCString(), status) != 0 or not S_ISDIR(Mode(status.st_mode)) or
       uint32(status.st_uid) != effectiveUid(): return false
   chmod(nativePath.toCString(), Mode(0o700)) == 0
+
 proc resolveFuzzEnvironment*(base: FuzzEnvironment, overrides: openArray[string],
     environment: var FuzzEnvironment): bool =
   ## Merge explicit pairs over a captured environment; malformed pairs expose no partial configuration.

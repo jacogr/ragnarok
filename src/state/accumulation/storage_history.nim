@@ -29,13 +29,16 @@ type
     case status: StorageHistoryError
     of None: completed: T
     else: discard # There is no successful partial history alternative.
+
 func error*[T](outcome: StorageHistoryResult[T]): StorageHistoryError =
   ## Inspect immutable capture or observation refusal.
   outcome.status
+
 func value*[T](outcome: StorageHistoryResult[T]): T {.inline, requires: outcome.status ==
     StorageHistoryError.None.} =
   ## Extract only complete source-bound selected evidence or its detached fixed observations.
   outcome.completed
+
 proc captureStorageHistory*(source: CompletedCurrentAccumulationSequence,
     limits: StorageHistoryLimits): StorageHistoryResult[StorageHistory] =
   ## Traverse authentic current history twice: first admit every selected identity, then retain exact immutable facts without copying raw bytes or hashing.
@@ -92,12 +95,14 @@ proc captureStorageHistory*(source: CompletedCurrentAccumulationSequence,
       completed: StorageHistory(initialized: true, source: source, rows: rows,
           info: StorageHistoryInfo(entries: info.value.entries, outcomes: int(
               outcomeBudget-outcomes), facts: next, bytes: byteBudget-bytes)))
+
 proc storageHistoryInfo*(history: StorageHistory): StorageHistoryResult[StorageHistoryInfo] =
   ## Observe only initialized complete-capture coverage and exact admitted retention accounting.
   if not history.initialized:
     return StorageHistoryResult[StorageHistoryInfo](status: StorageHistoryError.InvalidSource)
   StorageHistoryResult[StorageHistoryInfo](status: StorageHistoryError.None,
       completed: history.info)
+
 proc storageHistorySource*(history: StorageHistory): StorageHistoryResult[
     CompletedCurrentAccumulationSequence] =
   ## Retain original completed producer history for subsequent exact-parent/successor checks; roots alone cannot replace it.
@@ -106,6 +111,7 @@ proc storageHistorySource*(history: StorageHistory): StorageHistoryResult[
         status: StorageHistoryError.InvalidSource)
   StorageHistoryResult[CompletedCurrentAccumulationSequence](status: StorageHistoryError.None,
       completed: history.source)
+
 proc storageHistoryAt*(history: StorageHistory, index: StorageHistoryIndex): StorageHistoryResult[
     StorageHistoryRow] =
   ## Return one detached row retaining its immutable genuine raw identity, after full-width index validation.

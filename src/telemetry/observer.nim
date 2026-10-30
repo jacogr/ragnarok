@@ -9,8 +9,8 @@ import ./[wire, client]
 import ../quic/transport
 export wire, client
 
-# Convert wall time to the wire epoch; zero denotes an unavailable/pre-epoch local clock.
 proc eventTimestamp(): Timestamp =
+  ## Convert wall time to the wire epoch; zero denotes an unavailable/pre-epoch local clock.
   let wall = getTime()
   let seconds = wall.toUnix - 1_735_732_800'i64
   if seconds < 0 or seconds > int64(high(uint64) div 1_000_000) - 1:

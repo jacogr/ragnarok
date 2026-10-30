@@ -51,25 +51,28 @@ type
 func error*[T](outcome: ServiceActivityResult[T]): ServiceActivityError =
   ## Inspect the selected reason without permitting retagging.
   outcome.status
+
 func value*[T](outcome: ServiceActivityResult[T]): T {.inline,
     requires: outcome.status == ServiceActivityError.None.} =
   ## Extract only complete selected success in checked optimized builds.
   outcome.completed
 
-# Bound combined fixed candidate storage and logical work before any aggregate addition.
 proc charge(total: var int, count: int, limit: ElementLimit): bool =
+  ## Bound combined fixed candidate storage and logical work before any aggregate addition.
   if uint64(count) > uint64(limit)-uint64(total) or count > high(int) div sizeof(
       ServiceStatisticsEntry)-total:
     return false # Earlier successful charges establish nonnegative subtraction operands.
   total += count
   true
-# Numeric identity alone determines canonical dictionary order, independent of report arrival.
+
 func compareService(left, right: ServiceStatisticsEntry): int =
+  ## Numeric identity alone determines canonical dictionary order, independent of report arrival.
   if uint32(left.service) < uint32(right.service): return -1
   if uint32(left.service) > uint32(right.service): return 1
   0
-# Failed aggregation mutates only private scratch; no partially combined row can escape.
+
 proc combine(left: var ServiceActivity, right: ServiceActivity): bool =
+  ## Failed aggregation mutates only private scratch; no partially combined row can escape.
   for measure in low(ServiceMeasure)..high(ServiceMeasure):
     let value = uint64(right.counters[measure])
     if value > high(uint64)-uint64(left.counters[measure]): return false # Prove each natural before addition.
@@ -178,6 +181,7 @@ proc serviceActivityInfo*(plan: PreparedServiceActivity): ServiceActivityResult[
       status: ServiceActivityError.Uninitialized)
   ServiceActivityResult[ServiceActivityInfo](status: ServiceActivityError.None,
       completed: data.info)
+
 proc serviceActivitySource*(plan: PreparedServiceActivity): ServiceActivityResult[
     PreparedAccumulationStatistics] =
   ## Retain exact finalized accumulation and its original block graph independently of caller handles.
@@ -186,6 +190,7 @@ proc serviceActivitySource*(plan: PreparedServiceActivity): ServiceActivityResul
       status: ServiceActivityError.Uninitialized)
   ServiceActivityResult[PreparedAccumulationStatistics](status: ServiceActivityError.None,
       completed: data.source)
+
 proc serviceActivityAt*(plan: PreparedServiceActivity,
     index: StatisticsServiceIndex): ServiceActivityResult[ServiceStatisticsEntry] =
   ## Copy one complete tuple at a checked nominal dictionary ordinal, never a protocol service ID.

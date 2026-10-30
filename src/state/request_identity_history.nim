@@ -30,13 +30,16 @@ type
     case status: RequestIdentityHistoryError
     of None: completed: T
     else: discard # No successful prefix exists on any refused stage.
+
 func error*[T](outcome: RequestIdentityHistoryResult[T]): RequestIdentityHistoryError =
   ## Observe immutable capture or lookup refusal.
   outcome.status
+
 func value*[T](outcome: RequestIdentityHistoryResult[T]): T {.inline, requires: outcome.status ==
     RequestIdentityHistoryError.None.} =
   ## Extract only complete selected history and its bounded observations.
   outcome.completed
+
 proc captureRequestIdentityHistory*(source: CompletedCurrentAccumulationSequence,
     limits: RequestIdentityHistoryLimits): RequestIdentityHistoryResult[RequestIdentityHistory] =
   ## Admit whole selected fixed-row retention before allocation, retaining original sequence and invocation provenance without re-execution.
@@ -89,6 +92,7 @@ proc captureRequestIdentityHistory*(source: CompletedCurrentAccumulationSequence
           info: RequestIdentityHistoryInfo(entries: info.value.entries, outcomes: int(
               outcomeBudget-outcomes), facts: next, bytes: count*uint64(sizeof(
                   RequestIdentityHistoryRow)))))
+
 proc requestIdentityHistoryInfo*(history: RequestIdentityHistory): RequestIdentityHistoryResult[
     RequestIdentityHistoryInfo] =
   ## Inspect exact complete selected coverage without granting a mutable row array.
@@ -97,6 +101,7 @@ proc requestIdentityHistoryInfo*(history: RequestIdentityHistory): RequestIdenti
         status: RequestIdentityHistoryError.InvalidSource)
   RequestIdentityHistoryResult[RequestIdentityHistoryInfo](status: RequestIdentityHistoryError.None,
       completed: history.info)
+
 proc requestIdentityHistorySource*(history: RequestIdentityHistory): RequestIdentityHistoryResult[
     CompletedCurrentAccumulationSequence] =
   ## Retain only the original genuine completed producer for later exact-parent/successor composition.
@@ -105,6 +110,7 @@ proc requestIdentityHistorySource*(history: RequestIdentityHistory): RequestIden
         status: RequestIdentityHistoryError.InvalidSource)
   RequestIdentityHistoryResult[CompletedCurrentAccumulationSequence](
       status: RequestIdentityHistoryError.None, completed: history.source)
+
 proc requestIdentityHistoryAt*(history: RequestIdentityHistory,
     index: RequestIdentityHistoryIndex): RequestIdentityHistoryResult[RequestIdentityHistoryRow] =
   ## Validate initialized source and complete full-width ordinal before returning a detached fixed row.

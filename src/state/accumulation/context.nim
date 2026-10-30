@@ -56,6 +56,7 @@ type
 func error*[T](outcome: AccumulationContextResult[T]): AccumulationContextError =
   ## Read a reason without permitting result retagging.
   outcome.status
+
 func value*[T](outcome: AccumulationContextResult[T]): T {.inline,
     requires: outcome.status == AccumulationContextError.None.} =
   ## Extract only explicitly selected success under compiler/runtime contracts.

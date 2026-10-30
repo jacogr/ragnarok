@@ -48,23 +48,28 @@ type
 func error*[T](outcome: ComputedAssuranceResult[T]): ComputedAssuranceError =
   ## Inspect selection without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedAssuranceResult[T]): T {.requires: outcome.status ==
     ComputedAssuranceError.None.} =
   ## Extract only complete success under optimized contracts.
   outcome.completed
+
 func stateError*[T](outcome: ComputedAssuranceResult[
     T]): StateStoreError {.requires: outcome.status == ComputedAssuranceError.StateFailure.} =
   ## Inspect only failed private-parent forking.
   outcome.stateReason
+
 func transitionFailure*[T](outcome: ComputedAssuranceResult[
     T]): BlockTransitionResult {.requires: outcome.status ==
     ComputedAssuranceError.TransitionFailure.} =
   ## Retain the whole refused maintained phase and its own guarded nested reasons.
   outcome.transitionReason
+
 func reportError*[T](outcome: ComputedAssuranceResult[
     T]): OwnershipError {.requires: outcome.status == ComputedAssuranceError.ReportFailure.} =
   ## Inspect only a failed canonical owner-bound report encoding.
   outcome.reportReason
+
 proc computedAssuranceSource*(assured: AssuredComputedReports): ComputedAssuranceResult[
     AdvancedComputedChain] =
   ## Share exact computed predecessor authority after caller handles retire.
@@ -73,6 +78,7 @@ proc computedAssuranceSource*(assured: AssuredComputedReports): ComputedAssuranc
       status: ComputedAssuranceError.Uninitialized)
   ComputedAssuranceResult[AdvancedComputedChain](status: ComputedAssuranceError.None,
       completed: data.source)
+
 proc computedAssuranceStage*(assured: AssuredComputedReports): ComputedAssuranceResult[
     BlockTransitionResult] =
   ## Share the actual complete authenticated coordinator result, including all maintained availability outputs.
@@ -81,6 +87,7 @@ proc computedAssuranceStage*(assured: AssuredComputedReports): ComputedAssurance
       status: ComputedAssuranceError.Uninitialized)
   ComputedAssuranceResult[BlockTransitionResult](status: ComputedAssuranceError.None,
       completed: data.stage)
+
 proc computedAssuranceParameters*(assured: AssuredComputedReports): ComputedAssuranceResult[Parameters] =
   ## Derive the complete original tuple from the real computed chain child, never from caller replacements.
   let data = assured.data
@@ -88,6 +95,7 @@ proc computedAssuranceParameters*(assured: AssuredComputedReports): ComputedAssu
       status: ComputedAssuranceError.Uninitialized)
   ComputedAssuranceResult[Parameters](status: ComputedAssuranceError.None,
       completed: data.source.computedChainBlock.value.chainParameters)
+
 proc computedAssuranceInfo*(assured: AssuredComputedReports): ComputedAssuranceResult[
     ComputedAssuranceInfo] =
   ## Observe real availability and matched-computation counts without retaining mutable arrays.
@@ -97,6 +105,7 @@ proc computedAssuranceInfo*(assured: AssuredComputedReports): ComputedAssuranceR
   ComputedAssuranceResult[ComputedAssuranceInfo](status: ComputedAssuranceError.None,
       completed: ComputedAssuranceInfo(
       available: data.stage.value.availability.availableReportCount, computed: data.indices.len))
+
 proc computedAssuredReportAt*(assured: AssuredComputedReports,
     index: ComputedAvailableIndex): ComputedAssuranceResult[OwnedReport] =
   ## Select only a real available report whose canonical bytes matched retained original computation.
@@ -108,6 +117,7 @@ proc computedAssuredReportAt*(assured: AssuredComputedReports,
   ComputedAssuranceResult[OwnedReport](status: ComputedAssuranceError.None,
       completed: data.stage.value.availability.availableReportAt(data.indices[int(uint64(
       index))]).value)
+
 proc prepareComputedAssurances*(source: AdvancedComputedChain, candidate: OwnedBlock,
     config: ComputedAssuranceConfig): ComputedAssuranceResult[AssuredComputedReports] =
   ## Privately authenticate against the exact predecessor, then prove matched report bytes before exposing any successor prefix.

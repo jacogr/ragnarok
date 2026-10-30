@@ -17,17 +17,21 @@ type
     of None: completed: T
     of CheckpointFailure: checkpointReason: CheckpointError
     else: discard # No failed alternative exposes partially decoded physical ownership.
+
 func error*[T](outcome: LogicalCheckpointImportResult[T]): LogicalCheckpointImportError =
   ## Observe the selected immutable stage without granting root or installation authority.
   outcome.status
+
 func value*[T](outcome: LogicalCheckpointImportResult[T]): T {.inline, requires: outcome.status ==
     LogicalCheckpointImportError.None.} =
   ## Extract only complete independently authenticated imports and their original owner observations.
   outcome.completed
+
 func checkpointError*[T](outcome: LogicalCheckpointImportResult[T]): CheckpointError {.inline,
     requires: outcome.status == LogicalCheckpointImportError.CheckpointFailure.} =
   ## Preserve exact structural, quota, root and primitive backend refusal causes.
   outcome.checkpointReason
+
 proc importLogicalCheckpoint*(source: CurrentLogicalState, wire: openArray[byte],
     limits: StateStoreLimits, wireLimit: ByteLimit): LogicalCheckpointImportResult[
         ImportedLogicalCheckpoint] =
@@ -44,6 +48,7 @@ proc importLogicalCheckpoint*(source: CurrentLogicalState, wire: openArray[byte]
     status: LogicalCheckpointImportError.None,
     completed: ImportedLogicalCheckpoint(initialized: true, logical: source,
         restored: decoded.value.snapshot.value))
+
 proc importedLogicalSource*(captured: ImportedLogicalCheckpoint): LogicalCheckpointImportResult[
     CurrentLogicalState] =
   ## Retain the original qualified logical owner; decoded equal-root maps cannot replace its producer identity.
@@ -52,6 +57,7 @@ proc importedLogicalSource*(captured: ImportedLogicalCheckpoint): LogicalCheckpo
         status: LogicalCheckpointImportError.InvalidImport)
   LogicalCheckpointImportResult[CurrentLogicalState](status: LogicalCheckpointImportError.None,
       completed: captured.logical)
+
 proc importedLogicalSnapshot*(captured: ImportedLogicalCheckpoint): LogicalCheckpointImportResult[
     StateStoreSnapshot] =
   ## Observe the separately owned authenticated physical map without fabricating a current update or adopting it.

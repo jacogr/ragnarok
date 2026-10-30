@@ -33,10 +33,12 @@ type
 func error*[T](outcome: ComputedStateResult[T]): ComputedStateError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedStateResult[T]): T
     {.requires: outcome.status == ComputedStateError.None.} =
   ## Optimized contracts preserve success selection on every payload path.
   outcome.completed
+
 proc computedStateSource*(bound: StateBoundComputedReport): ComputedStateResult[
     ComputedReportLinks] =
   ## Retain the exact original transcript and computational lookup witnesses.
@@ -44,11 +46,13 @@ proc computedStateSource*(bound: StateBoundComputedReport): ComputedStateResult[
   if data == nil: return ComputedStateResult[ComputedReportLinks](
       status: ComputedStateError.Uninitialized)
   ComputedStateResult[ComputedReportLinks](status: ComputedStateError.None, completed: data.source)
+
 proc computedStateAdmission*(bound: StateBoundComputedReport): ComputedStateResult[BoundBlock] =
   ## Retain the completed block commitment binding without accepting later header replacements.
   let data = bound.data
   if data == nil: return ComputedStateResult[BoundBlock](status: ComputedStateError.Uninitialized)
   ComputedStateResult[BoundBlock](status: ComputedStateError.None, completed: data.admission)
+
 proc computedStateSnapshot*(bound: StateBoundComputedReport): ComputedStateResult[
     StateStoreSnapshot] =
   ## Share the exact original execution version, already proven identical to the admitted parent-state owner.
@@ -57,6 +61,7 @@ proc computedStateSnapshot*(bound: StateBoundComputedReport): ComputedStateResul
       status: ComputedStateError.Uninitialized)
   ComputedStateResult[StateStoreSnapshot](status: ComputedStateError.None,
       completed: data.admission.admittedState)
+
 proc bindComputedState*(source: ComputedReportLinks,
     admission: BlockAdmissionResult): ComputedStateResult[StateBoundComputedReport] =
   ## Require completed provenance on both sides and exact snapshot identity before retaining any candidate owner.

@@ -26,12 +26,13 @@ import ../../../state/supplied/services as supplied_services
 import ../../../lib/atomic/file as atomic_file
 import ../../../lib/stop_signal
 import ../../../chain/[genesis, provider]
-import "../../../quic/current/block/download/loop" as current_block_download_loop
-import "../../../quic/current/block/download/session" as current_block_download_session
-import "../../../quic/current/block/download/peers" as current_block_download_peers
-import ../../../quic/ancestor/[peer as ancestor_peer, stream as ancestor_stream]
-import ../../../quic/current/sync as current_sync
-import ../../../quic/announcements
+import "../../../jamnp-s/current/block/download/loop" as current_block_download_loop
+import "../../../jamnp-s/current/block/download/session" as current_block_download_session
+import "../../../jamnp-s/current/block/download/peers" as current_block_download_peers
+import "../../../jamnp-s/ancestor/peer" as ancestor_peer
+import "../../../jamnp-s/ancestor/stream" as ancestor_stream
+import "../../../jamnp-s/current/sync" as current_sync
+import "../../../jamnp-s/announcements"
 
 type CurrentDownloadCommandResult* {.pure.} = enum ## Process-level refusal never implies a prepared or adopted successor.
   Uninitialized, Adopted, Stopped, InvalidOptions, InvalidEndpoint, InvalidIdentity, InvalidPolicy,
@@ -46,9 +47,11 @@ type CurrentDownloadCommandOutcome* = object ## Immutable scalar diagnostics des
 func error*(outcome: CurrentDownloadCommandOutcome): CurrentDownloadCommandResult =
   ## Preserve the terminal reason independently of earlier confirmed progress.
   outcome.status
+
 func requestedBlocks*(outcome: CurrentDownloadCommandOutcome): int =
   ## Report the validated finite request; invalid/default options have zero requested work.
   outcome.requested
+
 func adoptedBlocks*(outcome: CurrentDownloadCommandOutcome): int =
   ## Count actual canonical advancement observed only after joined child teardown, including confirmed shutdown receipts.
   outcome.adopted
@@ -399,6 +402,7 @@ proc receiveContinuously(owner: var Services, options: Options, peers: seq[Downl
 
 type LogicalSourceRefreshError {.pure.} = enum ## Private file-stage status cannot grant adoption or a logical certificate.
   None, ExportFailure, IoFailure, PublishedUnsynced
+
 proc refreshLogicalSource(path: string, source: CurrentLogicalState,
     projection: SuppliedServicesLimits): LogicalSourceRefreshError =
   ## Run only after transport/Services teardown, admitting detached text plus native bytes under one explicit projection byte budget.

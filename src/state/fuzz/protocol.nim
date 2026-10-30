@@ -54,16 +54,20 @@ type
 func error*[T](outcome: FuzzResult[T]): FuzzError =
   ## Inspect an immutable reason without selecting a successful payload.
   outcome.status
+
 func value*[T](outcome: FuzzResult[T]): T {.inline, requires: outcome.status == FuzzError.None.} =
   ## Extract only the complete selected alternative.
   outcome.completed
+
 func fail[T](reason: FuzzError): FuzzResult[T] =
   ## Centralize failure without constructing a success-shaped prefix.
   FuzzResult[T](status: reason)
+
 proc copied(input: openArray[byte]): seq[byte] =
   ## Detach bytes before any caller storage can mutate or retire.
   result = newSeq[byte](input.len)
   for index in 0..<input.len: result[index] = input[index]
+
 proc readNatural(input: openArray[byte], cursor: var int, number: var uint64): FuzzError =
   ## Advance a private cursor only over one complete canonical natural.
   if cursor >= input.len: return FuzzError.Truncated
@@ -73,6 +77,7 @@ proc readNatural(input: openArray[byte], cursor: var int, number: var uint64): F
   number = uint64(decoded.value)
   cursor += decoded.consumed
   FuzzError.None
+
 proc readText(input: openArray[byte], cursor: var int, maximum: ByteLimit,
     text: var string): FuzzError =
   ## Validate complete extent and Unicode scalars before retaining any text.
@@ -87,6 +92,7 @@ proc readText(input: openArray[byte], cursor: var int, maximum: ByteLimit,
   cursor += owned.len
   text = owned
   FuzzError.None
+
 proc readState(input: openArray[byte], cursor: var int,
     limits: StateStoreLimits): FuzzResult[StateStoreSnapshot] =
   ## The protocol State has no advertised root; scan all compact records before allocation and compute the complete opaque root.
@@ -216,24 +222,28 @@ proc fuzzInfo*(source: FuzzMessage): FuzzResult[FuzzInfo] =
   if data == nil: return fail[FuzzInfo](FuzzError.InvalidOwner)
   FuzzResult[FuzzInfo](status: FuzzError.None, completed: FuzzInfo(kind: data.kind,
       bytes: data.wire.len))
+
 proc fuzzPeer*(source: FuzzMessage): FuzzResult[FuzzPeer] =
   ## Return a copied peer declaration only for a successful PeerInfo owner.
   let data = source.data
   if data == nil: return fail[FuzzPeer](FuzzError.InvalidOwner)
   if data.kind != FuzzKind.PeerInfo: return fail[FuzzPeer](FuzzError.WrongKind)
   FuzzResult[FuzzPeer](status: FuzzError.None, completed: data.peer)
+
 proc fuzzHeader*(source: FuzzMessage): FuzzResult[OwnedHeader] =
   ## Retain an independent immutable header child, never a fabricated default header.
   let data = source.data
   if data == nil: return fail[OwnedHeader](FuzzError.InvalidOwner)
   if data.kind != FuzzKind.Initialize: return fail[OwnedHeader](FuzzError.WrongKind)
   FuzzResult[OwnedHeader](status: FuzzError.None, completed: data.header)
+
 proc fuzzBlock*(source: FuzzMessage): FuzzResult[OwnedBlock] =
   ## Retain the captured original block without granting admission or installation authority.
   let data = source.data
   if data == nil: return fail[OwnedBlock](FuzzError.InvalidOwner)
   if data.kind != FuzzKind.ImportBlock: return fail[OwnedBlock](FuzzError.WrongKind)
   FuzzResult[OwnedBlock](status: FuzzError.None, completed: data.body)
+
 proc fuzzState*(source: FuzzMessage): FuzzResult[StateStoreSnapshot] =
   ## Retain the complete independently rooted map for State or Initialize only.
   let data = source.data
@@ -241,6 +251,7 @@ proc fuzzState*(source: FuzzMessage): FuzzResult[StateStoreSnapshot] =
   if data.kind notin {FuzzKind.Initialize, FuzzKind.State}: return fail[StateStoreSnapshot](
       FuzzError.WrongKind)
   FuzzResult[StateStoreSnapshot](status: FuzzError.None, completed: data.state)
+
 proc fuzzAncestors*(source: FuzzMessage): FuzzResult[seq[FuzzAncestor]] =
   ## Copy the complete bounded ancestry list; no mutable alias into the message escapes.
   let data = source.data
@@ -249,6 +260,7 @@ proc fuzzAncestors*(source: FuzzMessage): FuzzResult[seq[FuzzAncestor]] =
   var output = newSeq[FuzzAncestor](data.ancestors.len)
   for index in 0..<output.len: output[index] = data.ancestors[index]
   FuzzResult[seq[FuzzAncestor]](status: FuzzError.None, completed: output)
+
 proc fuzzRoot*(source: FuzzMessage): FuzzResult[state_trie.StateRoot] =
   ## A StateRoot response is not interchangeable with a GetState header identity.
   let data = source.data
@@ -256,18 +268,21 @@ proc fuzzRoot*(source: FuzzMessage): FuzzResult[state_trie.StateRoot] =
   if data.kind != FuzzKind.StateRoot: return fail[state_trie.StateRoot](FuzzError.WrongKind)
   FuzzResult[state_trie.StateRoot](status: FuzzError.None, completed: state_trie.StateRoot(
       data.hash))
+
 proc fuzzRequestedHeader*(source: FuzzMessage): FuzzResult[FuzzHeaderHash] =
   ## Extract a complete fixed request identity only from GetState.
   let data = source.data
   if data == nil: return fail[FuzzHeaderHash](FuzzError.InvalidOwner)
   if data.kind != FuzzKind.GetState: return fail[FuzzHeaderHash](FuzzError.WrongKind)
   FuzzResult[FuzzHeaderHash](status: FuzzError.None, completed: FuzzHeaderHash(data.hash))
+
 proc fuzzText*(source: FuzzMessage): FuzzResult[string] =
   ## Return validated error text without treating out-of-protocol internal faults as consensus errors.
   let data = source.data
   if data == nil: return fail[string](FuzzError.InvalidOwner)
   if data.kind != FuzzKind.Error: return fail[string](FuzzError.WrongKind)
   FuzzResult[string](status: FuzzError.None, completed: data.text)
+
 proc copyFuzzMessage*(source: FuzzMessage, maximum: ByteLimit): FuzzResult[seq[byte]] =
   ## Copy original exact unframed wire, including upstream State record order.
   let data = source.data
@@ -280,6 +295,7 @@ proc addNatural(output: var seq[byte], value: uint64) =
   ## Append a canonical bounded natural supplied by already validated local sizes.
   let encoded = encode(JamNatural(value))
   for index in 0..<encoded.len: output.add(encoded.bytes[index])
+
 proc newFuzzPeer*(peer: FuzzPeer, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   ## Encode one bounded UTF-8 declaration; session negotiation remains a separate caller decision.
   let prefix = encode(JamNatural(uint64(peer.name.len)))
@@ -295,12 +311,14 @@ proc newFuzzPeer*(peer: FuzzPeer, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   wire.addNatural(uint64(peer.name.len))
   for character in peer.name: wire.add(byte(character))
   decodeFuzzMessage(wire, limits)
+
 proc newFuzzRoot*(root: state_trie.StateRoot, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   ## Construct only a complete native root response under the same explicit message cap.
   if uint64(limits.bytes) < 33: return fail[FuzzMessage](FuzzError.LimitExceeded)
   var wire = @[2'u8]
   for octet in array[32, byte](root): wire.add(octet)
   decodeFuzzMessage(wire, limits)
+
 proc newFuzzError*(text: string, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   ## Encode bounded protocol error text; callers must reserve this response for consensus import failures.
   let prefix = encode(JamNatural(uint64(text.len)))
@@ -313,6 +331,7 @@ proc newFuzzError*(text: string, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   wire.addNatural(uint64(text.len))
   for character in text: wire.add(byte(character))
   decodeFuzzMessage(wire, limits)
+
 proc newFuzzState*(snapshot: StateStoreSnapshot, limits: FuzzLimits): FuzzResult[FuzzMessage] =
   ## Strip only RawState's independently computed root; protocol State retains compact count/key/value framing.
   let maximum = min(uint64(limits.bytes), uint64(high(int)-32))
@@ -339,6 +358,7 @@ proc fuzzFrameLength*(prefix: openArray[byte], maximum: ByteLimit): FuzzResult[i
   if length > uint64(maximum) or length > uint64(high(int)-4): return fail[int](
       FuzzError.LimitExceeded)
   FuzzResult[int](status: FuzzError.None, completed: int(length))
+
 proc encodeFuzzFrame*(source: FuzzMessage, maximum: ByteLimit): FuzzResult[seq[byte]] =
   ## Prefix exactly one complete message with E4 payload size; no partial frame is published.
   let data = source.data

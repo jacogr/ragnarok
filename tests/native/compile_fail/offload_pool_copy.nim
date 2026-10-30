@@ -8,7 +8,7 @@
 
 # @@Verification={"group": "ownership_compile", "expected": "'=dup' is not available for type <OffloadPool>", "build_name": "offload-pool-copy", "offload": true}
 
-import ../../../src/quic/offload
+import "../../../src/jamnp-s/offload"
 var original = default(OffloadPool)
 var duplicate = original
 discard busyPool(original)

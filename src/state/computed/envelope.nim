@@ -39,10 +39,12 @@ type
 func error*[T](outcome: ComputedEnvelopeResult[T]): ComputedEnvelopeError =
   ## Inspect selected status without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedEnvelopeResult[T]): T
     {.requires: outcome.status == ComputedEnvelopeError.None.} =
   ## Preserve successful extraction contracts under optimized compilation.
   outcome.completed
+
 proc computedEnvelopeSource*(bound: ComputedGuaranteeEnvelope): ComputedEnvelopeResult[
     CredentialedComputedReport] =
   ## Share exact verified credential, assignment and original computation provenance.
@@ -51,6 +53,7 @@ proc computedEnvelopeSource*(bound: ComputedGuaranteeEnvelope): ComputedEnvelope
       status: ComputedEnvelopeError.Uninitialized)
   ComputedEnvelopeResult[CredentialedComputedReport](status: ComputedEnvelopeError.None,
       completed: data.source)
+
 proc computedEnvelopeInfo*(bound: ComputedGuaranteeEnvelope): ComputedEnvelopeResult[
     ComputedEnvelopeInfo] =
   ## Copy complete byte/set facts without mutable backing storage.
@@ -59,12 +62,14 @@ proc computedEnvelopeInfo*(bound: ComputedGuaranteeEnvelope): ComputedEnvelopeRe
       status: ComputedEnvelopeError.Uninitialized)
   ComputedEnvelopeResult[ComputedEnvelopeInfo](status: ComputedEnvelopeError.None,
       completed: data.info)
+
 proc computedEnvelopeGuarantee*(bound: ComputedGuaranteeEnvelope): ComputedEnvelopeResult[Guarantee] =
   ## Copy fixed metadata/credentials and share only the independently captured immutable report.
   let data = bound.data
   if data == nil: return ComputedEnvelopeResult[Guarantee](
       status: ComputedEnvelopeError.Uninitialized)
   ComputedEnvelopeResult[Guarantee](status: ComputedEnvelopeError.None, completed: data.guarantee)
+
 proc computedEnvelopeBytes*(bound: ComputedGuaranteeEnvelope): ComputedEnvelopeResult[seq[byte]] =
   ## Return independent canonical bytes; caller mutation cannot alter the retained encoding.
   let data = bound.data
@@ -73,6 +78,7 @@ proc computedEnvelopeBytes*(bound: ComputedGuaranteeEnvelope): ComputedEnvelopeR
   var copied = newSeq[byte](data.wire.len)
   for i in 0..<copied.len: copied[i] = data.wire[i] # Copy exactly the validated whole standalone guarantee.
   ComputedEnvelopeResult[seq[byte]](status: ComputedEnvelopeError.None, completed: copied)
+
 proc computedEnvelopeReporterAt*(bound: ComputedGuaranteeEnvelope,
     index: ComputedReporterIndex): ComputedEnvelopeResult[StateEdKey] =
   ## Copy one lexicographically ordered unique key after checking the owner-relative ordinal.
@@ -83,6 +89,7 @@ proc computedEnvelopeReporterAt*(bound: ComputedGuaranteeEnvelope,
       status: ComputedEnvelopeError.InvalidIndex)
   ComputedEnvelopeResult[StateEdKey](status: ComputedEnvelopeError.None, completed: data.reporters[
       int(uint64(index))])
+
 func compare(left, right: StateEdKey): int =
   ## Compare every identity byte in deterministic lexicographic order, without interpreting curve encodings.
   let a = array[32, byte](left)
@@ -91,6 +98,7 @@ func compare(left, right: StateEdKey): int =
     if a[i] < b[i]: return -1 # First smaller octet orders the complete key first.
     if a[i] > b[i]: return 1 # First greater octet orders the complete key later.
   0
+
 proc prepareComputedEnvelope*(source: CredentialedComputedReport,
     limits: ComputedEnvelopeLimits): ComputedEnvelopeResult[ComputedGuaranteeEnvelope] =
   ## Preflight all byte/set policies, then capture exact original report and use the maintained canonical encoder without crypto work.

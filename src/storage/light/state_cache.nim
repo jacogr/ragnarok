@@ -45,33 +45,40 @@ type
 func error*[T](outcome: LightCacheResult[T]): LightCacheError =
   ## Read a typed reason without granting access to an incomplete lookup or cache revision.
   outcome.status
+
 func value*[T](outcome: LightCacheResult[T]): T {.inline,
     requires: outcome.status == LightCacheError.None.} =
   ## Only completed success authorizes immutable cache/lookup extraction.
   outcome.completed
+
 proc newLightStateCache*(root: StateRoot, limits: LightCacheLimits): LightStateCache =
   ## Bind an empty partial cache to a caller-trusted root; all caller policies permit an empty cache.
   LightStateCache(data: CacheData(root: root, limits: limits, entries: @[], valueBytes: 0))
+
 proc root*(cache: LightStateCache): StateRoot {.requires: cache.data != nil.} =
   ## Return the exact external trust binding, never a recomputed partial-map root.
   let data = cache.data
   assert data != nil
   data.root
+
 proc len*(cache: LightStateCache): int {.requires: cache.data != nil.} =
   ## Count retained authenticated positive and negative lookups equally.
   let data = cache.data
   assert data != nil
   data.entries.len
+
 proc valueBytes*(cache: LightStateCache): uint64 {.requires: cache.data != nil.} =
   ## Report retained logical present bytes, excluding allocator classes and per-entry metadata.
   let data = cache.data
   assert data != nil
   data.valueBytes
+
 proc limits*(cache: LightStateCache): LightCacheLimits {.requires: cache.data != nil.} =
   ## Return copied policy metadata; updates/forgetting inherit it exactly.
   let data = cache.data
   assert data != nil
   data.limits
+
 func compareKey(left, right: StateKey): int =
   ## Lexicographic fixed-key order supplies deterministic exact lookup and batch merging.
   let a = array[31, byte](left)
@@ -80,9 +87,11 @@ func compareKey(left, right: StateKey): int =
     if a[index] < b[index]: return -1 # Later bytes cannot reverse this first difference.
     if a[index] > b[index]: return 1
   0
+
 proc compareIndex(left, right: KeyIndex): int =
   ## Sort fixed identities without touching borrowed proof nodes or raw values.
   compareKey(left.key, right.key)
+
 proc find(entries: openArray[CacheEntry], key: StateKey): int =
   ## A bounded binary search distinguishes missing local evidence from a stored negative lookup.
   var lower = 0
@@ -92,6 +101,7 @@ proc find(entries: openArray[CacheEntry], key: StateKey): int =
     if compareKey(entries[middle].key, key) < 0: lower = middle+1
     else: upper = middle
   if lower < entries.len and compareKey(entries[lower].key, key) == 0: lower else: -1
+
 proc lookup*(cache: LightStateCache, key: StateKey): LightCacheResult[VerifiedStateLookup] =
   ## Return retained authenticated evidence or an explicit unknown/default reason, never invented absence.
   let data = cache.data
@@ -101,17 +111,20 @@ proc lookup*(cache: LightStateCache, key: StateKey): LightCacheResult[VerifiedSt
   if index < 0:
     return LightCacheResult[VerifiedStateLookup](status: LightCacheError.UnknownKey)
   LightCacheResult[VerifiedStateLookup](status: LightCacheError.None, completed: data.entries[index].lookup)
+
 func batchError(count: int, limits: LightCacheLimits): LightCacheError =
   ## Bound both sorted indices and validated lookup scratch before either native allocation.
   if uint64(count) > uint64(limits.writes): return LightCacheError.LimitExceeded
   if count > high(int) div sizeof(KeyIndex) or count > high(int) div sizeof(CacheEntry):
     return LightCacheError.LengthOverflow
   LightCacheError.None
+
 proc unique(ordered: openArray[KeyIndex]): bool =
   ## Even identical repeated requests violate the atomic unique-key batch contract.
   for index in 1..<ordered.len:
     if compareKey(ordered[index-1].key, ordered[index].key) == 0: return false
   true
+
 func proofError(reason: StateProofError): LightCacheError =
   ## Preserve operational proof failure classes without exposing partial validation progress.
   case reason
@@ -121,6 +134,7 @@ func proofError(reason: StateProofError): LightCacheError =
   of StateProofError.IncompleteProof: LightCacheError.IncompleteProof
   of StateProofError.ValueMismatch: LightCacheError.ValueMismatch
   of StateProofError.BackendFailure: LightCacheError.BackendFailure
+
 proc admit*(cache: LightStateCache, updates: openArray[LightStateProof]): LightCacheResult[
     LightStateCache] =
   ## Verify one unique-key batch at the fixed root, then publish an exact immutable sorted replacement.
@@ -190,6 +204,7 @@ proc admit*(cache: LightStateCache, updates: openArray[LightStateProof]): LightC
   LightCacheResult[LightStateCache](status: LightCacheError.None,
     completed: LightStateCache(data: CacheData(root: data.root, limits: data.limits,
       entries: entries, valueBytes: bytes)))
+
 proc contains(ordered: openArray[KeyIndex], key: StateKey): bool =
   ## Binary-search forgotten keys without allocating a second mutable membership structure.
   var lower = 0
@@ -199,6 +214,7 @@ proc contains(ordered: openArray[KeyIndex], key: StateKey): bool =
     if compareKey(ordered[middle].key, key) < 0: lower = middle+1
     else: upper = middle
   lower < ordered.len and compareKey(ordered[lower].key, key) == 0
+
 proc forget*(cache: LightStateCache, keys: openArray[StateKey]): LightCacheResult[LightStateCache] =
   ## Drop selected local evidence atomically; absence of a retained entry remains UnknownKey.
   let data = cache.data

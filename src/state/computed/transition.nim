@@ -30,10 +30,12 @@ type
 func error*[T](outcome: ComputedTransitionResult[T]): ComputedTransitionError =
   ## Inspect the reason without writable selection access.
   outcome.status
+
 func value*[T](outcome: ComputedTransitionResult[T]): T
     {.requires: outcome.status == ComputedTransitionError.None.} =
   ## Preserve successful extraction contracts in optimized builds.
   outcome.completed
+
 proc computedTransitionSource*(bound: TransitionBoundComputedReport): ComputedTransitionResult[
     ConfiguredComputedReport] =
   ## Retain exact original computation, anchors and configured parent provenance.
@@ -42,6 +44,7 @@ proc computedTransitionSource*(bound: TransitionBoundComputedReport): ComputedTr
       status: ComputedTransitionError.Uninitialized)
   ComputedTransitionResult[ConfiguredComputedReport](status: ComputedTransitionError.None,
       completed: data.source)
+
 proc computedTransitionStage*(bound: TransitionBoundComputedReport): ComputedTransitionResult[
     BlockTransitionResult] =
   ## Share the genuine immutable successful result; its extracted public payload remains a separate copy.
@@ -50,6 +53,7 @@ proc computedTransitionStage*(bound: TransitionBoundComputedReport): ComputedTra
       status: ComputedTransitionError.Uninitialized)
   ComputedTransitionResult[BlockTransitionResult](status: ComputedTransitionError.None,
       completed: data.transition)
+
 proc bindComputedTransition*(source: ConfiguredComputedReport, staged: BlockTransitionResult,
     headerBytes: ByteLimit): ComputedTransitionResult[TransitionBoundComputedReport] =
   ## Check original map/profile and all sealed candidate bytes before retaining any authenticated posterior owner.

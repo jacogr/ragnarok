@@ -10,8 +10,8 @@ import ../../../src/app/download/[command as download_command, policy as downloa
 import "../../../src/app/block/download" as block_download
 import "../../../src/app/block/input" as block_input
 import ../../../src/app/checkpoint/identity as checkpoint_identity
-import "../../../src/quic/block/download/loop" as block_download_loop
-import "../../../src/quic/block/download/stream" as block_download_stream
+import "../../../src/jamnp-s/block/download/loop" as block_download_loop
+import "../../../src/jamnp-s/block/download/stream" as block_download_stream
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/lib/atomic/file as atomic_file
 import ../../../src/chain/[genesis, provider]

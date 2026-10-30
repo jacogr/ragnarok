@@ -57,23 +57,26 @@ type
 func error*(outcome: AccumulationDispatchResult): AccumulationDispatchError =
   ## Inspect the selected alternative without granting mutable access to its discriminator.
   outcome.status
+
 func value*(outcome: AccumulationDispatchResult): StepOutcome {.inline,
     requires: outcome.status == AccumulationDispatchError.None.} =
   ## Retain a completed guest outcome independently of all preparation handles.
   outcome.completed
+
 func effects*(outcome: AccumulationDispatchResult): AccumulationEffects {.inline,
     requires: outcome.status == AccumulationDispatchError.None.} =
   ## Retain both current implication dimensions only after complete guest execution succeeds.
   ## A guest panic/OOG is a completed outcome; local engine/host refusals expose neither dimension.
   outcome.completedEffects
+
 func executionError*(outcome: AccumulationDispatchResult): StepError {.inline,
     requires: outcome.status == AccumulationDispatchError.ExecutionFailure.} =
   ## Inspect the original execution-budget or instruction refusal without a fabricated guest result.
   outcome.reason
 
-# Translate only the shared heap primitive's local errors into this invocation's failure domain.
 proc heapResponse(context: DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Translate only the shared heap primitive's local errors into this invocation's failure domain.
   let grown = growHeapResponse(context.heap.first, context.heap.past, cpu.gas, cpu.registers, memory)
   if grown.kind == HostResultKind.Response:
     return hostSuccess[AccumulationDispatchError](
@@ -82,10 +85,10 @@ proc heapResponse(context: DispatchContext, cpu: MachineInfo, memory: Memory):
     else: AccumulationDispatchError.InvalidContext
   hostFailure(reason)
 
-## Charge checkpoint/yield before reading memory or changing implications; underfunding saturates at zero.
-## Effects are callback-local immutable versions, discarded if later execution refuses locally.
 proc effectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory,
     checkpoint: bool): HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge checkpoint/yield before reading memory or changing implications; underfunding saturates at zero.
+  ## Effects are callback-local immutable versions, discarded if later execution refuses locally.
   let cost = (if checkpoint: 103'u64 else: 98'u64) # GP definitions.tex M_C and M_Taurus.
   let available = uint64(cpu.gas)
   var response = HostResponse(action: HostAction.Continue, gas: MachineGas(0),
@@ -125,9 +128,9 @@ proc effectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
       return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory is a local invariant refusal.
   hostSuccess[AccumulationDispatchError](response)
 
-## Subtract a complete two-limb host cost with unsigned saturation and no overflowing intermediate.
 proc chargedResponse(cpu: MachineInfo, memory: Memory, low, upper: uint64):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Subtract a complete two-limb host cost with unsigned saturation and no overflowing intermediate.
   let available = uint64(cpu.gas)
   var response = HostResponse(action: HostAction.Continue, gas: MachineGas(0),
     gasDeficit: GasDeficit(0), registers: cpu.registers, memory: memory)
@@ -139,10 +142,10 @@ proc chargedResponse(cpu: MachineInfo, memory: Memory, low, upper: uint64):
   response.gasDeficit = GasDeficit(0)
   hostSuccess[AccumulationDispatchError](response)
 
-## Compute the full 66-bit provide cost using bounded base-2^32 limbs, then subtract gas exactly.
-## Costs above the complete unsigned credit domain produce zero-gas OutOfGas, not a representation refusal.
 proc provideCharge(cpu: MachineInfo, memory: Memory): HostResult[
     AccumulationDispatchError] {.raises: [].} =
+  ## Compute the full 66-bit provide cost using bounded base-2^32 limbs, then subtract gas exactly.
+  ## Costs above the complete unsigned credit domain produce zero-gas OutOfGas, not a representation refusal.
   let size = uint64(cpu.registers[9])
   let units = size div 1024
   let tail = 3980'u64 + ((size mod 1024)*2264+1023) div 1024
@@ -152,10 +155,10 @@ proc provideCharge(cpu: MachineInfo, memory: Memory): HostResult[
   let upper = highProduct shr 32 # Complete cost is upper*2^64+low, with upper at most two.
   chargedResponse(cpu, memory, low, upper)
 
-## Read and retain requested preimage bytes under the exact provide-row ordering after affordability.
-## Neither protocol refusal nor local failure changes the callback's prior effect pair.
 proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Read and retain requested preimage bytes under the exact provide-row ordering after affordability.
+  ## Neither protocol refusal nor local failure changes the callback's prior effect pair.
   let charged = provideCharge(cpu, memory)
   if charged.kind != HostResultKind.Response:
     return charged # A representation refusal has no response or partially charged CPU.
@@ -208,10 +211,10 @@ proc provideResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Corrupt account/request state is not WHO or HUH.
   hostSuccess[AccumulationDispatchError](response)
 
-## Compute both independently rounded read/write terms in bounded base-2^32 limbs.
-## The key rate exceeds 1024, so a full-width cost must retain its upper limb.
 proc storageCharge(cpu: MachineInfo, memory: Memory, writing: bool): HostResult[
     AccumulationDispatchError] {.raises: [].} =
+  ## Compute both independently rounded read/write terms in bounded base-2^32 limbs.
+  ## The key rate exceeds 1024, so a full-width cost must retain its upper limb.
   let size = uint64(cpu.registers[9])
   let requested = uint64(cpu.registers[if writing: 11 else: 12])
   let keyRate = (if writing: 3358'u64 else: 1736'u64)
@@ -227,11 +230,11 @@ proc storageCharge(cpu: MachineInfo, memory: Memory, writing: bool): HostResult[
   let low = ((highProduct and 0xffffffff'u64) shl 32) or (lowProduct and 0xffffffff'u64)
   chargedResponse(cpu, memory, low, highProduct shr 32)
 
-## Apply Omega_L/Omega_R to current accounts with captured keys and bounded, atomic suffix writes.
-## Lookup fixes the hash extent at 32; read bounds its variable raw key independently of the output.
 proc accountReadResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory,
     storage: bool):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Apply Omega_L/Omega_R to current accounts with captured keys and bounded, atomic suffix writes.
+  ## Lookup fixes the hash extent at 32; read bounds its variable raw key independently of the output.
   let requested = uint64(cpu.registers[if storage: 12 else: 11])
   var charged = hostFailure(AccumulationDispatchError.Uninitialized)
   if storage:
@@ -320,9 +323,9 @@ proc accountReadResponse(context: var DispatchContext, cpu: MachineInfo, memory:
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid memory ownership cannot become a protocol response.
   hostSuccess[AccumulationDispatchError](response)
 
-## Charge and capture write inputs before planning any private account change.
 proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge and capture write inputs before planning any private account change.
   let charged = storageCharge(cpu, memory, true)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the shared unsigned charge result.
@@ -378,9 +381,9 @@ proc writeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid domains expose no successor.
   hostSuccess[AccumulationDispatchError](response)
 
-## Charge account info before lookup, then publish only the clipped atomic guest-memory write.
 proc infoResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge account info before lookup, then publish only the clipped atomic guest-memory write.
   var response = chargedResponse(cpu, memory, 703, 0).value # The fixed unsigned cost is always representable.
   if response.action == HostAction.OutOfGas:
     return hostSuccess[AccumulationDispatchError](response) # No lookup or memory work before affordability.
@@ -425,15 +428,15 @@ proc infoResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid owners cannot authorize a fabricated write.
   hostSuccess[AccumulationDispatchError](response)
 
-# Decode a completely captured fixed E4/E8 guest field without narrowing high role bits.
 func privilegeNumber(bytes: seq[byte], offset, width: int): uint64 =
+  ## Decode a completely captured fixed E4/E8 guest field without narrowing high role bits.
   result = 0
   for i in 0..<width:
     result = result or (uint64(bytes[offset+i]) shl (8*i)) # Callers prove each complete four/eight-byte field.
 
-# Charge bless's complete 69-bit item cost before memory, authorization and role validation.
 proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge bless's complete 69-bit item cost before memory, authorization and role validation.
   let count = uint64(cpu.registers[12])
   let lowProduct = (count and 0xffffffff'u64)*20+422 # Below 2^37; retain its carry into the upper product.
   let highProduct = (count shr 32)*20+(lowProduct shr 32) # Below 2^37, preserving the complete item charge.
@@ -510,9 +513,9 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # No inconsistent state/authority may publish.
   hostSuccess[AccumulationDispatchError](response)
 
-# Assign captures its entire ordered queue before core, authority and proposed-ID checks.
 proc assignResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Assign captures its entire ordered queue before core, authority and proposed-ID checks.
   let charged = chargedResponse(cpu, memory, 1818, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the general charge helper's explicit representation refusal.
@@ -567,9 +570,9 @@ proc assignResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
     return hostFailure(AccumulationDispatchError.InvalidContext) # Repeated state-boundary validation must agree.
   hostSuccess[AccumulationDispatchError](response)
 
-# Designate charges the full item cost before capturing records or checking current authority.
 proc designateResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Designate charges the full item cost before capturing records or checking current authority.
   let count = uint64(cpu.registers[8])
   let lowProduct = (count and 0xffffffff'u64)*302+1100 # Below 2^41; retain its exact carry.
   let highProduct = (count shr 32)*302+(lowProduct shr 32) # Below 2^41, including all high count bits.
@@ -637,9 +640,9 @@ proc designateResponse(context: var DispatchContext, cpu: MachineInfo, memory: M
     return hostFailure(AccumulationDispatchError.InvalidContext) # State-boundary validation must agree with the host.
   hostSuccess[AccumulationDispatchError](response)
 
-# New captures its code hash and length before current authority, funding and reserved-ID checks.
 proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## New captures its code hash and length before current authority, funding and reserved-ID checks.
   let charged = chargedResponse(cpu, memory, 3855, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the general exact gas-charge contract.
@@ -705,9 +708,9 @@ proc newResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory)
     return hostFailure(AccumulationDispatchError.InvalidContext) # No partial state on other invariant failures.
   hostSuccess[AccumulationDispatchError](response)
 
-# Upgrade changes future service metadata while this invocation continues executing its original code.
 proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Upgrade changes future service metadata while this invocation continues executing its original code.
   let charged = chargedResponse(cpu, memory, 1028, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the shared unsigned charge result.
@@ -757,9 +760,9 @@ proc upgradeResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures publish no effects.
   hostSuccess[AccumulationDispatchError](response)
 
-# Supervisor reassignment has no memory input; gas, account existence and effective authority determine the result.
 proc supervisorResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Supervisor reassignment has no memory input; gas, account existence and effective authority determine the result.
   let charged = chargedResponse(cpu, memory, 1000, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve shared unsigned gas validation.
@@ -876,6 +879,8 @@ proc directTransferResponse(context: var DispatchContext, cpu: MachineInfo, memo
 
 proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge transfer admission and select immediate or deferred handling from the original
+  ## registers.
   if uint64(cpu.gas) < 575:
     return chargedResponse(cpu, memory, 575, 0) # All transfer rows cost at least the base fee, even unsupported forms.
   if uint64(cpu.registers[9]) > 3:
@@ -966,9 +971,9 @@ proc transferResponse(context: var DispatchContext, cpu: MachineInfo, memory: Me
     return hostFailure(AccumulationDispatchError.InvalidContext) # No invalid commit may publish.
   hostSuccess[AccumulationDispatchError](response)
 
-# Charge the fixed eject fee before current supervisor eligibility and atomic account publication.
 proc ejectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Charge the fixed eject fee before current supervisor eligibility and atomic account publication.
   let charged = chargedResponse(cpu, memory, 458, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the shared unsigned charge result.
@@ -995,9 +1000,9 @@ proc ejectResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.InvalidContext) # Invalid state includes unrepresentable balance addition.
   hostSuccess[AccumulationDispatchError](response)
 
-# Query charges first, then validates full-width length before memory or exact current-self lookup.
 proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Query charges first, then validates full-width length before memory or exact current-self lookup.
   let charged = chargedResponse(cpu, memory, 643, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the shared unsigned charge result.
@@ -1069,9 +1074,9 @@ proc queryResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
       (uint64(uint32(history.restoredAt)) shl 32)) # Two complete E4 times fill one E8 register without arithmetic carry.
   hostSuccess[AccumulationDispatchError](response)
 
-# Solicit charges first and validates length before hash capture and atomic current-self mutation.
 proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Solicit charges first and validates length before hash capture and atomic current-self mutation.
   let charged = chargedResponse(cpu, memory, 2193, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the shared unsigned charge result.
@@ -1128,9 +1133,9 @@ proc solicitResponse(context: var DispatchContext, cpu: MachineInfo, memory: Mem
     return hostFailure(AccumulationDispatchError.InvalidContext) # Includes nonrepresentable footprint counters.
   hostSuccess[AccumulationDispatchError](response)
 
-# Forget charges before full-width length validation, fixed hash capture and current-self mutation.
 proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
+  ## Forget charges before full-width length validation, fixed hash capture and current-self mutation.
   let charged = chargedResponse(cpu, memory, 3250, 0)
   if charged.kind != HostResultKind.Response:
     return charged # Preserve the shared unsigned charge result.
@@ -1184,9 +1189,9 @@ proc forgetResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memo
     return hostFailure(AccumulationDispatchError.InvalidContext) # Other invariant failures expose no effects.
   hostSuccess[AccumulationDispatchError](response)
 
-## The execution engine calls this private handler only for validated ecalli suspensions.
 proc dispatchHostCall(context: var DispatchContext, stopped: StepOutcome): HostResult[
     AccumulationDispatchError] {.raises: [].} =
+  ## The execution engine calls this private handler only for validated ecalli suspensions.
   let cpu = machineInfo(stopped.machine).value
   let memory = memoryOf(stopped.machine).value
   case uint64(stopped.hostCall)

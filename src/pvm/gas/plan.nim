@@ -33,6 +33,7 @@ type
 func error*[T](r: GasPlanResult[T]): GasPlanError =
   ## Inspect status without exposing its discriminator for caller mutation.
   r.status
+
 func value*[T](r: GasPlanResult[T]): T {.inline, requires: r.status == GasPlanError.None.} =
   ## Copy only a selected complete value; failed/default results contain no payload.
   r.completed

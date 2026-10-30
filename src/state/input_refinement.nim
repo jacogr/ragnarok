@@ -49,26 +49,32 @@ type
 func error*[T](outcome: InputRefinementResult[T]): InputRefinementError =
   ## Inspect the reason without a writable discriminator.
   outcome.status
+
 func value*[T](outcome: InputRefinementResult[T]): T
     {.requires: outcome.status == InputRefinementError.None.} =
   ## Extract only the complete successful owner.
   outcome.completed
+
 func authorizationError*[T](outcome: InputRefinementResult[T]): AuthorizationInvocationResult[AuthorizationInvocation]
     {.requires: outcome.status == InputRefinementError.AuthorizationFailure.} =
   ## Preserve the original failed authorization alternative and its guarded stage details.
   outcome.authorizationReason
+
 func authorizationKind*[T](outcome: InputRefinementResult[T]): WorkKind
     {.requires: outcome.status == InputRefinementError.AuthorizationRejected.} =
   ## Inspect only a genuine completed authorization's protocol work error.
   outcome.rejectedKind
+
 func refinementError*[T](outcome: InputRefinementResult[T]): AuthorizedRefinementResult[AuthorizedRefinement]
     {.requires: outcome.status == InputRefinementError.RefinementFailure.} =
   ## Preserve the exact failed refinement/digest alternative, never a completed prefix.
   outcome.refinementReason
+
 func identityError*[T](outcome: InputRefinementResult[T]): ReportIdentityError
     {.requires: outcome.status == InputRefinementError.IdentityFailure.} =
   ## Inspect only final identity derivation's refusal.
   outcome.identityReason
+
 proc inputRefinementSource*(completed: InputRefinement): InputRefinementResult[
     VerifiedImportInputs] =
   ## Retain the exact input owner used before authorization and guest execution.
@@ -77,12 +83,14 @@ proc inputRefinementSource*(completed: InputRefinement): InputRefinementResult[
       status: InputRefinementError.Uninitialized)
   InputRefinementResult[VerifiedImportInputs](status: InputRefinementError.None,
       completed: data.inputs)
+
 proc inputRefinementIdentity*(completed: InputRefinement): InputRefinementResult[ReportIdentity] =
   ## Retain only the identity derived from this owner's executed package and original lookup dictionary.
   let data = completed.data
   if data == nil: return InputRefinementResult[ReportIdentity](
       status: InputRefinementError.Uninitialized)
   InputRefinementResult[ReportIdentity](status: InputRefinementError.None, completed: data.identity)
+
 proc runInputRefinement*(state: StateStoreSnapshot, inputs: VerifiedImportInputs, core: CoreIndex,
     parameters: Parameters, limits: InputRefinementLimits): InputRefinementResult[InputRefinement] =
   ## Execute synchronously from immutable original sources; no detached execution artifact can be attached afterward.

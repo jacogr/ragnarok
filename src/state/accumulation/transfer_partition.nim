@@ -40,6 +40,7 @@ type
 func error*[T](outcome: TransferPartitionResult[T]): TransferPartitionError =
   ## Inspect a reason without exposing inactive payload storage.
   outcome.status
+
 func value*[T](outcome: TransferPartitionResult[T]): T {.inline,
     requires: outcome.status == TransferPartitionError.None.} =
   ## Copy or retain only an actual successful payload, including checked release builds.
@@ -71,6 +72,7 @@ proc partitionInfo*(plan: PreparedTransferPartition): TransferPartitionResult[
         status: TransferPartitionError.Uninitialized) # No default successful empty plan.
   TransferPartitionResult[TransferPartitionInfo](status: TransferPartitionError.None,
       completed: data.info)
+
 proc partitionPrior*(plan: PreparedTransferPartition): TransferPartitionResult[StateStoreSnapshot] =
   ## Retain the exact immutable prior used for every supervision decision.
   let data = plan.data
@@ -79,6 +81,7 @@ proc partitionPrior*(plan: PreparedTransferPartition): TransferPartitionResult[S
         status: TransferPartitionError.Uninitialized) # No substituted default state.
   TransferPartitionResult[StateStoreSnapshot](status: TransferPartitionError.None,
       completed: data.prior)
+
 proc partitionCount*(plan: PreparedTransferPartition,
     kind: TransferPartitionKind): TransferPartitionResult[int] =
   ## Count one stable output without exposing mutable index or record storage.
@@ -89,6 +92,7 @@ proc partitionCount*(plan: PreparedTransferPartition,
     return TransferPartitionResult[int](status: TransferPartitionError.InvalidKind) # No invalid selector can borrow another output's bounds.
   let count = if kind == TransferPartitionKind.Accepted: data.accepted.len else: data.queued.len
   TransferPartitionResult[int](status: TransferPartitionError.None, completed: count)
+
 proc partitionTransferAt*(plan: PreparedTransferPartition, kind: TransferPartitionKind,
     index: TransferPartitionIndex): TransferPartitionResult[DeferredTransfer] =
   ## Copy a complete fixed record at a checked nominal output ordinal.

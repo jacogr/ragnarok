@@ -36,10 +36,12 @@ type
 func error*[T](outcome: ComputedProfileResult[T]): ComputedProfileError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedProfileResult[T]): T
     {.requires: outcome.status == ComputedProfileError.None.} =
   ## Preserve successful payload selection in optimized execution.
   outcome.completed
+
 proc computedProfileSource*(bound: ConfiguredComputedReport): ComputedProfileResult[
     LookupAnchoredComputedReport] =
   ## Retain exact original computation, anchors and state provenance.
@@ -48,6 +50,7 @@ proc computedProfileSource*(bound: ConfiguredComputedReport): ComputedProfileRes
       status: ComputedProfileError.Uninitialized)
   ComputedProfileResult[LookupAnchoredComputedReport](status: ComputedProfileError.None,
       completed: data.source)
+
 proc computedProfileContext*(bound: ConfiguredComputedReport): ComputedProfileResult[
     BlockSnapshotContext] =
   ## Copy fixed context facts and share immutable state/header handles; returned mutable copies grant no replacement authority.
@@ -56,6 +59,7 @@ proc computedProfileContext*(bound: ConfiguredComputedReport): ComputedProfileRe
       status: ComputedProfileError.Uninitialized)
   ComputedProfileResult[BlockSnapshotContext](status: ComputedProfileError.None,
       completed: data.context)
+
 proc bindComputedProfile*(source: LookupAnchoredComputedReport,
     configured: BlockSnapshotResult): ComputedProfileResult[ConfiguredComputedReport] =
   ## Require completed source/context, exact map/parent identity and equality of the entire original parameter tuple.

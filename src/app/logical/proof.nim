@@ -20,17 +20,21 @@ type
     of None: completed: ProofQuery
     of QueryFailure: queryReason: ProofQueryResult[ProofQuery]
     else: discard              # Defaults, missing source and retention refusals have no executable payload.
+
 func error*(outcome: LogicalProofResult): LogicalProofError =
   ## Observe the selected immutable stage without granting its payload.
   outcome.status
+
 func value*(outcome: LogicalProofResult): ProofQuery {.inline, requires: outcome.status ==
     LogicalProofError.None.} =
   ## Retain only the existing bounded generic query; caller independently chooses root trust and worker scheduling.
   outcome.completed
+
 func queryFailure*(outcome: LogicalProofResult): ProofQueryResult[ProofQuery] {.inline,
     requires: outcome.status == LogicalProofError.QueryFailure.} =
   ## Preserve original generic map, plan, wire and hash-work admission failures.
   outcome.queryReason
+
 proc captureLogicalProofQuery*(source: CurrentLogicalState, plan: StateProofPlan,
     limits: LogicalProofLimits): LogicalProofResult =
   ## Cached original view extents precede all heavy view/index copying; every canonical alias must be host-available during capture.

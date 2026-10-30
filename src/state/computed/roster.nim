@@ -38,10 +38,12 @@ type
 func error*[T](outcome: ComputedRosterResult[T]): ComputedRosterError =
   ## Inspect the selected reason without writable discriminator access.
   outcome.status
+
 func value*[T](outcome: ComputedRosterResult[T]): T
     {.requires: outcome.status == ComputedRosterError.None.} =
   ## Preserve selected-success extraction in optimized execution.
   outcome.completed
+
 proc computedRosterSource*(bound: RosterEligibleComputedReport): ComputedRosterResult[
     TransitionBoundComputedReport] =
   ## Share the exact original authenticated transition and configured computed source.
@@ -50,6 +52,7 @@ proc computedRosterSource*(bound: RosterEligibleComputedReport): ComputedRosterR
       status: ComputedRosterError.Uninitialized)
   ComputedRosterResult[TransitionBoundComputedReport](status: ComputedRosterError.None,
       completed: data.source)
+
 proc computedRosterActive*(bound: RosterEligibleComputedReport): ComputedRosterResult[
     ValidatorStateSnapshot] =
   ## Share immutable posterior validator storage; ordinal queries return independent fixed record copies.
@@ -58,6 +61,7 @@ proc computedRosterActive*(bound: RosterEligibleComputedReport): ComputedRosterR
       status: ComputedRosterError.Uninitialized)
   ComputedRosterResult[ValidatorStateSnapshot](status: ComputedRosterError.None,
       completed: data.active)
+
 proc computedRosterInfo*(bound: RosterEligibleComputedReport): ComputedRosterResult[
     ComputedRosterInfo] =
   ## Derive copied population facts from the retained exact posterior roster.
@@ -67,6 +71,7 @@ proc computedRosterInfo*(bound: RosterEligibleComputedReport): ComputedRosterRes
   let count = uint64(validatorCount(data.active).value)
   ComputedRosterResult[ComputedRosterInfo](status: ComputedRosterError.None,
     completed: ComputedRosterInfo(population: ValidatorCount(count), activeCores: CoreCount(count div 3)))
+
 proc checkComputedRoster*(source: TransitionBoundComputedReport,
     limits: ComputedRosterLimits): ComputedRosterResult[RosterEligibleComputedReport] =
   ## Decode only authenticated posterior C8, then check original core activity and exact shard population without hashing or writes.

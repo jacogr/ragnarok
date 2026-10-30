@@ -39,23 +39,28 @@ const
 func error*[T](outcome: DiskHistoryResult[T]): DiskHistoryError =
   ## Read the selected refusal without accessing partial data.
   outcome.status
+
 func value*[T](outcome: DiskHistoryResult[T]): T {.inline,
     requires: outcome.status == DiskHistoryError.None.} =
   ## Access only fully encoded or restored local history.
   outcome.completed
+
 func number(bytes: openArray[byte], offset: int): uint64 =
   ## Every caller proves a complete E8 field first.
   result = 0
   for index in 0..<8: result = result or (uint64(bytes[offset+index]) shl (index*8))
+
 proc putNumber(bytes: var seq[byte], offset: int, value: uint64) =
   ## The measured complete output owns every written field.
   for index in 0..<8: bytes[offset+index] = byte((value shr (index*8)) and 255)
+
 func hasMagic(bytes: openArray[byte], magic: string): bool =
   ## Inspect a known exact version prefix only after proving its complete extent.
   if bytes.len < magic.len: return false
   for index, character in magic:
     if bytes[index] != byte(character): return false # No alternate-version fallback on a mismatched prefix.
   true
+
 proc encodeHistory(owner: ApplicationChain, chain: StorageChainId,
     generation: RepositoryGeneration, limit: ByteLimit, format: HistoryFormat): DiskHistoryResult[
         seq[byte]] =
@@ -153,10 +158,12 @@ proc encodeHistory(owner: ApplicationChain, chain: StorageChainId,
     for index, octet in head: bytes[offset+index] = octet
     offset += head.len
   DiskHistoryResult[seq[byte]](status: DiskHistoryError.None, completed: bytes)
+
 proc encodeDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
     generation: RepositoryGeneration, limit: ByteLimit): DiskHistoryResult[seq[byte]] =
   ## New durable publications write V3, preserving header-only validation anchors independently of full-state retention.
   encodeHistory(owner, chain, generation, limit, HistoryFormat.Validation)
+
 proc encodeMatchingDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
     generation: RepositoryGeneration, limit: ByteLimit,
     reference: openArray[byte]): DiskHistoryResult[seq[byte]] =
@@ -182,6 +189,7 @@ proc encodeMatchingDiskHistory*(owner: ApplicationChain, chain: StorageChainId,
   if hasMagic(reference, LegacyHistoryMagic): return encodeHistory(owner, chain, generation, limit,
       HistoryFormat.Legacy)
   DiskHistoryResult[seq[byte]](status: DiskHistoryError.InvalidFormat)
+
 proc restoreDiskHistory*(bytes: openArray[byte], chain: StorageChainId,
     generation: RepositoryGeneration, configuration: Parameters, disk: DiskStateStore,
     policy: StateStoreLimits, limit: ByteLimit): DiskHistoryResult[ApplicationChain] =

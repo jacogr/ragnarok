@@ -49,68 +49,82 @@ type
     of AuthorizationFailure: authorizationReason: CurrentAccumulationAuthorizationResult[PreparedCurrentAccumulationAuthorization]
     of ConsensusFailure: consensusReason: CurrentAccumulationConsensusResult[PreparedCurrentAccumulationConsensus]
     else: discard # Default/invalid input carries no state or source authority.
+
 func error*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationCompletionError =
   ## Inspect the selected outer stage without writable discriminator access.
   outcome.status
+
 func value*(outcome: CurrentAccumulationCompletionResult): PreparedCurrentAccumulationConsensus {.inline,
     requires: outcome.status == CurrentAccumulationCompletionError.None.} =
   ## Extract only the complete current state composition owner.
   outcome.completed
+
 func sequenceFailure*(outcome: CurrentAccumulationCompletionResult): CurrentSequenceDriverResult[
     CompletedCurrentAccumulationSequence] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.SequenceFailure.} =
   ## Inspect only an actual refused current execution sequence.
   outcome.sequenceReason
+
 func statisticsFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationStatisticsResult[
     PreparedCurrentAccumulationStatistics] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.StatisticsFailure.} =
   ## Inspect only the actual failed statistics parent, never a successful earlier owner.
   outcome.statisticsReason
+
 func accountsFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationAccountResult[
     PreparedCurrentAccumulationAccounts] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.AccountsFailure.} =
   ## Inspect only the actual failed accounts parent, never a successful earlier owner.
   outcome.accountsReason
+
 func finalizationFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationFinalizationResult[
     PreparedCurrentAccumulationFinalization] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.FinalizationFailure.} =
   ## Inspect only the actual failed finalization parent, never a successful earlier owner.
   outcome.finalizationReason
+
 func readyFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationReadyResult[
     PreparedCurrentAccumulationReady] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.ReadyFailure.} =
   ## Inspect only the actual failed ready parent, never a successful earlier owner.
   outcome.readyReason
+
 func recentFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationRecentResult[
     PreparedCurrentAccumulationRecent] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.RecentFailure.} =
   ## Inspect only the actual failed recent parent, never a successful earlier owner.
   outcome.recentReason
+
 func validatorsFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationValidatorsResult[
     PreparedCurrentAccumulationValidators] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.ValidatorsFailure.} =
   ## Inspect only the actual failed validators parent, never a successful earlier owner.
   outcome.validatorsReason
+
 func activityFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationActivityResult[
     PreparedCurrentAccumulationActivity] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.ActivityFailure.} =
   ## Inspect only the actual failed activity parent, never a successful earlier owner.
   outcome.activityReason
+
 func preimagesFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationPreimageResult[
     PreparedCurrentAccumulationPreimages] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.PreimagesFailure.} =
   ## Inspect only the actual failed preimages parent, never a successful earlier owner.
   outcome.preimagesReason
+
 func authorizationFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationAuthorizationResult[
     PreparedCurrentAccumulationAuthorization] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.AuthorizationFailure.} =
   ## Inspect only the actual failed authorization parent, never a successful earlier owner.
   outcome.authorizationReason
+
 func consensusFailure*(outcome: CurrentAccumulationCompletionResult): CurrentAccumulationConsensusResult[
     PreparedCurrentAccumulationConsensus] {.inline, requires: outcome.status ==
     CurrentAccumulationCompletionError.ConsensusFailure.} =
   ## Inspect only the actual failed consensus parent, never a successful earlier owner.
   outcome.consensusReason
+
 proc prepareCurrentAccumulationComposition*(source: CompletedCurrentAccumulationSequence,
     limits: CurrentAccumulationCompositionLimits): CurrentAccumulationCompletionResult =
   ## State-only orchestration consumes one genuine terminal source without guest execution or canonical mutation.
@@ -158,6 +172,7 @@ proc prepareCurrentAccumulationComposition*(source: CompletedCurrentAccumulation
       consensusReason: consensus) # All successful local prefixes retire on refusal.
   CurrentAccumulationCompletionResult(status: CurrentAccumulationCompletionError.None,
       completed: consensus.value)
+
 proc runCurrentAccumulationCompletion*(round: BlockAccumulationRound, parameters: Parameters,
     limits: CurrentAccumulationCompletionLimits): CurrentAccumulationCompletionResult =
   ## Drive the initial and subsequent current guests once, then run the same terminal composition entry point.

@@ -24,14 +24,15 @@ type
 func error*[T](outcome: ExtrinsicCommitmentResult[T]): ExtrinsicCommitmentError =
   ## Inspect failure without permitting result retagging.
   outcome.status
+
 func value*[T](outcome: ExtrinsicCommitmentResult[T]): T {.inline,
     requires: outcome.status == ExtrinsicCommitmentError.None.} =
   ## Extract only after selecting complete success.
   outcome.completed
 
-## Copy a schema-bound component only after its complete immutable extent fits the caller's ceiling.
 proc wire[K: static[ComponentKind]](owner: Component[K], limit: ByteLimit):
     ExtrinsicCommitmentResult[seq[byte]] =
+  ## Copy a schema-bound component only after its complete immutable extent fits the caller's ceiling.
   let info = componentInfo(owner)
   if info.error != FrameError.None:
     return ExtrinsicCommitmentResult[seq[byte]](status: ExtrinsicCommitmentError.InvalidOwner) # No default component.
@@ -43,8 +44,8 @@ proc wire[K: static[ComponentKind]](owner: Component[K], limit: ByteLimit):
     return ExtrinsicCommitmentResult[seq[byte]](status: ExtrinsicCommitmentError.InvalidOwner) # No invalid component can be hashed as empty.
   ExtrinsicCommitmentResult[seq[byte]](status: ExtrinsicCommitmentError.None, completed: bytes)
 
-## Prove aggregate projected bytes and native addressing before any extent addition/allocation.
 func charge(total: var int, count, width: int, limit: ByteLimit): ExtrinsicCommitmentError =
+  ## Prove aggregate projected bytes and native addressing before any extent addition/allocation.
   if count < 0 or count > (high(int)-total) div width:
     return ExtrinsicCommitmentError.LengthOverflow # Multiplication/addition cannot wrap under Nimony.
   let size = count*width
@@ -53,15 +54,15 @@ func charge(total: var int, count, width: int, limit: ByteLimit): ExtrinsicCommi
   total += size
   ExtrinsicCommitmentError.None
 
-## Write canonical natural prefix octets into an already preflighted private destination.
 proc prefix(value: uint64, destination: var seq[byte], cursor: var int) =
+  ## Write canonical natural prefix octets into an already preflighted private destination.
   let encoded = natural.encode(JamNatural(value))
   for i in 0..<int(encoded.len):
     destination[cursor] = encoded.bytes[i] # No outer sequence count is added to the fixed five hashes.
     inc cursor
 
-## Copy fixed digest/credential octets into a preflighted buffer without exposing retained owner storage.
 proc put(bytes: openArray[byte], destination: var seq[byte], cursor: var int) =
+  ## Copy fixed digest/credential octets into a preflighted buffer without exposing retained owner storage.
   for octet in bytes:
     destination[cursor] = octet # All destination lengths were proved before cryptographic work.
     inc cursor

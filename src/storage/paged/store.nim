@@ -73,35 +73,47 @@ func opened*(writer: PagedWriter): bool =
   ## Default/moved/closed owners hold no writer retirement authority.
   let data = writer.data
   data != nil and data.active
+
 func opened*(candidate: PagedCandidate): bool =
   ## Failed authoring may still own a forensic file descriptor that requires explicit close.
   let data = candidate.data
   data != nil and data.active
+
 func opened*(reader: PagedReader): bool =
   ## Retained reader lifetime is independent of CURRENT and the writer lease.
   let data = reader.data
   data != nil and data.active
+
 proc `=copy`*(destination: var PagedWriter, source: PagedWriter) {.error.}
   ## Composite ownership has one close authority even though its private implementation is ref-backed.
+
 proc `=dup`*(source: PagedWriter): PagedWriter {.error.}
   ## Actual native lowering must reject hidden owner duplication.
+
 proc `=copy`*(destination: var PagedCandidate, source: PagedCandidate) {.error.}
   ## Copying may not duplicate sealed-artifact or authoring close authority.
+
 proc `=dup`*(source: PagedCandidate): PagedCandidate {.error.}
   ## Prepared metadata never revives a closed or copied native artifact.
+
 proc `=copy`*(destination: var PagedReader, source: PagedReader) {.error.}
   ## Independent readers require independent opens and pins.
+
 proc `=dup`*(source: PagedReader): PagedReader {.error.}
   ## A copied immutable view must not duplicate native retirement authority.
+
 proc closed(writer: PagedWriter) {.requires: not writer.opened.} =
   ## Native close uncertainty remains observable instead of being hidden by a destructor.
   discard
+
 proc closed(candidate: PagedCandidate) {.requires: not candidate.opened.} =
   ## Both unsuccessful authoring and sealed candidates require explicit retirement.
   discard
+
 proc closed(reader: PagedReader) {.requires: not reader.opened.} =
   ## A retained native pin cannot silently outlive its last exported owner.
   discard
+
 proc `=wasMoved`*(writer: var PagedWriter) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(writer.data)
@@ -110,6 +122,7 @@ proc `=destroy`*(writer: PagedWriter) =
   ## Default/moved values pass; live leases require explicit close.
   closed(writer)
   `=destroy`(writer.data)
+
 proc `=wasMoved`*(candidate: var PagedCandidate) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(candidate.data)
@@ -118,6 +131,7 @@ proc `=destroy`*(candidate: PagedCandidate) =
   ## Explicit close preserves forensic files and reports native retirement failure.
   closed(candidate)
   `=destroy`(candidate.data)
+
 proc `=wasMoved`*(reader: var PagedReader) {.nodestroy, inline.} =
   ## Disarm transferred fields through their own move hooks; never destroy the destination resources.
   `=wasMoved`(reader.data)
@@ -126,59 +140,75 @@ proc `=destroy`*(reader: PagedReader) =
   ## Owned verified lookups have independent lifetime; the native reader pin must retire explicitly.
   closed(reader)
   `=destroy`(reader.data)
+
 func error*[T](outcome: PagedNativeResult[T]): PagedNativeError =
   ## Inspect only the selected typed outer refusal.
   outcome.status
+
 func value*[T](outcome: PagedNativeResult[T]): T {.inline, requires: outcome.status ==
     PagedNativeError.None.} =
   ## Only complete success grants a position, verified lookup or confirmed receipt.
   outcome.completed
+
 func fileError*[T](outcome: PagedNativeResult[T]): FileError {.requires: outcome.status ==
     PagedNativeError.FileFailure.} =
   ## Preserve only the selected native cause, including Busy and publication uncertainty.
   outcome.fileCause
+
 func streamError*[T](outcome: PagedNativeResult[T]): PagedStreamError {.requires: outcome.status ==
     PagedNativeError.StreamFailure.} =
   ## Preserve only a selected complete-admission/proof/resource refusal.
   outcome.streamCause
+
 func proofError*[T](outcome: PagedNativeResult[T]): StateProofError {.requires:
     outcome.status == PagedNativeError.StreamFailure and outcome.streamCause ==
     PagedStreamError.ProofFailure.} =
   ## A non-proof refusal never exposes an inactive proof cause.
   outcome.proofCause
+
 func fileFailed[T](reason: FileError): PagedNativeResult[T] =
   ## Native refusals contain no completed result or fallback selection.
   PagedNativeResult[T](status: PagedNativeError.FileFailure, fileCause: reason)
+
 func refused[T](reason: PagedNativeError): PagedNativeResult[T] =
   ## Generic refusals do not initialize any success or selected-cause payload.
   PagedNativeResult[T](status: reason)
+
 func streamFailed[T, U](outcome: PagedStreamResult[U]): PagedNativeResult[T] =
   ## UnknownKey is a checked local miss; all other selected stream causes retain their original meaning.
   if outcome.error == PagedStreamError.UnknownKey: return refused[T](PagedNativeError.UnknownKey)
   let proof = if outcome.error == PagedStreamError.ProofFailure: outcome.proofError else: StateProofError.Uninitialized
   PagedNativeResult[T](status: PagedNativeError.StreamFailure, streamCause: outcome.error,
       proofCause: proof)
+
 func manifest*(receipt: PagedPublication): PagedManifest {.requires: receipt.ready.} =
   ## Report the confirmed synchronized selection even when later retirement was imperfect.
   receipt.selected
+
 func retirementError*(receipt: PagedPublication): FileError {.requires: receipt.ready.} =
   ## Post-confirmation failure does not erase the already durable head.
   receipt.retirement
+
 func writerUsable*(receipt: PagedPublication): bool {.requires: receipt.ready.} =
   ## A false value requires explicit close/reopen although the receipt's selection remains confirmed.
   receipt.usable
+
 func durability*(receipt: PagedPublication): StorageDurability {.requires: receipt.ready.} =
   ## Successful publication includes both file and directory barriers.
   StorageDurability.FileAndDirectorySynced
+
 func retirementError*(receipt: PagedReclamation): FileError {.requires: receipt.ready.} =
   ## Already confirmed unlink/directory sync remains successful after descriptor retirement failure.
   receipt.retirement
+
 func alreadyAbsent*(receipt: PagedReclamation): bool {.requires: receipt.ready.} =
   ## Synchronized idempotent absence is distinct from deleting a captured old inode now.
   receipt.absentBefore
+
 func durability*(receipt: PagedReclamation): StorageDurability {.requires: receipt.ready.} =
   ## Absent-name retries also perform a real final directory barrier.
   StorageDurability.FileAndDirectorySynced
+
 proc close*(reader: var PagedReader): FileError =
   ## Poison does not prevent retirement; handles are marked retired before native close and never retried.
   let data = reader.data
@@ -186,6 +216,7 @@ proc close*(reader: var PagedReader): FileError =
   data.active = false
   reader.data = nil
   if data.file.opened: data.file.close else: FileError.None
+
 proc close*(candidate: var PagedCandidate): FileError =
   ## Closing never unlinks an unselected, incomplete or even fully sealed forensic candidate.
   let data = candidate.data
@@ -198,6 +229,7 @@ proc close*(candidate: var PagedCandidate): FileError =
     let retired = data.pending.close
     if reason == FileError.None: reason = retired
   reason
+
 proc close*(writer: var PagedWriter): FileError =
   ## Independent reader/candidate descriptors do not retain this writer's lease or selected handle.
   let data = writer.data
@@ -210,6 +242,7 @@ proc close*(writer: var PagedWriter): FileError =
     let retired = data.directory.close
     if reason == FileError.None: reason = retired
   reason
+
 proc current(data: WriterData): FileError =
   ## A source position is usable only while the held lease, inode and exact selected manifest remain unchanged.
   if not data.active: return FileError.Uninitialized
@@ -228,6 +261,7 @@ proc current(data: WriterData): FileError =
   let file = data.head.check
   if file != FileError.None: data.poisoned = true
   file
+
 proc validateHead(data: WriterData): PagedNativeResult[bool] =
   ## Before any publication/reclamation, reverify complete held source bytes/proofs against the captured manifest.
   let checked = current(data)
@@ -237,6 +271,7 @@ proc validateHead(data: WriterData): PagedNativeResult[bool] =
     if data.head.check != FileError.None: data.poisoned = true
     return streamFailed[bool, CheckedPagedArtifact](verified)
   PagedNativeResult[bool](status: PagedNativeError.None, completed: true)
+
 proc selected*(writer: PagedWriter): PagedNativeResult[PagedManifest] =
   ## Return a checked remembered physical/logical position without granting native resource ownership.
   let data = writer.data
@@ -245,6 +280,7 @@ proc selected*(writer: PagedWriter): PagedNativeResult[PagedManifest] =
   let checked = current(data)
   if checked != FileError.None: return fileFailed[PagedManifest](checked)
   PagedNativeResult[PagedManifest](status: PagedNativeError.None, completed: data.checked.manifest)
+
 proc selected*(reader: PagedReader): PagedNativeResult[PagedManifest] =
   ## Retained readers keep their captured epoch/root/sequence across every writer selection and close.
   let data = reader.data
@@ -255,6 +291,7 @@ proc selected*(reader: PagedReader): PagedNativeResult[PagedManifest] =
     data.poisoned = true
     return fileFailed[PagedManifest](checked)
   PagedNativeResult[PagedManifest](status: PagedNativeError.None, completed: data.checked.manifest)
+
 proc openPagedReader*(reader: var PagedReader, path: string,
     config: PagedNativeConfig): PagedNativeResult[bool] =
   ## Read CURRENT, pin its exact epoch, reread CURRENT, then completely verify under independent expectations.
@@ -290,6 +327,7 @@ proc openPagedReader*(reader: var PagedReader, path: string,
   data.active = true
   reader.data = data
   PagedNativeResult[bool](status: PagedNativeError.None, completed: true)
+
 proc openPagedWriter*(writer: var PagedWriter, path: string,
     config: PagedNativeConfig): PagedNativeResult[bool] =
   ## Acquire the existing stable writer lease and strictly admit only CURRENT's independently expected root.
@@ -323,6 +361,7 @@ proc openPagedWriter*(writer: var PagedWriter, path: string,
   data.selected = true
   writer.data = data
   PagedNativeResult[bool](status: PagedNativeError.None, completed: true)
+
 proc lookup*(reader: var PagedReader, query: StateKey, budget: PagedWorkLimits): PagedNativeResult[
     VerifiedStateLookup] =
   ## No cache page or native owner escapes: only independently owned verified lookup bytes may outlive close.
@@ -336,6 +375,7 @@ proc lookup*(reader: var PagedReader, query: StateKey, budget: PagedWorkLimits):
     return streamFailed[VerifiedStateLookup, PagedLookup](checked)
   PagedNativeResult[VerifiedStateLookup](status: PagedNativeError.None,
       completed: checked.value.verified)
+
 proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil PagedProducer,
     root: StateRoot, count, payload: uint64, kind: PagedBuildKind,
         initial: bool, context: openArray[byte] = []): PagedNativeResult[StorageDurability] =
@@ -404,6 +444,7 @@ proc prepare(data: WriterData, candidate: var PagedCandidate, producer: nil Page
   artifact.sealed = true
   PagedNativeResult[StorageDurability](status: PagedNativeError.None,
       completed: StorageDurability.FileAndDirectorySynced)
+
 proc preparePagedReplacement*(writer: var PagedWriter, candidate: var PagedCandidate,
     producer: nil PagedProducer, count, payload: uint64, context: openArray[byte] = [
         ]): PagedNativeResult[StorageDurability] =
@@ -412,6 +453,7 @@ proc preparePagedReplacement*(writer: var PagedWriter, candidate: var PagedCandi
   if data == nil: return refused[StorageDurability](PagedNativeError.Uninitialized)
   prepare(data, candidate, producer, data.config.root, count, payload, PagedBuildKind.Replacement,
       false, context)
+
 proc preparePagedAdvance*(writer: var PagedWriter, candidate: var PagedCandidate,
     destination: StateRoot, producer: nil PagedProducer, count, payload: uint64, context: openArray[
         byte] = []): PagedNativeResult[StorageDurability] =
@@ -421,6 +463,7 @@ proc preparePagedAdvance*(writer: var PagedWriter, candidate: var PagedCandidate
   if array[32, byte](destination) == array[32, byte](data.config.root): return refused[
       StorageDurability](PagedNativeError.InvalidTransition)
   prepare(data, candidate, producer, destination, count, payload, PagedBuildKind.Advance, false, context)
+
 proc preparePagedCompaction*(writer: var PagedWriter,
     candidate: var PagedCandidate): PagedNativeResult[StorageDurability] =
   ## Exact knowledge comes from the held checked source pin; callers cannot substitute a same-root evidence producer.
@@ -431,14 +474,17 @@ proc preparePagedCompaction*(writer: var PagedWriter,
   let shape = data.checked.header.geometry
   prepare(data, candidate, nil, data.config.root, shape.entries, shape.payloadBytes,
     PagedBuildKind.Compaction, false)
+
 proc commitGuard(data: WriterData, artifact: CandidateData): proc(): FileError {.closure.} =
   ## Non-nil stable parameters preserve capture provenance across the staged-publication callback.
+
   proc beforeRename(): FileError {.closure.} =
     ## Recheck source selection and both inode bindings after staging barriers, immediately before atomic rename.
     let source = if artifact.initial: data.directory.initialAbsent else: current(data)
     if source != FileError.None: return source
     artifact.file.check
   beforeRename
+
 proc publish*(writer: var PagedWriter, candidate: var PagedCandidate): PagedNativeResult[
     PagedPublication] =
   ## Only a live exact-incarnation sealed artifact and fully revalidated source may reach atomic selection.
@@ -495,6 +541,7 @@ proc publish*(writer: var PagedWriter, candidate: var PagedCandidate): PagedNati
   PagedNativeResult[PagedPublication](status: PagedNativeError.None,
     completed: PagedPublication(ready: true, selected: data.checked.manifest,
       retirement: retirement, usable: not data.poisoned))
+
 proc initializePagedWriter*(writer: var PagedWriter, path: string, config: PagedNativeConfig,
     producer: nil PagedProducer, count, payload: uint64, context: openArray[byte] = [
         ]): PagedNativeResult[PagedPublication] =
@@ -534,6 +581,7 @@ proc initializePagedWriter*(writer: var PagedWriter, path: string, config: Paged
             PagedStreamError.ProofFailure: prepared.proofError else: StateProofError.Uninitialized))
     return refused[PagedPublication](prepared.error)
   writer.publish(candidate)
+
 proc epochReceipt*(reader: PagedReader): PagedNativeResult[PagedEpochReceipt] =
   ## Capture exact checked old-epoch identity while pinned; reclamation still requires a fresh exclusive pin and source position.
   let data = reader.data
@@ -545,6 +593,7 @@ proc epochReceipt*(reader: PagedReader): PagedNativeResult[PagedEpochReceipt] =
   PagedNativeResult[PagedEpochReceipt](status: PagedNativeError.None,
     completed: PagedEpochReceipt(ready: true, selected: data.checked.manifest,
       identity: identity.value, config: data.config))
+
 func policy(limits: PagedStreamLimits): array[15, uint64] =
   ## Exact immutable policy binding covers all dataset/proof/cache/work ceilings, including zero allowances.
   [uint64(limits.dataset.entries), uint64(limits.dataset.bytes), uint64(limits.proof.nodes),
@@ -552,6 +601,7 @@ func policy(limits: PagedStreamLimits): array[15, uint64] =
     uint64(limits.work.ioCalls), uint64(limits.work.producerCalls), uint64(limits.work.pageHashes),
     uint64(limits.work.proofs), uint64(limits.work.nodes), uint64(limits.work.readBytes),
     uint64(limits.work.writeBytes), uint64(limits.work.valueBytes), uint64(limits.contextBytes)]
+
 proc reclaimEpoch(writer: var PagedWriter, previous, expected: PagedManifest,
     receipt: PagedEpochReceipt, capturedIdentity: bool): PagedNativeResult[PagedReclamation] =
   ## Exact expected content is mandatory; captured receipts additionally bind the original inode and policy.
@@ -631,6 +681,7 @@ proc reclaim*(writer: var PagedWriter, receipt: PagedEpochReceipt,
     expected: PagedManifest): PagedNativeResult[PagedReclamation] =
   ## Existing captured-inode retirement remains stricter than independently expected content authority after restart.
   reclaimEpoch(writer, receipt.selected, expected, receipt, true)
+
 proc reclaimExpectedEpoch*(writer: var PagedWriter, previous,
     expected: PagedManifest): PagedNativeResult[PagedReclamation] =
   ## Independently authenticated previous metadata identifies exact old content, never a directory-derived cleanup wildcard.
@@ -738,6 +789,7 @@ proc prepareCleanup(data: WriterData, candidate: var PagedCandidate,
   artifact.active = true
   candidate.data = artifact
   PagedNativeResult[bool](status: PagedNativeError.None, completed: true)
+
 proc preparePagedCleanup*(writer: var PagedWriter, candidate: var PagedCandidate,
     expectedSource: PagedManifest, expectedTarget: PagedHeader,
     producer: nil PagedProducer, context: openArray[byte] = []): PagedNativeResult[bool] =
@@ -745,6 +797,7 @@ proc preparePagedCleanup*(writer: var PagedWriter, candidate: var PagedCandidate
   let data = writer.data
   if data == nil: return refused[bool](PagedNativeError.Uninitialized)
   prepareCleanup(data, candidate, expectedSource, expectedTarget, producer, false, context)
+
 proc discardPagedCandidate*(writer: var PagedWriter, candidate: var PagedCandidate,
     expectedSource: PagedManifest): PagedNativeResult[PagedReclamation] =
   ## Retire one exact sealed or replay-checked partial candidate only after every source/file/staging preflight passes.
@@ -836,6 +889,7 @@ func rejected[T, U](outcome: PagedNativeResult[U]): PagedNativeResult[
       streamCause: outcome.streamError,
       proofCause: (if outcome.streamError == PagedStreamError.ProofFailure: outcome.proofError else: StateProofError.Uninitialized))
   refused[T](outcome.error)
+
 proc resumePagedInitialization*(writer: var PagedWriter, path: string, config: PagedNativeConfig,
     producer: nil PagedProducer, count, payload: uint64, context: openArray[byte] = [
         ]): PagedNativeResult[PagedPublication] =
@@ -913,6 +967,7 @@ proc readContext*(reader: var PagedReader, budget: PagedWorkLimits): PagedNative
     if data.file.check != FileError.None: data.poisoned = true # Native read uncertainty requires explicit retirement.
     return streamFailed[PagedContext, PagedContext](captured)
   PagedNativeResult[PagedContext](status: PagedNativeError.None, completed: captured.value)
+
 proc readContext*(writer: var PagedWriter, budget: PagedWorkLimits): PagedNativeResult[PagedContext] =
   ## Startup inspects only the already admitted selected head while retaining its exclusive writer lease.
   let data = writer.data
@@ -938,6 +993,7 @@ proc queryInventory*(reader: var PagedReader, maximum: ElementLimit,
     if data.file.check != FileError.None: data.poisoned = true # Pure quota refusal is separate from native uncertainty.
     return streamFailed[PagedQueryInventory, PagedQueryInventory](captured)
   PagedNativeResult[PagedQueryInventory](status: PagedNativeError.None, completed: captured.value)
+
 proc synchronize*(writer: var PagedWriter): PagedNativeResult[StorageDurability] =
   ## Confirm actual selected-file and directory barriers under the held exact current source and writer lease.
   let data = writer.data

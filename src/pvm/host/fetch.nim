@@ -93,6 +93,7 @@ type
 func error*(r: FetchContextResult): FetchError =
   ## Inspect capture status without allowing result retagging.
   r.status
+
 func value*(r: FetchContextResult): FetchContext
     {.requires: r.status == FetchError.None.} =
   ## Select the captured immutable context only after checking success.
@@ -263,9 +264,9 @@ proc withFetchInputs*(context: FetchContext, source: FetchInputs,
     packageData: context.packageData, inputData: FetchInputData(values: copied),
         parameterData: context.parameterData, accumulationData: context.accumulationData))
 
-# Write one bounded fixed-width summary field using the canonical scalar codec.
-# Private callers pass disjoint fields inside a fixed 62-byte summary; failure publishes no owner.
 proc summaryField(output: var openArray[byte], offset, width: int, value: uint64): bool =
+  ## Write one bounded fixed-width summary field using the canonical scalar codec.
+  ## Private callers pass disjoint fields inside a fixed 62-byte summary; failure publishes no owner.
   let encoded = encodeFixed(FixedUnsigned(value), ByteWidth(width))
   if not encoded.ok:
     # Retain a checked narrowing boundary even for validated codec metadata.
@@ -275,9 +276,9 @@ proc summaryField(output: var openArray[byte], offset, width: int, value: uint64
     output[offset + i] = encoded.encoded.bytes[i]
   true
 
-# Encode GP fetch S(w), which differs from C.2 work-item serialization and omits all blob contents.
-# The caller owns exactly 62 bytes; each count/length is checked by the fixed-width codec.
 proc encodeSummary(item: ItemInfo, output: var openArray[byte]): bool =
+  ## Encode GP fetch S(w), which differs from C.2 work-item serialization and omits all blob contents.
+  ## The caller owns exactly 62 bytes; each count/length is checked by the fixed-width codec.
   if output.len != 62:
     # Prevent private caller mistakes from exposing an incomplete summary.
     return false
@@ -394,15 +395,16 @@ proc withFetchPackage*(context: FetchContext, presence: FetchPresence,
 func error*(r: FetchResult): FetchError =
   ## Inspect a result without exposing mutable variant storage.
   r.status
+
 func value*(r: FetchResult): HostResponse {.requires: r.status == FetchError.None.} =
   ## Select a completed protocol outcome only after checking success.
   r.completed
 
-# Apply a selected value or absence after the wrapper chooses its selector and fixed prices.
-# Caller bytes must remain stable during this synchronous call; the source memory is immutable.
 proc fetchValue(gas: MachineGas, registers: RegisterFile, memory: Memory,
     bytes: openArray[byte], present: bool, selector, base, rate: uint64,
         limit: MemoryByteLimit): FetchResult =
+  ## Apply a selected value or absence after the wrapper chooses its selector and fixed prices.
+  ## Caller bytes must remain stable during this synchronous call; the source memory is immutable.
   if uint64(registers[10]) != selector:
     # A known but unimplemented selector must never become an unknown/absent-value response.
     return FetchResult(status: FetchError.UnsupportedSelector)

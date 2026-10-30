@@ -56,20 +56,24 @@ type
 func error*[T](outcome: AccumulationAuthorizationResult[T]): AccumulationAuthorizationError =
   ## Inspect the selected reason without writable tags.
   outcome.status
+
 func value*[T](outcome: AccumulationAuthorizationResult[T]): T {.inline,
     requires: outcome.status == AccumulationAuthorizationError.None.} =
   ## Extract only selected complete success under optimized checked contracts.
   outcome.completed
+
 func codecError*[T](outcome: AccumulationAuthorizationResult[T]): AuthorizationError {.inline,
     requires: outcome.status == AccumulationAuthorizationError.CodecFailure.} =
   ## Inspect only an actual chapter decoding refusal.
   outcome.codecReason
+
 func authorizationError*[T](outcome: AccumulationAuthorizationResult[
     T]): AuthorizationTransitionError {.inline,
 
 requires: outcome.status == AccumulationAuthorizationError.AuthorizationFailure.} =
   ## Inspect only the pure pool transition refusal.
   outcome.authorizationReason
+
 func stateError*[T](outcome: AccumulationAuthorizationResult[T]): StateStoreError {.inline,
     requires: outcome.status == AccumulationAuthorizationError.StateFailure.} =
   ## Inspect only a complete-map lookup or atomic publication refusal.

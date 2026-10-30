@@ -105,36 +105,45 @@ type
 func error*[T](value: FrameResult[T]): FrameError =
   ## Read parent outcomes without exposing a mutable tag or unguarded alternative.
   value.status
+
 func value*[T](value: FrameResult[T]): T {.inline, requires: value.status == FrameError.None.} =
   ## Only complete success authorizes a value, retained owner or consumed progress.
   value.completed
+
 func cause*[T](value: FrameResult[T]): ComponentFailure {.requires: value.status ==
     FrameError.InvalidComponent.} =
   ## Only a child failure authorizes its nested schema-specific reason.
   value.nestedCause
+
 func kind*(value: ComponentFailure): ComponentKind =
   ## Nested schema identity is read-only; the selected payload cannot be independently retagged.
   value.schema
+
 func headerError*(value: ComponentFailure): HeaderError {.requires: value.schema ==
     ComponentKind.Header.} =
   ## Read the header reason only after selecting its matching schema.
   value.headerReason
+
 func ticketError*(value: ComponentFailure): TicketError {.requires: value.schema ==
     ComponentKind.Tickets.} =
   ## Read the tickets reason only after selecting its matching schema.
   value.ticketReason
+
 func preimageError*(value: ComponentFailure): CompositeError {.requires: value.schema ==
     ComponentKind.Preimages.} =
   ## Read the preimages reason only after selecting its matching schema.
   value.preimageReason
+
 func guaranteeError*(value: ComponentFailure): GuaranteeError {.requires: value.schema ==
     ComponentKind.Guarantees.} =
   ## Read the guarantees reason only after selecting its matching schema.
   value.guaranteeReason
+
 func assuranceError*(value: ComponentFailure): AssuranceError {.requires: value.schema ==
     ComponentKind.Assurances.} =
   ## Read the assurances reason only after selecting its matching schema.
   value.assuranceReason
+
 func disputeError*(value: ComponentFailure): DisputeError {.requires: value.schema ==
     ComponentKind.Disputes.} =
   ## Read the disputes reason only after selecting its matching schema.
@@ -145,23 +154,23 @@ proc fullFrameConfig*(maxBytes: ByteLimit, preimages: PreimageLimits): FrameConf
   FrameConfig(cores: CoreCount(341), validators: ValidatorCount(1023), epochSlots: EpochSlots(600),
     ticketLimit: TicketLimit(16), preimages: preimages, maxBytes: maxBytes)
 
-# Validate shared domains before any count, source owner or attacker-controlled byte is inspected.
 proc validConfig(config: FrameConfig): bool {.raises: [].} =
+  ## Validate shared domains before any count, source owner or attacker-controlled byte is inspected.
   assurances.validConfig(AssuranceConfig(cores: config.cores, validators: config.validators)) and
     uint64(config.epochSlots) > 0 and uint64(config.ticketLimit) <= 16
 
-# Preserve a child's strongly typed failure without publishing partial parent data/progress.
 proc failed[T](cause: ComponentFailure): FrameResult[T] {.raises: [].} =
+  ## Preserve a child's strongly typed failure without publishing partial parent data/progress.
   FrameResult[T](status: FrameError.InvalidComponent, nestedCause: cause)
 
-# Select the shared header domains without inferring pending/current validator membership from bytes.
 proc headerConfig(config: FrameConfig): HeaderConfig {.raises: [].} =
+  ## Select the shared header domains without inferring pending/current validator membership from bytes.
   HeaderConfig(cores: config.cores, authorValidators: config.validators,
     epochSlots: config.epochSlots, maxBytes: config.maxBytes)
 
-# Inspect exactly one child prefix using the existing authoritative family validator, without allocation.
 proc inspect[kind: static[ComponentKind]](input: openArray[byte], config: FrameConfig): FrameResult[
     ComponentInfo] =
+  ## Inspect exactly one child prefix using the existing authoritative family validator, without allocation.
   # Invalid parent configuration precedes component-specific framing or source-policy decisions.
   if not validConfig(config): return FrameResult[ComponentInfo](status: FrameError.InvalidConfig)
   var info: ComponentInfo = default(ComponentInfo)
@@ -222,9 +231,9 @@ proc inspect[kind: static[ComponentKind]](input: openArray[byte], config: FrameC
     return FrameResult[ComponentInfo](status: FrameError.LimitExceeded)
   FrameResult[ComponentInfo](status: FrameError.None, completed: info)
 
-# Capture exact validated bytes only after the caller's whole parent scan has passed.
 proc capture[kind: static[ComponentKind]](input: openArray[byte], config: FrameConfig,
     info: ComponentInfo): Component[kind] =
+  ## Capture exact validated bytes only after the caller's whole parent scan has passed.
   let data = ComponentData(wire: newSeq[byte](info.consumed), config: config, info: info)
   # Snapshots exclude trailing input and retain no caller pointer or detached coordinate.
   for i in 0..<data.wire.len: data.wire[i] = input[i]
@@ -250,24 +259,24 @@ proc componentInfo*[kind: static[ComponentKind]](owner: Component[kind]): FrameR
   if data == nil: return FrameResult[ComponentInfo](status: FrameError.InvalidOwner)
   FrameResult[ComponentInfo](status: FrameError.None, completed: data.info)
 
-# Compare address distances without overflowing endpoint arithmetic; empty output needs no element address.
 proc overlaps(a: pointer, an: int, b: pointer, bn: int): bool =
+  ## Compare address distances without overflowing endpoint arithmetic; empty output needs no element address.
   if an == 0 or bn == 0: return false # Empty ranges cannot share any written bytes.
   let left = cast[uint](a)
   let right = cast[uint](b)
   if left <= right: right-left < uint(an) # Lower source address selects its extent.
   else: left-right < uint(bn) # Lower destination address selects the written prefix extent.
 
-# Reject overlap with any byte of an immutable component before an enclosing operation's first write.
 proc aliases[kind: static[ComponentKind]](owner: Component[kind], output: var openArray[byte],
     size: int): bool =
+  ## Reject overlap with any byte of an immutable component before an enclosing operation's first write.
   let data = owner.data
   assert data != nil # Internal commit helpers require a validated retained child.
   overlaps(unsafeAddr data.wire[0], data.wire.len, addr output[0], size)
 
-# Commit a previously validated private component interval; parent capacity/aliases are already proved.
 proc put[kind: static[ComponentKind]](owner: Component[kind], output: var openArray[byte],
     cursor: var int) =
+  ## Commit a previously validated private component interval; parent capacity/aliases are already proved.
   let data = owner.data
   assert data != nil # Internal commit helpers require a validated retained child.
   # Exact immutable child bytes preserve existing C.2 framing without another protocol encoder implementation.
@@ -288,15 +297,15 @@ proc encodeComponent*[kind: static[ComponentKind]](owner: Component[kind], outpu
   put(owner, output, cursor)
   FrameResult[int](status: FrameError.None, completed: size)
 
-# Advance a complete child extent only after input presence/host arithmetic and parent resource bounds are proved.
 proc advance(cursor: var int, length: int, config: FrameConfig): FrameError =
+  ## Advance a complete child extent only after input presence/host arithmetic and parent resource bounds are proved.
   if length > high(int)-cursor: return FrameError.LengthOverflow # Source composition must never wrap a host byte extent.
   cursor += length
   if uint64(cursor) > uint64(config.maxBytes): return FrameError.LimitExceeded # Whole-parent budget includes every prefix/count.
   FrameError.None
 
-# Scan all five extrinsic families before allocating a single retained component or copied typed record.
 proc scanExtrinsic(input: openArray[byte], config: FrameConfig): FrameResult[ExtrinsicLayout] =
+  ## Scan all five extrinsic families before allocating a single retained component or copied typed record.
   if not validConfig(config): return FrameResult[ExtrinsicLayout](
       status: FrameError.InvalidConfig) # Configuration precedes even empty frames.
   var layout: ExtrinsicLayout = default(ExtrinsicLayout)
@@ -375,9 +384,9 @@ proc scanExtrinsic(input: openArray[byte], config: FrameConfig): FrameResult[Ext
   layout.info.consumed = cursor
   FrameResult[ExtrinsicLayout](status: FrameError.None, completed: layout)
 
-# Capture all child slices after complete stable-input preflight; no child owner can escape a late failure.
 proc captureExtrinsic(input: openArray[byte], config: FrameConfig,
     layout: ExtrinsicLayout): OwnedExtrinsic =
+  ## Capture all child slices after complete stable-input preflight; no child owner can escape a late failure.
   var source: Extrinsic = default(Extrinsic)
   source.tickets = capture[ComponentKind.Tickets](input.toOpenArray(layout.offsets[0],
     layout.offsets[0]+layout.lengths[0]-1), config,
@@ -406,8 +415,8 @@ proc decodeExtrinsic*(input: openArray[byte], config: FrameConfig): FrameResult[
   FrameResult[ExtrinsicRead](status: FrameError.None, completed: ExtrinsicRead(
     owner: captureExtrinsic(input, config, scanned.value), consumed: scanned.value.info.consumed))
 
-# Revalidate every immutable source under the newly supplied parent policy before output capacity or writes.
 proc measure(source: Extrinsic, config: FrameConfig): FrameResult[ExtrinsicInfo] =
+  ## Revalidate every immutable source under the newly supplied parent policy before output capacity or writes.
   if not validConfig(config): return FrameResult[ExtrinsicInfo](
       status: FrameError.InvalidConfig) # Defaults cannot authorize owner traversal.
   var info: ExtrinsicInfo = default(ExtrinsicInfo)
@@ -515,8 +524,8 @@ proc ownExtrinsic*(source: Extrinsic, config: FrameConfig): FrameResult[OwnedExt
     completed: OwnedExtrinsic(data: ExtrinsicData(source: source, config: config,
         info: checked.value)))
 
-# Check descriptors and every child's whole immutable wire against the whole written destination.
 proc extrinsicAlias(source: Extrinsic, output: var openArray[byte], size: int): bool =
+  ## Check descriptors and every child's whole immutable wire against the whole written destination.
   if overlaps(unsafeAddr source, sizeof(source), addr output[0],
       size): return true # Borrowed handle descriptors must remain valid.
   if aliases(source.tickets, output, size): return true # Protect all tickets bytes, including later source intervals.
@@ -526,8 +535,8 @@ proc extrinsicAlias(source: Extrinsic, output: var openArray[byte], size: int): 
   if aliases(source.disputes, output, size): return true # Protect all disputes bytes, including later source intervals.
   false
 
-# Commit exactly the five immutable children in the normative extrinsic order after full parent preflight.
 proc putExtrinsic(source: Extrinsic, output: var openArray[byte], cursor: var int) =
+  ## Commit exactly the five immutable children in the normative extrinsic order after full parent preflight.
   put(source.tickets, output, cursor)
   put(source.preimages, output, cursor)
   put(source.guarantees, output, cursor)
@@ -599,8 +608,8 @@ proc extrinsicDisputes*(owner: OwnedExtrinsic): FrameResult[DisputeComponent] =
       status: FrameError.InvalidOwner) # No child exists for an absent owner.
   FrameResult[DisputeComponent](status: FrameError.None, completed: data.source.disputes)
 
-# Measure a complete block before capacity/aliases; the header and all extrinsic children share one byte budget.
 proc measureBlock(source: Block, config: FrameConfig): FrameResult[BlockInfo] =
+  ## Measure a complete block before capacity/aliases; the header and all extrinsic children share one byte budget.
   if not validConfig(config): return FrameResult[BlockInfo](
       status: FrameError.InvalidConfig) # Configuration precedes owner access.
   let headerData = source.header.data

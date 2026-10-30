@@ -8,5 +8,5 @@
 
 # @@Verification={"group": "privacy", "expected": "status"}
 
-import ../../../src/quic/protocol
+import "../../../src/jamnp-s/protocol"
 discard FrameResult(status: FrameError.None)

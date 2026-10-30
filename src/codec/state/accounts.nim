@@ -44,19 +44,20 @@ type
 func error*[T](parsed: ServiceMetadataResult[T]): ServiceMetadataError =
   ## Failure reasons are read-only and never authorize metadata, encoded bytes or progress.
   parsed.status
+
 func value*[T](parsed: ServiceMetadataResult[T]): T
     {.inline, requires: parsed.status == ServiceMetadataError.None.} =
   ## Complete fixed metadata and encoded entries require successful payload selection.
   parsed.completed
 
-## Copy one proved E8 field using explicit little-endian shifts without alignment or host-endian assumptions.
 proc read64(input: openArray[byte], offset: int): uint64 =
+  ## Copy one proved E8 field using explicit little-endian shifts without alignment or host-endian assumptions.
   result = 0
   for i in 0..<8: result = result or (uint64(input[offset+i]) shl (
       i*8)) # Full payload presence precedes every field read.
 
-## Copy one proved E4 field without exposing borrowed coordinates or silently narrowing larger integers.
 proc read32(input: openArray[byte], offset: int): uint32 =
+  ## Copy one proved E4 field without exposing borrowed coordinates or silently narrowing larger integers.
   result = 0
   for i in 0..<4: result = result or (uint32(input[offset+i]) shl (
       i*8)) # The schema fixes this scalar at four bytes.

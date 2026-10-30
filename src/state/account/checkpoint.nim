@@ -38,47 +38,56 @@ type
       joinReason: AccountInvariantResult[CheckedAccountInvariants]
     else:
       discard
+
 func error*(outcome: AccountCheckpointResult): AccountCheckpointError =
   ## Inspect the immutable failed phase or completed targeted certificate.
   outcome.status
+
 func value*(outcome: AccountCheckpointResult): CheckedAccountInvariants {.inline,
     requires: outcome.status == AccountCheckpointError.None.} =
   ## Only all completed phases grant a retained restored source with targeted account evidence.
   outcome.completed
+
 func serializationFailure*(outcome: AccountCheckpointResult): ValidatedCheckpointResult {.inline,
     requires: outcome.status == AccountCheckpointError.SerializationFailure.} =
   ## Expose only the genuinely failed serialization phase, never an unrelated default reason.
   outcome.serializationReason
+
 func inventoryFailure*(outcome: AccountCheckpointResult): StateInventoryResult[
     StateInventory] {.inline,
 
 requires: outcome.status == AccountCheckpointError.InventoryFailure.} =
   ## Expose only the genuinely failed inventory phase, never an unrelated default reason.
   outcome.inventoryReason
+
 func footprintFailure*(outcome: AccountCheckpointResult): FootprintAuditResult[
     CheckedAccountFootprints] {.inline,
 
 requires: outcome.status == AccountCheckpointError.FootprintFailure.} =
   ## Expose only the genuinely failed footprint phase, never an unrelated default reason.
   outcome.footprintReason
+
 func linkageFailure*(outcome: AccountCheckpointResult): PreimageLinkageResult[
     CheckedPreimageLinkage] {.inline,
 
 requires: outcome.status == AccountCheckpointError.LinkageFailure.} =
   ## Expose only the genuinely failed linkage phase, never an unrelated default reason.
   outcome.linkageReason
+
 func contentFailure*(outcome: AccountCheckpointResult): PreimageContentResult[
     CheckedPreimageContent] {.inline,
 
 requires: outcome.status == AccountCheckpointError.ContentFailure.} =
   ## Expose only the genuinely failed content phase, never an unrelated default reason.
   outcome.contentReason
+
 func joinFailure*(outcome: AccountCheckpointResult): AccountInvariantResult[
     CheckedAccountInvariants] {.inline,
 
 requires: outcome.status == AccountCheckpointError.JoinFailure.} =
   ## Expose only the genuinely failed join phase, never an unrelated default reason.
   outcome.joinReason
+
 proc decodeAccountCheckpoint*(input: openArray[byte], expected: StateRoot,
     services: openArray[StateService], profile: StateProfile,
     limits: AccountCheckpointLimits): AccountCheckpointResult =

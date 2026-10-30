@@ -28,23 +28,28 @@ type
       ordinal: InventoryServiceIndex
     else:
       discard
+
 func error*[T](outcome: FootprintAuditResult[T]): FootprintAuditError =
   ## Inspect the immutable reason without access to its discriminator.
   outcome.status
+
 func value*[T](outcome: FootprintAuditResult[T]): T {.inline,
     requires: outcome.status == FootprintAuditError.None.} =
   ## Only complete successful checks grant access to their source-bound result.
   outcome.completed
+
 func failedService*[T](outcome: FootprintAuditResult[T]): ServiceIndex {.inline,
     requires: outcome.status in {FootprintAuditError.Overflow, FootprintAuditError.ItemsMismatch,
       FootprintAuditError.BytesMismatch}.} =
   ## Resource refusals and defaults do not invent an offending account.
   outcome.service
+
 func failedOrdinal*[T](outcome: FootprintAuditResult[T]): InventoryServiceIndex {.inline,
     requires: outcome.status in {FootprintAuditError.Overflow, FootprintAuditError.ItemsMismatch,
       FootprintAuditError.BytesMismatch}.} =
   ## The location belongs to the caller's original immutable inventory order.
   outcome.ordinal
+
 proc auditAccountFootprints*(source: StateInventory,
     limits: FootprintAuditLimits): FootprintAuditResult[CheckedAccountFootprints] =
   ## Preflight complete work before computing any footprint; no hashing, payload copying or output arrays.
@@ -97,6 +102,7 @@ proc auditAccountFootprints*(source: StateInventory,
     completed: CheckedAccountFootprints(source: source,
       info: FootprintAuditInfo(services: info.value.services, checks: uint64(
           limits.checks)-remaining)))
+
 proc footprintInfo*(checked: CheckedAccountFootprints): FootprintAuditResult[FootprintAuditInfo] =
   ## Copy completed accounting only from an initialized certificate.
   if checked.source.inventoryInfo.error != StateInventoryError.None:
@@ -104,11 +110,13 @@ proc footprintInfo*(checked: CheckedAccountFootprints): FootprintAuditResult[Foo
         status: FootprintAuditError.Uninitialized) # No source certificate.
   FootprintAuditResult[FootprintAuditInfo](status: FootprintAuditError.None,
       completed: checked.info)
+
 proc footprintInventory*(checked: CheckedAccountFootprints): FootprintAuditResult[StateInventory] =
   ## Retain the exact input inventory rather than rebuilding an equal mapping.
   if checked.source.inventoryInfo.error != StateInventoryError.None:
     return FootprintAuditResult[StateInventory](status: FootprintAuditError.Uninitialized) # No source certificate.
   FootprintAuditResult[StateInventory](status: FootprintAuditError.None, completed: checked.source)
+
 proc checkedFootprintAt*(checked: CheckedAccountFootprints,
     ordinal: InventoryServiceIndex): FootprintAuditResult[AccountFootprint] =
   ## Full-width service ordinals select only metadata certified by this source-bound audit.

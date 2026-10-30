@@ -5,7 +5,7 @@
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
 import std/[strutils, syncio]
-import "../../quic/block/download/loop" as block_download_loop
+import "../../jamnp-s/block/download/loop" as block_download_loop
 
 const
   DownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.
@@ -36,14 +36,17 @@ include ./policy/fields
 func error*(outcome: DownloadPolicyResult): DownloadPolicyError =
   ## Defaults/refusals never authorize startup or policy extraction.
   outcome.status
+
 func value*(outcome: DownloadPolicyResult): DownloadLoopLimits {.requires:
     outcome.status == DownloadPolicyError.None.} =
   ## Copy only a complete policy; stage semantics remain the existing stages' responsibility.
   outcome.policy
+
 func fieldName*(outcome: DownloadPolicyResult): string {.requires:
     outcome.status != DownloadPolicyError.None.} =
   ## Explain only an actual failure without exposing partial numeric configuration.
   outcome.field
+
 proc refused(reason: DownloadPolicyError, field = ""): DownloadPolicyResult =
   ## Construct a payload-free failed/default alternative.
   DownloadPolicyResult(status: reason, field: field)

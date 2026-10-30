@@ -48,14 +48,18 @@ type
 
 proc `=copy`*(destination: var Logger, source: Logger) {.error.}
   ## A running worker borrows one fixed address, never a copied queue or lock.
+
 proc `=dup`*(source: Logger): Logger {.error.}
   ## A container cannot duplicate the native lifetime indirectly.
+
 proc requireClosed(logger: Logger) {.requires: not logger.started.} =
   ## Callers must join while producers, borrowed handles and sink context still exist.
   discard
+
 proc `=destroy`*(logger: Logger) =
   ## Explicit close owns native cleanup; default and already-closed values own no worker.
   requireClosed(logger)
+
 proc `=wasMoved`*(logger: var Logger) {.nodestroy, inline, requires: not logger.started.} =
   ## Moving a live owner would invalidate the worker address; only closed values may move.
   logger.started = false
@@ -146,12 +150,15 @@ proc append(record: var LogRecord, text: string) =
 type Calendar {.importc: "struct tm", header: "<time.h>", bycopy.} = object
   ## libc owns the complete platform layout; conversion writes only worker-independent local storage.
   tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst: cint
+
 proc utcTime(seconds: ptr clong, calendar: ptr Calendar): nil ptr Calendar {.
     importc: "gmtime_r", header: "<time.h>".}
   ## Thread-safe UTC conversion never reads process timezone state.
+
 proc formatTime(output: ptr char, capacity: csize_t, pattern: cstring,
     calendar: ptr Calendar): csize_t {.importc: "strftime", header: "<time.h>".}
   ## Bound native date formatting to caller-owned bytes.
+
 proc timestamp(): string =
   ## Capture event time before queueing; disabled records never query the wall clock.
   var seconds = clong(getTime().toUnix)
