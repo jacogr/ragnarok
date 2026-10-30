@@ -148,7 +148,7 @@ ARC aliases remain in the preparation lifecycle model; exact uint64 exhaustion r
 
 ## Two-worker proof offload pool
 
-`quic_offload_pool.nif` maps the enabled `src/jamnp-s/offload.nim` implementation's
+`jamnp_s_offload_pool.nif` maps the enabled `src/jamnp-s/offload.nim` implementation's
 `worker`, `submitPool`, `cancelPool`, `collectPool` and `stopPool`. It keeps the real two
 workers and four-slot limit. One distinguished job retains phase and cancellation identity;
 interchangeable other slots are counted as queued, worker-owned Running or uncollected Done.
