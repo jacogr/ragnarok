@@ -325,6 +325,11 @@ block:
       input.registers[0] = RegisterValue(65536+upper)
       input.registers[3] = RegisterValue(65536+upper+length)
       verifyControl(words, wordProgram, input, 100, [page])
+  for budget in [19'u64, 20, 21, 100]:
+    # A behind bound is not an empty != loop: preserve the byte prefix and bounded continuation unchanged.
+    var input = wordInfo
+    input.registers[3] = RegisterValue(65535)
+    verifyControl(words, wordProgram, input, budget, [page])
   for destination in [0, 1, 3, 4]:
     # Prefix-to-store dependence remains intact; only the additional live-role alias prevents word admission.
     let alias = owner([@[198'u8, 0x41, byte(destination)], @[120'u8, byte(destination), 0],
@@ -379,6 +384,19 @@ block:
   assert words.exit == StepExit.Fault and uint64(words.info.pc) == 3
   let partial = pageImage(flatMemorySnapshot(words), PageIndex(16)).value.bytes
   assert partial[4090] == 0x78 and partial[4095] == 0x56
+  # Repair after a successful bulk group and later byte fault resumes its already-paid store suffix exactly once.
+  let failedWordInfo = words.info
+  var repairedFirst = page
+  repairedFirst.bytes = partial
+  var repairedLast = page
+  repairedLast.index = PageIndex(17)
+  let repairedWords = [repairedFirst, repairedLast]
+  assert replaceFlatMemoryChecked(words, repairedWords, failedWordInfo) == FlatError.None
+  verifyControl(words, wordProgram, failedWordInfo, 1, repairedWords)
+  assert pageImage(flatMemorySnapshot(words), PageIndex(17)).value.bytes[0] == 0x34
+  assert words.info.gas == failedWordInfo.gas and words.info.blockCharged
+  assert uint64(words.info.pc) == 6
+  verifyControl(words, wordProgram, failedWordInfo, 100, repairedWords)
   var top = page
   top.index = PageIndex(1048575)
   var highInfo = wordInfo

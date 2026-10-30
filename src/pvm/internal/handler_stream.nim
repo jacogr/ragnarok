@@ -799,7 +799,7 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
     let base = uint64(f.info.registers[store.slots.bIndex])
     let bound = uint64(f.info.registers[branch.slots.bIndex])
     if (shift and 31) != 0 or base > high(uint64)-4 or base+4 > bound:
-      # Shifts0/8/16/24 extract one low word; base+1..3 cannot equal the opcode171 bound.
+      # Shifts 0/8/16/24 extract one low word; base+1..3 cannot equal the opcode 171 bound.
       # Wrapped or other loop coordinates retain the original != predicate and bytewise order.
       break
     let address = (base+store.x) and 0xffffffff'u64
