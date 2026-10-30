@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""Private local ARM64 whole-program sieve experiment; gas-free results are diagnostic only.
+"""Private local ARM64 whole-program guest experiments; gas-free results are diagnostic only.
 
 Builds one native whole image and separately compares current gas-metered JIT and untraced PolkaVM.
 No production runtime, quota, default or shared emitter source is modified.
@@ -90,11 +90,20 @@ def matrix():
             for sample in range(REPEATS) for role in roles]
 
 
-def parse(output, role):
-    """Read only actual CPU/elapsed scopes; absent reference/JIT lifecycle scopes remain absent."""
+def parse(output, role, guest="sieve"):
+    """A fixed selected family binds every receipt; Pinky additionally requires actual full-frame checks."""
+    if guest not in ("sieve", "pinky"): raise ValueError("unknown whole-image guest")
+    if role not in ROLES:raise ValueError("unknown experiment role")
+    limit="10000000" if guest=="sieve" else "1"
     rows=[r.split(',') for r in output.splitlines()]
+    if guest=='pinky':
+        if rows.count(['GUEST','pinky'])!=1:raise ValueError('missing Pinky family witness')
+        frames=[r for r in rows if r[0]=='PINKY_FRAME']
+        if len(frames)!=2 or any(len(r)!=4 or r[1]!=str(i) or not 65536<=unsigned(r[2])<=2**32-245760 or r[3]!='245760' for i,r in enumerate(frames)):
+            raise ValueError('missing actual complete Pinky framebuffer witness')
+        if frames[0][2]!=frames[1][2]:raise ValueError('Pinky framebuffer address changed')
     if role==ROLES[0]:
-        if rows[-1]!=['WHOLE_PASS','10000000'] or rows.count(['WHOLE_GAS_DISABLED','1'])!=1:
+        if rows[-1]!=['WHOLE_PASS',limit] or rows.count(['WHOLE_GAS_DISABLED','1'])!=1:
             raise ValueError('incomplete gas-free whole-image witness')
         calls=[r for r in rows if r[0]=='WHOLE_EXIT']
         if len(calls)!=2 or any(len(r)!=9 or r[1:5]!=[str(i),'1','0','1'] for i,r in enumerate(calls)):
@@ -102,8 +111,10 @@ def parse(output, role):
         image=[r for r in rows if r[0]=='WHOLE_IMAGE']
         if len(image)!=1 or len(image[0])!=5 or min(map(unsigned,image[0][1:]))<=0:
             raise ValueError('missing complete native compilation')
+        if guest=='pinky' and (rows.count(['WHOLE_HOST_SITES','0'])!=1 or image[0][1:3]!=['416152','10576']):
+            raise ValueError('Pinky compiler source/host-surface census differs')
         helpers=[list(map(unsigned,r[5:7])) for r in calls]
-        if helpers!=[[11272390,4203132]]*2:
+        if helpers!=([[11272390,4203132]] if guest=='sieve' else [[4934271,3132606]])*2:
             raise ValueError('unexpected actual checked-memory helper work')
         scopes={}
         for tag,key in [('WHOLE_INPUT_PREPARE','input_prepare'),('WHOLE_IMAGE_RETIRE','image_retirement')]:
@@ -121,7 +132,7 @@ def parse(output, role):
                     native_exits=[1,1],checked_helpers=helpers,gas_metering=False)
     calls=[r for r in rows if r[0]=='SIEVE']
     label='ragnarok_prepared' if role==ROLES[1] else 'polkavm_interpreter'
-    if len(calls)!=2 or any(len(r)!=6 or r[1:4]!=[label,'10000000',str(i)] for i,r in enumerate(calls)):
+    if len(calls)!=2 or any(len(r)!=6 or r[1:4]!=[label,limit,str(i)] for i,r in enumerate(calls)):
         raise ValueError('incomplete comparison calls')
     scopes={}
     if role==ROLES[1]:
@@ -135,7 +146,7 @@ def parse(output, role):
         if min(values[0])<=0 or any(values[1][i]<=values[0][i] for i in (1,2)):
             raise ValueError('continuing current JIT call made no native progress')
     else:
-        if rows.count(['FAST_MODE','interpreter','step_tracing=false'])!=1 or rows[-1]!=['FAST_SEQUENCE_OK','sieve','2']:
+        if rows.count(['FAST_MODE','interpreter','step_tracing=false'])!=1 or rows[-1]!=['FAST_SEQUENCE_OK',guest,'2']:
             raise ValueError('reference is not explicit untraced interpretation')
         for tag,key in [('FAST_PREPARE','constructor'),('FAST_RETIRE','module_retirement')]:
             selected=[r for r in rows if r[0]==tag]
@@ -146,11 +157,15 @@ def parse(output, role):
             if len(selected)!=2 or any(len(r)!=3 or r[1]!=str(i) for i,r in enumerate(selected)):
                 raise ValueError('missing reference per-call scope')
             scopes[key]=[dict(cpu_ns=unsigned(r[2]),elapsed_ns=None) for r in selected]
+    if guest=='pinky' and role==ROLES[2]:
+        initial=[r for r in rows if r[0]=='PINKY_INITIALIZE']
+        if len(initial)!=1 or len(initial[0])!=4 or initial[0][3]!='9':raise ValueError('missing nine-frame initialization scope')
+        scopes['nine_frame_initialization']=dict(cpu_ns=unsigned(initial[0][1]),elapsed_ns=unsigned(initial[0][2]))
     return dict(calls=[dict(cpu_ns=unsigned(r[5]),elapsed_ns=unsigned(r[4])) for r in calls],
                 scopes=scopes,gas_metering=True)
 
 
-def summarize(runs):
+def summarize(runs, guest="sieve"):
     """Compute per-order raw medians/ranges and call-only diagnostic ratios, without pooling runners or scopes."""
     if [(r['order'],r['sample'],r['role']) for r in runs]!=matrix():
         raise ValueError('incomplete serial comparison cohort')
@@ -160,7 +175,7 @@ def summarize(runs):
         for role in ROLES:
             selected=[r for r in runs if r['order']==order and r['role']==role]
             for row in selected:
-                if row['discarded']!=(row['sample']<DISCARDED) or row['measured']!=parse(row['run']['output'],role):
+                if row['discarded']!=(row['sample']<DISCARDED) or row['measured']!=parse(row['run']['output'],role,guest):
                     raise ValueError('changed parsed sample or discard policy')
             retained=[r['measured'] for r in selected if not r['discarded']]
             if len(retained)!=10:raise ValueError('missing retained process')
@@ -180,16 +195,21 @@ def summarize(runs):
     return results
 
 
-def run():
-    """Build/qualify locally only on ARM64, then execute exactly one fixed serial comparison cohort."""
+def run(guest="sieve"):
+    """Keep one shared serial protocol; a selected private driver/fixture never changes within a cohort."""
+    if guest not in ("sieve", "pinky"):raise ValueError("unknown experiment guest")
+    limits=(1000,10000000) if guest=="sieve" else (1,)
+    measured_limit=limits[-1]
+    fixture_folder="pvm-sieve" if guest=="sieve" else "pvm-pinky"
+    native_source="pvm_whole_sieve.nim" if guest=="sieve" else "pvm_whole_pinky.nim"
     if platform.machine().lower() not in ('arm64','aarch64') or platform.system() not in ('Darwin','Linux'):
         raise RuntimeError('standalone experiment requires local ARM64')
     revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-    build=ROOT/'build'/('pvm-whole-sieve-'+revision[:8]+'-'+str(time.time_ns()))
+    build=ROOT/'build'/('pvm-whole-'+guest+'-'+revision[:8]+'-'+str(time.time_ns()))
     build.mkdir(parents=True,exist_ok=False)
-    (ROOT/'build/pvm-whole-sieve-latest.json').write_text(json.dumps(dict(path=str(build),revision=revision),indent=2)+'\n')
+    (ROOT/('build/pvm-whole-'+guest+'-latest.json')).write_text(json.dumps(dict(path=str(build),revision=revision),indent=2)+'\n')
     checks=NativeChecks(build)
-    report=dict(status='incomplete',protocol='whole-sieve-arm64-gas-free-v1',production=PRODUCTION,
+    report=dict(status='incomplete',protocol='whole-'+guest+'-arm64-gas-free-v1',guest=guest,production=PRODUCTION,
         gas_disabled_only_for_whole_image=True,performance_equivalent_to_production=False,
         host=dict(system=platform.system(),architecture=platform.machine()),builds=[],controls=[],commands=[],runs=[],summary=[],
         repeats=13,discard_first=3,calls_per_owner=2,scope='Native writer restore/publication outside call; JIT immutable publication inside call; reference mutable instances. Gas-off native versus gas-metered controls. No equivalent lifecycle total.')
@@ -229,7 +249,9 @@ def run():
         compiler,_=installed();report['compiler']=dict(path=str(compiler),sha256=digest(compiler),
             identity=(compiler.parent.parent/'NIGHTLY.txt').read_text())
         pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text());upstream=require_submodule(pins,fetch=False)
-        report['fixture']=verify_fixture(upstream=upstream,guest='sieve')
+        report['fixture']=verify_fixture(upstream=upstream,guest=guest)
+        if guest=='pinky':
+            report['workload']=dict(initialization='unchanged benchmark_initialize;9 NES frames including Select autosolve input',timed_call='run_checked(1):one original benchmark_run,one further frame+ABGR framebuffer conversion',reuse='reset identical initialized guest input; reuse native code/prepared owner/module',frame_oracle='public get_framebuffer export after expected snapshot,245760 exact bytes; reference-derived not independent NES golden',host_surface='no ecalli opcode10; whole compiler has no host handler or interpreter fallback')
         rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
         rust_binary=Path(subprocess.check_output(['rustup','which','--toolchain',rust,'rustc'],text=True).strip())
         clang_binary=Path(shutil.which('clang')).resolve()
@@ -247,7 +269,7 @@ def run():
             *sorted((ROOT/'tools').glob('*.py')),*ROOT.glob('tests/performance/pvm_whole*'),
             ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_sieve_clock.h',
             *[p for p in original.rglob('*') if p.is_file()],
-            *[p for p in (ROOT/'tests/fixtures/pvm-sieve').rglob('*') if p.is_file()],
+            *[p for p in (ROOT/'tests/fixtures'/fixture_folder).rglob('*') if p.is_file()],
             *[ROOT/'spec'/name for name in ('toolchain.json','polkavm-pins.json','bandersnatch-pins.json')],
             ROOT/'Makefile',ROOT/'.gitmodules',upstream/'Cargo.toml',upstream/'Cargo.lock',
             *[p for p in (upstream/'crates').rglob('*') if p.is_file()],
@@ -269,7 +291,11 @@ def run():
         for path in [original/'Cargo.toml',original/'Cargo.lock',*sorted((original/'src').glob('*.rs'))]:
             text=path.read_text()
             if path.name=='Cargo.toml':text=text.replace('../../../vendor/polkavm/',str(upstream)+'/')
-            if path.name=='sieve.rs':text=reference_projection(text)
+            if path.name=='sieve.rs':
+                text=reference_projection(text)
+                if guest=='pinky':
+                    from pvm_whole_pinky import pinky_projection
+                    text=pinky_projection(text)
             (crate/('src/'+path.name if path.suffix=='.rs' else path.name)).write_text(text)
         source_identities.update({p:digest(p) for p in crate.rglob('*') if p.is_file()})
         report['builds'].append(command(['rustup','run',rust,'cargo','build','--release','--locked','--offline','--manifest-path',crate/'Cargo.toml','--target-dir',build/'reference-target'],'reference-build'))
@@ -284,11 +310,17 @@ def run():
   assert native.jitBuilt and native.jitPlatformSupported and native.checkedFallbackEnabled
   echo "WHOLE_JIT_NATIVE,", sample, ",", done.value.backend, ",", native.nativeFragments,
     ",", native.nativeCalls, ",", native.nativeOperations''')
+        if guest=='pinky':
+            include=build/'pvm_whole_frame.nim.inc'
+            include.write_bytes((ROOT/'tests/performance/pvm_whole_frame.nim.inc').read_bytes())
+            source_identities[include]=digest(include)
+            driver=replace_once(driver,'let guest = selectedGuest', 'include \"./pvm_whole_frame.nim.inc\"\nlet frameOracle = readFrameOracle()\n\nlet guest = selectedGuest')
+            driver=replace_once(driver,'  check(done.value.machine, indices, access, expected, limit, guest)', '  check(done.value.machine, indices, access, expected, limit, guest)\n  checkFrame(memoryOf(done.value.machine).value, frameOracle, sample)')
         adapter=build/'jit_adapter.nim';adapter.write_text(driver)
         source_identities[adapter]=digest(adapter)
         if any(digest(p)!=sha for p,sha in source_identities.items()):raise ValueError('consumed source changed during build preparation')
         images={}
-        for role,source,defines in [(ROLES[0],ROOT/'tests/performance/pvm_whole_sieve.nim',[]),
+        for role,source,defines in [(ROLES[0],ROOT/'tests/performance'/native_source,[]),
                 (ROLES[1],adapter,['pvmArm64Jit','pvmArm64JitOwnerReceipt']),
                 ('controls',ROOT/'tests/performance/pvm_whole_controls.nim',[])]:
             before=resource.getrusage(resource.RUSAGE_CHILDREN);started=time.monotonic_ns()
@@ -307,28 +339,49 @@ def run():
         def environment(limit):
             """Every role restores the same immutable reference input and checked expected state."""
             folder=build/'inputs'/str(limit)
-            return dict(os.environ,RAGNAROK_PVM_GUEST='sieve',RAGNAROK_PVM_PRICING='prepared',
+            return dict(os.environ,RAGNAROK_PVM_GUEST=guest,RAGNAROK_PVM_PRICING='prepared',
                 RAGNAROK_PVM_BACKEND='jit',RAGNAROK_PVM_SIEVE_INPUT=str(folder/f'input-{limit}.bin'),
                 RAGNAROK_PVM_SIEVE_EXPECTED=str(folder/f'expected-{limit}.bin'),RAGNAROK_PVM_SIEVE_SAMPLES='2',
-                RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0')
-        for limit in (1000,10000000):
+                RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0',
+                RAGNAROK_PVM_FRAME_ADDRESS=str(folder/'frame-address.txt'),
+                RAGNAROK_PVM_FRAME_BYTES=str(folder/'frame-abgr.bin'))
+        for limit in limits:
             folder=build/'inputs'/str(limit);folder.mkdir(parents=True,exist_ok=True)
-            report['controls'].append(command([reference,'--sieve-prepare',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',folder,limit,1],f'prepare-{limit}',dict(os.environ,RAGNAROK_PVM_GUEST='sieve')))
-            if limit==1000:
-                # The actual small whole-image fixture must pass before the long diagnostic begins.
-                row=command([images[ROLES[0]]],'whole-small-correctness',environment(1000))
-                if row['output'].splitlines()[-1]!=['WHOLE_PASS,1000'][0]:
-                    raise ValueError('small whole-image witness missing')
+            report['controls'].append(command([reference,'--sieve-prepare',ROOT/'tests/fixtures'/fixture_folder/(guest+'.polkavm'),folder,limit,1],f'prepare-{limit}',dict(os.environ,RAGNAROK_PVM_GUEST=guest)))
+            if limit==limits[0]:
+                # Real guest full-state correctness must pass before any measured comparison cohort.
+                row=command([images[ROLES[0]]],'whole-initial-correctness',environment(limit))
+                if row['output'].splitlines()[-1]!='WHOLE_PASS,'+str(limit):
+                    raise ValueError('initial whole-image witness missing')
                 report['controls'].append(row)
         for role in ROLES:
-            env=environment(10000000);env['RAGNAROK_PVM_SIEVE_ASSERT_PROBE']='1'
-            args=([images[role],'--sieve',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',build/'inputs/10000000',10000000,2]
+            env=environment(measured_limit);env['RAGNAROK_PVM_SIEVE_ASSERT_PROBE']='1'
+            args=([images[role],'--sieve',ROOT/'tests/fixtures'/fixture_folder/(guest+'.polkavm'),build/'inputs'/str(measured_limit),measured_limit,2]
                   if role==ROLES[2] else [images[role]])
             row=command(args,'assert-'+role,env,required=False)
-            needle=('whole-image sieve assertion control' if role==ROLES[0] else
+            needle=('whole-image '+guest+' assertion control' if role==ROLES[0] else
                     'pvm sieve native assertion control' if role==ROLES[1] else 'sieve reference assertion control')
             if row['exit_code']==0 or needle not in row['output']:raise ValueError('inactive assertion control: '+role)
             report['controls'].append(row)
+        if guest=='pinky':
+            # A false framebuffer oracle must fail all three actual images outside their execution clocks.
+            frame=build/'inputs/1/frame-abgr.bin'
+            original=frame.read_bytes()
+            if len(original)!=245760:raise ValueError('incorrect Pinky frame oracle extent')
+            bad=bytes([original[0]^1])+original[1:]
+            (build/'tampered-frame-abgr.bin').write_bytes(bad)
+            try:
+                frame.write_bytes(bad)
+                for role in ROLES:
+                    args=([images[role],'--sieve',ROOT/'tests/fixtures'/fixture_folder/(guest+'.polkavm'),build/'inputs/1',1,2]
+                          if role==ROLES[2] else [images[role]])
+                    row=command(args,'reject-frame-'+role,environment(1),required=False)
+                    needle='Pinky rendered frame mismatch' if role==ROLES[2] else 'Pinky rendered frame byte'
+                    if row['exit_code']==0 or needle not in row['output']:raise ValueError('inactive actual Pinky framebuffer check: '+role)
+                    report['controls'].append(row)
+            finally:
+                frame.write_bytes(original)
+            report['frame_oracle']=dict(address=(build/'inputs/1/frame-address.txt').read_text(),bytes=len(original),sha256=digest(frame),source='public PolkaVM get_framebuffer after full terminal snapshot; reference-derived not independent golden')
         sources=[*ROOT.glob('tests/performance/pvm_whole*'),ROOT/'tools/pvm_whole_sieve.py',adapter,
                  *sorted(crate.rglob('*.rs')),crate/'Cargo.toml',crate/'Cargo.lock',compiler,
                  *[p for p in (build/'inputs').rglob('*') if p.is_file()],*images.values()]
@@ -341,16 +394,16 @@ def run():
         for order,sample,role in matrix():
             # Compile and validate before this serial cohort; no competing work is launched during timings.
             if any(digest(path)!=sha for path,sha in identities.items()):raise ValueError('input/source/image changed')
-            args=([images[role],'--sieve',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',build/'inputs/10000000',10000000,2]
+            args=([images[role],'--sieve',ROOT/'tests/fixtures'/fixture_folder/(guest+'.polkavm'),build/'inputs'/str(measured_limit),measured_limit,2]
                   if role==ROLES[2] else [images[role]])
-            row=command(args,f'order{order}-sample{sample}-{role}',environment(10000000))
+            row=command(args,f'order{order}-sample{sample}-{role}',environment(measured_limit))
             report['runs'].append(dict(order=order,sample=sample,role=role,discarded=sample<3,
-                                      run=row,measured=parse(row['output'],role)))
+                                      run=row,measured=parse(row['output'],role,guest)))
             save()
         if any(digest(p)!=sha for p,sha in identities.items()):raise ValueError('final source/input/image seal changed')
         if any(digest(p)!=sha for p,sha in compiler_identities.items()):raise ValueError('compiler identity changed')
         report['final_seal']='passed'
-        report['summary']=summarize(report['runs']);report['status']='passed'
+        report['summary']=summarize(report['runs'],guest);report['status']='passed'
         print(json.dumps(report['summary'],indent=2),flush=True)
     except BaseException as error:
         report['error']=type(error).__name__+': '+str(error)

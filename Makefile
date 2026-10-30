@@ -668,6 +668,11 @@ check-pvm-doom-timing: check-inventory toolchain sources rust-tools
 
 # Private local ARM64 whole-program sieve using already provisioned pins; no host-tool installers.
 # Gas is disabled only for the standalone diagnostic image.
+# Private initial Pinky ratios; no provisioning, network setup, policy changes or sieve retiming.
+.PHONY: check-pvm-whole-pinky
+check-pvm-whole-pinky: check-inventory
+	$(PYTHON) tools/pvm_whole_pinky.py
+
 .PHONY: check-pvm-whole-sieve
 check-pvm-whole-sieve: check-inventory
 	$(PYTHON) tools/pvm_whole_sieve.py
