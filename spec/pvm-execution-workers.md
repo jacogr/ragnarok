@@ -28,7 +28,7 @@ snapshot ownership; it cannot execute against a new cache identity. Retained occ
 by the last admitted decode policy and last successful prepared policy, plus independent caller
 handles. Stream/native limits are cumulative over a retained owner's lifetime.
 
-Every callback runs under the existing exclusive prepared-owner lease. Any same-worker cache
+Every callback runs under the existing exclusive prepared-owner lease. Any prepared-cache
 lookup during that lease returns `PreparationError.Busy`, including a different source or policy;
 it cannot evict the active owner to bypass same-owner reentry refusal. The host adapter translates
 this to `PreparedProgramBusy`. No additional thread synchronization or cross-thread sharing is
@@ -67,3 +67,7 @@ Supported ARM64 builds require positive native work across reused JIT calls; for
 requires zero native activity. Existing complete-state, gas, host-event, publication/provenance and
 continuation/driver suites remain independent semantic controls. Measurements are pending and
 these source/behavior witnesses alone are not evidence of application throughput improvement.
+
+The application fixture's literal independent block price is101 (test-only pinned GP table
+simulation), and gas host0 separately costs48. Refinement uses149 gas; accumulation finishes
+with9851 from10000, exact terminal PC/paid state, and all13 independently expected registers.

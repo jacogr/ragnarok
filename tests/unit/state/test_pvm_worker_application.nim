@@ -29,6 +29,7 @@ proc refinementWitness(selected: PvmBackend) =
   let original = runRefinementInvocation(first, [], refinementInputs(), ExportOffset(0), policy, worker)
   assert original.error == RefinementInvocationError.None
   assert original.value.refinementOutput.value == @[21'u8, 22, 23]
+  assert uint64(original.value.refinementInfo.value.gasUsed) == 149 # Independent GP block101 plus gas-host48.
   let cold = workerInfo(worker).value
   assert cold.preparations == 1 and cold.hits == 0
   let current = runRefinementInvocation(second, [], refinementInputs(), ExportOffset(0), policy, worker)
@@ -99,8 +100,17 @@ proc accumulationWitness(selected: PvmBackend) =
       assert current.value.backend == PvmBackend.Jit and warm.prepared.nativeOperations > 0
   assert current.value.machine.machineInfo.value.registers ==
       original.value.machine.machineInfo.value.registers
-  assert uint64(current.value.machine.machineInfo.value.gas) == uint64(
-      original.value.machine.machineInfo.value.gas)
+  # Independent pinned-table simulation prices this block101; Omega_G costs48, leaving9851.
+  let actual = current.value.machine.machineInfo.value
+  var expectedRegisters = second.accumulationMachine.value.machineInfo.value.registers
+  expectedRegisters[3] = RegisterValue(7)
+  expectedRegisters[4] = RegisterValue(8)
+  expectedRegisters[5] = RegisterValue(9)
+  expectedRegisters[6] = RegisterValue(10)
+  expectedRegisters[7] = RegisterValue(9851)
+  assert actual.registers == expectedRegisters
+  assert uint64(actual.gas) == 9851 and uint64(actual.gasDeficit) == 0
+  assert uint64(actual.pc) == 0 and actual.blockCharged
 
 refinementWitness(PvmBackend.Interpreted)
 refinementWitness(PvmBackend.Jit)
