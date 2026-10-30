@@ -119,3 +119,36 @@ Full official archive, raw reports and audit are retained under
 `build/pvm-page-metadata/ci-arm`. Subsequent evidence-only changes leave source/build drivers
 identical to the qualified head. Final integration coverage is assessed from this diff and the
 focused receipts before approval; no duplicate broad run is implied.
+
+
+## Composition with the merged JIT handoff
+
+The native three-layer memory stack was rebased cleanly onto master
+`7421bef8782cf196d5013c97470b65e5c335d412`, which includes the independently qualified JIT
+handoff change. The resulting source
+`04f331745fee56ad26d87eb771d7e31c686d543c` exactly matches the reviewer's independently
+applied layer trees. Full local ARM storage/native/refusal/region/all-opcode/host/ownership
+qualification passes on this composition; its receipts are separate from the earlier Linux run.
+
+A fresh matched local comparison against that master also passes all20 public DOOM processes
+and two assertion-negative controls. Both explicit interpreter and JIT roles use identical
+policy images, three warmups, ten retained samples and both process orders. Native fragment,
+call, operation, code-byte, conditional and header counts agree exactly between parent and top.
+
+| Local phase / mode | Master CPU ms | Whole memory stack CPU ms | Our time / PolkaVM interpreted |
+| --- | --- | --- | --- |
+| Init / JIT |195.314 /191.742 |179.812 /176.925 |0.264 /0.260 |
+| Tick / JIT |29.033 /28.761 |27.246 /26.942 |0.610 /0.611 |
+| Init / interpreter |343.294 /337.773 |327.821 /323.540 |0.482 /0.475 |
+| Tick / interpreter |39.899 /39.409 |37.763 /37.232 |0.846 /0.844 |
+
+This directly measures the three memory layers with the merged handoff: JIT init CPU is
+7.7–7.9% lower and tick6.2–6.3% lower; interpreter init4.2–4.5% lower and tick5.4–5.5% lower.
+It is not a multiplication of earlier separate gains. Raw reference CPU is680.407 /681.690 ms
+init and44.653 /44.099 ms tick. Full source/build/input/control receipts are under
+`build/pvm-rebased-integration/{native-results.json,doom}`.
+
+One final Unit integration run on the rebased top is requested because these shared memory
+paths and the new copy API postdate the parent's Unit receipt. A focused combined ARM run
+qualifies the actual new execution composition; the earlier standalone receipt remains valid
+for its own exact source. Further evidence-only commits do not require repeating timings.
