@@ -8,7 +8,9 @@ import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/[handler_stream, arm64_jit]
 
 const
-  Native = defined(linux) and defined(arm64) and not defined(pvmArm64JitRefuse)
+  # Match the maintained Linux/macOS ARM64 arena; forced refusal and other hosts stay unavailable.
+  Native = (defined(linux) or defined(macosx)) and defined(arm64) and
+    not defined(pvmArm64JitRefuse)
   SmallPc = 4132'u64
   LargeRound = 4106'u64
   InitialGas = 10000000'u64
