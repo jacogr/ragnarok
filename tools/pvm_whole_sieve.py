@@ -25,7 +25,7 @@ from pvm_sieve_benchmark import verify_fixture
 from setup_nimony import installed
 
 BUILD = ROOT/'build/pvm-whole-sieve'
-PRODUCTION = '387b90ff4a29273d97e5a424e8eda1871898e05b'
+PRODUCTION = '8bcb461b866f0edb970b6542ad9823f9aaa3050a'
 ROLES = ('whole-image-gas-off', 'current-jit-gas-on', 'reference-untraced-gas-on')
 REPEATS, DISCARDED = 13, 3
 
@@ -184,15 +184,18 @@ def run():
     """Build/qualify locally only on ARM64, then execute exactly one fixed serial comparison cohort."""
     if platform.machine().lower() not in ('arm64','aarch64') or platform.system() not in ('Darwin','Linux'):
         raise RuntimeError('standalone experiment requires local ARM64')
-    BUILD.mkdir(parents=True,exist_ok=True)
-    checks=NativeChecks(BUILD)
+    revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+    build=ROOT/'build'/('pvm-whole-sieve-'+revision[:8]+'-'+str(time.time_ns()))
+    build.mkdir(parents=True,exist_ok=False)
+    (ROOT/'build/pvm-whole-sieve-latest.json').write_text(json.dumps(dict(path=str(build),revision=revision),indent=2)+'\n')
+    checks=NativeChecks(build)
     report=dict(status='incomplete',protocol='whole-sieve-arm64-gas-free-v1',production=PRODUCTION,
         gas_disabled_only_for_whole_image=True,performance_equivalent_to_production=False,
-        host=dict(system=platform.system(),architecture=platform.machine()),builds=[],controls=[],runs=[],summary=[],
+        host=dict(system=platform.system(),architecture=platform.machine()),builds=[],controls=[],commands=[],runs=[],summary=[],
         repeats=13,discard_first=3,calls_per_owner=2,scope='Native writer restore/publication outside call; JIT immutable publication inside call; reference mutable instances. Gas-off native versus gas-metered controls. No equivalent lifecycle total.')
     def save():
         """A failed setup/control/sample persists incomplete evidence instead of exposing an older success."""
-        (BUILD/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+        (build/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     def command(args,name,environment=None,required=True,timeout=900):
         """Retain process CPU including waited descendants separately from internal guest-call clocks."""
         before=resource.getrusage(resource.RUSAGE_CHILDREN);start=time.monotonic_ns()
@@ -200,12 +203,27 @@ def run():
         after=resource.getrusage(resource.RUSAGE_CHILDREN)
         row['process_elapsed_ns']=time.monotonic_ns()-start
         row['process_cpu_ns']=round(((after.ru_utime+after.ru_stime)-(before.ru_utime+before.ru_stime))*1e9)
+        report['commands'].append(dict(name=name,**row));save()
         if required and row['exit_code']:raise RuntimeError(name+' failed: '+row['output'][-1800:])
         return row
     save()
     try:
         report['revision']=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
-        subprocess.run(['git','diff','--exit-code',PRODUCTION,'--','src','native/pvm_jit'],cwd=ROOT,check=True,stdout=subprocess.DEVNULL)
+        # The whole-image compiler consumes our unchanged public memory/program primitives; the current JIT uses a complete fresh-master archive.
+        for path in ('src/pvm/program.nim','src/pvm/machine.nim','src/codec/natural.nim',
+                     'tests/performance/pvm_sieve_clock.h','spec/toolchain.json'):
+            if subprocess.check_output(['git','show',PRODUCTION+':'+path],cwd=ROOT)!=(ROOT/path).read_bytes():
+                raise ValueError('whole-image primitive differs from current production: '+path)
+        production_source=build/'production_source'
+        production_source.mkdir(exist_ok=True)
+        raw=subprocess.check_output(['git','archive',PRODUCTION,'src','native/pvm_jit'],cwd=ROOT)
+        with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+            for item in archive:
+                if item.isdir():continue
+                if not item.isfile() or Path(item.name).is_absolute() or '..' in Path(item.name).parts:
+                    raise ValueError('foreign production archive member')
+                target=production_source/item.name;target.parent.mkdir(parents=True,exist_ok=True)
+                target.write_bytes(archive.extractfile(item).read())
         report['cpu_model']=(subprocess.check_output(['sysctl','-n','machdep.cpu.brand_string'],text=True).strip()
                              if platform.system()=='Darwin' else Path('/proc/cpuinfo').read_text())
         compiler,_=installed();report['compiler']=dict(path=str(compiler),sha256=digest(compiler),
@@ -213,10 +231,19 @@ def run():
         pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text());upstream=require_submodule(pins,fetch=True)
         report['fixture']=verify_fixture(upstream=upstream,guest='sieve')
         rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
+        rust_binary=Path(subprocess.check_output(['rustup','which','--toolchain',rust,'rustc'],text=True).strip())
+        clang_binary=Path(shutil.which('clang')).resolve()
+        compiler_identities={rust_binary:digest(rust_binary),clang_binary:digest(clang_binary)}
+        report['external_compilers']={str(path):sha for path,sha in compiler_identities.items()}
+        report['rust_version']=command(['rustup','run',rust,'rustc','--version','--verbose'],'rust-identity')
+        report['clang_version']=command([clang_binary,'--version'],'clang-identity')
+        report['provenance_limits']='Consumed owned/upstream/Nimony-library source bytes retained. Compiler executables identified by hash/version, not retained; system SDK and registry crates remain identified through versions/pinned lock checksums rather than a complete retained sysroot.'
+
         # Seal the actual source/header/toolchain library inputs before any build can consume them.
         original=ROOT/'tests/performance/polkavm'
         source_paths=[*[p for p in (ROOT/'src').rglob('*') if p.is_file()],
             *[p for p in (ROOT/'native/pvm_jit').rglob('*') if p.is_file()],
+            *[p for p in production_source.rglob('*') if p.is_file()],
             *sorted((ROOT/'tools').glob('*.py')),*ROOT.glob('tests/performance/pvm_whole*'),
             ROOT/'tests/performance/pvm_sieve.nim',ROOT/'tests/performance/pvm_sieve_clock.h',
             *[p for p in original.rglob('*') if p.is_file()],
@@ -229,7 +256,7 @@ def run():
             *[p for p in (compiler.parent.parent/'lib').rglob('*') if p.is_file()]]
         source_identities={p:digest(p) for p in source_paths if p.is_file()}
         report['source_maps']={str(p.relative_to(ROOT)):sha for p,sha in source_identities.items()}
-        source_archive=BUILD/'consumed-sources.tar.gz'
+        source_archive=build/'consumed-sources.tar.gz'
         with tarfile.open(source_archive,'w:gz') as archive:
             for path,wanted in sorted(source_identities.items()):
                 raw=path.read_bytes()
@@ -238,7 +265,7 @@ def run():
                 archive.addfile(item,io.BytesIO(raw))
         report['source_archive']=dict(path=str(source_archive.relative_to(ROOT)),sha256=digest(source_archive))
 
-        original=ROOT/'tests/performance/polkavm';crate=BUILD/'reference-source';(crate/'src').mkdir(parents=True,exist_ok=True)
+        original=ROOT/'tests/performance/polkavm';crate=build/'reference-source';(crate/'src').mkdir(parents=True,exist_ok=True)
         for path in [original/'Cargo.toml',original/'Cargo.lock',*sorted((original/'src').glob('*.rs'))]:
             text=path.read_text()
             if path.name=='Cargo.toml':text=text.replace('../../../vendor/polkavm/',str(upstream)+'/')
@@ -246,9 +273,10 @@ def run():
             (crate/('src/'+path.name if path.suffix=='.rs' else path.name)).write_text(text)
         source_identities.update({p:digest(p) for p in crate.rglob('*') if p.is_file()})
         report['builds'].append(command(['rustup','run',rust,'cargo','fetch','--locked','--manifest-path',crate/'Cargo.toml'],'reference-fetch'))
-        report['builds'].append(command(['rustup','run',rust,'cargo','build','--release','--locked','--offline','--manifest-path',crate/'Cargo.toml','--target-dir',BUILD/'reference-target'],'reference-build'))
-        reference=BUILD/'reference-target/release/ragnarok-pvm-benchmark'
+        report['builds'].append(command(['rustup','run',rust,'cargo','build','--release','--locked','--offline','--manifest-path',crate/'Cargo.toml','--target-dir',build/'reference-target'],'reference-build'))
+        reference=build/'reference-target/release/ragnarok-pvm-benchmark'
         driver=subprocess.check_output(['git','show',PRODUCTION+':tests/performance/pvm_sieve.nim'],cwd=ROOT).decode()
+        driver=driver.replace('../../src/', './production_source/src/')
         driver=replace_once(driver,'assert requestedSamples in ["1", "4", "13"]','assert requestedSamples == "2"')
         driver=replace_once(driver,'let samples = if requestedSamples == "1": 1 elif requestedSamples == "4": 4 else: 13','let samples = 2')
         driver=replace_once(driver,'  check(done.value.machine, indices, access, expected, limit, guest)', '''  check(done.value.machine, indices, access, expected, limit, guest)
@@ -257,7 +285,7 @@ def run():
   assert native.jitBuilt and native.jitPlatformSupported and native.checkedFallbackEnabled
   echo "WHOLE_JIT_NATIVE,", sample, ",", done.value.backend, ",", native.nativeFragments,
     ",", native.nativeCalls, ",", native.nativeOperations''')
-        adapter=BUILD/'jit_adapter.nim';adapter.write_text(driver)
+        adapter=build/'jit_adapter.nim';adapter.write_text(driver)
         source_identities[adapter]=digest(adapter)
         if any(digest(p)!=sha for p,sha in source_identities.items()):raise ValueError('consumed source changed during build preparation')
         images={}
@@ -266,7 +294,7 @@ def run():
                 ('controls',ROOT/'tests/performance/pvm_whole_controls.nim',[])]:
             before=resource.getrusage(resource.RUSAGE_CHILDREN);started=time.monotonic_ns()
             row,binary=checks.build(compiler,source,role,defines=defines,
-                cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(ROOT/'native/pvm_jit')])
+                cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(production_source/'native/pvm_jit')])
             after=resource.getrusage(resource.RUSAGE_CHILDREN)
             row['process_elapsed_ns']=time.monotonic_ns()-started
             row['process_cpu_ns']=round(((after.ru_utime+after.ru_stime)-(before.ru_utime+before.ru_stime))*1e9)
@@ -279,13 +307,13 @@ def run():
             raise ValueError('missing actual native controls')
         def environment(limit):
             """Every role restores the same immutable reference input and checked expected state."""
-            folder=BUILD/'inputs'/str(limit)
+            folder=build/'inputs'/str(limit)
             return dict(os.environ,RAGNAROK_PVM_GUEST='sieve',RAGNAROK_PVM_PRICING='prepared',
                 RAGNAROK_PVM_BACKEND='jit',RAGNAROK_PVM_SIEVE_INPUT=str(folder/f'input-{limit}.bin'),
                 RAGNAROK_PVM_SIEVE_EXPECTED=str(folder/f'expected-{limit}.bin'),RAGNAROK_PVM_SIEVE_SAMPLES='2',
                 RAGNAROK_PVM_SIEVE_ASSERT_PROBE='0')
         for limit in (1000,10000000):
-            folder=BUILD/'inputs'/str(limit);folder.mkdir(parents=True,exist_ok=True)
+            folder=build/'inputs'/str(limit);folder.mkdir(parents=True,exist_ok=True)
             report['controls'].append(command([reference,'--sieve-prepare',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',folder,limit,1],f'prepare-{limit}',dict(os.environ,RAGNAROK_PVM_GUEST='sieve')))
             if limit==1000:
                 # The actual small whole-image fixture must pass before the long diagnostic begins.
@@ -295,7 +323,7 @@ def run():
                 report['controls'].append(row)
         for role in ROLES:
             env=environment(10000000);env['RAGNAROK_PVM_SIEVE_ASSERT_PROBE']='1'
-            args=([images[role],'--sieve',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',BUILD/'inputs/10000000',10000000,2]
+            args=([images[role],'--sieve',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',build/'inputs/10000000',10000000,2]
                   if role==ROLES[2] else [images[role]])
             row=command(args,'assert-'+role,env,required=False)
             needle=('whole-image sieve assertion control' if role==ROLES[0] else
@@ -304,7 +332,7 @@ def run():
             report['controls'].append(row)
         sources=[*ROOT.glob('tests/performance/pvm_whole*'),ROOT/'tools/pvm_whole_sieve.py',adapter,
                  *sorted(crate.rglob('*.rs')),crate/'Cargo.toml',crate/'Cargo.lock',compiler,
-                 *[p for p in (BUILD/'inputs').rglob('*') if p.is_file()],*images.values()]
+                 *[p for p in (build/'inputs').rglob('*') if p.is_file()],*images.values()]
         if any(digest(p)!=sha for p,sha in source_identities.items()):raise ValueError('consumed source changed during builds/controls')
         identities=dict(source_identities)
         identities.update({p:digest(p) for p in sources if p.is_file()})
@@ -314,13 +342,14 @@ def run():
         for order,sample,role in matrix():
             # Compile and validate before this serial cohort; no competing work is launched during timings.
             if any(digest(path)!=sha for path,sha in identities.items()):raise ValueError('input/source/image changed')
-            args=([images[role],'--sieve',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',BUILD/'inputs/10000000',10000000,2]
+            args=([images[role],'--sieve',ROOT/'tests/fixtures/pvm-sieve/sieve.polkavm',build/'inputs/10000000',10000000,2]
                   if role==ROLES[2] else [images[role]])
             row=command(args,f'order{order}-sample{sample}-{role}',environment(10000000))
             report['runs'].append(dict(order=order,sample=sample,role=role,discarded=sample<3,
                                       run=row,measured=parse(row['output'],role)))
             save()
         if any(digest(p)!=sha for p,sha in identities.items()):raise ValueError('final source/input/image seal changed')
+        if any(digest(p)!=sha for p,sha in compiler_identities.items()):raise ValueError('compiler identity changed')
         report['final_seal']='passed'
         report['summary']=summarize(report['runs']);report['status']='passed'
         print(json.dumps(report['summary'],indent=2),flush=True)
