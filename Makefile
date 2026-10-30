@@ -687,3 +687,10 @@ check-pvm-whole-width: check-inventory
 
 check-pvm-whole-width-compare: check-inventory
 	$(PYTHON) tools/pvm_whole_width.py --compare --correctness "$(PVM_WHOLE_WIDTH_CORRECTNESS)" --review "$(PVM_WHOLE_WIDTH_REVIEW)"
+
+.PHONY: check-pvm-whole-fault-pc check-pvm-whole-fault-pc-compare
+check-pvm-whole-fault-pc: check-inventory
+	$(PYTHON) tools/pvm_whole_fault_pc.py
+
+check-pvm-whole-fault-pc-compare: check-inventory
+	$(PYTHON) tools/pvm_whole_fault_pc.py --compare --correctness "$(PVM_WHOLE_FAULT_PC_CORRECTNESS)" --review "$(PVM_WHOLE_FAULT_PC_REVIEW)"
