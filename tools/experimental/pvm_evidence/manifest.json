@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "purpose": "Experimental preservation only; no new experiment, runtime adoption, or qualification",
+  "base": "4a29188758026f062e2b970b96df2665d8764d4e",
+  "original_checkout": "/Users/jacogr/Projects/jacogr/ragnarok-pvm-jit",
+  "files": [
+    {
+      "archive": "arm_audit_baseline.py",
+      "original": "build/arm-region-refusal-work/audit-baseline.py",
+      "sha256": "a4d9eab561e4d1ceab2f96eeb1e8755f7cd6f2ae7e62e348d62bc3c38d4f0aae",
+      "bytes": 3824
+    },
+    {
+      "archive": "region_audit.py",
+      "original": "build/arm-region-refusal-work/audit-region-diagnostic.py",
+      "sha256": "2f8cf3135427e1f281190f30f6834c0104001ec5a11b4ba9230ef79b0a3df711",
+      "bytes": 11786
+    },
+    {
+      "archive": "arm_download.py",
+      "original": "build/arm-region-refusal-work/download-evidence.py",
+      "sha256": "7ad8350607dcde45331a0cba81c70fdbb12a8ee53d933a94caa319027dd8ec0c",
+      "bytes": 4231
+    },
+    {
+      "archive": "arm_gas_oracle.py",
+      "original": "build/arm-region-refusal-work/gas-oracle.py",
+      "sha256": "204409649131c0ed39c4af16d9971351b5f92e821dd521933928681434219cfd",
+      "bytes": 2968
+    },
+    {
+      "archive": "doom_audit.py",
+      "original": "build/doom-e2e-work/audit-copy-fix-full.py",
+      "sha256": "050d210aba7e87d2ab8f34847619b8c39ae82f2bf467427924154da239ac0d7d",
+      "bytes": 17898
+    },
+    {
+      "archive": "doom_download.py",
+      "original": "build/doom-e2e-work/download-evidence.py",
+      "sha256": "52b044df59b30442eb5ac5c2a52290439aee691f2c99878913b77c1f572dc4f0",
+      "bytes": 4396
+    },
+    {
+      "archive": "doom_copy_loop.py",
+      "original": "build/doom-e2e-work/inspect-copy-fix-asm.py",
+      "sha256": "17bdac5bffb50eec44d399b92f2f63dc6cb4ce6977efb7dbbb21f2ee259438cb",
+      "bytes": 3129
+    }
+  ],
+  "frozen_machinery": [
+    {
+      "branch": "codex/pvm-region-coverage-diagnostic",
+      "head": "8bdaac76535552fad6c308374ba72d9cbb2604a2",
+      "run": 41059179556,
+      "entrypoints": [
+        "tools/pvm_region_diagnostic.py",
+        "tests/test_pvm_region_diagnostic.py",
+        "tests/support/pvm_region_diagnostic_control.nim"
+      ],
+      "limit": "Private define-only observer; FINAL REGROUP, potential history-attribution limitation; no adopted runtime or timing claim"
+    },
+    {
+      "branch": "codex/pvm-doom-e2e-audit-copy-1",
+      "head": "fdd863842221f43497e21345d021d846d14042a5",
+      "run": 41031037331,
+      "entrypoints": [
+        "tools/pvm_doom_e2e.py",
+        "tools/pvm_doom_timing.py",
+        "tests/performance/pvm_doom_e2e.nim",
+        "tests/performance/pvm_doom_e2e_ref.rs.inc"
+      ],
+      "limit": "Fixed matched immutable-caller measurement and audit-copy correction only; historical eager runtime unadopted; no general VM/JAM gas/gameplay claim"
+    },
+    {
+      "fetch_ref": "refs/pull/1855/head",
+      "head": "5dd1de0ef162c1d90f134e7771f1178856d3c228",
+      "baseline": "dcbd1ce59ff3c48ef874101bd7e6c870237844fb",
+      "merged_as": "ef5b4a3514b5bcbf8fc488366140a8c634c1f5bd",
+      "run": 41051261233,
+      "entrypoints": [
+        "tests/unit/state/test_pvm_arm_region_refusal.nim"
+      ],
+      "limit": "Baseline native failure is intended historical coverage regression, not a successful baseline or speedup"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "build/region-coverage-evidence/41059179556",
+      "files": {
+        "coverage-report.md": "78fe42a0dcad46069197a5e0bb0d5ad9699788785fc5ff7447af90560c083554",
+        "independent-review/review-receipt.json": "b6295d65092d5ebc42dacaffe146877f463c49dba0a7f1f2d7dbbb52de5a48ad"
+      },
+      "status": "Independent actual archival clearance; FINAL REGROUP",
+      "artifacts": [
+        {
+          "id": 12978248544,
+          "sha256": "281ff9798f24e66fb0d552067e4ff0f0868caad185d1fe9f27e1d0286c8b5e74"
+        },
+        {
+          "id": 12977544962,
+          "sha256": "99f8f217ab39e0c2e66ac1d94a6c3147d14c1de89c296e91b86c9f7d048bea2f"
+        }
+      ]
+    },
+    {
+      "path": "build/pvm-doom-e2e-evidence/41031037331",
+      "files": {
+        "accepted-result.json": "1e2693fa6f0cde08de16f45982efcd5cb6cc956e50ceb7e4bc6f05014cb16197",
+        "independent-review/receipt.json": "8a2b124ce87e998ef1e03b857927f01093881790db7f41fa50144cd9fae066ed"
+      },
+      "status": "Matched cohort independently qualified at exact frozen source; no runtime adoption"
+    },
+    {
+      "path": "build/pvm-doom-e2e-evidence/41028220399",
+      "status": "Build-only eight-image inert preflight/disassembly, not full cohort"
+    },
+    {
+      "path": "build/arm-region-refusal-evidence/41051261233",
+      "status": "Confirmed intended failing baseline; do not relabel PASS"
+    },
+    {
+      "path": "build/pvm-doom-timing-evidence/41004352868",
+      "status": "Historical unequal-scope result retained; not valid matched comparison"
+    },
+    {
+      "path": "build/pvm-doom-e2e-evidence/41017859851",
+      "status": "Timed-out/incomplete matched attempt retained; no complete ratio claim"
+    }
+  ],
+  "excluded": "Broken audit-fixed.py (mixed-row KeyError), transient dispatch/publish scripts, superseded one-off audits, raw artifacts/binaries/caches and other chats' helpers are not promoted."
+}
