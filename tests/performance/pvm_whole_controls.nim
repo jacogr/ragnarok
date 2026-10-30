@@ -6,19 +6,24 @@ import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
 import ./pvm_whole_image
 
-proc source(code: seq[byte], starts: seq[int]): Program =
-  ## Build canonical owner-bound small programs; arbitrary operand bytes never become native entry points.
-  var wire: seq[byte] = @[0'u8, 0]
+proc blob(code: seq[byte], starts: seq[int]): seq[byte] =
+  ## Canonical raw fixtures remain separate from the real decoder's owner authorization.
+  result = @[0'u8, 0]
   let size = encode(JamNatural(uint64(code.len)))
-  for i in 0..<size.len: wire.add(size.bytes[i])
-  for value in code: wire.add(value)
+  for i in 0..<size.len: result.add(size.bytes[i])
+  for value in code: result.add(value)
   var mask = newSeq[byte]((code.len+7) div 8)
   for pc in starts:
     assert pc >= 0 and pc < code.len
     mask[pc div 8] = mask[pc div 8] or (1'u8 shl (pc mod 8))
-  for value in mask: wire.add(value)
-  let made = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(32))
-  assert made.error == ProgramError.None
+  for value in mask: result.add(value)
+
+proc source(code: seq[byte], starts: seq[int], jam: bool = true): Program =
+  ## JAM requires a final nonfallthrough terminator; Paper additionally admits final conditional/fallthrough controls.
+  let wire = blob(code, starts)
+  let made = if jam: decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(32))
+    else: decodeProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(32))
+  assert made.error == ProgramError.None, "genuine control fixture decoding"
   made.value
 
 proc execute(source: Program, memory: Memory, registers: RegisterFile): (Invocation, Memory) =
@@ -121,6 +126,7 @@ block:
   cpu[1] = RegisterValue(0x10000)
   let signed = source(@[125'u8, 0x11, 0, 50, 0, 0], @[0, 3])
   let (done, actual) = execute(signed, captured.value, cpu)
+  echo "CONTROL_SIGNED_LOAD,", done.status, ",", done.loads, ",", done.registers[1]
   assert done.status == 1 and done.loads == 1 and done.registers[1] == 0xffffffffffffff80'u64
   unchanged(captured.value, actual)
 block:
@@ -130,10 +136,12 @@ block:
     source(@[51'u8, 7, 42, 40, 0x7f], @[0, 3]),
     source(@[51'u8, 7, 42, 50, 1, 0], @[0, 3]),
     source(@[2'u8, 80, 0x17, 42, 0x7f], @[0, 1])]
-  for program in cases:
+  for caseIndex in 0..<cases.len:
+    let program = cases[caseIndex]
     var cpu = registers
     cpu[1] = RegisterValue(1)
     let (done, actual) = execute(program, empty.value, cpu)
+    echo "CONTROL_NONZERO_PANIC,", caseIndex, ",", done.status, ",", done.pc, ",", done.registers[7]
     assert done.status == 2 and done.pc == 0 and done.registers[7] == 42
     unchanged(empty.value, actual)
 block:
@@ -147,39 +155,49 @@ block:
     var cpu = registers
     cpu[1] = RegisterValue(if scenario == 0: 0xffff'u64 else: 0x11000'u64)
     let (done, actual) = execute(program, captured.value, cpu)
+    echo "CONTROL_NONZERO_MEMORY,", scenario, ",", done.status, ",", done.pc, ",", done.registers[7]
     assert done.status == (if scenario == 0: 2'u64 else: 3'u64)
     assert done.pc == (if scenario == 0: 0'u64 else: 3'u64)
     assert done.registers[7] == 42 and done.stores == 1
     unchanged(captured.value, actual)
 block:
   # Immediate/register conditions validate both successors before either outcome; earlier writes survive panic.
+  echo "BUILD_SUCCESSOR_REGISTER_TARGET"
   let badTargetRegister = source(@[51'u8, 9, 42, 172, 0x87, 0x7f, 50, 0, 0], @[0, 3, 6])
+  echo "BUILD_SUCCESSOR_IMMEDIATE_TARGET"
   let badTargetImmediate = source(@[51'u8, 9, 42, 83, 0x17, 1, 0x7f, 50, 0, 0], @[0, 3, 7])
-  let missingRegister = source(@[51'u8, 9, 42, 40, 5, 50, 0, 0, 172, 0x87, 0xfd], @[0, 3, 5, 8])
-  let missingImmediate = source(@[51'u8, 9, 42, 40, 5, 50, 0, 0, 83, 0x17, 1, 0xfd], @[0, 3, 5, 8])
-  for program in @[badTargetRegister, badTargetImmediate, missingRegister, missingImmediate]:
+  echo "BUILD_SUCCESSOR_REGISTER_FALLTHROUGH"
+  let missingRegister = source(@[51'u8, 9, 42, 40, 5, 50, 0, 0, 172, 0x87, 0xfd], @[0, 3, 5, 8], false)
+  echo "BUILD_SUCCESSOR_IMMEDIATE_FALLTHROUGH"
+  let missingImmediate = source(@[51'u8, 9, 42, 40, 5, 50, 0, 0, 83, 0x17, 1, 0xfd], @[0, 3, 5, 8], false)
+  let successors = @[badTargetRegister, badTargetImmediate, missingRegister, missingImmediate]
+  for caseIndex in 0..<successors.len:
+    let program = successors[caseIndex]
     for taken in 0..<2:
       var cpu = registers
       cpu[7] = RegisterValue(if taken == 0: 2'u64 else: 0'u64)
       cpu[8] = RegisterValue(1)
+      echo "EXECUTE_SUCCESSORS,", caseIndex, ",", taken
       let (done, actual) = execute(program, empty.value, cpu)
+      echo "CONTROL_SUCCESSORS,", caseIndex, ",", taken, ",", done.status, ",", done.pc, ",",
+          done.registers[9]
       assert done.status == 2 and done.pc == 0
       for register in 0..<13:
         assert done.registers[register] == (if register == 9: 42'u64 else: uint64(cpu[register]))
       unchanged(empty.value, actual)
 block:
-  # A final nonterminator refuses compilation without allocating code or mutating any caller CPU/memory.
+  # Neither genuine owner decoder accepts a final nonterminator; no forged Program can reach compilation.
   let before = allocationCounts()
-  for program in @[source(@[51'u8, 7, 42], @[0]), source(@[123'u8, 0x17, 0], @[0]),
-      source(@[130'u8, 0x17, 0], @[0])]:
-    var image = default(WholeImage)
-    var diagnostic = ""
-    assert not compileWhole(program, CodeAddress(0), image, diagnostic)
-    assert diagnostic == "missing successor at 0"
+  for code in @[@[51'u8, 7, 42], @[123'u8, 0x17, 0], @[130'u8, 0x17, 0]]:
+    let wire = blob(code, @[0])
+    assert decodeProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(32)).error ==
+        ProgramError.InvalidProgram
+    assert decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(
+        32)).error == ProgramError.InvalidProgram
     assert allocationCounts() == before
 block:
   # Fallthrough is a true control opcode: a missing target is guest Panic, not local-invalid compilation refusal.
-  let endProgram = source(@[1'u8], @[0])
+  let endProgram = source(@[1'u8], @[0], false)
   let (done, actual) = execute(endProgram, empty.value, registers)
   assert done.status == 2 and done.pc == 0
   for i in 0..<13: assert done.registers[i] == uint64(registers[i])

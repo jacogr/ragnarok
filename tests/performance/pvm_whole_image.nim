@@ -482,7 +482,7 @@ proc compileWhole*(source: Program, entry: CodeAddress, image: var WholeImage,
     if decoded.error != ProgramError.None: continue # Operand bytes are never compiled as instructions.
     let item = decoded.value
     let slots = instructionRegisters(decoded)
-    # The checked executor rejects a local-invalid nonterminator before any register or memory effect.
+    # Defensive only: both genuine decoders already require a final terminator; never execute a broader invalid form.
     if not terminatesBlock(item.opcode) and not instructionHasFallthrough(decoded):
       diagnostic = "missing successor at " & $pc
       return false
