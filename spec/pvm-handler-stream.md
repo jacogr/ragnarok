@@ -781,3 +781,35 @@ all sixteen Perf dependency result combinations and reject missing or historical
 Local verification includes all CI/comparison safeguard tests, related parsers, verification inventory
 and real master DOOM initialization/gameplay calls with assertion refusals. Linux confirmation is
 separate from these local checks; this correction changes no production interpreter source.
+
+
+## Deferred complete-reservation endpoints
+
+The checked interpreter and native whole-block entries still deduct the original source quota
+at exactly the same point. A complete reservation now retains its stable stream-header offset
+instead of reading the source-index array to calculate an endpoint on every entry. Only an
+attempted terminal, fault or host exit resolves that header to `sites[header] + arguments[header].y`
+before refunding the unexecuted source suffix. Gas refusals and local errors retain their original
+ordering and do not create an attempted exit.
+
+The private 32-bit reservation word distinguishes a raw source end from a header using bit31.
+Source ordinals are bounded by the existing four-MiB source limit, and emitted offsets remain
+below 2^31 under node admission. Partial quotas and paid interior resumes keep their exact raw
+source end because it also identifies the temporary source-budget barrier. Native region state
+retains the last completed header. The four-iteration checked word loop identifies its original
+five-source-instruction header. No CPU state, source quota or executable owner is added to the
+reusable stream.
+
+Header arguments and source coordinates remain unchanged during a reservation, and the exclusive
+stream lease survives through exit accounting. Temporary budget handlers are restored before
+publication. The endpoint is resolved before host observation, stream transfer or frame retirement;
+immutable snapshots, host response validation and native cleanup retain their existing contracts.
+
+Scope remains Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` and the existing source-attempt
+interpretation. This changes private accounting metadata, not guest gas, instruction effects,
+exit PC, mapping permissions, local resource admission or fallback policy.
+
+Local macOS ARM evidence is recorded under ignored `build/pvm-block-execution/`. The paired
+public DOOM and micro cohorts use pinned Nimony 63fed6cb4, ARC, checked release, Clang ThinLTO,
+the same canonical source paths, immutable fixtures and complete state/output validation.
+Linux qualification and final validation evidence will be recorded here before a speed claim.
