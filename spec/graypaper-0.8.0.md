@@ -1,5 +1,9 @@
 # Gray Paper 0.8.0 migration and parity audit
 
+The current unreleased source pin and credential-encoding qualification are recorded
+in [the current pin update](graypaper-credential-encoding.md). The release comparison
+below retains its original source identities.
+
 Target: [v0.8.0](https://github.com/gavofyork/graypaper/releases/tag/v0.8.0), commit
 `07f041dabd073f9018b418e9ee72e79dd2185401`. Previous target: v0.7.1,
 `1c979cb59bb800f92ffff083a2701004dfc6cd33`. This audit compares those exact revisions,

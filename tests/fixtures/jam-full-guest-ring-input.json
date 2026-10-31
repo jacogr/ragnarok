@@ -1,7 +1,7 @@
 {
   "source": "pinned ark-vrf bs_commit input witness; independent distinct public points/Ed keys; no STF observation",
   "capacity": 1023,
-  "bandersnatch_pins_sha256": "c105d28462e5ff2cb418dcec225bca550936ef78fcf84e0fed28264d5eb9f70c",
+  "bandersnatch_pins_sha256": "b684afcfcd8dd893e9f0668a4d29369315b57587039a60fa5df32ac3a3a7048c",
   "members_sha256": "e0116bd004ea0d5d5a457ddd9d5d01d00034bcefedfaca095ecddae92d009b93",
   "records_sha256": "28738b9a03ab35f96bd3f313eab4af06186ed6d6ea75185818c2149e2e0badb5",
   "commitment": "a910d124fa0ac9444c41b930d14a1eae93324d97d10542e8f0c39da5e7390718bf09bae37f58eaad7f8351aee816682e95997c5ef43d058b505f9ad5006455c2fdd5154d3d21c847465f36abcc7cf7ec113a995c8902ca755ad77c4b9ba8f43496c1b168e2dcc743f9eadda76c041db42d39f27a58418f88c0ea67656a224934e12b5dfc8f0f460a95c2d467fa41907b"
