@@ -2818,3 +2818,89 @@ at the same runtime source head, including shared accounting, refusal and owners
 Its raw application data and source audit are recorded in
 [x86 reservation qualification](pvm-handler-stream.md#deferred-reservation-x86-qualification).
 The ARM-only read/branch lowering is inactive there.
+
+## Indirect read with cached conditional
+
+Current master `a0997ac1469113ba1f65b4f4bdde9c9462cf138e` has the identical tree to the
+approved and measured parent `c83835e3cdf05c6800d973fd1a0a6ded29fb0555`. An indirect read of opcode 124–130 followed by
+at least one supported pure operation and a conditional can use the existing deferred
+read/branch publication path. Its source scan stops at a second read, store, host operation,
+duplicate charged header or other unsupported boundary. An ineligible sequence retains the
+existing indirect-memory compiler; multi-read windows and dirty word-loop priority keep their
+original admission. The original checked branch must cache both positive scalar arms before
+publication. The native read uses the original base register value even when the destination
+aliases it, adds the displacement modulo 2³², and guards the protected prefix, conservative
+top-address bound and current readable descriptors before publishing any guest register. A
+guard refusal returns to the original paid checked source with its exact gas and attempted-step
+state. A successful native conditional alone clears the paid flag and chooses a cached arm.
+The shared 1,024-entry arena ceiling still governs publication.
+
+The maintained full-state ARM witness includes one aliased signed-byte read, pure update and
+conditional loop. Its isolated warm execution requires exactly one native publication, positive
+successful native branch calls and three lowered guest operations per successful branch. The
+122 source controls compare paid and unpaid entry, gas and source-attempt budgets, present and
+removed mappings against independent single stepping. A second seven-case warm set requires
+the three-operation route separately for each indirect opcode 124–130. Existing indirect read
+literal matrices cover detailed destination/base aliases and guard refusals. Native,
+executable-storage-refused and interpreted runs each require one control, one mode-specific
+activation receipt and one seven-width selector receipt; the latter two modes require zero
+native publication, branch calls, operations and width activations.
+The Python parser and both fake CI fixture families reject missing, duplicated, malformed,
+truncated or cross-mode receipts. A build-only mutant with the new indirect admission removed
+failed the three-operation activation assertion after the inherited direct controls passed.
+A second mutant omitted opcode 130 only from the new deferred route, retaining its old memory
+fallback; it passed the focused 122 controls and failed the seven-width activation assertion.
+
+In a private macOS ARM64 comparison, exact `c83835e3` baseline and this candidate used the
+same pinned Nimony nightly, ARC, Clang ThinLTO, checked release flags and prepared DOOM input.
+Each public process supplied 13 samples; samples 0–2 were excluded. Three balanced ABBA cycles
+per phase/backend gave median CPU nanoseconds:
+
+| Public phase | Baseline | Candidate | Change | Paired cycle changes |
+| --- | ---: | ---: | ---: | --- |
+| Interpreted init | 297,867,500 | 298,304,750 | +0.15% | +0.19%, +0.07%, +0.21% |
+| Interpreted tick | 26,109,500 | 24,611,000 | −5.74% | −5.77%, −4.38%, −5.57% |
+| JIT init | 174,801,000 | 171,111,250 | −2.11% | −2.11%, −2.04%, −3.89% |
+| JIT tick | 19,366,500 | 18,378,500 | −5.10% | −7.13%, −4.68%, −5.67% |
+
+The interpreted tick change is observed with the new JIT route inactive. Its cause is
+unestablished; it is not attributed to executing the new native path. Exact public JIT init policy receipts show publications
+1,024→1,024, native calls 16,396,783→16,397,278 and lowered operations
+2,279,426,621→2,281,585,695. JIT tick receipts show publications 910→842,
+native calls 16,066,627→16,066,561 and lowered operations
+152,738,024→153,228,246. These counters cover all 13 public calls in one process of
+each phase; the CPU values aggregate all balanced processes. The full ARM witness passed in
+native, executable-storage-refused and interpreted modes. The 19 ARM tooling tests and
+14 native CI fixture tests passed. Linux qualification against exact master is required before readiness. Local evidence is retained under `build/pvm-indirect-branch/`: `local-results.json`,
+`peer-receipt.json`, the mode/mutation logs under `peer-witness/`, and actual-branch checks
+under `verify/`.
+
+
+### Indirect read Linux qualification and performance hold
+
+[ARM run 41235293126](https://github.com/jacogr/ragnarok/actions/runs/41235293126) passes correctness
+at `fb82a2923776189f21252feef9bc6e8b4e70e9d0` against exact master
+`a0997ac1469113ba1f65b4f4bdde9c9462cf138e`. All 20 application builds, 84 primary processes,
+138 controls, 60 replays, 2,575 role-source identities and 519 native source identities pass
+independent raw parsing and exact-source audit. The new receipts report native activation
+1 publication/1 successful branch/3 operations, seven widths and 122 controls; refused mode
+reports zero activation/widths and the same 122 controls. Existing direct, dirty/word-loop,
+source-boundary and ownership gates pass. Artifact 13055421526 ZIP SHA-256 matches GitHub's
+`6cdba56b7a4a80302042b0dc1fa08a6e31722e8d048e6215713a24d0348e3332` digest; report SHA-256 is
+`1336cce6d6a54b05abc3d67decc9aff30a66b785198c166ed4f29429ba2b0297`.
+
+The production performance case is not established. DOOM JIT tick primary CPU is
+26.961 to 26.625 ms and 27.001 to 26.989 ms; pooled replay medians are 26.916384 to 26.835642 ms,
+ratio 0.997000. Four of six tick pairs are lower, but the replay improvement is only 0.30%.
+Init JIT pooled CPU is 228.909792 to 232.860588 ms, ratio 1.017259; all six pairs are slower
+(1.0030–1.0291). Interpreted tick primary ratios are 0.999308/0.998603, so the local interpreted
+movement is absent. Candidate tick/PolkaVM-interpreted ratios are 0.6644/0.6732 JIT and
+0.7851/0.7932 interpreted within this cohort. Long-sieve JIT improves in all six pairs,
+pooled ratio 0.978523, while Pinky JIT is slower in all six, pooled ratio 1.008597.
+
+The proposal remains draft on performance hold, without an LGTM or production merge. Its
+correctness checks and broader native coverage are useful preserved machinery, but the local
+whole-DOOM gain did not carry to Linux. No extra CI is requested to repeat this verdict.
+The next measured architecture lead is a complete guarded load/update/store/update/conditional
+region; its steady-state source shape accounts for about 13% of remaining checked memory
+attempts in a diagnostic prototype census. Instrumented timing is excluded from speed claims.

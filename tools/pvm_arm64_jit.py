@@ -119,6 +119,35 @@ def direct_branch_witness(output, mode):
     return dict(literal_cases=expected['ARM_DIRECT_BRANCH_LITERAL_CASES'], control_cases=122)
 
 
+def indirect_branch_witness(output, mode):
+    """Require complete source controls and a mode-specific native fusion activation."""
+    if mode not in ('native', 'refused', 'interpreted'):
+        raise ValueError('Unknown indirect-read witness mode')
+    lines = output.splitlines()
+    controls = [line for line in lines if line.startswith('ARM_INDIRECT_BRANCH_CONTROL_CASES,')]
+    if controls != ['ARM_INDIRECT_BRANCH_CONTROL_CASES,122']:
+        raise ValueError('Missing or changed indirect-read witness controls')
+    width_activations = [line for line in lines
+                         if line.startswith('ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,')]
+    expected_widths = 7 if mode == 'native' else 0
+    if width_activations != [f'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,{expected_widths}']:
+        raise ValueError('Missing or changed indirect-read width activation receipt')
+    records = [line.split(',') for line in lines
+               if line.startswith('ARM_INDIRECT_BRANCH_ACTIVATION,')]
+    if (len(records) != 1 or len(records[0]) != 4 or
+            any(not value.isascii() or not value.isdecimal() or int(value) >= 2**63
+                for value in records[0][1:])):
+        raise ValueError('Missing or malformed indirect-read activation receipt')
+    publications, calls, operations = map(int, records[0][1:])
+    if mode == 'native':
+        if publications != 1 or calls == 0 or operations != 3*calls:
+            raise ValueError('Indirect-read branch did not execute as one native fragment')
+    elif publications or calls or operations:
+        raise ValueError('Checked or refused indirect-read witness claimed native execution')
+    return dict(publications=publications, calls=calls, operations=operations,
+                control_cases=122, width_activations=expected_widths)
+
+
 def qualify(checks, compiler, *, native=True):
     """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
     rows = []
@@ -180,6 +209,7 @@ def qualify(checks, compiler, *, native=True):
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
             checked['direct_branch'] = direct_branch_witness(checked['output'], mode)
+            checked['indirect_branch'] = indirect_branch_witness(checked['output'], mode)
         if native and name == 'witness':
             # Genuine two/three-block caches and every inactive charge record must retain exact scalar mismatch refusal.
             matches = [line for line in checked['output'].splitlines()

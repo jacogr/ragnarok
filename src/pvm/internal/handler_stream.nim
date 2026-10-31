@@ -2396,18 +2396,26 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
   proc flatArmUpgradeReadBranch(f: var FlatFrame, offset: uint32): bool =
-    ## Rebuild one direct-load prefix only after the original conditional has cached both positive arms.
+    ## Rebuild one read prefix only after the original conditional has cached both positive arms.
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return false
     let ending = armEnding(jit, offset)
     let first = f.plan.facts[int(f.sites[int(offset)])]
     let readOpcode = int(first.opcode)
-    assert readOpcode >= 52 and readOpcode <= 58
+    assert readOpcode in 52..58 or readOpcode in 124..130
     let before = armClock()
     var native = default(ArmReadSpan)
-    emitArmDirectRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
-        range[52..58](readOpcode))
+    if readOpcode in 52..58:
+      # Absolute reads use their sealed immediate without consuming an address register.
+      assert readOpcode >= 52 and readOpcode <= 58
+      emitArmDirectRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
+          range[52..58](readOpcode))
+    else:
+      # The shared indirect lowering snapshots the old B value before an aliased destination can change it.
+      assert readOpcode >= 124 and readOpcode <= 130
+      emitArmRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
+          range[124..130](readOpcode))
     for current in offset+1..<ending:
       let fact = f.plan.facts[int(f.sites[int(current)])]
       assert supportedArmOpcode(fact.opcode)
@@ -2436,8 +2444,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
-  proc flatArmCompileDirectReadBranch(f: var FlatFrame, offset: uint32): uint32 =
-    ## Defer one direct load and pure suffix ending in a conditional, avoiding a superseded branch publication.
+  proc flatArmCompileReadBranch(f: var FlatFrame, offset: uint32): uint32 =
+    ## Defer one read and pure suffix ending in a conditional, avoiding a superseded branch publication.
     let jit = f.armJit
     assert jit != nil
     if jit == nil: return offset
@@ -2568,9 +2576,12 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if entry != 0: return offset
     if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
     if f.plan.facts[int(f.sites[int(offset)])].opcode in 52'u8..58'u8:
-      return flatArmCompileDirectReadBranch(f, offset)
-    if f.plan.facts[int(f.sites[int(offset)])].opcode in
-        124'u8..130'u8: return flatArmCompileMemory(f, offset)
+      return flatArmCompileReadBranch(f, offset)
+    if f.plan.facts[int(f.sites[int(offset)])].opcode in 124'u8..130'u8:
+      # A second read/store or unsupported suffix retains the existing memory/window compiler.
+      let deferred = flatArmCompileReadBranch(f, offset)
+      if deferred > offset: return deferred
+      return flatArmCompileMemory(f, offset)
     var native = default(ArmBlock)
     var ending = offset
     var count = 0'u32
