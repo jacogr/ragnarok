@@ -198,6 +198,81 @@ when defined(pvmArm64Jit):
             assert jit.operations == operations+(if refusal == 0: 4'u64 else: 0'u64)
             inc readSpanLiteralCases
   echo "ARM_READ_SPAN_LITERAL_CASES,", readSpanLiteralCases
+  var directBranchLiteralCases = 0
+  when not defined(pvmArm64JitRefuse):
+    for opcode in 52'u8..58'u8:
+      let readOpcode = int(opcode)
+      let width = 1 shl ((readOpcode-52) div 2)
+      for destination in 0..<13:
+        let other = (destination+1) mod 13
+        let fixture = owner([@[opcode, byte(destination), 3, 0, 1, 0],
+          @[149'u8, byte(destination*16+destination), 1],
+          @[170'u8, byte(other*16+destination), 0, 0, 0, 0], @[0'u8]])
+        var span = default(ArmReadSpan)
+        emitArmDirectRead(span, instructionRegisters(instruction(fixture, CodeAddress(0))),
+            65539, range[52..58](readOpcode))
+        emitArmReadArithmetic(span, 149,
+            instructionRegisters(instruction(fixture, CodeAddress(6))), 1)
+        emitArmReadBranch(span, 170,
+            instructionRegisters(instruction(fixture, CodeAddress(9))), 0, 7, 9)
+        let jit = newArmJit()
+        assert armEntry(jit, 0, 1) == 0
+        var words = armReadInstructions(span, 2, true)
+        assert publishArmEntry(jit, 0, 2, 3, words)
+        var bytes = default(array[16, byte])
+        for at in 0..<width: bytes[3+at] = byte(at*23+17)
+        if opcode in [53'u8, 55, 57]: bytes[3+width-1] = 0x80
+        var value = 0'u64
+        for at in 0..<width: value = value or (uint64(bytes[3+at]) shl (8*at))
+        if opcode in [53'u8, 55, 57] and (bytes[3+width-1] and 128) != 0:
+          value = value or (high(uint64) shl (width*8))
+        let advanced = RegisterValue(value+1)
+        for region in 0..<3:
+          for selected in [false, true]:
+            for layout in 0..<3:
+              # The immediate never reads a guest base; refusal must leave the destination and branch operands untouched.
+              var descriptors = default(array[3, array[3, uint64]])
+              if layout != 1:
+                descriptors[region] = [65536'u64, (if layout == 2: 3'u64 else: 9'u64),
+                    cast[uint64](addr bytes[0])]
+              var registers = default(RegisterFile)
+              for slot in 0..<13: registers[slot] = RegisterValue(0x1122334455667788'u64+uint64(slot))
+              registers[other] = RegisterValue(uint64(advanced)+(if selected: 0'u64 else: 1'u64))
+              let original = registers
+              let before = jit.operations
+              let next = callArmMemoryBranch(jit, 0, 7, 9, registers, descriptors)
+              if layout == 0:
+                assert next == (if selected: 7'u32 else: 9'u32)
+                var expected = original
+                expected[destination] = advanced
+                assert registers == expected and jit.operations == before+3
+              else:
+                assert next == high(uint32) and registers == original and jit.operations == before
+              inc directBranchLiteralCases
+    for address in [65535'u32, 0xfffffff8'u32]:
+      let fixture = owner([@[58'u8, 0, 0, 0, 0, 0], @[149'u8, 0, 1],
+        @[170'u8, 0x10, 0, 0, 0, 0], @[0'u8]])
+      var span = default(ArmReadSpan)
+      emitArmDirectRead(span, instructionRegisters(instruction(fixture, CodeAddress(0))),
+          address, 58)
+      emitArmReadArithmetic(span, 149,
+          instructionRegisters(instruction(fixture, CodeAddress(6))), 1)
+      emitArmReadBranch(span, 170,
+          instructionRegisters(instruction(fixture, CodeAddress(9))), 0, 7, 9)
+      let jit = newArmJit()
+      assert armEntry(jit, 0, 1) == 0
+      var words = armReadInstructions(span, 2, true)
+      assert publishArmEntry(jit, 0, 2, 3, words)
+      var bytes = default(array[16, byte])
+      var descriptors = default(array[3, array[3, uint64]])
+      descriptors[0] = [uint64(address), 9'u64, cast[uint64](addr bytes[0])]
+      var registers = default(RegisterFile)
+      registers[0] = RegisterValue(123)
+      let original = registers
+      assert callArmMemoryBranch(jit, 0, 7, 9, registers, descriptors) == high(uint32)
+      assert registers == original
+      inc directBranchLiteralCases
+  echo "ARM_DIRECT_BRANCH_LITERAL_CASES,", directBranchLiteralCases
   var readWindowLiteralCases = 0
   when not defined(pvmArm64JitRefuse):
     for baseSlot in 0..<13:
@@ -1594,6 +1669,49 @@ for boundary in [0, 1]:
       verifyControl(frame, program, input, budget)
       inc boundaryCases
 echo "ARM_HOST_FAULT_CASES,", boundaryCases
+
+# A direct signed read, pure update and cached branch retain the original charged loop boundary.
+let directLoopProgram = owner([@[57'u8, 0, 0, 0, 1, 0],
+    @[149'u8, 0x11, 1], @[171'u8, 0x21, 0xf7, 0xff, 0xff, 0xff], @[0'u8]])
+let directLoopPlan = newFlatPlan(directLoopProgram, GasCycleLimit(100000))
+var directLoopPage = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly)
+directLoopPage.bytes[3] = 0x80
+var directLoopRegisters = default(RegisterFile)
+directLoopRegisters[2] = RegisterValue(4)
+let directLoopInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: directLoopRegisters)
+var directLoopFrame = newFlatFrame(directLoopPlan, [directLoopPage], directLoopInfo)
+for warm in 0..<2:
+  verifyControl(directLoopFrame, directLoopProgram, directLoopInfo, 100, [directLoopPage])
+when defined(pvmArm64Jit):
+  when defined(pvmArm64JitRefuse):
+    assert flatArmControlStatistics(directLoopFrame) == default(array[2, uint64])
+  else:
+    let control = flatArmControlStatistics(directLoopFrame)
+    let directStats = flatArmStatistics(directLoopFrame)
+    # This isolated program has exactly one three-operation composite candidate. The older
+    # checked-load plus two-operation native branch would increment calls without this ratio.
+    assert directStats[1] > 0 and directStats[2] == 3*directStats[1] and
+        control[0] == directStats[1],
+        "direct read and conditional must execute in the same native fragment"
+else:
+  echo "ARM_DIRECT_BRANCH_LITERAL_CASES,0"
+var directLoopControlCases = 0
+for paid in [false, true]:
+  for gas in [0'u64, 1, 2, 1000]:
+    for budget in 0'u64..14'u64:
+      # Warm native code must retain partial reservation, paid reentry and gas refusal precedence.
+      var input = directLoopInfo
+      input.gas = MachineGas(gas)
+      input.blockCharged = paid
+      verifyControl(directLoopFrame, directLoopProgram, input, budget, [directLoopPage])
+      inc directLoopControlCases
+for layout in 0..<2:
+  let images = if layout == 0: @[directLoopPage] else: newSeq[PageImage]()
+  assert replaceFlatMemoryChecked(directLoopFrame, images, directLoopInfo) == FlatError.None
+  verifyControl(directLoopFrame, directLoopProgram, directLoopInfo, 100, images)
+  inc directLoopControlCases
+echo "ARM_DIRECT_BRANCH_CONTROL_CASES,", directLoopControlCases
 
 # A genuine host mapping replacement takes the slow reentry path without losing its live code capability.
 let mappingProgram = owner([@[149'u8, 0, 1], @[149'u8, 0, 1], @[149'u8, 0, 1],
