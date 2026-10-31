@@ -105,6 +105,20 @@ def dirty_loop_witness(output, mode):
     return dict(calls=calls, blocks=blocks, declines=declines)
 
 
+def direct_branch_witness(output, mode):
+    """Require one mode-specific direct-read literal receipt and its complete source-state control."""
+    if mode not in ('native', 'refused', 'interpreted'):
+        raise ValueError('Unknown direct-read witness mode')
+    lines = output.splitlines()
+    expected = {'ARM_DIRECT_BRANCH_LITERAL_CASES': 1640 if mode == 'native' else 0,
+                'ARM_DIRECT_BRANCH_CONTROL_CASES': 122}
+    for marker, count in expected.items():
+        records = [line for line in lines if line.startswith(marker+',')]
+        if records != [marker+','+str(count)]:
+            raise ValueError('Missing or changed direct-read witness: '+marker)
+    return dict(literal_cases=expected['ARM_DIRECT_BRANCH_LITERAL_CASES'], control_cases=122)
+
+
 def qualify(checks, compiler, *, native=True):
     """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
     rows = []
@@ -165,6 +179,7 @@ def qualify(checks, compiler, *, native=True):
             # The CLI result carries only genuine native coverage, not inferred source-shape visits.
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
+            checked['direct_branch'] = direct_branch_witness(checked['output'], mode)
         if native and name == 'witness':
             # Genuine two/three-block caches and every inactive charge record must retain exact scalar mismatch refusal.
             matches = [line for line in checked['output'].splitlines()

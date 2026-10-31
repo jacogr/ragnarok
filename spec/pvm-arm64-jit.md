@@ -19,8 +19,9 @@ sections do not describe the current implementation.
   Linux x86-64 generation remains future work.
 - Lower 53 pure register opcodes and 16 conditional opcodes from sealed source facts. Complete
   pure headers can share native charging/dispatch, and one validated two/three-block register loop
-  keeps registers resident across guarded internal edges. One unsigned indirect64-bit load family
-  guards invocation-owned readable regions in native code before its pure arithmetic suffix.
+  keeps registers resident across guarded internal edges. Indirect load leaves and read spans
+  guard invocation-owned readable regions in native code before a pure arithmetic suffix. Direct
+  absolute loads can also share one guarded fragment with a pure suffix and cached conditional.
   A separate [guarded dirty-store self-loop](pvm-arm-dirty-loop.md) admits only the proven
   `198/120/149/149/171` shape after positive branch resolution. Other memory operations,
   hosts and eligibility/resource refusals retain the checked engine.
@@ -2743,3 +2744,77 @@ Evidence:`build/pvm-arm64-jit/post-merge/read-windows/`.
 Main report SHA256:`0765d8be74dbac9d32d946924f2ef3f8c30a216219216d21e7d86005c33c73b3`.
 Balanced report SHA256:`a7b252d4751b23127530d80d22255c77a6baba8ab404b659e0347e639eba2591`.
 Focused report SHA256:`667092ceb1e196257fb9db7429a2033af178635e68ea8c04c037c773b97b9c30`.
+
+## Direct absolute read with cached conditional
+
+The next local branch starts at exact merged master
+`f8612e62105d1a4b446d320f87df83eafeb95819`. A sealed source sequence beginning with
+one direct absolute load (opcodes 52–58), followed by at least one supported pure operation and
+a conditional (81–90 or 170–175), can publish one guarded ARM64 fragment. Publication waits
+until the original checked branch handler has positively cached both scalar destinations. The
+fragment computes the immediate modulo 2³², checks the protected prefix and conservative
+eight-byte top bound, then checks the current frame's three readable descriptors. No register
+write occurs before all read guards pass. A refusal replays the original paid checked source;
+partial budgets use its original barrier. Only a successful native conditional clears the paid
+flag and returns a cached destination. Ordinary block charging, host work and the 1,024-entry
+arena ceiling remain as before.
+
+On macOS ARM64 with the pinned Nimony/Clang ThinLTO checked release profile, a 13-call prepared
+DOOM tick comparison against exact master used samples 3–12 in each process. Across 12 balanced
+process pairs, the candidate won 9; the median candidate/master CPU ratio was 0.9900. Individual
+pair ratios ranged from 0.9606 to 1.0209, so this is a small, noisy local gain rather than a
+hardware-cause claim. The two paired initialization comparisons were near parity; that phase
+still hits the 1,024-entry cap. Tick native publications were 919→910, calls across 13 public
+calls 16,066,634→16,066,627, compiled operation receipts 149,409,457→152,738,024, and code
+bytes 174,828→175,428. The original branch call is replaced by a read/branch call, explaining
+why the native call count barely changes even though more source operations execute natively.
+
+The local ARM witness passes 1,640 direct literal cases across all seven signed/unsigned widths,
+thirteen destination registers, three descriptor positions, both branch arms, absent/short
+regions, and protected/top-address refusals. Another 122 full-frame cases compare the warm
+native loop with independent single stepping across paid/unpaid entry, gas, source-attempt
+budgets and memory replacement. The isolated warm loop additionally requires positive native
+calls with exactly three compiled guest operations per call; the older checked-load plus native
+arithmetic/branch path has only two. A build-only mutant with direct-read route admission removed
+reached and failed this assertion after the independent literal cases passed. The maintained
+native comparison gate requires one literal
+receipt of 1,640 in native mode or zero in refused/interpreted mode, and one 122-case control
+receipt in every mode; missing, repeated or cross-mode receipts are rejected. The
+executable-storage-refusal build passes with zero direct native literal calls and the same
+full-frame controls. Existing all-opcode and fragmented-region/host suites pass. These focused checks are macOS results; the combined Linux qualification follows below.
+
+Local evidence:`build/pvm-arm-next/paired-public-direct-tick-extra-results.json`,
+`build/pvm-arm-next/paired-public-direct-v1-tick-recheck.json`, and
+`build/pvm-arm-next/arm-direct-final-witness.log` (with refusal, all-opcode and fragmented-region/
+host logs beside it). The route-disabled mutant log is
+`build/pvm-arm-next/arm-direct-route-mutant.log`. The final source and retained witness both passed
+these focused checks; mode-specific receipt validation ran against fresh native, refused and
+interpreted witness outputs.
+
+
+### Combined Linux qualification
+
+[ARM run 41221760201](https://github.com/jacogr/ragnarok/actions/runs/41221760201) passed the
+maintained native gate and paired full-application comparison for source head
+`74cdecf940b3cc8e1772b4164edd25283a07ed4f`. It includes both this read/branch lowering and deferred
+reservation endpoint accounting. The full provenance, raw DOOM CPU values, matching-policy
+interpreter ratios and explicit long-sieve tradeoff are recorded in
+[deferred reservation qualification](pvm-handler-stream.md#deferred-reservation-qualification).
+
+Against exact baseline `f8612e62105d1a4b446d320f87df83eafeb95819`, combined JIT DOOM tick CPU is
+4.6–4.9% lower in both primary orders and improves in all six replay pairs. Its ratio to PolkaVM
+interpreted is 0.6971/0.6984. JIT initialization changes direction across primary orders. Long
+sieve JIT CPU increases in all six replays, with pooled ratio 1.014875. These native results
+measure the combined stack and do not isolate this lowering's contribution.
+
+The Linux native receipt includes all 1,640 direct literal cases and 122 full-frame controls,
+with the required native/refused/interpreted mode counts. The comparison gate's two fixture
+families both include the new receipts and reject their omission or truncation. Later
+qualification-documentation commits preserve all tested runtime, native and harness source bytes.
+
+
+[Focused x86 qualification](https://github.com/jacogr/ragnarok/actions/runs/41227642672) also passes
+at the same runtime source head, including shared accounting, refusal and ownership controls.
+Its raw application data and source audit are recorded in
+[x86 reservation qualification](pvm-handler-stream.md#deferred-reservation-x86-qualification).
+The ARM-only read/branch lowering is inactive there.
