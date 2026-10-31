@@ -71,10 +71,15 @@ preserves that hash and fails the dirty checkpoint comparison (165 versus 85).
 Checked ARC/Clang ThinLTO comparisons against exact master `9e3cd38c` show a 21–25% lower
 fresh-root execute component, but do not establish a full DOOM improvement: interpreted tick is
 flat and JIT tick is 2.0–2.6% higher across two cohorts. Linked code confirms the baseline explicit
-zero-fill is present and the candidate removes it inside the measured call. This independent
-increment remains on performance hold; the earlier positive trial on the two-layer stack needs
-confirmation under this same harness before any publication. Local receipts and both cohorts
-are retained under ignored `build/pvm-region-initialization/`.
+zero-fill is present and the candidate removes it inside the measured call. The standalone master increment remains on performance hold. With the same harness and flags
+after qualified source `74cdecf9`, three balanced ABBA cycles reproduce lower DOOM tick CPU:
+26.015 to 24.999 ms interpreted (3.90%) and 19.391 to 18.339 ms JIT (5.43%). The three JIT pair
+deltas are −4.43%/−4.61%/−5.55%; init is mixed and near parity. Fresh-root execute is 17.67%
+lower. Driver/input bytes and backend receipts match, supporting an interaction with the two
+preceding PVM changes without establishing its cause. This increment therefore follows that
+qualified stack and requires its own Linux qualification against the exact parent source.
+Local receipts and the comparison cohorts are retained under ignored
+`build/pvm-region-initialization/`.
 
 ## Explicit resource migration
 
