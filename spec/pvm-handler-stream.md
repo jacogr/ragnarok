@@ -63,7 +63,8 @@ Completion requires legal guest reads covering each initialized byte across prim
 RO/RW regions, adjacent pages, sparse gaps and the top address, plus existing host replacement,
 reset, memory-pair and immutable-output checks. A private poison-allocation positive control and
 missing-page-copy negative control check that source-copy omissions cannot be hidden by snapshot
-reconstruction. All four affected Make suites (regions/host, memory pairs, host execution and entry reuse),
+reconstruction. All four affected Make suites (regions/host, memory pairs, host execution and
+entry reuse),
 three semantic backend configurations and source formatting pass locally. Poisoned allocation
 passes; skipping page 38 fails the independent guest hash, while corrupting the top resident tail
 preserves that hash and fails the dirty checkpoint comparison (165 versus 85).
@@ -71,13 +72,16 @@ preserves that hash and fails the dirty checkpoint comparison (165 versus 85).
 Checked ARC/Clang ThinLTO comparisons against exact master `9e3cd38c` show a 21–25% lower
 fresh-root execute component, but do not establish a full DOOM improvement: interpreted tick is
 flat and JIT tick is 2.0–2.6% higher across two cohorts. Linked code confirms the baseline explicit
-zero-fill is present and the candidate removes it inside the measured call. The standalone master increment remains on performance hold. With the same harness and flags
+zero-fill is present and the candidate removes it inside the measured call. The standalone
+master increment remains on performance hold. With the same harness and flags
 after qualified source `74cdecf9`, three balanced ABBA cycles reproduce lower DOOM tick CPU:
 26.015 to 24.999 ms interpreted (3.90%) and 19.391 to 18.339 ms JIT (5.43%). The three JIT pair
 deltas are −4.43%/−4.61%/−5.55%; init is mixed and near parity. Fresh-root execute is 17.67%
 lower. Driver/input bytes and backend receipts match, supporting an interaction with the two
 preceding PVM changes without establishing its cause. This increment therefore follows that
 qualified stack and requires its own Linux qualification against the exact parent source.
+On the combined candidate, all 11 maintained local ARM native/refusal/ownership qualification
+rows pass, including the direct read receipts and extended guest-byte/checkpoint witness.
 Local receipts and the comparison cohorts are retained under ignored
 `build/pvm-region-initialization/`.
 
