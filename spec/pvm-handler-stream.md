@@ -781,3 +781,80 @@ all sixteen Perf dependency result combinations and reject missing or historical
 Local verification includes all CI/comparison safeguard tests, related parsers, verification inventory
 and real master DOOM initialization/gameplay calls with assertion refusals. Linux confirmation is
 separate from these local checks; this correction changes no production interpreter source.
+
+
+## Deferred complete-reservation endpoints
+
+The checked interpreter and native whole-block entries still deduct the original source quota
+at exactly the same point. A complete reservation now retains its stable stream-header offset
+instead of reading the source-index array to calculate an endpoint on every entry. Only an
+attempted terminal, fault or host exit resolves that header to `sites[header] + arguments[header].y`
+before refunding the unexecuted source suffix. Gas refusals and local errors retain their original
+ordering and do not create an attempted exit.
+
+The private 32-bit reservation word distinguishes a raw source end from a header using bit31.
+Source ordinals are bounded by the existing four-MiB source limit, and emitted offsets remain
+below 2^31 under node admission. Partial quotas and paid interior resumes keep their exact raw
+source end because it also identifies the temporary source-budget barrier. Native region state
+retains the last completed header. The four-iteration checked word loop identifies its original
+five-source-instruction header. No CPU state, source quota or executable owner is added to the
+reusable stream.
+
+Header arguments and source coordinates remain unchanged during a reservation, and the exclusive
+stream lease survives through exit accounting. Temporary budget handlers are restored before
+publication. The endpoint is resolved before host observation, stream transfer or frame retirement;
+immutable snapshots, host response validation and native cleanup retain their existing contracts.
+
+Scope follows the approved Gray Paper source pin `3861aed15d7d016a3a416e14e61fc67dddf6daec`,
+which retains the existing PVM rules and source-attempt interpretation from
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Guest gas, instruction effects, exit PC, mapping
+permissions, local resource admission and fallback retain their established contracts.
+
+### Deferred reservation qualification
+
+[Linux ARM run 41221760201](https://github.com/jacogr/ragnarok/actions/runs/41221760201)
+qualified combined stack `74cdecf940b3cc8e1772b4164edd25283a07ed4f` against exact baseline
+`f8612e62105d1a4b446d320f87df83eafeb95819`, including the companion guarded direct-read/branch
+fragment. These are combined-stack native results; they do not isolate each layer's native gain.
+The current master source refresh 9e3cd38c changes the approved credential-source pin and retains
+identical PVM/native/toolchain inputs to the baseline.
+
+The cohort used Nimony 63fed6cb4, checked release/ARC/Clang 21.1.8 ThinLTO on one Linux ARM runner.
+All 20 fresh builds, 84 primary measured processes, 138 positive/refusal controls and 60 native replay
+processes passed. Re-parsing every record, matching 2,575 role source identities and 519 native
+source identities, and checking the equal-policy executable images passed. Native/direct-read,
+word-loop, owner transfer and storage-refusal witnesses also passed. The artifact 13049874501 ZIP
+SHA-256 is `ee6ef3c0815a2e31d80b2b9cec6aaa3fa298afb396175c98b639c5c06b223f51`.
+The application report SHA-256 is `663f67d6d1e2118416b503bb41c26d48c3305995dce4159a159447e26bdd4d26`.
+
+CPU milliseconds are ten-sample medians after three warmups in each process order. Ratios use
+PolkaVM interpreted calls from the same runner and order; lower is better.
+
+| Phase/order | Baseline interpreted | Stack interpreted | Interpreted/PolkaVM | Baseline JIT | Stack JIT | JIT/PolkaVM |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| init/0 | 435.987 | 407.464 | 0.6527 | 231.654 | 237.091 | 0.3798 |
+| init/1 | 435.582 | 410.104 | 0.6532 | 237.109 | 229.508 | 0.3656 |
+| tick/0 | 33.596 | 32.707 | 0.8152 | 29.308 | 27.968 | 0.6971 |
+| tick/1 | 33.475 | 32.414 | 0.8083 | 29.436 | 28.006 | 0.6984 |
+
+Interpreter init CPU is 5.8–6.5% lower and tick 2.6–3.2% lower. JIT tick is 4.6–4.9% lower in the
+primary orders; all six independent replay pairs improve, with pooled median ratio 0.952657.
+JIT init primary orders change direction (+2.35%/−3.21%); five of six replays improve and the
+pooled median ratio is 0.985999. This does not establish a uniform init gain.
+
+The control tradeoff remains explicit: long-sieve JIT CPU is1.27%/2.45% higher in the primary
+orders and all six replay pairs are higher (pooled ratio 1.014875). Its hot branch/header counts
+are identical, and the lowered-operation difference is only 22 in 1.29 billion; these counters do
+not identify a cause. A private 64-byte fragment-alignment trial had no established local gain
+and was not adopted. Short-sieve JIT primary ratios are 1.0008/1.0092; minimal, Pinky and memset
+JIT improve in both orders, while interpreted controls improve. No across-the-board speed claim
+is made. DOOM call CPU includes fresh invocation memory and in-memory callbacks; preparation,
+file I/O and final reference validation remain outside that call scope.
+
+Local supporting checks passed all three backend semantic configurations and six affected Make
+suites: accounting, checked word loops, host resume, stable entry reuse, mixed independent
+reference and host-memory reentry reference. The 18,432-case accounting suite passes the real
+implementation and rejects a missing header-span mutation at the expected Host quota mismatch.
+Combined native qualification, all-opcode/region-host suites and source formatting passed.
+Linked ARM code replaces seven reservation-metadata instructions with two on the ordinary
+whole-block success path; exit accounting retains the source bounds checks where the end is used.
