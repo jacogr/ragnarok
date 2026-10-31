@@ -109,6 +109,9 @@ class QualificationTests(unittest.TestCase):
             f'ARM_LOAD_WIDTH_LITERAL_CASES,{counts[2]}\n'
             f'ARM_DIRECT_BRANCH_LITERAL_CASES,{1640 if native else 0}\n'
             'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
+            'ARM_INDIRECT_BRANCH_CONTROL_CASES,122\n'
+            f'ARM_INDIRECT_BRANCH_ACTIVATION,{"1,1,3" if native else "0,0,0"}\n'
+            f'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,{7 if native else 0}\n'
             'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
@@ -211,6 +214,8 @@ class QualificationTests(unittest.TestCase):
             ('ARM_REGION_SCALAR_MATCH_CASES',111,'scalar region-charge'),
             ('ARM_DIRECT_BRANCH_LITERAL_CASES',1640,'direct-read witness'),
             ('ARM_DIRECT_BRANCH_CONTROL_CASES',122,'direct-read witness'),
+            ('ARM_INDIRECT_BRANCH_CONTROL_CASES',122,'indirect-read witness'),
+            ('ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS',7,'indirect-read width'),
         )
         complete = self.witness_receipt(True)
         # Keep every unrelated gate valid so a mutation must reach the selected diagnostic.
@@ -220,6 +225,37 @@ class QualificationTests(unittest.TestCase):
             for replacement in ('',f'{marker},{count-1}\n'):
                 with self.subTest(marker=marker,replacement=replacement),self.assertRaisesRegex(ValueError,reason):
                     self.check(True,complete.replace(line,replacement))
+
+    def test_indirect_branch_activation_is_required_in_every_mode(self):
+        """Fake native, refused and interpreted transcripts must all carry the new route receipt."""
+        native = self.witness_receipt(True)
+        active = 'ARM_INDIRECT_BRANCH_ACTIVATION,1,1,3\n'
+        for replacement in ('', 'ARM_INDIRECT_BRANCH_ACTIVATION,0,0,0\n',
+                            'ARM_INDIRECT_BRANCH_ACTIVATION,1,1,2\n', active+active):
+            with self.subTest(mode='native', replacement=replacement), self.assertRaisesRegex(
+                    ValueError, '[Ii]ndirect-read'):
+                self.check(True, native.replace(active, replacement))
+        widths = 'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,7\n'
+        for replacement in ('', 'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,6\n', widths+widths):
+            with self.subTest(mode='native-width', replacement=replacement), self.assertRaisesRegex(
+                    ValueError, 'indirect-read width'):
+                self.check(True, native.replace(widths, replacement))
+        for refused in (False, True):
+            receipt = self.witness_receipt(False, refused=refused)
+            inactive = 'ARM_INDIRECT_BRANCH_ACTIVATION,0,0,0\n'
+            for replacement in ('', active):
+                with self.subTest(refused=refused, replacement=replacement), self.assertRaisesRegex(
+                        ValueError, '[Ii]ndirect-read'):
+                    changed = receipt.replace(inactive, replacement)
+                    if refused: self.check(True, refused_receipt=changed)
+                    else: self.check(False, receipt=changed)
+            inactive_widths = 'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,0\n'
+            for replacement in ('', widths):
+                with self.subTest(refused=refused, width_replacement=replacement), self.assertRaisesRegex(
+                        ValueError, 'indirect-read width'):
+                    changed = receipt.replace(inactive_widths, replacement)
+                    if refused: self.check(True, refused_receipt=changed)
+                    else: self.check(False, receipt=changed)
 
     def test_dirty_loop_receipts_are_mode_specific(self):
         """The active loop, owner and refusal receipts must match the declared native mode."""

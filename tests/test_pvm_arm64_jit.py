@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness, direct_branch_witness
+from pvm_arm64_jit import (parse, baseline_revision, dirty_loop_witness,
+                           direct_branch_witness, indirect_branch_witness)
 
 
 def transcript():
@@ -155,6 +156,47 @@ class Arm64DirectBranchReceiptTests(unittest.TestCase):
                 direct_branch_witness(output, mode)
         with self.assertRaises(ValueError):
             direct_branch_witness(native, 'unknown')
+
+
+class Arm64IndirectBranchReceiptTests(unittest.TestCase):
+    def test_native_refused_and_interpreted_activation(self):
+        """The isolated native shape publishes once and lowers three operations per successful branch."""
+        for mode, activation in (('native', '1,1,3'), ('refused', '0,0,0'),
+                                 ('interpreted', '0,0,0')):
+            receipt = ('ARM_INDIRECT_BRANCH_CONTROL_CASES,122\n'
+                       f'ARM_INDIRECT_BRANCH_ACTIVATION,{activation}\n'
+                       f'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,{7 if mode == "native" else 0}\n')
+            result = indirect_branch_witness(receipt, mode)
+            self.assertEqual(result['control_cases'], 122)
+            self.assertEqual(result['operations'], 3*result['calls'])
+            self.assertEqual(result['publications'], 1 if mode == 'native' else 0)
+            self.assertEqual(result['width_activations'], 7 if mode == 'native' else 0)
+
+    def test_missing_duplicate_and_changed_receipts(self):
+        """Both source controls and native activation must be independently present exactly once."""
+        controls = 'ARM_INDIRECT_BRANCH_CONTROL_CASES,122\n'
+        activation = 'ARM_INDIRECT_BRANCH_ACTIVATION,1,1,3\n'
+        widths = 'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,7\n'
+        complete = controls+activation+widths
+        for marker in (controls, activation, widths):
+            for changed in (complete.replace(marker, ''), complete+marker,
+                            complete.replace(marker, marker.replace(',', ',-', 1))):
+                with self.subTest(marker=marker, changed=changed), self.assertRaises(ValueError):
+                    indirect_branch_witness(changed, 'native')
+
+    def test_mode_and_operation_ratio_are_binding(self):
+        native = ('ARM_INDIRECT_BRANCH_CONTROL_CASES,122\n'
+                  'ARM_INDIRECT_BRANCH_ACTIVATION,1,1,3\n'
+                  'ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,7\n')
+        for receipt, mode in ((native, 'refused'), (native, 'interpreted'),
+                              (native.replace('1,1,3', '1,1,2'), 'native'),
+                              (native.replace('1,1,3', '0,0,0'), 'native'),
+                              (native.replace('1,1,3', '1,1,３'), 'native'),
+                              (native.replace('ACTIVATIONS,7', 'ACTIVATIONS,6'), 'native')):
+            with self.subTest(receipt=receipt, mode=mode), self.assertRaises(ValueError):
+                indirect_branch_witness(receipt, mode)
+        with self.assertRaises(ValueError):
+            indirect_branch_witness(native, 'unknown')
 
 
 class Arm64ControlReceiptTests(unittest.TestCase):

@@ -1713,6 +1713,75 @@ for layout in 0..<2:
   inc directLoopControlCases
 echo "ARM_DIRECT_BRANCH_CONTROL_CASES,", directLoopControlCases
 
+# An indirect signed read with its base aliased to its destination must guard the old
+# address before publishing the read, then preserve the cached conditional and gas.
+let indirectBranchProgram = owner([@[125'u8, 0x22, 0, 0, 0, 0],
+    @[149'u8, 0x11, 1], @[171'u8, 0x21, 0xf7, 0xff, 0xff, 0xff], @[0'u8]])
+let indirectBranchPlan = newFlatPlan(indirectBranchProgram, GasCycleLimit(100000))
+var indirectBranchPage = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly)
+indirectBranchPage.bytes[3] = 0x80
+var indirectBranchRegisters = default(RegisterFile)
+indirectBranchRegisters[2] = RegisterValue(65539)
+let indirectBranchInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: indirectBranchRegisters)
+var indirectBranchFrame = newFlatFrame(indirectBranchPlan, [indirectBranchPage],
+    indirectBranchInfo)
+for warm in 0..<2:
+  verifyControl(indirectBranchFrame, indirectBranchProgram, indirectBranchInfo, 100,
+      [indirectBranchPage])
+when defined(pvmArm64Jit):
+  let indirectStats = flatArmStatistics(indirectBranchFrame)
+  let indirectControl = flatArmControlStatistics(indirectBranchFrame)
+  when defined(pvmArm64JitRefuse):
+    assert indirectStats[0] == 0 and indirectControl[0] == 0 and
+        indirectStats[2] == 0
+  else:
+    assert indirectStats[0] == 1 and indirectControl[0] > 0 and
+        indirectStats[2] == 3*indirectControl[0],
+        "indirect read and conditional must execute in one native fragment"
+  echo "ARM_INDIRECT_BRANCH_ACTIVATION,", indirectStats[0], ",",
+      indirectControl[0], ",", indirectStats[2]
+else:
+  echo "ARM_INDIRECT_BRANCH_ACTIVATION,0,0,0"
+var indirectBranchControls = 0
+for paid in [false, true]:
+  for gas in [0'u64, 1, 2, 1000]:
+    for budget in 0'u64..14'u64:
+      var input = indirectBranchInfo
+      input.gas = MachineGas(gas)
+      input.blockCharged = paid
+      verifyControl(indirectBranchFrame, indirectBranchProgram, input, budget,
+          [indirectBranchPage])
+      inc indirectBranchControls
+for images in [@[indirectBranchPage], newSeq[PageImage]()]:
+  assert replaceFlatMemoryChecked(indirectBranchFrame, images, indirectBranchInfo) ==
+      FlatError.None
+  verifyControl(indirectBranchFrame, indirectBranchProgram, indirectBranchInfo, 100,
+      images)
+  inc indirectBranchControls
+echo "ARM_INDIRECT_BRANCH_CONTROL_CASES,", indirectBranchControls
+
+# One warm source program per width proves that every selected indirect opcode enters
+# the three-operation read/pure/branch route; the literal read matrices cover operands.
+var indirectBranchWidthActivations = 0
+for opcode in 124'u8..130'u8:
+  let program = owner([@[opcode, 0x22, 0, 0, 0, 0],
+      @[149'u8, 0x11, 1], @[171'u8, 0x21, 0xf7, 0xff, 0xff, 0xff], @[0'u8]])
+  let plan = newFlatPlan(program, GasCycleLimit(100000))
+  var frame = newFlatFrame(plan, [indirectBranchPage], indirectBranchInfo)
+  for warm in 0..<2:
+    verifyControl(frame, program, indirectBranchInfo, 100, [indirectBranchPage])
+  when defined(pvmArm64Jit):
+    let stats = flatArmStatistics(frame)
+    let control = flatArmControlStatistics(frame)
+    when defined(pvmArm64JitRefuse):
+      assert stats[0] == 0 and control[0] == 0 and stats[2] == 0
+    else:
+      assert stats[0] == 1 and control[0] > 0 and stats[2] == 3*control[0],
+          "selected indirect width must execute a three-operation native branch"
+      inc indirectBranchWidthActivations
+echo "ARM_INDIRECT_BRANCH_WIDTH_ACTIVATIONS,", indirectBranchWidthActivations
+
 # A genuine host mapping replacement takes the slow reentry path without losing its live code capability.
 let mappingProgram = owner([@[149'u8, 0, 1], @[149'u8, 0, 1], @[149'u8, 0, 1],
   @[149'u8, 0, 1], @[10'u8, 7], @[0'u8]])
