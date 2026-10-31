@@ -77,7 +77,7 @@ type
     ro, rw, stack: seq[byte]
     extra: seq[FlatRegion]
     remaining*: uint64
-    reservationEnd: uint32
+    reservation: uint32     # Raw source end, or a high-bit-tagged stable header resolved only on attempted exit.
     stoppedAt: uint32
     attemptedExit: bool
     barrier: uint32
@@ -119,6 +119,9 @@ when defined(pvmArm64Jit) or defined(pvmX86Jit):
     ## Reject duplication of an owner that contains exclusive native JIT resources.
 
 const flatStop = high(uint32)
+ # Source ordinals fit the four-MiB program ceiling; emitted offsets stay below2^31.
+ # The disjoint high bit defers a complete reservation's source lookup until an attempted exit.
+const flatReservationHeaderFlag = 0x80000000'u32
 
 func defaultFlatLimits*(): FlatLimits =
   ## Compatibility policy is finite; application callers should choose explicit deployment limits.
@@ -206,12 +209,14 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     f.info.blockCharged = true
   if f.remaining >= uint64(a.y):
     f.remaining-=uint64(a.y)
-    f.reservationEnd = f.sites[int(off)]+a.y
+    # Whole-block exits are rare: retain its stable header instead of reading the source index on every entry.
+    # Emitted offsets are below2^31; raw source ends are at most the four-MiB fact ceiling.
+    f.reservation = off or flatReservationHeaderFlag
   else:
     let reserved = f.remaining
     f.remaining = 0
-    f.reservationEnd = f.sites[int(off)]+uint32(reserved)
-    f.barrierFact = f.reservationEnd
+    f.reservation = f.sites[int(off)]+uint32(reserved)
+    f.barrierFact = f.reservation
     # Multiple cached suffixes can represent this same source PC. Patch only the active stream,
     # whose sites are ordered; a folded no-op stops at the next real node but reports its own PC.
     var boundary = off+1
@@ -823,7 +828,7 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
     assert stored
     # Only a successful full extent permits the original twenty-attempt and four-block state projection.
     f.remaining-=20
-    f.reservationEnd = f.sites[int(off)]+5
+    f.reservation = off or flatReservationHeaderFlag
     f.info.gas = MachineGas(uint64(f.info.gas)-charged)
     f.info.registers[prefix.slots.destinationIndex] = RegisterValue(word shr 24)
     f.info.registers[store.slots.bIndex] = RegisterValue(base+4)
@@ -1547,7 +1552,7 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     compiledForPc: @[], sourceMemory: memory, sourcePages: @[],
     roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
         stack: @[], extra: @[],
-    remaining: 0, reservationEnd: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
+    remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
   result.dynamicOffsets = default(array[256, uint64])
   when defined(pvmX86Jit):
@@ -1690,7 +1695,7 @@ when defined(pvmX86Jit):
       return flatX86Enter(f, offset)
     f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
     f.remaining -= uint64(args.y)
-    f.reservationEnd = f.sites[int(offset)]+args.y
+    f.reservation = offset or flatReservationHeaderFlag
     block:
       let jit {.cursor.} = f.x86Jit
       assert jit != nil
@@ -1810,10 +1815,10 @@ when defined(pvmX86Jit):
     f.remaining = state[1]
     f.info.blockCharged = false
     if state[4] != uint64(flatStop):
-      # The last completed block's endpoint stays exact even when the next header returns on a quota/gas guard.
+      # Retain the last completed header even when the next entry returns on a quota/gas guard.
       assert state[4] < uint64(f.arguments.len)
       let last = uint32(state[4])
-      f.reservationEnd = f.sites[int(last)]+f.arguments[int(last)].y
+      f.reservation = last or flatReservationHeaderFlag
     assert int(destination) < f.handlers.len
     if int(destination) >= f.handlers.len: return flatLocal(f, offset,
         oracle.StepError.InvalidPreparedProgram)
@@ -2093,8 +2098,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # The sealed suffix includes its cached conditional: no host, fault or exit can observe these two omitted paid writes.
     f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
     f.remaining-=uint64(args.y)
-    # Retain the exact endpoint even for complete native blocks; observable exit/refund behavior has no new dependency.
-    f.reservationEnd = f.sites[int(offset)]+args.y
+    # Retain the source-bound header; a later attempted exit alone resolves its exact reserved endpoint.
+    f.reservation = offset or flatReservationHeaderFlag
     block:
       # The cache borrow ends before the whole invocation frame is passed to native execution.
       let jit {.cursor.} = f.armJit
@@ -2540,10 +2545,10 @@ proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
     uint64(f.sites[int(body)]) < uint64(start)+uint64(count)
   let reserved = min(f.remaining, uint64(count))
   f.remaining-=reserved
-  f.reservationEnd = uint32(start)+uint32(reserved)
+  f.reservation = uint32(start)+uint32(reserved)
   if reserved < uint64(count):
     # Folded noops may precede this body: stop at their exact source fact, not the next physical node's PC.
-    f.barrierFact = f.reservationEnd
+    f.barrierFact = f.reservation
     var boundary = body
     while int(boundary) < f.sites.len and f.sites[int(boundary)] < f.barrierFact:
       inc boundary
@@ -2615,8 +2620,13 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
     f.savedHandler = nil
   if f.reason == oracle.StepError.None and f.attemptedExit:
     let sourceFact = f.sites[int(f.stoppedAt)]
-    if f.reservationEnd > sourceFact+1:
-      f.remaining+=uint64(f.reservationEnd-sourceFact-1)
+    var reservedEnd = f.reservation
+    if (reservedEnd and flatReservationHeaderFlag) != 0:
+      # Only the final attempted exit needs its exact source end; stream coordinates remain owned and stable.
+      let header = reservedEnd and not flatReservationHeaderFlag
+      reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
+    if reservedEnd > sourceFact+1:
+      f.remaining+=uint64(reservedEnd-sourceFact-1)
 
 proc runFlatSingle*(f: var FlatFrame) =
   ## Reuse the ordinary charge and opcode workers with one source fact and scalar successor endpoints.
@@ -2867,7 +2877,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       f.faultPage = PageAddress(0)
       f.hostCall = oracle.HostCallId(0)
       f.remaining = 0
-      f.reservationEnd = 0
+      f.reservation = 0
       f.stoppedAt = 0
       f.attemptedExit = false
       f.barrier = flatStop
