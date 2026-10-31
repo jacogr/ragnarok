@@ -4,8 +4,8 @@
   "transitions": 17,
   "accepted": 15,
   "refused": 2,
-  "ring_input_sha256": "113dd3143ce68ac01a5a70fd1634df784205429a976d9da8bfbe18998e5d5d29",
-  "offender_fixture_sha256": "eafa2bc3c9035ecb4d5e085fbe623f9ee0d9069a9f51263789b1f3eac949ff00",
+  "ring_input_sha256": "abdbc9ca458177f9f5ad3d53d893e1b77cf612276ef0f506308fce3589bf8255",
+  "offender_fixture_sha256": "6acac0865e6138f6b20b5e64762e1781c47379ae2123e9fc74d973f1916375d7",
   "successor_roots": [
     [
       "61995e1ad265eec7472bf74c03a74a23c972d825b5a308450f34f0434fded4eb",

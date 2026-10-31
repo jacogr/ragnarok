@@ -1,17 +1,17 @@
 {
   "graypaper": {
     "repository": "https://github.com/gavofyork/graypaper",
-    "commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
-    "serialization_source_sha256": "101c550d9c48bb615058b8ad811e192f5b449eef56ea6562ff39870a78851717",
+    "commit": "3861aed15d7d016a3a416e14e61fc67dddf6daec",
+    "serialization_source_sha256": "42352568d81bf6828f4fdc81d7a18a5b82d4bf4f1b50e4b5eb17a55aebaac5ed",
     "path": "vendor/graypaper",
     "source_sha256": {
-      "text/serialization.tex": "101c550d9c48bb615058b8ad811e192f5b449eef56ea6562ff39870a78851717",
+      "text/serialization.tex": "42352568d81bf6828f4fdc81d7a18a5b82d4bf4f1b50e4b5eb17a55aebaac5ed",
       "text/reporting_assurance.tex": "05cddf494da7e65a00245316d0741e5a3dc5c6e29502e0343dde143e14181b46",
       "text/notation.tex": "fb3f16fd8106a28b9225f730f4cfe7849cc1c11248f6870ae48802c11108830c",
       "text/bandersnatch.tex": "2096a1c72cc6e92c3d6f8ecfe2fde03138289897159e6b3171ebb7d450e03b3f",
       "text/safrole.tex": "888eef65bc9c22a3e4a9998571efdf71736a3005f43a12ee7f1397479ec1f51f",
       "text/work_packages_and_reports.tex": "98421db05b07b5faf2cc1c3b1af5862d2d5f4b22b6d3c4c1635860bead98ebf8",
-      "text/header.tex": "0c9ca82dfbf41dc9dbc567eac9013e36aded5c126c6464cc56589524f3361e18",
+      "text/header.tex": "3b8c3493077ecd148f8095b05debf96e7b08aacb125fa4660090ef395908cb7c",
       "text/erasure_coding.tex": "9f717659eec038da0c017bc4b59c5ff34d10a1f4c9bc8726f577e812a10ba622",
       "biblio.bib": "4432ba011be7772e2cd5d0e83a885f58f6ad5bd29f05a4b898cc5c1d7007a855",
       "text/judgments.tex": "b7712190612ab78dee30134de0f233c6c028cab0f3a414c44779bf47c37e9a11",
@@ -25,7 +25,8 @@
       "text/statistics.tex": "a8bee7c99853ed116fb7ed5e45e9977c7c323ad386e5a7e6c8cefba509f2d2a9",
       "text/pvm_invocations.tex": "6e7d50275b75b6d47044ebbafc0fd7a76bcf2263910a762a75c6372e1deee90f",
       "text/utilities.tex": "66f096f97269d4152316ebb68a18d67f15b8052ecfe3034f29299cff7f36ff60",
-      "text/pvm.tex": "7cde11ac4542b4f02b0b5bba4d42bf0a91d009193c700b5f52846403748f866c"
+      "text/pvm.tex": "7cde11ac4542b4f02b0b5bba4d42bf0a91d009193c700b5f52846403748f866c",
+      "preamble.tex": "46c3684384edf4e1a764f13f47bd08431092043c1fd347c4b6b1c276867033ea"
     },
     "version": "0.8.0",
     "release_status": "unreleased",
@@ -435,7 +436,7 @@
     "base_release": "v0.8.0",
     "source_branch": "gp-next",
     "upstream_series": "0.8.1-unreleased",
-    "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+    "graypaper_commit": "3861aed15d7d016a3a416e14e61fc67dddf6daec",
     "base_release_commit": "d3c089c9a1d5352ad353626d7a2db8589f137b2a"
   },
   "toolchains": {

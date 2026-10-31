@@ -59,11 +59,10 @@ unmerged proposals, including
 [#563](https://github.com/gavofyork/graypaper/pull/563). This is not evidence of complete tip-to-tip
 agreement. No codec, vector, compiler or dependency pin changes in this documentation update.
 
-Other M1 proposals to review at that checkpoint are
-[#560](https://github.com/gavofyork/graypaper/pull/560) (extrinsic-hash credential encoding), and
-[issue #561](https://github.com/gavofyork/graypaper/issues/561) /
-[PR #562](https://github.com/gavofyork/graypaper/pull/562) (removing the redundant assurance parent
-hash). These remain **open**; proposals are not reasons to change the pinned codec prematurely.
+The credential encoding used by the header extrinsic hash is now explicitly aligned
+with Appendix C in the [adopted source clarification](graypaper-credential-encoding.md).
+The existing E2 validator-index projection is retained. The separate redundant assurance
+parent-hash proposal remains outside the selected source revision; retain its pinned codec.
 
 ## Request namespace versus fresh solicit
 

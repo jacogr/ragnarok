@@ -52,7 +52,7 @@ class SpecificationTests(unittest.TestCase):
         self.assertNotIn('tag', entry)
         self.assertEqual(entry['release_status'], 'unreleased')
         self.assertEqual(entry['base_release'], 'v0.8.0')
-        self.assertEqual(entry['commit'], '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d')
+        self.assertEqual(entry['commit'], '3861aed15d7d016a3a416e14e61fc67dddf6daec')
         # Verify whole upstream chapter files rather than relying on a mutable tag name alone.
         for name, digest in entry['source_sha256'].items():
             self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), digest, name)

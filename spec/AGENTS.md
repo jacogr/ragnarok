@@ -33,6 +33,10 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
   current production uses the bounded domain with one canonical encoding.
   Open #564 format changes remain outside this target.
 
+- On 2026-10-31 the maintainer authorized the credential-encoding source clarification at
+  `3861aed15d7d016a3a416e14e61fc67dddf6daec`. This supersedes the current source pin
+  above while retaining its protocol rules; see [qualification](graypaper-credential-encoding.md).
+
 
 Feature contracts record applicable scope, pinned references, completion tests, interpretation,
 observed evidence, limitations and next bounded work. Passing local tests is not proof of complete

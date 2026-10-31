@@ -1,7 +1,7 @@
 {
   "chains": 1,
   "expected_sha256": "10776e4d3a6e25bd74f9a9334c6eb32a67d5ecf93018c03146963aea84f3f41e",
-  "full_guests_sha256": "711c940d57a16be3e1396363399b77ab0d4bbbae46315d208dc5d9380e80f6e7",
+  "full_guests_sha256": "633d2cc34de2d7d5bf79bde85f869e5c7c42235f30ecfb15fa74da1fd997eaef",
   "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
   "initial_ancestry_slot": 3,
   "initial_slot": 4,

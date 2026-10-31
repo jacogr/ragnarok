@@ -13,7 +13,7 @@ python3 tools/setup_submodules.py
 | `vendor/boringssl` | QUIC/TLS |
 | `vendor/ark-vrf` | Draft-29 release-reference ark-vrf 0.2.2 backend |
 | `vendor/bandersnatch-vrf-spec` | Published historical suite vectors and SRS |
-| `vendor/graypaper` | Pinned Gray Paper specification |
+| `vendor/graypaper` | [Pinned Gray Paper specification and current qualification](../spec/graypaper-credential-encoding.md) |
 | `vendor/jam-np` | JAMNP-S networking specification |
 | `vendor/jamtestvectors` | Pinned `jam-conformance/jam-test-vectors` gp-next codec, STF and trace fixtures |
 | `vendor/jam-conformance` | Pinned `jam-conformance/jam-fuzzing` protocol and campaign tooling |
