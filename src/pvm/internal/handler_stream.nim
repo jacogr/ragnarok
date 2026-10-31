@@ -737,6 +737,45 @@ proc flatChargedShapeCold[First, Second, Branch: static[int]](f: var FlatFrame,
     f.handlers[int(off)] = combined
   outcome
 
+proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
+  ## Keep this complete checked block resident while its genuine cached branch selects the same header.
+  while true:
+    # Every backedge retains its own complete gas and source-attempt reservation.
+    flatReserve(f, off)
+    if f.barrier != flatStop:
+      # Partial budgets execute the original addressable prefix and its temporary barrier.
+      let selected = f.handlers[int(off+1)]
+      return selected(f, off+1)
+    flatShapeRegister(f, off+1, 198)
+    let stored = flatMemory[1, false, false, true, false](f, off+2)
+    if stored == flatStop:
+      # The original store retains prefix mutations, fault PC and the unattempted-reservation refund.
+      return stored
+    flatShapeRegister(f, off+3, 149)
+    flatShapeRegister(f, off+4, 149)
+    let args = f.arguments[int(off+5)]
+    var destination = flatStop
+    flatBranchSelect(f, args, 171, destination)
+    if destination != off:
+      # Changed branch outcomes return their real cached target to ordinary dispatch.
+      return destination
+
+proc flatChargedStoreCold(f: var FlatFrame, off: uint32): uint32 =
+  ## Retain ordinary checked dispatch until the terminal branch has validated both genuine arms.
+  flatReserve(f, off)
+  let selected = f.handlers[int(off+1)]
+  let outcome = selected(f, off+1)
+  let cached: FlatHandler = flatBranch[171]
+  if f.barrier == flatStop and f.handlers[int(off+5)] == cached:
+    # Partial barriers and unresolved/invalid branches never authorize the complete-loop worker.
+    let args = f.arguments[int(off+5)]
+    let yes = uint32(args.x shr 32)
+    let no = args.y
+    if (yes == off and no != off) or (no == off and yes != off):
+      # Cache only source coordinates; no register, memory, gas or invocation pointer survives here.
+      f.handlers[int(off)] = flatChargedStoreLoop
+  outcome
+
 proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Invalid destinations retain GP load mutations but never permit an unselected invalid conditional arm to escape validation.
   when Code == 80:
@@ -1308,6 +1347,19 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
               charge = flatChargedShapeCold[200, 139, 82]
             elif fact.opcode == 151 and second == 152 and last == 173:
               charge = flatChargedShapeCold[151, 152, 173]
+          elif fact.sourceCount == 5 and index+4 < f.plan.facts.len and f.pricingKind == 0:
+            # Only this sealed adjacent shape is selected, and native-enabled plans keep their existing seam.
+            if fact.opcode == 198 and f.plan.facts[index+1].opcode == 120 and
+                f.plan.facts[index+2].opcode == 149 and f.plan.facts[index+3].opcode == 149 and
+                f.plan.facts[index+4].opcode == 171:
+              when defined(pvmArm64Jit) or defined(pvmX86Jit):
+                # Native plans retain their established entry and fallback seam.
+                if not f.plan.allowNative:
+                  # Explicit interpretation can keep this checked loop resident in either build profile.
+                  charge = flatChargedStoreCold
+              else:
+                # A build without native execution uses the same checked worker for ordinary plans.
+                charge = flatChargedStoreCold
         of oracle.StepError.GasCycleLimitExceeded: charge = flatChargeFailure[
             oracle.StepError.GasCycleLimitExceeded]
         of oracle.StepError.NegativeBranchTarget: charge = flatChargeFailure[
