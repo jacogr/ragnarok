@@ -856,5 +856,38 @@ suites: accounting, checked word loops, host resume, stable entry reuse, mixed i
 reference and host-memory reentry reference. The 18,432-case accounting suite passes the real
 implementation and rejects a missing header-span mutation at the expected Host quota mismatch.
 Combined native qualification, all-opcode/region-host suites and source formatting passed.
-Linked ARM code replaces seven reservation-metadata instructions with two on the ordinary
-whole-block success path; exit accounting retains the source bounds checks where the end is used.
+Linked ARM code removes five reservation-metadata instructions from the ordinary whole-block
+success path; exit accounting retains the source bounds checks where the end is used.
+
+
+### Deferred reservation x86 qualification
+
+[Linux x86 run 41227642672](https://github.com/jacogr/ragnarok/actions/runs/41227642672) passed at
+that same source head `74cdecf940b3cc8e1772b4164edd25283a07ed4f` against `f8612e62105d1a4b446d320f87df83eafeb95819`.
+The AMD EPYC 7763 runner used the same pinned compiler/checks/ARC/ThinLTO policy. All 20 builds,
+84 primary processes, 138 controls, 60 replay processes and 15 native qualification groups pass.
+Independent raw-output parsing and comparison of 2,575 application-role source identities and
+497 native project-source identities pass, including real executable storage, native/refused
+arithmetic and branch matrices, region contexts, source boundaries and arena/stream/frame ownership.
+The artifact 13053510309 ZIP SHA-256 is
+`f5f11ac27ac0e2d475129566383fd4b96d578b8190d60aac17553d67f186c16f`; application report SHA-256 is
+`63576570a6e96b42e9e51682d50a4954d1c4f9c5cf8f9afc2ac76211dbcb27b6`.
+
+The ARM-only read/branch lowering is inactive in this build. CPU milliseconds and same-order
+ratios to PolkaVM interpreted follow the ARM table's collection protocol.
+
+| Phase/order | Baseline interpreted | Stack interpreted | Interpreted/PolkaVM | Baseline JIT | Stack JIT | JIT/PolkaVM |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| init/0 | 519.051 | 532.199 | 0.6287 | 533.891 | 544.835 | 0.6436 |
+| init/1 | 523.003 | 504.923 | 0.5972 | 550.155 | 514.211 | 0.6081 |
+| tick/0 | 41.160 | 39.553 | 0.6957 | 55.868 | 51.132 | 0.8994 |
+| tick/1 | 40.766 | 38.512 | 0.6753 | 56.569 | 51.183 | 0.8975 |
+
+DOOM tick interpreted CPU improves 3.9–5.5% and JIT improves 8.5–9.5% in primary orders.
+All six tick JIT replay pairs improve, with pooled median ratio 0.949752. Initialization changes
+direction in primary orders for both engines; all six JIT initialization replays improve, pooled
+ratio 0.976083. Long-sieve JIT replays improve, pooled ratio 0.935137. Some controls remain mixed:
+interpreted Pinky is 1.24%/10.05% slower, and minimal/memset comparisons change direction.
+The x86 JIT still costs 29–33% more tick CPU than this stack's interpreter on the same runner;
+reducing native transitions remains future architecture work. The ARM long-sieve tradeoff remains
+as recorded above. These outcomes do not establish uniform gains across applications or machines.
