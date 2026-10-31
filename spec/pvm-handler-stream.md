@@ -39,6 +39,43 @@ use complete transactional re-admission. Host terminal replies retain the causin
 callbacks preserve the original selected enum reason. Attempt and callback budgets span the whole
 outer invocation. Local refusal never exposes a successful partial machine.
 
+## Fully overwritten resident byte storage
+
+Invocation construction allocates `newSeqUninit[byte](pages*4096)` for each nonempty contiguous
+run of equally permitted pages. It then copies the complete immutable source into that allocation
+before adding the region to the private frame. This avoids zero-filling bytes immediately before
+overwriting them. Fresh allocation, page-copy volume, admission limits and immutable snapshot
+ownership retain their existing contracts; buffers are not retained between invocations.
+
+The full-fill proof is local: `pages = after-first` is positive and bounded by `high(int) div 4096`.
+Every page in `first..<after` writes exactly 4,096 bytes at `(page-first)*4096`, covering the
+allocation without gaps or overlap. `copyMemoryPage` obtains all eight 512-byte chunks from the
+same genuine immutable owner whose ordered metadata defined that run. No resident byte is read
+before these copies finish. Inaccessible-only and empty layouts allocate no byte region. Regions
+move into the frame and native descriptors are formed only after filling; a failed allocation or
+assertion publishes no frame. Only byte arrays use the uninitialized allocator; typed metadata,
+dirty bitmaps and protocol-required zero-filled memory keep their initialization contracts.
+
+This uses the pinned Nimony 63fed6cb4 standard allocator (`seqimpl.nim`, `newSeqUninit`) and its
+existing out-of-memory path, without a custom allocator or toolchain change. Scope follows the
+approved Gray Paper `3861aed15d7d016a3a416e14e61fc67dddf6daec`, retaining PVM execution semantics.
+Completion requires legal guest reads covering each initialized byte across primary and extra
+RO/RW regions, adjacent pages, sparse gaps and the top address, plus existing host replacement,
+reset, memory-pair and immutable-output checks. A private poison-allocation positive control and
+missing-page-copy negative control check that source-copy omissions cannot be hidden by snapshot
+reconstruction. All four affected Make suites (regions/host, memory pairs, host execution and entry reuse),
+three semantic backend configurations and source formatting pass locally. Poisoned allocation
+passes; skipping page 38 fails the independent guest hash, while corrupting the top resident tail
+preserves that hash and fails the dirty checkpoint comparison (165 versus 85).
+
+Checked ARC/Clang ThinLTO comparisons against exact master `9e3cd38c` show a 21–25% lower
+fresh-root execute component, but do not establish a full DOOM improvement: interpreted tick is
+flat and JIT tick is 2.0–2.6% higher across two cohorts. Linked code confirms the baseline explicit
+zero-fill is present and the candidate removes it inside the measured call. This independent
+increment remains on performance hold; the earlier positive trial on the two-layer stack needs
+confirmation under this same harness before any publication. Local receipts and both cohorts
+are retained under ignored `build/pvm-region-initialization/`.
+
 ## Explicit resource migration
 
 The removed LRU cache's `PreparedByteLimit` / `PreparedBlockLimit` policy no longer exists.

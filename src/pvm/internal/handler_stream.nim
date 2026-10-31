@@ -1580,9 +1580,10 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     let pages = after-first
     assert pages > 0 and pages <= high(int) div 4096
     let address = uint64(uint32(image.index))*4096
-    let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
+    # Every byte is overwritten below before publication; byte storage owns no uninitialized element resource.
+    let region = FlatRegion(first: address, access: image.access, bytes: newSeqUninit[byte](pages*4096))
     for page in first..<after:
-      # The complete private extent is allocated once; each proven page copies exactly its original bytes.
+      # Disjoint full-page copies cover the allocation exactly; no resident byte is read before regions.add.
       let offset = (page-first)*4096
       assert offset >= 0 and offset <= region.bytes.len-4096
       flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))

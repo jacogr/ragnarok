@@ -177,6 +177,60 @@ proc expectPages(memory: Memory, expected: openArray[PageImage]) =
     assert uint32(actual.index) == uint32(image.index) and actual.access == image.access and
         actual.bytes == image.bytes
 
+proc initializedRegionBytes() =
+  ## Guest loads visit every byte; clean snapshot reconstruction must not hide omitted resident copies.
+  let indices = [16'u32, 17, 32, 33, 36, 38, 40, 44, 1048575]
+  let permissions = [PageAccess.ReadOnly, PageAccess.ReadOnly, PageAccess.ReadWrite,
+    PageAccess.ReadWrite, PageAccess.Inaccessible, PageAccess.ReadOnly, PageAccess.ReadWrite,
+    PageAccess.ReadOnly, PageAccess.ReadWrite]
+  var parts: seq[seq[byte]] = @[]
+  for page in 0..<indices.len:
+    # Each loop visits all guest-readable page bytes; the reserved final address retains its scalar refusal.
+    if permissions[page] == PageAccess.Inaccessible: continue
+    let address = uint64(indices[page])*4096
+    let ending = address+4096-(if indices[page] == 1048575: 1'u64 else: 0'u64)
+    for boundary in [address, ending]:
+      # Full-width constants avoid sign-extending the final page's address and end pointer.
+      var part = @[20'u8, byte(if boundary == address: 1 else: 3)]
+      for shift in 0..<8: part.add(byte((boundary shr (shift*8)) and 255))
+      parts.add(part)
+    parts.add(@[40'u8, 2'u8]) # A genuine block boundary makes the loop backedge legal.
+    parts.add(@[124'u8, 0x12'u8]) # load_ind_u8 r2, [r1].
+    parts.add(@[150'u8, 0'u8, 1'u8, 1'u8]) # mul_imm_64 r0, r0, 257.
+    parts.add(@[200'u8, 0x20'u8, 0'u8]) # add_64 r0, r0, r2.
+    parts.add(@[149'u8, 0x11'u8, 1'u8]) # add_imm_64 r1, r1, 1.
+    parts.add(@[171'u8, 0x31'u8, 0xf4'u8]) # branch_ne r1, r3, -12 to the load.
+  # Dirtying the top page makes snapshot publication expose its otherwise unreadable final byte too.
+  var store = @[59'u8, 2'u8]
+  immediate(store, 0xfffff000'u64)
+  parts.add(store)
+  parts.add(@[10'u8])
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  let prepared = newFlatPlan(program, GasCycleLimit(1000000))
+  # Independent modulo-2^64 polynomial hashes bind byte values and order across eight accessible pages.
+  let checksums = [17833110151408994656'u64, 9889834429281563842'u64]
+  for generation in 0..<checksums.len:
+    # Changed fresh inputs with a reused code owner must replace every resident byte on each invocation.
+    var pages = newSeq[PageImage](indices.len)
+    for page in 0..<pages.len:
+      pages[page] = PageImage(index: PageIndex(indices[page]), access: permissions[page])
+      for at in 0..<4096:
+        pages[page].bytes[at] = byte((at*17+page*31+generation*19) mod 251)
+    let input = MachineInfo(gas: MachineGas(2000000), registers: default(RegisterFile))
+    var current = newFlatFrame(prepared, pages, input)
+    runFlat(current, 200000)
+    assert current.reason == StepError.None and current.exit == StepExit.Host
+    assert uint64(current.info.registers[0]) == checksums[generation]
+    let top = pageImage(flatMemorySnapshot(current), PageIndex(1048575)).value
+    assert top.bytes[4095] == pages[pages.len-1].bytes[4095]
+    checkFlatSource(current, pages)
+
+initializedRegionBytes()
+echo "PASS complete resident initialization / every guest byte / adjacent and extra RO-RW / top page / fresh inputs"
+
+
+
 proc checkpointEpoch(dense: bool) =
   ## Unchanged, repeated, reversed, cross-word and dense writes survive observation, resume and reset.
   var initial = newSeq[PageImage](257)
