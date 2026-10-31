@@ -2781,8 +2781,7 @@ native comparison gate requires one literal
 receipt of 1,640 in native mode or zero in refused/interpreted mode, and one 122-case control
 receipt in every mode; missing, repeated or cross-mode receipts are rejected. The
 executable-storage-refusal build passes with zero direct native literal calls and the same
-full-frame controls. Existing all-opcode and fragmented-region/host suites pass. These are
-macOS results; native Linux ARM qualification is still required.
+full-frame controls. Existing all-opcode and fragmented-region/host suites pass. These focused checks are macOS results; the combined Linux qualification follows below.
 
 Local evidence:`build/pvm-arm-next/paired-public-direct-tick-extra-results.json`,
 `build/pvm-arm-next/paired-public-direct-v1-tick-recheck.json`, and
@@ -2791,3 +2790,24 @@ host logs beside it). The route-disabled mutant log is
 `build/pvm-arm-next/arm-direct-route-mutant.log`. The final source and retained witness both passed
 these focused checks; mode-specific receipt validation ran against fresh native, refused and
 interpreted witness outputs.
+
+
+### Combined Linux qualification
+
+[ARM run 41221760201](https://github.com/jacogr/ragnarok/actions/runs/41221760201) passed the
+maintained native gate and paired full-application comparison for source head
+`74cdecf940b3cc8e1772b4164edd25283a07ed4f`. It includes both this read/branch lowering and deferred
+reservation endpoint accounting. The full provenance, raw DOOM CPU values, matching-policy
+interpreter ratios and explicit long-sieve tradeoff are recorded in
+[deferred reservation qualification](pvm-handler-stream.md#deferred-reservation-qualification).
+
+Against exact baseline `f8612e62105d1a4b446d320f87df83eafeb95819`, combined JIT DOOM tick CPU is
+4.6–4.9% lower in both primary orders and improves in all six replay pairs. Its ratio to PolkaVM
+interpreted is 0.6971/0.6984. JIT initialization changes direction across primary orders. Long
+sieve JIT CPU increases in all six replays, with pooled ratio 1.014875. These native results
+measure the combined stack and do not isolate this lowering's contribution.
+
+The Linux native receipt includes all 1,640 direct literal cases and 122 full-frame controls,
+with the required native/refused/interpreted mode counts. The comparison gate's two fixture
+families both include the new receipts and reject their omission or truncation. Later
+qualification-documentation commits preserve all tested runtime, native and harness source bytes.
