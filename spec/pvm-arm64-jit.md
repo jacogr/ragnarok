@@ -2811,3 +2811,10 @@ The Linux native receipt includes all 1,640 direct literal cases and 122 full-fr
 with the required native/refused/interpreted mode counts. The comparison gate's two fixture
 families both include the new receipts and reject their omission or truncation. Later
 qualification-documentation commits preserve all tested runtime, native and harness source bytes.
+
+
+[Focused x86 qualification](https://github.com/jacogr/ragnarok/actions/runs/41227642672) also passes
+at the same runtime source head, including shared accounting, refusal and ownership controls.
+Its raw application data and source audit are recorded in
+[x86 reservation qualification](pvm-handler-stream.md#deferred-reservation-x86-qualification).
+The ARM-only read/branch lowering is inactive there.
