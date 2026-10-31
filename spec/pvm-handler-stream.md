@@ -812,18 +812,18 @@ permissions, local resource admission and fallback retain their established cont
 
 ### Deferred reservation qualification
 
-[Linux ARM run41221760201](https://github.com/jacogr/ragnarok/actions/runs/41221760201)
+[Linux ARM run 41221760201](https://github.com/jacogr/ragnarok/actions/runs/41221760201)
 qualified combined stack `74cdecf940b3cc8e1772b4164edd25283a07ed4f` against exact baseline
 `f8612e62105d1a4b446d320f87df83eafeb95819`, including the companion guarded direct-read/branch
 fragment. These are combined-stack native results; they do not isolate each layer's native gain.
-The current master source refresh9e3cd38c changes the approved credential-source pin and retains
+The current master source refresh 9e3cd38c changes the approved credential-source pin and retains
 identical PVM/native/toolchain inputs to the baseline.
 
-The cohort used Nimony63fed6cb4, checked release/ARC/Clang21.1.8 ThinLTO on one Linux ARM runner.
-All20 fresh builds,84 primary measured processes,138 positive/refusal controls and60 native replay
-processes passed. Re-parsing every record, matching2,575 role source identities and519 native
+The cohort used Nimony 63fed6cb4, checked release/ARC/Clang 21.1.8 ThinLTO on one Linux ARM runner.
+All 20 fresh builds, 84 primary measured processes, 138 positive/refusal controls and 60 native replay
+processes passed. Re-parsing every record, matching 2,575 role source identities and 519 native
 source identities, and checking the equal-policy executable images passed. Native/direct-read,
-word-loop, owner transfer and storage-refusal witnesses also passed. The artifact13049874501 ZIP
+word-loop, owner transfer and storage-refusal witnesses also passed. The artifact 13049874501 ZIP
 SHA-256 is `ee6ef3c0815a2e31d80b2b9cec6aaa3fa298afb396175c98b639c5c06b223f51`.
 The application report SHA-256 is `663f67d6d1e2118416b503bb41c26d48c3305995dce4159a159447e26bdd4d26`.
 
@@ -837,23 +837,23 @@ PolkaVM interpreted calls from the same runner and order; lower is better.
 | tick/0 | 33.596 | 32.707 | 0.8152 | 29.308 | 27.968 | 0.6971 |
 | tick/1 | 33.475 | 32.414 | 0.8083 | 29.436 | 28.006 | 0.6984 |
 
-Interpreter init CPU is5.8–6.5% lower and tick2.6–3.2% lower. JIT tick is4.6–4.9% lower in the
-primary orders; all six independent replay pairs improve, with pooled median ratio0.952657.
+Interpreter init CPU is 5.8–6.5% lower and tick 2.6–3.2% lower. JIT tick is 4.6–4.9% lower in the
+primary orders; all six independent replay pairs improve, with pooled median ratio 0.952657.
 JIT init primary orders change direction (+2.35%/−3.21%); five of six replays improve and the
-pooled median ratio is0.985999. This does not establish a uniform init gain.
+pooled median ratio is 0.985999. This does not establish a uniform init gain.
 
 The control tradeoff remains explicit: long-sieve JIT CPU is1.27%/2.45% higher in the primary
-orders and all six replay pairs are higher (pooled ratio1.014875). Its hot branch/header counts
-are identical, and the lowered-operation difference is only22 in1.29billion; these counters do
-not identify a cause. A private64-byte fragment-alignment trial had no established local gain
-and was not adopted. Short-sieve JIT primary ratios are1.0008/1.0092; minimal, Pinky and memset
+orders and all six replay pairs are higher (pooled ratio 1.014875). Its hot branch/header counts
+are identical, and the lowered-operation difference is only 22 in 1.29 billion; these counters do
+not identify a cause. A private 64-byte fragment-alignment trial had no established local gain
+and was not adopted. Short-sieve JIT primary ratios are 1.0008/1.0092; minimal, Pinky and memset
 JIT improve in both orders, while interpreted controls improve. No across-the-board speed claim
 is made. DOOM call CPU includes fresh invocation memory and in-memory callbacks; preparation,
 file I/O and final reference validation remain outside that call scope.
 
 Local supporting checks passed all three backend semantic configurations and six affected Make
 suites: accounting, checked word loops, host resume, stable entry reuse, mixed independent
-reference and host-memory reentry reference. The18,432-case accounting suite passes the real
+reference and host-memory reentry reference. The 18,432-case accounting suite passes the real
 implementation and rejects a missing header-span mutation at the expected Host quota mismatch.
 Combined native qualification, all-opcode/region-host suites and source formatting passed.
 Linked ARM code replaces seven reservation-metadata instructions with two on the ordinary
