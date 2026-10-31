@@ -70,7 +70,7 @@ The isolated local ARM snapshot passed these functional controls. Public local D
 candidate/baseline CPU ratios were 0.8071 and 0.8014 in the two orders; init ratios were
 0.9949 and 0.9952. Tick native calls fell from 2,003,388 to 1,235,954. Init native
 publications, calls, operations and branch/header calls matched baseline exactly. These are
-local results; Linux CI and the composed dirty-index stack are not yet qualified. Complete
+initial local results; the final composed word-stack qualification is recorded below. Complete
 local receipt and raw logs are under ignored `build/ci/dirty-store-region-prototype/`.
 
 ## Limitations and next bounded work
@@ -111,9 +111,29 @@ controls had zero groups and matching native code bytes/counters: Pinky median 0
 long sieve 1.0102 and minimal-100000 1.0168. Those last two are preliminary upward costs
 for Linux qualification, not accepted as neutral. The minimal-1000 timings were too short
 and noisy for a verdict. Local logs and source identities are retained under ignored
-`build/ci/arm-word-batch-prototype/`; exact-head Linux ARM qualification remains pending.
+`build/ci/arm-word-batch-prototype/`; final composed Linux ARM qualification follows below.
 
 The combined word-loop qualification retains a maintained698-case gas/partial/fault/shift/bound
 matrix and110 role-alias declines in the actual ARM performance witness, not only its ignored
 initial proof. An aligned cross-page case requires a real committed native word group before
 a later byte fault. See [the shared projection proof](pvm-checked-word-loop.md).
+
+
+## Final composed Linux ARM64 result
+
+Execution head `be20bab9f50721d1d370c5f5c103e06c894b7002` (#1866 + #1868) passes full
+[Unit](https://github.com/jacogr/ragnarok/actions/runs/41147741004) and the final
+[ARM qualification](https://github.com/jacogr/ragnarok/actions/runs/41150420173), directly
+against master `d1a708421011652f724cd69de5fce78605eda06d`. The official artifact is
+`13023631824`; its ZIP SHA256 is
+`ccca6f3a98c547f9cc78395afe53d28ccee1d36be84ca5c36f3cce795ef80d64`.
+Both native/refused word witnesses qualify 698 boundary cases, 110 aliases and owner lifetime,
+with five/zero native word groups. All original native and checked controls remain required.
+
+In this full-stack cohort, DOOM native tick CPU is 31.623616→29.404488 and
+31.743024→29.297684 ms (two orders), giving ours / PolkaVM interpreted ratios
+0.734017/0.731022. All six independent native replay pairs reduce tick; pooled ratio is
+0.927450. JIT init is mixed (three higher/three lower replay pairs), with pooled ratio
+1.010290; long-sieve replay has pooled ratio 1.005591. These costs are not called neutral.
+The shared projection document contains [both policies, raw timings and the complete audit](pvm-checked-word-loop.md#final-linux-arm64-stack-qualification).
+This compares the entire stack to master; it does not isolate or add the earlier local gains.
