@@ -85,6 +85,30 @@ rows pass, including the direct read receipts and extended guest-byte/checkpoint
 Local receipts and the comparison cohorts are retained under ignored
 `build/pvm-region-initialization/`.
 
+### Resident allocation Linux verdict: preserved experiment
+
+[ARM run 41231347423](https://github.com/jacogr/ragnarok/actions/runs/41231347423) passes correctness
+at `98b1639e16f323a327003cd4d2b35e998366c4d8` against exact parent
+`c83835e3cdf05c6800d973fd1a0a6ded29fb0555`. Raw parsing and source audit pass for 20 application
+builds, 84 primary processes, 138 controls, 60 replays, 2,575 role-source identities and 519 native
+identities, including all maintained native/refusal/ownership controls. Artifact 13054765316 ZIP
+SHA-256 matches GitHub's digest:
+`5e1cfb8c15b73180f5942cb0a6ab0a3e8aa05f018b8f6aa4097ecc0609249759`.
+Application report SHA-256: `feded3c5429840750a3e4f262db82fa5db5271f8586c48a7aa64ed591da2e889`.
+
+The Linux whole-application result does not reproduce the local gain. DOOM tick JIT primary CPU
+is 27.156 to 27.403 ms and 27.477 to 27.045 ms (opposite directions); pooled replay medians are
+27.240528 to 27.243766 ms, ratio 1.000119. Init JIT pooled ratio is 1.003108. Tick interpreted
+primary ratios are 0.999826/0.985331; init interpreted is 1.011034/1.002976. Candidate tick ratios
+to PolkaVM interpreted are 0.6847/0.6759 JIT and 0.7935/0.7967 interpreted within this cohort.
+Long-sieve JIT is slower in all six replay pairs (pooled ratio 1.020192); short-sieve JIT is also
+1.79%/1.84% higher in primary orders. These results do not justify a production merge.
+
+The allocation code, byte-checkpoint witness and complete evidence remain preserved for reuse;
+the proposal is closed and excluded from the active approved stack. No additional CI is needed
+to repeat this verdict. The macOS improvement remains source/platform-specific evidence with no
+established causal explanation.
+
 ## Explicit resource migration
 
 The removed LRU cache's `PreparedByteLimit` / `PreparedBlockLimit` policy no longer exists.
