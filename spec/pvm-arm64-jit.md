@@ -2874,3 +2874,33 @@ native, executable-storage-refused and interpreted modes. The 19 ARM tooling tes
 14 native CI fixture tests passed. Linux qualification against exact master is required before readiness. Local evidence is retained under `build/pvm-indirect-branch/`: `local-results.json`,
 `peer-receipt.json`, the mode/mutation logs under `peer-witness/`, and actual-branch checks
 under `verify/`.
+
+
+### Indirect read Linux qualification and performance hold
+
+[ARM run 41235293126](https://github.com/jacogr/ragnarok/actions/runs/41235293126) passes correctness
+at `fb82a2923776189f21252feef9bc6e8b4e70e9d0` against exact master
+`a0997ac1469113ba1f65b4f4bdde9c9462cf138e`. All 20 application builds, 84 primary processes,
+138 controls, 60 replays, 2,575 role-source identities and 519 native source identities pass
+independent raw parsing and exact-source audit. The new receipts report native activation
+1 publication/1 successful branch/3 operations, seven widths and 122 controls; refused mode
+reports zero activation/widths and the same 122 controls. Existing direct, dirty/word-loop,
+source-boundary and ownership gates pass. Artifact 13055421526 ZIP SHA-256 matches GitHub's
+`6cdba56b7a4a80302042b0dc1fa08a6e31722e8d048e6215713a24d0348e3332` digest; report SHA-256 is
+`1336cce6d6a54b05abc3d67decc9aff30a66b785198c166ed4f29429ba2b0297`.
+
+The production performance case is not established. DOOM JIT tick primary CPU is
+26.961 to 26.625 ms and 27.001 to 26.989 ms; pooled replay medians are 26.916384 to 26.835642 ms,
+ratio 0.997000. Four of six tick pairs are lower, but the replay improvement is only 0.30%.
+Init JIT pooled CPU is 228.909792 to 232.860588 ms, ratio 1.017259; all six pairs are slower
+(1.0030–1.0291). Interpreted tick primary ratios are 0.999308/0.998603, so the local interpreted
+movement is absent. Candidate tick/PolkaVM-interpreted ratios are 0.6644/0.6732 JIT and
+0.7851/0.7932 interpreted within this cohort. Long-sieve JIT improves in all six pairs,
+pooled ratio 0.978523, while Pinky JIT is slower in all six, pooled ratio 1.008597.
+
+The proposal remains draft on performance hold, without an LGTM or production merge. Its
+correctness checks and broader native coverage are useful preserved machinery, but the local
+whole-DOOM gain did not carry to Linux. No extra CI is requested to repeat this verdict.
+The next measured architecture lead is a complete guarded load/update/store/update/conditional
+region; its steady-state source shape accounts for about 13% of remaining checked memory
+attempts in a diagnostic prototype census. Instrumented timing is excluded from speed claims.
