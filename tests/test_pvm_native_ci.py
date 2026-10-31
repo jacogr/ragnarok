@@ -107,6 +107,8 @@ class QualificationTests(unittest.TestCase):
             f'ARM_SHIFT_PAIR_LITERAL_CASES,{counts[0]}\n'
             f'ARM_SHIFT_PAIR_DECLINE_CASES,{counts[1]}\n'
             f'ARM_LOAD_WIDTH_LITERAL_CASES,{counts[2]}\n'
+            f'ARM_DIRECT_BRANCH_LITERAL_CASES,{1640 if native else 0}\n'
+            'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
             'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
@@ -207,6 +209,8 @@ class QualificationTests(unittest.TestCase):
             ('ARM_WORD_CONTROL_CASES',698,'word-loop boundary'),
             ('ARM_WORD_ALIAS_CASES',110,'word-loop alias'),
             ('ARM_REGION_SCALAR_MATCH_CASES',111,'scalar region-charge'),
+            ('ARM_DIRECT_BRANCH_LITERAL_CASES',1640,'direct-read witness'),
+            ('ARM_DIRECT_BRANCH_CONTROL_CASES',122,'direct-read witness'),
         )
         complete = self.witness_receipt(True)
         # Keep every unrelated gate valid so a mutation must reach the selected diagnostic.
