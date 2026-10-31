@@ -760,6 +760,82 @@ proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
       # Changed branch outcomes return their real cached target to ordinary dispatch.
       return destination
 
+func flatWordShape(f: FlatFrame, off: uint32): bool =
+  ## Bind one byte extraction/store loop to five distinct source roles before selecting its word worker.
+  let prefix = f.arguments[int(off+1)]
+  let store = f.arguments[int(off+2)]
+  let baseStep = f.arguments[int(off+3)]
+  let shiftStep = f.arguments[int(off+4)]
+  let branch = f.arguments[int(off+5)]
+  let base = store.slots.bIndex
+  let shift = prefix.slots.bIndex
+  let roles = [prefix.slots.aIndex, shift, prefix.slots.destinationIndex, base, branch.slots.bIndex]
+  for i in 0..<5:
+    # Data, shift, byte destination, address and bound must not overwrite another live role.
+    for j in i+1..<5:
+      # Aliases retain the original checked loop instead of assuming a stable word or branch bound.
+      if roles[i] == roles[j]: return false
+  uint32(branch.x shr 32) == off and store.slots.aIndex == prefix.slots.destinationIndex and
+    baseStep.slots.aIndex == base and baseStep.slots.bIndex == base and baseStep.x == 1 and
+    shiftStep.slots.aIndex == shift and shiftStep.slots.bIndex == shift and shiftStep.x == 8 and
+    branch.slots.aIndex == base
+
+proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
+  ## Replace four fully affordable, valid byte iterations with their equivalent checked word store.
+  while f.remaining >= 20:
+    # Four complete original blocks need twenty attempts and at most four nonoverflowing prices.
+    let header = f.arguments[int(off)]
+    if header.x > high(uint64) div 4:
+      # Unknown large price combinations keep the original per-block affordability checks.
+      break
+    let charged = header.x*(if f.info.blockCharged: 3'u64 else: 4'u64)
+    if uint64(f.info.gas) < charged:
+      # The scalar path may still complete fewer blocks before its exact out-of-gas boundary.
+      break
+    let prefix = f.arguments[int(off+1)]
+    let store = f.arguments[int(off+2)]
+    let branch = f.arguments[int(off+5)]
+    let shift = uint64(f.info.registers[prefix.slots.bIndex])
+    let base = uint64(f.info.registers[store.slots.bIndex])
+    let bound = uint64(f.info.registers[branch.slots.bIndex])
+    if (shift and 31) != 0 or base > high(uint64)-4 or base+4 > bound:
+      # Shifts 0/8/16/24 extract one low word; base+1..3 cannot equal the opcode 171 bound.
+      # Wrapped or other loop coordinates retain the original != predicate and bytewise order.
+      break
+    let address = (base+store.x) and 0xffffffff'u64
+    if address < 65536 or address > uint64(high(uint32))-4:
+      # Match the existing conservative four-byte fast-store extent; ambiguous/faulting spans stay scalar.
+      break
+    var valid = false
+    if address >= f.stackBase:
+      # The complete private stack extent has the same positive proof used by flatStore[4].
+      valid = f.stack.len >= 4 and address-f.stackBase <= uint64(f.stack.len-4)
+    elif address >= f.rwBase:
+      # RO, fragmented and cross-permission layouts cannot qualify through this writable region.
+      valid = f.rw.len >= 4 and address-f.rwBase <= uint64(f.rw.len-4)
+    if not valid:
+      # A bytewise prefix must remain observable before a later fault when the word extent is unavailable.
+      break
+    let word = uint64(f.info.registers[prefix.slots.aIndex]) and 0xffffffff'u64
+    # No host/control exit or quota boundary can occur inside these four proven complete iterations.
+    # The original checked store repeats the positive extent proof and owns dirty-page publication.
+    let stored = flatStore[4](f, off+2, address, word)
+    assert stored
+    # Only a successful full extent permits the original twenty-attempt and four-block state projection.
+    f.remaining-=20
+    f.reservationEnd = f.sites[int(off)]+5
+    f.info.gas = MachineGas(uint64(f.info.gas)-charged)
+    f.info.registers[prefix.slots.destinationIndex] = RegisterValue(word shr 24)
+    f.info.registers[store.slots.bIndex] = RegisterValue(base+4)
+    f.info.registers[prefix.slots.bIndex] = RegisterValue(shift+32)
+    var destination = flatStop
+    flatBranchSelect(f, branch, 171, destination)
+    if destination != off:
+      # The fourth genuine branch may leave; its exact cached destination and paid reset still apply.
+      return destination
+  # Every declined batch starts the untouched original checked loop, including its partial/fault behavior.
+  flatChargedStoreLoop(f, off)
+
 proc flatChargedStoreCold(f: var FlatFrame, off: uint32): uint32 =
   ## Retain ordinary checked dispatch until the terminal branch has validated both genuine arms.
   flatReserve(f, off)
@@ -773,7 +849,12 @@ proc flatChargedStoreCold(f: var FlatFrame, off: uint32): uint32 =
     let no = args.y
     if (yes == off and no != off) or (no == off and yes != off):
       # Cache only source coordinates; no register, memory, gas or invocation pointer survives here.
-      f.handlers[int(off)] = flatChargedStoreLoop
+      if flatWordShape(f, off):
+        # Only this additional sealed dataflow permits four-byte projection inside the resident loop.
+        f.handlers[int(off)] = flatChargedWordLoop
+      else:
+        # Other genuine five-operation self-loops keep their established checked per-iteration worker.
+        f.handlers[int(off)] = flatChargedStoreLoop
   outcome
 
 proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
@@ -1903,6 +1984,30 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let no = branch.y
     (yes == header and no != header) or (no == header and yes != header)
 
+  func flatArmWordShape(f: FlatFrame, header: uint32): ArmDirtyWordShape =
+    ## Only sealed, disjoint source roles authorize a word candidate; every value remains invocation-local.
+    let prefix = f.arguments[int(header+1)]
+    let store = f.arguments[int(header+2)]
+    let baseStep = f.arguments[int(header+3)]
+    let shiftStep = f.arguments[int(header+4)]
+    let branch = f.arguments[int(header+5)]
+    let source = prefix.slots.aIndex
+    let shift = prefix.slots.bIndex
+    let destination = prefix.slots.destinationIndex
+    let base = store.slots.bIndex
+    let bound = branch.slots.bIndex
+    let roles = [source, shift, destination, base, bound]
+    for i in 0..<5:
+      for j in i+1..<5:
+        if roles[i] == roles[j]: return default(ArmDirtyWordShape)
+    if uint32(branch.x shr 32) != header or store.slots.aIndex != destination or
+        baseStep.slots.aIndex != base or baseStep.slots.bIndex != base or baseStep.x != 1 or
+        shiftStep.slots.aIndex != shift or shiftStep.slots.bIndex != shift or shiftStep.x != 8 or
+        branch.slots.aIndex != base:
+      return default(ArmDirtyWordShape)
+    ArmDirtyWordShape(enabled: true, source: source, shift: shift, destination: destination,
+      base: base, bound: bound)
+
   proc flatArmDirtyLoop(f: var FlatFrame, offset: uint32): uint32 =
     ## Every failed native guard returns the unstarted charged header with prior whole blocks published.
     let jit = f.armJit
@@ -1958,8 +2063,9 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let charge = f.arguments[int(offset)]
     let item = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
         yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
+    let word = flatArmWordShape(f, offset)
     let admitted = publishArmDirtyLoop(jit, item, store.args.slots.bIndex,
-        uint32(store.args.x and 0xffffffff'u64))
+        uint32(store.args.x and 0xffffffff'u64), word)
     jit.compilationNs+=armClock()-before
     f.handlers[int(offset)] = if admitted: flatArmDirtyLoop else: flatArmCheckedTail
     destination
@@ -2243,6 +2349,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     if jit == nil: default(array[3, uint64])
     else: armDirtyLoopStatistics(jit)
+
+  proc flatArmDirtyWordGroups*(f: FlatFrame): uint64 =
+    let jit = f.armJit
+    if jit == nil: 0'u64
+    else: armDirtyWordGroups(jit)
 
   proc flatArmMemory(f: var FlatFrame, offset: uint32): uint32 =
     ## A partial reservation uses the original source nodes; native guard refusal replays the untouched checked memory operation.

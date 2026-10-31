@@ -44,7 +44,7 @@ type
   ArmDirtyLoopCache = object ## Independent one-block cache cannot displace the existing connected region.
     status: uint8
     header, span, operations, code: uint32
-    price, calls, blocks, declines: uint64
+    price, calls, blocks, declines, wordGroups: uint64
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
@@ -581,6 +581,9 @@ proc callArmBranch*(jit: ArmJit, offset: uint32, registers: var RegisterFile): u
 
 
 type
+  ArmDirtyWordShape* = object ## Frozen role coordinates only; every invocation rechecks values and memory.
+    enabled*: bool
+    source*, shift*, destination*, base*, bound*: range[0..12]
   ArmRegionBlock* = object ## One sealed charged block; no guest memory or invocation address is retained.
     header*, span*, operations*, yes*, no*: uint32
     price*: uint64
@@ -801,7 +804,8 @@ proc armDirtyLoopObserve*(jit: ArmJit, header: uint32, backedge: bool): uint8 =
   0
 
 proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
-    baseSlot: range[0..12], displacement: uint32): bool =
+    baseSlot: range[0..12], displacement: uint32,
+    word: ArmDirtyWordShape = default(ArmDirtyWordShape)): bool =
   ## Keep the memory-capable one-block loop separate from the established multi-block region.
   assert jit.dirtyLoop.status == 0
   if item.span != 5 or item.operations != 5 or item.span > 4095 or
@@ -814,6 +818,123 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   var fixes: seq[ArmRegionFixup] = @[]
   for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   let label = words.len
+  let wordActive = word.enabled and item.yes == item.header and item.no != item.header and
+      item.price <= high(uint64) div 4
+  if wordActive:
+    # Four original five-op blocks are accepted as one word only when all guards pass before mutation.
+    let fourPrice = item.price*4
+    var early: seq[ArmRegionFixup] = @[]
+    var restore: seq[ArmRegionFixup] = @[]
+    words.add(0xf100507f'u32) # CMP Xremaining,#20.
+    early.add(ArmRegionFixup(at: words.len, condition: 3)); words.add(0) # B.LO byte loop.
+    if fourPrice <= 4095:
+      words.add(0xf100005f'u32 or (uint32(fourPrice) shl 10))
+    else:
+      armImmediate(words, 1, fourPrice)
+      words.add(0xeb01005f'u32)
+    early.add(ArmRegionFixup(at: words.len, condition: 3)); words.add(0)
+    let sourceReg = uint32(word.source)+4
+    let shiftReg = uint32(word.shift)+4
+    let destReg = uint32(word.destination)+4
+    let baseReg = uint32(word.base)+4
+    let boundReg = uint32(word.bound)+4
+    words.add(0xf240101f'u32 or (shiftReg shl 5)) # TST Xshift,#31.
+    early.add(ArmRegionFixup(at: words.len, condition: 1)); words.add(0) # B.NE.
+    words.add(0xb1001001'u32 or (baseReg shl 5)) # ADDS X1,Xbase,#4.
+    early.add(ArmRegionFixup(at: words.len, condition: 2)); words.add(0) # B.HS on wrap.
+    words.add(0xeb00003f'u32 or (boundReg shl 16)) # CMP X1,Xbound.
+    early.add(ArmRegionFixup(at: words.len, condition: 8)); words.add(0) # B.HI.
+
+    words.add(0x9e670054'u32) # Preserve gas, attempts and context while checking memory.
+    words.add(0x9e670075'u32)
+    words.add(0x9e670236'u32)
+    words.add(0x2a0003e3'u32 or (baseReg shl 16)) # MOV W3,Wbase.
+    words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+    words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+    words.add(0x0b020063'u32) # Modulo-2^32 effective address.
+    words.add(0xf140407f'u32) # Protected prefix.
+    restore.add(ArmRegionFixup(at: words.len, condition: 3)); words.add(0)
+    words.add(0x12800082'u32) # MOVN W2,#4: last admitted four-byte start is 0xfffffffb.
+    words.add(0xeb02007f'u32)
+    restore.add(ArmRegionFixup(at: words.len, condition: 8)); words.add(0)
+    words.add(0x7200047f'u32) # TST Waddress,#3; alignment keeps all four bytes in one page.
+    restore.add(ArmRegionFixup(at: words.len, condition: 1)); words.add(0)
+    words.add(0xf9401631'u32) # Fresh descriptor pointer, context word 5.
+    words.add(0xf100023f'u32)
+    restore.add(ArmRegionFixup(at: words.len, condition: 0)); words.add(0)
+    var admitted: seq[int] = @[]
+    for selected in 0..<2:
+      let region = 1-selected
+      words.add(0xa9400a21'u32 or (uint32(region*3) shl 15))
+      let absent = words.len
+      words.add(0xb4000002'u32)
+      words.add(0x91001042'u32) # Extent is len-7; adding four admits offsets <= len-4.
+      words.add(0xcb010061'u32)
+      words.add(0xeb02003f'u32)
+      let outside = words.len
+      words.add(0x54000002'u32)
+      words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10))
+      words.add(0x8b010041'u32)
+      words.add(0x9e670020'u32) # Keep borrowed word pointer in D0 through the bitmap check.
+      admitted.add(words.len)
+      words.add(0)
+      let following = words.len
+      words[absent] = words[absent] or (uint32(following-absent) shl 5)
+      words[outside] = words[outside] or (uint32(following-outside) shl 5)
+    restore.add(ArmRegionFixup(at: words.len, condition: 16)); words.add(0)
+    let afterRegions = words.len
+    for at in admitted: words[at] = 0x14000000'u32 or uint32(afterRegions-at)
+    words.add(0x9e6602d1'u32)
+    words.add(0xf9401a22'u32)
+    words.add(0xd352fc61'u32)
+    words.add(0xeb02003f'u32)
+    restore.add(ArmRegionFixup(at: words.len, condition: 2)); words.add(0)
+    words.add(0xf9401e22'u32)
+    words.add(0xf100005f'u32)
+    restore.add(ArmRegionFixup(at: words.len, condition: 0)); words.add(0)
+    words.add(0x8b010c42'u32)
+    words.add(0xd34cfc61'u32)
+    words.add(0xd2800031'u32)
+    words.add(0x9ac12231'u32)
+    words.add(0xf9400041'u32)
+    words.add(0xea11003f'u32)
+    restore.add(ArmRegionFixup(at: words.len, condition: 0)); words.add(0) # First touch declines.
+    words.add(0x9e660282'u32)
+    words.add(0x9e6602a3'u32)
+    words.add(0x9e6602d1'u32)
+    words.add(0x9e660001'u32) # FMOV X1,D0.
+    words.add(0xb9000020'u32 or sourceReg) # STR Wsource,[X1], little-endian four-byte group.
+    words.add(0x53187c00'u32 or (sourceReg shl 5) or destReg) # LSR Wdest,Wsource,#24.
+    words.add(0x91001000'u32 or (baseReg shl 5) or baseReg)
+    words.add(0x91008000'u32 or (shiftReg shl 5) or shiftReg)
+    if fourPrice <= 4095:
+      words.add(0xd1000042'u32 or (uint32(fourPrice) shl 10))
+    else:
+      armImmediate(words, 1, fourPrice)
+      words.add(0xcb010042'u32)
+    words.add(0xd1005063'u32) # Twenty original attempts.
+    for group in 0..<4: words.add(0x5ef38610'u32) # Four completed blocks in D16.
+    words.add(0x5ef38631'u32) # One native word group in D17.
+    words.add(0xeb00001f'u32 or (boundReg shl 16) or (baseReg shl 5))
+    let backedge = words.len
+    words.add(0) # B.NE to the word preflight; final equality selects the real no arm.
+    armRegionEdge(words, fixes, item.no, 16, false)
+    let restoreLabel = words.len
+    words.add(0x9e660282'u32)
+    words.add(0x9e6602a3'u32)
+    words.add(0x9e6602d1'u32)
+    let restoreToByte = words.len
+    words.add(0)
+    let byteLabel = words.len
+    for edge in early:
+      words[edge.at] = 0x54000000'u32 or (uint32(byteLabel-edge.at) shl 5) or edge.condition
+    for edge in restore:
+      let relative = uint32(restoreLabel-edge.at)
+      words[edge.at] = if edge.condition < 16:
+          0x54000000'u32 or (relative shl 5) or edge.condition
+        else: 0x14000000'u32 or relative
+    words[backedge] = 0x54000001'u32 or ((0'u32-uint32(backedge-label) and 0x7ffff'u32) shl 5)
+    words[restoreToByte] = 0x14000000'u32 or uint32(byteLabel-restoreToByte)
   words.add(0xf100007f'u32 or (item.span shl 10))
   armRegionEdge(words, fixes, item.header, 3, true) # Partial source budget returns before any current-block mutation.
   if item.price <= 4095:
@@ -965,15 +1086,19 @@ proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
   let consumed = available-state[1]
   assert state[2] <= consumed div uint64(jit.dirtyLoop.span)
   assert state[2]*uint64(jit.dirtyLoop.span) == consumed
-  assert state[3] == 0 and state[4] == 0
+  assert state[3] <= state[2] div 4 and state[4] == 0
   inc jit.calls
   inc jit.branchCalls
   inc jit.headerCalls
   inc jit.dirtyLoop.calls
   jit.dirtyLoop.blocks+=state[2]
+  jit.dirtyLoop.wordGroups+=state[3]
   jit.operations+=state[2]*uint64(jit.dirtyLoop.operations)
   if destination == jit.dirtyLoop.header: inc jit.dirtyLoop.declines
   destination
 
 func armDirtyLoopStatistics*(jit: ArmJit): array[3, uint64] =
   [jit.dirtyLoop.calls, jit.dirtyLoop.blocks, jit.dirtyLoop.declines]
+
+func armDirtyWordGroups*(jit: ArmJit): uint64 =
+  jit.dirtyLoop.wordGroups

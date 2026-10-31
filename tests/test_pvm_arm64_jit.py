@@ -82,18 +82,42 @@ class Arm64JitReportTests(unittest.TestCase):
         boundaries = 'ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
         owner = 'ARM_DIRTY_LOOP_OWNER,1\n'
         active = 'ARM_DIRTY_LOOP,3,25,1\n'
-        self.assertEqual(dirty_loop_witness(boundaries+owner+active, 'native'),
+        word_owner = 'ARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n'
+        groups = 'ARM_WORD_GROUPS,5\n'
+        native = boundaries+owner+word_owner+groups+active
+        refused = boundaries+owner+word_owner+'ARM_WORD_GROUPS,0\n'
+        self.assertEqual(dirty_loop_witness(native, 'native'),
                          {'calls': 3, 'blocks': 25, 'declines': 1})
-        self.assertIsNone(dirty_loop_witness(boundaries+owner, 'refused'))
+        self.assertIsNone(dirty_loop_witness(refused, 'refused'))
         self.assertIsNone(dirty_loop_witness(boundaries, 'interpreted'))
-        for output, mode in ((boundaries+active, 'native'),
-                             (boundaries+owner+'ARM_DIRTY_LOOP,3,3,1\n', 'native'),
-                             (boundaries+owner+active, 'refused'),
-                             (boundaries+owner, 'interpreted'),
-                             (boundaries+owner+owner+active, 'native'),
-                             (boundaries.replace('840', '839')+owner+active, 'native')):
+        for output, mode in ((native.replace(owner, ''), 'native'),
+                             (native.replace(active, 'ARM_DIRTY_LOOP,3,3,1\n'), 'native'),
+                             (refused+active, 'refused'),
+                             (refused, 'interpreted'),
+                             (native+owner, 'native'),
+                             (native.replace('840', '839'), 'native')):
             with self.subTest(output=output[-45:], mode=mode), self.assertRaises(ValueError):
                 dirty_loop_witness(output, mode)
+
+    def test_word_loop_receipts_are_mode_specific(self):
+        """A missing store, duplicated group count or refused native path cannot qualify."""
+        base = ('ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
+                'ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\nARM_DIRTY_LOOP,3,25,1\n'
+                'ARM_WORD_GROUPS,5\n')
+        for marker in ('ARM_WORD_OWNER,1\n', 'ARM_WORD_CONTROL_CASES,698\n',
+                       'ARM_WORD_ALIAS_CASES,110\n'):
+            for output in (base.replace(marker, ''), base+marker):
+                with self.subTest(marker=marker), self.assertRaises(ValueError):
+                    dirty_loop_witness(output, 'native')
+        for output in (base.replace('ARM_WORD_GROUPS,5\n', ''),
+                       base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,0\n'),
+                       base+'ARM_WORD_GROUPS,5\n',
+                       base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,-1\n')):
+            with self.subTest(output=output[-55:]), self.assertRaises(ValueError):
+                dirty_loop_witness(output, 'native')
+        with self.assertRaises(ValueError):
+            dirty_loop_witness(base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,1\n'),
+                               'refused')
 
     def test_missing_samples_and_nonadditive_lifecycle(self):
         """Native coverage cannot excuse missing calls or mismatched reset/call/publication sums."""
