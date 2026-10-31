@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness
+from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness, direct_branch_witness
 
 
 def transcript():
@@ -125,6 +125,37 @@ class Arm64JitReportTests(unittest.TestCase):
                        transcript().replace('1,2,3,6', '1,2,3,7')):
             with self.subTest(output=output[-80:]), self.assertRaises(ValueError):
                 parse(output+'ARM_JIT,sieve,1,13,26,36,100\n', 'sieve', True)
+
+class Arm64DirectBranchReceiptTests(unittest.TestCase):
+    def test_native_refused_and_interpreted_counts(self):
+        """Only the native mode may claim literal execution; every mode retains source controls."""
+        controls = 'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
+        for mode, literals in (('native', 1640), ('refused', 0), ('interpreted', 0)):
+            output = f'ARM_DIRECT_BRANCH_LITERAL_CASES,{literals}\n'+controls
+            self.assertEqual(direct_branch_witness(output, mode),
+                             {'literal_cases': literals, 'control_cases': 122})
+
+    def test_missing_duplicate_and_malformed_receipts(self):
+        """A repeated or substituted count cannot make an incomplete native witness pass."""
+        complete = 'ARM_DIRECT_BRANCH_LITERAL_CASES,1640\nARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
+        for marker in ('ARM_DIRECT_BRANCH_LITERAL_CASES,1640\n',
+                       'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'):
+            for output in (complete.replace(marker, ''), complete+marker,
+                           complete.replace(marker, marker.replace(',', ',-', 1))):
+                with self.subTest(marker=marker, output=output), self.assertRaises(ValueError):
+                    direct_branch_witness(output, 'native')
+
+    def test_counts_cannot_cross_modes(self):
+        """Refused and interpreted runs cannot borrow a positive native literal receipt."""
+        native = 'ARM_DIRECT_BRANCH_LITERAL_CASES,1640\nARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
+        checked = native.replace('1640', '0')
+        for output, mode in ((native, 'refused'), (native, 'interpreted'),
+                             (checked, 'native')):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                direct_branch_witness(output, mode)
+        with self.assertRaises(ValueError):
+            direct_branch_witness(native, 'unknown')
+
 
 class Arm64ControlReceiptTests(unittest.TestCase):
     def test_complete_current_and_older_baseline_protocols(self):

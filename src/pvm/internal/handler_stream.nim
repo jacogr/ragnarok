@@ -2375,6 +2375,91 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
+  proc flatArmReadBranch(f: var FlatFrame, offset: uint32): uint32 =
+    ## A successful guarded read and cached branch publish together; refusal replays the original paid source.
+    if f.barrier == flatStop:
+      block:
+        let jit {.cursor.} = f.armJit
+        assert jit != nil
+        if jit != nil:
+          let ending = armEnding(jit, offset)
+          let args = f.arguments[int(ending)]
+          let destination = callArmMemoryBranch(jit, offset, uint32(args.x shr 32), args.y,
+              f.info.registers, f.armMemory)
+          if destination != flatStop:
+            assert int(destination) < f.handlers.len
+            f.info.blockCharged = false
+            return destination
+    let original = f.armOriginal[int(offset)]
+    assert original != nil
+    if original != nil: return original(f, offset)
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatArmUpgradeReadBranch(f: var FlatFrame, offset: uint32): bool =
+    ## Rebuild one direct-load prefix only after the original conditional has cached both positive arms.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return false
+    let ending = armEnding(jit, offset)
+    let first = f.plan.facts[int(f.sites[int(offset)])]
+    let readOpcode = int(first.opcode)
+    assert readOpcode >= 52 and readOpcode <= 58
+    let before = armClock()
+    var native = default(ArmReadSpan)
+    emitArmDirectRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
+        range[52..58](readOpcode))
+    for current in offset+1..<ending:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      assert supportedArmOpcode(fact.opcode)
+      emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+    let branch = f.plan.facts[int(f.sites[int(ending)])]
+    let args = f.arguments[int(ending)]
+    emitArmReadBranch(native, branch.opcode, args.slots,
+        flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
+    var words = armReadInstructions(native, ending, true)
+    if words.len >= 1024: return false
+    let published = publishArmEntry(jit, offset, ending, ending-offset+1, words)
+    jit.compilationNs+=armClock()-before
+    if not published: return false
+    f.handlers[int(offset)] = flatArmReadBranch
+    true
+
+  proc flatArmPendingReadBranch(f: var FlatFrame, offset: uint32): uint32 =
+    ## Keep the original checked pair until the branch arms are valid; a failed publication retires the probe.
+    let jit = f.armJit
+    assert jit != nil
+    let original = f.armOriginal[int(offset)]
+    assert original != nil
+    if jit != nil and f.barrier == flatStop and flatArmCachedBranch(f, armEnding(jit, offset)):
+      if flatArmUpgradeReadBranch(f, offset): return flatArmReadBranch(f, offset)
+      if original != nil: f.handlers[int(offset)] = original
+    if original != nil: return original(f, offset)
+    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatArmCompileDirectReadBranch(f: var FlatFrame, offset: uint32): uint32 =
+    ## Defer one direct load and pure suffix ending in a conditional, avoiding a superseded branch publication.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return offset
+    var ending = offset+1
+    var count = 1'u32
+    while int(ending) < f.sites.len and count < 64:
+      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]:
+        break
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
+      inc ending
+      inc count
+    if count < 2 or int(ending) >= f.sites.len: return offset
+    let terminal = f.plan.facts[int(f.sites[int(ending)])]
+    if terminal.opcode notin {81'u8..90'u8, 170'u8..175'u8} or not terminal.ending:
+      return offset
+    armPendingMemoryEnding(jit, offset, ending)
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    f.armOriginal[int(offset)] = f.handlers[int(offset)]
+    f.handlers[int(offset)] = flatArmPendingReadBranch
+    ending+1
+
   proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
     ## Combine multiple selected-width reads and pure arithmetic within one already-reserved source block.
     let jit = f.armJit
@@ -2482,6 +2567,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let entry = armEntry(jit, offset, uint32(f.handlers.len))
     if entry != 0: return offset
     if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
+    if f.plan.facts[int(f.sites[int(offset)])].opcode in 52'u8..58'u8:
+      return flatArmCompileDirectReadBranch(f, offset)
     if f.plan.facts[int(f.sites[int(offset)])].opcode in
         124'u8..130'u8: return flatArmCompileMemory(f, offset)
     var native = default(ArmBlock)

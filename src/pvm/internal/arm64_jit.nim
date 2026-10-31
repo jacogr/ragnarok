@@ -324,11 +324,11 @@ func armReadEncoding(opcode: range[124..130]): uint32 =
   of 129: 0xb8a06800'u32 # LDRSW Xt,[Xn,Xm].
   else: 0xf8606800'u32 # LDR Xt,[Xn,Xm].
 
-proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
-    opcode: range[124..130] = 130) =
-  ## Address aliases consume the current resident value before the load writes its destination.
-  let source = armRead(span.body, slots.bIndex)
-  let destination = armWrite(span.body, slots.aIndex)
+proc emitArmReadFrom(span: var ArmReadSpan, baseSlot, destinationSlot: range[0..12],
+    displacement: uint32, opcode: range[124..130], absolute: bool = false) =
+  ## Indirect aliases consume the old base; a direct load has the specified immediate address.
+  let source = if absolute: 31'u32 else: armRead(span.body, baseSlot)
+  let destination = armWrite(span.body, destinationSlot)
   span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots modulo-2^32 base.
   span.body.words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
   span.body.words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
@@ -356,6 +356,17 @@ proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uin
     # Each admitted region rejoins immediately after this load's guards, never bypassing a later load.
     assert index >= 0 and index < after
     span.body.words[index] = span.body.words[index] or uint32(after-index)
+
+proc emitArmRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+    opcode: range[124..130] = 130) =
+  ## Indirect loads read the original B register and publish A only on success.
+  emitArmReadFrom(span, slots.bIndex, slots.aIndex, displacement, opcode)
+
+proc emitArmDirectRead*(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+    opcode: range[52..58]) =
+  ## Direct loads have an absolute modulo-2^32 immediate address and publish A only on success.
+  emitArmReadFrom(span, slots.aIndex, slots.aIndex, displacement,
+      range[124..130](int(opcode)+72), true)
 
 proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last: uint32) =
   ## A stable guest base admits one nonwrapping readable window before any speculative register mutation.
@@ -405,17 +416,24 @@ proc emitArmReadArithmetic*(span: var ArmReadSpan, opcode: byte, slots: Register
   ## Existing pure operations share the same resident register bank and original wrapping/alias rules.
   emitArmOperation(span.body, opcode, slots, immediate)
 
-proc armReadInstructions*(span: ArmReadSpan, ending: uint32): seq[uint32] =
+proc emitArmReadBranch*(span: var ArmReadSpan, opcode: byte, slots: RegisterSlots,
+    immediate: uint64, yes, no: uint32) =
+  ## Append an already validated conditional after all speculative reads and register operations.
+  emitArmBranch(span.body, opcode, slots, immediate, yes, no)
+
+proc armReadInstructions*(span: ArmReadSpan, ending: uint32,
+    conditional: bool = false): seq[uint32] =
   ## No guest register store precedes a successful complete read sequence; refused speculation has no visible prefix.
-  assert span.body.terminal.len == 0
+  assert (span.body.terminal.len > 0) == conditional
   result = @[0xaa0103f1'u32] # MOV X17,X1 retains only this invocation's borrowed descriptors.
   var leading = 0
   for slot in 0..<13:
     # armInstructions prefixes exactly one original-value load for each live-in guest slot.
     if (span.body.reads and (1'u32 shl slot)) != 0: inc leading
   for word in armInstructions(span.body): result.add(word)
-  result.add(0x52800000'u32 or ((ending and 65535) shl 5))
-  result.add(0x72a00000'u32 or ((ending shr 16) shl 5))
+  if not conditional:
+    result.add(0x52800000'u32 or ((ending and 65535) shl 5))
+    result.add(0x72a00000'u32 or ((ending shr 16) shl 5))
   result.add(0xd65f03c0'u32) # Success returns after the sole complete register publication.
   let failure = result.len
   result.add(0x12800000'u32) # Refusal returns flatStop; arena publication appends RET.
@@ -496,6 +514,13 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
     # An unsuccessful replacement never disturbs a previously published tuple.
     jit.entries[int(offset)].code = 1
 
+proc armPendingMemoryEnding*(jit: ArmJit, offset, ending: uint32) =
+  ## A deferred read/branch fragment occupies no executable slot until both original branch arms are cached.
+  assert int(offset) < jit.entries.len and jit.entries[int(offset)].code == 0
+  assert ending > offset
+  jit.entries[int(offset)].code = 1
+  jit.entries[int(offset)].ending = ending
+
 proc armStartProbe*(jit: ArmJit, header: uint32) =
   ## Only non-executable header records borrow the operation lane for eight cold discovery visits.
   assert int(header) < jit.entries.len
@@ -563,6 +588,19 @@ proc callArmMemory*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
   assert result == high(uint32) or result == entry.ending
   inc jit.calls
   if result != high(uint32): jit.operations+=uint64(entry.operations)
+
+proc callArmMemoryBranch*(jit: ArmJit, offset, yes, no: uint32,
+    registers: var RegisterFile, regions: var array[3, array[3, uint64]]): uint32 =
+  ## A refused read leaves the original registers untouched; success selects only cached branch arms.
+  assert sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  let entry = jit.entries[int(offset)]
+  assert entry.code >= 2
+  result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr regions)
+  assert result == high(uint32) or result == yes or result == no
+  inc jit.calls
+  if result != high(uint32):
+    inc jit.branchCalls
+    jit.operations+=uint64(entry.operations)
 
 proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
   ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
