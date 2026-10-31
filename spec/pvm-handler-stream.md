@@ -805,11 +805,56 @@ stream lease survives through exit accounting. Temporary budget handlers are res
 publication. The endpoint is resolved before host observation, stream transfer or frame retirement;
 immutable snapshots, host response validation and native cleanup retain their existing contracts.
 
-Scope remains Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` and the existing source-attempt
-interpretation. This changes private accounting metadata, not guest gas, instruction effects,
-exit PC, mapping permissions, local resource admission or fallback policy.
+Scope follows the approved Gray Paper source pin `3861aed15d7d016a3a416e14e61fc67dddf6daec`,
+which retains the existing PVM rules and source-attempt interpretation from
+`1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`. Guest gas, instruction effects, exit PC, mapping
+permissions, local resource admission and fallback retain their established contracts.
 
-Local macOS ARM evidence is recorded under ignored `build/pvm-block-execution/`. The paired
-public DOOM and micro cohorts use pinned Nimony 63fed6cb4, ARC, checked release, Clang ThinLTO,
-the same canonical source paths, immutable fixtures and complete state/output validation.
-Linux qualification and final validation evidence will be recorded here before a speed claim.
+### Deferred reservation qualification
+
+[Linux ARM run41221760201](https://github.com/jacogr/ragnarok/actions/runs/41221760201)
+qualified combined stack `74cdecf940b3cc8e1772b4164edd25283a07ed4f` against exact baseline
+`f8612e62105d1a4b446d320f87df83eafeb95819`, including the companion guarded direct-read/branch
+fragment. These are combined-stack native results; they do not isolate each layer's native gain.
+The current master source refresh9e3cd38c changes the approved credential-source pin and retains
+identical PVM/native/toolchain inputs to the baseline.
+
+The cohort used Nimony63fed6cb4, checked release/ARC/Clang21.1.8 ThinLTO on one Linux ARM runner.
+All20 fresh builds,84 primary measured processes,138 positive/refusal controls and60 native replay
+processes passed. Re-parsing every record, matching2,575 role source identities and519 native
+source identities, and checking the equal-policy executable images passed. Native/direct-read,
+word-loop, owner transfer and storage-refusal witnesses also passed. The artifact13049874501 ZIP
+SHA-256 is `ee6ef3c0815a2e31d80b2b9cec6aaa3fa298afb396175c98b639c5c06b223f51`.
+The application report SHA-256 is `663f67d6d1e2118416b503bb41c26d48c3305995dce4159a159447e26bdd4d26`.
+
+CPU milliseconds are ten-sample medians after three warmups in each process order. Ratios use
+PolkaVM interpreted calls from the same runner and order; lower is better.
+
+| Phase/order | Baseline interpreted | Stack interpreted | Interpreted/PolkaVM | Baseline JIT | Stack JIT | JIT/PolkaVM |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| init/0 | 435.987 | 407.464 | 0.6527 | 231.654 | 237.091 | 0.3798 |
+| init/1 | 435.582 | 410.104 | 0.6532 | 237.109 | 229.508 | 0.3656 |
+| tick/0 | 33.596 | 32.707 | 0.8152 | 29.308 | 27.968 | 0.6971 |
+| tick/1 | 33.475 | 32.414 | 0.8083 | 29.436 | 28.006 | 0.6984 |
+
+Interpreter init CPU is5.8–6.5% lower and tick2.6–3.2% lower. JIT tick is4.6–4.9% lower in the
+primary orders; all six independent replay pairs improve, with pooled median ratio0.952657.
+JIT init primary orders change direction (+2.35%/−3.21%); five of six replays improve and the
+pooled median ratio is0.985999. This does not establish a uniform init gain.
+
+The control tradeoff remains explicit: long-sieve JIT CPU is1.27%/2.45% higher in the primary
+orders and all six replay pairs are higher (pooled ratio1.014875). Its hot branch/header counts
+are identical, and the lowered-operation difference is only22 in1.29billion; these counters do
+not identify a cause. A private64-byte fragment-alignment trial had no established local gain
+and was not adopted. Short-sieve JIT primary ratios are1.0008/1.0092; minimal, Pinky and memset
+JIT improve in both orders, while interpreted controls improve. No across-the-board speed claim
+is made. DOOM call CPU includes fresh invocation memory and in-memory callbacks; preparation,
+file I/O and final reference validation remain outside that call scope.
+
+Local supporting checks passed all three backend semantic configurations and six affected Make
+suites: accounting, checked word loops, host resume, stable entry reuse, mixed independent
+reference and host-memory reentry reference. The18,432-case accounting suite passes the real
+implementation and rejects a missing header-span mutation at the expected Host quota mismatch.
+Combined native qualification, all-opcode/region-host suites and source formatting passed.
+Linked ARM code replaces seven reservation-metadata instructions with two on the ordinary
+whole-block success path; exit accounting retains the source bounds checks where the end is used.
