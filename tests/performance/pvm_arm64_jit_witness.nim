@@ -9,6 +9,7 @@ import ../../src/pvm/[step, registers]
 import ../../src/pvm/gas/[plan as gas_plan, memo as gas_memo]
 when defined(pvmArm64Jit):
   import ../../src/pvm/internal/arm64_jit
+  import ../support/pvm_arm_memory_cycle_backend
 import ../../src/pvm/internal/handler_stream
 
 when defined(pvmArm64Jit):
@@ -2692,3 +2693,167 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
   assert oversizedWords.len >= 1024
   assert flatArmMixedStatistics(groupedOversizeFrame)[0] == 0 and
       flatArmMixedGroupStatistics(groupedOversizeFrame)[0] == 0
+
+# Literal child/driver controls retain same-owner pure code, quotas and publication/retirement behavior.
+when defined(pvmArm64Jit):
+  block nativeMemoryCycleBackend:
+    let dirtySource = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0],
+        @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
+        @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    let prefixSource = owner([@[149'u8, 0x55, 1], @[149'u8, 0x55, 1],
+        @[149'u8, 0x55, 1], @[1'u8], @[0'u8]])
+    let tailSource = owner([@[57'u8, 6, 0, 0, 1, 0], @[149'u8, 0x33, 2],
+        @[173'u8, 0x70, 0, 0, 0, 0], @[0'u8]])
+    echo "ARM_MEMORY_CYCLE_BACKEND_CASES,", checkArmMemoryCycleBackend(dirtySource, prefixSource, tailSource)
+else:
+  # This backend is unavailable in a plain interpreter build.
+  echo "ARM_MEMORY_CYCLE_BACKEND_CASES,0"
+
+# A source-shaped native driver must preserve full charged/fault state across 4/5/4 boundaries.
+when defined(pvmArm64Jit):
+  block nativeMemoryCycleFrame:
+    var page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+      registers: default(RegisterFile), blockCharged: false)
+    for slot in 0..<13: info.registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+    info.registers[0] = RegisterValue(65536)
+    info.registers[1] = RegisterValue(0)
+    info.registers[2] = RegisterValue(0)
+    info.registers[3] = RegisterValue(0)
+    info.registers[4] = RegisterValue(0x80000000ffccbbaa'u64)
+    info.registers[5] = RegisterValue(0)
+    info.registers[7] = RegisterValue(2)
+    info.registers[8] = RegisterValue(3)
+    var controls = 0
+    for variant in 0..<3:
+      # Keep a near-shape refusal and a native prefix with an extra folded source attempt.
+      let negative = variant == 1
+      let foldedPrefix = variant == 2
+      let pieces = if negative: @[@[120'u8, 2, 0],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[40'u8, 2],
+        @[198'u8, 20, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 217, 255, 255, 255],
+        @[0'u8]] elif foldedPrefix: @[@[120'u8, 2, 0],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[2'u8],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[1'u8],
+        @[198'u8, 20, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 217, 255, 255, 255],
+        @[0'u8]] else: @[@[120'u8, 2, 0],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[1'u8],
+        @[198'u8, 20, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 218, 255, 255, 255],
+        @[0'u8]]
+      let program = owner(pieces)
+      let plan = newFlatPlan(program, GasCycleLimit(100000))
+      var frame = newFlatFrame(plan, [page], info)
+      for warm in 0..<24:
+        verifyControl(frame, program, info, 100, [page])
+      let warmed = flatArmMemoryCycleStatistics(frame)
+      when not defined(pvmArm64JitRefuse):
+        if negative: assert warmed[0] == 0
+        else:
+          assert warmed[0] > 0 and warmed[4] > 0
+          assert uint64(frame.info.registers[0]) == 65544
+          assert uint64(frame.info.registers[1]) == 32
+          assert uint64(frame.info.registers[5]) == 2
+          assert uint64(frame.info.registers[6]) == 0xffffffffffccbbaa'u64
+      for paid in [false, true]:
+        for gas in [0'u64, 1, 2, 3, 4, 7, 26, 27, 28, 44, 45, 46, 100, 999, 1000000, high(uint64)]:
+          var input = info
+          input.blockCharged = paid
+          input.gas = MachineGas(gas)
+          for budget in 0'u64..66'u64:
+            verifyControl(frame, program, input, budget, [page])
+            inc controls
+      var missing = page
+      missing.index = PageIndex(17)
+      var fault = info
+      fault.registers[0] = RegisterValue(69632)
+      assert replaceFlatMemoryChecked(frame, [missing], fault) == FlatError.None
+      let beforeFault = flatArmMemoryCycleStatistics(frame)
+      verifyControl(frame, program, fault, 100, [missing])
+      let afterFault = flatArmMemoryCycleStatistics(frame)
+      when not defined(pvmArm64JitRefuse):
+        if not negative:
+          assert afterFault[0] == beforeFault[0]+1
+          assert afterFault[1] == beforeFault[1]+1
+          assert afterFault[2] == beforeFault[2]
+          assert afterFault[3] == beforeFault[3]+4
+          assert afterFault[4] == beforeFault[4]+1
+          assert afterFault[5] == beforeFault[5]+1
+      for gas in [0'u64, 30, 100, 1000000]:
+        var input = fault
+        input.gas = MachineGas(gas)
+        for budget in 0'u64..66'u64:
+          verifyControl(frame, program, input, budget, [missing])
+          inc controls
+      var cache = takeFlatStream(frame)
+      var fresh = newFlatFrame(plan, [page], info)
+      restoreFlatStream(fresh, cache)
+      verifyControl(fresh, program, info, 100, [page])
+      when not defined(pvmArm64JitRefuse):
+        let moved = flatArmMemoryCycleStatistics(fresh)
+        if negative: assert moved[0] == 0
+        else: assert moved[0] > warmed[0]
+      if not negative:
+        # Select pricing before emission, then discard a genuinely native default cache at restore.
+        for policy in [0, 1]:
+          var defaultFrame = newFlatFrame(plan, [page], info)
+          for warm in 0..<24: verifyControl(defaultFrame, program, info, 100, [page])
+          when not defined(pvmArm64JitRefuse):
+            assert flatArmMemoryCycleStatistics(defaultFrame)[0] > 0
+          var defaultCache = takeFlatStream(defaultFrame)
+          let complete = newGasPlan(program, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+            blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+          let lazy = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+            cycles: GasCycleLimit(100000)))
+          assert complete.error == GasPlanError.None and lazy.error == GasMemoError.None
+          var priced = newFlatFrame(plan, [page], info)
+          if policy == 0:
+            # An immutable complete plan still cannot borrow the default native driver.
+            assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
+          else:
+            # Lazy query/refusal ownership likewise requires fresh price-bearing emission.
+            assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
+          restoreFlatStream(priced, defaultCache)
+          assert flatArmMemoryCycleStatistics(priced) == default(array[6, uint64])
+          for warm in 0..<24: verifyControl(priced, program, info, 100, [page])
+          assert flatArmMemoryCycleStatistics(priced) == default(array[6, uint64])
+    echo "ARM_MEMORY_CYCLE_FRAME_CASES,", controls
+else:
+  # Plain interpreter builds still provide an explicit unavailable coverage record.
+  echo "ARM_MEMORY_CYCLE_FRAME_CASES,0"

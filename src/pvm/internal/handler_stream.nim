@@ -2662,8 +2662,135 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
+  proc flatArmMemoryCycleShape(f: FlatFrame, readEntry, prefix: uint32,
+      item: var ArmMemoryCycleBlock): bool =
+    ## Capture a complete default-priced source graph with sealed targets and live native children.
+    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged:
+      return false
+    let jit = f.armJit
+    if jit == nil or armDirtyLoopStatus(jit) != 2 or readEntry == 0: return false
+    let tail = readEntry-1
+    if int(prefix) >= f.handlers.len or f.handlers[int(prefix)] != flatCharge or
+        f.handlers[int(tail)] != flatCharge: return false
+    let prefixCharge = f.arguments[int(prefix)]
+    let first = f.sites[int(prefix)]
+    let endingSource = uint64(first)+uint64(prefixCharge.y)
+    if prefixCharge.y < 2 or prefixCharge.y > 64 or endingSource > uint64(f.plan.facts.len):
+      return false
+    var node = prefix+1
+    var pure = 0'u32
+    var dirty = flatStop
+    for ordinal in uint64(first)..<endingSource:
+      let fact = f.plan.facts[int(ordinal)]
+      if fact.opcode == 2: continue
+      if int(node) >= f.handlers.len or f.sites[int(node)] != uint32(ordinal): return false
+      if ordinal+1 == endingSource:
+        if fact.opcode != 1 or not fact.ending or
+            f.handlers[int(node)] != flatCachedJump[1]: return false
+        dirty = f.arguments[int(node)].y
+      else:
+        if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): return false
+        inc pure
+      inc node
+    if pure == 0 or dirty == flatStop or int(dirty) >= f.handlers.len or
+        f.handlers[int(dirty)] != flatArmDirtyLoop or not flatArmDirtyShape(f, dirty): return false
+    let dirtyCharge = f.arguments[int(dirty)]
+    if not armDirtyLoopChargeMatches(jit, dirty, dirtyCharge.y, dirtyCharge.x): return false
+    let dirtyArms = f.arguments[int(dirty+5)]
+    let yes = uint32(dirtyArms.x shr 32)
+    let no = dirtyArms.y
+    if not ((yes == dirty and no == tail) or (no == dirty and yes == tail)): return false
+    let terminal = armEnding(jit, readEntry)
+    if terminal <= readEntry or int(terminal) >= f.sites.len or not flatArmCachedBranch(f, terminal):
+      return false
+    let readFact = f.plan.facts[int(f.sites[int(readEntry)])]
+    if readFact.opcode notin {52'u8..58'u8}: return false
+    let tailCharge = f.arguments[int(tail)]
+    if uint64(f.sites[int(tail)])+uint64(tailCharge.y) != uint64(f.sites[int(terminal)])+1:
+      return false
+    let arms = f.arguments[int(terminal)]
+    let left = uint32(arms.x shr 32)
+    let right = arms.y
+    if (left == prefix) == (right == prefix): return false
+    let outside = if left == prefix: right else: left
+    if outside == dirty or outside == tail: return false
+    var body = newArmRegionBody()
+    for ordinal in uint64(first)..<endingSource-1:
+      let fact = f.plan.facts[int(ordinal)]
+      if fact.opcode == 2: continue
+      emitArmOperation(body, fact.opcode, fact.args.slots, fact.args.x)
+    item = ArmMemoryCycleBlock(prefixHeader: prefix, dirtyHeader: dirty, tailHeader: tail,
+      tailEntry: readEntry, other: outside,
+      prefixSpan: prefixCharge.y, tailSpan: tailCharge.y, prefixOperations: pure+1,
+      tailOperations: terminal-readEntry+1, prefixPrice: prefixCharge.x,
+      tailPrice: tailCharge.x, prefixBody: move(body))
+    true
+
+  proc flatArmMemoryCycle(f: var FlatFrame, offset: uint32): uint32 =
+    ## All native pointers belong only to this call; unstarted headers use their original checked reservations.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    let prefix = armMemoryCycleHeader(jit, 0)
+    let dirty = armMemoryCycleHeader(jit, 1)
+    let tail = armMemoryCycleHeader(jit, 2)
+    assert offset == prefix
+    let prefixCharge = f.arguments[int(prefix)]
+    let dirtyCharge = f.arguments[int(dirty)]
+    let tailCharge = f.arguments[int(tail)]
+    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged or offset != prefix or
+        not armMemoryCycleChargeMatches(jit, 0, prefix, prefixCharge.y, prefixCharge.x) or
+        not armMemoryCycleChargeMatches(jit, 1, tail, tailCharge.y, tailCharge.x) or
+        not armDirtyLoopChargeMatches(jit, dirty, dirtyCharge.y, dirtyCharge.x):
+      let original = f.armOriginal[int(prefix)]
+      assert original != nil
+      if original != nil: return original(f, offset)
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64,
+      0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, uint64(flatStop)]
+    let destination = callArmMemoryCycle(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+    f.info.gas = MachineGas(state[0])
+    f.remaining = state[1]
+    f.info.blockCharged = false
+    if state[13] != uint64(flatStop):
+      assert state[13] == uint64(prefix) or state[13] == uint64(dirty) or state[13] == uint64(tail)
+      f.reservation = uint32(state[13]) or flatReservationHeaderFlag
+    assert int(destination) < f.handlers.len
+    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
+        oracle.StepError.InvalidPreparedProgram)
+    if destination == prefix:
+      let original = f.armOriginal[int(prefix)]
+      assert original != nil
+      if original != nil: return original(f, prefix)
+      return flatLocal(f, prefix, oracle.StepError.InvalidPreparedProgram)
+    if destination == dirty: return flatArmCheckedTail(f, dirty)
+    if destination == tail: return flatCharge(f, tail)
+    destination
+
+  proc flatArmTryMemoryCycle(f: var FlatFrame, readEntry, prefix: uint32) =
+    ## Existing hot child publication proves observation; one bounded source graph can install a driver.
+    let jit = f.armJit
+    if jit == nil or armMemoryCycleStatus(jit) != 0: return
+    var item = default(ArmMemoryCycleBlock)
+    if not flatArmMemoryCycleShape(f, readEntry, prefix, item): return
+    let before = armClock()
+    let published = publishArmMemoryCycle(jit, item)
+    jit.compilationNs+=armClock()-before
+    if not published: return
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    assert f.handlers[int(prefix)] == flatCharge
+    f.armOriginal[int(prefix)] = f.handlers[int(prefix)]
+    f.handlers[int(prefix)] = flatArmMemoryCycle
+
+  proc flatArmMemoryCycleStatistics*(f: FlatFrame): array[6, uint64] =
+    ## Copied diagnostics separate outer bridges from nested child visits and word groups.
+    let jit = f.armJit
+    if jit == nil: default(array[6, uint64])
+    else: armMemoryCycleStatistics(jit)
+
   proc flatArmReadBranch(f: var FlatFrame, offset: uint32): uint32 =
-    ## A successful guarded read and cached branch publish together; refusal replays the original paid source.
+    ## End every descriptor/register borrow before discovering a source graph or using checked fallback.
+    var destination = flatStop
     if f.barrier == flatStop:
       block:
         let jit {.cursor.} = f.armJit
@@ -2671,12 +2798,13 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         if jit != nil:
           let ending = armEnding(jit, offset)
           let args = f.arguments[int(ending)]
-          let destination = callArmMemoryBranch(jit, offset, uint32(args.x shr 32), args.y,
-              f.info.registers, f.armMemory)
-          if destination != flatStop:
-            assert int(destination) < f.handlers.len
-            f.info.blockCharged = false
-            return destination
+          destination = callArmMemoryBranch(jit, offset, uint32(args.x shr 32), args.y,
+            f.info.registers, f.armMemory)
+    if destination != flatStop:
+      assert int(destination) < f.handlers.len
+      f.info.blockCharged = false
+      flatArmTryMemoryCycle(f, offset, destination)
+      return destination
     let original = f.armOriginal[int(offset)]
     assert original != nil
     if original != nil: return original(f, offset)
