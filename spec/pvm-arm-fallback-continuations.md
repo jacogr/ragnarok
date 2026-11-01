@@ -99,8 +99,8 @@ The final formatted promoted source passes all maintained eleven native/refusal/
 records, both backend policy suites, pricing ownership, the plain full witness and the native-enabled
 no-sibling forced-refusal full witness. Actual register-pair disassembly contains indirect BLR
 calls in that no-sibling image. All seventeen controller tests pass. The receipt tests reject incomplete results independently
-in all three modes. One focused Linux ARM run with the explicit interpreter pair will qualify
-the exact public head; no broad CI labels are requested.
+in all three modes. One focused Linux ARM run with the explicit interpreter pair qualifies
+the exact public head below; no broad CI labels are requested.
 
 Ignored evidence: `build/pvm-native-continuations/`, including exact per-variant source/images,
 `arm-only-results.json` with all four measured-image equalities, `local-reparse.json`,
@@ -110,3 +110,75 @@ Broader raw SHA-256:
 `82c02e3f51568c3d0ac2b18f0629ec271ade727ed7a0141a1931932995482a59`.
 Final ARM-only runtime SHA-256:
 `919a79146ab108b07a445f40e8b32213f106b031a3c88aa81f7ccae3784ae869`.
+
+## Focused Linux ARM qualification
+
+Exact runtime/tests/controller head `5edcbfabbadc1bc9a732b6fe948443933b2a1796` passes
+[single-runner ARM run 41356767040](https://github.com/jacogr/ragnarok/actions/runs/41356767040)
+against master `f3cfe69fe1bd67d6c0cda9a216752505666b7c13`, including the explicit
+interpreter pair. Artifact `13103594513` retains the complete evidence. No broad CI labels
+were added.
+
+Six fresh JIT replay processes per source role each execute thirteen checked public calls.
+Process values are CPU medians over samples 3:13; table values take the median across six.
+
+| Workload, JIT replay | Baseline CPU ms | Candidate CPU ms | Change | Faster pairs |
+|---|---:|---:|---:|---:|
+| DOOM init | 145.956 | 143.790 | -1.48% | 6/6 |
+| DOOM tick | 21.093 | 21.049 | -0.21% | 6/6 |
+| Minimal | 5.261 | 5.283 | +0.42% | 2/6 |
+| Pinky | 81.953 | 81.005 | -1.16% | 6/6 |
+| Sieve 10m | 274.209 | 277.048 | +1.04% | 0/6 |
+
+Init and Pinky improve with nonoverlapping ranges. Tick improves in all six pairs but its
+aggregate ranges overlap; it remains a small, effectively flat DOOM tick result. Minimal has
+four slower pairs, two faster and overlapping ranges. Sieve is a consistent slower result
+with nonoverlapping ranges, reversing the local -2.64% direction. This Linux cost is retained.
+
+The separate **two-process primary** JIT cohort confirms the Sieve 10m cost at +1.49%, both
+pairs slower/nonoverlapping. Primary Minimal is +1.01%, with mixed pairs/overlap. Primary-only
+small Sieve improves 2.735 to 2.700 ms (-1.27%), both faster/nonoverlapping; memset is flat
+at 3.313748 to 3.313752 ms (+0.00012%), with mixed pairs/overlap. These primary-only small
+controls do not have six-process replay strength.
+
+The primary interpreter cohort has **two fresh processes per source role**, separately from
+the JIT replay. The same thirteen-call and samples 3:13 process statistic applies.
+
+| Workload, interpreter | Baseline CPU ms | Candidate CPU ms | Change |
+|---|---:|---:|---:|
+| DOOM init | 318.409 | 317.362 | -0.33% |
+| DOOM tick | 27.633 | 27.640 | +0.02% |
+| Minimal | 5.527 | 5.514 | -0.24% |
+| Pinky | 86.475 | 86.630 | +0.18% |
+| Memset | 3.447 | 3.441 | -0.17% |
+| Sieve 100k | 3.093804 | 3.096766 | +0.10% |
+| Sieve 10m | 324.186 | 324.530 | +0.11% |
+
+Small Sieve is both pairs slower/nonoverlapping: retain its +0.095740% primary point cost.
+Memset improves in both pairs but overlaps. Every other interpreter case has mixed pairs
+and overlapping ranges. No general interpreter benefit is attributed to this ARM native-enabled
+selection change.
+
+Matched **primary** raw ratios, ours / PolkaVM interpreted, are **0.524 JIT / 0.689 interpreter**
+for DOOM tick and **0.229 / 0.507** for init. No replay numerator is combined with the primary
+denominator. The JIT init/Pinky benefits and simpler ARM checked-dispatch architecture justify
+this increment with effectively flat DOOM tick and the Linux Sieve cost explicitly retained.
+No universal, x86 or full-block throughput gain follows.
+
+Independent author and reviewer audits pass all 84 primary plus 60 replay process logs,
+42 positive and 96 negative controls, eighteen fresh-image equalities and exact source identities.
+All fourteen cross-source native-work/code comparisons are equal; within-role primary and replay
+work/code is deterministic. All interpreter native counters are zero. All eleven native/refusal/
+ownership records, both policy suites, owner moves/copy-refusal reasons and all three 120-case
+long receipts pass. The author additionally checks all 2,575 role and 519 native source hashes
+and all thirty-two recorded fixture identity files; the reviewer verifies twenty-four pinned
+workload inputs. The final evidence-only update changes no qualified runtime, test, controller
+or fixture source.
+
+Ignored author audits: `build/pvm-native-continuations/ci-arm-audit.json` and
+`remaining-audit.json`. Official artifact ZIP SHA-256:
+`8946884b8e9eb434201878e95b714c4d908585554979fc1d45371395d9682cde`.
+Application report SHA-256:
+`9b69463e51471ff07fe718b4bbebffb0a7fa9928ab81f6dd145e59137fde275b`.
+Native report SHA-256:
+`2d434b58ad96777f3bdbf0c33976173fd8bb696c2617b9173cb910ebee3615e7`.
