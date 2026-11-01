@@ -105,6 +105,73 @@ Matched broader raw ratios, ours / PolkaVM interpreted, are **0.317 JIT / 0.519 
 DOOM tick and **0.164 / 0.352** for init. These are local application measurements, not portable
 or full-block throughput claims.
 
+## Linux ARM qualification, 2026-11-01 UTC
+
+[Focused ARM run 41361031150](https://github.com/jacogr/ragnarok/actions/runs/41361031150)
+passes on exact runtime head `0d64aee296d5078aa64707207f924e70d71509b3`, compared with
+master `b5898e247337a30d6c2cc7311e07c725c9cafc31`. It uses the explicit checked-interpreter
+pair, thirteen-call protocol and pinned toolchain above. Smoke also passes. No broad CI suite
+was dispatched.
+
+The five JIT rows below use **six balanced process replays per source**. Each process value is
+the CPU median of samples 3:13; the table takes the median across six processes. The DOOM and
+Minimal ranges overlap despite every paired candidate being faster. Pinky and Sieve have
+nonoverlapping ranges in all six comparisons.
+
+| JIT workload | Baseline CPU ms | Candidate CPU ms | Change | Paired result |
+|---|---:|---:|---:|---|
+| DOOM init | 142.816 | 141.000 | -1.27% | 6/6 faster; overlapping ranges |
+| DOOM tick | 20.795 | 20.677 | -0.57% | 6/6 faster; overlapping ranges |
+| Minimal | 5.327 | 5.272 | -1.03% | 6/6 faster; overlapping ranges |
+| Pinky | 80.978 | 78.541 | -3.01% | 6/6 faster; nonoverlapping ranges |
+| Sieve 10m | 277.267 | 253.327 | -8.63% | 6/6 faster; nonoverlapping ranges |
+
+The **two primary process comparisons** additionally show JIT memset -0.76% and Sieve 100k
+-4.17%, both pairs faster with nonoverlapping ranges. Primary JIT Minimal is -0.52% with mixed
+pairs/overlap; its six-replay result above is a separate cohort. Primary JIT DOOM tick is -0.73%
+and init -1.05%, both pairs faster/nonoverlapping. These stronger primary DOOM distributions
+do not replace the overlapping six-replay ranges.
+
+The checked interpreter uses **two primary process comparisons**, not six JIT replays:
+
+| Interpreter workload | Baseline CPU ms | Candidate CPU ms | Change | Paired result |
+|---|---:|---:|---:|---|
+| DOOM init | 317.433 | 317.006 | -0.13% | 2/2 faster; overlapping ranges |
+| DOOM tick | 27.628 | 27.942 | +1.14% | 2/2 slower; nonoverlapping ranges |
+| Minimal | 5.553 | 5.485 | -1.22% | 2/2 faster; nonoverlapping ranges |
+| Pinky | 86.195 | 85.424 | -0.90% | 2/2 faster; nonoverlapping ranges |
+| Memset | 3.448 | 3.417 | -0.90% | 2/2 faster; nonoverlapping ranges |
+| Sieve 100k | 3.096 | 3.066 | -0.96% | 2/2 faster; nonoverlapping ranges |
+| Sieve 10m | 324.178 | 320.278 | -1.20% | 2/2 faster; nonoverlapping ranges |
+
+**Interpreted DOOM tick's +1.14% is an observed cost**, in addition to the local init costs and
+larger native images. The compiler change adds no new interpreter execution path; these
+measurements establish neither the cause of its interpreter changes nor a general interpreter
+benefit. The JIT DOOM tick result is a small improvement, while the larger Pinky/Sieve gains
+are more consistent. Local and Linux directions and cohort sizes remain separately visible.
+
+Matched **primary-only** raw ratios, ours / PolkaVM interpreted, are **0.517 JIT / 0.698
+interpreter** for DOOM tick and **0.226 / 0.505** for init. Numerators and reference denominators
+come from the same primary cohort; the six-replay JIT medians are not divided by a primary
+reference. These do not establish x86 or full-block throughput.
+
+The author audit strictly reparses all 144 primary/replay transcripts, checks 42 positive and
+96 negative controls, the exact replay schedule, 18 fresh-image equalities, 2,575 role-source
+hashes, 519 native-source hashes and all 32 fixture identity files. The latter contain the
+24 official workload pins plus other fixture identities. All eleven native/refusal/ownership
+records, both policy suites, move/copy controls and all eight new witness receipts pass.
+Within-role work and code are deterministic across primary/replay processes; interpreter
+native counters remain zero. Fourteen paired cross-source native records deliberately change
+and are retained rather than asserted equal. Their warmed counters match the local ARM table
+below, including all footprint growth.
+
+Official artifact `13105379065` (`pvm-comparison-arm64-1`), ZIP SHA-256:
+`465a8af50b79b7353d25308044f184f0b0f07f2784312a82981c457df3326a4f`.
+Application report SHA-256:
+`8f880a36b60ea183e6c487bb6be37684d677e3fe72c2c149be9b56695067460b`.
+Native report SHA-256:
+`a923bc7804c8a4335b86ef6c200268efe89b86306f319171fee2403abb39ee9e`.
+
 ## Coverage, transitions and footprint
 
 Native work intentionally changes. The following counters are final prepared-owner diagnostics
@@ -117,6 +184,7 @@ after thirteen public calls, deterministic across fresh processes within each so
 | Minimal | unchanged | +26 total | 2,592 to 2,836 (+9.41%) |
 | Pinky | -1.80% | +4.39% | 221,088 to 248,584 (+12.44%) |
 | Memset | +52 total | +483 total | 9,416 to 12,056 (+28.04%) |
+| Sieve 100k | +0.0903% | +10.48% | 455,184 to 458,540 (+0.74%) |
 | Sieve 10m | +0.0074% | +10.06% | 457,300 to 460,644 (+0.73%) |
 
 Warm DOOM tick publications rise from 997 to 1,013; init remains at 1,024 including the reserved
@@ -133,13 +201,15 @@ costs for fewer DOOM/Pinky entries, more lowered work and the observed workload 
 
 The exact final formatted promoted source passes all eleven maintained native/refusal/ownership
 records, both runtime-policy suites, pricing ownership and the plain full witness. All eighteen
-controller tests pass, rejecting incomplete execution evidence independently in all three modes. One focused Linux ARM replay with the explicit
-interpreter pair will qualify the exact public head before readiness; no broad CI labels are
-requested. x86 is unchanged and no x86 speed claim is established.
+controller tests pass, rejecting incomplete execution evidence independently in all three modes.
+The exact runtime head passes the focused Linux ARM replay and explicit interpreter pair above;
+the final evidence-only update changes this spec alone. No broad CI labels are requested.
+x86 is unchanged and no x86 speed claim is established.
 
 Ignored evidence: `build/pvm-prefix-read-span/`, including source/image identities, all canonical
 builds, `results-v1.json`, `results-v2.json`, focused-witness freezes, both raw cohorts,
-`local-reparse.json`, `cohort-audit.json`, full validation and unclocked native activity.
+`local-reparse.json`, `cohort-audit.json`, full validation and unclocked native activity. Official Linux artifacts and independent author
+audits are retained in `ci-arm/`, `ci-arm-audit.json` and `remaining-audit.json`.
 Initial raw SHA-256:
 `7e68048db2c986425686fb1868f4dbf778fe44845820c9ff1d28e0a52293e4d6`.
 Broader raw SHA-256:
