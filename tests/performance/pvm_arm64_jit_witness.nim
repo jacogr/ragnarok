@@ -2250,3 +2250,373 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
   armShiftPairDeclines = shiftPairCounts[1]
 echo "ARM_SHIFT_PAIR_LITERAL_CASES,", armShiftPairCases
 echo "ARM_SHIFT_PAIR_DECLINE_CASES,", armShiftPairDeclines
+
+# The prelude dirties page16 only. A warm native body can then commit its first store
+# before a later wide store meets a clean, read-only or absent second page.
+let mixedProgram = owner([@[123'u8, 0x18, 0, 0, 0, 0],
+    @[123'u8, 0x78, 0xf0, 0xff, 0xff, 0xff],
+    @[40'u8, 5, 0, 0, 0], @[130'u8, 0x12, 0, 0, 0, 0],
+    @[123'u8, 0x12, 8, 0, 0, 0], @[130'u8, 0x62, 0, 0, 0, 0],
+    @[123'u8, 0x72, 0, 0, 0, 0], @[149'u8, 0x44, 1],
+    @[171'u8, 0x54, 0xe5, 0xff, 0xff, 0xff], @[0'u8]])
+let mixedPlan = newFlatPlan(mixedProgram, GasCycleLimit(100000))
+var mixedPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+mixedPage.bytes[0] = 0x81
+mixedPage.bytes[1] = 0x42
+var mixedSecond = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)
+var mixedRegisters = default(RegisterFile)
+mixedRegisters[1] = RegisterValue(65536)
+mixedRegisters[2] = RegisterValue(0xabcdef0123456789'u64)
+mixedRegisters[5] = RegisterValue(20)
+mixedRegisters[6] = RegisterValue(65536)
+mixedRegisters[7] = RegisterValue(69630)
+mixedRegisters[8] = RegisterValue(0x1122334455667788'u64)
+let mixedInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: mixedRegisters)
+when defined(pvmArm64Jit) and (defined(pvmArmMixedGroupReceipt) or
+    defined(pvmArmDirtyLoopOwnerReceipt)) and not defined(pvmArm64JitRefuse):
+  for policy in 0..<3:
+    # The same mixed source must observe eligible unpriced work, while priced work has no permanent observer.
+    var admission = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
+    if policy == 1:
+      let prices = newGasPlan(mixedProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+          blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+      assert prices.error == GasPlanError.None
+      assert selectFlatPrices(admission, prices.value, default(GasMemo)) == StepError.None
+    elif policy == 2:
+      let prices = newGasMemo(mixedProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+          cycles: GasCycleLimit(100000)))
+      assert prices.error == GasMemoError.None
+      assert selectFlatPrices(admission, default(GasPlan), prices.value) == StepError.None
+    verifyControl(admission, mixedProgram, mixedInfo, if policy == 0: 10'u64 else: 123'u64,
+        [mixedPage, mixedSecond])
+    let observers = flatArmMixedProbes(admission)
+    assert (if policy == 0: observers > 0 else: observers == 0)
+    echo "ARM_MIXED_PRICED_PROBES,", policy, ",", observers
+    if policy != 0:
+      # A prepared owner may retain an unpromoted unpriced observer before the next invocation chooses prices.
+      var unpriced = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
+      verifyControl(unpriced, mixedProgram, mixedInfo, 10, [mixedPage, mixedSecond])
+      assert flatArmMixedProbes(unpriced) > 0
+      var retained = takeFlatStream(unpriced)
+      restoreFlatStream(admission, retained)
+      assert flatArmMixedProbes(admission) > 0
+      verifyControl(admission, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
+      assert flatArmMixedProbes(admission) == 0
+      echo "ARM_MIXED_RETAINED_PRICED_PROBES,", policy, ",0"
+var mixedFrame = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
+verifyControl(mixedFrame, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
+when defined(pvmArm64Jit):
+  when not defined(pvmArm64JitRefuse):
+    let warm = flatArmMixedStatistics(mixedFrame)
+    assert warm[0] > 0 and warm[1] > 0 and warm[3] >= warm[1]*6
+# A new dirty epoch retains the published body. First-page prelude permits the
+# first native store; the cross-page store must decline on its clean second page.
+verifyControl(mixedFrame, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  assert flatArmMixedStatistics(mixedFrame)[2] > 0
+mixedSecond.access = PageAccess.ReadOnly
+assert replaceFlatMemoryChecked(mixedFrame, [mixedPage, mixedSecond], mixedInfo) == FlatError.None
+verifyControl(mixedFrame, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
+assert replaceFlatMemoryChecked(mixedFrame, [mixedPage], mixedInfo) == FlatError.None
+verifyControl(mixedFrame, mixedProgram, mixedInfo, 123, [mixedPage])
+var mixedFault = mixedInfo
+mixedFault.registers[6] = RegisterValue(73728) # Later load faults after the first native store changed memory.
+verifyControl(mixedFrame, mixedProgram, mixedFault, 123, [mixedPage])
+var highest = PageImage(index: PageIndex(1048575), access: PageAccess.ReadWrite)
+var highStore = mixedInfo
+highStore.registers[7] = RegisterValue(0xfffffff8'u64)
+assert replaceFlatMemoryChecked(mixedFrame, [mixedPage, highest], highStore) == FlatError.None
+when defined(pvmArm64Jit):
+  let beforeHighStore = flatArmMixedStatistics(mixedFrame)
+verifyControl(mixedFrame, mixedProgram, highStore, 123, [mixedPage, highest])
+assert mixedFrame.exit == StepExit.Panic and mixedFrame.info.pc == CodeAddress(0)
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let afterHighStore = flatArmMixedStatistics(mixedFrame)
+  assert afterHighStore[2] == beforeHighStore[2]+1 and
+      afterHighStore[3] == beforeHighStore[3]+3
+var highLoad = mixedInfo
+highLoad.registers[6] = RegisterValue(0xfffffff8'u64)
+when defined(pvmArm64Jit):
+  let beforeHighLoad = flatArmMixedStatistics(mixedFrame)
+verifyControl(mixedFrame, mixedProgram, highLoad, 123, [mixedPage, highest])
+assert mixedFrame.exit == StepExit.Panic and mixedFrame.info.pc == CodeAddress(0)
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let afterHighLoad = flatArmMixedStatistics(mixedFrame)
+  assert afterHighLoad[2] == beforeHighLoad[2]+1 and
+      afterHighLoad[3] == beforeHighLoad[3]+2
+var wordFirst = mixedPage
+wordFirst.index = PageIndex(63)
+var wordSecond = mixedSecond
+wordSecond.index = PageIndex(64)
+var wordBoundary = mixedInfo
+wordBoundary.registers[1] = RegisterValue(63'u64*4096)
+wordBoundary.registers[6] = RegisterValue(63'u64*4096)
+wordBoundary.registers[7] = RegisterValue(64'u64*4096-2)
+assert replaceFlatMemoryChecked(mixedFrame, [wordFirst, wordSecond], wordBoundary) == FlatError.None
+verifyControl(mixedFrame, mixedProgram, wordBoundary, 123, [wordFirst, wordSecond])
+mixedSecond.access = PageAccess.ReadWrite
+assert replaceFlatMemoryChecked(mixedFrame, [mixedPage, mixedSecond], mixedInfo) == FlatError.None
+for paid in [false, true]:
+  for gas in [0'u64, 1, 1000]:
+    for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 123]:
+      var interior = mixedInfo
+      interior.pc = CodeAddress(17)
+      interior.gas = MachineGas(gas)
+      interior.blockCharged = paid
+      verifyControl(mixedFrame, mixedProgram, interior, budget, [mixedPage, mixedSecond])
+when defined(pvmArm64Jit):
+  let mixedStats = flatArmMixedStatistics(mixedFrame)
+  when defined(pvmArm64JitRefuse): assert mixedStats == default(array[4, uint64])
+  else: assert mixedStats[0] > mixedStats[1] and mixedStats[2] >= 7 and
+      mixedStats[3] >= mixedStats[1]*6
+  echo "ARM_MIXED_BLOCK,", mixedStats[0], ",", mixedStats[1], ",", mixedStats[2], ",", mixedStats[3]
+
+# The native group must observe the preceding store before its aliased load, then publish
+# the loaded value through a later store. The branch repeats enough times to publish the body.
+let groupedAliasProgram = owner([@[123'u8, 0x18, 0, 0, 0, 0],
+    @[130'u8, 0x19, 0, 0, 0, 0], @[123'u8, 0x19, 8, 0, 0, 0],
+    @[171'u8, 0x54, 0xee, 0xff, 0xff, 0xff], @[0'u8]])
+let groupedAliasPlan = newFlatPlan(groupedAliasProgram, GasCycleLimit(100000))
+var groupedAliasPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+var groupedAliasRegisters = default(RegisterFile)
+groupedAliasRegisters[1] = RegisterValue(65536)
+groupedAliasRegisters[5] = RegisterValue(1)
+groupedAliasRegisters[8] = RegisterValue(0x1122334455667788'u64)
+groupedAliasRegisters[11] = RegisterValue(0xdeadbeef12345678'u64)
+groupedAliasRegisters[12] = RegisterValue(0xfedcba9876543210'u64)
+let groupedAliasInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: groupedAliasRegisters)
+var groupedAliasFrame = newFlatFrame(groupedAliasPlan, [groupedAliasPage], groupedAliasInfo)
+verifyControl(groupedAliasFrame, groupedAliasProgram, groupedAliasInfo, 123,
+    [groupedAliasPage])
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let groupedAliasStats = flatArmMixedStatistics(groupedAliasFrame)
+  assert groupedAliasStats[1] > 0
+  echo "ARM_MIXED_GROUP_ALIAS,", groupedAliasStats[0], ",", groupedAliasStats[1]
+  let groupedWindowStats = flatArmMixedGroupStatistics(groupedAliasFrame)
+  echo "ARM_MIXED_GROUP_WINDOW,", groupedWindowStats[0], ",",
+      groupedWindowStats[1], ",", groupedWindowStats[2]
+  assert groupedWindowStats[0] > 0
+  when defined(pvmArmMixedGroupReceipt):
+    assert groupedWindowStats[1] > 0 and groupedWindowStats[2] > 0
+
+# A fresh invocation starts with a clean bitmap. Its first grouped store declines, then
+# checked execution dirties the page and later loop iterations may use the native window.
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let groupedBeforeClean = flatArmMixedGroupStatistics(groupedAliasFrame)
+verifyControl(groupedAliasFrame, groupedAliasProgram, groupedAliasInfo, 123,
+    [groupedAliasPage])
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse) and
+    defined(pvmArmMixedGroupReceipt):
+  let groupedAfterClean = flatArmMixedGroupStatistics(groupedAliasFrame)
+  assert groupedAfterClean[1] > groupedBeforeClean[1] and
+      groupedAfterClean[2]-groupedBeforeClean[2] <
+      groupedAfterClean[1]-groupedBeforeClean[1]
+
+# A late store crosses an absent next page. The group declines at its first store; the checked
+# worker then commits earlier valid stores and reports the actual later fault.
+var groupedFutureFault = groupedAliasInfo
+groupedFutureFault.registers[1] = RegisterValue(65536+4088)
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let groupedBeforeFault = flatArmMixedGroupStatistics(groupedAliasFrame)
+verifyControl(groupedAliasFrame, groupedAliasProgram, groupedFutureFault, 123,
+    [groupedAliasPage])
+assert groupedAliasFrame.exit == StepExit.Fault
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse) and
+    defined(pvmArmMixedGroupReceipt):
+  let groupedAfterFault = flatArmMixedGroupStatistics(groupedAliasFrame)
+  assert groupedAfterFault[1] > groupedBeforeFault[1] and
+      groupedAfterFault[2] == groupedBeforeFault[2]
+
+# A valid first store near the protected top cannot make the later out-of-range store
+# appear valid through a wrapped shared endpoint.
+var groupedTopInfo = groupedAliasInfo
+groupedTopInfo.registers[1] = RegisterValue(0xfffffff0'u64)
+assert replaceFlatMemoryChecked(groupedAliasFrame, [highest], groupedTopInfo) ==
+    FlatError.None
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let groupedBeforeTop = flatArmMixedGroupStatistics(groupedAliasFrame)
+verifyControl(groupedAliasFrame, groupedAliasProgram, groupedTopInfo, 123, [highest])
+assert groupedAliasFrame.exit == StepExit.Panic
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse) and
+    defined(pvmArmMixedGroupReceipt):
+  let groupedAfterTop = flatArmMixedGroupStatistics(groupedAliasFrame)
+  assert groupedAfterTop[1] > groupedBeforeTop[1] and
+      groupedAfterTop[2] == groupedBeforeTop[2]
+
+# Two loads that write the base between candidate members must disable grouping even if both
+# loaded values happen to equal the old base in this fixture.
+let groupedBaseWriteProgram = owner([@[123'u8, 0x28, 0, 0, 0, 0],
+    @[130'u8, 0x18, 0, 0, 0, 0],
+    @[130'u8, 0x11, 8, 0, 0, 0], @[130'u8, 0x11, 16, 0, 0, 0],
+    @[130'u8, 0x19, 0, 0, 0, 0],
+    @[171'u8, 0x54, 0xe2, 0xff, 0xff, 0xff], @[0'u8]])
+let groupedBaseWritePlan = newFlatPlan(groupedBaseWriteProgram, GasCycleLimit(100000))
+var groupedBaseWritePage = groupedAliasPage
+for at in [0, 8, 16]:
+  groupedBaseWritePage.bytes[at+2] = 1 # 65536 in little endian.
+var groupedBaseWriteInfo = groupedAliasInfo
+groupedBaseWriteInfo.registers[2] = RegisterValue(65568)
+var groupedBaseWriteFrame = newFlatFrame(groupedBaseWritePlan, [groupedBaseWritePage],
+    groupedBaseWriteInfo)
+verifyControl(groupedBaseWriteFrame, groupedBaseWriteProgram, groupedBaseWriteInfo, 123,
+    [groupedBaseWritePage])
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  assert flatArmMixedStatistics(groupedBaseWriteFrame)[0] == 0
+  assert flatArmMixedGroupStatistics(groupedBaseWriteFrame)[0] == 0
+
+# A premarked first page permits an ungrouped native store. The later group spans the
+# absent next page, so its first-site exit must preserve that earlier native byte write.
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let groupedPrefixSource = owner([@[123'u8, 0x28, 0, 0, 0, 0],
+      @[123'u8, 0x18, 0, 0, 0, 0], @[130'u8, 0x19, 8, 0, 0, 0],
+      @[171'u8, 0x54, 0xee, 0xff, 0xff, 0xff], @[0'u8]])
+  var groupedPrefixBody = newArmMixedBody()
+  let firstStore = instructionRegisters(instruction(groupedPrefixSource, CodeAddress(0)))
+  let groupedStore = instructionRegisters(instruction(groupedPrefixSource, CodeAddress(6)))
+  let groupedLoad = instructionRegisters(instruction(groupedPrefixSource, CodeAddress(12)))
+  let groupedBranch = instructionRegisters(instruction(groupedPrefixSource, CodeAddress(18)))
+  emitArmMixedMemory(groupedPrefixBody, 123, firstStore, 0, 1)
+  emitArmMixedWindowMemory(groupedPrefixBody, 123, groupedStore, 0, 2,
+      0, 16, 15, true, true)
+  emitArmMixedWindowMemory(groupedPrefixBody, 130, groupedLoad, 8, 3,
+      0, 16, 15, false, true)
+  emitArmMixedBranch(groupedPrefixBody, 171, groupedBranch, 0, 4, 5)
+  let groupedPrefixJit = newArmJit()
+  assert armEntry(groupedPrefixJit, 0, 5) == 0
+  var groupedPrefixWords = armMixedInstructions(groupedPrefixBody)
+  assert publishArmEntry(groupedPrefixJit, 0, 4, armMixedLowered(groupedPrefixBody),
+      groupedPrefixWords)
+  var groupedPrefixBytes = default(array[4096, byte])
+  var groupedPrefixRegions = default(array[3, array[3, uint64]])
+  groupedPrefixRegions[1] = [65536'u64, 4089'u64,
+      cast[uint64](addr groupedPrefixBytes[0])]
+  var groupedPrefixDirty = @[1'u64 shl 16]
+  var groupedPrefixRegisters = groupedAliasRegisters
+  groupedPrefixRegisters[1] = RegisterValue(65536+4088)
+  groupedPrefixRegisters[2] = RegisterValue(65536)
+  var groupedPrefixState = default(ArmMixedState)
+  assert callArmMixed(groupedPrefixJit, 0, groupedPrefixRegisters, groupedPrefixRegions,
+      groupedPrefixDirty, groupedPrefixState) == 2
+  assert groupedPrefixState[0] == 2 and groupedPrefixState[4] == 1
+  assert groupedPrefixBytes[0] == 0x88 and groupedPrefixBytes[1] == 0x77
+  assert groupedPrefixBytes[4088] == 0 and groupedPrefixRegisters[11] ==
+      groupedAliasRegisters[11]
+  echo "ARM_MIXED_GROUP_PREFIX,1,2,1"
+
+# A descriptor with only eight available bytes cannot pass a sixteen-byte read window:
+# the len-minus-seven extent is checked before subtracting the additional span.
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let groupedShortSource = owner([@[130'u8, 0x18, 0, 0, 0, 0],
+      @[130'u8, 0x19, 8, 0, 0, 0],
+      @[171'u8, 0x54, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+  var groupedShortBody = newArmMixedBody()
+  let shortFirst = instructionRegisters(instruction(groupedShortSource, CodeAddress(0)))
+  let shortSecond = instructionRegisters(instruction(groupedShortSource, CodeAddress(6)))
+  let shortBranch = instructionRegisters(instruction(groupedShortSource, CodeAddress(12)))
+  emitArmMixedWindowMemory(groupedShortBody, 130, shortFirst, 0, 1,
+      0, 16, 15, true, false)
+  emitArmMixedWindowMemory(groupedShortBody, 130, shortSecond, 8, 2,
+      0, 16, 15, false, false)
+  emitArmMixedBranch(groupedShortBody, 171, shortBranch, 0, 3, 4)
+  let groupedShortJit = newArmJit()
+  assert armEntry(groupedShortJit, 0, 4) == 0
+  var groupedShortWords = armMixedInstructions(groupedShortBody)
+  assert publishArmEntry(groupedShortJit, 0, 3, armMixedLowered(groupedShortBody),
+      groupedShortWords)
+  var groupedShortBytes = default(array[8, byte])
+  var groupedShortRegions = default(array[3, array[3, uint64]])
+  groupedShortRegions[0] = [65536'u64, 1'u64,
+      cast[uint64](addr groupedShortBytes[0])]
+  var groupedShortRegisters = groupedAliasRegisters
+  var groupedShortDirty: seq[uint64] = @[]
+  var groupedShortState = default(ArmMixedState)
+  assert callArmMixed(groupedShortJit, 0, groupedShortRegisters, groupedShortRegions,
+      groupedShortDirty, groupedShortState) == 1
+  assert groupedShortState[0] == 2 and groupedShortState[4] == 0
+  assert groupedShortRegisters[8] == groupedAliasRegisters[8] and
+      groupedShortRegisters[9] == groupedAliasRegisters[9]
+  echo "ARM_MIXED_GROUP_SHORT,1,2,0"
+
+# A folded leading noop leaves the genuine charged header at source PC zero while the first
+# executable body node starts at PC one. Ten ordered memory accesses form two stable bases.
+let groupedLongProgram = owner([@[2'u8],
+    @[123'u8, 0x18, 0, 0, 0, 0], @[130'u8, 0x19, 0, 0, 0, 0],
+    @[123'u8, 0x19, 8, 0, 0, 0], @[130'u8, 0x1a, 8, 0, 0, 0],
+    @[123'u8, 0x1a, 16, 0, 0, 0], @[130'u8, 0x58, 0, 0, 0, 0],
+    @[123'u8, 0x58, 8, 0, 0, 0], @[130'u8, 0x59, 8, 0, 0, 0],
+    @[123'u8, 0x59, 16, 0, 0, 0], @[130'u8, 0x5a, 16, 0, 0, 0],
+    @[100'u8, 0x66], @[100'u8, 0x66],
+    @[171'u8, 0x43, 0xbf, 0xff, 0xff, 0xff], @[0'u8]])
+let groupedLongPlan = newFlatPlan(groupedLongProgram, GasCycleLimit(100000))
+var groupedLongFirst = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+var groupedLongSecond = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)
+var groupedLongRegisters = groupedAliasRegisters
+groupedLongRegisters[1] = RegisterValue(65536)
+groupedLongRegisters[3] = RegisterValue(1)
+groupedLongRegisters[4] = RegisterValue(0)
+groupedLongRegisters[5] = RegisterValue(69632)
+let groupedLongInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000),
+    registers: groupedLongRegisters)
+var groupedLongFrame = newFlatFrame(groupedLongPlan, [groupedLongFirst,
+    groupedLongSecond], groupedLongInfo)
+verifyControl(groupedLongFrame, groupedLongProgram, groupedLongInfo, 250,
+    [groupedLongFirst, groupedLongSecond])
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let longMixed = flatArmMixedStatistics(groupedLongFrame)
+  let longGroups = flatArmMixedGroupStatistics(groupedLongFrame)
+  assert longMixed[0] > 0 and longMixed[1] > 0 and longGroups[0] == 2
+  echo "ARM_MIXED_GROUP_LONG,", longMixed[0], ",", longGroups[0]
+for paid in [false, true]:
+  for gas in [0'u64, 1, 13, 14, 10000]:
+    for budget in [0'u64, 1, 2, 7, 13, 14, 15, 28, 250]:
+      var interior = groupedLongInfo
+      interior.pc = CodeAddress(1)
+      interior.gas = MachineGas(gas)
+      interior.blockCharged = paid
+      verifyControl(groupedLongFrame, groupedLongProgram, interior, budget,
+          [groupedLongFirst, groupedLongSecond])
+
+# This admitted source shape has one safe two-store group and thirteen individual accesses.
+# Its larger emitted body must decline at publication size, retaining exact checked behavior.
+let groupedOversizeProgram = owner([@[123'u8, 0x18, 0, 0, 0, 0],
+    @[123'u8, 0x18, 8, 0, 0, 0], @[123'u8, 0x38, 0, 0, 0, 0],
+    @[130'u8, 0x33, 0, 0, 0, 0], @[123'u8, 0x38, 0, 0, 0, 0],
+    @[123'u8, 0x08, 0, 0, 0, 0], @[123'u8, 0x28, 0, 0, 0, 0],
+    @[123'u8, 0x48, 0, 0, 0, 0], @[123'u8, 0x58, 0, 0, 0, 0],
+    @[123'u8, 0x68, 0, 0, 0, 0], @[123'u8, 0x78, 0, 0, 0, 0],
+    @[123'u8, 0x88, 0, 0, 0, 0], @[123'u8, 0x98, 0, 0, 0, 0],
+    @[123'u8, 0xa8, 0, 0, 0, 0], @[123'u8, 0xb8, 0, 0, 0, 0],
+    @[170'u8, 0x84, 0xa6, 0xff, 0xff, 0xff], @[0'u8]])
+let groupedOversizePlan = newFlatPlan(groupedOversizeProgram, GasCycleLimit(100000))
+var groupedOversizeRegisters = default(RegisterFile)
+for slot in 0..<12: groupedOversizeRegisters[slot] = RegisterValue(65536)
+groupedOversizeRegisters[12] = RegisterValue(0xfedcba9876543210'u64)
+let groupedOversizeInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000),
+    registers: groupedOversizeRegisters)
+var groupedOversizePage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+var groupedOversizeFrame = newFlatFrame(groupedOversizePlan, [groupedOversizePage],
+    groupedOversizeInfo)
+verifyControl(groupedOversizeFrame, groupedOversizeProgram, groupedOversizeInfo, 250,
+    [groupedOversizePage])
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  var oversizedBody = newArmMixedBody()
+  for index in 0..<15:
+    let slots = instructionRegisters(instruction(groupedOversizeProgram,
+        CodeAddress(uint64(index*6))))
+    if index < 2:
+      emitArmMixedWindowMemory(oversizedBody, 123, slots, uint32(index*8),
+          uint32(index+1), 0, 16, 16, index == 0, true)
+    elif index == 3:
+      emitArmMixedMemory(oversizedBody, 130, slots, 0, uint32(index+1))
+    else:
+      emitArmMixedMemory(oversizedBody, 123, slots, 0, uint32(index+1))
+  let oversizedBranch = instructionRegisters(instruction(groupedOversizeProgram,
+      CodeAddress(90)))
+  emitArmMixedBranch(oversizedBody, 170, oversizedBranch, 0, 0, 96)
+  let oversizedWords = armMixedInstructions(oversizedBody)
+  echo "ARM_MIXED_GROUP_OVERSIZE_LITERAL,", oversizedWords.len
+  assert oversizedWords.len >= 1024
+  assert flatArmMixedStatistics(groupedOversizeFrame)[0] == 0 and
+      flatArmMixedGroupStatistics(groupedOversizeFrame)[0] == 0
