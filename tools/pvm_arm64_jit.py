@@ -105,6 +105,29 @@ def dirty_loop_witness(output, mode):
     return dict(calls=calls, blocks=blocks, declines=declines)
 
 
+
+def read_store_loop_witness(output, mode):
+    """Credit byte-loop coverage only when genuine calls retain complete iterations."""
+    if mode not in ('native', 'refused', 'interpreted'):
+        raise ValueError('Unknown read/store-loop witness mode')
+    lines = output.splitlines()
+    result = {}
+    for marker, name, minimum in (('ARM_READ_STORE_LOOP', 'basic', 1),
+                                   ('ARM_READ_STORE_OVERLAP', 'overlap', 20)):
+        rows = [line.split(',') for line in lines if line.startswith(marker+',')]
+        if mode != 'native':
+            if rows: raise ValueError('Inactive execution claimed a native read/store loop')
+            continue
+        if len(rows) != 1 or len(rows[0]) != 4 or any(not value.isascii() or
+                not value.isdecimal() or int(value) >= 2**63 for value in rows[0][1:]):
+            raise ValueError('Missing or malformed resident read/store receipt: '+marker)
+        calls, blocks, declines = map(int, rows[0][1:])
+        if calls == 0 or blocks <= calls*minimum or declines == 0 or declines > calls:
+            raise ValueError('Read/store loop did not retain guarded native iterations')
+        result[name] = dict(calls=calls, blocks=blocks, declines=declines)
+    return result if mode == 'native' else None
+
+
 def direct_branch_witness(output, mode):
     """Require one mode-specific direct-read literal receipt and its complete source-state control."""
     if mode not in ('native', 'refused', 'interpreted'):
@@ -180,6 +203,7 @@ def qualify(checks, compiler, *, native=True):
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
             checked['direct_branch'] = direct_branch_witness(checked['output'], mode)
+            checked['read_store_loop'] = read_store_loop_witness(checked['output'], mode)
         if native and name == 'witness':
             # Genuine two/three-block caches and every inactive charge record must retain exact scalar mismatch refusal.
             matches = [line for line in checked['output'].splitlines()

@@ -2250,3 +2250,146 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
   armShiftPairDeclines = shiftPairCounts[1]
 echo "ARM_SHIFT_PAIR_LITERAL_CASES,", armShiftPairCases
 echo "ARM_SHIFT_PAIR_DECLINE_CASES,", armShiftPairDeclines
+
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  # Resident read/update/store/update/backedge witness. The source and
+  # destination pages overlap; every attempt is compared to the one-step oracle.
+  let copyProgram = owner([@[2'u8], @[124'u8, 0x56], @[149'u8, 0x55, 1],
+      @[120'u8, 0xb6], @[149'u8, 0xbb, 0x40, 1],
+      @[171'u8, 0x8b, 0xf4], @[0'u8]])
+  let copyPlan = newFlatPlan(copyProgram, GasCycleLimit(100000))
+  var copyPage = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))
+  for at in 0..<4096: copyPage.bytes[at] = byte((at*29+17) mod 256)
+  var copyRegisters = default(RegisterFile)
+  copyRegisters[5] = RegisterValue(65536+100)
+  copyRegisters[6] = RegisterValue(0xee)
+  copyRegisters[11] = RegisterValue(65536+200)
+  copyRegisters[8] = RegisterValue(65536+200+320*10)
+  let copyInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+      registers: copyRegisters)
+  var copyFrame = newFlatFrame(copyPlan, [copyPage], copyInfo)
+  for warm in 0..<8:
+    verifyControl(copyFrame, copyProgram, copyInfo, 80, [copyPage])
+  let copyStats = flatArmReadStoreLoopStatistics(copyFrame)
+  echo "ARM_READ_STORE_LOOP,", copyStats[0], ",", copyStats[1], ",", copyStats[2]
+  assert copyStats[0] > 0 and copyStats[1] > copyStats[0]
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 49, 50, 1000]:
+      for budget in [0'u64, 1, 5, 6, 12, 30, 50, 60, 80]:
+        var input = copyInfo
+        input.gas = MachineGas(gas)
+        input.blockCharged = paid
+        verifyControl(copyFrame, copyProgram, input, budget, [copyPage])
+
+  # A relocated, no-noop shape uses a different source stride and branch address.
+  let relocated = owner([@[0'u8], @[124'u8, 0x56],
+      @[149'u8, 0x55, 2], @[120'u8, 0xb6], @[149'u8, 0xbb, 1],
+      @[171'u8, 0x8b, 0xf6], @[0'u8]])
+  let relocatedPlan = newFlatPlan(relocated, GasCycleLimit(100000))
+  let relocatedBranch = instruction(relocated, CodeAddress(11))
+  assert relocatedBranch.error == ProgramError.None
+  assert value(relocatedBranch).displacement == -10 and
+      instructionTargetStartsBlock(relocatedBranch)
+  var relocatedRegisters = copyRegisters
+  relocatedRegisters[11] = RegisterValue(65536+200)
+  relocatedRegisters[8] = RegisterValue(65536+210)
+  let relocatedInfo = MachineInfo(pc: CodeAddress(1), gas: MachineGas(1000),
+      registers: relocatedRegisters)
+  var relocatedFrame = newFlatFrame(relocatedPlan, [copyPage], relocatedInfo)
+  for warm in 0..<8:
+    verifyControl(relocatedFrame, relocated, relocatedInfo, 80, [copyPage])
+  let relocatedStats = flatArmReadStoreLoopStatistics(relocatedFrame)
+  assert relocatedStats[0] > 0 and relocatedStats[1] > relocatedStats[0]
+
+  # A store to the next source byte makes every following read depend on the
+  # preceding native store. Long runs prove many full blocks per native call.
+  let overlap = owner([@[0'u8], @[2'u8], @[124'u8, 0x56],
+      @[149'u8, 0x55, 1], @[120'u8, 0xb6], @[149'u8, 0xbb, 1],
+      @[171'u8, 0x8b, 0xf5], @[0'u8]])
+  let overlapPlan = newFlatPlan(overlap, GasCycleLimit(100000))
+  var overlapRegisters = copyRegisters
+  overlapRegisters[11] = RegisterValue(65536+101)
+  overlapRegisters[8] = RegisterValue(65536+301)
+  let overlapInfo = MachineInfo(pc: CodeAddress(1), gas: MachineGas(20000),
+      registers: overlapRegisters)
+  var overlapFrame = newFlatFrame(overlapPlan, [copyPage], overlapInfo)
+  for warm in 0..<3:
+    verifyControl(overlapFrame, overlap, overlapInfo, 1300, [copyPage])
+  let overlapStats = flatArmReadStoreLoopStatistics(overlapFrame)
+  echo "ARM_READ_STORE_OVERLAP,", overlapStats[0], ",", overlapStats[1], ",", overlapStats[2]
+  assert overlapStats[0] > 0 and overlapStats[1] > overlapStats[0]*20
+  # Independent literal chain: each store overwrites the next source byte.
+  let propagated = copyPage.bytes[100]
+  assert uint64(overlapFrame.info.registers[5]) == 65536'u64+300 and
+      uint64(overlapFrame.info.registers[11]) == 65536'u64+301 and
+      uint64(overlapFrame.info.registers[6]) == uint64(propagated)
+  let overlapPage = pageImage(flatMemorySnapshot(overlapFrame), PageIndex(16))
+  assert overlapPage.error == MachineError.None
+  assert overlapPage.value.bytes[100] == propagated and
+      overlapPage.value.bytes[301] == copyPage.bytes[301]
+  for at in 101..300: assert overlapPage.value.bytes[at] == propagated
+
+  var nextCopyPage = copyPage
+  nextCopyPage.index = PageIndex(17)
+  var copyCrossingInfo = overlapInfo
+  copyCrossingInfo.registers[5] = RegisterValue(65536+100)
+  copyCrossingInfo.registers[11] = RegisterValue(65536+4093)
+  copyCrossingInfo.registers[8] = RegisterValue(65536+4103)
+  assert replaceFlatMemoryChecked(overlapFrame, [copyPage, nextCopyPage], copyCrossingInfo) ==
+      FlatError.None
+  let beforeCopyCrossing = flatArmReadStoreLoopStatistics(overlapFrame)
+  verifyControl(overlapFrame, overlap, copyCrossingInfo, 80, [copyPage, nextCopyPage])
+  let afterCopyCrossing = flatArmReadStoreLoopStatistics(overlapFrame)
+  assert afterCopyCrossing[1] > beforeCopyCrossing[1] and
+      afterCopyCrossing[2] > beforeCopyCrossing[2]
+  nextCopyPage.access = PageAccess.ReadOnly
+  assert replaceFlatMemoryChecked(overlapFrame, [copyPage, nextCopyPage], copyCrossingInfo) ==
+      FlatError.None
+  let beforeStoreFault = flatArmReadStoreLoopStatistics(overlapFrame)
+  verifyControl(overlapFrame, overlap, copyCrossingInfo, 80, [copyPage, nextCopyPage])
+  assert flatArmReadStoreLoopStatistics(overlapFrame)[1] > beforeStoreFault[1]
+  assert overlapFrame.info.blockCharged and
+      uint64(overlapFrame.info.registers[5]) == 65536'u64+104 and
+      uint64(overlapFrame.info.registers[11]) == 65536'u64+4096 and
+      uint64(overlapFrame.info.registers[6]) == uint64(copyPage.bytes[103])
+  let committedStorePage = pageImage(flatMemorySnapshot(overlapFrame), PageIndex(16))
+  assert committedStorePage.error == MachineError.None
+  for at in 0..<3:
+    assert committedStorePage.value.bytes[4093+at] == copyPage.bytes[100+at]
+  var readFaultInfo = overlapInfo
+  readFaultInfo.registers[5] = RegisterValue(65536+4086)
+  readFaultInfo.registers[11] = RegisterValue(65536+200)
+  readFaultInfo.registers[8] = RegisterValue(65536+212)
+  assert replaceFlatMemoryChecked(overlapFrame, [copyPage], readFaultInfo) == FlatError.None
+  let beforeReadFault = flatArmReadStoreLoopStatistics(overlapFrame)
+  verifyControl(overlapFrame, overlap, readFaultInfo, 80, [copyPage])
+  assert flatArmReadStoreLoopStatistics(overlapFrame)[1] > beforeReadFault[1]
+  assert overlapFrame.info.blockCharged and
+      uint64(overlapFrame.info.registers[5]) == 65536'u64+4096 and
+      uint64(overlapFrame.info.registers[11]) == 65536'u64+210 and
+      uint64(overlapFrame.info.registers[6]) == uint64(copyPage.bytes[4095])
+  let committedReadPage = pageImage(flatMemorySnapshot(overlapFrame), PageIndex(16))
+  assert committedReadPage.error == MachineError.None
+  for at in 0..<10:
+    assert committedReadPage.value.bytes[200+at] == copyPage.bytes[4086+at]
+
+  # The third of four disjoint writable regions lives outside the three native
+  # descriptors, so the checked worker must complete each refused store.
+  var sparseA = copyPage
+  var sparseB = copyPage
+  var sparseC = copyPage
+  sparseB.index = PageIndex(32)
+  sparseC.index = PageIndex(48)
+  var sparseD = copyPage
+  sparseD.index = PageIndex(64)
+  var sparseInfo = overlapInfo
+  sparseInfo.registers[5] = RegisterValue(65536+100)
+  sparseInfo.registers[11] = RegisterValue(48*4096+100)
+  sparseInfo.registers[8] = RegisterValue(48*4096+110)
+  let priorRefusals = flatArmReadStoreLoopStatistics(overlapFrame)[2]
+  assert replaceFlatMemoryChecked(overlapFrame,
+      [sparseA, sparseB, sparseC, sparseD], sparseInfo) == FlatError.None
+  verifyControl(overlapFrame, overlap, sparseInfo, 80,
+      [sparseA, sparseB, sparseC, sparseD])
+  assert flatArmReadStoreLoopStatistics(overlapFrame)[2] > priorRefusals

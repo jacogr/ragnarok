@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness, direct_branch_witness
+from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness, direct_branch_witness, read_store_loop_witness
 
 
 def transcript():
@@ -125,6 +125,31 @@ class Arm64JitReportTests(unittest.TestCase):
                        transcript().replace('1,2,3,6', '1,2,3,7')):
             with self.subTest(output=output[-80:]), self.assertRaises(ValueError):
                 parse(output+'ARM_JIT,sieve,1,13,26,36,100\n', 'sieve', True)
+
+class Arm64ReadStoreReceiptTests(unittest.TestCase):
+    def test_residency_and_inactive_modes(self):
+        """A checked fallback cannot qualify as a resident native memory loop."""
+        output = 'ARM_READ_STORE_LOOP,3,14,1\nARM_READ_STORE_OVERLAP,5,533,2\n'
+        active = read_store_loop_witness(output, 'native')
+        self.assertEqual(active['overlap'], dict(calls=5, blocks=533, declines=2))
+        for mode in ('refused', 'interpreted'):
+            self.assertIsNone(read_store_loop_witness('', mode))
+            with self.assertRaises(ValueError):
+                read_store_loop_witness(output, mode)
+
+    def test_incomplete_and_false_residency_receipts_fail(self):
+        """Missing checks and one-call-per-iteration execution must fail qualification."""
+        basic = 'ARM_READ_STORE_LOOP,3,14,1\n'
+        overlap = 'ARM_READ_STORE_OVERLAP,5,533,2\n'
+        for output in (basic, overlap, basic+basic+overlap,
+                       basic+overlap.replace(',533,', ',5,'),
+                       basic+overlap.replace(',533,', ',100,'),
+                       basic+overlap.replace(',2\n', ',0\n'),
+                       basic+overlap.replace(',2\n', ',6\n'),
+                       basic+overlap.replace(',533,', ',-1,')):
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                read_store_loop_witness(output, 'native')
+
 
 class Arm64DirectBranchReceiptTests(unittest.TestCase):
     def test_native_refused_and_interpreted_counts(self):
