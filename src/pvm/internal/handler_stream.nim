@@ -3293,7 +3293,7 @@ type FlatStream* = object
   arguments: seq[FlatArgs]
   sites, compiledForPc: seq[uint32]
   sourcePlan: nil FlatPlan # Exact source, emission and default-cycle owner for every build.
-  pricingKind: byte # Nondefault sealed headers require fresh emission when leased to another frame.
+  pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
