@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, jit-x86, jit-x86-replay, jit-arm-check, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, tooling, jit-x86, jit-x86-replay, jit-arm-check, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       contract_measure_bundles:
@@ -67,7 +67,7 @@ jobs:
   # One Build matrix owns the fast PR gate, tooling and native packaging/checks.
   # Build group: named workloads report their own results.
   build:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'tooling' || inputs.suite == 'unit' || inputs.suite == 'build' || inputs.suite == 'docker' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:docker' || github.event.label.name == 'ci:full' || github.event.label.name == 'lgtm')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.action != 'labeled') }}
     name: Build / ${{ matrix.family.name }}
     timeout-minutes: &ci-job-timeout 60
     strategy:
@@ -75,7 +75,7 @@ jobs:
       matrix:
         os:
           - &ubuntu-x86-version ubuntu-26.04
-        family: ${{ fromJSON((inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","platform":""}]') }}
+        family: ${{ fromJSON(inputs.suite == 'tooling' && '[{"name":"Tooling","group":"python","platform":""}]' || (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","platform":""}]') }}
     runs-on: ${{ matrix.family.os || matrix.os }}
     steps:
       - &checkout

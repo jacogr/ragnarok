@@ -99,6 +99,8 @@ PR creation and updates automatically request the lightweight Build / Smoke chec
 unoptimized all-source semantic compilation). Heavy verification remains opt-in for PRs. Keep
 local verification appropriate to the diff; request additional remote checks only when asked
 or when the maintainer has authorized that verification.
+For Python tooling alone, dispatch `ci.yml` with `suite=tooling`; its single Build / Tooling
+runner executes `make check-python` and its existing model/compiler-guard controls.
 Use `ci:unit` for native units/corpora, Python tooling and source compilation, `ci:e2e` for
 end-to-end networking alone, `ci:interop` for all interoperability jobs, `ci:perf` for
 all performance jobs, or `ci:full` for every CI group. Add the label to the selected PR

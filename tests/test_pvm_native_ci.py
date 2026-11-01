@@ -110,6 +110,7 @@ class QualificationTests(unittest.TestCase):
             f'ARM_DIRECT_BRANCH_LITERAL_CASES,{1640 if native else 0}\n'
             'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
             'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
+            'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
@@ -201,6 +202,7 @@ class QualificationTests(unittest.TestCase):
             ('ARM_SHIFT_PAIR_DECLINE_CASES',507,'paired-shift'),
             ('ARM_LOAD_WIDTH_LITERAL_CASES',24843,'guarded-load width'),
             ('ARM_STORE_FALLBACK_CONTROL_CASES',43904,'checked-store source'),
+            ('ARM_DIRTY_LOOP_LIVE_IN_CASES',156,'store-only register'),
             ('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360,'checked-store exit'),
             ('ARM_DIRTY_LOOP_CONTROL_CASES',840,'dirty-loop boundary'),
             ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'dirty-loop boundary'),
@@ -220,6 +222,21 @@ class QualificationTests(unittest.TestCase):
             for replacement in ('',f'{marker},{count-1}\n'):
                 with self.subTest(marker=marker,replacement=replacement),self.assertRaisesRegex(ValueError,reason):
                     self.check(True,complete.replace(line,replacement))
+
+    def test_store_only_controls_are_required_in_fallback_modes(self):
+        """Unavailable hosts and explicit OS refusal still need complete store-only input coverage."""
+        marker = 'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n'
+        for refused in (False, True):
+            complete = self.witness_receipt(False, refused=refused)
+            for replacement in ('', 'ARM_DIRTY_LOOP_LIVE_IN_CASES,155\n'):
+                # Keep the native/ownership counters valid for this mode so only absent coverage rejects.
+                damaged = complete.replace(marker, replacement)
+                with self.subTest(refused=refused, replacement=replacement), \
+                        self.assertRaisesRegex(ValueError, 'store-only register'):
+                    if refused:
+                        self.check(True, refused_receipt=damaged)
+                    else:
+                        self.check(False, receipt=damaged)
 
     def test_dirty_loop_receipts_are_mode_specific(self):
         """The active loop, owner and refusal receipts must match the declared native mode."""
