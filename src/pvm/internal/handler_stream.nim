@@ -510,7 +510,7 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
   for i in 0..<W: flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64))
   true
 
-proc flatLoad[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
+proc flatLoadFast[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     value: var uint64): bool {.inline.} =
   ## Three-region fast selection keeps only address-dependent complete-extent checks on success.
   if address >= 65536'u64 and address <= uint64(high(uint32))-uint64(W):
@@ -523,6 +523,12 @@ proc flatLoad[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     elif address >= f.roBase:
       let at = int(address-f.roBase)
       if f.ro.len >= W and at <= f.ro.len-W: value = flatRead[W](f.ro, at); return true
+  false
+
+proc flatLoad[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
+    value: var uint64): bool {.inline.} =
+  ## Complete checked fallback remains available to existing source workers.
+  if flatLoadFast[W](f, off, address, value): return true
   flatLoadSlow[W](f, off, address, value)
 
 proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
@@ -543,30 +549,13 @@ proc flatStore[W: static[int]](f: var FlatFrame, off: uint32, address,
         return true
   flatStoreSlow[W](f, off, address, value)
 
-proc flatMemory[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
-    f: var FlatFrame, off: uint32): uint32 =
-  ## Adapt our complete selected-width memory worker to the checked private region backend.
-  let a = f.arguments[int(off)]
-  var base = 0'u64
-  when Indirect:
-    when Loading or not ImmediateStore: base = uint64(f.info.registers[a.slots.bIndex])
-    else: base = uint64(f.info.registers[a.slots.aIndex])
-  let address = (base+a.x) and 0xffffffff'u64
-  when Loading:
-    var value = 0'u64
-    if not flatLoad[Width](f, off, address, value): return flatStop
-    when Signed:
-      let bits = Width*8
-      if (value and (1'u64 shl (bits-1))) != 0: value = value or (high(uint64) shl bits)
-    f.info.registers[a.slots.aIndex] = RegisterValue(value)
-  else:
-    let value = when ImmediateStore: flatSext32(a.y) else: uint64(f.info.registers[a.slots.aIndex])
-    if not flatStore[Width](f, off, address, value): return flatStop
-  off+1
+proc flatMemoryCold[Width: static[int]; Loading, Signed, Indirect, ImmediateStore,
+    Pair: static[bool]](f: var FlatFrame, off: uint32): uint32 {.noinline.}
+  ## Keep only complete fallback outside hot workers; direct store callers remain eligible for inlining.
 
-proc flatMemoryPair[Width: static[int]; Loading, Signed, Indirect, ImmediateStore: static[bool]](
-    f: var FlatFrame, off: uint32): uint32 =
-  ## Adapt our complete selected-width memory worker to the checked private region backend.
+proc flatMemoryWorker[Width: static[int]; Loading, Signed, Indirect, ImmediateStore,
+    Fast, Pair: static[bool]](f: var FlatFrame, off: uint32): uint32 =
+  ## Shared selected access equation; only the cold load worker preserves state across full preflight.
   let a = f.arguments[int(off)]
   var base = 0'u64
   when Indirect:
@@ -575,7 +564,12 @@ proc flatMemoryPair[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   let address = (base+a.x) and 0xffffffff'u64
   when Loading:
     var value = 0'u64
-    if not flatLoad[Width](f, off, address, value): return flatStop
+    when Fast:
+      if not flatLoadFast[Width](f, off, address, value):
+        # Failed fast preflight has changed no CPU, bytes or attempt state; the complete worker owns every exit.
+        return flatMemoryCold[Width, Loading, Signed, Indirect, ImmediateStore, Pair](f, off)
+    else:
+      if not flatLoad[Width](f, off, address, value): return flatStop
     when Signed:
       let bits = Width*8
       if (value and (1'u64 shl (bits-1))) != 0: value = value or (high(uint64) shl bits)
@@ -583,9 +577,18 @@ proc flatMemoryPair[Width: static[int]; Loading, Signed, Indirect, ImmediateStor
   else:
     let value = when ImmediateStore: flatSext32(a.y) else: uint64(f.info.registers[a.slots.aIndex])
     if not flatStore[Width](f, off, address, value): return flatStop
-  let next = off+1
-  let selected = f.handlers[int(next)]
-  selected(f, next)
+  when Pair:
+    # Source continuation is unchanged, including partial-budget barriers installed in the next slot.
+    let next = off+1
+    let selected = f.handlers[int(next)]
+    selected(f, next)
+  else:
+    off+1
+
+proc flatMemoryCold[Width: static[int]; Loading, Signed, Indirect, ImmediateStore,
+    Pair: static[bool]](f: var FlatFrame, off: uint32): uint32 {.noinline.} =
+  ## One full checked implementation preserves successful fragmented loads and exact terminal state.
+  flatMemoryWorker[Width, Loading, Signed, Indirect, ImmediateStore, false, Pair](f, off)
 
 proc flatCachedJump[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Self-patched static nodes retain scalar executable offsets; load-and-jump writes before every exit.
@@ -775,7 +778,7 @@ proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
       let selected = f.handlers[int(off+1)]
       return selected(f, off+1)
     flatShapeRegister(f, off+1, 198)
-    let stored = flatMemory[1, false, false, true, false](f, off+2)
+    let stored = flatMemoryWorker[1, false, false, true, false, true, false](f, off+2)
     if stored == flatStop:
       # The original store retains prefix mutations, fault PC and the unattempted-reservation refund.
       return stored
@@ -954,28 +957,28 @@ func flatHandler(code: byte, valid, fallthrough: bool): nil FlatHandler {.inline
   of 2: flatNoop
   of 10: flatHost
   of 20: flatRegister[20]
-  of 30: flatMemory[1, false, false, false, true]
-  of 31: flatMemory[2, false, false, false, true]
-  of 32: flatMemory[4, false, false, false, true]
-  of 33: flatMemory[8, false, false, false, true]
+  of 30: flatMemoryWorker[1, false, false, false, true, true, false]
+  of 31: flatMemoryWorker[2, false, false, false, true, true, false]
+  of 32: flatMemoryWorker[4, false, false, false, true, true, false]
+  of 33: flatMemoryWorker[8, false, false, false, true, true, false]
   of 40: (if valid: flatJump[40] else: flatBadControl[40])
   of 50: flatDynamic[50, false]
   of 51: flatRegister[51]
-  of 52: flatMemory[1, true, false, false, false]
-  of 53: flatMemory[1, true, true, false, false]
-  of 54: flatMemory[2, true, false, false, false]
-  of 55: flatMemory[2, true, true, false, false]
-  of 56: flatMemory[4, true, false, false, false]
-  of 57: flatMemory[4, true, true, false, false]
-  of 58: flatMemory[8, true, false, false, false]
-  of 59: flatMemory[1, false, false, false, false]
-  of 60: flatMemory[2, false, false, false, false]
-  of 61: flatMemory[4, false, false, false, false]
-  of 62: flatMemory[8, false, false, false, false]
-  of 70: flatMemory[1, false, false, true, true]
-  of 71: flatMemory[2, false, false, true, true]
-  of 72: flatMemory[4, false, false, true, true]
-  of 73: flatMemory[8, false, false, true, true]
+  of 52: flatMemoryWorker[1, true, false, false, false, true, false]
+  of 53: flatMemoryWorker[1, true, true, false, false, true, false]
+  of 54: flatMemoryWorker[2, true, false, false, false, true, false]
+  of 55: flatMemoryWorker[2, true, true, false, false, true, false]
+  of 56: flatMemoryWorker[4, true, false, false, false, true, false]
+  of 57: flatMemoryWorker[4, true, true, false, false, true, false]
+  of 58: flatMemoryWorker[8, true, false, false, false, true, false]
+  of 59: flatMemoryWorker[1, false, false, false, false, true, false]
+  of 60: flatMemoryWorker[2, false, false, false, false, true, false]
+  of 61: flatMemoryWorker[4, false, false, false, false, true, false]
+  of 62: flatMemoryWorker[8, false, false, false, false, true, false]
+  of 70: flatMemoryWorker[1, false, false, true, true, true, false]
+  of 71: flatMemoryWorker[2, false, false, true, true, true, false]
+  of 72: flatMemoryWorker[4, false, false, true, true, true, false]
+  of 73: flatMemoryWorker[8, false, false, true, true, true, false]
   of 80: (if valid: flatJump[80] else: flatBadControl[80])
   of 81: (if valid and fallthrough: flatUnresolvedBranch[81] else: flatBadControl[81])
   of 82: (if valid and fallthrough: flatUnresolvedBranch[82] else: flatBadControl[82])
@@ -998,17 +1001,17 @@ func flatHandler(code: byte, valid, fallthrough: bool): nil FlatHandler {.inline
   of 108: flatRegister[108]
   of 109: flatRegister[109]
   of 110: flatRegister[110]
-  of 120: flatMemory[1, false, false, true, false]
-  of 121: flatMemory[2, false, false, true, false]
-  of 122: flatMemory[4, false, false, true, false]
-  of 123: flatMemory[8, false, false, true, false]
-  of 124: flatMemory[1, true, false, true, false]
-  of 125: flatMemory[1, true, true, true, false]
-  of 126: flatMemory[2, true, false, true, false]
-  of 127: flatMemory[2, true, true, true, false]
-  of 128: flatMemory[4, true, false, true, false]
-  of 129: flatMemory[4, true, true, true, false]
-  of 130: flatMemory[8, true, false, true, false]
+  of 120: flatMemoryWorker[1, false, false, true, false, true, false]
+  of 121: flatMemoryWorker[2, false, false, true, false, true, false]
+  of 122: flatMemoryWorker[4, false, false, true, false, true, false]
+  of 123: flatMemoryWorker[8, false, false, true, false, true, false]
+  of 124: flatMemoryWorker[1, true, false, true, false, true, false]
+  of 125: flatMemoryWorker[1, true, true, true, false, true, false]
+  of 126: flatMemoryWorker[2, true, false, true, false, true, false]
+  of 127: flatMemoryWorker[2, true, true, true, false, true, false]
+  of 128: flatMemoryWorker[4, true, false, true, false, true, false]
+  of 129: flatMemoryWorker[4, true, true, true, false, true, false]
+  of 130: flatMemoryWorker[8, true, false, true, false, true, false]
   of 131: flatRegister[131]
   of 132: flatRegister[132]
   of 133: flatRegister[133]
@@ -1183,36 +1186,36 @@ func flatRegisterPairHandler(code: byte): nil FlatHandler =
 func flatMemoryPairHandler(code: byte): nil FlatHandler =
   ## Only a successful first checked memory operation invokes the original second handler.
   case code
-  of 30: flatMemoryPair[1, false, false, false, true]
-  of 31: flatMemoryPair[2, false, false, false, true]
-  of 32: flatMemoryPair[4, false, false, false, true]
-  of 33: flatMemoryPair[8, false, false, false, true]
-  of 52: flatMemoryPair[1, true, false, false, false]
-  of 53: flatMemoryPair[1, true, true, false, false]
-  of 54: flatMemoryPair[2, true, false, false, false]
-  of 55: flatMemoryPair[2, true, true, false, false]
-  of 56: flatMemoryPair[4, true, false, false, false]
-  of 57: flatMemoryPair[4, true, true, false, false]
-  of 58: flatMemoryPair[8, true, false, false, false]
-  of 59: flatMemoryPair[1, false, false, false, false]
-  of 60: flatMemoryPair[2, false, false, false, false]
-  of 61: flatMemoryPair[4, false, false, false, false]
-  of 62: flatMemoryPair[8, false, false, false, false]
-  of 70: flatMemoryPair[1, false, false, true, true]
-  of 71: flatMemoryPair[2, false, false, true, true]
-  of 72: flatMemoryPair[4, false, false, true, true]
-  of 73: flatMemoryPair[8, false, false, true, true]
-  of 120: flatMemoryPair[1, false, false, true, false]
-  of 121: flatMemoryPair[2, false, false, true, false]
-  of 122: flatMemoryPair[4, false, false, true, false]
-  of 123: flatMemoryPair[8, false, false, true, false]
-  of 124: flatMemoryPair[1, true, false, true, false]
-  of 125: flatMemoryPair[1, true, true, true, false]
-  of 126: flatMemoryPair[2, true, false, true, false]
-  of 127: flatMemoryPair[2, true, true, true, false]
-  of 128: flatMemoryPair[4, true, false, true, false]
-  of 129: flatMemoryPair[4, true, true, true, false]
-  of 130: flatMemoryPair[8, true, false, true, false]
+  of 30: flatMemoryWorker[1, false, false, false, true, true, true]
+  of 31: flatMemoryWorker[2, false, false, false, true, true, true]
+  of 32: flatMemoryWorker[4, false, false, false, true, true, true]
+  of 33: flatMemoryWorker[8, false, false, false, true, true, true]
+  of 52: flatMemoryWorker[1, true, false, false, false, true, true]
+  of 53: flatMemoryWorker[1, true, true, false, false, true, true]
+  of 54: flatMemoryWorker[2, true, false, false, false, true, true]
+  of 55: flatMemoryWorker[2, true, true, false, false, true, true]
+  of 56: flatMemoryWorker[4, true, false, false, false, true, true]
+  of 57: flatMemoryWorker[4, true, true, false, false, true, true]
+  of 58: flatMemoryWorker[8, true, false, false, false, true, true]
+  of 59: flatMemoryWorker[1, false, false, false, false, true, true]
+  of 60: flatMemoryWorker[2, false, false, false, false, true, true]
+  of 61: flatMemoryWorker[4, false, false, false, false, true, true]
+  of 62: flatMemoryWorker[8, false, false, false, false, true, true]
+  of 70: flatMemoryWorker[1, false, false, true, true, true, true]
+  of 71: flatMemoryWorker[2, false, false, true, true, true, true]
+  of 72: flatMemoryWorker[4, false, false, true, true, true, true]
+  of 73: flatMemoryWorker[8, false, false, true, true, true, true]
+  of 120: flatMemoryWorker[1, false, false, true, false, true, true]
+  of 121: flatMemoryWorker[2, false, false, true, false, true, true]
+  of 122: flatMemoryWorker[4, false, false, true, false, true, true]
+  of 123: flatMemoryWorker[8, false, false, true, false, true, true]
+  of 124: flatMemoryWorker[1, true, false, true, false, true, true]
+  of 125: flatMemoryWorker[1, true, true, true, false, true, true]
+  of 126: flatMemoryWorker[2, true, false, true, false, true, true]
+  of 127: flatMemoryWorker[2, true, true, true, false, true, true]
+  of 128: flatMemoryWorker[4, true, false, true, false, true, true]
+  of 129: flatMemoryWorker[4, true, true, true, false, true, true]
+  of 130: flatMemoryWorker[8, true, false, true, false, true, true]
   else: nil
 
 proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact =
