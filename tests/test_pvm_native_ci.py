@@ -111,6 +111,8 @@ class QualificationTests(unittest.TestCase):
             'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
             'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
             'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n'
+            f'ARM_MEMORY_CYCLE_FRAME_CASES,{4824 if native or refused else 0}\n'
+            f'ARM_MEMORY_CYCLE_BACKEND_CASES,{19 if native else 1 if refused else 0}\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
@@ -203,6 +205,8 @@ class QualificationTests(unittest.TestCase):
             ('ARM_LOAD_WIDTH_LITERAL_CASES',24843,'guarded-load width'),
             ('ARM_STORE_FALLBACK_CONTROL_CASES',43904,'checked-store source'),
             ('ARM_DIRTY_LOOP_LIVE_IN_CASES',156,'store-only register'),
+            ('ARM_MEMORY_CYCLE_FRAME_CASES',4824,'memory-cycle frame'),
+            ('ARM_MEMORY_CYCLE_BACKEND_CASES',19,'memory-cycle backend'),
             ('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360,'checked-store exit'),
             ('ARM_DIRTY_LOOP_CONTROL_CASES',840,'dirty-loop boundary'),
             ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'dirty-loop boundary'),
@@ -222,6 +226,24 @@ class QualificationTests(unittest.TestCase):
             for replacement in ('',f'{marker},{count-1}\n'):
                 with self.subTest(marker=marker,replacement=replacement),self.assertRaisesRegex(ValueError,reason):
                     self.check(True,complete.replace(line,replacement))
+
+    def test_memory_cycle_controls_are_required_in_every_mode(self):
+        """No native, forced-refusal or unavailable run can hide missing or duplicated cycle coverage."""
+        for native, refused in ((True, False), (False, True), (False, False)):
+            complete = self.witness_receipt(native, refused=refused)
+            counts = [('FRAME', 4824 if native or refused else 0),
+                      ('BACKEND', 19 if native else 1 if refused else 0)]
+            for kind, count in counts:
+                marker = f'ARM_MEMORY_CYCLE_{kind}_CASES,{count}\n'
+                for replacement in ('', f'ARM_MEMORY_CYCLE_{kind}_CASES,{count-1}\n', marker+marker):
+                    # Keep every unrelated receipt valid to isolate the intended rejection.
+                    damaged = complete.replace(marker, replacement)
+                    with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
+                            self.assertRaisesRegex(ValueError, 'memory-cycle '+kind.lower()):
+                        if refused:
+                            self.check(True, refused_receipt=damaged)
+                        else:
+                            self.check(native, receipt=damaged)
 
     def test_store_only_controls_are_required_in_fallback_modes(self):
         """Unavailable hosts and explicit OS refusal still need complete store-only input coverage."""

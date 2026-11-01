@@ -52,6 +52,12 @@ type
     status: uint8
     header, span, operations, code: uint32
     price, calls, blocks, declines, wordGroups: uint64
+  ArmMemoryCycleCache = object ## One source-shaped driver reuses immutable dirty and read children.
+    status: uint8
+    prefixHeader, dirtyHeader, tailHeader, other: uint32
+    prefixSpan, tailSpan, prefixOperations, tailOperations: uint32
+    prefixPrice, tailPrice: uint64
+    calls, prefixBlocks, tailBlocks, dirtyBlocks, wordGroups, dirtyCalls: uint64
   ArmBlock* = object ## A bounded leaf keeps guest registers in X4–X16, loading live-ins and publishing only dirty slots.
     words, terminal: seq[uint32]
     reads, writes: uint32
@@ -85,6 +91,7 @@ type
     unavailable: bool
     mixedCalls*, mixedCompleted*, mixedInterior*, mixedOperations*: uint64
     mixedGroupPublished, mixedGroupAttempts, mixedGroupPasses: uint64
+    memoryCycle: ArmMemoryCycleCache
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
   ## Reject copying the exclusive native executable arena owner.
@@ -118,8 +125,8 @@ proc newArmJit*(): ArmJit =
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
   ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache),
-      dirtyLoop: default(ArmDirtyLoopCache), entries: @[],
-      unavailable: false)
+      dirtyLoop: default(ArmDirtyLoopCache), entries: @[], unavailable: false,
+      memoryCycle: default(ArmMemoryCycleCache))
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -835,7 +842,8 @@ proc armFinishProbe*(jit: ArmJit, header: uint32): bool =
   remaining == 1
 
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
-    instructions: var seq[uint32], region: bool = false): bool =
+    instructions: var seq[uint32], region: bool = false,
+    expectedStart: uint64 = high(uint64)): bool =
   ## Reserve one of the same 1,024 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
   if jit.unavailable:
     # Only initial allocation refusal is sticky; a cache with any published code can never enter this state.
@@ -853,15 +861,18 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
       refuseArmEntry(jit, offset)
       return false
     jit.arena.handle = created
-  instructions.add(0xd65f03c0'u32) # RET; the leaf never changes SP, LR or any callee-saved register.
+  instructions.add(0xd65f03c0'u32) # RET follows a leaf or the driver's balanced callee-save epilogue.
   let address = publishArena(jit.arena.handle, addr instructions[0], uint32(instructions.len))
   if address < 0:
     refuseArmEntry(jit, offset)
     return false
-  jit.entries[int(offset)] = ArmEntryRecord(code: uint32(address)+2, operations: count,
-      ending: ending)
+  # A successful append consumes capacity even if a planned same-arena BL start does not match.
   inc jit.fragments
   jit.codeBytes+=uint64(instructions.len)*4
+  if expectedStart != high(uint64) and uint64(address) != expectedStart:
+    return false # Never replace a previously published child with a mislinked driver.
+  jit.entries[int(offset)] = ArmEntryRecord(code: uint32(address)+2, operations: count,
+      ending: ending)
   true
 
 proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): uint32 =
@@ -969,6 +980,11 @@ type
     header*, span*, operations*, yes*, no*: uint32
     price*: uint64
     body*: ArmBlock
+  ArmMemoryCycleBlock* = object ## Scalar source graph and one inline pure prefix; children remain owned by ArmJit.
+    prefixHeader*, dirtyHeader*, tailHeader*, tailEntry*, other*: uint32
+    prefixSpan*, tailSpan*, prefixOperations*, tailOperations*: uint32
+    prefixPrice*, tailPrice*: uint64
+    prefixBody*: ArmBlock
   ArmRegionFixup = object ## Code-relative branch relocation, with guard returns kept distinct from internal edges.
     at: int
     target, condition: uint32
@@ -1505,3 +1521,327 @@ func armDirtyLoopStatistics*(jit: ArmJit): array[3, uint64] =
 
 func armDirtyWordGroups*(jit: ArmJit): uint64 =
   jit.dirtyLoop.wordGroups
+
+type ArmMemoryCycleFixup = object ## Local labels only; no source or invocation address enters the image.
+  at, target: int
+  condition: uint32 # 0..15 is B.cond; 16 is unconditional B.
+
+proc cycleEdge(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+    target: int, condition: uint32) =
+  ## Defer a bounded intra-image branch until every source-shaped exit has a label.
+  fixes.add(ArmMemoryCycleFixup(at: words.len, target: target, condition: condition))
+  words.add(0)
+
+proc cycleLoad(words: var seq[uint32], destination, base, byteOffset: uint32) =
+  ## Load one aligned invocation word without making it an image-owned pointer.
+  assert destination <= 30 and base <= 30 and byteOffset mod 8 == 0 and byteOffset <= 32760
+  words.add(0xf9400000'u32 or ((byteOffset div 8) shl 10) or (base shl 5) or destination)
+
+proc cycleStore(words: var seq[uint32], source, base, byteOffset: uint32) =
+  ## Publish one scalar accounting word before returning to the checked adapter.
+  assert source <= 31 and base <= 30 and byteOffset mod 8 == 0 and byteOffset <= 32760
+  words.add(0xf9000000'u32 or ((byteOffset div 8) shl 10) or (base shl 5) or source)
+
+proc cycleImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
+  ## Source headers may live in saved X28; initialize all four halfwords without X16 clobber.
+  assert destination <= 30
+  words.add(0xd2800000'u32 or (uint32(value and 65535) shl 5) or destination)
+  for half in 1..3:
+    words.add(0xf2800000'u32 or (uint32(half) shl 21) or
+        (uint32((value shr (half*16)) and 65535) shl 5) or destination)
+
+proc cycleMove(words: var seq[uint32], destination, source: uint32) =
+  ## Copy an invocation pointer into a saved register or a child argument register.
+  assert destination <= 30 and source <= 30
+  words.add(0xaa0003e0'u32 or (source shl 16) or destination)
+
+proc cycleCompare(words: var seq[uint32], left, right: uint32, word: bool = false) =
+  ## Select a signed-width-independent equality test for captured scalar destinations.
+  assert left <= 30 and right <= 30
+  words.add((if word: 0x6b00001f'u32 else: 0xeb00001f'u32) or
+      (right shl 16) or (left shl 5))
+
+proc cycleCompareImmediate(words: var seq[uint32], left, value: uint32) =
+  ## The narrow source span and zero-attempt guard fit A64's unsigned immediate field.
+  assert left <= 30 and value <= 4095
+  words.add(0xf100001f'u32 or (value shl 10) or (left shl 5))
+
+proc cycleAddImmediate(words: var seq[uint32], destination, source, value: uint32,
+    subtract: bool = false) =
+  ## Arithmetic follows a complete unsigned gas/attempt guard or refunds an unstarted tail.
+  assert destination <= 30 and source <= 30 and value <= 4095
+  let base = if subtract: 0xd1000000'u32 else: 0x91000000'u32
+  words.add(base or (value shl 10) or (source shl 5) or destination)
+
+proc cycleAddRegister(words: var seq[uint32], destination, left, right: uint32,
+    subtract: bool = false) =
+  ## Wide sealed gas prices retain all sixty-four bits.
+  assert destination <= 30 and left <= 30 and right <= 30
+  let base = if subtract: 0xcb000000'u32 else: 0x8b000000'u32
+  words.add(base or (right shl 16) or (left shl 5) or destination)
+
+proc cyclePriceGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+    price: uint64, refusal: int) =
+  ## Gas insufficiency precedes partial-span fallback once zero attempts have been excluded.
+  if price <= 4095:
+    cycleCompareImmediate(words, 21, uint32(price))
+  else:
+    armImmediate(words, 1, price)
+    cycleCompare(words, 21, 1)
+  cycleEdge(words, fixes, refusal, 3) # LO.
+
+proc cyclePriceChange(words: var seq[uint32], price: uint64, refund: bool = false) =
+  ## The matching guard proved a subtraction safe; a failed read restores its unstarted price.
+  if price <= 4095:
+    cycleAddImmediate(words, 21, 21, uint32(price), not refund)
+  else:
+    armImmediate(words, 1, price)
+    cycleAddRegister(words, 21, 21, 1, not refund)
+
+proc cycleLinkChild(words: var seq[uint32], start: uint64, code: uint32): bool =
+  ## BL's signed word displacement is computed against this exclusive owner's planned append offset.
+  let at = uint64(words.len)
+  if start > high(uint64)-at*4: return false
+  let site = start+at*4
+  if uint64(code) >= site or (code and 3) != 0 or (site and 3) != 0: return false
+  let distance = (site-uint64(code)) div 4
+  if distance == 0 or distance > 33554432'u64: return false
+  words.add(0x94000000'u32 or ((0'u32-uint32(distance)) and 0x3ffffff'u32))
+  true
+
+func armMemoryCycleStatus*(jit: ArmJit): uint8 =
+  ## Copy the cold, permanently refused or published state without exposing executable storage.
+  jit.memoryCycle.status
+
+func armMemoryCycleHeader*(jit: ArmJit, index: range[0..2]): uint32 =
+  ## The checked adapter can identify every genuinely unstarted source header.
+  assert jit.memoryCycle.status == 2
+  case index
+  of 0: jit.memoryCycle.prefixHeader
+  of 1: jit.memoryCycle.dirtyHeader
+  else: jit.memoryCycle.tailHeader
+
+func armMemoryCycleChargeMatches*(jit: ArmJit, index: range[0..1], header,
+    span: uint32, price: uint64): bool =
+  ## Every invocation checks sealed default-pricing coordinates before borrowing this driver.
+  if jit.memoryCycle.status != 2: return false
+  if index == 0:
+    jit.memoryCycle.prefixHeader == header and jit.memoryCycle.prefixSpan == span and
+      jit.memoryCycle.prefixPrice == price
+  else:
+    jit.memoryCycle.tailHeader == header and jit.memoryCycle.tailSpan == span and
+      jit.memoryCycle.tailPrice == price
+
+func armMemoryCycleStatistics*(jit: ArmJit): array[6, uint64] =
+  ## Calls are outer C-to-arena entries; child calls are counted separately in lane five.
+  [jit.memoryCycle.calls, jit.memoryCycle.prefixBlocks, jit.memoryCycle.tailBlocks,
+      jit.memoryCycle.dirtyBlocks, jit.memoryCycle.wordGroups, jit.memoryCycle.dirtyCalls]
+
+proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
+  ## Emit a complete inline prefix and BL only the existing same-owner dirty/read children.
+  if jit.memoryCycle.status != 0: return false
+  if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
+    # This arena cannot regain executable capacity; avoid rescanning a valid prefix on later calls.
+    jit.memoryCycle.status = 1
+    return false
+  if jit.dirtyLoop.status != 2: return false
+  if item.prefixSpan == 0 or item.prefixSpan > 4095 or item.tailSpan == 0 or
+      item.tailSpan > 4095 or item.prefixOperations == 0 or item.tailOperations == 0 or
+      item.prefixOperations > item.prefixSpan or item.tailOperations > item.tailSpan or
+      item.prefixBody.terminal.len != 0 or item.prefixBody.words.len == 0: return false
+  if item.prefixHeader == item.dirtyHeader or item.prefixHeader == item.tailHeader or
+      item.dirtyHeader == item.tailHeader or item.other == item.prefixHeader or
+      item.other == item.dirtyHeader or item.other == item.tailHeader: return false
+  if item.dirtyHeader != jit.dirtyLoop.header or item.tailEntry >= uint32(jit.entries.len) or
+      item.prefixHeader >= uint32(jit.entries.len): return false
+  let tail = jit.entries[int(item.tailEntry)]
+  if tail.code < 2 or jit.dirtyLoop.code < 2: return false
+  let dirtyCode = jit.dirtyLoop.code-2
+  let tailCode = tail.code-2
+  let planned = jit.codeBytes
+  if uint64(dirtyCode) >= planned or uint64(tailCode) >= planned: return false
+
+  # Source and children are now fixed for this owner. Any image/link failure is permanent.
+  jit.memoryCycle.status = 1
+  # Labels: start, after-dirty-count, tail, prefix-refusal, tail-refusal, read-refund, epilogue.
+  var labels = default(array[7, int])
+  var fixes: seq[ArmMemoryCycleFixup] = @[]
+  var words: seq[uint32] = @[0xd10183ff'u32] # SUB SP,SP,#96; preserve alignment across BL.
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  cycleMove(words, 19, 0)
+  cycleMove(words, 20, 1)
+  cycleLoad(words, 21, 20, 0)
+  cycleLoad(words, 22, 20, 8)
+  for register in 23'u32..27'u32: words.add(0xd2800000'u32 or register)
+  cycleLoad(words, 28, 20, 104)
+
+  labels[0] = words.len
+  cycleCompareImmediate(words, 22, 0)
+  cycleEdge(words, fixes, 3, 0) # A zero attempt budget wins before gas.
+  cyclePriceGuard(words, fixes, item.prefixPrice, 3)
+  cycleCompareImmediate(words, 22, item.prefixSpan)
+  cycleEdge(words, fixes, 3, 3) # Partial block returns to the original reservation.
+  cyclePriceChange(words, item.prefixPrice)
+  cycleAddImmediate(words, 22, 22, item.prefixSpan, true)
+  cycleMove(words, 0, 19)
+  for instruction in armInstructions(item.prefixBody): words.add(instruction)
+  cycleAddImmediate(words, 23, 23, 1)
+  cycleImmediate(words, 28, uint64(item.prefixHeader))
+
+  # Dirty child's first eight words are its unchanged ABI, including fresh memory pointers.
+  cycleStore(words, 21, 20, 0)
+  cycleStore(words, 22, 20, 8)
+  for index in 2'u32..4'u32: cycleStore(words, 31, 20, index*8)
+  cycleMove(words, 0, 19)
+  cycleMove(words, 1, 20)
+  if not cycleLinkChild(words, planned, dirtyCode): return false
+  cycleMove(words, 16, 0)
+  cycleLoad(words, 21, 20, 0)
+  cycleLoad(words, 22, 20, 8)
+  cycleLoad(words, 0, 20, 16)
+  cycleAddRegister(words, 25, 25, 0)
+  cycleCompareImmediate(words, 0, 0)
+  cycleEdge(words, fixes, 1, 0)
+  cycleImmediate(words, 28, uint64(item.dirtyHeader))
+  labels[1] = words.len
+  cycleLoad(words, 1, 20, 24)
+  cycleAddRegister(words, 26, 26, 1)
+  cycleAddImmediate(words, 27, 27, 1)
+  armImmediate(words, 0, uint64(item.dirtyHeader))
+  cycleCompare(words, 16, 0, true)
+  cycleEdge(words, fixes, 6, 0) # A dirty guard returns the original unstarted header.
+
+  labels[2] = words.len
+  cycleCompareImmediate(words, 22, 0)
+  cycleEdge(words, fixes, 4, 0)
+  cyclePriceGuard(words, fixes, item.tailPrice, 4)
+  cycleCompareImmediate(words, 22, item.tailSpan)
+  cycleEdge(words, fixes, 4, 3)
+  cyclePriceChange(words, item.tailPrice)
+  cycleAddImmediate(words, 22, 22, item.tailSpan, true)
+  cycleMove(words, 0, 19)
+  cycleLoad(words, 1, 20, 40) # Fresh descriptor pointer, never a retained image address.
+  if not cycleLinkChild(words, planned, tailCode): return false
+  words.add(0x12800010'u32) # MOVN W16,#0: the read child's exact refusal sentinel.
+  cycleCompare(words, 0, 16, true)
+  cycleEdge(words, fixes, 5, 0)
+  cycleAddImmediate(words, 24, 24, 1)
+  cycleImmediate(words, 28, uint64(item.tailHeader))
+  armImmediate(words, 16, uint64(item.prefixHeader))
+  cycleCompare(words, 0, 16, true)
+  cycleEdge(words, fixes, 0, 0) # Only the cached positive backedge repeats.
+  cycleEdge(words, fixes, 6, 16) # The other sealed arm leaves the driver.
+
+  labels[3] = words.len
+  armImmediate(words, 0, uint64(item.prefixHeader))
+  cycleEdge(words, fixes, 6, 16)
+  labels[4] = words.len
+  armImmediate(words, 0, uint64(item.tailHeader))
+  cycleEdge(words, fixes, 6, 16)
+  labels[5] = words.len
+  cyclePriceChange(words, item.tailPrice, true)
+  cycleAddImmediate(words, 22, 22, item.tailSpan)
+  armImmediate(words, 0, uint64(item.tailHeader))
+  cycleEdge(words, fixes, 6, 16)
+
+  labels[6] = words.len
+  cycleStore(words, 21, 20, 0)
+  cycleStore(words, 22, 20, 8)
+  cycleStore(words, 23, 20, 64)
+  cycleStore(words, 24, 20, 72)
+  cycleStore(words, 25, 20, 80)
+  cycleStore(words, 26, 20, 88)
+  cycleStore(words, 27, 20, 96)
+  cycleStore(words, 28, 20, 104)
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9400000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  words.add(0x910183ff'u32) # ADD SP,SP,#96.
+  if words.len >= 1024: return false
+  for fix in fixes:
+    if fix.target < 0 or fix.target >= labels.len: return false
+    let relative = int64(labels[fix.target])-int64(fix.at)
+    if fix.condition < 16:
+      if relative < -262144 or relative > 262143: return false
+      words[fix.at] = 0x54000000'u32 or
+          ((uint32(relative) and 0x7ffff'u32) shl 5) or fix.condition
+    else:
+      if relative < -33554432 or relative > 33554431: return false
+      words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
+
+  if not publishArmEntry(jit, item.prefixHeader, 0, 0, words, expectedStart = planned):
+    return false
+  jit.memoryCycle.prefixHeader = item.prefixHeader
+  jit.memoryCycle.dirtyHeader = item.dirtyHeader
+  jit.memoryCycle.tailHeader = item.tailHeader
+  jit.memoryCycle.other = item.other
+  jit.memoryCycle.prefixSpan = item.prefixSpan
+  jit.memoryCycle.tailSpan = item.tailSpan
+  jit.memoryCycle.prefixOperations = item.prefixOperations
+  jit.memoryCycle.tailOperations = item.tailOperations
+  jit.memoryCycle.prefixPrice = item.prefixPrice
+  jit.memoryCycle.tailPrice = item.tailPrice
+  jit.memoryCycle.status = 2
+  true
+
+proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var array[14, uint64]): uint32 =
+  ## One C-to-arena call owns all nested BLs; copied counters expose real child work separately.
+  assert jit.memoryCycle.status == 2 and sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  for index in 2..4: assert state[index] == 0
+  for index in 8..12: assert state[index] == 0
+  assert state[13] == uint64(high(uint32))
+  let gas = state[0]
+  let available = state[1]
+  state[5] = cast[uint64](addr regions)
+  state[6] = uint64(dirtyWords.len)
+  state[7] = 0
+  if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
+  let root = jit.entries[int(jit.memoryCycle.prefixHeader)]
+  assert root.code >= 2
+  result = regionArena(jit.arena.handle, root.code-2, addr registers, addr state)
+  assert result == jit.memoryCycle.prefixHeader or result == jit.memoryCycle.dirtyHeader or
+      result == jit.memoryCycle.tailHeader or result == jit.memoryCycle.other
+  assert state[0] <= gas and state[1] <= available and state[4] == 0
+  let consumed = available-state[1]
+  let spent = gas-state[0]
+  let prefix = state[8]
+  let tail = state[9]
+  let dirty = state[10]
+  assert state[11] <= dirty div 4 and state[12] <= prefix and
+      (state[12] == 0 or dirty >= state[12]-1)
+  assert prefix <= consumed div uint64(jit.memoryCycle.prefixSpan)
+  let prefixAttempts = prefix*uint64(jit.memoryCycle.prefixSpan)
+  assert tail <= (consumed-prefixAttempts) div uint64(jit.memoryCycle.tailSpan)
+  let tailAttempts = tail*uint64(jit.memoryCycle.tailSpan)
+  assert dirty <= (consumed-prefixAttempts-tailAttempts) div uint64(jit.dirtyLoop.span)
+  assert prefixAttempts+tailAttempts+dirty*uint64(jit.dirtyLoop.span) == consumed
+  if jit.memoryCycle.prefixPrice > 0:
+    assert prefix <= spent div jit.memoryCycle.prefixPrice
+  let prefixGas = prefix*jit.memoryCycle.prefixPrice
+  if jit.memoryCycle.tailPrice > 0:
+    assert tail <= (spent-prefixGas) div jit.memoryCycle.tailPrice
+  let tailGas = tail*jit.memoryCycle.tailPrice
+  if jit.dirtyLoop.price > 0:
+    assert dirty <= (spent-prefixGas-tailGas) div jit.dirtyLoop.price
+  assert prefixGas+tailGas+dirty*jit.dirtyLoop.price == spent
+  inc jit.calls # Only the outer C-to-arena entry counts as a native call.
+  inc jit.branchCalls
+  inc jit.headerCalls
+  inc jit.memoryCycle.calls
+  jit.memoryCycle.prefixBlocks+=prefix
+  jit.memoryCycle.tailBlocks+=tail
+  jit.memoryCycle.dirtyBlocks+=dirty
+  jit.memoryCycle.wordGroups+=state[11]
+  jit.memoryCycle.dirtyCalls+=state[12]
+  jit.dirtyLoop.calls+=state[12] # Nested child invocations remain visible in its own counter.
+  jit.dirtyLoop.blocks+=dirty
+  jit.dirtyLoop.wordGroups+=state[11]
+  if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines
+  jit.operations+=prefix*uint64(jit.memoryCycle.prefixOperations) +
+      tail*uint64(jit.memoryCycle.tailOperations)+dirty*uint64(jit.dirtyLoop.operations)

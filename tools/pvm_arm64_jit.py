@@ -178,6 +178,18 @@ def qualify(checks, compiler, *, native=True):
                                if line.startswith('ARM_SELF_REGION_CASES,')]
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:
                 raise ValueError('Missing complete one-block region boundary witness')
+            # Backend literals prove real child calls, coexistence and bounded refusal in the selected mode.
+            backend_expected = 19 if native and name == 'witness' else 1 if name == 'witness-refused' else 0
+            backend_receipts = [line for line in checked['output'].splitlines()
+                                if line.startswith('ARM_MEMORY_CYCLE_BACKEND_CASES,')]
+            if backend_receipts != ['ARM_MEMORY_CYCLE_BACKEND_CASES,'+str(backend_expected)]:
+                raise ValueError('Missing complete native memory-cycle backend controls')
+            # Native and forced-refusal builds must execute every exact memory-cycle boundary control.
+            cycle_expected = 4824 if native or name == 'witness-refused' else 0
+            cycle_receipts = [line for line in checked['output'].splitlines()
+                              if line.startswith('ARM_MEMORY_CYCLE_FRAME_CASES,')]
+            if cycle_receipts != ['ARM_MEMORY_CYCLE_FRAME_CASES,'+str(cycle_expected)]:
+                raise ValueError('Missing complete native memory-cycle frame controls')
             # The CLI result carries only genuine native coverage, not inferred source-shape visits.
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
