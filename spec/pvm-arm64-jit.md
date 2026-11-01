@@ -48,10 +48,10 @@ sections do not describe the current implementation.
   publication; the successful regional compilation diagnostic now brackets body emission too.
 
 The [grouped-memory work](pvm-arm-grouped-memory.md) adds paid interior continuation
-and is on Linux performance hold following architecture and correctness review.
-Its paid-interior machinery has a positive architecture review; local measurements
-show a DOOM tick gain alongside microbenchmark regressions; Linux repeats show
-a4.23% tick regression, so the current lowering remains draft.
+passes Linux correctness qualification with a positive architecture review.
+Certificate reuse reduces its measured Linux DOOM cost from 4.23% to 1.42%; the
+feature record quantifies smaller-workload costs and the reviewed architectural
+tradeoff. Local M1 gains are reported separately from Linux evidence.
 
 Both local comparison helpers default to a frozen current HEAD, so a clean checkout gets an
 A/A source-and-image control without needing an old draft object. To compare a prior JIT commit,

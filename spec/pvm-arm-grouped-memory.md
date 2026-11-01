@@ -1,11 +1,12 @@
 # ARM64 grouped memory and paid continuation
 
-**Linux performance hold.** Paid interior continuation is a concrete architectural
-gain, and flat DOOM would be acceptable. Correctness qualification passes, but
-Linux ARM fresh-process repeats show a4.23% DOOM tick regression alongside larger
-minimal/Pinky costs. The positive local M1 result does not generalize to Linux.
-Retain the machinery while investigating repeated hot-header/admission cost;
-these measured regressions, rather than flat timing, prevent readiness.
+**Qualified architectural candidate.** The paid-continuation and publication-proof
+changes pass local and Linux correctness qualification. Reusing the certified
+branch targets reduces the Linux DOOM cost from 4.23% to 1.42% against the accepted
+parent. That residual cost is repeatable, not flat; minimal/Pinky also regress,
+while long sieve improves. The reviewed net decision is to carry the architectural
+foundation forward with these costs explicit. Final review/readiness is recorded
+on the PR; later tuning is separate from correctness qualification.
 
 ## Scope and authority
 
@@ -271,4 +272,56 @@ Evidence is preserved under ignored
 `build/pvm-mixed-memory/evidence/same-image-certificate-7bd/`. The private startup
 switch and duplicate worker are not shipped. This is isolated local attribution,
 not Linux qualification of the new candidate; the prior performance hold stands
-until the updated runtime is qualified.
+until the updated runtime is qualified, as recorded below.
+
+
+## Updated Linux qualification and net tradeoff
+
+[Run 41285448250](https://github.com/jacogr/ragnarok/actions/runs/41285448250)
+qualifies exact runtime a3bc509341ad25dce54ab1ea12495532d8713f9b against a099. All
+20 builds, 84 primary processes, 138 controls and 60 fresh-process replays pass, including
+the five maintained fresh/retained pricing receipts. Artifact 13075427646 ZIP
+SHA-256 is `3ac1ef3ae52556cb91493a130026a6eea03b5ec200303c8ef9e75f032e9fda77`.
+
+Replay values are medians across six steady process medians per role/case, each
+from 13 checked calls with three warmups excluded. The raw reference column is
+from the separate primary forward/reverse comparison: our public invocation
+including memory/publication divided by PolkaVM's raw interpreted call.
+
+| Workload | Parent ms | Candidate ms | Change | Raw ours / PolkaVM interpreted |
+| --- | ---: | ---: | ---: | ---: |
+| DOOM tick | 27.865870 | 28.261120 | +1.42% | 0.696 / 0.702 |
+| DOOM init | 235.324036 | 231.555470 | -1.60% | 0.378 / 0.370 |
+| Minimal | 5.316988 | 5.563096 | +4.63% | 1.009 / 1.020 |
+| Pinky | 81.253464 | 84.088522 | +3.49% | 0.953 / 0.960 |
+| Sieve10m | 282.366378 | 273.772452 | -3.04% | 0.820 / 0.821 |
+
+Tick ranges 27.810364–27.955260ms parent and 28.147144–28.351880ms candidate do
+not overlap. The smaller cost must not be described as statistical flatness.
+Initialization varies more, so its favorable median is not a standalone win
+claim. All primary Native activity records match f0, excluding compilation time;
+the change removes repeated host-side certification rather than changing guest
+coverage or native instructions. Full verified evidence is preserved under
+ignored `build/pvm-mixed-memory/ci-41285448250/`.
+
+The reviewed architectural tradeoff accepts the quantified smaller costs in
+exchange for generic side-effecting Native continuation, reusable window proofs
+and certificate reuse, with a stable long-sieve gain and positive local M1
+evidence. The maintainer explicitly permits positive architecture/other-workload
+value; no DOOM speedup is required. This decision does not erase the measured
+Linux regressions or infer future speedups.
+
+The private same-image attribution above excluded only cold sample 0 and compared
+mean process medians. Recomputing its stored samples with three warmups excluded
+also gives minimal -5.75%, Pinky -3.97%, tick -2.13%, sieve +0.03%; no additional run was
+needed. This isolates the hot-check cost but remains distinct from shipping
+source qualification and accepted-parent workload ratios.
+
+An actual public prepared-call diagnostic identifies a next memory lead: tick
+guest accesses touch 355 of 4,285 mapped pages, while one checkpoint marks 275 pages
+written but only 6 net changed. Instrumented entry is about 2.15 ms; diagnostic scans
+perturb caches, so this is not a timing improvement. A descriptor-only simulation
+with eager backing should first test materialized-window hit/retarget behavior
+before any lazy virtual backing or OS ownership change. The current native
+context is borrowed at each call and only a fully materialized contiguous window
+may be advertised. No lazy backing is implemented by this PR.
