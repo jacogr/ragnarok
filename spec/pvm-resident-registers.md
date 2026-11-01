@@ -88,5 +88,48 @@ Same-image raw SHA-256: `fc3649bf6a8a977ffbc7b0d8c661b672eea55aab003b15dce5c7553
 Runtime `arm64_jit.nim` SHA-256:
 `934b75a39afcd6e46c7016c37a3d13695a2e9de72c88920b2cefe2be751f181f`.
 
-These are local ARM results pending focused Linux ARM qualification. No x86 timing claim,
-compiler change, relaxed check, additional native publication or new guest coverage is included.
+The local results above are qualified on Linux ARM below. No x86 timing claim, compiler change,
+relaxed check, additional native publication or new guest coverage is included.
+
+## Linux ARM qualification, 2026-11-01
+
+Exact runtime head `438a1efc696061b3977e5256031bff1fc8452d25` passes the focused
+[ARM replay run](https://github.com/jacogr/ragnarok/actions/runs/41310635830) against
+`9b5db44959203a2ae67e04f9637a15460b8c213e`, with the same pinned checked compiler.
+Artifact `13086255442` contains 20 fresh builds, 84 primary processes, 138 positive/refusal
+controls and 60 additional JIT replay processes. Author and independent reviewer reparse all 144
+primary/replay logs and 138 controls, 18 fresh image equalities and current source hashes.
+All 14 native-work pairs preserve fragments/calls/operations/branches/headers, with the expected
+smaller code size; within-source replays preserve code size too. Native/refusal controls both
+execute the 156 store-only live-in cases. Existing native ownership/memory/region/priced
+controls pass. Interpreted native counters stay zero.
+
+Each JIT entry below is the median of six process medians using CPU samples 3:13.
+
+| Workload | Baseline JIT ms | Candidate JIT ms | Change |
+|---|---:|---:|---:|
+| DOOM init | 146.513 | 148.866 | **+1.61%** |
+| DOOM tick | 24.890 | 24.032 | **-3.45%** |
+| Minimal | 5.497 | 5.553 | **+1.01%** |
+| Pinky | 83.445 | 83.157 | -0.34% |
+| Sieve 10m | 272.272 | 268.174 | **-1.50%** |
+
+All six tick and sieve pairs improve with nonoverlapping process ranges. All six init pairs
+regress with nonoverlapping ranges. All six minimal pairs regress, with aggregate ranges
+overlapping; Pinky improves in five pairs with overlap. The primary two-process interpreter
+comparison is flat for DOOM: tick -0.063%, init +0.085%. It has less replication than the JIT
+replay table. Matched primary raw ours / PolkaVM interpreted ratios are **0.600 JIT / 0.752
+interpreter** for tick, **0.237 / 0.513** for init; primary numerators use their matching
+reference, rather than a replay numerator paired with another cohort's denominator.
+
+The gameplay gain and lower resident boundary traffic support adoption, with the init and
+minimal regressions explicitly retained as costs. This is not a uniform speedup and does not
+establish full blockchain throughput. Native code layout changes alongside the fewer transfers.
+The final qualification update changes this evidence document only; runtime remains the
+measured head above, so no additional cohort is needed for that documentation update.
+
+Application report SHA-256:
+`0ac39996e2f3008b86ea852fd523da49e8243263e129aff01156acb762f90903`.
+Artifact ZIP SHA-256, independently recorded by review:
+`2e5df04c2fe7dea3a767a67f816fbe8caa0920f2886673c895025f43e4bf24fd`.
+Ignored author audit: `build/pvm-resident-register-masks/ci-arm-audit.json`.
