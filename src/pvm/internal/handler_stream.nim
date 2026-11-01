@@ -3292,14 +3292,14 @@ type FlatStream* = object
   handlers: seq[FlatHandler]
   arguments: seq[FlatArgs]
   sites, compiledForPc: seq[uint32]
+  sourcePlan: nil FlatPlan # Exact source, emission and default-cycle owner for every build.
+  pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    armPlan: nil FlatPlan # Exact immutable source/emission owner; offsets alone never authorize code reuse.
     armOriginal: seq[nil FlatHandler]
     armJit: nil ArmJit
   when defined(pvmX86Jit):
-    x86Plan: nil FlatPlan # Code offsets are capabilities only for this exact immutable source owner.
     x86Original: seq[nil FlatHandler]
     x86Jit: nil X86Jit
 
@@ -3329,35 +3329,35 @@ func streamSealedInfo*(stream: FlatStream): FlatSealedInfo =
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Move the exclusive executable cache back to its prepared owner; generated leaves retain no invocation pointers.
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
-    compiledForPc: move(f.compiledForPc), failure: f.preparationFailure,
+    compiledForPc: move(f.compiledForPc), sourcePlan: f.plan, pricingKind: f.pricingKind,
+    failure: f.preparationFailure,
     preparation: f.preparationUsed)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
-    result.armPlan = f.plan
     result.armOriginal = move(f.armOriginal)
     result.armJit = move(f.armJit)
   when defined(pvmX86Jit):
-    result.x86Plan = f.plan
     result.x86Original = move(f.x86Original)
     result.x86Jit = move(f.x86Jit)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Lease only exact-source code; CPU, memory, budgets and callbacks remain freshly captured by the frame.
+  if stream.sourcePlan != nil and stream.sourcePlan != f.plan:
+    # Refuse before consuming another owner's price, executable capability or scalar coordinates.
+    f.preparationFailure = FlatError.InvalidProgram
+    return
+  if f.pricingKind != 0 or stream.pricingKind != 0:
+    # A sealed charge/error or native header belongs to its original pricing policy. Reemit under the
+    # newly selected policy rather than borrowing an unproven price or retaining another policy owner.
+    stream = default(FlatStream)
+    return
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    if stream.armPlan != nil and stream.armPlan != f.plan:
-      # Refuse before consuming another owner's executable capability or changing its scalar coordinates.
-      f.preparationFailure = FlatError.InvalidProgram
-      return
     f.armOriginal = move(stream.armOriginal)
     f.armJit = move(stream.armJit)
-    stream.armPlan = nil
   when defined(pvmX86Jit):
-    if stream.x86Plan != nil and stream.x86Plan != f.plan:
-      f.preparationFailure = FlatError.InvalidProgram
-      return # Refuse before consuming either source owner's exclusive cache.
     f.x86Original = move(stream.x86Original)
     f.x86Jit = move(stream.x86Jit)
-    stream.x86Plan = nil
+  stream.sourcePlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
   f.sites = move(stream.sites)
@@ -3519,13 +3519,15 @@ func flatMemoryScratchPayload*(scratch: nil FlatMemoryScratch): uint64 =
   if scratch == nil: 0'u64 else: scratch.payloadBytes
 
 proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.StepError =
-  ## Complete and lazy policy owners must match the exact immutable program before any execution.
+  ## Complete and lazy policy owners must match the exact immutable program before cache restore or emission.
   if gasPlanInfo(plan).error == GasPlanError.None:
     if not matchesProgram(plan, f.plan.source): return oracle.StepError.InvalidGasPlan
+    if f.handlers.len != 0: return oracle.StepError.InvalidPreparedProgram
     f.pricingPlan = plan
     f.pricingKind = 1
   elif gasMemoInfo(memo).error == GasMemoError.None:
     if not matchesProgram(memo, f.plan.source): return oracle.StepError.InvalidGasMemo
+    if f.handlers.len != 0: return oracle.StepError.InvalidPreparedProgram
     f.pricingMemo = memo
     f.pricingKind = 2
   oracle.StepError.None
