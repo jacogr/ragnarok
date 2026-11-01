@@ -311,10 +311,10 @@ evidence. The maintainer explicitly permits positive architecture/other-workload
 value; no DOOM speedup is required. This decision does not erase the measured
 Linux regressions or infer future speedups.
 
-The private same-image attribution above excluded only cold sample 0 and compared
-mean process medians. Recomputing its stored samples with three warmups excluded
-also gives minimal -5.75%, Pinky -3.97%, tick -2.13%, sieve +0.03%; no additional run was
-needed. This isolates the hot-check cost but remains distinct from shipping
+The private same-image attribution above excludes three warmups and reports mean
+process medians. Using medians across those same steady process medians gives
+minimal -5.75%, Pinky -3.97%, tick -2.13%, sieve +0.03%; no additional run was needed.
+This isolates the hot-check cost but remains distinct from shipping
 source qualification and accepted-parent workload ratios.
 
 An actual public prepared-call diagnostic identifies a next memory lead: tick
