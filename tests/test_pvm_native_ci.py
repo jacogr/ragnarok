@@ -111,6 +111,8 @@ class QualificationTests(unittest.TestCase):
             'ARM_DIRECT_BRANCH_CONTROL_CASES,122\n'
             'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n'
             'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n'
+            'BOUNDED_CONTINUATION_LONG_CASES,120\n'
+            'BOUNDED_MIXED_CONTINUATION_LONG_CASES,120\n'
             f'ARM_MEMORY_CYCLE_FRAME_CASES,{7236 if native or refused else 0}\n'
             f'ARM_MEMORY_CYCLE_BACKEND_CASES,{19 if native else 1 if refused else 0}\n'
             f'ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,{12328 if native or refused else 0}\n'
@@ -261,6 +263,22 @@ class QualificationTests(unittest.TestCase):
                     damaged = complete.replace(marker, replacement)
                     with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
                             self.assertRaisesRegex(ValueError, 'resident memory-cycle '+kind.lower()):
+                        if refused:
+                            self.check(True, refused_receipt=damaged)
+                        else:
+                            self.check(native, receipt=damaged)
+
+    def test_bounded_continuations_are_required_in_every_mode(self):
+        """Missing, partial or duplicate long-block coverage cannot qualify either continuation shape."""
+        for native, refused in ((True, False), (False, True), (False, False)):
+            complete = self.witness_receipt(native, refused=refused)
+            for marker, shape in (('BOUNDED_CONTINUATION_LONG_CASES', 'fused'),
+                                  ('BOUNDED_MIXED_CONTINUATION_LONG_CASES', 'non-fused')):
+                line = marker+',120\n'
+                for replacement in ('', marker+',119\n', line+line):
+                    damaged = complete.replace(line, replacement)
+                    with self.subTest(native=native, refused=refused, shape=shape, replacement=replacement), \
+                            self.assertRaisesRegex(ValueError, 'bounded continuation '+shape):
                         if refused:
                             self.check(True, refused_receipt=damaged)
                         else:
