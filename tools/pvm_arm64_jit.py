@@ -185,7 +185,7 @@ def qualify(checks, compiler, *, native=True):
             if backend_receipts != ['ARM_MEMORY_CYCLE_BACKEND_CASES,'+str(backend_expected)]:
                 raise ValueError('Missing complete native memory-cycle backend controls')
             # Native and forced-refusal builds must execute every exact memory-cycle boundary control.
-            cycle_expected = 4824 if native or name == 'witness-refused' else 0
+            cycle_expected = 7236 if native or name == 'witness-refused' else 0
             cycle_receipts = [line for line in checked['output'].splitlines()
                               if line.startswith('ARM_MEMORY_CYCLE_FRAME_CASES,')]
             if cycle_receipts != ['ARM_MEMORY_CYCLE_FRAME_CASES,'+str(cycle_expected)]:

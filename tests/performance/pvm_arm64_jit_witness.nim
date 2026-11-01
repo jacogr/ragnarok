@@ -2726,13 +2726,32 @@ when defined(pvmArm64Jit):
     info.registers[7] = RegisterValue(2)
     info.registers[8] = RegisterValue(3)
     var controls = 0
-    for negative in [false, true]:
+    for variant in 0..<3:
+      # Keep a near-shape refusal and a native prefix with an extra folded source attempt.
+      let negative = variant == 1
+      let foldedPrefix = variant == 2
       let pieces = if negative: @[@[120'u8, 2, 0],
         @[1'u8],
         @[51'u8, 1, 0],
         @[200'u8, 128, 3],
         @[149'u8, 51, 1],
         @[40'u8, 2],
+        @[198'u8, 20, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 217, 255, 255, 255],
+        @[0'u8]] elif foldedPrefix: @[@[120'u8, 2, 0],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[2'u8],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[1'u8],
         @[198'u8, 20, 2],
         @[120'u8, 2, 0],
         @[149'u8, 0, 1],
@@ -2810,6 +2829,30 @@ when defined(pvmArm64Jit):
         let moved = flatArmMemoryCycleStatistics(fresh)
         if negative: assert moved[0] == 0
         else: assert moved[0] > warmed[0]
+      if not negative:
+        # Select pricing before emission, then discard a genuinely native default cache at restore.
+        for policy in [0, 1]:
+          var defaultFrame = newFlatFrame(plan, [page], info)
+          for warm in 0..<24: verifyControl(defaultFrame, program, info, 100, [page])
+          when not defined(pvmArm64JitRefuse):
+            assert flatArmMemoryCycleStatistics(defaultFrame)[0] > 0
+          var defaultCache = takeFlatStream(defaultFrame)
+          let complete = newGasPlan(program, GasPlanLimits(bytes: GasPlanByteLimit(65536),
+            blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
+          let lazy = newGasMemo(program, GasMemoLimits(bytes: GasMemoByteLimit(65536),
+            cycles: GasCycleLimit(100000)))
+          assert complete.error == GasPlanError.None and lazy.error == GasMemoError.None
+          var priced = newFlatFrame(plan, [page], info)
+          if policy == 0:
+            # An immutable complete plan still cannot borrow the default native driver.
+            assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
+          else:
+            # Lazy query/refusal ownership likewise requires fresh price-bearing emission.
+            assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
+          restoreFlatStream(priced, defaultCache)
+          assert flatArmMemoryCycleStatistics(priced) == default(array[6, uint64])
+          for warm in 0..<24: verifyControl(priced, program, info, 100, [page])
+          assert flatArmMemoryCycleStatistics(priced) == default(array[6, uint64])
     echo "ARM_MEMORY_CYCLE_FRAME_CASES,", controls
 else:
   # Plain interpreter builds still provide an explicit unavailable coverage record.

@@ -61,14 +61,18 @@ native counters.
 ## Local correctness evidence
 
 The formatted prototype passes eleven maintained native/refusal/ownership qualification records.
-The maintained witness retains all old controls and adds 4,824 full CPU/PC/gas/deficit/paid/attempt/
+The promoted witness retains all old controls and adds 7,236 full CPU/PC/gas/deficit/paid/attempt/
 memory/source comparisons in both native and forced-refusal builds. These include complete 4/5/4
-boundary sweeps, sixteen gas values, prepaid entry, a signed read of newly stored bytes, an unmapped
+boundary sweeps, an internal folded prefix no-op, sixteen gas values, prepaid entry, a signed read
+of newly stored bytes, an unmapped
 tail after committed word stores, fresh descriptors, owner transfer and a similar ineligible graph.
 The refusal case additionally proves one native prefix/child, four dirty bodies and a word group
 completed while zero tail visits committed. Independent literal backend controls cover same-owner
 pure-region coexistence, empty descriptors/bitmap, zero work, cleanup, capacity, expected-offset
 mismatch and sticky oversized emission refusal.
+
+Eligible graphs additionally select fresh complete and lazy pricing owners before restoring a
+warmed default-native stream; full-state parity and zero driver activity are required.
 
 The promoted source additionally retains repaired-master cache ownership and pricing-selection
 contracts. The complete promoted-source qualification and focused Linux evidence must be recorded
