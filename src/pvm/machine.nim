@@ -378,6 +378,38 @@ proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
       if left.pages[index] != right.pages[index]: changed.add(imageFromPage(right.pages[index]))
   MachineResult[seq[PageImage]](status: MachineError.None, completed: changed)
 
+proc changedMemoryPageSlots*(before, after: Memory): MachineResult[seq[MemoryPageSlot]] =
+  ## Validate the complete retained map, then return sorted positions whose immutable page owners differ.
+  ## Shared directory blocks need no scan; callers copy bytes through the validated after owner by slot.
+  let left = before.data
+  let right = after.data
+  if left == nil or right == nil: return MachineResult[seq[MemoryPageSlot]](
+      status: MachineError.InvalidOwner)
+  if left == right: return MachineResult[seq[MemoryPageSlot]](
+      status: MachineError.None, completed: @[])
+  if left.pages.len != right.pages.len:
+    return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidRange)
+  for group in 0..<left.pages.blocks.len:
+    # Equal block owners certify every identity and permission in that group.
+    if left.pages.blocks[group] == right.pages.blocks[group]: continue
+    let first = group*64
+    let past = min(first+64, left.pages.len)
+    for slot in first..<past:
+      # Refuse every map difference before allocating or returning any changed positions.
+      if left.pages[slot] == right.pages[slot]: continue
+      if left.pages[slot].index != right.pages[slot].index or
+          left.pages[slot].access != right.pages[slot].access:
+        return MachineResult[seq[MemoryPageSlot]](status: MachineError.InvalidRange)
+  var changed: seq[MemoryPageSlot] = @[]
+  for group in 0..<left.pages.blocks.len:
+    # Ascending groups and positions produce sorted slots without sorting or copying page payloads.
+    if left.pages.blocks[group] == right.pages.blocks[group]: continue
+    let first = group*64
+    let past = min(first+64, left.pages.len)
+    for slot in first..<past:
+      if left.pages[slot] != right.pages[slot]: changed.add(MemoryPageSlot(uint32(slot)))
+  MachineResult[seq[MemoryPageSlot]](status: MachineError.None, completed: changed)
+
 func memoryPageCount*(memory: Memory): MachineResult[PageCount] =
   ## Inspect a genuine owner's mapping size without copying page payloads, for local admission before host deltas.
   let data = memory.data
