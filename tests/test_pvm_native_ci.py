@@ -114,6 +114,14 @@ class QualificationTests(unittest.TestCase):
             'BOUNDED_CONTINUATION_LONG_CASES,120\n'
             'BOUNDED_MIXED_CONTINUATION_LONG_CASES,120\n'
             'BOUNDED_NATIVE_FALLBACK_LONG_CASES,120\n'
+            'ARM_PREFIX_READ_FRAME_CASES,662\n'
+            'ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES,177\n'
+            'ARM_PREFIX_READ_CHARGE_BOUNDARY_CASES,106\n'
+            f'ARM_PREFIX_READ_NATIVE_ACTIVATIONS,{2 if native else 0}\n'
+            f'ARM_PREFIX_READ_NATIVE_REFUSALS,{4 if native else 0}\n'
+            f'ARM_PREFIX_READ_LITERAL_ROLLBACKS,{4 if native else 0}\n'
+            'ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES,1\n'
+            f'ARM_PREFIX_READ_NEAR_CAP_LITERAL,{1 if native else 0}\n'
             f'ARM_MEMORY_CYCLE_FRAME_CASES,{7236 if native or refused else 0}\n'
             f'ARM_MEMORY_CYCLE_BACKEND_CASES,{19 if native else 1 if refused else 0}\n'
             f'ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,{12328 if native or refused else 0}\n'
@@ -281,6 +289,30 @@ class QualificationTests(unittest.TestCase):
                     damaged = complete.replace(line, replacement)
                     with self.subTest(native=native, refused=refused, shape=shape, replacement=replacement), \
                             self.assertRaisesRegex(ValueError, 'bounded continuation '+shape):
+                        if refused:
+                            self.check(True, refused_receipt=damaged)
+                        else:
+                            self.check(native, receipt=damaged)
+
+    def test_prefix_read_controls_are_required_in_every_mode(self):
+        """Real execution, rollback and source/capacity boundaries cannot disappear behind a green transcript."""
+        for native, refused in ((True, False), (False, True), (False, False)):
+            complete = self.witness_receipt(native, refused=refused)
+            controls = (
+                ('ARM_PREFIX_READ_FRAME_CASES', 662, 'frame'),
+                ('ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES', 177, 'source boundary'),
+                ('ARM_PREFIX_READ_CHARGE_BOUNDARY_CASES', 106, 'charge boundary'),
+                ('ARM_PREFIX_READ_NATIVE_ACTIVATIONS', 2 if native else 0, 'activation'),
+                ('ARM_PREFIX_READ_NATIVE_REFUSALS', 4 if native else 0, 'refusal'),
+                ('ARM_PREFIX_READ_LITERAL_ROLLBACKS', 4 if native else 0, 'literal rollback'),
+                ('ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES', 1, 'oversize fallback'),
+                ('ARM_PREFIX_READ_NEAR_CAP_LITERAL', 1 if native else 0, 'near capacity'))
+            for marker, count, kind in controls:
+                line = marker+','+str(count)+'\n'
+                for replacement in ('', marker+','+str(count-1)+'\n', line+line):
+                    damaged = complete.replace(line, replacement)
+                    with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
+                            self.assertRaisesRegex(ValueError, 'prefix-read '+kind):
                         if refused:
                             self.check(True, refused_receipt=damaged)
                         else:

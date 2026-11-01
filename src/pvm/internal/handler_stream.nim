@@ -3005,6 +3005,45 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.handlers[int(offset)] = flatArmMemory
     ending
 
+  proc flatArmCompilePrefixReadSpan(f: var FlatFrame, offset: uint32): uint32 {.noinline.} =
+    ## One speculative read-only register span can include its already admitted arithmetic prefix.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return offset
+    var native = default(ArmReadSpan)
+    var ending = offset
+    var count = 0'u32
+    var reads = 0'u32
+    while int(ending) < f.sites.len and count < 64:
+      # Keep the existing charge/header and source-terminal boundaries intact.
+      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if fact.ending or not fact.fallthrough: break
+      let displacement = uint32(fact.args.x and 0xffffffff'u64)
+      if fact.opcode in 52'u8..58'u8:
+        emitArmDirectRead(native, fact.args.slots, displacement, range[52..58](int(fact.opcode)))
+        inc reads
+      elif fact.opcode in 124'u8..130'u8:
+        emitArmRead(native, fact.args.slots, displacement, range[124..130](int(fact.opcode)))
+        inc reads
+      elif supportedArmOpcode(fact.opcode):
+        emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+      else:
+        break # Stores, host work and unsupported semantics keep the complete original prefix.
+      inc ending
+      inc count
+    if reads == 0 or count < 4: return offset
+    var words = armReadInstructions(native, ending)
+    if words.len >= 1024: return offset # Preserve the existing pure publisher on bounded refusal.
+    if jit.fragments >= 1023 or jit.codeBytes > 1048576 or
+        uint64(words.len+1)*4 > 1048576-jit.codeBytes:
+      return offset # A smaller original pure leaf may still fit; do not mutate its refusal record.
+    if not publishArmEntry(jit, offset, ending, count, words): return offset
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    f.armOriginal[int(offset)] = f.handlers[int(offset)]
+    f.handlers[int(offset)] = flatArmMemory
+    ending
+
   proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
     ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
     if f.armJit == nil: f.armJit = newArmJit()
@@ -3030,6 +3069,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc count
     let terminal = if int(ending) < f.sites.len:
         f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
+    if count > 0 and (terminal in 52'u8..58'u8 or terminal in 124'u8..130'u8):
+      # A failed speculative admission leaves the established pure leaf available below.
+      let combined = flatArmCompilePrefixReadSpan(f, offset)
+      if combined > offset: return combined
     # Short conditional suffixes can fuse their checked header after genuine branch admission.
     # Other short leaves retain the original floor; isolated calls would add an extra native transition.
     if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):

@@ -1343,6 +1343,303 @@ for shape in 0..<6:
 
 echo "ARM_READ_SPAN_CONTROL_CASES,", readSpanCases
 
+block prefixReadSpanFrame:
+  # A pure prefix writes R0 and R12 before an aliased indirect read. A later
+  # signed word read either commits, faults, or needs checked fragmented replay.
+  var controls = 0
+  var nativeSuccesses = 0
+  var nativeRefusals = 0
+  var literalRollbacks = 0
+  for directSecond in [false, true]:
+    for layout in 0..<3:
+      let secondAddress = if layout == 0: 65552'u64 else: 69630'u64
+      var second = @[(if directSecond: 57'u8 else: 129'u8),
+          (if directSecond: 12'u8 else: 0xcc'u8)]
+      let displacement = if directSecond: uint32(secondAddress) else: 0'u32
+      for shift in 0..<4: second.add(byte((displacement shr (shift*8)) and 255))
+      let program = owner([@[149'u8, 0x00, 1], @[51'u8, 12, 0, 0, 1, 0],
+          @[130'u8, 0xcc, 0, 0, 0, 0], second, @[131'u8, 0xcc, 1], @[0'u8]])
+      var firstPage = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+          bytes: default(array[4096, byte]))
+      for at in 0..<8:
+        firstPage.bytes[at] = byte((secondAddress shr (at*8)) and 255)
+      if layout == 0:
+        firstPage.bytes[19] = 0x80
+      else:
+        firstPage.bytes[4094] = 0
+        firstPage.bytes[4095] = 0
+      var images = @[firstPage]
+      if layout == 2:
+        var secondPage = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite,
+            bytes: default(array[4096, byte]))
+        secondPage.bytes[1] = 0x80
+        images.add(secondPage)
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+          registers: default(RegisterFile), blockCharged: false)
+      for slot in 0..<13:
+        info.registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+      info.registers[0] = RegisterValue(41)
+      info.registers[12] = RegisterValue(0x123456789abcdef0'u64)
+      var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), images, info)
+      verifyControl(frame, program, info, 6, images)
+      assert uint64(frame.info.registers[0]) == 42
+      if layout == 1:
+        assert frame.exit == StepExit.Fault
+        assert uint64(frame.info.registers[12]) == secondAddress
+      else:
+        assert frame.exit == StepExit.Panic
+        assert uint64(frame.info.registers[12]) == 0xffffffff80000001'u64
+      when defined(pvmArm64Jit):
+        let stats = flatArmStatistics(frame)
+        when defined(pvmArm64JitRefuse):
+          assert stats[1] == 0 and stats[2] == 0
+        else:
+          assert stats[1] == 1 and stats[2] == (if layout == 0: 5'u64 else: 0'u64)
+          if layout == 0: inc nativeSuccesses
+          else: inc nativeRefusals
+          if layout != 0:
+            # Inspect the native boundary before checked replay can hide a dirty register.
+            var span = default(ArmReadSpan)
+            emitArmReadArithmetic(span, 149, instructionRegisters(instruction(program,
+                CodeAddress(0))), 1)
+            emitArmReadArithmetic(span, 51, instructionRegisters(instruction(program,
+                CodeAddress(3))), 65536)
+            emitArmRead(span, instructionRegisters(instruction(program, CodeAddress(9))), 0)
+            let secondSlots = instructionRegisters(instruction(program, CodeAddress(15)))
+            if directSecond: emitArmDirectRead(span, secondSlots, uint32(secondAddress), 57)
+            else: emitArmRead(span, secondSlots, 0, 129)
+            emitArmReadArithmetic(span, 131, instructionRegisters(instruction(program,
+                CodeAddress(21))), 1)
+            let literalJit = newArmJit()
+            assert armEntry(literalJit, 0, 1) == 0
+            var words = armReadInstructions(span, 5)
+            assert publishArmEntry(literalJit, 0, 5, 5, words)
+            var firstBytes = firstPage.bytes
+            var secondBytes = default(array[4096, byte])
+            secondBytes[1] = 0x80
+            var regions = default(array[3, array[3, uint64]])
+            regions[0] = [65536'u64, 4089'u64, cast[uint64](addr firstBytes[0])]
+            if layout == 2:
+              regions[1] = [69632'u64, 4089'u64, cast[uint64](addr secondBytes[0])]
+            var registers = info.registers
+            let original = registers
+            assert callArmMemory(literalJit, 0, registers, regions) == high(uint32)
+            assert registers == original and literalJit.calls == 1 and literalJit.operations == 0
+            inc literalRollbacks
+      inc controls
+      for paid in [false, true]:
+        for gas in [0'u64, 1, 4, 5, 6, 1000]:
+          for budget in 0'u64..7'u64:
+            var bounded = info
+            bounded.blockCharged = paid
+            bounded.gas = MachineGas(gas)
+            verifyControl(frame, program, bounded, budget, images)
+            inc controls
+      for interior in [9'u64, 15'u64, 21'u64]:
+        if interior == 21 and layout == 1: continue
+        var paid = info
+        paid.pc = CodeAddress(interior)
+        paid.blockCharged = true
+        paid.gas = MachineGas(0)
+        paid.registers[0] = RegisterValue(42)
+        paid.registers[12] = RegisterValue(
+            if interior == 9: 65536'u64
+            elif interior == 15: secondAddress
+            else: 0xffffffff80000000'u64)
+        for budget in 0'u64..4'u64:
+          verifyControl(frame, program, paid, budget, images)
+          inc controls
+  echo "ARM_PREFIX_READ_FRAME_CASES,", controls
+  echo "ARM_PREFIX_READ_NATIVE_ACTIVATIONS,", nativeSuccesses
+  echo "ARM_PREFIX_READ_NATIVE_REFUSALS,", nativeRefusals
+  echo "ARM_PREFIX_READ_LITERAL_ROLLBACKS,", literalRollbacks
+
+block prefixReadSourceBoundary:
+  # One folded source attempt precedes the first read. The 64-node native
+  # limit leaves the next real operation addressable in checked execution.
+  var parts: seq[seq[byte]] = @[@[149'u8, 0x00, 1], @[2'u8],
+      @[57'u8, 1, 0, 0, 1, 0]]
+  for at in 0..<63: parts.add(@[149'u8, 0x00, 1])
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  let readPc = 4'u64
+  let lastPc = 10'u64+62'u64*3
+  let decodedRead = instruction(program, CodeAddress(readPc))
+  let decodedLast = instruction(program, CodeAddress(lastPc))
+  assert decodedRead.error == ProgramError.None and decodedRead.value.opcode == 57
+  assert decodedLast.error == ProgramError.None and decodedLast.value.opcode == 149
+  var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+  page.bytes[3] = 0x80
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+      registers: default(RegisterFile), blockCharged: false)
+  info.registers[0] = RegisterValue(10)
+  var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+  verifyControl(frame, program, info, 67, [page])
+  assert frame.exit == StepExit.Panic
+  assert uint64(frame.info.registers[0]) == 74
+  assert uint64(frame.info.registers[1]) == 0xffffffff80000000'u64
+  when defined(pvmArm64Jit):
+    let stats = flatArmStatistics(frame)
+    when defined(pvmArm64JitRefuse): assert stats[1] == 0 and stats[2] == 0
+    else: assert stats[1] == 1 and stats[2] == 64
+  var controls = 1
+  for paid in [false, true]:
+    for gas in [0'u64, 1, 64, 65, 66, 67, 1000]:
+      for budget in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, 66, 67, 68]:
+        var bounded = info
+        bounded.blockCharged = paid
+        bounded.gas = MachineGas(gas)
+        verifyControl(frame, program, bounded, budget, [page])
+        inc controls
+  for entryPc in [readPc, lastPc]:
+    var interior = info
+    interior.pc = CodeAddress(entryPc)
+    interior.blockCharged = true
+    interior.gas = MachineGas(0)
+    interior.registers[0] = RegisterValue(if entryPc == readPc: 11'u64 else: 73'u64)
+    if entryPc == lastPc: interior.registers[1] = RegisterValue(0xffffffff80000000'u64)
+    for budget in 0'u64..3'u64:
+      verifyControl(frame, program, interior, budget, [page])
+      inc controls
+  echo "ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES,", controls
+
+block prefixReadChargeBoundary:
+  # A static jump closes the first charged block. The next load has its own
+  # header, gas charge and register publication boundary.
+  let program = owner([@[149'u8, 0x00, 1], @[149'u8, 0x00, 1],
+      @[149'u8, 0x00, 1], @[149'u8, 0x00, 1], @[40'u8, 2],
+      @[57'u8, 12, 0, 0, 1, 0], @[131'u8, 0xcc, 1], @[0'u8]])
+  let loadPc = 14'u64
+  let afterLoadPc = 20'u64
+  let decodedLoad = instruction(program, CodeAddress(loadPc))
+  assert decodedLoad.error == ProgramError.None and decodedLoad.value.opcode == 57
+  var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+  page.bytes[3] = 0x80
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+      registers: default(RegisterFile), blockCharged: false)
+  info.registers[0] = RegisterValue(10)
+  info.registers[12] = RegisterValue(0x123456789abcdef0'u64)
+  let memory = captureMemory([page], PageLimit(2))
+  assert memory.error == MachineError.None
+  var model = captureMachine(program, memory.value, info).value
+  for at in 0..<5:
+    let next = stepOnce(model, GasCycleLimit(100000))
+    assert next.error == StepError.None and next.value.exit == StepExit.Continued
+    model = next.value.machine
+  let atHeader = machineInfo(model).value
+  assert uint64(atHeader.pc) == loadPc and not atHeader.blockCharged
+  let firstPrice = 1000'u64-uint64(atHeader.gas)
+  assert firstPrice > 0 and firstPrice < 1000
+  var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+  verifyControl(frame, program, info, 8, [page])
+  assert frame.exit == StepExit.Panic
+  assert uint64(frame.info.registers[0]) == 14
+  assert uint64(frame.info.registers[12]) == 0xffffffff80000001'u64
+  when defined(pvmArm64Jit):
+    let stats = flatArmStatistics(frame)
+    when defined(pvmArm64JitRefuse): assert stats[1] == 0 and stats[2] == 0
+    else: assert stats[1] == 1 and stats[2] == 4
+  var atPrice = info
+  atPrice.gas = MachineGas(firstPrice)
+  verifyControl(frame, program, atPrice, 8, [page])
+  assert frame.exit == StepExit.OutOfGas
+  assert uint64(frame.info.pc) == loadPc
+  assert uint64(frame.info.registers[0]) == 14
+  assert uint64(frame.info.registers[12]) == 0x123456789abcdef0'u64
+  var controls = 2
+  for paid in [false, true]:
+    for gas in [0'u64, 1, firstPrice-1, firstPrice, firstPrice+1, 1000]:
+      for budget in [0'u64, 1, 4, 5, 6, 7, 8, 9]:
+        var bounded = info
+        bounded.blockCharged = paid
+        bounded.gas = MachineGas(gas)
+        verifyControl(frame, program, bounded, budget, [page])
+        inc controls
+  for entryPc in [loadPc, afterLoadPc]:
+    var interior = info
+    interior.pc = CodeAddress(entryPc)
+    interior.blockCharged = entryPc == afterLoadPc
+    interior.gas = MachineGas(if entryPc == loadPc: firstPrice else: 0'u64)
+    interior.registers[0] = RegisterValue(14)
+    interior.registers[12] = RegisterValue(if entryPc == loadPc:
+        0x123456789abcdef0'u64 else: 0xffffffff80000000'u64)
+    for budget in 0'u64..3'u64:
+      verifyControl(frame, program, interior, budget, [page])
+      inc controls
+  echo "ARM_PREFIX_READ_CHARGE_BOUNDARY_CASES,", controls
+
+block prefixReadOversizeFallback:
+  # The speculative image exceeds one leaf while the original four pure ops fit.
+  var parts: seq[seq[byte]] = @[]
+  for at in 0..<4: parts.add(@[149'u8, 0x00, 1])
+  for at in 0..<60: parts.add(@[130'u8, 0xcc, 0, 0, 0, 0])
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+      registers: default(RegisterFile), blockCharged: false)
+  info.registers[0] = RegisterValue(41)
+  info.registers[12] = RegisterValue(0xffffffff'u64)
+  var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [], info)
+  verifyControl(frame, program, info, 65)
+  assert frame.exit == StepExit.Fault
+  assert uint64(frame.info.registers[0]) == 45
+  when defined(pvmArm64Jit):
+    let stats = flatArmStatistics(frame)
+    when defined(pvmArm64JitRefuse):
+      assert stats[1] == 0 and stats[2] == 0
+    else:
+      assert stats[1] >= 1 and stats[2] == 4
+  echo "ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES,1"
+
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  block prefixReadNearArenaCapacity:
+    # A larger span may refuse at the arena boundary, then the smaller pure
+    # image must publish at the same offset despite its interim code=1 record.
+    let literal = owner([@[149'u8, 0x00, 1], @[149'u8, 0x00, 1],
+        @[149'u8, 0x00, 1], @[149'u8, 0x00, 1],
+        @[130'u8, 0xcc, 0, 0, 0, 0], @[0'u8]])
+    var pure = default(ArmBlock)
+    var span = default(ArmReadSpan)
+    for index in 0..<4:
+      let decoded = instruction(literal, CodeAddress(uint64(index*3)))
+      assert decoded.error == ProgramError.None
+      let slots = instructionRegisters(decoded)
+      emitArmOperation(pure, 149, slots, 1)
+      emitArmReadArithmetic(span, 149, slots, 1)
+    let read = instruction(literal, CodeAddress(12))
+    assert read.error == ProgramError.None
+    emitArmRead(span, instructionRegisters(read), 0)
+    var pureWords = armInstructions(pure)
+    var spanWords = armReadInstructions(span, 5)
+    let pureBytes = uint64(pureWords.len+1)*4
+    let spanBytes = uint64(spanWords.len+1)*4
+    assert pureBytes > 4 and pureBytes < 4096 and spanBytes > pureBytes and
+        spanWords.len < 1024
+    let jit = newArmJit()
+    assert armEntry(jit, 0, 257) == 0
+    for filler in 1..255:
+      var padding = newSeq[uint32](1023)
+      for index in 0..<padding.len: padding[index] = 0xd503201f'u32 # NOP.
+      assert publishArmEntry(jit, uint32(filler), 0, 0, padding)
+    var finalPadding = newSeq[uint32](int((4096'u64-pureBytes) div 4)-1)
+    for index in 0..<finalPadding.len: finalPadding[index] = 0xd503201f'u32
+    assert publishArmEntry(jit, 256, 0, 0, finalPadding)
+    assert jit.codeBytes == 1048576'u64-pureBytes and jit.fragments == 256
+    assert not publishArmEntry(jit, 0, 5, 5, spanWords)
+    assert jit.codeBytes == 1048576'u64-pureBytes and armEntry(jit, 0, 257) == 1
+    assert publishArmEntry(jit, 0, 5, 4, pureWords)
+    assert jit.codeBytes == 1048576 and armEntry(jit, 0, 257) >= 2 and
+        armEnding(jit, 0) == 5
+    var registers = default(RegisterFile)
+    registers[0] = RegisterValue(41)
+    assert callArmEntry(jit, 0, registers) == 5
+    assert uint64(registers[0]) == 45 and jit.operations == 4
+    echo "ARM_PREFIX_READ_NEAR_CAP_LITERAL,1"
+else:
+  echo "ARM_PREFIX_READ_NEAR_CAP_LITERAL,0"
+
 # A host call changes the map before a static jump revisits the same checked load.
 let loadLoop = owner([@[130'u8, 0x10, 0, 0, 0, 0], @[149'u8, 0x02, 1],
   @[130'u8, 0x15, 8, 0, 0, 0], @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[10'u8, 7],
