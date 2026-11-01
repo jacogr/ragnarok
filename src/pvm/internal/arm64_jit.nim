@@ -61,6 +61,7 @@ type
     arena: ArenaOwner
     region: ArmRegionCache
     dirtyLoop: ArmDirtyLoopCache
+    readStoreLoop: ArmDirtyLoopCache
     entries: seq[ArmEntryRecord]
     branchCalls*, headerCalls*: uint64
     fragments*: uint64
@@ -116,6 +117,11 @@ proc emitArmDirtyRegionByteStore*(body: var ArmBlock, valueSlot: range[0..12]) =
   ## The address guard leaves its accepted pointer in D0; source value is read after the pure prefix.
   body.words.add(0x9e660001'u32) # FMOV X1,D0.
   body.words.add(0x39000020'u32 or (uint32(valueSlot)+4))
+
+proc emitArmDirtyRegionByteRead*(body: var ArmBlock, valueSlot: range[0..12]) =
+  ## The admitted readable byte pointer stays in D1 until the complete iteration begins.
+  body.words.add(0x9e660021'u32) # FMOV X1,D1.
+  body.words.add(0x39400020'u32 or (uint32(valueSlot)+4)) # LDRB Wvalue,[X1].
 
 proc armRead(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## An operand needs an initial load only before the fragment's first write to that same guest slot.
@@ -841,12 +847,32 @@ proc armDirtyLoopObserve*(jit: ArmJit, header: uint32, backedge: bool): uint8 =
   if entry.ending == 256: return 2
   0
 
+func armReadStoreLoopStatus*(jit: ArmJit): uint8 =
+  jit.readStoreLoop.status
+
+func armReadStoreLoopChargeMatches*(jit: ArmJit, header, span: uint32,
+    price: uint64): bool =
+  jit.readStoreLoop.status == 2 and jit.readStoreLoop.header == header and
+      jit.readStoreLoop.span == span and jit.readStoreLoop.price == price
+
+proc armReadStoreLoopObserve*(jit: ArmJit, header: uint32): uint8 =
+  ## Reuse the bounded header record for the sole resident read/store candidate.
+  if jit.readStoreLoop.status != 0 or int(header) >= jit.entries.len: return 2
+  let entry = addr jit.entries[int(header)]
+  if entry.code >= 2: return 2
+  if entry.ending < 64: inc entry.ending
+  if entry.ending == 64: return 1
+  0
+
 proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
     baseSlot: range[0..12], displacement: uint32,
-    word: ArmDirtyWordShape = default(ArmDirtyWordShape)): bool =
+    word: ArmDirtyWordShape = default(ArmDirtyWordShape),
+    readEnabled: bool = false, readBaseSlot: range[0..12] = 0,
+    readDisplacement: uint32 = 0): bool =
   ## Keep the memory-capable one-block loop separate from the established multi-block region.
-  assert jit.dirtyLoop.status == 0
-  if item.span != 5 or item.operations != 5 or item.span > 4095 or
+  assert (if readEnabled: jit.readStoreLoop.status == 0 else: jit.dirtyLoop.status == 0)
+  if (if readEnabled: item.span notin [5'u32, 6'u32] or item.operations != 5
+      else: item.span != 5 or item.operations != 5) or item.span > 4095 or
       (item.yes != item.header and item.no != item.header): return false
   if item.body.terminal.len notin [6, 10]:
     if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
@@ -856,7 +882,7 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   var fixes: seq[ArmRegionFixup] = @[]
   for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   let label = words.len
-  let wordActive = word.enabled and item.yes == item.header and item.no != item.header and
+  let wordActive = not readEnabled and word.enabled and item.yes == item.header and item.no != item.header and
       item.price <= high(uint64) div 4
   if wordActive:
     # Four original five-op blocks are accepted as one word only when all guards pass before mutation.
@@ -1036,6 +1062,39 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   words.add(0xf9400041'u32)
   words.add(0xea11003f'u32)
   armRegionEdge(words, fixes, item.header, 0, true) # Clean bit is always checked fallback.
+  if readEnabled:
+    # The writable pointer in D0 remains live; a second current-iteration proof finds
+    # a readable byte before the first guest register or memory mutation.
+    words.add(0x9e6602d1'u32) # Bitmap shift used X17; restore the invocation context.
+    words.add(0x2a0003e3'u32 or ((uint32(readBaseSlot)+4) shl 16))
+    words.add(0x52800002'u32 or ((readDisplacement and 65535) shl 5))
+    words.add(0x72a00002'u32 or ((readDisplacement shr 16) shl 5))
+    words.add(0x0b020063'u32)
+    words.add(0xf140407f'u32)
+    armRegionEdge(words, fixes, item.header, 3, true)
+    words.add(0x12800102'u32) # Existing conservative byte-read upper bound.
+    words.add(0xeb02007f'u32)
+    armRegionEdge(words, fixes, item.header, 8, true)
+    words.add(0xf9401631'u32)
+    words.add(0xf100023f'u32)
+    armRegionEdge(words, fixes, item.header, 0, true)
+    var readable: seq[int] = @[]
+    for region in 0..<3:
+      words.add(0xa9400a21'u32 or (uint32(region*3) shl 15))
+      words.add(0xcb010061'u32)
+      words.add(0xeb02003f'u32)
+      let outside = words.len
+      words.add(0)
+      words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10))
+      words.add(0x8b010041'u32)
+      words.add(0x9e670021'u32) # FMOV D1,X1.
+      readable.add(words.len)
+      words.add(0)
+      let following = words.len
+      words[outside] = 0x54000002'u32 or (uint32(following-outside) shl 5)
+    armRegionEdge(words, fixes, item.header, 16, true)
+    let afterReads = words.len
+    for at in readable: words[at] = 0x14000000'u32 or uint32(afterReads-at)
   let memoryFixEnd = fixes.len
   words.add(0x9e660282'u32) # FMOV X2,D20.
   words.add(0x9e6602a3'u32) # FMOV X3,D21.
@@ -1096,22 +1155,32 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
     words[fix.at] = if fix.condition < 16:
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
-  jit.dirtyLoop.status = 1
+  if readEnabled: jit.readStoreLoop.status = 1
+  else: jit.dirtyLoop.status = 1
   # The final arena slot remains reserved for the established multi-block region.
   if not publishArmEntry(jit, item.header, 0, 0, words): return false
-  jit.dirtyLoop.header = item.header
-  jit.dirtyLoop.span = item.span
-  jit.dirtyLoop.price = item.price
-  jit.dirtyLoop.operations = item.operations
-  jit.dirtyLoop.code = jit.entries[int(item.header)].code
-  jit.dirtyLoop.status = 2
+  if readEnabled:
+    jit.readStoreLoop.header = item.header
+    jit.readStoreLoop.span = item.span
+    jit.readStoreLoop.price = item.price
+    jit.readStoreLoop.operations = item.operations
+    jit.readStoreLoop.code = jit.entries[int(item.header)].code
+    jit.readStoreLoop.status = 2
+  else:
+    jit.dirtyLoop.header = item.header
+    jit.dirtyLoop.span = item.span
+    jit.dirtyLoop.price = item.price
+    jit.dirtyLoop.operations = item.operations
+    jit.dirtyLoop.code = jit.entries[int(item.header)].code
+    jit.dirtyLoop.status = 2
   true
 
 proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
     regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
-    state: var array[8, uint64]): uint32 =
+    state: var array[8, uint64], readEnabled: bool = false): uint32 =
   ## All invocation pointers are borrowed only across this one native call.
-  assert jit.dirtyLoop.status == 2 and sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  let resident = if readEnabled: jit.readStoreLoop else: jit.dirtyLoop
+  assert resident.status == 2 and sizeof(RegisterFile) == 104 and sizeof(regions) == 72
   assert state[2] == 0 and state[3] == 0 and state[4] == 0
   let gas = state[0]
   let available = state[1]
@@ -1119,20 +1188,25 @@ proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
   state[6] = uint64(dirtyWords.len)
   state[7] = 0
   if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
-  let destination = regionArena(jit.arena.handle, jit.dirtyLoop.code-2, addr registers, addr state)
+  let destination = regionArena(jit.arena.handle, resident.code-2, addr registers, addr state)
   assert state[0] <= gas and state[1] <= available
   let consumed = available-state[1]
-  assert state[2] <= consumed div uint64(jit.dirtyLoop.span)
-  assert state[2]*uint64(jit.dirtyLoop.span) == consumed
-  assert state[3] <= state[2] div 4 and state[4] == 0
+  assert state[2] <= consumed div uint64(resident.span)
+  assert state[2]*uint64(resident.span) == consumed
+  assert (if readEnabled: state[3] == 0 else: state[3] <= state[2] div 4) and state[4] == 0
   inc jit.calls
   inc jit.branchCalls
   inc jit.headerCalls
-  inc jit.dirtyLoop.calls
-  jit.dirtyLoop.blocks+=state[2]
-  jit.dirtyLoop.wordGroups+=state[3]
-  jit.operations+=state[2]*uint64(jit.dirtyLoop.operations)
-  if destination == jit.dirtyLoop.header: inc jit.dirtyLoop.declines
+  if readEnabled:
+    inc jit.readStoreLoop.calls
+    jit.readStoreLoop.blocks+=state[2]
+    if destination == resident.header: inc jit.readStoreLoop.declines
+  else:
+    inc jit.dirtyLoop.calls
+    jit.dirtyLoop.blocks+=state[2]
+    jit.dirtyLoop.wordGroups+=state[3]
+    if destination == resident.header: inc jit.dirtyLoop.declines
+  jit.operations+=state[2]*uint64(resident.operations)
   destination
 
 func armDirtyLoopStatistics*(jit: ArmJit): array[3, uint64] =
@@ -1140,3 +1214,6 @@ func armDirtyLoopStatistics*(jit: ArmJit): array[3, uint64] =
 
 func armDirtyWordGroups*(jit: ArmJit): uint64 =
   jit.dirtyLoop.wordGroups
+
+func armReadStoreLoopStatistics*(jit: ArmJit): array[3, uint64] =
+  [jit.readStoreLoop.calls, jit.readStoreLoop.blocks, jit.readStoreLoop.declines]

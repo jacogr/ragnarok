@@ -2075,6 +2075,109 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.handlers[int(offset)] = if admitted: flatArmDirtyLoop else: flatArmCheckedTail
     destination
 
+  func flatArmReadStoreShape(f: FlatFrame, header: uint32): bool =
+    ## Admit a sealed byte-copy loop with independent source, value, destination and bound roles.
+    if f.pricingKind != 0 or int(header)+5 >= f.handlers.len: return false
+    let start = int(f.sites[int(header)])
+    let prefix = if f.plan.facts[start].opcode == 2'u8: 1 else: 0
+    if f.arguments[int(header)].y != uint32(5+prefix) or
+        start+prefix+4 >= f.plan.facts.len: return false
+    for step in 0..<5:
+      if f.sites[int(header)+step+1] != uint32(start+prefix+step): return false
+    if f.plan.facts[start+prefix].opcode != 124 or
+        f.plan.facts[start+prefix+1].opcode != 149 or
+        f.plan.facts[start+prefix+2].opcode != 120 or
+        f.plan.facts[start+prefix+3].opcode != 149 or
+        f.plan.facts[start+prefix+4].opcode != 171: return false
+    let source = f.plan.facts[start+prefix]
+    let sourceStep = f.plan.facts[start+prefix+1]
+    let store = f.plan.facts[start+prefix+2]
+    let destStep = f.plan.facts[start+prefix+3]
+    let branch = f.plan.facts[start+prefix+4]
+    let sourceBase = source.args.slots.bIndex
+    let value = source.args.slots.aIndex
+    let destBase = store.args.slots.bIndex
+    let bound = branch.args.slots.bIndex
+    let roles = [sourceBase, value, destBase, bound]
+    for i in 0..<4:
+      for j in i+1..<4:
+        if roles[i] == roles[j]: return false
+    if sourceStep.args.slots.aIndex != sourceBase or
+        sourceStep.args.slots.bIndex != sourceBase or
+        sourceStep.args.slots.destinationIndex != sourceBase or
+        store.args.slots.aIndex != value or
+        destStep.args.slots.aIndex != destBase or
+        destStep.args.slots.bIndex != destBase or
+        destStep.args.slots.destinationIndex != destBase or
+        branch.args.slots.aIndex != destBase: return false
+    true
+
+  func flatArmCachedBranch(f: FlatFrame, offset: uint32): bool
+
+  proc flatArmReadStoreLoop(f: var FlatFrame, offset: uint32): uint32 =
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    let charge = f.arguments[int(offset)]
+    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
+        not armReadStoreLoopChargeMatches(jit, offset, charge.y, charge.x):
+      return flatCharge(f, offset)
+    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64]
+    let destination = callArmDirtyLoop(jit, f.info.registers, f.armMemory, f.dirtyPages,
+        state, true)
+    f.info.gas = MachineGas(state[0])
+    f.remaining = state[1]
+    f.info.blockCharged = false
+    assert int(destination) < f.handlers.len
+    if int(destination) >= f.handlers.len:
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if destination == offset: return flatCharge(f, offset)
+    destination
+
+  proc flatArmReadStoreProbe(f: var FlatFrame, offset: uint32): uint32 =
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if armReadStoreLoopStatus(jit) != 0:
+      f.handlers[int(offset)] = flatCharge
+      return flatCharge(f, offset)
+    let charge = f.arguments[int(offset)]
+    if f.barrier == flatStop and not f.info.blockCharged and
+        f.remaining >= uint64(charge.y) and uint64(f.info.gas) >= charge.x and
+        flatArmCachedBranch(f, offset+5):
+      let terminal = offset+5
+      let branch = f.arguments[int(terminal)]
+      let yes = uint32(branch.x shr 32)
+      let no = branch.y
+      if not ((yes == offset and no != offset) or (no == offset and yes != offset)):
+        f.handlers[int(offset)] = flatCharge
+        return flatCharge(f, offset)
+      if armReadStoreLoopObserve(jit, offset) == 1:
+        let first = int(f.sites[int(offset)])
+        let start = first+(if f.plan.facts[first].opcode == 2'u8: 1 else: 0)
+        let source = f.plan.facts[start]
+        let sourceStep = f.plan.facts[start+1]
+        let store = f.plan.facts[start+2]
+        let destStep = f.plan.facts[start+3]
+        let before = armClock()
+        var native = newArmRegionBody()
+        emitArmDirtyRegionByteRead(native, source.args.slots.aIndex)
+        emitArmOperation(native, sourceStep.opcode, sourceStep.args.slots, sourceStep.args.x)
+        emitArmDirtyRegionByteStore(native, store.args.slots.aIndex)
+        emitArmOperation(native, destStep.opcode, destStep.args.slots, destStep.args.x)
+        emitArmBranch(native, 171, branch.slots,
+            flatSext32(uint32(branch.x and 0xffffffff'u64)),
+            uint32(branch.x shr 32), branch.y)
+        let item = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
+            yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
+        let admitted = publishArmDirtyLoop(jit, item, store.args.slots.bIndex,
+            uint32(store.args.x and 0xffffffff'u64), readEnabled = true,
+            readBaseSlot = source.args.slots.bIndex,
+            readDisplacement = uint32(source.args.x and 0xffffffff'u64))
+        jit.compilationNs+=armClock()-before
+        f.handlers[int(offset)] = if admitted: flatArmReadStoreLoop else: flatCharge
+    flatCharge(f, offset)
+
   proc flatArmEnter(f: var FlatFrame, offset: uint32): uint32 =
     ## Preserve the canonical quota/gas/error ordering before a direct full-block native handoff.
     flatReserve(f, offset)
@@ -2355,6 +2458,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: default(array[3, uint64])
     else: armDirtyLoopStatistics(jit)
 
+  proc flatArmReadStoreLoopStatistics*(f: FlatFrame): array[3, uint64] =
+    let jit = f.armJit
+    if jit == nil: default(array[3, uint64])
+    else: armReadStoreLoopStatistics(jit)
+
   proc flatArmDirtyWordGroups*(f: FlatFrame): uint64 =
     let jit = f.armJit
     if jit == nil: 0'u64
@@ -2607,6 +2715,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       let ending = flatArmCompile(f, offset)
       offset = if ending > offset: ending else: offset+1
     let jit = f.armJit
+    if jit != nil and armReadStoreLoopStatus(jit) == 0:
+      for candidate in int(origin)..<f.handlers.len:
+        let plain: FlatHandler = flatCharge
+        if f.handlers[candidate] == plain and flatArmReadStoreShape(f, uint32(candidate)):
+          f.handlers[candidate] = flatArmReadStoreProbe
     if jit != nil: jit.compilationNs+=armClock()-before
 
   proc flatArmStatistics*(f: FlatFrame): array[5, uint64] =

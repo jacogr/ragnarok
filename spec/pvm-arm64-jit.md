@@ -23,7 +23,10 @@ sections do not describe the current implementation.
   guard invocation-owned readable regions in native code before a pure arithmetic suffix. Direct
   absolute loads can also share one guarded fragment with a pure suffix and cached conditional.
   A separate [guarded dirty-store self-loop](pvm-arm-dirty-loop.md) admits only the proven
-  `198/120/149/149/171` shape after positive branch resolution. Other memory operations,
+  `198/120/149/149/171` shape after positive branch resolution. An independent
+  [resident byte read/store loop](pvm-arm-resident-byte-loop.md) admits a sealed
+  `124/149/120/149/171` block, with an optional folded no-op and current-iteration guards.
+  Other memory operations,
   hosts and eligibility/resource refusals retain the checked engine.
 - Exact-plan prepared owners retain exclusive code/cache ownership across public calls. Native
   bodies borrow only the current thirteen-register file and, for connected execution, a fresh
