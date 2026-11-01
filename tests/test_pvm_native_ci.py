@@ -113,6 +113,8 @@ class QualificationTests(unittest.TestCase):
             'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n'
             f'ARM_MEMORY_CYCLE_FRAME_CASES,{7236 if native or refused else 0}\n'
             f'ARM_MEMORY_CYCLE_BACKEND_CASES,{19 if native else 1 if refused else 0}\n'
+            f'ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,{12328 if native or refused else 0}\n'
+            f'ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,{47 if native else 3 if refused else 0}\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
@@ -207,6 +209,8 @@ class QualificationTests(unittest.TestCase):
             ('ARM_DIRTY_LOOP_LIVE_IN_CASES',156,'store-only register'),
             ('ARM_MEMORY_CYCLE_FRAME_CASES',7236,'memory-cycle frame'),
             ('ARM_MEMORY_CYCLE_BACKEND_CASES',19,'memory-cycle backend'),
+            ('ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES',12328,'resident memory-cycle frame'),
+            ('ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES',47,'resident memory-cycle backend'),
             ('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360,'checked-store exit'),
             ('ARM_DIRTY_LOOP_CONTROL_CASES',840,'dirty-loop boundary'),
             ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'dirty-loop boundary'),
@@ -240,6 +244,23 @@ class QualificationTests(unittest.TestCase):
                     damaged = complete.replace(marker, replacement)
                     with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
                             self.assertRaisesRegex(ValueError, 'memory-cycle '+kind.lower()):
+                        if refused:
+                            self.check(True, refused_receipt=damaged)
+                        else:
+                            self.check(native, receipt=damaged)
+
+    def test_resident_cycle_controls_are_required_in_every_mode(self):
+        """Residency cannot pass on missing, partial or duplicate kernel/frame execution coverage."""
+        for native, refused in ((True, False), (False, True), (False, False)):
+            complete = self.witness_receipt(native, refused=refused)
+            counts = [('FRAME', 12328 if native or refused else 0),
+                      ('BACKEND', 47 if native else 3 if refused else 0)]
+            for kind, count in counts:
+                marker = f'ARM_RESIDENT_MEMORY_CYCLE_{kind}_CASES,{count}\n'
+                for replacement in ('', f'ARM_RESIDENT_MEMORY_CYCLE_{kind}_CASES,{count-1}\n', marker+marker):
+                    damaged = complete.replace(marker, replacement)
+                    with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
+                            self.assertRaisesRegex(ValueError, 'resident memory-cycle '+kind.lower()):
                         if refused:
                             self.check(True, refused_receipt=damaged)
                         else:

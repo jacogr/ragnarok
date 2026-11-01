@@ -2065,6 +2065,23 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if destination == offset: return flatArmCheckedTail(f, offset)
     destination
 
+  proc flatArmDirtyBody(f: FlatFrame, offset: uint32): ArmRegionBlock {.noinline.} =
+    ## Rebuild the same sealed five-op dirty source IR for standalone and resident lowering.
+    let branch = f.arguments[int(offset+5)]
+    var native = newArmRegionBody()
+    let prefix = f.plan.facts[int(f.sites[int(offset+1)])]
+    let store = f.plan.facts[int(f.sites[int(offset+2)])]
+    emitArmOperation(native, prefix.opcode, prefix.args.slots, prefix.args.x)
+    emitArmDirtyRegionByteStore(native, store.args.slots.aIndex)
+    for step in 3..4:
+      let fact = f.plan.facts[int(f.sites[int(offset)+step])]
+      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+    emitArmBranch(native, 171, branch.slots, flatSext32(uint32(branch.x and 0xffffffff'u64)),
+        uint32(branch.x shr 32), branch.y)
+    let charge = f.arguments[int(offset)]
+    result = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
+        yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
+
   proc flatArmDirtyProbeTail(f: var FlatFrame, offset: uint32): uint32 =
     ## Only a genuinely completed self-loop contributes to the bounded admission threshold.
     let jit = f.armJit
@@ -2087,19 +2104,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       f.handlers[int(offset)] = flatArmCheckedTail
       return destination
     let before = armClock()
-    var native = newArmRegionBody()
-    let prefix = f.plan.facts[int(f.sites[int(offset+1)])]
     let store = f.plan.facts[int(f.sites[int(offset+2)])]
-    emitArmOperation(native, prefix.opcode, prefix.args.slots, prefix.args.x)
-    emitArmDirtyRegionByteStore(native, store.args.slots.aIndex)
-    for step in 3..4:
-      let fact = f.plan.facts[int(f.sites[int(offset)+step])]
-      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
-    emitArmBranch(native, 171, branch.slots, flatSext32(uint32(branch.x and 0xffffffff'u64)),
-        uint32(branch.x shr 32), branch.y)
-    let charge = f.arguments[int(offset)]
-    let item = ArmRegionBlock(header: offset, span: charge.y, operations: 5,
-        yes: uint32(branch.x shr 32), no: branch.y, price: charge.x, body: move(native))
+    let item = flatArmDirtyBody(f, offset)
     let word = flatArmWordShape(f, offset)
     let admitted = publishArmDirtyLoop(jit, item, store.args.slots.bIndex,
         uint32(store.args.x and 0xffffffff'u64), word)
@@ -2662,6 +2668,9 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
+  proc flatArmReadBody(f: FlatFrame, offset, ending: uint32): ArmReadSpan {.noinline.}
+    ## Cold shared read IR is defined with the standalone read publisher below.
+
   proc flatArmMemoryCycleShape(f: FlatFrame, readEntry, prefix: uint32,
       item: var ArmMemoryCycleBlock): bool =
     ## Capture a complete default-priced source graph with sealed targets and live native children.
@@ -2723,7 +2732,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       tailEntry: readEntry, other: outside,
       prefixSpan: prefixCharge.y, tailSpan: tailCharge.y, prefixOperations: pure+1,
       tailOperations: terminal-readEntry+1, prefixPrice: prefixCharge.x,
-      tailPrice: tailCharge.x, prefixBody: move(body))
+      tailPrice: tailCharge.x, prefixBody: move(body),
+      dirty: flatArmDirtyBody(f, dirty),
+      dirtyBaseSlot: f.plan.facts[int(f.sites[int(dirty+2)])].args.slots.bIndex,
+      dirtyDisplacement: uint32(f.plan.facts[int(f.sites[int(dirty+2)])].args.x and 0xffffffff'u64),
+      dirtyWord: flatArmWordShape(f, dirty), tailRead: flatArmReadBody(f, readEntry, terminal))
     true
 
   proc flatArmMemoryCycle(f: var FlatFrame, offset: uint32): uint32 =
@@ -2767,14 +2780,15 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if destination == tail: return flatCharge(f, tail)
     destination
 
-  proc flatArmTryMemoryCycle(f: var FlatFrame, readEntry, prefix: uint32) =
+  proc flatArmTryMemoryCycle(f: var FlatFrame, readEntry, prefix: uint32) {.noinline.} =
     ## Existing hot child publication proves observation; one bounded source graph can install a driver.
     let jit = f.armJit
     if jit == nil or armMemoryCycleStatus(jit) != 0: return
     var item = default(ArmMemoryCycleBlock)
     if not flatArmMemoryCycleShape(f, readEntry, prefix, item): return
     let before = armClock()
-    let published = publishArmMemoryCycle(jit, item)
+    let published = if publishArmResidentMemoryCycle(jit, item): true
+      else: publishArmMemoryCycle(jit, item)
     jit.compilationNs+=armClock()-before
     if not published: return
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
@@ -2788,9 +2802,16 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: default(array[6, uint64])
     else: armMemoryCycleStatistics(jit)
 
+  proc flatArmResidentMemoryCycleActive*(f: FlatFrame): bool =
+    ## Copied diagnostics prove the resident emitter ran instead of the linked fallback.
+    let jit = f.armJit
+    if jit == nil: false
+    else: armResidentMemoryCycleActive(jit)
+
   proc flatArmReadBranch(f: var FlatFrame, offset: uint32): uint32 =
     ## End every descriptor/register borrow before discovering a source graph or using checked fallback.
     var destination = flatStop
+    var discover = false
     if f.barrier == flatStop:
       block:
         let jit {.cursor.} = f.armJit
@@ -2800,26 +2821,22 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           let args = f.arguments[int(ending)]
           destination = callArmMemoryBranch(jit, offset, uint32(args.x shr 32), args.y,
             f.info.registers, f.armMemory)
+          discover = armMemoryCycleStatus(jit) == 0
     if destination != flatStop:
       assert int(destination) < f.handlers.len
       f.info.blockCharged = false
-      flatArmTryMemoryCycle(f, offset, destination)
+      if discover: flatArmTryMemoryCycle(f, offset, destination)
       return destination
     let original = f.armOriginal[int(offset)]
     assert original != nil
     if original != nil: return original(f, offset)
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
-  proc flatArmUpgradeReadBranch(f: var FlatFrame, offset: uint32): bool =
-    ## Rebuild one direct-load prefix only after the original conditional has cached both positive arms.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return false
-    let ending = armEnding(jit, offset)
+  proc flatArmReadBody(f: FlatFrame, offset, ending: uint32): ArmReadSpan {.noinline.} =
+    ## Rebuild the same admitted direct-read, pure suffix and cached branch IR.
     let first = f.plan.facts[int(f.sites[int(offset)])]
     let readOpcode = int(first.opcode)
     assert readOpcode >= 52 and readOpcode <= 58
-    let before = armClock()
     var native = default(ArmReadSpan)
     emitArmDirectRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
         range[52..58](readOpcode))
@@ -2831,6 +2848,16 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let args = f.arguments[int(ending)]
     emitArmReadBranch(native, branch.opcode, args.slots,
         flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
+    move(native)
+
+  proc flatArmUpgradeReadBranch(f: var FlatFrame, offset: uint32): bool =
+    ## Rebuild one direct-load prefix only after the original conditional has cached both positive arms.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return false
+    let ending = armEnding(jit, offset)
+    let before = armClock()
+    let native = flatArmReadBody(f, offset, ending)
     var words = armReadInstructions(native, ending, true)
     if words.len >= 1024: return false
     let published = publishArmEntry(jit, offset, ending, ending-offset+1, words)

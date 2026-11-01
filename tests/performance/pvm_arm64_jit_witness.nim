@@ -1073,7 +1073,11 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
   assert uint64(frame.info.pc) == pc
   assert frame.info.gas == wanted.gas and frame.info.gasDeficit == wanted.gasDeficit
   assert frame.info.blockCharged == wanted.blockCharged
-  for slot in 0..<13: assert frame.info.registers[slot] == wanted.registers[slot]
+  for slot in 0..<13:
+    if frame.info.registers[slot] != wanted.registers[slot]:
+      echo "CONTROL_REGISTER,", slot, ",", uint64(frame.info.registers[slot]), ",", uint64(
+          wanted.registers[slot]), ",", budget
+    assert frame.info.registers[slot] == wanted.registers[slot]
   checkFlatSource(frame, images)
   if images.len != 0:
     # The independent single-step machine owns expected store effects; every original input snapshot stays immutable.
@@ -2705,9 +2709,19 @@ when defined(pvmArm64Jit):
     let tailSource = owner([@[57'u8, 6, 0, 0, 1, 0], @[149'u8, 0x33, 2],
         @[173'u8, 0x70, 0, 0, 0, 0], @[0'u8]])
     echo "ARM_MEMORY_CYCLE_BACKEND_CASES,", checkArmMemoryCycleBackend(dirtySource, prefixSource, tailSource)
+    let wordDirtySource = owner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0],
+        @[149'u8, 0x00, 1], @[149'u8, 0x44, 8],
+        @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+    let writeOnlyPrefix = owner([@[149'u8, 0x55, 1], @[149'u8, 0x55, 1],
+        @[149'u8, 0x55, 1], @[51'u8, 12, 42], @[1'u8], @[0'u8]])
+    let residentCases = checkArmResidentMemoryCycleBackend(dirtySource, prefixSource, tailSource) +
+        checkArmResidentMemoryCycleBackend(wordDirtySource, prefixSource, tailSource) +
+        checkArmResidentMemoryCycleBackend(dirtySource, writeOnlyPrefix, tailSource)
+    echo "ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,", residentCases
 else:
   # This backend is unavailable in a plain interpreter build.
   echo "ARM_MEMORY_CYCLE_BACKEND_CASES,0"
+  echo "ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,0"
 
 # A source-shaped native driver must preserve full charged/fault state across 4/5/4 boundaries.
 when defined(pvmArm64Jit):
@@ -2857,3 +2871,131 @@ when defined(pvmArm64Jit):
 else:
   # Plain interpreter builds still provide an explicit unavailable coverage record.
   echo "ARM_MEMORY_CYCLE_FRAME_CASES,0"
+
+
+# Private resident-specific boundaries. This is unqualified until the new emitter is proven active.
+when defined(pvmArm64Jit):
+  block residentMemoryCycleFrame:
+    var controls = 0
+    var page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+      registers: default(RegisterFile), blockCharged: false)
+    for slot in 0..<13: info.registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+    for slot in 0..3: info.registers[slot] = RegisterValue(0)
+    info.registers[0] = RegisterValue(65536)
+    info.registers[4] = RegisterValue(0x80000000ffccbbaa'u64)
+    info.registers[5] = RegisterValue(0)
+    info.registers[7] = RegisterValue(2)
+    info.registers[8] = RegisterValue(3)
+    for role in 0..<4:
+      # Slot12 is write-only at prefix, dirty or read entry. No prelude store hides first-touch refusal.
+      let pieces = if role == 0: @[@[2'u8],
+        @[1'u8],
+        @[51'u8, 12, 0],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[1'u8],
+        @[198'u8, 196, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 204, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 218, 255, 255, 255],
+        @[0'u8]] elif role == 1: @[@[2'u8],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[200'u8, 128, 12],
+        @[149'u8, 204, 1],
+        @[1'u8],
+        @[198'u8, 20, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 192, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 218, 255, 255, 255],
+        @[0'u8]] elif role == 2: @[@[2'u8],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[1'u8],
+        @[198'u8, 20, 12],
+        @[120'u8, 12, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 6, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 218, 255, 255, 255],
+        @[0'u8]] else: @[@[2'u8],
+        @[1'u8],
+        @[51'u8, 1, 0],
+        @[200'u8, 128, 3],
+        @[149'u8, 51, 1],
+        @[1'u8],
+        @[198'u8, 20, 2],
+        @[120'u8, 2, 0],
+        @[149'u8, 0, 1],
+        @[149'u8, 17, 8],
+        @[171'u8, 48, 244, 255, 255, 255],
+        @[2'u8],
+        @[57'u8, 12, 0, 0, 1, 0],
+        @[149'u8, 85, 1],
+        @[173'u8, 117, 218, 255, 255, 255],
+        @[0'u8]]
+      let program = owner(pieces)
+      let plan = newFlatPlan(program, GasCycleLimit(100000))
+      var frame = newFlatFrame(plan, [page], info)
+      for warm in 0..<24: verifyControl(frame, program, info, 100, [page])
+      when not defined(pvmArm64JitRefuse):
+        assert flatArmResidentMemoryCycleActive(frame)
+        let stats = flatArmMemoryCycleStatistics(frame)
+        assert stats[0] > 0 and stats[4] > 0
+      else: assert not flatArmResidentMemoryCycleActive(frame)
+      let expected = if role == 0: 32'u64 elif role == 1: 65544'u64
+        elif role == 2: 0xff'u64 else: 0xffffffffffccbbaa'u64
+      assert uint64(frame.info.registers[12]) == expected
+      for paid in [false, true]:
+        for gas in [0'u64, 1, 2, 3, 4, 7, 26, 27, 28, 44, 45, 46, 100, 999, 1000000, high(uint64)]:
+          var input = info
+          input.blockCharged = paid
+          input.gas = MachineGas(gas)
+          for budget in 0'u64..66'u64:
+            verifyControl(frame, program, input, budget, [page])
+            inc controls
+      for faultKind in 0..<2:
+        var bad = page
+        if faultKind == 0: bad.access = PageAccess.ReadOnly
+        else: bad.index = PageIndex(17)
+        assert replaceFlatMemoryChecked(frame, [bad], info) == FlatError.None
+        let before = flatArmMemoryCycleStatistics(frame)
+        verifyControl(frame, program, info, 100, [bad])
+        let after = flatArmMemoryCycleStatistics(frame)
+        when not defined(pvmArm64JitRefuse):
+          # The native prefix committed; the refused dirty body did not begin or write guest memory.
+          assert after[0] == before[0]+1 and after[1] == before[1]+1
+          assert after[2] == before[2] and after[3] == before[3] and after[4] == before[4]
+          assert after[5] == before[5]+1
+        for gas in [3'u64, 4, 7, 26, 27, 28, 1000000]:
+          var input = info
+          input.gas = MachineGas(gas)
+          for budget in 0'u64..66'u64:
+            verifyControl(frame, program, input, budget, [bad])
+            inc controls
+      var cache = takeFlatStream(frame)
+      var fresh = newFlatFrame(plan, [page], info)
+      restoreFlatStream(fresh, cache)
+      verifyControl(fresh, program, info, 100, [page])
+      when not defined(pvmArm64JitRefuse): assert flatArmResidentMemoryCycleActive(fresh)
+    assert controls == 12328
+    echo "ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,", controls
+else:
+  echo "ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,0"
