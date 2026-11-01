@@ -238,3 +238,37 @@ on hold while one isolated experiment tests repeated post-publication branch
 certification; no CPU improvement is inferred from activity counts alone. No additional CI
 was requested for this verdict update. The existing paid continuation, alias, resource and
 source-accounting correctness findings remain positive.
+
+
+## Reuse the publication certificate at promoted entry
+
+`flatArmMixed` now relies on its publication-time branch certificate, matching
+the existing pure whole-block path. Both conditional arms were resolved before
+publication. Later fusion changes preceding nodes, not the terminal. Temporary
+budget patching always sets the checked barrier and is restored at run exit;
+the mixed worker's existing barrier guard excludes it. Stream reuse moves the
+cache and source-bound offsets together only for the exact immutable plan. No
+callback or source mutation occurs during native execution. Probe/publication
+checks and gas, quota, paid continuation, target and completed-count validation
+remain unchanged.
+
+A private same-executable experiment includes both original and certified workers;
+an immutable startup choice selects the worker only during cold publication.
+There is no hot mode field/flag or native-emitter change. Both modes pass ordinary
+and instrumented witnesses with byte-identical output. Balanced and repeated local
+ARM comparisons attribute improvements of5.64%minimal,3.90%Pinky and2.14%DOOMtick
+to omitting the hot recheck. Long sieve is flat(+0.03%). Native activity fields
+match, excluding compilation time. An earlier cross-image long-sieve5%regression
+is not reproduced within one image, demonstrating the importance of the control.
+
+Guest binary SHA-256:
+`927cb7eadac1475273046ad6690f276d061beaf10777bee694868cffb63784fc`.
+DOOM binary SHA-256:
+`0fa536b28ae2bc575b6c34d3c046fdf3932560ecb0250ec5eaca381d3d788584`.
+Raw result SHA-256:
+`fe44fefcb227e782ce394b2f08d17facd7137c6eb24c8343afd64fb34a9d37b3`.
+Evidence is preserved under ignored
+`build/pvm-mixed-memory/evidence/same-image-certificate-7bd/`. The private startup
+switch and duplicate worker are not shipped. This is isolated local attribution,
+not Linux qualification of the new candidate; the prior performance hold stands
+until the updated runtime is qualified.

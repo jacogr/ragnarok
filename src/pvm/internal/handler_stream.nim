@@ -2204,9 +2204,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       terminal = armEnding(jit, header)
       operationCount = armMixedOperationCount(jit, header)
     if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x or
-        not flatArmCachedBranch(f, terminal):
+        f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x:
       return original(f, header)
+    # Publication certified the source-bound terminal arms. Temporary budget patching
+    # is excluded above; stream reuse preserves these cached offsets and their exact plan.
     flatReserve(f, header)
     var state = default(ArmMixedState)
     var next = flatStop
