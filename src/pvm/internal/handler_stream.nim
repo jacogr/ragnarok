@@ -246,6 +246,11 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     f.savedHandler = f.handlers[int(f.barrier)]
     f.handlers[int(f.barrier)] = flatBudget
 
+proc flatReserveHeader(f: var FlatFrame, off: uint32): uint32 {.alwaysInline.} =
+  ## The dispatch loop reserves ordinary headers with the exact shared checks, then selects the patched body.
+  flatReserve(f, off)
+  off+1
+
 proc flatCharge(f: var FlatFrame, off: uint32): uint32 =
   ## Ordinary headers retain their original indirect handoff after the shared complete reservation checks.
   flatReserve(f, off)
@@ -2978,7 +2983,15 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   while offset != flatStop:
     assert int(offset) < f.handlers.len
     let selected = f.handlers[int(offset)]
-    offset = selected(f, offset)
+    if selected == flatCharge:
+      # Preserve temporary barriers: select the first operation only after complete reservation/patching.
+      offset = flatReserveHeader(f, offset)
+      if offset != flatStop:
+        let body = f.handlers[int(offset)]
+        offset = body(f, offset)
+    else:
+      # Specialized charged/native/failure workers retain their existing entry and complete fallback behavior.
+      offset = selected(f, offset)
   if f.barrier != flatStop:
     let saved = f.savedHandler
     assert saved != nil
