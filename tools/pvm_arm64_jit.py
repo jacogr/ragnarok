@@ -210,6 +210,20 @@ def qualify(checks, compiler, *, native=True):
                                   if line.startswith(marker+',')]
                 if chain_receipts != [marker+',120']:
                     raise ValueError('Missing complete bounded continuation '+shape+' controls')
+            prefix_native = native and name == 'witness'
+            for marker, count, kind in (
+                    ('ARM_PREFIX_READ_FRAME_CASES', 662, 'frame'),
+                    ('ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES', 177, 'source boundary'),
+                    ('ARM_PREFIX_READ_CHARGE_BOUNDARY_CASES', 106, 'charge boundary'),
+                    ('ARM_PREFIX_READ_NATIVE_ACTIVATIONS', 2 if prefix_native else 0, 'activation'),
+                    ('ARM_PREFIX_READ_NATIVE_REFUSALS', 4 if prefix_native else 0, 'refusal'),
+                    ('ARM_PREFIX_READ_LITERAL_ROLLBACKS', 4 if prefix_native else 0, 'literal rollback'),
+                    ('ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES', 1, 'oversize fallback'),
+                    ('ARM_PREFIX_READ_NEAR_CAP_LITERAL', 1 if prefix_native else 0, 'near capacity')):
+                prefix_receipts = [line for line in checked['output'].splitlines()
+                                   if line.startswith(marker+',')]
+                if prefix_receipts != [marker+','+str(count)]:
+                    raise ValueError('Missing complete prefix-read '+kind+' controls')
             # The CLI result carries only genuine native coverage, not inferred source-shape visits.
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
