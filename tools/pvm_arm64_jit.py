@@ -204,7 +204,8 @@ def qualify(checks, compiler, *, native=True):
                 raise ValueError('Missing complete resident memory-cycle frame controls')
             # Both shapes force interpretation even in native/refusal builds and must complete every source boundary.
             for marker, shape in [('BOUNDED_CONTINUATION_LONG_CASES', 'fused'),
-                                  ('BOUNDED_MIXED_CONTINUATION_LONG_CASES', 'non-fused')]:
+                                  ('BOUNDED_MIXED_CONTINUATION_LONG_CASES', 'non-fused'),
+                                  ('BOUNDED_NATIVE_FALLBACK_LONG_CASES', 'native fallback')]:
                 chain_receipts = [line for line in checked['output'].splitlines()
                                   if line.startswith(marker+',')]
                 if chain_receipts != [marker+',120']:

@@ -3057,3 +3057,39 @@ block boundedMixedContinuationLong:
   verifyControl(frame, program, initial, 8194)
   assert uint64(frame.info.registers[0]) == 4096
   echo "BOUNDED_MIXED_CONTINUATION_LONG_CASES,", controls
+
+
+block boundedNativeFallbackLong:
+  # Native-enabled plans must retain bounded checked execution when no source leaf can run.
+  var parts: seq[seq[byte]] = @[@[51'u8, 0, 0]]
+  for instruction in 0..<4096:
+    parts.add(@[57'u8, 0, 0, 0, 1, 0])
+    parts.add(@[100'u8, 0])
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  var prepared = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(),
+      allowNative = true)
+  assert prepared.error == FlatError.None
+  let plan = takeValue(prepared)
+  var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadOnly)]
+  images[0].bytes[3] = 128
+  var initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+      registers: default(RegisterFile), blockCharged: false)
+  for slot in 0..<13: initial.registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+  var frame = newFlatFrame(plan, images, initial)
+  var controls = 0
+  for paid in [false, true]:
+    for gas in [0'u64, 8193, 8194, 1000000]:
+      var input = initial
+      input.blockCharged = paid
+      input.gas = MachineGas(gas)
+      for budget in [0'u64, 1, 2, 3, 4, 5, 7, 8, 9, 12, 8191, 8192, 8193, 8194, 8195]:
+        verifyControl(frame, program, input, budget, images)
+        inc controls
+  verifyControl(frame, program, initial, 8194, images)
+  assert uint64(frame.info.registers[0]) == 0xffffffff80000000'u64
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArm64JitRefuse):
+    # This build proves native-enabled policy really takes the checked path for the long program.
+    let native = flatArmStatistics(frame)
+    assert native[0] == 0 and native[1] == 0 and native[2] == 0
+  echo "BOUNDED_NATIVE_FALLBACK_LONG_CASES,", controls
