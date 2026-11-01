@@ -129,5 +129,61 @@ Backend SHA-256: `3532ea5cbc8bbd023ee898efe94fcef66e028f0584e49c3ae3bc6b79c6d154
 Combined raw SHA-256: `137d6eb6b6e4153d1135c3a9b4de096e94d3941695ddb99cc93d07961e2c8165`.
 Resident-only raw SHA-256: `078a2f18a6217c41439c035bd8b82e3f0c0ce9e644a6715c91893399a2bbbc5c`.
 
-The exact promoted head must pass its native/controller qualification, focused Linux ARM run
-and independent review before readiness. The local prototype evidence is not that qualification.
+The exact promoted source qualification and focused Linux ARM evidence are recorded below.
+The local prototype cohorts retain their separate source and process identities.
+
+
+## Exact Linux ARM qualification
+
+[Focused ARM run 41345118553](https://github.com/jacogr/ragnarok/actions/runs/41345118553) passes
+at runtime/test/controller head `678e8010e43aee1d103fccd617d72c6aee49b793`, against merged parent
+`ba98b8db2811510aa5a13488d30ece8bb7eb84ba`, with interpreted pairing enabled and no broad CI
+labels. Exact-head Smoke passes as well. Subsequent evidence-only documentation preserves the
+qualified runtime, test and controller files.
+
+Each process executes thirteen complete-state public calls and contributes its CPU median over
+samples 3:13. The JIT replay cohort has six fresh processes per role. The separate primary
+interpreter cohort has two. Do not combine those cohorts when calculating changes or raw ratios.
+
+| Workload / JIT replay | Baseline CPU ms | Candidate CPU ms | Change |
+|---|---:|---:|---:|
+| DOOM tick | 21.920 | 21.316 | -2.75% |
+| DOOM init | 146.090 | 146.565 | +0.33% |
+| Minimal | 5.203 | 5.258 | +1.04% |
+| Pinky | 81.628 | 82.422 | +0.97% |
+| Sieve 10m | 267.048 | 276.659 | +3.60% |
+
+DOOM tick improves in all six pairs with nonoverlapping source ranges. Pinky and sieve are
+slower in all six pairs, also with nonoverlapping ranges. Minimal is slower in all six with
+ranges overlapping; init is slower in four with overlap. Retain these observed costs alongside
+the real application and resident-lowering architecture gains.
+
+The primary interpreter cohort is slower in both DOOM pairs: tick 28.110 to 28.613 ms (+1.79%)
+and init 316.825 to 320.447 ms (+1.14%), each with nonoverlapping ranges. Other primary interpreter
+changes are Minimal +0.09%, Pinky +2.54%, memset +0.51%, and sieve 10m +0.70%. Primary JIT memset
+improves by 0.88%. These are observed timings; no causal attribution for interpreted changes is
+established by the native-register-residency implementation.
+
+Matched **primary** raw ratios, ours / PolkaVM interpreted, are **0.530 JIT / 0.714 interpreter**
+for DOOM tick and **0.232 / 0.510** for init. Replay numerators are not mixed with primary
+reference timings. Native guest operations, outer calls, branches and headers match the parent
+in all fourteen primary comparisons; only tick adds 880 executable bytes. All within-role
+activity/code fields are deterministic, including replays. There is no added-coverage or outer
+bridge-count claim.
+
+Root and independent review audits verify 84 primary and 60 replay logs, 42 positive and
+96 negative controls, 18 image equalities, 24 fixture pins, 2,575 application role source hashes
+and 519 native hashes. The exact native qualification retains all eleven records, both runtime
+policy suites and owner move/copy-refusal checks, old backend 19/1 and Frame 7,236 receipts,
+and new resident backend 47/3 and Frame 12,328 receipts per native/refused mode. All 16 mocked
+controller tests, the pricing-owner suite and plain witness pass locally. Independent source,
+IR/ABI/lifecycle/refusal and diagnostic review reports no correctness finding.
+
+Artifact `13098854718`, `pvm-comparison-arm64-1`, is preserved under ignored
+`build/pvm-resident-outlined/ci-arm/`. Application report SHA-256:
+`eeaa806157305b3034407cf06f00c3e8557d0ad6373c9d38880443e0508a342f`.
+Native report SHA-256:
+`23cb46c073e9f53b0df5aa3c179589e8bd60c6c4ce40d971e237644477c6612c`.
+Original ZIP SHA-256:
+`13ecbce3ac5f4077fee167ad67dc6b1f2f503278c1a1fa946655096da42774bc`.
+No x86 or full-block throughput claim follows.
