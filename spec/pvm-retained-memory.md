@@ -85,7 +85,7 @@ All restoration and lease return work stays inside public-call clocks.
 | Sieve 10m JIT | 216.268 | 210.376 | -2.72% | 0.559 |
 
 All four paired JIT tick directions improve, while aggregate process ranges overlap slightly.
-The interpreter differences are inconclusive. These local results require Linux qualification.
+The local interpreter differences are inconclusive. Linux qualification follows below.
 Runtime retains additional idle memory within the explicit budget; memory pressure can favor
 zero or a smaller limit. Fresh independent source page identities conservatively restore all
 changed slots even when bytes happen to match, so the repeated-source results do not establish
@@ -103,3 +103,48 @@ Ignored evidence: `build/pvm-memory-reuse-production/shipping-comparison/` and
 Policy-control raw JSON SHA-256:
 `db68041325f723ea36e581647607ffd459e92c920b3d972e460565506ea1a1ee`.
 No compiler, runtime-check, native instruction or guest fixture change is involved.
+
+## Linux ARM qualification, 2026-11-01
+
+The exact runtime head `ffbd8b61d5bb3a359a9aff57d836809c3478ec80` passes the focused
+[ARM replay run](https://github.com/jacogr/ragnarok/actions/runs/41305353802), against
+`69a03c9fb9977490c8a5b8a371f0b4cdb50dceb8`, with the same pinned checked compiler.
+Artifact `13083571684` contains 20 fresh builds, 84 primary processes, 138 positive/refusal
+controls and 60 additional JIT replay processes. Author and independent reviewer reparse the
+logs, full state/events, 18 image equalities, source/fixture identities and all 14 native-work
+pairs. Native counters match except compilation time; interpreted counters remain zero.
+Native ownership, memory, dirty regions, partial continuation and priced controls also pass.
+
+Each JIT entry below takes the median of six process medians, each using CPU samples 3:13.
+Every paired process improves and baseline/candidate process ranges do not overlap.
+
+| Workload | Baseline JIT ms | Candidate JIT ms | Change |
+|---|---:|---:|---:|
+| DOOM init | 150.908 | 148.800 | -1.40% |
+| DOOM tick | 29.231 | 25.378 | -13.18% |
+| Minimal | 5.590 | 5.551 | -0.69% |
+| Pinky | 84.449 | 83.500 | -1.12% |
+| Sieve 10m | 284.192 | 272.198 | -4.22% |
+
+The primary two-process interpreter comparison gives init 326.171→323.010ms (-0.97%) and
+tick 33.706→30.318ms (-10.05%); these have less replication than the JIT replay table.
+Matched primary raw-call ratios, ours / PolkaVM interpreted, are **0.631 JIT / 0.755 interpreter**
+for tick and **0.238 JIT / 0.517 interpreter** for init. These use primary numerators and their
+matching primary reference, not a replay numerator paired with another cohort's denominator.
+Primary memset improves 14.88% in JIT and 14.43% in the interpreter; it has no six-process replay.
+
+This supports enabling bounded reuse by default. It retains idle private buffers plus a baseline
+reference, trading memory residency for avoiding repeated allocation/copying. DOOM's 4,285
+accessible pages charge 35,102,720 logical payload bytes (33.48 MiB) for baseline plus private
+bytes, before metadata; shared baseline pages need not represent additional RSS. Zero/smaller
+budgets remain appropriate when memory pressure outweighs repeated-invocation savings. Fresh
+source identities and mapping changes retain the conservative restoration/fallback behavior
+described above. This ARM result establishes no x86 performance claim.
+
+Application report SHA-256:
+`dc12cdc2ac89440f8f68b448e991671b495c52345a3d31f52356950f5f3268f9`.
+Artifact ZIP SHA-256, independently recorded by review:
+`b4089394fb6d0e3db523e187acb8b28d9208facc13e8f64d47b9afd54c2b72de`.
+Ignored author audit: `build/pvm-memory-reuse-production/ci-arm-audit.json`.
+The final qualification update changes this evidence document only; runtime remains the measured
+head above. No additional CI cohort is needed for that documentation change.
