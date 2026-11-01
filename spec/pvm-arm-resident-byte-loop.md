@@ -2,6 +2,9 @@
 
 ## Scope
 
+**Performance hold:** correctness qualifies, but Linux ARM DOOM tick regresses.
+Keep this machinery in draft; it is not ready for master.
+
 This opt-in ARM increment starts from accepted master
 `a0997ac1469113ba1f65b4f4bdde9c9462cf138e`. Existing GP gas, source-attempt,
 memory, fault and ownership contracts remain authoritative. Nimony
@@ -100,8 +103,54 @@ JIT tick (-8.96%), but interpreted tick also changes 26.09375 -> 24.59825 ms
 loop. Use the same-binary result for local attribution. No init improvement is
 established by the isolated control.
 
-Linux ARM application qualification, exact-head correctness and the raw
-ours/PolkaVM-interpreted ratios remain required before readiness. Broad CI labels
-are unnecessary for this bounded native-only increment. Larger guarded regions
-and the remaining dense DOOM memory region are subsequent work, not claims of
-this change.
+## Linux ARM verdict: preserve in draft
+
+[Focused run 41271378548](https://github.com/jacogr/ragnarok/actions/runs/41271378548)
+passes native correctness/refusal qualification and complete application checks.
+It binds implementation `058fe1db2ff70100b2e81b919df084407bb94204` to accepted
+baseline `a0997ac1469113ba1f65b4f4bdde9c9462cf138e`. Subsequent fixture-only and
+whitespace-only review fixes do not change measured runtime behavior; the updated
+smoke check and fresh local native witness pass.
+
+Six fresh processes per role/case retain thirteen checked calls with three
+warmups excluded. Medians across process medians are:
+
+| Case | Previous JIT CPU | Candidate JIT CPU | Change | Paired direction |
+| --- | ---: | ---: | ---: | --- |
+| DOOM tick | 27.755056 ms | 28.509064 ms | +2.717% | all six slower |
+| DOOM init | 233.923802 ms | 234.077540 ms | +0.066% | mixed |
+| Pinky | 81.261468 ms | 81.536050 ms | +0.338% | all six slower |
+| Minimal | 5.317780 ms | 5.322862 ms | +0.096% | mixed |
+| Long sieve | 282.756936 ms | 271.891332 ms | -3.843% | all six faster |
+
+DOOM tick paired changes are +2.676%, +2.790%, +2.171%, +2.645%, +3.145% and
++2.651%. The forward/reverse complete public timings also regress:
+27.715/27.645 -> 28.411/28.478 ms. Candidate / PolkaVM-interpreted call is
+0.709/0.709 against reference 40.065/40.150 ms. Candidate interpreter call is
+32.654/32.522 ms. These reference ratios use the ordinary forward/reverse
+cohort; the six-process replay cohort separately establishes the regression.
+
+DOOM tick still captures the mechanism: publications 910 -> 911, native calls
+16,066,627 -> 15,243,416, lowered operations 152,738,024 -> 155,233,223, emitted
+bytes 175,428 -> 176,072. Long sieve, Pinky and init retain identical native
+publication/call/operation/code-byte counts across roles. Their timing changes
+are not evidence of new loop activity. No cause for the architecture-dependent
+performance difference is established.
+
+The application receipt SHA-256 is
+`3e514dc089e86111dc9aaddfc97fb3bb573dfd0b2414be09c14d18be7c86d7a3`.
+Raw evidence is preserved under `build/pvm-byte-loop/linux/tests/`, including
+`pvm-native/results.json` and `pvm-arm64-applications/results.json`/`summary.md`.
+The artifact is `pvm-comparison-arm64-1` on the linked run.
+
+DOOM is the primary real workload, so the sieve result does not justify merging
+this candidate. Keep the PR draft without readiness labels or extra CI. Reuse
+the guard/literal-test machinery only with new measurements. A focused future
+diagnosis should isolate same-image Linux cache on/off and the shared dirty-loop
+handoff cost before crediting a narrower instruction-count improvement.
+
+The next general architecture target is the mixed32/64-bit memory region with
+20 checked sites and 45.523% of checked-memory attempts. A bounded mixed-memory
+source block needs a paid interior continuation that preserves earlier committed
+stores on decline. It should start from accepted master and qualify independently,
+without depending on this held candidate.
