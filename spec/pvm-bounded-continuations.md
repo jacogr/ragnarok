@@ -106,5 +106,70 @@ The exact formatted promoted source passes all eleven maintained native/refusal/
 qualification records, both backend policy suites, pricing ownership and the plain full witness.
 The maintained default all-opcode, regions/host and pricing-owner Make suites also pass, along
 with all seventeen native-controller Python tests. One focused Linux ARM run with the explicit
-interpreter pair will qualify the public head before readiness; no broad CI labels are needed.
+interpreter pair qualifies the public head below; no broad CI labels are needed.
 No x86 performance claim is established.
+
+## Focused Linux ARM qualification
+
+Exact runtime/tests/controller head `e0d4b76cad04a0efda20f5324430a58bf8fff5d4` passes the
+single-runner [ARM qualification and replay run 41352469098](https://github.com/jacogr/ragnarok/actions/runs/41352469098)
+against master `048a21324c620ebe1fb921fd8434c0b695c9dd5c`, including the explicit interpreter
+pair. Artifact `13102836079` retains the complete evidence. No broad CI labels were added.
+
+The primary interpreter cohort has **two fresh processes per source role**, each executing
+thirteen complete-state public calls. Process values use CPU medians over samples 3:13;
+the following values take the median across the two processes.
+
+| Workload, interpreter | Baseline CPU ms | Candidate CPU ms | Change |
+|---|---:|---:|---:|
+| DOOM init | 319.382 | 317.044 | -0.73% |
+| DOOM tick | 28.553 | 27.583 | -3.40% |
+| Minimal | 5.563 | 5.531 | -0.58% |
+| Pinky | 90.434 | 86.589 | -4.25% |
+| Memset | 3.426 | 3.444 | +0.53% |
+| Sieve 100k | 3.078 | 3.099 | +0.68% |
+| Sieve 10m | 321.198 | 324.584 | +1.05% |
+
+Every interpreter case has both pairs in the displayed direction and nonoverlapping ranges.
+The Sieve direction reverses the small local improvement: both Sieve sizes and memset are
+observed Linux interpreter costs. This two-process primary cohort has less replication than
+the separate six-process JIT replay.
+
+| Workload, six-process JIT replay | Baseline CPU ms | Candidate CPU ms | Change | Faster pairs |
+|---|---:|---:|---:|---:|
+| DOOM init | 145.997 | 145.831 | -0.11% | 4/6 |
+| DOOM tick | 21.147 | 21.086 | -0.29% | 5/6 |
+| Minimal | 5.225 | 5.275 | +0.96% | 0/6 |
+| Pinky | 82.543 | 81.931 | -0.74% | 6/6 |
+| Sieve 10m | 276.878 | 274.148 | -0.99% | 6/6 |
+
+Pinky and Sieve JIT replay ranges do not overlap. Both DOOM cases and Minimal overlap;
+Minimal nevertheless has all six pairs slower. No causal JIT DOOM gain is attributed to this
+interpreter change. The two-process primary-only JIT controls additionally show memset
+3.275 to 3.308 ms (+0.98%) and Sieve 100k 2.713 to 2.739 ms (+0.95%), both pairs slower with
+nonoverlapping ranges. Neither small control has a six-process replay.
+
+Matched **primary** raw ratios, ours / PolkaVM interpreted, are **0.522 JIT / 0.689 interpreter**
+for DOOM tick and **0.232 / 0.503** for init. No replay numerator is mixed into these ratios.
+The complete DOOM interpreter benefit and fixed-depth dispatch improvement justify this
+increment with the measured control-workload costs retained. No universal gain, x86 timing or
+full-block throughput claim follows.
+
+Independent author and reviewer audits pass all 84 primary plus 60 replay process logs,
+42 positive and 96 negative controls, eighteen fresh-image equalities, source identities and
+complete state checks. All fourteen primary cross-source native-work/code comparisons are
+exactly equal, and replay work/code agrees with each corresponding primary role. All interpreted
+native counters remain zero. All eleven native/refusal/ownership records, both runtime-policy
+suites, positive owner moves, intended copy-refusal reasons and both new 120-case long receipts
+pass. The author additionally verifies all 2,575 role source hashes, 519 native source hashes
+and all thirty-two recorded fixture identity files; the reviewer verifies the twenty-four
+pinned workload inputs. The final evidence-only update changes no qualified runtime, test,
+controller or fixture source.
+
+Ignored author evidence: `build/pvm-bounded-chain/ci-arm/`, `ci-arm-audit.json` and
+`remaining-audit.json`. Official artifact ZIP SHA-256:
+`6449751c571a603e57ca0bced27e34c375e4bfee43ac52f344e4c53991e6e732`.
+Application report SHA-256:
+`926bc84c6f1d0b5f65fb3e3abd4f61fad403319fa0e27ed57fb7f081473c9876`.
+Native report SHA-256:
+`a4f65f206edf1301e20dbf991234d409ba5e32b15808e3dbf0157e13114bce4b`.
