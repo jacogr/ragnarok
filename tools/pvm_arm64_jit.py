@@ -190,6 +190,18 @@ def qualify(checks, compiler, *, native=True):
                               if line.startswith('ARM_MEMORY_CYCLE_FRAME_CASES,')]
             if cycle_receipts != ['ARM_MEMORY_CYCLE_FRAME_CASES,'+str(cycle_expected)]:
                 raise ValueError('Missing complete native memory-cycle frame controls')
+            # Literal resident kernels must execute, while refused hosts prove every owner stays inactive.
+            resident_backend_expected = 47 if native and name == 'witness' else 3 if name == 'witness-refused' else 0
+            resident_backend_receipts = [line for line in checked['output'].splitlines()
+                                         if line.startswith('ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,')]
+            if resident_backend_receipts != ['ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,'+str(resident_backend_expected)]:
+                raise ValueError('Missing complete resident memory-cycle backend controls')
+            # Residency must cover early guards and write-only lanes in both execution modes.
+            resident_expected = 12328 if native or name == 'witness-refused' else 0
+            resident_receipts = [line for line in checked['output'].splitlines()
+                                 if line.startswith('ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,')]
+            if resident_receipts != ['ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,'+str(resident_expected)]:
+                raise ValueError('Missing complete resident memory-cycle frame controls')
             # The CLI result carries only genuine native coverage, not inferred source-shape visits.
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
