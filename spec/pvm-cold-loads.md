@@ -121,9 +121,30 @@ gains justify this increment with the JIT Sieve regression and small JIT tick po
 explicitly retained. Author and independent reviewer audits pass all 144 primary/replay logs,
 138 controls, 18 image equalities, 14 cross-source native activity/code comparisons, source
 identities and complete-state checks. Native code bytes and execution work remain unchanged;
-interpreted native counters remain zero. The final evidence-only commit changes no runtime.
+interpreted native counters remain zero. The original evidence-only update `4c7d7773` changes no runtime; later integration is recorded below.
 No x86 or full-block throughput claim follows.
 
 Ignored independent author audit: `build/pvm-memory-cold-tail/ci-arm-audit.json`.
 Artifact report SHA-256:
 `a0c87f1f0563bf517652b17718f9428ddb5819c008aa8c17d9a8bbfe1fbddbf8`.
+
+## Integration on repaired master
+
+The standalone PR incorporates repaired master
+`93d76c5e8a095c99f9b886b9a5e78155d5a0f419` through conflict-free merge
+`fc509637d73c0d869a3569c6ad547fbe69e704d4`. This includes the independently qualified
+pricing/plan cache ownership change and its ARM/x86 native-witness contract repair.
+The complete runtime patch relative to this master is **byte-identical**, excluding Git blob
+index metadata, to the original qualified `6c39d0f6` patch relative to `529f9d6b`.
+The pinned formatter and integrated default all-opcode, host/regions and pricing-owner Make
+suites pass. The original performance receipts remain bound to their original head and parent;
+this integration does not establish a new performance result. A focused ARM native-gate run
+and exact-head Smoke provide integration evidence on the PR, without repeating the full
+application replay solely for master integration.
+
+Ignored local integration identity and suite logs:
+`build/pvm-memory-cold-tail/integration-master/results.json`.
+Unchanged normalized runtime patch SHA-256:
+`f858c775ae5b3c46112abe3c3fcd0ddd0ac4ea8d323db10aed9f92df7139507e`.
+Integrated runtime file SHA-256:
+`371d306e85b1e8f098ad2ef9663cb573b7f5f53c3e78c435298b1080ca3ab7f3`.
