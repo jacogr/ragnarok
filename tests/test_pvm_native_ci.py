@@ -116,6 +116,7 @@ class QualificationTests(unittest.TestCase):
             ('ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n' if native or refused else '') +
             ('ARM_WORD_GROUPS,5\nARM_DIRTY_LOOP,2,16,1\n' if native else
              'ARM_WORD_GROUPS,0\n' if refused else '') +
+            ('ARM_READ_STORE_LOOP,3,14,1\nARM_READ_STORE_OVERLAP,5,533,2\n' if native else '') +
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
 
     def check(self, native, receipt=None, build_error=False, region_receipt=None,
@@ -160,6 +161,9 @@ class QualificationTests(unittest.TestCase):
             self.assertEqual(rows[1]['dirty_loop'],
                              dict(calls=2, blocks=16, declines=1) if native else None)
             self.assertIsNone(rows[2]['dirty_loop'])
+            self.assertEqual(rows[1]['read_store_loop']['overlap']['blocks'] if native else
+                             rows[1]['read_store_loop'], 533 if native else None)
+            self.assertIsNone(rows[2]['read_store_loop'])
             witness=next(flags for name,flags in builds if name=='witness')
             self.assertEqual(witness,['pvmArm64Jit','pvmArmDirtyLoopOwnerReceipt'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
@@ -240,6 +244,22 @@ class QualificationTests(unittest.TestCase):
             self.check(True, refused_receipt=refused + loop)
         with self.assertRaisesRegex(ValueError, 'dirty-loop owner'):
             self.check(False, receipt=self.witness_receipt(False) + 'ARM_DIRTY_LOOP_OWNER,1\n')
+
+    def test_read_store_residency_and_inactive_modes(self):
+        """Qualification cannot accept missing native loops or borrow them in fallback modes."""
+        complete = self.witness_receipt(True)
+        basic = 'ARM_READ_STORE_LOOP,3,14,1\n'
+        overlap = 'ARM_READ_STORE_OVERLAP,5,533,2\n'
+        for marker in (basic, overlap):
+            for replacement in ('', marker+marker):
+                with self.subTest(marker=marker), self.assertRaisesRegex(ValueError, 'resident read/store'):
+                    self.check(True, complete.replace(marker, replacement))
+        with self.assertRaisesRegex(ValueError, 'guarded native iterations'):
+            self.check(True, complete.replace(overlap, 'ARM_READ_STORE_OVERLAP,5,5,2\n'))
+        with self.assertRaisesRegex(ValueError, 'Inactive execution'):
+            self.check(True, refused_receipt=self.witness_receipt(False, refused=True)+basic+overlap)
+        with self.assertRaisesRegex(ValueError, 'Inactive execution'):
+            self.check(False, receipt=self.witness_receipt(False)+basic+overlap)
 
     def test_native_word_group_and_refusal_receipts(self):
         """A missing grouped store or a refused native group must fail qualification."""
