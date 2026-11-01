@@ -59,9 +59,15 @@ type
     index: PageIndex
     access: PageAccess
     chunks: array[8, PageChunk]
+  # Immutable directory blocks share untouched page-reference groups between snapshots.
+  PageBlock = ref object
+    entries: seq[PageData] # Each immutable block has at most 64 initialized page references.
+  PageDirectory = object
+    len: int
+    blocks: seq[PageBlock]
   # Sorted sparse page references avoid allocating the entire 4 GiB guest address space.
   MemoryData = ref object
-    pages: seq[PageData]
+    pages: PageDirectory
     limit: PageLimit
   Memory* = object ## A default handle is invalid; captureMemory([], ...) creates valid empty memory.
     data: nil MemoryData
@@ -95,6 +101,57 @@ type
     info: MachineInfo
   Machine* = object ## Copying the public handle retains the same immutable snapshot, never a mutable machine alias.
     data: nil MachineData
+
+func checkedPageBlock(pages: PageDirectory, index: int): int {.inline.} =
+  ## Every lookup retains the original complete sorted-slot bound, including the last partial block.
+  assert index >= 0 and index < pages.len
+  index div 64
+
+template `[]`(pages: PageDirectory, index: int): untyped =
+  ## Expand a borrowed indexed location; no owning PageData result is created by an accessor call.
+  pages.blocks[checkedPageBlock(pages, index)].entries[index and 63]
+
+proc pageDirectory(pages: sink seq[PageData]): PageDirectory =
+  ## Transfer an admitted sorted vector into immutable blocks without another per-page retain/release pass.
+  var owned = move(pages)
+  result = PageDirectory(len: owned.len, blocks: @[])
+  var first = 0
+  while first < owned.len:
+    # The final block contains only its initialized references.
+    let count = min(64, owned.len-first)
+    var group = PageBlock(entries: newSeqOfCap[PageData](count))
+    for offset in 0..<count:
+      # Moving empties the old vector slot; its destructor cannot release the transferred page again.
+      group.entries.add(move(owned[first+offset]))
+    result.blocks.add(move(group))
+    first += count
+
+proc replacedDirectory(pages: PageDirectory, slots: openArray[int],
+    replacements: openArray[PageData]): PageDirectory =
+  ## All callers preflight before construction; copy the root and clone each affected block exactly once.
+  assert slots.len == replacements.len
+  result = PageDirectory(len: pages.len, blocks: newSeqOfCap[PageBlock](pages.blocks.len))
+  for index in 0..<pages.blocks.len:
+    # Unchanged immutable blocks retain their shared children rather than retaining every page anew.
+    result.blocks.add(pages.blocks[index])
+  var previous = -1
+  var previousGroup = -1
+  for index in 0..<slots.len:
+    # Strict ascending slots make repeated changes within a block share one fresh private copy.
+    let slot = slots[index]
+    assert slot >= 0 and slot < pages.len and slot > previous
+    let group = slot div 64
+    if group != previousGroup:
+      # The old block remains immutable through its retained source root.
+      var entries = newSeqOfCap[PageData](pages.blocks[group].entries.len)
+      for offset in 0..<pages.blocks[group].entries.len:
+        # Copy only this block's initialized references; no mutable sequence is shared.
+        entries.add(pages.blocks[group].entries[offset])
+      let copied = PageBlock(entries: move(entries))
+      result.blocks[group] = copied
+      previousGroup = group
+    result.blocks[group].entries[slot and 63] = replacements[index]
+    previous = slot
 
 func error*[T](r: MachineResult[T]): MachineError =
   ## Status inspection cannot retag or forge a result.
@@ -260,7 +317,7 @@ proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResul
   # Fixed arrays copy their bytes; no caller-owned pointer survives this call.
   for i in 0..<pages.len: owned.add(pageFromImage(pages[i]))
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: owned, limit: limit)))
+    completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
 
 func lowerBound(data: MemoryData, index: uint32): int =
   ## Locate the first stored page whose index is at least the requested ordinal.
@@ -292,8 +349,7 @@ proc pageImage*(memory: Memory, index: PageIndex): MachineResult[PageImage] =
     access: PageAccess.Inaccessible, bytes: default(array[4096, byte])))
 
 proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
-  ## Laboratory copied delta: equal immutable page identity proves equal bytes, never mutable storage.
-  ## Different mappings/permissions refuse this fast path; callers can use complete copied images.
+  ## Shared immutable directory blocks prove all their page identities and metadata equal at once.
   let left = before.data
   let right = after.data
   if left == nil or right == nil: return MachineResult[seq[PageImage]](
@@ -301,16 +357,25 @@ proc changedMemoryPages*(before, after: Memory): MachineResult[seq[PageImage]] =
   if left == right: return MachineResult[seq[PageImage]](status: MachineError.None, completed: @[])
   if left.pages.len != right.pages.len:
     return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
-  for i in 0..<left.pages.len:
-    # An identical immutable page owner already proves its index and access are unchanged.
-    if left.pages[i] == right.pages[i]: continue
-    # Still validate the complete mapping before allocating or returning any copied delta.
-    if left.pages[i].index != right.pages[i].index or left.pages[i].access != right.pages[i].access:
-      return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
+  for group in 0..<left.pages.blocks.len:
+    # Equal lengths have the same fixed block partition; shared blocks require no page-by-page walk.
+    if left.pages.blocks[group] == right.pages.blocks[group]: continue
+    let first = group*64
+    let past = min(first+64, left.pages.len)
+    for index in first..<past:
+      # Different page owners can still retain equal mappings; complete validation precedes delta allocation.
+      if left.pages[index] == right.pages[index]: continue
+      if left.pages[index].index != right.pages[index].index or
+          left.pages[index].access != right.pages[index].access:
+        return MachineResult[seq[PageImage]](status: MachineError.InvalidRange)
   var changed: seq[PageImage] = @[]
-  for i in 0..<left.pages.len:
-    # Immutable shared pages require neither byte extraction nor comparison.
-    if left.pages[i] != right.pages[i]: changed.add(imageFromPage(right.pages[i]))
+  for group in 0..<left.pages.blocks.len:
+    # Only changed blocks can contain changed page owners, and ascending slots keep the output sorted.
+    if left.pages.blocks[group] == right.pages.blocks[group]: continue
+    let first = group*64
+    let past = min(first+64, left.pages.len)
+    for index in first..<past:
+      if left.pages[index] != right.pages[index]: changed.add(imageFromPage(right.pages[index]))
   MachineResult[seq[PageImage]](status: MachineError.None, completed: changed)
 
 func memoryPageCount*(memory: Memory): MachineResult[PageCount] =
@@ -397,45 +462,49 @@ proc withPage*(memory: Memory, page: PageImage): MachineResult[Memory] =
   for i in at + int(replacing)..<data.pages.len:
     pages.add(data.pages[i])
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+    completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
 
 proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): MachineResult[Memory] =
-  ## Local experiment: atomically replace sorted existing pages without changing mapping, access or limit.
-  ## Validate the whole input before allocation; copy page bytes and publish one new immutable root.
+  ## Atomically replace sorted existing pages, sharing untouched directory blocks and snapshot chunks.
   let data = memory.data
   if data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
-  var cursor = 0
-  for i in 0..<replacements.len:
-    # Validate physical ordinals and strict order even when an earlier page would be absent.
-    if uint32(replacements[i].index) >= 0x100000'u32:
+  for index in 0..<replacements.len:
+    # Preserve physical-index and strict-order refusal precedence before matching any source page.
+    if uint32(replacements[index].index) >= 0x100000'u32:
       return MachineResult[Memory](status: MachineError.InvalidPage)
-    if i > 0 and uint32(replacements[i-1].index) >= uint32(replacements[i].index):
+    if index > 0 and uint32(replacements[index-1].index) >= uint32(replacements[index].index):
       return MachineResult[Memory](status: MachineError.UnsortedPages)
-  for i in 0..<replacements.len:
-    # Monotone matching proves replacements cannot insert pages, alter access, or exceed the ceiling.
-    while cursor < data.pages.len and uint32(data.pages[cursor].index) < uint32(replacements[i].index):
-      inc cursor
-    if cursor >= data.pages.len:
-      return MachineResult[Memory](status: MachineError.InvalidRange)
-    if data.pages[cursor].index != replacements[i].index or data.pages[cursor].access !=
-        replacements[i].access:
+  let sparse = replacements.len < data.pages.len div 8
+  var cursor = 0
+  for index in 0..<replacements.len:
+    # Sparse far-apart updates use bounded searches; dense replacements retain the linear merge.
+    if sparse:
+      cursor = lowerBound(data, uint32(replacements[index].index))
+    else:
+      while cursor < data.pages.len and uint32(data.pages[cursor].index) < uint32(replacements[index].index):
+        inc cursor
+    if cursor >= data.pages.len or data.pages[cursor].index != replacements[index].index or
+        data.pages[cursor].access != replacements[index].access:
       return MachineResult[Memory](status: MachineError.InvalidRange)
     inc cursor
   if replacements.len == 0:
-    # An empty observation retains its original owner and exact local ceiling without allocation.
+    # An empty observation retains the exact original owner and policy without allocation.
     return MachineResult[Memory](status: MachineError.None, completed: memory)
-  var pages = newSeqOfCap[PageData](data.pages.len)
-  var replacement = 0
-  for i in 0..<data.pages.len:
-    # Both validated streams are sorted; untouched immutable chunks/pages are shared, never mutated.
-    if replacement < replacements.len and data.pages[i].index == replacements[replacement].index:
-      pages.add(pageFromImage(replacements[replacement]))
-      inc replacement
+  var slots = newSeqOfCap[int](replacements.len)
+  var changed = newSeqOfCap[PageData](replacements.len)
+  cursor = 0
+  for index in 0..<replacements.len:
+    # Every input has passed; collect exact slots and new immutable byte owners only now.
+    if sparse:
+      cursor = lowerBound(data, uint32(replacements[index].index))
     else:
-      pages.add(data.pages[i])
-  assert replacement == replacements.len
+      while uint32(data.pages[cursor].index) < uint32(replacements[index].index): inc cursor
+    slots.add(cursor)
+    changed.add(pageFromImage(replacements[index]))
+    inc cursor
+  var directory = replacedDirectory(data.pages, slots, changed)
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
 proc writablePageCount*(memory: Memory, first, past: PageIndex): MachineResult[PageCount] =
   ## Count writable pages in [first, past), with an exclusive endpoint up to 2^20.
@@ -503,7 +572,7 @@ proc withWritablePages*(memory: Memory, first, past: PageIndex): MachineResult[M
   for i in stop..<data.pages.len:
     pages.add(data.pages[i]) # The exclusive endpoint and entire suffix remain untouched.
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+    completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
 
 proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
     content: PageContent): MachineResult[Memory] =
@@ -541,7 +610,7 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
   for index in stop..<data.pages.len: pages.add(data.pages[
       index]) # Dropped zero/inaccessible pages become implicit sparse zeros.
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+    completed: Memory(data: MemoryData(pages: pageDirectory(move(pages)), limit: data.limit)))
 
 type ScalarSpan = object
   ## Private validated slots and byte extents belong only to the immutable memory inspected in this call.
@@ -650,24 +719,23 @@ proc writableScalar*(memory: Memory, address: MemoryAddress, width: AccessWidth)
 
 proc store*(memory: Memory, address: MemoryAddress, width: AccessWidth,
     value: RegisterValue): MachineResult[Memory] =
-  ## Preflight once, then clone only touched pages and publish an independent atomic snapshot.
+  ## Complete scalar preflight precedes private page/chunk cloning and sparse root publication.
   let checked = scalarSpan[false, true](memory, address, width)
   if checked.error != MachineError.None: return failure[Memory, ScalarSpan](checked)
   if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
   let span = checked.value
-  var pages = newSeqOfCap[PageData](data.pages.len)
-  for index in 0..<data.pages.len:
-    pages.add(data.pages[index]) # Untouched immutable page owners remain shared with the source.
-  pages[span.first] = writablePageClone(data.pages[span.first], span.offset, span.firstCount)
-  setPageScalar(pages[span.first], span.offset, span.firstCount, uint64(value))
+  var slots = @[span.first]
+  var changed = @[writablePageClone(data.pages[span.first], span.offset, span.firstCount)]
+  setPageScalar(changed[0], span.offset, span.firstCount, uint64(value))
   if span.firstCount < span.count:
-    # Only a real crossing clones the second page; firstCount<8 proves a suffix shift below64.
-    pages[span.last] = writablePageClone(data.pages[span.last], 0, span.count-span.firstCount)
-    setPageScalar(pages[span.last], 0, span.count-span.firstCount, uint64(value) shr (
-        8*span.firstCount))
+    # Both permissions were validated before either private write; a crossing clones its second page once.
+    slots.add(span.last)
+    changed.add(writablePageClone(data.pages[span.last], 0, span.count-span.firstCount))
+    setPageScalar(changed[1], 0, span.count-span.firstCount, uint64(value) shr (8*span.firstCount))
+  var directory = replacedDirectory(data.pages, slots, changed)
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
 proc inspectRange(memory: Memory, address: MemoryAddress, length: MemoryLength,
     limit: MemoryByteLimit, writing: bool): MachineResult[bool] =
@@ -769,36 +837,32 @@ proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
 
 proc writeBytes*(memory: Memory, address: MemoryAddress, input: openArray[byte],
     limit: MemoryByteLimit): MachineResult[Memory] =
-  ## Atomically copy borrowed input into a new memory snapshot; unchanged pages remain shared immutable.
-  ## Input is borrowed only during this call. Failed writes never alter or expose a partial successor.
+  ## Validate the complete host span before cloning only its touched page-reference blocks and chunks.
   let checked = inspectRange(memory, address, MemoryLength(uint64(input.len)), limit, true)
-  if checked.error != MachineError.None:
-    # Full permission and policy checks precede every cloned page and reference-vector allocation.
-    return failure[Memory, bool](checked)
+  if checked.error != MachineError.None: return failure[Memory, bool](checked)
   if input.len == 0:
-    # Empty writes retain the immutable source without allocating a redundant snapshot.
+    # A zero-length write preserves the original immutable owner and policy.
     return MachineResult[Memory](status: MachineError.None, completed: memory)
-  if memory.data == nil:
-    # The compiler requires this explicit non-nil selection after the helper's validation.
-    return MachineResult[Memory](status: MachineError.InvalidOwner)
+  if memory.data == nil: return MachineResult[Memory](status: MachineError.InvalidOwner)
   let data = memory.data
-  var pages = newSeqOfCap[PageData](data.pages.len)
-  for i in 0..<data.pages.len:
-    # Share all old page owners by index; each touched page is cloned exactly once below.
-    pages.add(data.pages[i])
+  var slots = newSeqOfCap[int](input.len div 4096+2)
+  var changed = newSeqOfCap[PageData](input.len div 4096+2)
   var copied = 0
   var at = lowerBound(data, uint32(uint64(address) div 4096))
   while copied < input.len:
-    # Nonwrapping contiguous ranges visit each affected page exactly once.
-    let physical = uint64(address) + uint64(copied)
+    # Preflight proved a nonwrapping readable/writable sequence; each page gets one private header.
+    let physical = uint64(address)+uint64(copied)
     let offset = int(physical mod 4096)
-    let count = min(input.len - copied, 4096 - offset)
-    pages[at] = writablePageClone(data.pages[at], offset, count)
-    copyPageIn(pages[at], offset, input, copied, count)
+    let count = min(input.len-copied, 4096-offset)
+    var page = writablePageClone(data.pages[at], offset, count)
+    copyPageIn(page, offset, input, copied, count)
+    slots.add(at)
+    changed.add(move(page))
     copied += count
-    inc at # New cloned pages retain their source indices and sorted vector positions.
+    inc at
+  var directory = replacedDirectory(data.pages, slots, changed)
   MachineResult[Memory](status: MachineError.None,
-    completed: Memory(data: MemoryData(pages: pages, limit: data.limit)))
+    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 
 proc newScalarMemoryWriter*(memory: Memory): MachineResult[ScalarMemoryWriter] =
   ## Retain a genuine immutable base; working vectors/chunks allocate only after a complete successful scalar preflight.
@@ -1002,7 +1066,8 @@ proc snapshotMemory*(writer: nil ScalarMemoryWriter): MachineResult[Memory] =
   if not writer.active:
     return MachineResult[Memory](status: MachineError.None,
         completed: writer.base) # No new write means no new snapshot allocation.
-  let frozen = Memory(data: MemoryData(pages: move(writer.pages), limit: source.limit))
+  let frozen = Memory(data: MemoryData(pages: pageDirectory(move(writer.pages)),
+      limit: source.limit))
   writer.base = frozen
   writer.dirty = @[]
   writer.active = false # No mutable chunk/vector alias survives the transfer; future stores clone a new epoch.

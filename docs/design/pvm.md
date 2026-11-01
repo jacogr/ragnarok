@@ -28,6 +28,11 @@ and [host execution](../../spec/pvm-host-execution.md) contracts. The
 [readiness map](../../spec/pvm-interpreter-readiness.md) records current interpreter
 comparisons and remaining JAM/specification gates.
 
+Immutable memory snapshots retain a two-level directory of sorted page references.
+Sparse checkpoint and host updates copy the small root and affected reference blocks,
+while unchanged page/chunk owners stay shared. The [snapshot directory record](../../spec/pvm-snapshot-directory.md)
+describes atomic preflight, ARC retirement, measured benefits and remaining entry costs.
+
 ## Reusable execution policy
 
 An optional immutable `GasPlan` retains one captured program and a complete bounded table of

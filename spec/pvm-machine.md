@@ -148,7 +148,7 @@ bounded byte counts. Loads and stores reuse these slots rather than searching th
 page vector for every byte. It preserves owner/width validation, low-32 address
 selection, exclusive-end overflow, protected-prefix panic, cross-page store presence
 priority and failure atomicity. No unchecked pointer or mutable backing storage is
-exposed; successful stores still clone the vector and touched storage before publication.
+exposed; successful stores clone touched storage and the required immutable directory blocks before publication.
 
 The native machine suite adds 64 neighboring page pairs separated by holes, checking
 unaligned eight-byte loads/stores, every output byte, exact hole faults and retained
@@ -174,6 +174,11 @@ are unchanged. `captureMemory` copies all input bytes into private chunks and
 `pageImage` materializes a complete independent array; no chunk, reference or mutable
 view is exported. Chunk geometry is an implementation detail, not a protocol page
 size or a new caller resource policy. Owners remain an acyclic ARC graph.
+
+Sorted page references now use immutable 64-entry blocks. Sparse scalar, host and
+checkpoint updates share untouched blocks; complete mapping/access validation still
+precedes successor publication. See the [snapshot directory design and measurements](pvm-snapshot-directory.md)
+for lifecycle checks, cost bounds and remaining full-memory entry work.
 
 The `pvm_memory_chunks` native suite retains original/read-only/remapped and three
 write generations across nine interior/page boundaries. Independent full-page byte
