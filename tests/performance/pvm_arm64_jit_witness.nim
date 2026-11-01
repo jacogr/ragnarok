@@ -1897,6 +1897,43 @@ when defined(pvmArm64Jit):
   else:
     assert native[0] > 0 and native[1] > native[0] and native[2] > 0
     echo "ARM_DIRTY_LOOP,", native[0], ",", native[1], ",", native[2]
+# Independent store-only inputs must survive masked native entry, including the highest guest slot.
+var dirtyLiveInCases = 0
+for valueSlot in [6'u8, 12'u8]:
+  let program = owner([@[198'u8, 0x41, 2], @[120'u8, valueSlot, 0],
+      @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
+      @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+  let plan = newFlatPlan(program, GasCycleLimit(100000))
+  var registers = default(RegisterFile)
+  for slot in 0..<13:
+    # Distinct high-bit sentinels expose unintended writes and missing original register loads.
+    registers[slot] = RegisterValue(0xfedcba98765432a0'u64+uint64(slot))
+  registers[0] = RegisterValue(65536)
+  registers[1] = RegisterValue(0x1234)
+  registers[3] = RegisterValue(65552)
+  registers[4] = RegisterValue(0)
+  let input = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000), registers: registers)
+  var frame = newFlatFrame(plan, [dirtyLoopPage], input)
+  for warm in 0..<6:
+    # Exceed the 64-backedge admission threshold; the stored input is never a prefix destination.
+    verifyControl(frame, program, input, 100, [dirtyLoopPage])
+    inc dirtyLiveInCases
+  let image = pageImage(flatMemorySnapshot(frame), PageIndex(16))
+  assert image.error == MachineError.None
+  for byteIndex in 0..<16:
+    # These literal source bytes are independent of either execution engine's register/memory updates.
+    assert image.value.bytes[byteIndex] == byte(0xa0+int(valueSlot))
+  when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+    assert flatArmDirtyLoopStatistics(frame)[1] > 0, "store-only loop must enter native"
+  for gas in [0'u64, 1, 4, 5, 79, 80, 81, 1000]:
+    for budget in [1'u64, 2, 3, 4, 5, 6, 79, 80, 81]:
+      # Every unstarted/partial guard must preserve all sentinels before publishing any completed prefix.
+      var limited = input
+      limited.gas = MachineGas(gas)
+      verifyControl(frame, program, limited, budget, [dirtyLoopPage])
+      inc dirtyLiveInCases
+echo "ARM_DIRTY_LOOP_LIVE_IN_CASES,", dirtyLiveInCases
+
 var nextLoopPage = dirtyLoopPage
 nextLoopPage.index = PageIndex(17)
 let crossingPages = [dirtyLoopPage, nextLoopPage]

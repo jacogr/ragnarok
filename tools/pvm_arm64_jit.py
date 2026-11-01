@@ -168,6 +168,8 @@ def qualify(checks, compiler, *, native=True):
             if (native or name == 'witness-refused') and 'ARM_LOAD_WIDTH_LITERAL_CASES,'+str(width_expected)+'\n' not in checked['output']:
                 raise ValueError('Missing signed/unsigned guarded-load width literals')
             # Rejected native stores leave meaningful checked-store/native-arithmetic and complete snapshot fallback coverage.
+            if 'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n' not in checked['output']:
+                raise ValueError('Missing independent native store-only register controls')
             if 'ARM_STORE_FALLBACK_CONTROL_CASES,43904\n' not in checked['output']:
                 raise ValueError('Missing complete checked-store source/gas/host controls')
             if 'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' not in checked['output']:

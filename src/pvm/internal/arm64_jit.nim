@@ -131,11 +131,6 @@ func newArmRegionBody*(): ArmBlock =
   result = default(ArmBlock)
   result.compact = true
 
-proc emitArmDirtyRegionByteStore*(body: var ArmBlock, valueSlot: range[0..12]) =
-  ## The address guard leaves its accepted pointer in D0; source value is read after the pure prefix.
-  body.words.add(0x9e660001'u32) # FMOV X1,D0.
-  body.words.add(0x39000020'u32 or (uint32(valueSlot)+4))
-
 proc armRead(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## An operand needs an initial load only before the fragment's first write to that same guest slot.
   let bit = (1'u32 shl int(slot))
@@ -146,6 +141,12 @@ proc armWrite(fragment: var ArmBlock, slot: range[0..12]): uint32 =
   ## A dirty resident register is committed exactly once before the leaf returns to checked execution.
   fragment.writes = fragment.writes or (1'u32 shl int(slot))
   uint32(slot)+4
+
+proc emitArmDirtyRegionByteStore*(body: var ArmBlock, valueSlot: range[0..12]) =
+  ## Track a store-only live-in as well as values produced by the arithmetic prefix.
+  let value = armRead(body, valueSlot)
+  body.words.add(0x9e660001'u32) # FMOV X1,D0.
+  body.words.add(0x39000020'u32 or value)
 
 proc armImmediate(words: var seq[uint32], destination: uint32, value: uint64) =
   ## Explicit halfwords preserve all immediate bits, without host signed conversions or shifts by the width.
@@ -1021,8 +1022,16 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
   var labels = default(array[3, int])
   var exits: seq[uint32] = @[]
   var exitLabels: seq[int] = @[]
-  # All thirteen values are live on entry; linear dirty/live-in inference is insufficient across loop paths.
-  for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  # Union all block reads/writes; block-local live-in inference alone is insufficient across loop paths.
+  var resident = 0'u32
+  var written = 0'u32
+  for index in 0..<count:
+    resident = resident or blocks[index].body.reads or blocks[index].body.writes
+    written = written or blocks[index].body.writes
+  # A guarded exit may precede any write: initialize every lane the epilogue can publish.
+  for slot in 0..<13:
+    if (resident and (1'u32 shl slot)) != 0:
+      words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   for index in 0..<count:
     # Only bounded complete source spans with an actual terminal branch may enter this narrow region compiler.
     let item = blocks[index]
@@ -1085,7 +1094,9 @@ proc publishArmRegion*(jit: ArmJit, blocks: array[3, ArmRegionBlock],
     epilogueBranches.add(words.len)
     words.add(0)
   let epilogue = words.len
-  for slot in 0..<13: words.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  for slot in 0..<13:
+    if (written and (1'u32 shl slot)) != 0:
+      words.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   words.add(0xf9000222'u32) # STR Xgas,[Xcontext].
   words.add(0xf9000623'u32) # STR Xremaining,[Xcontext,#8].
   # Publish invocation-local visits once on every guarded/external exit, preserving the existing five-word context ABI.
@@ -1196,7 +1207,17 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   var words: seq[uint32] = @[0xaa0103f1'u32, 0xf9400222'u32, 0xf9400623'u32,
       0xfd400a30'u32, 0xfd400e31'u32, 0xfd401232'u32, 0xd2800021'u32, 0x9e670033'u32]
   var fixes: seq[ArmRegionFixup] = @[]
-  for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  var resident = item.body.reads or item.body.writes or (1'u32 shl int(baseSlot))
+  var written = item.body.writes
+  if word.enabled:
+    # The optional word lowering has additional explicit inputs and writes.
+    for slot in [word.source, word.shift, word.destination, word.base, word.bound]:
+      resident = resident or (1'u32 shl int(slot))
+    for slot in [word.destination, word.base, word.shift]:
+      written = written or (1'u32 shl int(slot))
+  for slot in 0..<13:
+    if (resident and (1'u32 shl slot)) != 0:
+      words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   let label = words.len
   let wordActive = word.enabled and item.yes == item.header and item.no != item.header and
       item.price <= high(uint64) div 4
@@ -1416,7 +1437,9 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
     epilogueBranches.add(words.len)
     words.add(0)
   let epilogue = words.len
-  for slot in 0..<13: words.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  for slot in 0..<13:
+    if (written and (1'u32 shl slot)) != 0:
+      words.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   words.add(0xf9000222'u32)
   words.add(0xf9000623'u32)
   words.add(0xfd000a30'u32)
