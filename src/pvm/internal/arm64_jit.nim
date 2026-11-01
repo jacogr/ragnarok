@@ -872,8 +872,8 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   ## Keep the memory-capable one-block loop separate from the established multi-block region.
   assert (if readEnabled: jit.readStoreLoop.status == 0 else: jit.dirtyLoop.status == 0)
   if (if readEnabled: item.span notin [5'u32, 6'u32] or item.operations != 5
-      else: item.span != 5 or item.operations != 5) or item.span > 4095 or
-      (item.yes != item.header and item.no != item.header): return false
+    else: item.span != 5 or item.operations != 5) or item.span > 4095 or
+    (item.yes != item.header and item.no != item.header): return false
   if item.body.terminal.len notin [6, 10]:
     if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
       return false
@@ -882,7 +882,8 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   var fixes: seq[ArmRegionFixup] = @[]
   for slot in 0..<13: words.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   let label = words.len
-  let wordActive = not readEnabled and word.enabled and item.yes == item.header and item.no != item.header and
+  let wordActive = not readEnabled and word.enabled and
+      item.yes == item.header and item.no != item.header and
       item.price <= high(uint64) div 4
   if wordActive:
     # Four original five-op blocks are accepted as one word only when all guards pass before mutation.
