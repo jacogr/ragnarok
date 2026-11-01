@@ -47,6 +47,11 @@ across calls; mutable CPU, memory regions, budgets and callbacks remain invocati
 stepping and host APIs adapt this same engine. Stable-offset node/work admission replaces the old
 LRU execution cache, and no legacy opcode evaluator remains.
 
+Prepared identities can also retain one bounded idle byte lease. A fresh frame restores all
+changed source and prior dirty pages before execution; CPU, budgets and callbacks stay local.
+The [retained-memory policy](../../spec/pvm-retained-memory.md) describes the explicit per-owner
+limit, disabling reuse, host-terminal behavior, ARC lifetime and measured tradeoff.
+
 ## Accumulation successor boundary
 
 Execution owns stopped continuation/reentry selection and the immutable

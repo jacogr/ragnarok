@@ -1858,3 +1858,12 @@ exceeding them overall remains unmet. Source/generated/image identities, sample 
 cold/constructor/cache rows and rejected controls remain under
 `build/pvm-port-lab/private-{,wide-}chunk-hints{,-final}`. Qualified machine source SHA256:
 `04530ecc3324291d6232078b6ec269c622a42acae2a2e3e48510a3de849a4d2a`. Next refresh matched-memory/profile diagnostics before another dispatch change.
+
+
+## Bounded idle private bytes
+
+The [retained-memory extension](pvm-retained-memory.md) permits one idle allocation lease under
+an explicit payload budget. Every active invocation gets fresh CPU/budgets/callback state and
+fully restored private input bytes. Code facts still authorize no current memory permission or
+paid gas. The existing exclusive source/cache lease also protects byte transfer; snapshots stay
+immutable, and terminal host replies retain the frame's actual baseline/dirty restoration rule.

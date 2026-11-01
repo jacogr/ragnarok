@@ -69,7 +69,16 @@ type
     first: uint64
     access: PageAccess
     bytes: seq[byte]
-  FlatFrame* = object ## One exclusively used execution instance; no cache stores an invocation's mutable register/memory state.
+  FlatMemoryScratch* = ref object
+    ## One exclusive idle byte lease; immutable baseline and dirty ordinals restore each new input completely.
+    baseline: Memory
+    pages: seq[PageDescription]
+    roBase, rwBase, stackBase: uint64
+    ro, rw, stack: seq[byte]
+    extra: seq[FlatRegion]
+    dirty: seq[uint32]
+    payloadBytes: uint64 # Logical baseline and private payload charged to the idle retention limit.
+  FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
     plan: FlatPlan
     info*: MachineInfo
     reason*: oracle.StepError
@@ -1542,18 +1551,15 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[1] = uint64(bytes.len-7)
       result[2] = cast[uint64](addr bytes[0])
 
-proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: MachineInfo,
-    memory: Memory): FlatFrame =
-  ## Consume copied mapping metadata and read immutable page bytes directly into private resident regions.
-  assert plan != nil
-  # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
-  assert images.len <= high(int) div sizeof(PageDescription)
-  result = FlatFrame(plan: plan, preparationFailure: FlatError.None, preparationUsed: 0,
-      hostSnapshot: default(Memory), hostReady: false,
+proc flatFrameShell(plan: FlatPlan, memory: Memory, info: MachineInfo, pageCount: int): FlatFrame =
+  ## Both paths initialize every execution field afresh; the memory lease never supplies execution state.
+  result = FlatFrame(plan: plan,
+      preparationFailure: FlatError.None, preparationUsed: 0, hostSnapshot: default(Memory),
+          hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
-    dirtyPages: (if images.len == 0: @[] else: newSeq[uint64](16384)),
-    dirtyIndices: newSeqOfCap[uint32](images.len),
+    dirtyPages: (if pageCount == 0: @[] else: newSeq[uint64](16384)),
+    dirtyIndices: newSeqOfCap[uint32](pageCount),
         info: info, reason: oracle.StepError.None,
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
@@ -1572,6 +1578,15 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     result.armPreviousHeader = flatStop
     result.armPreviousNext = flatStop
     result.armPreviousValid = false
+
+
+proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: MachineInfo,
+    memory: Memory): FlatFrame =
+  ## Consume copied mapping metadata and read immutable page bytes directly into private resident regions.
+  assert plan != nil
+  # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
+  assert images.len <= high(int) div sizeof(PageDescription)
+  result = flatFrameShell(plan, memory, info, images.len)
 
   var regions: seq[FlatRegion] = @[]
   var first = 0
@@ -3393,6 +3408,102 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
       status: FlatError.InvalidMemory)
   var retained = machine.takeValue(layout)
   FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory))
+
+func flatScratchSlot(pages: seq[PageDescription], physical: uint32): int =
+  ## Same-map validation proves every retained dirty ordinal still belongs to this sorted mapping.
+  var low = 0
+  var high = pages.len
+  while low < high:
+    let middle = low+(high-low) div 2
+    if uint32(pages[middle].index) < physical: low = middle+1
+    else: high = middle
+  assert low < pages.len and uint32(pages[low].index) == physical
+  low
+
+proc flatRestoreScratchPage(f: var FlatFrame, page: int) =
+  ## Complete mapping equality preceded any write; copy one genuine source page into its private allocation.
+  let description = f.sourcePages[page]
+  if description.access == PageAccess.Inaccessible: return
+  let address = uint64(uint32(description.index))*4096
+  if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
+    let offset = int(address-f.stackBase)
+    flatCopySourcePage(f.sourceMemory, page, description, f.stack.toOpenArray(offset, offset+4095))
+  elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
+    let offset = int(address-f.rwBase)
+    flatCopySourcePage(f.sourceMemory, page, description, f.rw.toOpenArray(offset, offset+4095))
+  elif address >= f.roBase and address-f.roBase+4096 <= uint64(f.ro.len):
+    let offset = int(address-f.roBase)
+    flatCopySourcePage(f.sourceMemory, page, description, f.ro.toOpenArray(offset, offset+4095))
+  else:
+    var found = false
+    for index in 0..<f.extra.len:
+      let region = f.extra[index]
+      if address >= region.first and address-region.first+4096 <= uint64(region.bytes.len):
+        let offset = int(address-region.first)
+        flatCopySourcePage(f.sourceMemory, page, description, region.bytes.toOpenArray(offset, offset+4095))
+        found = true
+        break
+    assert found
+
+proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo,
+    scratch: var nil FlatMemoryScratch, reused: var bool): FlatResult[FlatFrame] =
+  ## Admission and full map/access equality precede reuse; mismatches discard the old idle allocation.
+  reused = false
+  if scratch == nil: return prepareFlatMemoryFrame(plan, memory, info)
+  let count = memoryPageCount(memory)
+  if count.error != MachineError.None: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
+  if uint32(count.value) > uint32(plan.limits.pages):
+    return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
+  var held = move(scratch)
+  if held == nil: return prepareFlatMemoryFrame(plan, memory, info)
+  var delta = changedMemoryPageSlots(held.baseline, memory)
+  if delta.error != MachineError.None:
+    held = nil
+    return prepareFlatMemoryFrame(plan, memory, info)
+  var changes = machine.takeValue(delta)
+  var frame = flatFrameShell(plan, memory, info, held.pages.len)
+  frame.sourcePages = move(held.pages)
+  frame.roBase = held.roBase
+  frame.rwBase = held.rwBase
+  frame.stackBase = held.stackBase
+  frame.ro = move(held.ro)
+  frame.rw = move(held.rw)
+  frame.stack = move(held.stack)
+  frame.extra = move(held.extra)
+  for index in 0..<held.dirty.len:
+    let physical = held.dirty[index]
+    # Reset guest writes even when the incoming source reuses its exact original owner.
+    flatRestoreScratchPage(frame, flatScratchSlot(frame.sourcePages, physical))
+  for index in 0..<changes.len:
+    let changed = changes[index]
+    # Fresh source bytes can differ outside the previous guest's dirty set; conservative overlap copies are safe.
+    flatRestoreScratchPage(frame, int(uint32(changed)))
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+    # Every borrowed native descriptor is derived anew from this invocation's moved byte owners.
+    frame.armMemory[0] = flatArmReadRegion(frame.stackBase, frame.stack)
+    frame.armMemory[1] = flatArmReadRegion(frame.rwBase, frame.rw)
+    frame.armMemory[2] = flatArmReadRegion(frame.roBase, frame.ro)
+  reused = true
+  FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
+
+proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMemoryScratch =
+  ## Retain only bounded private payload plus one immutable baseline; zero disables retention.
+  if payloadLimit == 0: return nil
+  var bytes = uint64(f.ro.len)+uint64(f.rw.len)+uint64(f.stack.len)
+  for region in f.extra:
+    # Disjoint captured regions own exactly their accessible page bytes, including fragmented layouts.
+    bytes += uint64(region.bytes.len)
+  if bytes == 0: return nil
+  let total = bytes+uint64(f.sourcePages.len)*4096
+  if total > payloadLimit: return nil
+  FlatMemoryScratch(baseline: f.sourceMemory, pages: move(f.sourcePages),
+    roBase: f.roBase, rwBase: f.rwBase, stackBase: f.stackBase,
+    ro: move(f.ro), rw: move(f.rw), stack: move(f.stack), extra: move(f.extra),
+    dirty: move(f.dirtyIndices), payloadBytes: total)
+
+func flatMemoryScratchPayload*(scratch: nil FlatMemoryScratch): uint64 =
+  ## Copied logical payload occupancy excludes allocator overhead and remains zero without an idle lease.
+  if scratch == nil: 0'u64 else: scratch.payloadBytes
 
 proc selectFlatPrices*(f: var FlatFrame, plan: GasPlan, memo: GasMemo): oracle.StepError =
   ## Complete and lazy policy owners must match the exact immutable program before any execution.

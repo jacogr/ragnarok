@@ -269,9 +269,11 @@ type
   ExecutionFactLimit* = FlatFactLimit ## Maximum decoded instruction facts retained by one prepared owner.
   ExecutionNodeLimit* = FlatNodeLimit ## Maximum emitted stream nodes; stable offsets are never evicted mid-call.
   ExecutionPreparationLimit* = FlatPreparationLimit ## Cumulative source spans admitted for emission and whole-block pricing.
+  RetainedMemoryByteLimit* = distinct uint64 ## Local idle baseline/private-payload ceiling; zero disables memory reuse.
   PreparedLimits* = object ## Immutable source/policy admission; callers select finite deployment resources explicitly.
     resources*: ExecutionLimits
     cycles*: GasCycleLimit
+    retainedMemoryBytes*: RetainedMemoryByteLimit
   PreparationError* {.pure.} = enum ## Preparation has no partially usable success owner.
     Uninitialized, None, InvalidProgram, LimitExceeded, BackendNotBuilt, BackendUnavailable,
       BackendProgramUnsupported, BackendRevisionMismatch, BackendCapabilityUnsupported,
@@ -281,14 +283,16 @@ type
     of None: completed: T
     else: discard
   PreparedData = ref PreparedStorage ## Copies share one exclusive source/cache identity.
-  PreparedStorage = object ## Exclusive cached executable facts never retain an invocation's CPU, memory or callbacks.
+  PreparedStorage = object ## Source-bound code and bounded idle byte storage; active CPU and callbacks remain invocation-local.
     source: Program
     plan: FlatPlan
     stream: FlatStream
+    memoryScratch: nil FlatMemoryScratch
+    memoryReuses: uint64 # Diagnostic only; restored memory never relies on a hit count.
     limits: PreparedLimits
     busy: bool
     selected: PvmBackend
-    prices: GasMemo # Source-bound lazy prices share the same exclusive invocation lease.
+    prices: GasMemo      # Source-bound lazy prices share the same exclusive invocation lease.
     when defined(polkavmRuntime):
       foreign: ForeignOwner
   PreparedProgram* = object ## Copies share one source-bound cache identity; synchronous same-owner reentry is refused.
@@ -319,6 +323,8 @@ type
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     compilation*: PreparedCompilationInfo
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
+    memoryReuses*, retainedMemoryPayloadBytes*: uint64 # Idle payload admission and cumulative actual buffer reuse.
+
 
 proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
   ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.
@@ -331,8 +337,9 @@ func defaultExecutionLimits*(): ExecutionLimits =
   defaultFlatLimits()
 
 func defaultPreparedLimits*(cycles: GasCycleLimit = GasCycleLimit(1000000)): PreparedLimits =
-  ## Explicit convenience profile preserves all runtime checks and a finite independent preparation allowance.
-  PreparedLimits(resources: defaultExecutionLimits(), cycles: cycles)
+  ## Checked convenience profile bounds preparation and retains at most64MiB of idle baseline/private payload.
+  PreparedLimits(resources: defaultExecutionLimits(), cycles: cycles,
+    retainedMemoryBytes: RetainedMemoryByteLimit(64'u64*1024*1024))
 
 func error*[T](r: PreparationResult[T]): PreparationError =
   ## Inspect the selected result alternative without exposing its discriminator.
@@ -395,7 +402,7 @@ proc prepareIndependent(source: Program, limits: PreparedLimits,
       return PreparationResult[PreparedProgram](status: PreparationError.BackendFailure)
   PreparationResult[PreparedProgram](status: PreparationError.None, completed: PreparedProgram(
     data: PreparedData(source: source, plan: plan, stream: move(stream), limits: limits,
-        busy: false, selected: selected)))
+        busy: false, selected: selected, memoryScratch: nil, memoryReuses: 0)))
 
 proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationResult[
     PreparedProgram] =
@@ -409,7 +416,7 @@ func programOf*(prepared: PreparedProgram): PreparationResult[Program] =
   PreparationResult[Program](status: PreparationError.None, completed: data.source)
 
 proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
-  ## Return copied logical component occupancy; no invocation state is retained or exposed.
+  ## Return copied code/idle-payload occupancy and activity; no mutable byte view or callback escapes.
   let data = prepared.data
   if data == nil: return PreparationResult[PreparedInfo](status: PreparationError.InvalidProgram)
   if data.busy: return PreparationResult[PreparedInfo](status: PreparationError.Busy)
@@ -433,7 +440,9 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
             nativeCalls: native[1],
         nativeOperations: native[2], nativeCodeBytes: native[3], nativeCompilationNs: native[4],
         compilation: compilation, jitBuilt: built, jitPlatformSupported: supported,
-        checkedFallbackEnabled: data.selected in [PvmBackend.Jit, PvmBackend.Compiled]))
+        checkedFallbackEnabled: data.selected in [PvmBackend.Jit, PvmBackend.Compiled],
+    memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(
+        data.memoryScratch)))
 
 when defined(pvmArm64JitOwnerReceipt):
   proc preparedArmStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
@@ -511,7 +520,7 @@ proc runForeignFrame(source: Machine, prepared: PreparedProgram,
 
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
-  ## Borrow only the prepared stream; CPU and private memory are created and retired inside this invocation.
+  ## Lease code and optional idle bytes; initialize CPU and restore complete input memory before execution.
   let selectedData = prepared.data
   if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
       PvmBackend.PolkaCompiled]:
@@ -536,9 +545,11 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     if terminal.error != MachineError.None: return StepResult(status: StepError.InvalidMachine)
     return StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
         kind: StepExit.Panic, machine: terminal.value))
-  var created = prepareFlatMemoryFrame(data.plan, memory, cpu)
+  var reusedMemory = false
+  var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
   if created.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
   var frame = takeValue(created)
+  if reusedMemory: inc data.memoryReuses
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return StepResult(status: policy)
   restoreFlatStream(frame, data.stream)
@@ -551,6 +562,7 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     publishFrame(frame, owner, single, cpu.pc, nativeBaseline, data.selected)
     else: StepResult(status: frame.reason)
   data.stream = takeFlatStream(frame)
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
 proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram,
@@ -566,7 +578,7 @@ proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: Prepa
   answer
 
 proc execute*(source: Machine, limit: ExecutionStepLimit, prepared: PreparedProgram): StepResult =
-  ## Reuse admitted facts and stream nodes while each call owns fresh CPU and memory.
+  ## Reuse admitted facts and bounded byte allocations while each call owns freshly initialized execution state.
   executeSelected(source, limit, prepared)
 
 proc executePolicy(source: Machine, limit: ExecutionStepLimit, cycles: GasCycleLimit,
@@ -768,7 +780,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
         Context, Reason],
     steps: ExecutionStepLimit, calls: HostCallLimit, plan: GasPlan,
         memo: GasMemo): HostExecutionResult[Reason] =
-  ## Validate and create private memory before moving the exclusively leased executable cache.
+  ## Validate and restore private input memory before moving the exclusively leased executable cache.
   let selectedData = prepared.data
   if selectedData != nil and selectedData.selected in [PvmBackend.PolkaInterpreted,
       PvmBackend.PolkaCompiled]:
@@ -794,16 +806,19 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
   if instruction(owner, cpu.pc).error != ProgramError.None:
     # Invalid imported terminal PCs retain recursive deblob panic semantics without calling the host.
     return executionResult[Reason](runPreparedFrame(source, prepared, steps, plan, memo))
-  var created = prepareFlatMemoryFrame(data.plan, memory, cpu)
+  var reusedMemory = false
+  var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
   if created.error != FlatError.None:
     return executionResult[Reason](StepResult(status: StepError.InvalidPreparedProgram))
   var frame = takeValue(created)
+  if reusedMemory: inc data.memoryReuses
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return executionResult[Reason](StepResult(status: policy))
   restoreFlatStream(frame, data.stream)
   let answer = driveHostFrame[Context, Reason, Fallible](frame, owner, context, callbacks, steps,
       calls, data.limits.resources.pages, data.selected)
   data.stream = takeFlatStream(frame)
+  data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer
 
 proc hostSelected[Context; Reason: enum; Fallible: static[bool]](source: Machine,
@@ -878,7 +893,7 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
     handler: proc(context: var Context, suspension: StepOutcome): HostResponse {.nimcall, raises: [].},
     stepLimit: ExecutionStepLimit, hostLimit: HostCallLimit,
         prepared: PreparedProgram): StepResult =
-  ## Response-only prepared callers keep no private CPU, memory or callback in the reusable owner.
+  ## Active CPU and callbacks stay local; idle source/byte storage is bounded by the prepared policy.
   responseResult(hostSelected[Context, ResponseOnly, false](source, prepared, context,
       HostCallbacks[Context, ResponseOnly](response: handler), stepLimit, hostLimit))
 
@@ -986,6 +1001,7 @@ proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[Prepared
 func samePreparedLimits(a, b: PreparedLimits): bool =
   ## Every resource ceiling and the gas-analysis policy bind the cache key, not just its backend/source.
   uint64(a.cycles) == uint64(b.cycles) and
+    uint64(a.retainedMemoryBytes) == uint64(b.retainedMemoryBytes) and
     uint64(a.resources.codeBytes) == uint64(b.resources.codeBytes) and
     uint64(a.resources.facts) == uint64(b.resources.facts) and
     uint64(a.resources.jumps) == uint64(b.resources.jumps) and
@@ -1009,7 +1025,7 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
   inc slot.preparations
   let admitted = newPreparedProgram(source, limits, selected)
   if admitted.error == PreparationError.None:
-    slot.owner = admitted.value # Retire only the prior code cache; immutable machines retain their own source snapshots.
+    slot.owner = admitted.value # Retire the prior code/idle-byte owner; independently retained machine snapshots stay valid.
   admitted
 
 proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
