@@ -566,9 +566,13 @@ proc armMixedInstructions*(mixed: ArmMixedBlock): seq[uint32] =
   result.add(0xd2800001'u32 or (mixed.lowered shl 5))
   result.add(0xf9001221'u32) # Completed lowered operations, context word4.
   result.add(0xd65f03c0'u32)
-  var exits: seq[int] = @[]
-  for site in mixed.sites:
-    exits.add(result.len)
+  var exits = newSeq[int](mixed.sites.len)
+  for fix in mixed.fixes:
+    # Zero means unreferenced; only guards need a paid-prefix exit label.
+    exits[fix.site] = -1
+  for index, site in mixed.sites:
+    if exits[index] == 0: continue # Later members of a shared window have no guards or exit stubs.
+    exits[index] = result.len
     result.add(0x9e660011'u32) # Restore context from D0 even if guard borrowed X17.
     for slot in 0..<13:
       if (site.writes and (1'u32 shl slot)) != 0:
@@ -580,6 +584,7 @@ proc armMixedInstructions*(mixed: ArmMixedBlock): seq[uint32] =
     result.add(0xf9001221'u32)
     result.add(0xd65f03c0'u32)
   for fix in mixed.fixes:
+    assert exits[fix.site] > 0 # Every patched guard names an emitted prefix-specific exit.
     let at = fix.at+leading+1
     let distance = uint32(exits[fix.site]-at)
     assert distance < 262144'u32

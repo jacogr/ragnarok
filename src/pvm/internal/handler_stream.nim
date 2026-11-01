@@ -2359,7 +2359,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let original = f.armOriginal[int(header)]
     assert original != nil
     let terminal = armEnding(jit, header)
-    if f.pricingKind == 0 and f.barrier == flatStop and not f.info.blockCharged and
+    if f.pricingKind != 0:
+      # A retained unpriced stream can be leased after selecting prices; retire its ineligible observer.
+      f.handlers[int(header)] = original
+      return original(f, header)
+    if f.barrier == flatStop and not f.info.blockCharged and
         f.remaining >= uint64(f.arguments[int(header)].y) and
         uint64(f.info.gas) >= f.arguments[int(header)].x and
         flatArmCachedBranch(f, terminal) and armFinishProbe(jit, header):
@@ -2374,6 +2378,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 
   proc flatArmTryMixedProbe(f: var FlatFrame, terminal: uint32) =
     ## Discover one general mixed source block when its terminal first enters the sealed stream.
+    if f.pricingKind != 0: return # Priced headers cannot promote; retain their ordinary checked dispatch.
     if int(terminal) >= f.sites.len: return
     let ending = f.plan.facts[int(f.sites[int(terminal)])]
     if not ending.ending or ending.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
@@ -2598,6 +2603,14 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     if jit == nil: default(array[4, uint64])
     else: armMixedStatistics(jit)
+
+  when defined(pvmArmMixedGroupReceipt):
+    proc flatArmMixedProbes*(f: FlatFrame): uint64 =
+      ## Diagnostic active admission work distinguishes an ineligible probe from ordinary checked execution.
+      result = 0
+      for handler in f.handlers:
+        # Count installed observers, including those that have not yet reached their promotion threshold.
+        if handler == flatArmMixedProbe: inc result
 
   proc flatArmMixedGroupStatistics*(f: FlatFrame): array[3, uint64] =
     ## Private publication/guard activity, with no retained invocation memory.

@@ -47,7 +47,8 @@ sections do not describe the current implementation.
   byte order refuses before native allocation. Full public cold-call clocks include emission and
   publication; the successful regional compilation diagnostic now brackets body emission too.
 
-The [grouped-memory prototype](pvm-arm-grouped-memory.md) is preserved on performance hold.
+The [grouped-memory work](pvm-arm-grouped-memory.md) adds paid interior continuation
+and is under qualification following architecture review.
 Its paid-interior/window machinery has local correctness evidence but no demonstrated DOOM gain.
 
 Both local comparison helpers default to a frozen current HEAD, so a clean checkout gets an

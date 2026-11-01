@@ -1,8 +1,10 @@
-# Preserved ARM64 grouped-memory prototype
+# ARM64 grouped memory and paid continuation
 
-**Performance hold.** This draft preserves correctness-tested machinery. No
-grouped-memory speedup is established, and Linux performance qualification was
-not requested. Reuse requires a new measured candidate.
+**Qualification pending.** Paid interior continuation is a concrete architectural
+gain and does not require a DOOM speedup to justify adoption. Broader exact-source
+local measurements now show a repeatable DOOM tick improvement and regressions
+in several other workloads. Readiness depends on correctness, those tradeoffs
+and focused Linux qualification; flat DOOM alone is not a veto.
 
 ## Scope and authority
 
@@ -25,7 +27,9 @@ executable node. A mixed-specific probe initializes only nonexecutable records,
 including earlier ordinary refusal, and preserves unavailable-storage and
 262,144-coordinate bounds. Eight eligible unpaid, full-gas/full-budget visits
 after branch certification justify publication. These are visits, not a claimed
-count of observed backedges.
+count of observed backedges. Priced frames skip mixed discovery. A retained
+unpriced probe retires on a priced invocation instead of remaining permanently
+ineligible for promotion.
 
 ## Execution and ownership
 
@@ -44,7 +48,8 @@ replayed. Existing attempted-exit refund restores only the unattempted tail.
 Prefix masks precede the current load's write registration. A later failed load
 to an already-written destination retains the earlier value. Future writes and
 uninitialized physical registers never spill. Constant prefix counts in exit
-stubs avoid per-operation runtime accounting.
+stubs avoid per-operation runtime accounting. Only referenced guard exits are
+emitted; later members of a shared window need no paid-exit stub.
 
 Cold planning records every write event, including repeated assignments. Up to
 two groups each contain at least two accesses through a base unchanged between
@@ -67,8 +72,12 @@ out of ordinary timing builds. No runtime attribution switch is preserved.
 
 ## Verification
 
-Final-source native, forced-storage-refusal and interpreted witnesses pass
-locally. Ordinary and receipt-instrumented native variants are covered. The
+The original published source passes native, forced-storage-refusal and
+interpreted witnesses locally. After review fixes, ordinary and receipt-instrumented
+native witnesses pass. A new active-probe receipt reproduces the priced admission
+bug before the fix, then verifies fresh and retained-stream complete/lazy priced
+execution installs or retains no observer; eligible unpriced work is its positive
+control. The
 original ARM witness remains intact. Added literal/checked-machine cases cover:
 
 - Aliasing store/read/store, unused guest-slot preservation and repeated base
@@ -81,10 +90,10 @@ original ARM witness remains intact. Added literal/checked-machine cases cover:
   it exercises the address guard. Reserved-byte access produces Panic/PC0.
 - Leading-noop14-operation/10-memory execution, two published windows and exact
   paid/gas/partial-budget accounting.
-- A source-built15-memory body emitting1,053 ordinary words, refusing publication
+- A source-built15-memory body emitting1,046 ordinary words after exit compaction, refusing publication
   above the existing limit and retaining checked behavior.
 
-## Measurement record
+## Historical measurement record
 
 The baseline census has10,122,320 checked memory attempts over ten DOOM ticks;
 twenty sites account for45.523%. The11-operation/eight-memory block has stable
@@ -132,8 +141,37 @@ and identities are in ignored
 `build/pvm-mixed-memory/evidence/attribution-summary.json`; peer preservation
 manifests bind both ordinary source variants to final-source witness logs.
 
-Keep draft, with no readiness labels, review request or targeted CI. Reuse the
-paid-interior and window machinery only with fresh correctness and whole-DOOM
-measurements. These results establish neither a Linux win nor a candidate
-ours/PolkaVM-interpreted ratio. The next bounded lead is memory entry/checkpoint
-cost.
+## Exact published-source reassessment
+
+The following local M1 results compare published head
+`a18bb78a6a2f7eb0c8045c21057d4d7ffaac59a8` with accepted parent `a0997ac1`,
+before the priced-probe fix and exit compaction. Eight canonical-path images
+cover both sources, two drivers and native/interpreted modes. Interpreted role
+images are byte-identical. All88 timed processes pass full fixture validation;
+each has13 calls, excluding the first3 from steady medians. Negative is faster.
+
+| Workload | Initial two orders | Two ABBA repeat cycles |
+| --- | ---: | ---: |
+| Sieve100k | +1.34% / +2.45% | not repeated |
+| Sieve10m | +2.19% / +3.61% | +1.15% / +1.52% |
+| Minimal | +6.41% / +6.94% | +6.92% / +7.48% |
+| Memset | +1.48% / +0.49% | not repeated |
+| Pinky | +6.42% / +3.96% | +4.56% / +3.74% |
+| DOOM init | -0.30% / -0.54% | not repeated |
+| DOOM tick | -3.51% / -4.46% | -4.44% / -3.95% |
+
+Separate diagnostic runs confirm grouped code executes in the regressing
+workloads. This is broader lowering, not replacement of the one-store dirty-loop
+or direct-read-first specialization; it can subsume existing pure/branch body
+fragments. Aggregate activity cannot isolate every displaced fragment or global
+code-layout effects. These are local results, not Linux evidence or a measured
+ours/PolkaVM-interpreted ratio.
+
+Evidence is preserved in ignored `build/pvm-mixed-memory/evidence/reassessment/`:
+`results.json` (56 processes), `repeat.json` (32 processes), `activity.json` and
+`summary.md`, copied from the speed peer's exact-head screen. Reviewed follow-up
+changes need their own source-identified timing. Keep draft pending that
+qualification. Review found no further memory/accounting/pointer-lifetime defect;
+shared opcode/table lowering remains a possible maintenance simplification.
+The architectural benefit does not erase measured costs, and future multi-block
+resident execution still needs charging/exit/register-liveness integration.
