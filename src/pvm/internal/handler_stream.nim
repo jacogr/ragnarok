@@ -1429,7 +1429,11 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
   let origin = uint32(f.handlers.len)
   var index = start
   var first = true
-  var pairedPrevious = false
+  # A fixed original node ends every short continuation chain, including unoptimized builds.
+  var chainLimit = 4
+  when defined(pvmArm64Jit) or defined(pvmX86Jit):
+    if f.plan.allowNative: chainLimit = 2 # Keep native admission's original exact pair layout.
+  var continuations = 0
   while index < f.plan.facts.len:
     let fact = f.plan.facts[index]
     let coordinate = uint32(f.handlers.len)
@@ -1483,8 +1487,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     var selected = fact.handler
     assert selected != nil
     if fact.opcode != 2:
-      # Pairs never overlap: the second node stays the original handler, so no recursive handler chain can form.
-      if not pairedPrevious and fact.fallthrough:
+      # Bounded continuation prefixes stop at an original worker before the next chain begins.
+      if continuations < chainLimit-1 and fact.fallthrough:
         let first = if isRegisterOpcode(fact.opcode): flatRegisterPairHandler(
             fact.opcode) else: flatMemoryPairHandler(fact.opcode)
         if first != nil:
@@ -1496,9 +1500,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             elif fact.opcode == 200 and second == 139: selected = flatFusedRegisters[200, 139]
             elif fact.opcode == 149 and second == 149: selected = flatFusedRegisters[149, 149]
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
-          pairedPrevious = true
-        else: pairedPrevious = false
-      else: pairedPrevious = false
+          inc continuations
+        else: continuations = 0
+      else: continuations = 0
       if selected != nil: flatEmit(f, selected, fact.args, uint32(index))
     if fact.ending: break
     inc index

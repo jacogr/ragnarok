@@ -202,6 +202,13 @@ def qualify(checks, compiler, *, native=True):
                                  if line.startswith('ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,')]
             if resident_receipts != ['ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,'+str(resident_expected)]:
                 raise ValueError('Missing complete resident memory-cycle frame controls')
+            # Both shapes force interpretation even in native/refusal builds and must complete every source boundary.
+            for marker, shape in [('BOUNDED_CONTINUATION_LONG_CASES', 'fused'),
+                                  ('BOUNDED_MIXED_CONTINUATION_LONG_CASES', 'non-fused')]:
+                chain_receipts = [line for line in checked['output'].splitlines()
+                                  if line.startswith(marker+',')]
+                if chain_receipts != [marker+',120']:
+                    raise ValueError('Missing complete bounded continuation '+shape+' controls')
             # The CLI result carries only genuine native coverage, not inferred source-shape visits.
             mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
