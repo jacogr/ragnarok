@@ -47,6 +47,9 @@ sections do not describe the current implementation.
   byte order refuses before native allocation. Full public cold-call clocks include emission and
   publication; the successful regional compilation diagnostic now brackets body emission too.
 
+The [grouped-memory prototype](pvm-arm-grouped-memory.md) is preserved on performance hold.
+Its paid-interior/window machinery has local correctness evidence but no demonstrated DOOM gain.
+
 Both local comparison helpers default to a frozen current HEAD, so a clean checkout gets an
 A/A source-and-image control without needing an old draft object. To compare a prior JIT commit,
 set `PVM_JIT_BASELINE` to its exact lowercase commit SHA (or use the kernel helper's `--baseline`).

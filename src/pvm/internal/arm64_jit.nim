@@ -5,6 +5,13 @@
 import std/assertions
 import ../[program, machine]
 
+when defined(pvmArmMixedGroupReceipt):
+  const armMixedStateWords = 7
+else:
+  const armMixedStateWords = 5
+
+type ArmMixedState* = array[armMixedStateWords, uint64]
+
 proc armClock*(): uint64 {.cdecl, importc: "pvm_arm64_jit_cpu_ns", header: "arm64_memory.h".}
   ## Read the native CPU-time counter used to measure ARM64 JIT work.
 
@@ -55,6 +62,16 @@ type
   ArmReadSpan* = object ## Cold-only builder; all reads and arithmetic commit their guest registers together.
     body: ArmBlock
     guards: seq[ArmReadGuard]
+  ArmMixedSite = object
+    operation, completed, writes: uint32
+  ArmMixedFixup = object
+    at, site: int
+    condition: uint32
+  ArmMixedBlock* = object ## One charged source body with exact paid-memory exits.
+    body: ArmBlock
+    sites: seq[ArmMixedSite]
+    fixes: seq[ArmMixedFixup]
+    lowered: uint32
   ArenaOwner = object ## Move-only OS allocation; the containing reference shares no mutable invocation state.
     handle: nil pointer
   ArmJit* = ref object ## Exclusive frame-owned compiler cache; no executable image escapes its arena owner.
@@ -66,6 +83,8 @@ type
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
     unavailable: bool
+    mixedCalls*, mixedCompleted*, mixedInterior*, mixedOperations*: uint64
+    mixedGroupPublished, mixedGroupAttempts, mixedGroupPasses: uint64
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
   ## Reject copying the exclusive native executable arena owner.
@@ -308,6 +327,265 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
       result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   for word in fragment.terminal: result.add(word)
 
+proc newArmMixedBody*(): ArmMixedBlock =
+  ## The checked header has already reserved the complete source block.
+  result = default(ArmMixedBlock)
+  result.body.compact = true
+
+proc emitArmMixedPure*(mixed: var ArmMixedBlock, opcode: byte, slots: RegisterSlots,
+    immediate: uint64) =
+  emitArmOperation(mixed.body, opcode, slots, immediate)
+  inc mixed.lowered
+
+proc armMixedGuard(mixed: var ArmMixedBlock, site: int, condition: uint32) =
+  assert site >= 0 and site < mixed.sites.len and condition <= 16
+  mixed.fixes.add(ArmMixedFixup(at: mixed.body.words.len, site: site, condition: condition))
+  mixed.body.words.add(0)
+
+proc armMixedDirtyPage(mixed: var ArmMixedBlock, site: int) =
+  ## X3 is a proved address. A clean or absent bitmap word must use the checked store.
+  template words: untyped = mixed.body.words
+  words.add(0xd352fc62'u32) # LSR X2,X3,#18: sixty-four pages per bitmap word.
+  words.add(0xf9400a21'u32) # LDR X1,[X17,#16]: borrowed word count.
+  words.add(0xeb01005f'u32) # CMP X2,X1.
+  armMixedGuard(mixed, site, 2) # HS: outside bitmap.
+  words.add(0xf9400e21'u32) # LDR X1,[X17,#24]: borrowed bitmap pointer.
+  words.add(0xf100003f'u32) # CMP X1,#0.
+  armMixedGuard(mixed, site, 0)
+  words.add(0x8b020c21'u32) # ADD X1,X1,X2,LSL #3.
+  words.add(0xf9400021'u32) # LDR X1,[X1].
+  words.add(0xd34cfc62'u32) # LSR X2,X3,#12: source page.
+  words.add(0xd2800023'u32) # MOV X3,#1.
+  words.add(0x9ac22062'u32) # LSLV X2,X3,X2 (hardware masks the shift to six bits).
+  words.add(0xea02003f'u32) # TST X1,X2.
+  armMixedGuard(mixed, site, 0)
+
+proc emitArmMixedMemory*(mixed: var ArmMixedBlock, opcode: range[120..130],
+    slots: RegisterSlots, displacement, operation: uint32) =
+  ## Every guard precedes this operation's mutation; earlier stores and register writes stay committed.
+  let loading = opcode >= 124
+  let width = case opcode
+    of 120, 124, 125: 1'u32
+    of 121, 126, 127: 2'u32
+    of 122, 128, 129: 4'u32
+    else: 8'u32
+  let site = mixed.sites.len
+  mixed.sites.add(ArmMixedSite(operation: operation, completed: mixed.lowered,
+      writes: mixed.body.writes))
+  let base = armRead(mixed.body, slots.bIndex)
+  let value = if loading: 0'u32 else: armRead(mixed.body, slots.aIndex)
+  let destination = if loading: armWrite(mixed.body, slots.aIndex) else: 0'u32
+  template words: untyped = mixed.body.words
+  words.add(0x9e670220'u32) # FMOV D0,X17 saves the context while X17 borrows descriptors.
+  words.add(0x2a0003e3'u32 or (base shl 16)) # MOV W3,Wbase.
+  words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+  words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+  words.add(0x0b020063'u32) # ADD W3,W3,W2, modulo 2^32.
+  words.add(0xf140407f'u32) # CMP X3,#65536.
+  armMixedGuard(mixed, site, 3) # LO: protected prefix.
+  armCompactImmediate(words, 2, uint64(high(uint32))-8'u64)
+  words.add(0xeb02007f'u32) # CMP X3,X2; conservative complete eight-byte extent.
+  armMixedGuard(mixed, site, 8) # HI.
+  words.add(0xf9400631'u32) # LDR X17,[X17,#8]: borrowed descriptor pointer.
+  var admitted: seq[int] = @[]
+  let count = if loading: 3 else: 2
+  for region in 0..<count:
+    words.add(0xa9400a21'u32 or (uint32(region*3) shl 15)) # LDP Xbase,Xextent.
+    words.add(0xcb010061'u32) # SUB Xoffset,Xaddress,Xbase.
+    words.add(0xeb02003f'u32) # CMP Xoffset,Xextent; zero extent declines.
+    let outside = words.len
+    words.add(0)
+    words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10)) # LDR Xpointer.
+    words.add(0x8b010041'u32) # ADD Xpointer,Xpointer,Xoffset.
+    words.add(0x9e670021'u32) # FMOV D1,Xpointer.
+    admitted.add(words.len)
+    words.add(0)
+    let following = words.len
+    words[outside] = 0x54000002'u32 or (uint32(following-outside) shl 5)
+  armMixedGuard(mixed, site, 16) # No admitted descriptor.
+  let accepted = words.len
+  for at in admitted: words[at] = 0x14000000'u32 or uint32(accepted-at)
+  words.add(0x9e660011'u32) # FMOV X17,D0 restores the context.
+  if not loading:
+    words.add(0x9e670062'u32) # FMOV D2,X3 saves the first address across bitmap tests.
+    armMixedDirtyPage(mixed, site)
+    if width > 1:
+      words.add(0x9e660043'u32) # FMOV X3,D2.
+      words.add(0x91000063'u32 or ((width-1) shl 10)) # ADD X3,X3,#width-1.
+      words.add(0xd34cfc62'u32) # LSR X2,X3,#12: final page.
+      words.add(0x9e660041'u32) # FMOV X1,D2: first address.
+      words.add(0xd34cfc21'u32) # LSR X1,X1,#12: first page.
+      words.add(0xeb01005f'u32) # CMP X2,X1.
+      let samePage = words.len
+      words.add(0)
+      armMixedDirtyPage(mixed, site)
+      let afterSecond = words.len
+      words[samePage] = 0x54000000'u32 or (uint32(afterSecond-samePage) shl 5)
+  words.add(0x9e660021'u32) # FMOV X1,D1 restores the admitted byte pointer.
+  if loading:
+    let encoding = case opcode
+      of 124: 0x39400020'u32 # LDRB Wdestination,[X1].
+      of 125: 0x39800020'u32 # LDRSB Xdestination,[X1].
+      of 126: 0x79400020'u32 # LDRH Wdestination,[X1].
+      of 127: 0x79800020'u32 # LDRSH Xdestination,[X1].
+      of 128: 0xb9400020'u32 # LDR Wdestination,[X1].
+      of 129: 0xb9800020'u32 # LDRSW Xdestination,[X1].
+      else: 0xf9400020'u32   # LDR Xdestination,[X1].
+    words.add(encoding or destination)
+  else:
+    let encoding = case opcode
+      of 120: 0x39000020'u32 # STRB Wvalue,[X1].
+      of 121: 0x79000020'u32 # STRH Wvalue,[X1].
+      of 122: 0xb9000020'u32 # STR Wvalue,[X1].
+      else: 0xf9000020'u32   # STR Xvalue,[X1].
+    words.add(encoding or value)
+  inc mixed.lowered
+
+proc emitArmMixedWindowMemory*(mixed: var ArmMixedBlock, opcode: range[120..130],
+    slots: RegisterSlots, displacement, operation, minDisp, maxEnd, cacheReg: uint32,
+    first, writable: bool) =
+  ## A first-site window proof caches only a byte pointer; source values and stores remain ordered.
+  assert cacheReg >= 4 and cacheReg <= 16 and minDisp <= displacement and
+      maxEnd > displacement and maxEnd-minDisp <= 4096
+  let loading = opcode >= 124
+  let width = case opcode
+    of 120, 124, 125: 1'u32
+    of 121, 126, 127: 2'u32
+    of 122, 128, 129: 4'u32
+    else: 8'u32
+  assert uint64(displacement)+uint64(width) <= uint64(maxEnd)
+  let site = mixed.sites.len
+  mixed.sites.add(ArmMixedSite(operation: operation, completed: mixed.lowered,
+      writes: mixed.body.writes))
+  let base = armRead(mixed.body, slots.bIndex)
+  let value = if loading: 0'u32 else: armRead(mixed.body, slots.aIndex)
+  let destination = if loading: armWrite(mixed.body, slots.aIndex) else: 0'u32
+  template words: untyped = mixed.body.words
+  if first:
+    # Form the unwrapped exclusive endpoint before any descriptor subtraction or guest mutation.
+    let span = maxEnd-minDisp
+    when defined(pvmArmMixedGroupReceipt):
+      words.add(0xf9401621'u32) # LDR X1,[X17,#40]: private attempt counter.
+      words.add(0x91000421'u32) # ADD X1,X1,#1.
+      words.add(0xf9001621'u32) # STR X1,[X17,#40].
+    words.add(0x9e670220'u32) # FMOV D0,X17 keeps the invocation context for this site's exit.
+    words.add(0x2a0003e3'u32 or (base shl 16)) # MOV W3,Wbase.
+    armCompactImmediate(words, 2, uint64(minDisp))
+    words.add(0x8b020063'u32) # ADD X3,X3,X2: unwrapped window start.
+    words.add(0xf140407f'u32) # CMP X3,#65536.
+    armMixedGuard(mixed, site, 3)
+    armCompactImmediate(words, 2, uint64(span))
+    words.add(0x8b020062'u32) # ADD X2,X3,X2: exclusive endpoint.
+    armCompactImmediate(words, 1, uint64(high(uint32))-7'u64)
+    words.add(0xeb01005f'u32) # CMP X2,X1: no wrap or protected top.
+    armMixedGuard(mixed, site, 8)
+    if writable:
+      words.add(0xd1000442'u32) # SUB X2,X2,#1: final byte.
+      words.add(0xd34cfc61'u32) # LSR X1,X3,#12.
+      words.add(0xd34cfc42'u32) # LSR X2,X2,#12.
+      words.add(0xeb02003f'u32) # CMP X1,X2: one guest page.
+      armMixedGuard(mixed, site, 1)
+    words.add(0xf9400631'u32) # LDR X17,[X17,#8]: borrowed descriptors.
+    let required = max(span, 8'u32)-7'u32
+    var admitted: seq[int] = @[]
+    for region in 0..<(if writable: 2 else: 3):
+      words.add(0xa9400a21'u32 or (uint32(region*3) shl 15)) # LDP base,extent.
+      words.add(0xf100005f'u32 or (required shl 10)) # CMP X2,#required.
+      let tooShort = words.len
+      words.add(0)
+      words.add(0xd1000042'u32 or (required shl 10)) # SUB X2,X2,#required.
+      words.add(0xcb010061'u32) # SUB X1,X3,XregionBase.
+      words.add(0xeb02003f'u32) # CMP X1,X2.
+      let outside = words.len
+      words.add(0)
+      words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10)) # LDR pointer.
+      words.add(0x8b010040'u32 or cacheReg) # ADD Xcache,X2,X1.
+      admitted.add(words.len)
+      words.add(0)
+      let following = words.len
+      words[tooShort] = 0x54000003'u32 or (uint32(following-tooShort) shl 5)
+      words[outside] = 0x54000008'u32 or (uint32(following-outside) shl 5)
+    armMixedGuard(mixed, site, 16)
+    let accepted = words.len
+    for at in admitted: words[at] = 0x14000000'u32 or uint32(accepted-at)
+    words.add(0x9e660011'u32) # FMOV X17,D0: restore invocation context.
+    if writable: armMixedDirtyPage(mixed, site) # X3 still holds the first page address.
+    when defined(pvmArmMixedGroupReceipt):
+      words.add(0xf9401a21'u32) # LDR X1,[X17,#48]: private accepted counter.
+      words.add(0x91000421'u32) # ADD X1,X1,#1.
+      words.add(0xf9001a21'u32) # STR X1,[X17,#48].
+  let delta = displacement-minDisp
+  let encoding = case opcode
+    of 120: 0x39000020'u32
+    of 121: 0x79000020'u32
+    of 122: 0xb9000020'u32
+    of 123: 0xf9000020'u32
+    of 124: 0x39400020'u32
+    of 125: 0x39800020'u32
+    of 126: 0x79400020'u32
+    of 127: 0x79800020'u32
+    of 128: 0xb9400020'u32
+    of 129: 0xb9800020'u32
+    else: 0xf9400020'u32
+  let target = if loading: destination else: value
+  if delta mod width == 0 and delta div width < 4096:
+    words.add((encoding and not (31'u32 shl 5)) or (cacheReg shl 5) or
+        ((delta div width) shl 10) or target)
+  else:
+    if delta <= 4095:
+      words.add(0x91000001'u32 or (delta shl 10) or (cacheReg shl 5)) # ADD X1,Xcache,#delta.
+    else:
+      armCompactImmediate(words, 2, uint64(delta))
+      words.add(0x8b020001'u32 or (cacheReg shl 5)) # ADD X1,Xcache,X2.
+    words.add(encoding or target)
+  inc mixed.lowered
+
+proc emitArmMixedBranch*(mixed: var ArmMixedBlock, opcode: byte, slots: RegisterSlots,
+    immediate: uint64, yes, no: uint32) =
+  emitArmBranch(mixed.body, opcode, slots, immediate, yes, no)
+  inc mixed.lowered
+
+func armMixedLowered*(mixed: ArmMixedBlock): uint32 = mixed.lowered
+
+proc armMixedInstructions*(mixed: ArmMixedBlock): seq[uint32] =
+  ## One explicit result kind and a constant completed-prefix count certify each native exit.
+  assert mixed.body.terminal.len > 0 and mixed.sites.len >= 2
+  result = @[0xaa0103f1'u32] # MOV X17,X1, retaining only this call's context.
+  var leading = 0
+  for slot in 0..<13:
+    if (mixed.body.reads and (1'u32 shl slot)) != 0:
+      result.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+      inc leading
+  for word in mixed.body.words: result.add(word)
+  for slot in 0..<13:
+    if (mixed.body.writes and (1'u32 shl slot)) != 0:
+      result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+  for word in mixed.body.terminal: result.add(word)
+  result.add(0xd2800021'u32) # Kind1: complete branch.
+  result.add(0xf9000221'u32) # STR X1,[X17].
+  result.add(0xd2800001'u32 or (mixed.lowered shl 5))
+  result.add(0xf9001221'u32) # Completed lowered operations, context word4.
+  result.add(0xd65f03c0'u32)
+  var exits: seq[int] = @[]
+  for site in mixed.sites:
+    exits.add(result.len)
+    result.add(0x9e660011'u32) # Restore context from D0 even if guard borrowed X17.
+    for slot in 0..<13:
+      if (site.writes and (1'u32 shl slot)) != 0:
+        result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+    armCompactImmediate(result, 0, uint64(site.operation))
+    result.add(0xd2800041'u32) # Kind2: paid interior.
+    result.add(0xf9000221'u32)
+    result.add(0xd2800001'u32 or (site.completed shl 5))
+    result.add(0xf9001221'u32)
+    result.add(0xd65f03c0'u32)
+  for fix in mixed.fixes:
+    let at = fix.at+leading+1
+    let distance = uint32(exits[fix.site]-at)
+    assert distance < 262144'u32
+    result[at] = if fix.condition == 16: 0x14000000'u32 or distance
+      else: 0x54000000'u32 or (distance shl 5) or fix.condition
+
 proc armReadRefusal(span: var ArmReadSpan, word: uint32, conditional: bool) =
   ## Every failed address/extent check branches to one final return without register stores.
   span.guards.add(ArmReadGuard(at: span.body.words.len, conditional: conditional))
@@ -527,6 +805,20 @@ proc armStartProbe*(jit: ArmJit, header: uint32) =
   assert jit.entries[int(header)].code < 2
   jit.entries[int(header)].operations = 8
 
+proc armStartMixedProbe*(jit: ArmJit, header, extent, ending: uint32): bool =
+  ## A proved ordinary mixed header may reuse only a nonexecutable refused-noop record.
+  if jit.unavailable or extent > 262144'u32 or header >= extent or
+      ending <= header or ending >= extent:
+    return false
+  if jit.entries.len < int(extent): jit.entries.setLen(int(extent))
+  let entry = jit.entries[int(header)]
+  if entry.code >= 2 or (entry.code == 1 and entry.ending != 0 and
+      entry.ending != ending): return false
+  jit.entries[int(header)].code = 1
+  jit.entries[int(header)].ending = ending
+  jit.entries[int(header)].operations = 8
+  true
+
 proc armFinishProbe*(jit: ArmJit, header: uint32): bool =
   ## Sealing after the eighth complete visit removes observation from the steady native dispatch.
   assert int(header) < jit.entries.len
@@ -616,6 +908,51 @@ proc callArmBranch*(jit: ArmJit, offset: uint32, registers: var RegisterFile): u
   inc jit.calls
   inc jit.branchCalls
   jit.operations+=uint64(entry.operations)
+
+proc callArmMixed*(jit: ArmJit, header: uint32, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var ArmMixedState): uint32 =
+  ## The checked header owns gas and attempt reservation; native owns only this body's prefix.
+  assert sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert int(header) < jit.entries.len and jit.entries[int(header)].code >= 2
+  let entry = jit.entries[int(header)]
+  state[0] = 0
+  state[1] = cast[uint64](addr regions)
+  state[2] = uint64(dirtyWords.len)
+  state[3] = 0
+  state[4] = 0
+  when defined(pvmArmMixedGroupReceipt):
+    state[5] = 0
+    state[6] = 0
+  if dirtyWords.len > 0: state[3] = cast[uint64](addr dirtyWords[0])
+  result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr state)
+  assert state[0] in [1'u64, 2'u64] and state[4] <= uint64(entry.operations)
+  inc jit.calls
+  inc jit.headerCalls
+  inc jit.mixedCalls
+  jit.operations+=state[4]
+  jit.mixedOperations+=state[4]
+  when defined(pvmArmMixedGroupReceipt):
+    jit.mixedGroupAttempts+=state[5]
+    jit.mixedGroupPasses+=state[6]
+  if state[0] == 1:
+    inc jit.branchCalls
+    inc jit.mixedCompleted
+  elif state[0] == 2: inc jit.mixedInterior
+
+func armMixedStatistics*(jit: ArmJit): array[4, uint64] =
+  [jit.mixedCalls, jit.mixedCompleted, jit.mixedInterior, jit.mixedOperations]
+
+proc armMixedPublishedGroups*(jit: ArmJit, count: uint32) =
+  ## Count only successfully published group windows in this private compiler cache.
+  jit.mixedGroupPublished+=uint64(count)
+
+func armMixedGroupStatistics*(jit: ArmJit): array[3, uint64] =
+  ## Optional native receipt leaves ordinary mixed counters and paid exits unchanged.
+  [jit.mixedGroupPublished, jit.mixedGroupAttempts, jit.mixedGroupPasses]
+
+func armMixedOperationCount*(jit: ArmJit, header: uint32): uint32 =
+  jit.entries[int(header)].operations
 
 
 type

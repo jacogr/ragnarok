@@ -3,6 +3,8 @@
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
 import std/[algorithm, assertions]
+when defined(pvmArmMixedGroupReceipt):
+  import std/syncio
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
@@ -43,6 +45,13 @@ type
     pc, next, sourceCount, priceIndex, nodeCount: uint32
     opcode: byte
     ending, fallthrough: bool
+  FlatMixedOp = object ## Cold source event; each destination write is retained independently.
+    memory, store, writes: bool
+    base, destination: uint32
+    displacement, width: uint32
+  FlatMixedGroup = object ## One stable base and one pointer lane absent from the entire guest body.
+    writable: bool
+    first, minDisp, maxEnd, lane: uint32
   FlatTarget = object ## Only genuine jump-table and block-membership validation supplies positive target facts.
     pc: uint32
     valid: bool
@@ -2181,6 +2190,236 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
 
+  proc flatArmMixed(f: var FlatFrame, header: uint32): uint32 =
+    ## The original checked header charges once; a guard exit resumes at its exact paid memory op.
+    assert f.armJit != nil and int(header) < f.armOriginal.len
+    let original = f.armOriginal[int(header)]
+    assert original != nil
+    let charge = f.arguments[int(header)]
+    var terminal = flatStop
+    var operationCount = 0'u32
+    block:
+      let jit = f.armJit
+      assert jit != nil
+      terminal = armEnding(jit, header)
+      operationCount = armMixedOperationCount(jit, header)
+    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
+        f.remaining < uint64(charge.y) or uint64(f.info.gas) < charge.x or
+        not flatArmCachedBranch(f, terminal):
+      return original(f, header)
+    flatReserve(f, header)
+    var state = default(ArmMixedState)
+    var next = flatStop
+    block:
+      let jit = f.armJit
+      assert jit != nil
+      next = callArmMixed(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
+    if state[0] == 1:
+      let branch = f.arguments[int(terminal)]
+      if next != uint32(branch.x shr 32) and next != branch.y:
+        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
+      if state[4] != uint64(operationCount):
+        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
+      f.info.blockCharged = false
+      return next
+    if state[0] == 2 and next > header and next < terminal and int(next) < f.sites.len:
+      let fact = f.plan.facts[int(f.sites[int(next)])]
+      if fact.opcode notin 120'u8..130'u8 or fact.ending or not fact.fallthrough:
+        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
+      var completed = 0'u64
+      for current in header+1..<next:
+        let prior = f.plan.facts[int(f.sites[int(current)])]
+        if prior.opcode in 120'u8..130'u8 or supportedArmOpcode(prior.opcode): inc completed
+      if state[4] != completed:
+        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
+      # The current stream worker may be fused or native; this immutable fact is the one-op checked worker.
+      return fact.handler(f, next)
+    flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
+
+  proc flatArmPublishMixed(f: var FlatFrame, header, terminal: uint32): bool =
+    let jit = f.armJit
+    assert jit != nil and flatArmCachedBranch(f, terminal)
+    # Plan from ordered source events, including repeated writes that an OR/XOR mask cannot prove absent.
+    var operations: seq[FlatMixedOp] = @[]
+    var used = 0'u32
+    for current in header+1..<terminal:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      let slots = fact.args.slots
+      used = used or (1'u32 shl int(slots.aIndex)) or
+          (1'u32 shl int(slots.bIndex)) or (1'u32 shl int(slots.destinationIndex))
+      var entry = default(FlatMixedOp)
+      if fact.opcode in 120'u8..130'u8:
+        entry.memory = true
+        entry.store = fact.opcode < 124
+        entry.base = uint32(slots.bIndex)
+        entry.writes = not entry.store
+        entry.destination = uint32(slots.aIndex)
+        entry.displacement = uint32(fact.args.x and 0xffffffff'u64)
+        entry.width = case fact.opcode
+          of 120, 124, 125: 1'u32
+          of 121, 126, 127: 2'u32
+          of 122, 128, 129: 4'u32
+          else: 8'u32
+      elif supportedArmOpcode(fact.opcode):
+        entry.writes = true
+        entry.destination = uint32(slots.destinationIndex)
+      else: return false
+      operations.add(entry)
+    let branch = f.plan.facts[int(f.sites[int(terminal)])]
+    let branchSlots = branch.args.slots
+    used = used or (1'u32 shl int(branchSlots.aIndex)) or
+        (1'u32 shl int(branchSlots.bIndex)) or
+        (1'u32 shl int(branchSlots.destinationIndex))
+    var groups = default(array[2, FlatMixedGroup])
+    var groupOf = default(array[16, int])
+    for index in 0..<16: groupOf[index] = -1
+    var groupCount = 0
+    for base in 0..<13:
+      if groupCount == 2: break
+      var first = -1
+      var last = -1
+      var count = 0
+      var minDisp = high(uint32)
+      var maxEnd = 0'u32
+      var writable = false
+      var valid = true
+      for index in 0..<operations.len:
+        let entry = operations[index]
+        if not entry.memory or entry.base != uint32(base): continue
+        if first < 0: first = index
+        last = index
+        inc count
+        if entry.displacement < minDisp: minDisp = entry.displacement
+        let end64 = uint64(entry.displacement)+uint64(entry.width)
+        if end64 > uint64(high(uint32)): valid = false
+        elif uint32(end64) > maxEnd: maxEnd = uint32(end64)
+        if entry.store: writable = true
+      if count < 2 or not valid or maxEnd-minDisp > 4096: continue
+      # A write at the first access still changes the base before the next member.
+      for index in first..<last:
+        if operations[index].writes and operations[index].destination == uint32(base):
+          valid = false
+          break
+      if not valid: continue
+      var lane = 0'u32
+      for candidate in 4'u32..16'u32:
+        let bit = 1'u32 shl int(candidate-4)
+        if (used and bit) == 0:
+          lane = candidate
+          used = used or bit
+          break
+      if lane == 0: continue
+      groups[groupCount] = FlatMixedGroup(writable: writable,
+          first: uint32(first), minDisp: minDisp,
+          maxEnd: maxEnd, lane: lane)
+      for index in first..last:
+        if operations[index].memory and operations[index].base == uint32(base):
+          groupOf[index] = groupCount
+      inc groupCount
+    if groupCount == 0: return false # Retain the accepted checked header when no window exists.
+    var mixed = newArmMixedBody()
+    for current in header+1..<terminal:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      if fact.opcode in 120'u8..130'u8:
+        assert fact.opcode >= 120 and fact.opcode <= 130
+        let index = int(current-header-1)
+        let groupIndex = groupOf[index]
+        if groupIndex >= 0:
+          let group = groups[groupIndex]
+          emitArmMixedWindowMemory(mixed, range[120..130](fact.opcode), fact.args.slots,
+              uint32(fact.args.x and 0xffffffff'u64), current, group.minDisp,
+              group.maxEnd, group.lane, uint32(index) == group.first, group.writable)
+        else:
+          emitArmMixedMemory(mixed, range[120..130](fact.opcode), fact.args.slots,
+              uint32(fact.args.x and 0xffffffff'u64), current)
+      elif supportedArmOpcode(fact.opcode):
+        emitArmMixedPure(mixed, fact.opcode, fact.args.slots, fact.args.x)
+      else: return false
+    let args = f.arguments[int(terminal)]
+    emitArmMixedBranch(mixed, branch.opcode, args.slots,
+        flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
+    var words = armMixedInstructions(mixed)
+    if words.len >= 1024:
+      when defined(pvmArmMixedGroupReceipt):
+        echo "ARM_MIXED_GROUP_OVERSIZE,", f.plan.facts[int(f.sites[int(header)])].pc, ",",
+            branch.pc, ",", groupCount, ",", words.len
+      return false
+    let published = publishArmEntry(jit, header, terminal, armMixedLowered(mixed), words)
+    if published:
+      armMixedPublishedGroups(jit, uint32(groupCount))
+      when defined(pvmArmMixedGroupReceipt):
+        echo "ARM_MIXED_GROUP_PUBLISH,", f.plan.facts[int(f.sites[int(header)])].pc, ",",
+            branch.pc, ",", groupCount
+    published
+
+  proc flatArmMixedProbe(f: var FlatFrame, header: uint32): uint32 =
+    ## Count only source-owned header visits after both conditional arms have checked certificates.
+    let jit = f.armJit
+    assert jit != nil and int(header) < f.armOriginal.len
+    let original = f.armOriginal[int(header)]
+    assert original != nil
+    let terminal = armEnding(jit, header)
+    if f.pricingKind == 0 and f.barrier == flatStop and not f.info.blockCharged and
+        f.remaining >= uint64(f.arguments[int(header)].y) and
+        uint64(f.info.gas) >= f.arguments[int(header)].x and
+        flatArmCachedBranch(f, terminal) and armFinishProbe(jit, header):
+      let before = armClock()
+      let published = flatArmPublishMixed(f, header, terminal)
+      jit.compilationNs+=armClock()-before
+      if published:
+        f.handlers[int(header)] = flatArmMixed
+        return flatArmMixed(f, header)
+      f.handlers[int(header)] = original
+    original(f, header)
+
+  proc flatArmTryMixedProbe(f: var FlatFrame, terminal: uint32) =
+    ## Discover one general mixed source block when its terminal first enters the sealed stream.
+    if int(terminal) >= f.sites.len: return
+    let ending = f.plan.facts[int(f.sites[int(terminal)])]
+    if not ending.ending or ending.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
+      return
+    var header = flatStop
+    var candidate = terminal
+    while candidate > 0 and terminal-candidate < 16:
+      dec candidate
+      if f.handlers[int(candidate)] != flatCharge: continue
+      let charge = f.arguments[int(candidate)]
+      if charge.y == 0 or charge.y > 16: continue
+      let source = f.sites[int(candidate)]
+      let sourceEnd = uint64(source)+uint64(charge.y)
+      if sourceEnd != uint64(f.sites[int(terminal)])+1 or
+          sourceEnd > uint64(f.plan.facts.len) or sourceEnd > uint64(high(uint32)) or
+          f.plan.facts[int(source)].sourceCount != charge.y: continue
+      # A folded noop has no body node. Every remaining node must cover this exact
+      # ordinary header's ordered source facts, ending at the observed branch.
+      var node = candidate+1
+      var valid = true
+      for ordinal in source..<uint32(sourceEnd):
+        if f.plan.facts[int(ordinal)].opcode == 2: continue
+        if node > terminal or f.sites[int(node)] != ordinal:
+          valid = false
+          break
+        inc node
+      if valid and node == terminal+1:
+        header = candidate
+        break
+    if header == flatStop or terminal <= header+2: return
+    var loads = 0
+    var stores = 0
+    for current in header+1..<terminal:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      if fact.ending or not fact.fallthrough: return
+      if fact.opcode in 120'u8..123'u8: inc stores
+      elif fact.opcode in 124'u8..130'u8: inc loads
+      elif not supportedArmOpcode(fact.opcode): return
+    if loads < 1 or stores < 1 or loads+stores < 2 or loads+stores > 16: return
+    let jit = f.armJit
+    if jit == nil or not armStartMixedProbe(jit, header, uint32(f.handlers.len),
+        terminal): return
+    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
+    f.armOriginal[int(header)] = flatCharge
+    f.handlers[int(header)] = flatArmMixedProbe
+
   proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool =
     ## Rebuild immutable arithmetic facts only after both existing scalar branch arms are admitted; no pricing/resolve is moved.
     let jit = f.armJit
@@ -2354,6 +2593,17 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     if jit == nil: default(array[3, uint64])
     else: armDirtyLoopStatistics(jit)
+
+  proc flatArmMixedStatistics*(f: FlatFrame): array[4, uint64] =
+    let jit = f.armJit
+    if jit == nil: default(array[4, uint64])
+    else: armMixedStatistics(jit)
+
+  proc flatArmMixedGroupStatistics*(f: FlatFrame): array[3, uint64] =
+    ## Private publication/guard activity, with no retained invocation memory.
+    let jit = f.armJit
+    if jit == nil: default(array[3, uint64])
+    else: armMixedGroupStatistics(jit)
 
   proc flatArmDirtyWordGroups*(f: FlatFrame): uint64 =
     let jit = f.armJit
@@ -2606,6 +2856,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     while int(offset) < f.handlers.len:
       let ending = flatArmCompile(f, offset)
       offset = if ending > offset: ending else: offset+1
+    for candidate in origin..<uint32(f.handlers.len): flatArmTryMixedProbe(f, candidate)
     let jit = f.armJit
     if jit != nil: jit.compilationNs+=armClock()-before
 
