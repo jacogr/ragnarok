@@ -1,10 +1,11 @@
 # ARM64 grouped memory and paid continuation
 
-**Qualification pending.** Paid interior continuation is a concrete architectural
-gain and does not require a DOOM speedup to justify adoption. Broader exact-source
-local measurements now show a repeatable DOOM tick improvement and regressions
-in several other workloads. Readiness depends on correctness, those tradeoffs
-and focused Linux qualification; flat DOOM alone is not a veto.
+**Linux performance hold.** Paid interior continuation is a concrete architectural
+gain, and flat DOOM would be acceptable. Correctness qualification passes, but
+Linux ARM fresh-process repeats show a4.23% DOOM tick regression alongside larger
+minimal/Pinky costs. The positive local M1 result does not generalize to Linux.
+Retain the machinery while investigating repeated hot-header/admission cost;
+these measured regressions, rather than flat timing, prevent readiness.
 
 ## Scope and authority
 
@@ -196,6 +197,44 @@ workloads. Exit compaction reduces code size without removing measured work.
 The local DOOM improvement and smaller-workload regressions persist; neither
 should be hidden by the architectural case. Raw evidence is preserved under
 `build/pvm-mixed-memory/evidence/reassessment/followup-f0ce1d01/`. One focused
-Linux ARM replay run qualifies this runtime; no broad CI labels were requested.
+Linux ARM replay run completed for this runtime; its results are recorded below.
+No broad CI labels were requested.
 A follow-up enabling the same admission checks in the existing ordinary CI
 witness receipt changes diagnostic coverage only, not the timing configuration.
+
+
+## Linux ARM qualification and performance hold
+
+[Run 41282897012](https://github.com/jacogr/ragnarok/actions/runs/41282897012)
+qualifies runtime f0 against a099 with the pinned checked ARC/Clang ThinLTO toolchain.
+All 20 builds, 84 primary processes, 138 controls and 60 fresh-process replays pass.
+The owner and reviewer independently verified artifact 13073778241 ZIP digest:
+`8fb78a5cc1993343867bf5d2978aa104dbb2990dd16b6fd69d8ffeab9a843672`.
+Full evidence is retained under ignored `build/pvm-mixed-memory/ci-41282897012/`.
+
+Each replay role/case has six fresh processes with 13 checked calls each. The first
+three calls are warmup; values below are medians across steady process medians.
+
+| Workload | Parent ms | Candidate ms | Change |
+| --- | ---: | ---: | ---: |
+| DOOM tick | 27.915406 | 29.094872 | +4.23% |
+| DOOM init | 235.105442 | 236.634450 | +0.65% |
+| Minimal | 5.309608 | 5.887812 | +10.89% |
+| Pinky | 81.265020 | 87.799760 | +8.04% |
+| Sieve10m | 282.814182 | 272.973038 | -3.48% |
+
+DOOM tick candidate processes span 28.916744–29.125268ms, entirely above parent
+27.820040–28.037060ms. Primary forward/reverse public native tick is 29.111/29.105ms
+versus 27.981/27.991ms parent; the raw ours/PolkaVM-interpreted ratio is 0.727/0.725.
+These public calls include invocation memory and immutable publication. Reference
+raw calls and separately reported invocation lifecycle retain their distinct
+accounting; retained-core reset/call values are not public-call ratios.
+
+Additional coverage does not uniformly reduce transitions. Pinky native calls
+grow 38,430,574→45,188,334. Minimal retains 1,300,039calls but adds mixed whole-header
+work. DOOM native calls fall 16,066,627→15,973,728 while code grows 175,428→223,956bytes.
+These are activity receipts, not proof of the causal CPU cost. Readiness remains
+on hold while one isolated experiment tests repeated post-publication branch
+certification; no CPU improvement is inferred from activity counts alone. No additional CI
+was requested for this verdict update. The existing paid continuation, alias, resource and
+source-accounting correctness findings remain positive.
