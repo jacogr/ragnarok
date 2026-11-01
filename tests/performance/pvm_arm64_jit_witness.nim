@@ -1471,19 +1471,45 @@ for start in [0'u64, 11, 24]:
     when defined(pvmArm64JitRefuse): assert transferred[0] == 0
     else: assert transferred[0] > 1
   for policy in [0, 1]:
-    # Cached connected code cannot bypass a different complete/lazy pricing owner selected on this same frame.
+    # Select pricing before emission, then prove a default-priced connected stream is discarded on restore.
     let complete = newGasPlan(regionProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
         blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
     assert complete.error == GasPlanError.None
     let lazy = newGasMemo(regionProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
         cycles: GasCycleLimit(100000)))
     assert lazy.error == GasMemoError.None
-    if policy == 0: assert selectFlatPrices(fresh, complete.value, default(GasMemo)) == StepError.None
-    else: assert selectFlatPrices(fresh, default(GasPlan), lazy.value) == StepError.None
+    let unchangedInfo = fresh.info
+    let unchangedRemaining = fresh.remaining
     when defined(pvmArm64Jit):
-      let before = flatArmRegionStatistics(fresh)
-    verifyControl(fresh, regionProgram, info, 1000)
-    when defined(pvmArm64Jit): assert flatArmRegionStatistics(fresh) == before
+      let unchangedNative = flatArmStatistics(fresh)
+      let unchangedRegion = flatArmRegionStatistics(fresh)
+    if policy == 0:
+      assert selectFlatPrices(fresh, complete.value, default(GasMemo)) ==
+          StepError.InvalidPreparedProgram
+    else:
+      assert selectFlatPrices(fresh, default(GasPlan), lazy.value) ==
+          StepError.InvalidPreparedProgram
+    assert fresh.info.pc == unchangedInfo.pc and fresh.info.gas == unchangedInfo.gas and
+        fresh.info.blockCharged == unchangedInfo.blockCharged and
+        fresh.info.registers == unchangedInfo.registers and fresh.remaining == unchangedRemaining
+    when defined(pvmArm64Jit):
+      assert flatArmStatistics(fresh) == unchangedNative and
+          flatArmRegionStatistics(fresh) == unchangedRegion
+    var source = newFlatFrame(plan, [], info)
+    verifyControl(source, regionProgram, info, 1000)
+    var pricedStream = takeFlatStream(source)
+    assert streamNodes(pricedStream) > 0
+    var priced = newFlatFrame(plan, [], info)
+    if policy == 0: assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
+    else: assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
+    restoreFlatStream(priced, pricedStream)
+    assert streamNodes(pricedStream) == 0
+    var discarded = takeFlatStream(priced)
+    assert streamNodes(discarded) == 0
+    when defined(pvmArm64Jit):
+      let before = flatArmRegionStatistics(priced)
+    verifyControl(priced, regionProgram, info, 1000)
+    when defined(pvmArm64Jit): assert flatArmRegionStatistics(priced) == before
     inc regionCases
   checkFlatSource(fresh, [])
 echo "ARM_REGION_CASES,", regionCases
@@ -1619,18 +1645,27 @@ for boundary in 0..<3:
     when defined(pvmArm64JitRefuse): assert flatArmRegionStatistics(freshPair) == before
     else: assert flatArmRegionStatistics(freshPair)[0] > before[0]
   for policy in [0, 1]:
-    # A retained connected image never bypasses an explicitly selected complete or lazy price owner.
+    # A fresh policy owner discards a default-priced connected image before any handler is emitted.
     let complete = newGasPlan(pairProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
         blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
     let lazy = newGasMemo(pairProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
         cycles: GasCycleLimit(100000)))
     assert complete.error == GasPlanError.None and lazy.error == GasMemoError.None
-    if policy == 0: assert selectFlatPrices(freshPair, complete.value, default(GasMemo)) == StepError.None
-    else: assert selectFlatPrices(freshPair, default(GasPlan), lazy.value) == StepError.None
+    var source = newFlatFrame(pairPlan, [], pairWarm)
+    verifyControl(source, pairProgram, pairWarm, 100)
+    var pricedStream = takeFlatStream(source)
+    assert streamNodes(pricedStream) > 0
+    var priced = newFlatFrame(pairPlan, [], pairWarm)
+    if policy == 0: assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
+    else: assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
+    restoreFlatStream(priced, pricedStream)
+    assert streamNodes(pricedStream) == 0
+    var discarded = takeFlatStream(priced)
+    assert streamNodes(discarded) == 0
     when defined(pvmArm64Jit):
-      let beforePolicy = flatArmRegionStatistics(freshPair)
-    verifyControl(freshPair, pairProgram, pairWarm, 100)
-    when defined(pvmArm64Jit): assert flatArmRegionStatistics(freshPair) == beforePolicy
+      let beforePolicy = flatArmRegionStatistics(priced)
+    verifyControl(priced, pairProgram, pairWarm, 100)
+    when defined(pvmArm64Jit): assert flatArmRegionStatistics(priced) == beforePolicy
     inc pairControlCases
 echo "ARM_TWO_BLOCK_CONTROL_CASES,", pairControlCases
 
@@ -2331,13 +2366,13 @@ when defined(pvmArm64Jit) and (defined(pvmArmMixedGroupReceipt) or
     assert (if policy == 0: observers > 0 else: observers == 0)
     echo "ARM_MIXED_PRICED_PROBES,", policy, ",", observers
     if policy != 0:
-      # A prepared owner may retain an unpromoted unpriced observer before the next invocation chooses prices.
+      # A priced frame discards even an unpromoted default-priced observer before execution.
       var unpriced = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)
       verifyControl(unpriced, mixedProgram, mixedInfo, 10, [mixedPage, mixedSecond])
       assert flatArmMixedProbes(unpriced) > 0
       var retained = takeFlatStream(unpriced)
       restoreFlatStream(admission, retained)
-      assert flatArmMixedProbes(admission) > 0
+      assert streamNodes(retained) == 0 and flatArmMixedProbes(admission) == 0
       verifyControl(admission, mixedProgram, mixedInfo, 123, [mixedPage, mixedSecond])
       assert flatArmMixedProbes(admission) == 0
       echo "ARM_MIXED_RETAINED_PRICED_PROBES,", policy, ",0"

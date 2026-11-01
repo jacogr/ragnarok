@@ -749,17 +749,43 @@ for start in [0'u64, 11, 24]:
   restoreFlatStream(fresh, cache)
   verifyThreeControl(fresh, threeProgram, replacement, 1000)
   for policy in [0, 1]:
-    # A retained native root never bypasses complete or lazy pricing selected on the fresh invocation.
+    # Select pricing before emission, then prove a retained default-priced root is discarded on restore.
     let complete = newGasPlan(threeProgram, GasPlanLimits(bytes: GasPlanByteLimit(65536),
       blocks: GasPlanBlockLimit(1024), cycles: GasCycleLimit(100000)))
     let lazy = newGasMemo(threeProgram, GasMemoLimits(bytes: GasMemoByteLimit(65536),
         cycles: GasCycleLimit(100000)))
     assert complete.error == GasPlanError.None and lazy.error == GasMemoError.None
-    if policy == 0: assert selectFlatPrices(fresh, complete.value, default(GasMemo)) == StepError.None
-    else: assert selectFlatPrices(fresh, default(GasPlan), lazy.value) == StepError.None
-    let before = flatX86RegionStatistics(fresh)
-    verifyThreeControl(fresh, threeProgram, info, 1000)
-    assert flatX86RegionStatistics(fresh) == before
+    let unchangedInfo = fresh.info
+    let unchangedRemaining = fresh.remaining
+    when defined(pvmX86Jit):
+      let unchangedNative = flatX86Statistics(fresh)
+      let unchangedRegion = flatX86RegionStatistics(fresh)
+    if policy == 0:
+      assert selectFlatPrices(fresh, complete.value, default(GasMemo)) ==
+          StepError.InvalidPreparedProgram
+    else:
+      assert selectFlatPrices(fresh, default(GasPlan), lazy.value) ==
+          StepError.InvalidPreparedProgram
+    assert fresh.info.pc == unchangedInfo.pc and fresh.info.gas == unchangedInfo.gas and
+        fresh.info.blockCharged == unchangedInfo.blockCharged and
+        fresh.info.registers == unchangedInfo.registers and fresh.remaining == unchangedRemaining
+    when defined(pvmX86Jit):
+      assert flatX86Statistics(fresh) == unchangedNative and
+          flatX86RegionStatistics(fresh) == unchangedRegion
+    var source = newFlatFrame(plan, [], info)
+    verifyThreeControl(source, threeProgram, info, 1000)
+    var pricedStream = takeFlatStream(source)
+    assert streamNodes(pricedStream) > 0
+    var priced = newFlatFrame(plan, [], info)
+    if policy == 0: assert selectFlatPrices(priced, complete.value, default(GasMemo)) == StepError.None
+    else: assert selectFlatPrices(priced, default(GasPlan), lazy.value) == StepError.None
+    restoreFlatStream(priced, pricedStream)
+    assert streamNodes(pricedStream) == 0
+    var discarded = takeFlatStream(priced)
+    assert streamNodes(discarded) == 0
+    let before = flatX86RegionStatistics(priced)
+    verifyThreeControl(priced, threeProgram, info, 1000)
+    assert flatX86RegionStatistics(priced) == before
     inc threeControls
 stdout.writeLine("X86_CHECKED_THREE_SOURCE_CASES," & $threeControls)
 stdout.writeLine("X86_EXISTING_ROOT_SOURCE_CASES," & $existingRootControls)
