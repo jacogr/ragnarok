@@ -49,7 +49,8 @@ sections do not describe the current implementation.
 
 The [grouped-memory work](pvm-arm-grouped-memory.md) adds paid interior continuation
 and is under qualification following architecture review.
-Its paid-interior/window machinery has local correctness evidence but no demonstrated DOOM gain.
+Its paid-interior machinery has a positive architecture review; local measurements
+show a DOOM tick gain alongside microbenchmark regressions, pending Linux qualification.
 
 Both local comparison helpers default to a frozen current HEAD, so a clean checkout gets an
 A/A source-and-image control without needing an old draft object. To compare a prior JIT commit,

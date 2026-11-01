@@ -2604,7 +2604,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: default(array[4, uint64])
     else: armMixedStatistics(jit)
 
-  when defined(pvmArmMixedGroupReceipt):
+  when defined(pvmArmMixedGroupReceipt) or defined(pvmArmDirtyLoopOwnerReceipt):
     proc flatArmMixedProbes*(f: FlatFrame): uint64 =
       ## Diagnostic active admission work distinguishes an ineligible probe from ordinary checked execution.
       result = 0

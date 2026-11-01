@@ -2273,8 +2273,8 @@ mixedRegisters[7] = RegisterValue(69630)
 mixedRegisters[8] = RegisterValue(0x1122334455667788'u64)
 let mixedInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
     registers: mixedRegisters)
-when defined(pvmArm64Jit) and defined(pvmArmMixedGroupReceipt) and
-    not defined(pvmArm64JitRefuse):
+when defined(pvmArm64Jit) and (defined(pvmArmMixedGroupReceipt) or
+    defined(pvmArmDirtyLoopOwnerReceipt)) and not defined(pvmArm64JitRefuse):
   for policy in 0..<3:
     # The same mixed source must observe eligible unpriced work, while priced work has no permanent observer.
     var admission = newFlatFrame(mixedPlan, [mixedPage, mixedSecond], mixedInfo)

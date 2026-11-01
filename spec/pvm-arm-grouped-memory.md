@@ -77,7 +77,8 @@ interpreted witnesses locally. After review fixes, ordinary and receipt-instrume
 native witnesses pass. A new active-probe receipt reproduces the priced admission
 bug before the fix, then verifies fresh and retained-stream complete/lazy priced
 execution installs or retains no observer; eligible unpriced work is its positive
-control. The
+control. These cases also run under the existing CI owner-receipt mode, without
+an additional test lane. The
 original ARM witness remains intact. Added literal/checked-machine cases cover:
 
 - Aliasing store/read/store, unused guest-slot preservation and repeated base
@@ -175,3 +176,26 @@ qualification. Review found no further memory/accounting/pointer-lifetime defect
 shared opcode/table lowering remains a possible maintenance simplification.
 The architectural benefit does not erase measured costs, and future multi-block
 resident execution still needs charging/exit/register-liveness integration.
+
+
+## Reviewed-runtime follow-up
+
+Exact corrected runtime `f0ce1d010091e02cf09e1883f80b65c90e8680f9` was compared
+with the same accepted a099 images: four workloads, two balanced ABBA cycles,
+32 native processes with13 complete-state-checked calls each. All pass.
+
+| Workload | Candidate CPU change, cycle0 /1 | Emitted bytes, a18 / f0 |
+| --- | ---: | ---: |
+| Sieve10m | +1.04% / +0.97% | 469,016 / 457,376 |
+| Minimal | +5.92% / +3.83% | 2,704 / 2,592 |
+| Pinky | +3.89% / +3.68% | 229,920 / 221,088 |
+| DOOM tick | -4.54% / -4.37% | 231,692 / 223,956 |
+
+Fragment/call/lowered-operation/branch/header counters match a18 for these
+workloads. Exit compaction reduces code size without removing measured work.
+The local DOOM improvement and smaller-workload regressions persist; neither
+should be hidden by the architectural case. Raw evidence is preserved under
+`build/pvm-mixed-memory/evidence/reassessment/followup-f0ce1d01/`. One focused
+Linux ARM replay run qualifies this runtime; no broad CI labels were requested.
+A follow-up enabling the same admission checks in the existing ordinary CI
+witness receipt changes diagnostic coverage only, not the timing configuration.
