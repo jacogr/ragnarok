@@ -131,7 +131,7 @@ tick 33.706→30.318ms (-10.05%); these have less replication than the JIT repla
 Matched primary raw-call ratios, ours / PolkaVM interpreted, are **0.631 JIT / 0.755 interpreter**
 for tick and **0.238 JIT / 0.517 interpreter** for init. These use primary numerators and their
 matching primary reference, not a replay numerator paired with another cohort's denominator.
-Primary memset improves 14.88% in JIT and 14.43% in the interpreter; it has no six-process replay.
+Primary memset improves 14.66% in JIT and 15.96% in the interpreter; it has no six-process replay.
 
 This supports enabling bounded reuse by default. It retains idle private buffers plus a baseline
 reference, trading memory residency for avoiding repeated allocation/copying. DOOM's 4,285
