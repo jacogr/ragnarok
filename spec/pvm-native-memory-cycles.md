@@ -75,8 +75,8 @@ Eligible graphs additionally select fresh complete and lazy pricing owners befor
 warmed default-native stream; full-state parity and zero driver activity are required.
 
 The promoted source additionally retains repaired-master cache ownership and pricing-selection
-contracts. The complete promoted-source qualification and focused Linux evidence must be recorded
-on the PR before readiness; prototype measurements below are not an exact-head Linux verdict.
+contracts. The promoted-source qualification and focused Linux evidence are recorded below; the local
+prototype measurements retain their separate source identity.
 
 ## Local ARM application evidence
 
@@ -117,3 +117,56 @@ Initial tick raw SHA-256:
 `53702f61edf9d44e9d8819526839653ea607e22ad7e10157b6046225115e331a`.
 Broader raw SHA-256:
 `805332859e70ce4fd2e465f2dd2634977ca0f04d8c0da8b94d28f86c9d60a898`.
+
+
+## Promoted Linux ARM qualification
+
+[Focused ARM run 41337664624](https://github.com/jacogr/ragnarok/actions/runs/41337664624) passes
+at runtime/test/controller head `e38fa0ab2c56ea18f565eca2c36b55ea823809e1`, against merged parent
+`7cc87ed192c78d0af28b70eef0eea87dc34a20c3`, with interpreted pairing enabled and no broad CI
+labels. The automatic [Smoke run 41337592297](https://github.com/jacogr/ragnarok/actions/runs/41337592297)
+also passes. Evidence-only documentation updates preserve those qualified runtime identities.
+
+Each application process contains thirteen complete-state public calls; CPU process medians use
+samples 3:13. The JIT replay cohort contains six fresh processes per source role. The separate
+primary interpreter cohort contains two per role. Keep these cohorts separate.
+
+| Workload / JIT replay | Baseline CPU ms | Candidate CPU ms | Change |
+|---|---:|---:|---:|
+| DOOM tick | 23.719 | 21.639 | -8.77% |
+| DOOM init | 145.724 | 145.126 | -0.41% |
+| Minimal | 5.274 | 5.260 | -0.26% |
+| Pinky | 81.235 | 81.616 | +0.47% |
+| Sieve 10m | 271.312 | 266.856 | -1.64% |
+
+DOOM tick and sieve improve in all six pairs with nonoverlapping ranges. Pinky is slower in all
+six pairs with nonoverlapping ranges: retain that cost. Init improves in all six pairs with
+source ranges overlapping; minimal improves in four, also with overlap. Primary memset changes
+by -0.14% JIT / -0.48% interpreter. Primary interpreted DOOM tick changes from 28.672 to 27.780 ms
+(-3.11%, both pairs faster), and init by -0.38%. No cause for interpreted timing changes is
+established by this native-only implementation.
+
+Matched **primary** raw DOOM ratios, ours / PolkaVM interpreted, are **0.541 JIT / 0.693
+interpreter** for tick and **0.233 / 0.509** for init. These numerators and denominators belong
+to the same primary cohort; replay timings are not mixed into raw ratios.
+
+Across the thirteen tick calls, outer native entries change from 15,973,728 to 10,988,287;
+native guest operations rise from 161,636,087 to 174,947,995. Publications change from 996 to
+997 and code from 223,884 to 224,388 bytes. This intentional added prefix coverage is distinct
+from a semantic mismatch. Every native activity/code field is deterministic within its source
+role, including all replays; interpreted native counters remain zero.
+
+Independent audits verify all 144 primary/replay process logs, 42 positive and 96 negative
+controls, 18 image equalities, 24 fixture identities, all 2,575 application role source hashes
+and 519 native hashes. The native gate retains eleven verification records, both pricing-policy
+suites and move/copy refusal checks; new backend receipts are 19 native / 1 forced-refusal and
+Frame controls are 7,236 in each mode. The 15 affected mocked receipt tests pass as well.
+
+Artifact `13096671553`, `pvm-comparison-arm64-1`, is preserved in ignored
+`build/pvm-native-memory-chain/ci-arm/`. Application report SHA-256:
+`b1ca3214eab6bd61b802dd59830722d3954c20da0173b18b0a8015462f3ff6dd`.
+Native report SHA-256:
+`ce730c7eeec79893e533f71ae1c5d0d3e214435accf28350a0a1a94a799e8fca`.
+Original ZIP SHA-256:
+`2561deea39eefffc01c8964098ea50ef26e1e1304fdc18ef10e71feef3fb71a0`.
+No x86 or full-block throughput claim follows.
