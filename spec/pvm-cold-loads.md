@@ -84,3 +84,46 @@ Final broader raw SHA-256:
 `15f77fd50b2e3a525a8155327bb2f5a14343340101aae5d132c7acc499743838`.
 Measured and formatted `handler_stream.nim` SHA-256:
 `20196ecd0c495c3b3bb6226df4647cfe974aed5e0b77bb43b3724710e66e9bb3`.
+
+## Focused Linux ARM qualification
+
+Exact runtime head `6c39d0f639ecff3bad12686407e92e09ebfc24f4` passed the single-runner
+[ARM replay run 41327029467](https://github.com/jacogr/ragnarok/actions/runs/41327029467)
+against master `529f9d6bfda20b7189d9840e2e72912089ead0d2`.
+Artifact `pvm-comparison-arm64-1` has ID `13092570831`. No broad CI labels were added.
+
+Six fresh JIT processes per source role each execute thirteen checked public calls. Process
+values are CPU medians over samples 3:13; the table takes the median across six process values.
+
+| Workload | Baseline CPU ms | Candidate CPU ms | Change | Faster pairs |
+|---|---:|---:|---:|---:|
+| DOOM init | 146.946 | 145.323 | -1.10% | 6/6 |
+| DOOM tick | 23.911 | 23.987 | +0.32% | 1/6 |
+| Minimal | 5.555 | 5.221 | -6.02% | 6/6 |
+| Pinky | 82.484 | 80.834 | -2.00% | 6/6 |
+| Sieve 10m | 269.716 | 272.932 | +1.19% | 0/6 |
+
+Init, minimal and Pinky ranges do not overlap. Sieve's slower ranges also do not overlap:
+this is an observed JIT cost, reversing the direction of the local Sieve screen. JIT DOOM tick
+has a small slower point estimate with five of six pairs slower and overlapping ranges;
+this is not a JIT DOOM speedup. No causal attribution to function layout is established.
+
+The primary interpreted cohort has **two processes per source role**, separately from the
+six-process JIT replay. DOOM tick is **29.981 to 28.261 ms (-5.74%)**, with both pairs improving;
+init is **320.517 to 318.889 ms (-0.51%)**. Other primary interpreter changes are minimal -9.49%,
+Pinky -4.63% and Sieve -3.24%. Primary memset changes are -1.23% JIT / -1.04% interpreter.
+These smaller cohorts do not have the JIT replay's replication strength.
+Matched primary raw ratios, ours / PolkaVM interpreted, are **0.599 JIT / 0.706 interpreter**
+for DOOM tick, and **0.232 / 0.509** for init. No replay numerator is mixed into these ratios.
+
+The interpreter DOOM benefit, removal of resumable hot-load calls and other control-workload
+gains justify this increment with the JIT Sieve regression and small JIT tick point cost
+explicitly retained. Author and independent reviewer audits pass all 144 primary/replay logs,
+138 controls, 18 image equalities, 14 cross-source native activity/code comparisons, source
+identities and complete-state checks. Native code bytes and execution work remain unchanged;
+interpreted native counters remain zero. The final evidence-only commit changes no runtime.
+No x86 or full-block throughput claim follows.
+
+Ignored independent author audit: `build/pvm-memory-cold-tail/ci-arm-audit.json`.
+Artifact report SHA-256:
+`a0c87f1f0563bf517652b17718f9428ddb5819c008aa8c17d9a8bbfe1fbddbf8`.
