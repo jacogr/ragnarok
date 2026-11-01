@@ -63,8 +63,7 @@ Public interpreter/JIT calls include their invocation ownership and checkpoint w
 
 DOOM initialization improves substantially. JIT tick process ranges overlap; its small point
 estimate does not establish a speedup. Micro point estimates regress by 0.4–1.6%, including
-nonoverlapping sieve process ranges. These costs remain part of the tradeoff. Linux qualification
-is required before treating this local result as portable performance evidence.
+nonoverlapping sieve process ranges. These costs remain part of the tradeoff. The Linux qualification below provides the separate portable comparison.
 
 A separate single-executable policy control compares 64-entry blocks with one full-sized
 reference block. It gives init 188.826→119.232ms (-36.86%) and tick 17.332→17.351ms (+0.11%).
@@ -79,3 +78,45 @@ Policy-control raw JSON SHA-256:
 the kernel binary is identical; all loaded DOOM code/data sections and addresses are identical
 except three assertion diagnostic line-number digits. The first strict full-file comparison
 failure is preserved in `formatted-first-image.json`.
+
+
+## Linux ARM qualification
+
+[Focused run 41296206338](https://github.com/jacogr/ragnarok/actions/runs/41296206338)
+qualifies runtime commit `43db1a8a6f7db3e9dde8d929ebdd4bf6ba56478c` against the same
+`2e6f9bfe04d52755cff49438d271b3eb743b9533` baseline. All 20 builds, 84 primary runs,
+138 declared positive/refusal controls and 60 process replays pass. Fresh reparsing reproduces
+all 144 primary/replay records. Fourteen cross-source native activity pairs match exactly apart
+from compilation time; explicit interpreted policies retain zero native activity. The independent
+review also verifies frozen fixtures, direct/dirty/word/mixed/priced controls and stream/frame moves.
+
+Six fresh replay processes per JIT role, process medians of samples 3:13:
+
+| Workload | Baseline ms | Candidate ms | Change |
+|---|---:|---:|---:|
+| DOOM init | 235.639 | 148.213 | -37.10% |
+| DOOM tick | 27.953 | 28.100 | +0.52% |
+| Minimal | 5.619 | 5.583 | -0.64% |
+| Pinky | 84.052 | 84.269 | +0.26% |
+| Sieve 10m | 274.156 | 283.852 | +3.54% |
+
+Tick process ranges overlap (baseline 27.651–28.195ms, candidate 27.664–28.312ms), with
+mixed paired directions. All six long-sieve candidate processes are slower. The primary
+interpreted cohort has only two fresh processes per role: init improves 20.89%, while tick
+regresses 2.73% (31.648/32.148→32.525/33.016ms). This observed interpreter tick cost is part
+of the tradeoff and has less process replication than the JIT replay result.
+
+Primary raw DOOM tick ratios to PolkaVM interpreted are 0.698 JIT and 0.818 interpreter;
+init ratios are 0.236 and 0.518. These use the primary cohort and its established call lifecycle,
+not a replay numerator combined with another cohort's denominator.
+
+The implementation is accepted as a substantial checkpoint/initialization improvement with
+explicit tick/interpreter/sieve costs. It does not establish a uniform execution speedup. Future
+work should preserve the immutable sharing benefit while reducing entry and fragmented-region
+costs. This qualification uses one focused ARM runner and no broad verification label.
+
+Artifact `pvm-comparison-arm64-1`, ID `13079423649`; application report SHA-256:
+`01e91028d93c85a9b67d2dad66615eb1b17777deb12a69753faf556fcab179a5`.
+Independent [source review](https://github.com/jacogr/ragnarok/pull/1879#issuecomment-6556723020)
+and subsequent artifact audit found no correctness, ownership or refusal defect. Later changes
+are verdict/documentation only; runtime and fixture sources remain those of the qualified commit.
