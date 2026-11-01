@@ -105,6 +105,14 @@ class NimonyCISafeguards(unittest.TestCase):
             selected = set(scheduled_targets(text, event_context('pull_request', 'labeled', label)))
             self.assertEqual({s for s in selected if not s.startswith('summary-')},
                              {'check-smoke'} if label == 'lgtm' else set())
+        tooling = event_context('workflow_dispatch', suite='tooling')
+        selected = scheduled_targets(text, tooling)
+        self.assertEqual(set(selected) & required,
+                         {'check-python', 'check-models', 'check-guards'})
+        self.assertEqual(selected.count('check-python'), 1)
+        families = selected_families(text, 'build', tooling)
+        self.assertEqual(len(families), 1)
+        self.assertEqual(families[0]['group'], 'python')
         focused = {
             'unit': {'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards', 'check-unit'},
             'docker': {'check-docker'}, 'e2e': {'check-e2e', 'check-mcp-interop'},
