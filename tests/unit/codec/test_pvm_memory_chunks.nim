@@ -84,6 +84,31 @@ proc captureCycle() =
     assert uint32(layout[slot].index) == uint32(images[slot].index)
     assert layout[slot].access == images[slot].access
     for offset in 0..<output.len: assert output[offset] == byteAt(slot*4096+offset)
+    let matching = matchesMemoryPageBytes(captured, MemoryPageSlot(uint32(slot)),
+        layout[slot], output)
+    assert matching.error == MachineError.None and matching.value
+    for boundary in [0, 511, 512, 4095]:
+      output[boundary] = output[boundary] xor 255'u8
+      let different = matchesMemoryPageBytes(captured, MemoryPageSlot(uint32(slot)),
+          layout[slot], output)
+      assert different.error == MachineError.None and not different.value
+      output[boundary] = output[boundary] xor 255'u8
+    assert matchesMemoryPageBytes(captured, MemoryPageSlot(uint32(slot)),
+        layout[slot], output).value
+  var wrongIndex = layout[0]
+  wrongIndex.index = PageIndex(18)
+  var wrongAccess = layout[0]
+  wrongAccess.access = PageAccess.ReadWrite
+  assert matchesMemoryPageBytes(captured, MemoryPageSlot(0), wrongIndex, output).error ==
+      MachineError.InvalidRange
+  assert matchesMemoryPageBytes(captured, MemoryPageSlot(0), wrongAccess, output).error ==
+      MachineError.InvalidRange
+  assert matchesMemoryPageBytes(captured, MemoryPageSlot(3), layout[0], output).error ==
+      MachineError.InvalidRange
+  assert matchesMemoryPageBytes(default(Memory), MemoryPageSlot(0), layout[0], output).error ==
+      MachineError.InvalidOwner
+  assert matchesMemoryPageBytes(captured, MemoryPageSlot(0), layout[0],
+      output.toOpenArray(0, 4094)).error == MachineError.InvalidRange
   for offset in 0..<output.len: output[offset] = 77
   assert copyMemoryPage(captured, MemoryPageSlot(3), output).error == MachineError.InvalidRange
   assert copyMemoryPage(default(Memory), MemoryPageSlot(0), output).error ==

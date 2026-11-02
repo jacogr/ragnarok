@@ -903,3 +903,183 @@ interpreted Pinky is 1.24%/10.05% slower, and minimal/memset comparisons change 
 The x86 JIT still costs 29–33% more tick CPU than this stack's interpreter on the same runner;
 reducing native transitions remains future architecture work. The ARM long-sieve tradeoff remains
 as recorded above. These outcomes do not establish uniform gains across applications or machines.
+
+## Borrowed checkpoint comparison, 2026-11-02
+
+At a frame checkpoint, the sorted dirty-page set can include a page whose private
+bytes were written and later restored to the captured source bytes. The previous
+collector copied the captured 4096 bytes into an image, cloned that 4104-byte
+image, copied the resident 4096 bytes into it, then compared. A changed page was
+copied again into the replacement sequence. This work occurred for every inspected
+dirty page even when publication ultimately shared its immutable source owner.
+
+The collector now qualifies the captured owner, positional slot, exact page length,
+physical index and permission before comparing the private resident bytes with
+the eight immutable 512-byte source chunks. It chooses only a fully contained
+stack, RW or extra region. An unchanged page creates no replacement image; a
+changed page still takes two 4096-byte copies, from resident storage to a local
+owned image and then to the sorted replacement sequence. RO and unmatched-region
+fallbacks retain checked source copying. `withReplacedPages`, host publication,
+old snapshot ownership and rejection paths keep their existing contracts. The
+comparison exposes neither a source pointer nor mutable snapshot storage.
+
+On exact master `6d6ca888`, a private diagnostic counted 356 dirty-page
+inspections across five validated DOOM tick checkpoints: 279 matched the source
+and 77 differed. Initialization had 9253 inspections across 1622 checkpoints,
+with 960 matches. These count checkpoint observations, not distinct physical
+pages or final-state differences. ARM disassembly confirms eight 512-byte
+comparisons and no page-sized zeroing or source/image copies on the contiguous
+unchanged path; the two changed-page copies remain. Complete untimed DOOM
+state/events, memory-chunk, publication, host/region and bounded-reuse witnesses
+passed in the isolated prototype. The shipping source excludes the private trace.
+The clean source also passes the registered memory-chunks suite, publication,
+host/region and bounded-reuse witnesses, plus full untimed DOOM state/events
+under both ARM JIT and interpreted policies.
+
+One local 12-process paired ARM JIT pilot used 13 fully checked DOOM calls per
+process and matching native counters and code-image bytes apart from compilation
+time. Warm init CPU medians improved 1.825% and 1.718% in reversed orders while
+the identical-image control moved 0.010%. Warm tick improved 0.839% and 0.720%,
+within the 1.075% identical-image movement; no tick CPU gain is established.
+First calls are reported separately. This local pilot supports the copy reduction
+and an init benefit, but does not measure the clean final image. Exact
+commands, source/input/binary hashes, full logs and first-call values are in
+ignored `build/pvm-checkpoint-copy-prototype/build/checkpoint-pilot/`.
+Removing the disabled trace alone produced a byte-identical Mach-O image at an
+identical source/build path. Removing its unused boolean result changed 36 bytes
+of ARM text in the clean source, so the pilot image is not the final image and
+its CPU ratios are not claimed as final-source measurements.
+
+### Final-source local confirmation
+
+The committed runtime `064eafd17005d7501da123b36669aa88801c1a17` was compared with exact
+master `6d6ca888e724bab3b35b5d6db30a114aff552396` on Apple M1 Max, with pinned Nimony
+`63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, checked ARC/Clang release settings and one
+canonical source/build path. The six trace-free JIT/interpreted images came from fresh caches and
+the exact Git source trees; only `machine.nim` and `handler_stream.nim` differed among the 516
+archived source/header files. The baseline and candidate used identical pinned DOOM and four
+smaller-guest input/expected files. The local dependency inventory hashes 4,612 project,
+compiler, toolchain, SDK and fixture files. No warm result below is pooled with the pilot.
+
+Six reversed JIT process pairs for each DOOM phase, two reversed interpreted pairs for each
+phase and two reversed JIT pairs for each smaller guest completed 48 processes and 624 fully
+checked calls. Sixteen additional untimed preflights passed. Each process ran 13 complete calls;
+warm CPU medians use samples 3:13, with sample 0 reported separately. The ratios below are
+candidate/baseline for corresponding process pairs, in pair order; even pairs ran baseline then
+candidate and odd pairs ran candidate then baseline. Wall-clock ratios and every first-call value
+are retained in the local report.
+
+| Workload/backend | Baseline warm CPU range, ms | Candidate warm CPU range, ms | Paired warm CPU ratios | First-call CPU ratio range |
+| --- | ---: | ---: | --- | ---: |
+| DOOM init JIT | 90.561–94.992 | 92.394–92.831 | 0.982697, 1.020301, 0.977414, 0.976309, 0.975804, 0.981932 | 0.968367–1.007600 |
+| DOOM tick JIT | 10.579–10.788 | 10.581–10.662 | 0.988200, 0.988846, 0.993894, 0.980766, 0.993958, 1.006475 | 0.970153–1.007046 |
+| DOOM init interpreted | 245.136–245.584 | 242.421–242.804 | 0.990489, 0.987118 | 0.987964–0.995453 |
+| DOOM tick interpreted | 22.706–22.925 | 22.578–22.738 | 1.001409, 0.984864 | 0.986104–1.000768 |
+| Minimal 100k JIT | 4.122–4.129 | 4.081–4.133 | 0.990053, 1.000969 | 0.961193–0.994571 |
+| Sieve 10m JIT | 198.645–198.756 | 200.297–200.537 | 1.007751, 1.009527 | 1.011358–1.014320 |
+| Pinky 1 JIT | 62.383–62.412 | 62.014–62.087 | 0.994093, 0.994793 | 0.987051–1.000654 |
+| Memset 100k JIT | 2.901–2.962 | 2.955–2.956 | 1.019135, 0.997637 | 0.981062–0.997545 |
+
+JIT DOOM init improves in five of six pairs, but the 90.561 ms baseline in reversed pair 1
+makes that pair 2.03% slower. Both interpreted init pairs improve. JIT tick's paired median
+ratio is 0.991370, smaller than the pilot's 1.075% identical-image tick A/A movement, and one
+pair regresses; this does not establish a tick CPU gain. Interpreted tick changes direction.
+The long sieve is 0.78–0.95% slower in both process orders on complete-call CPU (wall ratios
+1.008205 and 1.009263); this is the measured tradeoff. Pinky improves slightly in both pairs;
+Minimal and Memset change direction. First-call ranges above are separate observations, not
+warm-call evidence.
+
+Every DOOM call checked complete CPU, gas, page bytes, immutable input and ordered events;
+every smaller-guest call checked terminal state, mapped memory and immutable input. Native
+fragment/call/operation counters, code bytes, branch/header calls and prepared occupancy match
+within every workload, excluding compilation time. The DOOM clocks include the full prepared
+call, host work and checkpoint publication. The smaller-guest driver clocks the full
+`reference.execute` call including publication, but does not emit separate publication or
+lifecycle durations; no subphase speed claim follows. Fixed inputs, source and all six binaries
+rehash unchanged after the cohort.
+
+The exact commands were `python3 build/checkpoint-final/cohort.py prepare` and
+`python3 build/checkpoint-final/cohort.py time` in the isolated shipping worktree. The ignored
+`build/checkpoint-final/cohort/` retains the runner, build receipt, 16 preflights, 48 raw timed
+logs, all 624 samples and the first/warm assessment. Its `timing-results.json` SHA-256 is
+`cccd58ead090fae1286ba16b4d64a77fbc18b8af3f43d967ce174e51960c7974`; the dependency
+manifest SHA-256 is `eff1d76be7d6e59b7556cb3b0c2c012a9aff036ddce46724976ff22b0f27fc63`.
+This local ARM result is bounded to these sources, inputs and clocks. It is separate from the
+Linux qualification below; the local long-sieve regression remains part of the evidence.
+
+### Qualified Linux ARM replay
+
+[Focused run 41534224870](https://github.com/jacogr/ragnarok/actions/runs/41534224870)
+passed on the exact PR source head `ce81f7c99774f2344fe1a0fb629b0563888aebb3` against
+master `6d6ca888e724bab3b35b5d6db30a114aff552396`. The qualified runtime is the
+`064eafd17005d7501da123b36669aa88801c1a17` implementation commit; `ce81f7c` adds only
+documentation. The retained `pvm-comparison-arm64-1` artifact (ID `13184087424`) reports
+application status `passed`, native qualification `passed`, and DOOM checks `checks-passed`.
+Its application results JSON SHA-256 is
+`33425f62cb2d3678a2a44cb44ce4602ff0906555db885c30d56ea2a23df8110f`.
+
+The Linux artifact retains 60 process replays (six baseline/candidate pairs for each of five
+workloads), 84 public comparison runs, 138 controls and 20 builds. Each replay process completed
+13 calls. For every matched pair, native fragments, calls, operations, code bytes, branches and
+headers agree between baseline and candidate. Each warm ratio below divides the median CPU time
+of candidate samples 3:13 by the corresponding baseline median; the reported ratio is the median
+of six paired ratios. First-call ratios use sample 0 and are not pooled with warm calls. Lower is
+faster.
+
+| JIT workload | Baseline warm CPU range, ms | Candidate warm CPU range, ms | Median paired CPU ratio | Faster pairs | First-call CPU ratio range |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| DOOM init | 115.375–117.690 | 113.045–114.127 | 0.979194 | 6/6 | 0.978460–0.985390 |
+| DOOM tick | 14.754–14.794 | 14.726–14.817 | 0.999344 | 5/6 | 0.972726–1.013067 |
+| Minimal 100k | 5.209–5.321 | 5.313–5.399 | 1.015952 | 0/6 | 1.011269–1.039968 |
+| Pinky 1 | 77.435–77.777 | 77.335–77.578 | 0.997285 | 5/6 | 0.995692–0.999730 |
+| Sieve 10m | 249.203–251.771 | 247.855–248.930 | 0.994669 | 6/6 | 0.990507–0.997459 |
+
+The Linux result confirms a roughly 2.1% DOOM initialization benefit. Tick is effectively flat;
+neither this replay nor the local cohort establishes a tick CPU gain. Minimal is about 1.6% slower
+in every Linux replay pair. Long Sieve improves about 0.5% on Linux, opposite the 0.78–0.95%
+regression measured in both local macOS process orders. Pinky's change is small. The differing
+Sieve directions remain distinct platform results, not a pooled performance claim.
+
+The replay's ratio of group-median first-call CPU times is 1.023175 for Minimal and 0.980367
+for DOOM init. DOOM init owner construction has a group-median ratio of 1.015069. These cold and
+constructor observations use separate clocks and do not establish an overall cold-start gain.
+
+The public two-order comparisons also retain the paired interpreted baselines. The table gives
+candidate/baseline warm CPU ratios, forward/reverse; each value uses samples 3:13 of a complete
+public call. The public JIT Minimal forward order has a larger regression than the six-pair
+replay, so the replay's median is not used to conceal it.
+
+| Public workload | JIT candidate/baseline | Interpreted candidate/baseline |
+| --- | ---: | ---: |
+| Sieve 100k | 0.986555 / 0.986395 | 1.012338 / 1.009047 |
+| Minimal 100k | 1.078600 / 1.002198 | 1.021391 / 1.027273 |
+| Memset 100k | 0.993482 / 0.997467 | 0.999000 / 1.006541 |
+| Pinky 1 | 0.998453 / 0.998434 | 0.992716 / 0.994284 |
+| Sieve 10m | 0.995032 / 0.993345 | 1.020052 / 1.012722 |
+| DOOM init | 0.974833 / 0.971315 | 0.996448 / 0.990919 |
+| DOOM tick | 1.000594 / 0.968068 | 0.987008 / 0.995238 |
+
+Across the two public orders, the ratio of candidate and baseline group medians is 1.040129 for
+Minimal JIT, 1.024330 for Minimal interpreted, 1.010689 for Sieve 100k interpreted, and 1.016378
+for Sieve 10m interpreted. Both interpreted Minimal orders are 2.1–2.7% slower, and interpreted
+long Sieve is 1.3–2.0% slower; the process-median ranges do not overlap for these interpreted
+regressions. These are material costs of the candidate source despite the favorable JIT
+long-Sieve result. The public two-order JIT tick result also changes substantially with order,
+consistent with the six-pair replay's flat tick estimate.
+
+The same-runner public DOOM CPU medians below show the raw candidate and pinned PolkaVM
+interpreted call times behind the cross-implementation ratios. These are complete public calls,
+not retained-core or frame-only timings. Ratios use unrounded medians; displayed milliseconds are
+rounded to three decimals.
+
+| DOOM phase/order | Our interpreted, ms | Our JIT, ms | PolkaVM interpreted, ms | Our interpreted / PolkaVM | Our JIT / PolkaVM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Init/forward | 315.085 | 113.990 | 629.613 | 0.500442 | 0.181048 |
+| Init/reverse | 313.517 | 112.766 | 627.037 | 0.499998 | 0.179839 |
+| Tick/forward | 27.713 | 14.807 | 40.492 | 0.684407 | 0.365669 |
+| Tick/reverse | 27.531 | 14.684 | 40.415 | 0.681206 | 0.363317 |
+
+The Linux artifact reports the public interpreted and JIT roles against their matching
+previous-source roles, plus the same-runner PolkaVM interpreted role. These ratios compare the
+recorded complete-call CPU clocks only; they do not isolate checkpoint publication or imply
+general PVM throughput across other programs.
