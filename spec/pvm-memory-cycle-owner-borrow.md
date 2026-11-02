@@ -1,5 +1,7 @@
 # Borrow the active memory-cycle executable owner
 
+**Performance tradeoff hold: keep draft.** Linux confirms a small native DOOM tick improvement, alongside a larger forced-interpreter tick cost and consistent Sieve regression. The ownership cleanup is correct, but the complete workload tradeoff is not accepted for readiness as-is. No extra CI is requested.
+
 Baseline master: `d74ce4dd118eb260f07afef06f1b319f49c33c95`. Runtime handler SHA-256: `b7055951b001ae7cd867336ec4f56584e1852b73bb52c54f987ec707cce5e32f`. Backend remains `3532ea5cbc8bbd023ee898efe94fcef66e028f0584e49c3ae3bc6b79c6d15403`. Pinned checked ARC/Clang ThinLTO uses Nimony `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` and GP0.8 `3861aed15d7d016a3a416e14e61fc67dddf6daec`.
 
 ## Ownership and execution
@@ -82,4 +84,49 @@ Source manifest `f4e925044f11e3c0348af77f65b73445760b1c9f1d8a84fe80f9ae03512b865
 
 A prior stacked owner-borrow screen used the held read-continuation runtime and is not pooled with this independent master comparison. It had tick -1.149552% with opposite process outliers/overlap and init -0.369011% with a high baseline process; interpreted tick -3.731808% and init +1.598167%, both consistent/non-overlapping in opposite directions. Its raw manifest `05dde7b19ff965db062fc835440d025f03a343b945eb4e5ee9b3d9de3cb68bbb` remains preserved. The read-continuation PR stays separately held on Linux regressions and is not a dependency.
 
-This source is a reviewable draft. One focused Linux ARM replay with paired interpreter controls remains required before readiness; no broad CI labels or general speed claim are requested.
+The focused Linux ARM replay below completed. This source remains a reviewable draft on performance-tradeoff hold, with no broad CI labels or general speed claim.
+
+## Linux ARM replay: performance-tradeoff hold
+
+[Run41386090444](https://github.com/jacogr/ragnarok/actions/runs/41386090444) passed at `8cf62862d27aca4fbaffafd220e718ec2aa9b6ff` against exact d74. [Independent review](https://github.com/jacogr/ragnarok/pull/1893#issuecomment-6568964719) found no source/correctness defect. The result is mixed across execution policies and workloads.
+
+| Replay case | Baseline median CPU ms | Candidate median CPU ms | Median change | Mean change | Faster pairs | Baseline / candidate ranges ms |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| tick | 20.794546 | 20.677430 | -0.563205% | -0.593058% | 6/6 | 20.750376–20.873812 / 20.572720–20.744292 |
+| init | 141.618664 | 142.247246 | +0.443855% | +0.494150% | 1/6 | 140.785536–142.331756 / 141.878780–142.960776 |
+| minimal | 5.224968 | 5.245536 | +0.393648% | +0.551997% | 3/6 | 5.200076–5.277024 / 5.214776–5.310996 |
+| pinky | 78.516808 | 78.428740 | -0.112165% | -0.033853% | 3/6 | 78.341196–78.670168 / 78.306824–78.698444 |
+| sieve | 253.338344 | 256.232916 | +1.142572% | +1.011140% | 0/6 | 253.203652–253.475096 / 254.561164–256.400160 |
+
+All six native tick pairs are faster with non-overlapping ranges. All six Sieve 10m pairs are slower with non-overlapping ranges. Init has five slower pairs with overlap; Minimal and Pinky are mixed/overlapping. No outlier or process was excluded.
+
+| Primary case | JIT median change | JIT faster pairs / ranges | Forced-interpreter median change | Interpreter faster pairs / ranges |
+| --- | ---: | --- | ---: | --- |
+| init-0 | +0.855671% | 0/2 / non-overlapping | +0.525166% | 0/2 / non-overlapping |
+| memset-100000 | +0.280755% | 0/2 / non-overlapping | -0.021821% | 1/2 / overlapping |
+| minimal-100000 | -0.010019% | 1/2 / overlapping | -0.822676% | 2/2 / non-overlapping |
+| pinky-1 | +0.021141% | 1/2 / overlapping | -0.113138% | 1/2 / overlapping |
+| sieve-100000 | -1.294554% | 1/2 / overlapping | -0.271015% | 2/2 / non-overlapping |
+| sieve-10000000 | +1.304388% | 0/2 / non-overlapping | +0.666347% | 0/2 / non-overlapping |
+| tick-0 | -0.227233% | 2/2 / non-overlapping | +2.826815% | 0/2 / non-overlapping |
+
+Matched raw primary ours/PolkaVM-interpreted ratios: tick **0.516793 JIT / 0.718559 interpreted**, init **0.227437 / 0.506860**. The primary interpreter tick +2.826815% cost is consistent in both process pairs/non-overlapping; primary init and Sieve also show costs in both policies. The smaller native tick gain and clearer owner lifetime remain useful evidence, but do not remove those measured costs. These Linux and macOS cohorts stay separate.
+
+Cold process-CPU brackets across the same six replay processes are minimum / median / mean / maximum milliseconds. Native preparation/publication CPU is already inside call CPU and is not added again or called wall elapsed time.
+
+| Case / source | Constructor CPU ms | First call CPU ms | Native preparation CPU ms |
+| --- | --- | --- | --- |
+| tick / baseline | 8.487288 / 8.566480 / 8.549643 / 8.595320 | 31.942768 / 31.995564 / 32.065736 / 32.265744 | 2.324080 / 2.348900 / 2.363263 / 2.438336 |
+| tick / candidate | 8.464424 / 8.523508 / 8.507393 / 8.540264 | 31.846728 / 31.997216 / 32.015529 / 32.177592 | 2.335552 / 2.354680 / 2.399981 / 2.637816 |
+| init / baseline | 8.454280 / 8.519748 / 8.562845 / 8.789768 | 162.773552 / 163.662584 / 163.688297 / 164.516448 | 7.689576 / 7.806520 / 7.788487 / 7.883744 |
+| init / candidate | 8.451296 / 8.526164 / 8.620467 / 9.164520 | 163.611952 / 164.413656 / 164.764469 / 167.793512 | 7.642928 / 7.757448 / 7.799723 / 8.094712 |
+| minimal / baseline | 0.015928 / 0.018972 / 0.018707 / 0.021032 | 5.413584 / 5.442408 / 5.442091 / 5.468072 | 0.092856 / 0.096264 / 0.096893 / 0.101200 |
+| minimal / candidate | 0.013992 / 0.015176 / 0.016303 / 0.020360 | 5.431408 / 5.456540 / 5.466793 / 5.522432 | 0.093760 / 0.098164 / 0.100289 / 0.112496 |
+| pinky / baseline | 0.703304 / 0.727756 / 0.732765 / 0.790592 | 82.979720 / 83.174720 / 83.142875 / 83.325272 | 1.827208 / 1.884120 / 1.878304 / 1.925104 |
+| pinky / candidate | 0.707504 / 0.723568 / 0.726463 / 0.751960 | 82.856048 / 82.992080 / 83.046163 / 83.365408 | 1.812808 / 1.877732 / 1.877883 / 1.928648 |
+| sieve / baseline | 2.876704 / 2.928056 / 2.925811 / 2.960240 | 261.180664 / 261.308580 / 261.326881 / 261.516800 | 3.062152 / 3.139564 / 3.134931 / 3.181752 |
+| sieve / candidate | 2.879608 / 2.920496 / 2.933072 / 3.009760 | 263.192168 / 264.232504 / 264.145331 / 265.069216 | 3.096008 / 3.137676 / 3.164264 / 3.337168 |
+
+Official artifact `13115573836`: ZIP SHA-256 `5dae1845adab24a796cd7dde83065780ab39a67fd5d6684d9caaffcd96268108`; applications report `70e7a4d5aa1f199cd3804182dcd87909116579198c51376b73f5ad063ec7e292`; native report `92d79ad3daafc640d367a159c4e8eeaf4df6740124db629e3ad9e1c7d4576ffa`. Independent root checks cover all 144 strict process parses, exact 60 replay schedule, 42 positive/96 refused controls, 2,575 role / 519 native source hashes, 32 fixture identities, 18 duplicate/policy image equalities, 11 native records, two policy suites and unchanged six non-time native work/code metrics across source roles. The final evidence-only spec change does not alter the measured runtime/witness.
+
+This draft preserves a qualified scoped-borrow implementation. Reconsidering it or combining it with a larger execution region requires evidence for that resulting runtime; no readiness, lgtm or additional CI is requested here.
