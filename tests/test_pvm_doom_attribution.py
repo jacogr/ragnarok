@@ -161,6 +161,7 @@ class DoomAttributionTests(unittest.TestCase):
                 path.mkdir(parents=True,exist_ok=True)
             files=['src/pvm/machine.nim','src/codec/natural.nim',
                 'tests/performance/pvm_doom.nim','tests/performance/pvm_sieve_clock.h',
+                'tests/performance/polkavm_backend.rs',
                 'tools/pvm_doom_attribution.py','tools/pvm_instruction_profile.py',
                 'tools/native_checks.py','tools/pvm_opcode_census.py','tools/setup_nimony.py',
                 'Makefile','spec/toolchain.json']

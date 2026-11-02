@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Prepare and measure the fixed real guest through pinned public interpreted JamV1 APIs.
+//! Prepare and measure fixed real guests through explicitly selected pinned JamV1 backends.
 use polkavm::{
     BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
     ModuleConfig, ProgramBlob, ProgramParts, RawInstance, Reg,
@@ -8,24 +8,6 @@ use polkavm::{
 use std::{fs, path::Path, time::Instant};
 
 const GAS: i64 = 1_000_000_000_000;
-
-// A failed OS clock or invalid duration must never produce a successful timing row.
-fn cpu_nanoseconds() -> u128 {
-    let mut value = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    assert_eq!(
-        unsafe { libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut value) },
-        0
-    );
-    assert!(value.tv_sec >= 0 && (0..1_000_000_000).contains(&value.tv_nsec));
-    (value.tv_sec as u128)
-        .checked_mul(1_000_000_000)
-        .unwrap()
-        .checked_add(value.tv_nsec as u128)
-        .unwrap()
-}
 
 // A selected family remains fixed for preparation and every measured snapshot.
 #[derive(Clone, Copy, PartialEq)]
@@ -88,14 +70,23 @@ fn expected(guest: Guest, limit: u32) -> u64 {
 // Backend selection is mandatory; no compiler fallback or alternative cost model is accepted.
 fn module(blob: ProgramBlob) -> Module {
     let mut config = Config::default();
-    config.set_backend(Some(BackendKind::Interpreter));
+    let backend = crate::measurement::selected(BackendKind::Interpreter);
+    config.set_backend(Some(backend));
     let engine = Engine::new(&config).unwrap();
-    assert_eq!(engine.backend(), BackendKind::Interpreter);
+    assert_eq!(engine.backend(), backend);
     let mut profile = ModuleConfig::default();
     profile.set_page_size(4096);
     profile.set_gas_metering(Some(GasMeteringKind::Sync));
     profile.set_cost_model(Some(CostModelKind::Full(CacheModel::L2Hit)));
-    Module::from_blob(&engine, &profile, blob).unwrap()
+    let cpu = crate::measurement::process_cpu();
+    let module = Module::from_blob(&engine, &profile, blob).unwrap();
+    crate::measurement::module_receipt(
+        "guest",
+        engine.backend(),
+        &module,
+        crate::measurement::process_cpu() - cpu,
+    );
+    module
 }
 
 // Initial and final memory observe exactly the same bounded declared page set in both engines.
@@ -278,17 +269,21 @@ pub fn command(args: &[String]) {
     }
     for sample in 0..samples {
         let mut instance = restored_instance(&module, entry, &registers, &initialized_pages);
+        let cpu = crate::measurement::CpuTimer::start(&instance);
         let wall = Instant::now();
-        let cpu = cpu_nanoseconds();
         let result = instance.run().unwrap();
-        let cpu_elapsed = cpu_nanoseconds() - cpu;
         let elapsed = wall.elapsed().as_nanos();
+        let cpu = cpu.finish();
+        let cpu_elapsed = cpu.total;
         assert_eq!(result, InterruptKind::Finished);
         // Equality still covers every byte; a mismatch retains a bounded diagnostic instead of the arrays.
         assert!(
             snapshot(&mut instance, &mapped, guest, limit) == reference,
             "sieve terminal state mismatch"
         );
-        println!("SIEVE,polkavm_interpreter,{limit},{sample},{elapsed},{cpu_elapsed}");
+        cpu.receipt(&format!("{}-{limit}", guest.name()), sample);
+        let backend =
+            crate::measurement::name(crate::measurement::selected(BackendKind::Interpreter));
+        println!("SIEVE,polkavm_{backend},{limit},{sample},{elapsed},{cpu_elapsed}");
     }
 }

@@ -64,6 +64,15 @@ def scheduled_targets(text, context):
 
 # Rejection paths prevent archive substitution, source omissions and misleading green migration summaries.
 class NimonyCISafeguards(unittest.TestCase):
+    def test_reference_calibration_is_one_manual_workload(self):
+        """The opt-in reference run must not launch the expensive normal verification groups."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        target = 'bench-pvm-polkavm'
+        self.assertEqual(scheduled_targets(text, event_context('workflow_dispatch', suite='polkavm-ratios')), [target])
+        for event in (event_context('push'), event_context('pull_request', action='opened'),
+                      event_context('workflow_dispatch', suite='full')):
+            self.assertNotIn(target, scheduled_targets(text, event))
+
     def test_arm_check_runs_native_gates_without_performance_collection(self):
         """Native-only ARM dispatch keeps correctness/refusal gates and excludes performance work."""
         text = (ROOT/'.github/workflows/ci.yml').read_text()

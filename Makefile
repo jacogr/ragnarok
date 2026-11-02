@@ -603,6 +603,13 @@ bench-pvm-interpreter: toolchain sources rust-tools
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_interpreter_compare.py
 
+# Explicit reference-only calibration; no application build or broad verification matrix.
+.PHONY: bench-pvm-polkavm
+bench-pvm-polkavm: sources rust-tools
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_polkavm_compare.py
+
 # Explicit retained-frame ARM64 JIT trial; the public application cohort owns CI timing.
 .PHONY: bench-pvm-arm64-jit
 bench-pvm-arm64-jit: toolchain sources rust-tools

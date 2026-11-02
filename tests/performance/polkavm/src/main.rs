@@ -19,7 +19,13 @@ fn word(data: &[u8], at: usize, width: usize) -> u64 {
     result
 }
 
+#[path = "../../polkavm_backend.rs"]
+mod measurement;
+
 fn main() {
+    if measurement::clock_control() {
+        return;
+    }
     let args: Vec<String> = std::env::args().collect();
     if args
         .get(1)
@@ -34,6 +40,7 @@ fn main() {
         "compiler" => BackendKind::Compiler,
         _ => panic!("explicit backend required"),
     };
+    assert_eq!(measurement::selected(backend), backend);
     let data = std::fs::read(&args[1]).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMBEN01");
     assert_eq!(word(&data, 8, 4), 11);
@@ -60,6 +67,7 @@ fn main() {
         let wire = &data[cursor..cursor + length];
         cursor += length;
         let preparation = Instant::now();
+        let preparation_cpu = measurement::process_cpu();
         let mut config = Config::default();
         config.set_backend(Some(backend));
         config.set_allow_dynamic_paging(matches!(kind, 1 | 2 | 4));
@@ -100,6 +108,13 @@ fn main() {
             );
         }
         let prepare_ns = preparation.elapsed().as_nanos();
+        let label = format!("synthetic-{row}");
+        measurement::module_receipt(
+            &label,
+            engine.backend(),
+            &module,
+            measurement::process_cpu() - preparation_cpu,
+        );
         for sample in 0..13 {
             // Instantiation, input resets and register setup are excluded from execution time.
             let mut instance = module.instantiate().unwrap();
@@ -129,6 +144,7 @@ fn main() {
             instance.set_gas((iterations * (price + second_price) + halt_price + 7) as i64);
             instance.set_next_program_counter(ProgramCounter(0));
             let mut calls = 0_u64;
+            let cpu = measurement::CpuTimer::start(&instance);
             let start = Instant::now();
             loop {
                 // Host dispatch/replies are part of embedding execution; validation stays outside timing.
@@ -148,6 +164,7 @@ fn main() {
                 }
             }
             let elapsed = start.elapsed().as_nanos();
+            let cpu = cpu.finish();
             // Every warmup and measured execution must validate before a timing record is accepted.
             assert_eq!(instance.gas(), 7);
             assert_eq!(calls, if kind == 2 { 2 * iterations } else { 0 });
@@ -176,6 +193,7 @@ fn main() {
                 }
             }
             assert!(elapsed > 0);
+            cpu.receipt(&label, sample);
             println!("sample\t{row}\t{sample}\t{elapsed}\t{prepare_ns}");
         }
     }

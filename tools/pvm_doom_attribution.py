@@ -214,7 +214,7 @@ def run(check_only=False, warmup=0, counts_only=False, timings_only=False):
         command([reference,'link',elf,blob],'link',timeout=300)
         prepared=BUILD/'prepared';command([reference,'prepare',blob,rom,prepared,warmup],'prepare',timeout=900)
         report['linked_sha256']=digest(blob);report['assets']=assets
-        source_paths=[*sorted((ROOT/'src/pvm').rglob('*.nim')),ROOT/'src/codec/natural.nim',ROOT/'tests/performance/pvm_doom.nim',ROOT/'tests/performance/pvm_sieve_clock.h',*sorted((CRATE/'src').glob('*.rs')),CRATE/'Cargo.toml',CRATE/'Cargo.lock',ROOT/'tools/pvm_doom_attribution.py',ROOT/'tools/pvm_instruction_profile.py',ROOT/'tools/native_checks.py',ROOT/'tools/pvm_opcode_census.py',ROOT/'tools/setup_nimony.py',ROOT/'spec/pvm-doom-assets.json',ROOT/'Makefile',ROOT/'spec/toolchain.json',ROOT/'spec/bandersnatch-pins.json']
+        source_paths=[ROOT/'tests/performance/polkavm_backend.rs',*sorted((ROOT/'src/pvm').rglob('*.nim')),ROOT/'src/codec/natural.nim',ROOT/'tests/performance/pvm_doom.nim',ROOT/'tests/performance/pvm_sieve_clock.h',*sorted((CRATE/'src').glob('*.rs')),CRATE/'Cargo.toml',CRATE/'Cargo.lock',ROOT/'tools/pvm_doom_attribution.py',ROOT/'tools/pvm_instruction_profile.py',ROOT/'tools/native_checks.py',ROOT/'tools/pvm_opcode_census.py',ROOT/'tools/setup_nimony.py',ROOT/'spec/pvm-doom-assets.json',ROOT/'Makefile',ROOT/'spec/toolchain.json',ROOT/'spec/bandersnatch-pins.json']
         report['sources']={str(p.relative_to(ROOT)):digest(p) for p in source_paths}
         report['cpu']=cpu_model();report['platform']=platform.platform()
         report['scope_policy']='One outer guest call, including in-memory callbacks; setup, file I/O and validation excluded.'
