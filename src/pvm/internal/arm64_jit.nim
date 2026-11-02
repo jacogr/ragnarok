@@ -930,7 +930,7 @@ proc armFinishProbe*(jit: ArmJit, header: uint32): bool =
 proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     instructions: var seq[uint32], region: bool = false,
     expectedStart: uint64 = high(uint64)): bool =
-  ## Reserve one of the same 1,024 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
+  ## Reserve one of the 8,192 publication slots for a connected loop; OS/capacity refusal preserves checked execution.
   if jit.unavailable:
     # Only initial allocation refusal is sticky; a cache with any published code can never enter this state.
     refuseArmEntry(jit, offset)

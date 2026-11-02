@@ -50,7 +50,8 @@ sections do not describe the current implementation.
 ## Publication-count headroom
 
 The count ceiling is 8,192, with the final slot reserved for a connected region. It does not
-change the one-MiB native code arena, the sub-1,024-word limit for each published image, or
+change the one-MiB native code arena, the at-most-1,024-word final image limit (including the
+appended RET), or
 the 262,144-handler coordinate-map refusal. The macOS owner maps one fixed one-MiB JIT arena;
 Linux maps writable and executable views of one shared one-MiB backing store. Publications
 append to that arena rather than creating one mapping per fragment. The 12-byte entry record
