@@ -2859,3 +2859,50 @@ at the same runtime source head, including shared accounting, refusal and owners
 Its raw application data and source audit are recorded in
 [x86 reservation qualification](pvm-handler-stream.md#deferred-reservation-x86-qualification).
 The ARM-only read/branch lowering is inactive there.
+
+## Small immediate instructions in ARM read fragments
+
+The ARM64 emitter can form the address for an indirect read with one 32-bit ADD or SUB when
+the displacement is in 0..4095 or −4095..−1. The 32-bit result retains GP's modulo-2³²
+addressing before the unchanged protected-prefix, top-address and descriptor checks. Zero
+displacement needs no extra address instruction when the one-read leaf has already loaded W3.
+Direct absolute reads retain their existing path: register 31 means WZR in MOV but WSP in
+ADD-immediate. Other displacements retain the full-width materialization and addition.
+Refusal branches remain relocated from their actual generated positions.
+
+Immediate shift opcodes 138–140 and 151–153 use AArch64 bitfield-immediate forms with the
+same count masks (31 or 63) as the former variable shifts. Their source is read before an
+aliased destination is marked written, and the 32-bit forms retain the final SXTW required
+by GP. Branch selectors, unrelated constants, shift-pair folding, register-bank ABI, gas,
+attempts, memory permissions and publication caps do not change.
+
+The private macOS ARM64 qualification starts from exact master
+`d2a9f83d04682f700999c7f9fcb408ada7ae0d83`, with only the emitter and its witness
+changed. Native, grouped, native-refusal and interpreted witnesses pass; the native
+witness retains 310,240 read-span controls and 13,524 macro-frame cases. New tests execute
+1,350 shift cases against independent `stepOnce` results, 48 address edge cases including
+±4095 and just-outside fallbacks, wrap/top/refusal, and direct same-block paid successors
+for a store fault, host exit and terminal exit. Literal instruction encodings for all six
+shift kinds and positive/negative address endpoints were independently assembled with
+Clang and checked in the source-owned witness; a broader private audit matched all 270
+shift and 65 address emitter words.
+
+The frozen DOOM tick read spans at PC 202332 and 202568 shrink from 227 to 193 and 302 to
+254 ARM words. In the single 13-call prepared DOOM A/A plus reversed-pair pilot, warm
+candidate/master tick CPU ratios were 0.970647 and 0.953976; initialization ratios were
+0.985125 and 0.941030. Six further alternating fresh-process pairs per phase gave tick
+ratios 0.969582–0.984005 (median 0.975985, all six favorable) and init ratios
+0.975280–1.029907 (median 0.985528, five of six favorable). Every process checked full
+state and host events on all 13 calls; samples 0–2 were excluded from each warm median.
+Native fragment, call and operation counts were identical; tick image bytes fell
+261,944→240,512 and init bytes 669,800→616,992. First-call samples vary in direction,
+so these measurements establish no cold-start claim.
+
+Two reversed bounded pairs each for Minimal-100000, Sieve-100000 and Pinky-1 passed full
+state checks. Minimal was faster in one pair and flat in the other; Sieve was about 0.4%
+slower in both; Pinky was flat to about 1% faster. With the JIT explicitly forced off
+in the same DOOM binaries, two reversed pairs per phase measured tick CPU ratios
+1.000022/0.999072 and init 1.001615/1.004056. These are local macOS results, not a
+Linux ARM performance claim. Raw inputs, source/binary identities, first-call values,
+all samples and receipts remain in `build/pvm-immediate-prototype/`. A focused Linux ARM
+qualification remains the next external gate.
