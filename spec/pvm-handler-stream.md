@@ -1040,6 +1040,10 @@ in every Linux replay pair. Long Sieve improves about 0.5% on Linux, opposite th
 regression measured in both local macOS process orders. Pinky's change is small. The differing
 Sieve directions remain distinct platform results, not a pooled performance claim.
 
+The replay's ratio of group-median first-call CPU times is 1.023175 for Minimal and 0.980367
+for DOOM init. DOOM init owner construction has a group-median ratio of 1.015069. These cold and
+constructor observations use separate clocks and do not establish an overall cold-start gain.
+
 The public two-order comparisons also retain the paired interpreted baselines. The table gives
 candidate/baseline warm CPU ratios, forward/reverse; each value uses samples 3:13 of a complete
 public call. The public JIT Minimal forward order has a larger regression than the six-pair
@@ -1055,10 +1059,13 @@ replay, so the replay's median is not used to conceal it.
 | DOOM init | 0.974833 / 0.971315 | 0.996448 / 0.990919 |
 | DOOM tick | 1.000594 / 0.968068 | 0.987008 / 0.995238 |
 
-The two interpreted Minimal orders are 2.1–2.7% slower, and interpreted long Sieve is 1.3–2.0%
-slower. These are material costs of the candidate source despite the favorable JIT long-Sieve
-result. The public two-order JIT tick result also changes substantially with order, consistent
-with the six-pair replay's flat tick estimate.
+Across the two public orders, the ratio of candidate and baseline group medians is 1.040129 for
+Minimal JIT, 1.024330 for Minimal interpreted, 1.010689 for Sieve 100k interpreted, and 1.016378
+for Sieve 10m interpreted. Both interpreted Minimal orders are 2.1–2.7% slower, and interpreted
+long Sieve is 1.3–2.0% slower; the process-median ranges do not overlap for these interpreted
+regressions. These are material costs of the candidate source despite the favorable JIT
+long-Sieve result. The public two-order JIT tick result also changes substantially with order,
+consistent with the six-pair replay's flat tick estimate.
 
 The same-runner public DOOM CPU medians below show the raw candidate and pinned PolkaVM
 interpreted call times behind the cross-implementation ratios. These are complete public calls,
