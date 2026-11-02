@@ -197,8 +197,10 @@ def qualify(checks, compiler, *, native=True):
         checked=checks.command([binary],name+'-run')
         if name == 'witness-legacy-abi-refused':
             # Full-context owners must refuse the legacy pointer ABI before entering native code.
+            positive=[line for line in checked['output'].splitlines()
+                      if line.startswith('ARM_CLIPPED_ABI_POSITIVE,')]
             if (checked['exit_code'] == 0 or
-                    'ARM_CLIPPED_ABI_POSITIVE,1,1\n' not in checked['output'] or
+                    positive != ['ARM_CLIPPED_ABI_POSITIVE,1,1'] or
                     'Assertion Failure' not in checked['output'] or
                     'ARM_CLIPPED_ABI_REJECTION_MISSING' in checked['output']):
                 raise ValueError('Missing typed ARM context ABI rejection')
@@ -239,8 +241,9 @@ def qualify(checks, compiler, *, native=True):
                        'ARM_CLIPPED_NATIVE_CASES':'709'}
             for marker, value in clipped.items():
                 receipt = marker+','+value
-                count = checked['output'].splitlines().count(receipt)
-                if count != (1 if native_available else 0):
+                lines = [line for line in checked['output'].splitlines()
+                         if line.startswith(marker+',')]
+                if lines != ([receipt] if native_available else []):
                     raise ValueError('Missing or unexpected native clipped-read receipt: '+marker)
             # The real frame constructor must clip both fences while retaining a native call on refusal.
             frame_lines = [line.split(',') for line in checked['output'].splitlines()

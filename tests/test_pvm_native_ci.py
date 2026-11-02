@@ -145,17 +145,27 @@ class QualificationTests(unittest.TestCase):
             f'ARM_MACRO_LINKED_FALLBACK_CASES,{162 if native else 0}\n'
             f'ARM_MACRO_RESIDENT,{int(macro_resident)}\n'
             f'ARM_MACRO_ROLLBACK_ALIAS,{int(macro_active)}\n'
-            f'ARM_MACRO_IMAGE_WORDS,{image_words}\n'
+            f'ARM_MACRO_IMAGE_WORDS,{image_words}\n' +
+            ('ARM_CLIPPED_FRAME_BOUNDARY,4,1,4,1,0,1,4,1,0\n' if native else '') +
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
             ('ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n' if native or refused else '') +
             ('ARM_WORD_GROUPS,5\nARM_DIRTY_LOOP,2,16,1\n' if native else
              'ARM_WORD_GROUPS,0\n' if refused else '') +
-            ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
+            ('ARM_REGION_SCALAR_MATCH_CASES,111\n'
+             'CLIPPED_ISA_SPAN_WORDS,36,31\n'
+             'CLIPPED_ISA_LEAF_WORDS,34,29\n'
+             'CLIPPED_INTERVAL_NATIVE_CASES,288\n'
+             'CLIPPED_WIDTH_NATIVE_CASES,378\n'
+             'CLIPPED_DIRECT_NATIVE_CASES,28\n'
+             'CLIPPED_WRAP_NATIVE_CASES,12\n'
+             'CLIPPED_ROLLBACK_NATIVE_CASES,3\n'
+             'ARM_CLIPPED_NATIVE_CASES,709\n' if native else ''))
 
     def check(self, native, receipt=None, build_error=False, region_receipt=None,
-              refused_receipt=None, macro_refused_receipt=None, resident_refused_receipt=None):
+              refused_receipt=None, macro_refused_receipt=None, resident_refused_receipt=None,
+              legacy_receipt=None, legacy_exit_code=1):
         """Model tool process boundaries; all native assertions stay in the maintained Nim/C witnesses."""
         ordinary = self.witness_receipt(native)
         refused = self.witness_receipt(False, refused=True)
@@ -163,7 +173,8 @@ class QualificationTests(unittest.TestCase):
         resident_refused = self.witness_receipt(True, resident_refused=True)
         class Checks:
             folder=Path('/tmp/pvm-ci-test')
-            builds=[]
+            def __init__(self):
+                self.builds=[]
             def build(self, compiler, source, name, **kwargs):
                 self.builds.append((name,kwargs['defines']))
                 if name.endswith('-copy'):
@@ -176,6 +187,10 @@ class QualificationTests(unittest.TestCase):
                             else 'ARM_MEMORY_UNAVAILABLE,checked-fallback\n')
                 elif name=='witness-run':
                     output=receipt if receipt is not None else ordinary
+                elif name=='witness-legacy-abi-refused-run':
+                    output=(legacy_receipt if legacy_receipt is not None else
+                            'ARM_CLIPPED_ABI_POSITIVE,1,1\n[Assertion Failure] \n')
+                    return dict(exit_code=legacy_exit_code,output=output)
                 elif name=='witness-refused-run':
                     output=refused_receipt if refused_receipt is not None else refused
                 elif name=='witness-macro-refused-run':
@@ -219,22 +234,81 @@ class QualificationTests(unittest.TestCase):
         """The explicit ARM-only helper retains off-platform fallback controls independently of x86 qualification."""
         for native in (True,False):
             rows,builds=self.check(native)
-            self.assertEqual(len(rows),13 if native else 11)
-            self.assertEqual(rows[1]['dirty_loop'],
+            self.assertEqual(len(rows),14 if native else 11)
+            witness_index=2 if native else 1  # Native qualification first exercises legacy ABI refusal.
+            self.assertEqual(rows[witness_index]['dirty_loop'],
                              dict(calls=2, blocks=16, declines=1) if native else None)
-            self.assertIsNone(rows[2]['dirty_loop'])
+            self.assertIsNone(rows[witness_index+1]['dirty_loop'])
             witness=next(flags for name,flags in builds if name=='witness')
             self.assertEqual(witness,['pvmArm64Jit','pvmArmMacroReceipt',
                                       'pvmArmDirtyLoopOwnerReceipt'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
             self.assertIn('pvmArmDirtyLoopOwnerReceipt',refused)
+            legacy=[flags for name,flags in builds if name=='witness-legacy-abi-refused']
+            self.assertEqual(legacy, [['pvmArm64Jit','pvmArmClippedLegacyAbiRefuse']] if native else [])
             resident=[flags for name,flags in builds if name=='witness-resident-refused']
             if native:
                 self.assertEqual(resident, [['pvmArm64Jit','pvmArmMacroResidentRefuse',
                                              'pvmArmMacroReceipt','pvmArmDirtyLoopOwnerReceipt']])
             else:
                 self.assertEqual(resident, [])
+
+    def test_legacy_context_abi_refusal_requires_one_positive_control(self):
+        """The intentionally failing process must first prove both valid bridge profiles ran."""
+        valid='ARM_CLIPPED_ABI_POSITIVE,1,1\n[Assertion Failure] \n'
+        for transcript in ('[Assertion Failure] \n',
+                           'ARM_CLIPPED_ABI_POSITIVE,1\n[Assertion Failure] \n',
+                           'ARM_CLIPPED_ABI_POSITIVE,1,1\n'+valid,
+                           'ARM_CLIPPED_ABI_POSITIVE,1,1\n',
+                           valid+'ARM_CLIPPED_ABI_REJECTION_MISSING\n'):
+            with self.subTest(transcript=transcript), self.assertRaisesRegex(
+                    ValueError, 'typed ARM context ABI rejection'):
+                self.check(True,legacy_receipt=transcript)
+        with self.assertRaisesRegex(ValueError, 'typed ARM context ABI rejection'):
+            self.check(True,legacy_receipt=valid,legacy_exit_code=0)
+
+    def test_clipped_receipts_are_complete_in_each_native_mode(self):
+        """Every native-capable mode must supply one exact clipped witness transcript."""
+        markers=('CLIPPED_ISA_SPAN_WORDS', 'CLIPPED_ISA_LEAF_WORDS',
+                 'CLIPPED_INTERVAL_NATIVE_CASES', 'CLIPPED_WIDTH_NATIVE_CASES',
+                 'CLIPPED_DIRECT_NATIVE_CASES', 'CLIPPED_WRAP_NATIVE_CASES',
+                 'CLIPPED_ROLLBACK_NATIVE_CASES', 'ARM_CLIPPED_NATIVE_CASES')
+        for mode in ('native','macro-refused','resident-refused'):
+            complete=self.macro_mode_receipt(mode)
+            for marker in markers:
+                line,=[row+'\n' for row in complete.splitlines() if row.startswith(marker+',')]
+                for replacement in ('',marker+',\n',line+line):
+                    damaged=complete.replace(line,replacement,1)
+                    with self.subTest(mode=mode,marker=marker,replacement=replacement), \
+                            self.assertRaisesRegex(ValueError,'native clipped-read receipt: '+marker):
+                        self.check_macro_mode(mode,damaged)
+        for mode in ('native-refused','interpreted'):
+            complete=self.macro_mode_receipt(mode)
+            for marker in markers:
+                with self.subTest(mode=mode,marker=marker), self.assertRaisesRegex(
+                        ValueError,'native clipped-read receipt: '+marker):
+                    self.check_macro_mode(mode,complete+marker+',1\n')
+
+    def test_clipped_frame_boundary_receipt_is_mode_specific(self):
+        """The real frame gate rejects absent, partial, repeated, and false native evidence."""
+        marker='ARM_CLIPPED_FRAME_BOUNDARY,'
+        for mode in ('native','macro-refused','resident-refused'):
+            complete=self.macro_mode_receipt(mode)
+            line,=[row+'\n' for row in complete.splitlines() if row.startswith(marker)]
+            for replacement,reason in (('', 'frame-owned clipped-boundary'),
+                                       (marker+'4,1,4,1,0,1,4,1\n', 'frame-owned clipped-boundary'),
+                                       (line+line, 'frame-owned clipped-boundary'),
+                                       (marker+'4,1,4,1,0,1,no,1,0\n', 'Malformed frame-owned'),
+                                       (marker+'4,0,4,1,0,1,4,1,0\n', 'Clipped frame admitted')):
+                with self.subTest(mode=mode,replacement=replacement), self.assertRaisesRegex(
+                        ValueError,reason):
+                    self.check_macro_mode(mode,complete.replace(line,replacement,1))
+        for mode in ('native-refused','interpreted'):
+            with self.subTest(mode=mode), self.assertRaisesRegex(
+                    ValueError,'Refused or interpreted frame claimed native'):
+                self.check_macro_mode(mode,self.macro_mode_receipt(mode)+
+                    marker+'4,1,4,1,0,1,4,1,0\n')
 
     def test_macro_controls_are_required_through_full_qualification(self):
         """Each mode keeps all unrelated gates valid while one macro proof is damaged."""
