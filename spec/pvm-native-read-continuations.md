@@ -1,0 +1,128 @@
+# Native read continuations through canonical control
+
+**Performance hold: keep draft.** Linux ARM qualification passed, but DOOM tick, Sieve 10m and Pinky regress consistently in all six matched replay pairs. The reduced dispatch count does not justify promoting this implementation as-is. No additional CI is requested.
+
+Baseline: `d74ce4dd118eb260f07afef06f1b319f49c33c95`. Pinned Nimony: `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`. Gray Paper 0.8: `3861aed15d7d016a3a416e14e61fc67dddf6daec`.
+
+## Execution and correctness
+
+A successfully completed multi-read native span ending at opcode 1 can invoke its canonical C control worker in the same activation. That worker retains target resolution and validation, paid-state reset and failure behavior. It returns the next executable offset to ordinary dispatch; it does not recursively execute another guest block. The terminal remains C work and is excluded from native operation/branch counts.
+
+A private static template shares the existing native memory bridge. Its descriptor/register borrow ends before mutable control or checked fallback. Partial reservations and native guard refusals invoke the original checked worker directly; successful checked fallback does not take this shortcut. The existing span admission, source accounting, permissions, publication, image limits and prepared ownership remain unchanged. There is no new native image, ABI, GP evaluator, retained invocation pointer or frame field.
+
+The functional witness compares 365 paid/unpaid, gas, attempt, folded-source and span-boundary cases against independent Step execution, including later faults, fragmented reads and invalid following blocks. Separate literal checks cover all-thirteen-register rollback, exact next-block out-of-gas PC/paid state and oversized-image fallback. The controller requires those four complete receipts in native, OS-refused and plain modes; its fixtures independently reject missing, truncated and duplicated receipts. These checks exercise execution semantics rather than handler-array organization.
+
+The frozen runtime handler SHA-256 is `3f0408668c043bf40f121efcbe170743e9cbb2aefda0148669fb6ccf648b1ebe`; backend `3532ea5cbc8bbd023ee898efe94fcef66e028f0584e49c3ae3bc6b79c6d15403` is unchanged. The measured private witness was `90e95015`; the public witness removes an unused zero activation counter/receipt, corrects inherited comments, and exercises literal rollback through the actual four-operation memory entry with zero native branches (`d8b49eb6ef677e1fcf81f99f4d5faef51f0e6ac5c4e15b919c679b0f4e24e2ce`).
+
+## Local ARM evidence
+
+Checked ARC/Clang ThinLTO images used one canonical source path and identical commands per driver family. All four fresh duplicate pairs were byte equal. Each process validated 13 complete public calls; reported CPU medians use calls 3–12, with no sample or process exclusion. Both source-matched forced-interpreter controls and matched PolkaVM interpreted references are retained. Source-specific and reference timings are call-only observations, not full blockchain throughput.
+
+The first 36-process screen recorded DOOM tick -0.704625% with all four pairs faster and non-overlapping process ranges; init +0.324481% with all four slower and non-overlapping ranges. Interpreter tick +0.143771% was mixed/overlapping; init -0.314837% had three faster pairs/overlap. Raw ours/reference tick ratios were 0.309830 JIT / 0.513138 interpreted; init 0.164721 / 0.349063. Raw manifest SHA-256: `158b4fb54238925bd46a1d6be5ac07d25bfadc130902c437cffa45c54a24ab34`.
+
+A separate broader 108-process gate reused those exact images and pinned inputs after 20 positive and 40 intended refusal controls. Its six cases retained four balanced source/policy orders, two duplicate images and two matched references per case. The earlier 36-process screen remains separate.
+
+| Case / policy | CPU median change | Faster pairs | Process ranges | Candidate / baseline ratios, orders 0–3 |
+| --- | ---: | ---: | --- | --- |
+| tick / JIT | -0.964736% | 3/4 | overlapping | 1.039328 / 0.985244 / 0.992015 / 0.988940 |
+| tick / interpreted | +0.859053% | 1/4 | overlapping | 1.007676 / 1.004348 / 1.052567 / 0.991684 |
+| init / JIT | +0.251866% | 0/4 | non-overlapping | 1.002303 / 1.001602 / 1.002704 / 1.004009 |
+| init / interpreted | -0.762205% | 3/4 | overlapping | 0.991562 / 0.993193 / 1.002891 / 0.988358 |
+| minimal / JIT | +1.091135% | 1/4 | overlapping | 0.994225 / 1.013289 / 1.008542 / 1.019236 |
+| minimal / interpreted | +0.435694% | 1/4 | overlapping | 1.010042 / 1.006491 / 1.003488 / 0.999118 |
+| pinky / JIT | -0.186464% | 3/4 | overlapping | 0.997595 / 1.003950 / 0.997341 / 0.997973 |
+| pinky / interpreted | -0.048147% | 1/4 | overlapping | 1.004633 / 0.996535 / 1.000794 / 1.001034 |
+| memset / JIT | +0.040314% | 1/4 | overlapping | 1.001612 / 1.003630 / 0.996982 / 1.000000 |
+| memset / interpreted | +0.148689% | 2/4 | overlapping | 0.997172 / 1.003113 / 1.003785 / 0.999324 |
+| sieve / JIT | +0.358111% | 0/4 | non-overlapping | 1.002034 / 1.005095 / 1.003683 / 1.005564 |
+| sieve / interpreted | +0.294370% | 1/4 | overlapping | 1.003562 / 0.943794 / 1.005566 / 1.002326 |
+
+The broader raw ours/reference ratios are DOOM tick **0.309319 JIT / 0.513234 interpreted**, init **0.164236 / 0.346934**. Init and Sieve JIT costs are consistent across every pair; Minimal and interpreter tick also have slower medians. Tick has one slower pair and overlapping ranges. This supports a small workload-specific improvement and reduced dispatch, not a general speed claim.
+
+The broader raw manifest SHA-256 is `2227edb5d0ab8e0a533f30a936b091b0d7f2ae46f8f23f4a836eab494cd7a070`. The build manifest is `3dadc58973847b0ee73019fc38770292b3320742201298f945de88345c853aff`. Independent review checked all 108 strict parses, exact schedule, 1,022 source hashes, eight images/four duplicate equalities, 55 fixture identities, complete control logs and intended refusal reasons.
+
+All six non-time native metrics match baseline exactly for every case/order; interpreted metrics are zero. DOOM tick retains 1,013 fragments, 10,584,184 calls, 175,146,673 operations, 253,416 code bytes, 6,990,119 branches and 5,625,893 headers. Init retains 1,024 / 17,233,187 / 2,289,314,092 / 230,056 / 7,902,385 / 5,448,073.
+
+An isolated, fully validated unclocked DOOM tick observed 160,528 native-success canonical continuations. The earlier complete dispatch census fell from 1,606,537 to 1,446,009 outer selections per warm call with unchanged native work/code. Its scope counts outer selections and charge-body calls; it does not count every nested C helper. The control worker still executes. Instrumented source/images were excluded from timing. Actual ARM disassembly has 90 instructions in the continuation worker, a 64-byte frame and no extra memory-worker call.
+
+## Cold costs in the broader gate
+
+Each entry below is minimum / median / maximum across four processes, in milliseconds of **process CPU time**. Compilation diagnostics use process CPU, not wall elapsed time; they are already included in the corresponding call and must not be added again. Constructor and first-call measurements are retained rather than inferred from warmed medians.
+
+| Case / source / policy | Constructor CPU ms | First call CPU ms | Compilation CPU ms |
+| --- | --- | --- | --- |
+| tick / baseline | 7.1560 / 7.1780 / 7.9030 | 20.2980 / 20.5980 / 22.2340 | 1.9020 / 1.9790 / 2.3470 |
+| tick / candidate | 7.0850 / 7.1030 / 7.1460 | 20.2310 / 20.3525 / 20.4130 | 1.8950 / 1.9500 / 2.0060 |
+| tick / baseline_interpreted | 7.0770 / 7.0920 / 7.1230 | 25.8270 / 25.8690 / 25.9420 | 0.0000 / 0.0000 / 0.0000 |
+| tick / candidate_interpreted | 7.0720 / 7.1040 / 7.1230 | 25.9420 / 25.9630 / 26.1100 | 0.0000 / 0.0000 / 0.0000 |
+| init / baseline | 7.0860 / 7.1310 / 7.3500 | 128.4450 / 128.5970 / 136.3800 | 5.9650 / 5.9755 / 6.9450 |
+| init / candidate | 7.0580 / 7.0730 / 7.1070 | 128.8530 / 129.1500 / 129.4160 | 5.9680 / 5.9980 / 6.0200 |
+| init / baseline_interpreted | 7.0860 / 7.1115 / 7.2720 | 242.0210 / 242.5610 / 244.6470 | 0.0000 / 0.0000 / 0.0000 |
+| init / candidate_interpreted | 7.0670 / 7.0805 / 7.0970 | 240.7970 / 241.9025 / 242.2800 | 0.0000 / 0.0000 / 0.0000 |
+| minimal / baseline | 0.0120 / 0.0170 / 0.0600 | 3.9750 / 4.1180 / 10.3740 | 0.0490 / 0.0570 / 0.1290 |
+| minimal / candidate | 0.0150 / 0.0170 / 0.0370 | 4.1510 / 4.1915 / 4.3040 | 0.0490 / 0.0640 / 0.0930 |
+| minimal / baseline_interpreted | 0.0130 / 0.0150 / 0.0160 | 4.4540 / 4.5055 / 4.5650 | 0.0000 / 0.0000 / 0.0000 |
+| minimal / candidate_interpreted | 0.0120 / 0.0140 / 0.0160 | 4.4340 / 4.5260 / 4.6280 | 0.0000 / 0.0000 / 0.0000 |
+| pinky / baseline | 0.4440 / 0.4780 / 0.5030 | 63.8110 / 64.1800 / 65.3410 | 1.6800 / 1.7160 / 1.9440 |
+| pinky / candidate | 0.4450 / 0.4685 / 0.4850 | 64.2770 / 64.3420 / 65.0470 | 1.6910 / 1.7490 / 1.7900 |
+| pinky / baseline_interpreted | 0.4500 / 0.4770 / 0.5210 | 80.7870 / 81.5770 / 81.8940 | 0.0000 / 0.0000 / 0.0000 |
+| pinky / candidate_interpreted | 0.4550 / 0.4805 / 0.5290 | 81.4510 / 81.5595 / 82.3390 | 0.0000 / 0.0000 / 0.0000 |
+| memset / baseline | 0.0540 / 0.0575 / 0.0580 | 3.2370 / 3.3400 / 3.5830 | 0.1660 / 0.1875 / 0.1940 |
+| memset / candidate | 0.0490 / 0.0495 / 0.0510 | 3.1330 / 3.1725 / 3.3200 | 0.1560 / 0.1630 / 0.1770 |
+| memset / baseline_interpreted | 0.0510 / 0.0525 / 0.0530 | 4.3010 / 4.3250 / 4.3530 | 0.0000 / 0.0000 / 0.0000 |
+| memset / candidate_interpreted | 0.0500 / 0.0530 / 0.0560 | 4.0840 / 4.2945 / 4.4110 | 0.0000 / 0.0000 / 0.0000 |
+| sieve / baseline | 1.5530 / 1.6045 / 1.6570 | 193.3080 / 194.2585 / 194.4290 | 2.7130 / 2.8535 / 2.8860 |
+| sieve / candidate | 1.5400 / 1.6330 / 1.7130 | 194.4230 / 194.8640 / 196.1580 | 2.6830 / 2.7875 / 2.7950 |
+| sieve / baseline_interpreted | 1.5620 / 1.6125 / 1.6690 | 333.3120 / 334.1125 / 351.5540 | 0.0000 / 0.0000 / 0.0000 |
+| sieve / candidate_interpreted | 1.5970 / 1.6640 / 1.7880 | 332.5650 / 333.9510 / 334.9890 | 0.0000 / 0.0000 / 0.0000 |
+
+## Scope and qualification
+
+The frozen private candidate passed all 11 retained ARM native/refusal/ownership checks plus both policy suites, prepared blocks, gas plan, gas memo, pricing-owner and plain checks. The updated public controller passed all 11 retained ARM native/refusal/ownership checks and the plain witness against the exact public runtime/witness hashes above. The receipt-controller fixtures pass all 19 Python tests. Pinned formatting and whitespace checks pass. The single focused Linux ARM replay below completed; its consistent costs keep this draft on performance hold.
+
+The earlier C prototype has different runtime source and is not pooled with these measurements: its 52-process screen had tick -3.475% (3/4 faster/overlap), init +0.425295% (3/4 faster/overlap); its 108-process screen had tick -1.118789% (3/4 faster/overlap), init +0.038125% (3/4 slower/overlap), Sieve +0.321084% (3/4 slower/overlap). Both retain all outliers. Their manifests are `bd02f26601be952e118ed90f0e70cea749e6f84adeb25e3bd3e3ec73f1aa449c` and `c226d2f28a943c61f62bd55d9dc2ad55ada885c5486a0e51156a8ee125e9364e`. A larger native-jump prototype remains private; its results do not qualify this implementation.
+
+## Linux ARM replay: performance hold
+
+The [focused run](https://github.com/jacogr/ragnarok/actions/runs/41379887183) passed at exact runtime/witness commit `6a69dd986f63f48ed98f83d410e1d39eb18a0171` against baseline d74. [Independent review](https://github.com/jacogr/ragnarok/pull/1892#issuecomment-6568127814) found no remaining correctness defect and retained the same timing costs. All six non-time native work/code metrics match across sources and all interpreted counters remain zero.
+
+| Replay case | Baseline median CPU ms | Candidate median CPU ms | Median change | Mean change | Faster pairs | Baseline / candidate process ranges ms |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| tick | 20.956768 | 21.230166 | +1.304581% | +1.267862% | 0/6 | 20.921692–21.021656 / 21.182344–21.272536 |
+| init | 142.403852 | 142.311376 | -0.064939% | +0.113931% | 4/6 | 141.757860–143.210052 / 141.360252–144.086284 |
+| minimal | 5.215660 | 5.229886 | +0.272756% | -0.464051% | 4/6 | 5.198412–5.281316 / 5.158772–5.240880 |
+| pinky | 78.511200 | 78.928784 | +0.531878% | +0.487716% | 0/6 | 78.355380–78.655824 / 78.663244–79.034996 |
+| sieve | 253.434454 | 257.937038 | +1.776627% | +1.792962% | 0/6 | 253.338100–253.619084 / 257.787000–258.281540 |
+
+Tick, Pinky and Sieve ranges do not overlap and every pair is slower. Init and Minimal overlap with four faster and two slower pairs; median and mean directions differ. No process or sample was excluded.
+
+| Primary case | JIT median change | JIT faster pairs / ranges | Forced-interpreter median change | Interpreter faster pairs / ranges |
+| --- | ---: | --- | ---: | --- |
+| init-0 | -0.902495% | 2/2 / non-overlapping | -0.334789% | 1/2 / overlapping |
+| memset-100000 | +0.223241% | 0/2 / overlapping | +0.216673% | 1/2 / overlapping |
+| minimal-100000 | +0.115545% | 1/2 / overlapping | +0.913787% | 1/2 / overlapping |
+| pinky-1 | +0.557313% | 0/2 / non-overlapping | +0.786611% | 0/2 / overlapping |
+| sieve-100000 | -3.208581% | 2/2 / non-overlapping | -0.326209% | 2/2 / overlapping |
+| sieve-10000000 | +1.339387% | 0/2 / non-overlapping | -0.410959% | 2/2 / non-overlapping |
+| tick-0 | +1.216272% | 0/2 / non-overlapping | -1.766121% | 2/2 / non-overlapping |
+
+Matched raw primary ours/PolkaVM-interpreted ratios: DOOM tick **0.529723 JIT / 0.688884 interpreted**, init **0.226637 / 0.504931**. The interpreted tick and small-Sieve improvements are retained; they do not establish a JIT DOOM benefit. These Linux observations remain separate from the macOS cohorts.
+
+Cold brackets below use the same six replay processes. Values are minimum / median / mean / maximum, in process CPU milliseconds. Compilation/publication CPU is already included in call CPU; it is not wall elapsed time or an additional lifecycle charge.
+
+| Case / source | Constructor CPU ms | First call CPU ms | Native preparation CPU ms |
+| --- | --- | --- | --- |
+| tick / baseline | 8.592232 / 8.691216 / 8.699887 / 8.861000 | 32.293344 / 32.533256 / 32.579560 / 33.027840 | 2.392800 / 2.443080 / 2.435121 / 2.472424 |
+| tick / candidate | 8.634376 / 8.677836 / 8.683480 / 8.737864 | 32.596608 / 32.810328 / 32.813728 / 33.086400 | 2.356296 / 2.392156 / 2.396615 / 2.425712 |
+| init / baseline | 8.665976 / 8.717224 / 8.738591 / 8.869664 | 163.623648 / 164.725724 / 164.748215 / 165.771008 | 7.821864 / 7.958592 / 7.960992 / 8.135368 |
+| init / candidate | 8.644592 / 8.719892 / 8.717991 / 8.767192 | 163.467992 / 164.546444 / 164.711363 / 165.800448 | 7.726576 / 7.913336 / 7.890369 / 7.976280 |
+| minimal / baseline | 0.017056 / 0.017616 / 0.017665 / 0.018464 | 5.414768 / 5.467148 / 5.475284 / 5.528688 | 0.100784 / 0.111144 / 0.113483 / 0.128616 |
+| minimal / candidate | 0.015536 / 0.018656 / 0.018247 / 0.020536 | 5.381440 / 5.465664 / 5.509796 / 5.873328 | 0.096672 / 0.106132 / 0.109845 / 0.127296 |
+| pinky / baseline | 0.702376 / 0.717256 / 0.722981 / 0.753680 | 82.919576 / 83.073176 / 83.084577 / 83.318408 | 1.861864 / 1.883448 / 1.887463 / 1.935664 |
+| pinky / candidate | 0.694528 / 0.734892 / 0.732777 / 0.761784 | 83.246088 / 83.690944 / 83.587873 / 83.789760 | 1.867224 / 1.900716 / 1.905484 / 1.956088 |
+| sieve / baseline | 2.835392 / 3.010828 / 3.032737 / 3.280328 | 261.150160 / 261.613972 / 261.801456 / 263.281504 | 3.074344 / 3.214820 / 3.228097 / 3.388704 |
+| sieve / candidate | 2.810360 / 3.090668 / 3.053485 / 3.295976 | 264.896472 / 265.315624 / 265.348807 / 265.735368 | 3.118488 / 3.238212 / 3.224580 / 3.272808 |
+
+Provenance: official artifact `13112668284`; ZIP SHA-256 `31d9b876f23558733f04d2d4c30882e0f80befdb25e4277881971d8c725d6ce9`, applications report `bc413062eaa4379d4686d9c8b59acbb9eed8550d6e803a0a3f57f241862299d8`, native report `817d732e9a9de28361ad7691c827fd315b70456dce35188cbe957029eaf29b2b`. Independent root checks cover all 144 strict process parses, the exact 60-process replay schedule, 42 positive/96 intended negative controls, 2,575 role-source and 519 native-source hashes, 32 fixture identities, 18 duplicate/policy image equalities, 11 native records, two policy suites, all four new semantic receipts and four move/copy ownership controls. The witness-only correction after local measurement exercises `callArmMemory` with physical ending 37/four operations/zero branches; all measured runtime and application images are unchanged.
+
+This draft preserves the small canonical-control composition and its qualification machinery. Reusing it requires new evidence for the resulting implementation; the dispatch count and local macOS results cannot substitute for the measured Linux workload costs.
