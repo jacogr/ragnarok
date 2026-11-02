@@ -102,8 +102,6 @@ class NativeOwnerReceiptTests(unittest.TestCase):
                 parse_run(body,'jit','tick',0)
 
 
-if __name__=='__main__':
-    unittest.main()
 
 
 class ResidentApplicationReceiptTests(unittest.TestCase):
@@ -121,3 +119,7 @@ class ResidentApplicationReceiptTests(unittest.TestCase):
         for output in bad:
             with self.subTest(output=output), self.assertRaises(ValueError):
                 resident_application_receipt(output)
+
+
+if __name__=='__main__':
+    unittest.main()

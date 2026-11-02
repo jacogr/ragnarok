@@ -278,8 +278,8 @@ work counters match; resident code occupancy is allowed to grow.
 Evidence remains under the speed checkout's `build/pvm-resident-macro` and the
 review checkout's `build/pvm-resident-final-audit`,
 `build/pvm-resident-integrated-check` and `build/pvm-resident-app-check`.
-Exact final-source Linux ARM qualification, matched PolkaVM-interpreted ratios,
-Tooling and Smoke remain pending. These are bounded guests, not full blockchain
+Final Linux ARM qualification, matched PolkaVM-interpreted ratios, Tooling
+and Smoke are recorded below. These are bounded guests, not full blockchain
 throughput measurements.
 
 The integrated local check also passes both native all-opcode and region/host
@@ -290,3 +290,112 @@ cycle children and 1,658,781 completed reads, with zero read refusals. Its nativ
 work/code occupancy exactly matches the measured ordinary image: 1,014 physical
 fragments and 256,676 code bytes. Diagnostic macro receipt flags are confined to
 this separate control; measured images retain the existing flag profile.
+
+### Qualified Linux ARM result
+
+Runtime head: `30c603f50367cb603b2395d6bd110cf426503a15`.
+[ARM qualification/replay](https://github.com/jacogr/ragnarok/actions/runs/41432717048),
+[Tooling](https://github.com/jacogr/ragnarok/actions/runs/41432328219) and
+[Smoke](https://github.com/jacogr/ragnarok/actions/runs/41432225434) passed.
+Tooling ran 1,655 tests (two skipped), plus inventory, lifecycle/mutant and
+compiler-rejection controls. The first ARM dispatch was cancelled by the
+same-ref workflow concurrency rule; its replacement used an isolated CI ref
+at the identical runtime commit. It is not counted as a second successful run.
+
+Artifact `13136271322`, ZIP SHA-256:
+`1ebb2a9690df11c1d917e54c44f7a761be973abcb318c544ccd6ab0dc9d4cfef`.
+Independent audits verify 2,575 role/519 native hashes, 84 primary and 60 replay
+processes, 138 controls, 13 qualification rows, ten macro receipts, 18 image
+equalities, 24 frozen fixtures, two owner moves and 320 raw-log matches.
+The extra real-DOOM control verifies 515 source hashes and all 13 public calls.
+Its resident receipt and native work/occupancy agree with the measured image.
+All 44 paired comparisons retain semantic work; only tick code bytes grow
+from 254,240 to 256,676, with unchanged physical fragment counts.
+
+All qualified warm windows use calls 3-12, without exclusions. Group-median
+changes are ratios of group medians of process warm CPU medians. Paired-median
+changes are a separate estimator. Overlap refers to full process-median ranges.
+
+| Six native replay pairs | Group-median change | Median paired change | Faster / slower | Ranges overlap |
+| --- | ---: | ---: | ---: | --- |
+| tick | -3.509280% | -3.620605% | 6 / 0 | no |
+| init | +0.593798% | +0.349358% | 1 / 5 | yes |
+| sieve | -4.382184% | -4.399773% | 6 / 0 | no |
+| pinky | -0.171084% | -0.136043% | 5 / 1 | yes |
+| minimal | +0.251364% | -0.320595% | 4 / 2 | yes |
+
+DOOM tick and Sieve are consistently faster in all six pairs, with separated
+ranges. Init has a small cost in five pairs with overlap. Pinky is near flat
+with overlap. Minimal has four faster pairs but a slightly higher group median;
+its ratio-of-means change is -0.090381%. All processes remain included. Sieve's
+resident macro is inactive and its work/code occupancy is unchanged, so its
+observed gain is not attributed specifically to macro activation.
+
+Complete primary comparisons retain interpreter costs explicitly:
+
+| Primary workload | Policy | Group-median change | Faster / slower | Ranges overlap |
+| --- | --- | ---: | ---: | --- |
+| init:0 | jit | +0.057242% | 1 / 1 | yes |
+| init:0 | interpreter | -0.503918% | 2 / 0 | no |
+| memset:100000 | jit | +0.091966% | 0 / 2 | yes |
+| memset:100000 | interpreter | +0.392446% | 0 / 2 | yes |
+| minimal:100000 | jit | +0.059486% | 1 / 1 | yes |
+| minimal:100000 | interpreter | -1.165031% | 2 / 0 | no |
+| pinky:1 | jit | -0.137488% | 1 / 1 | yes |
+| pinky:1 | interpreter | -0.405866% | 2 / 0 | no |
+| sieve:100000 | jit | -2.221092% | 2 / 0 | no |
+| sieve:100000 | interpreter | +0.431002% | 0 / 2 | no |
+| sieve:10000000 | jit | -4.165523% | 2 / 0 | no |
+| sieve:10000000 | interpreter | +0.816185% | 0 / 2 | no |
+| tick:0 | jit | -3.770983% | 2 / 0 | no |
+| tick:0 | interpreter | +1.315658% | 0 / 2 | no |
+
+The primary interpreter costs are tick +1.315658%, Sieve 10M +0.816185%
+and Sieve 100K +0.431002%, each slower in both orders without range overlap.
+Memset interpreter +0.392446% and native +0.091966% are slower in both orders
+with overlap. These costs are retained; the change is not an all-policy gain.
+
+Matched raw public-call CPU ratios against **interpreted PolkaVM**:
+
+| Workload | Ragnarök JIT / PolkaVM interpreted | Ragnarök interpreted / PolkaVM interpreted |
+| --- | ---: | ---: |
+| tick | 0.393924 | 0.686828 |
+| init | 0.225867 | 0.503545 |
+| sieve | 0.770368 | 0.964926 |
+| pinky | 0.906188 | 0.984972 |
+| minimal | 0.957820 | 0.997385 |
+
+Cold CPU entries below are medians [minimum, maximum] over all six processes,
+in milliseconds. Constructor and first public call are separate. Compiler /
+publication CPU is a cumulative diagnostic already included in calls; it is
+not wall time, need not all occur in the first call, and is never added again.
+
+| Workload / role | Owner constructor | First public call | Cumulative compiler/publication |
+| --- | ---: | ---: | ---: |
+| tick / baseline | 8.580772 [8.520488, 8.655992] | 27.685444 [27.559224, 28.663888] | 2.428172 [2.381440, 2.486952] |
+| tick / jit | 8.528120 [8.443840, 8.563576] | 27.359544 [27.080528, 27.535664] | 2.423344 [2.392128, 2.445800] |
+| init / baseline | 8.585780 [8.522216, 8.666848] | 163.227676 [162.344344, 163.748792] | 7.824324 [7.745144, 7.881232] |
+| init / jit | 8.520496 [8.432816, 8.643024] | 163.685344 [162.366952, 164.456888] | 7.892040 [7.756448, 7.997448] |
+| sieve / baseline | 2.941764 [2.822864, 3.219048] | 276.532520 [276.054664, 276.641008] | 3.162924 [3.104104, 3.348608] |
+| sieve / jit | 2.895904 [2.854712, 3.132632] | 264.287368 [264.065360, 264.836888] | 3.153984 [3.090448, 3.252200] |
+| pinky / baseline | 0.704504 [0.687256, 0.722520] | 84.220152 [84.081776, 84.369768] | 1.901228 [1.876160, 1.947160] |
+| pinky / jit | 0.715192 [0.699952, 0.748424] | 84.081280 [83.862152, 84.310512] | 1.896520 [1.851912, 1.924920] |
+| minimal / baseline | 0.019048 [0.016984, 0.020152] | 5.466124 [5.422616, 5.506664] | 0.096236 [0.092264, 0.103872] |
+| minimal / jit | 0.016012 [0.014784, 0.018280] | 5.472760 [5.425248, 5.494760] | 0.099068 [0.094216, 0.147352] |
+
+Root audit records: `build/pvm-resident-ci/audit.json` and `distributions.json`.
+The independent reviewer record is `/tmp/review1897/final-cold-source-record.json`
+(SHA-256 `1d2951e3f52201520842d79ec3287938e95608ffc03ebc937b621229062c6b63`).
+Bounded guest results do not establish full blockchain throughput.
+
+A separate local interpreted-only follow-up reused four verified final-screen
+DOOM images without rebuilding. Six alternating pairs passed full CPU/pages/
+events and strict interpreted policy, with every native owner counter zero.
+Calls 3-12 ratios were 0.962962, 1.005104, 0.998246, 1.001428, 1.005143 and
+1.017761 (median 1.003266, four slower); calls 1-12 median was 1.003737.
+Equal-image 3-12 controls were 0.996764 baseline and 0.999824 candidate.
+This bounded macOS follow-up does not consistently reproduce the Linux primary
++1.315658% magnitude and does not establish its cause. It does not replace or
+negate that Linux cost. Records: speed checkout
+`build/pvm-resident-interpreted-followup/results.json` and 16 raw logs.
+The remaining interpreter cost is retained for the next ordered investigation.
