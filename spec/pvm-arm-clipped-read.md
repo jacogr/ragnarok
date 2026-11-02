@@ -83,8 +83,8 @@ The final DOOM tick JIT candidate/baseline warm CPU ratios across six alternatin
 pairs were 0.9417, 0.9704, 0.9980, 0.9522, 0.9837 and 1.0116 (median 0.9770).
 Five pairs favored the candidate; one did not. Interpreted tick controls were
 0.9993 and 0.9969, while same-role JIT warm medians moved by several percent
-within the cohort. The tick signal merits a current-master replay and is not a
-universal gain. Init JIT ratios were 0.9871, 0.9982, 0.9988, 0.9946, 0.9927
+within the cohort. The tick signal required the current-master replay below
+and is not a universal gain. Init JIT ratios were 0.9871, 0.9982, 0.9988, 0.9946, 0.9927
 and 0.9544 (median 0.9936); interpreted init controls were 0.9974 and
 1.0000. Retain the fast last candidate, but no stable init gain is established
 over the pilot's init A/A ratio of 0.9803. Minimal100k slowed in both clean pairs (1.0102 and
@@ -109,11 +109,34 @@ frame/stream move/copy checks, persistent page chunks, and unclocked complete
 DOOM tick/init calls under JIT and interpreted policies. One-call JIT image bytes
 and native work matched the qualified clipped candidate; interpreted native
 counters stayed zero. This combined head has **no local timing result**. Its one
-authorized Linux ARM replay uses master `360ed9e6` as the baseline with a paired
-interpreter control before any claim about the current master.
+authorized [Linux ARM replay](https://github.com/jacogr/ragnarok/actions/runs/41543935100)
+used master `360ed9e6` as the baseline and `b3ca755f` as the candidate, with
+paired interpreter controls. Its retained `pvm-comparison-arm64-1` artifact
+(ID `13189161889`, SHA-256
+`dba74e63bc556a67fa5bdbe220d633e7515567157543d715862caa5ecf85d62e`)
+passed. The candidate runtime source blobs are unchanged at the later fixture
+and report commits. The audit matched 84 primary and 60 replay process logs,
+138 controls, 18 paired images and the exact native work/fragments in all 44
+baseline/candidate comparisons. The later strict native gate also accepted all
+14 qualification rows against the retained log bytes and exit codes.
+
+The Linux replay's six alternating warm CPU ratios (candidate/baseline) were
+1.0197, 1.0131, 1.0226, 1.0195, 1.0175 and 1.0180 for init: every pair
+slowed, with a reported group change of +1.8154%. The corresponding tick
+ratios were 0.9672, 0.9680, 0.9671, 0.9668, 0.9758 and 0.9660: every pair
+improved, with a reported group change of -3.0795%. The primary JIT run also
+showed slower init (+1.9819%) and faster tick (-3.4817%) in both orders;
+replay first-call init was slower (+1.6417%). Minimal improved in all six
+Linux replay pairs (group -2.5066%, ranges overlapping), unlike the older
+local cohort. Sieve10M improved in all six (group -0.8638%, ranges not
+overlapping), while Pinky was small and its ranges mixed. Interpreted init
+and tick controls were mixed with overlapping ranges. These results support
+the current-master tick gain and init regression, with no overall cold gain.
 
 A Nimony generated-C direct-field observation in one width-loop test caller
 cached a JIT counter across a call. The supported native witness uses a
 transparent `noinline` test reader for that counter; copied public and owner
 statistics and application validation are independent checks. No production
-counter workaround or compiler change is part of this stage.
+counter workaround or compiler change is part of this stage. The suspected
+behavior, project-bound reproducer and pending reduction gates are tracked as
+[NIM-005](compiler-issues.md).

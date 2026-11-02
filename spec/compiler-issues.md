@@ -11,6 +11,7 @@ IDs are stable. Status below is distinct from the last compiler actually tested.
 | NIM-002 | `$value` in a `SomeInteger` generic rejected; JSON writer uses concrete overloads. | [#2808 closed as not a bug](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445). A type constraint does not guarantee a dollar operator. Retain supported concrete overloads; no pending compiler fix. | October 27, 2026; `358b9bce4`, macOS ARM64. |
 | NIM-003 | Second mutable pointee call loses nil proof; callback needed explicitly typed non-null pointer. | Locally verified fixed in October 28 archive containing [#2811](https://github.com/nim-lang/nimony/pull/2811) and [#2813](https://github.com/nim-lang/nimony/pull/2813). Original inferred-local probe and typed control run; transport callback fixtures use inferred pointers again. See [qualification](nimony-nightly-2026-10-28.md). | October 28, 2026; `63fed6cb4`, macOS ARM64. |
 | NIM-004 | Qualified `declared(...)` crashes compiler; PVM comparison guard uses unqualified lookup. | Draft for maintainer submission; still crashes in 5/5 clean directories on the newest published archive. No upstream issue filed. | October 28, 2026; `63fed6cb4`, macOS ARM64. |
+| NIM-005 | Direct JIT counter field read appears stale after a mutating call in one width-loop test; the native witness uses a test-only `noinline` observer. | Suspected; [project-bound draft](nimony-reports-2026-11-03/counter-field-cse.md) and [candidate source](nimony-reports-2026-11-03/counter-field-cse.nim) retained. Standalone reduction, language-contract review, upstream duplicate/devel checks and fresh retest pending; no issue filed. | November 3, 2026; `63fed6cb4`, macOS ARM64 (retained binary rerun, fresh compile pending). |
 
 ## Reproducers, workarounds and evidence
 
@@ -36,6 +37,12 @@ Preserve each row's own last-tested identity rather than silently refreshing his
   Local raw receipts are under ignored `build/ci/qualified-declared/`; the portable evidence is
   preserved in the tracked draft. The October 28 archive is retested; Linux runtime and regression bisect remain
   unchecked. No runtime/library/pin patch is involved.
+- NIM-005: [suspected counter observation draft](nimony-reports-2026-11-03/counter-field-cse.md)
+  and [project-bound reproducer candidate](nimony-reports-2026-11-03/counter-field-cse.nim).
+  The supported [ARM clipped-read witness](../tests/support/pvm_arm_clipped_read_witness.nim)
+  uses a `noinline` counter reader only in tests. Generated-C and process receipts are under ignored
+  `build/pvm-stage-zero-master/build/`; a standalone reduction and contract check are still required
+  before attributing this observation to the compiler or drafting an upstream submission.
 
 ## Retained ownership rejection regressions
 
