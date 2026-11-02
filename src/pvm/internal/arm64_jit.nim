@@ -1248,12 +1248,16 @@ proc callArmRegion*(jit: ArmJit, registers: var RegisterFile, state: var array[5
     # Each block consumes at least as many source attempts as lowered operations; each individual product is bounded.
     let count = uint64(jit.region.operations[index])
     let span = uint64(jit.region.spans[index])
-    assert count > 0 and span >= count and state[index+2] <= consumed div span
-    let attempts = state[index+2]*span
+    let visits = state[index+2]
+    assert count > 0 and span >= count
+    # A uint32-sized visit count times the sealed uint32 span fits uint64; larger counts retain the quotient guard.
+    if visits > uint64(high(uint32)):
+      assert visits <= consumed div span
+    let attempts = visits*span
     assert accounted <= consumed and attempts <= consumed-accounted
     accounted+=attempts
-    jit.operations+=state[index+2]*count
-    jit.region.blocks+=state[index+2]
+    jit.operations+=visits*count
+    jit.region.blocks+=visits
   if jit.region.blockCount == 2: assert state[4] == 0
   assert accounted == consumed
   destination
