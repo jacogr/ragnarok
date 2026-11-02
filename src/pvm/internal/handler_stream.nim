@@ -124,7 +124,7 @@ type
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
-      armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
+      armMemory: ArmReadContext # Raw three triplets precede clipped reads; never retained by FlatStream.
       when defined(pvmArmMacroStateTrace):
         armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
 
@@ -1567,6 +1567,33 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[1] = uint64(bytes.len-7)
       result[2] = cast[uint64](addr bytes[0])
 
+when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+  proc flatArmClippedReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+    ## Intersect a moved private region with the existing eight-byte native read bounds.
+    result = [0'u64, 0'u64, 0'u64]
+    if bytes.len < 8: return
+    let length = uint64(bytes.len)
+    assert first <= 0x100000000'u64 and length <= 0x100000000'u64-first
+    let extent = length-7'u64
+    assert first <= high(uint64)-extent
+    let endOfRegion = first+extent
+    let low = max(first, 65536'u64)
+    let highExclusive = min(endOfRegion, 0xfffffff8'u64)
+    if highExclusive <= low: return
+    let offset = low-first
+    assert offset <= length-8'u64 and offset < uint64(bytes.len)
+    result = [low, highExclusive-low, cast[uint64](addr bytes[int(offset)])]
+
+  proc flatBuildArmReadContext(f: var FlatFrame) =
+    ## Rebuild both tables only after the frame owns every moved private byte allocation.
+    assert sizeof(ArmReadContext) == 144
+    f.armMemory[0] = flatArmReadRegion(f.stackBase, f.stack)
+    f.armMemory[1] = flatArmReadRegion(f.rwBase, f.rw)
+    f.armMemory[2] = flatArmReadRegion(f.roBase, f.ro)
+    f.armMemory[3] = flatArmClippedReadRegion(f.stackBase, f.stack)
+    f.armMemory[4] = flatArmClippedReadRegion(f.rwBase, f.rw)
+    f.armMemory[5] = flatArmClippedReadRegion(f.roBase, f.ro)
+
 proc flatFrameShell(plan: FlatPlan, memory: Memory, info: MachineInfo, pageCount: int): FlatFrame =
   ## Both paths initialize every execution field afresh; the memory lease never supplies execution state.
   result = FlatFrame(plan: plan,
@@ -1653,9 +1680,7 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     else: result.extra.add(region)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Only this frame owns these byte allocations; ordinary stores/host deltas mutate bytes without reallocating them.
-    result.armMemory[0] = flatArmReadRegion(result.stackBase, result.stack)
-    result.armMemory[1] = flatArmReadRegion(result.rwBase, result.rw)
-    result.armMemory[2] = flatArmReadRegion(result.roBase, result.ro)
+    flatBuildArmReadContext(result)
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
   ## Validate complete page admission before private region copies; a refusal contains no partial frame.
@@ -2063,7 +2088,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         not armDirtyLoopChargeMatches(jit, offset, charge.y, charge.x):
       return flatArmCheckedTail(f, offset)
     var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64]
-    let destination = callArmDirtyLoop(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+    let destination = callArmDirtyLoopContext(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
     f.info.gas = MachineGas(state[0])
     f.remaining = state[1]
     f.info.blockCharged = false
@@ -2251,7 +2276,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     block:
       let jit = f.armJit
       assert jit != nil
-      next = callArmMixed(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
+      next = callArmMixedContext(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
     if state[0] == 1:
       let branch = f.arguments[int(terminal)]
       if next != uint32(branch.x shr 32) and next != branch.y:
@@ -2671,7 +2696,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         let jit {.cursor.} = f.armJit
         assert jit != nil
         if jit != nil:
-          let destination = callArmMemory(jit, offset, f.info.registers, f.armMemory)
+          let destination = callArmMemoryContext(jit, offset, f.info.registers, f.armMemory)
           if destination != flatStop: return destination
     let original = f.armOriginal[int(offset)]
     assert original != nil
@@ -2773,7 +2798,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
     var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64,
       0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, uint64(flatStop)]
-    let destination = callArmMemoryCycle(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+    let destination = callArmMemoryCycleContext(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
     f.info.gas = MachineGas(state[0])
     f.remaining = state[1]
     f.info.blockCharged = false
@@ -3034,7 +3059,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
             else:
               complete = false
             if complete and armMacroMatches(jit, current):
-              destination = callArmMacro(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+              destination = callArmMacroContext(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
               admitted = true
     if not admitted: return flatArmMemoryCycle(f, offset)
     when defined(pvmArmMacroStateTrace):
@@ -3066,7 +3091,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     proc flatArmRefuseResidentCycleReceipt*(f: var FlatFrame) =
       ## Exercise actual source discovery, linked publication and Frame handler installation.
       assert f.plan.allowNative
-      if f.armJit == nil: f.armJit = newArmJit()
+      if f.armJit == nil: f.armJit = newArmJit(clippedReads = true)
       let jit {.cursor.} = f.armJit
       assert jit != nil
       if jit != nil: armRefuseResidentCycleReceipt(jit)
@@ -3170,7 +3195,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         if jit != nil:
           let ending = armEnding(jit, offset)
           let args = f.arguments[int(ending)]
-          destination = callArmMemoryBranch(jit, offset, uint32(args.x shr 32), args.y,
+          destination = callArmMemoryBranchContext(jit, offset, uint32(args.x shr 32), args.y,
             f.info.registers, f.armMemory)
           discover = armMemoryCycleStatus(jit) == 0
     if destination != flatStop:
@@ -3189,6 +3214,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let readOpcode = int(first.opcode)
     assert readOpcode >= 52 and readOpcode <= 58
     var native = default(ArmReadSpan)
+    armUseClippedReads(native, f.armJit)
     emitArmDirectRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
         range[52..58](readOpcode))
     for current in offset+1..<ending:
@@ -3209,7 +3235,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let ending = armEnding(jit, offset)
     let before = armClock()
     let native = flatArmReadBody(f, offset, ending)
-    var words = armReadInstructions(native, ending, true)
+    var words = armReadInstructionsForOwner(jit, native, ending, true)
     if words.len >= 1024: return false
     let published = publishArmEntry(jit, offset, ending, ending-offset+1, words)
     jit.compilationNs+=armClock()-before
@@ -3288,6 +3314,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         if fact.opcode == 130 and (uint32(fact.args.x and 0xffffffff'u64)-first) mod 8 != 0:
           window = false
     if window: beginArmReadWindow(native, base, first, last)
+    else: armUseClippedReads(native, f.armJit)
     for current in offset..<ending:
       # Only a proved stable base uses the shared window; all other mixed spans preserve their original lowering.
       let fact = f.plan.facts[int(f.sites[int(current)])]
@@ -3323,7 +3350,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if reads < 2 or count < 4: return offset
     var native = default(ArmReadSpan)
     if not flatArmReadSpanBody(f, offset, ending, native): return offset
-    var words = armReadInstructions(native, ending)
+    var words = armReadInstructionsForOwner(jit, native, ending)
     if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
@@ -3358,7 +3385,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let args = f.arguments[int(offset)]
     let readOpcode = int(f.plan.facts[int(f.sites[int(offset)])].opcode)
     assert readOpcode >= 124 and readOpcode <= 130 # The caller admitted a sealed load; keep its conversion proof local.
-    var words = armMemoryInstructions(native, args.slots, uint32(args.x and 0xffffffff'u64), ending,
+    var words = armMemoryInstructionsForOwner(jit, native, args.slots, uint32(args.x and
+        0xffffffff'u64), ending,
       range[124..130](readOpcode))
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
@@ -3372,6 +3400,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     assert jit != nil
     if jit == nil: return offset
     var native = default(ArmReadSpan)
+    armUseClippedReads(native, jit)
     var ending = offset
     var count = 0'u32
     var reads = 0'u32
@@ -3394,7 +3423,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       inc ending
       inc count
     if reads == 0 or count < 4: return offset
-    var words = armReadInstructions(native, ending)
+    var words = armReadInstructionsForOwner(jit, native, ending)
     if words.len >= 1024: return offset # Preserve the existing pure publisher on bounded refusal.
     if jit.fragments >= 8191 or jit.codeBytes > 1048576 or
         uint64(words.len+1)*4 > 1048576-jit.codeBytes:
@@ -3407,7 +3436,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 
   proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
     ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
-    if f.armJit == nil: f.armJit = newArmJit()
+    if f.armJit == nil: f.armJit = newArmJit(clippedReads = true)
     let jit = f.armJit
     if jit == nil: return offset
     let entry = armEntry(jit, offset, uint32(f.handlers.len))
@@ -4077,9 +4106,7 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     flatRestoreScratchPage(frame, int(uint32(changed)))
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Every borrowed native descriptor is derived anew from this invocation's moved byte owners.
-    frame.armMemory[0] = flatArmReadRegion(frame.stackBase, frame.stack)
-    frame.armMemory[1] = flatArmReadRegion(frame.rwBase, frame.rw)
-    frame.armMemory[2] = flatArmReadRegion(frame.roBase, frame.ro)
+    flatBuildArmReadContext(frame)
   reused = true
   FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
 

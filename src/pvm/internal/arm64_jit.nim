@@ -12,6 +12,9 @@ else:
 
 type ArmMixedState* = array[armMixedStateWords, uint64]
 
+type ArmReadContext* = array[6, array[3, uint64]]
+  ## One frame-owned full context: raw descriptor triplets first, clipped read triplets second.
+
 const armMacroStateWords* = 26
 type ArmMacroState* = array[armMacroStateWords, uint64]
 
@@ -95,6 +98,7 @@ type
     body: ArmBlock
     guards: seq[ArmReadGuard]
     directFirst: bool
+    clippedReads: bool # Source-constant read mode; whole-window bodies retain raw descriptors.
     branchReady: bool
     branchYes, branchNo: uint32
   ArmMixedSite = object
@@ -118,6 +122,7 @@ type
     fragments*: uint64
     calls*, operations*, codeBytes*, compilationNs*: uint64
     unavailable: bool
+    clippedReads: bool           # Uniform owner mode keeps the twelve-byte entry record unchanged.
     mixedCalls*, mixedCompleted*, mixedInterior*, mixedOperations*: uint64
     mixedGroupPublished, mixedGroupAttempts, mixedGroupPasses: uint64
     memoryCycle: ArmMemoryCycleCache
@@ -152,13 +157,25 @@ proc createArena(): nil pointer =
   when defined(pvmArm64JitRefuse): nil
   else: createArenaNative()
 
-proc newArmJit*(): ArmJit =
-  ## Storage is allocated lazily only after a supported multi-operation fragment is identified.
+proc newArmJit*(clippedReads: bool = false): ArmJit =
+  ## Fix the read-context policy for this code owner before any image is published.
   # Keep the same three-u32 logical payload per stream coordinate, without hidden record padding.
   assert sizeof(ArmEntryRecord) == 12
   ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache),
       dirtyLoop: default(ArmDirtyLoopCache), entries: @[], unavailable: false,
-      memoryCycle: default(ArmMemoryCycleCache), macroRoute: default(ArmMacroCache))
+      clippedReads: clippedReads, memoryCycle: default(ArmMemoryCycleCache),
+      macroRoute: default(ArmMacroCache))
+
+func armUsesClippedReads*(jit: ArmJit): bool =
+  ## Read images share one immutable owner policy across ordinary and nested entry routes.
+  jit != nil and jit.clippedReads
+
+proc armUseClippedReads*(span: var ArmReadSpan, jit: nil ArmJit) =
+  ## Select the full-context read table before emitting any individual scalar access.
+  assert jit != nil
+  if jit == nil: return
+  assert jit.clippedReads and span.body.words.len == 0
+  span.clippedReads = true
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -698,19 +715,22 @@ proc emitArmReadFrom(span: var ArmReadSpan, baseSlot, destinationSlot: range[0..
     span.body.words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
     span.body.words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
     span.body.words.add(0x0b020063'u32)
-  span.body.words.add(0xf140407f'u32) # CMP X3,#65536 rejects the protected prefix.
-  armReadRefusal(span, 0x54000003'u32, true) # LO exits before accessing a descriptor pointer.
-  span.body.words.add(0x12800102'u32) # MOV W2,#0xfffffff7 preserves the existing conservative bound.
-  span.body.words.add(0xeb02007f'u32) # CMP X3,X2.
-  armReadRefusal(span, 0x54000008'u32, true) # HI retains canonical top-address handling.
+  if not span.clippedReads:
+    # Legacy raw descriptors still need the original low and top guards.
+    span.body.words.add(0xf140407f'u32)
+    armReadRefusal(span, 0x54000003'u32, true)
+    span.body.words.add(0x12800102'u32)
+    span.body.words.add(0xeb02007f'u32)
+    armReadRefusal(span, 0x54000008'u32, true)
   var accepted = default(array[3, int])
   for region in 0..<3:
     # X17 preserves the descriptor base across arithmetic's X1 scratch; X3 retains the address across region misses.
-    span.body.words.add(0xa9400a21'u32 or (uint32(region*3) shl 15)) # LDP X1,X2,[X17,#region*24].
+    let descriptor = region*3+(if span.clippedReads: 9 else: 0)
+    span.body.words.add(0xa9400a21'u32 or (uint32(descriptor) shl 15)) # LDP base/limit.
     span.body.words.add(0xcb010061'u32) # SUB X1,X3,X1 computes an unsigned region offset.
     span.body.words.add(0xeb02003f'u32) # CMP X1,X2 proves offset < extent-minus-seven.
     span.body.words.add(0x54000082'u32) # HS skips exactly the pointer, load and accepted branch.
-    span.body.words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10)) # LDR X2,[X17,#region*24+16].
+    span.body.words.add(0xf9400222'u32 or (uint32(descriptor+2) shl 10)) # Borrowed pointer.
     span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
         destination) # The unchanged eight-byte extent proof also covers narrower unaligned reads.
     accepted[region] = span.body.words.len
@@ -738,7 +758,8 @@ proc emitArmDirectRead*(span: var ArmReadSpan, slots: RegisterSlots, displacemen
 proc beginArmReadWindow*(span: var ArmReadSpan, slot: range[0..12], first, last: uint32) =
   ## A stable guest base admits one nonwrapping readable window before any speculative register mutation.
   span.directFirst = false
-  assert span.body.words.len == 0 and last >= first and last-first <= 4088
+  assert not span.clippedReads and span.body.words.len == 0 and
+      last >= first and last-first <= 4088
   let distance = last-first
   let source = armRead(span.body, slot)
   span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots the original low word.
@@ -855,13 +876,21 @@ proc armMacroReadImage(span: ArmReadSpan): ArmReadImage =
 
 proc armReadInstructions*(span: ArmReadSpan, ending: uint32,
     conditional: bool = false): seq[uint32] =
-  ## Standalone read still owns its original live-in, publication and return ABI.
+  ## Direct witness callers receive raw-only images for their legacy 72-byte context.
+  assert not span.clippedReads
+  result = armReadImage(span, ending, conditional, false).words
+
+proc armReadInstructionsForOwner*(jit: ArmJit, span: ArmReadSpan, ending: uint32,
+    conditional: bool = false): seq[uint32] =
+  ## A full-context owner may publish clipped individual reads or unchanged raw windows.
+  assert jit != nil and (not span.clippedReads or jit.clippedReads)
   result = armReadImage(span, ending, conditional, false).words
 
 
-proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
-    displacement, ending: uint32, opcode: range[124..130] = 130): seq[uint32] =
-  ## A first indirect read of the selected signed/unsigned width guards fresh borrowed regions before any guest register is published.
+proc armMemoryInstructionsImpl(fragment: var ArmBlock, slots: RegisterSlots,
+    displacement, ending: uint32, opcode: range[124..130],
+    clippedReads: bool): seq[uint32] =
+  ## Emit one selected-width read with an owner-selected descriptor table.
   assert fragment.terminal.len == 0
   let destination = armWrite(fragment, slots.aIndex)
   let arithmetic = armInstructions(fragment)
@@ -876,21 +905,25 @@ proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
     result.add(0x52800002'u32 or ((displacement and 65535) shl 5))
     result.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
     result.add(0x0b020063'u32) # The fallback preserves every full 32-bit displacement.
-  result.add(0xf140407f'u32) # CMP Xaddress,#65536 rejects the protected prefix.
-  var refused: seq[int] = @[result.len]
-  result.add(0x54000003'u32) # LO returns untouched to canonical memory preflight.
-  result.add(0x12800102'u32) # MOV Wlimit,#0xfffffff7, matching the existing conservative fast-load bound.
-  result.add(0xeb02007f'u32) # CMP Xaddress,Xlimit.
-  refused.add(result.len)
-  result.add(0x54000008'u32) # HI returns untouched for top-address scalar handling.
+  var refused: seq[int] = @[]
+  if not clippedReads:
+    # The clipped table already intersects the raw extent with both canonical bounds.
+    result.add(0xf140407f'u32)
+    refused.add(result.len)
+    result.add(0x54000003'u32)
+    result.add(0x12800102'u32)
+    result.add(0xeb02007f'u32)
+    refused.add(result.len)
+    result.add(0x54000008'u32)
   var accepted: seq[int] = @[]
   for region in 0..<3:
     # Unsigned subtraction rejects addresses below a region; offset < length-7 proves the complete eight-byte extent.
-    result.add(0xa9404422'u32 or (uint32(region*3) shl 15)) # LDP Xbase,Xextent,[Xcontext,#region*24].
+    let descriptor = region*3+(if clippedReads: 9 else: 0)
+    result.add(0xa9404422'u32 or (uint32(descriptor) shl 15)) # LDP base/limit.
     result.add(0xcb020062'u32) # SUB Xoffset,Xaddress,Xbase.
     result.add(0xeb11005f'u32) # CMP Xoffset,Xextent.
     result.add(0x54000082'u32) # HS skips this region without reading its pointer.
-    result.add(0xf9400031'u32 or (uint32(region*3+2) shl 10)) # LDR Xpointer,[Xcontext,#region*24+16].
+    result.add(0xf9400031'u32 or (uint32(descriptor+2) shl 10)) # Borrowed pointer.
     result.add(armReadEncoding(opcode) or (2'u32 shl 16) or (17'u32 shl 5) or
         destination) # The conservative eight-byte guard admits every selected width safely.
     accepted.add(result.len)
@@ -913,6 +946,18 @@ proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
   for index in accepted:
     assert index >= 0 and index < body
     result[index] = 0x14000000'u32 or uint32(body-index)
+
+proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
+    displacement, ending: uint32, opcode: range[124..130] = 130): seq[uint32] =
+  ## Keep the direct witness emitter bound to the original raw descriptor ABI.
+  armMemoryInstructionsImpl(fragment, slots, displacement, ending, opcode, false)
+
+proc armMemoryInstructionsForOwner*(jit: ArmJit, fragment: var ArmBlock,
+    slots: RegisterSlots, displacement, ending: uint32,
+    opcode: range[124..130] = 130): seq[uint32] =
+  ## Frame-native scalar reads follow the immutable owner context policy.
+  assert jit != nil
+  armMemoryInstructionsImpl(fragment, slots, displacement, ending, opcode, jit.clippedReads)
 
 proc armEntry*(jit: ArmJit, offset, extent: uint32): uint32 =
   ## Zero is unexamined, one refused, and code offsets are stored plus two; maps have a hard local ceiling.
@@ -1010,29 +1055,53 @@ proc callArmEntry*(jit: ArmJit, offset: uint32, registers: var RegisterFile): ui
   jit.operations+=uint64(entry.operations)
   entry.ending
 
-proc callArmMemory*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
-    regions: var array[3, array[3, uint64]]): uint32 =
+proc callArmMemoryCore(jit: ArmJit, offset: uint32, registers: var RegisterFile,
+    descriptorPointer: pointer): uint32 =
   ## The code borrows only this frame's descriptors; refusal publishes no guest mutation and charges no lowered operations.
-  assert sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert sizeof(RegisterFile) == 104 and descriptorPointer != nil
   let entry = jit.entries[int(offset)]
   assert entry.code >= 2
-  result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr regions)
+  result = regionArena(jit.arena.handle, entry.code-2, addr registers, descriptorPointer)
   assert result == high(uint32) or result == entry.ending
   inc jit.calls
   if result != high(uint32): jit.operations+=uint64(entry.operations)
 
-proc callArmMemoryBranch*(jit: ArmJit, offset, yes, no: uint32,
-    registers: var RegisterFile, regions: var array[3, array[3, uint64]]): uint32 =
+proc callArmMemory*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]]): uint32 =
+  ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
+  assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
+  callArmMemoryCore(jit, offset, registers, addr regions)
+
+proc callArmMemoryContext*(jit: ArmJit, offset: uint32, registers: var RegisterFile,
+    context: var ArmReadContext): uint32 =
+  ## Borrow the complete 144-byte frame context for one full-mode native entry.
+  assert jit != nil and jit.clippedReads and sizeof(context) == 144
+  callArmMemoryCore(jit, offset, registers, addr context)
+
+proc callArmMemoryBranchCore(jit: ArmJit, offset, yes, no: uint32,
+    registers: var RegisterFile, descriptorPointer: pointer): uint32 =
   ## A refused read leaves the original registers untouched; success selects only cached branch arms.
-  assert sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert sizeof(RegisterFile) == 104 and descriptorPointer != nil
   let entry = jit.entries[int(offset)]
   assert entry.code >= 2
-  result = regionArena(jit.arena.handle, entry.code-2, addr registers, addr regions)
+  result = regionArena(jit.arena.handle, entry.code-2, addr registers, descriptorPointer)
   assert result == high(uint32) or result == yes or result == no
   inc jit.calls
   if result != high(uint32):
     inc jit.branchCalls
     jit.operations+=uint64(entry.operations)
+
+proc callArmMemoryBranch*(jit: ArmJit, offset, yes, no: uint32,
+    registers: var RegisterFile, regions: var array[3, array[3, uint64]]): uint32 =
+  ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
+  assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
+  callArmMemoryBranchCore(jit, offset, yes, no, registers, addr regions)
+
+proc callArmMemoryBranchContext*(jit: ArmJit, offset, yes, no: uint32,
+    registers: var RegisterFile, context: var ArmReadContext): uint32 =
+  ## Borrow the complete 144-byte frame context for one full-mode native entry.
+  assert jit != nil and jit.clippedReads and sizeof(context) == 144
+  callArmMemoryBranchCore(jit, offset, yes, no, registers, addr context)
 
 proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
   ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
@@ -1049,15 +1118,15 @@ proc callArmBranch*(jit: ArmJit, offset: uint32, registers: var RegisterFile): u
   inc jit.branchCalls
   jit.operations+=uint64(entry.operations)
 
-proc callArmMixed*(jit: ArmJit, header: uint32, registers: var RegisterFile,
-    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+proc callArmMixedCore(jit: ArmJit, header: uint32, registers: var RegisterFile,
+    descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var ArmMixedState): uint32 =
   ## The checked header owns gas and attempt reservation; native owns only this body's prefix.
-  assert sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert sizeof(RegisterFile) == 104 and descriptorPointer != nil
   assert int(header) < jit.entries.len and jit.entries[int(header)].code >= 2
   let entry = jit.entries[int(header)]
   state[0] = 0
-  state[1] = cast[uint64](addr regions)
+  state[1] = cast[uint64](descriptorPointer)
   state[2] = uint64(dirtyWords.len)
   state[3] = 0
   state[4] = 0
@@ -1079,6 +1148,20 @@ proc callArmMixed*(jit: ArmJit, header: uint32, registers: var RegisterFile,
     inc jit.branchCalls
     inc jit.mixedCompleted
   elif state[0] == 2: inc jit.mixedInterior
+
+proc callArmMixed*(jit: ArmJit, header: uint32, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var ArmMixedState): uint32 =
+  ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
+  assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
+  callArmMixedCore(jit, header, registers, addr regions, dirtyWords, state)
+
+proc callArmMixedContext*(jit: ArmJit, header: uint32, registers: var RegisterFile,
+    context: var ArmReadContext, dirtyWords: var seq[uint64],
+    state: var ArmMixedState): uint32 =
+  ## Borrow the complete 144-byte frame context for one full-mode native entry.
+  assert jit != nil and jit.clippedReads and sizeof(context) == 144
+  callArmMixedCore(jit, header, registers, addr context, dirtyWords, state)
 
 func armMixedStatistics*(jit: ArmJit): array[4, uint64] =
   [jit.mixedCalls, jit.mixedCompleted, jit.mixedInterior, jit.mixedOperations]
@@ -1645,15 +1728,15 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   jit.dirtyLoop.status = 2
   true
 
-proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
-    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+proc callArmDirtyLoopCore(jit: ArmJit, registers: var RegisterFile,
+    descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var array[8, uint64]): uint32 =
   ## All invocation pointers are borrowed only across this one native call.
-  assert jit.dirtyLoop.status == 2 and sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert jit.dirtyLoop.status == 2 and sizeof(RegisterFile) == 104 and descriptorPointer != nil
   assert state[2] == 0 and state[3] == 0 and state[4] == 0
   let gas = state[0]
   let available = state[1]
-  state[5] = cast[uint64](addr regions)
+  state[5] = cast[uint64](descriptorPointer)
   state[6] = uint64(dirtyWords.len)
   state[7] = 0
   if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
@@ -1672,6 +1755,20 @@ proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
   jit.operations+=state[2]*uint64(jit.dirtyLoop.operations)
   if destination == jit.dirtyLoop.header: inc jit.dirtyLoop.declines
   destination
+
+proc callArmDirtyLoop*(jit: ArmJit, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var array[8, uint64]): uint32 =
+  ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
+  assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
+  callArmDirtyLoopCore(jit, registers, addr regions, dirtyWords, state)
+
+proc callArmDirtyLoopContext*(jit: ArmJit, registers: var RegisterFile,
+    context: var ArmReadContext, dirtyWords: var seq[uint64],
+    state: var array[8, uint64]): uint32 =
+  ## Borrow the complete 144-byte frame context for one full-mode native entry.
+  assert jit != nil and jit.clippedReads and sizeof(context) == 144
+  callArmDirtyLoopCore(jit, registers, addr context, dirtyWords, state)
 
 func armDirtyLoopStatistics*(jit: ArmJit): array[3, uint64] =
   [jit.dirtyLoop.calls, jit.dirtyLoop.blocks, jit.dirtyLoop.declines]
@@ -1800,6 +1897,7 @@ func armMemoryCycleStatistics*(jit: ArmJit): array[6, uint64] =
 
 proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Emit a complete inline prefix and BL only the existing same-owner dirty/read children.
+  if item.tailRead.clippedReads and not jit.clippedReads: return false
   if jit.memoryCycle.status != 0: return false
   if jit.unavailable or jit.fragments >= 8191 or jit.codeBytes > 1048576:
     # This arena cannot regain executable capacity; avoid rescanning a valid prefix on later calls.
@@ -1979,7 +2077,8 @@ func armResidentCycleSourceValid(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   if item.dirty.body.terminal.len notin [6, 10]:
     if not item.dirty.body.compact or item.dirty.body.terminal.len < 7 or
         item.dirty.body.terminal.len > 9: return false
-  if not item.tailRead.directFirst or item.tailRead.guards.len != 3 or
+  let requiredGuards = if item.tailRead.clippedReads: 1 else: 3
+  if not item.tailRead.directFirst or item.tailRead.guards.len != requiredGuards or
       not item.tailRead.branchReady or item.tailRead.body.terminal.len == 0 or
       not ((item.tailRead.branchYes == item.prefixHeader and
       item.tailRead.branchNo == item.other) or
@@ -2107,6 +2206,7 @@ proc armResidentCycleCore(item: ArmMemoryCycleBlock): ArmResidentCycleCore =
 
 proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Compose already admitted dirty/direct-read cores into one resident guest-register bank.
+  if item.tailRead.clippedReads and not jit.clippedReads: return false
   when defined(pvmArmMacroReceipt):
     if jit.residentCycleRefused: return false
   if jit.memoryCycle.status != 0: return false
@@ -2169,17 +2269,17 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
   true
 
 
-proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
-    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+proc callArmMemoryCycleCore(jit: ArmJit, registers: var RegisterFile,
+    descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var array[14, uint64]): uint32 =
   ## One C-to-arena call; child-entry counters count semantic visits with or without physical BLs.
-  assert jit.memoryCycle.status == 2 and sizeof(RegisterFile) == 104 and sizeof(regions) == 72
+  assert jit.memoryCycle.status == 2 and sizeof(RegisterFile) == 104 and descriptorPointer != nil
   for index in 2..4: assert state[index] == 0
   for index in 8..12: assert state[index] == 0
   assert state[13] == uint64(high(uint32))
   let gas = state[0]
   let available = state[1]
-  state[5] = cast[uint64](addr regions)
+  state[5] = cast[uint64](descriptorPointer)
   state[6] = uint64(dirtyWords.len)
   state[7] = 0
   if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
@@ -2226,6 +2326,20 @@ proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
   if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines
   jit.operations+=prefix*uint64(jit.memoryCycle.prefixOperations) +
       tail*uint64(jit.memoryCycle.tailOperations)+dirty*uint64(jit.dirtyLoop.operations)
+
+proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var array[14, uint64]): uint32 =
+  ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
+  assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
+  callArmMemoryCycleCore(jit, registers, addr regions, dirtyWords, state)
+
+proc callArmMemoryCycleContext*(jit: ArmJit, registers: var RegisterFile,
+    context: var ArmReadContext, dirtyWords: var seq[uint64],
+    state: var array[14, uint64]): uint32 =
+  ## Borrow the complete 144-byte frame context for one full-mode native entry.
+  assert jit != nil and jit.clippedReads and sizeof(context) == 144
+  callArmMemoryCycleCore(jit, registers, addr context, dirtyWords, state)
 
 func armMacroStatus*(jit: ArmJit): uint8 =
   ## The separate macro owner is untried, retired, or completely published.
@@ -2363,6 +2477,8 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
 proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
     cycle: ArmMemoryCycleBlock, pure: ArmBlock, read: ArmReadSpan): bool =
   ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
+  if (cycle.tailRead.clippedReads or read.clippedReads) and not jit.clippedReads:
+    return false
   when defined(pvmArmMacroResidentRefuse):
     return false # A resident-only refusal leaves the linked publication available.
   if jit.macroRoute.status != 0 or jit.unavailable or jit.fragments >= 8192 or
@@ -2705,19 +2821,19 @@ proc armMacroOperationTotal(total: var uint64, count: uint64, each: uint32) =
   assert each > 0 and count <= (high(uint64)-total) div uint64(each)
   total+=count*uint64(each)
 
-proc callArmMacro*(jit: ArmJit, registers: var RegisterFile,
-    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+proc callArmMacroCore(jit: ArmJit, registers: var RegisterFile,
+    descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var ArmMacroState): uint32 =
   ## One outer bridge borrows fresh pointers; all nested semantic work is checked on return.
   assert jit.macroRoute.status == 2 and sizeof(RegisterFile) == 104 and
-      sizeof(regions) == 72 and sizeof(state) == 208
+      descriptorPointer != nil and sizeof(state) == 208
   for index in 2..12: assert state[index] == 0
   assert state[13] == uint64(high(uint32))
   for index in 14..23: assert state[index] == 0
   assert state[24] == uint64(high(uint32)) and state[25] == 0
   let gas = state[0]
   let available = state[1]
-  state[5] = cast[uint64](addr regions)
+  state[5] = cast[uint64](descriptorPointer)
   state[6] = uint64(dirtyWords.len)
   state[7] = 0
   if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
@@ -2803,3 +2919,16 @@ proc callArmMacro*(jit: ArmJit, registers: var RegisterFile,
   jit.dirtyLoop.blocks+=dirty
   jit.dirtyLoop.wordGroups+=wordGroups
   if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines
+proc callArmMacro*(jit: ArmJit, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var ArmMacroState): uint32 =
+  ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
+  assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
+  callArmMacroCore(jit, registers, addr regions, dirtyWords, state)
+
+proc callArmMacroContext*(jit: ArmJit, registers: var RegisterFile,
+    context: var ArmReadContext, dirtyWords: var seq[uint64],
+    state: var ArmMacroState): uint32 =
+  ## Borrow the complete 144-byte frame context for one full-mode native entry.
+  assert jit != nil and jit.clippedReads and sizeof(context) == 144
+  callArmMacroCore(jit, registers, addr context, dirtyWords, state)
