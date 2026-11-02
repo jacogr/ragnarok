@@ -3481,11 +3481,11 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
       instructionRegisters(instruction(program, CodeAddress(12))), 1)
     emitArmReadArithmetic(span, 149,
       instructionRegisters(instruction(program, CodeAddress(15))), 1)
-    # The real candidate image returns the certified target without a fabricated compare.
+    # The memory image returns its physical ending; opcode 1 remains canonical C work.
     let jit = newArmJit()
     assert armEntry(jit, 0, 1) == 0
     var words = armReadInstructions(span, 37)
-    assert publishArmEntry(jit, 0, 4, 5, words)
+    assert publishArmEntry(jit, 0, 37, 4, words)
     var bytes = default(array[16, byte])
     for at in 0..<16: bytes[at] = byte(at*11+7)
     var regions = default(array[3, array[3, uint64]])
@@ -3496,11 +3496,11 @@ when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
     registers[1] = RegisterValue(65536)
     registers[3] = RegisterValue(65552)
     let original = registers
-    assert callArmMemoryBranch(jit, 0, 37, 37, registers, regions) == high(uint32)
+    assert callArmMemory(jit, 0, registers, regions) == high(uint32)
     assert registers == original and jit.branchCalls == 0 and jit.operations == 0
     registers[3] = RegisterValue(65544)
-    assert callArmMemoryBranch(jit, 0, 37, 37, registers, regions) == 37
-    assert jit.branchCalls == 1 and jit.operations == 5
+    assert callArmMemory(jit, 0, registers, regions) == 37
+    assert jit.branchCalls == 0 and jit.operations == 4
     echo "ARM_READ_C_CONT_LITERAL_ROLLBACK,1"
 else:
   # Plain and forced-refusal builds exercise the same frame controls without executing a native literal.

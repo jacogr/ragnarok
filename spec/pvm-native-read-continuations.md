@@ -10,7 +10,7 @@ A private static template shares the existing native memory bridge. Its descript
 
 The functional witness compares 365 paid/unpaid, gas, attempt, folded-source and span-boundary cases against independent Step execution, including later faults, fragmented reads and invalid following blocks. Separate literal checks cover all-thirteen-register rollback, exact next-block out-of-gas PC/paid state and oversized-image fallback. The controller requires those four complete receipts in native, OS-refused and plain modes; its fixtures independently reject missing, truncated and duplicated receipts. These checks exercise execution semantics rather than handler-array organization.
 
-The frozen runtime handler SHA-256 is `3f0408668c043bf40f121efcbe170743e9cbb2aefda0148669fb6ccf648b1ebe`; backend `3532ea5cbc8bbd023ee898efe94fcef66e028f0584e49c3ae3bc6b79c6d15403` is unchanged. The measured private witness was `90e95015`; the public witness removes only an unused zero activation counter/receipt and corrects inherited comments (`e7e4d3dbcf5beb4e6e910850676fa94acf64bc00f73b2ccfa84eaadef69cfbbb`).
+The frozen runtime handler SHA-256 is `3f0408668c043bf40f121efcbe170743e9cbb2aefda0148669fb6ccf648b1ebe`; backend `3532ea5cbc8bbd023ee898efe94fcef66e028f0584e49c3ae3bc6b79c6d15403` is unchanged. The measured private witness was `90e95015`; the public witness removes an unused zero activation counter/receipt, corrects inherited comments, and exercises literal rollback through the actual four-operation memory entry with zero native branches (`d8b49eb6ef677e1fcf81f99f4d5faef51f0e6ac5c4e15b919c679b0f4e24e2ce`).
 
 ## Local ARM evidence
 
