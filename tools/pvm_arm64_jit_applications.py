@@ -45,7 +45,7 @@ def owner_receipt(output, case):
     counters = dict(zip(COUNTERS,map(int,fields[2:])))
     if counters['headers']>counters['branches'] or counters['branches']>counters['calls']:
         raise ValueError('Impossible native owner counters')
-    if counters['fragments']>1024 or counters['code_bytes']>1024*1024:
+    if counters['fragments']>8192 or counters['code_bytes']>1024*1024:
         raise ValueError('Native owner capacity exceeded')
     return '\n'.join(lines)+'\n', counters
 

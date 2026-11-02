@@ -194,13 +194,13 @@ proc controls(): bool =
   for visit in 1..8: require(armFinishProbe(probes, 3) == (visit == 8), "exact-eight-probe-bound")
   when Native:
     let counted = newArmJit()
-    discard armEntry(counted, 0, 4096)
-    for index in 0..<1024:
+    discard armEntry(counted, 0, 8192)
+    for index in 0..<8192:
       # Exercise the existing reserved-slot API explicitly; real publications, not forged counter assignment.
       var words: seq[uint32] = @[0xd503201f'u32]
       require(publishArmEntry(counted, uint32(index), uint32(index+1), 1, words, true),
         "fill-existing-publication-ceiling")
-    require(counted.fragments == 1024 and armRegionStatus(counted) == 0, "real-publication-ceiling")
+    require(counted.fragments == 8192 and armRegionStatus(counted) == 0, "real-publication-ceiling")
     let before = [counted.fragments, counted.codeBytes]
     require(not publishArmRegion(counted, smallBlocks(), 2) and armRegionStatus(counted) == 1,
       "global-publication-refusal-sticky")

@@ -935,7 +935,7 @@ proc publishArmEntry*(jit: ArmJit, offset, ending, count: uint32,
     # Only initial allocation refusal is sticky; a cache with any published code can never enter this state.
     refuseArmEntry(jit, offset)
     return false
-  let ceiling = if region: 1024'u64 else: 1023'u64
+  let ceiling = if region: 8192'u64 else: 8191'u64
   if jit.fragments >= ceiling or instructions.len == 0 or instructions.len >= 1024:
     refuseArmEntry(jit, offset)
     return false
@@ -1764,7 +1764,7 @@ func armMemoryCycleStatistics*(jit: ArmJit): array[6, uint64] =
 proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Emit a complete inline prefix and BL only the existing same-owner dirty/read children.
   if jit.memoryCycle.status != 0: return false
-  if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
+  if jit.unavailable or jit.fragments >= 8191 or jit.codeBytes > 1048576:
     # This arena cannot regain executable capacity; avoid rescanning a valid prefix on later calls.
     jit.memoryCycle.status = 1
     return false
@@ -2073,7 +2073,7 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
   when defined(pvmArmMacroReceipt):
     if jit.residentCycleRefused: return false
   if jit.memoryCycle.status != 0: return false
-  if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
+  if jit.unavailable or jit.fragments >= 8191 or jit.codeBytes > 1048576:
     return false # The old linked driver may still fit when this larger image does not.
   if not armResidentCycleSourceValid(jit, item): return false
   let planned = jit.codeBytes
@@ -2328,7 +2328,7 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
   ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
   when defined(pvmArmMacroResidentRefuse):
     return false # A resident-only refusal leaves the linked publication available.
-  if jit.macroRoute.status != 0 or jit.unavailable or jit.fragments >= 1024 or
+  if jit.macroRoute.status != 0 or jit.unavailable or jit.fragments >= 8192 or
       jit.codeBytes > 1048576 or not armMacroShapeValid(jit, shape) or
       not armResidentCycleSourceValid(jit, cycle): return false
   if cycle.prefixHeader != shape.cycleHeader or cycle.other != shape.staticHeader or
@@ -2507,7 +2507,7 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
 proc publishArmMacro*(jit: ArmJit, shape: ArmMacroShape): bool =
   ## Link the three existing same-owner children and source-derived scalar controls.
   if jit.macroRoute.status != 0: return false
-  if jit.unavailable or jit.fragments >= 1024 or jit.codeBytes > 1048576 or
+  if jit.unavailable or jit.fragments >= 8192 or jit.codeBytes > 1048576 or
       not armMacroShapeValid(jit, shape):
     jit.macroRoute.status = 1
     return false

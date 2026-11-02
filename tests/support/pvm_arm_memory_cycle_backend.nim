@@ -368,16 +368,16 @@ proc checkArmMemoryCycleBackend*(dirtySource, prefixSource, tailSource: Program)
       let full = newArmJit()
       assert not publishArmMemoryCycle(full, default(ArmMemoryCycleBlock))
       assert armMemoryCycleStatus(full) == 0
-      assert armEntry(full, 0, 1024) == 0
-      for offset in 0'u32..<1023'u32:
+      assert armEntry(full, 0, 8192) == 0
+      for offset in 0'u32..<8191'u32:
         var oneWord: seq[uint32] = @[0xd503201f'u32]
         assert publishArmEntry(full, offset, 0, 1, oneWord)
-      assert full.fragments == 1023 and full.codeBytes > 0
+      assert full.fragments == 8191 and full.codeBytes > 0
       let bytes = full.codeBytes
       assert not publishArmMemoryCycle(full, default(ArmMemoryCycleBlock))
       assert armMemoryCycleStatus(full) == 1 and full.codeBytes == bytes
       assert not publishArmMemoryCycle(full, default(ArmMemoryCycleBlock))
-      assert full.fragments == 1023 and full.codeBytes == bytes
+      assert full.fragments == 8191 and full.codeBytes == bytes
     inc result
 
     # A ready but oversized image must stop recompiling and retain all earlier source/code capabilities.

@@ -33,8 +33,8 @@ sections do not describe the current implementation.
   bitmap view for one call, without retaining either pointer. Whole-block gas and source guards
   precede each connected block; partial/paid/error handling,
   fault/exit PCs, source snapshots and ordered host transitions keep their existing workers.
-- Immutable arenas remain one MiB with at most 1,024 publications, including one reserved
-  connected publication; the separate dirty-store loop uses the ordinary 1,023-fragment
+- Immutable arenas remain one MiB with at most 8,192 publications, including one reserved
+  connected publication; the separate dirty-store loop uses the ordinary 8,191-fragment
   ceiling so the connected publication retains its reserved slot. The 262,144-node JIT
   coordinate-map bound is a local resource refusal,
   not a whole-program input-size limit. Original checked arena-offset validation stays in calls;
@@ -46,6 +46,40 @@ sections do not describe the current implementation.
   growth; a fresh owner can retry. Later capacity refusal preserves existing code. Unsupported
   byte order refuses before native allocation. Full public cold-call clocks include emission and
   publication; the successful regional compilation diagnostic now brackets body emission too.
+
+## Publication-count headroom
+
+The count ceiling is 8,192, with the final slot reserved for a connected region. It does not
+change the one-MiB native code arena, the sub-1,024-word limit for each published image, or
+the 262,144-handler coordinate-map refusal. The macOS owner maps one fixed one-MiB JIT arena;
+Linux maps writable and executable views of one shared one-MiB backing store. Publications
+append to that arena rather than creating one mapping per fragment. The 12-byte entry record
+per handler coordinate and the fixed-shape region caches do not scale with the count ceiling.
+Additional accepted publications can still fill more code pages and require cold compilation.
+Guest binary byte size alone cannot predict which limit will bind.
+
+On exact master `0c62aeac0416a498bb07843b40a875b0a76c3625` (tree-identical to the
+frozen Mixed-32 source `b9bed91549e025b66fcf873cd3e1d0a455ed010f`), checked ARC/Clang
+ThinLTO public DOOM init calls used the same input, ROM, driver, compiler and source paths on
+both images. Only the publication-count gates changed. Each process made 13 full-state checked
+calls; warmed CPU medians use calls 3–12. Six balanced 8,192/1,024 process pairs were all
+faster, with a candidate/baseline median of 0.7957; the first-call median ratio was 0.8215.
+The baseline equal-image ratio was 1.0009. Across 13 calls, the candidate published 3,039
+fragments and used 669,800 code bytes, versus 1,024 and 233,824 at the old ceiling; native
+operation receipts rose from 2,291,929,503 to 2,512,889,764. An exact 4,096-cap control
+had the same fragments, native operations, native calls and code bytes as 8,192, so DOOM does
+not need the additional slots above 4,096. The prior d7 master cohort independently measured
+a 0.7944 warmed and 0.8193 first-call ratio for the 8,192/1,024 comparison.
+
+On the same frozen Mixed-32 source, Sieve 10M grew from 1,023 to 1,482 fragments by a 2,028 cap,
+then stopped growing at 4,096
+and 8,192. The extra publications added 9,925 native operations out of about 1.424 billion;
+six paired 4,096/1,024 runs had a 0.9983 warmed CPU ratio. Six 8,192/4,096 pairs on that
+cohort had DOOM init and Sieve warmed ratios of 1.0030 and 1.0010 respectively, with
+identical owner coverage, within the observed same-image variation. Forced-interpreter DOOM
+and Minimal 100K controls likewise showed no repeatable cap-only cost. These measurements
+justify the larger count ceiling as headroom for future small-fragment guests; they do not
+establish native coverage for an arbitrary two-MiB binary.
 
 The [grouped-memory work](pvm-arm-grouped-memory.md) adds paid interior continuation
 passes Linux correctness qualification with a positive architecture review.

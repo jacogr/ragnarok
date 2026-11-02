@@ -868,10 +868,10 @@ when defined(pvmArm64Jit):
       # Unpublished metadata must refuse even a default-looking record.
       assert not armRegionChargeMatches(unpublished, range[0..2](index), 0, 0, 0)
       inc scalarMatchCases
-    # One connected publication fits after ordinary leaves exhaust their reserved 1,023-slot budget; total stays 1,024.
+    # One connected publication fits after ordinary leaves exhaust their reserved 8,191-slot budget; total stays 8,192.
     let bounded = newArmJit()
     assert armEntry(bounded, 0, 3) == 0
-    for slot in 0..<1023:
+    for slot in 0..<8191:
       # Distinct scratch-only MOVZ bodies consume actual publication slots, without modifying guest registers.
       var words = @[0xd2800001'u32 or (uint32(slot) shl 5)]
       assert publishArmEntry(bounded, 0, 0, 1, words)
@@ -889,7 +889,7 @@ when defined(pvmArm64Jit):
           price: 1, yes: 77, no: uint32((index+1) mod 3), body: move(body))
     assert publishArmRegion(bounded, blocks)
     scalarMatchCases += checkRegionCharges(bounded, [0'u32, 1, 2], [2'u32, 2, 2], [1'u64, 1, 1])
-    assert bounded.fragments == 1024
+    assert bounded.fragments == 8192
     for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7]:
       for gas in [0'u64, 1, 2, 3, 100]:
         # Literal expected counts do not use the emitter or guest evaluator; all unexecuted registers remain unchanged.
@@ -907,7 +907,7 @@ when defined(pvmArm64Jit):
           assert state[index+2] == visits
     var finalRefusal = @[0xd503201f'u32]
     assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
-    echo "ARM_REGION_CAPACITY,1024"
+    echo "ARM_REGION_CAPACITY,8192"
 
     # Two-block regions retain the same five-word ABI with a genuinely inactive third counter lane.
     var pairLiteralCases = 0
