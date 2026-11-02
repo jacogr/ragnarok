@@ -63,14 +63,54 @@ for init with equal native fragments/calls/operations/branch/header counts.
 
 An exploratory 12-process/156-call prepared DOOM pilot used separate archive
 build paths and froze only two runtime source files per role plus image hashes.
-Retrospective review verified its fixture hashes, but it is not final source
-provenance. Warm tick candidate/baseline CPU ratios were 0.9421 and 0.9632 in
-reversed orders; the A/A ratio was 1.0211. Init ratios of 0.9983 and 0.9963
-were smaller than its A/A drift of 0.9803. No init speed claim follows. Final
-confirmation requires one canonical build path, two fresh identical images per
-role, and before/after hashes for the complete relevant source, configuration,
-headers, compiler, all six prepared input files, ROM and compiled images before
-any further timing or publication.
+Its warm tick CPU ratios were 0.9421 and 0.9632 in reversed orders, against an
+A/A baseline ratio of 1.0211. Init ratios of 0.9983 and 0.9963 were below its
+A/A drift. The pilot remains distinct from final confirmation.
+
+The final exact-`6d6ca888` versus source-`38126fb5` confirmation built each role
+twice at one canonical source/cache/output path. Repeated image hashes matched;
+6,028 baseline and 6,029 candidate source/config/header files, both compilers,
+all six prepared DOOM inputs, the ROM, eight guest input/expected files and all
+images were hashed before and after. The candidate's compiled source differed
+only in the two intended runtime files. All 48 actual measured processes made
+13 fully checked calls (624 total), with warm samples 3–12 and first calls
+reported separately. Native fragments, calls, operations, branches and headers
+and prepared cache occupancy matched between roles. The thirteen-call ARM image
+saved 18,520 bytes for DOOM tick and 41,480 for init; Minimal, Sieve10M, Pinky
+and Memset saved 180, 47,280, 17,820 and 640 bytes respectively.
+
+The final DOOM tick JIT candidate/baseline warm CPU ratios across six alternating
+pairs were 0.9417, 0.9704, 0.9980, 0.9522, 0.9837 and 1.0116 (median 0.9770).
+Five pairs favored the candidate; one did not. Interpreted tick controls were
+0.9993 and 0.9969, while same-role JIT warm medians moved by several percent
+within the cohort. The tick signal merits a current-master replay and is not a
+universal gain. Init JIT ratios were 0.9871, 0.9982, 0.9988, 0.9946, 0.9927
+and 0.9544 (median 0.9936); interpreted init controls were 0.9974 and
+1.0000. Retain the fast last candidate, but no stable init gain is established
+over the pilot's init A/A ratio of 0.9803. Minimal100k slowed in both clean pairs (1.0102 and
+1.0176); Pinky1 and Memset100k changed direction between pairs.
+
+A private collector parser failed after the first Sieve10M baseline process had
+already completed successfully. Its raw log was reparsed, then only the eleven
+unrun micro processes were executed. No workload, image or input was rerun or
+changed; the complete 32-process DOOM/interpreted sequence and four Minimal
+processes were uninterrupted. Sieve pair one (0.9876) is **interrupted** and
+cannot be treated as an uninterrupted paired comparison. Its second reversed
+pair (0.9893) was adjacent and clean; the two Sieve pairs must not be pooled as
+two clean reversals. The local final audit verified 48 raw logs, 624 complete
+samples, 15 fixed inputs, eight repeated images and unchanged source/toolchain
+bytes, with only this documented collector correction. No more local timing is
+part of this stage.
+
+Master `360ed9e6` was then merged normally after preserving all `38126fb5`
+cohort artifacts. Combined source passed the native width/alias/fence witness,
+legacy raw/full ABI refusal, ARM fragmented-memory and host reentry, exclusive
+frame/stream move/copy checks, persistent page chunks, and unclocked complete
+DOOM tick/init calls under JIT and interpreted policies. One-call JIT image bytes
+and native work matched the qualified clipped candidate; interpreted native
+counters stayed zero. This combined head has **no local timing result**. Its one
+authorized Linux ARM replay uses master `360ed9e6` as the baseline with a paired
+interpreter control before any claim about the current master.
 
 A Nimony generated-C direct-field observation in one width-loop test caller
 cached a JIT counter across a call. The supported native witness uses a
