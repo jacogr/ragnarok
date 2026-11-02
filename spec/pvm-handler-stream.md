@@ -1004,5 +1004,75 @@ The exact commands were `python3 build/checkpoint-final/cohort.py prepare` and
 logs, all 624 samples and the first/warm assessment. Its `timing-results.json` SHA-256 is
 `cccd58ead090fae1286ba16b4d64a77fbc18b8af3f43d967ce174e51960c7974`; the dependency
 manifest SHA-256 is `eff1d76be7d6e59b7556cb3b0c2c012a9aff036ddce46724976ff22b0f27fc63`.
-This local ARM result is bounded to these sources, inputs and clocks. Exact-head Linux ARM
-qualification remains pending.
+This local ARM result is bounded to these sources, inputs and clocks. It is separate from the
+Linux qualification below; the local long-sieve regression remains part of the evidence.
+
+### Qualified Linux ARM replay
+
+[Focused run 41534224870](https://github.com/jacogr/ragnarok/actions/runs/41534224870)
+passed on the exact PR source head `ce81f7c99774f2344fe1a0fb629b0563888aebb3` against
+master `6d6ca888e724bab3b35b5d6db30a114aff552396`. The qualified runtime is the
+`064eafd17005d7501da123b36669aa88801c1a17` implementation commit; `ce81f7c` adds only
+documentation. The retained `pvm-comparison-arm64-1` artifact (ID `13184087424`) reports
+application status `passed`, native qualification `passed`, and DOOM checks `checks-passed`.
+Its application results JSON SHA-256 is
+`33425f62cb2d3678a2a44cb44ce4602ff0906555db885c30d56ea2a23df8110f`.
+
+The Linux artifact retains 60 process replays (six baseline/candidate pairs for each of five
+workloads), 84 public comparison runs, 138 controls and 20 builds. Each replay process completed
+13 calls. For every matched pair, native fragments, calls, operations, code bytes, branches and
+headers agree between baseline and candidate. Each warm ratio below divides the median CPU time
+of candidate samples 3:13 by the corresponding baseline median; the reported ratio is the median
+of six paired ratios. First-call ratios use sample 0 and are not pooled with warm calls. Lower is
+faster.
+
+| JIT workload | Baseline warm CPU range, ms | Candidate warm CPU range, ms | Median paired CPU ratio | Faster pairs | First-call CPU ratio range |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| DOOM init | 115.375–117.690 | 113.045–114.127 | 0.979194 | 6/6 | 0.978460–0.985390 |
+| DOOM tick | 14.754–14.794 | 14.726–14.817 | 0.999344 | 5/6 | 0.972726–1.013067 |
+| Minimal 100k | 5.209–5.321 | 5.313–5.399 | 1.015952 | 0/6 | 1.011269–1.039968 |
+| Pinky 1 | 77.435–77.777 | 77.335–77.578 | 0.997285 | 5/6 | 0.995692–0.999730 |
+| Sieve 10m | 249.203–251.771 | 247.855–248.930 | 0.994669 | 6/6 | 0.990507–0.997459 |
+
+The Linux result confirms a roughly 2.1% DOOM initialization benefit. Tick is effectively flat;
+neither this replay nor the local cohort establishes a tick CPU gain. Minimal is about 1.6% slower
+in every Linux replay pair. Long Sieve improves about 0.5% on Linux, opposite the 0.78–0.95%
+regression measured in both local macOS process orders. Pinky's change is small. The differing
+Sieve directions remain distinct platform results, not a pooled performance claim.
+
+The public two-order comparisons also retain the paired interpreted baselines. The table gives
+candidate/baseline warm CPU ratios, forward/reverse; each value uses samples 3:13 of a complete
+public call. The public JIT Minimal forward order has a larger regression than the six-pair
+replay, so the replay's median is not used to conceal it.
+
+| Public workload | JIT candidate/baseline | Interpreted candidate/baseline |
+| --- | ---: | ---: |
+| Sieve 100k | 0.986555 / 0.986395 | 1.012338 / 1.009047 |
+| Minimal 100k | 1.078600 / 1.002198 | 1.021391 / 1.027273 |
+| Memset 100k | 0.993482 / 0.997467 | 0.999000 / 1.006541 |
+| Pinky 1 | 0.998453 / 0.998434 | 0.992716 / 0.994284 |
+| Sieve 10m | 0.995032 / 0.993345 | 1.020052 / 1.012722 |
+| DOOM init | 0.974833 / 0.971315 | 0.996448 / 0.990919 |
+| DOOM tick | 1.000594 / 0.968068 | 0.987008 / 0.995238 |
+
+The two interpreted Minimal orders are 2.1–2.7% slower, and interpreted long Sieve is 1.3–2.0%
+slower. These are material costs of the candidate source despite the favorable JIT long-Sieve
+result. The public two-order JIT tick result also changes substantially with order, consistent
+with the six-pair replay's flat tick estimate.
+
+The same-runner public DOOM CPU medians below show the raw candidate and pinned PolkaVM
+interpreted call times behind the cross-implementation ratios. These are complete public calls,
+not retained-core or frame-only timings. Ratios use unrounded medians; displayed milliseconds are
+rounded to three decimals.
+
+| DOOM phase/order | Our interpreted, ms | Our JIT, ms | PolkaVM interpreted, ms | Our interpreted / PolkaVM | Our JIT / PolkaVM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Init/forward | 315.085 | 113.990 | 629.613 | 0.500442 | 0.181048 |
+| Init/reverse | 313.517 | 112.766 | 627.037 | 0.499998 | 0.179839 |
+| Tick/forward | 27.713 | 14.807 | 40.492 | 0.684407 | 0.365669 |
+| Tick/reverse | 27.531 | 14.684 | 40.415 | 0.681206 | 0.363317 |
+
+The Linux artifact reports the public interpreted and JIT roles against their matching
+previous-source roles, plus the same-runner PolkaVM interpreted role. These ratios compare the
+recorded complete-call CPU clocks only; they do not isolate checkpoint publication or imply
+general PVM throughput across other programs.
