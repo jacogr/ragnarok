@@ -5,6 +5,10 @@ PolkaVM Compiler and Interpreter backends for every existing PVM workload.
 `make bench-pvm-polkavm` provisions the pinned reference crates and runs this
 comparison. The manual `polkavm-ratios` CI scope uses one x86 runner; ordinary
 CI and the existing deferred compiler benchmark policy keep their scope.
+The disposable Ubuntu runner enables unprivileged user namespaces required by
+the pinned Linux sandbox (`kernel.apparmor_restrict_unprivileged_userns=0`).
+A successful one-call execution in each backend checks full guest state,
+compiled-code identity and CPU accounting before the corrupted-state controls.
 
 The matrix contains the eleven synthetic cases, Sieve at 1K/10K/100K/10M,
 Minimal and Memset at 1K/100K, one Pinky frame, and separate DOOM init/tick.
@@ -46,4 +50,7 @@ Linux measurements are pending. The focused parser rejects missing worker
 CPU, substituted engines, absent compiled code, changed total CPU, missing or
 duplicate samples and incomplete backend pairs. Both reference crates compile
 locally with pinned Rust; the Linux worker clock is qualified by the manual
-job before native timing.
+job before native timing. The first Linux attempt stopped before collecting
+samples because Ubuntu blocked sandbox worker creation; it yielded no ratios.
+Invalid platform or pair-count arguments replace any previous successful JSON
+verdict with a failed verdict before exiting.

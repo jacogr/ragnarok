@@ -272,9 +272,9 @@ pub fn command(args: &[String]) {
         let cpu = crate::measurement::CpuTimer::start(&instance);
         let wall = Instant::now();
         let result = instance.run().unwrap();
+        let elapsed = wall.elapsed().as_nanos();
         let cpu = cpu.finish();
         let cpu_elapsed = cpu.total;
-        let elapsed = wall.elapsed().as_nanos();
         assert_eq!(result, InterruptKind::Finished);
         // Equality still covers every byte; a mismatch retains a bounded diagnostic instead of the arrays.
         assert!(

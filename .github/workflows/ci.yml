@@ -918,6 +918,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
+      - name: Enable the pinned Linux compiler sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Compare pinned reference backends
         run: make bench-pvm-polkavm
       - name: Show complete calibration

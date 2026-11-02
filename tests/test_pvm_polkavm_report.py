@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Reject reference logs that hide sandbox CPU, fallback or incomplete guest checks."""
 import unittest
+import tempfile
+import json
+from pathlib import Path
+from unittest.mock import patch
 from pvm_polkavm_report import parse, summarize
 
 
@@ -48,6 +52,31 @@ class ReferenceReportTests(unittest.TestCase):
         for bad in (log().replace('GUEST,minimal','GUEST,memset'),
                     log().replace('2000,100','2000,101')):
             with self.assertRaises(ValueError):parse(bad,'compiler','minimal',1000)
+
+    def test_invalid_pair_request_clears_stale_success(self):
+        """Both bad numeric choices and malformed text must invalidate an earlier JSON verdict."""
+        import pvm_polkavm_compare as comparison
+        for value in ('3','invalid'):
+            with self.subTest(value=value),tempfile.TemporaryDirectory() as folder:
+                base=Path(folder)
+                (base/'results.json').write_text(json.dumps(dict(status='checks-passed',head='old')))
+                (base/'summary.md').write_text('old success')
+                with patch.object(comparison,'BUILD',base), \
+                     patch.object(comparison.platform,'system',return_value='Linux'), \
+                     patch.object(comparison.platform,'machine',return_value='x86_64'), \
+                     patch.dict('os.environ',{'PVM_POLKAVM_PAIRS':value}), \
+                     patch.object(comparison,'NativeChecks',side_effect=AssertionError('unexpected native work')):
+                    with self.assertRaises(ValueError):comparison.run()
+                result=json.loads((base/'results.json').read_text())
+                self.assertEqual(result['status'],'failed')
+                self.assertNotIn('head',result)
+                self.assertFalse((base/'summary.md').exists())
+
+    def test_one_call_availability_control_requires_worker_cpu(self):
+        """The native engine must really run once before testing its error path."""
+        source='\n'.join(log().splitlines()[:4])+'\n'
+        self.assertEqual(len(parse(source,'compiler','minimal',1000,count=1)['minimal-1000']['samples']),1)
+        with self.assertRaises(ValueError):parse(source.replace(',10,90,100,1',',10,0,10,0'),'compiler','minimal',1000,count=1)
 
     def test_missing_engine_pair_cannot_supply_ratio(self):
         native=parse(log(),'compiler','minimal',1000)

@@ -34,12 +34,17 @@ def run():
     """Prepare once with interpretation; compare both explicit engines on identical checked state."""
     BUILD.mkdir(parents=True,exist_ok=True)
     for name in ('summary.md','samples.csv'): (BUILD/name).unlink(missing_ok=True)
-    if platform.system()!='Linux' or platform.machine() not in ('x86_64','AMD64'):
-        reason='PolkaVM native calibration requires native Linux x86-64'
-        (BUILD/'results.json').write_text(json.dumps(dict(status='failed',error=reason))+'\n')
-        raise RuntimeError(reason)
-    pairs=int(os.environ.get('PVM_POLKAVM_PAIRS','6'))
-    if pairs not in (2,6):raise ValueError('calibration uses two pilot or six qualification pairs')
+    result=BUILD/'results.json'
+    # Clear the machine-readable verdict before platform or argument validation can fail.
+    result.write_text(json.dumps(dict(status='running'))+'\n')
+    try:
+        if platform.system()!='Linux' or platform.machine() not in ('x86_64','AMD64'):
+            raise RuntimeError('PolkaVM native calibration requires native Linux x86-64')
+        pairs=int(os.environ.get('PVM_POLKAVM_PAIRS','6'))
+        if pairs not in (2,6):raise ValueError('calibration uses two pilot or six qualification pairs')
+    except Exception as error:
+        result.write_text(json.dumps(dict(status='failed',error=str(error)))+'\n')
+        raise
     checks=NativeChecks(BUILD)
     report=dict(status='running',pairs=pairs,runs=[],controls=[],checks=[],identities={},
         hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),
@@ -146,10 +151,15 @@ def run():
         (bad/'expected-1000.bin').write_bytes(data)
         artifact=contracts['pvm_guests'][1]/'minimal.polkavm'
         for backend in ('interpreter','compiler'):
-            output,_=command([binaries['polkavm'],'--sieve',artifact,bad,1000,1],
+            # Successful execution proves sandbox availability and clock coverage before a refusal test.
+            output,evidence=command([binaries['polkavm'],'--sieve',artifact,original,1000,1],
+                'backend-available-'+backend,environment(backend,RAGNAROK_PVM_GUEST='minimal'))
+            available=parse(output,backend,'minimal',1000,count=1)
+            report['controls'].append(dict(kind='backend_available',backend=backend,cases=available))
+            output,evidence=command([binaries['polkavm'],'--sieve',artifact,bad,1000,1],
                 'tampered-state-'+backend,environment(backend,RAGNAROK_PVM_GUEST='minimal'),fail=True)
             if 'terminal state mismatch' not in output or 'REFERENCE_CPU,' in output:
-                raise ValueError('reference accepted changed state or emitted unverified timing')
+                raise ValueError('reference corruption control did not reach terminal-state validation: '+evidence['log'])
             report['controls'].append(dict(kind='tampered_expected',backend=backend,rejected=True))
         # Application results remain available if a later optional synthetic profile is unavailable.
         workloads.sort(key=lambda row: (0 if row['family'] in ('init','tick') else 2 if row['family']=='synthetic' else 1))
