@@ -88,9 +88,9 @@ class NativeOwnerReceiptTests(unittest.TestCase):
                 owner_receipt(receipt,'tick')
 
     def test_impossible_relationships_and_capacity(self):
-        """Header and branch counts must fit their parent entry counts and the unchanged arena ceilings."""
+        """Header and branch counts must fit their parent entry counts and the current arena ceilings."""
         for values in ('2,20,80,128,1000,10,11', '2,20,80,128,1000,21,8',
-                       '1025,20,80,128,1000,10,8', '2,20,80,1048577,1000,10,8'):
+                       '8193,20,80,128,1000,10,8', '2,20,80,1048577,1000,10,8'):
             with self.subTest(values=values),self.assertRaises(ValueError):
                 owner_receipt('ARM_OWNER,tick,'+values+'\n','tick')
 

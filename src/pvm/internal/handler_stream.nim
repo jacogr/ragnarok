@@ -3396,7 +3396,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if reads == 0 or count < 4: return offset
     var words = armReadInstructions(native, ending)
     if words.len >= 1024: return offset # Preserve the existing pure publisher on bounded refusal.
-    if jit.fragments >= 1023 or jit.codeBytes > 1048576 or
+    if jit.fragments >= 8191 or jit.codeBytes > 1048576 or
         uint64(words.len+1)*4 > 1048576-jit.codeBytes:
       return offset # A smaller original pure leaf may still fit; do not mutate its refusal record.
     if not publishArmEntry(jit, offset, ending, count, words): return offset
