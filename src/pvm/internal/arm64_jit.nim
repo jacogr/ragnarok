@@ -12,6 +12,9 @@ else:
 
 type ArmMixedState* = array[armMixedStateWords, uint64]
 
+const armMacroStateWords* = 26
+type ArmMacroState* = array[armMacroStateWords, uint64]
+
 proc armClock*(): uint64 {.cdecl, importc: "pvm_arm64_jit_cpu_ns", header: "arm64_memory.h".}
   ## Read the native CPU-time counter used to measure ARM64 JIT work.
 
@@ -42,6 +45,26 @@ proc regionArena(arena: nil pointer, offset: uint32, registers, state: pointer):
 type
   ArmEntryRecord = object ## Executable records bind code, operation count and successor; uncompiled headers may hold a bounded probe budget.
     code, operations, ending: uint32
+  ArmMacroChildRecord* = object ## Read-only scalar view of an existing same-owner child entry.
+    code*, operations*, ending*: uint32
+  ArmMacroShape* = object ## One observed source graph, with no invocation pointer or diagnostic PC.
+    cycleHeader*, cycleExit*: uint32
+    staticHeader*, staticTarget*: uint32
+    pureHeader*, pureBody*, pureTerminal*, pureYes*, pureNo*: uint32
+    branchHeader*, branchYes*, branchNo*: uint32
+    readHeader*, readBody*, readTerminal*, terminalTarget*: uint32
+    staticSpan*, pureSpan*, branchSpan*, readSpan*: uint32
+    staticPrice*, purePrice*, branchPrice*, readPrice*: uint64
+    branchSlot*: range[0..12]
+    branchImmediate*: uint64
+  ArmMacroCache = object ## Separate code offset and semantic counts never displace a child entry.
+    status: uint8
+    probeVisits: uint8
+    code: uint32
+    shape: ArmMacroShape
+    cycleCode, pureCode, readCode, pureOperations, readOperations: uint32
+    calls, cycleChildCalls, staticBlocks, pureBlocks, branchBlocks, readBlocks,
+      readRefusals: uint64
   ArmRegionCache = object ## One bounded connected loop retains only exact-source scalar proofs and counters.
     status: uint8
     headers, spans, operations: array[3, uint32]
@@ -96,6 +119,9 @@ type
     mixedCalls*, mixedCompleted*, mixedInterior*, mixedOperations*: uint64
     mixedGroupPublished, mixedGroupAttempts, mixedGroupPasses: uint64
     memoryCycle: ArmMemoryCycleCache
+    macroRoute: ArmMacroCache
+    when defined(pvmArmMacroReceipt):
+      residentCycleRefused: bool # Receipt-only injection leaves linked publication available.
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
   ## Reject copying the exclusive native executable arena owner.
@@ -130,7 +156,7 @@ proc newArmJit*(): ArmJit =
   assert sizeof(ArmEntryRecord) == 12
   ArmJit(arena: ArenaOwner(handle: nil), region: default(ArmRegionCache),
       dirtyLoop: default(ArmDirtyLoopCache), entries: @[], unavailable: false,
-      memoryCycle: default(ArmMemoryCycleCache))
+      memoryCycle: default(ArmMemoryCycleCache), macroRoute: default(ArmMacroCache))
 
 func supportedArmOpcode*(opcode: byte): bool =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
@@ -294,12 +320,12 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
     # ARM word operations zero high bits; GP requires sign extension of the low 32-bit result.
     fragment.words.add(0x93407c00'u32 or (destination shl 5) or destination)
 
-proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
-    immediate: uint64, yes, no: uint32) =
+proc emitArmBranchSlots(fragment: var ArmBlock, opcode: byte, leftSlot,
+    rightSlot: range[0..12], immediate: uint64, yes, no: uint32) =
   ## Only positive cached branch capabilities supply scalar destinations; flags survive MOV/STR publication.
   assert opcode in {81'u8..90'u8, 170'u8..175'u8}
   assert yes < 2147483646'u32 and no < 2147483646'u32
-  let left = armRead(fragment, slots.aIndex)
+  let left = armRead(fragment, leftSlot)
   var right = 1'u32
   if opcode <= 90:
     # Branch immediates retain GP signed low-word extension before full 64-bit comparison.
@@ -307,7 +333,7 @@ proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
     if fragment.compact: armCompactImmediate(fragment.terminal, 1, immediate)
     else: armImmediate(fragment.terminal, 1, immediate)
   else:
-    right = armRead(fragment, slots.bIndex)
+    right = armRead(fragment, rightSlot)
   fragment.terminal.add(0xeb00001f'u32 or (right shl 16) or (left shl 5)) # CMP Xn,Xm
   let condition = case opcode
     of 81, 170: 0'u32  # EQ
@@ -326,6 +352,12 @@ proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
   fragment.terminal.add(0x52800002'u32 or ((no and 65535) shl 5))
   fragment.terminal.add(0x72a00002'u32 or ((no shr 16) shl 5))
   fragment.terminal.add(0x1a820020'u32 or (condition shl 12)) # CSEL W0,W1,W2,cond
+
+proc emitArmBranch*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlots,
+    immediate: uint64, yes, no: uint32) =
+  ## The public decoded-slot path shares the exact compare/selection emitter.
+  emitArmBranchSlots(fragment, opcode, slots.aIndex, slots.bIndex,
+      immediate, yes, no)
 
 proc armInstructions*(fragment: ArmBlock): seq[uint32] =
   ## Prologue loads only original values needed by this fragment; epilogue publishes every changed guest slot.
@@ -1855,8 +1887,16 @@ proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   jit.memoryCycle.status = 2
   true
 
+when defined(pvmArmMacroReceipt):
+  proc armRefuseResidentCycleReceipt*(jit: ArmJit) =
+    ## Force only resident admission to decline, preserving the genuine linked fallback.
+    assert jit.memoryCycle.status == 0
+    jit.residentCycleRefused = true
+
 proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Compose already admitted dirty/direct-read cores into one resident guest-register bank.
+  when defined(pvmArmMacroReceipt):
+    if jit.residentCycleRefused: return false
   if jit.memoryCycle.status != 0: return false
   if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
     return false # The old linked driver may still fit when this larger image does not.
@@ -2098,3 +2138,389 @@ proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
   if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines
   jit.operations+=prefix*uint64(jit.memoryCycle.prefixOperations) +
       tail*uint64(jit.memoryCycle.tailOperations)+dirty*uint64(jit.dirtyLoop.operations)
+
+func armMacroStatus*(jit: ArmJit): uint8 =
+  ## The separate macro owner is untried, retired, or completely published.
+  jit.macroRoute.status
+
+func armMacroChildRecord*(jit: ArmJit, offset: uint32): ArmMacroChildRecord =
+  ## Copy an existing tuple without extending the entry map or compiling a node.
+  if int(offset) >= jit.entries.len: return default(ArmMacroChildRecord)
+  let entry = jit.entries[int(offset)]
+  ArmMacroChildRecord(code: entry.code, operations: entry.operations,
+    ending: entry.ending)
+
+func armMacroCycleExit*(jit: ArmJit): uint32 =
+  ## Only a published resident child exposes its sealed outside stream edge.
+  assert jit.memoryCycle.status == 2 and jit.memoryCycle.residentMode
+  jit.memoryCycle.other
+
+func armMacroMatches*(jit: ArmJit, shape: ArmMacroShape): bool =
+  ## A code-only cache is reusable only for the exact scalar source graph.
+  jit.macroRoute.status == 2 and jit.macroRoute.shape == shape
+
+func armMacroShape*(jit: ArmJit): ArmMacroShape =
+  ## Copy published scalar coordinates without exposing mutable cache storage.
+  assert jit.macroRoute.status == 2
+  jit.macroRoute.shape
+
+proc armMacroProbeReady*(jit: ArmJit): bool =
+  ## Bound source observation to eight calls before Frame retires its handler.
+  if jit.macroRoute.status != 0: return false
+  if jit.macroRoute.probeVisits < 8: inc jit.macroRoute.probeVisits
+  jit.macroRoute.probeVisits == 8
+
+proc refuseArmMacro*(jit: ArmJit) =
+  ## Shape refusal affects only the unpublished macro cache.
+  if jit.macroRoute.status == 0: jit.macroRoute.status = 1
+
+func armMacroStatistics*(jit: ArmJit): array[7, uint64] =
+  ## Outer bridge and semantic child/control counts have distinct lanes.
+  [jit.macroRoute.calls, jit.macroRoute.cycleChildCalls,
+    jit.macroRoute.staticBlocks, jit.macroRoute.pureBlocks,
+    jit.macroRoute.branchBlocks, jit.macroRoute.readBlocks,
+    jit.macroRoute.readRefusals]
+
+func armMacroShapeValid(jit: ArmJit, shape: ArmMacroShape): bool =
+  ## Reject incompatible child records and edges before any code publication.
+  if jit.memoryCycle.status != 2 or not jit.memoryCycle.residentMode or
+      jit.dirtyLoop.status != 2 or jit.arena.handle == nil: return false
+  let headers = [shape.cycleHeader, jit.memoryCycle.dirtyHeader,
+    jit.memoryCycle.tailHeader, shape.staticHeader, shape.pureHeader,
+    shape.branchHeader, shape.readHeader]
+  for i in 0..<headers.len:
+    if headers[i] >= 2147483646'u32: return false
+    for j in 0..<i:
+      if headers[i] == headers[j]: return false
+  if shape.cycleHeader != jit.memoryCycle.prefixHeader or
+      shape.cycleExit != jit.memoryCycle.other or
+      shape.staticTarget != shape.pureHeader or
+      shape.terminalTarget != shape.cycleHeader or
+      shape.pureBody != shape.pureHeader+1 or
+      shape.readBody != shape.readHeader+1: return false
+  if not ((shape.pureYes == shape.branchHeader and
+      shape.pureNo notin headers) or (shape.pureNo == shape.branchHeader and
+      shape.pureYes notin headers)): return false
+  if not ((shape.branchYes == shape.pureHeader and
+      shape.branchNo == shape.readHeader) or
+      (shape.branchNo == shape.pureHeader and
+      shape.branchYes == shape.readHeader)): return false
+  for span in [shape.staticSpan, shape.pureSpan, shape.branchSpan, shape.readSpan]:
+    if span == 0 or span > 4095: return false
+  let low = uint32(shape.branchImmediate and 0xffffffff'u64)
+  let extended = if (low and 0x80000000'u32) != 0:
+      uint64(low) or 0xffffffff00000000'u64 else: uint64(low)
+  if shape.branchImmediate != extended: return false
+  if shape.pureBody >= uint32(jit.entries.len) or
+      shape.readBody >= uint32(jit.entries.len) or
+      shape.cycleHeader >= uint32(jit.entries.len): return false
+  let root = jit.entries[int(shape.cycleHeader)]
+  let pure = jit.entries[int(shape.pureBody)]
+  let read = jit.entries[int(shape.readBody)]
+  if root.code < 2 or pure.code < 2 or read.code < 2 or
+      pure.operations == 0 or read.operations == 0 or
+      pure.operations > shape.pureSpan or read.operations >= shape.readSpan or
+      pure.ending != shape.pureTerminal or read.ending != shape.readTerminal:
+    return false
+  if root.code-2 >= jit.codeBytes or pure.code-2 >= jit.codeBytes or
+      read.code-2 >= jit.codeBytes: return false
+  if shape.pureTerminal >= 2147483646'u32 or
+      shape.readTerminal >= 2147483646'u32 or
+      shape.pureYes >= 2147483646'u32 or
+      shape.pureNo >= 2147483646'u32 or
+      shape.branchYes >= 2147483646'u32 or
+      shape.branchNo >= 2147483646'u32: return false
+  true
+
+proc armMacroCount(words: var seq[uint32], index: uint32) =
+  ## Count one completed scalar block in invocation state without X16 scratch.
+  cycleLoad(words, 1, 20, index*8)
+  cycleAddImmediate(words, 1, 1, 1)
+  cycleStore(words, 1, 20, index*8)
+
+proc armMacroGuard(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
+    span: uint32, price: uint64, refusal: int) =
+  ## Attempt exhaustion wins over price; a partial block returns unmodified.
+  cycleCompareImmediate(words, 22, 0)
+  cycleEdge(words, fixes, refusal, 0)
+  cyclePriceGuard(words, fixes, price, refusal)
+  cycleCompareImmediate(words, 22, span)
+  cycleEdge(words, fixes, refusal, 3)
+  cyclePriceChange(words, price)
+  cycleAddImmediate(words, 22, 22, span, true)
+
+proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
+    labels: array[12, int]): bool =
+  ## Every local edge is instruction-relative and bounded before publication.
+  for fix in fixes:
+    if fix.target < 0 or fix.target >= labels.len: return false
+    let relative = int64(labels[fix.target])-int64(fix.at)
+    if fix.condition < 16:
+      if relative < -262144 or relative > 262143: return false
+      words[fix.at] = 0x54000000'u32 or
+          ((uint32(relative) and 0x7ffff'u32) shl 5) or fix.condition
+    else:
+      if relative < -33554432 or relative > 33554431: return false
+      words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
+  true
+
+proc publishArmMacro*(jit: ArmJit, shape: ArmMacroShape): bool =
+  ## Link the three existing same-owner children and source-derived scalar controls.
+  if jit.macroRoute.status != 0: return false
+  if jit.unavailable or jit.fragments >= 1024 or jit.codeBytes > 1048576 or
+      not armMacroShapeValid(jit, shape):
+    jit.macroRoute.status = 1
+    return false
+  let root = jit.entries[int(shape.cycleHeader)]
+  let pure = jit.entries[int(shape.pureBody)]
+  let read = jit.entries[int(shape.readBody)]
+  let planned = jit.codeBytes
+  jit.macroRoute.status = 1
+
+  # Labels: cycle, static, pure, branch88, read, spare, four unstarted exits,
+  # late-read refund, and the common epilogue. Each child remains immutable.
+  var labels = default(array[12, int])
+  var fixes: seq[ArmMemoryCycleFixup] = @[]
+  var words: seq[uint32] = @[0xd10183ff'u32] # SUB SP,SP,#96.
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  cycleMove(words, 19, 0)
+  cycleMove(words, 20, 1)
+  cycleLoad(words, 21, 20, 0)
+  cycleLoad(words, 22, 20, 8)
+  cycleLoad(words, 23, 20, 192) # Global last-completed header, distinct from child word13.
+
+  labels[0] = words.len
+  cycleStore(words, 21, 20, 0)
+  cycleStore(words, 22, 20, 8)
+  for index in 2'u32..4'u32: cycleStore(words, 31, 20, index*8)
+  for index in 8'u32..12'u32: cycleStore(words, 31, 20, index*8)
+  cycleImmediate(words, 1, uint64(high(uint32)))
+  cycleStore(words, 1, 20, 104) # Child word13 always starts at the sentinel.
+  cycleMove(words, 0, 19)
+  cycleMove(words, 1, 20)
+  if not cycleLinkChild(words, planned, root.code-2): return false
+  cycleLoad(words, 21, 20, 0)
+  cycleLoad(words, 22, 20, 8)
+  for index in 0'u32..4'u32:
+    cycleLoad(words, 1, 20, (8+index)*8)
+    cycleLoad(words, 2, 20, (14+index)*8)
+    cycleAddRegister(words, 2, 2, 1)
+    cycleStore(words, 2, 20, (14+index)*8)
+  armMacroCount(words, 19)
+  cycleLoad(words, 1, 20, 104)
+  cycleImmediate(words, 2, uint64(high(uint32)))
+  cycleCompare(words, 1, 2, true)
+  words.add(0x9a800000'u32 or (23'u32 shl 16) or (1'u32 shl 12) or
+      (1'u32 shl 5) or 23'u32) # CSEL X23,X1,X23,NE.
+  cycleImmediate(words, 1, uint64(shape.staticHeader))
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 1, 0)
+  cycleEdge(words, fixes, 11, 16)
+
+  labels[1] = words.len
+  armMacroGuard(words, fixes, shape.staticSpan, shape.staticPrice, 6)
+  armMacroCount(words, 20)
+  cycleImmediate(words, 23, uint64(shape.staticHeader))
+  cycleEdge(words, fixes, 2, 16) # Cached opcode40 target is the pure header.
+
+  labels[2] = words.len
+  armMacroGuard(words, fixes, shape.pureSpan, shape.purePrice, 7)
+  cycleMove(words, 0, 19)
+  if not cycleLinkChild(words, planned, pure.code-2): return false
+  armMacroCount(words, 21)
+  cycleImmediate(words, 23, uint64(shape.pureHeader))
+  cycleImmediate(words, 1, uint64(shape.branchHeader))
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 3, 0)
+  cycleEdge(words, fixes, 11, 16) # Genuine rare pure arm exits to checked C.
+
+  labels[3] = words.len
+  armMacroGuard(words, fixes, shape.branchSpan, shape.branchPrice, 8)
+  var branchBody = default(ArmBlock)
+  emitArmBranchSlots(branchBody, 88'u8, shape.branchSlot, 0,
+      shape.branchImmediate, shape.branchYes, shape.branchNo)
+  cycleMove(words, 0, 19)
+  for instruction in armInstructions(branchBody): words.add(instruction)
+  armMacroCount(words, 22)
+  cycleImmediate(words, 23, uint64(shape.branchHeader))
+  cycleImmediate(words, 1, uint64(shape.pureHeader))
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 2, 0) # Real branch88 backedge repeats pure's guard.
+  cycleEdge(words, fixes, 4, 16)
+
+  labels[4] = words.len
+  armMacroGuard(words, fixes, shape.readSpan, shape.readPrice, 9)
+  cycleMove(words, 0, 19)
+  cycleLoad(words, 1, 20, 40) # Current invocation descriptors, not a cached address.
+  if not cycleLinkChild(words, planned, read.code-2): return false
+  words.add(0x12800001'u32) # MOVN W1,#0: guarded read refusal sentinel.
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 10, 0)
+  armMacroCount(words, 23)
+  cycleImmediate(words, 23, uint64(shape.readHeader))
+  cycleEdge(words, fixes, 0, 16) # Cached opcode1 target is the cycle header.
+
+  labels[6] = words.len
+  cycleImmediate(words, 0, uint64(shape.staticHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[7] = words.len
+  cycleImmediate(words, 0, uint64(shape.pureHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[8] = words.len
+  cycleImmediate(words, 0, uint64(shape.branchHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[9] = words.len
+  cycleImmediate(words, 0, uint64(shape.readHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[10] = words.len
+  cyclePriceChange(words, shape.readPrice, true)
+  cycleAddImmediate(words, 22, 22, shape.readSpan)
+  armMacroCount(words, 25)
+  cycleImmediate(words, 0, uint64(shape.readHeader))
+  cycleEdge(words, fixes, 11, 16)
+
+  labels[11] = words.len
+  cycleStore(words, 21, 20, 0)
+  cycleStore(words, 22, 20, 8)
+  cycleStore(words, 23, 20, 192)
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9400000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  words.add(0x910183ff'u32) # ADD SP,SP,#96; arena appends RET.
+  if words.len == 0 or words.len >= 1024 or
+      uint64(words.len+1)*4 > 1048576-jit.codeBytes or
+      not armMacroPatch(words, fixes, labels): return false
+  when defined(pvmArmMacroPublishRefuse):
+    # Test the append-failure boundary after all same-owner children exist.
+    return false
+  words.add(0xd65f03c0'u32)
+  let address = publishArena(jit.arena.handle, addr words[0], uint32(words.len))
+  if address < 0: return false
+  inc jit.fragments
+  jit.codeBytes+=uint64(words.len)*4
+  if uint64(address) != planned: return false
+  jit.macroRoute.code = uint32(address)+2
+  jit.macroRoute.shape = shape
+  jit.macroRoute.cycleCode = root.code
+  jit.macroRoute.pureCode = pure.code
+  jit.macroRoute.readCode = read.code
+  jit.macroRoute.pureOperations = pure.operations
+  jit.macroRoute.readOperations = read.operations
+  jit.macroRoute.status = 2
+  true
+
+proc armMacroConserve(count: uint64, span: uint32, price: uint64,
+    attempts, gas: var uint64) =
+  ## Charge one source-owned semantic category without unchecked product overflow.
+  assert span > 0 and count <= attempts div uint64(span)
+  attempts-=count*uint64(span)
+  if price > 0: assert count <= gas div price
+  gas-=count*price
+
+proc armMacroOperationTotal(total: var uint64, count: uint64, each: uint32) =
+  ## Each counted instruction was lowered by a genuine child or scalar control.
+  assert each > 0 and count <= (high(uint64)-total) div uint64(each)
+  total+=count*uint64(each)
+
+proc callArmMacro*(jit: ArmJit, registers: var RegisterFile,
+    regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
+    state: var ArmMacroState): uint32 =
+  ## One outer bridge borrows fresh pointers; all nested semantic work is checked on return.
+  assert jit.macroRoute.status == 2 and sizeof(RegisterFile) == 104 and
+      sizeof(regions) == 72 and sizeof(state) == 208
+  for index in 2..12: assert state[index] == 0
+  assert state[13] == uint64(high(uint32))
+  for index in 14..23: assert state[index] == 0
+  assert state[24] == uint64(high(uint32)) and state[25] == 0
+  let gas = state[0]
+  let available = state[1]
+  state[5] = cast[uint64](addr regions)
+  state[6] = uint64(dirtyWords.len)
+  state[7] = 0
+  if dirtyWords.len > 0: state[7] = cast[uint64](addr dirtyWords[0])
+  let shape = jit.macroRoute.shape
+  let rare = if shape.pureYes == shape.branchHeader: shape.pureNo else: shape.pureYes
+  result = regionArena(jit.arena.handle, jit.macroRoute.code-2,
+      addr registers, addr state)
+  assert result == shape.cycleHeader or result == jit.memoryCycle.dirtyHeader or
+      result == jit.memoryCycle.tailHeader or result == shape.staticHeader or
+      result == shape.pureHeader or result == shape.branchHeader or
+      result == shape.readHeader or result == rare
+  assert state[0] <= gas and state[1] <= available and state[4] == 0
+  assert state[13] == uint64(high(uint32)) or
+      state[13] == uint64(shape.cycleHeader) or
+      state[13] == uint64(jit.memoryCycle.dirtyHeader) or
+      state[13] == uint64(jit.memoryCycle.tailHeader)
+  let last = state[24]
+  assert last == uint64(high(uint32)) or last == uint64(shape.cycleHeader) or
+      last == uint64(jit.memoryCycle.dirtyHeader) or
+      last == uint64(jit.memoryCycle.tailHeader) or
+      last == uint64(shape.staticHeader) or last == uint64(shape.pureHeader) or
+      last == uint64(shape.branchHeader) or last == uint64(shape.readHeader)
+  assert state[25] <= 1 and (state[25] == 0 or result == shape.readHeader)
+  let prefix = state[14]
+  let tail = state[15]
+  let dirty = state[16]
+  let wordGroups = state[17]
+  let dirtyCalls = state[18]
+  let childCalls = state[19]
+  let staticBlocks = state[20]
+  let pureBlocks = state[21]
+  let branchBlocks = state[22]
+  let readBlocks = state[23]
+  assert childCalls > 0 and readBlocks < high(uint64) and
+      childCalls == readBlocks+1 and staticBlocks <= childCalls and
+      branchBlocks <= pureBlocks and readBlocks <= branchBlocks
+  assert wordGroups <= dirty div 4 and dirtyCalls <= prefix and
+      (dirtyCalls == 0 or dirty >= dirtyCalls-1)
+  var attempted = available-state[1]
+  var spent = gas-state[0]
+  armMacroConserve(prefix, jit.memoryCycle.prefixSpan,
+      jit.memoryCycle.prefixPrice, attempted, spent)
+  armMacroConserve(tail, jit.memoryCycle.tailSpan,
+      jit.memoryCycle.tailPrice, attempted, spent)
+  armMacroConserve(dirty, jit.dirtyLoop.span,
+      jit.dirtyLoop.price, attempted, spent)
+  armMacroConserve(staticBlocks, shape.staticSpan,
+      shape.staticPrice, attempted, spent)
+  armMacroConserve(pureBlocks, shape.pureSpan,
+      shape.purePrice, attempted, spent)
+  armMacroConserve(branchBlocks, shape.branchSpan,
+      shape.branchPrice, attempted, spent)
+  armMacroConserve(readBlocks, shape.readSpan,
+      shape.readPrice, attempted, spent)
+  assert attempted == 0 and spent == 0
+  var operations = 0'u64
+  armMacroOperationTotal(operations, prefix, jit.memoryCycle.prefixOperations)
+  armMacroOperationTotal(operations, tail, jit.memoryCycle.tailOperations)
+  armMacroOperationTotal(operations, dirty, jit.dirtyLoop.operations)
+  armMacroOperationTotal(operations, staticBlocks, 1)
+  armMacroOperationTotal(operations, pureBlocks, jit.macroRoute.pureOperations)
+  armMacroOperationTotal(operations, branchBlocks, 1)
+  armMacroOperationTotal(operations, readBlocks,
+      jit.macroRoute.readOperations+1) # Native read body plus canonical opcode1.
+  assert operations <= high(uint64)-jit.operations
+  inc jit.calls
+  inc jit.branchCalls
+  inc jit.headerCalls
+  jit.operations+=operations
+  inc jit.macroRoute.calls
+  jit.macroRoute.cycleChildCalls+=childCalls
+  jit.macroRoute.staticBlocks+=staticBlocks
+  jit.macroRoute.pureBlocks+=pureBlocks
+  jit.macroRoute.branchBlocks+=branchBlocks
+  jit.macroRoute.readBlocks+=readBlocks
+  jit.macroRoute.readRefusals+=state[25]
+  jit.memoryCycle.prefixBlocks+=prefix
+  jit.memoryCycle.tailBlocks+=tail
+  jit.memoryCycle.dirtyBlocks+=dirty
+  jit.memoryCycle.wordGroups+=wordGroups
+  jit.memoryCycle.dirtyCalls+=dirtyCalls
+  jit.dirtyLoop.calls+=dirtyCalls
+  jit.dirtyLoop.blocks+=dirty
+  jit.dirtyLoop.wordGroups+=wordGroups
+  if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines

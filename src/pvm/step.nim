@@ -453,6 +453,15 @@ when defined(pvmArm64JitOwnerReceipt):
     PreparationResult[array[7, uint64]](status: PreparationError.None,
       completed: streamArmStatistics(data.stream))
 
+when defined(pvmArmMacroReceipt):
+  proc preparedArmMacroStatistics*(prepared: PreparedProgram): PreparationResult[array[7, uint64]] =
+    ## Private copied macro counters for one retained public prepared owner.
+    let data = prepared.data
+    if data == nil: return PreparationResult[array[7, uint64]](
+        status: PreparationError.InvalidProgram)
+    PreparationResult[array[7, uint64]](status: PreparationError.None,
+      completed: streamArmMacroStatistics(data.stream))
+
 proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
     memory: var Memory): StepError =
   ## Validate immutable owners and reserved-zero debt before even a zero-attempt request.
