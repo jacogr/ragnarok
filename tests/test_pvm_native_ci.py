@@ -99,10 +99,15 @@ class PolicyQualificationTests(unittest.TestCase):
 
 
 class QualificationTests(unittest.TestCase):
-    def witness_receipt(self, native, *, refused=False, region='ARM_SELF_REGION_CASES,1920\n'):
+    def witness_receipt(self, native, *, refused=False, macro_refused=False,
+                        region='ARM_SELF_REGION_CASES,1920\n'):
         """Model mandatory controls, with positive native counters only in the supported profile."""
         counts = (64896, 507, 24843) if native else (0, 0, 0)
         assert not (native and refused)
+        assert not macro_refused or native
+        macro_active = native and not macro_refused
+        macro_backend = 31 if macro_active else 3 if native or refused else 0
+        macro_frame = 13524 if native or refused else 0
         return ('TRANSFER_STATS,1,2\n' if native else 'TRANSFER_STATS,0,0\n') + (
             f'ARM_SHIFT_PAIR_LITERAL_CASES,{counts[0]}\n'
             f'ARM_SHIFT_PAIR_DECLINE_CASES,{counts[1]}\n'
@@ -126,6 +131,13 @@ class QualificationTests(unittest.TestCase):
             f'ARM_MEMORY_CYCLE_BACKEND_CASES,{19 if native else 1 if refused else 0}\n'
             f'ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,{12328 if native or refused else 0}\n'
             f'ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,{47 if native else 3 if refused else 0}\n'
+            f'ARM_MACRO_BACKEND_CASES,{macro_backend}\n'
+            f'ARM_MACRO_FRAME_CASES,{macro_frame}\n'
+            f'ARM_MACRO_ACTIVE,{int(macro_active)}\n'
+            f'ARM_MACRO_LATE_READ_REFUND,{int(macro_active)}\n'
+            f'ARM_MACRO_SIGNED_BACKEDGE,{int(macro_active)}\n'
+            f'ARM_MACRO_OWNER_MOVE,{int(macro_active)}\n'
+            f'ARM_MACRO_LINKED_FALLBACK_CASES,{162 if native else 0}\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
@@ -135,10 +147,11 @@ class QualificationTests(unittest.TestCase):
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
 
     def check(self, native, receipt=None, build_error=False, region_receipt=None,
-              refused_receipt=None):
+              refused_receipt=None, macro_refused_receipt=None):
         """Model tool process boundaries; all native assertions stay in the maintained Nim/C witnesses."""
         ordinary = self.witness_receipt(native)
         refused = self.witness_receipt(False, refused=True)
+        macro_refused = self.witness_receipt(True, macro_refused=True)
         class Checks:
             folder=Path('/tmp/pvm-ci-test')
             builds=[]
@@ -156,6 +169,8 @@ class QualificationTests(unittest.TestCase):
                     output=receipt if receipt is not None else ordinary
                 elif name=='witness-refused-run':
                     output=refused_receipt if refused_receipt is not None else refused
+                elif name=='witness-macro-refused-run':
+                    output=macro_refused_receipt if macro_refused_receipt is not None else macro_refused
                 elif name.startswith('region-refusal'):
                     positive=native and name=='region-refusal-run'
                     output=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+(','+'0,1,2,1' if positive else ',0,0,0,0')+'\n'
@@ -172,15 +187,38 @@ class QualificationTests(unittest.TestCase):
         """The explicit ARM-only helper retains off-platform fallback controls independently of x86 qualification."""
         for native in (True,False):
             rows,builds=self.check(native)
-            self.assertEqual(len(rows),11)
+            self.assertEqual(len(rows),12 if native else 11)
             self.assertEqual(rows[1]['dirty_loop'],
                              dict(calls=2, blocks=16, declines=1) if native else None)
             self.assertIsNone(rows[2]['dirty_loop'])
             witness=next(flags for name,flags in builds if name=='witness')
-            self.assertEqual(witness,['pvmArm64Jit','pvmArmDirtyLoopOwnerReceipt'] if native else [])
+            self.assertEqual(witness,['pvmArm64Jit','pvmArmMacroReceipt',
+                                      'pvmArmDirtyLoopOwnerReceipt'] if native else [])
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
             self.assertIn('pvmArmDirtyLoopOwnerReceipt',refused)
+
+    def test_macro_controls_are_required_through_full_qualification(self):
+        """Each mode keeps all unrelated gates valid while one macro proof is damaged."""
+        markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
+                   'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
+                   'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
+                   'ARM_MACRO_LINKED_FALLBACK_CASES')
+        for mode in ('native', 'native-refused', 'macro-refused', 'interpreted'):
+            complete = self.witness_receipt(mode in ('native', 'macro-refused'),
+                refused=mode=='native-refused', macro_refused=mode=='macro-refused')
+            for marker in markers:
+                line, = [row+'\n' for row in complete.splitlines()
+                         if row.startswith(marker+',')]
+                for kind, replacement in (('missing', ''), ('truncated', marker+',\n'),
+                                          ('duplicate', line+line)):
+                    damaged = complete.replace(line, replacement)
+                    arguments = ({'refused_receipt': damaged} if mode=='native-refused'
+                                 else {'macro_refused_receipt': damaged} if mode=='macro-refused'
+                                 else {'receipt': damaged})
+                    with self.subTest(mode=mode, marker=marker, kind=kind), \
+                            self.assertRaisesRegex(ValueError, 'ARM macro witness: '+marker):
+                        self.check(mode!='interpreted', **arguments)
 
     def test_candidate_local_native_receipts_are_mandatory(self):
         """Missing, checked-only or reordered ownership cases cannot count as actual ARM coverage."""
