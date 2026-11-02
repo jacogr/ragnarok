@@ -451,6 +451,21 @@ proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
   MachineResult[PageDescription](status: MachineError.None,
     completed: PageDescription(index: page.index, access: page.access))
 
+proc matchesMemoryPageBytes*(memory: Memory, slot: MemoryPageSlot,
+    expected: PageDescription, bytes: openArray[byte]): MachineResult[bool] =
+  ## Compare a borrowed private page with an immutable captured page; no source bytes or alias escape.
+  let data = memory.data
+  if data == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  if uint64(slot) >= uint64(data.pages.len) or bytes.len != 4096:
+    return MachineResult[bool](status: MachineError.InvalidRange)
+  let page {.cursor.} = data.pages[int(uint32(slot))]
+  if page.index != expected.index or page.access != expected.access:
+    return MachineResult[bool](status: MachineError.InvalidRange)
+  for chunk in 0..<8:
+    if cmpMem(unsafeAddr page.chunks[chunk].bytes[0], unsafeAddr bytes[chunk*512], 512) != 0:
+      return MachineResult[bool](status: MachineError.None, completed: false)
+  MachineResult[bool](status: MachineError.None, completed: true)
+
 proc pageIndices*(memory: Memory): MachineResult[seq[PageIndex]] =
   ## Copy only retained sorted page identities; sparse holes and snapshot storage remain private.
   let data = memory.data
