@@ -24,7 +24,7 @@ from pvm_sieve_report import parse_process_output
 from pvm_doom_attribution import run as prepare_doom, BUILD as DOOM, timing_samples, reference_lifecycle_samples
 from pvm_benchmark import cpu_model
 from pvm_application_report import lifecycle_sections
-from pvm_process_replays import run_replays, replay_summary
+from pvm_process_replays import run_replays, replay_summary, same_activity
 from pvm_comparison_policy import policy_receipt
 from setup_nimony import installed, cache_directory
 
@@ -48,6 +48,22 @@ def owner_receipt(output, case):
     if counters['fragments']>1024 or counters['code_bytes']>1024*1024:
         raise ValueError('Native owner capacity exceeded')
     return '\n'.join(lines)+'\n', counters
+
+
+def resident_application_receipt(output):
+    """Require real resident DOOM work before a diagnostic application run can qualify."""
+    records = [line for line in output.splitlines() if line.startswith('ARM_MACRO_APPLICATION')]
+    if len(records) != 1: raise ValueError('Missing resident application receipt')
+    fields = records[0].split(',')
+    if len(fields) != 7 or fields[:3] != ['ARM_MACRO_APPLICATION','tick','1'] or any(
+            not value.isascii() or not value.isdecimal() or int(value) >= 2**63
+            for value in fields[3:]):
+        raise ValueError('Invalid resident application receipt')
+    calls, children, reads, refusals = map(int, fields[3:])
+    if calls == 0 or reads == 0 or children != calls+reads or refusals > calls:
+        raise ValueError('Missing resident application execution')
+    clean = '\n'.join(line for line in output.splitlines() if line != records[0])+'\n'
+    return clean, dict(calls=calls,children=children,reads=reads,refusals=refusals)
 
 
 def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-v1'):
@@ -192,6 +208,17 @@ def run(architecture="arm64", build=None, baseline=None):
                 report['builds'].append(dict(role=role,family=family,repeat=repeat,defines=list(defines),run=built))
             if pair[0].read_bytes()!=pair[1].read_bytes(): raise ValueError('Fresh equal-image control failed')
             images[role,family]=pair[0]
+            if architecture == 'arm64' and role == 'jit' and family == 'doom':
+                # Separate proof flags establish actual activation without changing measured images.
+                proof_defines = list(defines)+['pvmArmMacroReceipt']
+                proof_build,proof_binary = checks.build(compiler,driver,'resident-control',
+                    defines=proof_defines,
+                    cflags=['-I'+str(ROOT/'tests/performance'),'-I'+str(canonical/'native/pvm_jit')])
+                if proof_build['exit_code']: raise RuntimeError(proof_build['output'][-3000:])
+                proof_image = folder/'resident-control-doom'; shutil.copy2(proof_binary,proof_image)
+                ids[proof_image] = digest(proof_image)
+                report['resident_control'] = dict(build=proof_build,defines=proof_defines,
+                    binary=str(proof_image),binary_sha256=ids[proof_image])
         report['sources'][role]={str(path.relative_to(canonical)):digest(path) for path in sorted(canonical.rglob('*')) if path.is_file()}
     # Current public policies must differ only at runtime: exact sources, flags and executable bytes agree.
     if report['sources']['interpreter'] != report['sources']['jit']:
@@ -212,6 +239,21 @@ def run(architecture="arm64", build=None, baseline=None):
                 raise ValueError('Equal public JIT sources produced different role images')
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
+    if architecture == 'arm64':
+        # Public state/output assertions and normal owner/policy framing also certify this control.
+        env = dict(os.environ,RAGNAROK_PVM_BACKEND='jit',RAGNAROK_PVM_DOOM_PRICING='prepared',
+            RAGNAROK_PVM_DOOM_PREPARATION='1',RAGNAROK_PVM_DOOM_TIMING='1',
+            RAGNAROK_PVM_DOOM_ASSERT='0',RAGNAROK_PVM_LOCAL_ONECALL='0',
+            RAGNAROK_PVM_DOOM_INPUT=str(DOOM/'prepared'),RAGNAROK_PVM_DOOM_PHASE='tick',
+            RAGNAROK_PVM_DOOM_ROM=str(ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad'))
+        proof = report['resident_control']
+        proof['sources'] = dict(report['sources']['jit'])
+        checked = checks.command([proof['binary']],'resident-application-control',environment=env,timeout=300)
+        if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        clean,receipt = resident_application_receipt(checked['output'])
+        proof.update(run=checked,receipt=receipt,parsed=parse_run(clean,'jit','tick',0,
+            (DOOM/'prepared/tick.events').stat().st_size,report['comparison_protocol']))
+        (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     for order in range(2):
         for case,limit,data,expected in cases:
             doom=case in ('init','tick'); family='doom' if doom else 'kernel'
@@ -263,6 +305,10 @@ def run(architecture="arm64", build=None, baseline=None):
         # Replications reuse the exact admitted images and inputs, preserving the ordinary cohort and all refusal controls.
         run_replays(checks, report, ids, cases, DOOM, parse_run)
     report['identities']={str(p.relative_to(ROOT)):h for p,h in ids.items()}
+    if architecture == 'arm64':
+        # Proof-only flags must preserve the measured owner's native work and code occupancy.
+        first = next(row for row in report['runs'] if row['case']=='tick' and row['role']=='jit' and row['order']==0)
+        same_activity(report['resident_control']['parsed']['native'],first['parsed']['native'])
     report['status']='passed'
     (folder/'results.json').write_text(json.dumps(report,indent=2)+'\n')
     lines=['CPU ms, forward / reverse. Public calls include fresh invocation memory and immutable publication; core has separate reset/publication.','']

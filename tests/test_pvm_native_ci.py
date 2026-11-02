@@ -100,14 +100,19 @@ class PolicyQualificationTests(unittest.TestCase):
 
 class QualificationTests(unittest.TestCase):
     def witness_receipt(self, native, *, refused=False, macro_refused=False,
+                        resident_refused=False,
                         region='ARM_SELF_REGION_CASES,1920\n'):
         """Model mandatory controls, with positive native counters only in the supported profile."""
         counts = (64896, 507, 24843) if native else (0, 0, 0)
         assert not (native and refused)
         assert not macro_refused or native
+        assert not resident_refused or native
+        assert not (macro_refused and resident_refused)
         macro_active = native and not macro_refused
+        macro_resident = macro_active and not resident_refused
         macro_backend = 31 if macro_active else 3 if native or refused else 0
         macro_frame = 13524 if native or refused else 0
+        image_words = 620 if macro_resident else 206 if resident_refused else 0
         return ('TRANSFER_STATS,1,2\n' if native else 'TRANSFER_STATS,0,0\n') + (
             f'ARM_SHIFT_PAIR_LITERAL_CASES,{counts[0]}\n'
             f'ARM_SHIFT_PAIR_DECLINE_CASES,{counts[1]}\n'
@@ -138,6 +143,9 @@ class QualificationTests(unittest.TestCase):
             f'ARM_MACRO_SIGNED_BACKEDGE,{int(macro_active)}\n'
             f'ARM_MACRO_OWNER_MOVE,{int(macro_active)}\n'
             f'ARM_MACRO_LINKED_FALLBACK_CASES,{162 if native else 0}\n'
+            f'ARM_MACRO_RESIDENT,{int(macro_resident)}\n'
+            f'ARM_MACRO_ROLLBACK_ALIAS,{int(macro_active)}\n'
+            f'ARM_MACRO_IMAGE_WORDS,{image_words}\n'
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
@@ -147,11 +155,12 @@ class QualificationTests(unittest.TestCase):
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n' if native else ''))
 
     def check(self, native, receipt=None, build_error=False, region_receipt=None,
-              refused_receipt=None, macro_refused_receipt=None):
+              refused_receipt=None, macro_refused_receipt=None, resident_refused_receipt=None):
         """Model tool process boundaries; all native assertions stay in the maintained Nim/C witnesses."""
         ordinary = self.witness_receipt(native)
         refused = self.witness_receipt(False, refused=True)
         macro_refused = self.witness_receipt(True, macro_refused=True)
+        resident_refused = self.witness_receipt(True, resident_refused=True)
         class Checks:
             folder=Path('/tmp/pvm-ci-test')
             builds=[]
@@ -171,6 +180,9 @@ class QualificationTests(unittest.TestCase):
                     output=refused_receipt if refused_receipt is not None else refused
                 elif name=='witness-macro-refused-run':
                     output=macro_refused_receipt if macro_refused_receipt is not None else macro_refused
+                elif name=='witness-resident-refused-run':
+                    output=(resident_refused_receipt if resident_refused_receipt is not None
+                            else resident_refused)
                 elif name.startswith('region-refusal'):
                     positive=native and name=='region-refusal-run'
                     output=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+(','+'0,1,2,1' if positive else ',0,0,0,0')+'\n'
@@ -183,11 +195,31 @@ class QualificationTests(unittest.TestCase):
         checks=Checks()
         return qualify(checks,Path('/compiler'),native=native),checks.builds
 
+    def macro_mode_receipt(self, mode):
+        """Supply independent complete transcripts for each native and checked-only policy."""
+        return {
+            'native': self.witness_receipt(True),
+            'resident-refused': self.witness_receipt(True, resident_refused=True),
+            'native-refused': self.witness_receipt(False, refused=True),
+            'macro-refused': self.witness_receipt(True, macro_refused=True),
+            'interpreted': self.witness_receipt(False),
+        }[mode]
+
+    def check_macro_mode(self, mode, receipt):
+        """Route one damaged transcript through its real full-qualification witness process."""
+        if mode == 'resident-refused':
+            return self.check(True, resident_refused_receipt=receipt)
+        if mode == 'native-refused':
+            return self.check(True, refused_receipt=receipt)
+        if mode == 'macro-refused':
+            return self.check(True, macro_refused_receipt=receipt)
+        return self.check(mode == 'native', receipt=receipt)
+
     def test_native_and_unavailable_profiles(self):
         """The explicit ARM-only helper retains off-platform fallback controls independently of x86 qualification."""
         for native in (True,False):
             rows,builds=self.check(native)
-            self.assertEqual(len(rows),12 if native else 11)
+            self.assertEqual(len(rows),13 if native else 11)
             self.assertEqual(rows[1]['dirty_loop'],
                              dict(calls=2, blocks=16, declines=1) if native else None)
             self.assertIsNone(rows[2]['dirty_loop'])
@@ -197,16 +229,24 @@ class QualificationTests(unittest.TestCase):
             refused=next(flags for name,flags in builds if name=='witness-refused')
             self.assertIn('pvmArm64JitRefuse',refused)
             self.assertIn('pvmArmDirtyLoopOwnerReceipt',refused)
+            resident=[flags for name,flags in builds if name=='witness-resident-refused']
+            if native:
+                self.assertEqual(resident, [['pvmArm64Jit','pvmArmMacroResidentRefuse',
+                                             'pvmArmMacroReceipt','pvmArmDirtyLoopOwnerReceipt']])
+            else:
+                self.assertEqual(resident, [])
 
     def test_macro_controls_are_required_through_full_qualification(self):
         """Each mode keeps all unrelated gates valid while one macro proof is damaged."""
         markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
                    'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
                    'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
-                   'ARM_MACRO_LINKED_FALLBACK_CASES')
-        for mode in ('native', 'native-refused', 'macro-refused', 'interpreted'):
-            complete = self.witness_receipt(mode in ('native', 'macro-refused'),
-                refused=mode=='native-refused', macro_refused=mode=='macro-refused')
+                   'ARM_MACRO_LINKED_FALLBACK_CASES', 'ARM_MACRO_RESIDENT',
+                   'ARM_MACRO_ROLLBACK_ALIAS', 'ARM_MACRO_IMAGE_WORDS')
+        for mode in ('native', 'resident-refused', 'native-refused', 'macro-refused', 'interpreted'):
+            complete = self.witness_receipt(mode in ('native', 'resident-refused', 'macro-refused'),
+                refused=mode=='native-refused', macro_refused=mode=='macro-refused',
+                resident_refused=mode=='resident-refused')
             for marker in markers:
                 line, = [row+'\n' for row in complete.splitlines()
                          if row.startswith(marker+',')]
@@ -215,10 +255,57 @@ class QualificationTests(unittest.TestCase):
                     damaged = complete.replace(line, replacement)
                     arguments = ({'refused_receipt': damaged} if mode=='native-refused'
                                  else {'macro_refused_receipt': damaged} if mode=='macro-refused'
+                                 else {'resident_refused_receipt': damaged} if mode=='resident-refused'
                                  else {'receipt': damaged})
                     with self.subTest(mode=mode, marker=marker, kind=kind), \
                             self.assertRaisesRegex(ValueError, 'ARM macro witness: '+marker):
                         self.check(mode!='interpreted', **arguments)
+
+    def test_macro_mode_receipts_cannot_cross_full_qualification(self):
+        """Swap only macro proof fields so unrelated gates cannot mask a policy mismatch."""
+        markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
+                   'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
+                   'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
+                   'ARM_MACRO_LINKED_FALLBACK_CASES', 'ARM_MACRO_RESIDENT',
+                   'ARM_MACRO_ROLLBACK_ALIAS', 'ARM_MACRO_IMAGE_WORDS')
+        modes = ('native', 'resident-refused', 'native-refused', 'macro-refused', 'interpreted')
+        for expected in modes:
+            original = self.macro_mode_receipt(expected)
+            for actual in modes:
+                if actual == expected:
+                    continue
+                donor = self.macro_mode_receipt(actual)
+                changed = original
+                for marker in markers:
+                    old, = [line+'\n' for line in original.splitlines()
+                            if line.startswith(marker+',')]
+                    new, = [line+'\n' for line in donor.splitlines()
+                            if line.startswith(marker+',')]
+                    changed = changed.replace(old, new, 1)
+                with self.subTest(expected=expected, actual=actual), self.assertRaisesRegex(
+                        ValueError, 'ARM macro witness:'):
+                    self.check_macro_mode(expected, changed)
+
+    def test_macro_image_bounds_reach_full_qualification(self):
+        """Active 1..1024 words and inactive zero are policy bounds, not fixed image lengths."""
+        modes = ('native', 'resident-refused', 'native-refused', 'macro-refused', 'interpreted')
+        for mode in modes:
+            original = self.macro_mode_receipt(mode)
+            line, = [row+'\n' for row in original.splitlines()
+                     if row.startswith('ARM_MACRO_IMAGE_WORDS,')]
+            if mode in ('native', 'resident-refused'):
+                for words in (1, 1024):
+                    with self.subTest(mode=mode, valid=words):
+                        self.check_macro_mode(mode, original.replace(
+                            line, f'ARM_MACRO_IMAGE_WORDS,{words}\n', 1))
+                invalid = (0, 1025, 'not-decimal')
+            else:
+                invalid = (1, 1025, 'not-decimal')
+            for words in invalid:
+                with self.subTest(mode=mode, invalid=words), self.assertRaisesRegex(
+                        ValueError, 'ARM macro witness: ARM_MACRO_IMAGE_WORDS'):
+                    self.check_macro_mode(mode, original.replace(
+                        line, f'ARM_MACRO_IMAGE_WORDS,{words}\n', 1))
 
     def test_candidate_local_native_receipts_are_mandatory(self):
         """Missing, checked-only or reordered ownership cases cannot count as actual ARM coverage."""

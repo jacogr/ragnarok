@@ -194,3 +194,208 @@ Private evidence pointers: build/pvm-arm-macro-pilot-audit/{audit.json,timed-ima
 ## Remaining architectural work
 
 The three child ABIs still write back and reload guest registers at their boundaries. A future resident variant needs an explicit new ABI and independent lifecycle, partial-budget and refund evidence; it cannot jump to guessed interior code offsets. Pure-family generalization is likewise separate from this measured change. x86-64 is unchanged.
+
+## Resident macro core follow-up
+
+The next increment retains guest X4-X16 across the admitted seven-header source
+graph, composing shared typed cycle, pure and multi-read bodies. It removes the
+three inner native-child call boundaries; the outer C-to-arena ABI and semantic
+child/work counters stay unchanged. The compact 12-byte entry records and OS
+arena ownership stay unchanged. This remains source-shaped admission, with no
+benchmark name, input or diagnostic PC selection. General native CFG coverage
+and multi-root region planning remain future work.
+
+The shared cycle core explicitly borrows X19/X20, carries gas/attempts in
+X21/X22, cycle totals in X23-X27 and the global last-completed header in X28.
+Its scratch contract includes X0-X3/X17 and D0/D16-D22. The outer image preserves
+callee-saved registers and retains X29 for profiling/unwinding. It loads the
+union of every read and prospective write before any guard, then publishes only
+the written union on exit. Zero-work exits therefore retain initialized values.
+
+A multi-read body may fail after speculative register writes. Only that body's
+written guest slots are checkpointed in caller-saved D18-D30 while the read is
+live. Every failed guard restores those slots before refunding the whole read
+charge/attempt span and replaying the original source. Earlier dirty memory
+writes remain committed. The read renderer uses no SIMD scratch; its checkpoint
+lifetime ends before the next dirty core. Both the child-local last header in
+word 13 and the global last header in word 24 retain their distinct contracts.
+
+Publication checks the complete image, relocations and byte capacity before
+installing it. A published image may contain 1 through 1,024 words including RET.
+Resident refusal leaves the previous linked macro available without displacing
+children or poisoning publication state. Full append and executable-storage
+refusal remain separate controls. Native qualification now requires a dedicated
+resident-only-refused profile, resident-kind/word-bound/rollback receipts, and
+missing/truncated/duplicate and wrong-policy negatives through both the parser
+and the full qualification controller.
+
+### Local correctness and source audit
+
+Baseline is merged master `4c1bc91bf1787bc550fcff24d37a5f14c720ebde`. Checked
+release ARC/Clang ThinLTO uses the same pinned compiler binary SHA-256
+`bf61bfc2c5953de2d3236ddd99be61fce551809a57ce32ca6d34bbc6b1f8bd70`.
+Normal resident and forced-linked witnesses pass all 13,524 macro frame controls,
+31 backend controls and 162 linked-cycle fallback controls, including signed
+backedges, late read refunds and owner moves. Integrated append/storage refusal
+and checked-only witnesses also pass. The literal resident image has 620 words;
+this count is evidence, not a required exact code layout.
+
+A new address-dependent late-read case changes R10 and R5 before a second read
+faults. It checks literal fault PC 39, gas 999639, R5=3, R10=65544 and
+R6=18432313718031039402, retaining prior AA/BB dirty bytes and full independent
+source/memory comparison. Omitting the restore deliberately fails this new case
+(`CONTROL_REGISTER,5,4,3,4096`), while the old late-read case still passes.
+
+An independent audit compared all 351,624 ABI coordinates over the 13,524
+controls, normalizing only pointer presence in words 5/7. All other values match
+linked execution. It verified 513 runtime/native files (three changed in the
+private prototype), eight repeated-build images, 64 raw process logs and 832
+CPU records. Duplicate builds are byte-identical. Final integration adds the
+production proof profiles and preserves measured-image flags; a separate
+full-state DOOM control must certify actual resident execution before timings.
+
+### Local timing screen and limits
+
+All six matched groups are retained. The private harness used calls 1-12; an
+independent audit also recomputed the CI-standard calls 3-12. These are median
+paired candidate/baseline process CPU ratios, not group-median ratios:
+
+| Workload | Calls 1-12 | Calls 3-12 | Interpretation |
+| --- | ---: | ---: | --- |
+| DOOM tick | 0.94665 | 0.947689 | All six pairs faster in both windows |
+| DOOM init | 1.00186 | 1.002503 | Near flat/noisy |
+| Sieve 10M | 0.99902 | 0.998704 | Near flat/noisy |
+| Pinky | 1.00360 | 1.007153 | Small cost; all six slower in the original window |
+
+Equal-source second/first ratios for baseline/candidate duplicates respectively
+were tick 0.99367/1.02196, init 0.99813/1.04209, Sieve
+0.99771/0.99819 and Pinky 0.99989/1.00786. DOOM's favorable paired direction
+supports qualification, but the equal-source spread limits precision. No exact
+5% shipping speedup or recovery of earlier costs is claimed from this screen.
+Every process checks full CPU, mapped memory and DOOM events. Native semantic
+work counters match; resident code occupancy is allowed to grow.
+
+Evidence remains under the speed checkout's `build/pvm-resident-macro` and the
+review checkout's `build/pvm-resident-final-audit`,
+`build/pvm-resident-integrated-check` and `build/pvm-resident-app-check`.
+Final Linux ARM qualification, matched PolkaVM-interpreted ratios, Tooling
+and Smoke are recorded below. These are bounded guests, not full blockchain
+throughput measurements.
+
+The integrated local check also passes both native all-opcode and region/host
+consumer suites. All 50 affected Python parser/controller/application tests and
+the source-owned verification inventory pass. The new real-DOOM control executes
+13 full-state checked calls with 8,462 resident macro entries, 1,667,243 semantic
+cycle children and 1,658,781 completed reads, with zero read refusals. Its native
+work/code occupancy exactly matches the measured ordinary image: 1,014 physical
+fragments and 256,676 code bytes. Diagnostic macro receipt flags are confined to
+this separate control; measured images retain the existing flag profile.
+
+### Qualified Linux ARM result
+
+Runtime head: `30c603f50367cb603b2395d6bd110cf426503a15`.
+[ARM qualification/replay](https://github.com/jacogr/ragnarok/actions/runs/41432717048),
+[Tooling](https://github.com/jacogr/ragnarok/actions/runs/41432328219) and
+[Smoke](https://github.com/jacogr/ragnarok/actions/runs/41432225434) passed.
+Tooling ran 1,655 tests (two skipped), plus inventory, lifecycle/mutant and
+compiler-rejection controls. The first ARM dispatch was cancelled by the
+same-ref workflow concurrency rule; its replacement used an isolated CI ref
+at the identical runtime commit. It is not counted as a second successful run.
+
+Artifact `13136271322`, ZIP SHA-256:
+`1ebb2a9690df11c1d917e54c44f7a761be973abcb318c544ccd6ab0dc9d4cfef`.
+Independent audits verify 2,575 role/519 native hashes, 84 primary and 60 replay
+processes, 138 controls, 13 qualification rows, ten macro receipts, 18 image
+equalities, 24 frozen fixtures, two owner moves and 320 raw-log matches.
+The extra real-DOOM control verifies 515 source hashes and all 13 public calls.
+Its resident receipt and native work/occupancy agree with the measured image.
+All 44 paired comparisons retain semantic work; only tick code bytes grow
+from 254,240 to 256,676, with unchanged physical fragment counts.
+
+All qualified warm windows use calls 3-12, without exclusions. Group-median
+changes are ratios of group medians of process warm CPU medians. Paired-median
+changes are a separate estimator. Overlap refers to full process-median ranges.
+
+| Six native replay pairs | Group-median change | Median paired change | Faster / slower | Ranges overlap |
+| --- | ---: | ---: | ---: | --- |
+| tick | -3.509280% | -3.620605% | 6 / 0 | no |
+| init | +0.593798% | +0.349358% | 1 / 5 | yes |
+| sieve | -4.382184% | -4.399773% | 6 / 0 | no |
+| pinky | -0.171084% | -0.136043% | 5 / 1 | yes |
+| minimal | +0.251364% | -0.320595% | 4 / 2 | yes |
+
+DOOM tick and Sieve are consistently faster in all six pairs, with separated
+ranges. Init has a small cost in five pairs with overlap. Pinky is near flat
+with overlap. Minimal has four faster pairs but a slightly higher group median;
+its ratio-of-means change is -0.090381%. All processes remain included. Sieve's
+resident macro is inactive and its work/code occupancy is unchanged, so its
+observed gain is not attributed specifically to macro activation.
+
+Complete primary comparisons retain interpreter costs explicitly:
+
+| Primary workload | Policy | Group-median change | Faster / slower | Ranges overlap |
+| --- | --- | ---: | ---: | --- |
+| init:0 | jit | +0.057242% | 1 / 1 | yes |
+| init:0 | interpreter | -0.503918% | 2 / 0 | no |
+| memset:100000 | jit | +0.091966% | 0 / 2 | yes |
+| memset:100000 | interpreter | +0.392446% | 0 / 2 | yes |
+| minimal:100000 | jit | +0.059486% | 1 / 1 | yes |
+| minimal:100000 | interpreter | -1.165031% | 2 / 0 | no |
+| pinky:1 | jit | -0.137488% | 1 / 1 | yes |
+| pinky:1 | interpreter | -0.405866% | 2 / 0 | no |
+| sieve:100000 | jit | -2.221092% | 2 / 0 | no |
+| sieve:100000 | interpreter | +0.431002% | 0 / 2 | no |
+| sieve:10000000 | jit | -4.165523% | 2 / 0 | no |
+| sieve:10000000 | interpreter | +0.816185% | 0 / 2 | no |
+| tick:0 | jit | -3.770983% | 2 / 0 | no |
+| tick:0 | interpreter | +1.315658% | 0 / 2 | no |
+
+The primary interpreter costs are tick +1.315658%, Sieve 10M +0.816185%
+and Sieve 100K +0.431002%, each slower in both orders without range overlap.
+Memset interpreter +0.392446% and native +0.091966% are slower in both orders
+with overlap. These costs are retained; the change is not an all-policy gain.
+
+Matched raw public-call CPU ratios against **interpreted PolkaVM**:
+
+| Workload | Ragnarök JIT / PolkaVM interpreted | Ragnarök interpreted / PolkaVM interpreted |
+| --- | ---: | ---: |
+| tick | 0.393924 | 0.686828 |
+| init | 0.225867 | 0.503545 |
+| sieve | 0.770368 | 0.964926 |
+| pinky | 0.906188 | 0.984972 |
+| minimal | 0.957820 | 0.997385 |
+
+Cold CPU entries below are medians [minimum, maximum] over all six processes,
+in milliseconds. Constructor and first public call are separate. Compiler /
+publication CPU is a cumulative diagnostic already included in calls; it is
+not wall time, need not all occur in the first call, and is never added again.
+
+| Workload / role | Owner constructor | First public call | Cumulative compiler/publication |
+| --- | ---: | ---: | ---: |
+| tick / baseline | 8.580772 [8.520488, 8.655992] | 27.685444 [27.559224, 28.663888] | 2.428172 [2.381440, 2.486952] |
+| tick / jit | 8.528120 [8.443840, 8.563576] | 27.359544 [27.080528, 27.535664] | 2.423344 [2.392128, 2.445800] |
+| init / baseline | 8.585780 [8.522216, 8.666848] | 163.227676 [162.344344, 163.748792] | 7.824324 [7.745144, 7.881232] |
+| init / jit | 8.520496 [8.432816, 8.643024] | 163.685344 [162.366952, 164.456888] | 7.892040 [7.756448, 7.997448] |
+| sieve / baseline | 2.941764 [2.822864, 3.219048] | 276.532520 [276.054664, 276.641008] | 3.162924 [3.104104, 3.348608] |
+| sieve / jit | 2.895904 [2.854712, 3.132632] | 264.287368 [264.065360, 264.836888] | 3.153984 [3.090448, 3.252200] |
+| pinky / baseline | 0.704504 [0.687256, 0.722520] | 84.220152 [84.081776, 84.369768] | 1.901228 [1.876160, 1.947160] |
+| pinky / jit | 0.715192 [0.699952, 0.748424] | 84.081280 [83.862152, 84.310512] | 1.896520 [1.851912, 1.924920] |
+| minimal / baseline | 0.019048 [0.016984, 0.020152] | 5.466124 [5.422616, 5.506664] | 0.096236 [0.092264, 0.103872] |
+| minimal / jit | 0.016012 [0.014784, 0.018280] | 5.472760 [5.425248, 5.494760] | 0.099068 [0.094216, 0.147352] |
+
+Root audit records: `build/pvm-resident-ci/audit.json` and `distributions.json`.
+The independent reviewer record is `/tmp/review1897/final-cold-source-record.json`
+(SHA-256 `1d2951e3f52201520842d79ec3287938e95608ffc03ebc937b621229062c6b63`).
+Bounded guest results do not establish full blockchain throughput.
+
+A separate local interpreted-only follow-up reused four verified final-screen
+DOOM images without rebuilding. Six alternating pairs passed full CPU/pages/
+events and strict interpreted policy, with every native owner counter zero.
+Calls 3-12 ratios were 0.962962, 1.005104, 0.998246, 1.001428, 1.005143 and
+1.017761 (median 1.003266, four slower); calls 1-12 median was 1.003737.
+Equal-image 3-12 controls were 0.996764 baseline and 0.999824 candidate.
+This bounded macOS follow-up does not consistently reproduce the Linux primary
++1.315658% magnitude and does not establish its cause. It does not replace or
+negate that Linux cost. Records: speed checkout
+`build/pvm-resident-interpreted-followup/results.json` and 16 raw logs.
+The remaining interpreter cost is retained for the next ordered investigation.

@@ -120,24 +120,40 @@ def direct_branch_witness(output, mode):
 
 
 def macro_witness_receipts(output, mode):
-    """Require each backend and Frame receipt exactly once for the selected native policy."""
-    if mode not in ('native', 'native-refused', 'macro-refused', 'interpreted'):
+    """Require each backend, Frame, residency and bounded-image proof for one policy."""
+    if mode not in ('native', 'native-refused', 'macro-refused', 'resident-refused', 'interpreted'):
         raise ValueError('Unknown ARM macro witness mode')
+    active = mode in ('native', 'resident-refused')
     expected = {
-        'ARM_MACRO_BACKEND_CASES': 31 if mode == 'native' else 3 if mode in (
+        'ARM_MACRO_BACKEND_CASES': 31 if active else 3 if mode in (
             'native-refused', 'macro-refused') else 0,
         'ARM_MACRO_FRAME_CASES': 0 if mode == 'interpreted' else 13524,
-        'ARM_MACRO_ACTIVE': 1 if mode == 'native' else 0,
-        'ARM_MACRO_LATE_READ_REFUND': 1 if mode == 'native' else 0,
-        'ARM_MACRO_SIGNED_BACKEDGE': 1 if mode == 'native' else 0,
-        'ARM_MACRO_OWNER_MOVE': 1 if mode == 'native' else 0,
-        'ARM_MACRO_LINKED_FALLBACK_CASES': 162 if mode in ('native', 'macro-refused') else 0,
+        'ARM_MACRO_ACTIVE': int(active),
+        'ARM_MACRO_LATE_READ_REFUND': int(active),
+        'ARM_MACRO_SIGNED_BACKEDGE': int(active),
+        'ARM_MACRO_OWNER_MOVE': int(active),
+        'ARM_MACRO_LINKED_FALLBACK_CASES': 162 if mode in (
+            'native', 'macro-refused', 'resident-refused') else 0,
+        'ARM_MACRO_RESIDENT': int(mode == 'native'),
+        'ARM_MACRO_ROLLBACK_ALIAS': int(active),
     }
     lines = output.splitlines()
     for marker, count in expected.items():
         records = [line for line in lines if line.startswith(marker)]
         if records != [marker+','+str(count)]:
             raise ValueError('Missing or changed ARM macro witness: '+marker)
+    marker = 'ARM_MACRO_IMAGE_WORDS'
+    records = [line for line in lines if line.startswith(marker)]
+    if len(records) != 1:
+        raise ValueError('Missing or changed ARM macro witness: '+marker)
+    fields = records[0].split(',')
+    if (len(fields) != 2 or fields[0] != marker or not fields[1].isascii() or
+            not fields[1].isdecimal()):
+        raise ValueError('Missing or changed ARM macro witness: '+marker)
+    words = int(fields[1])
+    if (active and not 1 <= words <= 1024) or (not active and words != 0):
+        raise ValueError('Missing or changed ARM macro witness: '+marker)
+    expected[marker] = words
     return expected
 
 
@@ -162,13 +178,16 @@ def qualify(checks, compiler, *, native=True):
         ('witness-macro-refused','tests/performance/pvm_arm64_jit_witness.nim',
             ['pvmArm64Jit','pvmArmMacroPublishRefuse','pvmArmMacroReceipt',
              'pvmArmDirtyLoopOwnerReceipt']),
+        ('witness-resident-refused','tests/performance/pvm_arm64_jit_witness.nim',
+            ['pvmArm64Jit','pvmArmMacroResidentRefuse','pvmArmMacroReceipt',
+             'pvmArmDirtyLoopOwnerReceipt']),
         ('region-refusal','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefusalReceipt']),
         ('region-refusal-forced','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefuse','pvmArm64JitRefusalReceipt']),
         ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
         ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
-        if name == 'witness-macro-refused' and not native:
-            continue  # Checked-only hosts cannot execute the ARM macro append refusal.
+        if name in ('witness-macro-refused', 'witness-resident-refused') and not native:
+            continue  # Checked-only hosts cannot execute native macro publication refusals.
         built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
@@ -190,10 +209,11 @@ def qualify(checks, compiler, *, native=True):
         if name.startswith('witness'):
             native_requested = 'pvmArm64Jit' in defines
             native_available = native_requested and 'pvmArm64JitRefuse' not in defines
-            macro_active = native_available and 'pvmArmMacroPublishRefuse' not in defines
-            macro_mode = ('native' if macro_active else
-                          'macro-refused' if native_available else
-                          'native-refused' if native_requested else 'interpreted')
+            macro_mode = ('interpreted' if not native_requested else
+                          'native-refused' if not native_available else
+                          'macro-refused' if 'pvmArmMacroPublishRefuse' in defines else
+                          'resident-refused' if 'pvmArmMacroResidentRefuse' in defines else
+                          'native')
             checked['macro'] = macro_witness_receipts(checked['output'], macro_mode)
             for marker,count in [('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507)]:
                 expected = count if native_available else 0

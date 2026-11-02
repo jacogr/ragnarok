@@ -3403,7 +3403,7 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
     for shift in 0..<4:
       parts[at][field+shift] = byte((delta shr (8*shift)) and 255)
 
-  proc macroFixture(): tuple[program: Program, entries: array[7, uint64]] =
+  proc macroFixture(rollbackAlias = false): tuple[program: Program, entries: array[7, uint64]] =
     # Layout permits genuine fallthroughs: pure/88/read/cycle/dirty/tail/static/rare.
     var parts: seq[seq[byte]] = @[
       @[131'u8, 0x99, 1], @[149'u8, 0xaa, 0], macroBranchImmediate(81, 9, 32),
@@ -3415,6 +3415,11 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
       @[171'u8, 48, 0, 0, 0, 0],
       @[2'u8], @[57'u8, 6, 0, 0, 1, 0], @[149'u8, 85, 1],
       @[173'u8, 117, 0, 0, 0, 0], @[40'u8, 0, 0, 0, 0], @[0'u8]]
+    if rollbackAlias:
+      # The first load must replay at its original base after later pure writes and a failed read.
+      parts[6] = @[149'u8, 0xaa, 8] # R10 += 8 between the two guarded reads.
+      parts[7] = @[149'u8, 0x55, 1] # R5 += 1 must also roll back before replay.
+      parts[8] = @[130'u8, 0xbc, 0, 0, 0, 0] # The second read still faults at R11.
     var pcs = newSeq[uint64](parts.len)
     var pc = 0'u64
     for index in 0..<parts.len:
@@ -3456,9 +3461,19 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
       let active = flatArmMacroStatistics(frame)
       assert active[0] > 0 and active[1] > 0 and active[2] > 0 and active[5] > 0
       echo "ARM_MACRO_ACTIVE,1"
+      assert flatArmMacroImageWords(frame) > 0'u32 and flatArmMacroImageWords(frame) <= 1024'u32
+      echo "ARM_MACRO_IMAGE_WORDS,", flatArmMacroImageWords(frame)
+      when not defined(pvmArmMacroResidentRefuse):
+        assert flatArmMacroResidentActive(frame)
+        echo "ARM_MACRO_RESIDENT,1"
+      else:
+        assert not flatArmMacroResidentActive(frame)
+        echo "ARM_MACRO_RESIDENT,0"
     else:
       assert flatArmMacroStatistics(frame) == default(array[7, uint64])
       echo "ARM_MACRO_ACTIVE,0"
+      echo "ARM_MACRO_RESIDENT,0"
+      echo "ARM_MACRO_IMAGE_WORDS,0"
 
     var controls = 0
     for entry in built.entries:
@@ -3473,6 +3488,10 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
             input.gas = MachineGas(gas)
             input.blockCharged = paid
             verifyControl(frame, guestProgram, input, budget, [page])
+            when defined(pvmArmMacroStateTrace):
+              let macroState = flatArmMacroLastState(frame)
+              for slot in 0..<26:
+                echo "ARM_MACRO_STATE,", controls, ",", slot, ",", macroState[slot]
             inc controls
 
     # Signed88's true backedge occurs once after an initially negative add_imm_32.
@@ -3553,6 +3572,42 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
       echo "ARM_MACRO_LINKED_FALLBACK_CASES,", linkedCases
     else:
       echo "ARM_MACRO_LINKED_FALLBACK_CASES,0"
+
+    # A late second-read failure must undo speculative R10 and R5 before source replay.
+    # Without rollback, the first load replays at +8 and both increments are doubled.
+    let rollback = macroFixture(true)
+    let rollbackPlan = newFlatPlan(rollback.program, GasCycleLimit(100000))
+    var rollbackInfo = info
+    rollbackInfo.pc = CodeAddress(rollback.entries[0])
+    var rollbackFrame = newFlatFrame(rollbackPlan, [page], rollbackInfo)
+    for warm in 0..<16:
+      verifyControl(rollbackFrame, rollback.program, rollbackInfo, 4096, [page])
+    when not defined(pvmArm64JitRefuse) and not defined(pvmArmMacroPublishRefuse):
+      assert flatArmMacroStatistics(rollbackFrame)[0] > 0
+      when not defined(pvmArmMacroResidentRefuse):
+        assert flatArmMacroResidentActive(rollbackFrame)
+      else:
+        assert not flatArmMacroResidentActive(rollbackFrame)
+    var lateAlias = rollbackInfo
+    lateAlias.registers[11] = RegisterValue(69632)
+    let rollbackBefore = flatArmMacroStatistics(rollbackFrame)
+    verifyControl(rollbackFrame, rollback.program, lateAlias, 4096, [page])
+    assert rollbackFrame.exit == StepExit.Fault
+    assert rollback.entries[4]+13'u64 == 39'u64 and
+        uint64(rollbackFrame.info.pc) == 39'u64
+    assert uint64(rollbackFrame.info.registers[5]) == 3 and
+        uint64(rollbackFrame.info.registers[10]) == 65544
+    assert uint64(rollbackFrame.info.gas) == 999639
+    assert uint64(rollbackFrame.info.registers[6]) == 18432313718031039402'u64
+    let rollbackPage = pageImage(flatMemorySnapshot(rollbackFrame), PageIndex(16))
+    assert rollbackPage.error == MachineError.None
+    assert rollbackPage.value.bytes[0] == 0xaa'u8 and
+        rollbackPage.value.bytes[1] == 0xbb'u8
+    when not defined(pvmArm64JitRefuse) and not defined(pvmArmMacroPublishRefuse):
+      assert flatArmMacroStatistics(rollbackFrame)[6] > rollbackBefore[6]
+      echo "ARM_MACRO_ROLLBACK_ALIAS,1"
+    else:
+      echo "ARM_MACRO_ROLLBACK_ALIAS,0"
     controls
 
   let macroBackendCases = armMacroBackendControls()
@@ -3565,5 +3620,8 @@ else:
   echo "ARM_MACRO_SIGNED_BACKEDGE,0"
   echo "ARM_MACRO_LATE_READ_REFUND,0"
   echo "ARM_MACRO_OWNER_MOVE,0"
+  echo "ARM_MACRO_RESIDENT,0"
+  echo "ARM_MACRO_IMAGE_WORDS,0"
+  echo "ARM_MACRO_ROLLBACK_ALIAS,0"
 echo "ARM_MACRO_BACKEND_CASES,", macroBackendCases
 echo "ARM_MACRO_FRAME_CASES,", macroFrameCases

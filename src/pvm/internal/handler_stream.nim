@@ -125,6 +125,8 @@ type
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
       armMemory: array[3, array[3, uint64]] # Frame-owned base/extent/borrowed pointer descriptors; never retained by FlatStream.
+      when defined(pvmArmMacroStateTrace):
+        armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
 
 
 
@@ -1521,6 +1523,8 @@ proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
 
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   ## Restore input outside the execution clock, preserving the explicit reset boundary; cached code/links alone persist.
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
+    f.armMacroLastState = default(ArmMacroState)
   flatClearDirty(f)
   f.hostReady = false
   f.hostSnapshot = default(Memory)
@@ -2673,17 +2677,19 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
 
   proc flatArmReadBody(f: FlatFrame, offset, ending: uint32): ArmReadSpan {.noinline.}
+  proc flatArmReadSpanBody(f: FlatFrame, offset, ending: uint32,
+      native: var ArmReadSpan): bool {.noinline.}
     ## Cold shared read IR is defined with the standalone read publisher below.
 
   proc flatArmMemoryCycleShape(f: FlatFrame, readEntry, prefix: uint32,
-      item: var ArmMemoryCycleBlock): bool =
+      item: var ArmMemoryCycleBlock, prefixHandler: FlatHandler = flatCharge): bool =
     ## Capture a complete default-priced source graph with sealed targets and live native children.
     if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged:
       return false
     let jit = f.armJit
     if jit == nil or armDirtyLoopStatus(jit) != 2 or readEntry == 0: return false
     let tail = readEntry-1
-    if int(prefix) >= f.handlers.len or f.handlers[int(prefix)] != flatCharge or
+    if int(prefix) >= f.handlers.len or f.handlers[int(prefix)] != prefixHandler or
         f.handlers[int(tail)] != flatCharge: return false
     let prefixCharge = f.arguments[int(prefix)]
     let first = f.sites[int(prefix)]
@@ -2949,6 +2955,25 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if rare == header: return false
     true
 
+  proc flatArmMacroPureBody(f: FlatFrame, shape: ArmMacroShape,
+      body: var ArmBlock): bool {.noinline.} =
+    ## Rebuild the existing pure child's source operations and conditional from sealed facts.
+    if shape.pureBody >= shape.pureTerminal or int(shape.pureTerminal) >= f.sites.len:
+      return false
+    body = default(ArmBlock)
+    for current in shape.pureBody..<shape.pureTerminal:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode):
+        return false
+      emitArmOperation(body, fact.opcode, fact.args.slots, fact.args.x)
+    let terminal = f.plan.facts[int(f.sites[int(shape.pureTerminal)])]
+    let args = f.arguments[int(shape.pureTerminal)]
+    if not terminal.ending or terminal.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
+      return false
+    emitArmBranch(body, terminal.opcode, args.slots,
+        flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
+    true
+
   proc flatArmMacro(f: var FlatFrame, offset: uint32): uint32 =
     ## One native call owns no frame capability; canonical replay starts only after all borrows end.
     var shape = default(ArmMacroShape)
@@ -3010,6 +3035,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
               destination = callArmMacro(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
               admitted = true
     if not admitted: return flatArmMemoryCycle(f, offset)
+    when defined(pvmArmMacroStateTrace):
+      f.armMacroLastState = state
     f.info.gas = MachineGas(state[0])
     f.remaining = state[1]
     f.info.blockCharged = false
@@ -3048,6 +3075,21 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if jit == nil: default(array[7, uint64])
       else: armMacroStatistics(jit)
 
+    func flatArmMacroResidentActive*(f: FlatFrame): bool =
+      ## Receipt-only kind evidence distinguishes a resident image from linked fallback.
+      let jit {.cursor.} = f.armJit
+      jit != nil and armMacroResidentActive(jit)
+
+    func flatArmMacroImageWords*(f: FlatFrame): uint32 =
+      ## Receipt-only length proves the emitted image stayed under the bounded word limit.
+      let jit {.cursor.} = f.armJit
+      if jit == nil: 0'u32 else: armMacroImageWords(jit)
+
+    when defined(pvmArmMacroStateTrace):
+      func flatArmMacroLastState*(f: FlatFrame): ArmMacroState =
+        ## Copy the last native macro return state for complete linked/resident comparison.
+        f.armMacroLastState
+
   proc flatArmMacroProbe(f: var FlatFrame, offset: uint32): uint32 =
     ## Eight real cycle exits bound the cold search; a refusal keeps every existing child usable.
     let eligible = f.pricingKind == 0 and f.barrier == flatStop and not f.info.blockCharged
@@ -3068,7 +3110,18 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     block:
       let jit {.cursor.} = f.armJit
       if jit != nil:
-        if matched: published = publishArmMacro(jit, shape)
+        if matched:
+          var cycle = default(ArmMemoryCycleBlock)
+          var pure = default(ArmBlock)
+          var read = default(ArmReadSpan)
+          let tail = armMemoryCycleHeader(jit, 2)
+          if tail < high(uint32) and
+              flatArmMemoryCycleShape(f, tail+1, shape.cycleHeader, cycle,
+                  flatArmMacroProbe) and cycle.other == shape.staticHeader and
+              flatArmMacroPureBody(f, shape, pure) and
+              flatArmReadSpanBody(f, shape.readBody, shape.readTerminal, read):
+            published = publishArmResidentMacro(jit, shape, cycle, pure, read)
+          if not published: published = publishArmMacro(jit, shape)
         else: refuseArmMacro(jit)
         jit.compilationNs+=armClock()-before
     if published: f.handlers[int(offset)] = flatArmMacro
@@ -3198,24 +3251,19 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.handlers[int(offset)] = flatArmPendingReadBranch
     ending+1
 
-  proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
-    ## Combine multiple selected-width reads and pure arithmetic within one already-reserved source block.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
-    var ending = offset
-    var count = 0'u32
-    var reads = 0'u32
+  proc flatArmReadSpanBody(f: FlatFrame, offset, ending: uint32,
+      native: var ArmReadSpan): bool {.noinline.} =
+    ## Reconstruct the standalone child's exact guarded window or individual-read body from source.
+    if ending <= offset or ending-offset > 64 or int(ending) > f.sites.len: return false
     var written = 0'u32
     var window = true
     let base = f.plan.facts[int(f.sites[int(offset)])].args.slots.bIndex
     var first = high(uint32)
     var last = 0'u32
-    while int(ending) < f.sites.len and count < 64:
-      # Headers, stores, branches, hosts and every observable exit end the speculative prefix.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough: break
+    var reads = 0'u32
+    for current in offset..<ending:
+      let fact = f.plan.facts[int(f.sites[int(current)])]
+      if fact.ending or not fact.fallthrough: return false
       if fact.opcode in 124'u8..130'u8:
         let displacement = uint32(fact.args.x and 0xffffffff'u64)
         if fact.opcode != 130: window = false # Narrow/signed reads retain their own individual guards, never the scaled word window.
@@ -3227,13 +3275,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         inc reads
       elif supportedArmOpcode(fact.opcode):
         written = written or (1'u32 shl int(fact.args.slots.destinationIndex))
-      else:
-        break # Unsupported semantics remain their original checked source node.
-      inc ending
-      inc count
-    if reads < 2 or count < 4: return offset
+      else: return false
+    if reads < 2 or ending-offset < 4: return false
     if last-first > 4088: window = false
-    var native = default(ArmReadSpan)
+    native = default(ArmReadSpan)
     if window:
       # Relative scaled loads need equal low displacement bits; the initial effective address may still be unaligned.
       for current in offset..<ending:
@@ -3254,6 +3299,28 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           emitArmRead(native, fact.args.slots, displacement, range[124..130](readOpcode))
       else:
         emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+    true
+
+  proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
+    ## Combine multiple selected-width reads and pure arithmetic within one already-reserved source block.
+    let jit = f.armJit
+    assert jit != nil
+    if jit == nil: return offset
+    var ending = offset
+    var count = 0'u32
+    var reads = 0'u32
+    while int(ending) < f.sites.len and count < 64:
+      # Headers, stores, branches, hosts and every observable exit end the speculative prefix.
+      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
+      let fact = f.plan.facts[int(f.sites[int(ending)])]
+      if fact.ending or not fact.fallthrough: break
+      if fact.opcode in 124'u8..130'u8: inc reads
+      elif not supportedArmOpcode(fact.opcode): break
+      inc ending
+      inc count
+    if reads < 2 or count < 4: return offset
+    var native = default(ArmReadSpan)
+    if not flatArmReadSpanBody(f, offset, ending, native): return offset
     var words = armReadInstructions(native, ending)
     if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
     if not publishArmEntry(jit, offset, ending, count, words): return offset
@@ -3904,6 +3971,14 @@ when defined(pvmArmMacroReceipt):
       else: armMacroStatistics(jit)
     else:
       default(array[7, uint64])
+
+  func streamArmMacroResidentActive*(stream: FlatStream): bool =
+    ## Private copied kind evidence distinguishes a resident macro on a retained owner.
+    when defined(pvmArm64Jit):
+      let jit {.cursor.} = stream.armJit
+      jit != nil and armMacroResidentActive(jit)
+    else:
+      false
 
 func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.

@@ -160,30 +160,37 @@ class Arm64DirectBranchReceiptTests(unittest.TestCase):
 
 class ArmMacroReceiptTests(unittest.TestCase):
     expected = {
-        'native': (31, 13524, 1, 162),
-        'native-refused': (3, 13524, 0, 0),
-        'macro-refused': (3, 13524, 0, 162),
-        'interpreted': (0, 0, 0, 0),
+        'native': (31, 13524, 1, 162, 1, 1, 620),
+        'resident-refused': (31, 13524, 1, 162, 0, 1, 206),
+        'native-refused': (3, 13524, 0, 0, 0, 0, 0),
+        'macro-refused': (3, 13524, 0, 162, 0, 0, 0),
+        'interpreted': (0, 0, 0, 0, 0, 0, 0),
     }
     markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
                'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
                'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
-               'ARM_MACRO_LINKED_FALLBACK_CASES')
+               'ARM_MACRO_LINKED_FALLBACK_CASES', 'ARM_MACRO_RESIDENT',
+               'ARM_MACRO_ROLLBACK_ALIAS', 'ARM_MACRO_IMAGE_WORDS')
 
     @classmethod
-    def fixture(cls, mode):
-        backend, frame, active, linked = cls.expected[mode]
-        counts = (backend, frame, active, active, active, active, linked)
+    def fixture(cls, mode, words=None):
+        """Keep the test transcript's mode literals independent of production policy mapping."""
+        backend, frame, active, linked, resident, rollback, image_words = cls.expected[mode]
+        counts = (backend, frame, active, active, active, active, linked, resident, rollback,
+                  image_words if words is None else words)
         return ''.join(f'{marker},{count}\n' for marker, count in zip(cls.markers, counts))
 
     def test_valid_native_refused_and_plain_fixtures(self):
-        for mode, (backend, frame, active, linked) in self.expected.items():
+        for mode, (backend, frame, active, linked, resident, rollback, words) in self.expected.items():
             with self.subTest(mode=mode):
                 receipt = macro_witness_receipts(self.fixture(mode), mode)
                 self.assertEqual(receipt['ARM_MACRO_BACKEND_CASES'], backend)
                 self.assertEqual(receipt['ARM_MACRO_FRAME_CASES'], frame)
                 self.assertEqual(receipt['ARM_MACRO_OWNER_MOVE'], active)
                 self.assertEqual(receipt['ARM_MACRO_LINKED_FALLBACK_CASES'], linked)
+                self.assertEqual(receipt['ARM_MACRO_RESIDENT'], resident)
+                self.assertEqual(receipt['ARM_MACRO_ROLLBACK_ALIAS'], rollback)
+                self.assertEqual(receipt['ARM_MACRO_IMAGE_WORDS'], words)
 
     def test_each_receipt_rejects_missing_truncated_and_duplicate(self):
         for mode in self.expected:
@@ -199,6 +206,7 @@ class ArmMacroReceiptTests(unittest.TestCase):
                             macro_witness_receipts(output, mode)
 
     def test_counts_cannot_cross_backend_policies(self):
+        """The resident-only fallback must not borrow normal or append-refused evidence."""
         for expected_mode in self.expected:
             for wrong_mode in self.expected:
                 if wrong_mode == expected_mode:
@@ -208,6 +216,23 @@ class ArmMacroReceiptTests(unittest.TestCase):
                         macro_witness_receipts(self.fixture(wrong_mode), expected_mode)
         with self.assertRaises(ValueError):
             macro_witness_receipts(self.fixture('native'), 'unknown')
+
+    def test_image_words_prove_bounded_publication_not_exact_length(self):
+        """Active images admit either endpoint; inactive modes require zero and reject bad numerals."""
+        for mode in ('native', 'resident-refused'):
+            for words in (1, 1024):
+                with self.subTest(mode=mode, words=words):
+                    self.assertEqual(macro_witness_receipts(self.fixture(mode, words), mode)[
+                        'ARM_MACRO_IMAGE_WORDS'], words)
+            for words in (0, 1025, 'not-decimal'):
+                with self.subTest(mode=mode, words=words), self.assertRaisesRegex(
+                        ValueError, 'ARM macro witness: ARM_MACRO_IMAGE_WORDS'):
+                    macro_witness_receipts(self.fixture(mode, words), mode)
+        for mode in ('native-refused', 'macro-refused', 'interpreted'):
+            for words in (1, 1025, 'not-decimal'):
+                with self.subTest(mode=mode, words=words), self.assertRaisesRegex(
+                        ValueError, 'ARM macro witness: ARM_MACRO_IMAGE_WORDS'):
+                    macro_witness_receipts(self.fixture(mode, words), mode)
 
 
 class Arm64ControlReceiptTests(unittest.TestCase):

@@ -462,6 +462,13 @@ when defined(pvmArmMacroReceipt):
     PreparationResult[array[7, uint64]](status: PreparationError.None,
       completed: streamArmMacroStatistics(data.stream))
 
+  proc preparedArmMacroResidentActive*(prepared: PreparedProgram): PreparationResult[bool] =
+    ## Private copied kind evidence follows the same retained owner as macro statistics.
+    let data = prepared.data
+    if data == nil: return PreparationResult[bool](status: PreparationError.InvalidProgram)
+    PreparationResult[bool](status: PreparationError.None,
+      completed: streamArmMacroResidentActive(data.stream))
+
 proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
     memory: var Memory): StepError =
   ## Validate immutable owners and reserved-zero debt before even a zero-attempt request.

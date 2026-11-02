@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from pvm_arm64_jit_applications import application_defines, owner_receipt, parse_run, run
+from pvm_arm64_jit_applications import application_defines, owner_receipt, parse_run, run, resident_application_receipt
 
 
 class NativeOwnerReceiptTests(unittest.TestCase):
@@ -100,6 +100,25 @@ class NativeOwnerReceiptTests(unittest.TestCase):
         for body in (row,row+row,'DOOM_OK,native,tick,0\n'+row):
             with self.subTest(body=body),self.assertRaises(ValueError):
                 parse_run(body,'jit','tick',0)
+
+
+
+
+class ResidentApplicationReceiptTests(unittest.TestCase):
+    def test_actual_execution_is_required(self):
+        """Kind, completed work and child conservation prevent silent fallback claims."""
+        good = 'ARM_MACRO_APPLICATION,tick,1,2,5,3,1\n'
+        clean, receipt = resident_application_receipt('full-state\n'+good+'ARM_OWNER,tail\n')
+        self.assertEqual(clean,'full-state\nARM_OWNER,tail\n')
+        self.assertEqual(receipt,dict(calls=2,children=5,reads=3,refusals=1))
+        bad = ['',good+good,good.replace(',1,2,',',0,2,'),good.replace(',2,5,3,1',',0,3,3,0'),
+               good.replace(',2,5,3,1',',2,2,0,0'),good.replace(',2,5,3,1',',2,4,3,1'),
+               good.replace(',2,5,3,1',',2,5,3,3'),good.replace('tick','init'),
+               good.replace(',5,',',x,'),good.replace(',5,',','+str(2**63)+','),
+               'ARM_MACRO_APPLICATION,tick,1,2,5,3\n']
+        for output in bad:
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                resident_application_receipt(output)
 
 
 if __name__=='__main__':
