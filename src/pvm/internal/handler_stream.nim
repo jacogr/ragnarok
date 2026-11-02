@@ -2744,28 +2744,38 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     true
 
   proc flatArmMemoryCycle(f: var FlatFrame, offset: uint32): uint32 =
-    ## All native pointers belong only to this call; unstarted headers use their original checked reservations.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let prefix = armMemoryCycleHeader(jit, 0)
-    let dirty = armMemoryCycleHeader(jit, 1)
-    let tail = armMemoryCycleHeader(jit, 2)
-    assert offset == prefix
-    let prefixCharge = f.arguments[int(prefix)]
-    let dirtyCharge = f.arguments[int(dirty)]
-    let tailCharge = f.arguments[int(tail)]
-    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged or offset != prefix or
-        not armMemoryCycleChargeMatches(jit, 0, prefix, prefixCharge.y, prefixCharge.x) or
-        not armMemoryCycleChargeMatches(jit, 1, tail, tailCharge.y, tailCharge.x) or
-        not armDirtyLoopChargeMatches(jit, dirty, dirtyCharge.y, dirtyCharge.x):
+    ## The frame owns executable storage; all native borrows end before mutable checked fallback.
+    var prefix, dirty, tail = flatStop
+    var hasOwner = false
+    var destination = flatStop
+    var entered = false
+    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64,
+      0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, uint64(flatStop)]
+    block:
+      let jit {.cursor.} = f.armJit
+      assert jit != nil
+      if jit != nil:
+        hasOwner = true
+        prefix = armMemoryCycleHeader(jit, 0)
+        dirty = armMemoryCycleHeader(jit, 1)
+        tail = armMemoryCycleHeader(jit, 2)
+        assert offset == prefix
+        let prefixCharge = f.arguments[int(prefix)]
+        let dirtyCharge = f.arguments[int(dirty)]
+        let tailCharge = f.arguments[int(tail)]
+        if f.pricingKind == 0 and f.barrier == flatStop and not f.info.blockCharged and
+            offset == prefix and
+            armMemoryCycleChargeMatches(jit, 0, prefix, prefixCharge.y, prefixCharge.x) and
+            armMemoryCycleChargeMatches(jit, 1, tail, tailCharge.y, tailCharge.x) and
+            armDirtyLoopChargeMatches(jit, dirty, dirtyCharge.y, dirtyCharge.x):
+          destination = callArmMemoryCycle(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+          entered = true
+    if not hasOwner: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if not entered:
       let original = f.armOriginal[int(prefix)]
       assert original != nil
       if original != nil: return original(f, offset)
       return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64,
-      0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, uint64(flatStop)]
-    let destination = callArmMemoryCycle(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
     f.info.gas = MachineGas(state[0])
     f.remaining = state[1]
     f.info.blockCharged = false
