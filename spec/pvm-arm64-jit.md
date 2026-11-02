@@ -2904,5 +2904,23 @@ slower in both; Pinky was flat to about 1% faster. With the JIT explicitly force
 in the same DOOM binaries, two reversed pairs per phase measured tick CPU ratios
 1.000022/0.999072 and init 1.001615/1.004056. These are local macOS results, not a
 Linux ARM performance claim. Raw inputs, source/binary identities, first-call values,
-all samples and receipts remain in `build/pvm-immediate-prototype/`. A focused Linux ARM
-qualification remains the next external gate.
+all samples and receipts remain in `build/pvm-immediate-prototype/`.
+
+The [focused Linux ARM replay](https://github.com/jacogr/ragnarok/actions/runs/41516211495)
+passed at source head `8a24586374aa332ef5123067acf9c1c248558a69` against exact
+base `d2a9f83d04682f700999c7f9fcb408ada7ae0d83`, with the paired interpreted
+policy enabled. The retained `pvm-comparison-arm64-1` artifact (ID 13176507031,
+SHA-256 `e65f029c1fe6d1ffde253671768ba28c5ff5826f5ef49f4af137c09867f1dff1`)
+records native qualification, 84 primary and 60 fresh-process replay runs, 138 controls,
+raw sample arrays, full-state checks and owner receipts. Independent review verified the
+artifact digest, source and input identities, raw logs, negative controls and native
+activity. Each replay process checked 13 calls; process medians use CPU samples 3–12.
+The six paired candidate/base warm CPU medians were 0.957846 for DOOM tick, 0.982061 for
+init, 0.983745 for Sieve-10M and 0.980170 for Pinky-1 (all six pairs favorable in each
+case). Minimal-100000 measured 1.006310, with four of six pairs slower; its primary
+forward/reverse ratio was about 1.0175. All paired native fragment, call and operation
+counts remained equal. The interpreted-policy control showed costs of about 0.77% for
+tick, 1.06% for Minimal-100000 and 0.15% for Memset-100000; these measurements do not
+establish a cause in interpreter code. Constructor, first-call and compilation samples
+are retained separately, with no cold-start gain claimed. This Linux evidence qualifies
+the measured source head; a documentation-only follow-up does not change emitted code.
