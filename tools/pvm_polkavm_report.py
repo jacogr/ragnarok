@@ -64,6 +64,7 @@ def parse(output, backend, family, limit=0, event_bytes=0, count=13):
             samples[label].append(dict(parent_cpu_ns=parent,worker_cpu_ns=worker,cpu_ns=total))
         elif synthetic:
             f=line.split('\t')
+            if f[0]=='unavailable':raise ValueError('required reference profile unavailable: '+line)
             if len(f)!=5 or f[0]!='sample':raise ValueError('unexpected synthetic reference output')
             row,sample,wall,prepare=map(number,f[1:])
             if row>=len(labels):raise ValueError('foreign synthetic workload')

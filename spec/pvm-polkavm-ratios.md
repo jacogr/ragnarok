@@ -6,7 +6,10 @@ PolkaVM Compiler and Interpreter backends for every existing PVM workload.
 comparison. The manual `polkavm-ratios` CI scope uses one x86 runner; ordinary
 CI and the existing deferred compiler benchmark policy keep their scope.
 The disposable Ubuntu runner enables unprivileged user namespaces required by
-the pinned Linux sandbox (`kernel.apparmor_restrict_unprivileged_userns=0`).
+the pinned Linux sandbox (`kernel.apparmor_restrict_unprivileged_userns=0`)
+and its dynamic paging profiles (`vm.unprivileged_userfaultfd=1`). A complete
+native synthetic control exercises every required compiler profile before
+the application timing cohort.
 A successful one-call execution in each backend checks full guest state,
 compiled-code identity and CPU accounting before the corrupted-state controls.
 

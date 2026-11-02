@@ -922,6 +922,7 @@ jobs:
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo sysctl -w kernel.perf_event_paranoid=-1
+          sudo sysctl -w vm.unprivileged_userfaultfd=1
       - name: Compare pinned reference backends
         run: make bench-pvm-polkavm
       - name: Show complete calibration

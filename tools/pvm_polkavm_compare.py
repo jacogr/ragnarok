@@ -49,9 +49,10 @@ def run():
     report=dict(status='running',cpu_counter='Linux perf task-clock; one thread per process, including kernel time',pairs=pairs,runs=[],controls=[],checks=[],identities={},
         hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),
                       affinity=sorted(os.sched_getaffinity(0)),load_start=os.getloadavg(),
-                      linux_sysctls={name:(Path('/proc/sys/kernel')/name).read_text().strip()
-                          if (Path('/proc/sys/kernel')/name).is_file() else None
-                          for name in ('perf_event_paranoid','apparmor_restrict_unprivileged_userns')}),
+                      linux_sysctls={name:(Path('/proc/sys')/name.replace('.','/')).read_text().strip()
+                          if (Path('/proc/sys')/name.replace('.','/')).is_file() else None
+                          for name in ('kernel.perf_event_paranoid','kernel.apparmor_restrict_unprivileged_userns',
+                                       'vm.unprivileged_userfaultfd')}),
         scope='Warm execution includes parent and active sandbox process CPU, in-memory hosts; setup, restoration, verification and teardown excluded.',
         preparation_scope='Module compilation/setup parent CPU retained separately; synthetic setup also includes Engine construction. Instance creation excluded.',
         profile='Pinned PolkaVM JamV1, Sync gas, Full/L2Hit, 4096-byte pages, Rust release LTO/codegen-units1; default Linux compiler sandbox.',
@@ -118,6 +119,11 @@ def run():
         if 'task-clock measurement requires one runtime thread' not in rejected or 'REFERENCE_CPU,' in rejected:
             raise ValueError('multi-thread CPU omission was not refused')
         report['controls'].append(dict(kind='single_thread_required',rejected=True))
+        # Exercise every required compiler profile before the application timing cohort.
+        available,_=command([binaries['polkavm'],fixture,'compiler'],'synthetic-profiles-available',
+            environment('compiler'))
+        profiles=parse(available,'compiler','synthetic')
+        report['controls'].append(dict(kind='synthetic_profiles_available',backend='compiler',cases=profiles))
         workloads=[dict(family='synthetic',limit=0,args=[binaries['polkavm'],fixture],env={})]
         for guest in ('sieve','minimal','memset','pinky'):
             family={'sieve':'pvm_sieve','pinky':'pvm_pinky'}.get(guest,'pvm_guests')
