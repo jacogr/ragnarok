@@ -16,8 +16,8 @@ Pinned Nimony `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, ARC, checked release,
 Clang and ThinLTO remain unchanged. The held byte-loop PR1877 is not a dependency.
 Public defaults and x86 lowering are unchanged.
 
-An opt-in ARM body covers one complete charged source suffix, bounded to16 source
-operations/16 memory operations, ending in a positively cached conditional.
+An opt-in ARM body covers one complete charged source suffix, bounded to 32 source
+operations and 16 memory operations, ending in a positively cached conditional.
 Interiors contain indirect memory opcodes120–130 and supported pure arithmetic.
 Hosts, dynamic jumps and unsupported instructions retain accepted workers.
 At least one load, store and shared window are required. A zero-window candidate
@@ -95,6 +95,42 @@ original ARM witness remains intact. Added literal/checked-machine cases cover:
   paid/gas/partial-budget accounting.
 - A source-built15-memory body emitting1,046 ordinary words after exit compaction, refusing publication
   above the existing limit and retaining checked behavior.
+
+## Wider charged source spans
+
+The bounded source-span limit rises from 16 to 32 on exact merged master
+`d7e3d6e379c3a65c29fc0817ea366e74adffa2d0`. One constant sizes the
+publisher's per-body group map and governs both the header search and the
+charged source-count check. The 16-memory-operation limit, two-group limit,
+1,024-word image refusal, typed native entry, paid interior replay and original
+checked fallback remain unchanged. Folded noops still count as source facts
+while consuming no group-map slot.
+
+The motivating DOOM tick block starts at guest PC 202376 and ends at the cached
+branch at PC 202468. It contains 31 charged source operations and previously
+entered two native read fragments. The wider candidate publishes one Mixed
+image. In unclocked full-state tick controls, native operations rise from
+13,853,397 to 14,018,738 and physical native entries fall from 431,003 to
+407,332. Init remains at the 1,024-publication limit and native operations
+rise from 176,099,728 to 176,300,547.
+
+An added witness constructs 31-, 32- and 33-operation charged source blocks:
+the first two publish Mixed images, while the third does not. The 32-operation
+case compares paid/unpaid interior entry across gas and source budgets, later
+faults, a missing page and changed page permissions with the single-step
+reference. The existing oversized-image control still refuses 1,052 words.
+Native/refused witnesses, candidate-local region refusal, all-opcode and
+fragmented-region/host suites pass locally.
+
+On the pinned checked ARC/Clang ThinLTO macOS ARM64 profile, six paired public
+DOOM tick processes have a median candidate/baseline CPU ratio of 0.9823; init
+is 1.0036. Six paired Sieve 10M, Pinky, Minimal and Memset medians are 1.0009,
+0.9964, 0.9991 and 1.0028 respectively. Two paired forced-interpreter DOOM
+comparisons are near the same-image drift. These local measurements show a
+small tick gain with broadly flat other workloads; they do not attribute a
+hardware cause or establish a Linux timing result. Raw inputs, source/binary
+identities, controls and samples are preserved in the private
+`build/pvm-mixed-span32-prototype/` evidence bundle.
 
 ## Historical measurement record
 

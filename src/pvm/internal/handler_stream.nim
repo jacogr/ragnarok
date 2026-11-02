@@ -2274,6 +2274,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return fact.handler(f, next)
     flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
 
+  const armMixedMaximumSourceSpan = 32
+
   proc flatArmPublishMixed(f: var FlatFrame, header, terminal: uint32): bool =
     let jit = f.armJit
     assert jit != nil and flatArmCachedBranch(f, terminal)
@@ -2309,8 +2311,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         (1'u32 shl int(branchSlots.bIndex)) or
         (1'u32 shl int(branchSlots.destinationIndex))
     var groups = default(array[2, FlatMixedGroup])
-    var groupOf = default(array[16, int])
-    for index in 0..<16: groupOf[index] = -1
+    var groupOf = default(array[armMixedMaximumSourceSpan, int])
+    for index in 0..<armMixedMaximumSourceSpan: groupOf[index] = -1
     var groupCount = 0
     for base in 0..<13:
       if groupCount == 2: break
@@ -2423,11 +2425,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return
     var header = flatStop
     var candidate = terminal
-    while candidate > 0 and terminal-candidate < 16:
+    while candidate > 0 and terminal-candidate < uint32(armMixedMaximumSourceSpan):
       dec candidate
       if f.handlers[int(candidate)] != flatCharge: continue
       let charge = f.arguments[int(candidate)]
-      if charge.y == 0 or charge.y > 16: continue
+      if charge.y == 0 or charge.y > uint32(armMixedMaximumSourceSpan): continue
       let source = f.sites[int(candidate)]
       let sourceEnd = uint64(source)+uint64(charge.y)
       if sourceEnd != uint64(f.sites[int(terminal)])+1 or
@@ -3394,7 +3396,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if reads == 0 or count < 4: return offset
     var words = armReadInstructions(native, ending)
     if words.len >= 1024: return offset # Preserve the existing pure publisher on bounded refusal.
-    if jit.fragments >= 1023 or jit.codeBytes > 1048576 or
+    if jit.fragments >= 8191 or jit.codeBytes > 1048576 or
         uint64(words.len+1)*4 > 1048576-jit.codeBytes:
       return offset # A smaller original pure leaf may still fit; do not mutate its refusal record.
     if not publishArmEntry(jit, offset, ending, count, words): return offset

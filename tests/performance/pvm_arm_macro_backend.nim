@@ -408,18 +408,18 @@ proc armMacroBackendControls*(): int =
     block:
       ## Fill the real arena's fragment ledger with valid publications.
       let capped = childJit()
-      discard armEntry(capped, 0, 1200)
+      discard armEntry(capped, 0, 8300)
       let root = armMacroChildRecord(capped, 10)
       let pure = armMacroChildRecord(capped, 51)
       let read = armMacroChildRecord(capped, 71)
       var offset = 100'u32
-      while capped.fragments < 1024:
+      while capped.fragments < 8192:
         var words: seq[uint32] = @[0xd503201f'u32]
         assert publishArmEntry(capped, offset, offset+1, 1, words, true)
         inc offset
       let codeBytes = capped.codeBytes
       assert not publishArmMacro(capped, macroShape())
-      assert capped.fragments == 1024 and capped.codeBytes == codeBytes
+      assert capped.fragments == 8192 and capped.codeBytes == codeBytes
       checkChildAfterRefusal(capped, root, pure, read)
     inc result, 1
 
@@ -445,7 +445,7 @@ proc armMacroBackendControls*(): int =
       let codeBytes = observedCodeBytes(baseline)
       let fragments = baseline.fragments
       assert codeBytes == used
-      assert fragments < 1024 and not publishArmMacro(baseline, macroShape())
+      assert fragments < 8192 and not publishArmMacro(baseline, macroShape())
       assert observedCodeBytes(baseline) == codeBytes and baseline.fragments == fragments
       checkChildAfterRefusal(baseline, root, pure, read)
     inc result, 1

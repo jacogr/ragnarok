@@ -868,10 +868,10 @@ when defined(pvmArm64Jit):
       # Unpublished metadata must refuse even a default-looking record.
       assert not armRegionChargeMatches(unpublished, range[0..2](index), 0, 0, 0)
       inc scalarMatchCases
-    # One connected publication fits after ordinary leaves exhaust their reserved 1,023-slot budget; total stays 1,024.
+    # One connected publication fits after ordinary leaves exhaust their reserved 8,191-slot budget; total stays 8,192.
     let bounded = newArmJit()
     assert armEntry(bounded, 0, 3) == 0
-    for slot in 0..<1023:
+    for slot in 0..<8191:
       # Distinct scratch-only MOVZ bodies consume actual publication slots, without modifying guest registers.
       var words = @[0xd2800001'u32 or (uint32(slot) shl 5)]
       assert publishArmEntry(bounded, 0, 0, 1, words)
@@ -889,7 +889,7 @@ when defined(pvmArm64Jit):
           price: 1, yes: 77, no: uint32((index+1) mod 3), body: move(body))
     assert publishArmRegion(bounded, blocks)
     scalarMatchCases += checkRegionCharges(bounded, [0'u32, 1, 2], [2'u32, 2, 2], [1'u64, 1, 1])
-    assert bounded.fragments == 1024
+    assert bounded.fragments == 8192
     for budget in [0'u64, 1, 2, 3, 4, 5, 6, 7]:
       for gas in [0'u64, 1, 2, 3, 100]:
         # Literal expected counts do not use the emitter or guest evaluator; all unexecuted registers remain unchanged.
@@ -907,7 +907,7 @@ when defined(pvmArm64Jit):
           assert state[index+2] == visits
     var finalRefusal = @[0xd503201f'u32]
     assert not publishArmEntry(bounded, 0, 0, 1, finalRefusal, true)
-    echo "ARM_REGION_CAPACITY,1024"
+    echo "ARM_REGION_CAPACITY,8192"
 
     # Two-block regions retain the same five-word ABI with a genuinely inactive third counter lane.
     var pairLiteralCases = 0
@@ -2952,6 +2952,63 @@ for paid in [false, true]:
       interior.blockCharged = paid
       verifyControl(groupedLongFrame, groupedLongProgram, interior, budget,
           [groupedLongFirst, groupedLongSecond])
+
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  # Literal source spans exercise the discovery bound, not just the image builder.
+  for span in [31, 32, 33]:
+    var parts: seq[seq[byte]] = @[
+      @[123'u8, 0x18, 0, 0, 0, 0], # Store on page 16.
+      @[130'u8, 0x19, 0, 0, 0, 0], # Same-base load forms a window.
+      @[130'u8, 0x5a, 0, 0, 0, 0]] # Later load can fault on page 17.
+    for unused in 0..<(span-4): parts.add(@[100'u8, 0x66])
+    let branchPc = uint32(18+2*(span-4))
+    let displacement = 0'u32-branchPc
+    parts.add(@[171'u8, 0x43, byte(displacement and 255),
+        byte((displacement shr 8) and 255), byte((displacement shr 16) and 255),
+        byte((displacement shr 24) and 255)])
+    parts.add(@[0'u8])
+    let source = owner(parts)
+    let plan = newFlatPlan(source, GasCycleLimit(100000))
+    var first = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+    var second = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite)
+    var registers = default(RegisterFile)
+    registers[1] = RegisterValue(65536)
+    registers[3] = RegisterValue(1)
+    registers[4] = RegisterValue(0)
+    registers[5] = RegisterValue(69632)
+    registers[8] = RegisterValue(0x1122334455667788'u64)
+    let info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000),
+        registers: registers)
+    var frame = newFlatFrame(plan, [first, second], info)
+    verifyControl(frame, source, info, 500, [first, second])
+    let mixed = flatArmMixedStatistics(frame)
+    let groups = flatArmMixedGroupStatistics(frame)
+    if span <= 32:
+      assert mixed[0] > 0 and mixed[1] > 0 and groups[0] == 1
+    else:
+      assert mixed == default(array[4, uint64]) and groups[0] == 0
+    if span == 32:
+      for paid in [false, true]:
+        for gas in [0'u64, 1, 10000]:
+          for budget in [0'u64, 1, 2, 3, 30, 31, 32, 33, 64, 250]:
+            var interior = info
+            interior.pc = CodeAddress(6)
+            interior.gas = MachineGas(gas)
+            interior.blockCharged = paid
+            verifyControl(frame, source, interior, budget, [first, second])
+      var fault = info
+      fault.registers[5] = RegisterValue(73728)
+      let beforeFault = flatArmMixedStatistics(frame)
+      verifyControl(frame, source, fault, 250, [first, second])
+      assert frame.exit == StepExit.Fault
+      let afterFault = flatArmMixedStatistics(frame)
+      assert afterFault[2] == beforeFault[2]+1
+      assert replaceFlatMemoryChecked(frame, [first], info) == FlatError.None
+      verifyControl(frame, source, info, 250, [first])
+      assert frame.exit == StepExit.Fault
+      second.access = PageAccess.ReadOnly
+      assert replaceFlatMemoryChecked(frame, [first, second], info) == FlatError.None
+      verifyControl(frame, source, info, 250, [first, second])
 
 # This admitted source shape has one safe two-store group and thirteen individual accesses.
 # Its larger emitted body must decline at publication size, retaining exact checked behavior.
