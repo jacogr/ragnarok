@@ -64,7 +64,7 @@ def prepare_inputs(checks, folder, cases=CASES):
     upstream = require_submodule(pins)
     provenance = {guest: verify_fixture(upstream=upstream, guest=guest)
                   for guest in sorted({guest for guest, _ in cases})}
-    sources = [*sorted(CRATE.glob('src/*.rs')), CRATE/'Cargo.toml', CRATE/'Cargo.lock',
+    sources = [ROOT/'tests/performance/polkavm_backend.rs', *sorted(CRATE.glob('src/*.rs')), CRATE/'Cargo.toml', CRATE/'Cargo.lock',
                ROOT/'spec/polkavm-pins.json', ROOT/'spec/toolchain.json',
                ROOT/'spec/bandersnatch-pins.json', ROOT/'Makefile']
     identities.update({path: digest(path) for path in sources})

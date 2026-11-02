@@ -85,7 +85,7 @@ def run():
                 or digest(fixture)!=descriptor['files'][fixture.name]):
             raise ValueError('Benchmark inputs differ from independent expectations')
         compiler,_=installed();rust=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
-        sources=[*sorted((ROOT/'src').rglob('*.nim')),ROOT/'tests/performance/pvm_workload.nim',
+        sources=[ROOT/'tests/performance/polkavm_backend.rs', *sorted((ROOT/'src').rglob('*.nim')),ROOT/'tests/performance/pvm_workload.nim',
                  *sorted((CRATE/'src').rglob('*.rs')),CRATE/'Cargo.toml',CRATE/'Cargo.lock',
                  ROOT/'tools/pvm_benchmark.py',ROOT/'tools/pvm_benchmark_report.py',ROOT/'tests/pvm_benchmark_reference.py',
                  ROOT/'tests/pvm_gas_reference.py',ROOT/'spec/toolchain.json',ROOT/'Makefile',ROOT/'.github/workflows/ci.yml']

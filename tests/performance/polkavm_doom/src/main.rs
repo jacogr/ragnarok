@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Ragnarök contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Prepare bounded DOOM snapshots and validate interpreted execution without a viewer or timing claims.
+//! Prepare bounded DOOM snapshots and validate measured, explicitly selected reference backends.
 use polkavm::{
     BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
     ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, RawInstance, Reg,
 };
 use polkavm_common::program::{ISA_JamV1, InstructionSetKind};
 use std::{fs, path::Path};
+#[path = "../../polkavm_backend.rs"]
+mod measurement;
 const GAS: i64 = 1_000_000_000_000;
 const HOSTS: [&str; 5] = [
     "ext_output_audio",
@@ -15,24 +17,6 @@ const HOSTS: [&str; 5] = [
     "ext_rom_size",
     "ext_stdout",
 ];
-
-// Fail closed on an unavailable process clock; correctness-only runs never call it.
-fn cpu_nanoseconds() -> u128 {
-    let mut value = libc::timespec {
-        tv_sec: 0,
-        tv_nsec: 0,
-    };
-    assert_eq!(
-        unsafe { libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut value) },
-        0
-    );
-    assert!(value.tv_sec >= 0 && (0..1_000_000_000).contains(&value.tv_nsec));
-    (value.tv_sec as u128)
-        .checked_mul(1_000_000_000)
-        .unwrap()
-        .checked_add(value.tv_nsec as u128)
-        .unwrap()
-}
 
 // Keep generated framing independent of the production guest decoder and reject truncated fields.
 fn word(bytes: &[u8], at: usize, width: usize) -> u64 {
@@ -98,14 +82,22 @@ impl Guest {
                 .program_counter()
         });
         let mut config = Config::default();
-        config.set_backend(Some(BackendKind::Interpreter));
+        let backend = measurement::selected(BackendKind::Interpreter);
+        config.set_backend(Some(backend));
         let engine = Engine::new(&config).unwrap();
-        assert_eq!(engine.backend(), BackendKind::Interpreter);
+        assert_eq!(engine.backend(), backend);
         let mut profile = ModuleConfig::default();
         profile.set_page_size(4096);
         profile.set_gas_metering(Some(GasMeteringKind::Sync));
         profile.set_cost_model(Some(CostModelKind::Full(CacheModel::L2Hit)));
+        let cpu = measurement::process_cpu();
         let module = Module::from_blob(&engine, &profile, blob).unwrap();
+        measurement::module_receipt(
+            "doom",
+            engine.backend(),
+            &module,
+            measurement::process_cpu() - cpu,
+        );
         let map = module.memory_map();
         let mut pages = Vec::new();
         for (range, access) in [
@@ -250,6 +242,9 @@ impl Guest {
 
 // Prepare once; measured/profiled execution reads those immutable input and expected records.
 fn main() {
+    if measurement::clock_control() {
+        return;
+    }
     let args: Vec<String> = std::env::args().collect();
     assert!(args.len() >= 2);
     if args[1] == "link" {
@@ -321,7 +316,11 @@ fn main() {
     let expected_events = fs::read(folder.join(format!("{}.events", args[5]))).unwrap();
     for sample in 0..samples {
         // Keep call-only timing unchanged; optionally account for private instance construction and restoration separately.
-        let restore_start = if lifecycle { cpu_nanoseconds() } else { 0 };
+        let restore_start = if lifecycle {
+            measurement::process_cpu()
+        } else {
+            0
+        };
         let mut instance = guest.module.instantiate().unwrap();
         guest.reset(&mut instance, phase);
         let mut cursor = 152 + guest.wire.len();
@@ -341,7 +340,7 @@ fn main() {
         }
         // Complete independent input-state validation stays outside both execution and restoration accounting.
         let restore_elapsed = if lifecycle {
-            cpu_nanoseconds() - restore_start
+            measurement::process_cpu() - restore_start
         } else {
             0
         };
@@ -349,11 +348,12 @@ fn main() {
             guest.input(&mut instance, phase) == input,
             "DOOM initial state mismatch"
         );
-        let cpu = if timing { cpu_nanoseconds() } else { 0 };
+        let cpu = timing.then(|| measurement::CpuTimer::start(&instance));
         let wall = timing.then(std::time::Instant::now);
         let events = guest.run(&mut instance, &rom);
         let wall_elapsed = wall.map(|value| value.elapsed().as_nanos()).unwrap_or(0);
-        let cpu_elapsed = if timing { cpu_nanoseconds() - cpu } else { 0 };
+        let cpu = cpu.map(|clock| clock.finish());
+        let cpu_elapsed = cpu.as_ref().map_or(0, |value| value.total);
         assert!(
             guest.expected(&mut instance)
                 == fs::read(folder.join(format!("{}.expected", args[5]))).unwrap(),
@@ -365,9 +365,9 @@ fn main() {
         );
         let teardown_elapsed = if lifecycle {
             // Dispose the exclusive instance after validation; keep teardown outside call-only timing but inside lifecycle accounting.
-            let teardown_start = cpu_nanoseconds();
+            let teardown_start = measurement::process_cpu();
             drop(instance);
-            cpu_nanoseconds() - teardown_start
+            measurement::process_cpu() - teardown_start
         } else {
             // Ordinary call-only runs retain their original automatic end-of-iteration cleanup.
             0
@@ -375,6 +375,9 @@ fn main() {
         if timing {
             // Validation precedes publication of every measured CPU/wall duration.
             assert!(cpu_elapsed > 0 && wall_elapsed > 0);
+            cpu.as_ref()
+                .unwrap()
+                .receipt(&format!("doom-{}", args[5]), sample);
             println!(
                 "DOOM_SAMPLE,reference,{},{sample},{cpu_elapsed},{wall_elapsed}",
                 args[5]
