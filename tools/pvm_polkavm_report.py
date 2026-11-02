@@ -13,6 +13,16 @@ def number(value):
     return int(value)
 
 
+def parse_clock_control(output):
+    """Cross-check remote task CPU against independent self CPU before accepting timings."""
+    fields=output.strip().split(',')
+    if len(fields)!=5 or fields[0]!='REFERENCE_CLOCK_CONTROL':raise ValueError('missing child CPU control')
+    parent,worker,total,own=map(number,fields[1:])
+    if min(worker,own)<20000000 or worker<=parent*2 or total!=parent+worker or abs(worker-own)>max(1000000,own//20):
+        raise ValueError('missing, duplicated or uncalibrated task CPU')
+    return dict(parent=parent,worker=worker,total=total,child_self_cpu=own)
+
+
 def parse(output, backend, family, limit=0, event_bytes=0, count=13):
     """Require actual compiler code/worker CPU and every fully validated legacy sample."""
     if backend not in ('interpreter','compiler'):
@@ -100,7 +110,10 @@ def summarize(runs):
     for name in names:
         rows=[row for row in runs if name in row['cases']]
         pairs={}
-        for row in rows:pairs.setdefault(row['pair'],{})[row['backend']]=row['cases'][name]
+        for row in rows:
+            pair=pairs.setdefault(row['pair'],{})
+            if row['backend'] in pair:raise ValueError('duplicate reference backend in process pair')
+            pair[row['backend']]=row['cases'][name]
         if any(set(pair)!={'interpreter','compiler'} for pair in pairs.values()):
             raise ValueError('unpaired reference observations')
         ratios=[pair['compiler']['warm_cpu_ns']/pair['interpreter']['warm_cpu_ns'] for pair in pairs.values()]

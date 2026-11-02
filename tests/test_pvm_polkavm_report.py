@@ -6,7 +6,7 @@ import tempfile
 import json
 from pathlib import Path
 from unittest.mock import patch
-from pvm_polkavm_report import parse, summarize
+from pvm_polkavm_report import parse, summarize, parse_clock_control
 
 
 def log(backend='compiler'):
@@ -52,6 +52,20 @@ class ReferenceReportTests(unittest.TestCase):
         for bad in (log().replace('GUEST,minimal','GUEST,memset'),
                     log().replace('2000,100','2000,101')):
             with self.assertRaises(ValueError):parse(bad,'compiler','minimal',1000)
+
+    def test_duplicate_backend_cannot_replace_observation(self):
+        cases=parse(log(),'compiler','minimal',1000)
+        row=dict(pair=0,backend='compiler',cases=cases)
+        with self.assertRaises(ValueError):summarize([row,row])
+
+    def test_task_cpu_control_agrees_with_child_self_cpu(self):
+        observed='REFERENCE_CLOCK_CONTROL,14375,20093166,20107541,20010583\n'
+        self.assertEqual(parse_clock_control(observed)['worker'],20093166)
+        for changed in ('REFERENCE_CLOCK_CONTROL,14375,0,14375,20010583',
+                        'REFERENCE_CLOCK_CONTROL,14375,20093166,40186332,20010583',
+                        'REFERENCE_CLOCK_CONTROL,14375,40000000,40014375,20010583',
+                        observed+'unexpected output',observed.replace('20010583','-1')):
+            with self.subTest(changed=changed),self.assertRaises(ValueError):parse_clock_control(changed)
 
     def test_invalid_pair_request_clears_stale_success(self):
         """Both bad numeric choices and malformed text must invalidate an earlier JSON verdict."""

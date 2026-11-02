@@ -19,7 +19,7 @@ from pvm_benchmark import cpu_model
 from pvm_benchmark_report import NAMES
 from pvm_sieve_benchmark import verify_fixture
 from pvm_sieve_report import limits_for_guest
-from pvm_polkavm_report import parse, summarize
+from pvm_polkavm_report import parse, summarize, parse_clock_control
 
 BUILD=ROOT/'build/tests/pvm-polkavm-ratios'
 RUST=json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
@@ -46,9 +46,12 @@ def run():
         result.write_text(json.dumps(dict(status='failed',error=str(error)))+'\n')
         raise
     checks=NativeChecks(BUILD)
-    report=dict(status='running',pairs=pairs,runs=[],controls=[],checks=[],identities={},
+    report=dict(status='running',cpu_counter='Linux perf task-clock; one thread per process, including kernel time',pairs=pairs,runs=[],controls=[],checks=[],identities={},
         hardware=dict(platform=platform.platform(),cpu=cpu_model(),logical_cpus=os.cpu_count(),
-                      affinity=sorted(os.sched_getaffinity(0)),load_start=os.getloadavg()),
+                      affinity=sorted(os.sched_getaffinity(0)),load_start=os.getloadavg(),
+                      linux_sysctls={name:(Path('/proc/sys/kernel')/name).read_text().strip()
+                          if (Path('/proc/sys/kernel')/name).is_file() else None
+                          for name in ('perf_event_paranoid','apparmor_restrict_unprivileged_userns')}),
         scope='Warm execution includes parent and active sandbox process CPU, in-memory hosts; setup, restoration, verification and teardown excluded.',
         preparation_scope='Module compilation/setup parent CPU retained separately; synthetic setup also includes Engine construction. Instance creation excluded.',
         profile='Pinned PolkaVM JamV1, Sync gas, Full/L2Hit, 4096-byte pages, Rust release LTO/codegen-units1; default Linux compiler sandbox.',
@@ -109,12 +112,12 @@ def run():
         # A real busy child must dominate the measured CPU while its parent waits.
         control,_=command([binaries['polkavm']],'worker-clock-control',
                           environment(RAGNAROK_PVM_CLOCK_CONTROL='parent'),timeout=30)
-        fields=control.strip().split(',')
-        if len(fields)!=4 or fields[0]!='REFERENCE_CLOCK_CONTROL':raise ValueError('missing child CPU control')
-        parent,worker,total=map(int,fields[1:])
-        if worker<20000000 or worker<=parent*2 or total!=parent+worker:
-            raise ValueError('parent-only or duplicated CPU clock')
-        report['controls'].append(dict(kind='worker_cpu',parent=parent,worker=worker,total=total))
+        report['controls'].append(dict(kind='worker_cpu',**parse_clock_control(control)))
+        rejected,_=command([binaries['polkavm']],'threaded-clock-refused',
+            environment(RAGNAROK_PVM_CLOCK_CONTROL='threaded'),fail=True,timeout=30)
+        if 'task-clock measurement requires one runtime thread' not in rejected or 'REFERENCE_CPU,' in rejected:
+            raise ValueError('multi-thread CPU omission was not refused')
+        report['controls'].append(dict(kind='single_thread_required',rejected=True))
         workloads=[dict(family='synthetic',limit=0,args=[binaries['polkavm'],fixture],env={})]
         for guest in ('sieve','minimal','memset','pinky'):
             family={'sieve':'pvm_sieve','pinky':'pvm_pinky'}.get(guest,'pvm_guests')

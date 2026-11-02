@@ -68,9 +68,85 @@ pub fn module_receipt(label: &str, actual: BackendKind, module: &Module, prepara
     );
 }
 
+/// Per-task Linux perf clocks update a running remote task; process-group clocks can lag.
+enum CpuCounter {
+    Process,
+    #[cfg(target_os = "linux")]
+    Task(std::fs::File),
+}
+
+impl CpuCounter {
+    #[cfg(target_os = "linux")]
+    fn task(pid: u32) -> Self {
+        use std::os::fd::FromRawFd;
+        // A task clock covers the entire process only while its pinned runtime has one thread.
+        assert_eq!(
+            std::fs::read_dir(format!("/proc/{pid}/task"))
+                .unwrap()
+                .count(),
+            1,
+            "task-clock measurement requires one runtime thread"
+        );
+        // PERF_ATTR_SIZE_VER0 from Linux's stable perf_event_open ABI; unused fields stay zero.
+        #[repr(C)]
+        #[derive(Default)]
+        struct Attr {
+            kind: u32,
+            size: u32,
+            config: u64,
+            period: u64,
+            sample: u64,
+            format: u64,
+            flags: u64,
+            wakeup: u32,
+            breakpoint: u32,
+            address: u64,
+        }
+        assert_eq!(std::mem::size_of::<Attr>(), 64);
+        let attr = Attr {
+            kind: 1,
+            size: 64,
+            config: 1,
+            ..Attr::default()
+        };
+        // PERF_TYPE_SOFTWARE / PERF_COUNT_SW_TASK_CLOCK, enabled immediately, CLOEXEC.
+        let fd = unsafe {
+            libc::syscall(
+                libc::SYS_perf_event_open,
+                &attr,
+                libc::pid_t::try_from(pid).unwrap(),
+                -1_i32,
+                -1_i32,
+                8_u64,
+            )
+        };
+        assert!(
+            fd >= 0,
+            "perf task-clock unavailable: {}",
+            std::io::Error::last_os_error()
+        );
+        Self::Task(unsafe { std::fs::File::from_raw_fd(i32::try_from(fd).unwrap()) })
+    }
+
+    fn read(&self) -> u128 {
+        match self {
+            Self::Process => process_cpu(),
+            #[cfg(target_os = "linux")]
+            Self::Task(file) => {
+                use std::io::Read;
+                let mut bytes = [0_u8; 8];
+                let mut handle = file;
+                handle.read_exact(&mut bytes).unwrap();
+                u128::from(u64::from_ne_bytes(bytes))
+            }
+        }
+    }
+}
+
 /// One invocation retains its sandbox clock; the caller keeps its instance alive through finish().
 pub struct CpuTimer {
-    worker: Option<libc::clockid_t>,
+    worker: Option<CpuCounter>,
+    parent: CpuCounter,
     worker_start: u128,
     parent_start: u128,
 }
@@ -94,26 +170,32 @@ impl CpuTimer {
             );
             #[cfg(target_os = "linux")]
             {
-                let pid = i32::try_from(pid).unwrap();
-                let mut clock = 0;
-                let error = unsafe { libc::clock_getcpuclockid(pid, &mut clock) };
-                assert_eq!(
-                    error,
-                    0,
-                    "sandbox CPU clock: {}",
-                    std::io::Error::from_raw_os_error(error)
-                );
-                clock
+                CpuCounter::task(pid)
             }
             #[cfg(not(target_os = "linux"))]
             {
                 panic!("separate-process CPU measurement requires Linux");
             }
         });
-        let worker_start = worker.map_or(0, read);
-        let parent_start = process_cpu();
+        let parent = {
+            #[cfg(target_os = "linux")]
+            {
+                if explicit() || pid.is_some() {
+                    CpuCounter::task(std::process::id())
+                } else {
+                    CpuCounter::Process
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                CpuCounter::Process
+            }
+        };
+        let worker_start = worker.as_ref().map_or(0, CpuCounter::read);
+        let parent_start = parent.read();
         Self {
             worker,
+            parent,
             worker_start,
             parent_start,
         }
@@ -121,8 +203,10 @@ impl CpuTimer {
 
     /// Linux compiled execution must expose its actual worker; interpretation has none.
     pub fn start(instance: &RawInstance) -> Self {
-        let pid = instance.pid();
-        if explicit() {
+        // Legacy Compiler CLI reports wall time only; CPU calibration is an explicit protocol.
+        let calibrated = explicit();
+        let pid = if calibrated { instance.pid() } else { None };
+        if calibrated {
             match selected(BackendKind::Interpreter) {
                 BackendKind::Interpreter => assert!(pid.is_none()),
                 BackendKind::Compiler => {
@@ -137,15 +221,11 @@ impl CpuTimer {
 
     /// Read parent first and worker last so worker-clock queries stay outside parent timing.
     pub fn finish(self) -> CpuSample {
-        let parent = process_cpu().checked_sub(self.parent_start).unwrap();
-        let worker = self.worker.map_or(0, |clock| {
-            read(clock).checked_sub(self.worker_start).unwrap()
+        let parent = self.parent.read().checked_sub(self.parent_start).unwrap();
+        let worker = self.worker.as_ref().map_or(0, |clock| {
+            clock.read().checked_sub(self.worker_start).unwrap()
         });
         let total = parent.checked_add(worker).unwrap();
-        assert!(total > 0);
-        if self.worker.is_some() {
-            assert!(worker > 0, "sandbox execution CPU omitted");
-        }
         CpuSample {
             parent,
             worker,
@@ -156,8 +236,19 @@ impl CpuTimer {
 }
 
 impl CpuSample {
+    fn validate(&self) {
+        assert!(self.total > 0);
+        assert!(
+            !self.worker_clock || self.worker > 0,
+            "validated sandbox execution CPU omitted: parent={} worker={}",
+            self.parent,
+            self.worker
+        );
+    }
     /// Emit only after the caller's complete CPU/memory/event checks succeed.
     pub fn receipt(&self, label: &str, sample: usize) {
+        // Guest verification precedes this verdict, including on a zero observed delta.
+        self.validate();
         if explicit() {
             println!(
                 "REFERENCE_CPU,{label},{sample},{},{},{},{}",
@@ -177,6 +268,24 @@ pub fn clock_control() -> bool {
         Err(_) => return false,
         Ok(mode) => mode,
     };
+    if mode == "threaded" {
+        #[cfg(target_os = "linux")]
+        {
+            let (ready, received) = std::sync::mpsc::channel();
+            let (stop, stopped) = std::sync::mpsc::channel();
+            let thread = std::thread::spawn(move || {
+                ready.send(()).unwrap();
+                stopped.recv().unwrap();
+            });
+            received.recv().unwrap();
+            let _counter = CpuCounter::task(std::process::id());
+            stop.send(()).unwrap();
+            thread.join().unwrap();
+            panic!("multithreaded runtime was accepted");
+        }
+        #[cfg(not(target_os = "linux"))]
+        panic!("task clock control requires Linux");
+    }
     if mode == "child" {
         println!("READY");
         std::io::stdout().flush().unwrap();
@@ -191,7 +300,7 @@ pub fn clock_control() -> bool {
             }
         }
         std::hint::black_box(work);
-        println!("DONE");
+        println!("DONE,{}", process_cpu() - start);
         std::io::stdout().flush().unwrap();
         command.clear();
         std::io::stdin().read_line(&mut command).unwrap();
@@ -216,11 +325,19 @@ pub fn clock_control() -> bool {
     input.flush().unwrap();
     line.clear();
     output.read_line(&mut line).unwrap();
-    assert_eq!(line.trim(), "DONE");
+    let own_cpu: u128 = line.trim().strip_prefix("DONE,").unwrap().parse().unwrap();
     let measured = timer.finish();
     writeln!(input, "EXIT").unwrap();
     input.flush().unwrap();
     assert!(child.wait().unwrap().success());
+    measured.validate();
+    assert!(own_cpu >= 20_000_000);
+    assert!(
+        measured.worker.abs_diff(own_cpu) <= std::cmp::max(1_000_000, own_cpu / 20),
+        "task clock differs from child's own CPU: measured={} own={}",
+        measured.worker,
+        own_cpu
+    );
     assert!(
         measured.worker >= 20_000_000 && measured.worker > measured.parent * 2,
         "child CPU control parent={} worker={}",
@@ -228,8 +345,8 @@ pub fn clock_control() -> bool {
         measured.worker
     );
     println!(
-        "REFERENCE_CLOCK_CONTROL,{},{},{}",
-        measured.parent, measured.worker, measured.total
+        "REFERENCE_CLOCK_CONTROL,{},{},{},{}",
+        measured.parent, measured.worker, measured.total, own_cpu
     );
     true
 }
