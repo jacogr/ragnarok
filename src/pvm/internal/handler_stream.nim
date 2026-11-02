@@ -2784,6 +2784,288 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if destination == tail: return flatCharge(f, tail)
     destination
 
+  type FlatArmMacroHeader = object
+    first, last, span: uint32
+    price: uint64
+
+  func flatArmMacroHeader(f: FlatFrame, offset: uint32,
+      header: var FlatArmMacroHeader): bool =
+    ## A known header handler binds its source span even when leading noops have no body node.
+    if uint64(offset)+1 >= uint64(f.handlers.len) or int(offset) >= f.arguments.len or
+        int(offset)+1 >= f.sites.len: return false
+    let first = f.sites[int(offset)]
+    let span = f.arguments[int(offset)].y
+    # The first prototype admits one bounded observed graph; larger source spans retain ordinary dispatch.
+    if span == 0 or span > 64 or uint64(first)+uint64(span) > uint64(f.plan.facts.len):
+      return false
+    let last = first+span-1
+    if not f.plan.facts[int(last)].ending: return false
+    for current in first..<last:
+      if f.plan.facts[int(current)].ending: return false
+    let body = f.sites[int(offset)+1]
+    if body < first or body > last: return false
+    for skipped in first..<body:
+      let fact = f.plan.facts[int(skipped)]
+      if fact.opcode != 2 or fact.ending: return false
+    header = FlatArmMacroHeader(first: first, last: last, span: span,
+      price: f.arguments[int(offset)].x)
+    true
+
+  func flatArmMacroRead(f: FlatFrame, jit: ArmJit, offset: uint32,
+      shape: var ArmMacroShape): bool =
+    var source = default(FlatArmMacroHeader)
+    if not flatArmMacroHeader(f, offset, source) or f.handlers[int(offset)] != flatCharge or
+        f.plan.facts[int(source.last)].opcode != 1: return false
+    let body = offset+1
+    if f.handlers[int(body)] != flatArmMemory: return false
+    let entry = armMacroChildRecord(jit, body)
+    if entry.code < 2 or int(entry.ending) >= f.handlers.len or
+        entry.ending <= body or f.handlers[int(entry.ending)] != flatCachedJump[1] or
+        f.sites[int(entry.ending)] != source.last: return false
+    var nextSource = source.first
+    var operations = 0'u32
+    var reads = 0'u32
+    for current in body..<entry.ending:
+      if int(current) >= f.sites.len: return false
+      let site = f.sites[int(current)]
+      if site < nextSource or site >= source.last: return false
+      for skipped in nextSource..<site:
+        let fact = f.plan.facts[int(skipped)]
+        if fact.opcode != 2 or fact.ending: return false
+      let fact = f.plan.facts[int(site)]
+      if fact.ending or not fact.fallthrough: return false
+      if fact.opcode in {52'u8..58'u8, 124'u8..130'u8}:
+        inc reads
+      elif not supportedArmOpcode(fact.opcode):
+        return false
+      inc operations
+      nextSource = site+1
+    for skipped in nextSource..<source.last:
+      let fact = f.plan.facts[int(skipped)]
+      if fact.opcode != 2 or fact.ending: return false
+    if reads < 2 or operations < 4 or operations != entry.operations: return false
+    let target = f.arguments[int(entry.ending)].y
+    if target != shape.cycleHeader: return false
+    shape.readHeader = offset
+    shape.readBody = body
+    shape.readTerminal = entry.ending
+    shape.terminalTarget = target
+    shape.readSpan = source.span
+    shape.readPrice = source.price
+    true
+
+  func flatArmMacroBranch(f: FlatFrame, jit: ArmJit, offset: uint32,
+      shape: var ArmMacroShape): bool =
+    var source = default(FlatArmMacroHeader)
+    if not flatArmMacroHeader(f, offset, source) or source.span != 1 or
+        f.handlers[int(offset)] != flatCharge or
+        f.plan.facts[int(source.first)].opcode != 88: return false
+    let body = offset+1
+    if f.sites[int(body)] != source.first or f.handlers[int(body)] != flatBranch[88]:
+      return false
+    let args = f.arguments[int(body)]
+    let yes = uint32(args.x shr 32)
+    let no = args.y
+    if int(yes) >= f.handlers.len or int(no) >= f.handlers.len or yes == no: return false
+    var read = flatStop
+    if yes == shape.pureHeader: read = no
+    elif no == shape.pureHeader: read = yes
+    else: return false
+    if not flatArmMacroRead(f, jit, read, shape): return false
+    shape.branchHeader = offset
+    shape.branchYes = yes
+    shape.branchNo = no
+    shape.branchSlot = args.slots.aIndex
+    shape.branchImmediate = flatSext32(uint32(args.x and 0xffffffff'u64))
+    shape.branchSpan = source.span
+    shape.branchPrice = source.price
+    true
+
+  proc flatArmMacroDiscover(f: FlatFrame, shape: var ArmMacroShape): bool {.noinline.} =
+    ## ABI-tagged existing children and genuine cached source edges define one small closed graph.
+    if f.pricingKind != 0 or not f.plan.allowNative: return false
+    let jit {.cursor.} = f.armJit
+    if jit == nil or armMemoryCycleStatus(jit) != 2 or
+        not armResidentMemoryCycleActive(jit): return false
+    let cycle = armMemoryCycleHeader(jit, 0)
+    let dirty = armMemoryCycleHeader(jit, 1)
+    let tail = armMemoryCycleHeader(jit, 2)
+    var cycleSource = default(FlatArmMacroHeader)
+    var dirtySource = default(FlatArmMacroHeader)
+    var tailSource = default(FlatArmMacroHeader)
+    if not flatArmMacroHeader(f, cycle, cycleSource) or
+        not flatArmMacroHeader(f, dirty, dirtySource) or
+        not flatArmMacroHeader(f, tail, tailSource): return false
+    if not armMemoryCycleChargeMatches(jit, 0, cycle, cycleSource.span, cycleSource.price) or
+        not armMemoryCycleChargeMatches(jit, 1, tail, tailSource.span, tailSource.price) or
+        not armDirtyLoopChargeMatches(jit, dirty, dirtySource.span,
+            dirtySource.price): return false
+    let outside = armMacroCycleExit(jit)
+    var staticSource = default(FlatArmMacroHeader)
+    if not flatArmMacroHeader(f, outside, staticSource) or staticSource.span != 1 or
+        f.handlers[int(outside)] != flatCharge or
+        f.plan.facts[int(staticSource.first)].opcode != 40: return false
+    let jump = outside+1
+    if f.sites[int(jump)] != staticSource.first or
+        f.handlers[int(jump)] != flatCachedJump[40]: return false
+    let pure = f.arguments[int(jump)].y
+    var pureSource = default(FlatArmMacroHeader)
+    if not flatArmMacroHeader(f, pure, pureSource) or pureSource.span != 3 or
+        f.handlers[int(pure)] != flatArmWhole: return false
+    if f.plan.facts[int(pureSource.first)].opcode != 131 or
+        f.plan.facts[int(pureSource.first)+1].opcode != 149 or
+        f.plan.facts[int(pureSource.last)].opcode != 81: return false
+    let body = pure+1
+    let terminal = pure+3
+    if int(terminal) >= f.handlers.len or f.sites[int(body)] != pureSource.first or
+        f.sites[int(pure)+2] != pureSource.first+1 or
+        f.sites[int(terminal)] != pureSource.last or
+        f.handlers[int(body)] != flatArmBranch or
+        f.handlers[int(terminal)] != flatBranch[81]: return false
+    let native = armMacroChildRecord(jit, body)
+    if native.code < 2 or native.operations != 3 or native.ending != terminal: return false
+    let args = f.arguments[int(terminal)]
+    let yes = uint32(args.x shr 32)
+    let no = args.y
+    if yes == no or int(yes) >= f.handlers.len or int(no) >= f.handlers.len: return false
+    var base = ArmMacroShape(cycleHeader: cycle, cycleExit: outside,
+      staticHeader: outside, staticTarget: pure, pureHeader: pure, pureBody: body,
+      pureTerminal: terminal, pureYes: yes, pureNo: no, staticSpan: staticSource.span,
+      pureSpan: pureSource.span, staticPrice: staticSource.price, purePrice: pureSource.price)
+    var found = false
+    for target in [yes, no]:
+      var candidate = base
+      if flatArmMacroBranch(f, jit, target, candidate):
+        if found: return false
+        shape = candidate
+        found = true
+    if not found: return false
+    let headers = [cycle, dirty, tail, outside, pure, shape.branchHeader, shape.readHeader]
+    for first in 0..<headers.len:
+      for second in first+1..<headers.len:
+        if headers[first] == headers[second]: return false
+    let rare = if shape.pureYes == shape.branchHeader: shape.pureNo else: shape.pureYes
+    for header in headers:
+      if rare == header: return false
+    true
+
+  proc flatArmMacro(f: var FlatFrame, offset: uint32): uint32 =
+    ## One native call owns no frame capability; canonical replay starts only after all borrows end.
+    var shape = default(ArmMacroShape)
+    var dirty = flatStop
+    var tail = flatStop
+    var destination = flatStop
+    var admitted = false
+    var state = default(ArmMacroState)
+    state[0] = uint64(f.info.gas)
+    state[1] = f.remaining
+    state[13] = uint64(flatStop)
+    state[24] = uint64(flatStop)
+    block:
+      let jit {.cursor.} = f.armJit
+      if jit != nil and armMacroStatus(jit) == 2:
+        shape = armMacroShape(jit)
+        dirty = armMemoryCycleHeader(jit, 1)
+        tail = armMemoryCycleHeader(jit, 2)
+        let headers = [shape.cycleHeader, dirty, tail, shape.staticHeader,
+          shape.pureHeader, shape.branchHeader, shape.readHeader]
+        var complete = true
+        for header in headers:
+          if int(header) >= f.arguments.len: complete = false
+        if complete and f.pricingKind == 0 and f.barrier == flatStop and
+            not f.info.blockCharged and offset == shape.cycleHeader:
+          let prefixCharge = f.arguments[int(shape.cycleHeader)]
+          let dirtyCharge = f.arguments[int(dirty)]
+          let tailCharge = f.arguments[int(tail)]
+          if armMemoryCycleChargeMatches(jit, 0, shape.cycleHeader, prefixCharge.y,
+              prefixCharge.x) and armMemoryCycleChargeMatches(jit, 1, tail,
+              tailCharge.y, tailCharge.x) and armDirtyLoopChargeMatches(jit, dirty,
+              dirtyCharge.y, dirtyCharge.x):
+            var current = shape
+            current.staticSpan = f.arguments[int(shape.staticHeader)].y
+            current.staticPrice = f.arguments[int(shape.staticHeader)].x
+            current.pureSpan = f.arguments[int(shape.pureHeader)].y
+            current.purePrice = f.arguments[int(shape.pureHeader)].x
+            current.branchSpan = f.arguments[int(shape.branchHeader)].y
+            current.branchPrice = f.arguments[int(shape.branchHeader)].x
+            current.readSpan = f.arguments[int(shape.readHeader)].y
+            current.readPrice = f.arguments[int(shape.readHeader)].x
+            let staticBody = shape.staticHeader+1
+            let branchBody = shape.branchHeader+1
+            if int(staticBody) < f.arguments.len and int(branchBody) < f.arguments.len and
+                int(shape.pureTerminal) < f.arguments.len and
+                int(shape.readTerminal) < f.arguments.len:
+              current.staticTarget = f.arguments[int(staticBody)].y
+              current.pureYes = uint32(f.arguments[int(shape.pureTerminal)].x shr 32)
+              current.pureNo = f.arguments[int(shape.pureTerminal)].y
+              current.branchYes = uint32(f.arguments[int(branchBody)].x shr 32)
+              current.branchNo = f.arguments[int(branchBody)].y
+              current.branchSlot = f.arguments[int(branchBody)].slots.aIndex
+              current.branchImmediate = flatSext32(uint32(
+                  f.arguments[int(branchBody)].x and 0xffffffff'u64))
+              current.terminalTarget = f.arguments[int(shape.readTerminal)].y
+            else:
+              complete = false
+            if complete and armMacroMatches(jit, current):
+              destination = callArmMacro(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
+              admitted = true
+    if not admitted: return flatArmMemoryCycle(f, offset)
+    f.info.gas = MachineGas(state[0])
+    f.remaining = state[1]
+    f.info.blockCharged = false
+    if state[24] != uint64(flatStop):
+      var known = false
+      for header in [shape.cycleHeader, dirty, tail, shape.staticHeader,
+          shape.pureHeader, shape.branchHeader, shape.readHeader]:
+        if state[24] == uint64(header): known = true
+      assert known
+      if not known: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+      f.reservation = uint32(state[24]) or flatReservationHeaderFlag
+    assert int(destination) < f.handlers.len
+    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
+      oracle.StepError.InvalidPreparedProgram)
+    if destination == shape.cycleHeader:
+      let original = f.armOriginal[int(shape.cycleHeader)]
+      assert original != nil
+      if original != nil: return original(f, shape.cycleHeader)
+      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    if destination == dirty: return flatArmCheckedTail(f, dirty)
+    if destination == tail: return flatCharge(f, tail)
+    destination
+
+  when defined(pvmArmMacroReceipt):
+    func flatArmMacroStatistics*(f: FlatFrame): array[7, uint64] =
+      ## Receipt-only copied activity proves actual joined execution independently of guest results.
+      let jit {.cursor.} = f.armJit
+      if jit == nil: default(array[7, uint64])
+      else: armMacroStatistics(jit)
+
+  proc flatArmMacroProbe(f: var FlatFrame, offset: uint32): uint32 =
+    ## Eight real cycle exits bound the cold search; a refusal keeps every existing child usable.
+    let eligible = f.pricingKind == 0 and f.barrier == flatStop and not f.info.blockCharged
+    let destination = flatArmMemoryCycle(f, offset)
+    if not eligible or destination == flatStop or f.reason != oracle.StepError.None:
+      return destination
+    var decide = false
+    block:
+      let jit {.cursor.} = f.armJit
+      if jit != nil and armMacroStatus(jit) == 0 and destination == armMacroCycleExit(jit):
+        decide = armMacroProbeReady(jit)
+    if not decide: return destination
+    let before = armClock()
+    var shape = default(ArmMacroShape)
+    let matched = flatArmMacroDiscover(f, shape)
+    var published = false
+    block:
+      let jit {.cursor.} = f.armJit
+      if jit != nil:
+        if matched: published = publishArmMacro(jit, shape)
+        else: refuseArmMacro(jit)
+        jit.compilationNs+=armClock()-before
+    if published: f.handlers[int(offset)] = flatArmMacro
+    else: f.handlers[int(offset)] = flatArmMemoryCycle
+    destination
+
   proc flatArmTryMemoryCycle(f: var FlatFrame, readEntry, prefix: uint32) {.noinline.} =
     ## Existing hot child publication proves observation; one bounded source graph can install a driver.
     let jit = f.armJit
@@ -2798,7 +3080,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     assert f.handlers[int(prefix)] == flatCharge
     f.armOriginal[int(prefix)] = f.handlers[int(prefix)]
-    f.handlers[int(prefix)] = flatArmMemoryCycle
+    f.handlers[int(prefix)] = flatArmMacroProbe
 
   proc flatArmMemoryCycleStatistics*(f: FlatFrame): array[6, uint64] =
     ## Copied diagnostics separate outer bridges from nested child visits and word groups.
@@ -3602,6 +3884,16 @@ when defined(pvmArm64JitOwnerReceipt):
   func streamArmStatistics*(stream: FlatStream): array[7, uint64] =
     ## Preserve the existing diagnostic API over the same copied cold observation.
     streamNativeStatistics(stream)
+
+when defined(pvmArmMacroReceipt):
+  func streamArmMacroStatistics*(stream: FlatStream): array[7, uint64] =
+    ## Private copied activity is available after the public invocation returns its cache.
+    when defined(pvmArm64Jit):
+      let jit {.cursor.} = stream.armJit
+      if jit == nil: default(array[7, uint64])
+      else: armMacroStatistics(jit)
+    else:
+      default(array[7, uint64])
 
 func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.

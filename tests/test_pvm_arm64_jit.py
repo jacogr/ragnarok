@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
-from pvm_arm64_jit import parse, baseline_revision, dirty_loop_witness, direct_branch_witness
+from pvm_arm64_jit import (parse, baseline_revision, dirty_loop_witness,
+                           direct_branch_witness, macro_witness_receipts)
 
 
 def transcript():
@@ -155,6 +156,58 @@ class Arm64DirectBranchReceiptTests(unittest.TestCase):
                 direct_branch_witness(output, mode)
         with self.assertRaises(ValueError):
             direct_branch_witness(native, 'unknown')
+
+
+class ArmMacroReceiptTests(unittest.TestCase):
+    expected = {
+        'native': (31, 13524, 1),
+        'native-refused': (3, 13524, 0),
+        'macro-refused': (3, 13524, 0),
+        'interpreted': (0, 0, 0),
+    }
+    markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
+               'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
+               'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE')
+
+    @classmethod
+    def fixture(cls, mode):
+        backend, frame, active = cls.expected[mode]
+        counts = (backend, frame, active, active, active, active)
+        return ''.join(f'{marker},{count}\n' for marker, count in zip(cls.markers, counts))
+
+    def test_valid_native_refused_and_plain_fixtures(self):
+        for mode, (backend, frame, active) in self.expected.items():
+            with self.subTest(mode=mode):
+                receipt = macro_witness_receipts(self.fixture(mode), mode)
+                self.assertEqual(receipt['ARM_MACRO_BACKEND_CASES'], backend)
+                self.assertEqual(receipt['ARM_MACRO_FRAME_CASES'], frame)
+                self.assertEqual(receipt['ARM_MACRO_OWNER_MOVE'], active)
+
+    def test_each_receipt_rejects_missing_truncated_and_duplicate(self):
+        for mode in self.expected:
+            fixture = self.fixture(mode)
+            for line in fixture.splitlines(keepends=True):
+                marker = line.split(',')[0]
+                failures = (fixture.replace(line, '', 1),
+                            fixture.replace(line, marker+'\n', 1),
+                            fixture+line)
+                for label, output in zip(('missing', 'truncated', 'duplicate'), failures):
+                    with self.subTest(mode=mode, marker=marker, failure=label):
+                        with self.assertRaises(ValueError):
+                            macro_witness_receipts(output, mode)
+
+    def test_counts_cannot_cross_backend_policies(self):
+        for expected_mode in self.expected:
+            for wrong_mode in self.expected:
+                if wrong_mode == expected_mode:
+                    continue
+                if {wrong_mode, expected_mode} == {'native-refused', 'macro-refused'}:
+                    continue  # Their receipts intentionally have the same inactive counts.
+                with self.subTest(expected=expected_mode, actual=wrong_mode):
+                    with self.assertRaises(ValueError):
+                        macro_witness_receipts(self.fixture(wrong_mode), expected_mode)
+        with self.assertRaises(ValueError):
+            macro_witness_receipts(self.fixture('native'), 'unknown')
 
 
 class Arm64ControlReceiptTests(unittest.TestCase):

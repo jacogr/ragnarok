@@ -10,6 +10,7 @@ import ../../src/pvm/gas/[plan as gas_plan, memo as gas_memo]
 when defined(pvmArm64Jit):
   import ../../src/pvm/internal/arm64_jit
   import ../support/pvm_arm_memory_cycle_backend
+  import pvm_arm_macro_backend
 import ../../src/pvm/internal/handler_stream
 
 when defined(pvmArm64Jit):
@@ -3390,3 +3391,154 @@ block boundedNativeFallbackLong:
     let native = flatArmStatistics(frame)
     assert native[0] == 0 and native[1] == 0 and native[2] == 0
   echo "BOUNDED_NATIVE_FALLBACK_LONG_CASES,", controls
+
+when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
+  proc macroBranchImmediate(code, register: byte, immediate: uint32): seq[byte] =
+    result = @[code, byte(0x40'u8 or register)]
+    for shift in 0..<4: result.add(byte((uint64(immediate) shr (8*shift)) and 255))
+    for shift in 0..<4: result.add(0)
+
+  proc macroTarget(parts: var seq[seq[byte]], pcs: openArray[uint64], at, field, destination: int) =
+    let delta = pcs[destination]-pcs[at]
+    for shift in 0..<4:
+      parts[at][field+shift] = byte((delta shr (8*shift)) and 255)
+
+  proc macroFixture(): tuple[program: Program, entries: array[7, uint64]] =
+    # Layout permits genuine fallthroughs: pure/88/read/cycle/dirty/tail/static/rare.
+    var parts: seq[seq[byte]] = @[
+      @[131'u8, 0x99, 1], @[149'u8, 0xaa, 0], macroBranchImmediate(81, 9, 32),
+      macroBranchImmediate(88, 9, 0),
+      @[2'u8], @[130'u8, 0xa6, 0, 0, 0, 0], @[130'u8, 0xbc, 0, 0, 0, 0],
+      @[51'u8, 5, 0], @[149'u8, 0xaa, 0], @[1'u8],
+      @[51'u8, 1, 0], @[200'u8, 128, 3], @[149'u8, 51, 1], @[1'u8],
+      @[198'u8, 20, 2], @[120'u8, 2, 0], @[149'u8, 0, 1], @[149'u8, 17, 8],
+      @[171'u8, 48, 0, 0, 0, 0],
+      @[2'u8], @[57'u8, 6, 0, 0, 1, 0], @[149'u8, 85, 1],
+      @[173'u8, 117, 0, 0, 0, 0], @[40'u8, 0, 0, 0, 0], @[0'u8]]
+    var pcs = newSeq[uint64](parts.len)
+    var pc = 0'u64
+    for index in 0..<parts.len:
+      pcs[index] = pc
+      pc+=uint64(parts[index].len)
+    macroTarget(parts, pcs, 2, 6, 24) # Pure81's rare exit; other arm is scalar88.
+    macroTarget(parts, pcs, 3, 6, 0) # Signed88 backedge to pure; other arm enters read.
+    macroTarget(parts, pcs, 18, 2, 14) # Dirty row self-loop.
+    macroTarget(parts, pcs, 22, 2, 10) # Read tail back to prefix; other arm is static40.
+    macroTarget(parts, pcs, 23, 1, 0) # Static40 returns to pure.
+    result = (program: owner(parts),
+      entries: [pcs[10], pcs[23], pcs[0], pcs[3], pcs[4], pcs[14], pcs[19]])
+
+  proc armMacroFrameControls(): int =
+    ## Complete joined-loop boundaries remain equivalent to independently stepped source.
+    let built = macroFixture()
+    let guestProgram = built.program
+    let plan = newFlatPlan(guestProgram, GasCycleLimit(100000))
+    var page = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))
+    for at in 0..<4096: page.bytes[at] = byte((at*7+13) mod 256)
+    var info = MachineInfo(pc: CodeAddress(built.entries[0]), gas: MachineGas(1000000),
+      registers: default(RegisterFile), blockCharged: false)
+    for slot in 0..<13: info.registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+    info.registers[0] = RegisterValue(65536)
+    info.registers[1] = RegisterValue(0)
+    info.registers[2] = RegisterValue(0)
+    info.registers[3] = RegisterValue(65539)
+    info.registers[4] = RegisterValue(0x80000000ffccbbaa'u64)
+    info.registers[5] = RegisterValue(0)
+    info.registers[7] = RegisterValue(2)
+    info.registers[8] = RegisterValue(3)
+    info.registers[9] = RegisterValue(0)
+    info.registers[10] = RegisterValue(65536)
+    info.registers[11] = RegisterValue(65544)
+    var frame = newFlatFrame(plan, [page], info)
+    for warm in 0..<16: verifyControl(frame, guestProgram, info, 4096, [page])
+    when not defined(pvmArm64JitRefuse) and not defined(pvmArmMacroPublishRefuse):
+      let active = flatArmMacroStatistics(frame)
+      assert active[0] > 0 and active[1] > 0 and active[2] > 0 and active[5] > 0
+      echo "ARM_MACRO_ACTIVE,1"
+    else:
+      assert flatArmMacroStatistics(frame) == default(array[7, uint64])
+      echo "ARM_MACRO_ACTIVE,0"
+
+    var controls = 0
+    for entry in built.entries:
+      let price = blockGas(guestProgram, CodeAddress(entry), GasCycleLimit(100000))
+      assert price.error == GasError.None
+      let cost = uint64(price.value)
+      for paid in [false, true]:
+        for gas in [0'u64, 1, (if cost > 0: cost-1 else: 0'u64), cost, cost+1, 1000000]:
+          for budget in 0'u64..160'u64:
+            var input = info
+            input.pc = CodeAddress(entry)
+            input.gas = MachineGas(gas)
+            input.blockCharged = paid
+            verifyControl(frame, guestProgram, input, budget, [page])
+            inc controls
+
+    # Signed88's true backedge occurs once after an initially negative add_imm_32.
+    var signedInput = info
+    signedInput.pc = CodeAddress(built.entries[0])
+    signedInput.registers[9] = RegisterValue(high(uint64))
+    let backedgeBefore = flatArmMacroStatistics(frame)
+    verifyControl(frame, guestProgram, signedInput, 4096, [page])
+    when not defined(pvmArm64JitRefuse) and not defined(pvmArmMacroPublishRefuse):
+      let backedgeAfter = flatArmMacroStatistics(frame)
+      assert backedgeAfter[4]-backedgeBefore[4] > backedgeAfter[5]-backedgeBefore[5]
+      echo "ARM_MACRO_SIGNED_BACKEDGE,1"
+    else:
+      echo "ARM_MACRO_SIGNED_BACKEDGE,0"
+
+    # A late second-read fault must retain the earlier completed native stores and exact replay state.
+    var late = info
+    late.registers[11] = RegisterValue(69632)
+    let before = flatArmMacroStatistics(frame)
+    verifyControl(frame, guestProgram, late, 4096, [page])
+    assert frame.exit == StepExit.Fault
+    when not defined(pvmArm64JitRefuse) and not defined(pvmArmMacroPublishRefuse):
+      assert flatArmMacroStatistics(frame)[6] > before[6]
+      echo "ARM_MACRO_LATE_READ_REFUND,1"
+    else:
+      echo "ARM_MACRO_LATE_READ_REFUND,0"
+
+    # The same code owner sees fragmented readable replacement and preserves both immutable pages.
+    var second = PageImage(index: PageIndex(17), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+    for at in 0..<4096: second.bytes[at] = byte((at*11+3) mod 256)
+    assert replaceFlatMemoryChecked(frame, [page, second], info) == FlatError.None
+    var split = info
+    split.registers[11] = RegisterValue(69630)
+    verifyControl(frame, guestProgram, split, 4096, [page, second])
+
+    # A permission change declines before the first dirty store, with the prior prefix accounted.
+    var readonly = page
+    readonly.access = PageAccess.ReadOnly
+    assert replaceFlatMemoryChecked(frame, [readonly], info) == FlatError.None
+    verifyControl(frame, guestProgram, info, 4096, [readonly])
+    assert frame.exit == StepExit.Fault
+
+    # Code-only transfer supplies a fresh invocation's registers, mapping and context.
+    var cache = takeFlatStream(frame)
+    var replacement = info
+    replacement.registers[12] = RegisterValue(0xfedcba9876543210'u64)
+    var fresh = newFlatFrame(plan, [page], replacement)
+    restoreFlatStream(fresh, cache)
+    let movedBefore = flatArmMacroStatistics(fresh)
+    verifyControl(fresh, guestProgram, replacement, 4096, [page])
+    when not defined(pvmArm64JitRefuse) and not defined(pvmArmMacroPublishRefuse):
+      assert flatArmMacroStatistics(fresh)[0] > movedBefore[0]
+      echo "ARM_MACRO_OWNER_MOVE,1"
+    else:
+      echo "ARM_MACRO_OWNER_MOVE,0"
+    controls
+
+  let macroBackendCases = armMacroBackendControls()
+  let macroFrameCases = armMacroFrameControls()
+else:
+  let macroBackendCases = 0
+  let macroFrameCases = 0
+  echo "ARM_MACRO_ACTIVE,0"
+  echo "ARM_MACRO_SIGNED_BACKEDGE,0"
+  echo "ARM_MACRO_LATE_READ_REFUND,0"
+  echo "ARM_MACRO_OWNER_MOVE,0"
+echo "ARM_MACRO_BACKEND_CASES,", macroBackendCases
+echo "ARM_MACRO_FRAME_CASES,", macroFrameCases

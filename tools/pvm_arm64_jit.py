@@ -119,6 +119,27 @@ def direct_branch_witness(output, mode):
     return dict(literal_cases=expected['ARM_DIRECT_BRANCH_LITERAL_CASES'], control_cases=122)
 
 
+def macro_witness_receipts(output, mode):
+    """Require each backend and Frame receipt exactly once for the selected native policy."""
+    if mode not in ('native', 'native-refused', 'macro-refused', 'interpreted'):
+        raise ValueError('Unknown ARM macro witness mode')
+    expected = {
+        'ARM_MACRO_BACKEND_CASES': 31 if mode == 'native' else 3 if mode in (
+            'native-refused', 'macro-refused') else 0,
+        'ARM_MACRO_FRAME_CASES': 0 if mode == 'interpreted' else 13524,
+        'ARM_MACRO_ACTIVE': 1 if mode == 'native' else 0,
+        'ARM_MACRO_LATE_READ_REFUND': 1 if mode == 'native' else 0,
+        'ARM_MACRO_SIGNED_BACKEDGE': 1 if mode == 'native' else 0,
+        'ARM_MACRO_OWNER_MOVE': 1 if mode == 'native' else 0,
+    }
+    lines = output.splitlines()
+    for marker, count in expected.items():
+        records = [line for line in lines if line.startswith(marker)]
+        if records != [marker+','+str(count)]:
+            raise ValueError('Missing or changed ARM macro witness: '+marker)
+    return expected
+
+
 def qualify(checks, compiler, *, native=True):
     """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
     rows = []
@@ -133,14 +154,20 @@ def qualify(checks, compiler, *, native=True):
     rows.append(memory)
     for name,source,defines in (
         ('witness','tests/performance/pvm_arm64_jit_witness.nim',
-            ['pvmArm64Jit','pvmArmDirtyLoopOwnerReceipt'] if native else []),
+            ['pvmArm64Jit','pvmArmMacroReceipt','pvmArmDirtyLoopOwnerReceipt'] if native else []),
         ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',
-            ['pvmArm64Jit','pvmArm64JitRefuse','pvmArmDirtyLoopOwnerReceipt']),
+            ['pvmArm64Jit','pvmArm64JitRefuse','pvmArmMacroReceipt',
+             'pvmArmDirtyLoopOwnerReceipt']),
+        ('witness-macro-refused','tests/performance/pvm_arm64_jit_witness.nim',
+            ['pvmArm64Jit','pvmArmMacroPublishRefuse','pvmArmMacroReceipt',
+             'pvmArmDirtyLoopOwnerReceipt']),
         ('region-refusal','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefusalReceipt']),
         ('region-refusal-forced','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefuse','pvmArm64JitRefusalReceipt']),
         ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
         ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
+        if name == 'witness-macro-refused' and not native:
+            continue  # Checked-only hosts cannot execute the ARM macro append refusal.
         built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
@@ -160,12 +187,19 @@ def qualify(checks, compiler, *, native=True):
                    for row in records):
                 raise ValueError('Missing ARM candidate-local publication/execution')
         if name.startswith('witness'):
+            native_requested = 'pvmArm64Jit' in defines
+            native_available = native_requested and 'pvmArm64JitRefuse' not in defines
+            macro_active = native_available and 'pvmArmMacroPublishRefuse' not in defines
+            macro_mode = ('native' if macro_active else
+                          'macro-refused' if native_available else
+                          'native-refused' if native_requested else 'interpreted')
+            checked['macro'] = macro_witness_receipts(checked['output'], macro_mode)
             for marker,count in [('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507)]:
-                expected = count if native and name == 'witness' else 0
+                expected = count if native_available else 0
                 if marker+','+str(expected)+'\n' not in checked['output']:
                     raise ValueError('Missing paired-shift controls: '+marker)
-            width_expected = 24843 if native and name == 'witness' else 0
-            if (native or name == 'witness-refused') and 'ARM_LOAD_WIDTH_LITERAL_CASES,'+str(width_expected)+'\n' not in checked['output']:
+            width_expected = 24843 if native_available else 0
+            if native_requested and 'ARM_LOAD_WIDTH_LITERAL_CASES,'+str(width_expected)+'\n' not in checked['output']:
                 raise ValueError('Missing signed/unsigned guarded-load width literals')
             # Rejected native stores leave meaningful checked-store/native-arithmetic and complete snapshot fallback coverage.
             if 'ARM_DIRTY_LOOP_LIVE_IN_CASES,156\n' not in checked['output']:
@@ -179,25 +213,25 @@ def qualify(checks, compiler, *, native=True):
             if region_receipts != ['ARM_SELF_REGION_CASES,1920']:
                 raise ValueError('Missing complete one-block region boundary witness')
             # Backend literals prove real child calls, coexistence and bounded refusal in the selected mode.
-            backend_expected = 19 if native and name == 'witness' else 1 if name == 'witness-refused' else 0
+            backend_expected = 19 if native_available else 1 if native_requested else 0
             backend_receipts = [line for line in checked['output'].splitlines()
                                 if line.startswith('ARM_MEMORY_CYCLE_BACKEND_CASES,')]
             if backend_receipts != ['ARM_MEMORY_CYCLE_BACKEND_CASES,'+str(backend_expected)]:
                 raise ValueError('Missing complete native memory-cycle backend controls')
             # Native and forced-refusal builds must execute every exact memory-cycle boundary control.
-            cycle_expected = 7236 if native or name == 'witness-refused' else 0
+            cycle_expected = 7236 if native_requested else 0
             cycle_receipts = [line for line in checked['output'].splitlines()
                               if line.startswith('ARM_MEMORY_CYCLE_FRAME_CASES,')]
             if cycle_receipts != ['ARM_MEMORY_CYCLE_FRAME_CASES,'+str(cycle_expected)]:
                 raise ValueError('Missing complete native memory-cycle frame controls')
             # Literal resident kernels must execute, while refused hosts prove every owner stays inactive.
-            resident_backend_expected = 47 if native and name == 'witness' else 3 if name == 'witness-refused' else 0
+            resident_backend_expected = 47 if native_available else 3 if native_requested else 0
             resident_backend_receipts = [line for line in checked['output'].splitlines()
                                          if line.startswith('ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,')]
             if resident_backend_receipts != ['ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES,'+str(resident_backend_expected)]:
                 raise ValueError('Missing complete resident memory-cycle backend controls')
             # Residency must cover early guards and write-only lanes in both execution modes.
-            resident_expected = 12328 if native or name == 'witness-refused' else 0
+            resident_expected = 12328 if native_requested else 0
             resident_receipts = [line for line in checked['output'].splitlines()
                                  if line.startswith('ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,')]
             if resident_receipts != ['ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,'+str(resident_expected)]:
@@ -210,7 +244,7 @@ def qualify(checks, compiler, *, native=True):
                                   if line.startswith(marker+',')]
                 if chain_receipts != [marker+',120']:
                     raise ValueError('Missing complete bounded continuation '+shape+' controls')
-            prefix_native = native and name == 'witness'
+            prefix_native = native_available
             for marker, count, kind in (
                     ('ARM_PREFIX_READ_FRAME_CASES', 662, 'frame'),
                     ('ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES', 177, 'source boundary'),
@@ -225,20 +259,20 @@ def qualify(checks, compiler, *, native=True):
                 if prefix_receipts != [marker+','+str(count)]:
                     raise ValueError('Missing complete prefix-read '+kind+' controls')
             # The CLI result carries only genuine native coverage, not inferred source-shape visits.
-            mode = 'refused' if name == 'witness-refused' else 'native' if native else 'interpreted'
+            mode = 'native' if native_available else 'refused' if native_requested else 'interpreted'
             checked['dirty_loop'] = dirty_loop_witness(checked['output'], mode)
             checked['direct_branch'] = direct_branch_witness(checked['output'], mode)
-        if native and name == 'witness':
+        if name.startswith('witness') and native_available:
             # Genuine two/three-block caches and every inactive charge record must retain exact scalar mismatch refusal.
             matches = [line for line in checked['output'].splitlines()
                        if line.startswith('ARM_REGION_SCALAR_MATCH_CASES,')]
             if matches != ['ARM_REGION_SCALAR_MATCH_CASES,111']:
                 raise ValueError('Missing complete scalar region-charge witness')
         checked['build'] = {key:value for key,value in built.items() if key != 'output'}
-        if name == 'witness-refused' or (native and name == 'witness'):
+        if name.startswith('witness') and native_requested:
             # The existing independent witness must prove real publication/calls or an exact zero-count refusal.
             receipts = [line for line in checked['output'].splitlines() if line.startswith('TRANSFER_STATS,')]
-            expected_counts = [1, 2] if name == 'witness' else [0, 0]
+            expected_counts = [1, 2] if native_available else [0, 0]
             if receipts != ['TRANSFER_STATS,'+','.join(map(str, expected_counts))]:
                 raise ValueError('Missing native publication/execution witness: '+name)
             checked['native_publications'], checked['native_calls'] = expected_counts
@@ -289,7 +323,12 @@ def main():
     for parent in ('src','native/pvm_jit'):
         for path in sorted((ROOT/parent).rglob('*')):
             if path.is_file(): identities[path] = digest(path)
-    for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,ROOT/'tests/performance/pvm_sieve_clock.h',ROOT/'tests/performance/pvm_arm64_jit_witness.nim',ROOT/'tests/performance/pvm_arm64_jit_memory.c',ROOT/'tests/performance/pvm_arm64_jit_ownership.nim']:
+    for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,
+                 ROOT/'tests/performance/pvm_sieve_clock.h',
+                 ROOT/'tests/performance/pvm_arm64_jit_witness.nim',
+                 ROOT/'tests/performance/pvm_arm_macro_backend.nim',
+                 ROOT/'tests/performance/pvm_arm64_jit_memory.c',
+                 ROOT/'tests/performance/pvm_arm64_jit_ownership.nim']:
         identities[path] = digest(path)
     images = {}
     for mode in ('interpreter','baseline','jit'):
