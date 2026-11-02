@@ -160,28 +160,30 @@ class Arm64DirectBranchReceiptTests(unittest.TestCase):
 
 class ArmMacroReceiptTests(unittest.TestCase):
     expected = {
-        'native': (31, 13524, 1),
-        'native-refused': (3, 13524, 0),
-        'macro-refused': (3, 13524, 0),
-        'interpreted': (0, 0, 0),
+        'native': (31, 13524, 1, 162),
+        'native-refused': (3, 13524, 0, 0),
+        'macro-refused': (3, 13524, 0, 162),
+        'interpreted': (0, 0, 0, 0),
     }
     markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
                'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
-               'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE')
+               'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
+               'ARM_MACRO_LINKED_FALLBACK_CASES')
 
     @classmethod
     def fixture(cls, mode):
-        backend, frame, active = cls.expected[mode]
-        counts = (backend, frame, active, active, active, active)
+        backend, frame, active, linked = cls.expected[mode]
+        counts = (backend, frame, active, active, active, active, linked)
         return ''.join(f'{marker},{count}\n' for marker, count in zip(cls.markers, counts))
 
     def test_valid_native_refused_and_plain_fixtures(self):
-        for mode, (backend, frame, active) in self.expected.items():
+        for mode, (backend, frame, active, linked) in self.expected.items():
             with self.subTest(mode=mode):
                 receipt = macro_witness_receipts(self.fixture(mode), mode)
                 self.assertEqual(receipt['ARM_MACRO_BACKEND_CASES'], backend)
                 self.assertEqual(receipt['ARM_MACRO_FRAME_CASES'], frame)
                 self.assertEqual(receipt['ARM_MACRO_OWNER_MOVE'], active)
+                self.assertEqual(receipt['ARM_MACRO_LINKED_FALLBACK_CASES'], linked)
 
     def test_each_receipt_rejects_missing_truncated_and_duplicate(self):
         for mode in self.expected:
@@ -201,8 +203,6 @@ class ArmMacroReceiptTests(unittest.TestCase):
             for wrong_mode in self.expected:
                 if wrong_mode == expected_mode:
                     continue
-                if {wrong_mode, expected_mode} == {'native-refused', 'macro-refused'}:
-                    continue  # Their receipts intentionally have the same inactive counts.
                 with self.subTest(expected=expected_mode, actual=wrong_mode):
                     with self.assertRaises(ValueError):
                         macro_witness_receipts(self.fixture(wrong_mode), expected_mode)

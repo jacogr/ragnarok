@@ -131,6 +131,7 @@ def macro_witness_receipts(output, mode):
         'ARM_MACRO_LATE_READ_REFUND': 1 if mode == 'native' else 0,
         'ARM_MACRO_SIGNED_BACKEDGE': 1 if mode == 'native' else 0,
         'ARM_MACRO_OWNER_MOVE': 1 if mode == 'native' else 0,
+        'ARM_MACRO_LINKED_FALLBACK_CASES': 162 if mode in ('native', 'macro-refused') else 0,
     }
     lines = output.splitlines()
     for marker, count in expected.items():

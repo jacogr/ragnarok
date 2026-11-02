@@ -3034,6 +3034,14 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     destination
 
   when defined(pvmArmMacroReceipt):
+    proc flatArmRefuseResidentCycleReceipt*(f: var FlatFrame) =
+      ## Exercise actual source discovery, linked publication and Frame handler installation.
+      assert f.plan.allowNative
+      if f.armJit == nil: f.armJit = newArmJit()
+      let jit {.cursor.} = f.armJit
+      assert jit != nil
+      if jit != nil: armRefuseResidentCycleReceipt(jit)
+
     func flatArmMacroStatistics*(f: FlatFrame): array[7, uint64] =
       ## Receipt-only copied activity proves actual joined execution independently of guest results.
       let jit {.cursor.} = f.armJit
@@ -3049,7 +3057,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var decide = false
     block:
       let jit {.cursor.} = f.armJit
-      if jit != nil and armMacroStatus(jit) == 0 and destination == armMacroCycleExit(jit):
+      if jit != nil and armResidentMemoryCycleActive(jit) and
+          armMacroStatus(jit) == 0 and destination == armMacroCycleExit(jit):
         decide = armMacroProbeReady(jit)
     if not decide: return destination
     let before = armClock()
@@ -3080,7 +3089,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     assert f.handlers[int(prefix)] == flatCharge
     f.armOriginal[int(prefix)] = f.handlers[int(prefix)]
-    f.handlers[int(prefix)] = flatArmMacroProbe
+    f.handlers[int(prefix)] = if armResidentMemoryCycleActive(jit): flatArmMacroProbe
+      else: flatArmMemoryCycle
 
   proc flatArmMemoryCycleStatistics*(f: FlatFrame): array[6, uint64] =
     ## Copied diagnostics separate outer bridges from nested child visits and word groups.

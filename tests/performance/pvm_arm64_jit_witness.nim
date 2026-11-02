@@ -3529,6 +3529,30 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
       echo "ARM_MACRO_OWNER_MOVE,1"
     else:
       echo "ARM_MACRO_OWNER_MOVE,0"
+    when not defined(pvmArm64JitRefuse):
+      # A real resident decline must install the smaller linked driver, never a resident-only observer.
+      var linked = newFlatFrame(plan, [page], info)
+      flatArmRefuseResidentCycleReceipt(linked)
+      for warm in 0..<16: verifyControl(linked, guestProgram, info, 4096, [page])
+      assert not flatArmResidentMemoryCycleActive(linked)
+      assert flatArmMemoryCycleStatistics(linked)[0] > 0
+      assert flatArmMacroStatistics(linked) == default(array[7, uint64])
+      var linkedCases = 0
+      for budget in 0'u64..160'u64:
+        verifyControl(linked, guestProgram, info, budget, [page])
+        inc linkedCases
+      var linkedCache = takeFlatStream(linked)
+      var linkedFresh = newFlatFrame(plan, [page], replacement)
+      restoreFlatStream(linkedFresh, linkedCache)
+      let beforeLinked = flatArmMemoryCycleStatistics(linkedFresh)[0]
+      verifyControl(linkedFresh, guestProgram, replacement, 4096, [page])
+      assert flatArmMemoryCycleStatistics(linkedFresh)[0] > beforeLinked
+      assert not flatArmResidentMemoryCycleActive(linkedFresh)
+      assert flatArmMacroStatistics(linkedFresh) == default(array[7, uint64])
+      inc linkedCases
+      echo "ARM_MACRO_LINKED_FALLBACK_CASES,", linkedCases
+    else:
+      echo "ARM_MACRO_LINKED_FALLBACK_CASES,0"
     controls
 
   let macroBackendCases = armMacroBackendControls()
@@ -3536,6 +3560,7 @@ when defined(pvmArm64Jit) and defined(pvmArmMacroReceipt):
 else:
   let macroBackendCases = 0
   let macroFrameCases = 0
+  echo "ARM_MACRO_LINKED_FALLBACK_CASES,0"
   echo "ARM_MACRO_ACTIVE,0"
   echo "ARM_MACRO_SIGNED_BACKEDGE,0"
   echo "ARM_MACRO_LATE_READ_REFUND,0"

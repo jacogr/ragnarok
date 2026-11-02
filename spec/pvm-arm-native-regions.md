@@ -15,6 +15,34 @@ Each block tests zero attempts before price, then the full source span before mu
 
 Global calls/branches/headers count one C-to-arena entry. Native operations include genuine scalar40/88/1 work and completed child operations; folded noops count only source attempts. Nested cycle calls have separate counters. Existing memoryCycle.calls continues to count C-to-arena cycle entries. Return-time gas and attempt conservation checks cover every semantic category.
 
+## Linked publication fallback regression
+
+Independent review of b32ad5c found that a successful smaller linked-cycle
+publication installed the resident-only macro observer. Its first eligible exit
+called armMacroCycleExit, whose resident-mode precondition correctly rejected the
+linked cache. This was a real assertion failure; the original resident-only
+Frame fixtures missed the publication outcome.
+
+The observer is now installed only for resident cycles. The observer itself also
+checks resident eligibility before the resident-only getter. Linked cycles keep
+the original flatArmMemoryCycle handler directly.
+
+A per-owner, receipt-only fault injection declines resident publication while
+leaving actual source discovery and linked publication intact. The new Frame
+regression reproduced the assertion on the unfixed code. After the fix it checks
+all budgets 0 through 160, full Step CPU/memory results and actual linked activity
+after moving the code cache into a fresh frame. It proves resident/macro work
+stays inactive. The 162-case receipt is mandatory in native and macro-append-refused
+builds; native-storage-refused and plain builds report zero. Paired positive,
+missing, truncated and duplicate protocol fixtures cover this seventh receipt.
+All four complete local main-witness builds pass, and all 19 Python tests pass.
+Evidence is in build/pvm-arm-native-regions/linked-fallback/audit.json, including
+the original failing execution and all fixed source hashes.
+
+The local measurements below and the separately retained first Linux replay belong to original head
+b32ad5c1508adee22789cc913d207ed0e6f01e65, before this eligibility fix. They are
+preserved as measured evidence; they do not qualify the follow-up source.
+
 ## Final default-path qualification
 
 The production source enables the admitted graph in the regular ARM path. Copied Frame/stream/prepared activity diagnostics are guarded by pvmArmMacroReceipt; no Prototype behavior define is required. Runtime SHA256:
@@ -23,7 +51,7 @@ The production source enables the admitted graph in the regular ARM path. Copied
 - handler_stream.nim: `4d3c7f0cd3f16eace31ade85cc563e5fc3cc5a63e60c7deaafbbcae9c9c5d586`
 - step.nim: `1e4ee7636d575e5583bfb3be3954d27395b1c0858c26b3158d64f3a06e6d6f5f`
 
-The complete 12-row maintained ARM qualification and plain witness pass on this runtime, including normal, native-storage refusal, macro append refusal, all-opcodes, host and four ownership orders. The final controller additionally skips the native-only macro append-refusal build on checked-only hosts; that controller-only correction leaves the qualified ARM command matrix and every compiled source unchanged. All six new mandatory receipts have paired native/refused/plain positives and independent missing/truncated/duplicate negatives; the Python suite passes 19 tests.
+The complete 12-row maintained ARM qualification and plain witness pass on this runtime, including normal, native-storage refusal, macro append refusal, all-opcodes, host and four ownership orders. The final controller additionally skips the native-only macro append-refusal build on checked-only hosts; that controller-only correction leaves the qualified ARM command matrix and every compiled source unchanged. All original six mandatory receipts have paired native/refused/plain positives and independent missing/truncated/duplicate negatives; the Python suite passes 19 tests.
 
 Final-source public qualification passes 18 full 13-call cohorts plus six DOOM assertion/state/event negatives. The eight actual final timing images also pass 48 positives and 112 assertion/state/event negatives. All 555 public qualification identities and 1,049 final pilot source/image/fixture identities were independently checked. Native macro activity remains exactly the same as the private prototype.
 

@@ -120,6 +120,8 @@ type
     mixedGroupPublished, mixedGroupAttempts, mixedGroupPasses: uint64
     memoryCycle: ArmMemoryCycleCache
     macroRoute: ArmMacroCache
+    when defined(pvmArmMacroReceipt):
+      residentCycleRefused: bool # Receipt-only injection leaves linked publication available.
 
 proc `=copy`(destination: var ArenaOwner, source: ArenaOwner) {.error.}
   ## Reject copying the exclusive native executable arena owner.
@@ -1885,8 +1887,16 @@ proc publishArmMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   jit.memoryCycle.status = 2
   true
 
+when defined(pvmArmMacroReceipt):
+  proc armRefuseResidentCycleReceipt*(jit: ArmJit) =
+    ## Force only resident admission to decline, preserving the genuine linked fallback.
+    assert jit.memoryCycle.status == 0
+    jit.residentCycleRefused = true
+
 proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
   ## Compose already admitted dirty/direct-read cores into one resident guest-register bank.
+  when defined(pvmArmMacroReceipt):
+    if jit.residentCycleRefused: return false
   if jit.memoryCycle.status != 0: return false
   if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
     return false # The old linked driver may still fit when this larger image does not.
