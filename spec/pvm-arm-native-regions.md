@@ -15,6 +15,75 @@ Each block tests zero attempts before price, then the full source span before mu
 
 Global calls/branches/headers count one C-to-arena entry. Native operations include genuine scalar40/88/1 work and completed child operations; folded noops count only source attempts. Nested cycle calls have separate counters. Existing memoryCycle.calls continues to count C-to-arena cycle entries. Return-time gas and attempt conservation checks cover every semantic category.
 
+## Final fixed-head Linux ARM qualification
+
+Run [41401353716](https://github.com/jacogr/ragnarok/actions/runs/41401353716) passed on runtime head `851f6db63c9b9cb4c59cfdb7bbb35d2f46294d68` against exact d74. Artifact 13122271929 ZIP SHA256: `8ee507fd652cc0e437d7317702b1fc514788d88b93d26ccec2269617a7e43e34`. Application/native report SHA256: `716e008aabefc1955c44d4ba467d6c4d928bc0898c94a8ecb6b8d20a941ed786` / `9c4fe4605e3ba42e13325132d099d033849ba69eb9c19af42b97a3f72cdeab07`.
+
+The author independently verified all 2,575 role and 519 native source hashes, 84 primary and 60 scheduled replay parses, 138 positive/refusal controls, all 12 qualification rows and all seven macro receipts, and 18 image equalities. Independent review additionally matched 317 raw/embedded logs and smoke source hashes. Native semantic-work receipts match original b32 across workloads; both interpreter policies report zero native work.
+
+Six scheduled replay pairs use CPU medians from fixed sample indices 3 through 12, keeping every process and outlier. Millisecond source-group brackets below are min / median / mean / max; change is ratio of source-group medians.
+
+| Workload | Baseline CPU ms | Candidate CPU ms | Change | Faster pairs | Ranges overlap |
+| --- | --- | --- | ---: | ---: | --- |
+| tick | 20.888172 / 20.904200 / 20.910749 / 20.942672 | 16.358544 / 16.400274 / 16.397874 / 16.425560 | -21.545555% | 6/6 | False |
+| init | 141.587732 / 142.225352 / 142.212984 / 143.021880 | 140.700664 / 140.892384 / 140.995792 / 141.820412 | -0.937223% | 5/6 | True |
+| minimal | 5.208628 / 5.214464 / 5.234046 / 5.280044 | 5.214788 / 5.280094 / 5.263931 / 5.294432 | +1.258614% | 1/6 | True |
+| pinky | 78.429584 / 78.521476 / 78.530676 / 78.635784 | 79.508044 / 79.706712 / 79.683076 / 79.767272 | +1.509442% | 0/6 | False |
+| sieve | 253.272344 / 253.357410 / 253.365935 / 253.542256 | 270.594620 / 270.738136 / 271.682662 / 273.711648 | +6.860161% | 0/6 | False |
+
+**Sieve +6.860161% and Pinky +1.509442% are repeatable costs**, with all six candidate processes slower and nonoverlapping ranges. Sieve remains slower in calls 3–7 (+6.843755%) and calls 8–12 (+6.880703%); no causal attribution or warmup dismissal is made. Minimal is +1.258614% by median (five slower, overlapping; mean +0.570980%). Init is -0.937223% (five faster, overlapping). Native DOOM tick is -21.545555%, all six faster/nonoverlapping.
+
+The tradeoff is accepted for the explicit DOOM-first application priority and the larger native-region architecture gain. It is not an all-workload improvement. Sieve remains a follow-up performance target; neither its final cost nor the separate earlier costs are suppressed.
+
+Primary two-process results are a separate cohort. Each baseline/candidate cell gives median CPU milliseconds; direction and overlap refer to those two process medians.
+
+| Workload / policy | Baseline ms | Candidate ms | Change | Faster pairs | Ranges overlap |
+| --- | ---: | ---: | ---: | ---: | --- |
+| init/0 / jit | 141.784546 | 141.699824 | -0.059754% | 2/2 | True |
+| init/0 / interpreter | 317.630100 | 316.641482 | -0.311248% | 2/2 | False |
+| memset/100000 / jit | 3.290964 | 3.292858 | +0.057552% | 0/2 | True |
+| memset/100000 / interpreter | 3.443876 | 3.453268 | +0.272716% | 0/2 | True |
+| minimal/100000 / jit | 5.281336 | 5.248500 | -0.621737% | 1/2 | True |
+| minimal/100000 / interpreter | 5.478022 | 5.481478 | +0.063088% | 1/2 | True |
+| pinky/1 / jit | 78.393218 | 79.543130 | +1.466851% | 0/2 | False |
+| pinky/1 / interpreter | 86.165196 | 86.865014 | +0.812182% | 0/2 | False |
+| sieve/100000 / jit | 2.591908 | 2.575374 | -0.637908% | 2/2 | False |
+| sieve/100000 / interpreter | 3.061670 | 3.070612 | +0.292063% | 0/2 | False |
+| sieve/10000000 / jit | 253.438526 | 270.808770 | +6.853829% | 0/2 | False |
+| sieve/10000000 / interpreter | 321.088920 | 319.813048 | -0.397358% | 2/2 | False |
+| tick/0 / jit | 20.932636 | 16.409620 | -21.607484% | 2/2 | False |
+| tick/0 / interpreter | 28.087940 | 27.384558 | -2.504214% | 2/2 | False |
+
+Final primary raw ours / PolkaVM interpreted: DOOM tick **0.409536589 native / 0.683439255 interpreter**; init **0.224924948 / 0.502615790**. Primary native tick is -21.607484% and interpreted tick -2.504214%, both pairs agree with nonoverlapping ranges. Primary native large Sieve is +6.853829%, Pinky +1.466851%; both pairs agree/nonoverlapping.
+
+Cold native diagnostics use the same six replay processes, with min / median / mean / max brackets in milliseconds. Constructor and first-call values are process CPU. Native preparation/publication is the owner's cumulative process CPU diagnostic across the retained calls; it is already included in those calls and is not added to first-call or lifecycle totals.
+
+| Workload / source | Constructor CPU ms | First-call CPU ms | Native preparation/publication CPU ms |
+| --- | --- | --- | --- |
+| tick / baseline | 8.543624 / 8.608692 / 8.614437 / 8.737656 | 32.154592 / 32.406500 / 32.418647 / 32.632320 | 2.386776 / 2.416412 / 2.441731 / 2.592336 |
+| tick / jit | 8.533208 / 8.587044 / 8.581925 / 8.629632 | 27.178512 / 27.506376 / 27.601629 / 28.114280 | 2.387192 / 2.396180 / 2.404612 / 2.439144 |
+| init / baseline | 8.539744 / 8.632852 / 8.622729 / 8.698320 | 163.904344 / 164.379956 / 164.320769 / 164.774736 | 7.676432 / 7.824216 / 7.821087 / 7.926040 |
+| init / jit | 8.497920 / 8.645668 / 8.616296 / 8.713136 | 162.366576 / 162.727924 / 162.691524 / 162.862664 | 7.652248 / 7.797272 / 7.772885 / 7.863824 |
+| minimal / baseline | 0.016672 / 0.017588 / 0.017655 / 0.018848 | 5.418448 / 5.438280 / 5.448933 / 5.511552 | 0.094256 / 0.098688 / 0.098125 / 0.100784 |
+| minimal / jit | 0.017592 / 0.019652 / 0.019355 / 0.020472 | 5.421328 / 5.499468 / 5.480072 / 5.531672 | 0.089240 / 0.097264 / 0.097032 / 0.106976 |
+| pinky / baseline | 0.703352 / 0.723152 / 0.720539 / 0.729296 | 83.005504 / 83.183908 / 83.140555 / 83.233576 | 1.816568 / 1.857772 / 1.866443 / 1.936376 |
+| pinky / jit | 0.694224 / 0.728960 / 0.734480 / 0.792040 | 83.959496 / 84.265628 / 84.222363 / 84.369480 | 1.847944 / 1.886532 / 1.882736 / 1.906400 |
+| sieve / baseline | 2.810984 / 2.872512 / 2.867213 / 2.920856 | 260.925744 / 261.238108 / 261.225740 / 261.435632 | 3.078448 / 3.122496 / 3.115607 / 3.136592 |
+| sieve / jit | 2.845768 / 2.865944 / 2.910803 / 3.019584 | 278.096336 / 279.161424 / 279.670120 / 281.582592 | 3.027440 / 3.065984 / 3.080941 / 3.188432 |
+
+Interpreted DOOM cold CPU uses the separate two primary processes per source. Native preparation/publication is exactly zero. Milliseconds retain min / median / mean / max.
+
+| Phase / source | Constructor CPU ms | First-call CPU ms |
+| --- | --- | --- |
+| tick / baseline_interpreter | 8.616824 / 8.641796 / 8.641796 / 8.666768 | 36.308456 / 36.734324 / 36.734324 / 37.160192 |
+| tick / interpreter | 8.578200 / 8.670536 / 8.670536 / 8.762872 | 35.607872 / 35.905924 / 35.905924 / 36.203976 |
+| init / baseline_interpreter | 8.695480 / 8.699200 / 8.699200 / 8.702920 | 328.968144 / 329.739252 / 329.739252 / 330.510360 |
+| init / interpreter | 8.556088 / 8.641832 / 8.641832 / 8.727576 | 328.463560 / 328.594604 / 328.594604 / 328.725648 |
+
+DOOM tick first-call CPU is 32.406500 to 27.506376 ms (-15.120806%). Sieve first-call CPU is 261.238108 to 279.161424 ms (+6.860912%). The initial b32 Linux replay remains separate: tick -21.573525%, Sieve +2.450383%, Pinky +1.316827%. Those measurements do not replace the stronger fixed-head Sieve cost.
+
+Fixed runtime SHA256: handler_stream.nim `e89d9fd9bea2825aa1336adbef434e9d2d8aaad5bcd706f8d871aa045d315b28`, arm64_jit.nim `56b915188a108bac36efd5acf4b230e60ff53cdf42e491811eac202cc1158316`; step.nim remains `1e4ee7636d575e5583bfb3be3954d27395b1c0858c26b3158d64f3a06e6d6f5f`. Author audit: build/pvm-arm-native-regions/ci-fixed-audit.json. Independent complete source/cold record: /tmp/review1894/fixed/final-cold-source-record.json.
+
 ## Linked publication fallback regression
 
 Independent review of b32ad5c found that a successful smaller linked-cycle
@@ -107,7 +176,7 @@ Native tick receipts change from 1,013 to 1,014 fragments, 10,584,184 to 5,602,6
 
 The 108-process runner stopped during postprocessing on an obsolete assumption that baseline and candidate native counters must be equal. All 108 timed processes had already passed and their 1,404 samples were saved. The original results retain status incomplete and original script/hash; separate analysis and independent reparse establish the complete results without rerunning any process.
 
-Cold CPU diagnostics below retain every group. Values are milliseconds in min / median / mean / max order. Compilation is process CPU already included in the relevant first call; it is not added again.
+Cold CPU diagnostics below retain every group. Values are milliseconds in min / median / mean / max order. Compilation is cumulative process CPU already included in the measured calls; it is not added again.
 
 | DOOM workload / source | Constructor CPU | First call CPU | Native preparation CPU |
 | --- | --- | --- | --- |
