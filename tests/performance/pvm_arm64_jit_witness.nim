@@ -1344,6 +1344,199 @@ for shape in 0..<6:
 
 echo "ARM_READ_SPAN_CONTROL_CASES,", readSpanCases
 
+when defined(pvmArm64Jit):
+  block immediateShiftControls:
+    # Each literal is decoded by the independent program owner before native emission.
+    # The one-step interpreter supplies full-register expectations for aliases and high bits.
+    let counts = [0'u64, 1, 2, 15, 16, 22, 31, 32, 33, 63, 64, 65, 127,
+      0x8000000000000000'u64, high(uint64)]
+    let values = [0'u64, 1, 0xffffffff80000000'u64, high(uint64),
+      0x123456789abcdef0'u64]
+    # These are independent Clang-assembled bitfield-immediate words. The
+    # complete count/value matrix below proves semantics by native execution.
+    let goldenShift: array[6, array[4, uint32]] = [
+      [0x53007ca4'u32, 0x531f78a4'u32, 0x530100a4'u32, 0x53007ca4'u32],
+      [0x53007ca4'u32, 0x53017ca4'u32, 0x531f7ca4'u32, 0x53007ca4'u32],
+      [0x13007ca4'u32, 0x13017ca4'u32, 0x131f7ca4'u32, 0x13007ca4'u32],
+      [0xd340fca4'u32, 0xd37ff8a4'u32, 0xd34100a4'u32, 0xd340fca4'u32],
+      [0xd340fca4'u32, 0xd341fca4'u32, 0xd37ffca4'u32, 0xd340fca4'u32],
+      [0x9340fca4'u32, 0x9341fca4'u32, 0x937ffca4'u32, 0x9340fca4'u32]]
+    let goldenAliased = [0x531f7a10'u32, 0x53017e10'u32, 0x13017e10'u32,
+      0xd37ffa10'u32, 0xd341fe10'u32, 0x9341fe10'u32]
+    var checked = 0
+    for opcode in [138'u8, 139, 140, 151, 152, 153]:
+      for count in counts:
+        for aliasCase in 0..<3:
+          let sourceSlot = if aliasCase == 0: 1 else: (if aliasCase == 1: 0 else: 12)
+          let destinationSlot = if aliasCase == 0: 0 else: sourceSlot
+          var encoded = @[opcode, byte(sourceSlot*16+destinationSlot)]
+          for octet in 0..<4:
+            encoded.add(byte((count shr (octet*8)) and 255))
+          let program = owner([encoded, @[1'u8]])
+          let decoded = instruction(program, CodeAddress(0))
+          let mask = if opcode <= 140: 31'u64 else: 63'u64
+          assert decoded.error == ProgramError.None and
+            (uint64(decoded.value.x) and mask) == (count and mask)
+          let slots = instructionRegisters(decoded)
+          var body = default(ArmBlock)
+          emitArmOperation(body, opcode, slots, count)
+          var words = armInstructions(body)
+          assert words.len == (if opcode <= 140: 4 else: 3)
+          let row = if opcode <= 140: int(opcode)-138 else: int(opcode)-151+3
+          if aliasCase == 0:
+            let width = if opcode <= 140: 32'u64 else: 64'u64
+            let column = if count == 0: 0 elif count == 1: 1
+              elif count == width-1: 2 elif count == width: 3 else: -1
+            if column >= 0: assert words[1] == goldenShift[row][column]
+            if opcode <= 140: assert words[2] == 0x93407c84'u32
+          elif aliasCase == 2 and count == 1:
+            assert words[1] == goldenAliased[row]
+            if opcode <= 140: assert words[2] == 0x93407e10'u32
+          when defined(pvmImmediateReceipt):
+            echo "ARM_IMMEDIATE_SHIFT,", opcode, ",", count, ",", sourceSlot+4,
+                ",", destinationSlot+4, ",", words[1], ",",
+                (if opcode <= 140: words[2] else: 0'u32)
+          let jit = newArmJit()
+          assert armEntry(jit, 0, 1) == 0
+          let published = publishArmEntry(jit, 0, 1, 1, words)
+          when defined(pvmArm64JitRefuse):
+            assert not published
+          else:
+            assert published
+            let memory = captureMemory(newSeq[PageImage](0), PageLimit(2)).value
+            for value in values:
+              var initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+                  registers: default(RegisterFile))
+              for slot in 0..<13:
+                initial.registers[slot] = RegisterValue(0x23456789abcdef00'u64+uint64(slot))
+              initial.registers[sourceSlot] = RegisterValue(value)
+              let machine = captureMachine(program, memory, initial).value
+              let step = stepOnce(machine, GasCycleLimit(100000))
+              assert step.error == StepError.None
+              let expected = machineInfo(step.value.machine).value.registers
+              var actual = initial.registers
+              assert callArmEntry(jit, 0, actual) == 1
+              if actual != expected:
+                echo "ARM_IMMEDIATE_MISMATCH,", opcode, ",", count, ",", value, ",",
+                    uint64(actual[destinationSlot]), ",", uint64(expected[destinationSlot])
+              assert actual == expected
+              inc checked
+    echo "ARM_IMMEDIATE_SHIFT_CASES,", checked
+
+  block immediateAddressControls:
+    # Positive/negative 12-bit endpoints, just-outside fallbacks, and zero all
+    # execute through a genuine individual-guard span and a one-read leaf.
+    let displacements = [0'u32, 1, 4095, 4096, 0xffffefff'u32,
+      0xfffff000'u32, 0xfffff001'u32, 0xffffffff'u32]
+    var checked = 0
+    var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly)
+    for at in 0..<4096: page.bytes[at] = byte(at mod 256)
+    let expectedWord = 0x0a09080706050403'u64
+    for displacement in displacements:
+      var load = @[130'u8, 0x12]
+      for octet in 0..<4: load.add(byte((displacement shr (octet*8)) and 255))
+      var second = @[130'u8, 0x45]
+      for octet in 0..<4: second.add(byte((displacement shr (octet*8)) and 255))
+      let program = owner([load, @[100'u8, 0x14], second, @[100'u8, 0x56], @[1'u8]])
+      let leaf = owner([@[130'u8, 0x11, load[2], load[3], load[4], load[5]], @[0'u8]])
+      let leafSlots = instructionRegisters(instruction(leaf, CodeAddress(0)))
+      let jit = newArmJit()
+      assert armEntry(jit, 0, 1) == 0
+      var body = default(ArmBlock)
+      var words = armMemoryInstructions(body, leafSlots, displacement, 37)
+      let published = publishArmEntry(jit, 0, 37, 1, words)
+      when defined(pvmArm64JitRefuse):
+        assert not published
+      else:
+        assert published
+      for highBits in [0'u64, 0x100000000'u64]:
+        for effective in [65539'u32, 65535'u32, 0xfffffff8'u32]:
+          var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+              registers: default(RegisterFile))
+          let base = effective-displacement # Deliberate modulo-2^32 source address.
+          info.registers[1] = RegisterValue(highBits+uint64(base))
+          var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+          verifyControl(frame, program, info, 100, [page])
+          when not defined(pvmArm64JitRefuse):
+            if effective == 65539'u32:
+              # The positive case must reach the individual-guard native read span.
+              let stats = flatArmStatistics(frame)
+              assert stats[1] > 0 and stats[2] >= 4
+            var descriptors = default(array[3, array[3, uint64]])
+            descriptors[0] = [65536'u64, 4089'u64, cast[uint64](addr page.bytes[0])]
+            var registers = info.registers
+            let before = registers
+            let result = callArmMemory(jit, 0, registers, descriptors)
+            if effective == 65539'u32:
+              assert result == 37 and uint64(registers[1]) == expectedWord
+              for slot in 0..<13:
+                if slot != 1: assert registers[slot] == before[slot]
+            else:
+              assert result == high(uint32) and registers == before
+          inc checked
+    echo "ARM_IMMEDIATE_ADDRESS_CASES,", checked
+    # The first body word follows the context move and one live-in load.
+    # These endpoint literals came from an independent Clang assembly.
+    let goldenAddress: array[2, array[5, uint32]] = [
+      [0x11000083'u32, 0x11000483'u32, 0x113ffc83'u32,
+       0x513ffc83'u32, 0x51000483'u32],
+      [0x11000203'u32, 0x11000603'u32, 0x113ffe03'u32,
+       0x513ffe03'u32, 0x51000603'u32]]
+    let addressOffsets = [0'u32, 1, 4095, 0xfffff001'u32, 0xffffffff'u32]
+    for sourceSlot in 0..<13:
+      for offsetIndex in 0..<5:
+        let displacement = addressOffsets[offsetIndex]
+        var encoded = @[130'u8, byte(sourceSlot*16+2)]
+        for octet in 0..<4:
+          encoded.add(byte((displacement shr (octet*8)) and 255))
+        let fixture = owner([encoded, @[1'u8]])
+        let slots = instructionRegisters(instruction(fixture, CodeAddress(0)))
+        var span = default(ArmReadSpan)
+        emitArmRead(span, slots, displacement)
+        let words = armReadInstructions(span, 0)
+        if sourceSlot in [0, 12]:
+          assert words[2] == goldenAddress[if sourceSlot == 0: 0 else: 1][offsetIndex]
+        when defined(pvmImmediateReceipt):
+          echo "ARM_IMMEDIATE_ADDRESS_WORD,", displacement, ",", sourceSlot+4,
+              ",", words[2]
+
+  block immediateSuccessorControls:
+    # A successful span leaves its original block paid until the immediately
+    # following store, host, or terminal instruction owns that transition.
+    for mode in 0..<3:
+      var parts: seq[seq[byte]] = @[
+        @[130'u8, 0x99, 8, 0, 0, 0], @[100'u8, 0x92],
+        @[130'u8, 0x6a, 0, 0, 0, 0], @[100'u8, 0x33], @[100'u8, 0x33]]
+      if mode == 0: parts.add(@[123'u8, 0x64, 0, 0, 0, 0])
+      elif mode == 1: parts.add(@[10'u8, 7])
+      parts.add(@[0'u8])
+      let program = owner(parts)
+      var first = PageImage(index: PageIndex(17), access: PageAccess.ReadOnly)
+      for at in 0..<8: first.bytes[8+at] = byte(0x11+0x11*at)
+      var second = PageImage(index: PageIndex(18), access: PageAccess.ReadWrite)
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000),
+          registers: default(RegisterFile))
+      info.registers[9] = RegisterValue(69632)
+      info.registers[6] = RegisterValue(73728)
+      var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)),
+          [first, second], info)
+      for visit in 0..<40:
+        verifyControl(frame, program, info, 100, [first, second])
+      when not defined(pvmArm64JitRefuse):
+        assert flatArmStatistics(frame)[1] > 0
+      if mode == 0:
+        second.access = PageAccess.ReadOnly
+        assert replaceFlatMemoryChecked(frame, [first, second], info) == FlatError.None
+        verifyControl(frame, program, info, 100, [first, second])
+        assert frame.exit == StepExit.Fault and frame.info.pc == CodeAddress(18)
+      elif mode == 1:
+        assert frame.exit == StepExit.Host and frame.info.pc == CodeAddress(18)
+      else:
+        assert frame.exit == StepExit.Panic
+      assert frame.info.blockCharged
+      echo "ARM_IMMEDIATE_FOLLOW,", mode, ",", frame.exit, ",",
+          uint64(frame.info.pc), ",", frame.info.blockCharged
+
 block prefixReadSpanFrame:
   # A pure prefix writes R0 and R12 before an aliased indirect read. A later
   # signed word read either commits, faults, or needs checked fragmented replay.

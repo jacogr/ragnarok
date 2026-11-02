@@ -260,6 +260,25 @@ proc emitArmOperation*(fragment: var ArmBlock, opcode: byte, slots: RegisterSlot
       else: 0xaa0003e0'u32   # MOV Xd,Xn (ORR Xd,XZR,Xn)
     fragment.words.add(operation or (source shl (if opcode == 100: 16 else: 5)) or destination)
     return
+  if opcode in {138'u8..140'u8, 151'u8..153'u8}:
+    # Bitfield-immediate shifts use the same masked counts as the variable shifts.
+    # Read the original B before recording A so aliased operands retain GP ordering.
+    let source = armRead(fragment, slots.bIndex)
+    let destination = armWrite(fragment, slots.destinationIndex)
+    let wordShift = opcode <= 140
+    let width = if wordShift: 32'u32 else: 64'u32
+    let count = uint32(immediate and uint64(width-1))
+    let base = if opcode in {138'u8, 139, 151, 152}:
+      (if wordShift: 0x53000000'u32 else: 0xd3400000'u32)
+      else: (if wordShift: 0x13000000'u32 else: 0x93400000'u32)
+    let immr = if opcode in {138'u8, 151}: (width-count) and (width-1) else: count
+    let imms = if opcode in {138'u8, 151}: width-1-count else: width-1
+    fragment.words.add(base or (immr shl 16) or (imms shl 10) or
+        (source shl 5) or destination)
+    if wordShift:
+      # GP signed-word results extend the low 32 bits, including count zero.
+      fragment.words.add(0x93407c00'u32 or (destination shl 5) or destination)
+    return
   var left = 0'u32
   var right = 0'u32
   if opcode < 190:
@@ -653,15 +672,32 @@ func armReadEncoding(opcode: range[124..130]): uint32 =
   of 129: 0xb8a06800'u32 # LDRSW Xt,[Xn,Xm].
   else: 0xf8606800'u32 # LDR Xt,[Xn,Xm].
 
+proc armSmallIndirectAddress(words: var seq[uint32], source, displacement: uint32,
+    alreadyInW3: bool): bool =
+  ## A 32-bit ADD/SUB retains the source's modulo-2^32 address, including negative offsets.
+  assert source <= 16 and source != 31
+  let base = if alreadyInW3: 3'u32 else: source
+  if displacement <= 4095'u32:
+    if not alreadyInW3 or displacement != 0:
+      words.add(0x11000003'u32 or (displacement shl 10) or (base shl 5))
+    return true
+  if displacement >= 0xfffff001'u32:
+    let magnitude = high(uint32)-displacement+1'u32
+    words.add(0x51000003'u32 or (magnitude shl 10) or (base shl 5))
+    return true
+  false
+
 proc emitArmReadFrom(span: var ArmReadSpan, baseSlot, destinationSlot: range[0..12],
     displacement: uint32, opcode: range[124..130], absolute: bool = false) =
   ## Indirect aliases consume the old base; a direct load has the specified immediate address.
   let source = if absolute: 31'u32 else: armRead(span.body, baseSlot)
   let destination = armWrite(span.body, destinationSlot)
-  span.body.words.add(0x2a0003e3'u32 or (source shl 16)) # MOV W3,Wsource snapshots modulo-2^32 base.
-  span.body.words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
-  span.body.words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
-  span.body.words.add(0x0b020063'u32) # ADD W3,W3,W2 wraps the effective address exactly once.
+  if absolute or not armSmallIndirectAddress(span.body.words, source, displacement, false):
+    # Absolute source 31 is WZR in MOV but WSP in ADD-immediate; retain its old path.
+    span.body.words.add(0x2a0003e3'u32 or (source shl 16))
+    span.body.words.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+    span.body.words.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+    span.body.words.add(0x0b020063'u32)
   span.body.words.add(0xf140407f'u32) # CMP X3,#65536 rejects the protected prefix.
   armReadRefusal(span, 0x54000003'u32, true) # LO exits before accessing a descriptor pointer.
   span.body.words.add(0x12800102'u32) # MOV W2,#0xfffffff7 preserves the existing conservative bound.
@@ -836,9 +872,10 @@ proc armMemoryInstructions*(fragment: var ArmBlock, slots: RegisterSlots,
   result = @[]
   for index in 0..<leading: result.add(arithmetic[index])
   result.add(0xb9400003'u32 or (uint32(slots.bIndex) shl 11)) # LDR Waddress,[Xregisters,#slot*8].
-  result.add(0x52800002'u32 or ((displacement and 65535) shl 5))
-  result.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
-  result.add(0x0b020063'u32) # ADD Waddress,Waddress,Wdisplacement implements genuine modulo-2^32 addressing.
+  if not armSmallIndirectAddress(result, 3, displacement, true):
+    result.add(0x52800002'u32 or ((displacement and 65535) shl 5))
+    result.add(0x72a00002'u32 or ((displacement shr 16) shl 5))
+    result.add(0x0b020063'u32) # The fallback preserves every full 32-bit displacement.
   result.add(0xf140407f'u32) # CMP Xaddress,#65536 rejects the protected prefix.
   var refused: seq[int] = @[result.len]
   result.add(0x54000003'u32) # LO returns untouched to canonical memory preflight.
