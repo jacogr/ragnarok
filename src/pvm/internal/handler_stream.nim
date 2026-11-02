@@ -2657,20 +2657,36 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: 0'u64
     else: armDirtyWordGroups(jit)
 
+  template flatArmMemoryCore(continueNative: static[bool]; f: var FlatFrame;
+      offset: uint32): untyped =
+    ## Only a completed native read may continue in this activation. Refusals replay the original directly.
+    block:
+      var destination = flatStop
+      if f.barrier == flatStop:
+        block:
+          # End descriptor/register borrows before either mutable checked worker is invoked.
+          let jit {.cursor.} = f.armJit
+          assert jit != nil
+          if jit != nil:
+            destination = callArmMemory(jit, offset, f.info.registers, f.armMemory)
+        if destination != flatStop:
+          when continueNative:
+            let selected = f.handlers[int(destination)]
+            assert selected != nil
+            if selected != nil: return selected(f, destination)
+            return flatLocal(f, destination, oracle.StepError.InvalidPreparedProgram)
+          else:
+            return destination
+      let original = f.armOriginal[int(offset)]
+      assert original != nil
+      if original != nil: return original(f, offset)
+      flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+
   proc flatArmMemory(f: var FlatFrame, offset: uint32): uint32 =
-    ## A partial reservation uses the original source nodes; native guard refusal replays the untouched checked memory operation.
-    if f.barrier == flatStop:
-      block:
-        # End all descriptor/register borrows before a guard failure invokes the full mutable checked worker.
-        let jit {.cursor.} = f.armJit
-        assert jit != nil
-        if jit != nil:
-          let destination = callArmMemory(jit, offset, f.info.registers, f.armMemory)
-          if destination != flatStop: return destination
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
+    flatArmMemoryCore(false, f, offset)
+
+  proc flatArmReadContinue(f: var FlatFrame, offset: uint32): uint32 =
+    flatArmMemoryCore(true, f, offset)
 
   proc flatArmReadBody(f: FlatFrame, offset, ending: uint32): ArmReadSpan {.noinline.}
     ## Cold shared read IR is defined with the standalone read publisher below.
@@ -2967,7 +2983,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if not publishArmEntry(jit, offset, ending, count, words): return offset
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmMemory
+    let continuation = int(ending) < f.sites.len and
+        f.plan.facts[int(f.sites[int(ending)])].opcode == 1 and
+        not (int(ending)+1 < f.sites.len and
+          f.sites[int(ending)] == f.sites[int(ending)+1])
+    f.handlers[int(offset)] = if continuation: flatArmReadContinue else: flatArmMemory
     ending
 
   proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =

@@ -3390,3 +3390,207 @@ block boundedNativeFallbackLong:
     let native = flatArmStatistics(frame)
     assert native[0] == 0 and native[1] == 0 and native[2] == 0
   echo "BOUNDED_NATIVE_FALLBACK_LONG_CASES,", controls
+
+block cachedReadJumpContinuation:
+  ## A completed native read span retains canonical opcode-1 control and source accounting.
+  var controls = 0
+  for depth in [4, 64, 65]:
+    for folded in [false, true]:
+      var parts: seq[seq[byte]] = @[
+        @[130'u8, 0x12, 0, 0, 0, 0],
+        @[130'u8, 0x43, 0, 0, 0, 0]]
+      if folded: parts.add(@[2'u8])
+      for step in 2..<depth:
+        parts.add(@[149'u8, 0x44, 1])
+      parts.add(@[1'u8])
+      parts.add(@[0'u8])
+      let program = owner(parts)
+      var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+        bytes: default(array[4096, byte]))
+      for at in 0..<4096: page.bytes[at] = byte((at*17+3) mod 256)
+      var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+        registers: default(RegisterFile), blockCharged: false)
+      for slot in 0..<13:
+        info.registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+      info.registers[1] = RegisterValue(65536)
+      info.registers[4] = RegisterValue(65544)
+      var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+      verifyControl(frame, program, info, uint64(depth+3+(if folded: 1 else: 0)), [page])
+      when defined(pvmArm64Jit):
+        let before = flatArmControlStatistics(frame)[0]
+      verifyControl(frame, program, info, uint64(depth+3+(if folded: 1 else: 0)), [page])
+      when defined(pvmArm64Jit):
+        let after = flatArmControlStatistics(frame)[0]
+        when defined(pvmArm64JitRefuse):
+          assert after == before
+        else:
+          # The canonical C terminal stays outside native guest-work accounting.
+          assert after == before
+      for paid in [false, true]:
+        for gas in [0'u64, 1, uint64(depth), uint64(depth+1), 1000]:
+          for budget in [0'u64, 1, 2, uint64(depth), uint64(depth+1),
+              uint64(depth+2+(if folded: 1 else: 0))]:
+            var bounded = info
+            bounded.blockCharged = paid
+            bounded.gas = MachineGas(gas)
+            verifyControl(frame, program, bounded, budget, [page])
+            inc controls
+      if depth == 4:
+        # A later unmapped-page fault must replay earlier completed loads and leave exact paid state.
+        var fault = info
+        fault.registers[4] = RegisterValue(69632)
+        verifyControl(frame, program, fault, 8, [page])
+        assert frame.exit == StepExit.Fault
+        inc controls
+        # A successful checked split-page replay is distinct from a native guard success.
+        var second = PageImage(index: PageIndex(17), access: PageAccess.ReadWrite,
+          bytes: default(array[4096, byte]))
+        for at in 0..<4096: second.bytes[at] = byte((at*13+9) mod 256)
+        var fragmented = info
+        fragmented.registers[4] = RegisterValue(69630)
+        var splitFrame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)),
+          [page, second], fragmented)
+        verifyControl(splitFrame, program, fragmented, 8, [page, second])
+        verifyControl(splitFrame, program, fragmented, 8, [page, second])
+        inc controls
+  # An invalid following block still panics through canonical target resolution.
+  let invalid = owner([@[130'u8, 0x12, 0, 0, 0, 0], @[130'u8, 0x43, 0, 0, 0, 0],
+    @[149'u8, 0x44, 1], @[149'u8, 0x44, 1], @[1'u8]])
+  var invalidPage = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte]))
+  var invalidInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: default(RegisterFile), blockCharged: false)
+  invalidInfo.registers[1] = RegisterValue(65536)
+  invalidInfo.registers[4] = RegisterValue(65544)
+  var invalidFrame = newFlatFrame(newFlatPlan(invalid, GasCycleLimit(100000)),
+    [invalidPage], invalidInfo)
+  verifyControl(invalidFrame, invalid, invalidInfo, 8, [invalidPage])
+  inc controls
+  echo "ARM_READ_C_CONT_STEP_CASES,", controls
+
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  block cachedReadJumpLiteralRollback:
+    ## A later native guard refusal has no register or branch effect across all thirteen slots.
+    let program = owner([@[130'u8, 0x12, 0, 0, 0, 0],
+      @[130'u8, 0x34, 0, 0, 0, 0], @[149'u8, 0x55, 1],
+      @[149'u8, 0x55, 1], @[1'u8], @[0'u8]])
+    var span = default(ArmReadSpan)
+    emitArmRead(span, instructionRegisters(instruction(program, CodeAddress(0))), 0)
+    emitArmRead(span, instructionRegisters(instruction(program, CodeAddress(6))), 0)
+    emitArmReadArithmetic(span, 149,
+      instructionRegisters(instruction(program, CodeAddress(12))), 1)
+    emitArmReadArithmetic(span, 149,
+      instructionRegisters(instruction(program, CodeAddress(15))), 1)
+    # The real candidate image returns the certified target without a fabricated compare.
+    let jit = newArmJit()
+    assert armEntry(jit, 0, 1) == 0
+    var words = armReadInstructions(span, 37)
+    assert publishArmEntry(jit, 0, 4, 5, words)
+    var bytes = default(array[16, byte])
+    for at in 0..<16: bytes[at] = byte(at*11+7)
+    var regions = default(array[3, array[3, uint64]])
+    regions[0] = [65536'u64, 9'u64, cast[uint64](addr bytes[0])]
+    var registers = default(RegisterFile)
+    for slot in 0..<13:
+      registers[slot] = RegisterValue(0x8123456700000000'u64+uint64(slot))
+    registers[1] = RegisterValue(65536)
+    registers[3] = RegisterValue(65552)
+    let original = registers
+    assert callArmMemoryBranch(jit, 0, 37, 37, registers, regions) == high(uint32)
+    assert registers == original and jit.branchCalls == 0 and jit.operations == 0
+    registers[3] = RegisterValue(65544)
+    assert callArmMemoryBranch(jit, 0, 37, 37, registers, regions) == 37
+    assert jit.branchCalls == 1 and jit.operations == 5
+    echo "ARM_READ_C_CONT_LITERAL_ROLLBACK,1"
+else:
+  # Plain and forced-refusal builds exercise the same frame controls without executing a native literal.
+  echo "ARM_READ_C_CONT_LITERAL_ROLLBACK,0"
+
+block nextBlockChargeAfterReadJump:
+  ## Successful opcode-1 continuation clears paid state before the next block's gas check.
+  let program = owner([@[130'u8, 0x12, 0, 0, 0, 0],
+    @[130'u8, 0x43, 0, 0, 0, 0], @[149'u8, 0x55, 1],
+    @[149'u8, 0x55, 1], @[1'u8], @[149'u8, 0x66, 1], @[0'u8]])
+  let price = blockGas(program, CodeAddress(0), GasCycleLimit(100000))
+  assert price.error == GasError.None and uint64(price.value) > 0
+  var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte]))
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(uint64(price.value)),
+    registers: default(RegisterFile), blockCharged: false)
+  info.registers[1] = RegisterValue(65536)
+  info.registers[4] = RegisterValue(65544)
+  info.registers[6] = RegisterValue(777)
+  var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+  verifyControl(frame, program, info, 8, [page])
+  when defined(pvmArm64Jit):
+    let before = flatArmControlStatistics(frame)[0]
+  verifyControl(frame, program, info, 8, [page])
+  assert frame.exit == StepExit.OutOfGas and uint64(frame.info.pc) == 19
+  assert uint64(frame.info.registers[6]) == 777 and not frame.info.blockCharged
+  when defined(pvmArm64Jit):
+    let after = flatArmControlStatistics(frame)[0]
+    when defined(pvmArm64JitRefuse): assert after == before
+    else: assert after == before
+  echo "ARM_READ_C_CONT_NEXT_BLOCK_CHARGE,1"
+
+block oversizedReadJumpRetainsFirstLeaf:
+  ## A full multi-read image beyond the 1,024-word cap must keep the smaller first-read/pure leaf.
+  var parts: seq[seq[byte]] = @[@[130'u8, 0x12, 0, 0, 0, 0]]
+  for step in 0..<3: parts.add(@[149'u8, 0x55, 1])
+  for step in 0..<60: parts.add(@[129'u8, 0x43, 0, 0, 0, 0])
+  parts.add(@[1'u8])
+  parts.add(@[0'u8])
+  let program = owner(parts)
+  when defined(pvmArm64Jit):
+    # Prove the source-shaped full image itself is oversized while its original first-read leaf fits.
+    var whole = default(ArmReadSpan)
+    emitArmRead(whole, instructionRegisters(instruction(program, CodeAddress(0))), 0)
+    for step in 0..<3:
+      emitArmReadArithmetic(whole, 149,
+        instructionRegisters(instruction(program, CodeAddress(uint64(6+step*3)))), 1)
+    for step in 0..<60:
+      emitArmRead(whole,
+        instructionRegisters(instruction(program, CodeAddress(uint64(15+step*6)))), 0, 129)
+    let fullWords = armReadInstructions(whole, 999)
+    assert fullWords.len >= 1024
+    var firstLeaf = default(ArmBlock)
+    for step in 0..<3:
+      emitArmOperation(firstLeaf, 149,
+        instructionRegisters(instruction(program, CodeAddress(uint64(6+step*3)))), 1)
+    var firstWords = armMemoryInstructions(firstLeaf,
+      instructionRegisters(instruction(program, CodeAddress(0))), 0, 4)
+    assert firstWords.len < 1024
+  var page = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte]))
+  for at in 0..<4096: page.bytes[at] = byte((at*7+11) mod 256)
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+    registers: default(RegisterFile), blockCharged: false)
+  info.registers[1] = RegisterValue(65536)
+  info.registers[4] = RegisterValue(65544)
+  var frame = newFlatFrame(newFlatPlan(program, GasCycleLimit(100000)), [page], info)
+  verifyControl(frame, program, info, 67, [page]) # The original opcode-1 jump caches its target.
+  when defined(pvmArm64Jit):
+    let before = flatArmStatistics(frame)
+    let branches = flatArmControlStatistics(frame)[0]
+  verifyControl(frame, program, info, 67, [page])
+  when defined(pvmArm64Jit):
+    let after = flatArmStatistics(frame)
+    when defined(pvmArm64JitRefuse):
+      assert after[0] == 0 and after[1] == 0
+    else:
+      assert after[0] == before[0] # Eager first-read publication remains available from first use.
+      assert after[1] > before[1] and after[2] >= before[2]+4
+      assert flatArmControlStatistics(frame)[0] == branches
+  var fault = info
+  fault.registers[1] = RegisterValue(69632) # Unmapped page: native guard declines before any guest write.
+  when defined(pvmArm64Jit):
+    let beforeFault = flatArmStatistics(frame)
+  verifyControl(frame, program, fault, 67, [page])
+  assert frame.exit == StepExit.Fault
+  when defined(pvmArm64Jit):
+    let afterFault = flatArmStatistics(frame)
+    when defined(pvmArm64JitRefuse):
+      assert afterFault[1] == beforeFault[1]
+    else:
+      assert afterFault[1] == beforeFault[1]+1 and afterFault[2] == beforeFault[2]
+  echo "ARM_READ_C_CONT_OVERSIZE_FALLBACK,1"

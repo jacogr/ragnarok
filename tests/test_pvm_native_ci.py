@@ -122,6 +122,10 @@ class QualificationTests(unittest.TestCase):
             f'ARM_PREFIX_READ_LITERAL_ROLLBACKS,{4 if native else 0}\n'
             'ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES,1\n'
             f'ARM_PREFIX_READ_NEAR_CAP_LITERAL,{1 if native else 0}\n'
+            'ARM_READ_C_CONT_STEP_CASES,365\n'
+            f'ARM_READ_C_CONT_LITERAL_ROLLBACK,{1 if native else 0}\n'
+            'ARM_READ_C_CONT_NEXT_BLOCK_CHARGE,1\n'
+            'ARM_READ_C_CONT_OVERSIZE_FALLBACK,1\n'
             f'ARM_MEMORY_CYCLE_FRAME_CASES,{7236 if native or refused else 0}\n'
             f'ARM_MEMORY_CYCLE_BACKEND_CASES,{19 if native else 1 if refused else 0}\n'
             f'ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES,{12328 if native or refused else 0}\n'
@@ -313,6 +317,25 @@ class QualificationTests(unittest.TestCase):
                     damaged = complete.replace(line, replacement)
                     with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
                             self.assertRaisesRegex(ValueError, 'prefix-read '+kind):
+                        if refused:
+                            self.check(True, refused_receipt=damaged)
+                        else:
+                            self.check(native, receipt=damaged)
+
+    def test_read_continuation_controls_are_required_in_every_mode(self):
+        """Missing execution-boundary, rollback and charge coverage cannot certify the native check."""
+        for native, refused in ((True, False), (False, True), (False, False)):
+            complete = self.witness_receipt(native, refused=refused)
+            for marker, count, kind in (
+                    ('ARM_READ_C_CONT_STEP_CASES', 365, 'source boundaries'),
+                    ('ARM_READ_C_CONT_LITERAL_ROLLBACK', 1 if native else 0, 'literal rollback'),
+                    ('ARM_READ_C_CONT_NEXT_BLOCK_CHARGE', 1, 'next-block charge'),
+                    ('ARM_READ_C_CONT_OVERSIZE_FALLBACK', 1, 'oversize fallback')):
+                line = marker+','+str(count)+'\n'
+                for replacement in ('', marker+','+str(count-1)+'\n', line+line):
+                    damaged = complete.replace(line, replacement)
+                    with self.subTest(native=native, refused=refused, kind=kind, replacement=replacement), \
+                            self.assertRaisesRegex(ValueError, 'read continuation '+kind):
                         if refused:
                             self.check(True, refused_receipt=damaged)
                         else:
