@@ -942,10 +942,67 @@ time. Warm init CPU medians improved 1.825% and 1.718% in reversed orders while
 the identical-image control moved 0.010%. Warm tick improved 0.839% and 0.720%,
 within the 1.075% identical-image movement; no tick CPU gain is established.
 First calls are reported separately. This local pilot supports the copy reduction
-and an init benefit, but final-source and Linux qualification remain open. Exact
+and an init benefit, but does not measure the clean final image. Exact
 commands, source/input/binary hashes, full logs and first-call values are in
 ignored `build/pvm-checkpoint-copy-prototype/build/checkpoint-pilot/`.
 Removing the disabled trace alone produced a byte-identical Mach-O image at an
 identical source/build path. Removing its unused boolean result changed 36 bytes
 of ARM text in the clean source, so the pilot image is not the final image and
 its CPU ratios are not claimed as final-source measurements.
+
+### Final-source local confirmation
+
+The committed runtime `064eafd17005d7501da123b36669aa88801c1a17` was compared with exact
+master `6d6ca888e724bab3b35b5d6db30a114aff552396` on Apple M1 Max, with pinned Nimony
+`63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, checked ARC/Clang release settings and one
+canonical source/build path. The six trace-free JIT/interpreted images came from fresh caches and
+the exact Git source trees; only `machine.nim` and `handler_stream.nim` differed among the 516
+archived source/header files. The baseline and candidate used identical pinned DOOM and four
+smaller-guest input/expected files. The local dependency inventory hashes 4,612 project,
+compiler, toolchain, SDK and fixture files. No warm result below is pooled with the pilot.
+
+Six reversed JIT process pairs for each DOOM phase, two reversed interpreted pairs for each
+phase and two reversed JIT pairs for each smaller guest completed 48 processes and 624 fully
+checked calls. Sixteen additional untimed preflights passed. Each process ran 13 complete calls;
+warm CPU medians use samples 3:13, with sample 0 reported separately. The ratios below are
+candidate/baseline for corresponding process pairs, in pair order; even pairs ran baseline then
+candidate and odd pairs ran candidate then baseline. Wall-clock ratios and every first-call value
+are retained in the local report.
+
+| Workload/backend | Baseline warm CPU range, ms | Candidate warm CPU range, ms | Paired warm CPU ratios | First-call CPU ratio range |
+| --- | ---: | ---: | --- | ---: |
+| DOOM init JIT | 90.561–94.992 | 92.394–92.831 | 0.982697, 1.020301, 0.977414, 0.976309, 0.975804, 0.981932 | 0.968367–1.007600 |
+| DOOM tick JIT | 10.579–10.788 | 10.581–10.662 | 0.988200, 0.988846, 0.993894, 0.980766, 0.993958, 1.006475 | 0.970153–1.007046 |
+| DOOM init interpreted | 245.136–245.584 | 242.421–242.804 | 0.990489, 0.987118 | 0.987964–0.995453 |
+| DOOM tick interpreted | 22.706–22.925 | 22.578–22.738 | 1.001409, 0.984864 | 0.986104–1.000768 |
+| Minimal 100k JIT | 4.122–4.129 | 4.081–4.133 | 0.990053, 1.000969 | 0.961193–0.994571 |
+| Sieve 10m JIT | 198.645–198.756 | 200.297–200.537 | 1.007751, 1.009527 | 1.011358–1.014320 |
+| Pinky 1 JIT | 62.383–62.412 | 62.014–62.087 | 0.994093, 0.994793 | 0.987051–1.000654 |
+| Memset 100k JIT | 2.901–2.962 | 2.955–2.956 | 1.019135, 0.997637 | 0.981062–0.997545 |
+
+JIT DOOM init improves in five of six pairs, but the 90.561 ms baseline in reversed pair 1
+makes that pair 2.03% slower. Both interpreted init pairs improve. JIT tick's paired median
+ratio is 0.991370, smaller than the pilot's 1.075% identical-image tick A/A movement, and one
+pair regresses; this does not establish a tick CPU gain. Interpreted tick changes direction.
+The long sieve is 0.78–0.95% slower in both process orders on complete-call CPU (wall ratios
+1.008205 and 1.009263); this is the measured tradeoff. Pinky improves slightly in both pairs;
+Minimal and Memset change direction. First-call ranges above are separate observations, not
+warm-call evidence.
+
+Every DOOM call checked complete CPU, gas, page bytes, immutable input and ordered events;
+every smaller-guest call checked terminal state, mapped memory and immutable input. Native
+fragment/call/operation counters, code bytes, branch/header calls and prepared occupancy match
+within every workload, excluding compilation time. The DOOM clocks include the full prepared
+call, host work and checkpoint publication. The smaller-guest driver clocks the full
+`reference.execute` call including publication, but does not emit separate publication or
+lifecycle durations; no subphase speed claim follows. Fixed inputs, source and all six binaries
+rehash unchanged after the cohort.
+
+The exact commands were `python3 build/checkpoint-final/cohort.py prepare` and
+`python3 build/checkpoint-final/cohort.py time` in the isolated shipping worktree. The ignored
+`build/checkpoint-final/cohort/` retains the runner, build receipt, 16 preflights, 48 raw timed
+logs, all 624 samples and the first/warm assessment. Its `timing-results.json` SHA-256 is
+`cccd58ead090fae1286ba16b4d64a77fbc18b8af3f43d967ce174e51960c7974`; the dependency
+manifest SHA-256 is `eff1d76be7d6e59b7556cb3b0c2c012a9aff036ddce46724976ff22b0f27fc63`.
+This local ARM result is bounded to these sources, inputs and clocks. Exact-head Linux ARM
+qualification remains pending.
