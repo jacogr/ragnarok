@@ -252,6 +252,14 @@ when declared(DefaultPvmBackend):
       int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
       policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
 
+when defined(pvmArmMacroReceipt):
+  # Application qualification observes actual resident publication and completed macro calls.
+  let macroStats = reference.preparedArmMacroStatistics(prepared).value
+  let resident = reference.preparedArmMacroResidentActive(prepared).value
+  echo "ARM_MACRO_APPLICATION,", getEnv("RAGNAROK_PVM_GUEST"), ",", int(resident),
+    ",", macroStats[0], ",", macroStats[1], ",", macroStats[5], ",", macroStats[6]
+
+
 when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.
   assert preparedMode

@@ -255,6 +255,14 @@ when declared(DefaultPvmBackend):
       int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
       policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
 
+when defined(pvmArmMacroReceipt):
+  # Application qualification observes actual resident publication and completed macro calls.
+  let macroStats = preparedArmMacroStatistics(prepared).value
+  let resident = preparedArmMacroResidentActive(prepared).value
+  echo "ARM_MACRO_APPLICATION,", phase, ",", int(resident), ",", macroStats[0], ",",
+    macroStats[1], ",", macroStats[5], ",", macroStats[6]
+
+
 when defined(pvmArm64JitOwnerReceipt):
   # Genuine host callbacks and immutable publication finish before copied cache diagnostics are emitted.
   let native = preparedArmStatistics(prepared).value

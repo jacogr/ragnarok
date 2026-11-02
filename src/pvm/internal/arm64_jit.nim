@@ -59,8 +59,10 @@ type
     branchImmediate*: uint64
   ArmMacroCache = object ## Separate code offset and semantic counts never displace a child entry.
     status: uint8
+    residentMode: bool
     probeVisits: uint8
     code: uint32
+    imageWords: uint32
     shape: ArmMacroShape
     cycleCode, pureCode, readCode, pureOperations, readOperations: uint32
     calls, cycleChildCalls, staticBlocks, pureBlocks, branchBlocks, readBlocks,
@@ -759,6 +761,15 @@ type ArmReadImage = object
   words: seq[uint32]
   successAt, refusalAt: int
 
+proc armReadPatchGuards(words: var seq[uint32], span: ArmReadSpan,
+    leading, failure: int) =
+  ## Standalone and resident renderers share the same source-relative refusal relocation.
+  for guard in span.guards:
+    let at = guard.at+leading+1
+    assert at >= 1 and at < failure
+    let distance = uint32(failure-at)
+    words[at] = words[at] or (if guard.conditional: distance shl 5 else: distance)
+
 proc armReadImage(span: ArmReadSpan, ending: uint32,
     conditional, residentMode: bool): ArmReadImage =
   ## Share guarded read emission while letting the cycle own guest publication.
@@ -788,12 +799,22 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
     result.refusalAt = words.len
     words.add(0) # Branch to the cycle's gas/source refund.
   assert words.len < 8192 # Sixty-four admitted source operations fit refusal displacements.
-  for guard in span.guards:
-    # The initial context move and live-in loads shift every body-relative branch equally.
-    let at = guard.at+leading+1
-    assert at >= 1 and at < failure
-    let distance = uint32(failure-at)
-    words[at] = words[at] or (if guard.conditional: distance shl 5 else: distance)
+  armReadPatchGuards(words, span, leading, failure)
+  result.words = move(words)
+
+proc armMacroReadImage(span: ArmReadSpan): ArmReadImage =
+  ## A multi-read resident body branches to its caller's success or rollback continuation.
+  result = default(ArmReadImage)
+  if span.body.terminal.len != 0 or span.body.words.len == 0 or span.guards.len == 0: return
+  var words: seq[uint32] = @[0xaa0103f1'u32] # MOV X17,X1 retains fresh descriptors.
+  for word in span.body.words: words.add(word)
+  result.successAt = words.len
+  words.add(0)
+  let failure = words.len
+  result.refusalAt = failure
+  words.add(0)
+  if words.len >= 1024: return default(ArmReadImage)
+  armReadPatchGuards(words, span, 0, failure)
   result.words = move(words)
 
 proc armReadInstructions*(span: ArmReadSpan, ending: uint32,
@@ -1897,13 +1918,8 @@ when defined(pvmArmMacroReceipt):
     assert jit.memoryCycle.status == 0
     jit.residentCycleRefused = true
 
-proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
-  ## Compose already admitted dirty/direct-read cores into one resident guest-register bank.
-  when defined(pvmArmMacroReceipt):
-    if jit.residentCycleRefused: return false
-  if jit.memoryCycle.status != 0: return false
-  if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
-    return false # The old linked driver may still fit when this larger image does not.
+func armResidentCycleSourceValid(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
+  ## Validate one exact source-shaped recipe independently of its outer entry ABI.
   if jit.dirtyLoop.status != 2: return false
   if item.prefixSpan == 0 or item.prefixSpan > 4095 or item.tailSpan == 0 or
       item.tailSpan > 4095 or item.prefixOperations == 0 or item.tailOperations == 0 or
@@ -1916,7 +1932,6 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
       item.prefixHeader >= uint32(jit.entries.len): return false
   let tail = jit.entries[int(item.tailEntry)]
   if tail.code < 2 or jit.dirtyLoop.code < 2: return false
-  let planned = jit.codeBytes
   if item.dirty.header != item.dirtyHeader or item.dirty.span != jit.dirtyLoop.span or
       item.dirty.operations != jit.dirtyLoop.operations or item.dirty.price !=
           jit.dirtyLoop.price or
@@ -1933,11 +1948,23 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
       item.tailRead.branchNo == item.other) or
       (item.tailRead.branchNo == item.prefixHeader and
       item.tailRead.branchYes == item.other)): return false
+  true
+
+type ArmResidentCycleCore = object
+  ## Cold code has no foreign entry/exit shell. Its end is an explicit continuation.
+  ## X19/X20 borrow the register file/context; X0..X3/X17 and D0/D16..D22 are scratch.
+  ## Guest X4..X16 and accounting X21..X28 remain live, with no register-file publication.
+  words: seq[uint32]
+  resident, written: uint32
+
+proc armResidentCycleCore(item: ArmMemoryCycleBlock): ArmResidentCycleCore =
+  ## Render an admitted core; the caller initializes/exports its bank and accounting ABI.
+  result = default(ArmResidentCycleCore)
   let dirtyImage = armDirtyLoopImage(item.dirty, item.dirtyBaseSlot,
       item.dirtyDisplacement, item.dirtyWord, true)
-  if dirtyImage.words.len == 0 or dirtyImage.continuation < 0: return false
+  if dirtyImage.words.len == 0 or dirtyImage.continuation < 0: return
   let readImage = armReadImage(item.tailRead, item.tailHeader, true, true)
-  if readImage.words.len == 0: return false
+  if readImage.words.len == 0: return
   var resident = item.prefixBody.reads or item.prefixBody.writes or
       item.dirty.body.reads or item.dirty.body.writes or
       item.tailRead.body.reads or item.tailRead.body.writes or
@@ -1951,26 +1978,12 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
     for slot in [item.dirtyWord.destination, item.dirtyWord.base,
         item.dirtyWord.shift]:
       written = written or (1'u32 shl int(slot))
-  if ((resident or written) shr 13) != 0: return false
+  if ((resident or written) shr 13) != 0: return
   # All prospective guest stores have initialized root values even on a zero-work exit.
   # Labels: start, after-dirty-count, tail, prefix-refusal, tail-refusal, read-refund, epilogue.
   var labels = default(array[7, int])
   var fixes: seq[ArmMemoryCycleFixup] = @[]
-  var words: seq[uint32] = @[0xd10183ff'u32] # SUB SP,SP,#96; preserve alignment across BL.
-  for pair in 0..<6:
-    let first = uint32(19+pair*2)
-    words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
-        ((first+1) shl 10) or (31'u32 shl 5) or first)
-  cycleMove(words, 19, 0)
-  cycleMove(words, 20, 1)
-  cycleLoad(words, 21, 20, 0)
-  cycleLoad(words, 22, 20, 8)
-  for register in 23'u32..27'u32: words.add(0xd2800000'u32 or register)
-  cycleLoad(words, 28, 20, 104)
-  for slot in 0..<13:
-    if (resident and (1'u32 shl slot)) != 0:
-      cycleLoad(words, uint32(slot)+4, 19, uint32(slot*8))
-
+  var words: seq[uint32] = @[]
   labels[0] = words.len
   cycleCompareImmediate(words, 22, 0)
   cycleEdge(words, fixes, 3, 0) # A zero attempt budget wins before gas.
@@ -2039,7 +2052,51 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
   armImmediate(words, 0, uint64(item.tailHeader))
   cycleEdge(words, fixes, 6, 16)
 
-  labels[6] = words.len
+  labels[6] = words.len # Every exit reaches the caller-owned continuation.
+  for fix in fixes:
+    if fix.target < 0 or fix.target >= labels.len: return
+    let relative = int64(labels[fix.target])-int64(fix.at)
+    if fix.condition < 16:
+      if relative < -262144 or relative > 262143: return
+      words[fix.at] = 0x54000000'u32 or
+          ((uint32(relative) and 0x7ffff'u32) shl 5) or fix.condition
+    else:
+      if relative < -33554432 or relative > 33554431: return
+      words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
+
+  result.resident = resident
+  result.written = written
+  result.words = move(words)
+
+proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): bool =
+  ## Compose already admitted dirty/direct-read cores into one resident guest-register bank.
+  when defined(pvmArmMacroReceipt):
+    if jit.residentCycleRefused: return false
+  if jit.memoryCycle.status != 0: return false
+  if jit.unavailable or jit.fragments >= 1023 or jit.codeBytes > 1048576:
+    return false # The old linked driver may still fit when this larger image does not.
+  if not armResidentCycleSourceValid(jit, item): return false
+  let planned = jit.codeBytes
+  let core = armResidentCycleCore(item)
+  if core.words.len == 0: return false
+  let resident = core.resident
+  let written = core.written
+  var words: seq[uint32] = @[0xd10183ff'u32] # SUB SP,SP,#96; preserve alignment across BL.
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  cycleMove(words, 19, 0)
+  cycleMove(words, 20, 1)
+  cycleLoad(words, 21, 20, 0)
+  cycleLoad(words, 22, 20, 8)
+  for register in 23'u32..27'u32: words.add(0xd2800000'u32 or register)
+  cycleLoad(words, 28, 20, 104)
+  for slot in 0..<13:
+    if (resident and (1'u32 shl slot)) != 0:
+      cycleLoad(words, uint32(slot)+4, 19, uint32(slot*8))
+
+  for instruction in core.words: words.add(instruction)
   for slot in 0..<13:
     if (written and (1'u32 shl slot)) != 0:
       cycleStore(words, uint32(slot)+4, 19, uint32(slot*8))
@@ -2057,16 +2114,6 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
         ((first+1) shl 10) or (31'u32 shl 5) or first)
   words.add(0x910183ff'u32) # ADD SP,SP,#96.
   if words.len >= 1024 or uint64(words.len+1)*4 > 1048576-jit.codeBytes: return false
-  for fix in fixes:
-    if fix.target < 0 or fix.target >= labels.len: return false
-    let relative = int64(labels[fix.target])-int64(fix.at)
-    if fix.condition < 16:
-      if relative < -262144 or relative > 262143: return false
-      words[fix.at] = 0x54000000'u32 or
-          ((uint32(relative) and 0x7ffff'u32) shl 5) or fix.condition
-    else:
-      if relative < -33554432 or relative > 33554431: return false
-      words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
 
   if not publishArmEntry(jit, item.prefixHeader, 0, 0, words, expectedStart = planned):
     return false
@@ -2146,6 +2193,14 @@ proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
 func armMacroStatus*(jit: ArmJit): uint8 =
   ## The separate macro owner is untried, retired, or completely published.
   jit.macroRoute.status
+
+func armMacroResidentActive*(jit: ArmJit): bool =
+  ## Distinguish the resident image from the linked image without changing either entry record.
+  jit.macroRoute.status == 2 and jit.macroRoute.residentMode
+
+func armMacroImageWords*(jit: ArmJit): uint32 =
+  ## Expose the published image length for private qualification receipts.
+  jit.macroRoute.imageWords
 
 func armMacroChildRecord*(jit: ArmJit, offset: uint32): ArmMacroChildRecord =
   ## Copy an existing tuple without extending the entry map or compiling a node.
@@ -2266,6 +2321,187 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
     else:
       if relative < -33554432 or relative > 33554431: return false
       words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
+  true
+
+proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
+    cycle: ArmMemoryCycleBlock, pure: ArmBlock, read: ArmReadSpan): bool =
+  ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
+  when defined(pvmArmMacroResidentRefuse):
+    return false # A resident-only refusal leaves the linked publication available.
+  if jit.macroRoute.status != 0 or jit.unavailable or jit.fragments >= 1024 or
+      jit.codeBytes > 1048576 or not armMacroShapeValid(jit, shape) or
+      not armResidentCycleSourceValid(jit, cycle): return false
+  if cycle.prefixHeader != shape.cycleHeader or cycle.other != shape.staticHeader or
+      cycle.dirtyHeader != jit.memoryCycle.dirtyHeader or
+      cycle.tailHeader != jit.memoryCycle.tailHeader or
+      cycle.prefixSpan != jit.memoryCycle.prefixSpan or
+      cycle.tailSpan != jit.memoryCycle.tailSpan or
+      cycle.prefixPrice != jit.memoryCycle.prefixPrice or
+      cycle.tailPrice != jit.memoryCycle.tailPrice or
+      cycle.prefixOperations != jit.memoryCycle.prefixOperations or
+      cycle.tailOperations != jit.memoryCycle.tailOperations or
+      pure.words.len == 0 or pure.terminal.len == 0 or
+      read.body.words.len == 0 or read.body.terminal.len != 0: return false
+  let core = armResidentCycleCore(cycle)
+  let readImage = armMacroReadImage(read)
+  if core.words.len == 0 or readImage.words.len == 0: return false
+  var branchBody = default(ArmBlock)
+  emitArmBranchSlots(branchBody, 88'u8, shape.branchSlot, 0,
+      shape.branchImmediate, shape.branchYes, shape.branchNo)
+  let resident = core.resident or pure.reads or pure.writes or
+      branchBody.reads or branchBody.writes or read.body.reads or read.body.writes
+  let written = core.written or pure.writes or branchBody.writes or read.body.writes
+  if ((resident or written) shr 13) != 0: return false
+  let root = jit.entries[int(shape.cycleHeader)]
+  let pureChild = jit.entries[int(shape.pureBody)]
+  let readChild = jit.entries[int(shape.readBody)]
+  let planned = jit.codeBytes
+
+  # Labels: cycle, static, pure, branch88, read, read-success, four unstarted
+  # controls, read rollback, and the common final publication/return.
+  var labels = default(array[12, int])
+  var fixes: seq[ArmMemoryCycleFixup] = @[]
+  var words: seq[uint32] = @[0xd10183ff'u32] # SUB SP,SP,#96.
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9000000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  cycleMove(words, 19, 0)
+  cycleMove(words, 20, 1)
+  cycleLoad(words, 21, 20, 0)
+  cycleLoad(words, 22, 20, 8)
+  for register in 23'u32..27'u32: words.add(0xd2800000'u32 or register)
+  cycleLoad(words, 28, 20, 192) # Global last header starts at its caller's sentinel.
+  for slot in 0..<13:
+    if (resident and (1'u32 shl slot)) != 0:
+      cycleLoad(words, uint32(slot)+4, 19, uint32(slot*8))
+
+  labels[0] = words.len
+  armMacroCount(words, 19) # One semantic cycle child, with no physical BL.
+  for index in 2'u32..4'u32: cycleStore(words, 31, 20, index*8)
+  for index in 8'u32..12'u32: cycleStore(words, 31, 20, index*8)
+  cycleImmediate(words, 1, uint64(high(uint32)))
+  cycleStore(words, 1, 20, 104) # Each semantic child starts at its own sentinel.
+  for index in 0'u32..4'u32:
+    words.add(0x9e670000'u32 or ((23+index) shl 5) or (23+index))
+      # D23..D27 retain the child's starting counters across the shared core.
+  for instruction in core.words: words.add(instruction)
+  for index in 0'u32..4'u32:
+    words.add(0x9e660000'u32 or ((23+index) shl 5) or 1'u32)
+    cycleAddRegister(words, 2, 23+index, 1, true)
+    cycleStore(words, 2, 20, (8+index)*8) # Publish this child invocation's own ledger.
+  words.add(0x9e6602e1'u32) # FMOV X1,D23; reuse the saved prefix count without borrowing X29.
+  cycleCompare(words, 23, 1)
+  cycleLoad(words, 2, 20, 104) # The child sentinel survives a zero-progress cycle.
+  words.add(0x9a800000'u32 or (2'u32 shl 16) or (1'u32 shl 12) or
+      (28'u32 shl 5) or 2'u32) # CSEL X2,X28,X2,NE.
+  cycleStore(words, 2, 20, 104)
+  cycleImmediate(words, 1, uint64(shape.staticHeader))
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 1, 0)
+  cycleEdge(words, fixes, 11, 16)
+
+  labels[1] = words.len
+  armMacroGuard(words, fixes, shape.staticSpan, shape.staticPrice, 6)
+  armMacroCount(words, 20)
+  cycleImmediate(words, 28, uint64(shape.staticHeader))
+
+  labels[2] = words.len
+  armMacroGuard(words, fixes, shape.pureSpan, shape.purePrice, 7)
+  for instruction in pure.words: words.add(instruction)
+  for instruction in pure.terminal: words.add(instruction)
+  armMacroCount(words, 21)
+  cycleImmediate(words, 28, uint64(shape.pureHeader))
+  cycleImmediate(words, 1, uint64(shape.branchHeader))
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 3, 0)
+  cycleEdge(words, fixes, 11, 16) # The genuine rare pure arm exits to checked C.
+
+  labels[3] = words.len
+  armMacroGuard(words, fixes, shape.branchSpan, shape.branchPrice, 8)
+  for instruction in branchBody.words: words.add(instruction)
+  for instruction in branchBody.terminal: words.add(instruction)
+  armMacroCount(words, 22)
+  cycleImmediate(words, 28, uint64(shape.branchHeader))
+  cycleImmediate(words, 1, uint64(shape.pureHeader))
+  cycleCompare(words, 0, 1, true)
+  cycleEdge(words, fixes, 2, 0)
+  cycleEdge(words, fixes, 4, 16)
+
+  labels[4] = words.len
+  armMacroGuard(words, fixes, shape.readSpan, shape.readPrice, 9)
+  for slot in 0..<13:
+    if (read.body.writes and (1'u32 shl slot)) != 0:
+      words.add(0x9e670000'u32 or ((uint32(slot)+4) shl 5) or uint32(slot+18))
+  cycleLoad(words, 1, 20, 40) # The fresh invocation's descriptors, never a cached address.
+  let readStart = words.len
+  for instruction in readImage.words: words.add(instruction)
+  fixes.add(ArmMemoryCycleFixup(at: readStart+readImage.successAt,
+      target: 5, condition: 16))
+  fixes.add(ArmMemoryCycleFixup(at: readStart+readImage.refusalAt,
+      target: 10, condition: 16))
+
+  labels[5] = words.len
+  armMacroCount(words, 23)
+  cycleImmediate(words, 28, uint64(shape.readHeader))
+  cycleEdge(words, fixes, 0, 16) # Cached opcode1 returns to the resident cycle guard.
+
+  labels[6] = words.len
+  cycleImmediate(words, 0, uint64(shape.staticHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[7] = words.len
+  cycleImmediate(words, 0, uint64(shape.pureHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[8] = words.len
+  cycleImmediate(words, 0, uint64(shape.branchHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[9] = words.len
+  cycleImmediate(words, 0, uint64(shape.readHeader))
+  cycleEdge(words, fixes, 11, 16)
+  labels[10] = words.len
+  for slot in 0..<13:
+    if (read.body.writes and (1'u32 shl slot)) != 0:
+      words.add(0x9e660000'u32 or (uint32(slot+18) shl 5) or uint32(slot+4))
+  cyclePriceChange(words, shape.readPrice, true)
+  cycleAddImmediate(words, 22, 22, shape.readSpan)
+  armMacroCount(words, 25)
+  cycleImmediate(words, 0, uint64(shape.readHeader))
+  cycleEdge(words, fixes, 11, 16)
+
+  labels[11] = words.len
+  for slot in 0..<13:
+    if (written and (1'u32 shl slot)) != 0:
+      cycleStore(words, uint32(slot)+4, 19, uint32(slot*8))
+  cycleStore(words, 21, 20, 0)
+  cycleStore(words, 22, 20, 8)
+  for index in 0'u32..4'u32: cycleStore(words, 23+index, 20, (14+index)*8)
+  cycleStore(words, 28, 20, 192)
+  for pair in 0..<6:
+    let first = uint32(19+pair*2)
+    words.add(0xa9400000'u32 or (uint32(pair*2) shl 15) or
+        ((first+1) shl 10) or (31'u32 shl 5) or first)
+  words.add(0x910183ff'u32) # ADD SP,SP,#96; arena appends RET.
+  if words.len == 0 or words.len >= 1024 or
+      uint64(words.len+1)*4 > 1048576-jit.codeBytes or
+      not armMacroPatch(words, fixes, labels): return false
+  when defined(pvmArmMacroPublishRefuse):
+    return false # The existing macro-append refusal applies to both image kinds.
+  words.add(0xd65f03c0'u32)
+  let address = publishArena(jit.arena.handle, addr words[0], uint32(words.len))
+  if address < 0: return false
+  inc jit.fragments
+  jit.codeBytes+=uint64(words.len)*4
+  if uint64(address) != planned: return false
+  jit.macroRoute.code = uint32(address)+2
+  jit.macroRoute.imageWords = uint32(words.len)
+  jit.macroRoute.shape = shape
+  jit.macroRoute.cycleCode = root.code
+  jit.macroRoute.pureCode = pureChild.code
+  jit.macroRoute.readCode = readChild.code
+  jit.macroRoute.pureOperations = pureChild.operations
+  jit.macroRoute.readOperations = readChild.operations
+  jit.macroRoute.residentMode = true
+  jit.macroRoute.status = 2
   true
 
 proc publishArmMacro*(jit: ArmJit, shape: ArmMacroShape): bool =
@@ -2408,12 +2644,14 @@ proc publishArmMacro*(jit: ArmJit, shape: ArmMacroShape): bool =
   jit.codeBytes+=uint64(words.len)*4
   if uint64(address) != planned: return false
   jit.macroRoute.code = uint32(address)+2
+  jit.macroRoute.imageWords = uint32(words.len)
   jit.macroRoute.shape = shape
   jit.macroRoute.cycleCode = root.code
   jit.macroRoute.pureCode = pure.code
   jit.macroRoute.readCode = read.code
   jit.macroRoute.pureOperations = pure.operations
   jit.macroRoute.readOperations = read.operations
+  jit.macroRoute.residentMode = false
   jit.macroRoute.status = 2
   true
 

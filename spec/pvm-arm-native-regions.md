@@ -194,3 +194,99 @@ Private evidence pointers: build/pvm-arm-macro-pilot-audit/{audit.json,timed-ima
 ## Remaining architectural work
 
 The three child ABIs still write back and reload guest registers at their boundaries. A future resident variant needs an explicit new ABI and independent lifecycle, partial-budget and refund evidence; it cannot jump to guessed interior code offsets. Pure-family generalization is likewise separate from this measured change. x86-64 is unchanged.
+
+## Resident macro core follow-up
+
+The next increment retains guest X4-X16 across the admitted seven-header source
+graph, composing shared typed cycle, pure and multi-read bodies. It removes the
+three inner native-child call boundaries; the outer C-to-arena ABI and semantic
+child/work counters stay unchanged. The compact 12-byte entry records and OS
+arena ownership stay unchanged. This remains source-shaped admission, with no
+benchmark name, input or diagnostic PC selection. General native CFG coverage
+and multi-root region planning remain future work.
+
+The shared cycle core explicitly borrows X19/X20, carries gas/attempts in
+X21/X22, cycle totals in X23-X27 and the global last-completed header in X28.
+Its scratch contract includes X0-X3/X17 and D0/D16-D22. The outer image preserves
+callee-saved registers and retains X29 for profiling/unwinding. It loads the
+union of every read and prospective write before any guard, then publishes only
+the written union on exit. Zero-work exits therefore retain initialized values.
+
+A multi-read body may fail after speculative register writes. Only that body's
+written guest slots are checkpointed in caller-saved D18-D30 while the read is
+live. Every failed guard restores those slots before refunding the whole read
+charge/attempt span and replaying the original source. Earlier dirty memory
+writes remain committed. The read renderer uses no SIMD scratch; its checkpoint
+lifetime ends before the next dirty core. Both the child-local last header in
+word 13 and the global last header in word 24 retain their distinct contracts.
+
+Publication checks the complete image, relocations and byte capacity before
+installing it. A published image may contain 1 through 1,024 words including RET.
+Resident refusal leaves the previous linked macro available without displacing
+children or poisoning publication state. Full append and executable-storage
+refusal remain separate controls. Native qualification now requires a dedicated
+resident-only-refused profile, resident-kind/word-bound/rollback receipts, and
+missing/truncated/duplicate and wrong-policy negatives through both the parser
+and the full qualification controller.
+
+### Local correctness and source audit
+
+Baseline is merged master `4c1bc91bf1787bc550fcff24d37a5f14c720ebde`. Checked
+release ARC/Clang ThinLTO uses the same pinned compiler binary SHA-256
+`bf61bfc2c5953de2d3236ddd99be61fce551809a57ce32ca6d34bbc6b1f8bd70`.
+Normal resident and forced-linked witnesses pass all 13,524 macro frame controls,
+31 backend controls and 162 linked-cycle fallback controls, including signed
+backedges, late read refunds and owner moves. Integrated append/storage refusal
+and checked-only witnesses also pass. The literal resident image has 620 words;
+this count is evidence, not a required exact code layout.
+
+A new address-dependent late-read case changes R10 and R5 before a second read
+faults. It checks literal fault PC 39, gas 999639, R5=3, R10=65544 and
+R6=18432313718031039402, retaining prior AA/BB dirty bytes and full independent
+source/memory comparison. Omitting the restore deliberately fails this new case
+(`CONTROL_REGISTER,5,4,3,4096`), while the old late-read case still passes.
+
+An independent audit compared all 351,624 ABI coordinates over the 13,524
+controls, normalizing only pointer presence in words 5/7. All other values match
+linked execution. It verified 513 runtime/native files (three changed in the
+private prototype), eight repeated-build images, 64 raw process logs and 832
+CPU records. Duplicate builds are byte-identical. Final integration adds the
+production proof profiles and preserves measured-image flags; a separate
+full-state DOOM control must certify actual resident execution before timings.
+
+### Local timing screen and limits
+
+All six matched groups are retained. The private harness used calls 1-12; an
+independent audit also recomputed the CI-standard calls 3-12. These are median
+paired candidate/baseline process CPU ratios, not group-median ratios:
+
+| Workload | Calls 1-12 | Calls 3-12 | Interpretation |
+| --- | ---: | ---: | --- |
+| DOOM tick | 0.94665 | 0.947689 | All six pairs faster in both windows |
+| DOOM init | 1.00186 | 1.002503 | Near flat/noisy |
+| Sieve 10M | 0.99902 | 0.998704 | Near flat/noisy |
+| Pinky | 1.00360 | 1.007153 | Small cost; all six slower in the original window |
+
+Equal-source second/first ratios for baseline/candidate duplicates respectively
+were tick 0.99367/1.02196, init 0.99813/1.04209, Sieve
+0.99771/0.99819 and Pinky 0.99989/1.00786. DOOM's favorable paired direction
+supports qualification, but the equal-source spread limits precision. No exact
+5% shipping speedup or recovery of earlier costs is claimed from this screen.
+Every process checks full CPU, mapped memory and DOOM events. Native semantic
+work counters match; resident code occupancy is allowed to grow.
+
+Evidence remains under the speed checkout's `build/pvm-resident-macro` and the
+review checkout's `build/pvm-resident-final-audit`,
+`build/pvm-resident-integrated-check` and `build/pvm-resident-app-check`.
+Exact final-source Linux ARM qualification, matched PolkaVM-interpreted ratios,
+Tooling and Smoke remain pending. These are bounded guests, not full blockchain
+throughput measurements.
+
+The integrated local check also passes both native all-opcode and region/host
+consumer suites. All 50 affected Python parser/controller/application tests and
+the source-owned verification inventory pass. The new real-DOOM control executes
+13 full-state checked calls with 8,462 resident macro entries, 1,667,243 semantic
+cycle children and 1,658,781 completed reads, with zero read refusals. Its native
+work/code occupancy exactly matches the measured ordinary image: 1,014 physical
+fragments and 256,676 code bytes. Diagnostic macro receipt flags are confined to
+this separate control; measured images retain the existing flag profile.
