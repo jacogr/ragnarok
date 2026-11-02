@@ -903,3 +903,49 @@ interpreted Pinky is 1.24%/10.05% slower, and minimal/memset comparisons change 
 The x86 JIT still costs 29–33% more tick CPU than this stack's interpreter on the same runner;
 reducing native transitions remains future architecture work. The ARM long-sieve tradeoff remains
 as recorded above. These outcomes do not establish uniform gains across applications or machines.
+
+## Borrowed checkpoint comparison, 2026-11-02
+
+At a frame checkpoint, the sorted dirty-page set can include a page whose private
+bytes were written and later restored to the captured source bytes. The previous
+collector copied the captured 4096 bytes into an image, cloned that 4104-byte
+image, copied the resident 4096 bytes into it, then compared. A changed page was
+copied again into the replacement sequence. This work occurred for every inspected
+dirty page even when publication ultimately shared its immutable source owner.
+
+The collector now qualifies the captured owner, positional slot, exact page length,
+physical index and permission before comparing the private resident bytes with
+the eight immutable 512-byte source chunks. It chooses only a fully contained
+stack, RW or extra region. An unchanged page creates no replacement image; a
+changed page still takes two 4096-byte copies, from resident storage to a local
+owned image and then to the sorted replacement sequence. RO and unmatched-region
+fallbacks retain checked source copying. `withReplacedPages`, host publication,
+old snapshot ownership and rejection paths keep their existing contracts. The
+comparison exposes neither a source pointer nor mutable snapshot storage.
+
+On exact master `6d6ca888`, a private diagnostic counted 356 dirty-page
+inspections across five validated DOOM tick checkpoints: 279 matched the source
+and 77 differed. Initialization had 9253 inspections across 1622 checkpoints,
+with 960 matches. These count checkpoint observations, not distinct physical
+pages or final-state differences. ARM disassembly confirms eight 512-byte
+comparisons and no page-sized zeroing or source/image copies on the contiguous
+unchanged path; the two changed-page copies remain. Complete untimed DOOM
+state/events, memory-chunk, publication, host/region and bounded-reuse witnesses
+passed in the isolated prototype. The shipping source excludes the private trace.
+The clean source also passes the registered memory-chunks suite, publication,
+host/region and bounded-reuse witnesses, plus full untimed DOOM state/events
+under both ARM JIT and interpreted policies.
+
+One local 12-process paired ARM JIT pilot used 13 fully checked DOOM calls per
+process and matching native counters and code-image bytes apart from compilation
+time. Warm init CPU medians improved 1.825% and 1.718% in reversed orders while
+the identical-image control moved 0.010%. Warm tick improved 0.839% and 0.720%,
+within the 1.075% identical-image movement; no tick CPU gain is established.
+First calls are reported separately. This local pilot supports the copy reduction
+and an init benefit, but final-source and Linux qualification remain open. Exact
+commands, source/input/binary hashes, full logs and first-call values are in
+ignored `build/pvm-checkpoint-copy-prototype/build/checkpoint-pilot/`.
+Removing the disabled trace alone produced a byte-identical Mach-O image at an
+identical source/build path. Removing its unused boolean result changed 36 bytes
+of ARM text in the clean source, so the pilot image is not the final image and
+its CPU ratios are not claimed as final-source measurements.

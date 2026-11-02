@@ -3604,41 +3604,48 @@ proc runFlatSingle*(f: var FlatFrame) =
     let handler = f.handlers[int(offset)]
     offset = handler(f, offset)
 
-proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
-  ## Copy one genuinely dirty page; writing its original bytes back does not create a replacement.
+proc flatCollectResidentPage(f: FlatFrame, page: int, resident: openArray[byte],
+    changes: var seq[PageImage]) =
+  ## The checked source owner is compared before one changed private page becomes an immutable image.
   let description = f.sourcePages[page]
+  let match = matchesMemoryPageBytes(f.sourceMemory, MemoryPageSlot(uint32(page)),
+    description, resident)
+  assert match.error == MachineError.None
+  if match.value: return
+  var image = PageImage(index: description.index, access: description.access)
+  copyMem(addr image.bytes[0], unsafeAddr resident[0], 4096)
+  changes.add(image)
+
+proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
+  ## Writing original bytes back still publishes no replacement or mutable source alias.
+  let description = f.sourcePages[page]
+  if description.access != PageAccess.ReadWrite:
+    # Preserve the existing checked source-owner validation on an impossible dirty permission.
+    var original = PageImage(index: description.index, access: description.access)
+    flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
+    return
+  let address = uint64(uint32(description.index))*4096
+  if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
+    let offset = int(address-f.stackBase)
+    flatCollectResidentPage(f, page, f.stack.toOpenArray(offset, offset+4095), changes)
+    return
+  if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
+    let offset = int(address-f.rwBase)
+    flatCollectResidentPage(f, page, f.rw.toOpenArray(offset, offset+4095), changes)
+    return
+  for slot in 0..<f.extra.len:
+    let region {.cursor.} = f.extra[slot]
+    if region.access == PageAccess.ReadWrite and address >= region.first and
+        address-region.first+4096 <= uint64(region.bytes.len):
+      let offset = int(address-region.first)
+      flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), changes)
+      return
+  # Preserve the old checked observer fallback if a future region representation needs it.
   var original = PageImage(index: description.index, access: description.access)
   flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
-  if original.access == PageAccess.ReadWrite:
-    # Guest writes cannot change RO/inaccessible pages; only writable pages need current-byte comparison.
-    var image = original
-    let address = uint64(uint32(image.index))*4096
-    var copied = false
-    if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
-      # The entire page belongs to this retained private region; stack temporary and heap bytes are disjoint.
-      let offset = int(address-f.stackBase)
-      copyMem(addr image.bytes[0], unsafeAddr f.stack[offset], 4096)
-      copied = true
-    elif address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
-      let offset = int(address-f.rwBase)
-      copyMem(addr image.bytes[0], unsafeAddr f.rw[offset], 4096)
-      copied = true
-    else:
-      # Fragmented captured writable regions retain the same full-span proof before a copy.
-      for slot in 0..<f.extra.len:
-        let region {.cursor.} = f.extra[slot]
-        if region.access == PageAccess.ReadWrite and address >= region.first and
-            address-region.first+4096 <= uint64(region.bytes.len):
-          let offset = int(address-region.first)
-          copyMem(addr image.bytes[0], unsafeAddr region.bytes[offset], 4096)
-          copied = true
-          break
-    if not copied:
-      # Preserve the original checked observer fallback if a future region representation needs it.
-      for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
-    if image.bytes != original.bytes:
-      # Collect only changed writable pages in the already sorted source order; all costs stay inside publication.
-      changes.add(image)
+  var image = original
+  for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
+  if image.bytes != original.bytes: changes.add(image)
 
 proc flatPublishMemory(f: FlatFrame): Memory =
   ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
@@ -3667,7 +3674,8 @@ proc flatPublishMemory(f: FlatFrame): Memory =
   else:
     # Dense writes retain the original linear walk instead of sorting nearly the entire mapping.
     for page in 0..<f.sourcePages.len:
-      if flatDirty(f, f.sourcePages[page].index): flatCollectPage(f, page, changes)
+      if flatDirty(f, f.sourcePages[page].index):
+        flatCollectPage(f, page, changes)
   if changes.len > 0:
     # The checked batch shares untouched owners and clones the root vector exactly once for this observation.
     let updated = withReplacedPages(f.sourceMemory, changes)
