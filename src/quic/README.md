@@ -23,3 +23,8 @@ original budgets. See the [capacity contract](../../spec/jamnp-capacity.md).
 certificate bytes, selected ALPN and a free native slot; exactly1 admits. Byte spans are borrowed,
 and the enclosing callback context stays stable through engine retirement. See the
 [admission contract](../../spec/jamnp-peer-admission.md) for bounded correlation and ownership.
+
+`peerAt` and `streamPeer` return guarded copied `PeerHandle` facts. `live`, `openPeerStream` and
+`disconnectPeer` validate the owner and admission generation, so stale references cannot affect
+slot replacements or reopened transports. Closure requests still wait for actual close callbacks.
+See the [peer-control contract](../../spec/jamnp-peer-control.md).

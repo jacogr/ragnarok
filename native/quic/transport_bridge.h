@@ -30,6 +30,16 @@ typedef int (*rq_admission_cb)(void *, unsigned, const uint8_t *, size_t,
                                 const uint8_t *, size_t);
 /* Startup-only, bounded TLS correlation uses public SSL/LSQUIC APIs; no role policy lives in C. */
 int rq_admit_peers(rq_transport *, unsigned slots, rq_admission_cb);
+/* Copied owner-bound observation, never a foreign pointer or an owning connection handle. */
+typedef struct rq_peer_ref { uint64_t owner, generation; unsigned slot; } rq_peer_ref;
+/* Lookup requires a live authenticated retained connection; false writes no usable reference. */
+int rq_peer_at(rq_transport *, unsigned, rq_peer_ref *);
+int rq_stream_peer(rq_transport *, void *, rq_peer_ref *);
+/* Validate owner and admission generation on every operation, including after slot/owner reuse. */
+int rq_peer_live(rq_transport *, const rq_peer_ref *);
+int rq_open_peer(rq_transport *, const rq_peer_ref *);
+int rq_close_peer(rq_transport *, const rq_peer_ref *);
+
 
 /* Install before packets arrive; teardown alone does not generate a peer-close observation. */
 int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
