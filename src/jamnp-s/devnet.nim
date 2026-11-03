@@ -6,7 +6,7 @@
 
 import std/assertions
 import ../quic/transport
-import ./[protocol, announcements, announcement_stream, streams]
+import ./[protocol, announcements, announcement_stream, streams, alpn]
 import ../codec/header
 
 const MaxBlock = 65536 ## Empty Tiny blocks and variable epoch markers fit this explicit local ceiling.
@@ -291,11 +291,11 @@ proc close*(owner: var DevnetNetwork) =
 proc open*(owner: var DevnetNetwork, port: uint16, cert, key, alpn: string,
     peers: array[6, array[32, byte]]): bool =
   ## Stable stack ownership begins before any TLS/native callback can observe the endpoint.
-  if owner.active: return false
+  if owner.active or not validAlpn(alpn): return false
   owner.peers = peers
   owner.active = true
   if not openTransport(owner.incoming, true, false, port, cert, key, alpn, addr owner,
-      serverVerify, serverEvent, multi = true):
+      serverVerify, serverEvent, multi = true, acceptedAlpns = serverAlpns(alpn)):
     owner.close()
     return false # Setup refusal retires all partially acquired resources.
   true

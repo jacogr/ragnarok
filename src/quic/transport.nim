@@ -79,6 +79,10 @@ proc transportNew6(profile, server: cint, port: uint16, cert, key, alpn: cstring
         header: BridgeHeader, cdecl, raises: [].}
   ## Retain an IPv6 engine across reconnects; the native caller still owns UDP readiness and TLS identity policy.
 
+proc nativeServerAlpns(engine: nil pointer, bytes: ptr byte,
+    length: csize_t): cint {.importc: "rq_server_alpns", header: BridgeHeader, cdecl, raises: [].}
+  ## Install the caller's complete copied TLS vector before polling, packet input or dialing.
+
 proc nativeLocal(engine: nil pointer, stream: NativeStream): cint {.importc: "rq_stream_local",
     header: BridgeHeader, cdecl, raises: [].}
   ## Inspect a live stream's initiator without retaining any connection pointer.
@@ -216,10 +220,18 @@ proc closeTransport*(owner: var Transport) =
 proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
         multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
-            profile = RetainedPeer): bool =
+            profile = RetainedPeer, acceptedAlpns: seq[string] = @[]): bool =
   ## Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
+  var protocols: seq[byte] = @[]
+  if acceptedAlpns.len > 0:
+    if not server or acceptedAlpns.len > 8: return false # Only acceptors install a bounded protocol list.
+    for protocol in acceptedAlpns:
+      if protocol.len == 0 or protocol.len > 255 or protocol.len + 1 > 512 - protocols.len:
+        return false # Prove the one-octet prefix and aggregate vector before any native setup.
+      protocols.add(byte(protocol.len))
+      for octet in protocol: protocols.add(byte(octet)) # Owned bytes are borrowed only during native copying.
   owner = Transport()
   owner.ipv6 = ipv6
   owner.user = user
@@ -253,6 +265,10 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   if owner.engine == nil:
     closeTransport(owner)
     return false
+  if protocols.len > 0 and nativeServerAlpns(owner.engine, addr protocols[0], csize_t(
+      protocols.len)) != 1:
+    closeTransport(owner)
+    return false # TLS configuration failure retires the already-bound endpoint and engine.
   true
 
 proc transportStatus*(owner: Transport): int {.raises: [].} =

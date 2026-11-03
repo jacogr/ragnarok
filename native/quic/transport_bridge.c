@@ -42,7 +42,8 @@ struct rq_transport {
     rq_peer_cb peer;
     int destroying, packets_seen;
     struct rq_handshake handshakes[RQ_HANDSHAKE_SLOTS], overflow_handshake;
-    uint8_t alpn[256];
+    uint8_t alpn[512];
+    int network_started;
     unsigned alpn_length;
     int server, status;
 };
@@ -350,8 +351,24 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
 fail:
     rq_transport_free(t); return NULL;
 }
+/* Copy an ALPN vector atomically before the endpoint can process a connection. No JAM names
+ * or builder policy belong in this TLS primitive; all vector extents are proved before copy. */
+int rq_server_alpns(rq_transport *t, const uint8_t *wire, size_t length) {
+    if (!t || !t->server || t->network_started || !wire || !length || length > sizeof(t->alpn)) return 0;
+    size_t offset = 0;
+    unsigned count = 0;
+    while (offset < length) {
+        size_t size = wire[offset++];
+        if (!size || size > length - offset || ++count > 8) return 0;
+        offset += size;
+    }
+    memcpy(t->alpn, wire, length);
+    t->alpn_length = (unsigned)length;
+    return 1;
+}
 /* Initiate one retained loopback connection; endpoint address bytes are synchronously consumed by LSQUIC. */
 int rq_connect(rq_transport *t, uint16_t port) {
+    t->network_started = 1; /* Startup configuration is immutable after a dial. */
     /* A retained single-peer engine cannot overwrite a still-live or handshaking connection. */
     if (t->server || t->active || t->connection) return 0;
     t->status = 0;
@@ -361,13 +378,14 @@ int rq_connect(rq_transport *t, uint16_t port) {
 }
 /* Deliver borrowed UDP bytes with caller-supplied source port and retained TLS peer context. */
 int rq_packet_in(rq_transport *t, const uint8_t *bytes, size_t length, uint16_t port) {
+    t->network_started = 1; /* Even a rejected packet ends startup-only TLS configuration. */
     t->packets_seen = 1; /* Optional observers cannot be installed after incoming processing starts. */
     struct sockaddr_in peer = address(port); struct sockaddr_in6 peer6 = address6(port);
     return lsquic_engine_packet_in(t->engine, bytes, length, local_address(t),
       t->ipv6 ? (struct sockaddr *)&peer6 : (struct sockaddr *)&peer, t, 0);
 }
 /* Progress packets, timers and retryable nonblocking sends on the native language's I/O thread. */
-void rq_process(rq_transport *t) { lsquic_engine_send_unsent_packets(t->engine); lsquic_engine_process_conns(t->engine); }
+void rq_process(rq_transport *t) { t->network_started = 1; lsquic_engine_send_unsent_packets(t->engine); lsquic_engine_process_conns(t->engine); }
 /* Return a nonnegative relative deadline, with a conservative fallback when no native timer exists. */
 int64_t rq_next_tick(rq_transport *t) { int delta; return lsquic_engine_earliest_adv_tick(t->engine, &delta) ? (delta > 0 ? delta : 0) : 10000; }
 /* Expose only authentication status; application exchange is separately tracked by the native peer. */

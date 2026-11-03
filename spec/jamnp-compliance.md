@@ -32,7 +32,7 @@ production path exists; it does not assert all normative behavior has been verif
 | Pinned section | Existing implementation | Required completion evidence |
 | --- | --- | --- |
 | Encryption, alternative name | `protocol.nim` validates Ed25519 certificate observations and the literal key-derived SAN; transport supplies mutual TLS | Live incoming/outgoing rejection matrix, exact single SAN, optional discovered peer and pinned outgoing identities |
-| ALPN | Configured protocol identifier passed to transport | Exact genesis/version identifier; accept `/builder` and base on incoming connections; CE133 admission independent of negotiated builder suffix |
+| ALPN | `alpn.nim` validates identifiers; ordinary, mesh and development acceptors negotiate both base and `/builder` on the same chain, with real TLS coverage | Bind ordinary command identifiers to configured genesis; CE133 admission and builder capacity independent of suffix |
 | Required connectivity | Development mesh and preferred/fallback dialing in `session.nim` | Previous/current/next validator union, metadata IPv6/LE port, duplicate arbitration, bounded builder slots and live epoch changes |
 | Epoch transitions | No general validator-set lifecycle | Finalized first block plus elapsed-slot threshold; preserve old connectivity until both conditions hold |
 | UP/CE lifecycle | Per-stream bounded owners, cancellation and retirement; actual-ID UP admission and same-connection greatest-ID replacement | General CE transcripts/dispatch, both FINs before success, rejection/cancellation mapping across all kinds |

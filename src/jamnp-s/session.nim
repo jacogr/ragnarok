@@ -10,7 +10,7 @@
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
 import ../lib/[logging, stop_signal]
 import ../quic/transport
-import ./protocol
+import ./[protocol, alpn]
 import ./integration
 import ./offload
 import ../app/[options, services, node_logging]
@@ -557,10 +557,12 @@ proc runPeer*(options: Options): bool {.raises.} =
     if peer.telemetry != nil: # SSL destruction can settle unfinished incoming attempts.
       peer.telemetry = nil
       services.telemetry.observe(0) # One nonblocking send while the exporter still owns its descriptor.
+  if not validAlpn(options.argument(6)): return false # No malformed JAM protocol identifier reaches TLS startup.
   if not openTransport(peer.transport, server, peer.attack == "soak", uint16(port),
       options.argument(3), options.argument(4), options.argument(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
-              if peer.overload or peer.offloading: SaturatedService else: CrashRecovery)): return false # No partially initialized endpoint is used.
+              if peer.overload or peer.offloading: SaturatedService else: CrashRecovery),
+      acceptedAlpns = (if server: serverAlpns(options.argument(6)) else: @[])): return false # No partially initialized endpoint is used.
   # Derive the telemetry peer identity/address from this endpoint, with an explicit chain file.
   if not services.configureTelemetry(options, options.argument(3), localPort(peer.transport), load):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
@@ -944,10 +946,12 @@ proc runMesh*(options: Options): bool {.raises.} =
     if incoming.telemetry != nil:
       incoming.telemetry = nil; outgoing.telemetry = nil # End callback borrows only after both engines retire.
       services.telemetry.observe(0) # One final nonblocking send; shutdown never waits for delivery.
+  if not validAlpn(options.argument(8)): return false # Mesh peers use the same exact JAM network spelling.
   # The listener is persistent; outgoing binds once to an ephemeral IPv6 port and keeps it across reconnects.
   if not openTransport(incoming.transport, true, false, uint16(localPort), options.argument(4),
       options.argument(5), options.argument(8), addr incoming, verifyPeer, onStream, ipv6 = true,
-          dispatcher = dispatcher, profile = profile): return false
+          dispatcher = dispatcher, profile = profile,
+          acceptedAlpns = serverAlpns(options.argument(8))): return false
   if not openTransport(outgoing.transport, false, false, 0, options.argument(4), options.argument(
       5), options.argument(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile): return false
