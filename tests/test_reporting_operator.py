@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from reporting_operator import materialize,compare_jobs
+from reporting_operator import materialize,compare_jobs,digest
 
 
 class ReportingOperatorTests(unittest.TestCase):
@@ -58,3 +58,31 @@ class ReportingOperatorTests(unittest.TestCase):
     def test_failed_build_never_runs_stale_command(self):
         """Build failure remains authoritative even if an older driver binary exists."""
         result,calls,_=self.exercise([],build=1);self.assertFalse(result['passed']);self.assertEqual(calls,[])
+
+    def test_bundle_folders_keep_each_command_log(self):
+        """Different corpora sharing a log directory retain every answer, even with identical request basenames."""
+        retained=[]
+        with tempfile.TemporaryDirectory(prefix='operator shared logs ') as temporary:
+            shared=Path(temporary);logs=shared/'logs';logs.mkdir()
+            for family in range(3):
+                # Identical leaf folder names and invocation ordinals must not alias another corpus's evidence.
+                folder=shared/str(family)/'operator bundles'
+                expected=['C None 1 '+str(family)+str(index) for index in range(2)]
+                jobs=[dict(config='config',genesis=bytes([family]),steps=[bytes([index])])
+                    for index in range(2)]
+                commands,_,paths=materialize(folder,jobs,expected)
+                policy=folder/'policy.txt'
+                def command(arguments,name):
+                    """Match the real command logger's shared output directory and return exact process metadata."""
+                    ordinal=commands.index(arguments[1]);output=expected[ordinal]+'\n'
+                    log=logs/(name+'.log');log.write_text(output);policy.write_text('stable policy')
+                    return dict(output=output,exit_code=0,log=str(log),elapsed_seconds=1)
+                result=dict(build=dict(exit_code=0),passed=False)
+                compare_jobs(result,command,'driver',policy,commands,expected,paths)
+                self.assertTrue(result['passed'])
+                retained.extend((Path(row['run']['log']),answer+'\n',row['actual_sha256'])
+                    for row,answer in zip(result['runs'],expected))
+            for log,answer,sha in retained:
+                # Earlier results must still identify the exact bytes recorded before later corpora ran.
+                self.assertEqual(log.read_text(),answer)
+                self.assertEqual(digest(log.read_bytes()),sha)

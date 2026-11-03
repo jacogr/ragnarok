@@ -43,7 +43,9 @@ def compare_jobs(result,command,binary,policy,commands,expected,paths):
         def capture(arguments,name):
             """Retain complete stdout before the shared strict comparator consumes the process payload."""
             run=command(arguments,name);outputs.append(run['output']);return run
-        compare_corpus(child,capture,[binary,source,policy,'population'],source.stem+'-command',[expected[ordinal]])
+        # Request identities include their bundle directory; shared log folders must retain every corpus's output.
+        name=source.stem+'-'+digest(str(source.resolve()).encode())+'-command'
+        compare_corpus(child,capture,[binary,source,policy,'population'],name,[expected[ordinal]])
         child['inputs_unchanged']=all(path.is_file() and digest(path.read_bytes())==sha for path,sha in paths)
         child['passed']=child['passed'] and child['inputs_unchanged']
         policies.append(digest(policy.read_bytes()) if policy.is_file() else None)
