@@ -119,12 +119,21 @@ fn run_lazy_jam_case(
         finished,
         "JamV1 branch did not finish within its source span"
     );
-    let (expected_steps, expected_a7, expected_a8): (&[u32], u64, u64) = if start == 12 {
-        (&[12, 15], 99, 42)
+    let (expected_steps, expected_regs): (&[u32], [u64; 13]) = if start == 12 {
+        (
+            &[12, 15],
+            [0xffff0000, 2, 2, 0, 0, 0, 0, 99, 42, 0, 0, 0, 0],
+        )
     } else if taken {
-        (&[0, 3, 12, 15], 7, 42)
+        (
+            &[0, 3, 12, 15],
+            [0xffff0000, 2, 2, 0, 0, 0, 0, 7, 42, 0, 0, 0, 0],
+        )
     } else {
-        (&[0, 3, 7, 10], 7, 21)
+        (
+            &[0, 3, 7, 10],
+            [0xffff0000, 3, 2, 0, 0, 0, 0, 7, 21, 0, 0, 0, 0],
+        )
     };
     let expected_gas = if full_price {
         if start == 12 {
@@ -146,8 +155,13 @@ fn run_lazy_jam_case(
             .collect::<Vec<_>>()
     );
     assert_eq!(instance.program_counter(), None);
-    assert_eq!(instance.reg(Reg::from_raw(7).unwrap()), expected_a7);
-    assert_eq!(instance.reg(Reg::from_raw(8).unwrap()), expected_a8);
+    for (index, expected) in expected_regs.into_iter().enumerate() {
+        assert_eq!(
+            instance.reg(Reg::from_raw(index as u32).unwrap()),
+            expected,
+            "register {index} changed after JamV1 branch at PC {start}"
+        );
+    }
     assert_eq!(instance.gas(), expected_gas);
 }
 
