@@ -46,7 +46,8 @@ import ../codec/composite
 import ./current/logical as collected_logical
 import ../state/parent/logical as parent_logical
 import ../state/current/logical as current_logical
-import ./proof/[query as proof_query, worker as proof_worker]
+import ./proof/[query as proof_query, worker as proof_worker, network_read]
+import ../jamnp-s/read_stream
 import ../state/proof/[service as proof_service, plan as proof_plan, view as proof_view]
 import ../state/trie_proof
 import ./disk/[chain as disk_chain, worker as disk_worker]
@@ -82,6 +83,12 @@ import ../mcp/protocol as mcp_protocol
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
     Uninitialized, None, Closed, Busy, QueryFailure, WorkerFailure
+  NetworkReadStart* = object ## Managed canonical reads use the same exclusive capacity but distinct read failure reasons.
+    case status: StateProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of QueryFailure: readReason: ReadError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Failed/default starts carry no graph, lease or native collection ticket.
   StateProofAdmission* = object ## Private guarded alternatives cannot forge a successful managed lease.
     case status: StateProofAdmissionError
     of None: ticket: ProofWorkerTicket
@@ -165,6 +172,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   worker: PreparationWorker
   proofWorker: StateProofWorker
   proofInput: ProofQuery
+  networkReadInput: NetworkReadJob
   rpcProof: RpcProofDispatch        # Detached connection intent never retains canonical state.
   rpcProofTicket: ProofWorkerTicket # Host-only exact collection authority for an RPC-origin job.
   proofing: bool
@@ -222,6 +230,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.light)
   `=wasMoved`(services.proofWorker)
   `=wasMoved`(services.proofInput)
+  `=wasMoved`(services.networkReadInput)
   `=wasMoved`(services.rpcProof)
   `=wasMoved`(services.rpcProofTicket)
   `=wasMoved`(services.diskWorker)
@@ -265,6 +274,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.light)
   `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
   `=destroy`(services.proofInput)
+  `=destroy`(services.networkReadInput)
   `=destroy`(services.rpcProof)
   `=destroy`(services.rpcProofTicket)
   `=destroy`(services.diskWorker) # Join must precede every disk/canonical/publication alias retirement.
@@ -463,6 +473,7 @@ proc stopStateProofs*(services: var Services) =
   services.proofWorker.close()
   if services.proofing:
     services.proofInput = default(ProofQuery)
+    services.networkReadInput = default(NetworkReadJob)
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Only this worker's joined lease can reopen canonical access.
@@ -1266,6 +1277,50 @@ proc finishStateProof(services: var Services, reason: ProofQueryError): StatePro
   services.rpcLease = nil
   services.proofInput = default(ProofQuery) # A refusal never grants the worker access to this owner.
   StateProofAdmission(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
+
+func error*(outcome: NetworkReadStart): StateProofAdmissionError =
+  ## Observe the managed start without exposing lease authority.
+  outcome.status
+func value*(outcome: NetworkReadStart): ProofWorkerTicket {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Only successful native submission exposes its exact retirement ticket.
+  outcome.ticket
+func readError*(outcome: NetworkReadStart): ReadError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Preserve source/admission refusal without claiming a partial reply.
+  outcome.readReason
+func workerError*(outcome: NetworkReadStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## Expose native worker admission refusal only in its matching alternative.
+  outcome.workerReason
+proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
+  ## Every temporary canonical alias retires in this activation before native submission.
+  let captured = captureNetworkRead(services.canonical.chainView, request)
+  if captured.error == ReadError.None: services.networkReadInput = captured.value
+  captured.error
+proc beginNetworkRead*(services: var Services, request: ReadRequest): NetworkReadStart {.raises.} =
+  ## Admit one full-state network read through the existing single worker and exact RPC/canonical lease.
+  if not services.started: return NetworkReadStart(status: StateProofAdmissionError.Closed)
+  if services.light.active: return NetworkReadStart(status: StateProofAdmissionError.QueryFailure,
+      readReason: ReadError.Unavailable)
+  if not services.stateProofAvailable: return NetworkReadStart(
+      status: StateProofAdmissionError.Busy)
+  discard services.proofWorker.start() # Reuse one fixed-address worker for all read/RPC jobs.
+  let reason = services.stageNetworkRead(request)
+  if reason != ReadError.None: return NetworkReadStart(
+      status: StateProofAdmissionError.QueryFailure, readReason: reason)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.networkReadInput = default(NetworkReadJob)
+    return NetworkReadStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.networkReadInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true # Disconnect/cancel must not clear this flag before matching Done collection or join.
+    return NetworkReadStart(status: StateProofAdmissionError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.networkReadInput = default(NetworkReadJob)
+  NetworkReadStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 
 proc beginStateProof*(services: var Services, selected: BlockHash, plan: StateProofPlan,
     limits: ProofQueryLimits): StateProofAdmission {.raises.} =
