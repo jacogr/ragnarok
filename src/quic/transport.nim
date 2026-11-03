@@ -52,6 +52,18 @@ type
   # Synchronous authenticated policy: exactly1 admits; both byte spans are borrowed.
   AdmissionCallback* = proc(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
       protocol: ptr ConstByte, protocolLength: csize_t): cint {.cdecl, raises: [].}
+  IncomingPeerIndex* = range[0..MaxIncomingPeers-1] ## A bounded coordinate alone grants no live-peer authority.
+  NativePeerRef {.importc: "rq_peer_ref", header: BridgeHeader, bycopy.} = object
+    owner, generation: uint64
+    slot: cuint
+  PeerHandle* = object ## Immutable owner/generation-bound facts contain no native pointer and own no lifetime.
+    native: NativePeerRef
+  PeerError* {.pure.} = enum ## Defaults/failures expose no successful live observation.
+    Uninitialized, None, Unavailable
+  PeerResult* = object ## Private selected success carries the checked copied reference only.
+    case status: PeerError
+    of None: completed: PeerHandle
+    else: discard      # A missing stream, owner or connection never exposes a slot fallback.
   Transport* = object ## An endpoint owns UDP/engine and owns or borrows its selector; it has no ARC reference back to its peer.
     engine: nil pointer
     socket: UdpEndpoint
@@ -531,3 +543,53 @@ proc admitPeers*(owner: var Transport, callback: AdmissionCallback): bool =
     owner.admission = nil # Failed registration retains no callback or foreign borrow.
     return false
   true
+
+func `==`*(left, right: PeerHandle): bool =
+  ## Compare copied facts only; equality alone does not establish liveness in an owner.
+  left.native.owner == right.native.owner and left.native.generation == right.native.generation and
+      left.native.slot == right.native.slot
+func error*(outcome: PeerResult): PeerError =
+  ## Read failure without acquiring a peer reference.
+  outcome.status
+func value*(outcome: PeerResult): PeerHandle {.requires: outcome.status == PeerError.None.} =
+  ## Copy only a selected immutable peer observation.
+  outcome.completed
+proc nativePeerAt(engine: nil pointer, slot: cuint, output: ptr NativePeerRef): cint {.
+    importc: "rq_peer_at", header: BridgeHeader, cdecl, raises: [].}
+  ## Copy fixed facts from a currently retained authenticated slot.
+proc nativeStreamPeer(engine: nil pointer, stream: NativeStream, output: ptr NativePeerRef): cint {.
+    importc: "rq_stream_peer", header: BridgeHeader, cdecl, raises: [].}
+  ## Bind extraction to the live queried transport and borrowed stream.
+proc nativePeerLive(engine: nil pointer, peer: ptr NativePeerRef): cint {.
+    importc: "rq_peer_live", header: BridgeHeader, cdecl, raises: [].}
+  ## Validate both owner and admission generation without following any caller-owned pointer.
+proc nativeOpenPeer(engine: nil pointer, peer: ptr NativePeerRef): cint {.
+    importc: "rq_open_peer", header: BridgeHeader, cdecl, raises: [].}
+  ## Request a stream only on an exact currently live peer.
+proc nativeClosePeer(engine: nil pointer, peer: ptr NativePeerRef): cint {.
+    importc: "rq_close_peer", header: BridgeHeader, cdecl, raises: [].}
+  ## Request closure without claiming that final retirement has already occurred.
+proc peerAt*(owner: Transport, index: IncomingPeerIndex): PeerResult =
+  ## A callback coordinate is resolved through its owner before becoming a peer reference.
+  var raw {.noinit.}: NativePeerRef
+  if nativePeerAt(owner.engine, cuint(index), addr raw) != 1:
+    return PeerResult(status: PeerError.Unavailable) # C writes all fixed fields only on success.
+  PeerResult(status: PeerError.None, completed: PeerHandle(native: raw))
+proc streamPeer*(owner: Transport, stream: NativeStream): PeerResult =
+  ## Borrow a live stream only during lookup; no stream pointer survives in the returned facts.
+  var raw {.noinit.}: NativePeerRef
+  if nativeStreamPeer(owner.engine, stream, addr raw) != 1:
+    return PeerResult(status: PeerError.Unavailable)
+  PeerResult(status: PeerError.None, completed: PeerHandle(native: raw))
+proc live*(owner: Transport, peer: PeerHandle): bool =
+  ## Defaults, foreign owners, reused slots and reopened transports all fail closed.
+  var raw = peer.native
+  nativePeerLive(owner.engine, addr raw) == 1
+proc openPeerStream*(owner: var Transport, peer: PeerHandle): bool =
+  ## Report an accepted bounded caller request; new-stream callbacks deliver the actual stream later.
+  var raw = peer.native
+  nativeOpenPeer(owner.engine, addr raw) == 1
+proc disconnectPeer*(owner: var Transport, peer: PeerHandle): bool =
+  ## Ownership remains until a real close event; copied old references cannot close replacements.
+  var raw = peer.native
+  nativeClosePeer(owner.engine, addr raw) == 1

@@ -30,6 +30,8 @@ struct rq_transport {
     /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
     lsquic_conn_t **connections;
     unsigned peer_capacity;
+    uint64_t owner_id, next_generation;
+    uint64_t *generations;
     unsigned active, accepted, closed, peak, authenticated, capacity_rejected;
     int multi, persistent, ipv6, global_owned;
     SSL_CTX *tls;
@@ -55,6 +57,8 @@ struct rq_transport {
 };
 /* All adapters currently run on one OS thread. Global TLS state outlives every engine in that process. */
 static unsigned global_owners;
+/* Same selector-thread lifetime as global_owners; never reset on engine teardown or wrap. */
+static uint64_t next_owner_id;
 /* Construct an IPv6 loopback address; external endpoint routing remains outside this bounded proof. */
 static struct sockaddr_in6 address6(uint16_t port) {
     struct sockaddr_in6 a; memset(&a, 0, sizeof(a));
@@ -331,6 +335,8 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
         }
         ++t->capacity_rejected; lsquic_conn_abort(connection); return NULL;
     }
+    /* Exhaustion refuses before application policy can reserve any slot. */
+    if (t->next_generation == UINT64_MAX) { lsquic_conn_abort(connection); return NULL; }
     /* A vacant slot remains valid until this connection's final close callback. */
     for (unsigned i = 0; i < t->peer_capacity; ++i) {
         if (!t->connections[i]) {
@@ -345,6 +351,7 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
                 lsquic_conn_abort(connection); return NULL;
             }
             t->connections[i] = connection;
+            t->generations[i] = ++t->next_generation; /* Validated above; callbacks can mint this exact live reference. */
             peer_accepted(t, connection, i); /* Authenticated identity belongs to this retained slot only. */
             break;
         }
@@ -410,9 +417,12 @@ int rq_set_peer_capacity(rq_transport *t, unsigned maximum, int multiple) {
         return 1;
     }
     lsquic_conn_t **replacement = calloc(maximum, sizeof(*replacement));
-    if (!replacement) return 0; /* Failed setup preserves the original valid table. */
-    free(t->connections);
-    t->connections = replacement; t->peer_capacity = maximum;
+    uint64_t *generations = calloc(maximum, sizeof(*generations));
+    if (!replacement || !generations) {
+        free(replacement); free(generations); return 0; /* Both old arrays remain owned on allocation failure. */
+    }
+    free(t->connections); free(t->generations);
+    t->connections = replacement; t->generations = generations; t->peer_capacity = maximum;
     if (multiple) t->multi = 1; /* Native profile defaults may already require multi-peer service. */
     return 1;
 }
@@ -424,7 +434,11 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
     if (!t) return NULL; /* Typed null failure, never an application panic. */
     t->peer_capacity = RQ_PEER_SLOTS;
     t->connections = calloc(t->peer_capacity, sizeof(*t->connections));
-    if (!t->connections) { free(t); return NULL; } /* No native/global owner exists on this early failure. */
+    t->generations = calloc(t->peer_capacity, sizeof(*t->generations));
+    if (!t->connections || !t->generations || next_owner_id == UINT64_MAX) {
+        free(t->connections); free(t->generations); free(t); return NULL; /* No native/global owner exists yet. */
+    }
+    t->owner_id = ++next_owner_id; /* Failed later setup consumes an identity, never reuses one. */
     t->persistent = soak >= 3; t->multi = soak == 2 || soak == 5; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
     /* Initialize once, so constructing a second engine cannot reseed state used by the first. */
@@ -539,10 +553,48 @@ void rq_transport_free(rq_transport *t) {
     /* Cleanup occurs only after the final engine is destroyed; failed setup releases only its acquired lease. */
     if (t->global_owned && --global_owners == 0) lsquic_global_cleanup();
     free(t->tls_entries); /* All SSL ex-data destructors have cleared their borrowed entries. */
+    free(t->generations);
     free(t->connections); /* Connection/SSL callbacks have retired before their handle storage. */
     free(t);
 }
 
+/* Validate copied references without dereferencing a pointer retained by the caller. */
+static lsquic_conn_t *peer_connection(rq_transport *t, const rq_peer_ref *peer) {
+    if (!t || t->destroying || !peer || !peer->owner || !peer->generation ||
+        peer->owner != t->owner_id || peer->slot >= t->peer_capacity ||
+        peer->generation != t->generations[peer->slot] || (!t->server && t->status != 1))
+        return NULL;
+    return t->connections[peer->slot];
+}
+/* Mint only from this live owner's authenticated retained table. */
+int rq_peer_at(rq_transport *t, unsigned slot, rq_peer_ref *out) {
+    if (!t || t->destroying || !out || slot >= t->peer_capacity || !t->connections[slot] ||
+        (!t->server && t->status != 1)) return 0;
+    out->owner = t->owner_id; out->generation = t->generations[slot]; out->slot = slot;
+    return 1;
+}
+/* Associate a borrowed live stream with the exact queried owner, never a port/key surrogate. */
+int rq_stream_peer(rq_transport *t, void *stream, rq_peer_ref *out) {
+    if (!t || t->destroying || !stream || !out) return 0;
+    lsquic_conn_t *connection = lsquic_stream_conn(stream);
+    for (unsigned slot = 0; slot < t->peer_capacity; ++slot) {
+        if (t->connections[slot] == connection) return rq_peer_at(t, slot, out);
+    }
+    return 0;
+}
+int rq_peer_live(rq_transport *t, const rq_peer_ref *peer) {
+    return peer_connection(t, peer) != NULL; /* No application protocol privilege follows from liveness. */
+}
+int rq_open_peer(rq_transport *t, const rq_peer_ref *peer) {
+    lsquic_conn_t *connection = peer_connection(t, peer);
+    if (!connection) return 0;
+    lsquic_conn_make_stream(connection); return 1; /* Queued request, not an observed stream or protocol completion. */
+}
+int rq_close_peer(rq_transport *t, const rq_peer_ref *peer) {
+    lsquic_conn_t *connection = peer_connection(t, peer);
+    if (!connection) return 0;
+    lsquic_conn_close(connection); return 1; /* Real retirement remains on_conn_closed's responsibility. */
+}
 /* Open a raw bidirectional stream on the authenticated connection. */
 void rq_open_stream(rq_transport *t) { if (t->connection && t->status == 1) lsquic_conn_make_stream(t->connection); }
 /* Preserve would-block separately from EOF and fatal transport errors. */
