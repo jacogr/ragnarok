@@ -1,12 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One reusable fixed-address worker owns an admitted proof query or ingestion request under an exclusive request ARC graph lease.
+## One reusable fixed-address worker owns an admitted proof query, network read or ingestion request under an exclusive request ARC graph lease.
 ## Plain ARC requires all external selected-state aliases to remain untouched through cancellation and Done.
 ## One host thread serializes controls; the worker stays at its final address until joined close.
 
 import std/[assertions, locks, rawthreads]
 import ./query as proof_query
+import ./network_read
+import ../../jamnp-s/read_stream
 import ../light/proof_import as light_proof_import
 
 type
@@ -14,8 +16,8 @@ type
     Idle, Queued, Running, Done
   ProofWorkerError* {.pure.} = enum ## Admission failures retain no ticket or borrowed graph.
     Uninitialized, None, Closed, Busy, NotReady, Exhausted
-  ProofWorkerOperation {.pure.} = enum ## One bounded CPU slot owns either proof response production or current-root ingestion.
-    Query, Ingestion
+  ProofWorkerOperation {.pure.} = enum ## One bounded CPU slot owns proof response production, a network read or current-root ingestion.
+    Query, Ingestion, NetworkRead
   ProofWorkerIdentity = ref object ## Host-only namespace; the worker never accesses this ARC reference.
     marker: uint8
   ProofWorkerTicket* = object ## Retained namespace and nonwrapping generation prevent foreign or stale retirement.
@@ -26,11 +28,12 @@ type
     of None: ticket: ProofWorkerTicket
     else: discard                # Refusals retain no authority.
   ProofWorkerCompletionKind* {.pure.} = enum ## Cancellation never exposes a proof success prefix.
-    Uninitialized, Completed, Cancelled, Imported
+    Uninitialized, Completed, Cancelled, Imported, ReadCompleted
   ProofWorkerCompletion* = object ## Only a collected uncancelled completion exposes its typed query outcome.
     case status: ProofWorkerCompletionKind
     of Completed: response: ProofQueryResult[ProofResponse]
     of Imported: ingestion: LightImportResult[ImportedLightProofs]
+    of ReadCompleted: readResponse: ReadResult[ReadReply]
     else: discard # Defaults and cancellation have no response payload.
   StateProofWorker* = object ## Must remain at one address from start through explicit joined close.
     lock: Lock
@@ -43,12 +46,16 @@ type
     operation: ProofWorkerOperation
     importJob: LightProofImport
     importOutcome: LightImportResult[ImportedLightProofs]
+    readJob: NetworkReadJob
+    readOutcome: ReadResult[ReadReply]
     query: ProofQuery
     outcome: ProofQueryResult[ProofResponse]
 
 proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Moving a live worker would invalidate the address borrowed by its native thread.
+  `=wasMoved`(worker.readJob)
+  `=wasMoved`(worker.readOutcome)
   `=wasMoved`(worker.importJob)
   `=wasMoved`(worker.importOutcome)
   `=wasMoved`(worker.query)
@@ -68,6 +75,8 @@ proc requireClosed(worker: StateProofWorker) {.requires: not worker.started.} =
 proc `=destroy`*(worker: StateProofWorker) =
   ## Host cleanup joins explicitly while all borrowed inputs and aliases still exist.
   requireClosed(worker)
+  `=destroy`(worker.readJob)
+  `=destroy`(worker.readOutcome)
   `=destroy`(worker.importJob)
   `=destroy`(worker.importOutcome)
   `=destroy`(worker.query)
@@ -98,9 +107,16 @@ func importedValue*(completion: ProofWorkerCompletion): LightImportResult[
   ## Only complete uncancelled ingestion exposes its genuinely verified checkpoint-bound batch.
   completion.ingestion
 
+func readValue*(completion: ProofWorkerCompletion): ReadResult[ReadReply] {.requires:
+    completion.status == ProofWorkerCompletionKind.ReadCompleted.} =
+  ## Network replies remain distinct from RPC proof responses and verified light ingestion.
+  completion.readResponse
+
 proc execute(worker: ptr StateProofWorker) =
   ## All selected-state aliases and generation scratch retire before run publishes Done.
   case worker.operation
+  of ProofWorkerOperation.NetworkRead:
+    worker.readOutcome = executeNetworkRead(worker.readJob) # Only frozen wire survives the worker activation.
   of ProofWorkerOperation.Query:
     worker.outcome = executeProofQuery(worker.query) # Full/partial query sources retain the same bounded response contract.
   of ProofWorkerOperation.Ingestion:
@@ -134,6 +150,8 @@ proc start*(worker: var StateProofWorker): bool {.raises.} =
   worker.phase = ProofWorkerPhase.Idle
   worker.query = default(ProofQuery)
   worker.outcome = default(ProofQueryResult[ProofResponse])
+  worker.readJob = default(NetworkReadJob)
+  worker.readOutcome = default(ReadResult[ReadReply])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -167,6 +185,8 @@ proc submit*(worker: var StateProofWorker, query: var ProofQuery): ProofWorkerAd
   if worker.next == high(uint64):
     return ProofWorkerAdmission(status: ProofWorkerError.Exhausted)
   inc worker.next
+  worker.readJob = default(NetworkReadJob)
+  worker.readOutcome = default(ReadResult[ReadReply])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -201,6 +221,29 @@ proc submit*(worker: var StateProofWorker, request: var LightProofImport): Proof
   ProofWorkerAdmission(status: ProofWorkerError.None,
     ticket: ProofWorkerTicket(owner: worker.identity, generation: worker.next))
 
+proc submit*(worker: var StateProofWorker, request: var NetworkReadJob): ProofWorkerAdmission =
+  ## Transfer one network read into the existing single CPU slot without adding any native thread.
+  if not worker.started: return ProofWorkerAdmission(status: ProofWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != ProofWorkerPhase.Idle: return ProofWorkerAdmission(
+      status: ProofWorkerError.Busy)
+  if not request.valid: return ProofWorkerAdmission(status: ProofWorkerError.NotReady)
+  if worker.next == high(uint64): return ProofWorkerAdmission(status: ProofWorkerError.Exhausted)
+  inc worker.next
+  worker.query = default(ProofQuery)
+  worker.outcome = default(ProofQueryResult[ProofResponse])
+  worker.importJob = default(LightProofImport)
+  worker.importOutcome = default(LightImportResult[ImportedLightProofs])
+  worker.readJob = move(request)
+  worker.readOutcome = default(ReadResult[ReadReply])
+  worker.operation = ProofWorkerOperation.NetworkRead
+  worker.cancelled = false
+  worker.phase = ProofWorkerPhase.Queued
+  signal(worker.changed)
+  ProofWorkerAdmission(status: ProofWorkerError.None,
+    ticket: ProofWorkerTicket(owner: worker.identity, generation: worker.next))
+
 func matches(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
   ## Called under the lock; generation zero and idle slots never authorize retirement.
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==
@@ -226,12 +269,17 @@ proc collect*(worker: var StateProofWorker, ticket: ProofWorkerTicket): ProofWor
   if worker.cancelled:
     worker.outcome = default(ProofQueryResult[ProofResponse])
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.Cancelled)
+  elif worker.operation == ProofWorkerOperation.NetworkRead:
+    result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.ReadCompleted,
+      readResponse: move(worker.readOutcome)) # Done collection ends every worker alias before host transport publication.
   elif worker.operation == ProofWorkerOperation.Ingestion:
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.Imported,
       ingestion: move(worker.importOutcome)) # Transfer a verified whole batch only after every worker alias retires.
   else:
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.Completed,
       response: move(worker.outcome)) # Transfer on the host only after all worker aliases have retired.
+  worker.readJob = default(NetworkReadJob)
+  worker.readOutcome = default(ReadResult[ReadReply])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -247,6 +295,8 @@ proc close*(worker: var StateProofWorker) =
   release(worker.lock)
   worker.thread.join()
   worker.outcome = default(ProofQueryResult[ProofResponse])
+  worker.readJob = default(NetworkReadJob)
+  worker.readOutcome = default(ReadResult[ReadReply])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query

@@ -9,6 +9,7 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/state/proof/service as proof_service
 import ../../../src/codec/bounded
 import ../../../src/rpc/server
+import ../../../src/jamnp-s/read_stream
 import ../../support/proof_query_context
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield to one native worker while the host polls only synchronized scalars.
@@ -69,6 +70,41 @@ proc main() {.raises.} =
   assert owner.cancelStateProof(later)
   owner.waitDone()
   assert owner.collectStateProof(later).kind == ProofWorkerCompletionKind.Cancelled
+  let invalidRead = owner.beginNetworkRead(default(ReadRequest))
+  assert invalidRead.error == StateProofAdmissionError.QueryFailure
+  assert invalidRead.readError == ReadError.InvalidRequest
+  assert not owner.stateProofActive and not owner.rpc.chainPaused
+  var payload = newSeq[byte](98)
+  for index in 0..<32: payload[index] = array[32, byte](hash)[index]
+  for index in 63..<94: payload[index] = 255 # Full selected posterior-map range.
+  payload[96] = 16 # E4 maximum1MiB.
+  let readRequest = decodeReadRequest(ReadKind.State, payload)
+  assert readRequest.error == ReadError.None
+  let network = owner.beginNetworkRead(readRequest.value)
+  assert network.error == StateProofAdmissionError.None
+  assert owner.stateProofActive and owner.rpc.chainPaused and not owner.preparationAvailable
+  assert owner.beginStateProof(hash, plan, limits).error == StateProofAdmissionError.Busy
+  assert owner.cancelStateProof(network.value)
+  owner.stopPreparation() # Cancelling another subsystem cannot end the network read's graph lease.
+  assert owner.stateProofActive and owner.rpc.chainPaused
+  owner.waitDone()
+  assert owner.collectStateProof(admitted.value).kind == ProofWorkerCompletionKind.Uninitialized
+  assert owner.stateProofActive and owner.rpc.chainPaused, "stale collection cannot release this lease"
+  assert owner.collectStateProof(network.value).kind == ProofWorkerCompletionKind.Cancelled
+  assert not owner.stateProofActive and not owner.rpc.chainPaused
+  let reading = owner.beginNetworkRead(readRequest.value)
+  assert reading.error == StateProofAdmissionError.None
+  owner.waitDone()
+  let frozenRead = owner.collectStateProof(reading.value)
+  assert frozenRead.kind == ProofWorkerCompletionKind.ReadCompleted
+  assert frozenRead.readValue.error == ReadError.None
+  assert frozenRead.readValue.value.bytes.len >= 8
+  assert not owner.stateProofActive and not owner.rpc.chainPaused
+  let joinedRead = owner.beginNetworkRead(readRequest.value)
+  assert joinedRead.error == StateProofAdmissionError.None
+  owner.stopStateProofs() # Joined cancellation releases source and RPC lease before another proof may start.
+  assert not owner.stateProofActive and not owner.rpc.chainPaused
+  assert owner.collectStateProof(joinedRead.value).kind == ProofWorkerCompletionKind.Uninitialized
   let closing = owner.beginStateProof(hash, plan, limits).value
   owner.close() # Join active computation before canonical and RPC owners retire.
   assert not owner.stateProofActive and not owner.rpc.chainPaused
