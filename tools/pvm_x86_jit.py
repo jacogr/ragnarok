@@ -29,6 +29,8 @@ def qualify(checks, compiler, rows=None):
     for name, source, refused in (
         ('x86-native', 'tests/performance/pvm_x86_jit_witness.nim', False),
         ('x86-refused', 'tests/performance/pvm_x86_jit_witness.nim', True),
+        ('fragment-cap-native', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', False),
+        ('fragment-cap-refused', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', True),
         ('boundaries', 'tests/performance/pvm_arm64_jit_witness.nim', False),
         ('boundaries-refused', 'tests/performance/pvm_arm64_jit_witness.nim', True),
         ('all-opcodes', 'tests/unit/codec/test_pvm_stream_all_opcodes.nim', False),
@@ -44,6 +46,11 @@ def qualify(checks, compiler, rows=None):
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])
         run = checks.command([binary], name+'-run', timeout=900)
         if run['exit_code']: raise RuntimeError(run['output'][-3000:])
+        if name.startswith('fragment-cap-'):
+            # A Linux native run must cross the shared quota; refusal proves allocation failure separately.
+            expected = 'X86_FRAGMENT_CAP_FORCED_REFUSAL_OK\n' if refused else 'X86_FRAGMENT_CAP_NATIVE_OK\n'
+            if run['output'] != expected:
+                raise ValueError('incomplete x86 fragment-cap boundary witness')
         if name.startswith('checked-store-') and 'X86_CHECKED_STORE_ACTIVE\n' not in run['output']:
             raise ValueError('native-plan checked store loop did not activate')
         if name.startswith('x86-') and ('X86_REGISTER_CASES,2120\n' not in run['output'] or
