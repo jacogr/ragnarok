@@ -3,7 +3,7 @@
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
 import std/[algorithm, assertions]
-when defined(pvmArmMixedGroupReceipt) or defined(pvmDirtyMetaProbe):
+when defined(pvmArmMixedGroupReceipt):
   import std/syncio
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
@@ -446,26 +446,6 @@ proc flatClearDirty(f: var FlatFrame) =
     # Several pages can share a word; repeated clearing is harmless and bounded by written pages.
     f.dirtyPages[int(page shr 6)] = 0
   f.dirtyIndices.setLen(0)
-
-when defined(pvmDirtyMetaProbe):
-  proc flatCheckDirtyMetadata(f: var FlatFrame) =
-    ## Private diagnostic: each recorded page owns one set bit, including after native stores.
-    var bits = 0
-    var seen = default(array[16384, uint64])
-    assert f.dirtyPages.len <= seen.len
-    for word in f.dirtyPages:
-      var remaining = word
-      while remaining != 0:
-        remaining = remaining and (remaining-1)
-        inc bits
-    for page in f.dirtyIndices:
-      let word = int(page shr 6)
-      assert word < f.dirtyPages.len
-      let mask = 1'u64 shl int(page and 63)
-      assert (seen[word] and mask) == 0, "duplicate dirty page ordinal"
-      seen[word] = seen[word] or mask
-      assert (f.dirtyPages[word] and mask) != 0
-    assert bits == f.dirtyIndices.len
 
 func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   ## Captured maps contain only 32-bit-addressable pages; unknown bitmap shapes retain full publication.
@@ -4130,12 +4110,6 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   frame.extra = move(held.extra)
   frame.dirtyPages = move(held.dirtyPages)
   frame.dirtyIndices = move(held.dirty)
-  when defined(pvmDirtyMetaProbe):
-    flatCheckDirtyMetadata(frame)
-    echo "PVM_DIRTY_META,reuse,priorDirty=", frame.dirtyIndices.len,
-      ",bitmap=", cast[uint](addr frame.dirtyPages[0]),
-      ",indices=", (if frame.dirtyIndices.len == 0: 0'u
-        else: cast[uint](addr frame.dirtyIndices[0])), ",changes=", changes.len
   for index in 0..<frame.dirtyIndices.len:
     let physical = frame.dirtyIndices[index]
     # Reset guest writes even when the incoming source reuses its exact original owner.
@@ -4145,9 +4119,6 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     # Fresh source bytes can differ outside the previous guest's dirty set; conservative overlap copies are safe.
     flatRestoreScratchPage(frame, int(uint32(changed)))
   flatClearDirty(frame)
-  when defined(pvmDirtyMetaProbe):
-    flatCheckDirtyMetadata(frame)
-    echo "PVM_DIRTY_META,cleared,dirty=", frame.dirtyIndices.len
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Every borrowed native descriptor is derived anew from this invocation's moved byte owners.
     flatBuildArmReadContext(frame)
@@ -4164,12 +4135,6 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil
-  when defined(pvmDirtyMetaProbe):
-    flatCheckDirtyMetadata(f)
-    echo "PVM_DIRTY_META,take,dirty=", f.dirtyIndices.len,
-      ",bitmap=", cast[uint](addr f.dirtyPages[0]), ",reason=", ord(f.reason),
-      ",indices=", (if f.dirtyIndices.len == 0: 0'u
-        else: cast[uint](addr f.dirtyIndices[0])), ",exit=", ord(f.exit), ",payload=", total
   FlatMemoryScratch(baseline: f.sourceMemory, pages: move(f.sourcePages),
     roBase: f.roBase, rwBase: f.rwBase, stackBase: f.stackBase,
     ro: move(f.ro), rw: move(f.rw), stack: move(f.stack), extra: move(f.extra),
