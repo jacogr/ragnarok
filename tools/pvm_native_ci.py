@@ -67,14 +67,14 @@ def host_identity():
 
 
 def qualify_policy(checks):
-    """Run maintained owner-policy suites, including forced storage refusal, before starting comparison clocks."""
+    """Run maintained memory-lease and owner-policy suites before starting comparison clocks."""
     rows = []
-    for suite in ('pvm_runtime_policy', 'pvm_runtime_policy_refused'):
+    for suite in ('pvm_memory_reuse', 'pvm_runtime_policy', 'pvm_runtime_policy_refused'):
         checked = checks.command([sys.executable, ROOT/'tools/native_tests.py', '--suite', suite],
                                  suite, timeout=900)
         rows.append(dict(suite=suite, run=checked))
         if checked['exit_code']:
-            raise RuntimeError('PVM owner policy qualification failed: '+checked['log'])
+            raise RuntimeError('PVM memory/policy qualification failed: '+checked['log'])
     return rows
 
 
@@ -104,12 +104,16 @@ def run():
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
                  ROOT/'tests/performance/pvm_arm_macro_backend.nim',
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
+                 ROOT/'tests/support/arc_evidence.nim',
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
+                 ROOT/'tests/unit/codec/test_pvm_memory_reuse.nim',
+                 ROOT/'tests/unit/codec/test_pvm_memory_reuse.output',
                  ROOT/'tests/unit/codec/test_pvm_stream_all_opcodes.nim',
                  ROOT/'tests/unit/codec/test_pvm_stream_regions_and_host.nim',
                  ROOT/'tests/unit/state/test_pvm_arm_region_refusal.nim',
                  ROOT/'tests/unit/state/test_pvm_arm_region_refusal.output',
+                 ROOT/'tools/native_requirements/codec/pvm_memory_reuse.json',
                  ROOT/'tools/native_requirements/state/pvm_arm_region_refusal.json',
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
