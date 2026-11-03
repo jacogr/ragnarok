@@ -19,6 +19,10 @@ when defined(pvmX86RegionRefusalNativeRequired):
   require(Native and defined(pvmX86Jit), "native-required")
   echo "X86_REGION_REFUSAL_NATIVE_REQUIRED,1"
 
+when defined(pvmX86RegionRefusalForcedRequired):
+  require(not Native and defined(pvmX86JitRefuse) and defined(pvmX86Jit), "forced-required")
+  echo "X86_REGION_REFUSAL_FORCED_REQUIRED,1"
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Only framing uses the independent codec; instruction, register and branch bytes remain literal.
   let encoded = encode(JamNatural(value))
@@ -162,6 +166,7 @@ block globalExhaustion:
     registers[1] = RegisterValue(3)
     var state = [100'u64, 100'u64, 0'u64, 0'u64, uint64(high(uint32))]
     require(callX86Region(counted, registers, state) == 12 and
+      uint64(registers[0]) == 3 and
       state == [94'u64, 94'u64, 3'u64, 0'u64, 7'u64],
       "reserved-region-executes-at-capacity")
     # Fill physical byte capacity with long leaves, then shorter leaves, below the count ceiling.

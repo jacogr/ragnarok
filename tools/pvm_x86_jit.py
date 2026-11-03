@@ -43,6 +43,7 @@ def qualify(checks, compiler, rows=None):
         ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
         flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else []),
                  *(['pvmX86RegionRefusalNativeRequired'] if name == 'region-refusal-native' else []),
+                 *(['pvmX86RegionRefusalForcedRequired'] if name == 'region-refusal-forced' else []),
                  *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else [])]
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
@@ -55,9 +56,10 @@ def qualify(checks, compiler, rows=None):
             if run['output'] != expected:
                 raise ValueError('incomplete x86 fragment-cap boundary witness')
         if name.startswith('region-refusal-'):
-            expected = 'X86_REGION_REFUSAL_NATIVE_REQUIRED,1\n'
-            if (expected in run['output']) != (name == 'region-refusal-native'):
-                raise ValueError('wrong x86 region-refusal native coverage')
+            for mode in ('native', 'forced'):
+                expected = 'X86_REGION_REFUSAL_'+mode.upper()+'_REQUIRED,1\n'
+                if (expected in run['output']) != (name == 'region-refusal-'+mode):
+                    raise ValueError('wrong x86 region-refusal '+mode+' coverage')
             for marker in ('PASS candidate-local shape and size',
                            'PASS exact eight-visit negative budget',
                            'PASS same-owner rejected then eligible',
