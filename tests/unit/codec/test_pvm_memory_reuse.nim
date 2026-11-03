@@ -45,6 +45,17 @@ proc same(left, right: Machine) =
     assert pageImage(memoryOf(left).value, page.index).value == pageImage(memoryOf(right).value,
         page.index).value
 
+proc addWord(bytes: var seq[byte], value: uint64) =
+  ## Test-only literal operand encoding keeps the address and data independent of the decoder.
+  for shift in 0..<4:
+    bytes.add(byte((value shr (shift*8)) and 255))
+
+proc crossingStore(address, value: uint64): seq[byte] =
+  ## Opcode 33 stores eight bytes; the last byte of page 63 crosses into bitmap word 1.
+  result = @[33'u8, 4]
+  result.addWord(address)
+  result.addWord(value)
+
 let owner = code([@[52'u8, 0, 0, 0, 1, 0], @[52'u8, 1, 0, 32, 1, 0],
   @[52'u8, 2, 255, 17, 1, 0],
   @[30'u8, 4, 255, 17, 1, 0, 123, 0, 0, 0],
@@ -115,6 +126,53 @@ for iteration in 0..<saved.len:
   same(saved[iteration], expected.value.machine)
 for index in 0..<images.len:
   assert pageImage(original, images[index].index).value == images[index]
+
+block crossing_unpublished_reuse:
+  ## A refused call leaves two dirty physical pages across the 63/64 bitmap-word boundary.
+  let crossingOwner = code([crossingStore(262143'u64, 0x89abcdef'u64),
+    crossingStore(262143'u64, 0x76543210'u64), @[0'u8]])
+  var crossingImages: seq[PageImage] = @[]
+  for physical in [63'u32, 64'u32]:
+    var image = PageImage(index: PageIndex(physical), access: PageAccess.ReadWrite)
+    for offset in 0..<4096:
+      image.bytes[offset] = byte((offset*7+int(physical)) mod 251)
+    crossingImages.add(image)
+  let crossingOriginal = captureMemory(crossingImages, PageLimit(2)).value
+  let crossingPrepared = newPreparedProgram(crossingOwner,
+    defaultPreparedLimits(GasCycleLimit(10000))).value
+  let stopped = execute(input(crossingOwner, crossingOriginal, 11), ExecutionStepLimit(1),
+    crossingPrepared)
+  assert stopped.error == StepError.StepLimitExceeded
+
+  # Reuse the unchanged source after an unpublished store, then compare every CPU and page byte.
+  let firstSource = input(crossingOwner, crossingOriginal, 12)
+  let firstFresh = newPreparedProgram(crossingOwner,
+    defaultPreparedLimits(GasCycleLimit(10000))).value
+  let firstExpected = execute(firstSource, ExecutionStepLimit(100), firstFresh)
+  let firstActual = execute(firstSource, ExecutionStepLimit(100), crossingPrepared)
+  assert firstExpected.error == StepError.None and firstActual.error == StepError.None
+  assert firstActual.value.exit == firstExpected.value.exit
+  same(firstActual.value.machine, firstExpected.value.machine)
+  assert preparedInfo(crossingPrepared).value.memoryReuses == 1
+  assert preparedInfo(crossingPrepared).value.retainedMemoryPayloadBytes == 16384
+
+  # A new source owner in page 64 overlaps one previously dirty page; the old result stays immutable.
+  var updated = pageImage(crossingOriginal, PageIndex(64)).value
+  updated.bytes[10] = updated.bytes[10] xor 0xff
+  let crossingChanged = withPage(crossingOriginal, updated).value
+  let secondSource = input(crossingOwner, crossingChanged, 13)
+  let secondFresh = newPreparedProgram(crossingOwner,
+    defaultPreparedLimits(GasCycleLimit(10000))).value
+  let secondExpected = execute(secondSource, ExecutionStepLimit(100), secondFresh)
+  let secondActual = execute(secondSource, ExecutionStepLimit(100), crossingPrepared)
+  assert secondExpected.error == StepError.None and secondActual.error == StepError.None
+  assert secondActual.value.exit == secondExpected.value.exit
+  same(secondActual.value.machine, secondExpected.value.machine)
+  same(firstActual.value.machine, firstExpected.value.machine)
+  assert preparedInfo(crossingPrepared).value.memoryReuses == 2
+  for index in 0..<crossingImages.len:
+    assert pageImage(crossingOriginal, crossingImages[index].index).value == crossingImages[index]
+
 proc releaseCycle(owner: Program, original, changed: Memory) =
   ## A dropped prepared identity must retire its idle byte lease and retained source baseline together.
   let local = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(10000))).value

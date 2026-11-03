@@ -2,8 +2,9 @@
 
 An exclusive prepared owner can retain one idle private-memory allocation between calls.
 Each new invocation still initializes fresh CPU, paid gas, attempt/callback budgets, host state,
-temporary handlers and dirty bitmap. Native code retains no invocation memory pointer; ARM
-descriptors are rebuilt from the newly leased byte owners before execution.
+temporary handlers. The idle lease can also retain a dirty bitmap, but every execution
+starts with its bits cleared after input restoration. Native code retains no invocation memory
+pointer; ARM descriptors are rebuilt from the newly leased byte owners before execution.
 
 ## Retention policy and lifetime
 
@@ -14,15 +15,19 @@ this field retain their zero/default behavior. The worker cache still retains on
 identity and includes this budget in its source/policy key.
 
 All stored baseline pages count, including inaccessible pages that retain payload. Allocator
-overhead and mapping metadata are additional; metadata remains bounded by the retained page
-count. This is a payload admission limit, not an RSS measurement. `PreparedInfo` copies
+overhead and mapping metadata are additional. A nonempty idle lease can retain one fixed
+128 KiB dirty bitmap and an index sequence requested with capacity for at most one `uint32`
+per retained page (four logical bytes per page). Allocator capacity rounding and bookkeeping
+are additional. Neither metadata allocation enters the reported logical payload or makes its
+limit an RSS bound. Both are released with the lease. `PreparedInfo` copies
 `retainedMemoryPayloadBytes` and cumulative `memoryReuses`; diagnostics never authorize execution.
 Empty private allocations are not retained. Oversized leases retire normally with no guest refusal.
 Eviction or dropping the final prepared handle releases code and idle memory through acyclic ARC.
 
 The lease owns only managed region buffers, copied sorted mapping metadata, one immutable
-baseline and dirty physical page ordinals. It holds no CPU, gas, callback, native arena or frame
-address. Same-owner synchronous reentry remains refused by the existing exclusive prepared lease.
+baseline, dirty physical page ordinals and their bounded bitmap. It holds no CPU, gas, callback,
+native arena or frame address. Same-owner synchronous reentry remains refused by the existing
+exclusive prepared lease.
 There is no global memory pool or additional OS allocation interface.
 
 ## Restoring complete input

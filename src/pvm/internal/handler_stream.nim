@@ -3,7 +3,7 @@
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
 import std/[algorithm, assertions]
-when defined(pvmArmMixedGroupReceipt):
+when defined(pvmArmMixedGroupReceipt) or defined(pvmDirtyMetaProbe):
   import std/syncio
 import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
@@ -77,6 +77,7 @@ type
     ro, rw, stack: seq[byte]
     extra: seq[FlatRegion]
     dirty: seq[uint32]
+    dirtyPages: seq[uint64] # Bounded 128 KiB bitmap; its set bits match dirty exactly.
     payloadBytes: uint64 # Logical baseline and private payload charged to the idle retention limit.
   FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
     plan: FlatPlan
@@ -445,6 +446,26 @@ proc flatClearDirty(f: var FlatFrame) =
     # Several pages can share a word; repeated clearing is harmless and bounded by written pages.
     f.dirtyPages[int(page shr 6)] = 0
   f.dirtyIndices.setLen(0)
+
+when defined(pvmDirtyMetaProbe):
+  proc flatCheckDirtyMetadata(f: var FlatFrame) =
+    ## Private diagnostic: each recorded page owns one set bit, including after native stores.
+    var bits = 0
+    var seen = default(array[16384, uint64])
+    assert f.dirtyPages.len <= seen.len
+    for word in f.dirtyPages:
+      var remaining = word
+      while remaining != 0:
+        remaining = remaining and (remaining-1)
+        inc bits
+    for page in f.dirtyIndices:
+      let word = int(page shr 6)
+      assert word < f.dirtyPages.len
+      let mask = 1'u64 shl int(page and 63)
+      assert (seen[word] and mask) == 0, "duplicate dirty page ordinal"
+      seen[word] = seen[word] or mask
+      assert (f.dirtyPages[word] and mask) != 0
+    assert bits == f.dirtyIndices.len
 
 func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   ## Captured maps contain only 32-bit-addressable pages; unknown bitmap shapes retain full publication.
@@ -1594,15 +1615,18 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.armMemory[4] = flatArmClippedReadRegion(f.rwBase, f.rw)
     f.armMemory[5] = flatArmClippedReadRegion(f.roBase, f.ro)
 
-proc flatFrameShell(plan: FlatPlan, memory: Memory, info: MachineInfo, pageCount: int): FlatFrame =
+proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Memory,
+    info: MachineInfo, pageCount: int): FlatFrame =
   ## Both paths initialize every execution field afresh; the memory lease never supplies execution state.
   result = FlatFrame(plan: plan,
       preparationFailure: FlatError.None, preparationUsed: 0, hostSnapshot: default(Memory),
           hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
     # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
-    dirtyPages: (if pageCount == 0: @[] else: newSeq[uint64](16384)),
-    dirtyIndices: newSeqOfCap[uint32](pageCount),
+    dirtyPages: (when reuseDirtyMetadata: default(seq[uint64])
+      else: (if pageCount == 0: @[] else: newSeq[uint64](16384))),
+    dirtyIndices: (when reuseDirtyMetadata: default(seq[uint32])
+      else: newSeqOfCap[uint32](pageCount)),
         info: info, reason: oracle.StepError.None,
     exit: oracle.StepExit.Continued,
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
@@ -1629,7 +1653,7 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
   assert plan != nil
   # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
   assert images.len <= high(int) div sizeof(PageDescription)
-  result = flatFrameShell(plan, memory, info, images.len)
+  result = flatFrameShell[false](plan, memory, info, images.len)
 
   var regions: seq[FlatRegion] = @[]
   var first = 0
@@ -4095,7 +4119,7 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)
   var changes = machine.takeValue(delta)
-  var frame = flatFrameShell(plan, memory, info, held.pages.len)
+  var frame = flatFrameShell[true](plan, memory, info, held.pages.len)
   frame.sourcePages = move(held.pages)
   frame.roBase = held.roBase
   frame.rwBase = held.rwBase
@@ -4104,14 +4128,26 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   frame.rw = move(held.rw)
   frame.stack = move(held.stack)
   frame.extra = move(held.extra)
-  for index in 0..<held.dirty.len:
-    let physical = held.dirty[index]
+  frame.dirtyPages = move(held.dirtyPages)
+  frame.dirtyIndices = move(held.dirty)
+  when defined(pvmDirtyMetaProbe):
+    flatCheckDirtyMetadata(frame)
+    echo "PVM_DIRTY_META,reuse,priorDirty=", frame.dirtyIndices.len,
+      ",bitmap=", cast[uint](addr frame.dirtyPages[0]),
+      ",indices=", (if frame.dirtyIndices.len == 0: 0'u
+        else: cast[uint](addr frame.dirtyIndices[0])), ",changes=", changes.len
+  for index in 0..<frame.dirtyIndices.len:
+    let physical = frame.dirtyIndices[index]
     # Reset guest writes even when the incoming source reuses its exact original owner.
     flatRestoreScratchPage(frame, flatScratchSlot(frame.sourcePages, physical))
   for index in 0..<changes.len:
     let changed = changes[index]
     # Fresh source bytes can differ outside the previous guest's dirty set; conservative overlap copies are safe.
     flatRestoreScratchPage(frame, int(uint32(changed)))
+  flatClearDirty(frame)
+  when defined(pvmDirtyMetaProbe):
+    flatCheckDirtyMetadata(frame)
+    echo "PVM_DIRTY_META,cleared,dirty=", frame.dirtyIndices.len
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Every borrowed native descriptor is derived anew from this invocation's moved byte owners.
     flatBuildArmReadContext(frame)
@@ -4128,10 +4164,16 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil
+  when defined(pvmDirtyMetaProbe):
+    flatCheckDirtyMetadata(f)
+    echo "PVM_DIRTY_META,take,dirty=", f.dirtyIndices.len,
+      ",bitmap=", cast[uint](addr f.dirtyPages[0]), ",reason=", ord(f.reason),
+      ",indices=", (if f.dirtyIndices.len == 0: 0'u
+        else: cast[uint](addr f.dirtyIndices[0])), ",exit=", ord(f.exit), ",payload=", total
   FlatMemoryScratch(baseline: f.sourceMemory, pages: move(f.sourcePages),
     roBase: f.roBase, rwBase: f.rwBase, stackBase: f.stackBase,
     ro: move(f.ro), rw: move(f.rw), stack: move(f.stack), extra: move(f.extra),
-    dirty: move(f.dirtyIndices), payloadBytes: total)
+    dirty: move(f.dirtyIndices), dirtyPages: move(f.dirtyPages), payloadBytes: total)
 
 func flatMemoryScratchPayload*(scratch: nil FlatMemoryScratch): uint64 =
   ## Copied logical payload occupancy excludes allocator overhead and remains zero without an idle lease.
