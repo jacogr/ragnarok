@@ -51,6 +51,10 @@ type
     fragments*, calls*, operations*, codeBytes*, compilationNs*: uint64
     branchCalls*, headerCalls*: uint64
 
+const
+  x86NonRegionFragmentLimit = 8191'u64 ## Leave one owner slot for the pure region.
+  x86TotalFragmentLimit = 8192'u64     ## Leaves and the one-shot region share this publication budget.
+
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
   ## Reject copying the exclusive native executable arena owner.
 
@@ -205,7 +209,8 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
   let minimum = if shortPrefix: 1'u32 else: 4'u32
   if (not conditional and count < minimum) or count > (if conditional: 65'u32 else: 64'u32) or
       ending <= offset or ending > uint32(jit.entries.len) or
-      jit.fragments >= 1024 or fragment.bytes.len == 0 or fragment.bytes.len >= 4096:
+      jit.fragments >= x86NonRegionFragmentLimit or fragment.bytes.len == 0 or
+      fragment.bytes.len >= 4096:
     refuseX86Entry(jit, offset)
     return false
   var bytes = fragment.bytes
@@ -359,7 +364,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
   let epilogue = code.bytes.len
   put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
   if code.bytes.len >= 4096: return false
-  if jit.fragments >= 1024:
+  if jit.fragments >= x86TotalFragmentLimit:
     # Exhausted owner-wide publication capacity is permanent, unlike this candidate's shape or size.
     jit.region.status = 1
     return false
