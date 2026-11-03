@@ -5,6 +5,7 @@
 ## callbacks; the route owns only bounded request/reply bytes, never a canonical state graph.
 import ../chain/[genesis, provider]
 import ../quic/transport
+import ./read_stream
 
 type
   BlockServiceError* {.pure.} = enum ## Failures carry no partial request or response.
@@ -24,12 +25,9 @@ type
     of None: completed: T
     else: discard                 # No partial canonical result escapes rejection.
   BlockRequestRoute* = object ## Parent owns native close and fixed routing capacity; this route borrows its stream.
-    stream: NativeStream
-    request: array[42, byte]
-    used, offset: int
+    frame: ReadRoute
+    request: ReadRequest
     query: BlockQuery
-    output: seq[byte]
-    pending, taken, writing, failed: bool
 
 const MaxBlockReplyBytes* = 8*1024*1024 ## Hard response ceiling includes the E4 header.
 const MaxBlockReplyCount* = 64 ## A request may receive fewer than its untrusted u32 maximum.
@@ -95,93 +93,43 @@ proc bytes*(reply: BlockReply): seq[byte] =
   ## Return an independently owned wire copy without exposing mutable frozen storage.
   reply.wire
 func handle*(route: BlockRequestRoute): NativeStream =
-  ## Parent uses the borrowed pointer only while the native stream remains alive.
-  route.stream
-proc refuse(route: var BlockRequestRoute) =
-  ## Poison the route and revoke a pending job before stopping only this stream.
-  route.failed = true
-  route.pending = false
-  route.output = @[]
-  if route.stream != NativeStream(nil): streamAbort(route.stream)
+  ## Parent observes only the shared route's borrowed handle.
+  route.frame.handle
 proc bindStream*(route: var BlockRequestRoute, stream: NativeStream): BlockServiceError =
-  ## Bind an accepted remote bidirectional stream before its selector has been consumed.
-  if stream == NativeStream(nil): return BlockServiceError.InvalidStream
-  if (uint64(stream.streamId) and 2) != 0: return BlockServiceError.InvalidStream # CE requests require both directions.
-  if route.stream != NativeStream(nil): return BlockServiceError.Busy
-  route = BlockRequestRoute(stream: stream)
-  wantRead(stream, 1)
-  BlockServiceError.None
+  ## Bind the CE128 adapter to the shared fixed-request wire lifecycle.
+  let bound = route.frame.bindReadStream(stream, ReadKind.Blocks)
+  case bound
+  of ReadError.None: BlockServiceError.None
+  of ReadError.Busy: BlockServiceError.Busy
+  else: BlockServiceError.InvalidStream # Shared failures confer no native authority.
 proc takeRequest*(route: var BlockRequestRoute): BlockServiceResult[BlockQuery] =
-  ## Host drains a completed request outside callbacks; no work is released before request FIN.
-  if not route.pending or route.taken or route.failed:
-    return BlockServiceResult[BlockQuery](status: BlockServiceError.Unavailable)
-  route.taken = true
-  BlockServiceResult[BlockQuery](status: BlockServiceError.None, completed: route.query)
+  ## Decode method semantics only after the shared exact-frame/FIN gate.
+  let incoming = route.frame.takeRequest()
+  if incoming.error != ReadError.None: return BlockServiceResult[BlockQuery](
+      status: BlockServiceError.Unavailable)
+  let decoded = decodeBlockQuery(incoming.value.payload)
+  if decoded.error != BlockServiceError.None:
+    route.frame.reject()
+    return decoded # Invalid directions reset before canonical work is released.
+  route.request = incoming.value
+  route.query = decoded.value
+  decoded
 proc respond*(route: var BlockRequestRoute, reply: BlockReply): BlockServiceError =
-  ## Stale/foreign replies cannot authorize output on another pending request.
-  if route.stream == NativeStream(nil) or route.failed or not route.pending or not route.taken:
-    return BlockServiceError.InvalidStream
-  if not sameQuery(route.query, reply.query) or reply.wire.len < 4 or reply.wire.len > MaxBlockReplyBytes:
-    return BlockServiceError.InvalidRequest
-  route.output = reply.wire
-  route.pending = false
-  route.writing = true
-  wantWrite(route.stream, 1)
-  BlockServiceError.None
+  ## Preserve the CE128 request binding while delegating bounded write/FIN ownership.
+  if route.frame.handle == NativeStream(nil) or not route.request.valid: return BlockServiceError.InvalidStream
+  if not sameQuery(route.query, reply.query): return BlockServiceError.InvalidRequest
+  let frozen = captureReadReply(route.request, reply.wire)
+  if frozen.error != ReadError.None: return BlockServiceError.InvalidRequest
+  let sent = route.frame.respond(frozen.value)
+  if sent == ReadError.None: BlockServiceError.None else: BlockServiceError.InvalidStream
 proc reject*(route: var BlockRequestRoute) =
-  ## Host reports unavailable/busy canonical work without sending a misleading empty response.
-  route.refuse()
+  ## Host reports canonical unavailability without a misleading empty successful reply.
+  route.frame.reject()
 proc event*(route: var BlockRequestRoute, stream: NativeStream, event: cint) =
-  ## Exactly one bounded native read/write per callback; parent retains this slot until close.
-  if route.stream != stream or stream == NativeStream(nil): return
-  if event == 3:
-    route = default(BlockRequestRoute)
-    return # Native close revokes pending work and releases all byte owners.
-  if event == 4:
-    route.failed = true
-    route.pending = false
-    route.output = @[]
-    wantRead(stream, 0)
-    wantWrite(stream, 0)
-    return # Reset is terminal even if the host has not drained its work queue.
-  if route.failed: return
-  case event
-  of 1:
-    var buffer = default(array[43, byte])
-    let read = streamRead(stream, addr buffer[0], csize_t(buffer.len))
-    if read == -2: return
-    if read < 0 or read > int64(route.request.len-route.used):
-      route.refuse()
-      return # One extra byte, duplicate messages or a transport error poisons the request.
-    if read > 0:
-      for index in 0..<int(read): route.request[route.used+index] = buffer[index]
-      route.used += int(read)
-      return # Even a full request waits for the following native FIN observation.
-    if route.used != 42 or route.request[0] != 128 or route.request[1] != 37 or
-        route.request[2] != 0 or route.request[3] != 0 or route.request[4] != 0:
-      route.refuse()
-      return # Exact selector, E4 extent, message count and request FIN are mandatory.
-    let decoded = decodeBlockQuery(route.request.toOpenArray(5, 41))
-    if decoded.error != BlockServiceError.None:
-      route.refuse()
-      return
-    route.query = decoded.value
-    route.pending = true
-    readDone(stream)
-    wantRead(stream, 0)
-  of 2:
-    if not route.writing: return
-    let length = min(4096, route.output.len-route.offset)
-    if length > 0:
-      let written = streamWrite(stream, addr route.output[route.offset], csize_t(length))
-      if written == -2: return
-      if written < 0 or written > int64(length):
-        route.refuse()
-        return # A failed write never advances or repeats an unaccepted suffix.
-      route.offset += int(written)
-    if route.offset == route.output.len:
-      route.writing = false
-      wantWrite(stream, 0)
-      discard streamFlush(stream)
-      streamFin(stream) # Output ownership lasts through actual native close, not just queued FIN.
-  else: discard # Open is handled by the fixed-capacity parent before binding this route.
+  ## Shared framing owns native retirement; adapter facts are revoked on terminal events too.
+  if stream == NativeStream(nil) or route.frame.handle !=
+      stream: return # Unrelated stale events cannot revoke this adapter.
+  route.frame.event(stream, event)
+  if event == 3 or event == 4:
+    route.query = default(BlockQuery)
+    route.request = default(ReadRequest) # A retired stream's async response cannot authorize a replacement.

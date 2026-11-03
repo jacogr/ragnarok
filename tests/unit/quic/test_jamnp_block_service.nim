@@ -209,6 +209,8 @@ proc exchange(view: ChainView, wire, expected: seq[byte], refused = false,
     assert jobs == 1 and client.input == expected, "exact block order, framing and both FINs"
 proc main() {.raises.} =
   ## Both directions, retained suffixes, unknown anchors and malformed requests get independent witnesses.
+  var unopened = default(BlockRequestRoute)
+  assert unopened.respond(default(BlockReply)) == BlockServiceError.InvalidStream
   var history: seq[BlockSnapshotResult] = @[source(7)]
   for index in 1..65:
     history.add(source(uint32(index+7), history[^1])) # A window beyond the response cap proves bounded selection.
