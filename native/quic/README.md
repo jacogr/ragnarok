@@ -22,3 +22,8 @@ no upstream source patches or separate C implementation of JAM protocol logic ar
 The [networking guide](../../docs/networking.md) records transport setup, certificate fixtures,
 feature profiles and verification. [Application download contracts](../../spec/application-download-stream.md)
 cover the later native-to-Nim stream retirement and block-input handoffs.
+
+Server connection-handle storage has an explicit startup capacity, bounded by4096 and defaulting
+to sixteen. Configuration ends before network processing or peer-observer registration. The
+bridge frees its allocation after engine/TLS callbacks retire; Nim retains all membership, role
+and admission policy. Explicit multi-peer service applies to both IPv4 and IPv6.

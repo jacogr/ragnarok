@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Single-threaded bounded POSIX readiness and loopback UDP for the maintained QUIC adapter. No
+## Single-threaded bounded POSIX readiness and addressed UDP for the maintained QUIC adapter. No
 ## pending syscall retains buffers; unregister precedes descriptor close and descriptor reuse.
 ##
 ## Exposes dispatcher and UDP endpoint ownership, descriptor registration, bounded
@@ -16,6 +16,10 @@ const
   SocketHeader = "<sys/socket.h>"
   AddressHeader = "<netinet/in.h>"
   PollHeader = "<poll.h>"
+  MaxDispatcherEndpoints* = 4096 ## Explicit resource ceiling, independent of any JAM validator population.
+  MaxReadyBatch* = 64 ## One dispatcher turn cannot monopolize application work with unbounded ready copies.
+
+type DispatcherCapacity* = range[1..MaxDispatcherEndpoints] ## Callers validate resource policy before construction.
 
 type
   # Header-defined IPv6 storage avoids transcribing an OS-specific sockaddr layout.
@@ -28,16 +32,17 @@ type
   # Native IPv6 bytes are copied only while the syscall's address remains on the stack.
   Address6Bytes {.importc: "struct in6_addr", header: AddressHeader, bycopy.} = object
     s6_addr: array[16, byte]
-  # poll owns no kernel registration; each call borrows this initialized fixed array synchronously.
+  # poll owns no kernel registration; each call borrows initialized fixed-capacity storage synchronously.
   PollEntry {.importc: "struct pollfd", header: PollHeader, bycopy.} = object
     fd: cint
     events, revents: cshort
   # Shared dispatcher metadata owns no socket and has no reference back to its endpoints.
   DispatcherState = object
-    descriptors: array[2, cint]
-    count: int
+    descriptors: seq[cint]
+    entries: seq[PollEntry]
+    count, cursor: int
     closed: bool
-  Dispatcher* = ref DispatcherState ## Up to two endpoints share one bounded wait; callers retire endpoints before closing it.
+  Dispatcher* = ref DispatcherState ## Explicit bounded registrations share one wait; metadata never owns socket retirement.
   UdpEndpoint* = object ## Explicit open flag makes a default endpoint harmless even though descriptor zero is valid.
     descriptor: cint
     opened, ipv6, loopbackOnly: bool
@@ -119,24 +124,33 @@ proc addressSize(ipv6: bool): SockLen =
   ## Use the actual family-specific structure extent for every address syscall.
   SockLen(if ipv6: sizeof(Address6) else: sizeof(Sockaddr_in))
 
-proc newDispatcher*(): Dispatcher =
-  ## Construct empty dispatcher metadata; it never owns or closes registered sockets.
-  Dispatcher(descriptors: default(array[2, cint]), count: 0, closed: false)
+proc newDispatcher*(capacity: DispatcherCapacity = 2): Dispatcher =
+  ## Allocate fixed-capacity metadata once; no socket or callback owner is retained.
+  Dispatcher(descriptors: newSeq[cint](int(capacity)), entries: newSeq[PollEntry](int(capacity)),
+    count: 0, cursor: 0, closed: false)
+
+func capacity*(dispatcher: Dispatcher): int =
+  ## Closed metadata has no registration capacity; live storage never grows during dispatch.
+  dispatcher.descriptors.len
+func registrationCount*(dispatcher: Dispatcher): int =
+  ## Observe copied registration occupancy without exporting descriptor storage.
+  dispatcher.count
 
 proc close*(dispatcher: Dispatcher) =
-  ## Closing shared metadata is idempotent; subsequent waits cannot poll reused descriptors.
+  ## Retire all copied registrations before releasing polling storage; endpoints still own their sockets.
   dispatcher.closed = true
-  dispatcher.count = 0
+  dispatcher.count = 0; dispatcher.cursor = 0
+  dispatcher.descriptors = @[]; dispatcher.entries = @[]
 
 proc port*(endpoint: UdpEndpoint): uint16 =
   ## Return the copied assigned port without exporting a mutable native address.
   endpoint.portValue
 
-proc descriptor*(endpoint: UdpEndpoint): cint =
+func descriptor*(endpoint: UdpEndpoint): cint =
   ## Readiness routing compares copied descriptor identities only during the same synchronous dispatch.
   endpoint.descriptor
 
-proc isOpen*(endpoint: UdpEndpoint): bool =
+func isOpen*(endpoint: UdpEndpoint): bool =
   ## Observe whether this endpoint currently owns an OS descriptor.
   endpoint.opened
 
@@ -147,6 +161,7 @@ proc retire(dispatcher: Dispatcher, fd: cint) =
     if dispatcher.descriptors[i] == fd:
       dec dispatcher.count
       dispatcher.descriptors[i] = dispatcher.descriptors[dispatcher.count]
+      if dispatcher.cursor >= dispatcher.count: dispatcher.cursor = 0 # Rotation never indexes a retired tail.
       return
 
 proc `=copy`*(destination: var UdpEndpoint, source: UdpEndpoint) {.error: "UdpEndpoint owns one descriptor".}
@@ -183,7 +198,8 @@ proc unregister*(dispatcher: Dispatcher, endpoint: var UdpEndpoint) =
 proc register*(dispatcher: Dispatcher, endpoint: var UdpEndpoint): bool =
   ## Register one live descriptor once, rejecting exhausted/closed dispatchers without changing them.
   if endpoint.registration != nil: return false # One endpoint cannot belong to two dispatchers.
-  if dispatcher.closed or not endpoint.opened or dispatcher.count == 2: return false
+  if dispatcher.closed or not endpoint.opened or dispatcher.count ==
+      dispatcher.descriptors.len: return false
   # Duplicate registration cannot consume a second slot or route an event twice.
   for i in 0..<dispatcher.count:
     if dispatcher.descriptors[i] == endpoint.descriptor: return false
@@ -233,25 +249,37 @@ proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
   result = endpoint.open(networkEndpoint(loopbackAddress(ipv6), port))
   if result: endpoint.loopbackOnly = true
 
-proc wait*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
-  ## Copy readiness for all registrations or fail before polling if the caller cannot hold every result.
-  if dispatcher.closed or ready.len < dispatcher.count: return -1
-  var entries = default(array[2, PollEntry])
-  # Each call rebuilds registrations; retired descriptors cannot remain queued in kernel metadata.
-  for i in 0..<dispatcher.count:
-    entries[i].fd = dispatcher.descriptors[i]
-    entries[i].events = PollRead
-  let count = poll(addr entries[0], culong(dispatcher.count), cint(clamp(maximumMs, 0, 10)))
-  if count < 0:
-    # An interrupt yields to the caller's timers; persistent poll errors fail this dispatcher iteration.
-    return if osLastError().int == EINTR.int: 0 else: -1
+proc collectReady(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready],
+    budget: int): int =
+  ## Borrow preallocated poll storage synchronously and rotate ready delivery to prevent starvation.
+  if dispatcher.closed: return -1
+  if dispatcher.count == 0: return 0 # No empty sequence element is ever passed to poll.
+  if budget < 1 or budget > ready.len: return -1
+  for index in 0..<dispatcher.count:
+    dispatcher.entries[index] = PollEntry(fd: dispatcher.descriptors[index], events: PollRead,
+      revents: 0) # Every native field is initialized before the synchronous syscall.
+  let observed = poll(addr dispatcher.entries[0], culong(dispatcher.count), cint(clamp(maximumMs, 0, 10)))
+  if observed < 0:
+    return if osLastError().int == EINTR.int: 0 else: -1 # Retryable interruption yields to caller timers.
   result = 0
-  for i in 0..<dispatcher.count:
-    # Return errors as explicit events rather than reading a descriptor that poll rejected.
-    if entries[i].revents != 0:
-      ready[result] = Ready(descriptor: entries[i].fd,
-          failed: (entries[i].revents and (PollError or PollHangup or PollInvalid)) != 0)
-      inc result
+  var scanned = 0
+  while scanned < dispatcher.count and result < budget:
+    let index = dispatcher.cursor
+    dispatcher.cursor = if index+1 == dispatcher.count: 0 else: index+1
+    inc scanned # At most the bounded registration population is inspected once per turn.
+    if dispatcher.entries[index].revents != 0:
+      ready[result] = Ready(descriptor: dispatcher.entries[index].fd,
+        failed: (dispatcher.entries[index].revents and (PollError or PollHangup or PollInvalid)) != 0)
+      inc result # Descriptor failures remain explicit events, never reads from invalid descriptors.
+
+proc wait*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
+  ## Preserve the legacy all-registration output contract for standalone/pair callers.
+  if ready.len < dispatcher.count: return -1
+  collectReady(dispatcher, maximumMs, ready, ready.len)
+
+proc waitBatch*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
+  ## Copy at most64 ready events fairly; values belong only to this synchronous dispatch turn.
+  collectReady(dispatcher, maximumMs, ready, min(ready.len, MaxReadyBatch))
 
 proc send*(endpoint: UdpEndpoint, data: pointer, length: int, target: NetworkEndpoint): int =
   ## Send one complete borrowed datagram; -2 means retryable, -1 means failed/invalid input.
