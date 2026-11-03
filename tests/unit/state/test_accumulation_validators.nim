@@ -201,7 +201,7 @@ proc policyWitnesses(source: PreparedAccumulationTimes) =
     of 0: short.chapterBytes = ByteLimit(2016) # Six roster entries need one prefix byte plus 6*336.
     of 1: short.validators = ElementLimit(5) # Roster failure retains its selected codec cause.
     of 2: short.services = ElementLimit(0) # Existing parent activity dictionary must be validated even though not copied.
-    of 3: short.componentBytes = ByteLimit(495) # Five assurances have one count byte plus 5*99 bytes.
+    of 3: short.componentBytes = ByteLimit(335) # Five assurances have one count byte plus 5*67 bytes.
     of 4: short.preimages = ElementLimit(2)
     of 5: short.preimageBytes = ByteLimit(3)
     of 6: short.projection.assurances = ElementLimit(4)
@@ -221,7 +221,7 @@ proc policyWitnesses(source: PreparedAccumulationTimes) =
       assert refused.error == AccumulationValidatorsError.LimitExceeded, "independent source materialization policy"
   var exact = config()
   exact.chapterBytes = ByteLimit(2017)
-  exact.componentBytes = ByteLimit(496)
+  exact.componentBytes = ByteLimit(336)
   assert prepareAccumulationValidators(source, exact).error == AccumulationValidatorsError.None, "exact framed work limits"
   exact.projection.rows = ElementLimit(11)
   assert prepareAccumulationValidators(source, exact).projectionError ==
