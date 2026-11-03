@@ -164,6 +164,8 @@ def run(architecture="arm64", build=None, baseline=None):
     cases += [('init',0,None,None),('tick',0,None,None)]
     for path in [*sorted((ROOT/'src').rglob('*.nim')),*sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tools').glob('*.py')),*sorted((ROOT/'tests/performance').glob('pvm*')),
+                 ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
+                 ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
                  ROOT/'spec/toolchain.json']:
         if path.is_file(): ids[path]=digest(path)
     for path in [DOOM/'doom.polkavm',ROOT/'vendor/polkavm/examples/doom/roms/doom1.wad',*sorted((DOOM/'prepared').glob('*')),

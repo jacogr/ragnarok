@@ -11,7 +11,11 @@ when defined(pvmArm64Jit):
   import ../../src/pvm/internal/arm64_jit
   import ../support/pvm_arm_memory_cycle_backend
   import pvm_arm_macro_backend
+  when not defined(pvmArm64JitRefuse): import ../support/pvm_arm_clipped_read_witness
 import ../../src/pvm/internal/handler_stream
+
+when defined(pvmArmClippedLegacyAbiRefuse):
+  runClippedLegacyAbiRefusal()
 
 when defined(pvmArm64Jit):
   proc checkRegionCharges(jit: ArmJit, headers, spans: array[3, uint32],
@@ -1094,6 +1098,91 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
       assert actual.value.access == wantedPage.value.access and actual.value.bytes ==
           wantedPage.value.bytes
       assert original.value.access == image.access and original.value.bytes == image.bytes
+
+# Frame capture must feed the native clipped table, including its moved pointer and both fences.
+block clippedFrameBoundary:
+  var calls = default(array[4, uint64])
+  var operations = default(array[4, uint64])
+  let prefixProgram = owner([@[130'u8, 0x10, 0, 0, 0, 0], @[149'u8, 0x02, 1],
+      @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[0'u8]])
+  var below = PageImage(index: PageIndex(15), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+  var above = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+  for at in 0..<8:
+    # Distinct words expose an unadjusted pointer into the protected-prefix page.
+    below.bytes[4088+at] = byte(0x20+at)
+    above.bytes[at] = byte((0x1122334455667788'u64 shr (at*8)) and 255)
+  var prefixInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+      registers: default(RegisterFile))
+  prefixInfo.registers[1] = RegisterValue(65536)
+  var prefixFrame = newFlatFrame(newFlatPlan(prefixProgram, GasCycleLimit(100000)),
+      [below, above], prefixInfo)
+  for warm in 0..<3:
+    # Each complete warm call admits the same source image before exact per-call counter deltas.
+    verifyControl(prefixFrame, prefixProgram, prefixInfo, 9, [below, above])
+  when defined(pvmArm64Jit):
+    let prefixBefore = flatArmStatistics(prefixFrame)
+  verifyControl(prefixFrame, prefixProgram, prefixInfo, 9, [below, above])
+  assert uint64(prefixFrame.info.registers[0]) == 0x1122334455667788'u64
+  when defined(pvmArm64Jit):
+    let prefixAccepted = flatArmStatistics(prefixFrame)
+    assert prefixAccepted[1] >= prefixBefore[1] and prefixAccepted[2] >= prefixBefore[2]
+    calls[0] = prefixAccepted[1]-prefixBefore[1]
+    operations[0] = prefixAccepted[2]-prefixBefore[2]
+  var prefixRefusal = prefixInfo
+  prefixRefusal.registers[1] = RegisterValue(65535)
+  verifyControl(prefixFrame, prefixProgram, prefixRefusal, 9, [below, above])
+  assert prefixFrame.info.registers[0] == prefixRefusal.registers[0]
+  when defined(pvmArm64Jit):
+    let prefixRejected = flatArmStatistics(prefixFrame)
+    assert prefixRejected[1] >= prefixAccepted[1] and prefixRejected[2] >= prefixAccepted[2]
+    calls[1] = prefixRejected[1]-prefixAccepted[1]
+    operations[1] = prefixRejected[2]-prefixAccepted[2]
+
+  let topProgram = owner([@[124'u8, 0x10, 0, 0, 0, 0], @[149'u8, 0x02, 1],
+      @[133'u8, 0x23, 0x7f], @[149'u8, 0x34, 0xff], @[0'u8]])
+  var lastPage = PageImage(index: PageIndex(1048575), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))
+  lastPage.bytes[4087] = 0xb7'u8
+  lastPage.bytes[4088] = 0xc8'u8
+  var topInfo = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+      registers: default(RegisterFile))
+  topInfo.registers[1] = RegisterValue(0xfffffff7'u64)
+  var topFrame = newFlatFrame(newFlatPlan(topProgram, GasCycleLimit(100000)),
+      [lastPage], topInfo)
+  for warm in 0..<3:
+    # Source capture is unchanged when the later invocation tests the exclusive upper fence.
+    verifyControl(topFrame, topProgram, topInfo, 9, [lastPage])
+  when defined(pvmArm64Jit):
+    let topBefore = flatArmStatistics(topFrame)
+  verifyControl(topFrame, topProgram, topInfo, 9, [lastPage])
+  assert uint64(topFrame.info.registers[0]) == 0xb7'u64
+  when defined(pvmArm64Jit):
+    let topAccepted = flatArmStatistics(topFrame)
+    assert topAccepted[1] >= topBefore[1] and topAccepted[2] >= topBefore[2]
+    calls[2] = topAccepted[1]-topBefore[1]
+    operations[2] = topAccepted[2]-topBefore[2]
+  var topFallback = topInfo
+  topFallback.registers[1] = RegisterValue(0xfffffff8'u64)
+  verifyControl(topFrame, topProgram, topFallback, 9, [lastPage])
+  assert uint64(topFrame.info.registers[0]) == 0xc8'u64
+  when defined(pvmArm64Jit):
+    let topRejected = flatArmStatistics(topFrame)
+    assert topRejected[1] >= topAccepted[1] and topRejected[2] >= topAccepted[2]
+    calls[3] = topRejected[1]-topAccepted[1]
+    operations[3] = topRejected[2]-topAccepted[2]
+  when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+    # All four calls enter native code; only the two legal eight-byte starts charge operations.
+    assert calls[0] > 0 and operations[0] > 0
+    assert calls[1] > 0 and operations[1] == 0
+    assert calls[2] > 0 and operations[2] > 0
+    assert calls[3] > 0 and operations[3] == 0
+    echo "ARM_CLIPPED_FRAME_BOUNDARY,4,", calls[0], ",", operations[0], ",",
+        calls[1], ",", operations[1], ",", calls[2], ",", operations[2], ",",
+        calls[3], ",", operations[3]
+  elif defined(pvmArm64Jit):
+    assert calls == default(array[4, uint64]) and operations == default(array[4, uint64])
 
 var loadCases = 0
 for opcode in 124'u8..130'u8:
@@ -3875,3 +3964,7 @@ else:
   echo "ARM_MACRO_ROLLBACK_ALIAS,0"
 echo "ARM_MACRO_BACKEND_CASES,", macroBackendCases
 echo "ARM_MACRO_FRAME_CASES,", macroFrameCases
+
+when defined(pvmArm64Jit) and not defined(pvmArm64JitRefuse):
+  let clippedCases = runClippedReadWitness()
+  echo "ARM_CLIPPED_NATIVE_CASES,", clippedCases

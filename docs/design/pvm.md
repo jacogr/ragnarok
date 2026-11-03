@@ -62,6 +62,9 @@ state owns history/statistics/authorization/consensus composition and exact-pare
 final publication. Neither side accepts a detached map as a replacement execution
 certificate. See [the shared boundary contract](../../spec/pvm-state-successor.md).
 
+The frame-owned ARM read context and its raw/clipped native-call boundary are specified in
+[ARM clipped native reads](../../spec/pvm-arm-clipped-read.md).
+
 Optional public PolkaVM engines enter through the same prepared-owner and immutable host/result
 boundaries. Engine identity and exclusive cache ownership are fixed before invocation; no raw
 foreign storage escapes. See the [engine API contract](../../spec/pvm-engines.md).

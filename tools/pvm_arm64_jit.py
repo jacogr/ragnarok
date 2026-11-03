@@ -170,6 +170,8 @@ def qualify(checks, compiler, *, native=True):
         raise ValueError('Executable storage controls failed')
     rows.append(memory)
     for name,source,defines in (
+        ('witness-legacy-abi-refused','tests/performance/pvm_arm64_jit_witness.nim',
+            ['pvmArm64Jit','pvmArmClippedLegacyAbiRefuse']),
         ('witness','tests/performance/pvm_arm64_jit_witness.nim',
             ['pvmArm64Jit','pvmArmMacroReceipt','pvmArmDirtyLoopOwnerReceipt'] if native else []),
         ('witness-refused','tests/performance/pvm_arm64_jit_witness.nim',
@@ -186,11 +188,24 @@ def qualify(checks, compiler, *, native=True):
         ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
         ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
+        if name == 'witness-legacy-abi-refused' and not native:
+            continue  # A checked-only host has no ARM native bridge to guard.
         if name in ('witness-macro-refused', 'witness-resident-refused') and not native:
             continue  # Checked-only hosts cannot execute native macro publication refusals.
         built,binary=checks.build(compiler,ROOT/source,name,defines=defines,cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if built['exit_code']: raise RuntimeError(built['output'][-3000:])
         checked=checks.command([binary],name+'-run')
+        if name == 'witness-legacy-abi-refused':
+            # Full-context owners must refuse the legacy pointer ABI before entering native code.
+            positive=[line for line in checked['output'].splitlines()
+                      if line.startswith('ARM_CLIPPED_ABI_POSITIVE,')]
+            if (checked['exit_code'] == 0 or
+                    positive != ['ARM_CLIPPED_ABI_POSITIVE,1,1'] or
+                    'Assertion Failure' not in checked['output'] or
+                    'ARM_CLIPPED_ABI_REJECTION_MISSING' in checked['output']):
+                raise ValueError('Missing typed ARM context ABI rejection')
+            rows.append(checked)
+            continue
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
         if name.startswith('region-refusal'):
             # Require actual native coverage for all three ownership orders, not a silent checked-only pass.
@@ -215,6 +230,36 @@ def qualify(checks, compiler, *, native=True):
                           'resident-refused' if 'pvmArmMacroResidentRefuse' in defines else
                           'native')
             checked['macro'] = macro_witness_receipts(checked['output'], macro_mode)
+            # All native modes exercise the clipped descriptor and legacy ABI oracle.
+            clipped = {'CLIPPED_ISA_SPAN_WORDS':'36,31',
+                       'CLIPPED_ISA_LEAF_WORDS':'34,29',
+                       'CLIPPED_INTERVAL_NATIVE_CASES':'288',
+                       'CLIPPED_WIDTH_NATIVE_CASES':'378',
+                       'CLIPPED_DIRECT_NATIVE_CASES':'28',
+                       'CLIPPED_WRAP_NATIVE_CASES':'12',
+                       'CLIPPED_ROLLBACK_NATIVE_CASES':'3',
+                       'ARM_CLIPPED_NATIVE_CASES':'709'}
+            for marker, value in clipped.items():
+                receipt = marker+','+value
+                lines = [line for line in checked['output'].splitlines()
+                         if line.startswith(marker+',')]
+                if lines != ([receipt] if native_available else []):
+                    raise ValueError('Missing or unexpected native clipped-read receipt: '+marker)
+            # The real frame constructor must clip both fences while retaining a native call on refusal.
+            frame_lines = [line.split(',') for line in checked['output'].splitlines()
+                           if line.startswith('ARM_CLIPPED_FRAME_BOUNDARY,')]
+            if native_available:
+                if len(frame_lines) != 1 or len(frame_lines[0]) != 10 or frame_lines[0][1] != '4':
+                    raise ValueError('Missing complete frame-owned clipped-boundary receipt')
+                fields = frame_lines[0][2:]
+                if any(not value.isascii() or not value.isdecimal() for value in fields):
+                    raise ValueError('Malformed frame-owned clipped-boundary receipt')
+                values = list(map(int, fields))
+                if (any(values[index] == 0 for index in (0, 1, 2, 4, 5, 6)) or
+                        values[3] != 0 or values[7] != 0):
+                    raise ValueError('Clipped frame admitted/refused operation counts changed')
+            elif frame_lines:
+                raise ValueError('Refused or interpreted frame claimed native clipped execution')
             for marker,count in [('ARM_SHIFT_PAIR_LITERAL_CASES',64896),('ARM_SHIFT_PAIR_DECLINE_CASES',507)]:
                 expected = count if native_available else 0
                 if marker+','+str(expected)+'\n' not in checked['output']:
@@ -348,6 +393,8 @@ def main():
                  ROOT/'tests/performance/pvm_sieve_clock.h',
                  ROOT/'tests/performance/pvm_arm64_jit_witness.nim',
                  ROOT/'tests/performance/pvm_arm_macro_backend.nim',
+                 ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
+                 ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
                  ROOT/'tests/performance/pvm_arm64_jit_memory.c',
                  ROOT/'tests/performance/pvm_arm64_jit_ownership.nim']:
         identities[path] = digest(path)
