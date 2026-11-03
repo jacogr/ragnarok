@@ -32,15 +32,20 @@ def qualify(checks, compiler, rows=None):
         ('boundaries', 'tests/performance/pvm_arm64_jit_witness.nim', False),
         ('boundaries-refused', 'tests/performance/pvm_arm64_jit_witness.nim', True),
         ('all-opcodes', 'tests/unit/codec/test_pvm_stream_all_opcodes.nim', False),
+        ('checked-store-native', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', False),
+        ('checked-store-refused', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', True),
         ('regions-host', 'tests/unit/codec/test_pvm_stream_regions_and_host.nim', False),
         ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
         ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
-        flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else [])]
+        flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else []),
+                 *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else [])]
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])
         run = checks.command([binary], name+'-run', timeout=900)
         if run['exit_code']: raise RuntimeError(run['output'][-3000:])
+        if name.startswith('checked-store-') and 'X86_CHECKED_STORE_ACTIVE\n' not in run['output']:
+            raise ValueError('native-plan checked store loop did not activate')
         if name.startswith('x86-') and ('X86_REGISTER_CASES,2120\n' not in run['output'] or
                 'X86_PREFIX_CASES,2984\n' not in run['output'] or
                 'X86_HIGH_LITERAL_CASES,2070\n' not in run['output'] or

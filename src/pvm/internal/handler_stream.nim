@@ -121,6 +121,8 @@ type
       x86Jit: nil X86Jit    # Exclusive code-only owner; never contains an invocation address.
       x86PreviousHeader, x86PreviousNext: uint32 # Observed invocation-local edges discover only closed pure loops.
       x86PreviousValid: bool
+      when defined(pvmX86CheckedStoreReceipt):
+        x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     pricingKind: byte       # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
@@ -790,6 +792,8 @@ proc flatChargedStoreLoop(f: var FlatFrame, off: uint32): uint32 =
     let args = f.arguments[int(off+5)]
     var destination = flatStop
     flatBranchSelect(f, args, 171, destination)
+    when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+      inc f.x86CheckedByteBlocks
     if destination != off:
       # Changed branch outcomes return their real cached target to ordinary dispatch.
       return destination
@@ -862,6 +866,8 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
     f.info.registers[prefix.slots.destinationIndex] = RegisterValue(word shr 24)
     f.info.registers[store.slots.bIndex] = RegisterValue(base+4)
     f.info.registers[prefix.slots.bIndex] = RegisterValue(shift+32)
+    when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+      inc f.x86CheckedWordGroups
     var destination = flatStop
     flatBranchSelect(f, branch, 171, destination)
     if destination != off:
@@ -889,7 +895,14 @@ proc flatChargedStoreCold(f: var FlatFrame, off: uint32): uint32 =
       else:
         # Other genuine five-operation self-loops keep their established checked per-iteration worker.
         f.handlers[int(off)] = flatChargedStoreLoop
+      when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+        inc f.x86CheckedStoreSelections
   outcome
+
+when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+  func flatX86CheckedStoreStatistics*(f: FlatFrame): array[3, uint64] =
+    ## Receipt-only counts prove checked-loop installation and completed byte and word work.
+    [f.x86CheckedStoreSelections, f.x86CheckedByteBlocks, f.x86CheckedWordGroups]
 
 proc flatBadControl[Code: static[int]](f: var FlatFrame, off: uint32): uint32 =
   ## Invalid destinations retain GP load mutations but never permit an unselected invalid conditional arm to escape validation.
@@ -1467,17 +1480,16 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             elif fact.opcode == 151 and second == 152 and last == 173:
               charge = flatChargedShapeCold[151, 152, 173]
           elif fact.sourceCount == 5 and index+4 < f.plan.facts.len and f.pricingKind == 0:
-            # Only this sealed adjacent shape is selected, and native-enabled plans keep their existing seam.
+            # Only this sealed adjacent shape is selected; native x86 has no store publisher for it.
             if fact.opcode == 198 and f.plan.facts[index+1].opcode == 120 and
                 f.plan.facts[index+2].opcode == 149 and f.plan.facts[index+3].opcode == 149 and
                 f.plan.facts[index+4].opcode == 171:
-              when defined(pvmArm64Jit) or defined(pvmX86Jit):
-                # Native plans retain their established entry and fallback seam.
+              when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+                # ARM native publication owns this store-loop entry; explicit interpretation keeps the checked worker.
                 if not f.plan.allowNative:
-                  # Explicit interpretation can keep this checked loop resident in either build profile.
                   charge = flatChargedStoreCold
               else:
-                # A build without native execution uses the same checked worker for ordinary plans.
+                # X86 native and interpreted plans use the same source-proven checked word/store loop.
                 charge = flatChargedStoreCold
         of oracle.StepError.GasCycleLimitExceeded: charge = flatChargeFailure[
             oracle.StepError.GasCycleLimitExceeded]

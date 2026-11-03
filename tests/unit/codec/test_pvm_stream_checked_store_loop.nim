@@ -117,9 +117,10 @@ proc verifyControl(frame: var FlatFrame, program: Program, info: MachineInfo, bu
       assert original.value.access == image.access and original.value.bytes == image.bytes, "original source snapshot changed"
 
 proc checkedPlan(program: Program): FlatPlan =
-  ## Explicit interpretation exercises the checked fusion even in native-enabled compilation profiles.
+  ## The x86 profile proves the checked fusion remains available to a native-enabled plan.
+  let native = when defined(pvmX86Jit): true else: false
   var prepared = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(),
-      allowNative = false)
+      allowNative = native)
   assert prepared.error == FlatError.None, "checked-loop plan admission failed"
   takeValue(prepared)
 
@@ -137,6 +138,13 @@ var frame = newFlatFrame(plan, [page], info)
 for warm in 0..<6:
   # Multiple complete calls prove the cold arm resolution and later resident loop both execute.
   verifyControl(frame, loopProgram, info, 100, [page])
+when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+  let activity = flatX86CheckedStoreStatistics(frame)
+  assert activity[0] == 1 and activity[1] > 0 and activity[2] == 0,
+    "native-plan store header did not publish and execute the checked byte loop"
+  when defined(pvmX86JitRefuse):
+    assert flatX86Statistics(frame)[1] == 0,
+      "refused native code executed during the checked-store witness"
 let first = flatMemorySnapshot(frame)
 let bytes = pageImage(first, PageIndex(16)).value.bytes
 assert bytes[0] == 0x34 and bytes[1] == 0x35 and bytes[15] == 0x43, "literal rising store bytes mismatch"
@@ -243,6 +251,10 @@ freshInfo.registers[1] = RegisterValue(0x1254)
 var fresh = newFlatFrame(plan, [page], freshInfo)
 restoreFlatStream(fresh, active)
 verifyControl(fresh, loopProgram, freshInfo, 100, [page])
+when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+  let carried = flatX86CheckedStoreStatistics(fresh)
+  assert carried[0] == 0 and carried[1] > 0,
+    "restored checked-store handler did not execute without cold rediscovery"
 assert pageImage(flatMemorySnapshot(fresh), PageIndex(16)).value.bytes[0] == 0x54
 assert pageImage(flatMemorySnapshot(fresh), PageIndex(16)).value.bytes[15] == 0x63
 assert pageImage(first, PageIndex(16)).value.bytes[0] == 0x34
@@ -288,6 +300,11 @@ block:
   for warm in 0..<6:
     # First-use branch resolution and later complete word batches must have identical source-visible effects.
     verifyControl(words, wordProgram, wordInfo, 100, [page])
+  when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
+    let wordActivity = flatX86CheckedStoreStatistics(words)
+    assert wordActivity[0] == 1 and wordActivity[2] > 0,
+      "native-plan store header did not publish and execute the checked word loop"
+    echo "X86_CHECKED_STORE_ACTIVE"
   let originalWords = flatMemorySnapshot(words)
   let literal = pageImage(originalWords, PageIndex(16)).value.bytes
   assert literal[0] == 0x78 and literal[1] == 0x56 and literal[2] == 0x34 and literal[3] == 0x12
