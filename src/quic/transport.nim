@@ -47,7 +47,7 @@ type
       length: csize_t) {.cdecl, raises: [].}
   # The UDP sender consumes a borrowed C packet before returning; zero means retry later.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
-      port: uint16): cint {.cdecl, raises: [].}
+      address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].}
   Transport* = object ## An endpoint owns UDP/engine and owns or borrows its selector; it has no ARC reference back to its peer.
     engine: nil pointer
     socket: UdpEndpoint
@@ -61,6 +61,26 @@ type
     buffer: array[2048, byte]
     stopping, failed: bool
     receivedBytes, sentBytes: uint64 # Copied diagnostic totals never grant transport/protocol authority.
+
+proc `=copy`*(destination: var Transport, source: Transport) {.error: "Transport owns native callbacks and endpoints".}
+  ## Duplicating the aggregate would duplicate engine, socket and callback retirement authority.
+proc `=dup`*(source: Transport): Transport {.error.}
+  ## A noncopyable child alone is not the composite owner's public duplication contract.
+proc `=wasMoved`*(owner: var Transport) {.nodestroy, inline, requires: owner.engine == nil.} =
+  ## A native engine retains this exact owner address until explicit close finishes its callbacks.
+  `=wasMoved`(owner.socket)
+  `=wasMoved`(owner.selector)
+  owner.engine = nil
+  owner.registered = false; owner.selectorOwned = false; owner.ipv6 = false
+  owner.user = nil; owner.verify = nil; owner.stream = nil; owner.handshake = nil; owner.peer = nil
+  `=wasMoved`(owner.buffer)
+  owner.stopping = false; owner.failed = false
+  owner.receivedBytes = 0; owner.sentBytes = 0
+proc `=destroy`*(owner: Transport) =
+  ## Explicit native close must precede retirement of callback contexts in the surrounding peer.
+  assert owner.engine == nil, "Transport must close before its callback owner retires"
+  `=destroy`(owner.socket)
+  `=destroy`(owner.selector)
 
 proc `==`*(left, right: NativeStream): bool {.borrow.}
   ## Nominal handle equality permits slot lookup without exposing transport internals.
@@ -87,9 +107,15 @@ proc nativeLocal(engine: nil pointer, stream: NativeStream): cint {.importc: "rq
     header: BridgeHeader, cdecl, raises: [].}
   ## Inspect a live stream's initiator without retaining any connection pointer.
 
-proc nativeConnect(engine: nil pointer, port: uint16): cint {.importc: "rq_connect",
+proc nativeBindAddress(engine: nil pointer, address: ptr byte): cint {.importc: "rq_bind_address",
     header: BridgeHeader, cdecl, raises: [].}
-  ## Dial one loopback peer through the retained native engine.
+  ## Copy the actual local IP before any native network processing.
+proc nativeConnectAddress(engine: nil pointer, address: ptr byte,
+    port: uint16): cint {.importc: "rq_connect_address", header: BridgeHeader, cdecl, raises: [].}
+  ## Dial a complete copied destination rather than reconstructing loopback from its port.
+proc nativePacketAddress(engine: nil pointer, bytes: ptr byte, length: csize_t, address: ptr byte,
+    port: uint16): cint {.importc: "rq_packet_in_address", header: BridgeHeader, cdecl, raises: [].}
+  ## Deliver the actual source IP and port before the temporary receive record retires.
 
 proc nativeDisconnect(engine: nil pointer) {.importc: "rq_disconnect", header: BridgeHeader, cdecl,
     raises: [].}
@@ -98,10 +124,6 @@ proc nativeDisconnect(engine: nil pointer) {.importc: "rq_disconnect", header: B
 proc nativeMetric(engine: nil pointer, metric: cint): uint64 {.importc: "rq_peer_metric",
     header: BridgeHeader, cdecl, raises: [].}
   ## Observe connection lifecycle without retaining a raw native connection pointer.
-
-proc packetIn(engine: nil pointer, bytes: ptr byte, length: csize_t,
-    port: uint16): cint {.importc: "rq_packet_in", header: BridgeHeader, cdecl, raises: [].}
-  ## Consume one borrowed complete UDP datagram synchronously.
 
 proc process(engine: nil pointer) {.importc: "rq_process", header: BridgeHeader, cdecl, raises: [].}
   ## Progress LSQUIC callbacks and pending packet writes on the selector thread.
@@ -183,15 +205,20 @@ proc streamForward(user: pointer, stream: NativeStream, event: cint) {.cdecl, ra
   let peer = owner.user
   if callback != nil and peer != nil: callback(peer, stream, event) # Only initialized peer owners receive events.
 
-proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, port: uint16): cint {.cdecl,
-    raises: [].} =
+proc sendPacket(user: pointer, bytes: ptr ConstByte, length: csize_t, address: ptr ConstByte,
+    port: uint16): cint {.cdecl, raises: [].} =
   ## Send C-owned bytes synchronously through nonblocking UDP; no borrowed packet memory escapes this callback.
   let owner = cast[ptr Transport](user)
   # Destruction callbacks cannot touch a retired endpoint or retain packet memory.
   if owner.stopping or not owner.socket.isOpen: return 0
   # Validate narrowing before passing the C-owned buffer to the synchronous OS adapter.
-  if length > csize_t(owner.buffer.len): owner.failed = true; return 0
-  let sent = owner.socket.send(cast[pointer](bytes), int(length), port)
+  if address == nil or length > csize_t(owner.buffer.len): owner.failed = true; return 0
+  var copied = default(array[16, byte])
+  let native = cast[ptr UncheckedArray[byte]](address)
+  for index in 0..<16: copied[index] = native[index] # The bridge supplies one complete fixed address during this callback.
+  let target = if owner.ipv6: ipv6Address(copied)
+    else: ipv4Address([copied[12], copied[13], copied[14], copied[15]])
+  let sent = owner.socket.send(cast[pointer](bytes), int(length), networkEndpoint(target, port))
   if sent == int(length):
     owner.sentBytes = owner.sentBytes + min(uint64(length), high(uint64)-owner.sentBytes)
     return 1 # Only complete datagrams contribute to diagnostic traffic.
@@ -220,7 +247,8 @@ proc closeTransport*(owner: var Transport) =
 proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
         multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
-            profile = RetainedPeer, acceptedAlpns: seq[string] = @[]): bool =
+            profile = RetainedPeer, acceptedAlpns: seq[string] = @[],
+            localAddress = default(NetworkAddress)): bool =
   ## Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
@@ -233,12 +261,16 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
       protocols.add(byte(protocol.len))
       for octet in protocol: protocols.add(byte(octet)) # Owned bytes are borrowed only during native copying.
   owner = Transport()
-  owner.ipv6 = ipv6
+  let family = if localAddress.valid: localAddress.ipv6 else: ipv6
+  owner.ipv6 = family
   owner.user = user
   owner.verify = verify
   owner.stream = stream
   # Each setup failure has one owner for endpoint and dispatcher retirement.
-  if not owner.socket.open(ipv6, if server: port else: 0'u16): return false
+  let localPort = if server: port else: 0'u16
+  let opened = if localAddress.valid: owner.socket.open(networkEndpoint(localAddress, localPort))
+    else: owner.socket.open(family, localPort)
+  if not opened: return false
   owner.selectorOwned = dispatcher == nil
   owner.selector = if dispatcher == nil: newDispatcher() else: dispatcher
   let active = owner.selector
@@ -255,7 +287,7 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   let keyPointer = keyText.toCString()
   let alpnPointer = alpnText.toCString()
   # IPv6 mesh owners retain single-peer engines; legacy IPv4/service modes keep their original limits.
-  if ipv6:
+  if family:
     owner.engine = transportNew6(cint(profile), cint(server), actualPort, certPointer,
         keyPointer, alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
   else:
@@ -265,6 +297,11 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   if owner.engine == nil:
     closeTransport(owner)
     return false
+  if localAddress.valid:
+    var copied = localAddress.bytes
+    if nativeBindAddress(owner.engine, addr copied[0]) != 1:
+      closeTransport(owner)
+      return false # A failed native IP binding cannot leave UDP/native views disagreeing.
   if protocols.len > 0 and nativeServerAlpns(owner.engine, addr protocols[0], csize_t(
       protocols.len)) != 1:
     closeTransport(owner)
@@ -277,9 +314,17 @@ proc transportStatus*(owner: Transport): int {.raises: [].} =
   if owner.failed or owner.engine == nil: return -1
   int(nativeStatus(owner.engine))
 
+proc connectTransport*(owner: var Transport, remote: NetworkEndpoint): bool {.raises: [].} =
+  ## Require a concrete complete destination on the already-bound socket family.
+  if owner.engine == nil or not remote.valid: return false
+  if remote.port == 0 or remote.address.unspecified or remote.address.ipv6 !=
+      owner.ipv6: return false
+  var copied = remote.address.bytes
+  nativeConnectAddress(owner.engine, addr copied[0], remote.port) != 0
+
 proc connectTransport*(owner: var Transport, port: uint16): bool {.raises: [].} =
-  ## Start one outgoing connection after the caller has retained expected identity bytes.
-  nativeConnect(owner.engine, port) != 0
+  ## Legacy proof dialing retains its explicit same-family loopback destination.
+  owner.connectTransport(networkEndpoint(loopbackAddress(owner.ipv6), port))
 
 proc openStream*(owner: var Transport) {.raises: [].} =
   ## Open a bidirectional stream; callbacks populate native-language framing state synchronously.
@@ -309,8 +354,8 @@ proc drain(owner: var Transport): bool =
   ## Drain at most 64 datagrams per ready socket so other endpoints and timers cannot starve.
   # Bounded synchronous reads reuse storage until each native packet call returns.
   for packet in 0..<64:
-    var port: uint16 = 0
-    let received = owner.socket.receive(owner.buffer, port)
+    var remote = default(NetworkEndpoint)
+    let received = owner.socket.receive(owner.buffer, remote)
     # Retryable races yield to the next bounded dispatcher/timer iteration.
     if received == -2: break
     if received < 0:
@@ -320,7 +365,9 @@ proc drain(owner: var Transport): bool =
     if received > 0:
       owner.receivedBytes = owner.receivedBytes + min(uint64(received), high(
           uint64)-owner.receivedBytes)
-      discard packetIn(owner.engine, addr owner.buffer[0], csize_t(received), port)
+      var copied = remote.address.bytes
+      discard nativePacketAddress(owner.engine, addr owner.buffer[0], csize_t(received),
+          addr copied[0], remote.port)
       process(owner.engine)
   not owner.failed
 

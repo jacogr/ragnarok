@@ -58,6 +58,20 @@ static struct sockaddr_in6 address6(uint16_t port) {
     a.sin6_family = AF_INET6; a.sin6_addr = in6addr_loopback; a.sin6_port = htons(port);
     return a;
 }
+/* A copied normalized IP is independent of ephemeral OS/LSQUIC sockaddr storage. */
+static int ip_bytes(const struct sockaddr *native, uint8_t bytes[16]) {
+    memset(bytes, 0, 16);
+    if (native->sa_family == AF_INET6) {
+        memcpy(bytes, &((const struct sockaddr_in6 *)native)->sin6_addr, 16);
+        return 1;
+    }
+    if (native->sa_family == AF_INET) {
+        bytes[10] = 255; bytes[11] = 255;
+        memcpy(bytes + 12, &((const struct sockaddr_in *)native)->sin_addr, 4);
+        return 1;
+    }
+    return 0;
+}
 /* Borrow the endpoint's stable address in its configured socket family. */
 static const struct sockaddr *local_address(struct rq_transport *t) {
     return t->ipv6 ? (const struct sockaddr *)&t->local6 : (const struct sockaddr *)&t->local;
@@ -227,8 +241,10 @@ static int packets_out(void *ctx, const struct lsquic_out_spec *packets, unsigne
         const struct sockaddr *peer = packets[i].dest_sa;
         uint16_t port = peer->sa_family == AF_INET6
           ? ((const struct sockaddr_in6 *)peer)->sin6_port : ((const struct sockaddr_in *)peer)->sin_port;
-        /* The native callback performs a nonblocking send while bytes remain valid on this stack. */
-        if (!t->send(t->user, bytes, length, ntohs(port))) { errno = EAGAIN; return i ? (int)i : -1; }
+        uint8_t destination[16];
+        if (!ip_bytes(peer, destination)) { errno = EAFNOSUPPORT; return i ? (int)i : -1; }
+        /* Both datagram and complete destination stay borrowed only during this callback. */
+        if (!t->send(t->user, bytes, length, destination, ntohs(port))) { errno = EAGAIN; return i ? (int)i : -1; }
     }
     return (int)count;
 }
@@ -366,23 +382,51 @@ int rq_server_alpns(rq_transport *t, const uint8_t *wire, size_t length) {
     t->alpn_length = (unsigned)length;
     return 1;
 }
-/* Initiate one retained loopback connection; endpoint address bytes are synchronously consumed by LSQUIC. */
-int rq_connect(rq_transport *t, uint16_t port) {
-    t->network_started = 1; /* Startup configuration is immutable after a dial. */
-    /* A retained single-peer engine cannot overwrite a still-live or handshaking connection. */
-    if (t->server || t->active || t->connection) return 0;
+/* Bind one concrete/wildcard IP before any QUIC processing; no protocol policy lives here. */
+int rq_bind_address(rq_transport *t, const uint8_t *bytes) {
+    if (!t || !bytes || t->network_started) return 0;
+    if (t->ipv6) memcpy(&t->local6.sin6_addr, bytes, 16);
+    else memcpy(&t->local.sin_addr, bytes + 12, 4);
+    return 1;
+}
+/* Initiate one retained connection with its complete remote IP/port tuple. */
+int rq_connect_address(rq_transport *t, const uint8_t *bytes, uint16_t port) {
+    if (!t || !bytes || !port || t->server || t->active || t->connection) return 0;
+    t->network_started = 1;
     t->status = 0;
     struct sockaddr_in peer = address(port); struct sockaddr_in6 peer6 = address6(port);
+    if (t->ipv6) memcpy(&peer6.sin6_addr, bytes, 16);
+    else memcpy(&peer.sin_addr, bytes + 12, 4);
     return lsquic_engine_connect(t->engine, LSQVER_I001, local_address(t),
       t->ipv6 ? (struct sockaddr *)&peer6 : (struct sockaddr *)&peer, t, NULL, NULL, 0, NULL, 0, NULL, 0) != NULL;
 }
-/* Deliver borrowed UDP bytes with caller-supplied source port and retained TLS peer context. */
-int rq_packet_in(rq_transport *t, const uint8_t *bytes, size_t length, uint16_t port) {
-    t->network_started = 1; /* Even a rejected packet ends startup-only TLS configuration. */
-    t->packets_seen = 1; /* Optional observers cannot be installed after incoming processing starts. */
+/* Existing proof callers retain the original loopback target explicitly. */
+int rq_connect(rq_transport *t, uint16_t port) {
+    if (!t) return 0;
+    uint8_t bytes[16];
+    struct sockaddr_in v4 = address(port); struct sockaddr_in6 v6 = address6(port);
+    ip_bytes(t->ipv6 ? (struct sockaddr *)&v6 : (struct sockaddr *)&v4, bytes);
+    return rq_connect_address(t, bytes, port);
+}
+/* Deliver the real source tuple; reconstructing it as loopback would merge distinct remote hosts. */
+int rq_packet_in_address(rq_transport *t, const uint8_t *bytes, size_t length,
+                        const uint8_t *source, uint16_t port) {
+    if (!t || !source) return -1;
+    t->network_started = 1;
+    t->packets_seen = 1;
     struct sockaddr_in peer = address(port); struct sockaddr_in6 peer6 = address6(port);
+    if (t->ipv6) memcpy(&peer6.sin6_addr, source, 16);
+    else memcpy(&peer.sin_addr, source + 12, 4);
     return lsquic_engine_packet_in(t->engine, bytes, length, local_address(t),
       t->ipv6 ? (struct sockaddr *)&peer6 : (struct sockaddr *)&peer, t, 0);
+}
+/* Legacy packet injection deliberately supplies only its loopback source. */
+int rq_packet_in(rq_transport *t, const uint8_t *bytes, size_t length, uint16_t port) {
+    if (!t) return -1;
+    uint8_t source[16];
+    struct sockaddr_in v4 = address(port); struct sockaddr_in6 v6 = address6(port);
+    ip_bytes(t->ipv6 ? (struct sockaddr *)&v6 : (struct sockaddr *)&v4, source);
+    return rq_packet_in_address(t, bytes, length, source, port);
 }
 /* Progress packets, timers and retryable nonblocking sends on the native language's I/O thread. */
 void rq_process(rq_transport *t) { t->network_started = 1; lsquic_engine_send_unsent_packets(t->engine); lsquic_engine_process_conns(t->engine); }
