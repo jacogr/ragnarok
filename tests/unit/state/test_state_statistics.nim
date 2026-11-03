@@ -17,7 +17,7 @@ proc captured(config: ActivityConfig): ActivitySnapshot =
   source.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
   source.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](9)
   source.cores = newSeq[CoreActivity](3)
-  source.validators[StatisticsEpoch.Current][0][ValidatorMeasure.Blocks] = ValidatorCounter(high(uint32))
+  source.validators[StatisticsEpoch.Current][0][ValidatorMeasure.Blocks] = ValidatorCounter(high(uint64))
   source.validators[StatisticsEpoch.Previous][8][ValidatorMeasure.Assurances] = ValidatorCounter(128)
   source.cores[2].counters[CoreMeasure.BundleBytes] = ActivityNatural(256)
   source.cores[2].gas = ActivityGas(high(uint64))
@@ -50,15 +50,15 @@ proc compactGas() =
   source.services = @[ServiceStatisticsEntry(service: ServiceIndex(127), statistics:
     ServiceActivity(refinementGas: ActivityGas(128), accumulationGas: ActivityGas(256)))]
   let config = ActivityConfig(cores: CoreCount(2), current: ValidatorCount(6),
-    previous: ValidatorCount(6), maxServices: ElementLimit(1), maxBytes: ByteLimit(326))
+    previous: ValidatorCount(6), maxServices: ElementLimit(1), maxBytes: ByteLimit(110))
   let encoded = activityStateEntry(source, config)
-  assert encoded.error == ActivityError.None and encoded.value.value.len == 326
+  assert encoded.error == ActivityError.None and encoded.value.value.len == 110
   let wire = encoded.value.value
-  assert wire[297] == 0xc1 and wire[298] == 0xa0 and wire[299] == 0x86
-  assert wire[316] == 0x80 and wire[317] == 0x80
-  assert wire[324] == 0x81 and wire[325] == 0
+  assert wire[81] == 0xc1 and wire[82] == 0xa0 and wire[83] == 0x86
+  assert wire[100] == 0x80 and wire[101] == 0x80
+  assert wire[108] == 0x81 and wire[109] == 0
   let decoded = decodeActivityState(wire, config)
-  assert decoded.error == ActivityError.None and decoded.value.consumed == 326
+  assert decoded.error == ActivityError.None and decoded.value.consumed == 110
   assert uint64(coreActivityAt(decoded.value.snapshot, StatisticsCoreIndex(0)).value.gas) == 100000
   let service = serviceActivityAt(decoded.value.snapshot, StatisticsServiceIndex(0)).value
   assert uint64(service.statistics.refinementGas) == 128 and uint64(
@@ -77,11 +77,11 @@ proc main() =
       StatisticsEpoch.Previous] == 9
   assert info.cores == 3 and info.services == 1
   var validator = validatorActivityAt(owner, StatisticsEpoch.Current, StatisticsValidatorIndex(0)).value
-  assert uint32(validator[ValidatorMeasure.Blocks]) == high(uint32)
+  assert uint64(validator[ValidatorMeasure.Blocks]) == high(uint64)
   validator[ValidatorMeasure.Blocks] = ValidatorCounter(0)
-  assert uint32(validatorActivityAt(owner, StatisticsEpoch.Current, StatisticsValidatorIndex(
-      0)).value[ValidatorMeasure.Blocks]) == high(uint32)
-  assert uint32(validatorActivityAt(owner, StatisticsEpoch.Previous, StatisticsValidatorIndex(
+  assert uint64(validatorActivityAt(owner, StatisticsEpoch.Current, StatisticsValidatorIndex(
+      0)).value[ValidatorMeasure.Blocks]) == high(uint64)
+  assert uint64(validatorActivityAt(owner, StatisticsEpoch.Previous, StatisticsValidatorIndex(
       8)).value[ValidatorMeasure.Assurances]) == 128
   var core = coreActivityAt(owner, StatisticsCoreIndex(2)).value
   assert uint64(core.gas) == high(uint64) and uint64(core.counters[CoreMeasure.BundleBytes]) == 256

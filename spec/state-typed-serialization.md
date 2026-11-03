@@ -1,6 +1,10 @@
 # Gray-Paper-derived typed whole-state serialization
 
-Authority: Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Appendix C
+Current encoding follows the [authorized source qualification](graypaper-current-qualification.md).
+Earlier revision IDs and observed platform receipts below describe the original qualification;
+they do not claim Linux validation of the new counter representation.
+
+Original qualification authority: Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Appendix C
 and T in `text/merklization.tex`. Original gp-next vectors remain pinned at
 `23061ae1f9b51171c01387e7dde0f15794c98e24`. No implementation output from
 another client/tool, source adaptation or pin upgrade supplies expected bytes.
@@ -22,7 +26,7 @@ truncation/suffix/exact-budget boundaries. Counts, fixed tuple widths, dictionar
 key order, E4/E8 values and canonical naturals retain their nominal contracts.
 Current 105-byte metadata and all service namespaces retain typed logical inputs.
 C13 follows the maintainer's accepted vector-compatible compact core/service
-statistics interpretation; E4 validator counters and C12 E4/E8 pairs stay fixed.
+statistics interpretation. Current validator counters are canonical uint64 naturals; C12 E4/E8 pairs stay fixed.
 
 Completion checks: `make unit SUITE=state_typed_serialization`, independent
 Python byte/field anchors and fixture/provider tests, source inventory and pinned

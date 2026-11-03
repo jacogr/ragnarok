@@ -1,5 +1,9 @@
 # C12/C13 width investigation and migration decision
 
+Current source qualification explicitly derives natural C13 validator counters from the known
+historical E4 rows before current native comparisons. Original published bytes, roots and prior
+platform receipts below remain historical evidence. See [combined qualification](graypaper-current-qualification.md).
+
 Normative target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 `text/merklization.tex` T and its following numeric-width note; C.1 dictionary/count serialization;
 `text/accounts.tex` service IDs; `text/definitions.tex` gas; `text/statistics.tex` activity domains.

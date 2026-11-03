@@ -171,7 +171,7 @@ def expected_observations(check_frozen=True):
                     checkpoint_sha256=hashes, refusals=refusals)
     if check_frozen:
         fixture = json.loads(FIXTURE.read_text())
-        assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['epoch_fixture_sha256'] == hashlib.sha256(epoch.FIXTURE.read_bytes()).hexdigest()
         assert evidence == fixture['evidence']
     return requests, lines, evidence

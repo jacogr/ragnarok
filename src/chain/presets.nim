@@ -10,7 +10,7 @@ type ChainPreset* {.pure.} = enum Tiny, Full, Fuzz ## Named protocol presets nev
 proc presetParameters*(preset: ChainPreset): ParameterResult =
   ## Build one immutable complete Appendix B tuple from Full plus the explicitly documented preset overrides.
   var values: array[Parameter, uint64] = [10'u64, 1, 100, 341, 19200, 600, 10000000, 50000000,
-    5000000000'u64, 3500000000'u64, 8, 16, 8, 16, 14400, 8, 6, 80, 10, 128, 5, 64000, 13791360,
+    5000000000'u64, 3500000000'u64, 8, 16, 8, 16, 14400, 8, 6, 80, 10, 128, 5, 196608, 13791360,
     4000000, 3072, 49152, 128, 3072, 500]
   case preset
   of ChainPreset.Full:

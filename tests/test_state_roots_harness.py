@@ -62,10 +62,10 @@ class StateRootsHarness(unittest.TestCase):
         from state_composition_oracle import capture
         source=([bytes(144),bytes(144)],[[0]*7+[100000],[0]*8],
             [(127,[0,0,0,128,0,0,0,0,0,0,256])])
-        compact=statistics_wire(source,4,0)
-        self.assertEqual(compact[297:300],b'\xc1\xa0\x86')
+        compact=statistics_wire(source,4,0,natural_validators=True)
+        self.assertEqual(compact[81:84],b'\xc1\xa0\x86')
         self.assertEqual(capture(13,compact),'ok')
-        self.assertNotEqual(capture(13,statistics_wire(source,4,8)),'ok')
+        self.assertNotEqual(capture(13,statistics_wire(source,4,8,natural_validators=True)),'ok')
 
 
 # Literal checks require no compiler, native library, network or upstream generator.

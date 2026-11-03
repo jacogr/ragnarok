@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_PREIMAGE_AGING",
   "files": {
-    "current-stf-preimage-aging.json": "545020d33c70dd74b3d44ab417c62ab7f10010091d00e41cebdaa3c018563597"
+    "current-stf-preimage-aging.json": "ef67eb9077a8ab4218b526126eeb21d8c907d188ac85c7d6753fbb6a87718d4e"
   },
   "target": "current-stf-preimage-aging.json"
 }

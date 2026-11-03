@@ -50,9 +50,9 @@ proc parentActivity(overflow = false, assuranceOverflow = false): StateEntry =
         activity.validators[epoch][index][measure] = ValidatorCounter(uint32(
           1000*ord(epoch)+100*index+10+ord(measure)))
   if overflow: activity.validators[StatisticsEpoch.Current][0][
-      ValidatorMeasure.Blocks] = ValidatorCounter(high(uint32))
+      ValidatorMeasure.Blocks] = ValidatorCounter(high(uint64))
   if assuranceOverflow: activity.validators[StatisticsEpoch.Current][0][
-      ValidatorMeasure.Assurances] = ValidatorCounter(high(uint32))
+      ValidatorMeasure.Assurances] = ValidatorCounter(high(uint64))
   activity.cores[0].gas = ActivityGas(999)
   var old = ServiceStatisticsEntry(service: ServiceIndex(123))
   old.statistics.counters[ServiceMeasure.RefinementCount] = ActivityNatural(77)
@@ -186,7 +186,7 @@ proc witness(source: PreparedAccumulationTimes, available, blobs, ticket, rotate
             of ValidatorMeasure.PreimageCount: expected += uint32(if blobs: 3 else: 0)
             of ValidatorMeasure.PreimageBytes: expected += uint32(if blobs: 4 else: 0)
             else: discard # Other fields use assured/reporter membership above.
-        assert uint32(row[measure]) == expected, "literal certified validator field"
+        assert uint64(row[measure]) == expected, "literal certified validator field"
   assert binding.admittedState.lookup(chapterKey(StateChapter(13))).value.bytes == original, "parent C(13) unchanged"
   assert prior.lookup(chapterKey(StateChapter(13))).value.bytes == original, "candidate C(13) still old until combination"
   assert hashCalls() == 0, "binding performs no hashing or re-verification"

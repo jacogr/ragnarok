@@ -63,7 +63,7 @@ proc blockTemplate*(base: OwnedReport): OwnedReport =
   assert encoded.error == CompositeError.None
   decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
 proc putE4(output: var seq[byte], value: uint32) =
-  ## Independently emit fixed validator counters and service IDs without using the production codec.
+  ## Independently emit fixed service IDs without using the production codec.
   for index in 0..<4: output.add(byte((value shr (index*8)) and 255))
 proc expectedWire(admission: AdmittedReports, empty: bool): seq[byte] =
   ## Every non-maximal natural in these authored cases fits one octet; neither encoder nor metric producer supplies expected fields.
@@ -84,9 +84,11 @@ proc expectedWire(admission: AdmittedReports, empty: bool): seq[byte] =
     let authored = uint16(index) == author
     for counter in [uint32(if authored: 1 else: 0), 0'u32, uint32(if authored and
         not empty: 3 else: 0),
-      uint32(if authored and not empty: 3 else: 0), reporting, 0'u32]: putE4(result, counter)
+      uint32(if authored and not empty: 3 else: 0), reporting, 0'u32]:
+      assert counter <= 127 # These independently counted contributions fit one canonical natural byte.
+      result.add(byte(counter))
   result.add(6'u8)
-  for index in 0..<144: result.add(0'u8) # Previous six zero E4 tuples stay unchanged within the epoch.
+  for index in 0..<36: result.add(0'u8) # Previous six zero natural tuples stay unchanged within the epoch.
   if empty:
     for index in 0..<16: result.add(0'u8) # Every fresh field of both unused core rows is zero.
     result.add(0'u8) # No old service dictionary entry survives an inactive block.

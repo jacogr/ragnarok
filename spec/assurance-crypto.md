@@ -36,9 +36,10 @@ core configuration and bitset padding before hashing; it cannot authorize an ass
 This bounded M2 composition slice does not implement pending-report eligibility,
 availability thresholds, validator-set selection, block import, state mutation or new primitives.
 The caller supplies the correct active validator set and post-judgement state remains external.
-The existing exceptional-point Ed25519 provider-policy discrepancy remains an explicit unresolved
-protocol gate. This round uses ordinary RFC8032-derived keys and independently generated OpenSSL
-signatures; it does not claim universal provider equivalence or resolve that policy implicitly.
+The provider follows the existing [ZIP215 contract](crypto-zip215-upgrade.md). This encoding
+upgrade preserves that primitive implementation and its pins. Ordinary RFC8032-derived keys and
+independent OpenSSL signatures qualify these transcripts; exceptional-point coverage belongs to
+the primitive qualification rather than being inferred from this ordinary-credential corpus.
 
 Acceptance compares every message byte with Python hashlib; uses independent OpenSSL signing
 validated against a pinned RFC8032 known answer; tests tiny/full and byte-width boundaries;
@@ -47,7 +48,7 @@ failure before an earlier invalid signature; wrong key, signature, domain and ha
 and input immutability. Existing assurances and report suites are fresh-build baselines/rechecks.
 Nominal message/signature compiler probes remain separate diagnostics.
 
-## Nimony trial evidence
+## Historical Nimony trial evidence
 
 The pinned Nimony branch preserves this transcript, verification order, synchronous input borrows
 and backend signature policy. Result status/payloads are private; read-only errors and a supported

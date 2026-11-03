@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_EPOCH",
   "files": {
-    "current-stf-epoch.json": "38292ab5b05a457e494d383ab9b6e788b4d2e950c9f01dbc61618934e78ac5ba"
+    "current-stf-epoch.json": "b8da36f6db4b76231dafe4ab9a60f67d8ba1eaee58198c9a0bfa4fc9a0d849b2"
   },
   "target": "current-stf-epoch.json"
 }

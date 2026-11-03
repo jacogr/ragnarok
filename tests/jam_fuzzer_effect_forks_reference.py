@@ -59,7 +59,8 @@ def sibling(parent, original, posterior):
     offset, old, supplied, guaranteed = body_parts(original[297:])
     assert len(old) == 5 and all(row['bits'] == old[0]['bits'] for row in old)
     assert old[0]['bits'] in (1, 2, 3)
-    expected = assurances(parent, 5, old[0]['bits'])
+    expected = [dict(bits=row['bits'],index=row['index'],signature=row['signature'])
+                for row in assurances(parent, 5, old[0]['bits'])]
     assert old == expected # The original independently signed quorum is checked before constructing another valid one.
     changed = assurances(parent, 6, old[0]['bits'])
     before = assurance_bytes(old)
@@ -132,7 +133,7 @@ def group(families, fixture, *, check_frozen=True):
                 parent = posterior
                 wire = None
         assert changed and wire is None
-    evidence = dict(graypaper_commit='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d',
+    evidence = dict(graypaper_commit='fad0ded4a433052397bf7234352a57fe491883f7',
                     families=list(families), bases=bases, transitions=transitions, chains=chains,
                     sibling_imports=variants, sibling_roots=roots,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())

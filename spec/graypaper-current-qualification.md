@@ -4,8 +4,9 @@ Target source: `fad0ded4a433052397bf7234352a57fe491883f7`, compared with
 `3861aed15d7d016a3a416e14e61fc67dddf6daec`. The upgrade covers authorizer code limits,
 package gas inclusivity, report refine-load bounds, refinement failure precedence,
 bless duplicate keys, parent-free assurance wire records, and compact validator statistics.
-The final qualification layer updates the source pin and public preset tuple after all behavior
-changes are represented; intermediate layers qualify target behavior without claiming whole-upgrade completion.
+The final qualification layer adopts the source pin and public preset tuple and qualifies the
+combined execution, bless, assurance and statistics behavior. Earlier layer receipts retain
+their original bounded scope; the completed combined qualification is recorded below.
 
 The vector dataset remains `d7b73e396d2f872fcfca37cbbb7d7869675d34d6` on `gp-next`.
 Its old assurance/statistics bytes are historical evidence and do not independently qualify the
@@ -25,7 +26,7 @@ kind before successful output oversize/export checks. Authorizer code permits196
 Completion checks include exact/one-over package gas and report load boundaries, full-width
 counter overflows, per-report reset, authenticated authored reports, real refinement invocations
 with overlapping failure conditions, exact/one-over authorization code, and unchanged fetch input
-limit. Remaining upgrade layers and their focused tests must pass before claiming completion.
+limit. The combined qualification below covers the remaining upgrade layers.
 
 Signed combined-activity fixtures use the actual Tiny per-report refinement ceiling of1B gas,
 then verify the two-report2B service total. The old UINT64_MAX signed-report overflow scenario
@@ -40,7 +41,7 @@ computed admission, assured queues, auditable bundles, fuzzer profile selection 
 statistics. The latter retains independent literal wire expectations and fresh1,000-cycle ARC
 release evidence. The independent mathematical package corpus agrees byte-for-byte on8,127
 context/import/commitment/item/package requests, including exact gas equality and one over.
-All486 production modules and the peer entry point pass checked-release semantic compilation;
+All 486 production modules and the peer entry point pass checked-release semantic compilation;
 final fuzzer/CLI changes receive focused semantic and native checks. Package reference tests and
 trace-conformance tooling tests pass; formatting, inventory and whitespace checks pass.
 
@@ -70,8 +71,8 @@ with fresh1,000-cycle ARC evidence. Independent target report inputs match avail
 segment count to digest exports before signing. Complete native comparison passes36 signed
 transitions across6 allowance chains and210 across21 rotation/privilege chains. Seven
 independent Python invariants pass. The historical report factories retain their original
-inputs by default; this qualification explicitly selects the target count equality. Final
-source-pin qualification must include the remaining report families and new wire/state formats.
+inputs in the historical archive. Current factories select the target count equality before
+signing; final qualification includes every maintained report family and the new wire/state formats.
 
 ## Parent-free assurance qualification
 
@@ -89,9 +90,60 @@ The assurance layer passes33,393 independent codec/inspection requests,2,087 ord
 OpenSSL signing-context requests and17,065 whole extrinsic/block requests, comparing every
 result byte. Native codec, context, original signing credentials, availability, block, commitment,
 computed-assurance and report-admission suites pass, including fresh1,000-cycle ARC receipts.
-All486 production modules and the peer entry point compile with checked release flags.
+All 486 production modules and the peer entry point compile with checked release flags.
 Sixteen independent Python contract checks pass. Original assurance fixtures are retained under
 `tests/fixtures/historical/parent-free-assurances/`; their target counterparts omit the parent.
 The remaining whole-state historical golden families are qualified with the statistics/source-pin
 layer, because the new C13 representation changes their state roots again. This layer alone
 does not claim that final full-state replay qualification or whole-upgrade completion.
+
+## Validator statistics and final qualification
+
+Target C13 encodes each of six validator counters as a canonical natural. Counters retain the
+complete uint64 domain, checked before accumulation; fixed E4 service keys and C12 E8 gas remain
+unchanged. Decoder preflight scans every scalar before allocating an owner. Completion witnesses
+cover natural-width transitions and maximum counters, exact increments and overflow refusals,
+preimage payload bytes, reporter Ed25519 identity, rotation order, full-map replay and pin integrity.
+Historical E4-counter state is explicitly converted in test-only qualification, with original
+bytes preserved; production accepts only the target format.
+
+
+## Completed combined qualification
+
+All 185 maintained native corpora pass: 100 complete current-state replay families, 78 Fuzz/JAM
+cases and seven statistics, composition, width, trie, raw-root and trace corpora. This includes
+2,455 independent statistics requests, 14,260 composition requests, all 224 qualified chapter
+captures and 14 derived whole-state mappings. Original published bytes and roots remain
+historical receipts; explicit test-only conversion derives current C13 records before native
+execution. Production decoders have one current representation.
+
+The final report-factory audit also bounds high-core extrinsic counts to 128 and binds each
+availability segment count to the digest export total before signing. Full-profile ancestry,
+its missing-anchor control, guest execution, population changes and real offline commands pass.
+After that fuzzer-only correction, all 78 Fuzz/JAM cases were rerun. The 107 unchanged non-fuzzer
+results were retained only after a recorded file-hash audit established identical production,
+native, Nim, specification and non-fuzzer reference/fixture inputs. The audit records both source
+identities and every changed fuzzer-owned path.
+
+Thirty-six focused native consumer suites pass, including two unchanged pure codec/projection
+receipts. All 152 existing statistics/activity failure contracts pass; their exact failure reasons
+and success-only payload guards remain enforced. All 486 production modules and the peer entry
+point pass checked-release semantic compilation. Complete Python discovery ran 1,668 tests with
+one skip; its 15 stale-format failures were cleared by 79 affected checks. Twenty additional
+composition/root/width checks and all 39 Python fuzzer tests pass. Formatting, inventory and
+whitespace checks complete the local qualification; these receipts do not claim a fresh complete
+Linux native run.
+
+All 100 current-state and 36 fuzzer golden families were independently regenerated, with ten
+additional serialization/trace fixtures and metadata-only primitive witness qualification. The 153
+original files are preserved byte-for-byte through git mv, including the original Genesis binary.
+The vector dataset pin and its last-compatible source qualification remain unchanged. Crypto
+implementations, proof payloads, primitive dependencies and compiler/toolchain pins are unchanged;
+only their Gray Paper source-identification metadata follows the adopted source. The consumed
+Bandersnatch chapter is byte-identical across this source upgrade.
+
+The remaining source clarifications require no alternate implementation: work-report prerequisites
+are sorted unique hashes in the report codec; validator preimage bytes count payload lengths;
+reporter membership compares posterior active Ed25519 keys and credits each validator once.
+The removal of the blanket dictionary-key sentence does not change the explicit C12 E4/E8 or C13
+E4 service-key contracts. The accepted compact core/service statistics gas policy remains in force.

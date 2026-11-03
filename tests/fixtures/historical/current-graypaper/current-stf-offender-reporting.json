@@ -1,0 +1,86 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "sources_sha256": {
+    "current-stf-population.json": "1bac779dd3023b836637192515883810bc93994316f754fa5ffeb8f4d00df9d8",
+    "current-stf-epoch.json": "38292ab5b05a457e494d383ab9b6e788b4d2e950c9f01dbc61618934e78ac5ba"
+  },
+  "evidence": {
+    "transitions": 22,
+    "chains": 2,
+    "roots": [
+      [
+        "96a0c4155c637c43c9e42d7d83dda04fcf2085b15d7ab11019e944b7afffa907",
+        "9f851d51b2033672735fa6f9d245581882364260baa99dc66eed316be783c347",
+        "3a17206400a5b11841116702ce3f581181a654ab70a45160bc5d3f367f47841f",
+        "594129ddeba4cb9042c40e9b762fcc45484cdf3454e5c65099412b9e8a434f72",
+        "4576ad66d10fad986b58718ca2259c4ff608e7a2cf3f0c36e1ac9d0b34b83d0f",
+        "6fdc2f31554b4bc8ebe168639c2d0c26af3af14de2225408913fdea031177c1a",
+        "41c10424de4e2cf1a4046604d5c71dc4aa0bae1eaf88c326f19b279d4acc2e2d",
+        "cf259603a8cf0d8a6fbcc17da0dbfa39f4d2ede0af3ea26a2997fe2e1937a24f",
+        "1aac7bb0757c28d4f227c4be4054ec7321fb7e1e324908c2eaa044123dd8c569",
+        "e7801632c265cff8de63b468034148036fdbd8603ae1a57109b3eccfb4f7f7dc",
+        "f50add4da9beb753e23abf5f98ee4edfed03d536c654faf365678f37d0093935"
+      ],
+      [
+        "96a0c4155c637c43c9e42d7d83dda04fcf2085b15d7ab11019e944b7afffa907",
+        "9f851d51b2033672735fa6f9d245581882364260baa99dc66eed316be783c347",
+        "bc81565ffabb2b6a6020a89d6f89ea5190aeaa1660928dd7f240dbbe80eb47f2",
+        "ec6432484a847d720d1a8d54082866c482f9312127ee2fca2552de1c69e4ea61",
+        "6073f408e68ba233ff9375747592c774b3f42a2e2b7c141f241291c5d242cc8f",
+        "60773c20479dcbdcde1f9abf895e7b764b18bf09fc406fbcf289b796c6adf466",
+        "a50e33be20ae2988e86bab434bda9d03af1851ea4aa9408933b0cc764700f142",
+        "2ff3b12349cef3d3fa9d6ff296a4957d1a1c7209f0b2bf5cf14cbad53f93c605",
+        "acdcfc5761d038b85ec0945edcd87fac518ab840f81e72e62e7f53ea0a6f65d1",
+        "6333c98e24a57122338a2275f973f82bd8163b9efe6d9e6e703efa322a276a99",
+        "52f8d5d06a43982b175cbf7bd66bfc8dc29907f6976d83153c4f1922ee8ac790"
+      ]
+    ],
+    "checkpoint_sha256": [
+      [
+        "778b034af3b992d7595fd20415ab867c1d7928e4ba31eaf08e31f884de2f004e",
+        "f5625e6c0fb87483d312b9b217677efcd66985c4988ba8b756bdd8b395868c2f",
+        "257f474308a90da055d37cfa237a0362c6e09722f1bcc94bc5594df1e664d362",
+        "29d5103b148847a165e3a0386db2407e6eaebe404320b9b982179082fee4e34e",
+        "5f63d54d846a1fa8eebcf22eebe37ae23f3b8603f389c87da66e84bb2c0e8bb9",
+        "3716e04ab2af28fb42019398ae4439a0cfa044a52c9e0335a128090b53eb8ed6",
+        "cdca8b0bfa2048f52949bc517daaf079bf159d562d68843fd8a8c8ff5078ff64",
+        "9e2aa152fab6d562a8edf2b7159978e8b222ee7e93238725e87908a9d5da8e57",
+        "36ebc0416fb989fb51111304dfd34ccbe8b9fc87197abe2ea1c434fa788ad2d9",
+        "181c226135f7c790210606553b78a83a12014925c3562532aa3fd0e9fed976a4",
+        "e7e89b94c9be2770e5ff428fed62d8b81c5c32a4e2b3bebd81593edeabb92316"
+      ],
+      [
+        "778b034af3b992d7595fd20415ab867c1d7928e4ba31eaf08e31f884de2f004e",
+        "f5625e6c0fb87483d312b9b217677efcd66985c4988ba8b756bdd8b395868c2f",
+        "43452615439b5ece9beb18f1a7d6c7d5b86458eeecdb37f42fc87487c97fe88c",
+        "dfd87bed7f1f5d075d77bc7f31dc3a0201e721dc31b23ea05e4b567f58ac09a2",
+        "441295437593acaffdf396ce3cc2f571d741e231647a373a9c1f5c9e7980ec2c",
+        "26dc6d74ca64fa98dced07b5c39b05e501f6fc369769f0566b1fc2fde0536323",
+        "55f378ec61f1f67acba1c75a5e5cb3b94aae17d540d46ccef6596a3778cc7697",
+        "a2837ab122ef963e77d67c8051537a7453e38f8e39970b53ee4ac01892ab97a3",
+        "43d13fe9d870ca30e7a81cbaf0303cb4d413f946aa38a83b3c65bcff4a349bd1",
+        "dba288bab435a0ecbb829255efae1ce1c856d59bc258a25efb0ae43ee52f7c71",
+        "e476a3c88654e1821dd53af7cb558c11fbaa610eac88895c2f090fdb22c1bab8"
+      ]
+    ],
+    "refusals": [
+      "dispute/InvalidMarker",
+      "dispute/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/InvalidSignature",
+      "dispute/InvalidMarker",
+      "dispute/InvalidSignature",
+      "availability/UnassignedCore",
+      "credential/InvalidSignature",
+      "dispute/InvalidMarker",
+      "dispute/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/InvalidSignature",
+      "dispute/InvalidMarker",
+      "dispute/InvalidSignature",
+      "availability/UnassignedCore",
+      "credential/InvalidSignature",
+      "credential/InvalidSignature"
+    ]
+  }
+}

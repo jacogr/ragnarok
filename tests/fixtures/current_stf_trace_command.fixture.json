@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_TRACE_COMMAND",
   "files": {
-    "current-stf-trace-command.json": "cb11b73d338e5a6a2f5ba7514e81c8ef3615fe260ee5fc5594da83b7477e7f2a"
+    "current-stf-trace-command.json": "9c9e5f9c0eda63ff404375a8ddc043efc85321a8c49d7ede0ab2bc19d3f25280"
   },
   "target": "current-stf-trace-command.json"
 }

@@ -103,12 +103,18 @@ class Cursor:
 
 
 # Re-emit every diagnosed field independently; complete byte identity is necessary for a candidate match.
-def statistics_wire(source, key_width, gas_width):
+def statistics_wire(source, key_width, gas_width, *, natural_validators=False):
     epochs, cores, services = source
     # Only the selected bounded domains vary; general count/measure fields remain canonical naturals.
     def integer(value, width):
         return value.to_bytes(width, 'little') if width else natural(value)
-    result = b''.join(natural(len(epoch)//24)+epoch for epoch in epochs)
+    # Only explicitly qualified composition witnesses replace the historical validator prefix.
+    if natural_validators:
+        result=b''.join(natural(len(epoch)//24)+b''.join(natural(int.from_bytes(epoch[i:i+4],'little'))
+            for i in range(0,len(epoch),4)) for epoch in epochs)
+    else:
+        # The pinned diagnostic audit still reconstructs its original E4 bytes exactly.
+        result = b''.join(natural(len(epoch)//24)+epoch for epoch in epochs)
     result += b''.join(b''.join(natural(x) for x in row[:7])+integer(row[7], gas_width) for row in cores)
     result += natural(len(services))
     # Two service gas positions are kept separate from the nine ordinary measures.
@@ -199,7 +205,16 @@ def requests():
     records = []
     # Each exact-capture request records its identity and current decoder's complete-entry verdict.
     def add(chapter, raw, profile, identity):
+        historical_sha256=hashlib.sha256(raw).hexdigest()
+        if chapter==13:
+            from state_statistics_oracle import historical_source, wire
+            source,consumed=historical_source(raw)
+            assert consumed==len(raw)
+            raw=wire(source)
         wanted = capture(chapter, raw, profile)
+        identity=dict(**identity,historical_sha256=historical_sha256,
+            qualified_sha256=hashlib.sha256(raw).hexdigest(),
+            qualification_target='fad0ded4a433052397bf7234352a57fe491883f7')
         lines.append('C '+' '.join(map(str, (*profile, *POLICY, chapter)))+' '+token(raw))
         expected.append(wanted)
         records.append(dict(**identity, chapter=chapter, current_expected=wanted))
@@ -207,7 +222,7 @@ def requests():
     for raw, evidence in binaries:
         profile = (2, 6, 6, 12) if '/tiny/' in evidence['path'] else (341, 1023, 1023, 600)
         add(12, raw, profile, dict(path=evidence['path']+'.bin', phase='pre_state'))
-    # Both chapters are observed at exact original value extents, without replacing any wire field.
+    # C12 stays exact; known historical C13 rows are explicitly qualified for the current counter schema.
     for privilege, activity, evidence in traces:
         for chapter, raw in ((12, privilege), (13, activity)):
             add(chapter, raw, (2, 6, 6, 12), dict(path=evidence['path'], phase=evidence['phase']))

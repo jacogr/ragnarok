@@ -1,5 +1,9 @@
 # Gray-Paper-derived serialization qualification
 
+Current encoding follows the [authorized source qualification](graypaper-current-qualification.md).
+Earlier revision IDs and observed platform receipts below describe the original qualification;
+they do not claim Linux validation of the new counter representation.
+
 ## Authority and completion basis
 
 Target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
@@ -17,7 +21,7 @@ being checked, never the source of an expected result. Hand-authored byte anchor
 and exact fixture identities make field widths/order and expectation changes inspectable.
 
 Keep the accepted C13 interpretation explicit: core/service statistics, including
-gas, use canonical naturals; validator counters use E4 and service keys use E4.
+gas, use canonical naturals; validator counters use canonical uint64 naturals and service keys use E4.
 C12 pairs use E4 service IDs and E8 gas. This is the maintainer-directed
 vector-compatible interpretation, not a claim that the paper's blanket fixed-width
 note changed. There is one representation and no alternate decoder fallback.

@@ -18,10 +18,10 @@ from test_support import ROOT
 DEFAULT=(2,6,6,MAX,MAX)
 
 
-# Counters in the two epoch arrays are E4; service keys use E4 while core/service values retain canonical naturals.
+# Counters in the two epoch arrays are canonical naturals; service keys use E4 while core/service values retain canonical naturals.
 def wire(source):
     current,previous,cores,services=source
-    return b''.join(natural(len(rows))+b''.join(x.to_bytes(4,'little') for row in rows for x in row) for rows in (current,previous))+b''.join(natural(x) for row in cores for x in row)+natural(len(services))+b''.join(row[0].to_bytes(4,'little')+b''.join(natural(x) for x in row[1:]) for row in services)
+    return b''.join(natural(len(rows))+b''.join(natural(x) for row in rows for x in row) for rows in (current,previous))+b''.join(natural(x) for row in cores for x in row)+natural(len(services))+b''.join(row[0].to_bytes(4,'little')+b''.join(natural(x) for x in row[1:]) for row in services)
 
 
 # Both roster profiles are explicit and independent; a previous roster may survive a current-set resize.
@@ -51,7 +51,7 @@ def encode(source,config):
     for rows,count in zip((current,previous),config[1:3]):
         if len(rows)!=count:
             return 'invalidcount'
-        size+=len(natural(count))+24*count
+        size+=len(natural(count))+sum(len(natural(x)) for row in rows for x in row)
         if size>config[4]:
             return 'limitexceeded'
     if len(cores)!=config[0]:
@@ -108,20 +108,23 @@ def parse(data,config):
         if cursor>config[4]:
             return 'limitexceeded'
         return value
-    # Each tuple array has its own canonical count followed by exact E4 fields.
+    # Every bounded roster row contains exactly six canonical full-width naturals.
     for count in config[1:3]:
         n=read()
         if isinstance(n,str):
             return n
         if n!=count:
             return 'invalidcount'
-        end=cursor+n*24
-        if end>config[4]:
-            return 'limitexceeded'
-        if end>len(data):
-            return 'truncated'
-        epochs.append([tuple(int.from_bytes(data[i+j:i+j+4],'little') for j in range(0,24,4)) for i in range(cursor,end,24)])
-        cursor=end
+        rows=[]
+        for _ in range(n):
+            row=[]
+            for _ in range(6):
+                x=read()
+                if isinstance(x,str):
+                    return x
+                row.append(x)
+            rows.append(tuple(row))
+        epochs.append(rows)
     cores=[]
     # Fixed core sequence has no count; every tuple is exactly eight natural fields.
     for _ in range(config[0]):
@@ -157,6 +160,33 @@ def parse(data,config):
             row.append(x)
         services.append(tuple(row))
     return (epochs[0],epochs[1],cores,services),cursor
+
+
+# Decode only known historical source records, explicitly selecting their old E4 validator schema.
+# This qualification helper is never a production decoder or a fallback from a current parse failure.
+def historical_source(data,config=DEFAULT):
+    assert valid(config) is None
+    cursor=0; epochs=[]
+    # Pinned historical counts and every fixed field must be present before source conversion.
+    for population in config[1:3]:
+        parsed=reference_decode(data[cursor:])
+        assert parsed not in ('truncated','noncanonical')
+        count,size=map(int,parsed.split());cursor+=size
+        assert count==population and count <= (len(data)-cursor)//24
+        epochs.append([tuple(int.from_bytes(data[at+j:at+j+4],'little') for j in range(0,24,4))
+            for at in range(cursor,cursor+count*24,24)])
+        cursor+=count*24
+    # Core/service encodings are unchanged; explicitly substitute the qualified natural epoch prefix.
+    prefix=b''.join(natural(len(rows))+b''.join(natural(x) for row in rows for x in row) for rows in epochs)
+    converted=prefix+data[cursor:]
+    result=parse(converted,(*config[:4],MAX))
+    assert not isinstance(result,str),result
+    source,consumed=result
+    historical= b''.join(natural(len(rows))+b''.join(x.to_bytes(4,'little') for row in rows for x in row)
+        for rows in epochs)+wire(source)[len(prefix):]
+    old_consumed=cursor+consumed-len(prefix)
+    assert historical==data[:old_consumed]
+    return source,old_consumed
 
 
 # Logical scalar observations preserve every field and count without reusing native encoder answers.
@@ -204,19 +234,19 @@ def published_wires():
         for phase in ('pre_state','post_state'):
             values=[bytes.fromhex(x['value'][2:]) for x in d[phase]['keyvals'] if x['key']=='0x'+chapter_key(13).hex()]
             assert len(values)==1
-            data=values[0];parsed=parse(data,DEFAULT)
+            data=values[0];parsed=historical_source(data,DEFAULT)
             assert not isinstance(parsed,str),parsed
             source,consumed=parsed
-            assert wire(source)==data[:consumed]
-            result.append((source,data,consumed))
+            qualified=wire(source)
+            result.append((source,qualified+data[consumed:],len(qualified)))
     return result
 
 
-# Retain exact trace extent and independent E4-key reconstruction evidence after the migration.
+# Label current-format qualification separately from the immutable historical trace bytes.
 def trace_evidence():
     result=[]
     # Independent E4-key reconstruction must reproduce the entire raw component, not a shorter prefix.
-    for source,data,consumed in published_wires():
+    for ordinal,(source,data,consumed) in enumerate(published_wires()):
         current,previous,cores,_=source
         cursor=len(wire((current,previous,cores,[])))-1
         count,size=map(int,reference_decode(data[cursor:]).split());cursor+=size
@@ -229,8 +259,19 @@ def trace_evidence():
         assert cursor==len(data)
         fixed_wire=wire((current,previous,cores,[]))[:-1]+natural(count)+b''.join(row[0].to_bytes(4,'little')+b''.join(natural(x) for x in row[1:]) for row in pairs)
         assert fixed_wire==data
+        # Reconstruct and bind the original E4-counter component before labelling this derived current wire.
+        rows=(current,previous)
+        old_prefix=b''.join(natural(len(epoch))+b''.join(x.to_bytes(4,'little') for row in epoch for x in row) for epoch in rows)
+        current_prefix=b''.join(natural(len(epoch))+b''.join(natural(x) for row in epoch for x in row) for epoch in rows)
+        historical=old_prefix+data[len(current_prefix):]
+        document=blob(f'traces/fuzzy/{ordinal//2+1:08}.json')
+        phase=('pre_state','post_state')[ordinal%2]
+        original=next(bytes.fromhex(row['value'][2:]) for row in document[phase]['keyvals'] if row['key']=='0x'+chapter_key(13).hex())
+        assert historical==original
         result.append(dict(bytes=len(data),consumed=consumed,trailing_bytes=len(data)-consumed,
             complete_component_match=consumed==len(data),diagnostic_e4_key_match=True,
+            qualification_target='fad0ded4a433052397bf7234352a57fe491883f7',
+            historical_wire_sha256=hashlib.sha256(historical).hexdigest(),
             sha256=hashlib.sha256(data).hexdigest()))
     return result
 
@@ -258,9 +299,9 @@ def requests():
     # Every proper truncation crosses both epoch arrays, all cores and the complete last service tuple.
     for cut in range(len(raw)):
         dec(raw[:cut])
-    # Every validator field is exercised at E4 boundaries independently of naturally encoded core/service fields.
+    # Every validator field crosses natural-width boundaries through the complete uint64 endpoint.
     for slot in range(6):
-        for value in (0,127,128,255,256,65535,65536,2**24,2**32-1):
+        for value in (0,127,128,255,256,65535,65536,2**24,2**32-1,2**32,2**56-1,2**56,MAX):
             source=example();source[0][0]=tuple(value if j==slot else 0 for j in range(6));source[1][-1]=source[0][0]
             enc(source);dec(wire(source))
     # All core/service tuple positions separately cross canonical natural width boundaries and full uint64 gas.
@@ -313,7 +354,7 @@ def requests():
     for _ in range(150):
         source=example(services=rng.randrange(8))
         for group in (0,1):
-            source[group][:]=[tuple(rng.getrandbits(32) for _ in range(6)) for _ in source[group]]
+            source[group][:]=[tuple(rng.getrandbits(64) for _ in range(6)) for _ in source[group]]
         source[2][:]=[tuple(rng.getrandbits(64) for _ in range(8)) for _ in source[2]]
         keys=sorted(rng.sample(range(2**32),len(source[3])))
         source[3][:]=[tuple([key,*(rng.getrandbits(64) for _ in range(11))]) for key in keys]
@@ -335,7 +376,7 @@ def requests():
     # Additional unchanged raw statistics values include nonzero wide IDs independently bound to metadata keys.
     from state_widths_oracle import trace_values
     for _,data,_ in trace_values():
-        source,consumed=parse(data,DEFAULT)
-        assert consumed==len(data) and wire(source)==data
-        dec(data);enc(source)
+        source,consumed=historical_source(data,DEFAULT)
+        assert consumed==len(data)
+        dec(wire(source));enc(source)
     return lines,expected

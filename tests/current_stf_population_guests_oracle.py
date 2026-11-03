@@ -29,7 +29,7 @@ def original(mode):
             **{k:v for k,v in guests.original(mode).items() if k not in globals_}}
 
 
-def guarantee(parent, core, slot, sid, *, prerequisite=b'', match_exports=False):
+def guarantee(parent, core, slot, sid, *, prerequisite=b'', match_exports=True):
     """Select genuine current-roster credentials, executable code and explicit dependency bytes before signing."""
     item = population.guarantee(parent, core, slot, slot, slot)
     layout = item['layout']; layout['prerequisites'] = prerequisite

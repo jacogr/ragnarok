@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_EVICTION",
   "files": {
-    "current-stf-eviction.json": "15885637abaf172a0f3e8ed9f1b9c312a50cb9e203dd3042a92075816eb522f8"
+    "current-stf-eviction.json": "746bacf6dbe4d23cd626e60a4874aaf16cc85830e45c654788f3a5f4a8c6635f"
   },
   "target": "current-stf-eviction.json"
 }

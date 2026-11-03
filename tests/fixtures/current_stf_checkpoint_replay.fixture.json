@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_CHECKPOINT_REPLAY",
   "files": {
-    "current-stf-checkpoint-replay.json": "63ef183a1a06be2cc0293c6add99cb4baa4ca026d8971f8e56d6fe23b4d44202"
+    "current-stf-checkpoint-replay.json": "ff72ded3c64b45fc9faba4c4b6e0486e715c9900ece7dde6f62d525bfed31db2"
   },
   "target": "current-stf-checkpoint-replay.json"
 }

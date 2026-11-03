@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_REPORT_GUESTS",
   "files": {
-    "current-stf-report-guests.json": "f5bbae5747de12c1078e925cd95185f1eaf458270416329bf262c67f1bb631c3"
+    "current-stf-report-guests.json": "73feff5723d3c296815c490812f1cb1f3600ced6021329364b5ecf5bad93d665"
   },
   "target": "current-stf-report-guests.json"
 }

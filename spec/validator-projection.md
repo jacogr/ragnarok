@@ -1,11 +1,15 @@
 # Validator activity projection
 
+Current encoding follows the [authorized source qualification](graypaper-current-qualification.md).
+Earlier revision IDs and observed platform receipts below describe the original qualification;
+they do not claim Linux validation of the new counter representation.
+
 ## Scope and authority
 
 Implement the validator component of GP 0.8.0 C(13), statistics.tex validator activity equations,
 revision `07f041dabd073f9018b418e9ee72e79dd2185401`, SHA-256
 `a8bee7c99853ed116fb7ed5e45e9977c7c323ad386e5a7e6c8cefba509f2d2a9`.
-Retain the pinned [C(13) codec](state-statistics.md), including its fixed E4 validator counters.
+Retain the pinned [C(13) codec](state-statistics.md), including canonical natural validator counters with the full uint64 domain.
 This bounded layer implements a pure projection with explicit observations. It establishes no
 signature, block, roster-transition or accumulation provenance and publishes no state entry.
 The next layer must derive these observations from the exact authenticated block retained above
