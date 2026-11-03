@@ -426,8 +426,14 @@ int rq_set_peer_capacity(rq_transport *t, unsigned maximum, int multiple) {
     if (multiple) t->multi = 1; /* Native profile defaults may already require multi-peer service. */
     return 1;
 }
-rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
- const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
+rq_transport *rq_transport_new_config(const rq_transport_options *options, uint16_t local_port,
+ const char *certificate, const char *key, const char *alpn, void *user,
+ rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
+    if (!options || options->server < 0 || options->server > 1 || options->ipv6 < 0 || options->ipv6 > 1 ||
+        options->multi < 0 || options->multi > 1 || (options->multi && !options->server) ||
+        options->idle_seconds > 600 || options->keepalive > 1 ||
+        (!options->idle_seconds && options->keepalive)) return NULL;
+    const int soak = options->profile, server = options->server;
     size_t length = strlen(alpn);
     if (soak < 0 || soak > 5 || ((soak == 2 || soak == 5) && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
     struct rq_transport *t = calloc(1, sizeof(*t));
@@ -439,7 +445,9 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
         free(t->connections); free(t->generations); free(t); return NULL; /* No native/global owner exists yet. */
     }
     t->owner_id = ++next_owner_id; /* Failed later setup consumes an identity, never reuses one. */
-    t->persistent = soak >= 3; t->multi = soak == 2 || soak == 5; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
+    t->persistent = soak >= 3; t->multi = options->multi || soak == 2 || soak == 5; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
+    t->ipv6 = options->ipv6;
+    if (t->ipv6) t->local6 = address6(local_port); /* Full family is fixed before engine settings/callbacks exist. */
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
     /* Initialize once, so constructing a second engine cannot reseed state used by the first. */
     if (!global_owners && lsquic_global_init(LSQUIC_GLOBAL_CLIENT | LSQUIC_GLOBAL_SERVER)) goto fail;
@@ -468,6 +476,11 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
     if (t->multi) { t->settings.es_init_max_streams_bidi = 8; t->settings.es_idle_timeout = 2; } /* Bounded crashed-peer retirement. */
     /* Recovery/load profiles use a two-second crash expiry and one-second liveness probes, solely for bounded experiments. */
     if (soak >= 4) { t->settings.es_idle_timeout = 2; t->settings.es_ping_period = 1; t->settings.es_init_max_streams_bidi = 8; }
+    /* Explicit caller timing overrides experiment defaults before LSQUIC copies its settings. */
+    if (options->idle_seconds) {
+        t->settings.es_idle_timeout = options->idle_seconds;
+        t->settings.es_ping_period = options->keepalive; /* Pinned IETF LSQUIC treats nonzero as enable, then uses half negotiated idle. */
+    }
     t->settings.es_versions = 1u << LSQVER_I001; t->settings.es_support_srej = 0;
     t->api.ea_settings = &t->settings; t->api.ea_stream_if = &callbacks; t->api.ea_stream_if_ctx = t;
     t->api.ea_packets_out = packets_out; t->api.ea_packets_out_ctx = t; t->api.ea_get_ssl_ctx = get_tls;
@@ -477,6 +490,13 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
 fail:
     rq_transport_free(t); return NULL;
 }
+/* Preserve the original exported factory ABI for existing native proof consumers. */
+rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
+ const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
+    const rq_transport_options options = {soak, server, 0, soak == 2 || soak == 5, 0, 0};
+    return rq_transport_new_config(&options, local_port, certificate, key, alpn, user, verify, send, stream);
+}
+
 /* Copy an ALPN vector atomically before the endpoint can process a connection. No JAM names
  * or builder policy belong in this TLS primitive; all vector extents are proved before copy. */
 int rq_server_alpns(rq_transport *t, const uint8_t *wire, size_t length) {
@@ -623,6 +643,7 @@ int rq_stream_flush(void *s) { return lsquic_stream_flush(s); }
 void rq_disconnect(rq_transport *t) { if (t->connection) lsquic_conn_close(t->connection); }
 /* Endpoint-owned counters avoid exposing raw connection handles to application code. */
 uint64_t rq_peer_metric(rq_transport *t, int metric) {
+    if (!t) return 0; /* Default/retired owners have no native lifetime counters to inspect. */
     /* Invalid trusted metric selectors have no meaningful observation. */
     switch (metric) {
     case 0: return t->active; /* Currently retained authenticated server peers (client slots may still handshake). */

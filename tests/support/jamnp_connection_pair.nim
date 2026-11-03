@@ -125,7 +125,7 @@ proc held(fixture: Fixture): bool =
     if exchange.stream != default(NativeStream) and exchange.local and exchange.peer ==
         fixture.peer: return true
   false
-proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false) =
+proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false, idle = false) =
   ## Both sides become fallback-eligible at once, deterministically exercising concurrent cross-dials.
   let leftIdentity = certificateIdentity(getEnv("RAGNAROK_TEST_CERT"))
   let rightIdentity = certificateIdentity(getEnv("RAGNAROK_TEST_CERT_B"))
@@ -204,6 +204,18 @@ proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false) =
     assert not held(first) and not held(second), "no borrowed stream survives engine retirement"
     assert first.retired == 1 and second.retired == 1, "live peers retire after their engines"
     return # Both user callback contexts remain alive through all final closes.
+  if idle:
+    let originalFirst = first.peer
+    let originalSecond = second.peer
+    first.retry = false
+    second.retry = false
+    let idleDeadline = getMonoTime()+initDuration(seconds = 7)
+    while getMonoTime() < idleDeadline:
+      let clock = getMonoTime()+initDuration(seconds = 6)
+      step(first, clock)
+      step(second, clock)
+      assert first.peer == originalFirst and second.peer == originalSecond
+      assert first.node.active(originalFirst) and second.node.active(originalSecond), "idle node pair must not inherit the two-second crash experiment"
   let oldFirst = first.peer
   let oldSecond = second.peer
   assert first.node.announcements(oldFirst) and second.node.announcements(oldSecond)

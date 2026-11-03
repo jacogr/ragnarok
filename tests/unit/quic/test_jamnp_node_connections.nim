@@ -105,7 +105,7 @@ try:
   startup()
   identityBoundaries()
   released()
-  connectionPair(false)
+  connectionPair(false, idle = true)
   connectionPair(true)
   connectionPair(false, stopReady = true)
   connectionPair(true, holdOpened = true)
