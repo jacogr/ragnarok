@@ -3,8 +3,9 @@
 The maintainer requested an explicit Linux x86-64 comparison of the pinned
 PolkaVM Compiler and Interpreter backends for every existing PVM workload.
 `make bench-pvm-polkavm` provisions the pinned reference crates and runs this
-comparison. The manual `polkavm-ratios` CI scope uses one x86 runner; ordinary
-CI and the existing deferred compiler benchmark policy keep their scope.
+comparison. The dispatch-only `.github/workflows/polkavm-ratios.yml` workflow
+uses one x86 runner; ordinary CI has no calibration job. The existing deferred
+compiler benchmark policy keeps its scope.
 The disposable Ubuntu runner enables unprivileged user namespaces required by
 the pinned Linux sandbox (`kernel.apparmor_restrict_unprivileged_userns=0`)
 and its dynamic paging profiles (`vm.unprivileged_userfaultfd=1`). A complete
