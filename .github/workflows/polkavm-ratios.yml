@@ -1,0 +1,67 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+# Explicit pinned-reference calibration stays outside the regular CI job graph.
+name: PolkaVM native and interpreted calibration
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: polkavm-ratios-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+  UI_MINIFY: "1"
+
+jobs:
+  polkavm-ratios:
+    name: Perf / PolkaVM native and interpreted (Linux x86-64)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install DOOM asset decompressor
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zstd
+      - name: Enable the pinned Linux compiler sandbox
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo sysctl -w kernel.perf_event_paranoid=-1
+          sudo sysctl -w vm.unprivileged_userfaultfd=1
+      - name: Compare pinned reference backends
+        run: make bench-pvm-polkavm
+      - name: Show complete calibration
+        if: always()
+        run: |
+          if test -f build/tests/pvm-polkavm-ratios/summary.md; then
+            cat build/tests/pvm-polkavm-ratios/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain source, worker-clock, complete-state and timing evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pvm-polkavm-ratios-x86-64
+          path: |
+            build/tests/pvm-polkavm-ratios/*.json
+            build/tests/pvm-polkavm-ratios/*.log
+            build/tests/pvm-polkavm-ratios/*.md
+            build/tests/pvm-polkavm-ratios/*.csv
+          if-no-files-found: error
