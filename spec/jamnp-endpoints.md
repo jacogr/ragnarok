@@ -40,3 +40,6 @@ The native Transport aggregate explicitly rejects copies and live relocation: it
 retains the original owner address as callback context. Scope destruction requires the engine
 to have completed explicit close before child UDP/selector retirement. The focused
 `quic_transport_copy` lowering guard protects this borrowed-callback/teardown boundary.
+
+A warmed repeated endpoint-open/close witness requires unchanged Nim live allocations across
+one hundred fresh native engines and selectors. The receive buffer itself is an inline fixed array.
