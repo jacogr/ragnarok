@@ -18,3 +18,8 @@ at most64 events through `waitBatch`. Shared owners route each current-turn even
 `ownsReady`/`processReady` and progress native timers separately with `processTimers`. Endpoint
 replacement follows the complete ready batch. Default standalone/pair entry points retain their
 original budgets. See the [capacity contract](../../spec/jamnp-capacity.md).
+
+`admitPeers` optionally installs incoming policy before IO. It synchronously supplies authenticated
+certificate bytes, selected ALPN and a free native slot; exactly1 admits. Byte spans are borrowed,
+and the enclosing callback context stays stable through engine retirement. See the
+[admission contract](../../spec/jamnp-peer-admission.md) for bounded correlation and ownership.

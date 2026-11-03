@@ -27,3 +27,9 @@ Server connection-handle storage has an explicit startup capacity, bounded by409
 to sixteen. Configuration ends before network processing or peer-observer registration. The
 bridge frees its allocation after engine/TLS callbacks retire; Nim retains all membership, role
 and admission policy. Explicit multi-peer service applies to both IPv4 and IPv6.
+
+An optional startup admission callback receives the authenticated leaf DER, exact negotiated ALPN,
+and prospective free peer slot before native retention. Correlation uses a bounded live-SSL registry
+and public `lsquic_ssl_to_conn`; SSL ex-data destruction retires entries before registry free.
+Refusal grants no slot. All role/reservation decisions remain in Nim. See the
+[admission contract](../../spec/jamnp-peer-admission.md).
