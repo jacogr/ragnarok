@@ -68,6 +68,14 @@ traces, development validators and conformance use their respective `--download-
 local TLS certificate/private key; `--net-peer-key` selects the pinned peer identity.
 `--net-local-key` selects the separate mesh identity. Keep these key roles distinct.
 
+Use `--net-bind IP` for an explicit numeric local address and `--net-peer-address IP` for each
+remote, in primary/additional `--net-peer` order. Supply one address per configured peer when
+using this option. All addresses must share the selected bind family; remote wildcard addresses
+and hostnames are rejected. An explicit remote without a bind selects a same-family wildcard
+source. Omitted addresses preserve the isolated loopback proof defaults. These flags configure
+JAM networking independently of RPC, management and UI listeners. See the
+[endpoint contract](../spec/jamnp-peer-addresses.md).
+
 ```sh
 ragnarok server --net-port 4000 \
   --net-cert node.cert.pem --net-key node.key.pem --net-peer-key - \

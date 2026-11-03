@@ -3,7 +3,7 @@
 
 ## Independent literal UP0/CE128 TLS server for continuous synchronization witnesses.
 import std/[assertions, envvars]
-import ../../src/quic/transport
+import ../../src/quic/[transport, address]
 import "../../src/jamnp-s/protocol"
 import "../../src/jamnp-s/announcements"
 import ../../src/codec/header
@@ -153,7 +153,7 @@ proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: []
   else: discard # Unknown native events carry no fixture authority.
 
 proc open*(server: var SyncResponder, anchor: AnnouncedBlock,
-    leaves: seq[AnnouncedBlock]): uint16 =
+    leaves: seq[AnnouncedBlock], binding = default(NetworkAddress)): uint16 =
   ## Literal handshake construction intentionally does not call production UP0 encoders.
   assert leaves.len <= 63
   var body: seq[byte] = @[]
@@ -162,7 +162,8 @@ proc open*(server: var SyncResponder, anchor: AnnouncedBlock,
   for leaf in leaves: body.append(leaf)
   server.initial = frame(body)
   assert server.transport.openTransport(true, false, 0, getEnv("RAGNAROK_TEST_CERT_B"),
-    getEnv("RAGNAROK_TEST_KEY_B"), "jamnp-s/1/00000000", addr server, verify, event, multi = true)
+    getEnv("RAGNAROK_TEST_KEY_B"), "jamnp-s/1/00000000", addr server, verify, event, multi = true,
+        localAddress = binding)
   server.transport.localPort
 proc poll*(server: var SyncResponder) =
   ## The test explicitly interleaves native server work with ordinary host ticks.

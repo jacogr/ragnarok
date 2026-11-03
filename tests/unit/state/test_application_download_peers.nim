@@ -49,7 +49,7 @@ proc open(catalog: var BlockDownloadPeers, id: uint64, key: DownloadPeerKey,
     port: uint16): DownloadPeerError =
   ## Production callbacks pin key; the test supplies only explicit local TLS/endpoint inputs.
   catalog.openPeer(DownloadPeerId(id), key, port, getEnv("RAGNAROK_TEST_CERT"),
-    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000")
+    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", remoteAddress = ipv4Address([127'u8, 0, 0, 1]))
 proc step(catalog: var BlockDownloadPeers, servers: var DownloadResponders) =
   ## Bound native work independently of any block producer or canonical service tick.
   assert servers.poll()
@@ -75,6 +75,11 @@ proc registration(keyA, keyB: DownloadPeerKey) =
   assert catalog.configure(ElementLimit(1)) == DownloadPeerError.Busy
   assert catalog.open(0, keyA, 1) == DownloadPeerError.InvalidPeer
   assert catalog.open(11, keyA, 0) == DownloadPeerError.InvalidEndpoint
+  assert catalog.openPeer(DownloadPeerId(11), keyA, 1, "missing", "missing", "jamnp-s/1/00000000",
+    localAddress = ipv6Address(default(array[16, byte])),
+    remoteAddress = ipv4Address([127'u8, 0, 0, 1])) == DownloadPeerError.InvalidEndpoint
+  assert catalog.openPeer(DownloadPeerId(11), keyA, 1, "missing", "missing", "jamnp-s/1/00000000",
+    remoteAddress = ipv4Address([0'u8, 0, 0, 0])) == DownloadPeerError.InvalidEndpoint
   assert catalog.openPeer(DownloadPeerId(11), keyA, 1, "missing.cert", "missing.key",
     "jamnp-s/1/00000000") == DownloadPeerError.TransportFailure
   assert catalog.count == 0

@@ -4,6 +4,8 @@
 ## One-child dispatcher drives native I/O, private preparation and actual deferred adoption separately.
 ## Keep this owner and its exclusively borrowed Services stable until explicit close retires callbacks.
 
+import ../../../network
+
 import ./[peers as current_block_download_peers, session as current_block_download_session,
     stream as current_block_download_stream]
 import ../../../[announcements, announcement_stream]
@@ -224,7 +226,9 @@ proc nextChild*(dispatcher: var CurrentDownloadLoop, ancestors: openArray[OwnedH
 
 proc openPeer*(dispatcher: var CurrentDownloadLoop; id: DownloadPeerId;
     expected: CurrentDownloadPeerKey; port: uint16;
-    certificate, key, alpn: string): CurrentDownloadPeerError =
+    certificate, key, alpn: string,
+    localAddress = default(NetworkAddress), remoteAddress = default(
+        NetworkAddress)): CurrentDownloadPeerError =
   ## Startup explicitly maps only scheduled identities to endpoints, without changing budgets or peer weight.
   if dispatcher.status != CurrentDownloadLoopStage.Waiting or dispatcher.current != nil:
     return CurrentDownloadPeerError.Busy # Register all endpoints before starting attempts; no moving live callback owners.
@@ -232,7 +236,7 @@ proc openPeer*(dispatcher: var CurrentDownloadLoop; id: DownloadPeerId;
   for peer in dispatcher.peers:
     if peer == id: known = true # At most sixteen checked identities are scanned.
   if not known: return CurrentDownloadPeerError.InvalidPeer
-  dispatcher.catalog.openPeer(id, expected, port, certificate, key, alpn)
+  dispatcher.catalog.openPeer(id, expected, port, certificate, key, alpn, localAddress, remoteAddress)
 
 proc finish(dispatcher: var CurrentDownloadLoop, outcome: DownloadAttemptOutcome,
     now: CurrentDownloadLoopTick): CurrentDownloadLoopError =
@@ -551,9 +555,11 @@ proc restart*(dispatcher: var CurrentDownloadLoop,
 
 proc reconnectPeer*(dispatcher: var CurrentDownloadLoop, id: DownloadPeerId,
     expected: CurrentDownloadPeerKey, port: uint16,
-    certificate, key, alpn: string): CurrentDownloadPeerError =
+    certificate, key, alpn: string,
+    localAddress = default(NetworkAddress), remoteAddress = default(
+        NetworkAddress)): CurrentDownloadPeerError =
   ## Retire a stale endpoint only between attempts; the catalog preserves its fixed ID/key pin.
   if dispatcher.status != CurrentDownloadLoopStage.Waiting or dispatcher.current != nil:
     return CurrentDownloadPeerError.Busy
   discard dispatcher.catalog.retire(id)
-  dispatcher.openPeer(id, expected, port, certificate, key, alpn)
+  dispatcher.openPeer(id, expected, port, certificate, key, alpn, localAddress, remoteAddress)

@@ -7,6 +7,8 @@
 ## Exposes runPeer/runMesh, progress observations and peer/mesh selftests over retained
 ## transport sessions.
 
+import ./network
+
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
 import ../lib/[logging, stop_signal]
 import ../quic/transport
@@ -562,7 +564,9 @@ proc runPeer*(options: Options): bool {.raises.} =
       options.argument(3), options.argument(4), options.argument(6), addr peer, verifyPeer,
           onStream, peer.service, ipv6 = load, profile = (
               if peer.overload or peer.offloading: SaturatedService else: CrashRecovery),
-      acceptedAlpns = (if server: serverAlpns(options.argument(6)) else: @[])): return false # No partially initialized endpoint is used.
+      acceptedAlpns = (if server: serverAlpns(options.argument(6)) else: @[]),
+      localAddress = dialBinding(options.networkBind,
+          options.networkPeer)): return false # No partially initialized endpoint is used.
   # Derive the telemetry peer identity/address from this endpoint, with an explicit chain file.
   if not services.configureTelemetry(options, options.argument(3), localPort(peer.transport), load):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
@@ -599,11 +603,14 @@ proc runPeer*(options: Options): bool {.raises.} =
     progress "READY" # Announce only after listener binding and native setup.
   else:
     services.telemetry.observe(0) # Queue registration before any lifecycle frame on the new collector stream.
-    telemetryAttempt = services.telemetry.startDial(peer.expected, uint16(port), load)
+    telemetryAttempt = services.telemetry.startDial(peer.expected, dialTarget(options.networkPeer,
+        uint16(port), dialFamily(options.networkBind, load)))
     telemetryPending = true
     log(peer.logging, LogTarget.Network, LogLevel.Info, "Connecting to peer on " &
-      (if load: "[::1]:" else: "127.0.0.1:") & $port)
-    if not connectTransport(peer.transport, uint16(port)): return false # Defer records this failed attempt.
+      $(dialTarget(options.networkPeer, uint16(port), dialFamily(options.networkBind,
+          load)).address) & ":" & $port)
+    if not connectTransport(peer.transport, dialTarget(options.networkPeer, uint16(port),
+        dialFamily(options.networkBind, load))): return false # Defer records this failed attempt.
 
   let started = getMonoTime()
   var lastStatus = started
@@ -883,16 +890,17 @@ proc observeMesh(incoming, outgoing: var Peer) =
   if exporter != nil: # Re-establish the borrow after observing the other role's mutable owner.
     exporter[].observe(if connected: 1'u32 else: 0'u32)
 
-proc dialMesh(outgoing: var Peer, port: uint16): bool =
+proc dialMesh(outgoing: var Peer, port: uint16, remote, local: NetworkAddress): bool =
   ## Capture only actual dials; a suppressed preferred direction during fallback creates no attempt.
   let exporter = outgoing.telemetry
   if exporter != nil:
     # All prior native connections retire before a mesh round can reuse this fixed observation slot.
     outgoing.meshDial = MeshDial(active: true, pending: true,
-      attempt: exporter[].startDial(outgoing.expected, port, true),
+      attempt: exporter[].startDial(outgoing.expected, dialTarget(remote, port, dialFamily(local,
+          true))),
       authenticatedBefore: authenticatedConnections(outgoing.transport),
       closedBefore: closedConnections(outgoing.transport))
-  connectTransport(outgoing.transport, port)
+  connectTransport(outgoing.transport, dialTarget(remote, port, dialFamily(local, true)))
 
 # Drive both role engines from one dispatcher and perform at most one exporter tick per turn.
 proc meshPoll(incoming, outgoing: var Peer, services: var Services): bool =
@@ -951,10 +959,12 @@ proc runMesh*(options: Options): bool {.raises.} =
   if not openTransport(incoming.transport, true, false, uint16(localPort), options.argument(4),
       options.argument(5), options.argument(8), addr incoming, verifyPeer, onStream, ipv6 = true,
           dispatcher = dispatcher, profile = profile,
-          acceptedAlpns = serverAlpns(options.argument(8))): return false
+          acceptedAlpns = serverAlpns(options.argument(8)),
+          localAddress = dialBinding(options.networkBind, options.networkPeer)): return false
   if not openTransport(outgoing.transport, false, false, 0, options.argument(4), options.argument(
       5), options.argument(8), addr outgoing, verifyPeer, onStream, ipv6 = true,
-          dispatcher = dispatcher, profile = profile): return false
+          dispatcher = dispatcher, profile = profile,
+          localAddress = dialBinding(options.networkBind, options.networkPeer)): return false
   # Register the listening identity/address once, independent of the ephemeral outgoing UDP socket.
   if not services.configureTelemetry(options, options.argument(4), uint16(localPort), true):
     stderr.writeLine("Invalid telemetry endpoint, certificate or --chain file")
@@ -982,10 +992,10 @@ proc runMesh*(options: Options): bool {.raises.} =
       while (getMonoTime() - started).inMilliseconds < 5000:
         if not meshPoll(incoming, outgoing, services): return false # Keep the listener responsive while waiting.
       if not initiator and not dialMesh(outgoing, uint16(
-          remotePort)): return false
+          remotePort), options.networkPeer, options.networkBind): return false
     else:
       if not dialMesh(outgoing, uint16(
-          remotePort)): return false # Deliberately race both dials.
+          remotePort), options.networkPeer, options.networkBind): return false # Deliberately race both dials.
     let useOutgoing = if fallback: not initiator else: initiator
     let kept = if useOutgoing: addr outgoing else: addr incoming
     let discarded = if useOutgoing: addr incoming else: addr outgoing
