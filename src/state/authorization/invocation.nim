@@ -243,7 +243,7 @@ proc runAuthorizationInvocation*(state: StateStoreSnapshot, package: OwnedWorkPa
   if metadata.error != ContainerError.None: fail(AuthorizationInvocationError.MalformedCode)
   let start = metadata.consumed
   let size = preimage.len-start # Canonical metadata parsing proves the subtraction and exact suffix extent.
-  if size > 64000: return complete(source, WorkKind.Big, Gas(0), @[]) # The code suffix, not metadata/preimage size, selects BIG.
+  if size > 196608: return complete(source, WorkKind.Big, Gas(0), @[]) # The code suffix, not metadata/preimage size, selects BIG.
   if uint64(size) > uint64(limits.initialization.envelope): fail(
       AuthorizationInvocationError.LimitExceeded)
   var envelope = newSeq[byte](size)

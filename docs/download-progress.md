@@ -18,7 +18,7 @@ configured ALPN and complete versioned policy:
 
 `--download-blocks` accepts one canonical positive decimal count, 1–64. Duplicate,
 zero, malformed and unrelated-command use refuses atomically. All fields of
-`ragnarok-download-policy-v1` remain required; the new control changes local
+`ragnarok-download-policy-v2` remain required; the new control changes local
 orchestration, not that policy schema or wire request encoding.
 
 ## Budget the complete run

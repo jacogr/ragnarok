@@ -212,9 +212,66 @@ proc boundaries(base: OwnedReport) =
   assert before == after
   recordArcRelease("report_policy", 1000, before, after)
 
+proc loadBoundaries(base: OwnedReport) =
+  ## Real signed reports exercise every new inequality, exact equality and overflow without bypassing credentials.
+  let seed = reportFor(base, 0, [10'u64, 10])
+  let raw = reportBytes(seed)
+  let parent = newStateStore(entriesFor([seed]), limits()).value.snapshot.value
+  let config = policy(2)
+  for field in 0..<8:
+    # Each pair isolates one exact upper bound and its one-over refusal on otherwise valid reports.
+    for extra in 0..1:
+      var report = decodeReportBorrowed(raw, 2).value
+      case field
+      of 0:
+        report.digests[0].refine.gasUsed = Gas(999_999_999)
+        report.digests[1].refine.gasUsed = Gas(uint64(1+extra))
+      of 1:
+        report.digests[0].refine.imports = ImportCount(uint64(3072+extra))
+      of 2:
+        report.digests[0].refine.exports = ExportCount(uint64(3072+extra))
+        report.header.segmentCount = SegmentCount(uint16(3072+extra))
+      of 3:
+        report.digests[0].refine.extrinsicCount = ExtrinsicCount(127)
+        report.digests[1].refine.extrinsicCount = ExtrinsicCount(uint64(1+extra))
+      of 4:
+        report.digests[0].refine.imports = ImportCount(3072)
+        report.digests[1].refine.extrinsicSize = ExtrinsicBytes(uint64(4224+extra))
+      of 5:
+        report.header.bundleLength = BundleLength(uint32(13_904_950+extra))
+      of 6:
+        report.authGas = Gas(uint64(50_000_000+extra))
+      else:
+        report.digests[0].refine.exports = ExportCount(1)
+        report.header.segmentCount = SegmentCount(uint16(1+extra))
+      var bytes = newSeq[byte](raw.len+100)
+      let encoded = encodeReportBorrowed(report, raw, 2, bytes)
+      assert encoded.error == CompositeError.None
+      let owned = decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
+      let verdict = checkReportPolicy(certify([owned]), parent, config)
+      assert verdict.error == (if extra == 0: ReportPolicyError.None else:
+        ReportPolicyError.RefinementLoadExceeded), "refine load boundary " & $field & "/" & $extra
+  for field in 0..<5:
+    # Full-width natural metrics must refuse before multiplication/addition can wrap into an accepted report.
+    var report = decodeReportBorrowed(raw, 2).value
+    case field
+    of 0: report.digests[1].refine.gasUsed = Gas(high(uint64))
+    of 1: report.digests[1].refine.imports = ImportCount(high(uint64))
+    of 2: report.digests[1].refine.exports = ExportCount(high(uint64))
+    of 3: report.digests[1].refine.extrinsicCount = ExtrinsicCount(high(uint64))
+    else: report.digests[1].refine.extrinsicSize = ExtrinsicBytes(high(uint64))
+    var bytes = newSeq[byte](raw.len+100)
+    let encoded = encodeReportBorrowed(report, raw, 2, bytes)
+    assert encoded.error == CompositeError.None
+    let owned = decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
+    assert checkReportPolicy(certify([owned]), parent, config).error ==
+        ReportPolicyError.RefinementLoadExceeded
+
 ## Missing fixtures and any failed assertion must fail the native runner.
 proc main() {.raises.} =
-  boundaries(official())
+  let base = official()
+  boundaries(base)
+  loadBoundaries(base)
   echo "PASS report policy: twenty published projections, gas boundaries and retained parent state"
 try:
   main() # Native assertions own every application verdict.

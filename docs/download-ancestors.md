@@ -138,7 +138,7 @@ canonical children, not fetched historical headers or fabricated historical maps
 
 ## Set the existing policy ceilings
 
-All fields of `ragnarok-download-policy-v1` remain required. Set these leaves in
+All fields of `ragnarok-download-policy-v2` remain required. Set these leaves in
 your complete policy to cover the supplied files and the selected head:
 
 | Policy leaf | What it bounds |

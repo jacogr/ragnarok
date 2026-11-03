@@ -121,7 +121,7 @@ def export_bundle(destination, policy):
     from current_stf_trace_command_oracle import expected_observations, FIXTURE
     jobs, answers, evidence = expected_observations()
     policy_bytes = regular_bytes(policy, 65536)
-    if not policy_bytes.startswith(b'ragnarok-current-download-policy-v1\n'):
+    if not policy_bytes.startswith(b'ragnarok-current-download-policy-v2\n'):
         raise ConformanceError('Wrong current resource-policy format')
     identity = pins()
     if json.loads(FIXTURE.read_text())['graypaper_commit'] != identity['graypaper_commit']:

@@ -1,11 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Frozen v1 startup policy schema; include privately to share exact read/write field coverage.
+## Frozen v2 startup policy schema; include privately to share exact read/write field coverage.
 ## Every leaf is an existing public uint32/uint64 nominal policy; changes require version review.
 
 template policyFields(policy, context, visit: untyped) {.untyped.} =
-  ## Apply a typed visitor to every explicit v1 leaf; this contains no runtime reflection or inferred defaults.
+  ## Apply a typed visitor to every explicit v2 leaf; this contains no runtime reflection or inferred defaults.
   visit(context, "schedule.peers", policy.schedule.peers)
   visit(context, "schedule.attempts", policy.schedule.attempts)
   visit(context, "schedule.retryDelay", policy.schedule.retryDelay)
@@ -122,6 +122,8 @@ template policyFields(policy, context, visit: untyped) {.untyped.} =
       policy.candidate.reporting.reports.policy.accountBytes)
   visit(context, "candidate.reporting.reports.policy.reportGas",
       policy.candidate.reporting.reports.policy.reportGas)
+  visit(context, "candidate.reporting.reports.policy.refinementGas",
+      policy.candidate.reporting.reports.policy.refinementGas)
   visit(context, "candidate.reporting.reports.anchors.history.cores",
       policy.candidate.reporting.reports.anchors.history.cores)
   visit(context, "candidate.reporting.reports.anchors.history.blocks",

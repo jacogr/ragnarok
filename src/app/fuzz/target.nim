@@ -118,6 +118,7 @@ proc prepareFuzzTarget*(environment: FuzzEnvironment, parameters: Parameters,
             rotationPeriod) or
         uint64(candidate.reporting.reports.anchors.lookupAge) != expected.get(maxLookupAnchorAge) or
         uint64(candidate.reporting.reports.policy.reportGas) != expected.get(maxAccumulateGas) or
+        uint64(candidate.reporting.reports.policy.refinementGas) != expected.get(maxRefineGas) or
         uint64(candidate.round.reportGas) != expected.get(maxAccumulateGas) or uint64(
             candidate.round.blockGas) != expected.get(blockGasLimit):
       return FuzzTargetResult(status: FuzzTargetError.ProfileMismatch)

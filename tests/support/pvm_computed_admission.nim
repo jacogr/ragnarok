@@ -27,6 +27,7 @@ proc computedAdmissionConfig*(source: IncludedComputedGuarantees): ReportAdmissi
   result.credentials.assignments.rotationSlots = GuarantorRotationSlots(original.parameters.get(rotationPeriod))
   result.policy.pools.cores = CoreCount(3)
   result.policy.reportGas = ReportGasLimit(original.parameters.get(maxAccumulateGas))
+  result.policy.refinementGas = RefinementGasLimit(original.parameters.get(maxRefineGas))
   result.anchors.history.cores = CoreCount(3)
   result.anchors.lookupAge = LookupAge(original.parameters.get(maxLookupAnchorAge))
   result.packages.availability.guarantee.cores = CoreCount(3)

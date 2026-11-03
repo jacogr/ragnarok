@@ -2,7 +2,7 @@
 
 Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` remains primary. This layer exposes
 `download-current` through the production entry point and a separately typed command API.
-It requires the complete `ragnarok-current-download-policy-v1` policy, selected complete chain,
+It requires the complete `ragnarok-current-download-policy-v2` policy, selected complete chain,
 and authenticated peer pins. The policy's explicit discovery boolean must match the command's
 ancestor-discovery selection; startup never infers missing resource caps or accepts a legacy policy.
 

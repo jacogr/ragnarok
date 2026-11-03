@@ -109,7 +109,7 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
 
 ## Copy a template into an authored report whose recent/lookup tuples refer to the same actual parent chain.
 proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash, lookupHash: array[
-    32, byte], mode: int, refinementGas = high(uint64), refinement: seq[RefineLoad] = @[],
+    32, byte], mode: int, refinementGas = 11'u64, refinement: seq[RefineLoad] = @[],
     accumulationGas = 10'u64): OwnedReport =
   let raw = reportBytes(reportFor(base, core, [accumulationGas]))
   var value = decodeReportBorrowed(raw, 2).value
@@ -122,9 +122,13 @@ proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash
   value.header.lookupAnchor.bytes = lookupHash
   value.header.lookupSlot = LookupSlot(0)
   value.header.lookupStateRoot.bytes = default(array[32, byte])
+  value.digests[0].refine = ownedReportDigest(base,
+      0).value.refine # Preserve explicitly authored non-gas activity metrics.
   value.digests[0].refine.gasUsed = Gas(refinementGas) # Optional bounded activity keeps multi-report aggregation inside its natural domain.
   if refinement.len > core:
     value.digests[0].refine = refinement[core] # Explicit per-core loads override the default before signing.
+  assert uint64(value.digests[0].refine.exports) <= 3072 # Signed valid fixture exports fit the protocol domain.
+  value.header.segmentCount = SegmentCount(uint16(uint64(value.digests[0].refine.exports)))
   value.prerequisiteCount = 0
   value.lookupCount = 0
   if mode == 3: value.header.stateRoot.bytes[0] = value.header.stateRoot.bytes[
@@ -188,7 +192,7 @@ proc signedBlockFixtureConfig*(): SignedBlockFixtureConfig =
   SignedBlockFixtureConfig(mode: 0, reports: 2, maxWriteBytes: 1000000'u64, withDispute: false,
       withAvailable: false, extra: @[], accountTransferGas: high(uint64), accountCode: @[],
           ready: @[], preimageWire: @[],
-      poolCopies: 1, namespaceValueBytes: 65, accumulationGas: 10'u64, refinementGas: high(uint64),
+      poolCopies: 1, namespaceValueBytes: 65, accumulationGas: 10'u64, refinementGas: 11'u64,
           historyPeaks: @[], targetSlot: 0'u32,
       withTicket: false, shiftPending: false, guaranteeSlot: 0'u32, refinement: @[], parentPools: @[],
       storeWrites: 1000'u64, completeState: false, serviceNamespaces: @[])
@@ -230,7 +234,10 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
   # Preserve existing fixtures by default; optional code rebinding happens before any root or signature.
   let selectedBase = if options.accountCode.len == 0: base
     else: withCode(base, options.accountCode) # Bind optional authored code to every signed report and account.
-  let sample = reportFor(selectedBase, 0, [options.accumulationGas])
+  var priorLoad = ownedReportDigest(selectedBase, 0).value.refine
+  priorLoad.gasUsed = Gas(11) # Previous signed assignments also carry a valid bounded refinement observation.
+  priorLoad.exports = ExportCount(uint64(ownedReportInfo(selectedBase).value.header.segmentCount))
+  let sample = reportFor(selectedBase, 0, [options.accumulationGas], refinement = priorLoad)
   var entries = entriesFor([sample], transferMinimum = options.accountTransferGas,
       supervisor = options.accountSupervisor, supervisorCreated = options.accountSupervisorCreated,
           balance = options.accountBalance, protectedBalance = options.accountProtectedBalance)
