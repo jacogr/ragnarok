@@ -13,6 +13,7 @@ adoption remain explicit Nim decisions.
 | [`alpn.nim`](alpn.nim), [`chain_alpn.nim`](chain_alpn.nim) | Configured-genesis domains, exact identifiers and base/builder negotiation |
 | [`identity.nim`](identity.nim), [`connections.nim`](connections.nim) | Bounded public-certificate identity and stable state-driven validator listener/dialer ownership |
 | [`topology.nim`](topology.nim), [`admission.nim`](admission.nim) | Complete-state roster/grid projections and bounded, epoch-gated validator/builder/other admission policy |
+| [`read_stream.nim`](read_stream.nim), [`canonical_read.nim`](canonical_read.nim) | Shared fixed-request lifecycle and canonical CE129 ranges/CE143 preimages |
 | [`block_service.nim`](block_service.nim) | Canonical CE128 prefix selection and bounded borrowed-stream read responder |
 | [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |
 | [`messages.nim`](messages.nim), [`audits.nim`](audits.nim) | Bounded generic E4 messages and upgraded CE144/145 structural batch codecs |

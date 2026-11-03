@@ -39,7 +39,7 @@ production path exists; it does not assert all normative behavior has been verif
 | Grid | No general validator gossip scheduler | Pinned grid neighbors and forwarding with duplicate suppression |
 | UP0 block announcement | `announcements.nim`, `announcement_stream.nim`, current sync and Tiny routes | Complete handshake/announcement rules, greatest-ID handling, finality/leaves validation and actual peer exchanges |
 | CE128 block request | `block_service.nim` canonical two-direction responder and real TLS reset/FIN tests; existing download clients/devnet | Ordinary Services integration, canonical read scheduling and bounded per-peer admission remain; see [contract](jamnp-block-service.md) |
-| CE129 state request | No runtime handler | Inclusive sorted 31-byte key range, canonical boundary nodes, parent-before-child/no duplicates, response-size/single-pair exception and root verification |
+| CE129 state request | Canonical `canonical_read.nim` backend and shared native stream route with authenticated boundary/TLS tests | Ordinary Services worker scheduling and per-peer/global admission remain; see [contract](jamnp-canonical-read.md) |
 | CE131/132 Safrole tickets | No runtime route; existing state ticket admission is separate | Target epoch, attempt/proof validation, next-set proxy selection from output tail, uncertainty rejection and timed forwarding |
 | CE133 work-package submission | No runtime handler | Core/package bound before authorization, exact extrinsic lengths, normal and builder ALPN acceptance, import recovery |
 | CE146 bundle submission | No runtime handler | Core/mappings, bounded authorized package before bulk data, extrinsics/segments/import proofs and exact transcript |
@@ -53,7 +53,7 @@ production path exists; it does not assert all normative behavior has been verif
 | CE148 segment request | No runtime handler | At most3072 segments, segment/proof sequences, root-bound verification and CE139/140 fallback |
 | CE141 assurances | No runtime route | Anchor/bitfield/signature, validator-role authentication, epoch-sensitive recipient sets and slot timing |
 | CE142 preimage announcement | No runtime route | Service/hash/length, on-chain request lookup, CE143 followup, possession-based grid gossip and connection lifetime |
-| CE143 preimage request | `protocol.nim`, `session.nim`, `integration.nim` development workload | Replace fixture-bank-only service with state-backed requested preimages; retain digest integration as test workload and validate hash on receipt |
+| CE143 preimage request | `canonical_read.nim` canonical service-state lookup, full-hash refusal and real TLS transcript | Ordinary Services routing and CE142 reception/cache remain; development workload stays isolated |
 | CE144 audit announcement | `audits.nim` structural batch codec; no runtime handler | Batched header/validator/intent/96-byte proof, authenticated initial/later intent, derived cores/tranche, duplicate intent suppression; no announcement for negative-judgment-triggered audits |
 | CE145 judgments | `audits.nim` structural batch codec; no runtime handler | Batched epoch/validator/validity/report/signature, inline invalid guarantee before hash/signature,2/3 distinct guarantors, authenticated judgment gossip, report retrieval and audit triggers |
 
