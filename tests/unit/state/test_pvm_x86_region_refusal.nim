@@ -15,6 +15,10 @@ proc require(ok: bool, stage: string) =
   if not ok: echo "REGION_REFUSAL_ASSERT,", stage
   assert ok
 
+when defined(pvmX86RegionRefusalNativeRequired):
+  require(Native and defined(pvmX86Jit), "native-required")
+  echo "X86_REGION_REFUSAL_NATIVE_REQUIRED,1"
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Only framing uses the independent codec; instruction, register and branch bytes remain literal.
   let encoded = encode(JamNatural(value))
