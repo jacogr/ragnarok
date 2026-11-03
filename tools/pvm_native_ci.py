@@ -113,6 +113,7 @@ def run():
                  ROOT/'tests/unit/codec/test_pvm_stream_regions_and_host.nim',
                  ROOT/'tests/unit/state/test_pvm_arm_region_refusal.nim',
                  ROOT/'tests/unit/state/test_pvm_arm_region_refusal.output',
+                 ROOT/'tests/unit/state/test_pvm_x86_region_refusal.nim',
                  ROOT/'tools/native_requirements/codec/pvm_memory_reuse.json',
                  ROOT/'tools/native_requirements/state/pvm_arm_region_refusal.json',
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),

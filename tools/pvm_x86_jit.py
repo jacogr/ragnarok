@@ -31,6 +31,8 @@ def qualify(checks, compiler, rows=None):
         ('x86-refused', 'tests/performance/pvm_x86_jit_witness.nim', True),
         ('fragment-cap-native', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', False),
         ('fragment-cap-refused', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', True),
+        ('region-refusal-native', 'tests/unit/state/test_pvm_x86_region_refusal.nim', False),
+        ('region-refusal-forced', 'tests/unit/state/test_pvm_x86_region_refusal.nim', True),
         ('boundaries', 'tests/performance/pvm_arm64_jit_witness.nim', False),
         ('boundaries-refused', 'tests/performance/pvm_arm64_jit_witness.nim', True),
         ('all-opcodes', 'tests/unit/codec/test_pvm_stream_all_opcodes.nim', False),
@@ -40,6 +42,8 @@ def qualify(checks, compiler, rows=None):
         ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
         ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
         flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else []),
+                 *(['pvmX86RegionRefusalNativeRequired'] if name == 'region-refusal-native' else []),
+                 *(['pvmX86RegionRefusalForcedRequired'] if name == 'region-refusal-forced' else []),
                  *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else [])]
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
@@ -51,6 +55,18 @@ def qualify(checks, compiler, rows=None):
             expected = 'X86_FRAGMENT_CAP_FORCED_REFUSAL_OK\n' if refused else 'X86_FRAGMENT_CAP_NATIVE_OK\n'
             if run['output'] != expected:
                 raise ValueError('incomplete x86 fragment-cap boundary witness')
+        if name.startswith('region-refusal-'):
+            for mode in ('native', 'forced'):
+                expected = 'X86_REGION_REFUSAL_'+mode.upper()+'_REQUIRED,1\n'
+                if (expected in run['output']) != (name == 'region-refusal-'+mode):
+                    raise ValueError('wrong x86 region-refusal '+mode+' coverage')
+            for marker in ('PASS candidate-local shape and size',
+                           'PASS exact eight-visit negative budget',
+                           'PASS same-owner rejected then eligible',
+                           'PASS genuine publication and physical capacity',
+                           'PASS both guest orders'):
+                if marker not in run['output']:
+                    raise ValueError('incomplete x86 region-refusal witness: '+marker)
         if name.startswith('checked-store-') and 'X86_CHECKED_STORE_ACTIVE\n' not in run['output']:
             raise ValueError('native-plan checked store loop did not activate')
         if name.startswith('x86-') and ('X86_REGISTER_CASES,2120\n' not in run['output'] or
@@ -131,6 +147,7 @@ def run():
         compiler, _ = installed()
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tests/performance').glob('pvm_*jit*')),
+                 ROOT/'tests/unit/state/test_pvm_x86_region_refusal.nim',
                  ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'spec/toolchain.json', compiler]
         identities = {p:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
         report.update(host=host, revision=subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),

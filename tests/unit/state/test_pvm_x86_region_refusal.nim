@@ -15,6 +15,14 @@ proc require(ok: bool, stage: string) =
   if not ok: echo "REGION_REFUSAL_ASSERT,", stage
   assert ok
 
+when defined(pvmX86RegionRefusalNativeRequired):
+  require(Native and defined(pvmX86Jit), "native-required")
+  echo "X86_REGION_REFUSAL_NATIVE_REQUIRED,1"
+
+when defined(pvmX86RegionRefusalForcedRequired):
+  require(not Native and defined(pvmX86JitRefuse) and defined(pvmX86Jit), "forced-required")
+  echo "X86_REGION_REFUSAL_FORCED_REQUIRED,1"
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Only framing uses the independent codec; instruction, register and branch bytes remain literal.
   let encoded = encode(JamNatural(value))
@@ -135,19 +143,33 @@ echo "PASS same-owner rejected then eligible / ordinary native preservation / re
 
 block globalExhaustion:
   when Native:
-    # Consume the genuine1024-publication ceiling without increasing the physical arena or forging counters.
+    # Ordinary leaves stop at 8191, preserving the final owner slot for one genuine region.
     let counted = newX86Jit()
     discard x86Entry(counted, 0, 65536)
-    for index in 0..<1024:
+    for index in 0..<8191:
       let offset = uint32(index*4)
       require(publishX86Entry(counted, offset, offset+4, 4, leaf(multiplySlots, 4, false)),
         "fill-publication-capacity")
-    require(counted.fragments == 1024 and x86RegionStatus(counted) == 0, "exact-publication-capacity")
-    require(not publishX86Region(counted, small(addSlots, branchSlots), 1) and
-      x86RegionStatus(counted) == 1, "publication-capacity-sticky")
+    require(counted.fragments == 8191 and x86RegionStatus(counted) == 0,
+      "exact-nonregion-capacity")
+    let countedBefore = [counted.fragments, counted.codeBytes]
+    require(not publishX86Entry(counted, 8191'u32*4, 8192'u32*4, 4,
+      leaf(multiplySlots, 4, false)), "nonregion-capacity-reserves-region")
+    require([counted.fragments, counted.codeBytes] == countedBefore and
+      x86RegionStatus(counted) == 0, "nonregion-refusal-preserves-region")
+    require(publishX86Region(counted, small(addSlots, branchSlots), 1),
+      "reserved-region-publication")
+    require(counted.fragments == 8192 and x86RegionStatus(counted) == 2,
+      "exact-total-publication-capacity")
     var registers = default(RegisterFile)
     require(callX86Entry(counted, 0, registers) == 4, "capacity-preserves-first-leaf")
-    # Fill actual byte capacity first with long leaves, then shorter leaves, staying below1024 publications.
+    registers[1] = RegisterValue(3)
+    var state = [100'u64, 100'u64, 0'u64, 0'u64, uint64(high(uint32))]
+    require(callX86Region(counted, registers, state) == 12 and
+      uint64(registers[0]) == 3 and
+      state == [94'u64, 94'u64, 3'u64, 0'u64, 7'u64],
+      "reserved-region-executes-at-capacity")
+    # Fill physical byte capacity with long leaves, then shorter leaves, below the count ceiling.
     let physical = newX86Jit()
     discard x86Entry(physical, 0, 65536)
     var coordinate = 0'u32
@@ -156,13 +178,14 @@ block globalExhaustion:
       if not publishX86Entry(physical, coordinate, coordinate+64, 64, leaf(multiplySlots, 64, true)):
         full = true
       coordinate+=64
-    require(full and physical.fragments > 0 and physical.fragments < 1024, "long-leaf-byte-refusal")
+    require(full and physical.fragments > 0 and physical.fragments < 8191,
+      "long-leaf-byte-refusal")
     full = false
     while not full and coordinate < 65000:
       if not publishX86Entry(physical, coordinate, coordinate+4, 4, leaf(multiplySlots, 4, false)):
         full = true
       coordinate+=4
-    require(full and physical.fragments < 1024 and physical.codeBytes <= 1048576,
+    require(full and physical.fragments < 8191 and physical.codeBytes <= 1048576,
       "exact-physical-capacity")
     let before = [physical.fragments, physical.codeBytes]
     require(not publishX86Region(physical, small(addSlots, branchSlots), 1) and
