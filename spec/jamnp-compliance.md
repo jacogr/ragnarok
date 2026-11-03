@@ -101,3 +101,8 @@ canonical adoption and ordinary executable activation remain incomplete.
 trusted-root state range authentication and full preimage hashes through Services worker admission.
 Real TLS state replies exercise verification and lease cleanup. Block execution/consensus,
 canonical adoption, ordinary executable activation and the remaining protocol families remain open.
+
+[Managed checked outbound requests](jamnp-checked-requests.md) connects native acquisition,
+bounded detached waiting and trusted-source Services verification under one application ticket.
+Cancellation, worker fairness, deadlines and exact foreign-lease isolation have real TLS coverage.
+Ordinary executable activation, GP execution/adoption and the remaining protocol families remain open.
