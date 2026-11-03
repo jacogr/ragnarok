@@ -22,6 +22,24 @@ proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, r
 proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].} =
   ## Address routing is tested independently of application messages.
   if kind == 0: streamAbort(stream)
+proc endpointCycle(certificate, privateKey: string) =
+  ## Scope destruction follows explicit callback-engine retirement for each fresh endpoint.
+  var owner = default(Party)
+  owner.server = true
+  defer: owner.transport.closeTransport()
+  assert owner.transport.openTransport(true, false, 0, certificate, privateKey,
+    "jamnp-s/1/00000000", addr owner, verify, event)
+
+proc releasedEndpoints() =
+  ## Warm native setup once, then require bounded Nim allocations across repeated owner lifetimes.
+  let certificate = getEnv("RAGNAROK_TEST_CERT")
+  let privateKey = getEnv("RAGNAROK_TEST_KEY")
+  endpointCycle(certificate, privateKey)
+  let before = getOccupiedMem()
+  for cycle in 0..<100: endpointCycle(certificate,
+      privateKey) # Each iteration retires its selector and socket ownership.
+  assert getOccupiedMem() == before
+
 proc parsed(text: string): NetworkAddress =
   ## Test literals have explicit families and exact bytes; no DNS/environment route is consulted.
   result = default(NetworkAddress)
@@ -157,6 +175,7 @@ proc main() {.raises.} =
 
 try:
   main()
+  releasedEndpoints()
 except:
   quit 2 # Setup/environment errors are never successful network evidence.
 echo "JAMNP-S full endpoints, validator metadata, UDP source identity and addressed TLS passed"
