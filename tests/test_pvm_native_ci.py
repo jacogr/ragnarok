@@ -84,13 +84,13 @@ class NativeHostTests(unittest.TestCase):
 
 
 class PolicyQualificationTests(unittest.TestCase):
-    def test_both_owner_suites_precede_success(self):
-        """The native CI gate requires regular and refused-storage owner policies on either architecture."""
+    def test_memory_and_owner_suites_precede_success(self):
+        """The native CI gate requires memory reuse and both owner policies on either architecture."""
         checks = Mock()
         checks.command.return_value = dict(exit_code=0, log='policy.log')
         rows = ci.qualify_policy(checks)
         self.assertEqual([row['suite'] for row in rows],
-                         ['pvm_runtime_policy', 'pvm_runtime_policy_refused'])
+                         ['pvm_memory_reuse', 'pvm_runtime_policy', 'pvm_runtime_policy_refused'])
         for call in checks.command.call_args_list:
             self.assertIn('--suite', call.args[0])
         checks.command.return_value = dict(exit_code=1, log='failure.log')
