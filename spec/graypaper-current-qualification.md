@@ -27,6 +27,11 @@ counter overflows, per-report reset, authenticated authored reports, real refine
 with overlapping failure conditions, exact/one-over authorization code, and unchanged fetch input
 limit. Remaining upgrade layers and their focused tests must pass before claiming completion.
 
+Signed combined-activity fixtures use the actual Tiny per-report refinement ceiling of1B gas,
+then verify the two-report2B service total. The old UINT64_MAX signed-report overflow scenario
+is incompatible with admission bounds. Independent pure core/service projection witnesses retain
+full-width arithmetic overflow coverage; no admitted certificate bypasses the new report policy.
+
 ## Execution-layer evidence
 
 Checked native suites pass for package boundaries, signed report policy, actual refinement report
