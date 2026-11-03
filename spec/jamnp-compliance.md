@@ -86,3 +86,8 @@ claim revocation, pending-route handling and connection isolation.
 responder framing, bounded per-peer reservations and managed read tickets. Its component TLS
 transcripts include production-to-production IPv4/IPv6 peers. Ordinary executable/Services
 installation, outbound synchronization and the other protocol families remain incomplete.
+
+[Managed application node routing](jamnp-application-router.md) binds the stream owner to
+actual Services worker leases and trusted local canonical/RPC finality publication. Real TLS
+checks cover cancellation, owned joined shutdown and foreign-lease preservation. Ordinary
+executable activation and outbound requests remain incomplete.

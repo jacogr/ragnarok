@@ -39,7 +39,7 @@ type
       discard # No partial history escapes a failed append.
 
   ViewFinalizeError* {.pure.} = enum Uninitialized, None, UnknownBlock,
-    Regression ## Finality selection failures carry no replacement view or guessed finalized head.
+    Regression, StaleView ## Finality selection failures carry no replacement view or guessed finalized head.
   ViewFinalizeResult* = object ## Successful selection retains immutable history plus one finalized snapshot.
     case status: ViewFinalizeError
     of None:

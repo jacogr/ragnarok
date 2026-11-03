@@ -1068,6 +1068,15 @@ func chainView*(services: Services): ChainView {.requires: not (services.proofin
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
 
+proc stateProofAvailable*(services: Services): bool
+  ## Scalar graph admission is shared by trusted finality and managed proof/read work.
+
+proc publishFinalized*(services: var Services, hash: BlockHash): ViewFinalizeError =
+  ## Trusted local consensus/checkpoint input only: no proof is verified or authority inferred from peer claims.
+  if not services.stateProofAvailable: return ViewFinalizeError.Uninitialized
+  if services.chainRpc: services.canonical.publishFinalized(services.rpc, hash)
+  else: services.canonical.publishFinalized(hash) # Disabled RPC never supplies a second, divergent history.
+
 proc describeHead*(services: Services): string =
   ## Busy workers exclude every graph read; diagnostics cannot extend an RPC/canonical lease.
   if services.proofing or services.preparing or services.publishing or services.light.busy:
@@ -1899,6 +1908,10 @@ proc tick*(services: var Services, peers: uint32) =
   services.rpc.tick(peers)
   services.ui.tick()
   services.beginRpcProof() # Native generation starts outside transport callbacks and after all host tick aliases retire.
+
+func nodeProtocol*(services: Services): string =
+  ## Detached configured-genesis identity is available independently of workers or later restored heads.
+  if services.started and not services.light.active: services.networkBase else: ""
 
 proc networkProtocol*(services: Services, options: Options): string =
   ## The captured configured genesis remains independent of mutable canonical/checkpoint progress.

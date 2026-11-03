@@ -191,7 +191,14 @@ proc witness(context: RpcFixture) =
   assert hashCalls() == 0
   sameQueue(queueBefore, owner.connections[0].session)
   failHash(0)
-  assert owner.publishFinalized(child.blockHash) == ViewFinalizeError.None
+  var joined = owner.chain
+  var stale = owner.chain
+  assert owner.publishFinalized(joined, default(BlockHash)) == ViewFinalizeError.UnknownBlock
+  assert sameChainView(joined, owner.chain), "unknown finality preserves both selected views"
+  assert owner.publishFinalized(joined, child.blockHash) == ViewFinalizeError.None
+  assert sameChainView(joined, owner.chain), "canonical and RPC finality commit together"
+  assert owner.publishFinalized(stale, child.blockHash) == ViewFinalizeError.StaleView
+  assert owner.publishFinalized(child.blockHash) == ViewFinalizeError.None # Legacy repeat remains silent.
   assert "subscribeFinalizedBlock" in owner.connections[1].session.nextUpdate()
   assert owner.connections[0].session.nextUpdate() == ""
   owner.close()
