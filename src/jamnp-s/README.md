@@ -8,6 +8,7 @@ adoption remain explicit Nim decisions.
 
 | Modules | Responsibility |
 | --- | --- |
+| [`network.nim`](network.nim) | Explicit numeric bind/target selection with isolated proof defaults |
 | [`endpoints.nim`](endpoints.nim) | Fixed IPv6/little-endian-port projections from validator metadata |
 | [`alpn.nim`](alpn.nim) | Exact version/chain protocol identifiers and base/builder acceptor negotiation |
 | [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |

@@ -251,7 +251,8 @@ proc finalizedTargetCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
   server.catalog = wires
   let port = server.open(claim(expected), @[])
   assert host.openPeer(DownloadPeerId(1), peerKey(), port, getEnv("RAGNAROK_TEST_CERT"),
-    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000") == CurrentDownloadPeerError.None
+    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", remoteAddress = ipv4Address([127'u8, 0, 0,
+        1])) == CurrentDownloadPeerError.None
   var now = 0'u64
   host.advance(server, CurrentSyncStage.CatchingUp, now)
   assert host.progress.adoptedBlocks == 0 and not host.progress.fullReady
@@ -323,9 +324,13 @@ proc main() {.raises.} =
   checkLog(host.progress, "Waiting for sync target")
   checkLog(host.progress, "peer target: unknown, lag: unknown")
   server.catalog = wires
-  let port = server.open(claim(initial.value), @[claim(heads[67])])
+  var remote = ipv4Address([127'u8, 0, 0, 1])
+  when defined(linux): remote = ipv4Address([127'u8, 0, 0,
+      2]) # Reverting to a port-only reconnect loses this server.
+  let port = server.open(claim(initial.value), @[claim(heads[67])], remote)
   assert host.openPeer(DownloadPeerId(1), peerKey(), port, getEnv("RAGNAROK_TEST_CERT"),
-    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000") == CurrentDownloadPeerError.None
+    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", remoteAddress = remote) ==
+        CurrentDownloadPeerError.None
   server.empty = true
   var now = 0'u64
   host.advance(server, CurrentSyncStage.CatchingUp, now)

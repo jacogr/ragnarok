@@ -605,15 +605,11 @@ proc setupTelemetry(client: var Client, options: Options, certificate: string, p
   let derPointer = der.toCString()
   if parseCert(cast[ptr byte](derPointer), csize_t(der.len), addr fields) != 1 or
       fields.edKey != 1 or fields.keyLength != 32: return false
-  var address = default(array[16, byte])
-  if ipv6:
-    address[15] = 1 # The proof peer binds only ::1 in its IPv6 modes.
-  else:
-    # JIP-3 represents IPv4 endpoints as IPv4-mapped IPv6 addresses.
-    address[10] = 255
-    address[11] = 255
-    address[12] = 127
-    address[15] = 1
+  let address = if options.networkBind.valid: options.networkBind.bytes
+    elif options.networkPeer.valid:
+      (if options.networkPeer.ipv6: ipv6Address(default(array[16, byte])).bytes
+        else: ipv4Address([0'u8, 0, 0, 0]).bytes)
+    else: loopbackAddress(ipv6).bytes # Report the configured wildcard instead of fabricating a loopback source.
   var identity = default(array[32, byte])
   # Copy C array elements individually into native Nim storage before crossing the API boundary.
   for i in 0..<32: identity[i] = fields.key[i]

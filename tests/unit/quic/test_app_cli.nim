@@ -25,6 +25,34 @@ proc parsed(input: seq[string]): Options =
   assert parseOptions(input, result, diagnostic), diagnostic
   assert diagnostic.len == 0, "CLI invariant: diagnostic.len == 0"
 
+# Complete numeric routes survive normalization; repeated remote IPs pair with fixed peer order.
+let routed = parsed(@["download-current", "--download-policy", "policy", "--with-state", "--chain",
+  "chain", "--net-peer-key", "primary", "--net-peer",
+  "4001:secondary",
+  "--net-bind", "0.0.0.0", "--net-peer-address", "192.0.2.1", "--net-peer-address", "192.0.2.2"])
+assert $routed.networkBind == "0.0.0.0"
+assert $routed.networkPeer(0) == "192.0.2.1" and $routed.networkPeer(1) == "192.0.2.2"
+assert not routed.networkPeer(2).valid
+let routedMesh = parsed(@["mesh", "--net-peer-key", "remote", "--net-local-key", "local",
+  "--net-gate", "gate", "--net-peer-address", "2001:db8::1"])
+assert routedMesh.networkPeer.ipv6 and not routedMesh.networkBind.valid
+for input in [
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "example.org"],
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "0.0.0.0"],
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "::"],
+  @["client", "--net-peer-key", "remote", "--net-bind", "::", "--net-peer-address", "192.0.2.1"],
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "::1", "--net-peer-address", "::2"],
+  @["server", "--net-peer-address", "::1"],
+  @["download", "--download-policy", "policy", "--with-state", "--chain", "chain", "--net-peer-key",
+      "primary", "--net-peer", "4001:secondary", "--net-peer-address", "::1"],
+  @["download", "--download-policy", "policy", "--with-state", "--chain", "chain", "--net-peer-key",
+      "primary", "--net-peer", "4001:secondary", "--net-peer-address",
+
+"::1", "--net-peer-address", "127.0.0.1"]]:
+  var refused = routed
+  assert not parseOptions(input, refused) # Invalid family/count/literal inputs clear all earlier routing choices.
+  assert not refused.valid and not refused.networkBind.valid and not refused.networkPeer.valid
+
 let bareServer = parsed(@["server"])
 assert bareServer.argument(2) == "34100" and bareServer.argument(3).endsWith("data/network/cert.pem")
 assert bareServer.argument(4).endsWith("data/network/key.pem") and bareServer.argument(5) == "-"
