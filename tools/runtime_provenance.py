@@ -19,7 +19,7 @@ EXCLUSIONS = {'tools/compare_nimony.py': 'Historical Nim 2 measurement control, 
 SOURCE_SCOPES = {
     '.github/workflows': {'.yaml', '.yml'},
     'config': {'.conf'},
-    'native': {'.c', '.cc', '.cpp', '.h', '.hpp', '.rs', '.toml', '.lock'},
+    'native': {'.c', '.cc', '.cpp', '.h', '.hpp', '.rs', '.toml', '.lock', '.patch'},
     'spec': {'.json'},
     'src': {'.json', '.nim'},
     'tests': {'.py', '.nim', '.output', '.c', '.cc', '.cpp', '.h', '.hpp'},
