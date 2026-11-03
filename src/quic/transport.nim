@@ -17,6 +17,7 @@ const BridgeHeader = "transport_bridge.h"
 const IncomingHandshakeSlots* = 64
 # Native registration checks agreement with the existing admitted-connection bound.
 const IncomingPeerSlots* = 16
+const MaxIncomingPeers* = 4096 ## Explicit generic resource ceiling; no validator or builder authority is inferred.
 const CertHeader = "cert_fields.h"
 
 type
@@ -60,6 +61,7 @@ type
     peer: nil PeerCallback
     buffer: array[2048, byte]
     stopping, failed: bool
+    peerCapacity: int
     receivedBytes, sentBytes: uint64 # Copied diagnostic totals never grant transport/protocol authority.
 
 proc `=copy`*(destination: var Transport, source: Transport) {.error: "Transport owns native callbacks and endpoints".}
@@ -76,6 +78,7 @@ proc `=wasMoved`*(owner: var Transport) {.nodestroy, inline, requires: owner.eng
   `=wasMoved`(owner.buffer)
   owner.stopping = false; owner.failed = false
   owner.receivedBytes = 0; owner.sentBytes = 0
+  owner.peerCapacity = 0
 proc `=destroy`*(owner: Transport) =
   ## Explicit native close must precede retirement of callback contexts in the surrounding peer.
   assert owner.engine == nil, "Transport must close before its callback owner retires"
@@ -106,6 +109,12 @@ proc nativeServerAlpns(engine: nil pointer, bytes: ptr byte,
 proc nativeLocal(engine: nil pointer, stream: NativeStream): cint {.importc: "rq_stream_local",
     header: BridgeHeader, cdecl, raises: [].}
   ## Inspect a live stream's initiator without retaining any connection pointer.
+
+proc nativePeerCapacity(engine: nil pointer, maximum: cuint,
+    multiple: cint): cint {.importc: "rq_set_peer_capacity",
+
+header: BridgeHeader, cdecl, raises: [].}
+  ## Configure bounded server handle storage only before native network processing.
 
 proc nativeBindAddress(engine: nil pointer, address: ptr byte): cint {.importc: "rq_bind_address",
     header: BridgeHeader, cdecl, raises: [].}
@@ -248,10 +257,13 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
         multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
             profile = RetainedPeer, acceptedAlpns: seq[string] = @[],
-            localAddress = default(NetworkAddress)): bool =
+            localAddress = default(NetworkAddress), incomingPeers = IncomingPeerSlots): bool =
   ## Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
+  if incomingPeers < 1 or incomingPeers > MaxIncomingPeers: return false
+  if multi and not server: return false # Multiple accepted peers are a server-only ownership policy.
+  if not server and incomingPeers != IncomingPeerSlots: return false # Client engines retain their original single-peer policy.
   var protocols: seq[byte] = @[]
   if acceptedAlpns.len > 0:
     if not server or acceptedAlpns.len > 8: return false # Only acceptors install a bounded protocol list.
@@ -261,6 +273,7 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
       protocols.add(byte(protocol.len))
       for octet in protocol: protocols.add(byte(octet)) # Owned bytes are borrowed only during native copying.
   owner = Transport()
+  owner.peerCapacity = incomingPeers
   let family = if localAddress.valid: localAddress.ipv6 else: ipv6
   owner.ipv6 = family
   owner.user = user
@@ -297,6 +310,9 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   if owner.engine == nil:
     closeTransport(owner)
     return false
+  if server and nativePeerCapacity(owner.engine, cuint(incomingPeers), cint(multi)) != 1:
+    closeTransport(owner)
+    return false # Native allocation/configuration failure leaves no bound endpoint or callback borrow.
   if localAddress.valid:
     var copied = localAddress.bytes
     if nativeBindAddress(owner.engine, addr copied[0]) != 1:
@@ -371,6 +387,23 @@ proc drain(owner: var Transport): bool =
       process(owner.engine)
   not owner.failed
 
+func ownsReady*(owner: Transport, event: Ready): bool =
+  ## Match only a live copied descriptor in the current wait turn, before any endpoint replacement.
+  owner.engine != nil and owner.registered and owner.socket.isOpen and event.descriptor ==
+      owner.socket.descriptor
+
+proc processTimers*(owner: var Transport): bool =
+  ## Shared-dispatch callers explicitly progress each stable native owner without another wait.
+  if owner.stopping or owner.failed or owner.engine == nil: return false
+  process(owner.engine)
+  not owner.failed
+
+proc processReady*(owner: var Transport, event: Ready): bool =
+  ## Consume one matching current-turn event; caller retires/replaces endpoints only after the batch.
+  if not owner.ownsReady(event) or owner.stopping or owner.failed: return false
+  if event.failed: owner.failed = true; return false # An invalid descriptor never reaches receive.
+  drain(owner) # Timer progression is a separate explicit shared-dispatch phase.
+
 proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
   ## Progress one timer/readiness cycle for a standalone endpoint.
   # Retired or failed endpoints cannot restart native work.
@@ -382,11 +415,10 @@ proc pollTransport*(owner: var Transport, maximumMs = 10): bool =
   let count = dispatcher.wait(delay, ready)
   if count < 0: owner.failed = true; return false # OS/dispatcher failure is explicit.
   # Socket readiness and native deadlines share the same thread.
-  if count > 0:
-    if ready[0].failed: owner.failed = true; return false # Explicit descriptor failure.
-    if not drain(owner): return false # Receive failure settles this endpoint.
-  process(owner.engine)
-  not owner.failed
+  for index in 0..<count:
+    if owner.ownsReady(ready[index]) and not owner.processReady(ready[index]):
+      return false # Shared standalone/pair metadata cannot route another endpoint's error into this owner.
+  owner.processTimers()
 
 proc pollPair*(incoming, outgoing: var Transport): bool =
   ## One selector dispatches both retained role engines; endpoint stack addresses must remain stable throughout.
@@ -470,7 +502,7 @@ proc observePeers*(owner: var Transport, callback: PeerCallback): bool =
   ## Observe admitted server peer lifetimes; failed setup retains no callback.
   if owner.peer != nil: return false # Preserve an existing observer after attempted replacement.
   owner.peer = callback
-  if nativeObservePeers(owner.engine, cuint(IncomingPeerSlots), peerForward) != 1:
+  if nativeObservePeers(owner.engine, cuint(owner.peerCapacity), peerForward) != 1:
     owner.peer = nil # A client, retired engine or late registration cannot own an incoming observer.
     return false
   true

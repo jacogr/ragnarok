@@ -26,7 +26,8 @@ struct rq_transport {
     lsquic_engine_t *engine;
     lsquic_conn_t *connection;
     /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
-    lsquic_conn_t *connections[RQ_PEER_SLOTS];
+    lsquic_conn_t **connections;
+    unsigned peer_capacity;
     unsigned active, accepted, closed, peak, authenticated, capacity_rejected;
     int multi, persistent, ipv6, global_owned;
     SSL_CTX *tls;
@@ -181,7 +182,7 @@ int rq_observe_handshakes(rq_transport *t, unsigned slots, rq_handshake_cb callb
 }
 /* Observe admitted peers independently of the larger pending-handshake table. */
 int rq_observe_peers(rq_transport *t, unsigned slots, rq_peer_cb callback) {
-    if (!t || !t->server || t->packets_seen || t->peer || !callback || slots != RQ_PEER_SLOTS)
+    if (!t || !t->server || t->packets_seen || t->peer || !callback || slots != t->peer_capacity)
         return 0; /* Late registration could miss the identity belonging to an already-live slot. */
     t->peer = callback;
     return 1;
@@ -251,8 +252,8 @@ static int packets_out(void *ctx, const struct lsquic_out_spec *packets, unsigne
 /* Retain bounded connection handles; service mode isolates connection lifecycle from endpoint status. */
 static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     struct rq_transport *t = ctx;
-    /* Single-peer proofs retain their original ceiling; service admits at most sixteen authenticated peers. */
-    if ((!t->multi && t->active) || t->active == RQ_PEER_SLOTS) {
+    /* Single-peer proofs retain their original ceiling; service admits only its configured bounded authenticated population. */
+    if ((!t->multi && t->active) || t->active == t->peer_capacity) {
         if (t->server && t->handshake) {
             /* Admission refusal is independent of TLS success and consumes no retained peer slot. */
             uint8_t address[16] = {0};
@@ -264,7 +265,7 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
         ++t->capacity_rejected; lsquic_conn_abort(connection); return NULL;
     }
     /* A vacant slot remains valid until this connection's final close callback. */
-    for (unsigned i = 0; i < RQ_PEER_SLOTS; ++i) {
+    for (unsigned i = 0; i < t->peer_capacity; ++i) {
         if (!t->connections[i]) {
             t->connections[i] = connection;
             peer_accepted(t, connection, i); /* Authenticated identity belongs to this retained slot only. */
@@ -289,7 +290,7 @@ static void connection_closed(lsquic_conn_t *connection) {
     struct rq_transport *t = (struct rq_transport *)lsquic_conn_get_ctx(connection);
     if (!t) return; /* Over-capacity attempts have no retained native owner. */
     /* Release only the slot belonging to this close; other peers keep their contexts and streams. */
-    for (unsigned i = 0; i < RQ_PEER_SLOTS; ++i) {
+    for (unsigned i = 0; i < t->peer_capacity; ++i) {
         if (t->connections[i] == connection) {
             if (t->server && t->peer && !t->destroying)
                 t->peer(t->user, i, RQ_PEER_CLOSED, NULL, 0); /* Real closure precedes slot reuse. */
@@ -323,12 +324,30 @@ static const struct lsquic_stream_if callbacks = {
     .on_read = stream_read, .on_write = stream_write, .on_close = stream_close, .on_reset = stream_reset,
 };
 /* Own TLS/engine resources and install native policy callbacks, with complete cleanup on setup failure. */
+/* Stable slot storage is immutable once network processing or an observer can depend on it. */
+int rq_set_peer_capacity(rq_transport *t, unsigned maximum, int multiple) {
+    if (!t || !t->server || t->network_started || t->peer || t->active ||
+        maximum == 0 || maximum > RQ_MAX_PEER_SLOTS || multiple < 0 || multiple > 1) return 0;
+    if (maximum == t->peer_capacity) {
+        if (multiple) t->multi = 1; /* IPv6 and IPv4 share the same explicit multi-peer ownership policy. */
+        return 1;
+    }
+    lsquic_conn_t **replacement = calloc(maximum, sizeof(*replacement));
+    if (!replacement) return 0; /* Failed setup preserves the original valid table. */
+    free(t->connections);
+    t->connections = replacement; t->peer_capacity = maximum;
+    if (multiple) t->multi = 1; /* Native profile defaults may already require multi-peer service. */
+    return 1;
+}
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
     size_t length = strlen(alpn);
     if (soak < 0 || soak > 5 || ((soak == 2 || soak == 5) && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
     struct rq_transport *t = calloc(1, sizeof(*t));
     if (!t) return NULL; /* Typed null failure, never an application panic. */
+    t->peer_capacity = RQ_PEER_SLOTS;
+    t->connections = calloc(t->peer_capacity, sizeof(*t->connections));
+    if (!t->connections) { free(t); return NULL; } /* No native/global owner exists on this early failure. */
     t->persistent = soak >= 3; t->multi = soak == 2 || soak == 5; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
     /* Initialize once, so constructing a second engine cannot reseed state used by the first. */
@@ -442,6 +461,7 @@ void rq_transport_free(rq_transport *t) {
     SSL_CTX_free(t->tls);
     /* Cleanup occurs only after the final engine is destroyed; failed setup releases only its acquired lease. */
     if (t->global_owned && --global_owners == 0) lsquic_global_cleanup();
+    free(t->connections); /* Connection/SSL callbacks have retired before their handle storage. */
     free(t);
 }
 

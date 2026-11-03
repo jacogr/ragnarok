@@ -12,3 +12,9 @@ The maintained native bridge lives in [`native/quic/`](../../native/quic/README.
 JAM peer identities, ALPN use, message framing, stream semantics, sessions and download
 coordination live in [`src/jamnp-s/`](../jamnp-s/README.md). Native callbacks borrow stable
 owners synchronously; endpoints retire callbacks before closing foreign resources.
+
+Explicit dispatcher capacities support up to4096 copied registrations, with fair batches of
+at most64 events through `waitBatch`. Shared owners route each current-turn event with
+`ownsReady`/`processReady` and progress native timers separately with `processTimers`. Endpoint
+replacement follows the complete ready batch. Default standalone/pair entry points retain their
+original budgets. See the [capacity contract](../../spec/jamnp-capacity.md).
