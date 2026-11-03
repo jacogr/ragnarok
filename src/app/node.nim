@@ -6,9 +6,10 @@
 import std/monotimes
 import ./services
 import ./proof/worker
-import ../jamnp-s/[node as node_streams, connections, read_stream, admission]
+import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, admission]
 import ../chain/[provider, genesis]
 import ../codec/state/[safrole, consensus]
+import ../codec/bounded
 
 type
   SourceStamp = object ## Fixed local source facts survive exclusive worker access without ARC aliases.
@@ -59,6 +60,19 @@ proc peerAt*(owner: ApplicationNode, ordinal: int): NodeResult[NodePeer] =
 proc source*(owner: ApplicationNode, peer: NodePeer): NodeResult[NodeClaims] =
   ## Detached remote claims carry no canonical adoption or finality authority.
   owner.streams.source(peer)
+proc request*(owner: var ApplicationNode, peer: NodePeer, request: ReadRequest,
+    maximum = ByteLimit(MaxReadReplyBytes)): NodeResult[NodeRequestTicket] =
+  ## Fixed outbound request facts may be queued while a Services worker owns the unrelated canonical graph.
+  owner.streams.request(peer, request, maximum)
+proc takeReply*(owner: var ApplicationNode, ticket: NodeRequestTicket): ReadClientResult =
+  ## Complete detached bytes remain untrusted; the host must acquire any state/proof validation gate separately.
+  owner.streams.takeReply(ticket)
+proc cancelRequest*(owner: var ApplicationNode, ticket: NodeRequestTicket): bool =
+  ## Cancelling an outbound network stream never cancels a Services canonical worker lease.
+  owner.streams.cancelRequest(ticket)
+proc requestLive*(owner: ApplicationNode, ticket: NodeRequestTicket): bool =
+  ## Exact peer generation and serial bind outbound activity independently of canonical CPU ownership.
+  owner.streams.requestLive(ticket)
 proc stage(owner: var ApplicationNode, config: ConnectionConfig, limits: SafroleStateConfig,
     now: StateTime): NodeError =
   ## Every temporary Services view retires on return, before the host can submit native CPU work.

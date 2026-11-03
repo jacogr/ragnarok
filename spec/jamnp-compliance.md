@@ -91,3 +91,8 @@ installation, outbound synchronization and the other protocol families remain in
 actual Services worker leases and trusted local canonical/RPC finality publication. Real TLS
 checks cover cancellation, owned joined shutdown and foreign-lease preservation. Ordinary
 executable activation and outbound requests remain incomplete.
+
+[Outbound canonical reads](jamnp-outbound-reads.md) adds bounded CE128/129/143 request/reply
+framing on existing authenticated connections, including public pending-open cancellation and
+application lease isolation. Returned bytes remain untrusted; response semantic/proof validation,
+canonical adoption and ordinary executable activation remain incomplete.

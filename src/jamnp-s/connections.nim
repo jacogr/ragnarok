@@ -217,6 +217,19 @@ proc queueStream*(owner: var NodeConnections, peer: NodePeer): bool =
   owner.openWrite = (owner.openWrite+1) mod owner.opens.len # Nonzero configured stream budget bounds the ring.
   inc owner.openCount
   true
+proc cancelStreamOpens*(owner: var NodeConnections,
+    peer: NodePeer): bool {.requires: owner.callbackDepth == 0.} =
+  ## Cancel this caller-owned peer's queued and native-delayed opens, never another generation or existing stream.
+  if not owner.active(peer): return false
+  for offset in 0..<owner.openCount:
+    let index = (owner.openRead+offset) mod owner.opens.len
+    if owner.opens[index] == peer: owner.opens[index] = default(
+        NodePeer) # Tombstones drain under the existing four-open poll budget.
+  let cancelled = if peer.kind == ConnectionKind.Incoming:
+    owner.listener.cancelPeerStreamOpens(peer.handle)
+    else: owner.dialers[peer.position].transport.cancelPeerStreamOpens(peer.handle)
+  if not cancelled: markClose(owner, peer.kind, peer.position) # A failed native mapping cannot later fulfill an app-cancelled intent.
+  cancelled
 proc findIdentity(owner: NodeConnections, key: StateEdKey): int =
   ## Logical ownership includes closing peers until their native retirement is observed.
   for index in 0..<owner.locations.len:

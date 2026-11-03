@@ -610,6 +610,14 @@ int rq_open_peer(rq_transport *t, const rq_peer_ref *peer) {
     if (!connection) return 0;
     lsquic_conn_make_stream(connection); return 1; /* Queued request, not an observed stream or protocol completion. */
 }
+/* Public LSQUIC counters cancel delayed opens without inventing or retiring a stream handle. */
+int rq_cancel_peer_opens(rq_transport *t, const rq_peer_ref *peer) {
+    lsquic_conn_t *connection = peer_connection(t, peer);
+    if (!connection) return 0;
+    unsigned pending = lsquic_conn_n_pending_streams(connection);
+    lsquic_conn_cancel_pending_streams(connection, pending);
+    return 1;
+}
 int rq_close_peer(rq_transport *t, const rq_peer_ref *peer) {
     lsquic_conn_t *connection = peer_connection(t, peer);
     if (!connection) return 0;
