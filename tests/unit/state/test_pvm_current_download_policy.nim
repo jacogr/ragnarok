@@ -145,6 +145,12 @@ proc cycle(text: string) =
   assert decodeCurrentDownloadPolicy(text & "schedule.peers=1\n").error ==
       CurrentDownloadPolicyError.DuplicateField
 proc main() {.raises.} =
+  # The shipped devnet file must pass the same decoder used before actual listener startup.
+  let shipped = loadCurrentDownloadPolicy(getEnv("RAGNAROK_TINY_DEVNET_POLICY"))
+  assert shipped.error == CurrentDownloadPolicyError.None, "bundled Tiny startup policy decodes"
+  assert uint64(shipped.value.candidate.reporting.reports.policy.refinementGas) == 1_000_000_000,
+      "bundled Tiny refinement ceiling is explicit and matches the existing profile"
+
   ## Lexical/atomicity/ownership witnesses precede independently signed current execution under decoded ceilings.
   let text = encodeCurrentDownloadPolicy(policy())
   assert text.len <= CurrentDownloadPolicyBytes

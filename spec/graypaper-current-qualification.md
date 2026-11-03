@@ -43,3 +43,9 @@ Evidence is local macOS checked/optimized execution under the recorded pinned to
 retained in `build/gp-execution-*` and `build/tests/gp-package-corpus/result.json`. It establishes
 this layer's behavior, while source-pin adoption, bless and new wire/state encodings remain
 subsequent qualification layers. Whole-client and exact-head Linux CI claims remain separate.
+
+The bundled `config/tiny-devnet-policy.conf` is migrated with the v2 schema and explicitly
+sets Tiny refinement gas to1,000,000,000. The current-policy native suite loads that actual
+shipped file through the same file decoder used before devnet listener startup, in addition
+to exercising generated policies. Its fixture provider passes the source path directly and
+records a transport digest; it does not substitute a copied policy or infer its correctness.
