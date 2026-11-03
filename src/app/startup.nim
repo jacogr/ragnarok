@@ -101,7 +101,7 @@ proc prepareStartup*(options: Options, diagnostic: var string): bool =
   if not options.valid: return false
   if options.argumentCount == 0: return true
   let topic = options.argument(1)
-  if topic notin ["server", "client", "mesh", "download", "download-current",
+  if topic notin ["node", "server", "client", "mesh", "download", "download-current",
       "sync-current"]: return true
   let certIndex = if topic == "mesh": 4 else: 3
   let directory = options.dataDirectory / "network"

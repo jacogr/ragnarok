@@ -66,6 +66,13 @@ let lightDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "-
 assert lightDefault.pagedStorage and lightDefault.stateDatabase == "custom/light/paged"
 let managedDefault = parsed(@["server", "--with-state", "--state-storage", "disk", "--state-layout", "managed"])
 assert managedDefault.stateDatabase == "./data/full/managed"
+# Ordinary node help and normalized execution share the foreground timeout default.
+let nodeInput = @["node", "--with-state", "--node-finalized",
+  "0000000000000000000000000000000000000000000000000000000000000000"]
+let nodeOptions = parsed(nodeInput)
+assert nodeOptions.argument(6) == "0"
+assert "default: 0" in commandHelp("node")
+assert "--node-finalized" in commandHelp("node")
 assert "default: 34100" in commandHelp("server")
 assert "--data-dir DIR" in commandHelp("server")
 let named = parsed(peer())
