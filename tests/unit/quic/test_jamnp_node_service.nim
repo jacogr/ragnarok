@@ -6,7 +6,8 @@
 ## Stable full-state node owner: explicit finality, native factory failure and retirement lifetimes.
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/[jamnp_topology_fixture, arc_evidence, jamnp_node_probe, jamnp_connection_pair]
-import ../../../src/jamnp-s/[node, connections, read_stream, identity, admission, topology]
+import ../../../src/jamnp-s/[node, connections, read_stream, read_client, canonical_read, identity,
+    admission, topology]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/quic/[transport, address]
 import ../../../src/codec/state/safrole
@@ -178,6 +179,40 @@ proc transcript(view: ChainView) {.raises.} =
   let recovered = probe.issue(hello, persistent = true)
   pump(service, probe, 30)
   assert uint64(service.source(peer).value.stream) == uint64(probe.flows[recovered].number)
+proc replyToOne(receiver: var NodeService, view: ChainView): int =
+  ## Component host work executes outside native callbacks; Services worker exclusion has its own integration suite.
+  let incoming = receiver.takeRead()
+  if incoming.error != NodeError.None: return 0
+  let reply = serveCanonicalRead(view, incoming.value.request)
+  if reply.error == ReadError.None:
+    assert receiver.respond(incoming.value.ticket, reply.value) == ReadError.None
+  else:
+    assert receiver.reject(incoming.value.ticket) # Missing canonical data never becomes an empty successful wire.
+  1
+proc outbound(sender, receiver: var NodeService, peer: NodePeer, view: ChainView,
+    request: ReadRequest, expected: seq[byte], refused = false) =
+  ## Delayed collection observes completed bytes after native retirement without opening another authenticated connection.
+  let submitted = sender.request(peer, request)
+  assert submitted.error == NodeError.None, "bounded outbound request admitted"
+  let ticket = submitted.value
+  assert sender.takeReply(ticket).error == ReadError.Unavailable
+  var jobs = 0
+  let deadline = getMonoTime()+initDuration(milliseconds = 150)
+  while getMonoTime() < deadline:
+    assert sender.poll(getMonoTime(), 0) and receiver.poll(getMonoTime(), 0)
+    jobs += receiver.replyToOne(view)
+  assert jobs == 1, "one local open intent produces exactly one remote request"
+  let reply = sender.takeReply(ticket)
+  if refused:
+    assert reply.error == ReadError.InvalidStream and not sender.requestLive(ticket)
+  else:
+    assert reply.error == ReadError.None and reply.value.valid
+    assert reply.value.bytes == expected
+    assert reply.value.request.kind == request.kind and reply.value.request.payload ==
+        request.payload
+    assert not sender.requestLive(ticket), "completed ticket cannot collect a reused stream"
+    assert sender.takeReply(ticket).error == ReadError.InvalidStream
+  assert sender.peerCount == 1 and receiver.peerCount == 1
 proc paired(ipv6: bool) =
   ## Two production owners automatically establish the preferred connection and UP0 in both directions.
   let left = certificateIdentity(getEnv("RAGNAROK_TEST_CERT")).value
@@ -228,6 +263,63 @@ proc paired(ipv6: bool) =
       broadcast = true
       break # Independently scheduled host processing receives the subsequent complete header message.
   assert broadcast and first.source(firstPeer).error == NodeError.None, "paired header announcement"
+  var blockPayload: seq[byte] = @[]
+  for octet in array[32, byte](next.bestBlock.value.blockHash): blockPayload.add(octet)
+  blockPayload.add(1)
+  for index in 0..<4: blockPayload.add(0)
+  let blocks = decodeReadRequest(ReadKind.Blocks, blockPayload).value
+  assert first.request(firstPeer, default(ReadRequest)).error == NodeError.InvalidConfig
+  let cancelled = first.request(firstPeer, blocks)
+  assert cancelled.error == NodeError.None and first.cancelRequest(cancelled.value)
+  assert first.takeReply(cancelled.value).error == ReadError.InvalidStream
+  first.outbound(second, firstPeer, next, blocks, @[0'u8, 0, 0, 0])
+  second.outbound(first, secondPeer, next, blocks, @[0'u8, 0, 0,
+      0]) # Server-initiated CE streams share the same connection too.
+  var statePayload: seq[byte] = @[]
+  for octet in array[32, byte](next.bestBlock.value.blockHash): statePayload.add(octet)
+  for index in 0..<62: statePayload.add(0)
+  statePayload.add(0)
+  statePayload.add(128)
+  statePayload.add(0)
+  statePayload.add(0)
+  let stateRead = decodeReadRequest(ReadKind.State, statePayload).value
+  let expectedState = serveCanonicalRead(next, stateRead)
+  assert expectedState.error == ReadError.None
+  first.outbound(second, firstPeer, next, stateRead, expectedState.value.bytes)
+  let preimage = decodeReadRequest(ReadKind.Preimage, newSeq[byte](32)).value
+  first.outbound(second, firstPeer, next, preimage, @[], refused = true)
+  let active = first.request(firstPeer, blocks)
+  assert active.error == NodeError.None
+  assert first.poll(getMonoTime(), 0)
+  let competing = first.request(firstPeer, blocks)
+  assert competing.error == NodeError.None
+  assert first.poll(getMonoTime(), 0)
+  assert first.request(firstPeer, blocks).error == NodeError.LimitExceeded
+  assert first.cancelRequest(competing.value)
+  assert first.requestLive(active.value), "cancelling a sibling leaves the original outbound request live"
+  assert first.cancelRequest(active.value)
+  let drain = getMonoTime()+initDuration(milliseconds = 50)
+  while getMonoTime() < drain:
+    assert first.poll(getMonoTime(), 0) and second.poll(getMonoTime(), 0)
+    let orphan = second.takeRead()
+    if orphan.error == NodeError.None: discard second.reject(orphan.value.ticket)
+  first.outbound(second, firstPeer, next, blocks, @[0'u8, 0, 0, 0])
+  assert first.peerAt(0).value == firstPeer and second.peerAt(0).value == secondPeer
+  assert first.source(firstPeer).error == NodeError.None and second.source(secondPeer).error == NodeError.None
+  let retained = first.request(firstPeer, blocks)
+  assert retained.error == NodeError.None
+  let finish = getMonoTime()+initDuration(milliseconds = 150)
+  while getMonoTime() < finish:
+    assert first.poll(getMonoTime(), 0) and second.poll(getMonoTime(), 0)
+    discard second.replyToOne(next)
+  assert first.requestLive(retained.value), "complete uncollected reply remains owned after native retirement"
+  let queuedAtClose = second.request(secondPeer, blocks)
+  assert queuedAtClose.error == NodeError.None
+  second.close()
+  assert not second.requestLive(queuedAtClose.value)
+  first.close() # Complete/uncollected and never-opened queued reservations retire before destruction.
+  assert not first.requestLive(retained.value)
+
 proc bootstrap(finalizeNew: bool) {.raises.} =
   ## A future validator appears only in the unfinalized new epoch's pending roster; it has no old-union reservation.
   let peerKey = certificateIdentity(getEnv("RAGNAROK_TEST_CERT_B")).value
@@ -276,6 +368,9 @@ proc main() {.raises.} =
   assert not unopened.isOpen and unopened.localPort == 0 and unopened.peerCount == 0
   assert unopened.takeRead().error == NodeError.Unavailable
   assert not unopened.readLive(default(NodeReadTicket))
+  assert not unopened.requestLive(default(NodeRequestTicket))
+  assert not unopened.cancelRequest(default(NodeRequestTicket))
+  assert unopened.takeReply(default(NodeRequestTicket)).error == ReadError.InvalidStream
   assert unopened.respond(default(NodeReadTicket), default(ReadReply)) == ReadError.InvalidStream
   unopened.close()
   let noFinality = genesisView(view.bestBlock)

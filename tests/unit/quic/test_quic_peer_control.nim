@@ -160,6 +160,7 @@ proc scenario() {.raises.} =
   assert server.transport.peerAt(4095).error == PeerError.Unavailable
   assert server.transport.streamPeer(default(NativeStream)).error == PeerError.Unavailable
   assert not server.transport.live(default(PeerHandle))
+  assert not server.transport.cancelPeerStreamOpens(default(PeerHandle))
   connect(clients[0], server)
   pump(server, clients, 1, 0, 0)
   let original = server.peers[0]
@@ -167,6 +168,7 @@ proc scenario() {.raises.} =
   pump(server, clients, 1, 0, 1)
   assert clients[0].last == 11
   assert not clients[0].transport.live(original) and not clients[0].transport.disconnectPeer(original)
+  assert not clients[0].transport.cancelPeerStreamOpens(original)
   let clientPeer = clients[0].transport.peerAt(0)
   assert clientPeer.error == PeerError.None and not server.transport.live(clientPeer.value)
   connect(clients[1], server)
@@ -179,6 +181,8 @@ proc scenario() {.raises.} =
   pump(server, clients, 2, 1, 2)
   assert not server.transport.live(original) and not server.transport.openPeerStream(original)
   assert not server.transport.disconnectPeer(original) and server.transport.live(survivor)
+  assert not server.transport.cancelPeerStreamOpens(original)
+  assert server.transport.cancelPeerStreamOpens(survivor)
   send(server, survivor, 23)
   pump(server, clients, 2, 1, 3)
   assert clients[1].last == 23
@@ -188,6 +192,7 @@ proc scenario() {.raises.} =
   pump(server, clients, 3, 1, 3)
   let replacement = server.peers[0]
   assert not (replacement == original), "slot reuse must advance the admission generation"
+  assert not server.transport.cancelPeerStreamOpens(original)
   assert not server.transport.live(original) and not server.transport.disconnectPeer(original)
   send(server, replacement, 33)
   pump(server, clients, 3, 1, 4)

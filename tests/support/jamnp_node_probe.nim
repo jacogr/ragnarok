@@ -12,12 +12,15 @@ type
     number*: NativeStreamId
     output, input: seq[byte]
     offset: int
-    enabled, persistent: bool
+    enabled, persistent, remote: bool
     opened*, sentFin*, receivedFin*, reset*, closed*: bool
   NodeProbe* = object ## One authenticated client owns fixed flow storage through engine retirement.
     transport: Transport
     flows*: array[16, ProbeFlow]
     issued, opened: int
+    served*: int
+    serveReads: bool
+    expectedRead, readReply: seq[byte]
     expected: array[32, byte]
 proc `=copy`(destination: var NodeProbe, source: NodeProbe) {.error.}
   ## Native callbacks borrow exactly one stable probe address.
@@ -32,8 +35,14 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
   let probe = cast[ptr NodeProbe](user)
   var position = -1
   if kind == 0:
-    assert probe.opened < probe.issued
-    position = probe.opened
+    if not probe.transport.locallyOpened(stream):
+      assert probe.serveReads and probe.issued == probe.opened and probe.issued < probe.flows.len
+      position = probe.issued
+      inc probe.issued
+      probe.flows[position] = ProbeFlow(remote: true, output: probe.readReply)
+    else:
+      assert probe.opened < probe.issued
+      position = probe.opened # Locally queued probe intents were installed before Native open.
     inc probe.opened
     probe.flows[position].handle = stream
     probe.flows[position].number = stream.streamId
@@ -56,6 +65,11 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
       if amount == 0:
         flow.receivedFin = true
         readDone(stream)
+        if flow.remote:
+          assert flow.input == probe.expectedRead, "application client sends the independent literal request before FIN"
+          inc probe.served
+          flow.enabled = true
+          wantWrite(stream, 1) # Return only the configured literal reply; no canonical graph is present in this raw responder.
       else: flow.reset = true # Reset must never masquerade as an empty successful message.
       wantRead(stream, 0)
     else:
@@ -102,6 +116,11 @@ proc poll*(probe: var NodeProbe) =
 proc authenticated*(probe: NodeProbe): bool =
   ## TLS completion is a prerequisite, not proof of application framing or FIN.
   probe.transport.authenticatedConnections > 0
+proc expectRead*(probe: var NodeProbe, request, reply: seq[byte]) =
+  ## Configure an independent raw response before a node initiates a CE stream on this same connection.
+  probe.serveReads = true
+  probe.expectedRead = request
+  probe.readReply = reply
 proc issue*(probe: var NodeProbe, wire: seq[byte], persistent = false, enabled = true): int =
   ## Intent data is installed before the native engine may synchronously report its new stream.
   assert probe.issued < probe.flows.len

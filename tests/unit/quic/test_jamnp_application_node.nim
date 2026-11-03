@@ -5,7 +5,7 @@
 import std/[assertions, envvars, syncio, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/proof/worker
-import ../../../src/jamnp-s/[node as node_streams, connections, read_stream]
+import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, read_client]
 import ../../../src/chain/[genesis, parameters, provider]
 import ../../../src/codec/header
 import ../../../src/codec/state/safrole
@@ -82,6 +82,27 @@ proc main() {.raises.} =
   pump(host, services, probe, 80)
   assert probe.flows[reading].receivedFin and not probe.flows[reading].reset
   assert probe.bytes(reading) == @[0'u8, 0, 0, 0]
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let outgoingRequest = decodeReadRequest(ReadKind.Blocks, request.toOpenArray(5,
+      request.len-1)).value
+  probe.expectRead(request, @[0'u8, 0, 0, 0])
+  let foreignDuringNetwork = services.beginNetworkRead(outgoingRequest)
+  assert foreignDuringNetwork.error == StateProofAdmissionError.None
+  let outgoing = host.request(peer, outgoingRequest)
+  assert outgoing.error == NodeError.None and host.requestLive(outgoing.value)
+  pump(host, services, probe, 80)
+  let reply = host.takeReply(outgoing.value)
+  assert reply.error == ReadError.None and reply.value.valid
+  assert reply.value.bytes == @[0'u8, 0, 0, 0] and probe.served == 1
+  assert not host.requestLive(outgoing.value)
+  assert services.stateProofActive and services.rpc.chainPaused,
+    "outbound network collection leaves a foreign canonical worker lease intact"
+  let cancelledOutgoing = host.request(peer, outgoingRequest)
+  assert cancelledOutgoing.error == NodeError.None and host.cancelRequest(cancelledOutgoing.value)
+  pump(host, services, probe, 30)
+  assert probe.served == 1 and services.stateProofActive and services.rpc.chainPaused
+  assert services.collectStateProof(foreignDuringNetwork.value).kind ==
+      ProofWorkerCompletionKind.ReadCompleted
   assert not services.stateProofActive and not services.rpc.chainPaused
   let cancelled = probe.issue(request)
   let start = getMonoTime()
