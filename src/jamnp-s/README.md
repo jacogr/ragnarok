@@ -8,6 +8,7 @@ adoption remain explicit Nim decisions.
 
 | Modules | Responsibility |
 | --- | --- |
+| [`endpoints.nim`](endpoints.nim) | Fixed IPv6/little-endian-port projections from validator metadata |
 | [`alpn.nim`](alpn.nim) | Exact version/chain protocol identifiers and base/builder acceptor negotiation |
 | [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |
 | [`messages.nim`](messages.nim), [`audits.nim`](audits.nim) | Bounded generic E4 messages and upgraded CE144/145 structural batch codecs |
