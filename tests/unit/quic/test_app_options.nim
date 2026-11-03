@@ -9,6 +9,12 @@ import ../../../src/app/options
 import ../../../src/lib/logging
 import ../../../src/codec/bounded
 
+# Chain selection alone identifies stateless JAM transport without activating an unrelated service.
+var networkOnly = default(Options)
+assert parseCanonicalOptions(@["server", "--chain", "chain.json"], networkOnly)
+assert networkOnly.chainPath == "chain.json" and not networkOnly.stateEnabled and
+    networkOnly.rpcPort == 0
+
 # An absent enable flag leaves all services disabled, regardless of endpoint/directory configuration.
 var disabled = default(Options)
 assert not disabled.valid()
@@ -54,7 +60,7 @@ for arguments in [@["server", "--with-ui", "--ui-port", "9418"],
     @["server", "--rpc-port", "0"], @["server", "--rpc-port", "no"],
     @["server", "--with-rpc", "--unknown"], @["server", "--with-telemetry"],
     @["server", "--with-telemetry", "--telemetry-endpoint", "127.0.0.1:1"],
-    @["server", "--chain", "chain.json"], @["server", "--ui-dev-dir", "--with-ui"],
+    @["server", "--ui-dev-dir", "--with-ui"],
     @["server", "--rpc-port"], @["--selftest", "--with-ui"], @["--with-rpc"]]:
   assert parseCanonicalOptions(@["server", "--with-ui"], ui)
   assert not parseCanonicalOptions(arguments, ui)

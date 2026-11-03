@@ -25,7 +25,7 @@ existing identity. Help and invalid CLI input create no files.
 | --- | --- |
 | Data root | `./data` (`--data-dir`) |
 | Network port | `34100` |
-| Network protocol | `jamnp-s/1/00000000`, the isolated development domain |
+| Network protocol | Derived from configured genesis; `jamnp-s/1/00000000` without a selected chain |
 | Server mode/deadline | `listen`, unlimited (`--net-timeout-ms 0`) |
 | Client / bounded workloads | `valid` / 10000 ms |
 | Full journal database | `./data/full/state.db` |
@@ -75,6 +75,11 @@ and hostnames are rejected. An explicit remote without a bind selects a same-fam
 source. Omitted addresses preserve the isolated loopback proof defaults. These flags configure
 JAM networking independently of RPC, management and UI listeners. See the
 [endpoint contract](../spec/jamnp-peer-addresses.md).
+
+When `--chain` selects a network, JAM transport requires its bounded serialized genesis header.
+The ALPN prefix derives from that original header even after checkpoint or journal restoration.
+An explicit `--net-alpn` must match the selected chain (the builder suffix is permitted).
+A parameters-only file cannot identify a live JAM network; read-only component APIs retain their existing optional metadata behavior. See [genesis domains](../spec/jamnp-genesis-alpn.md).
 
 ```sh
 ragnarok server --net-port 4000 \
@@ -167,3 +172,6 @@ Status repeats every five seconds; changes are limited to one per second, with a
 `--log-level warn` keeps warnings and errors; `--log-level off` disables queued diagnostics.
 Component filters remain available, for example `--log-level info,network=warn`.
 Times use UTC (`Z`). Command results and the stdout readiness marker remain independently observable.
+
+Stateless network identity hashes the bounded configured header without constructing a state
+map. Full and light state startup retain their independent complete-state/trust validation.

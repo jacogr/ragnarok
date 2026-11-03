@@ -13,6 +13,7 @@ import subprocess
 import time
 from test_quic import application_binaries, BUILD, THREAD_BASELINES
 from test_quic_soak import resources, check_growth
+from fixture_alpn import fixture_alpn
 
 
 # Reserve two distinct IPv6 UDP listener ports until both have been selected; readiness exposes bind races.
@@ -66,6 +67,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
     idle = {role: [] for role in logs}
     identities = {role: (folder / f'{role}.pub').read_bytes() for role in logs}
     decisions = {'a': preferred(identities['a'], identities['b']), 'b': preferred(identities['b'], identities['a'])}
+    protocol = fixture_alpn(None if telemetry is None else telemetry["chain"])
     local_ports = ports()
     started = time.monotonic()
     try:
@@ -75,7 +77,7 @@ def pairing(languages, folder, rounds, warmup, bad_pin=False, *, binaries=None, 
             remote_pin = 'c' if bad_pin and role == 'a' else other
             command = [str(binaries[language]), 'mesh', '--net-local-port', str(local_ports[index]), '--net-remote-port', str(local_ports[1-index]),
                        '--net-cert', str(folder / f'{role}.cert.pem'), '--net-key', str(folder / f'{role}.key.pem'),
-                       '--net-local-key', str(folder / f'{role}.pub'), '--net-peer-key', str(folder / f'{remote_pin}.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-gate', str(gate)]
+                       '--net-local-key', str(folder / f'{role}.pub'), '--net-peer-key', str(folder / f'{remote_pin}.pub'), '--net-alpn', protocol, '--net-gate', str(gate)]
             if telemetry is not None:
                 # Optional collector controls exercise the real trailing CLI without changing mesh policy.
                 command += ['--chain', str(telemetry['chain']), '--with-telemetry', '--telemetry-endpoint', telemetry[role]]

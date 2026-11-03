@@ -52,7 +52,7 @@ def run(binary, certificates, folder):
     root = Path(__file__).resolve().parents[1]
     command = [str(binary), 'server', '--net-port', str(peer_port),
                '--net-cert', str(certificates/'a.cert.pem'), '--net-key', str(certificates/'a.key.pem'),
-               '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '30000',
+               '--net-peer-key', '-', '--net-timeout-ms', '30000',
                '--net-mode', 'service', '--with-mcp', '--mcp-port', str(port),
                '--chain', str(root/'tests/fixtures/rpc-genesis.json')]
     with log.open('wb') as output:

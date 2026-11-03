@@ -172,7 +172,7 @@ proc remoteAncestors(owner: var Services, options: Options, peers: seq[DownloadP
           writeBytes: limits.stream.writeBytes, timeout: AncestorTimeout(duration))
         let opened = peer.open(request.value, limits.input.blockBytes,
           AncestorPeerKey(array[32, byte](keys[index])), ports[index], options.argument(3),
-          options.argument(4), options.argument(6), streamLimits, AncestorTick(now),
+          options.argument(4), owner.networkProtocol(options), streamLimits, AncestorTick(now),
               options.networkBind, options.networkPeer(index))
         if opened != AncestorPeerError.None:
           peer.close()
@@ -247,8 +247,8 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
   if configured != CurrentDownloadLoopError.None: return CurrentDownloadCommandResult.InvalidPolicy
   for index in 0..<peers.len:
     if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
-        options.argument(4), options.argument(6), options.networkBind, options.networkPeer(
-            index)) != CurrentDownloadPeerError.None:
+        options.argument(4), owner.networkProtocol(options), options.networkBind,
+            options.networkPeer(index)) != CurrentDownloadPeerError.None:
       return CurrentDownloadCommandResult.TransportFailure # Deferred close retires all earlier opened endpoints too.
   while true:
     let elapsed = (getMonoTime() - started).inMilliseconds
@@ -290,8 +290,8 @@ proc receiveChildren(owner: var Services, options: Options, peers: seq[DownloadP
         for index in 0..<peers.len:
           # Graceful discovery retirement preserved each fixed ID/key association; only the next child needs fresh endpoints.
           if dispatcher.openPeer(peers[index], keys[index], ports[index], options.argument(3),
-              options.argument(4), options.argument(6), options.networkBind, options.networkPeer(
-                  index)) != CurrentDownloadPeerError.None:
+              options.argument(4), owner.networkProtocol(options), options.networkBind,
+                  options.networkPeer(index)) != CurrentDownloadPeerError.None:
             return CurrentDownloadCommandResult.TransportFailure
         peersRetired = false
       previousHeader = child.header
@@ -351,12 +351,12 @@ proc receiveContinuously(owner: var Services, options: Options, peers: seq[Downl
   if configured != CurrentSyncError.None: return CurrentDownloadCommandResult.InvalidPolicy
   for index, peer in peers:
     if host.openPeer(peer, keys[index], ports[index], options.argument(3), options.argument(4),
-        options.argument(6), options.networkBind, options.networkPeer(index)) !=
+        owner.networkProtocol(options), options.networkBind, options.networkPeer(index)) !=
             CurrentDownloadPeerError.None:
       return CurrentDownloadCommandResult.TransportFailure # Deferred host close also retires every earlier endpoint.
   var status = default(SyncLogState)
   log(options.logWriter, LogTarget.Network, LogLevel.Info,
-    "Continuous sync started; pinned peers: " & $peers.len & "; protocol: " & options.argument(6))
+    "Continuous sync started; pinned peers: " & $peers.len & "; protocol: " & owner.networkProtocol(options))
   log(options.logWriter, LogTarget.Storage, LogLevel.Info, "Local head: " & owner.describeHead)
   for index, peer in peers:
     log(options.logWriter, LogTarget.Network, LogLevel.Info,
@@ -505,6 +505,7 @@ proc performDownloads(options: Options, adopted: var int,
   var owner = default(Services)
   defer: owner.close() # Dispatcher teardown below must end every Services borrow first.
   if not owner.start(options, topic): return CurrentDownloadCommandResult.StartupFailure
+  if owner.networkProtocol(options).len == 0: return CurrentDownloadCommandResult.StartupFailure
   var logical = default(CurrentLogicalDownloadPolicy)
   if qualifyLogical:
     let captured = captureCurrentLogicalStartup(owner.chainView, declarations, logicalLimits)

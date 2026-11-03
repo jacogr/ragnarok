@@ -25,6 +25,7 @@ import ../bandersnatch/bandersnatch
 import ../crypto/[primitives, validator_keys]
 import "../jamnp-s/devnet"
 import "../jamnp-s/protocol"
+import ../jamnp-s/chain_alpn
 import "../jamnp-s/announcements"
 import "../jamnp-s/current/block/download/peers" as current_block_download_peers
 import "../jamnp-s/sync_targets"
@@ -179,7 +180,7 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
     let public = tinyPeerKey(ordinal)
     if public.error != CryptoError.None: return 2
     peers[ordinal] = array[32, byte](public.value)
-  let alpn = "jamnp-s/1/" & hex(array[32, byte](chain.chainView.bestBlock.value.blockHash))[0..7]
+  let alpn = genesisAlpn(chain.chainView.bestBlock.value.blockHash)
   var network = DevnetNetwork()
   defer: network.close() # Every startup/runtime failure retires callback owners before stack destruction.
   var journal: seq[byte] = @[]

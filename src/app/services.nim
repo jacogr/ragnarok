@@ -16,6 +16,8 @@ import ../lib/logging
 import std/[syncio, strutils, base64, assertions, monotimes, times]
 import ../state/logical_continuation
 import ./options
+import ../jamnp-s/[alpn, chain_alpn]
+import ../chain/network_identity
 import ./node_logging
 import ../rpc/light_source
 import ./light/runtime as light_actor
@@ -158,7 +160,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   mcpInfo: ClientInfo
   management*: ManagementServer
   telemetry*: Client
-  chainText: string
+  chainText, networkBase: string
   startupAnchor: StartupBlockAnchor
   historyLimits: StateStoreLimits   # Historical decoding inherits the exact startup complete-map policy.
   historyLog: LogWriter             # Borrowed writer outlives Services and its joined disk worker.
@@ -255,6 +257,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.rpc)
   `=wasMoved`(services.telemetry)
   `=wasMoved`(services.chainText)
+  `=wasMoved`(services.networkBase)
   `=wasMoved`(services.startupAnchor)
   `=wasMoved`(services.canonical)
   `=wasMoved`(services.adoption)
@@ -299,6 +302,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.rpc)
   `=destroy`(services.telemetry)
   `=destroy`(services.chainText)
+  `=destroy`(services.networkBase)
   `=destroy`(services.startupAnchor)
   `=destroy`(services.canonical)
   `=destroy`(services.adoption)
@@ -552,6 +556,7 @@ proc close*(services: var Services) =
   services.started = false
   services.chainRpc = false
   services.chainText = ""
+  services.networkBase = ""
   services.startupAnchor = default(StartupBlockAnchor)
 
 proc boundedFile(path: string, limit: int): string {.raises.} =
@@ -569,15 +574,19 @@ proc boundedFile(path: string, limit: int): string {.raises.} =
   result = move(text)
 
 proc setupRpc(rpc: var Server, options: Options, role: string, text: string,
-    mcpInfo: var ClientInfo): bool =
+    mcpInfo: var ClientInfo, networkBase: var string): bool =
   ## An explicit RPC/MCP chain must validate before opening the listener; missing configuration remains unavailable.
   var parameters = default(ParameterResult)
   var genesis = unavailableGenesis()
-  if (options.rpcPort() != 0 or options.mcpPort() != 0) and options.chainPath().len > 0:
-    parameters = configuredParameters(text)
-    if not parameters.ok: return false # Fail startup rather than advertise a partial/default parameter set.
-    genesis = configuredGenesis(text, parameters.value)
-    if genesis.error == GenesisError.Invalid: return false # Reject an incomplete or malformed explicit genesis.
+  if options.chainPath().len > 0:
+    let network = readNetworkIdentity(text)
+    if network.error == NetworkIdentityError.None:
+      networkBase = genesisAlpn(network.value.genesisHash) # Stateless identity needs header bytes, not a complete state map.
+    if options.rpcPort() != 0 or options.mcpPort() != 0:
+      parameters = configuredParameters(text)
+      if not parameters.ok: return false # Public metadata retains its existing validation contract.
+      genesis = configuredGenesis(text, parameters.value)
+      if genesis.error == GenesisError.Invalid: return false
   if options.mcpPort != 0:
     mcpInfo = ClientInfo(role: role, parameters: parameters, chain: genesisView(genesis),
       identity: chainIdentity(genesis)) # No canonical worker exists in this legacy listener-only path.
@@ -801,6 +810,9 @@ proc startServices(services: var Services, options: Options, role: string,
           head.chainParameters.encodeParameters:
         services.close() # A trusted anchor must still match the complete explicitly selected chain profile.
         return false
+      let network = readNetworkIdentity(services.chainText)
+      if network.error == NetworkIdentityError.None:
+        services.networkBase = genesisAlpn(network.value.genesisHash)
       if options.rpcPort() != 0 or options.mcpPort() != 0:
         identity = chainIdentity(configuredGenesis(services.chainText,
             configured.value)) # Imported head is never genesis identity.
@@ -811,6 +823,7 @@ proc startServices(services: var Services, options: Options, role: string,
         services.close() # A missing/refused seed cannot become a partial listener-only startup.
         return false
       services.canonical = seeded.value
+      services.networkBase = genesisAlpn(seeded.value.chainView.bestBlock.value.blockHash)
       identity = chainIdentity(seeded.value.chainView.bestBlock) # Reuse capture without repeating map/header hashing.
   if withState:
     services.startupAnchor = captureStartupAnchor(
@@ -851,7 +864,7 @@ proc startServices(services: var Services, options: Options, role: string,
         options.uiPort(), identity)
   else:
     rpcReady = services.rpc.setupRpc(options, role,
-        services.chainText, services.mcpInfo) # Preserve legacy optional/unavailable genesis behavior.
+        services.chainText, services.mcpInfo, services.networkBase) # Preserve legacy optional/unavailable genesis behavior.
   if not rpcReady:
     stderr.writeLine("Invalid RPC listener or --chain parameters")
     services.close() # RPC failures retire both the UI listener and the canonical owner.
@@ -897,6 +910,7 @@ type LightStartup = object ## Fixed configured/trusted metadata retains no compl
   policy: LightRuntimePolicy
   parameters: ParameterResult
   identity: ChainIdentity
+  networkBase: string
 
 proc captureLightStartup(text: string, options: Options): LightStartup =
   ## Complete configured genesis is transient validation input only; every full-state alias retires before listeners/workers become observable.
@@ -927,13 +941,14 @@ proc captureLightStartup(text: string, options: Options): LightStartup =
   let policy = lightRuntimePolicy(StorageChainId(array[32, byte](digest.value)),
       trust.value.identity.stateRoot, profile)
   LightStartup(ready: true, trust: trust.value, policy: policy, parameters: parameters,
-    identity: chainIdentity(genesis))
+    identity: chainIdentity(genesis), networkBase: genesisAlpn(selected.blockHash))
 
 proc startLightServices(services: var Services, options: Options, role: string): bool {.raises.} =
   ## Light startup chooses distinct memory/paged ownership with independent current trust before any listener is exposed.
   if services.started or not options.valid or not options.lightMode: return false # Failed/repeated mode selection cannot disturb an existing lifetime.
   services.chainText = boundedFile(options.chainPath, MaxChainBytes)
   let startup = captureLightStartup(services.chainText, options)
+  services.networkBase = startup.networkBase
   if not startup.ready:
     services.close()
     return false # No complete/partial startup prefix becomes an active service.
@@ -1829,6 +1844,11 @@ proc tick*(services: var Services, peers: uint32) =
   services.rpc.tick(peers)
   services.ui.tick()
   services.beginRpcProof() # Native generation starts outside transport callbacks and after all host tick aliases retire.
+
+proc networkProtocol*(services: Services, options: Options): string =
+  ## The captured configured genesis remains independent of mutable canonical/checkpoint progress.
+  if not services.started or not options.valid: return ""
+  selectChainAlpn(services.networkBase, options.networkAlpnOverride, options.chainPath.len > 0)
 
 proc configureTelemetry*(services: var Services, options: Options, certificate: string,
     port: uint16, ipv6: bool): bool {.raises.} =

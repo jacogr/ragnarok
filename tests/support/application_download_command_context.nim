@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared explicit command policies and independent forked TLS series retain exact requests and joined process cleanup.
+import ./chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
 import ../../src/app/download/[command as download_command, policy as download_policy,
@@ -63,7 +65,7 @@ proc exchangeDownloads*(context: DownloadChainFixture, responses: seq[seq[byte]]
   var requests: seq[array[42, byte]] = @[]
   for index in 0..<responses.len: requests.add(expectedRequest(context.heads[firstChild + index]))
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, modes, fallback)
+  assert servers.openSequenceResponders(requests, responses, modes, fallback, fixtureChainAlpn(chainPath))
   let port = servers.port(true)
   let firstPort = servers.port(false)
   let child = posix.fork()

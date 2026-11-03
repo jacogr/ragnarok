@@ -1,84 +1,23 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded JIP-4 telemetry metadata extraction, not chain-state validation or initialization.
-##
-## Exposes chainMetadata to read bounded chain-spec metadata into owned telemetry fields.
-
-import std/[parsejson, streams, strutils, parseutils]
-import ../crypto/primitives
+## JIP-4 registration projects bounded operator network identity into owned telemetry fields.
+## It does not validate or initialize a canonical state snapshot.
+import ../chain/network_identity
 import ./wire
 
-const MaxChainBytes* = 8 * 1024 * 1024
-# Full-profile epoch markers exceed 64 KiB; keep a bounded allowance for larger validator sets.
-const MaxHeaderBytes* = 256 * 1024
-
-proc hexBytes(text: string, maximum: int): seq[byte] =
-  ## Decode an exact bounded hex field atomically; empty output means invalid, never a valid field here.
-  result = @[]
-  # Both supported fields must be nonempty and have a complete pair per byte.
-  if text.len == 0 or text.len mod 2 != 0 or text.len div 2 > maximum: return
-  var bytes = newSeq[byte](text.len div 2)
-  # Validate every pair before publishing the newly owned sequence.
-  for i in 0..<bytes.len:
-    let start = 2 * i
-    if text[start] notin HexDigits or text[start + 1] notin HexDigits:
-      return # parseHex also accepts prefixes and underscores; JIP-4 fields permit only digit pairs.
-    var value = 0'u8
-    if parseHex(text, value, start, 2) != 2: return # Require the complete pair before publishing any bytes.
-    bytes[i] = value # Two validated digits fit exactly in a byte; no overflow or truncation is possible.
-  result = move(bytes)
+const
+  MaxChainBytes* = MaxNetworkChainBytes   ## Preserve the existing telemetry input ceiling.
+  MaxHeaderBytes* = MaxNetworkHeaderBytes ## Preserve the full-profile marker allowance.
 
 proc chainMetadata*(text: string, identity: array[32, byte], address: array[16, byte],
     port: uint16): MetadataResult =
-  ## Parse complete bounded JSON and hash its serialized genesis header using the maintained primitive.
-  # Limit input before the standard token parser creates any strings or parser states.
-  if text.len == 0 or text.len > MaxChainBytes: return invalidMetadata(invalidChain)
-  var parser = default(JsonParser)
-  parser.open(newStringStream(text), "telemetry chain")
-  defer: parser.close() # Parser-owned stream and token storage have no escaping borrows.
-  parser.next()
-  if parser.kind != jsonObjectStart: return invalidMetadata(invalidChain)
-  var depth = 1
-  var wantKey = true
-  var key = ""
-  var parameters, header = ""
-  var hasParameters, hasHeader = false
-  # The standard event parser validates punctuation; depth bounds its iterative state stack.
-  while depth > 0:
-    parser.next()
-    let kind = parser.kind
-    if kind in [jsonError, jsonEof]: return invalidMetadata(invalidChain)
-    if depth == 1 and kind != jsonObjectEnd:
-      if wantKey:
-        # Top-level object members require string keys before any value is inspected.
-        if kind != jsonString: return invalidMetadata(invalidChain)
-        key = parser.str
-        wantKey = false
-      else:
-        # Only these two JIP-4 fields feed telemetry; duplicate relevant keys are ambiguous.
-        if key == "protocol_parameters":
-          if kind != jsonString or hasParameters: return invalidMetadata(invalidChain)
-          parameters = parser.str
-          hasParameters = true
-        elif key == "genesis_header":
-          if kind != jsonString or hasHeader: return invalidMetadata(invalidChain)
-          header = parser.str
-          hasHeader = true
-        wantKey = true
-    if kind in [jsonObjectStart, jsonArrayStart]:
-      inc depth
-      if depth > 32: return invalidMetadata(invalidChain) # Bound nested unused state/extension data too.
-    elif kind in [jsonObjectEnd, jsonArrayEnd]:
-      dec depth # Standard parser enforces matching delimiters.
-  parser.next()
-  if parser.kind != jsonEof or not hasParameters or not hasHeader: return invalidMetadata(invalidChain)
-  let params = hexBytes(parameters, 122)
-  let genesis = hexBytes(header, MaxHeaderBytes)
-  if params.len != 122 or genesis.len == 0: return invalidMetadata(invalidChain)
-  let digest = blake2b256(genesis)
-  if digest.error != CryptoError.None: return invalidMetadata(hashFailed)
-  let hash = array[32, byte](digest.value)
+  ## Share exact header identity with JAM ALPN without requiring complete genesis state.
+  let parsed = readNetworkIdentity(text)
+  if parsed.error != NetworkIdentityError.None:
+    return invalidMetadata(if parsed.error == NetworkIdentityError.HashFailed: hashFailed else: invalidChain)
+  let params = parsed.value.parametersBytes
+  let hash = array[32, byte](parsed.value.genesisHash)
   var bytes = default(array[MetadataSize, byte])
   # Copy exact fetch bytes; the later metadata constructor validates the bounded core count.
   for i in 0..<122: bytes[i] = params[i]

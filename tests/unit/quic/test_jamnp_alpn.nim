@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual production acceptors negotiate both JAMNP-S roles while preserving chain/version isolation.
+import ../../../src/jamnp-s/chain_alpn
+import ../../../src/chain/genesis
+
 import std/[assertions, envvars, monotimes, times, syncio]
 import ../../../src/quic/transport
 import ../../../src/jamnp-s/[protocol, alpn, devnet]
@@ -74,3 +77,21 @@ try:
 except:
   quit 2 # Missing fixture/setup failures cannot be mistaken for a rejected protocol offer.
 echo "JAMNP-S base/builder ALPN, exact identifiers and TLS isolation passed"
+
+# Literal nibbles independently specify the chain prefix; unrelated trailing hash bytes never enter ALPN.
+var headerHash = default(array[32, byte])
+headerHash[0] = 0x01; headerHash[1] = 0x23; headerHash[2] = 0xab; headerHash[3] = 0xef
+headerHash[31] = 0xff
+let configured = genesisAlpn(BlockHash(headerHash))
+assert configured == "jamnp-s/1/0123abef"
+assert selectChainAlpn(configured, "", true) == configured
+assert selectChainAlpn(configured, configured, true) == configured
+assert selectChainAlpn(configured, configured & "/builder", true) == configured & "/builder"
+for refused in ["jamnp-s/1/00000000", "jamnp-s/1/00000000/builder", "jamnp-s/2/0123abef",
+    "jamnp-s/1/0123ABEF"]:
+  assert selectChainAlpn(configured, refused, true).len ==
+      0 # Explicit cross-chain/version overrides cannot evade startup binding.
+assert selectChainAlpn("", "", true).len == 0
+assert selectChainAlpn("", "jamnp-s/1/00000000", true).len == 0
+assert selectChainAlpn("", "", false) == "jamnp-s/1/00000000"
+assert selectChainAlpn("", configured & "/builder", false) == configured & "/builder"

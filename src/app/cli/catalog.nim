@@ -137,7 +137,7 @@ const
       commands: "mesh",
       repeatable: false),
     OptionSpec(name: "--net-alpn", value: "NAME", group: OptionGroup.Network,
-      description: "JAM network protocol name; override the isolated development domain for a real network.",
+      description: "Derived from selected genesis; an explicit name must match its chain. No chain selects the isolated development domain.",
       fallback: OptionDefault.Alpn, commands: "server|client|mesh|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--net-timeout-ms", value: "MILLISECONDS", group: OptionGroup.Network,

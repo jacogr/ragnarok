@@ -20,6 +20,7 @@ type Options* = object ## Validated service controls; command handlers validate 
   parsed, telemetry, rpc, mcp, ui, state, recover, localAncestors, management,
     updateLogicalSource: bool
   positional: seq[string]
+  networkName: string
   networkLocal: NetworkAddress
   networkRemotes: seq[NetworkAddress]
   ancestorFiles: seq[string]
@@ -46,6 +47,10 @@ type Options* = object ## Validated service controls; command handlers validate 
   rpcNumber, mcpNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
+
+func networkAlpnOverride*(options: Options): string =
+  ## Only an explicit named override may replace automatic genesis-derived protocol selection.
+  if options.parsed: options.networkName else: ""
 
 func networkBind*(options: Options): NetworkAddress =
   ## Failed/default parsing cannot expose a partially selected native bind.
@@ -338,6 +343,9 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         return false
       diagnostic = "Invalid value for " & name & ": " & spec.description
       case name
+      of "--net-alpn":
+        if value.len > 255: return false
+        candidate.networkName = value # JAM protocol validation belongs to the selected genesis boundary.
       of "--net-bind", "--net-peer-address":
         var address = default(NetworkAddress)
         if not parseNetworkAddress(value, address): return false
@@ -551,8 +559,11 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0):
     diagnostic = "--with-telemetry requires --telemetry-endpoint HOST:PORT and --chain FILE"
     return false
+  let networkCommand = candidate.positional.len > 0 and candidate.positional[0] in ["server",
+      "client", "mesh"]
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
-      candidate.ui or candidate.state or candidate.mcp): return false
+      candidate.ui or candidate.state or candidate.mcp or
+      networkCommand): return false # A stateless JAM endpoint still needs its configured genesis domain.
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber:
     diagnostic = "--ui-port and --rpc-port must differ when --with-ui is enabled"
     return false

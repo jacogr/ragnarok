@@ -19,3 +19,15 @@ proc serverAlpns*(name: string): seq[string] =
   if not validAlpn(name): return @[]
   let base = name.substr(0, 17)
   @[base, base & "/builder"]
+
+proc selectChainAlpn*(configured, requested: string, chainSelected: bool): string =
+  ## Empty output refuses unavailable genesis or a conflicting explicit version/chain domain.
+  if configured.len > 0:
+    if not validAlpn(configured) or configured.len != 18: return ""
+    if requested.len == 0: return configured
+    if not validAlpn(requested) or requested.substr(0, 17) != configured: return ""
+    return requested
+  if chainSelected: return "" # An explicit incomplete chain never falls back to the isolated development domain.
+  if requested.len == 0: return "jamnp-s/1/00000000"
+  if validAlpn(requested): return requested
+  ""

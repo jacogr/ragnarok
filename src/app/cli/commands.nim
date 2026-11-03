@@ -195,7 +195,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
         output.add(flag)
         output.add(values[0])
   # Preserve address controls separately from the stable private command recipe.
-  for flag in ["--net-bind", "--net-peer-address"]:
+  for flag in ["--net-bind", "--net-peer-address", "--net-alpn"]:
     for value in fields[optionIndex(flag)]:
       service.add(flag); service.add(value)
   let state = fields[optionIndex("--with-state")].len > 0
