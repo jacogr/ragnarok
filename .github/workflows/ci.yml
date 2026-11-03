@@ -807,6 +807,8 @@ jobs:
             build/tests/pvm-native/*.log
             build/tests/pvm-native/region-refusal
             build/tests/pvm-native/region-refusal-forced
+            build/tests/native/selected/pvm_memory_reuse.log
+            build/tests/native/compiler-*/evidence/pvm_memory_reuse.json
             build/tests/pvm-arm64-applications/*.json
             build/tests/pvm-arm64-applications/*.log
             build/tests/pvm-arm64-applications/summary.md
