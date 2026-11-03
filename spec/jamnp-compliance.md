@@ -81,3 +81,8 @@ Their tests establish structural behavior only; runtime/authentication requireme
 
 [Persistent stream lifecycle](jamnp-stream-lifecycle.md) records actual-ID UP0 replacement,
 claim revocation, pending-route handling and connection isolation.
+
+[Node stream owner](jamnp-node-router.md) integrates authenticated UP0 and CE128/129/143
+responder framing, bounded per-peer reservations and managed read tickets. Its component TLS
+transcripts include production-to-production IPv4/IPv6 peers. Ordinary executable/Services
+installation, outbound synchronization and the other protocol families remain incomplete.
