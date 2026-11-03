@@ -96,3 +96,8 @@ executable activation and outbound requests remain incomplete.
 framing on existing authenticated connections, including public pending-open cancellation and
 application lease isolation. Returned bytes remain untrusted; response semantic/proof validation,
 canonical adoption and ordinary executable activation remain incomplete.
+
+[Canonical read response validation](jamnp-read-validation.md) adds query-bound block structure,
+trusted-root state range authentication and full preimage hashes through Services worker admission.
+Real TLS state replies exercise verification and lease cleanup. Block execution/consensus,
+canonical adoption, ordinary executable activation and the remaining protocol families remain open.
