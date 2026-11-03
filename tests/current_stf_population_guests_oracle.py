@@ -29,13 +29,20 @@ def original(mode):
             **{k:v for k,v in guests.original(mode).items() if k not in globals_}}
 
 
-def guarantee(parent, core, slot, sid, *, prerequisite=b''):
+def guarantee(parent, core, slot, sid, *, prerequisite=b'', match_exports=False):
     """Select genuine current-roster credentials, executable code and explicit dependency bytes before signing."""
     item = population.guarantee(parent, core, slot, slot, slot)
     layout = item['layout']; layout['prerequisites'] = prerequisite
     row = list(layout['digests'][0]); row[0] = sid
     row[1] = metadata_parse(parent[chapter_service(255, sid)], 105)[0]
     row[3] = 100000; layout['digests'] = [tuple(row)]
+    if match_exports:
+        # Target reportrefineload binds availability segment count to the actual declared digest exports.
+        exports = sum(digest[6][4] for digest in layout['digests'])
+        assert 0 <= exports <= 3072
+        header = layout['header']
+        layout['header'] = header[:102]+exports.to_bytes(2, 'little')+header[104:]
+
     population.resign(item, rotation.credentials(parent, slot, slot)[0])
     return item
 

@@ -37,7 +37,7 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None, accumulation_gas=100000):
+def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None, accumulation_gas=100000, match_exports=False):
     """Sign a full authored report, explicit dependency families and the actual target service code hash."""
     sid = service if service is not None else ((42 if core == 0 else 99) if slot == 3 else 99)
     records = history(initial[chapter_key(3)])[0]
@@ -49,7 +49,7 @@ def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', l
         package = digest(f'immediate package slot{slot} core{core}'.encode()) # Preserve original immediate identities.
     anchor = fixed[:32]+fixed[96:100]+anchor_root
     header = (package+(100+slot+core).to_bytes(4, 'little')+digest(package+b'segments')
-              +(6).to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
+              +(6).to_bytes(2, 'little')+digest(package+b'exports')+((5 if match_exports else 3)+core).to_bytes(2, 'little')
               +anchor+fixed[32:64]+anchor)
     value = dict(header=header, prerequisites=prerequisites, core=core, authorizer=pools[core][:32],
                  gas=17+core, auth=b'auth'+bytes([core]), lookup=lookup,
