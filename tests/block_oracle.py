@@ -222,7 +222,14 @@ def published(profile,kind,canonical=False):
     # Block fixture JSON supplies an independently named complete sealed header.
     if kind=='B':
         parts=[headers.wire('H',headers.from_json(value['header']))]+parts
-    assert b''.join(parts)==(folder/f'{name}.bin').read_bytes()
+    # Reconstruct the original embedded-parent family solely to verify historical binary provenance.
+    historical = list(parts)
+    historical[-2] = natural(len(extrinsic['assurances']))+b''.join(
+        bytes.fromhex(v['anchor'][2:])+bytes.fromhex(v['bitfield'][2:])+
+        v['validator_index'].to_bytes(2,'little')+bytes.fromhex(v['signature'][2:])
+        for v in extrinsic['assurances'])
+    assert b''.join(historical)==(folder/f'{name}.bin').read_bytes()
+    # Returned structural inputs use only the target tuple; opaque old header signatures are not requalified here.
     # Only authored counterparts change policy-invalid sample fields; original hashes were checked above.
     if canonical:
         # Retain original published bytes; authored counterparts fix only the documented structural-policy issues.

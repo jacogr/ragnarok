@@ -18,7 +18,7 @@ from jam_fuzzer_guest_reference import host_parameters
 
 def assurance_bytes(rows):
     """Serialize exact independent parent/bit/index/signature tuples under the fixed two-core profile."""
-    return natural(len(rows))+b''.join(row['anchor']+bytes([row['bits']])+row['index'].to_bytes(2, 'little')+row['signature'] for row in rows)
+    return natural(len(rows))+b''.join(bytes([row['bits']])+row['index'].to_bytes(2, 'little')+row['signature'] for row in rows)
 
 
 def body_parts(raw):
@@ -44,7 +44,7 @@ def body_parts(raw):
     assert count <= 6
     rows = []
     for _ in range(count):
-        rows.append(dict(anchor=reader.take(32), bits=reader.take(1)[0],
+        rows.append(dict(bits=reader.take(1)[0],
                          index=int.from_bytes(reader.take(2), 'little'), signature=reader.take(64)))
     assert reader.take(3) == bytes(3)
     reader.done()

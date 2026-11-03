@@ -1,6 +1,6 @@
 # Assurance signing context
 
-Pinned GP v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Target GP `fad0ded4a433052397bf7234352a57fe491883f7`,
 `reporting_assurance.tex` equation `assurancesig`, anchors/order preceding it, and Appendix C.1/C.2.
 The existing source SHA pins in `spec/pins.json` cover these definitions.
 
@@ -9,7 +9,7 @@ The signing message is exactly the 45-byte owned value
 The bitfield has `ceil(cores/8)` bytes, LSB-first, with no length or record-count prefix. The
 validator index and signature are not included in the hash. Blake2b-256 is the 32-byte output
 parameterization, not a truncation of Blake2b-512. A parent hash is a nominal domain distinct
-from the assurance's anchor and from a cryptographic digest. Core counts are 1..341, with the
+from a cryptographic digest; no parent is present in the current wire record. Core counts are 1..341, with the
 existing 43-byte native bitset storage and canonical padding rules.
 
 Expose a message builder accepting parent, bits and core count, and a batch verifier accepting
@@ -22,7 +22,7 @@ The count certifies this stateless context check, not successful state transitio
 The verifier checks in this precedence: valid configuration (2..341 cores, 6..3*cores validators in multiples of three);
 exact key-set length matching the
 configured validator count; count ceiling; each record's validator bounds, strict order, canonical
-bitfield padding and expected parent equality, in record order; then each signature in order.
+bitfield padding, in record order; then each signature against the actual parent in order.
 All structural/context checks finish before any signature verification. Empty records succeed
 with zero count only after configuration and exact key-set checks. For each record, select the
 public key by its validator index, build the normative message, import its fixed signature bytes
@@ -30,7 +30,7 @@ and call the existing provider verifier. Hash/import failure maps to backendfail
 signatures map to invalidsignature. No fallback accepts a rejected signature.
 
 Reasons are uninitialized, invalidconfig, invalidkeyset, limitexceeded, invalidvalidator,
-noncanonical, wrongparent, invalidsignature and backendfailure. Message construction checks only
+noncanonical, invalidsignature and backendfailure. A credential made for a different parent fails cryptographic verification. Message construction checks only
 core configuration and bitset padding before hashing; it cannot authorize an assurance by itself.
 
 This bounded M2 composition slice does not implement pending-report eligibility,
@@ -42,10 +42,10 @@ signatures; it does not claim universal provider equivalence or resolve that pol
 
 Acceptance compares every message byte with Python hashlib; uses independent OpenSSL signing
 validated against a pinned RFC8032 known answer; tests tiny/full and byte-width boundaries;
-empty/max records; wrong key-set length, validator/order/padding/parent errors; late structural
+empty/max records; wrong key-set length, validator/order/padding/parent-bound signatures; late structural
 failure before an earlier invalid signature; wrong key, signature, domain and hashed framing;
 and input immutability. Existing assurances and report suites are fresh-build baselines/rechecks.
-Intentional nominal parent/anchor and message/signature compiler probes remain separate diagnostics.
+Nominal message/signature compiler probes remain separate diagnostics.
 
 ## Nimony trial evidence
 

@@ -51,7 +51,7 @@ proc assuranceCandidate*(source: AdvancedComputedChain, votes = 7, badSignature 
     var bits = default(AssuranceBits)
     bits.bytes[0] = 3 # Both genuinely pending computed cores0/1 receive every actual vote.
     let message = array[45, byte](assuranceMessage(AssuranceParent(anchor), bits, CoreCount(3)).value)
-    records[index] = Assurance(anchor: AssuranceAnchor(bytes: anchor), bits: bits,
+    records[index] = Assurance(bits: bits,
         validator: ValidatorIndex(uint16(index)),
       signature: AssuranceSignature(bytes: array[64, byte](sign(key, message).value)))
   if badSignature and votes != 0: records[^1].signature.bytes[0] = records[^1].signature.bytes[

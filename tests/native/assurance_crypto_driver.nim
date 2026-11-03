@@ -35,18 +35,16 @@ proc hexText(data: openArray[byte]): string =
 
 # Construct fixed owned fields by name without depending on the previous codec's decoder.
 proc records(data: openArray[byte]): seq[Assurance] =
-  assert data.len mod 141 == 0
-  result = newSeq[Assurance](data.len div 141)
+  assert data.len mod 109 == 0
+  result = newSeq[Assurance](data.len div 109)
   # Logical test records always include all native bitset storage, including invalid padding.
   for i in 0..<result.len:
-    let start = i*141
-    # Preserve anchor identity separately from the expected-parent domain.
-    for j in 0..<32: result[i].anchor.bytes[j] = data[start+j]
+    let start = i*109
     # Do not mask high or omitted storage bits before testing the production validation.
-    for j in 0..<43: result[i].bits.bytes[j] = data[start+32+j]
-    result[i].validator = ValidatorIndex(uint16(data[start+75]) or (uint16(data[start+76]) shl 8))
+    for j in 0..<43: result[i].bits.bytes[j] = data[start+j]
+    result[i].validator = ValidatorIndex(uint16(data[start+43]) or (uint16(data[start+44]) shl 8))
     # Fixed signature encodings are copied without interpreting provider acceptance policy.
-    for j in 0..<64: result[i].signature.bytes[j] = data[start+77+j]
+    for j in 0..<64: result[i].signature.bytes[j] = data[start+45+j]
 
 # Execute one shared request while checking input stability and failure-only default outcomes.
 proc request(parts: seq[string]) =
@@ -100,7 +98,6 @@ proc request(parts: seq[string]) =
     let checked = verifyAssurances(values, config, AssuranceParent(parentBytes), keys)
     # Inspect all original native fields after the synchronous borrowed call.
     for i in 0..<values.len:
-      assert values[i].anchor.bytes == savedValues[i].anchor.bytes
       assert values[i].bits.bytes == savedValues[i].bits.bytes
       assert uint16(values[i].validator) == uint16(savedValues[i].validator)
       assert values[i].signature.bytes == savedValues[i].signature.bytes
