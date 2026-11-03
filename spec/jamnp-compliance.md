@@ -106,3 +106,8 @@ canonical adoption, ordinary executable activation and the remaining protocol fa
 bounded detached waiting and trusted-source Services verification under one application ticket.
 Cancellation, worker fairness, deadlines and exact foreign-lease isolation have real TLS coverage.
 Ordinary executable activation, GP execution/adoption and the remaining protocol families remain open.
+
+[Executable authenticated node](jamnp-node-command.md) activates the managed actor through
+`ragnarok node`, with explicit trusted local finality, configured-genesis ALPN and pinned GP clock.
+Real TLS state service and deadline/SIGTERM cleanup cover the foreground owner. Autonomous
+synchronization/GP adoption and the remaining protocol runtime families remain open.

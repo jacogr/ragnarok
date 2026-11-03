@@ -180,4 +180,11 @@ assert stripped == @["tiny-devnet", "identity", "0"]
 assert filter.threshold(LogTarget.Startup) == LogLevel.Off
 assert not extractLoggingOptions(@["--log-level", "off", "--log-level", "info"], stripped, filter)
 
+# Node listeners cannot silently retain a dialer-only remote address through internal normalization.
+var node = default(Options)
+assert not parseCanonicalOptions(@["node", "34100", "cert", "key",
+  "0000000000000000000000000000000000000000000000000000000000000000", "0",
+  "--with-state", "--net-peer-address", "127.0.0.1"], node)
+assert not node.valid
+
 echo "Application options tests passed"

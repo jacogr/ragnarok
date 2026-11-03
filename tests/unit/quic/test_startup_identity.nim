@@ -4,7 +4,7 @@
 ## Real bundled-TLS generation, stable identity reuse and refusal of incomplete persistent bundles.
 
 import std/[os, dirs, paths, files, assertions, syncio, strutils]
-import ../../../src/app/startup
+import ../../../src/app/[startup, options]
 
 proc main() {.raises.} =
   ## Every test owns a build-directory namespace; no repository or caller fixture is mutated.
@@ -12,6 +12,17 @@ proc main() {.raises.} =
   if dirExists(root): removeDir(paths.path(root))
   createDir(paths.path(root))
   defer: removeDir(paths.path(root))
+  let nodeDirectory = root / "node"
+  var node = default(Options)
+  assert parseOptions(@["node", "--with-state", "--data-dir", nodeDirectory,
+    "--node-finalized", "0000000000000000000000000000000000000000000000000000000000000000"], node)
+  var nodeDiagnostic = ""
+  assert prepareStartup(node, nodeDiagnostic), nodeDiagnostic
+  let identity = readFile(nodeDirectory / "network" / "public.key")
+  assert identity.len == 32
+  assert prepareStartup(node, nodeDiagnostic), nodeDiagnostic
+  assert readFile(nodeDirectory / "network" / "public.key") == identity,
+    "ordinary node default credentials are provisioned once and reused before Services starts"
   let directory = root / "network"
   var diagnostic = ""
   assert ensureIdentity(directory, diagnostic), diagnostic

@@ -559,8 +559,12 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0):
     diagnostic = "--with-telemetry requires --telemetry-endpoint HOST:PORT and --chain FILE"
     return false
-  let networkCommand = candidate.positional.len > 0 and candidate.positional[0] in ["server",
-      "client", "mesh"]
+  if candidate.positional.len > 0 and candidate.positional[0] == "node":
+    if not candidate.state or candidate.mode != NodeMode.Full:
+      diagnostic = "node requires --with-state and full mode"
+      return false # Partial/stateless ownership cannot enter the complete canonical node actor.
+  let networkCommand = candidate.positional.len > 0 and candidate.positional[0] in ["node",
+      "server", "client", "mesh"]
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
       candidate.ui or candidate.state or candidate.mcp or
       networkCommand): return false # A stateless JAM endpoint still needs its configured genesis domain.
@@ -577,8 +581,8 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         "sync-current"] # Both explicit pipelines share only command-shape validation.
   if candidate.telemetry or candidate.rpc or candidate.ui or candidate.state or
       candidate.management or candidate.mcp:
-    if candidate.positional.len == 0 or candidate.positional[0] notin ["server", "client", "mesh",
-        "download", "download-current", "sync-current", "check-traces", "history"]:
+    if candidate.positional.len == 0 or candidate.positional[0] notin ["node", "server", "client",
+        "mesh", "download", "download-current", "sync-current", "check-traces", "history"]:
       return false # Explicit state/service activation belongs only to supported command shapes.
   let historyCommand = candidate.positional.len == 1 and candidate.positional[0] == "history"
   let historyControls = candidate.historyHash.len > 0 or uint64(candidate.historyNumber) > 0 or
@@ -643,10 +647,11 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   if candidate.networkLocal.valid or candidate.networkRemotes.len > 0:
     if candidate.positional.len == 0: return false
     let command = candidate.positional[0]
-    if command notin ["server", "client", "mesh", "download", "download-current", "sync-current"]:
+    if command notin ["node", "server", "client", "mesh", "download", "download-current",
+        "sync-current"]:
       return false # Address controls never silently configure an unrelated service.
     if candidate.networkRemotes.len > 0:
-      if command == "server": return false
+      if command in ["node", "server"]: return false
       var count = 1
       if command in ["download", "download-current", "sync-current"]:
         if candidate.positional.len < 8 or (candidate.positional.len-8) mod 2 != 0: return false

@@ -13,6 +13,7 @@ import "./jamnp-s/session"
 import ./quic/transport
 import "./jamnp-s/integration"
 import "./jamnp-s/offload"
+import ./app/node_command
 import ./app/options
 import ./app/cli/[help as cli_help, commands as cli_commands]
 import ./app/download/command as download_command
@@ -164,6 +165,13 @@ proc main(): int =
         return 0 # Native streams, current execution and durable/RPC leases have already retired.
       writeFailure(logger, "CURRENT_DOWNLOAD_FAILED " & $outcome.error)
       return 2 # A refused/exhausted current run does not imply successful adoption.
+    if options.argumentCount() > 0 and options.argument(1) == "node":
+      let outcome = runNodeCommand(options)
+      if outcome == NodeCommandError.Stopped:
+        stdout.writeLine("NODE_STOPPED")
+        return 0 # The authenticated actor and exact worker leases retire before Services storage.
+      writeFailure(logger, "NODE_FAILED " & $outcome)
+      return 2
     # Retained dual-role peers have a separate bounded CLI and preserve normal proof workloads.
     if options.argumentCount() >= 1 and options.argument(1) == "mesh":
       let baseline = getOccupiedMem()
