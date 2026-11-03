@@ -38,7 +38,7 @@ production path exists; it does not assert all normative behavior has been verif
 | E4 messages | Shared bounded `messages.nim` codec, CE143 frame inspector, UP0 incremental reader, CE128 receivers | Shared bounded multi-message parsing with exact message extents and protocol-specific transcript/FIN rules |
 | Grid | No general validator gossip scheduler | Pinned grid neighbors and forwarding with duplicate suppression |
 | UP0 block announcement | `announcements.nim`, `announcement_stream.nim`, current sync and Tiny routes | Complete handshake/announcement rules, greatest-ID handling, finality/leaves validation and actual peer exchanges |
-| CE128 block request | `ancestor/`, `block/download/`, `current/block/download/`, `devnet.nim` | Both directions, maximum count, canonical/finalizable response selection and request rejection |
+| CE128 block request | `block_service.nim` canonical two-direction responder and real TLS reset/FIN tests; existing download clients/devnet | Ordinary Services integration, canonical read scheduling and bounded per-peer admission remain; see [contract](jamnp-block-service.md) |
 | CE129 state request | No runtime handler | Inclusive sorted 31-byte key range, canonical boundary nodes, parent-before-child/no duplicates, response-size/single-pair exception and root verification |
 | CE131/132 Safrole tickets | No runtime route; existing state ticket admission is separate | Target epoch, attempt/proof validation, next-set proxy selection from output tail, uncertainty rejection and timed forwarding |
 | CE133 work-package submission | No runtime handler | Core/package bound before authorization, exact extrinsic lengths, normal and builder ALPN acceptance, import recovery |

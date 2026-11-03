@@ -606,7 +606,12 @@ void rq_stream_want_write(void *s, int want) { lsquic_stream_wantwrite(s, want);
 /* FIN half-closes writing while reads remain active for the peer response. */
 void rq_stream_fin(void *s) { lsquic_stream_shutdown(s, 1); }
 /* Explicit reset/rejection closes both directions and retires callbacks before owner destruction. */
-void rq_stream_abort(void *s) { lsquic_stream_close(s); }
+/* Reject before write shutdown with a real RESET_STREAM, including after peer FIN.
+ * Already-finished streams need only ordinary retirement; the public API reports that state. */
+void rq_stream_abort(void *s) {
+    if (lsquic_stream_reset(s, 0) != 0)
+        lsquic_stream_close(s);
+}
 
 /* Disable read readiness once the native protocol validates FIN; avoid repeated EOF callbacks. */
 void rq_stream_want_read(void *s, int want) { lsquic_stream_wantread(s, want); }
