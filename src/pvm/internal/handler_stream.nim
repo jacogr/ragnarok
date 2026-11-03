@@ -78,7 +78,7 @@ type
     extra: seq[FlatRegion]
     dirty: seq[uint32]
     dirtyPages: seq[uint64] # Bounded 128 KiB bitmap; its set bits match dirty exactly.
-    payloadBytes: uint64 # Logical baseline and private payload charged to the idle retention limit.
+    payloadBytes: uint64    # Logical baseline and private payload charged to the idle retention limit.
   FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
     plan: FlatPlan
     info*: MachineInfo
