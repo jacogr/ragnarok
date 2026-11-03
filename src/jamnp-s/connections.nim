@@ -25,6 +25,9 @@ type
     Ready, Closed, Retired
   NodeStreamCallback* = proc(user: pointer, peer: NodePeer, stream: NativeStream,
       event: cint) {.nimcall, raises: [].} ## Borrow streams only synchronously; pending opens cancel on Closed/Retired.
+  NodeStreamAdmission* = proc(user: pointer, peer: NodePeer, stream: NativeStream): bool {.nimcall,
+      raises: [].}
+    ## Inspect quotas before claiming a raw route; do not allocate stream-owned state until the open callback.
   NodePeerCallback* = proc(user: pointer, peer: NodePeer, event: NodePeerEvent) {.nimcall, raises: [].}
     ## Lifecycle callbacks may queue work/request closure, but must not recursively poll or retire the owner.
   ConnectionConfig* = object ## Caller-owned bounded startup input is copied before the first native borrow.
@@ -32,7 +35,7 @@ type
     binding*: NetworkAddress
     port*: uint16
     builders*, others*: GuestConnectionBudget
-    streams*: range[1..8192]
+    streams*: range[1..16384]
   ConnectionState = object ## One physical connection may await promotion while its older policy owner closes.
     phase: ConnectionPhase
     key: StateEdKey
@@ -79,6 +82,7 @@ type
     user: nil pointer
     streamCallback: nil NodeStreamCallback
     peerCallback: nil NodePeerCallback
+    admissionCallback: nil NodeStreamAdmission
 
 const RetryMs = 250
 const FallbackMs = 5000
@@ -111,7 +115,7 @@ proc `=wasMoved`*(owner: var NodeConnections) {.nodestroy, requires: not owner.o
   owner.openRead = 0; owner.openWrite = 0; owner.openCount = 0; owner.maximum = 0
   owner.local = default(StateEdKey); owner.limits = default(SafroleStateConfig)
   owner.now = default(MonoTime); owner.user = nil
-  owner.streamCallback = nil; owner.peerCallback = nil
+  owner.streamCallback = nil; owner.peerCallback = nil; owner.admissionCallback = nil
 proc `=destroy`*(owner: NodeConnections) =
   ## Explicit close retires C and stream callbacks before their enclosing contexts disappear.
   assert not owner.opened, "NodeConnections must close before callback storage retires"
@@ -127,7 +131,7 @@ proc `=destroy`*(owner: NodeConnections) =
   `=destroy`(owner.opens)
 func initConnectionConfig*(certificate, privateKey, protocol: string, port = 0'u16,
     binding = default(NetworkAddress), builders: GuestConnectionBudget = 20,
-    others: GuestConnectionBudget = 20, streams: range[1..8192] = 4096): ConnectionConfig =
+    others: GuestConnectionBudget = 20, streams: range[1..16384] = 4096): ConnectionConfig =
   ## Preserve a compact default startup path; open validates path/domain/profile before resources exist.
   ConnectionConfig(certificate: certificate, privateKey: privateKey, protocol: protocol,
     port: port, binding: binding, builders: builders, others: others, streams: streams)
@@ -375,6 +379,18 @@ proc dispatch(owner: var NodeConnections, kind: ConnectionKind, position: int,
     for index in 0..<owner.routes.len:
       if owner.routes[index].stream == default(NativeStream): free = index; break
     if free < 0: streamAbort(stream); return # Bounded stream storage applies before application work.
+    let admission = owner.admissionCallback
+    let context = owner.user
+    if admission != nil and context != nil:
+      var allowed = false
+      block:
+        assert owner.callbackDepth < 64
+        inc owner.callbackDepth
+        defer: dec owner.callbackDepth
+        allowed = admission(context, peer, stream) # Inspect only: no route or application byte owner exists yet.
+      if not allowed or owner.stopping or not owner.active(peer):
+        streamAbort(stream)
+        return # Refused streams cannot consume the route capacity reserved for other peers/UP0.
     owner.routes[free] = Route(stream: stream, peer: peer)
   var route = -1
   for index in 0..<owner.routes.len:
@@ -522,12 +538,12 @@ func validPath(path: string): bool =
 proc open*(owner: var NodeConnections, config: ConnectionConfig,
     source: BlockSnapshotResult, limits: SafroleStateConfig,
     streamCallback: nil NodeStreamCallback = nil, peerCallback: nil NodePeerCallback = nil,
-    user: nil pointer = nil): ConnectionError {.requires: owner.callbackDepth == 0.} =
+    user: nil pointer = nil, admissionCallback: nil NodeStreamAdmission = nil): ConnectionError {.requires: owner.callbackDepth == 0.} =
   ## Capture bounded canonical facts, own fixed callback storage and install native admission before IO.
   if owner.opened or not validPath(config.certificate) or not validPath(config.privateKey) or
-      int(config.streams) < 1 or int(config.streams) > 8192: return ConnectionError.InvalidConfig
+      int(config.streams) < 1 or int(config.streams) > 16384: return ConnectionError.InvalidConfig
   if user == nil and (streamCallback != nil or peerCallback !=
-      nil): return ConnectionError.InvalidConfig
+      nil or admissionCallback != nil): return ConnectionError.InvalidConfig
   let protocols = serverAlpns(config.protocol)
   if protocols.len != 2: return ConnectionError.InvalidConfig
   let selected = captureValidatorTopology(source, limits)
@@ -551,6 +567,7 @@ proc open*(owner: var NodeConnections, config: ConnectionConfig,
   owner.user = user
   owner.streamCallback = streamCallback
   owner.peerCallback = peerCallback
+  owner.admissionCallback = admissionCallback
   owner.incoming = newSeq[ConnectionState](owner.policy.capacity)
   owner.locations = newSeq[Location](owner.policy.capacity)
   owner.dialers = newSeq[Dialer](maximum)

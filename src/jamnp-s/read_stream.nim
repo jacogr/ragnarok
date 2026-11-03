@@ -85,9 +85,18 @@ proc captureReadReply*(request: ReadRequest, wire: openArray[byte]): ReadResult[
   var copied = newSeq[byte](wire.len)
   for index in 0..<wire.len: copied[index] = wire[index]
   ReadResult[ReadReply](status: ReadError.None, completed: ReadReply(request: request, wire: copied))
+func byteLength*(reply: ReadReply): int =
+  ## Inspect frozen wire extent before admitting a host-side output copy against aggregate credit.
+  reply.wire.len
 proc bytes*(reply: ReadReply): seq[byte] =
   ## Copy the frozen transcript without exporting mutable storage.
   reply.wire
+func writtenBytes*(route: ReadRoute): int =
+  ## Scalar progress lets the enclosing host enforce inactivity without inspecting or copying output.
+  route.offset
+func receivedBytes*(route: ReadRoute): int =
+  ## Fixed request progress is observable without exposing the partially filled request array.
+  route.used
 func handle*(route: ReadRoute): NativeStream =
   ## Parent compares the borrowed pointer only during its native lifetime.
   route.stream

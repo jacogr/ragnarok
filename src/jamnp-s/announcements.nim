@@ -190,6 +190,18 @@ proc configure*(reader: var AnnouncementReader, maximum: ByteLimit): Announcemen
     failure: AnnouncementError.None)
   AnnouncementError.None
 
+func bufferedBytes*(reader: AnnouncementReader): int =
+  ## Account only owned payload bytes; the fixed E4 prefix is part of the parent's fixed frame budget.
+  reader.body.len
+proc setMaximum*(reader: var AnnouncementReader, maximum: ByteLimit): AnnouncementError =
+  ## Change the next-message ceiling only at an empty acknowledged boundary.
+  if not reader.configured: return AnnouncementError.Uninitialized
+  if reader.failure != AnnouncementError.None: return reader.failure
+  if reader.prefix != 0 or reader.body.len != 0 or reader.complete: return AnnouncementError.Busy
+  if uint64(maximum) < 37 or uint64(maximum) > 1048576: return AnnouncementError.InvalidPolicy
+  reader.maximum = int(uint64(maximum))
+  AnnouncementError.None
+
 func error*(reader: AnnouncementReader): AnnouncementError =
   ## A default reader is uninitialized, not an empty successful stream.
   if reader.configured: reader.failure else: AnnouncementError.Uninitialized
