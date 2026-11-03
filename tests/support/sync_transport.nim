@@ -153,7 +153,8 @@ proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: []
   else: discard # Unknown native events carry no fixture authority.
 
 proc open*(server: var SyncResponder, anchor: AnnouncedBlock,
-    leaves: seq[AnnouncedBlock], binding = default(NetworkAddress)): uint16 =
+    leaves: seq[AnnouncedBlock], binding = default(NetworkAddress),
+        alpn = "jamnp-s/1/00000000"): uint16 =
   ## Literal handshake construction intentionally does not call production UP0 encoders.
   assert leaves.len <= 63
   var body: seq[byte] = @[]
@@ -162,7 +163,7 @@ proc open*(server: var SyncResponder, anchor: AnnouncedBlock,
   for leaf in leaves: body.append(leaf)
   server.initial = frame(body)
   assert server.transport.openTransport(true, false, 0, getEnv("RAGNAROK_TEST_CERT_B"),
-    getEnv("RAGNAROK_TEST_KEY_B"), "jamnp-s/1/00000000", addr server, verify, event, multi = true,
+    getEnv("RAGNAROK_TEST_KEY_B"), alpn, addr server, verify, event, multi = true,
         localAddress = binding)
   server.transport.localPort
 proc poll*(server: var SyncResponder) =

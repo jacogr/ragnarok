@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit multi-child native request sequences qualify command restart and bounded authenticated retries.
+import ./chain_alpn
+
 import std/[assertions, syncio, monotimes, times, os, strutils, envvars]
 import std/posix/posix
 import ../../src/chain/genesis
@@ -38,7 +40,7 @@ proc exchangeCurrentSequence*(fixture: CurrentConsecutiveFixture, start, request
   for index in 0..<responses.len:
     requests.add(currentExpectedRequest(array[32, byte](fixture.heads[start+index].blockHash)))
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, modes, fallback)
+  assert servers.openSequenceResponders(requests, responses, modes, fallback, fixtureChainAlpn(chainPath))
   let port = servers.port(true)
   let firstPort = servers.port(false)
   let child = posix.fork()

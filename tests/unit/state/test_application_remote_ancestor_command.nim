@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Production command fetches genuine lookup context before a signed two-guest child through independent TLS processes.
+import ../../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
 import ../../../src/app/download/[command as download_command, policy as download_policy,
@@ -61,7 +63,7 @@ proc scenario(remote, child: seq[byte], remoteRequest, childRequest: array[42, b
   let mode = if which == MissingFin: NoFin else: DownloadTransferMode.Healthy
   var servers = default(DownloadResponders)
   assert servers.openSequenceResponders(@[remoteRequest, childRequest], @[response, child],
-    @[mode, DownloadTransferMode.Healthy], which == Fallback)
+    @[mode, DownloadTransferMode.Healthy], which == Fallback, fixtureChainAlpn("remote-command-chain"))
   let firstPort = servers.port(false)
   let secondPort = servers.port(true)
   let process = posix.fork()

@@ -26,7 +26,7 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/state/store
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/bandersnatch/bandersnatch
-import ../../support/[current_consecutive_context, sync_transport]
+import ../../support/[current_consecutive_context, sync_transport, chain_alpn]
 
 proc collectLog(raw: nil pointer, batch: string) {.raises: [].} =
   ## The writer alone mutates captured bytes; the test reads them only after joined close.
@@ -139,7 +139,7 @@ proc commandRound(initial: BlockSnapshot, wires: seq[SyncWireBlock], expected: B
   server.catalog = wires
   server.expectedHeader = newSeq[byte](expected.header.headerInfo.value.consumed)
   assert expected.header.encodeOwnedHeader(server.expectedHeader).error == HeaderError.None
-  let port = server.open(claim(initial), @[claim(expected)])
+  let port = server.open(claim(initial), @[claim(expected)], alpn = fixtureChainAlpn(chainPath))
   let parent = currentPid()
   let child = posix.fork()
   assert int(child) >= 0, "foreground responder process"
@@ -193,7 +193,8 @@ proc commandRound(initial: BlockSnapshot, wires: seq[SyncWireBlock], expected: B
   assert posix.waitpid(child, status, 0) == child
   reaped = true
   assert WIFEXITED(status) and WEXITSTATUS(status) == 0, "foreground independent source joined"
-  assert outcome.error == CurrentDownloadCommandResult.Stopped and outcome.requestedBlocks == 0
+  assert outcome.error == CurrentDownloadCommandResult.Stopped and outcome.requestedBlocks == 0,
+      "foreground outcome: " & $outcome.error
   assert outcome.adoptedBlocks == requested, "signal stop preserves the actual imported prefix"
 
 proc commandCheck(initial: BlockSnapshot, wires: seq[SyncWireBlock],
@@ -320,6 +321,20 @@ proc main() {.raises.} =
   for turn in 0..<4: assert host.tick(CurrentDownloadLoopTick(0)) == CurrentSyncError.None
   assert host.progress.stage == CurrentSyncStage.Unknown and not host.progress.fullReady
   assert not host.progress.lightReady and host.progress.adoptedBlocks == 0
+  var networkOnly = default(Options)
+  assert parseCanonicalOptions(@["server", "--chain", path], networkOnly), "stateless domain parse"
+  var isolated = default(Services)
+  assert isolated.start(networkOnly, "configured stateless JAM endpoint"), "stateless genesis capture"
+  assert isolated.networkProtocol(networkOnly) == fixtureChainAlpn(path), "stateless configured domain"
+  isolated.close()
+  assert isolated.networkProtocol(networkOnly).len == 0, "closed owner grants no domain"
+  let configuredProtocol = owner.networkProtocol(options)
+  assert configuredProtocol == fixtureChainAlpn(path), "captured configured protocol: " & configuredProtocol
+  var wrongProtocol = default(Options)
+  assert parseCanonicalOptions(@["server", "--chain", path, "--net-alpn", "jamnp-s/2/00000000"],
+      wrongProtocol), "explicit domain parse"
+  assert owner.networkProtocol(wrongProtocol).len ==
+      0 # Even a live canonical owner cannot authorize an explicit conflicting domain.
   let unsynchronized = host.progress
   checkLog(host.progress, "Waiting for sync target")
   checkLog(host.progress, "peer target: unknown, lag: unknown")
@@ -380,6 +395,7 @@ proc main() {.raises.} =
   host.advance(server, CurrentSyncStage.CatchingUp, now)
   host.advance(server, CurrentSyncStage.CaughtUp, now)
   assert host.progress.adoptedBlocks == 72 and host.progress.localHead == claim(heads[71])
+  assert owner.networkProtocol(options) == configuredProtocol # Later canonical heads never become the configured genesis.
   assert host.retainedAncestors == 2 and owner.chainView.retainedCount <= 64
   assert array[32, byte](owner.stateSnapshot.value.commitment.root) == array[32, byte](heads[
       71].stateSnapshot.commitment.root)

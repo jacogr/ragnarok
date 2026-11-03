@@ -57,6 +57,7 @@ let bareServer = parsed(@["server"])
 assert bareServer.argument(2) == "34100" and bareServer.argument(3).endsWith("data/network/cert.pem")
 assert bareServer.argument(4).endsWith("data/network/key.pem") and bareServer.argument(5) == "-"
 assert bareServer.argument(6) == DefaultDevelopmentAlpn
+assert bareServer.networkAlpnOverride.len == 0
 assert bareServer.argument(7) == "0" and bareServer.argument(8) == "listen"
 let diskDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "--state-storage", "disk"])
 assert diskDefault.chainPath == DefaultChainFile and diskDefault.stateDatabase == "custom/full/state.db"
@@ -68,6 +69,7 @@ assert managedDefault.stateDatabase == "./data/full/managed"
 assert "default: 34100" in commandHelp("server")
 assert "--data-dir DIR" in commandHelp("server")
 let named = parsed(peer())
+assert named.networkAlpnOverride == "network"
 assert named.argumentCount == 8, "CLI invariant: named.argumentCount == 8"
 assert named.argument(2) == "4000" and named.argument(3) == "node.pem", "CLI invariant: named.argument(2) == \"4000\" and named.argument(3) == \"node.pem\""
 assert named.argument(7) == "10000" and named.argument(8) == "valid", "CLI invariant: named.argument(7) == \"10000\" and named.argument(8) == \"valid\""
@@ -116,7 +118,7 @@ normalized(@["mesh", "--net-remote-port", "4001", "--net-local-port", "4000", "-
   "--net-key", "key",
   "--net-peer-key", "remote", "--net-local-key", "local", "--net-alpn", "network", "--net-gate",
   "ready"],
-  @["mesh", "4000", "4001", "cert", "key", "local", "remote", "network", "ready"])
+  @["mesh", "4000", "4001", "cert", "key", "local", "remote", "network", "ready", "--net-alpn", "network"])
 normalized(@["check-traces", "--trace-file", "first.bin", "--trace-policy", "policy",
   "--trace-genesis", "genesis",
   "--trace-file", "second.bin", "--with-state", "--chain", "chain"],
