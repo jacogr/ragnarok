@@ -1,0 +1,12 @@
+{
+  "defines": [],
+  "directory": "state",
+  "includes": [
+    "crypto"
+  ],
+  "libraries": [
+    "crypto"
+  ],
+  "observers": [],
+  "prepared": false
+}

@@ -5,14 +5,15 @@
 import std/[assertions, envvars, syncio, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/proof/worker
-import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, read_client]
+import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, read_client,
+    read_validation, canonical_read]
 import ../../../src/chain/[genesis, parameters, provider]
 import ../../../src/codec/header
 import ../../../src/codec/state/safrole
-import ../../../src/state/store
+import ../../../src/state/[store, range_proof]
 import ../../../src/rpc/server
 import ../../../src/lib/json/writer as json_writer
-import ../../support/[jamnp_topology_fixture, jamnp_node_probe]
+import ../../support/[jamnp_topology_fixture, jamnp_node_probe, jamnp_read_validation_context]
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
@@ -56,6 +57,9 @@ proc main() {.raises.} =
   assert host.open(services, config, topologyLimits(), StateTime(7)) == NodeError.NoFinality
   let selected = services.chainView.bestBlock.value
   let hash = selected.blockHash
+  let expectedRoot = array[32, byte](selected.stateRoot)
+  let expectedKeys = selected.keyCount
+  let verificationPolicy = readVerificationLimits()
   assert services.publishFinalized(default(BlockHash)) == ViewFinalizeError.UnknownBlock
   assert services.publishFinalized(hash) == ViewFinalizeError.None
   assert host.open(services, config, topologyLimits(), StateTime(7)) == NodeError.None
@@ -97,12 +101,57 @@ proc main() {.raises.} =
   assert not host.requestLive(outgoing.value)
   assert services.stateProofActive and services.rpc.chainPaused,
     "outbound network collection leaves a foreign canonical worker lease intact"
+  assert services.beginReadVerification(outgoingRequest, reply.value.bytes,
+      verificationPolicy).error == StateProofAdmissionError.Busy
   let cancelledOutgoing = host.request(peer, outgoingRequest)
   assert cancelledOutgoing.error == NodeError.None and host.cancelRequest(cancelledOutgoing.value)
   pump(host, services, probe, 30)
   assert probe.served == 1 and services.stateProofActive and services.rpc.chainPaused
   assert services.collectStateProof(foreignDuringNetwork.value).kind ==
       ProofWorkerCompletionKind.ReadCompleted
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let stateRequest = readStateRequest(hash)
+  let prepared = serveCanonicalRead(services.chainView, stateRequest)
+  assert prepared.error == ReadError.None
+  let stateWire = prepared.value.bytes
+  var stateRequestWire = @[129'u8, 98, 0, 0, 0]
+  for octet in stateRequest.payload: stateRequestWire.add(octet)
+  probe.expectRead(stateRequestWire, stateWire)
+  let acquire = host.request(peer, stateRequest)
+  assert acquire.error == NodeError.None
+  pump(host, services, probe, 80)
+  let acquired = host.takeReply(acquire.value)
+  assert acquired.error == ReadError.None and acquired.value.valid
+  let acquiredWire = acquired.value.bytes
+  let verification = services.beginReadVerification(stateRequest, acquiredWire, verificationPolicy)
+  assert verification.error == StateProofAdmissionError.None
+  assert services.stateProofActive and services.rpc.chainPaused
+  while services.stateProofPhase != ProofWorkerPhase.Done: pump(host, services, probe, 1)
+  assert services.stateProofActive and services.rpc.chainPaused, "Done verification retains the graph/RPC lease"
+  let verified = services.collectStateProof(verification.value)
+  assert verified.kind == ProofWorkerCompletionKind.ReadVerified
+  assert verified.verifiedReadValue.error == ReadVerificationError.None
+  let page = verified.verifiedReadValue.value.statePage
+  assert page.complete and page.len == expectedKeys
+  assert array[32, byte](page.root) == expectedRoot
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  var badWire: seq[byte] = @[]
+  for octet in acquiredWire: badWire.add(octet)
+  assert badWire.len > 0
+  badWire[badWire.len-1] = badWire[badWire.len-1] xor 1
+  let rejected = services.beginReadVerification(stateRequest, badWire, verificationPolicy)
+  assert rejected.error == StateProofAdmissionError.None
+  while services.stateProofPhase != ProofWorkerPhase.Done: pump(host, services, probe, 1)
+  let failed = services.collectStateProof(rejected.value)
+  assert failed.kind == ProofWorkerCompletionKind.ReadVerified
+  assert failed.verifiedReadValue.error == ReadVerificationError.StateFailure
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let discarded = services.beginReadVerification(stateRequest, acquiredWire, verificationPolicy)
+  assert discarded.error == StateProofAdmissionError.None
+  while services.stateProofPhase != ProofWorkerPhase.Done: pump(host, services, probe, 1)
+  assert services.cancelStateProof(discarded.value)
+  assert services.stateProofActive and services.rpc.chainPaused
+  assert services.collectStateProof(discarded.value).kind == ProofWorkerCompletionKind.Cancelled
   assert not services.stateProofActive and not services.rpc.chainPaused
   let cancelled = probe.issue(request)
   let start = getMonoTime()
@@ -134,7 +183,8 @@ proc main() {.raises.} =
   assert host.localPort == 0 and not host.isOpen
   assert host.open(services, config, topologyLimits(), StateTime(8)) == NodeError.None
   let decoded = decodeReadRequest(ReadKind.Blocks, request.toOpenArray(5, request.len-1))
-  let foreign = services.beginNetworkRead(decoded.value)
+  assert decoded.error == ReadError.None
+  let foreign = services.beginReadVerification(stateRequest, acquiredWire, verificationPolicy)
   assert foreign.error == StateProofAdmissionError.None
   host.close()
   assert services.stateProofActive and services.rpc.chainPaused, "closing an idle host leaves a foreign worker lease intact"

@@ -47,6 +47,8 @@ import ./current/logical as collected_logical
 import ../state/parent/logical as parent_logical
 import ../state/current/logical as current_logical
 import ./proof/[query as proof_query, worker as proof_worker, network_read]
+import ./proof/read_validation as verification_job
+import ../jamnp-s/read_validation as read_verification
 import ../jamnp-s/read_stream
 import ../state/proof/[service as proof_service, plan as proof_plan, view as proof_view]
 import ../state/trie_proof
@@ -83,6 +85,12 @@ import ../mcp/protocol as mcp_protocol
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
     Uninitialized, None, Closed, Busy, QueryFailure, WorkerFailure
+  ReadVerificationStart* = object ## Bounded fresh verification shares the existing exact Services worker lease.
+    case status: StateProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of QueryFailure: verificationReason: ReadVerificationError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Closed/busy/default starts carry no job, graph or collection ticket.
   NetworkReadStart* = object ## Managed canonical reads use the same exclusive capacity but distinct read failure reasons.
     case status: StateProofAdmissionError
     of None: ticket: ProofWorkerTicket
@@ -173,6 +181,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   proofWorker: StateProofWorker
   proofInput: ProofQuery
   networkReadInput: NetworkReadJob
+  verificationInput: ReadVerificationJob
   rpcProof: RpcProofDispatch        # Detached connection intent never retains canonical state.
   rpcProofTicket: ProofWorkerTicket # Host-only exact collection authority for an RPC-origin job.
   proofing: bool
@@ -231,6 +240,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.proofWorker)
   `=wasMoved`(services.proofInput)
   `=wasMoved`(services.networkReadInput)
+  `=wasMoved`(services.verificationInput)
   `=wasMoved`(services.rpcProof)
   `=wasMoved`(services.rpcProofTicket)
   `=wasMoved`(services.diskWorker)
@@ -275,6 +285,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
   `=destroy`(services.proofInput)
   `=destroy`(services.networkReadInput)
+  `=destroy`(services.verificationInput)
   `=destroy`(services.rpcProof)
   `=destroy`(services.rpcProofTicket)
   `=destroy`(services.diskWorker) # Join must precede every disk/canonical/publication alias retirement.
@@ -474,6 +485,7 @@ proc stopStateProofs*(services: var Services) =
   if services.proofing:
     services.proofInput = default(ProofQuery)
     services.networkReadInput = default(NetworkReadJob)
+    services.verificationInput = default(ReadVerificationJob)
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Only this worker's joined lease can reopen canonical access.
@@ -1302,6 +1314,54 @@ func workerError*(outcome: NetworkReadStart): ProofWorkerError {.requires: outco
     StateProofAdmissionError.WorkerFailure.} =
   ## Expose native worker admission refusal only in its matching alternative.
   outcome.workerReason
+func error*(outcome: ReadVerificationStart): StateProofAdmissionError =
+  ## Observe admission failure without granting a partially captured verification job.
+  outcome.status
+func value*(outcome: ReadVerificationStart): ProofWorkerTicket {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Only successful native admission grants this exact lease collection identity.
+  outcome.ticket
+func verificationError*(outcome: ReadVerificationStart): ReadVerificationError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Capture refusals remain distinct from later CPU proof/hash failures.
+  outcome.verificationReason
+func workerError*(outcome: ReadVerificationStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## A native admission cause exists only in its matching failed alternative.
+  outcome.workerReason
+proc stageReadVerification(services: var Services, request: ReadRequest,
+    wire: openArray[byte], limits: ReadVerificationLimits): ReadVerificationError =
+  ## All canonical aliases retire with this activation; only fresh wire/fixed metadata remain for CPU work.
+  let captured = captureReadVerification(services.canonical.chainView, request, wire, limits)
+  if captured.error == ReadVerificationError.None: services.verificationInput = captured.value
+  captured.error
+proc beginReadVerification*(services: var Services, request: ReadRequest,
+    wire: openArray[byte], limits: ReadVerificationLimits): ReadVerificationStart {.raises.} =
+  ## Full-state Services selects trusted roots before submission; partial/light state has a separate owner contract.
+  if not services.started: return ReadVerificationStart(status: StateProofAdmissionError.Closed)
+  if services.light.active: return ReadVerificationStart(
+    status: StateProofAdmissionError.QueryFailure,
+    verificationReason: ReadVerificationError.NoSource)
+  if not services.stateProofAvailable: return ReadVerificationStart(
+      status: StateProofAdmissionError.Busy)
+  discard services.proofWorker.start()
+  let captured = services.stageReadVerification(request, wire, limits)
+  if captured != ReadVerificationError.None: return ReadVerificationStart(
+    status: StateProofAdmissionError.QueryFailure, verificationReason: captured)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.verificationInput = default(ReadVerificationJob)
+    return ReadVerificationStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.verificationInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true # Cancellation/Done still retain the exact lease until collection or joined stop.
+    return ReadVerificationStart(status: StateProofAdmissionError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.verificationInput = default(ReadVerificationJob)
+  ReadVerificationStart(status: StateProofAdmissionError.WorkerFailure,
+      workerReason: admitted.error)
+
 proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
   ## Every temporary canonical alias retires in this activation before native submission.
   let captured = captureNetworkRead(services.canonical.chainView, request)
