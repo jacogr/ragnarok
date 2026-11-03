@@ -143,6 +143,28 @@ proc transcript(view: ChainView) {.raises.} =
   pump(service, probe, 30)
   assert probe.flows[unsupported].reset and service.peerCount == 1
   assert service.source(peer).error == NodeError.None, "usable UP0 handshake"
+  let fast = probe.issue(request)
+  pump(service, probe, 20)
+  let firstQueued = service.takeRead()
+  assert firstQueued.error == NodeError.None and firstQueued.value.request.kind == ReadKind.Blocks,
+    "the first request is admitted before the second arrives"
+  var missingPreimage = @[143'u8, 32, 0, 0, 0]
+  for index in 0..<32: missingPreimage.add(0)
+  discard probe.issue(missingPreimage)
+  pump(service, probe, 20)
+  assert service.respond(firstQueued.value.ticket, completed.readValue.value) == ReadError.None, "finish first queued reply"
+  pump(service, probe, 30)
+  assert probe.flows[fast].receivedFin, "first queued reply reaches FIN"
+  discard probe.issue(request)
+  pump(service, probe, 30)
+  let waiting = service.takeRead()
+  assert waiting.error == NodeError.None and waiting.value.request.kind == ReadKind.Preimage,
+    "a reused lower read slot cannot overtake an already waiting request"
+  assert service.reject(waiting.value.ticket), "waiting read remains live until explicit rejection"
+  let retried = service.takeRead()
+  assert retried.error == NodeError.None and retried.value.request.kind == ReadKind.Blocks, "reused low slot remains pending after fair selection"
+  assert service.reject(retried.value.ticket)
+  pump(service, probe, 30)
   let withheld = probe.issue(hello, persistent = true, enabled = false)
   pump(service, probe, 10)
   let malformed = probe.issue(@[0'u8, 0, 0, 16, 0], persistent = true)

@@ -82,6 +82,18 @@ func chainView*(chain: ApplicationChain): ChainView =
   ## Retain an immutable request/history view; default owners retain an explicitly uninitialized view.
   chain.view
 
+proc publishFinalized*(chain: var ApplicationChain, hash: BlockHash): ViewFinalizeError =
+  ## A trusted host selects retained finality explicitly; neither structural capture nor best head certifies it.
+  let updated = chain.view.finalizeView(hash)
+  if updated.error != ViewFinalizeError.None: return updated.error
+  chain.view = updated.value
+  ViewFinalizeError.None
+
+proc publishFinalized*(chain: var ApplicationChain, rpc: var rpc_server.Server,
+    hash: BlockHash): ViewFinalizeError =
+  ## Match and install both complete views before any finalized subscriber queue work.
+  rpc.publishFinalized(chain.view, hash)
+
 proc describeHead*(chain: ApplicationChain): string =
   ## Format selected best/finalized observations without granting chain or finality authority.
   if chain.view.retainedCount == 0: return "best: unavailable, finalized: unavailable"

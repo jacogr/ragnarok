@@ -55,7 +55,7 @@ type
   NodeService* = object ## Explicit noncopyable aggregate owns one connection actor and fixed protocol slots.
     opened, stopping: bool
     failure: NodeError
-    callbacks, sweep, processCursor, peerCursor, broadcastCursor: int
+    callbacks, sweep, processCursor, peerCursor, broadcastCursor, readCursor: int
     serial, version, inputUsed, handshakeUsed, outputUsed, replyUsed: uint64
     now: MonoTime
     node: NodeConnections
@@ -88,6 +88,7 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   owner.processCursor = 0
   owner.peerCursor = 0
   owner.broadcastCursor = 0
+  owner.readCursor = 0
   owner.serial = 0
   owner.version = 0
   owner.inputUsed = 0
@@ -417,6 +418,7 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   owner.processCursor = 0
   owner.peerCursor = 0
   owner.broadcastCursor = 0
+  owner.readCursor = 0
   owner.frames = newSeq[Frame](frames)
   owner.peers = newSeq[Peer](capacity)
   owner.now = getMonoTime()
@@ -475,9 +477,11 @@ proc source*(owner: NodeService, peer: NodePeer): NodeResult[NodeClaims] =
         stream: owner.frames[index].number, claims: captured.value))
   NodeResult[NodeClaims](status: NodeError.Unavailable)
 proc takeRead*(owner: var NodeService): NodeResult[NodeReadTask] {.requires: owner.callbacks == 0.} =
-  ## Host releases at most one fixed request, only after native framing/FIN and before worker admission.
+  ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.
   if not owner.isOpen: return NodeResult[NodeReadTask](status: NodeError.Unavailable)
-  for index in 0..<owner.frames.len:
+  for inspected in 0..<owner.frames.len:
+    let index = owner.readCursor
+    owner.readCursor = (owner.readCursor+1) mod owner.frames.len
     if owner.frames[index].kind != FrameKind.Read or owner.frames[index].closing: continue
     if not owner.node.active(owner.frames[index].peer): continue
     let request = owner.frames[index].read.takeRequest()
