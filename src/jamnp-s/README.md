@@ -8,6 +8,7 @@ adoption remain explicit Nim decisions.
 
 | Modules | Responsibility |
 | --- | --- |
+| [`alpn.nim`](alpn.nim) | Exact version/chain protocol identifiers and base/builder acceptor negotiation |
 | [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |
 | [`messages.nim`](messages.nim), [`audits.nim`](audits.nim) | Bounded generic E4 messages and upgraded CE144/145 structural batch codecs |
 | [`protocol.nim`](protocol.nim) | Pinned JAMNP-S peer identity, names and CE framing checks |

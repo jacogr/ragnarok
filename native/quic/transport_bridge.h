@@ -29,6 +29,9 @@ int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);
+/* Install a copied bounded TLS ALPN wire vector on a server before any network processing.
+ * The native caller supplies all protocol policy; this bridge validates only TLS vector framing. */
+int rq_server_alpns(rq_transport *, const uint8_t *, size_t);
 /* Initiate one loopback connection; server receives through packet_in instead. */
 int rq_connect(rq_transport *, uint16_t remote_port);
 /* Queue graceful single-connection close before stopping UDP readiness. */
