@@ -49,6 +49,9 @@ type
   # The UDP sender consumes a borrowed C packet before returning; zero means retry later.
   SendCallback = proc(user: pointer, bytes: ptr ConstByte, length: csize_t,
       address: ptr ConstByte, port: uint16): cint {.cdecl, raises: [].}
+  # Synchronous authenticated policy: exactly1 admits; both byte spans are borrowed.
+  AdmissionCallback* = proc(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
+      protocol: ptr ConstByte, protocolLength: csize_t): cint {.cdecl, raises: [].}
   Transport* = object ## An endpoint owns UDP/engine and owns or borrows its selector; it has no ARC reference back to its peer.
     engine: nil pointer
     socket: UdpEndpoint
@@ -59,6 +62,7 @@ type
     stream: nil StreamCallback
     handshake: nil HandshakeCallback
     peer: nil PeerCallback
+    admission: nil AdmissionCallback
     buffer: array[2048, byte]
     stopping, failed: bool
     peerCapacity: int
@@ -75,6 +79,7 @@ proc `=wasMoved`*(owner: var Transport) {.nodestroy, inline, requires: owner.eng
   owner.engine = nil
   owner.registered = false; owner.selectorOwned = false; owner.ipv6 = false
   owner.user = nil; owner.verify = nil; owner.stream = nil; owner.handshake = nil; owner.peer = nil
+  owner.admission = nil
   `=wasMoved`(owner.buffer)
   owner.stopping = false; owner.failed = false
   owner.receivedBytes = 0; owner.sentBytes = 0
@@ -504,5 +509,25 @@ proc observePeers*(owner: var Transport, callback: PeerCallback): bool =
   owner.peer = callback
   if nativeObservePeers(owner.engine, cuint(owner.peerCapacity), peerForward) != 1:
     owner.peer = nil # A client, retired engine or late registration cannot own an incoming observer.
+    return false
+  true
+
+proc nativeAdmitPeers(engine: nil pointer, slots: cuint, callback: AdmissionCallback): cint {.
+    importc: "rq_admit_peers", header: BridgeHeader, cdecl, raises: [].}
+  ## Install generic policy before packet processing and native capacity freeze.
+proc admissionForward(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
+    protocol: ptr ConstByte, protocolLength: csize_t): cint {.cdecl, raises: [].} =
+  ## Forward authenticated fixed-slot admission while the transport and callback owner remain stable.
+  let owner = cast[ptr Transport](user)
+  let callback = owner.admission
+  let context = owner.user
+  if callback == nil or context == nil: return 0 # Missing policy context never grants admission.
+  callback(context, slot, der, length, protocol, protocolLength)
+proc admitPeers*(owner: var Transport, callback: AdmissionCallback): bool =
+  ## Install once on an idle server. Rejected replacement/late setup preserves existing policy.
+  if owner.admission != nil or callback == nil or owner.user == nil: return false
+  owner.admission = callback
+  if nativeAdmitPeers(owner.engine, cuint(owner.peerCapacity), admissionForward) != 1:
+    owner.admission = nil # Failed registration retains no callback or foreign borrow.
     return false
   true

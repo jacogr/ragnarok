@@ -24,6 +24,13 @@ int rq_observe_handshakes(rq_transport *, unsigned slots, rq_handshake_cb);
 /* Admitted server peers use the existing connection table; DER is borrowed only on admission. */
 enum { RQ_PEER_SLOTS = 16, RQ_MAX_PEER_SLOTS = 4096, RQ_PEER_ACCEPTED = 0, RQ_PEER_CLOSED = 1 };
 typedef void (*rq_peer_cb)(void *, unsigned, int, const uint8_t *, size_t);
+/* Decide authenticated server admission before retaining a free slot. DER and negotiated ALPN
+ * are borrowed only for this synchronous callback. Exactly one permits admission. */
+typedef int (*rq_admission_cb)(void *, unsigned, const uint8_t *, size_t,
+                                const uint8_t *, size_t);
+/* Startup-only, bounded TLS correlation uses public SSL/LSQUIC APIs; no role policy lives in C. */
+int rq_admit_peers(rq_transport *, unsigned slots, rq_admission_cb);
+
 /* Install before packets arrive; teardown alone does not generate a peer-close observation. */
 int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Copy a server connection capacity before network processing/observer registration; failure is atomic. */
