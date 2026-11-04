@@ -96,6 +96,9 @@ def published_json():
     result=[]
     for chain in ('tiny','full'):
         for name in ('always_accumulate-1','bless_from_non_manager-2',
+                     'discarded_junior_creates_no_service-1',
+                     'discarded_junior_keeps_provisions-1',
+                     'discarded_manager_privileges_revert-1',
                      'deferred_transfer_to_junior_is_delivered-1',
                      'service_reads_transfers_before_work_digests-1',
                      'supervisor_modification_discards_junior_results-1',

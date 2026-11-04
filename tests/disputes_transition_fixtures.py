@@ -66,11 +66,11 @@ def prepare(folder):
                   chapter(after['psi']).hex(), assignments(after['rho']).hex(), marker.hex() or '-', ','.join(record(i)['report'].hex() for i in range(2))]
         rows.append(' '.join(values))
         sources.append(dict(path=path, sha256=digest, accepted=expected == 'ok'))
-    assert len(rows) == 60 and sum(s['accepted'] for s in sources) == 19
+    assert len(rows) == 62 and sum(s['accepted'] for s in sources) == 21
     folder.mkdir(parents=True, exist_ok=True)
     path = folder/'disputes-transition.txt'
     path.write_text('\n'.join(rows)+'\n')
-    evidence = dict(cases=len(rows), accepted=19, published_accepted=21, incompatible_dummy_assignments=2, sources=sources, vector_commit=pins['commit'],
+    evidence = dict(cases=len(rows), accepted=21, published_accepted=23, incompatible_dummy_assignments=2, sources=sources, vector_commit=pins['commit'],
                     fixture_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     (folder/'disputes-transition.json').write_text(json.dumps(evidence, indent=2)+'\n')
     return path, evidence

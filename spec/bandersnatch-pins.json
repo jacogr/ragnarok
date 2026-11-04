@@ -46,7 +46,7 @@
   "cargo_lock_sha256": "56c77a8c3ab198f840358cbf600cd08f1a4d8f46795990b8de678932c99f4082",
   "official_jam": {
     "repository": "jam-conformance/jam-test-vectors",
-    "commit": "d7b73e396d2f872fcfca37cbbb7d7869675d34d6",
+    "commit": "c84f9aa79de298aaefb9b60818c67a9416f66c8f",
     "files": {
       "vectors/official/bandersnatch/jam-tiny.json": "stf/safrole/tiny/publish-tickets-no-mark-2.json",
       "vectors/official/bandersnatch/jam-full.json": "stf/safrole/full/publish-tickets-no-mark-2.json",

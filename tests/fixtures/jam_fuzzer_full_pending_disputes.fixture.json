@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_PENDING_DISPUTES",
   "files": {
-    "jam-fuzzer-full-pending-disputes.json": "718dfb9d5b887618379baa4d79d490871c5109cf0d27bc7d0ad5cde6ea9ec1df"
+    "jam-fuzzer-full-pending-disputes.json": "37889abe70ec268d25b1fa050b2ce4e17d132982c3619da89566492bffb2cf4c"
   },
   "target": "jam-fuzzer-full-pending-disputes.json"
 }

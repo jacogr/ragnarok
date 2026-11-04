@@ -1,5 +1,9 @@
 # Current Gray Paper qualification
 
+The subsequent [accumulation/dispute vector refresh](vector-accumulation-disputes-upgrade.md)
+records the current preview source and its bounded coverage. Historical vector
+identities below describe this qualification's original evidence.
+
 Target source: `fad0ded4a433052397bf7234352a57fe491883f7`, compared with
 `3861aed15d7d016a3a416e14e61fc67dddf6daec`. The upgrade covers authorizer code limits,
 package gas inclusivity, report refine-load bounds, refinement failure precedence,

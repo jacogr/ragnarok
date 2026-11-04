@@ -5,7 +5,7 @@
   "accepted": 5,
   "refused": 4,
   "initial_contest_sha256": "a40d2270bd07b6f0aea548fceb75d04a786c9e828d8267158d0c3aa90bab6f4e",
-  "ticket_input_sha256": "5a09f46dcd583be255ff2e5d1cedf08622b49afb853b343ca2c405615c50da70",
+  "ticket_input_sha256": "f32aee88052e22039cc00ecc4975366ea3b92d577266c9b9eb660ede3663b446",
   "successor_roots": [
     [
       "742a550bccbb441f19d5703bcabd6a3e3fe22330e915c75b74270bf2586c2469",

@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_CONTEST",
   "files": {
-    "jam-fuzzer-full-contest.json": "f1ac29024358eedac222e23a43eb097a786a80026325d898c94c87515d58b46a"
+    "jam-fuzzer-full-contest.json": "28328dc8494745473391f05d8b7a1f69463d0fa163fc72fef18acfb12f696224"
   },
   "target": "jam-fuzzer-full-contest.json"
 }

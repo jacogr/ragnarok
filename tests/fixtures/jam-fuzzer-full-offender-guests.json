@@ -9,8 +9,8 @@
     637,
     637
   ],
-  "pending_fixture_sha256": "718dfb9d5b887618379baa4d79d490871c5109cf0d27bc7d0ad5cde6ea9ec1df",
-  "full_guests_sha256": "5c813b637f6a0ebe198822f0efc5e2f262f065c7f03b961bcdc9ca2bf164f192",
+  "pending_fixture_sha256": "37889abe70ec268d25b1fa050b2ce4e17d132982c3619da89566492bffb2cf4c",
+  "full_guests_sha256": "6242d46c9200826e53488151afbe4130c19061a445c97459e812bf61567be910",
   "successor_roots": [
     [
       "e235eda18459975c860470d1d0628370f0e8e9cbbd6695e2c2d99f29a377da55",
