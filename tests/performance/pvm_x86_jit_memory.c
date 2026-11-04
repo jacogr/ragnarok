@@ -50,6 +50,50 @@ int main(void) {
         assert(pvm_x86_arena_region(owner, region + 1, registers, state) == UINT32_MAX);
         assert(pvm_x86_arena_region(owner, 1024 * 1024, registers, state) == UINT32_MAX);
         assert(registers[0] == 9 && state[0] == 7);
+        /* Typed cycle entries keep a distinct successful receipt and refuse invalid borrows before execution. */
+        unsigned char cell = 0;
+        uint64_t dirty = 0;
+        pvm_x86_cycle_memory cycle_memory = { .write_ptr = &cell, .dirty_words = 1 };
+        pvm_x86_cycle_state cycle_state = { .gas = 5, .attempts = 7 };
+        const uint64_t receipt = (UINT64_C(1) << 32) | UINT64_C(42);
+        assert(pvm_x86_arena_cycle(owner, next, registers, &cycle_memory, &dirty,
+            &cycle_state) == receipt);
+        assert(pvm_x86_arena_cycle(NULL, next, registers, &cycle_memory, &dirty,
+            &cycle_state) == 0);
+        assert(pvm_x86_arena_cycle(owner, next + 1, registers, &cycle_memory, &dirty,
+            &cycle_state) == 0);
+        assert(pvm_x86_arena_cycle(owner, next, NULL, &cycle_memory, &dirty, &cycle_state) == 0);
+        assert(pvm_x86_arena_cycle(owner, next, registers, NULL, &dirty, &cycle_state) == 0);
+        assert(pvm_x86_arena_cycle(owner, next, registers, &cycle_memory, NULL, &cycle_state) == 0);
+        assert(pvm_x86_arena_cycle(owner, next, registers, &cycle_memory, &dirty, NULL) == 0);
+        cycle_memory.write_ptr = NULL;
+        assert(pvm_x86_arena_cycle(owner, next, registers, &cycle_memory, &dirty,
+            &cycle_state) == 0);
+        cycle_memory.write_ptr = &cell;
+        cycle_memory.read_end = 1;
+        assert(pvm_x86_arena_cycle(owner, next, registers, &cycle_memory, &dirty,
+            &cycle_state) == 0);
+        cycle_memory.read_end = 0;
+        /* The wider ABI borrows the same prefix without changing the successful high-word contract. */
+        pvm_x86_wide_memory wide_memory = { .cycle = cycle_memory };
+        pvm_x86_wide_state wide_state = { .cycle = { .gas = 5, .attempts = 7 } };
+        assert(pvm_x86_arena_wide(owner, next, registers, &wide_memory, &dirty,
+            &wide_state) == receipt);
+        assert(pvm_x86_arena_wide(NULL, next, registers, &wide_memory, &dirty, &wide_state) == 0);
+        assert(pvm_x86_arena_wide(owner, next + 1, registers, &wide_memory, &dirty,
+            &wide_state) == 0);
+        assert(pvm_x86_arena_wide(owner, next, NULL, &wide_memory, &dirty, &wide_state) == 0);
+        assert(pvm_x86_arena_wide(owner, next, registers, NULL, &dirty, &wide_state) == 0);
+        assert(pvm_x86_arena_wide(owner, next, registers, &wide_memory, NULL, &wide_state) == 0);
+        assert(pvm_x86_arena_wide(owner, next, registers, &wide_memory, &dirty, NULL) == 0);
+        wide_memory.cycle.write_ptr = NULL;
+        assert(pvm_x86_arena_wide(owner, next, registers, &wide_memory, &dirty, &wide_state) == 0);
+        wide_memory.cycle.write_ptr = &cell;
+        wide_memory.cycle.read_end = 1;
+        assert(pvm_x86_arena_wide(owner, next, registers, &wide_memory, &dirty, &wide_state) == 0);
+        assert(registers[0] == 9 && state[0] == 7 && cell == 0 && dirty == 0);
+        assert(cycle_state.gas == 5 && cycle_state.attempts == 7);
+        assert(wide_state.cycle.gas == 5 && wide_state.cycle.attempts == 7);
         if (repeat == 0) {
             /* Fill the physical arena without executing padding; refusal must preserve the original code. */
             unsigned char fill[4096];
