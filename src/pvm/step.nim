@@ -305,23 +305,14 @@ type
   PreparedCacheInfo* = object ## Bounded occupancy plus actual cache activity, distinct from timing or allocator counts.
     preparations*, hits*: uint64
     prepared*: PreparedInfo
-  PreparedCompilationInfo* = object ## Copied complete source-entry partition; lazy and foreign owners remain zero/unsealed.
-    sealed*: bool
-    sourceEntries*: uint64       ## Every genuine instruction PC, including interior and folded-noop entries.
-    nativeEntries*: uint64 ## Entries starting at published native bodies, not native-covered instruction count.
-    checkedEntries*: uint64      ## Canonical checked entries under the shared lowering policy.
-    capacityDeferred*: uint64    ## Otherwise eligible entries deferred by native admission limits.
-    when defined(pvmSourceSealingReceipt):
-      compilationPasses*: uint64 # CI-only attempted compiler admissions, including refusals.
-  PreparedInfo* = object     ## Copied bounded occupancy; capacity and allocator overhead are not an RSS claim.
-    codeBytes*: uint64       ## Immutable guest source extent; native executable storage is separate.
+  PreparedInfo* = object ## Copied bounded occupancy; capacity and allocator overhead are not an RSS claim.
+    codeBytes*: uint64 ## Immutable guest source extent; native executable storage is separate.
     decodedInstructions*, streamNodes*, preparationUnits*: uint64
     limits*: PreparedLimits
     backend*: PvmBackend
-    nativeFragments*: uint64 ## Cumulative successful physical publications, including replacements.
-    nativeCalls*, nativeOperations*: uint64 ## Invocation counters remain live after construction is sealed.
+    nativeFragments*: uint64                ## Cumulative successful physical publications, including replacements.
+    nativeCalls*, nativeOperations*: uint64 ## Cumulative activity across invocations of this owner.
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
-    compilation*: PreparedCompilationInfo
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
     memoryReuses*, retainedMemoryPayloadBytes*: uint64 # Idle payload admission and cumulative actual buffer reuse.
 
@@ -349,57 +340,19 @@ func value*[T](r: PreparationResult[T]): T {.inline, requires: r.status == Prepa
   ## Only complete admitted results contain owners or copied diagnostics.
   r.completed
 
-func compiledPreparationFailure(reason: FlatError, callerPolicy: bool): PreparationError =
-  ## Translate the shared contract without turning unexpected/default/success states into usable owners.
-  case reason
-  of FlatError.InvalidProgram:
-    # Malformed caller source is distinct from a hook rejecting an already admitted immutable plan.
-    if callerPolicy: PreparationError.InvalidProgram else: PreparationError.BackendFailure
-  of FlatError.CodeLimitExceeded, FlatError.FactLimitExceeded, FlatError.JumpLimitExceeded,
-      FlatError.PageLimitExceeded, FlatError.StreamLimitExceeded,
-          FlatError.PreparationLimitExceeded:
-    PreparationError.LimitExceeded
-  of FlatError.InvalidPolicy:
-    # Invalid caller limits are a policy refusal; an already admitted invalid source plan is an internal failure.
-    if callerPolicy: PreparationError.LimitExceeded else: PreparationError.BackendFailure
-  of FlatError.NativeNotBuilt: PreparationError.BackendNotBuilt
-  of FlatError.NativePlatformUnsupported, FlatError.NativeStorageUnavailable:
-    PreparationError.BackendUnavailable
-  of FlatError.Uninitialized, FlatError.None, FlatError.InvalidMemory: PreparationError.BackendFailure
-
 proc prepareIndependent(source: Program, limits: PreparedLimits,
     selected: PvmBackend): PreparationResult[PreparedProgram] =
-  ## Admit immutable facts once; compiled construction must seal the complete stream before publication.
+  ## Admit immutable source facts once; each invocation borrows the retained lazy stream exclusively.
   if codeLength(source).error != ProgramError.None:
     return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
-  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = selected in
-      [PvmBackend.Jit, PvmBackend.Compiled])
+  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = selected ==
+      PvmBackend.Jit)
   if admitted.error != FlatError.None:
-    # Existing lazy policies retain their mapping; the new contract distinguishes shared capability refusals.
-    if selected == PvmBackend.Compiled:
-      return PreparationResult[PreparedProgram](status: compiledPreparationFailure(admitted.error, true))
     return PreparationResult[PreparedProgram](status: (if admitted.error ==
         FlatError.InvalidProgram:
       PreparationError.InvalidProgram else: PreparationError.LimitExceeded))
   let plan = takeValue(admitted)
   var stream = default(FlatStream)
-  if selected == PvmBackend.Compiled:
-    # The source-only hook cannot observe guest state; partial executable ownership retires on refusal.
-    var constructed = prepareFlatStream(plan)
-    if constructed.error != FlatError.None:
-      return PreparationResult[PreparedProgram](status: compiledPreparationFailure(
-          constructed.error, false))
-    stream = takeValue(constructed)
-    let sealed = streamSealedInfo(stream)
-    if not sealed.sealed or sealed.candidates != planFacts(plan) or
-        sealed.nativeEntries > sealed.candidates:
-      # An unexpected nominal success is unusable until its whole source domain is certified.
-      return PreparationResult[PreparedProgram](status: PreparationError.BackendFailure)
-    let remaining = sealed.candidates-sealed.nativeEntries
-    if sealed.checkedEntries > remaining or sealed.capacityDeferred !=
-        remaining-sealed.checkedEntries:
-      # Subtraction after each bound check avoids wrapped sums accepting an invalid partition.
-      return PreparationResult[PreparedProgram](status: PreparationError.BackendFailure)
   PreparationResult[PreparedProgram](status: PreparationError.None, completed: PreparedProgram(
     data: PreparedData(source: source, plan: plan, stream: move(stream), limits: limits,
         busy: false, selected: selected, memoryScratch: nil, memoryReuses: 0)))
@@ -428,19 +381,14 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
     when defined(pvmX86Jit):
       when defined(amd64) and defined(linux): supported = true
     elif defined(arm64) and (defined(linux) or defined(macosx)): supported = true
-  let sealed = streamSealedInfo(data.stream)
-  var compilation = PreparedCompilationInfo(sealed: sealed.sealed, sourceEntries: sealed.candidates,
-      nativeEntries: sealed.nativeEntries, checkedEntries: sealed.checkedEntries,
-      capacityDeferred: sealed.capacityDeferred)
-  when defined(pvmSourceSealingReceipt): compilation.compilationPasses = sealed.compilationPasses
   PreparationResult[PreparedInfo](status: PreparationError.None, completed: PreparedInfo(
     codeBytes: codeLength(data.source).value, decodedInstructions: planFacts(data.plan),
     streamNodes: streamNodes(data.stream), preparationUnits: streamPreparation(data.stream),
         limits: data.limits, backend: data.selected, nativeFragments: native[0],
             nativeCalls: native[1],
         nativeOperations: native[2], nativeCodeBytes: native[3], nativeCompilationNs: native[4],
-        compilation: compilation, jitBuilt: built, jitPlatformSupported: supported,
-        checkedFallbackEnabled: data.selected in [PvmBackend.Jit, PvmBackend.Compiled],
+        jitBuilt: built, jitPlatformSupported: supported,
+        checkedFallbackEnabled: data.selected == PvmBackend.Jit,
     memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(
         data.memoryScratch)))
 
@@ -490,17 +438,14 @@ proc nativeOperations(frame: FlatFrame): uint64 =
   elif defined(pvmArm64Jit): flatArmStatistics(frame)[2]
   else: 0
 
-func actualIndependentBackend(selected: PvmBackend, usedNative: bool): PvmBackend =
-  ## An actual native-operation delta certifies the bound independent policy; checked-only work stays interpreted.
-  if not usedNative: PvmBackend.Interpreted
-  elif selected == PvmBackend.Compiled: PvmBackend.Compiled
-  else: PvmBackend.Jit
+func actualIndependentBackend(usedNative: bool): PvmBackend =
+  ## Completed native work identifies JIT execution; checked-only work remains interpreted.
+  if usedNative: PvmBackend.Jit else: PvmBackend.Interpreted
 
 proc publishFrame(frame: FlatFrame, source: Program, single: bool = false,
-    original: CodeAddress = CodeAddress(0), nativeBaseline: uint64 = 0,
-        selected: PvmBackend = PvmBackend.Jit): StepResult =
+    original: CodeAddress = CodeAddress(0), nativeBaseline: uint64 = 0): StepResult =
   ## The one engine publishes exact recursive exits or the public Psi_1 PC convention at this adapter.
-  let engine = actualIndependentBackend(selected, nativeOperations(frame) != nativeBaseline)
+  let engine = actualIndependentBackend(nativeOperations(frame) != nativeBaseline)
   var cpu = frame.info
   var kind = frame.exit
   if single:
@@ -575,7 +520,7 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
     StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
         kind: StepExit.OutOfGas, machine: source))
     elif frame.reason == StepError.None or (single and frame.reason == StepError.StepLimitExceeded):
-    publishFrame(frame, owner, single, cpu.pc, nativeBaseline, data.selected)
+    publishFrame(frame, owner, single, cpu.pc, nativeBaseline)
     else: StepResult(status: frame.reason)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
@@ -741,8 +686,7 @@ include ./internal/backend_execution
 proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
     frame: var FlatFrame, owner: Program, context: var Context, callbacks: HostCallbacks[Context,
         Reason],
-    steps: ExecutionStepLimit, calls: HostCallLimit, pages: PageLimit,
-        selectedBackend: PvmBackend): HostExecutionResult[Reason] =
+    steps: ExecutionStepLimit, calls: HostCallLimit, pages: PageLimit): HostExecutionResult[Reason] =
   ## Keep one private engine frame across genuine callbacks; every public observation is immutable.
   var remaining = uint64(steps)
   var available = uint64(calls)
@@ -754,7 +698,7 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
     if frame.reason != StepError.None:
       return executionResult[Reason](StepResult(status: frame.reason))
     if frame.exit != StepExit.Host: return executionResult[Reason](publishFrame(frame, owner,
-        nativeBaseline = nativeBaseline, selected = selectedBackend))
+        nativeBaseline = nativeBaseline))
     if available == 0: return executionResult[Reason](StepResult(
         status: StepError.HostCallLimitExceeded))
     dec available
@@ -762,8 +706,8 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
     let captured = captureMachine(owner, memory, frame.info)
     if captured.error != MachineError.None:
       return executionResult[Reason](StepResult(status: StepError.InvalidMachine))
-    let suspension = StepOutcome(engine: actualIndependentBackend(selectedBackend,
-        nativeOperations(frame) != nativeBaseline), kind: StepExit.Host, machine: captured.value,
+    let suspension = StepOutcome(engine: actualIndependentBackend(nativeOperations(frame) !=
+        nativeBaseline), kind: StepExit.Host, machine: captured.value,
       callNumber: frame.hostCall, callAddress: frame.info.pc)
     var response = default(HostResponse)
     when Fallible:
@@ -832,7 +776,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
   if policy != StepError.None: return executionResult[Reason](StepResult(status: policy))
   restoreFlatStream(frame, data.stream)
   let answer = driveHostFrame[Context, Reason, Fallible](frame, owner, context, callbacks, steps,
-      calls, data.limits.resources.pages, data.selected)
+      calls, data.limits.resources.pages)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer

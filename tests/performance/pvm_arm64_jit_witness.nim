@@ -10,7 +10,7 @@ import ../../src/pvm/gas/[plan as gas_plan, memo as gas_memo]
 when defined(pvmArm64Jit):
   import ../../src/pvm/internal/arm64_jit
   import ../support/pvm_arm_memory_cycle_backend
-  import pvm_arm_macro_backend
+  import ../support/pvm_arm_macro_backend
   when not defined(pvmArm64JitRefuse): import ../support/pvm_arm_clipped_read_witness
 import ../../src/pvm/internal/handler_stream
 

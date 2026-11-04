@@ -28,8 +28,7 @@ type
   FlatError* {.pure.} = enum ## Local preparation refusals never masquerade as successful guest exits.
     Uninitialized, None, InvalidPolicy, InvalidProgram, CodeLimitExceeded,
     FactLimitExceeded, JumpLimitExceeded, PageLimitExceeded, StreamLimitExceeded,
-      PreparationLimitExceeded, InvalidMemory, NativeNotBuilt, NativePlatformUnsupported,
-        NativeStorageUnavailable
+      PreparationLimitExceeded, InvalidMemory
   FlatResult*[T] = object ## Private alternatives publish only completely admitted owners.
     case status: FlatError
     of None: completed: T
@@ -3283,7 +3282,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return original(f, header)
     # Publication certified the source-bound terminal arms. Temporary budget patching
     # is excluded above; stream reuse preserves these cached offsets and their exact plan.
-    flatReserve(f, header)
+    # This complete, unpaid fast entry cannot expose its paid state until native guard replay.
+    f.info.gas = MachineGas(uint64(f.info.gas)-charge.x)
+    f.remaining-=uint64(charge.y)
+    f.reservation = header or flatReservationHeaderFlag
     var state = default(ArmMixedState)
     var next = flatStop
     block:
@@ -3292,12 +3294,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       next = callArmMixedContext(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
     if state[0] == 1:
       let branch = f.arguments[int(terminal)]
-      if next != uint32(branch.x shr 32) and next != branch.y:
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      if state[4] != uint64(operationCount):
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      f.info.blockCharged = false
-      return next
+      if (next == uint32(branch.x shr 32) or next == branch.y) and
+          state[4] == uint64(operationCount):
+        return next
+    # Guard replay and every malformed receipt retain the original paid reservation.
+    f.info.blockCharged = true
     if state[0] == 2 and next > header and next < terminal and int(next) < f.sites.len:
       let fact = f.plan.facts[int(f.sites[int(next)])]
       if fact.opcode notin 120'u8..130'u8 or fact.ending or not fact.fallthrough:
@@ -4929,28 +4930,12 @@ type FlatStream* = object
     x86Jit: nil X86Jit
     x86WideAdmission: FlatX86WideAdmission
 
-type FlatSealedInfo* = object
-  ## Copied source-preparation facts, never storage or an ordinary lazy JIT availability witness.
-  sealed*: bool
-  candidates*, nativeEntries*, checkedEntries*, capacityDeferred*: uint64
-  when defined(pvmSourceSealingReceipt):
-    compilationPasses*: uint64 # Diagnostic-only source compiler attempts; no invocation state.
-
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
     ## Reject copying an owner that contains exclusive native JIT resources.
 
   proc `=dup`*(source: FlatStream): FlatStream {.error.}
     ## Reject duplication of an owner that contains exclusive native JIT resources.
-
-proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
-  ## The source-preparation facility is not built yet, independently of ordinary lazy JIT support.
-  ## No guest work, callback, allocation, executable admission or usable owner occurs on refusal.
-  FlatResult[FlatStream](status: FlatError.NativeNotBuilt)
-
-func streamSealedInfo*(stream: FlatStream): FlatSealedInfo =
-  ## Existing lazy streams are unsealed: copied zero facts never certify preparation or availability.
-  default(FlatSealedInfo)
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Move the exclusive executable cache back to its prepared owner; generated leaves retain no invocation pointers.

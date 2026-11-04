@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Source-derived ARM macro backend literals, called by the main witness.
+## Source-derived ARM macro backend and capacity fixtures shared by native qualification witnesses.
 import std/[assertions, syncio]
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
@@ -44,6 +44,9 @@ proc literalOwner(parts: openArray[seq[byte]]): Program =
 let dirtySource = literalOwner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0],
     @[149'u8, 0x00, 1], @[149'u8, 0x11, 1],
     @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
+let wordDirtySource = literalOwner([@[198'u8, 0x41, 2], @[120'u8, 0x02, 0],
+    @[149'u8, 0x00, 1], @[149'u8, 0x44, 8],
+    @[171'u8, 0x30, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
 let prefixSource = literalOwner([@[149'u8, 0x55, 1], @[149'u8, 0x55, 1],
     @[149'u8, 0x55, 1], @[1'u8], @[0'u8]])
 let tailSource = literalOwner([@[57'u8, 6, 0, 0, 1, 0], @[149'u8, 0x33, 2],
@@ -53,14 +56,14 @@ let pureSource = literalOwner([@[149'u8, 0xcc, 1],
 let branchSource = literalOwner([@[88'u8, 0x4c, 0xff, 0xff, 0xff, 0xff, 0], @[0'u8]])
 let readSource = literalOwner([@[130'u8, 0x06, 8, 0, 0, 0], @[0'u8]])
 
-proc dirtyBody(): ArmRegionBlock =
+proc dirtyBody(source: Program): ArmRegionBlock =
   ## Five independently decoded operations include one byte store and a real branch.
   var body = newArmRegionBody()
-  let first = instruction(dirtySource, CodeAddress(0))
-  let store = instruction(dirtySource, CodeAddress(3))
-  let baseStep = instruction(dirtySource, CodeAddress(6))
-  let shiftStep = instruction(dirtySource, CodeAddress(9))
-  let branch = instruction(dirtySource, CodeAddress(12))
+  let first = instruction(source, CodeAddress(0))
+  let store = instruction(source, CodeAddress(3))
+  let baseStep = instruction(source, CodeAddress(6))
+  let shiftStep = instruction(source, CodeAddress(9))
+  let branch = instruction(source, CodeAddress(12))
   for decoded in [first, store, baseStep, shiftStep, branch]:
     assert decoded.error == ProgramError.None
   emitArmOperation(body, 198, instructionRegisters(first), uint64(first.value.x))
@@ -83,56 +86,97 @@ proc tailBody(): ArmReadSpan =
   emitArmReadBranch(read, 173, instructionRegisters(branch), 0, 10, 40)
   move(read)
 
-proc prefixBody(): ArmBlock =
-  ## Three pure increments leave the cycle's R12 untouched.
+proc appendSourcePadding(body: var ArmBlock, count: int) =
+  ## Genuine decoded load_imm_64 operations enlarge cold source images without touching role slots.
+  assert count >= 0 and count <= 60
+  if count > 0:
+    var parts: seq[seq[byte]] = @[]
+    for index in 0..<count:
+      # Each source instruction has its own boundary and writes only the existing R5 bank slot.
+      parts.add(@[20'u8, 5, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01])
+    parts.add(@[0'u8])
+    let source = literalOwner(parts)
+    for index in 0..<count:
+      let decoded = instruction(source, CodeAddress(uint64(index*10)))
+      assert decoded.error == ProgramError.None and decoded.value.opcode == 20
+      emitArmOperation(body, 20, instructionRegisters(decoded), uint64(decoded.value.x))
+
+proc prefixBody(padding: int = 0): ArmBlock =
+  ## Three pure increments leave the cycle's R12 untouched; optional genuine source loads grow the image.
   result = default(ArmBlock)
   for pc in [0'u64, 3'u64, 6'u64]:
     let decoded = instruction(prefixSource, CodeAddress(pc))
     assert decoded.error == ProgramError.None and decoded.value.opcode == 149
     emitArmOperation(result, 149, instructionRegisters(decoded), uint64(decoded.value.x))
+  appendSourcePadding(result, padding)
 
-proc publishChildren(jit: ArmJit) =
+proc dirtyWordShape(): ArmDirtyWordShape =
+  ## Bind the same five distinct roles that the literal byte-store source actually uses.
+  let first = instructionRegisters(instruction(wordDirtySource, CodeAddress(0)))
+  let store = instructionRegisters(instruction(wordDirtySource, CodeAddress(3)))
+  let branch = instructionRegisters(instruction(wordDirtySource, CodeAddress(12)))
+  ArmDirtyWordShape(enabled: true, source: first.aIndex, shift: first.bIndex,
+      destination: first.destinationIndex, base: store.bIndex, bound: branch.bIndex)
+
+proc publishChildren(jit: ArmJit, wordMode: bool = false) =
   ## Publish exact existing dirty and read children before the resident cycle.
-  let store = instruction(dirtySource, CodeAddress(3))
+  let source = if wordMode: wordDirtySource else: dirtySource
+  let store = instruction(source, CodeAddress(3))
   assert store.error == ProgramError.None
-  var dirty = dirtyBody()
-  assert publishArmDirtyLoop(jit, move(dirty), instructionRegisters(store).bIndex, 0)
+  var dirty = dirtyBody(source)
+  let word = if wordMode: dirtyWordShape() else: default(ArmDirtyWordShape)
+  assert publishArmDirtyLoop(jit, move(dirty), instructionRegisters(store).bIndex, 0, word)
   let read = tailBody()
   var words = armReadInstructions(read, 32, true)
   assert publishArmEntry(jit, 31, 32, 3, words)
 
-proc publishCycle(jit: ArmJit) =
+proc cycleBlock(wordMode: bool = false, padding: int = 0): ArmMemoryCycleBlock =
+  ## Reuse one literal graph for child publication and the exact resident macro source.
+  let source = if wordMode: wordDirtySource else: dirtySource
+  ArmMemoryCycleBlock(prefixHeader: 10, dirtyHeader: 20,
+      tailHeader: 30, tailEntry: 31, other: 40, prefixSpan: uint32(4+padding), tailSpan: 4,
+      prefixOperations: uint32(3+padding), tailOperations: 3, prefixPrice: 7, tailPrice: 11,
+      prefixBody: prefixBody(padding), dirty: dirtyBody(source),
+      dirtyBaseSlot: instructionRegisters(instruction(source, CodeAddress(3))).bIndex,
+      dirtyDisplacement: 0, dirtyWord: (if wordMode: dirtyWordShape() else:
+    default(ArmDirtyWordShape)), tailRead: tailBody())
+
+proc publishCycle(jit: ArmJit, wordMode: bool = false, padding: int = 0) =
   ## Resident child retains the accepted 14-word context and original root record.
-  var cycle = ArmMemoryCycleBlock(prefixHeader: 10, dirtyHeader: 20,
-      tailHeader: 30, tailEntry: 31, other: 40, prefixSpan: 4, tailSpan: 4,
-      prefixOperations: 3, tailOperations: 3, prefixPrice: 7, tailPrice: 11,
-      prefixBody: prefixBody(), dirty: dirtyBody(),
-      dirtyBaseSlot: instructionRegisters(instruction(dirtySource, CodeAddress(3))).bIndex,
-      dirtyDisplacement: 0, tailRead: tailBody())
+  var cycle = cycleBlock(wordMode, padding)
   assert publishArmResidentMemoryCycle(jit, move(cycle))
   assert armResidentMemoryCycleActive(jit) and armMacroCycleExit(jit) == 40
 
-proc publishPure(jit: ArmJit) =
-  ## A one-argument branch body writes guest R12 and selects a real cached arm.
+proc pureBody(padding: int = 0): ArmBlock =
+  ## A source-derived branch body writes guest R12 and selects a real cached arm.
   let increment = instruction(pureSource, CodeAddress(0))
   let branch = instruction(pureSource, CodeAddress(3))
   assert increment.error == ProgramError.None and branch.error == ProgramError.None
-  var body = default(ArmBlock)
-  emitArmOperation(body, 149, instructionRegisters(increment), uint64(increment.value.x))
-  emitArmBranch(body, 81, instructionRegisters(branch), 42, 80, 60)
-  var words = armInstructions(body)
-  assert publishArmEntry(jit, 51, 52, 2, words)
+  result = default(ArmBlock)
+  emitArmOperation(result, 149, instructionRegisters(increment), uint64(increment.value.x))
+  appendSourcePadding(result, padding)
+  emitArmBranch(result, 81, instructionRegisters(branch), 42, 80, 60)
 
-proc publishRead(jit: ArmJit) =
+proc publishPure(jit: ArmJit, padding: int = 0) =
+  ## Publish the ordinary pure child before any attempted macro composition.
+  let body = pureBody(padding)
+  var words = armInstructions(body)
+  assert publishArmEntry(jit, 51, 52, uint32(2+padding), words)
+
+proc readBody(): ArmReadSpan =
   ## A two-argument guarded body reads through the fresh descriptor pointer.
   let decoded = instruction(readSource, CodeAddress(0))
   assert decoded.error == ProgramError.None and decoded.value.opcode == 130
-  var body = default(ArmReadSpan)
-  emitArmRead(body, instructionRegisters(decoded), 8, 130)
+  result = default(ArmReadSpan)
+  emitArmRead(result, instructionRegisters(decoded), 8, 130)
+
+proc publishRead(jit: ArmJit) =
+  ## Publish exactly the read source later supplied to resident composition.
+  let body = readBody()
   var words = armReadInstructions(body, 72)
   assert publishArmEntry(jit, 71, 72, 1, words)
 
-proc macroShape(): ArmMacroShape =
+proc macroShape(padding: int = 0): ArmMacroShape =
   ## Stream offsets are synthetic test facts; runtime admission receives source-derived values.
   let branch = instruction(branchSource, CodeAddress(0))
   assert branch.error == ProgramError.None and branch.value.opcode == 88
@@ -140,24 +184,24 @@ proc macroShape(): ArmMacroShape =
       staticTarget: 50, pureHeader: 50, pureBody: 51, pureTerminal: 52,
       pureYes: 80, pureNo: 60, branchHeader: 60, branchYes: 50,
       branchNo: 70, readHeader: 70, readBody: 71, readTerminal: 72,
-      terminalTarget: 10, staticSpan: 1, pureSpan: 2, branchSpan: 1,
+      terminalTarget: 10, staticSpan: 1, pureSpan: uint32(2+padding), branchSpan: 1,
       readSpan: 3, staticPrice: 2, purePrice: 3, branchPrice: 1,
       readPrice: 4, branchSlot: instructionRegisters(branch).aIndex,
       branchImmediate: uint64(branch.value.x))
 
-proc childJit(): ArmJit =
+proc childJit(wordMode: bool = false, padding: int = 0, fullContext: bool = false): ArmJit =
   ## Publish only the three genuine child ABIs in one arena.
-  result = newArmJit()
+  result = newArmJit(clippedReads = fullContext)
   assert armEntry(result, 0, 128) == 0
-  publishChildren(result)
-  publishCycle(result)
-  publishPure(result)
+  publishChildren(result, wordMode)
+  publishCycle(result, wordMode, padding)
+  publishPure(result, padding)
   publishRead(result)
   let root = armMacroChildRecord(result, 10)
   let pure = armMacroChildRecord(result, 51)
   let read = armMacroChildRecord(result, 71)
   assert root.code >= 2 and pure.code >= 2 and read.code >= 2
-  assert pure.operations == 2 and pure.ending == 52 and
+  assert pure.operations == uint32(2+padding) and pure.ending == 52 and
       read.operations == 1 and read.ending == 72
   assert armMacroStatus(result) == 0
 
@@ -449,3 +493,148 @@ proc armMacroBackendControls*(): int =
       assert observedCodeBytes(baseline) == codeBytes and baseline.fragments == fragments
       checkChildAfterRefusal(baseline, root, pure, read)
     inc result, 1
+
+proc observedFragments(jit: ArmJit): uint64 {.noinline.} =
+  ## Observe the live count across appends, matching the existing NIM-005 code-byte observer.
+  jit.fragments
+
+proc capacityRequire(ok: bool, stage: string) =
+  ## Optimized witnesses retain a stable failure location even when compiler assertion text is minimal.
+  if not ok: echo "ARM_MACRO_CAPACITY_ASSERT,", stage
+  assert ok
+
+proc publishResidentFixture(jit: ArmJit, padding: int = 0): bool =
+  ## Supply the exact source bodies used by the genuine word-mode child publications.
+  let cycle = cycleBlock(true, padding)
+  let pure = pureBody(padding)
+  let read = readBody()
+  publishArmResidentMacro(jit, macroShape(padding), cycle, pure, read)
+
+proc wordResidentCase(jit: ArmJit): MacroCase =
+  ## Execute one complete word cycle and scalar/read suffix through the full-context ABI.
+  var bytes = default(array[32, byte])
+  for index in 0..<bytes.len: bytes[index] = 0x5a
+  var context = default(ArmReadContext)
+  # Match the frame constructor's conservative eight-byte extent in both descriptor tables.
+  context[1] = [65536'u64, uint64(bytes.len-7), cast[uint64](addr bytes[0])]
+  context[4] = context[1]
+  var dirtyWords = newSeq[uint64](16384)
+  dirtyWords[0] = 1'u64 shl 16
+  var registers = default(RegisterFile)
+  registers[0] = RegisterValue(65536)
+  registers[1] = RegisterValue(0x0123456789abcdef'u64)
+  registers[3] = RegisterValue(65544)
+  registers[7] = RegisterValue(65540)
+  var state = default(ArmMacroState)
+  state[0] = 1000
+  state[1] = 55 # Prefix4 + eight dirty blocks40 + tail4 + static1 + pure2 + branch1 + read3.
+  state[13] = uint64(high(uint32))
+  state[24] = uint64(high(uint32))
+  let destination = callArmMacroContext(jit, registers, context, dirtyWords, state)
+  MacroCase(destination: destination, registers: registers, state: state, bytes: bytes)
+
+proc fillArenaToRemaining(jit: ArmJit, remaining: uint64) =
+  ## Real bounded native publications consume the arena; the owner ledger is never forged.
+  assert remaining >= 8 and remaining mod 4 == 0
+  discard armEntry(jit, 0, 8300)
+  var offset = 100'u32
+  var used = observedCodeBytes(jit)
+  assert used <= 1048576 and remaining <= 1048576-used
+  while 1048576-used > remaining:
+    # Avoid a four-byte final gap: each genuine leaf needs at least one NOP and its RET.
+    let needed = 1048576-used-remaining
+    var size = min(4096'u64, needed)
+    if needed-size == 4: size-=4
+    assert size >= 8 and size <= 4096 and size mod 4 == 0
+    var words = newSeq[uint32](int(size div 4)-1)
+    for index in 0..<words.len: words[index] = 0xd503201f'u32
+    assert publishArmEntry(jit, offset, offset+1, 1, words, true)
+    used+=size
+    inc offset
+  assert observedCodeBytes(jit) == used and 1048576-used == remaining
+
+proc armMacroCapacityControls*(): int =
+  ## Five focused native cases preserve resident admission at physical-byte and image-word limits.
+  result = 0
+  let cached = childJit(true, 0, true)
+  let uncached = childJit(true)
+  capacityRequire(publishResidentFixture(cached) and publishResidentFixture(uncached), "probe-publication")
+  let cachedWords = armMacroImageWords(cached)
+  let uncachedWords = armMacroImageWords(uncached)
+  capacityRequire(cachedWords > uncachedWords and cachedWords <= 1024, "cache-size-difference")
+  let reference = wordResidentCase(cached)
+  capacityRequire(reference.destination == 10 and uint64(reference.registers[0]) == 65544, "reference-cycle")
+  # Opcode198 shifts a 32-bit source with shift modulo32, so the second word repeats the first.
+  const literal = [0xef'u8, 0xcd, 0xab, 0x89, 0xef, 0xcd, 0xab, 0x89]
+  for index in 0..<literal.len:
+    capacityRequire(reference.bytes[index] == literal[index], "literal-store")
+  for index in literal.len..<reference.bytes.len:
+    capacityRequire(reference.bytes[index] == 0x5a, "untouched-suffix")
+  for remaining in [uint64(cachedWords)*4, uint64(cachedWords-1)*4,
+      uint64(uncachedWords)*4]:
+    # Exact cached fit and both ends of the uncached-only corridor publish once, after real filling.
+    let jit = childJit(true, 0, true)
+    let root = armMacroChildRecord(jit, 10)
+    let pure = armMacroChildRecord(jit, 51)
+    let read = armMacroChildRecord(jit, 71)
+    fillArenaToRemaining(jit, remaining)
+    let before = [observedFragments(jit), observedCodeBytes(jit)]
+    capacityRequire(publishResidentFixture(jit), "resident-still-available")
+    let selected = if remaining == uint64(cachedWords)*4: cachedWords else: uncachedWords
+    capacityRequire(armMacroResidentActive(jit) and armMacroImageWords(jit) == selected, "selected-resident-kind")
+    capacityRequire(observedFragments(jit) == before[0]+1 and observedCodeBytes(jit) == before[
+        1]+uint64(selected)*4,
+        "single-selected-append")
+    capacityRequire(armMacroChildRecord(jit, 10) == root, "immutable-cycle-child")
+    capacityRequire(armMacroChildRecord(jit, 51) == pure, "immutable-pure-child")
+    capacityRequire(armMacroChildRecord(jit, 71) == read, "immutable-read-child")
+    let actual = wordResidentCase(jit)
+    capacityRequire(actual.destination == reference.destination, "cached-uncached-exit")
+    capacityRequire(actual.registers == reference.registers, "cached-uncached-registers")
+    capacityRequire(actual.bytes == reference.bytes, "cached-uncached-memory")
+    for index in 0..<armMacroStateWords:
+      # Only the fresh invocation's descriptor/bitmap pointer words differ between owners.
+      if index notin [5, 7]:
+        capacityRequire(actual.state[index] == reference.state[index], "cached-uncached-ledger")
+    inc result
+  block:
+    # If neither resident image fits, no state/arena mutation precedes the unchanged linked fallback.
+    let jit = childJit(true, 0, true)
+    fillArenaToRemaining(jit, uint64(uncachedWords-1)*4)
+    let before = [observedFragments(jit), observedCodeBytes(jit)]
+    let root = armMacroChildRecord(jit, 10)
+    let pure = armMacroChildRecord(jit, 51)
+    let read = armMacroChildRecord(jit, 71)
+    capacityRequire(not publishResidentFixture(jit), "both-resident-sizes-refused")
+    capacityRequire([observedFragments(jit), observedCodeBytes(jit)] == before and armMacroStatus(
+        jit) == 0,
+        "both-refusal-without-mutation")
+    capacityRequire(publishArmMacro(jit, macroShape()) and not armMacroResidentActive(jit),
+        "existing-linked-fallback")
+    capacityRequire(observedFragments(jit) == before[0]+1 and armMacroStatus(jit) == 2, "single-linked-append")
+    capacityRequire(armMacroChildRecord(jit, 10) == root, "immutable-cycle-child")
+    capacityRequire(armMacroChildRecord(jit, 51) == pure, "immutable-pure-child")
+    capacityRequire(armMacroChildRecord(jit, 71) == read, "immutable-read-child")
+    inc result
+  block:
+    # Genuine source immediates create a final-word crossing while every source block remains bounded.
+    let one = childJit(true, 1)
+    capacityRequire(publishResidentFixture(one, 1), "padded-size-probe")
+    let growth = armMacroImageWords(one)-uncachedWords
+    capacityRequire(growth > 0, "genuine-source-word-growth")
+    let padding = int((1024-(cachedWords-uncachedWords)-uncachedWords) div growth)+1
+    capacityRequire(padding > 0 and padding <= 60, "bounded-padding-count")
+    let plain = childJit(true, padding)
+    capacityRequire(publishResidentFixture(plain, padding), "uncached-word-image-fits")
+    let expected = armMacroImageWords(plain)
+    capacityRequire(expected <= 1024 and expected+(cachedWords-uncachedWords) > 1024,
+        "source-derived-word-crossing")
+    let jit = childJit(true, padding, true)
+    let before = [observedFragments(jit), observedCodeBytes(jit)]
+    capacityRequire(publishResidentFixture(jit, padding), "word-ceiling-retains-resident")
+    capacityRequire(armMacroResidentActive(jit) and armMacroImageWords(jit) == expected,
+        "word-ceiling-selects-uncached")
+    capacityRequire(observedFragments(jit) == before[0]+1 and observedCodeBytes(jit) == before[
+        1]+uint64(expected)*4,
+        "single-word-fallback-append")
+    inc result
