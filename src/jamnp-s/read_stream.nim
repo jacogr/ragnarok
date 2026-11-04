@@ -10,7 +10,7 @@ const MaxReadRequestPayload* = 789 ## Largest supported fixed payload is the exa
 type
   ReadKind* {.pure.} = enum ## Fixed-request content retrieval and bare-FIN announcements share bounded framing.
     Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Report = 136,
-        PreimageAnnouncement = 142, Preimage = 143
+        Availability = 137, PreimageAnnouncement = 142, Preimage = 143, Bundle = 147
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -57,7 +57,8 @@ func requestLength(kind: ReadKind): int =
   case kind
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
-  of ReadKind.Report, ReadKind.Preimage: 32
+  of ReadKind.Report, ReadKind.Preimage, ReadKind.Bundle: 32
+  of ReadKind.Availability: 34
   of ReadKind.PreimageAnnouncement: 40
   of ReadKind.TicketProxy, ReadKind.TicketDistribution: 789
 proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
@@ -77,10 +78,15 @@ func sameRequest(left, right: ReadRequest): bool =
       left.payload == right.payload
 func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## CE142 acknowledges with FIN alone; ordinary content replies use one message and CE129 uses two.
-  if request.selector == ReadKind.State: 2
+  if request.selector == ReadKind.Availability: 3
+  elif request.selector == ReadKind.State: 2
   elif request.selector in [ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
       ReadKind.TicketDistribution]: 0
   else: 1
+func maximumReplyBytes*(request: ReadRequest): int {.requires: request.valid.} =
+  ## Large original bundles and all-row distributions have their own hard ceiling; existing reads retain their prior bound.
+  if request.kind in [ReadKind.Availability, ReadKind.Bundle]: 16*1024*1024
+  else: MaxReadReplyBytes
 func minimumReplyBytes*(request: ReadRequest): uint64 {.requires: request.valid.} =
   ## Framing minima include only actual E4 messages, never a fabricated acknowledgment prefix.
   uint64(request.replyMessageCount*4)
@@ -91,7 +97,8 @@ proc captureReadReply*(request: ReadRequest, wire: openArray[byte],
     effect = ReadEffect.None): ReadResult[ReadReply] =
   ## Freeze only an exact bounded sequence of E4 messages; this grants no state/consensus authority.
   if not request.ready: return ReadResult[ReadReply](status: ReadError.InvalidRequest)
-  if wire.len > MaxReadReplyBytes: return ReadResult[ReadReply](status: ReadError.LimitExceeded)
+  if wire.len > request.maximumReplyBytes: return ReadResult[ReadReply](
+      status: ReadError.LimitExceeded)
   if effect != ReadEffect.None and request.selector != ReadKind.PreimageAnnouncement:
     return ReadResult[ReadReply](status: ReadError.InvalidRequest)
   let count = request.replyMessageCount
