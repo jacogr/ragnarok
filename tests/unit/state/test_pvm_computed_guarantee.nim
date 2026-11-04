@@ -22,7 +22,15 @@ proc verify(kind: int, expected: openArray[byte], hash: array[32,
     byte]): ComputedGuaranteeTranscript =
   ## Independent complete wire witnesses bind the expected transcript to the actual original computed report.
   let report = prepareComputedReport(computedAvailability(kind), ByteLimit(100000)).value
-  assert report.computedReportBytes.value == @expected, "independent complete report wire"
+  let actual = report.computedReportBytes.value
+  if actual != @expected:
+    # Pin the first differing independent byte before the complete-wire assertion fails.
+    echo "report kind=", kind, " actual length=", actual.len, " expected length=", expected.len
+    for index in 0..<min(actual.len, expected.len):
+      if actual[index] != expected[index]:
+        echo "report offset=", index, " actual=", actual[index], " expected=", expected[index]
+        break
+  assert actual == @expected, "independent complete report wire"
   let length = report.computedReportInfo.value.length
   reset(0)
   let done = prepareComputedGuarantee(report, ByteLimit(length+45))
