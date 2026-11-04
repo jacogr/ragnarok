@@ -45,7 +45,7 @@ production path exists; it does not assert all normative behavior has been verif
 | CE146 bundle submission | No runtime handler | Core/mappings, bounded authorized package before bulk data, extrinsics/segments/import proofs and exact transcript |
 | CE134 work-package sharing | No runtime handler | Core/shard count/mappings, acceptable anchor-window count, authorization/refinement and returned report hash/signature |
 | CE135 work-report distribution | No runtime route | Guaranteed report decoding/credentials, slot admissibility, current/next validator delivery and third-guarantor grace |
-| CE136 work-report request | Canonical C10/C14 responder, shared authenticated node/worker routes and full-hash checked outbound reports; [contract](jamnp-report-retrieval.md) | Report caches fed by distribution/audits and preferred negative-judgment sources remain |
+| CE136 work-report request | Canonical C10/C14 responder, shared authenticated node/worker routes and full-hash checked outbound reports; [contract](jamnp-report-retrieval.md) | Checked retrieval retention is implemented; distribution-fed caches and preferred negative-judgment sources remain |
 | Shard assignment, CE137 | No runtime route | Deterministic assignment, bundle/segment shards and erasure-root justifications; validated storage before acknowledgment |
 | CE138 audit shard request | No runtime handler | Request root/index, bundle shard plus tagged co-path, response authentication, nonvalidator requests and bounded throttling |
 | CE147 bundle request | No runtime handler | Root-bound bundle service and validation, fall back to CE138 on invalid/unavailable bundle |
@@ -116,3 +116,8 @@ synchronization/GP adoption and the remaining protocol runtime families remain o
 production and complete hash-bound report verification through the authenticated node and Services
 worker. Real TLS covers both canonical sources, reset isolation and corrupt-report refusal.
 Distribution/audit-fed caches and negative-judgment preferred-source selection remain open.
+
+[Retained checked reports](jamnp-report-cache.md) lets CE136 serve fetched, checked content
+outside canonical C10/C14, including while a foreign Services graph lease is held. Capacity/byte
+limits, deferral serial revocation, original deadlines and close/reopen ownership have real TLS
+coverage. Distribution and judgment scheduling/validation remain open.
