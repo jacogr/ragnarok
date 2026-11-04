@@ -28,8 +28,7 @@ type
   FlatError* {.pure.} = enum ## Local preparation refusals never masquerade as successful guest exits.
     Uninitialized, None, InvalidPolicy, InvalidProgram, CodeLimitExceeded,
     FactLimitExceeded, JumpLimitExceeded, PageLimitExceeded, StreamLimitExceeded,
-      PreparationLimitExceeded, InvalidMemory, NativeNotBuilt, NativePlatformUnsupported,
-        NativeStorageUnavailable
+      PreparationLimitExceeded, InvalidMemory
   FlatResult*[T] = object ## Private alternatives publish only completely admitted owners.
     case status: FlatError
     of None: completed: T
@@ -4931,28 +4930,12 @@ type FlatStream* = object
     x86Jit: nil X86Jit
     x86WideAdmission: FlatX86WideAdmission
 
-type FlatSealedInfo* = object
-  ## Copied source-preparation facts, never storage or an ordinary lazy JIT availability witness.
-  sealed*: bool
-  candidates*, nativeEntries*, checkedEntries*, capacityDeferred*: uint64
-  when defined(pvmSourceSealingReceipt):
-    compilationPasses*: uint64 # Diagnostic-only source compiler attempts; no invocation state.
-
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
     ## Reject copying an owner that contains exclusive native JIT resources.
 
   proc `=dup`*(source: FlatStream): FlatStream {.error.}
     ## Reject duplication of an owner that contains exclusive native JIT resources.
-
-proc prepareFlatStream*(plan: FlatPlan): FlatResult[FlatStream] =
-  ## The source-preparation facility is not built yet, independently of ordinary lazy JIT support.
-  ## No guest work, callback, allocation, executable admission or usable owner occurs on refusal.
-  FlatResult[FlatStream](status: FlatError.NativeNotBuilt)
-
-func streamSealedInfo*(stream: FlatStream): FlatSealedInfo =
-  ## Existing lazy streams are unsealed: copied zero facts never certify preparation or availability.
-  default(FlatSealedInfo)
 
 proc takeFlatStream*(f: var FlatFrame): FlatStream =
   ## Move the exclusive executable cache back to its prepared owner; generated leaves retain no invocation pointers.

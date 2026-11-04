@@ -82,46 +82,6 @@ controls remain active. Pixel mutation/omission/reordering controls use the sele
 actual output. Invalid selectors, substituted engines, any native activity or incomplete
 continuing receipts fail; a one-call sizing pilot remains `pilot-passed` only.
 
-This support is based independently on master and requires no eager compilation API, shared
-source-sealing prerequisite, native runtime change or compiled reference. Native execution stays
-CI-only on Linux ARM64 and x86-64. Inert/source checks alone do not qualify the new cohort.
-
-## Explicit eager cohort
-
-`PVM_DOOM_BACKENDS=polkavm-interpreted,jit,compiled make check-pvm-doom-backends` selects three
-real CLI processes from one linked native-enabled image. This exact ordered triple uses the
-separate `doom-shared-eager-v1` protocol. The existing default and explicit interpreted cohort
-retain their selection, records and six refusal controls. Arbitrary reordered or extended
-selectors fail before provisioning, build or guest work and replace stale successful reports.
-
-The eager process requires the [public sealed owner implementation](pvm-eager-compilation.md).
-It emits a constructor observation before guest execution, then repeats the same observation
-after each continuing call. Its eleven copied fields are sealed flag, stream nodes, preparation
-units, successful publications, native code bytes, supplementary compilation time, source
-entries, native entries, checked entries, capacity-deferred entries and attempted compiler
-admissions. The explicit cohort alone adds `pvmSourceSealingReceipt` to the maintained build.
-Sealing, native publication/code occupancy and attempted admissions must be genuine and positive;
-the source-entry partition must be complete. Calls and operations begin at zero before execution.
-
-Both continuing calls must retain the identical construction snapshot and report actual
-`compiled`, positive native work and strictly advancing native call/operation counts. Frozen
-observations include failed admission attempts; a new unsuccessful scan cannot hide behind
-unchanged successful-publication counters. Missing source preparation, unavailable code storage,
-all-checked execution or a substituted policy cannot become an omitted/pass backend. The driver
-admits `compiled` only with this explicit selector; the wrong-backend control still clears only
-its own child's selector.
-
-Each candidate independently matches the complete PolkaVM interpreted reference across both
-continuing calls: full CPU/gas, mapped bytes/permissions, ordered hosts/events and every frame.
-The first call retains the independent upstream full-state/event oracle and RGBA golden. Actual
-compiled output supplies the changed-pixel, omitted-frame and reordered-frame controls. A valid
-compiled result cannot hide a divergent JIT result. The image assertion and absent foreign
-bridge controls retain their original diagnostics.
-
-This layer changes only the maintained correctness harness, parser tests and this contract. It
-changes no engine, generator, cache, native ABI, dependency pin, default cohort or benchmark.
-Source/inert checks do not qualify the triple. Fresh actual Linux ARM64/x86-64 continuing receipts
-must identify the public source and any privately composed shared implementation exactly;
-historical eager/unit results are not relabeled as this cohort's execution. The master merge
-queue's unrelated JAM provenance repair is awaited before selecting the next qualification base.
-No performance acceptance or complete native opcode coverage is established here.
+This cohort exercises the existing prepared owner and public host API in a JIT-enabled image.
+Native execution stays CI-only on Linux ARM64 and x86-64. Inert/source checks alone do not
+qualify the new cohort.
