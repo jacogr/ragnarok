@@ -44,6 +44,9 @@ type
     pc, next, sourceCount, priceIndex, nodeCount: uint32
     opcode: byte
     ending, fallthrough: bool
+  FlatSourceInterval = object ## Bounded source coordinates and a captured charge, without complete-header authority.
+    first, last, span: uint32
+    price: uint64
   FlatMixedOp = object ## Cold source event; each destination write is retained independently.
     memory, store, writes: bool
     base, destination: uint32
@@ -1731,6 +1734,38 @@ proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineIn
   assert prepared.error == FlatError.None
   takeValue(prepared)
 
+func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
+    found: var FlatSourceInterval): bool =
+  ## A successful interval ends at a source terminal; identity, interiors and child proofs stay with callers.
+  if uint64(header) >= uint64(f.handlers.len) or uint64(header) >= uint64(f.sites.len) or
+      uint64(header) >= uint64(f.arguments.len): return false
+  let first = f.sites[int(header)]
+  let span = f.arguments[int(header)].y
+  if span == 0 or span > maxSpan or uint64(first)+uint64(span) > uint64(f.plan.facts.len):
+    return false
+  let last = first+(span-1)
+  if not f.plan.facts[int(last)].ending: return false
+  # Failure leaves the output untouched; this value does not certify any handler or priced-block identity.
+  found = FlatSourceInterval(first: first, last: last, span: span,
+    price: f.arguments[int(header)].x)
+  true
+
+when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
+  func flatSourceIntervalProof*(f: FlatFrame, pc, maxSpan: uint32,
+      fields: var array[5, uint64]): bool =
+    ## Read only an already captured complete entry; this adapter's map proof is not the interval's contract.
+    if uint64(pc) >= uint64(f.compiledForPc.len): return false
+    let packed = f.compiledForPc[int(pc)]
+    if packed == 0: return false
+    let entry = packed-1
+    if (entry and 0x80000000'u32) == 0: return false
+    let header = entry and 0x7fffffff'u32
+    var source = default(FlatSourceInterval)
+    if not flatSourceIntervalAt(f, header, maxSpan, source): return false
+    fields = [uint64(header), uint64(source.first), uint64(source.last), uint64(source.span),
+      source.price]
+    true
+
 when defined(pvmX86Jit):
   proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool
     ## Cold admission is defined after exact branch-capability checking.
@@ -2045,10 +2080,10 @@ when defined(pvmX86Jit):
       if first.pc != pc or int(first.priceIndex) >= f.plan.pricePcs.len or
           f.plan.pricePcs[int(first.priceIndex)] != CodeAddress(uint64(pc)): return false
       let span = f.arguments[int(header)].y
-      if span == 0 or span > 65 or span != first.sourceCount or
-          uint64(ordinal)+uint64(span) > uint64(f.plan.facts.len): return false
-      let last = ordinal+span-1
-      if not f.plan.facts[int(last)].ending: return false
+      if span != first.sourceCount: return false
+      var source = default(FlatSourceInterval)
+      if not flatSourceIntervalAt(f, header, 65, source): return false
+      let last = source.last
       var node = header+1
       for at in ordinal..last:
         let fact = f.plan.facts[int(at)]
@@ -2066,7 +2101,7 @@ when defined(pvmX86Jit):
         elif handler == flatX86Region: X86MemoryCycleHandlerKind.NativeRegion
         else: X86MemoryCycleHandlerKind.Other
       found = X86MemoryCycleHeader(pc: pc, header: header, ordinal: ordinal, span: span,
-        terminal: node-1, price: f.arguments[int(header)].x,
+        terminal: node-1, price: source.price,
         opcode: f.plan.facts[int(last)].opcode, kind: kind)
       true
 
@@ -2330,6 +2365,11 @@ when defined(pvmX86Jit):
         true
 
     when defined(pvmX86MemoryCycleSealWitness):
+      func flatX86CompleteTargetWitness*(f: FlatFrame, offset: uint32): bool =
+        ## Recheck an observed scalar destination without resolving it or changing its source owner.
+        var found = default(X86MemoryCycleHeader)
+        flatX86CompleteTarget(f, offset, found)
+
       func flatX86InteriorSourceWitness*(f: FlatFrame, pc: uint32): bool =
         ## A present interior coordinate has no complete-header authority for a source seal.
         if int(pc) >= f.compiledForPc.len: return false
@@ -3838,24 +3878,19 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   func flatArmMacroHeader(f: FlatFrame, offset: uint32,
       header: var FlatArmMacroHeader): bool =
     ## A known header handler binds its source span even when leading noops have no body node.
-    if uint64(offset)+1 >= uint64(f.handlers.len) or int(offset) >= f.arguments.len or
-        int(offset)+1 >= f.sites.len: return false
-    let first = f.sites[int(offset)]
-    let span = f.arguments[int(offset)].y
+    if uint64(offset)+1 >= uint64(f.handlers.len) or int(offset)+1 >= f.sites.len: return false
+    var source = default(FlatSourceInterval)
     # The first prototype admits one bounded observed graph; larger source spans retain ordinary dispatch.
-    if span == 0 or span > 64 or uint64(first)+uint64(span) > uint64(f.plan.facts.len):
-      return false
-    let last = first+span-1
-    if not f.plan.facts[int(last)].ending: return false
-    for current in first..<last:
+    if not flatSourceIntervalAt(f, offset, 64, source): return false
+    for current in source.first..<source.last:
       if f.plan.facts[int(current)].ending: return false
     let body = f.sites[int(offset)+1]
-    if body < first or body > last: return false
-    for skipped in first..<body:
+    if body < source.first or body > source.last: return false
+    for skipped in source.first..<body:
       let fact = f.plan.facts[int(skipped)]
       if fact.opcode != 2 or fact.ending: return false
-    header = FlatArmMacroHeader(first: first, last: last, span: span,
-      price: f.arguments[int(offset)].x)
+    header = FlatArmMacroHeader(first: source.first, last: source.last, span: source.span,
+      price: source.price)
     true
 
   func flatArmMacroRead(f: FlatFrame, jit: ArmJit, offset: uint32,

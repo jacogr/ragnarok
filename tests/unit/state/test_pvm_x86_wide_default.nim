@@ -262,6 +262,32 @@ equalOutcome(later, laterCheckedAgain)
 when Native:
   assert flatX86WideStatistics(later)[0] > beforeLater
 
+when defined(pvmX86MemoryCycleSealWitness):
+  block staleSourceTarget:
+    # An unpaid interior entry captures a suffix; a following paid resume must not authorize the old terminal.
+    var frame = newFlatFrame(prepared(sourceProgram, true), initialPages, fromPrefix)
+    runFlat(frame, 30)
+    var candidate = default(X86MemoryCycleCandidate)
+    assert flatX86SealMemoryCycle(frame, 31, candidate), "genuine source candidate before overlap"
+    let header = candidate.tail.header
+    let oldTerminal = candidate.tail.terminal
+    assert flatX86CompleteTargetWitness(frame, header), "genuine original complete tail"
+    assert not flatX86CompleteTargetWitness(frame, oldTerminal), "old terminal has no header authority"
+    var paid = fromPrefix
+    paid.pc = CodeAddress(63)
+    paid.blockCharged = false
+    resetFlatFrame(frame, paid)
+    runFlat(frame, 1)
+    var suffix = default(array[5, uint64])
+    assert flatSourceIntervalProof(frame, 63, 65, suffix) and suffix[1] == 22 and
+      suffix[2] == 22 and suffix[3] == 1, "literal captured branch suffix"
+    paid.blockCharged = true
+    resetFlatFrame(frame, paid)
+    runFlat(frame, 1)
+    assert not flatX86CompleteTargetWitness(frame, oldTerminal) and
+      not flatX86CompleteTargetWitness(frame, uint32(suffix[0])), "overlapping suffix cannot authorize stale target"
+    assert flatX86CompleteTargetWitness(frame, header), "original complete source remains valid"
+
 # More than the pending-table capacity of distinct source backedges must not starve
 # a later eligible graph. Each copied narrow loop lacks the complete outer wide edge.
 let crowdedProgram = source(17)
