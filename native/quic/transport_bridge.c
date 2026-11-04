@@ -432,6 +432,9 @@ rq_transport *rq_transport_new_config(const rq_transport_options *options, uint1
     if (!options || options->server < 0 || options->server > 1 || options->ipv6 < 0 || options->ipv6 > 1 ||
         options->multi < 0 || options->multi > 1 || (options->multi && !options->server) ||
         options->idle_seconds > 600 || options->keepalive > 1 ||
+        (options->stream_window && (options->stream_window < LSQUIC_MIN_FCW || options->stream_window > 16777216u)) ||
+        (options->connection_window && (options->connection_window < LSQUIC_MIN_FCW || options->connection_window > 16777216u)) ||
+        (options->stream_window && options->connection_window && options->stream_window > options->connection_window) ||
         (!options->idle_seconds && options->keepalive)) return NULL;
     const int soak = options->profile, server = options->server;
     size_t length = strlen(alpn);
@@ -472,6 +475,19 @@ rq_transport *rq_transport_new_config(const rq_transport_options *options, uint1
         t->settings.es_init_max_stream_data_bidi_local = 65536;
         t->settings.es_init_max_stream_data_bidi_remote = 65536;
     }
+    /* Explicit bounded reader credit limits queued input while application authorization pauses reads. */
+    if (options->stream_window) {
+        t->settings.es_sfcw = options->stream_window;
+        t->settings.es_max_sfcw = options->stream_window;
+        t->settings.es_init_max_stream_data_bidi_local = options->stream_window;
+        t->settings.es_init_max_stream_data_bidi_remote = options->stream_window;
+        t->settings.es_init_max_stream_data_uni = options->stream_window;
+    }
+    if (options->connection_window) {
+        t->settings.es_cfcw = options->connection_window;
+        t->settings.es_max_cfcw = options->connection_window;
+        t->settings.es_init_max_data = options->connection_window;
+    }
     /* Service streams have bounded transport credit as well as native application slots. */
     if (t->multi) { t->settings.es_init_max_streams_bidi = 8; t->settings.es_idle_timeout = 2; } /* Bounded crashed-peer retirement. */
     /* Recovery/load profiles use a two-second crash expiry and one-second liveness probes, solely for bounded experiments. */
@@ -493,7 +509,7 @@ fail:
 /* Preserve the original exported factory ABI for existing native proof consumers. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
-    const rq_transport_options options = {soak, server, 0, soak == 2 || soak == 5, 0, 0};
+    const rq_transport_options options = {soak, server, 0, soak == 2 || soak == 5, 0, 0, 0, 0};
     return rq_transport_new_config(&options, local_port, certificate, key, alpn, user, verify, send, stream);
 }
 

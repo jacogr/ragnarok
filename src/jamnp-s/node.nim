@@ -5,6 +5,8 @@
 ## host code collects fixed read tasks and supplies frozen replies after managed CPU work.
 import std/[assertions, monotimes, times]
 import ./[connections, admission, announcements, announcement_stream, read_stream, read_client, streams]
+import ./work_stream
+import ./work_submission
 import ../chain/[provider, genesis]
 import ../codec/[bounded, header, assurances]
 import ../quic/transport
@@ -29,13 +31,20 @@ type
   NodeReadTask* = object ## A copied fixed request can cross a host/worker boundary without canonical state.
     ticket: NodeReadTicket
     request: ReadRequest
+  NodeWorkTicket* = object ## Exact physical work claims contain no native pointer or canonical owner.
+    peer: NodePeer
+    serial: uint64
+    index: int
+  NodeWorkTask* = object ## Complete raw small headers cross only the host boundary before actual authorization.
+    ticket: NodeWorkTicket
+    header: UntrustedWorkHeader
   NodeClaims* = object ## Detached authenticated source identity plus untrusted peer claims, never adoption authority.
     ready: bool
     peer: NodePeer
     stream: NativeStreamId
     claims: PeerAnnouncements
   FrameKind {.pure.} = enum ## Closing retains its original class and buffers until actual native retirement.
-    Empty, Selecting, Read, Persistent, Client
+    Empty, Selecting, Read, Persistent, Client, Work
   Frame = object ## Fixed global slots remain stable through all native stream callbacks.
     handle: NativeStream
     peer: NodePeer
@@ -46,6 +55,7 @@ type
     offset: int
     serial, inputBytes, outputBytes, replyBytes, sentVersion: uint64
     read: ReadRoute
+    work: WorkRoute
     client: ReadClientRoute
     announcement: AnnouncementRoute
   Peer = object ## Connection-lifetime watermark forbids rollback to a delayed lower UP0 ID.
@@ -59,7 +69,7 @@ type
     limits: AnnouncementLimits
     body: seq[byte]
   NodeService* = object ## Explicit noncopyable aggregate owns one connection actor and fixed protocol slots.
-    opened, stopping: bool
+    opened, stopping, workEnabled: bool
     failure: NodeError
     callbacks, sweep, processCursor, peerCursor, broadcastCursor, readCursor: int
     serial, version, inputUsed, handshakeUsed, outputUsed, replyUsed, clientUsed: uint64
@@ -89,6 +99,7 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   `=wasMoved`(owner.local)
   owner.opened = false
   owner.stopping = false
+  owner.workEnabled = false
   owner.failure = NodeError.Uninitialized
   owner.callbacks = 0
   owner.sweep = 0
@@ -127,6 +138,15 @@ func ticket*(task: NodeReadTask): NodeReadTicket =
 func request*(task: NodeReadTask): ReadRequest =
   ## The request is fixed-size immutable transport data with no canonical graph.
   task.request
+func ticket*(task: NodeWorkTask): NodeWorkTicket =
+  ## Only copied stream incarnation facts grant host control over this physical frame.
+  task.ticket
+func header*(task: NodeWorkTask): UntrustedWorkHeader =
+  ## Raw immutable bytes remain untrusted and contain neither native nor selected-state ownership.
+  task.header
+func sourcePeer*(ticket: NodeWorkTicket): NodePeer =
+  ## Preserve authenticated peer generation independently of the frame's later retirement.
+  ticket.peer
 func valid*(source: NodeClaims): bool =
   ## Default source snapshots carry no authenticated source identity.
   source.ready
@@ -171,7 +191,12 @@ func reads(owner: NodeService): int =
   ## Global read slots are independent of each peer's selector and persistent reservations.
   result = 0
   for index in 0..<owner.frames.len:
-    if owner.frames[index].kind in [FrameKind.Read, FrameKind.Client]: inc result
+    if owner.frames[index].kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work]: inc result
+func works(owner: NodeService): int =
+  ## Two physical work routes bound partial headers and large bodies even during pending native resets.
+  result = 0
+  for frame in owner.frames:
+    if frame.kind == FrameKind.Work: inc result
 func localStream(peer: NodePeer, number: NativeStreamId): bool =
   ## IETF bit zero names client/server initiation independently of the connection's local direction.
   ((uint64(number) and 1) == 0) == peer.initiated
@@ -219,6 +244,16 @@ proc accountClient(owner: var NodeService, index: int) =
   owner.clientUsed -= frame.inputBytes
   assert bytes <= ClientBudget-owner.clientUsed
   owner.clientUsed += bytes
+  frame.inputBytes = bytes
+proc accountWork(owner: var NodeService, index: int) =
+  ## Every copied E4/payload byte shares the existing input budget through actual native close.
+  let frame = addr owner.frames[index]
+  let bytes = frame.work.receivedBytes
+  if bytes > frame.inputBytes: frame.activity = owner.now
+  assert frame.inputBytes <= owner.inputUsed
+  owner.inputUsed -= frame.inputBytes
+  assert bytes <= InputBudget-owner.inputUsed
+  owner.inputUsed += bytes
   frame.inputBytes = bytes
 proc accountAnnouncement(owner: var NodeService, index: int) =
   ## One host thread updates buffer deltas after a bounded route event/processing activation.
@@ -364,12 +399,14 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       if frame.client.ready and not frame.closing and owner.node.active(
           peer): return # Complete bytes outlive native retirement until host collection.
     elif frame.kind == FrameKind.Read: frame.read.event(stream, event)
+    elif frame.kind == FrameKind.Work: frame.work.event(stream, event, ByteLimit(0))
     elif frame.kind == FrameKind.Persistent: discard frame.announcement.event(stream, event)
     owner[].releaseFrame(position)
     return
   if event == 4:
     if frame.kind == FrameKind.Client: frame.client.event(stream, event)
     elif frame.kind == FrameKind.Read: frame.read.event(stream, event)
+    elif frame.kind == FrameKind.Work: frame.work.event(stream, event, ByteLimit(0))
     elif frame.kind == FrameKind.Persistent: discard frame.announcement.event(stream, event)
     let alreadyClosing = frame.closing
     frame.closing = true
@@ -401,18 +438,42 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
         return # Ticket protocols require both authenticated validator roles before any proof work or larger fixed input is admitted.
       let inboundReads = owner[].frameCount(peer, FrameKind.Read)
       let outboundReads = owner[].frameCount(peer, FrameKind.Client)
-      if owner[].reads >= MaxNodeReads or inboundReads+outboundReads >= 2:
+      if owner[].reads >= MaxNodeReads or inboundReads+outboundReads+owner[].frameCount(peer,
+          FrameKind.Work) >= 2:
         owner[].closeFrame(position)
         return
       if frame.read.bindReadStream(stream, ReadKind(kind), kindConsumed = true) != ReadError.None:
         owner[].closeFrame(position)
         return
       frame.kind = FrameKind.Read
+    elif kind in [133'u8, 146'u8]:
+      # Builder uploads target authenticated validators; core duty and actual authorization remain host-side checks.
+      let peerWork = owner[].frameCount(peer, FrameKind.Work)
+      let peerReads = owner[].frameCount(peer, FrameKind.Read)+owner[].frameCount(peer,
+          FrameKind.Client)
+      if not owner.workEnabled or not owner.node.isValidator:
+        owner[].closeFrame(position)
+        return # A dispatcher and actual validator role precede any package buffering.
+      if peerWork >= 1 or peerReads+peerWork >= 2:
+        owner[].closeFrame(position)
+        return # Existing read reservations share this peer's finite stream budget.
+      if owner[].works >= 2 or owner[].reads >= MaxNodeReads:
+        owner[].closeFrame(position)
+        return # Closing frames retain global physical quota until native retirement.
+      let selected = if kind == 133'u8: WorkSubmissionKind.Package else: WorkSubmissionKind.Bundle
+      if frame.work.bindWorkStream(stream, selected) != ReadError.None:
+        owner[].closeFrame(position)
+        return
+      frame.kind = FrameKind.Work
     else:
       owner[].closeFrame(position) # Other protocol families require their own validated runtime handlers.
   of FrameKind.Client:
     frame.client.event(stream, event, ByteLimit(ClientBudget-owner.clientUsed))
     owner[].accountClient(position)
+  of FrameKind.Work:
+    let budget = InputBudget-owner.inputUsed
+    frame.work.event(stream, event, ByteLimit(budget))
+    owner[].accountWork(position)
   of FrameKind.Read:
     let before = frame.read.receivedBytes
     frame.read.event(stream, event)
@@ -454,6 +515,7 @@ proc context(view: ChainView, limits: SafroleStateConfig): NodeResult[LocalConte
 proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   ## Retire all engines/callbacks before dropping protocol buffers; host joins canonical jobs separately.
   owner.stopping = true
+  owner.workEnabled = false
   owner.node.close()
   for index in 0..<owner.frames.len:
     assert owner.frames[index].kind == FrameKind.Empty, "every borrowed stream must receive native close"
@@ -481,6 +543,7 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   if captured.error != NodeError.None: return captured.error
   owner.local = captured.value
   owner.limits = limits
+  owner.workEnabled = false
   owner.sweep = 0
   owner.processCursor = 0
   owner.peerCursor = 0
@@ -577,7 +640,7 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if owner.node.announcements(peer) and owner.source(peer).error !=
       NodeError.None: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if owner.reads >= MaxNodeReads or owner.frameCount(peer, FrameKind.Read)+owner.frameCount(peer,
-      FrameKind.Client) >= 2:
+      FrameKind.Client)+owner.frameCount(peer, FrameKind.Work) >= 2:
     return NodeResult[NodeRequestTicket](status: NodeError.LimitExceeded)
   if owner.serial == high(uint64): return NodeResult[NodeRequestTicket](status: NodeError.Exhausted)
   var index = -1
@@ -673,6 +736,70 @@ proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   owner.frames[ticket.index].kind == FrameKind.Read and not owner.frames[ticket.index].closing and
     owner.frames[ticket.index].serial == ticket.serial and owner.frames[ticket.index].peer ==
         ticket.peer and owner.node.active(ticket.peer)
+proc enableWorkStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
+  ## Explicit host activation promises to consume work tasks; ordinary node actors reject selectors until their dispatcher is installed.
+  if not owner.isOpen: return false
+  owner.workEnabled = true
+  true
+proc takeWorkHeader*(owner: var NodeService): NodeResult[
+    NodeWorkTask] {.requires: owner.callbacks == 0.} =
+  ## Rotate bounded physical slots and claim one exact small header without borrowing a canonical graph.
+  if not owner.isOpen: return NodeResult[NodeWorkTask](status: NodeError.Unavailable)
+  for inspected in 0..<owner.frames.len:
+    let index = owner.readCursor
+    owner.readCursor = (owner.readCursor+1) mod owner.frames.len
+    if owner.frames[index].kind != FrameKind.Work or owner.frames[index].closing: continue
+    if not owner.node.active(owner.frames[index].peer) or not owner.frames[
+        index].work.headerReady: continue
+    if owner.serial == high(uint64):
+      owner.stop()
+      return NodeResult[NodeWorkTask](status: NodeError.Exhausted)
+    let header = owner.frames[index].work.takeHeader()
+    if header.error != ReadError.None: continue
+    inc owner.serial
+    owner.frames[index].serial = owner.serial
+    owner.frames[index].activity = owner.now
+    return NodeResult[NodeWorkTask](status: NodeError.None,
+      completed: NodeWorkTask(ticket: NodeWorkTicket(peer: owner.frames[index].peer,
+        serial: owner.serial, index: index), header: header.value))
+  NodeResult[NodeWorkTask](status: NodeError.Unavailable)
+proc workLive*(owner: NodeService, ticket: NodeWorkTicket): bool =
+  ## Exact generation and serial protect reused physical slots and foreign/restarted actors.
+  if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
+      owner.frames.len: return false
+  let frame = addr owner.frames[ticket.index]
+  frame.kind == FrameKind.Work and not frame.closing and frame.serial == ticket.serial and
+    frame.peer == ticket.peer and owner.node.active(ticket.peer) and not frame.work.failed
+func workStreamCount*(owner: NodeService): int =
+  ## Physical quota includes closing work streams until actual native close releases their frames.
+  owner.works
+proc workInputBytes*(owner: NodeService, ticket: NodeWorkTicket): uint64 =
+  ## Detached scalar accounting can prove the small-header boundary without reading any canonical or body owner.
+  if owner.workLive(ticket): owner.frames[ticket.index].work.receivedBytes else: 0'u64
+proc permitWorkBody*(owner: var NodeService, ticket: NodeWorkTicket,
+    info: WorkSubmissionInfo): ReadError {.requires: owner.callbacks == 0.} =
+  ## Host code calls only after actual managed grant collection; the route independently enforces hard byte bounds.
+  if not owner.workLive(ticket): return ReadError.InvalidStream
+  let allowed = owner.frames[ticket.index].work.permitBody(info)
+  if allowed == ReadError.None: owner.frames[ticket.index].activity = owner.now
+  allowed
+proc takeWorkBody*(owner: var NodeService, ticket: NodeWorkTicket): NodeResult[
+    UntrustedWorkBody] {.requires: owner.callbacks == 0.} =
+  ## Complete raw bodies have exact request FIN but still require actual commitment/proof/refinement checks.
+  if not owner.workLive(ticket): return NodeResult[UntrustedWorkBody](status: NodeError.Unavailable)
+  let body = owner.frames[ticket.index].work.takeBody()
+  if body.error != ReadError.None: return NodeResult[UntrustedWorkBody](
+      status: NodeError.Unavailable)
+  NodeResult[UntrustedWorkBody](status: NodeError.None, completed: body.value)
+proc acknowledgeWork*(owner: var NodeService, ticket: NodeWorkTicket): ReadError {.requires: owner.callbacks == 0.} =
+  ## A live exact request may receive bare FIN only after the host accepts its genuinely completed managed work.
+  if not owner.workLive(ticket): return ReadError.InvalidStream
+  owner.frames[ticket.index].work.acknowledge()
+proc rejectWork*(owner: var NodeService, ticket: NodeWorkTicket): bool {.requires: owner.callbacks == 0.} =
+  ## Source-free native retirement never cancels or collects any Services CPU lease.
+  if not owner.workLive(ticket): return false
+  owner.closeFrame(ticket.index)
+  true
 proc deferRead*(owner: var NodeService, ticket: NodeReadTicket): bool {.requires: owner.callbacks == 0.} =
   ## Revoke this exact claim immediately; restoring its prior activity prevents repeated cache misses extending inactivity.
   if not owner.readLive(ticket): return false
@@ -735,7 +862,7 @@ proc poll*(owner: var NodeService, now: MonoTime, maximumMs: range[
     elif frame.kind == FrameKind.Client and frame.handle == NativeStream(nil) and
         not frame.client.ready and now-frame.started > initDuration(seconds = 5):
       owner.closeFrame(index) # Public cancellation also removes a native-delayed open without orphaning its reservation.
-    elif frame.kind in [FrameKind.Read, FrameKind.Client] and (stalledRead or expiredRead):
+    elif frame.kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work] and (stalledRead or expiredRead):
       owner.closeFrame(index) # A cancelled job still retains its host lease until Done/join.
     elif frame.kind == FrameKind.Persistent:
       if not owner.node.announcements(frame.peer) or frame.announcement.failed or

@@ -609,7 +609,7 @@ proc open*(owner: var NodeConnections, config: ConnectionConfig,
       config.certificate, config.privateKey, owner.config.protocol, addr owner, incomingVerify,
       incomingStream, multi = true, dispatcher = dispatcher, acceptedAlpns = protocols,
       localAddress = config.binding, incomingPeers = owner.policy.capacity,
-      idleSeconds = 30, keepalive = true):
+      idleSeconds = 30, keepalive = true, streamWindow = 65536, connectionWindow = 262144):
     owner.close()
     return ConnectionError.BackendFailure
   if not owner.listener.admitPeers(incomingAdmit) or not owner.listener.observePeers(incomingPeer):
@@ -643,7 +643,8 @@ proc dial(owner: var NodeConnections, target: int): bool =
   if dispatcher == nil or not owner.dialers[position].transport.openTransport(false, false, 0,
       owner.config.certificate, owner.config.privateKey, owner.config.protocol,
       addr owner.dialers[position], outgoingVerify, outgoingStream, dispatcher = dispatcher,
-      localAddress = binding, idleSeconds = 30, keepalive = true):
+      localAddress = binding, idleSeconds = 30, keepalive = true, streamWindow = 65536,
+          connectionWindow = 262144):
     owner.dialers[position].connection = default(ConnectionState)
     return false # Factory cleanup leaves the stable unused slot available for another target.
   owner.dialers[position].opened = true
