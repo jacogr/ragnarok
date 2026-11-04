@@ -133,6 +133,10 @@ proc configureWork*(owner: var ApplicationNode, policy: WorkDispatchPolicy): boo
   ## Explicit activation installs bounded CPU dispatch before enabling native work selectors.
   if not owner.opened: return false
   owner.work.configure(owner.streams, policy)
+proc configureWorkAcquisition*(owner: var ApplicationNode, policy: WorkAcquisitionPolicy): bool =
+  ## Optional CE133 fetch participation requires an explicitly configured work dispatcher and independent network ceilings.
+  if not owner.opened: return false
+  owner.work.configureAcquisition(policy)
 func workPhase*(owner: ApplicationNode): WorkDispatchPhase =
   ## Observe detached lifecycle without borrowing the retained result.
   owner.work.phase

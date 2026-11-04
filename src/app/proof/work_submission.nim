@@ -19,7 +19,7 @@ type
     Uninitialized, None, InvalidInput, LimitExceeded
   WorkJobResultKind* {.pure.} = enum ## A completed CPU turn exposes only its selected full success or genuine child failure.
     Uninitialized, Authorized, Refined, AuthorizationFailure, BodyFailure, RefinementFailure,
-      DutyFailure, Reported, ReportFailure
+      DutyFailure, Reported, ReportFailure, ImportPlanningFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -32,10 +32,12 @@ type
     source: WorkSource
     grant: AuthorizedWorkSubmission
     duty: WorkDuty
+    imports: WorkImportPlan
   AuthorizedWorkContext* = object ## Only a successful private CPU capability can construct a usable context.
     data: nil WorkContextData
   WorkJobResult* = object ## Failed/default results expose no input, grant, partial refinement or unrelated child.
     case status: WorkJobResultKind
+    of ImportPlanningFailure: planningReason: WorkSubmissionResult[WorkImportPlan]
     of Reported: report: ComputedGuaranteeTranscript
     of ReportFailure: reportReason: WorkReportResult
     of DutyFailure: dutyReason: WorkDutyResult[WorkDuty]
@@ -54,6 +56,7 @@ type
     refined: InputRefinement
     shards: ErasureShards
     reportLimits: WorkReportLimits
+    fetched: bool
     extrinsics, segments, proofs: seq[byte]
     imports: seq[seq[VerifiedImport]]
     lookup: seq[SegmentLookup]
@@ -122,6 +125,15 @@ proc info*(context: AuthorizedWorkContext): WorkSubmissionResult[WorkSubmissionI
   let data = context.data
   if data == nil: return default(WorkSubmissionResult[WorkSubmissionInfo])
   data.grant.submissionInfo
+proc importRequest*(context: AuthorizedWorkContext): WorkSubmissionResult[seq[byte]] =
+  ## Detach request bytes only while the shared graph is idle; no context or grant alias leaves in the returned buffer.
+  let data = context.data
+  if data == nil: return default(WorkSubmissionResult[seq[byte]])
+  data.imports.workImportRequest
+func importPlanningError*(outcome: WorkJobResult): WorkSubmissionResult[WorkImportPlan] {.requires:
+    outcome.status == WorkJobResultKind.ImportPlanningFailure.} =
+  ## Preserve a genuine missing/conflicting source mapping refusal without exposing a usable partial plan.
+  outcome.planningReason
 proc authorize(data: WorkJobData): WorkJobResult =
   ## Private staging aliases retire before the worker publishes Done.
   let source = data.source
@@ -137,8 +149,16 @@ proc authorize(data: WorkJobData): WorkJobResult =
   if outcome.error != WorkSubmissionError.None:
     return WorkJobResult(status: WorkJobResultKind.AuthorizationFailure,
         authorizationReason: outcome)
+  var imports = default(WorkImportPlan)
+  if source.header.submissionInfo.value.kind == WorkSubmissionKind.Package:
+    # Package-only imports are planned on the same CPU turn and exact state as successful authorization.
+    let planned = prepareWorkImportPlan(outcome.value, source.limits)
+    if planned.error != WorkSubmissionError.None:
+      return WorkJobResult(status: WorkJobResultKind.ImportPlanningFailure, planningReason: planned)
+    imports = planned.value
   WorkJobResult(status: WorkJobResultKind.Authorized,
-    context: AuthorizedWorkContext(data: WorkContextData(source: source, grant: outcome.value, duty: duty)))
+    context: AuthorizedWorkContext(data: WorkContextData(source: source, grant: outcome.value,
+        duty: duty, imports: imports)))
 proc complete(data: WorkJobData): WorkJobResult =
   ## Validate only the original grant's body, then execute from the same immutable source and fixed original policy.
   let context = data.context.data
@@ -147,6 +167,8 @@ proc complete(data: WorkJobData): WorkJobResult =
   let described = context.grant.submissionInfo.value
   let inputs = if described.kind == WorkSubmissionKind.Bundle:
     completeBundleSubmission(context.grant, data.extrinsics, data.segments, data.proofs, source.limits)
+  elif data.fetched:
+    completeFetchedPackageSubmission(context.grant, context.imports, data.extrinsics, data.segments, source.limits)
   else:
     completePackageSubmission(context.grant, data.extrinsics, data.imports, data.lookup, source.limits)
   if inputs.error != WorkSubmissionError.None:
@@ -202,6 +224,19 @@ proc captureWorkBundle*(context: AuthorizedWorkContext, extrinsics, segments,
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: complete, source: data.source, context: context,
     extrinsics: copied(extrinsics), segments: copied(segments), proofs: copied(proofs))))
+proc captureFetchedWorkPackage*(context: AuthorizedWorkContext, extrinsics,
+    reply: openArray[byte]): WorkJobAdmission =
+  ## Copy only bounded untrusted bytes; original plan verification and refinement run together on the exclusive CPU worker.
+  let data = context.data
+  if data == nil: return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  let info = data.grant.submissionInfo.value
+  if info.kind != WorkSubmissionKind.Package or extrinsics.len != info.extrinsicBytes:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  if reply.len > 8+info.segmentBytes+info.importCount*385:
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: complete, source: data.source, context: context, fetched: true,
+    extrinsics: copied(extrinsics), segments: copied(reply))))
 proc captureWorkPackage*(context: AuthorizedWorkContext, extrinsics: openArray[byte],
     imports: openArray[seq[VerifiedImport]], lookup: openArray[SegmentLookup]): WorkJobAdmission =
   ## CE133 receives separately verified availability witnesses; exact original binding still occurs on the CPU.

@@ -38,3 +38,36 @@ worker, Services and foreground node-command consumers pass. Fresh actual copy
 lowering rejects NodeService, ApplicationNode, Services and StateProofWorker.
 Production build, formatting and inventory pass locally. Acquisition/fallback,
 signing/sharing, assurances, audits and full operator activation remain open.
+
+## Source-bound CE133 acquisition contract
+
+The same feature PR adds a private import plan derived from the genuine CE133 grant. Resolve
+package references against that exact C(3), reject missing or conflicting mappings, sort only the
+complete binder dictionary, and preserve every original import occurrence in the CE148 request.
+Returned request bytes must be independent of the canonical graph. Complete fetched inputs under
+the managed CPU lease: exact two E4 messages, whole-witness extent/resource preflight before hashing,
+root/index verification against the original plan, complete package binding, then refinement.
+A plan from another authorization cannot be substituted even for byte-identical packages.
+
+Completion witnesses include actual authorization, mixed direct/package references, independent
+frozen segment proofs, repeated request-copy mutation, missing source mappings, wrong-source plan,
+empty imports, truncation/suffix/length/proof mutation, aggregate caps and balanced ARC lifetimes.
+The optional host actor selects current authenticated validators with explicit attempt/deadline/reply
+ceilings and cancels only its exact fetch on reset/close. A temporarily unavailable UP0 source or
+native reservation spends no attempt. CE139/140 recovery fallback and ordinary operator activation
+remain incomplete; the preferred path does not claim availability from absent source descriptors.
+
+## Preferred acquisition verification
+
+Pinned checked ARC/Clang local tests passed: `jamnp_work_submission`,
+`jamnp_managed_work_submission` and all49 scenarios in `jamnp_work_dispatch`. They cover genuine
+CE133 fetch-to-refinement, empty input, invalid proof, reply budget, per-request timeout, builder
+reset/close, foreign uncollected Done and unavailable-UP0-source cancellation. The independent raw
+TLS peer checks the literal original request and returns frozen genuine proofs. Component tests
+also reject another grant's plan, missing/conflicting source mappings, every truncated reply and
+non-exact suffixes. One thousand success and late-failure cycles retained921088 bytes before/after;
+managed source cycles retained40816 bytes before/after.
+
+Fresh actual lowering rejected WorkDispatcher and ApplicationNode copies with unavailable `=dup`
+diagnostics after both lifecycle hooks delegated the new owned fields. Application build, formatting
+and inventory passed. These are local checked results, not exact-head Linux CI evidence.

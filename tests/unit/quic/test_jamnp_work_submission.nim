@@ -26,7 +26,8 @@ type
     input: InputFixture
     package, first, extrinsics, segments, proofs: seq[byte]
     limits: WorkSubmissionLimits
-proc fixture(external = true, rejected = false, wrongPool = false, wrongMapping = false): Fixture =
+proc fixture(external = true, rejected = false, wrongPool = false, wrongMapping = false,
+    missingMapping = false, conflictingMapping = false): Fixture =
   ## Commit genuine PVM code, selected C(1) authorizer and C(3) package mapping into a private original source.
   result = default(Fixture)
   let code = if rejected: @[refinementImmediate(7, 0), refinementImmediate(8, 0), @[0'u8]]
@@ -54,9 +55,15 @@ proc fixture(external = true, rejected = false, wrongPool = false, wrongMapping 
     newSeq[AuthorizerHash](0)], result.limits.pools).value
   var root = SegmentRoot(bytes: ThreeRoot)
   if wrongMapping: root.bytes[0] = root.bytes[0] xor 1
-  let history = historyStateEntry(HistoryState(blocks: @[HistoryBlock(slot: HistorySlot(10),
-    packages: @[ReportedPackage(package: inputKey(1), segment: root)])]),
-        result.limits.history).value
+  var historyRows = @[HistoryBlock(slot: HistorySlot(10), packages: @[ReportedPackage(
+      package: inputKey(1), segment: root)])]
+  if missingMapping: historyRows[0].packages = @[] # A selected history can be genuine while lacking this dependency.
+  if conflictingMapping:
+    var otherRoot = root
+    otherRoot.bytes[0] = otherRoot.bytes[0] xor 1
+    historyRows.add(HistoryBlock(slot: HistorySlot(11), packages: @[ReportedPackage(
+        package: inputKey(1), segment: otherRoot)]))
+  let history = historyStateEntry(HistoryState(blocks: historyRows), result.limits.history).value
   var state = forkStateStore(result.input.state).value
   assert state.apply([StateWrite(kind: StateWriteKind.Put, key: pools.key, value: pools.value),
     StateWrite(kind: StateWriteKind.Put, key: history.key, value: history.value)]).error ==
@@ -118,6 +125,78 @@ assert completeBundleSubmission(packageGrant, full.extrinsics, full.segments, fu
     full.limits).error == WorkSubmissionError.InvalidMessage
 assert completePackageSubmission(full.grant, full.extrinsics, [], [], full.limits).error ==
     WorkSubmissionError.InvalidMessage
+proc grantedPackage(f: Fixture): AuthorizedWorkSubmission =
+  ## Independent CE133 framing retains the same actual package and source authorizer as the bundle control.
+  var wire = @[0'u8, 0]
+  for octet in f.package: wire.add(octet)
+  let header = decodeWorkSubmission(WorkSubmissionKind.Package, wire, [], fullPackageConfig(
+      ByteLimit(204800))).value
+  authorizeWorkSubmission(header, f.input.state, f.input.parameters, f.limits).value
+proc fetchedReply(f: Fixture): seq[byte] =
+  ## Independent literal E4 prefixes frame frozen segment/proof witnesses rather than using the production response encoder.
+  result = @[]
+  for body in [f.segments, f.proofs]:
+    for octet in 0..<4: result.add(byte((body.len shr (octet*8)) and 255))
+    for value in body: result.add(value)
+let plan = prepareWorkImportPlan(packageGrant, full.limits)
+assert plan.error == WorkSubmissionError.None
+var request = plan.value.workImportRequest.value
+assert request.len == 70
+for occurrence in 0..<2:
+  # Direct and C(3)-relative references converge to the independent frozen root, preserving their distinct indices.
+  for octet in 0..<32: assert request[occurrence*35+octet] == ThreeRoot[octet]
+  assert request[occurrence*35+32] == 1
+  assert request[occurrence*35+33] == byte(occurrence)
+  assert request[occurrence*35+34] == 0
+request[0] = request[0] xor 1
+assert plan.value.workImportRequest.value[0] == ThreeRoot[0]
+let reply = fetchedReply(full)
+let fetched = completeFetchedPackageSubmission(packageGrant, plan.value, full.extrinsics, reply, full.limits)
+assert fetched.error == WorkSubmissionError.None
+assert runInputRefinement(full.input.state, fetched.value, CoreIndex(0), full.input.parameters,
+  executionLimits()).error == InputRefinementError.None
+let otherGrant = full.grantedPackage
+assert completeFetchedPackageSubmission(otherGrant, plan.value, full.extrinsics, reply,
+    full.limits).error == WorkSubmissionError.InvalidSource
+assert prepareWorkImportPlan(full.grant, full.limits).error == WorkSubmissionError.InvalidMessage
+assert prepareWorkImportPlan(default(AuthorizedWorkSubmission), full.limits).error ==
+    WorkSubmissionError.Uninitialized
+assert default(WorkImportPlan).workImportRequest.error == WorkSubmissionError.Uninitialized
+let missing = fixture(missingMapping = true)
+assert prepareWorkImportPlan(missing.grantedPackage, missing.limits).error ==
+    WorkSubmissionError.UnavailableMapping
+let conflict = fixture(conflictingMapping = true)
+assert prepareWorkImportPlan(conflict.grantedPackage, conflict.limits).error ==
+    WorkSubmissionError.InvalidMappings
+let emptyGrant = empty.grantedPackage
+let emptyPlan = prepareWorkImportPlan(emptyGrant, empty.limits).value
+assert emptyPlan.workImportRequest.value.len == 0
+assert completeFetchedPackageSubmission(emptyGrant, emptyPlan, [], [], empty.limits).error ==
+    WorkSubmissionError.None
+assert completeFetchedPackageSubmission(emptyGrant, emptyPlan, [], empty.fetchedReply,
+    empty.limits).error == WorkSubmissionError.None
+for length in 0..<reply.len:
+  # No truncated framing, leaf or late proof may expose a verified prefix.
+  assert completeFetchedPackageSubmission(packageGrant, plan.value, full.extrinsics,
+    reply.toOpenArray(0, length-1), full.limits).error != WorkSubmissionError.None
+var extra = reply
+extra.add(0)
+assert completeFetchedPackageSubmission(packageGrant, plan.value, full.extrinsics, extra,
+    full.limits).error == WorkSubmissionError.InvalidMessage
+var altered = reply
+altered[4] = altered[4] xor 1
+assert completeFetchedPackageSubmission(packageGrant, plan.value, full.extrinsics, altered,
+    full.limits).importError == ImportJustificationError.RootMismatch
+var oversized = reply
+for index in 0..<4: oversized[index] = 255
+assert completeFetchedPackageSubmission(packageGrant, plan.value, full.extrinsics, oversized,
+    full.limits).error == WorkSubmissionError.InvalidMessage
+var capped = full.limits
+capped.imports.witnessBytes = ByteLimit(8208)
+assert completeFetchedPackageSubmission(packageGrant, plan.value, full.extrinsics, reply,
+    capped).error == WorkSubmissionError.LimitExceeded
+capped.imports.entries = ElementLimit(1)
+assert prepareWorkImportPlan(packageGrant, capped).error == WorkSubmissionError.LimitExceeded
 # Exact header extents, finite count domains and canonical dictionary order are enforced before authorization.
 let config = fullPackageConfig(ByteLimit(204800))
 for length in 0..<full.first.len:
@@ -230,6 +309,14 @@ assert completeBundleSubmission(retained, full.extrinsics, full.segments, full.p
     full.limits).value.importInputsInfo.value.entries == 2
 proc cycle(bad: seq[byte]) =
   ## Release source-bearing grant, successful inputs and late failed proof prefixes on every iteration.
+  let selected = full.grantedPackage
+  let imports = prepareWorkImportPlan(selected, full.limits).value
+  assert completeFetchedPackageSubmission(selected, imports, full.extrinsics, full.fetchedReply,
+      full.limits).error == WorkSubmissionError.None
+  var fetchedFailure = full.fetchedReply
+  fetchedFailure[4108] = fetchedFailure[4108] xor 1 # A valid first proof precedes a bad second fetched segment.
+  assert completeFetchedPackageSubmission(selected, imports, full.extrinsics, fetchedFailure,
+      full.limits).error == WorkSubmissionError.ImportFailure
   let completed = full.complete
   assert completed.importInputsInfo.value.entries == 2
   assert completeBundleSubmission(full.grant, full.extrinsics, bad, full.proofs,

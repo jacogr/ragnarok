@@ -2007,6 +2007,36 @@ proc stageWorkPackage(services: var Services, extrinsics: openArray[byte],
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+proc stageFetchedWorkPackage(services: var Services, extrinsics,
+    reply: openArray[byte]): WorkJobError =
+  ## Retire all plan/context staging aliases before the detached job is admitted to the managed CPU worker.
+  let captured = captureFetchedWorkPackage(services.workContext, extrinsics, reply)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc workImportRequest*(services: Services, token: WorkSessionToken): WorkSubmissionResult[seq[byte]] =
+  ## Detached raw request bytes may be retained during later graph leases; reading the private context itself requires idle ownership.
+  if not services.started or not services.matchesWork(token):
+    return default(WorkSubmissionResult[seq[byte]])
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Authorized:
+    return default(WorkSubmissionResult[seq[byte]])
+  services.workContext.importRequest
+proc beginFetchedWorkPackage*(services: var Services, token: WorkSessionToken,
+    extrinsics, reply: openArray[byte]): WorkSubmissionStart =
+  ## Only the original live authorized session can admit fetched bytes, verification and refinement under its selected state.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Authorized:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  if not services.workSourceCurrent:
+    services.workPhase = WorkSessionPhase.Retired
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageFetchedWorkPackage(extrinsics, reply)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.Completing)
 proc beginWorkBundle*(services: var Services, token: WorkSessionToken,
     extrinsics, segments, proofs: openArray[byte]): WorkSubmissionStart =
   ## A body wait holds no CPU lease; only the original authorized session can capture the next bounded CPU turn.

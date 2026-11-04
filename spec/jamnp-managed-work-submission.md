@@ -26,7 +26,12 @@ availability publication, chain inclusion or canonical adoption.
 Completion checks must cover real successful two-stage execution, default/foreign/stale tokens,
 Busy through Done, cancellation/stop, body failure, late abandonment, foreign replacement Done
 preservation, full/light refusal and repeated source release. Composite worker/Services lowering
-must continue to reject copies. Live staged framing and CE133 availability fetch remain next.
+must continue to reject copies. CE133 authorization additionally derives a private source-bound
+import plan. Services can detach its CE148 request only while idle/Authorized. Fetched completion
+captures independent untrusted bytes, verifies original roots and the whole input table, then refines
+inside the same managed CPU turn; no verified-import owner is returned to the networking actor.
+Live framing and preferred fetch dispatch are implemented in the corresponding feature contracts;
+CE139/140 recovery fallback remains subsequent.
 
 ## Observed evidence
 
