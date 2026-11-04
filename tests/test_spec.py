@@ -77,7 +77,7 @@ class SpecificationTests(unittest.TestCase):
         self.assertEqual(entry['protocol_version'], '0.8.0')
         self.assertNotIn('tag', entry)
         self.assertEqual(entry['release_status'], 'unreleased')
-        self.assertEqual(entry['commit'], 'd7b73e396d2f872fcfca37cbbb7d7869675d34d6')
+        self.assertEqual(entry['commit'], 'c84f9aa79de298aaefb9b60818c67a9416f66c8f')
         # These immutable vectors predate the new assurance/C13 formats; keep their last qualified source identity.
         self.assertEqual(entry['graypaper_commit'], '3861aed15d7d016a3a416e14e61fc67dddf6daec')
         self.assertNotEqual(entry['graypaper_commit'], PINS['graypaper']['commit'])

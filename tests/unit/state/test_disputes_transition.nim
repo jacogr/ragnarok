@@ -267,12 +267,12 @@ proc main() {.raises.} =
         inc accepted
       unchanged(created.value, source, parent.commitment.root)
     inc count
-  assert count == 60 and accepted == 19
+  assert count == 62 and accepted == 21
   assert planDisputes(default(StateStoreSnapshot), default(OwnedDisputes), policy(2, 12)).error ==
       DisputesError.InvalidInput
   var empty = default(StateStore)
   assert publishDisputes(empty, default(DisputesPlan)).error == DisputesError.Uninitialized
-  echo "Disputes transition: 60 pinned tiny/full cases passed"
+  echo "Disputes transition: 62 pinned tiny/full cases passed"
 
 try:
   main() # Fixture I/O or parsing failures fail the suite rather than skipping coverage.

@@ -73,7 +73,7 @@ def service_values_corpus(compiler, report, checks, libraries):
                                       published_opaque_trace_values=traces,
                                       scope='keyed storage/preimage serialization and opaque capture; no namespace recovery, hash/content invariant or transitions'),
                         crypto_library=crypto_library)
-    corpus['passed'] = corpus['passed'] and len(traces) == 16 and corpus['published_json_storage'] == 12 and corpus['published_json_preimages'] == 16
+    corpus['passed'] = corpus['passed'] and len(traces) == 16 and corpus['published_json_storage'] == 18 and corpus['published_json_preimages'] == 30
     announce('independent service storage/preimage keys and opaque raw-value corpus', corpus['passed'])
     return corpus
 

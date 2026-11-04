@@ -126,7 +126,8 @@ def published():
     pins=json.loads((ROOT/'spec/pins.json').read_text())['vectors'];result=[]
     # Both profiles and phases cover nonempty gas allowances and changed privilege roles.
     for chain in ('tiny','full'):
-        for name in ('always_accumulate-1','always_accumulate-2','bless_from_non_manager-2','assign_from_non_assigner-2'):
+        for name in ('always_accumulate-1','always_accumulate-2','bless_from_non_manager-2','assign_from_non_assigner-2',
+                     'discarded_manager_privileges_revert-1'):
             path=f'stf/accumulate/{chain}/{name}.json'
             raw=subprocess.check_output(['git','-C',str(ROOT/pins['path']),'show',pins['commit']+':'+path])
             assert hashlib.sha256(raw).hexdigest()==pins['git_blobs'][path]
