@@ -91,11 +91,13 @@ import reads. Current membership does not replace original shard assignment.
 
 A separate explicit dial-attempt ceiling bounds native setup, including failed attempts; each host
 turn attempts at most one demanded connection. A fixed physical pool includes the existing Other
-quota without reducing validator engine capacity. Temporary connections have private slot/serial
+quota without reducing validator engine capacity. Temporary connections have private issuer/slot/serial
 cancellation tickets, with non-recycled serials across pool reuse and closed-storage release/reopen.
 Cancellation marks only the exact generation; normal bounded polling performs native teardown and
 retains callback storage through stream close. An already connected or pending peer confers no new
-cancellation ticket. Recovery releases its temporary connection after a reply/failure/reset/shutdown,
+cancellation ticket. The immutable issuer identity retains no native engine or canonical graph;
+foreign-node tickets and retained tickets across fresh-owner storage reuse remain invalid. Recovery
+releases its temporary connection after a reply/failure/reset/shutdown,
 while existing borrowed connections remain independently owned.
 
 The node-service TLS witness covers a peer outside every selected validator roster, named139 reads
@@ -105,8 +107,8 @@ transport success alone is never proof of import validity.
 
 The demand/lifetime, recovery, connection-owner and49 work-dispatch native suites passed. The
 mapped-IPv4 demand uses an explicit IPv4 bind and completes real TLS plus a named shard read.
-One thousand node-service lifetimes retained40144 bytes, connection-owner lifetimes47904 bytes,
-and complete recovery sessions184816 bytes, with equal before/after observations. Actual lowering
+One thousand node-service lifetimes retained39664 bytes, connection-owner lifetimes47424 bytes,
+and complete recovery sessions184336 bytes, with equal before/after observations. Actual lowering
 rejects copies of the dispatcher, node service, connection owner and enclosing application owner.
 Application build, formatting, inventory and Linux-target semantics for both recovery and connection
 modules passed. No native Linux runtime/CI result is implied by cross-target semantic checking.

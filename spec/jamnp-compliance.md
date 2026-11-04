@@ -49,8 +49,8 @@ production path exists; it does not assert all normative behavior has been verif
 | Shard assignment, CE137 | No runtime route | Deterministic assignment, bundle/segment shards and erasure-root justifications; validated storage before acknowledgment |
 | CE138 audit shard request | No runtime handler | Request root/index, bundle shard plus tagged co-path, response authentication, nonvalidator requests and bounded throttling |
 | CE147 bundle request | No runtime handler | Root-bound bundle service and validation, fall back to CE138 on invalid/unavailable bundle |
-| CE139/140 segment shards | No runtime handler | Grouped roots/indices, at most 6144 requested shards, exact segment-shard widths, per-shard proofs for140 and verified retry/fallback |
-| CE148 segment request | No runtime handler | At most3072 segments, segment/proof sequences, root-bound verification and CE139/140 fallback |
+| CE139/140 segment shards | Bounded grouped native serving, source-bound managed recovery, per-piece140 verification and temporary original-assurer connections; [contract](jamnp-import-recovery.md) | Ordinary recovery-policy startup activation and final full-stack qualification remain; lifecycle, original roster/coordinates, proven retry and import binding have scoped native evidence |
+| CE148 segment request | Original export serving and original-package root-bound acquisition with CE139/140 fallback; [contract](jamnp-import-recovery.md) | Ordinary acquisition/recovery-policy activation remains; complete framing, proof verification, fallback and actual package refinement have scoped native evidence |
 | CE141 assurances | No runtime route | Anchor/bitfield/signature, validator-role authentication, epoch-sensitive recipient sets and slot timing |
 | CE142 preimage announcement | No runtime route | Service/hash/length, on-chain request lookup, CE143 followup, possession-based grid gossip and connection lifetime |
 | CE143 preimage request | `canonical_read.nim` canonical service-state lookup, full-hash refusal and real TLS transcript | CE142 reception/cache and possession gossip remain; ordinary routing and full-hash checked acquisition are implemented |

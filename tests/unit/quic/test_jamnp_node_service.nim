@@ -405,6 +405,18 @@ proc demandedConnection() {.raises.} =
   assert started.error == DialError.None, "temporary peer: started.error == DialError.None"
   assert service.peerConnectionLive(started.value), "temporary peer: service.peerConnectionLive(started.value)"
   assert service.beginPeerConnection(expected, endpoint).error == DialError.Unavailable, "temporary peer: service.beginPeerConnection(expected, endpoint).error == DialError.Unavailable"
+  block:
+    # Two independent nodes can both have slot0/serial1; a foreign ticket must confer no cancellation authority.
+    var foreign = default(NodeService)
+    defer: foreign.close()
+    assert foreign.open(configuration, view, topologyLimits()) == NodeError.None
+    let detached = networkEndpoint(ipv4Address([127'u8, 0, 0, 1]), 1)
+    let foreignDial = foreign.beginPeerConnection(expected, detached)
+    assert foreignDial.error == DialError.None
+    assert not foreign.cancelPeerConnection(started.value), "foreign node rejects this node's dial token"
+    assert not service.cancelPeerConnection(foreignDial.value), "this node rejects a foreign dial token"
+    assert foreign.peerConnectionLive(foreignDial.value)
+    assert service.peerConnectionLive(started.value)
   let deadline = getMonoTime()+initDuration(seconds = 7)
   while service.peerCount != 1:
     assert getMonoTime() < deadline, "demanded non-validator TLS peer"
@@ -463,6 +475,14 @@ proc demandedConnection() {.raises.} =
   assert not service.cancelPeerConnection(next.value), "temporary peer: not service.cancelPeerConnection(next.value)"
   assert service.peerConnectionLive(reopened.value), "temporary peer: service.peerConnectionLive(reopened.value)"
   assert service.cancelPeerConnection(reopened.value), "temporary peer: service.cancelPeerConnection(reopened.value)"
+  service.close()
+  service = default(NodeService) # Reusing the same storage for a fresh owner cannot recycle a retained ticket's issuer identity.
+  assert service.open(configuration, view, topologyLimits()) == NodeError.None
+  let fresh = service.beginPeerConnection(expected, networkEndpoint(ipv4Address([127'u8, 0, 0, 1]), 1))
+  assert fresh.error == DialError.None
+  assert not service.cancelPeerConnection(started.value), "fresh owner rejects tickets retained across storage reuse"
+  assert service.peerConnectionLive(fresh.value)
+  assert service.cancelPeerConnection(fresh.value)
 proc main() {.raises.} =
   ## Failed/default inputs cannot grant a socket, ticket or peer source; repeated full lifetimes release ARC owners.
   bootstrap(false)
