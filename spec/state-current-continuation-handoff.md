@@ -61,7 +61,8 @@ physical diff or touched-key trace cannot recover complete original logical prov
 public delta API is introduced to fill this tranche.
 
 Independent complete current-schema pre/post source material, adopted current Thin VRF parity and
-the documented `AmbiguousPrivileges` policy gate remain open under the existing pinned contracts.
+the other documented host-policy gates retain their scoped contracts. Repeated bless service
+keys now follow the [current HUH qualification](pvm-accumulation-bless.md).
 The historical source audit's original 89-byte metadata and explicitly derived 105-byte rows retain
 separate identities and roots. M1 framing/current request namespace is complete; this does not imply
 complete current-pin state serialization/STF or JAM parity. Missing witness, proven absence,

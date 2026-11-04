@@ -54,3 +54,21 @@ sets Tiny refinement gas to1,000,000,000. The current-policy native suite loads 
 shipped file through the same file decoder used before devnet listener startup, in addition
 to exercising generated policies. Its fixture provider passes the source path directly and
 records a transport digest; it does not substitute a copied policy or infer its correctness.
+
+## Bless duplicate keys
+
+Target `text/pvm_invocations.tex` compares the cardinality of distinct service IDs with the
+original raw pair count. Both identical and conflicting repeated IDs return HUH. Memory
+preflight still precedes authority/duplicate checks, and those checks precede WHO for invalid
+proposed roles. Gas uses the complete raw count. State effects reject duplicate keys without
+publishing a successor; guest dispatch translates that refusal to HUH. Completion witnesses
+cover both duplicate forms, duplicates combined with invalid roles, exact raw-count charging,
+unchanged C12/retained owners, memory precedence, unique numeric sorting and ARC release.
+
+The bless native suite passes actual duplicate/refusal/preexisting-success and raw-gas cases
+with fresh1,000-cycle ARC evidence. Independent target report inputs match availability
+segment count to digest exports before signing. Complete native comparison passes36 signed
+transitions across6 allowance chains and210 across21 rotation/privilege chains. Seven
+independent Python invariants pass. The historical report factories retain their original
+inputs by default; this qualification explicitly selects the target count equality. Final
+source-pin qualification must include the remaining report families and new wire/state formats.

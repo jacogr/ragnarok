@@ -6,6 +6,8 @@
 ## Retains storage/queue/staging/privilege/checkpoint/yield/provide implications beside guest outcomes.
 ## Outcome normalization and state publication are separate operations.
 
+import std/algorithm
+
 import ../../pvm/worker
 
 import ../../lib/logging
@@ -30,8 +32,7 @@ import ../store
 type
   AccumulationDispatchError* {.pure.} = enum ## Local preparation/host refusals never impersonate guest panic, NONE or WHAT.
     Uninitialized, None, InvalidMachine, InvalidParameters, LimitExceeded, InvalidContext,
-    UnsupportedHostCall, ExecutionFailure, MalformedState, BackendFailure, GasRangeExceeded,
-    AmbiguousPrivileges ## Conflicting allowance values for one service require a specification decision.
+    UnsupportedHostCall, ExecutionFailure, MalformedState, BackendFailure, GasRangeExceeded
   AccumulationDispatchResult* = object ## Success alone retains a CPU outcome; engine failure carries only its enum-valued reason.
     case status: AccumulationDispatchError
     of None:
@@ -436,6 +437,23 @@ func privilegeNumber(bytes: seq[byte], offset, width: int): uint64 =
   for i in 0..<width:
     result = result or (uint64(bytes[offset+i]) shl (8*i)) # Callers prove each complete four/eight-byte field.
 
+func comparePrivilegeService(left, right: uint32): int =
+  ## Sort unsigned service identities without subtraction overflow or signed narrowing.
+  if left < right: return -1 # Numeric ordering keeps every repeated key adjacent.
+  if left > right: return 1 # Gas values never distinguish repeated keys.
+  0
+
+proc repeatedPrivilegeService(pairs: seq[byte]): bool =
+  ## A complete captured12-byte table bounds key scratch to one third of its already-bounded byte extent.
+  var keys = newSeq[uint32](pairs.len div 12)
+  for index in 0..<keys.len:
+    keys[index] = uint32(privilegeNumber(pairs, index*12,
+        4)) # Four octets prove the E4 narrowing and indexed extent.
+  keys.sort(comparePrivilegeService)
+  for index in 1..<keys.len:
+    if keys[index-1] == keys[index]: return true # Identical or different gas values have the same duplicate identity.
+  false
+
 proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memory):
     HostResult[AccumulationDispatchError] {.raises: [].} =
   ## Charge bless's complete 69-bit item cost before memory, authorization and role validation.
@@ -485,6 +503,9 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
       current.effectPrivileges.value.privilegeInfo.value.manager):
     response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes all proposed role-domain checks.
     return hostSuccess[AccumulationDispatchError](response)
+  if repeatedPrivilegeService(pairs.value):
+    response.registers[7] = RegisterValue(high(uint64)-8) # HUH precedes proposed role-domain checks, including identical pairs.
+    return hostSuccess[AccumulationDispatchError](response)
   for index in [7, 9, 10]:
     if uint64(cpu.registers[index]) > uint64(high(uint32)):
       response.registers[7] = RegisterValue(high(uint64)-3) # WHO; no self sentinel or low-bit truncation exists here.
@@ -509,8 +530,8 @@ proc blessResponse(context: var DispatchContext, cpu: MachineInfo, memory: Memor
     return hostFailure(AccumulationDispatchError.LimitExceeded) # No fabricated protocol resource code.
   of AccumulationEffectError.BackendFailure:
     return hostFailure(AccumulationDispatchError.BackendFailure) # No partial roles on failed Merklization.
-  of AccumulationEffectError.AmbiguousPrivileges:
-    return hostFailure(AccumulationDispatchError.AmbiguousPrivileges) # Preserve the conflicting-dictionary specification gate.
+  of AccumulationEffectError.DuplicatePrivilege:
+    response.registers[7] = RegisterValue(high(uint64)-8) # The state boundary independently protects the same HUH invariant.
   else:
     return hostFailure(AccumulationDispatchError.InvalidContext) # No inconsistent state/authority may publish.
   hostSuccess[AccumulationDispatchError](response)
