@@ -333,3 +333,41 @@ compared with587,243,798for current interpretation. This supports the admission 
 without explaining CPU behavior solely from counts. Complete checks, unchanged source-prefix
 semantics and checked fallback qualify this as the engine for the dependent production-build
 selection. The default integration still needs its native platform/real CLI/build checks.
+
+
+## Seven-block memory-cycle default-route candidate
+
+The private seven-block proof at `fe30bed1` passed Linux source, CPU, gas, host,
+page and ownership comparisons in [run 41755094017](https://github.com/jacogr/ragnarok/actions/runs/41755094017).
+The frozen warmed DOOM tick timing cohort at `d484723b` passed its raw identity
+audit in [run 41758997132](https://github.com/jacogr/ragnarok/actions/runs/41758997132).
+Across six paired blocks on one AMD EPYC 9V74 host, the wide candidate's CPU median
+was 0.6134 of checked and 0.5970 of the manually installed four-block child.
+Those measurements cover the private warm route only. They do not establish a
+default-route benefit or any initialization result.
+
+The production candidate admits a complete seven-block graph from a positively
+cached source backedge in the immutable prepared plan. A cold boundary checks the
+exact source shape, targets, plan identity, pricing and current partial state before
+sealing. It publishes the child dormant, then the parent, and commits their handler
+hooks together. Candidate failure restores checked handlers; only an exhausted
+owner-wide code or storage budget is permanent. A stream lease moves the source
+admission state with the cache. At most sixteen source candidates are pending, each
+for thirty-two cold boundaries. The lazy seen bitmap is bounded by 524,288 bytes
+at the four-MiB program ceiling and lives outside guest memory and public CPU state.
+Every cold seal/emission/publication attempt, including refusal, adds its elapsed
+time to the owner's compilation counter; cached branch dispatch does no clock work.
+
+The local ARM fallback suite covers default admission, more than sixteen unrelated
+startup sources, pending and activated stream transfer, parent-publication refusal,
+partial quotas, low gas and missing read-only pages. A separate signed-branch witness
+checks seven complete-budget literal outcomes and compares seventy native/plain
+prefix cases under ordinary and forced native refusal. The Linux default-route
+correctness packet passed its unit, both branch modes and full DOOM goldens in
+[run 41771202014](https://github.com/jacogr/ragnarok/actions/runs/41771202014),
+with 651 automatic wide calls in the DOOM tick. A local full-table rejection
+ablation makes the late-source unit's positive wide-call check fail.
+Fresh default-route timing remains pending. The 1,024-to-8,192 publication
+limit is a constant in the x86 owner and its executable arena is acquired lazily;
+the ARM initialization regression is a reason to measure x86 initialization
+separately, not evidence that its cost is absent.
