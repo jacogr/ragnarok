@@ -107,7 +107,8 @@ expect(anchor, ComputedAssuranceError.TransitionFailure)
 assert anchor.transitionFailure.error == BlockTransitionError.AvailabilityFailure
 assert anchor.transitionFailure.availabilityError.error ==
     AvailabilityTransitionError.ContextFailure
-assert anchor.transitionFailure.availabilityError.contextError == AssuranceContextError.WrongParent
+assert anchor.transitionFailure.availabilityError.contextError ==
+    AssuranceContextError.InvalidSignature
 let seal = prepareComputedAssurances(prior, assuranceCandidate(prior, badSeal = true), config)
 expect(seal, ComputedAssuranceError.TransitionFailure)
 assert seal.transitionFailure.error == BlockTransitionError.SafroleFailure

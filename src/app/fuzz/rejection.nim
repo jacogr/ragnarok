@@ -73,7 +73,7 @@ proc consensusBlockFailure(failure: BlockTransitionResult): bool =
     if assurance.error == AvailabilityTransitionError.ContextFailure:
       assurance.contextError in {AssuranceContextError.InvalidValidator,
         AssuranceContextError.NonCanonical,
-        AssuranceContextError.WrongParent, AssuranceContextError.InvalidSignature}
+        AssuranceContextError.InvalidSignature}
     else:
       assurance.error in {AvailabilityTransitionError.InvalidSlot,
         AvailabilityTransitionError.InvalidIndex,

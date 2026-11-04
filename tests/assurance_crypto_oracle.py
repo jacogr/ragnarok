@@ -54,9 +54,6 @@ def structural(cores, validators, parent, keys, values):
         # Preserve validator/order/padding precedence from the structural codec.
         if error:
             return error
-        # Every assurance must bind to the externally supplied parent.
-        if value[0]!=parent:
-            return 'wrongparent'
         previous=value[2]
     return None
 
@@ -120,10 +117,8 @@ def requests():
                             b'jam_available'+hashlib.blake2b(parent+bits[:(cores+7)//8]).digest()[:32]):
             changed=list(values);value=list(changed[0]);value[3]=credential(0,alternative)[1];changed[0]=tuple(value)
             add_verify(cores,validators,parent,keys,changed,'invalidsignature')
-        # Parent mismatch must precede an already invalid earlier signature.
-        changed=list(values);value=list(changed[0]);value[3]=bytes(64);changed[0]=tuple(value)
-        last=list(changed[-1]);last[0]=bytes([99])*32;changed[-1]=tuple(last)
-        add_verify(cores,validators,parent,keys,changed)
+        # A different actual parent invalidates otherwise unchanged ordinary signatures.
+        add_verify(cores,validators,bytes([99])*32,keys,values,'invalidsignature')
         # Validator limits, ordering and padding are checked on caller-constructed values too.
         for index in (validators,65535,0):
             changed=list(values);value=list(changed[-1]);value[2]=index;changed[-1]=tuple(value)

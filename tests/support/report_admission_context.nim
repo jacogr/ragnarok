@@ -369,7 +369,7 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
       var bits = default(AssuranceBits)
       bits.bytes[0] = 1
       let message = array[45, byte](assuranceMessage(AssuranceParent(parentHash), bits, CoreCount(2)).value)
-      votes[i] = Assurance(anchor: AssuranceAnchor(bytes: parentHash), bits: bits,
+      votes[i] = Assurance(bits: bits,
         validator: ValidatorIndex(i), signature: AssuranceSignature(bytes: array[64, byte](
           sign(importSeed(seedBytes).value, message).value)))
     var assuranceBytes = newSeq[byte](1000)

@@ -77,7 +77,6 @@ def validate(parent, slot, guaranteed, assured):
     anchor = history(parent[chapter_key(3)])[0][-1][0][:32]
     roster = epoch.roster(parent[chapter_key(8)])
     for item in assured:
-        assert item['anchor'] == anchor, 'assurance/WrongParent'
         assert item['signature'] == signed(epoch.PUBLIC[roster[item['index']][:32]], b'jam_available', digest(anchor+bytes([item['bits']])))[1], 'assurance/InvalidSignature'
         assert all(not (item['bits'] & (1 << core)) or old[core] is not None for core in range(2)), 'availability/UnassignedCore'
     released = [sum(bool(a['bits'] & (1 << core)) for a in assured) > 2*len(roster)//3 for core in range(2)]

@@ -175,7 +175,7 @@ proc main() {.raises.} =
         else:
           assert planned.error == AvailabilityTransitionError.ContextFailure
           assert planned.contextError == (if parts[2] ==
-              "bad_signature": AssuranceContextError.InvalidSignature else: AssuranceContextError.WrongParent)
+              "bad_signature": AssuranceContextError.InvalidSignature else: AssuranceContextError.InvalidSignature)
       else:
         if planned.error != AvailabilityTransitionError.None: echo parts[0], " got ",
             planned.error # Identify a changed upstream case without hiding failures.

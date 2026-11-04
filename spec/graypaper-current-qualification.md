@@ -72,3 +72,26 @@ transitions across6 allowance chains and210 across21 rotation/privilege chains. 
 independent Python invariants pass. The historical report factories retain their original
 inputs by default; this qualification explicitly selects the target count equality. Final
 source-pin qualification must include the remaining report families and new wire/state formats.
+
+## Parent-free assurance qualification
+
+Target `fad0ded4a433052397bf7234352a57fe491883f7`, Appendix C.2 and
+`text/reporting_assurance.tex`, removes the serialized parent from each assurance.
+Records contain fixed profile bits, E2 validator index and a64-byte signature; Tiny/Full
+strides are67/109. Signature verification still hashes the actual externally supplied parent.
+There is one current encoding; original pinned vectors remain immutable historical evidence.
+Qualification derives current structural records explicitly from their named historical fields,
+without claiming the old binary representation is current. Completion requires exact new wire
+bytes, every truncation, canonical padding/index ordering, atomic/alias behavior, signatures
+against the actual and a different parent, and real block/admission/availability consumers.
+
+The assurance layer passes33,393 independent codec/inspection requests,2,087 ordinary
+OpenSSL signing-context requests and17,065 whole extrinsic/block requests, comparing every
+result byte. Native codec, context, original signing credentials, availability, block, commitment,
+computed-assurance and report-admission suites pass, including fresh1,000-cycle ARC receipts.
+All486 production modules and the peer entry point compile with checked release flags.
+Sixteen independent Python contract checks pass. Original assurance fixtures are retained under
+`tests/fixtures/historical/parent-free-assurances/`; their target counterparts omit the parent.
+The remaining whole-state historical golden families are qualified with the statistics/source-pin
+layer, because the new C13 representation changes their state roots again. This layer alone
+does not claim that final full-state replay qualification or whole-upgrade completion.

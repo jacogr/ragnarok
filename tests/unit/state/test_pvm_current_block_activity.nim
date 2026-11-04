@@ -181,7 +181,7 @@ proc policies(fixture: CurrentActivityFixture, bytes: int) =
   for mode in 0..<12:
     var short = config()
     case mode
-    of 0: short.componentBytes = ByteLimit(495)
+    of 0: short.componentBytes = ByteLimit(335)
     of 1: short.incoming = ElementLimit(1)
     of 2: short.available = ElementLimit(0)
     of 3: short.assurances = ElementLimit(4)
@@ -207,7 +207,7 @@ proc policies(fixture: CurrentActivityFixture, bytes: int) =
       assert refused.error == CurrentAccumulationActivityError.LimitExceeded
     assert sameStateSnapshot(prior, fixture.source.currentValidatorsState.value), "policy refusal preserves source identity"
   var exact = config()
-  exact.componentBytes = ByteLimit(496)
+  exact.componentBytes = ByteLimit(336)
   exact.activityBytes = ByteLimit(uint64(bytes))
   assert prepareCurrentAccumulationActivity(fixture.source, exact).error ==
       CurrentAccumulationActivityError.None, "exact byte ceilings retry"

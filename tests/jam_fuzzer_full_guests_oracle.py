@@ -116,7 +116,7 @@ def assurances(parent,count,*,indices=None,cores=(CORE,),profile=full):
 
 def body(gs,ass,*,disputes=bytes(3)):
     """Independently encode and commit full-profile guarantee projections and exact assurance tuples."""
-    votes = natural(len(ass))+b''.join(item['anchor']+item['bits']+item['index'].to_bytes(2,'little')+item['signature'] for item in ass)
+    votes = natural(len(ass))+b''.join(item['bits']+item['index'].to_bytes(2,'little')+item['signature'] for item in ass)
     hashes = natural(len(gs))+b''.join(digest(item['report'])+item['slot'].to_bytes(4,'little')+natural(len(item['credentials']))
                        +b''.join(index.to_bytes(2,'little')+signature for index,signature in item['credentials']) for item in gs)
     raw = b'\0\0'+guarantees_wire(gs)+votes+disputes

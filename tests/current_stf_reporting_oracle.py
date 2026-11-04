@@ -97,7 +97,7 @@ def assurances(parent, count, bits):
 def body(guarantees, assurances, preimages=(), *, disputes=bytes(3), tickets=b'\0'):
     """Commit only normative guarantee report hashes and assurance raw tuples, with all other families empty."""
     guarantees_part = guarantees_wire(guarantees)
-    assurances_part = natural(len(assurances))+b''.join(item['anchor']+bytes([item['bits']])
+    assurances_part = natural(len(assurances))+b''.join(bytes([item['bits']])
                         +item['index'].to_bytes(2, 'little')+item['signature'] for item in assurances)
     guaranteed_hashes = natural(len(guarantees))+b''.join(digest(item['report'])+item['slot'].to_bytes(4, 'little')
         +natural(len(item['credentials']))+b''.join(i.to_bytes(2, 'little')+sig for i, sig in item['credentials']) for item in guarantees)
@@ -144,7 +144,6 @@ def validate(parent, slot, guarantees, assured):
     blocks, _ = history(parent[chapter_key(3)])
     anchor = blocks[-1][0][:32]
     for item in assured:
-        assert item['anchor'] == anchor, 'assurance/WrongParent'
         assert item['signature'] == signed(item['index']+1, b'jam_available', digest(anchor+bytes([item['bits']])))[1], 'assurance/InvalidSignature'
         assert all(not (item['bits'] & (1 << core)) or old[core] is not None for core in range(2)), 'availability/UnassignedCore'
     released = [sum(bool(item['bits'] & (1 << core)) for item in assured) >= 5 for core in range(2)]
