@@ -2305,10 +2305,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       let fact = f.plan.facts[int(f.sites[int(next)])]
       if fact.opcode notin 120'u8..130'u8 or fact.ending or not fact.fallthrough:
         return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      var completed = 0'u64
-      for current in header+1..<next:
-        let prior = f.plan.facts[int(f.sites[int(current)])]
-        if prior.opcode in 120'u8..130'u8 or supportedArmOpcode(prior.opcode): inc completed
+      # Publication certifies one lowered operation per physical body node.
+      let completed = uint64(next-header-1)
       if state[4] != completed:
         return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
       # The current stream worker may be fused or native; this immutable fact is the one-op checked worker.
@@ -2400,6 +2398,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if groupCount == 0: return false # Retain the accepted checked header when no window exists.
     var mixed = newArmMixedBody()
     for current in header+1..<terminal:
+      # Refuse publication unless every preceding physical node lowered exactly once.
+      if armMixedLowered(mixed) != current-header-1: return false
       let fact = f.plan.facts[int(f.sites[int(current)])]
       if fact.opcode in 120'u8..130'u8:
         assert fact.opcode >= 120 and fact.opcode <= 130
@@ -2419,6 +2419,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let args = f.arguments[int(terminal)]
     emitArmMixedBranch(mixed, branch.opcode, args.slots,
         flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
+    # The terminal branch contributes exactly one additional lowered operation.
+    if armMixedLowered(mixed) != terminal-header: return false
     var words = armMixedInstructions(mixed)
     if words.len >= 1024:
       when defined(pvmArmMixedGroupReceipt):
