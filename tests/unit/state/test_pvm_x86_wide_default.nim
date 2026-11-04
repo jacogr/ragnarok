@@ -20,14 +20,14 @@ proc appendNatural(bytes: var seq[byte], value: uint64) =
   let encoded = encode(JamNatural(value))
   for index in 0..<encoded.len: bytes.add(encoded.bytes[index])
 
-proc source(decoyCopies = 0): Program =
+proc source(decoyCopies = 0, branchUsesGuardRegister = false): Program =
   ## A real source backedge discovers the seven-block graph. Extra complete narrow
   ## copies give the same owner many unrelated startup candidates before its valid source.
   assert decoyCopies >= 0 and decoyCopies <= 17
   let original = [
     @[131'u8, 0x88, 1], @[149'u8, 0, 1],
     @[81'u8, 0x28, 0x40, 1, 0x3e, 0],
-    @[88'u8, 2, 0xf4],
+    @[88'u8, (if branchUsesGuardRegister: 0'u8 else: 2'u8), 0xf4],
     @[2'u8], @[57'u8, 2, 0xac, 0x45, 9],
     @[149'u8, 0, 1], @[129'u8, 0x10, 0x60],
     @[149'u8, 0, 1], @[1'u8],
@@ -127,6 +127,92 @@ when Native:
   assert flatX86WideStatistics(native)[0] > 0
 else:
   assert flatX86WideStatistics(native)[0] == 0
+
+# An admitted branch may jump straight to the guard, bypassing read, child,
+# and outside. One entry exits rare immediately; the other takes a guard
+# backedge first. Compare the paid state and entire memory with checked execution.
+for start in [319'u64, 318'u64]:
+  var directBranch = infoAt()
+  directBranch.pc = CodeAddress(12)
+  directBranch.registers[2] = RegisterValue(0)
+  directBranch.registers[8] = RegisterValue(start)
+  replaceFlatMemory(native, initialPages, directBranch)
+  var checkedDirectBranch = newFlatFrame(checkedPlan, initialPages, directBranch)
+  let beforeDirectBranch = flatX86WideStatistics(native)[0]
+  runFlat(native, 20)
+  runFlat(checkedDirectBranch, 20)
+  equalOutcome(native, checkedDirectBranch)
+  when Native:
+    assert flatX86WideStatistics(native)[0] > beforeDirectBranch
+
+# A direct guard entry bypasses the wide branch worker but keeps the same
+# source result. A quota boundary on the branch backedge also preserves the
+# exact charged header when native execution returns to the checked stream.
+var directGuard = infoAt()
+directGuard.pc = CodeAddress(0)
+directGuard.registers[2] = RegisterValue(0)
+directGuard.registers[8] = RegisterValue(319)
+replaceFlatMemory(native, initialPages, directGuard)
+var checkedDirectGuard = newFlatFrame(checkedPlan, initialPages, directGuard)
+runFlat(native, 20)
+runFlat(checkedDirectGuard, 20)
+equalOutcome(native, checkedDirectGuard)
+var boundedBranch = infoAt()
+boundedBranch.pc = CodeAddress(12)
+boundedBranch.registers[2] = RegisterValue(0)
+boundedBranch.registers[8] = RegisterValue(318)
+replaceFlatMemory(native, initialPages, boundedBranch)
+var checkedBoundedBranch = newFlatFrame(checkedPlan, initialPages, boundedBranch)
+let beforeBoundedBranch = flatX86WideStatistics(native)[0]
+runFlat(native, 4)
+runFlat(checkedBoundedBranch, 4)
+equalOutcome(native, checkedBoundedBranch)
+when Native:
+  assert flatX86WideStatistics(native)[0] > beforeBoundedBranch
+
+# A regular entry can also reach the direct guard arm through data: zero RO
+# words make the read/child path clear R2 before the next outer branch.
+var zeroReadPages = pages()
+zeroReadPages[0].bytes[1452] = 0
+zeroReadPages[0].bytes[1460] = 0
+replaceFlatMemory(native, zeroReadPages, infoAt())
+var checkedZeroRead = newFlatFrame(checkedPlan, zeroReadPages, infoAt())
+let beforeZeroRead = flatX86WideStatistics(native)[0]
+runFlat(native, 20000)
+runFlat(checkedZeroRead, 20000)
+equalOutcome(native, checkedZeroRead)
+when Native:
+  assert flatX86WideStatistics(native)[0] > beforeZeroRead
+
+# In this admitted source variant the guard increments the register tested by
+# the outer branch. One direct guard visit switches the next branch to read;
+# a missing RO page then produces a charged read replay after two branch visits.
+let aliasProgram = source(branchUsesGuardRegister = true)
+let aliasPlan = prepared(aliasProgram, true)
+let aliasCheckedPlan = prepared(aliasProgram, false)
+var aliasWarm = infoAt()
+aliasWarm.registers[0] = RegisterValue(1)
+aliasWarm.registers[8] = RegisterValue(0)
+var aliasFrame = newFlatFrame(aliasPlan, initialPages, aliasWarm)
+runFlat(aliasFrame, 20000)
+replaceFlatMemory(aliasFrame, initialPages, aliasWarm)
+runFlat(aliasFrame, 20000)
+when Native:
+  assert flatX86WideStatistics(aliasFrame)[0] > 0
+var readRefusal = infoAt()
+readRefusal.pc = CodeAddress(12)
+readRefusal.registers[0] = RegisterValue(0)
+readRefusal.registers[8] = RegisterValue(0)
+let noReadPage = @[initialPages[1]]
+replaceFlatMemory(aliasFrame, noReadPage, readRefusal)
+var checkedReadRefusal = newFlatFrame(aliasCheckedPlan, noReadPage, readRefusal)
+let beforeReadRefusal = flatX86WideStatistics(aliasFrame)[0]
+runFlat(aliasFrame, 100)
+runFlat(checkedReadRefusal, 100)
+equalOutcome(aliasFrame, checkedReadRefusal)
+assert aliasFrame.exit == StepExit.Fault
+when Native:
+  assert flatX86WideStatistics(aliasFrame)[0] > beforeReadRefusal
 
 # A parent publication refusal after child code publication keeps both checked handlers active.
 let refusalPlan = prepared(sourceProgram, true)

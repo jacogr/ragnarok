@@ -358,15 +358,26 @@ at the four-MiB program ceiling and lives outside guest memory and public CPU st
 Every cold seal/emission/publication attempt, including refusal, adds its elapsed
 time to the owner's compilation counter; cached branch dispatch does no clock work.
 
+The native return receipt balances completed branch, guard, read, child and outside
+visits against every admitted edge. The branch may jump directly to the guard,
+without visiting read, child or outside. At most one branch/read/child segment
+remains open at a return. Rare exits close that segment; a charged read refusal
+returns with the branch completed and the read still pending. The validator also
+checks the exact charged gas and attempt totals before committing native state.
+
 The local ARM fallback suite covers default admission, more than sixteen unrelated
 startup sources, pending and activated stream transfer, parent-publication refusal,
 partial quotas, low gas and missing read-only pages. A separate signed-branch witness
 checks seven complete-budget literal outcomes and compares seventy native/plain
-prefix cases under ordinary and forced native refusal. The Linux default-route
+prefix cases under ordinary and forced native refusal. The initial Linux default-route
 correctness packet passed its unit, both branch modes and full DOOM goldens in
 [run 41771202014](https://github.com/jacogr/ragnarok/actions/runs/41771202014),
-with 651 automatic wide calls in the DOOM tick. A local full-table rejection
-ablation makes the late-source unit's positive wide-call check fail.
+with 651 automatic wide calls in the DOOM tick. A subsequent direct guard-path
+regression exposed a receipt check that assumed every guard had an outside visit.
+The corrected validator and direct, data-driven and charged-read cases pass the
+local native x86 suite; the full packet must be rerun for the changed runtime.
+A local full-table rejection ablation makes the late-source unit's positive
+wide-call check fail.
 Fresh default-route timing remains pending. The 1,024-to-8,192 publication
 limit is a constant in the x86 owner and its executable arena is acquired lazily;
 the ARM initialization regression is a reason to measure x86 initialization

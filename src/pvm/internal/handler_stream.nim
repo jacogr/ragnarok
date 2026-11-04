@@ -2551,6 +2551,10 @@ when defined(pvmX86Jit):
           startAttempts: uint64, state: X86WideState, next: uint32): bool =
         ## Exact charged/completed equations include a speculative read charged before replay.
         let cycle = state.cycle
+        let outsideVisits = state.outerVisits[0]
+        let guardVisits = state.outerVisits[1]
+        let branchVisits = state.outerVisits[2]
+        let readVisits = state.outerVisits[3]
         if cycle.reserved != 0 or cycle.gas > startGas or
             cycle.attempts > startAttempts or
             (cycle.exitKind != 1 and cycle.exitKind != 2 and cycle.exitKind != 3) or
@@ -2558,15 +2562,17 @@ when defined(pvmX86Jit):
             cycle.visits[1] != cycle.wordGroups*4 or
             cycle.visits[2] > cycle.wordGroups or
             cycle.visits[0] < state.childCalls or
-            state.childCalls > state.outerVisits[3] or
-            state.outerVisits[3]-state.childCalls > 1 or
-            state.outerVisits[0] > state.childCalls or
-            state.childCalls-state.outerVisits[0] > 1 or
-            state.outerVisits[1] > state.outerVisits[0] or
-            state.outerVisits[0]-state.outerVisits[1] > 1 or
-            state.outerVisits[3] > state.outerVisits[2]: return false
-        if state.outerVisits[2] > state.outerVisits[1] and
-            state.outerVisits[2]-state.outerVisits[1] > 1: return false
+            state.childCalls > readVisits or
+            readVisits-state.childCalls > 1 or
+            outsideVisits > state.childCalls or
+            state.childCalls-outsideVisits > 1 or
+            readVisits > branchVisits or
+            guardVisits > branchVisits: return false
+        # Branch chooses either guard directly or read→child→outside→guard.
+        # Only one branch/read/child segment can remain open at a return.
+        let openBranches = branchVisits-guardVisits
+        if openBranches > 1 or readVisits-outsideVisits > openBranches:
+          return false
         if cycle.visits[2] > high(uint64)-state.childCalls: return false
         let childTails = cycle.visits[2]+state.childCalls
         if cycle.visits[0] > childTails: return false
@@ -2617,14 +2623,22 @@ when defined(pvmX86Jit):
         if completed > 0 and cycle.lastCompleted notin known: return false
         if cycle.exitKind == 2:
           return next == candidate.rare.header and
-            cycle.lastCompleted == candidate.loopGuard.header
+            cycle.lastCompleted == candidate.loopGuard.header and
+            openBranches == 0 and readVisits == outsideVisits
         if cycle.exitKind == 3:
           return next == candidate.readBlock.header+1 and
             cycle.lastCompleted == candidate.loopBranch.header and
-            state.childCalls == state.outerVisits[3] and
-            state.outerVisits[2] > state.outerVisits[3] and
-            state.outerVisits[2]-state.outerVisits[3] == 1
-        next in known
+            state.childCalls == readVisits and openBranches == 1 and
+            readVisits == outsideVisits
+        if next == candidate.loopBranch.header:
+          return openBranches == 0 and readVisits == outsideVisits
+        if next == candidate.loopGuard.header or
+            next == candidate.readBlock.header:
+          return openBranches == 1 and readVisits == outsideVisits
+        if next in [candidate.cycle.prefix.header, candidate.cycle.dirty.header,
+            candidate.cycle.tail.header, candidate.cycle.outside.header]:
+          return openBranches == 1 and readVisits-outsideVisits == 1
+        false
 
       func flatX86WideMatches(f: FlatFrame,
           candidate: X86WideCycleCandidate): bool =
