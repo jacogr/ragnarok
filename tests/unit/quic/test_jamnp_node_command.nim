@@ -3,10 +3,12 @@
 
 ## The real foreground node loop serves TLS state reads and retires every child before a joined command thread returns.
 import std/[assertions, syncio, envvars, strutils, monotimes, times, rawthreads, atomics]
-import ../../../src/app/[options, node_command]
+import ../../../src/app/[options, node_command, work_policy, work_dispatch]
+import ../../../src/jamnp-s/[work_submission, work_duty]
+import ../../../src/state/input_refinement
 import ../../../src/app/cli/help
 import ../../../src/chain/[genesis, parameters]
-import ../../../src/codec/header
+import ../../../src/codec/[header, bounded]
 import ../../../src/codec/state/safrole
 import ../../../src/state/[store, range_proof]
 import ../../../src/quic/transport
@@ -104,6 +106,34 @@ proc main() {.raises.} =
   assert parseOptions(finite, rejected)
   assert runNodeCommand(rejected) == NodeCommandError.Stopped,
     "a finite monotonic deadline retires the foreground actor without inventing progress"
+  var work = finite
+  work.add("--node-work-policy")
+  work.add("missing-node-work.policy")
+  assert parseOptions(work, rejected)
+  assert rejected.argumentCount == 8 and rejected.argument(7).len == 0, "policy-only node has no synthetic seed filename"
+  assert rejected.argument(8) == "missing-node-work.policy"
+  assert runNodeCommand(rejected) == NodeCommandError.InvalidWorkPolicy
+  work[work.len-1] = "node-work.policy"
+  assert parseOptions(work, rejected)
+  writeFile("node-work.policy", "ragnarok-work-policy-v1\n")
+  assert runNodeCommand(rejected) == NodeCommandError.InvalidWorkPolicy
+  var execution = default(InputRefinementLimits)
+  execution.inputBytes = ByteLimit(65536)
+  writeFile("node-work.policy", encodeWorkPolicy(default(WorkSubmissionLimits), execution,
+    WorkDutyLimits(chapterBytes: ByteLimit(1048576), disputeItems: ElementLimit(1023))))
+  assert runNodeCommand(rejected) == NodeCommandError.Stopped
+  assert commandHelp("node").contains("--node-work-policy")
+  work.add("--node-validator-seed")
+  work.add("node-work.seed")
+  writeFile("node-work.seed", repeat("x", 32))
+  assert parseOptions(work, rejected)
+  assert rejected.argumentCount == 8 and rejected.argument(7) == "node-work.seed"
+  assert rejected.argument(8) == "node-work.policy"
+  assert runNodeCommand(rejected) == NodeCommandError.Stopped
+  var invalidWork = finite
+  invalidWork.add("--node-work-policy")
+  invalidWork.add("")
+  assert not parseOptions(invalidWork, rejected)
   var signing = finite
   signing.add("--node-validator-seed")
   signing.add("node-validator.seed")

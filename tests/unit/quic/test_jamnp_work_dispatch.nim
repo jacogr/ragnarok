@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual ApplicationNode bundle dispatch verifies PVM execution and exact source/worker retirement over authenticated TLS.
-import std/[assertions, envvars, syncio, monotimes, times]
-import ../../../src/app/[node as application_node, services, options, work_dispatch]
+import std/[assertions, envvars, syncio, monotimes, times, strutils]
+import ../../../src/app/[node as application_node, services, options, work_dispatch, work_policy]
 import ../../../src/app/proof/[worker, work_submission]
 import ../../../src/jamnp-s/[node as node_streams, connections, work_duty, read_stream]
 import ../../../src/codec/bounded
@@ -14,7 +14,7 @@ import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_pro
 
 type Variant {.pure.} = enum ## Each case has a real positive source and changes one host/network boundary.
   Success, Disabled, WrongCore, CorruptProof, WithheldFin, Rotation, Deadline,
-    ResetDone, CloseDone, ForeignDone, ForeignClose, ReadyForeign, Package
+    ResetDone, CloseDone, ForeignDone, ForeignClose, ReadyForeign, LowBudget, Package
 proc publicKey(): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -99,9 +99,15 @@ proc scenario(variant: Variant) {.raises.} =
   assert host.open(services, config, topologyLimits(2), StateTime(20)) == NodeError.None
   assert not host.configureWork(default(WorkDispatchPolicy)), "default policy refused"
   let timeout = range[1..120000](if variant == Variant.Deadline: 1000 else: 120000)
-  let policy = workDispatchPolicy(fixture.limits, executionLimits(),
+  var text = encodeWorkPolicy(fixture.limits, executionLimits(),
     WorkDutyLimits(chapterBytes: ByteLimit(10000), disputeItems: ElementLimit(128)),
         timeoutMs = timeout)
+  if variant == Variant.LowBudget:
+    assert text.contains("admission.authorization.steps=64\n")
+    text = text.replace("admission.authorization.steps=64\n", "admission.authorization.steps=0\n")
+  let decoded = decodeWorkPolicy(text)
+  assert decoded.error == WorkPolicyError.None
+  let policy = decoded.value
   assert policy.valid
   if variant != Variant.Disabled:
     assert host.configureWork(policy)
@@ -114,7 +120,7 @@ proc scenario(variant: Variant) {.raises.} =
   let flow = probe.issue(wire(fixture, variant), persistent = variant in {
     Variant.WithheldFin, Variant.Rotation, Variant.Deadline, Variant.ForeignDone,
     Variant.ForeignClose})
-  if variant in [Variant.Disabled, Variant.WrongCore, Variant.Package]:
+  if variant in [Variant.Disabled, Variant.WrongCore, Variant.LowBudget, Variant.Package]:
     # Disabled methods, unimplemented availability acquisition and genuine wrong-core duty all refuse without success FIN.
     waitReset(host, services, probe, flow)
     assert host.acceptedWork == 0
