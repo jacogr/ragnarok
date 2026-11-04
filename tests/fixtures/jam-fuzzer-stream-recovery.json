@@ -1,5 +1,5 @@
 {
-  "bad_prior_root_sha256": "074f2b6f241432707e6b76509ee69fc3cc01e225b5bcc030f505a94709a0b440",
+  "bad_prior_root_sha256": "6afdc8f263fa1c429ebf0d428758958ad3a763b47ddd41343734a20291253010",
   "cases": [
     {
       "bytes": 0,
@@ -34,22 +34,22 @@
     {
       "bytes": 37,
       "name": "body-33",
-      "sha256": "9e97334090e4b4511987f80aa0f297975d1010096a85b82dd09aa231e2d2dfbc"
+      "sha256": "16fc161f332ce1fbf84e6646f08b02231ca68f35c10f56ccf7071a297aaaf0ce"
     },
     {
       "bytes": 101,
       "name": "body-97",
-      "sha256": "1aba72d850e741a5b0fc3021d801990b1d0e7e7f066755c8e7e6f3e0f8c9b446"
+      "sha256": "7571aad719cd08e7cca09eca3d8144d2a0f31224297f819cb7c0db30879aadcc"
     },
     {
       "bytes": 301,
       "name": "body-297",
-      "sha256": "1321a3dea36721f743b7fd451ae0a15299956f884552373104d854094253f312"
+      "sha256": "5b638d5a4c8d5328e96033c755e8a5b37488447b2c7a0b6170139fb4c1e86374"
     },
     {
       "bytes": 308,
       "name": "body-304",
-      "sha256": "ed58e1d8077067c96c71c276ec6806198008bbe06eb9c52b3184d615b93653c4"
+      "sha256": "2a47ff70d2f6d9c800cf04d2c08322282cd880cbc9c565078da0bcf36d041614"
     },
     {
       "bytes": 4,
@@ -72,11 +72,11 @@
       "sha256": "4e36f68d37c6e981c7299780de2efe2b3cef526ce317fae6a64c256328ba9905"
     }
   ],
-  "continuation_state_sha256": "7e68344e2976cb62379ecf62bda6c0ef774d666ed058f3b70cde08aa6518ef25",
+  "continuation_state_sha256": "75a51b235bc76ac2b91c81560ac3536b515dcace6a4becb47ac220b85e1bb9a5",
   "control_count": 15,
-  "initialize_sha256": "db23dfbcd64303a3288f34ca64bfa9859e14cc7ee324d3b9575468779aa416dd",
+  "initialize_sha256": "d437e3277e0a853ec5dd307d4fb36ce2b29784b04545544e7db8620199fd9281",
   "prefix_state_sha256": [
-    "4dc8533b3dd0654e0ffa2e991027c171738dc09f725a528e50669c1a50597535",
-    "dcf1f0f8814134efe75760801a703e473ec90a2d2af49433c1247a761739c849"
+    "6f1580e46f25f01cd20c4ef070d79352e1d8272126033ff458e173f512485469",
+    "b65170cb705cdc6635c43ad9f86fb75cbb3e383feab3c7a8c603a5c319bd4e32"
   ]
 }

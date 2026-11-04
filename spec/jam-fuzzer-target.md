@@ -77,6 +77,15 @@ passes. Current-profile live generated campaign validation still requires a
 compatible engine and matching complete profile. No campaign Fuzz matrix job is
 claimed by this interface increment.
 
+Current parent-free assurance replay uses the repository-owned schema launcher
+`tests/jam_minifuzz_current.py` and the pinned codec's public type registry. It
+declares C.2 bitfield, E2 validator index and Ed25519 signature fields. The pristine
+upstream minifuzz script still performs its normal decode and comparison work.
+The launcher verifies its source hash before execution. Codec regression checks
+cover literal 67-byte Tiny and 109-byte Full records, every truncated prefix and
+obsolete anchored/trailing records. The strict proxy retains exact current-format
+request and complete response comparisons, including false-success controls.
+
 Observed local checks passed the maintained native startup/classification suite,
 the real-entry registered E2E exchange and the normal-mode peer parser. E2E
 compared all three complete state replies with the existing independent signed

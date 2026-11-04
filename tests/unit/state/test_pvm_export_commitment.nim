@@ -97,8 +97,8 @@ let panic = reportGuest([exporting[0], exporting[1], exporting[2], @[0'u8]], dec
 let mixedSource = commitmentSource([good, reportGuest([halt], declared = 1, missing = true), panic])
 let selected = mixedSource.identitySource.value.authorizedDigests.value.digestReport.value
 assert selected.reportItem(FetchItemIndex(0)).value.refinedInfo.value.kind == WorkKind.Success, "mixed success kind"
-assert selected.reportItem(FetchItemIndex(1)).value.refinedInfo.value.kind == WorkKind.BadExports, "missing code export mismatch"
-assert selected.reportItem(FetchItemIndex(2)).value.refinedInfo.value.kind == WorkKind.BadExports, "panic discards exports before I"
+assert selected.reportItem(FetchItemIndex(1)).value.refinedInfo.value.kind == WorkKind.Bad, "missing code precedes export validation"
+assert selected.reportItem(FetchItemIndex(2)).value.refinedInfo.value.kind == WorkKind.Panic, "panic precedes export validation"
 let mixed = prepareExportCommitment(mixedSource, commitmentLimits()).value
 assert mixed.commitmentInfo.value.root.bytes == MixedRoot, "mixed root"
 assert array[32, byte](blake2b256(array[4104, byte](mixed.commitmentPage(ExportPageIndex(

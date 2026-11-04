@@ -68,7 +68,8 @@ def replay(script, environment, endpoint, folder, pairs, *, corrupt_last=False, 
             listener.listen(1)
             listener.settimeout(30)
             try:
-                process = subprocess.Popen([sys.executable, '-S', str(script), '--spec', spec,
+                process = subprocess.Popen([sys.executable, '-S',
+                    str(Path(__file__).with_name('jam_minifuzz_current.py')), str(script), '--spec', spec,
                     '--trace-dir', str(trace.resolve()), '--target-sock', str(proxy), '--stop-after', str(len(pairs))],
                     env=environment, stdout=log, stderr=log)
                 client, _ = listener.accept()
