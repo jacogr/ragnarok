@@ -4,6 +4,7 @@
 ## Closed two-stage work-submission CPU jobs retain original complete-state provenance under the shared graph lease.
 ## All aliases, including completed authorization and refinement, remain untouched until exact collection or joined stop.
 import ../../jamnp-s/work_submission
+import ../../jamnp-s/work_duty
 import ../../state/[store, input_refinement]
 import "../../state/import/inputs" as import_inputs
 import "../../state/import/justification" as import_justification
@@ -14,20 +15,24 @@ type
   WorkJobError* {.pure.} = enum ## Local capture refusals contain no source-bearing input capability.
     Uninitialized, None, InvalidInput, LimitExceeded
   WorkJobResultKind* {.pure.} = enum ## A completed CPU turn exposes only its selected full success or genuine child failure.
-    Uninitialized, Authorized, Refined, AuthorizationFailure, BodyFailure, RefinementFailure
+    Uninitialized, Authorized, Refined, AuthorizationFailure, BodyFailure, RefinementFailure, DutyFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
     parameters: Parameters
     limits: WorkSubmissionLimits
     execution: InputRefinementLimits
+    recipient: WorkRecipient
+    dutyLimits: WorkDutyLimits
   WorkContextData = ref object ## A real successful grant cannot be rebound to another source or execution policy.
     source: WorkSource
     grant: AuthorizedWorkSubmission
+    duty: WorkDuty
   AuthorizedWorkContext* = object ## Only a successful private CPU capability can construct a usable context.
     data: nil WorkContextData
   WorkJobResult* = object ## Failed/default results expose no input, grant, partial refinement or unrelated child.
     case status: WorkJobResultKind
+    of DutyFailure: dutyReason: WorkDutyResult[WorkDuty]
     of Authorized: context: AuthorizedWorkContext
     of Refined: execution: InputRefinement
     of AuthorizationFailure: authorizationReason: WorkSubmissionResult[AuthorizedWorkSubmission]
@@ -80,6 +85,15 @@ func refinementError*(outcome: WorkJobResult): InputRefinementResult[
     InputRefinement] {.requires: outcome.status == WorkJobResultKind.RefinementFailure.} =
   ## Preserve the existing execution pipeline's actual failed child.
   outcome.refinementReason
+func dutyError*(outcome: WorkJobResult): WorkDutyResult[WorkDuty] {.requires: outcome.status ==
+    WorkJobResultKind.DutyFailure.} =
+  ## Preserve actual source/assignment refusal before any authorizer executes or a grant escapes.
+  outcome.dutyReason
+proc duty*(context: AuthorizedWorkContext): WorkDuty =
+  ## Copy detached assignment facts only while the caller owns graph access; old computation-only contexts have no duty claim.
+  let data = context.data
+  if data == nil: return default(WorkDuty)
+  data.duty
 func valid*(job: WorkSubmissionJob): bool =
   ## Only private factories bind the actual runner and original source.
   job.data != nil
@@ -94,12 +108,20 @@ proc info*(context: AuthorizedWorkContext): WorkSubmissionResult[WorkSubmissionI
 proc authorize(data: WorkJobData): WorkJobResult =
   ## Private staging aliases retire before the worker publishes Done.
   let source = data.source
+  var duty = default(WorkDuty)
+  if source.recipient.valid:
+    # Network requests must prove the original local core assignment inside the same exclusive CPU lease.
+    let selected = captureWorkDuty(source.state, source.parameters, source.recipient,
+      source.header.submissionInfo.value.core, source.dutyLimits)
+    if selected.error != WorkDutyError.None:
+      return WorkJobResult(status: WorkJobResultKind.DutyFailure, dutyReason: selected)
+    duty = selected.value
   let outcome = authorizeWorkSubmission(source.header, source.state, source.parameters, source.limits)
   if outcome.error != WorkSubmissionError.None:
     return WorkJobResult(status: WorkJobResultKind.AuthorizationFailure,
         authorizationReason: outcome)
   WorkJobResult(status: WorkJobResultKind.Authorized,
-    context: AuthorizedWorkContext(data: WorkContextData(source: source, grant: outcome.value)))
+    context: AuthorizedWorkContext(data: WorkContextData(source: source, grant: outcome.value, duty: duty)))
 proc complete(data: WorkJobData): WorkJobResult =
   ## Validate only the original grant's body, then execute from the same immutable source and fixed original policy.
   let context = data.context.data
@@ -119,14 +141,15 @@ proc complete(data: WorkJobData): WorkJobResult =
   WorkJobResult(status: WorkJobResultKind.Refined, execution: executed.value)
 proc captureWorkAuthorization*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits,
-    execution: InputRefinementLimits): WorkJobAdmission =
+    execution: InputRefinementLimits, recipient = default(WorkRecipient),
+    dutyLimits = default(WorkDutyLimits)): WorkJobAdmission =
   ## The staging caller owns the shared graph; every returned alias must retire before it submits the moved job.
   if header.submissionInfo.error != WorkSubmissionError.None: return WorkJobAdmission(
       status: WorkJobError.InvalidInput)
   if not parameters.valid: return WorkJobAdmission(status: WorkJobError.InvalidInput)
   if not sameStateSnapshot(state, state): return WorkJobAdmission(status: WorkJobError.InvalidInput)
   let source = WorkSource(header: header, state: state, parameters: parameters, limits: limits,
-      execution: execution)
+      execution: execution, recipient: recipient, dutyLimits: dutyLimits)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: authorize, source: source)))
 proc copied(input: openArray[byte]): seq[byte] =

@@ -76,14 +76,16 @@ proc workFixture*(external = true, rejected = false, wrongPool = false,
 import ../../src/chain/genesis
 import ../../src/codec/header
 import ../../src/codec/state/safrole
+import ../../src/codec/state/disputes as state_disputes
 import ../../src/lib/json/writer as json_writer
 import std/strutils
 import ./jamnp_topology_fixture
 proc workSnapshot*(f: WorkFixture, local = default(StateEdKey)): BlockSnapshot =
   ## Merge actual code and commitments with explicit canonical roster/time context; no consensus certificate is invented.
   var current = topologyRecords(0, 6)
-  if array[32, byte](local) != default(array[32, byte]): current[
-      0].ed25519 = local # Optional actual TLS identity gives the node its real current-validator role.
+  if array[32, byte](local) != default(array[32, byte]):
+    current[1].ed25519 = local # Independent zero-entropy six-member shuffle assigns this index to core0 at slot20.
+
   let base = topologyCaptured([topologyRecords(0, 6), current, topologyRecords(1, 6)],
     cores = 2, atSlot = 20).value
   var state = forkStateStore(f.input.state).value
@@ -91,6 +93,11 @@ proc workSnapshot*(f: WorkFixture, local = default(StateEdKey)): BlockSnapshot =
   for index in 0..<base.keyCount:
     let key = base.keyAt(StateKeyIndex(index))
     writes.add(StateWrite(kind: StateWriteKind.Put, key: key, value: base.lookup(key).value.bytes))
+  let disputes = disputeStateEntry(default(DisputeState), DisputeStateConfig(perSet: ElementLimit(128),
+    totalItems: ElementLimit(128), maxBytes: ByteLimit(10000))).value
+  let entropy = entropyEntry(default(StateEntropy))
+  writes.add(StateWrite(kind: StateWriteKind.Put, key: disputes.key, value: disputes.value))
+  writes.add(StateWrite(kind: StateWriteKind.Put, key: entropy.key, value: entropy.value))
   assert state.apply(writes).error == StateStoreError.None
   var wire = newSeq[byte](base.header.headerInfo.value.consumed)
   assert encodeOwnedHeader(base.header, wire).error == HeaderError.None

@@ -53,6 +53,7 @@ import ./proof/ticket_production
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_stream
+from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid
 from ../codec/work/package import PackageConfig
 from ../codec/work/digest import Gas
 import ../state/input_refinement
@@ -236,6 +237,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   workActive: bool
   workTicket: ProofWorkerTicket
   workInfo: WorkSubmissionInfo
+  workDuty: WorkDuty
   workHead: BlockHash
   ticketSigner: TicketSigner
   ticketSignerReady: bool
@@ -306,6 +308,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.productionInput)
   `=wasMoved`(services.workInput)
   `=wasMoved`(services.workContext)
+  `=wasMoved`(services.workDuty)
   `=wasMoved`(services.workOutcome)
   `=wasMoved`(services.workIdentity)
   `=wasMoved`(services.workTicket)
@@ -361,6 +364,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.productionInput)
   `=destroy`(services.workInput)
   `=destroy`(services.workContext)
+  `=destroy`(services.workDuty)
   `=destroy`(services.workOutcome)
   `=destroy`(services.workIdentity)
   `=destroy`(services.workTicket)
@@ -619,6 +623,7 @@ proc close*(services: var Services) =
   services.workPhase = WorkSessionPhase.Empty
   services.workActive = false
   services.workInfo = default(WorkSubmissionInfo)
+  services.workDuty = default(WorkDuty)
   services.workHead = default(BlockHash)
   if services.mcp.enabled: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping MCP listener")
   services.mcp.close()
@@ -1777,6 +1782,7 @@ proc reapWorkSubmission*(services: var Services): bool =
   services.workOutcome = default(WorkJobResult)
   services.workTicket = default(ProofWorkerTicket)
   services.workInfo = default(WorkSubmissionInfo)
+  services.workDuty = default(WorkDuty)
   services.workHead = default(BlockHash)
   services.workPhase = WorkSessionPhase.Empty
   true
@@ -1799,12 +1805,13 @@ proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmission
   services.workInput = default(WorkSubmissionJob)
   WorkSubmissionStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 proc stageWorkAuthorization(services: var Services, header: WorkSubmissionHeader,
-    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkJobError =
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recipient = default(WorkRecipient), dutyLimits = default(WorkDutyLimits)): WorkJobError =
   ## Complete-state and successful capture aliases retire in this helper before CPU submission.
   let head = services.canonical.chainView.bestBlock
   if head.error != GenesisError.None: return WorkJobError.InvalidInput
   let captured = captureWorkAuthorization(header, head.value.stateSnapshot,
-    head.value.chainParameters, limits, execution)
+    head.value.chainParameters, limits, execution, recipient, dutyLimits)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   services.workInfo = header.submissionInfo.value
@@ -1831,9 +1838,10 @@ proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
   discard services.proofWorker.start()
   services.submitWork(WorkSessionPhase.Authorizing)
 proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
-    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkJobError =
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recipient: WorkRecipient, dutyLimits: WorkDutyLimits): WorkJobError =
   ## Raw transcript and decoded package aliases retire here; only private job ownership survives before CPU admission.
-  if not header.valid: return WorkJobError.InvalidInput
+  if not header.valid or not recipient.valid: return WorkJobError.InvalidInput
   let first = header.firstMessage
   let package = header.packageMessage
   let head = services.canonical.chainView.bestBlock
@@ -1843,9 +1851,10 @@ proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
     accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(204800))
   let decoded = decodeWorkSubmission(header.kind, first, package, config)
   if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
-  services.stageWorkAuthorization(decoded.value, limits, execution)
+  services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits)
 proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
-    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkSubmissionStart {.raises.} =
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recipient: WorkRecipient, dutyLimits: WorkDutyLimits): WorkSubmissionStart {.raises.} =
   ## Native actors pass only detached raw bytes; every decoded header/canonical alias retires before the worker starts.
   if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
   if services.light.active: return WorkSubmissionStart(
@@ -1857,7 +1866,7 @@ proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
       status: StateProofAdmissionError.Busy)
   if services.workGeneration == high(uint64): return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
-  let staged = services.stageWorkWire(header, limits, execution)
+  let staged = services.stageWorkWire(header, limits, execution, recipient, dutyLimits)
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
@@ -1941,6 +1950,7 @@ proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): Wo
     case outcome.kind
     of WorkJobResultKind.Authorized:
       services.workContext = outcome.context
+      services.workDuty = services.workContext.duty
       services.workPhase = WorkSessionPhase.Authorized
     of WorkJobResultKind.Refined:
       services.workOutcome = outcome
@@ -1961,6 +1971,9 @@ proc retireWorkSubmission*(services: var Services, token: WorkSessionToken): boo
 proc workSubmissionInfo*(services: Services, token: WorkSessionToken): WorkSubmissionInfo {.requires: services.matchesWork(token).} =
   ## Detached copied reader geometry remains safe to observe while any worker owns the shared graph.
   services.workInfo
+func workSubmissionDuty*(services: Services, token: WorkSessionToken): WorkDuty {.requires: services.matchesWork(token).} =
+  ## Fixed assignment metadata stays safe to observe while another borrower owns the canonical graph; defaults have no duty claim.
+  services.workDuty
 proc workSubmissionOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
     services.stateProofAvailable and services.matchesWork(token) and services.workPhase in {
         WorkSessionPhase.Complete, WorkSessionPhase.Failed}.} =

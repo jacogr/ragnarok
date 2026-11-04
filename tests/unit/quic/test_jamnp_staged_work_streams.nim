@@ -7,6 +7,7 @@ import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/app/[services, options, startup]
 import ../../../src/app/proof/[worker, work_submission as work_jobs]
 import ../../../src/jamnp-s/[node, connections, work_submission, work_stream, read_stream]
+import ../../../src/jamnp-s/work_duty
 import ../../../src/codec/[bounded]
 import ../../../src/codec/work/package as work_package
 import ../../../src/codec/state/safrole
@@ -16,7 +17,8 @@ import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_pro
 
 type
   Variant {.pure.} = enum Success, Package, Empty, CorruptProof, WithheldFin, Suffix, CancelDone,
-    ForeignDone, Oversized, Observer, GlobalQuota, OverGas, Disabled, Truncated, ShortBody, HugeProof
+    ForeignDone, Oversized, Observer, GlobalQuota, OverGas, Disabled, Truncated, ShortBody,
+      HugeProof, WrongCore, UncertainEpoch
   Detached = object ## Completed source-free transcripts survive all native/Services lifetimes for independent ownership checks.
     header: UntrustedWorkHeader
     body: UntrustedWorkBody
@@ -40,7 +42,9 @@ proc wire(f: WorkFixture, variant: Variant): seq[byte] =
     for octet in f.package: first.add(octet)
     for octet in frame(first): result.add(octet)
   else:
-    for octet in frame(f.first): result.add(octet)
+    var first = f.first
+    if variant == Variant.WrongCore: first[0] = 1 # A real validator on core0 is not eligible to authorize core1.
+    for octet in frame(first): result.add(octet)
     for octet in frame(f.package): result.add(octet)
   if variant == Variant.ShortBody:
     for octet in [6'u8, 0, 0, 0, 97, 98]: result.add(octet)
@@ -232,9 +236,13 @@ proc live(variant: Variant): Detached {.raises.} =
     assert not probe.flows[flow].receivedFin and not second.flows[held].receivedFin and
         not third.flows[admitted].receivedFin
     return
+  let observed = if variant == Variant.UncertainEpoch: StateTime(24) else: StateTime(20)
+  let recipient = workRecipient(publicKey(), observed)
+  let dutyLimits = WorkDutyLimits(chapterBytes: ByteLimit(10000), disputeItems: ElementLimit(128))
   if variant == Variant.OverGas:
     # Actual Tiny gas bounds reject before CPU admission or any unauthorized large-body read.
-    let refused = services.beginWorkSubmission(task.header, fixture.limits, executionLimits())
+    let refused = services.beginWorkSubmission(task.header, fixture.limits, executionLimits(),
+      recipient, dutyLimits)
     assert refused.error == StateProofAdmissionError.QueryFailure
     assert refused.captureError == WorkJobError.InvalidInput and services.stateProofAvailable
     assert services.stateProofPhase == ProofWorkerPhase.Idle
@@ -242,11 +250,25 @@ proc live(variant: Variant): Detached {.raises.} =
     assert server.rejectWork(ticket)
     settleReset(server, probe, flow)
     return
-  let started = services.beginWorkSubmission(task.header, fixture.limits, executionLimits())
+  let started = services.beginWorkSubmission(task.header, fixture.limits, executionLimits(),
+      recipient, dutyLimits)
   assert started.error == StateProofAdmissionError.None
   let token = started.value
   waitDone(services, server, probe)
   assert server.workInputBytes(ticket) == headerBytes and not probe.flows[flow].receivedFin
+  if variant in [Variant.WrongCore, Variant.UncertainEpoch]:
+    # Exact CPU collection preserves actual duty refusal before any body permission or authorizer grant can escape.
+    assert services.collectWorkSubmission(token) == WorkSessionPhase.Failed
+    block:
+      let outcome = services.workSubmissionOutcome(token)
+      assert outcome.kind == WorkJobResultKind.DutyFailure
+      let expected = if variant == Variant.WrongCore: WorkDutyError.NotAssigned else: WorkDutyError.UncertainEpoch
+      assert outcome.dutyError.error == expected
+    assert server.workInputBytes(ticket) == headerBytes
+    assert server.rejectWork(ticket)
+    settleReset(server, probe, flow)
+    assert services.retireWorkSubmission(token)
+    return
   if variant == Variant.CancelDone:
     # Reset reaches the native owner before exact Done collection; no canceled proof can emit success FIN.
     probe.abort(flow)
@@ -258,6 +280,9 @@ proc live(variant: Variant): Detached {.raises.} =
     assert not probe.flows[flow].receivedFin
     return
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Authorized
+  let duty = services.workSubmissionDuty(token)
+  assert duty.valid and uint64(duty.core) == 0 and uint32(duty.observedTime) == 20
+  assert array[32, byte](duty.sourceRoot) == array[32, byte](saved.stateRoot)
   assert server.permitWorkBody(ticket, services.workSubmissionInfo(token)) == ReadError.None
   if variant in [Variant.Suffix, Variant.ShortBody, Variant.HugeProof]:
     settleReset(server, probe, flow)
