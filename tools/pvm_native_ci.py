@@ -102,7 +102,7 @@ def run():
                  ROOT/'tools/pvm_arm64_jit.py', ROOT/'tools/pvm_native_ci.py', ROOT/'tools/pvm_x86_jit.py',
                  ROOT/'tools/pvm_jit_platform.py', ROOT/'spec/toolchain.json',
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
-                 ROOT/'tests/performance/pvm_arm_macro_backend.nim',
+                 ROOT/'tests/support/pvm_arm_macro_backend.nim',
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
                  ROOT/'tests/support/arc_evidence.nim',
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',

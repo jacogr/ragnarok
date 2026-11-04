@@ -94,6 +94,42 @@ set `PVM_JIT_BASELINE` to its exact lowercase commit SHA (or use the kernel help
 The requested ID must resolve to itself; branch names are not accepted as explicit benchmark heads.
 The final session-wide cohort explicitly selects the session's starting commit, not this default.
 
+## Call-local writable descriptor window
+
+The resident macro can reuse a successful writable descriptor/dirty-bitmap preflight for
+successive aligned four-byte groups in the recognized dirty-store loop. This applies only
+to frame-owned full contexts, the existing non-aliasing word shape and source bodies whose
+integer instruction families preserve the reserved scratch lanes. Raw witness contexts and
+unrecognized scratch instructions keep the uncached resident image.
+
+D3..D7 are caller-saved scratch within one outer native invocation. Entry invalidates the
+window. A hit requires the exact next effective guest address, the same page and sufficient
+remaining capacity in the originally selected private allocation. A miss runs the original
+descriptor and already-dirty bitmap checks before refreshing the borrowed pointer. First touch,
+partial groups, page changes and faults retain the existing checked continuation. No pointer
+survives return, and no persistent owner field, native ABI or 26-word macro context changes.
+
+Caching adds 35 instruction words to the ordinary DOOM macro: 734 becomes 769, including RET.
+Cold rendering now selects the uncached resident image if the cached image exceeds the final
+1,024-word ceiling or the actual remaining one-MiB arena. The choice happens before native
+publication or owner mutation. If neither resident image fits, the existing linked macro remains
+available; a native append failure is never retried. The final publication-count limit remains
+8,192. The dedicated `pvm_arm_macro_capacity` native suite fills genuine arenas to exact cached
+fit and both ends of the uncached-only corridor, checks full guest/ledger parity, preserves the
+linked fallback when both images are too large, and crosses the word ceiling with independently
+decoded source instructions. It never forges the arena ledger.
+
+The qualified Linux ARM run [41790328636](https://github.com/jacogr/ragnarok/actions/runs/41790328636)
+used 12 balanced fresh-process pairs with five natural full-golden warmups per process and one
+sampled DOOM tick. Paired process-CPU B/A geometric mean was 0.991867, with a paired-log 95%
+interval of 0.988764–0.994981; all 12 pairs favored caching. Wall B/A was 0.991659. Each sampled
+tick retained 407,285 native calls and 14,021,880 native operations, with zero code, fragment or
+compilation growth; post-warm owners used 1,008 fragments and 215,668 cached code bytes versus
+215,528 uncached. This supports a modest approximately 0.8% gain for that retained execution
+scope, not a public-call or general guest throughput claim. Capacity fallback is a subsequent
+cold-path change; ordinary emitted-image equivalence and selected local correctness checks
+carry the measured cache evidence forward without claiming a new exact-head timing run.
+
 ## First executable increment (historical)
 
 
