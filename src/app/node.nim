@@ -5,11 +5,12 @@
 ## Close this host before retiring Services storage; peer claims never select local finality.
 import std/[monotimes, times]
 import ./services
+import ./preimage_followup
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
-    report_cache, admission]
+    report_cache, preimage_cache, preimage_announcement, admission]
 import ../chain/[provider, genesis]
-import ../codec/state/[safrole, consensus]
+import ../codec/state/[safrole, consensus, service_values, requests]
 import ../codec/bounded
 
 type
@@ -42,6 +43,7 @@ type
     streams: NodeService
     workerTicket: ProofWorkerTicket
     readTicket: NodeReadTicket
+    pendingRequest: ReadRequest
     stamp: SourceStamp
     checkedIdentity: nil CheckedRequestIdentity
     checkedNext: uint64
@@ -54,7 +56,8 @@ type
     checkedOutcome: CheckedRequestCompletion
     checkedCancel: CheckedCompletionKind
     checkedStarted: MonoTime
-    preferChecked: bool
+    preferChecked, preferFetch, preferPreimage: bool
+    preimages: PreimageFollowups
     reports: ReportCache
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
@@ -69,6 +72,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.checkedWire)
   `=wasMoved`(owner.checkedOutcome)
   `=wasMoved`(owner.reports)
+  `=wasMoved`(owner.preimages)
   owner.opened = false
   owner.pending = false
   owner.cancelled = false
@@ -89,6 +93,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.checkedWire)
   `=destroy`(owner.checkedOutcome)
   `=destroy`(owner.reports)
+  `=destroy`(owner.preimages)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
@@ -98,6 +103,15 @@ func cachedReportCount*(owner: ApplicationNode): int =
 func cachedReportBytes*(owner: ApplicationNode): int =
   ## Logical immutable cache wire bytes exclude native buffers and transient response copies.
   owner.reports.byteLength
+func cachedPreimageCount*(owner: ApplicationNode): int =
+  ## Observe detached hash-checked blob count independently of canonical graph leases.
+  owner.preimages.cachedCount
+func cachedPreimageBytes*(owner: ApplicationNode): int =
+  ## Logical framed cache usage includes the four-byte CE143 prefix.
+  owner.preimages.cachedBytes
+func pendingPreimageCount*(owner: ApplicationNode): int =
+  ## Queued and active automatic retrievals have a separate fixed eight-intent capacity.
+  owner.preimages.pendingCount
 proc localPort*(owner: ApplicationNode): uint16 =
   ## Observe detached native listener state without a canonical graph alias.
   if owner.opened: owner.streams.localPort else: 0'u16
@@ -170,7 +184,7 @@ proc requestChecked*(owner: var ApplicationNode, peer: NodePeer, request: ReadRe
   if owner.checkedPhase != CheckedRequestPhase.Idle: return CheckedRequestStart(
       status: NodeError.Unavailable)
   if not request.valid: return CheckedRequestStart(status: NodeError.InvalidConfig)
-  let minimum = if request.kind == ReadKind.State: 8'u64 else: 4'u64
+  let minimum = request.minimumReplyBytes
   if uint64(limits.wireBytes) < minimum or uint64(limits.wireBytes) > uint64(MaxReadReplyBytes):
     return CheckedRequestStart(status: NodeError.InvalidConfig)
   if owner.checkedNext == high(uint64): return CheckedRequestStart(status: NodeError.Exhausted)
@@ -184,6 +198,28 @@ proc requestChecked*(owner: var ApplicationNode, peer: NodePeer, request: ReadRe
   owner.checkedPhase = CheckedRequestPhase.Receiving
   CheckedRequestStart(status: NodeError.None, ticket: CheckedRequestTicket(
     owner: owner.checkedIdentity, serial: owner.checkedNext))
+proc announcePreimage*(owner: var ApplicationNode, peer: NodePeer, service: ServiceIndex,
+    blob: CheckedReadReply, limits: ReadVerificationLimits): CheckedRequestStart =
+  ## Publish only retained full-hash content requested in local canonical state, to an authenticated validator recipient.
+  if not owner.opened or owner.services == nil: return CheckedRequestStart(
+      status: NodeError.Unavailable)
+  if not blob.valid or blob.kind != ReadKind.Preimage: return CheckedRequestStart(
+      status: NodeError.InvalidConfig)
+  if not owner.streams.isValidator(peer): return CheckedRequestStart(
+      status: NodeError.InvalidSource)
+  let services = owner.services
+  if services == nil or not services[].stateProofAvailable: return CheckedRequestStart(
+      status: NodeError.Unavailable)
+  let notice = announcementRequest(service, blob.preimageHash, RequestLength(uint32(
+      blob.preimageByteLength)))
+  if notice.error != ReadError.None: return CheckedRequestStart(status: NodeError.InvalidConfig)
+  if services[].chainView.requested(notice.value) != ReadError.None:
+    return CheckedRequestStart(status: NodeError.InvalidSource) # This bounded account/history query retires before native admission.
+  if owner.checkedPhase != CheckedRequestPhase.Idle: return CheckedRequestStart(
+      status: NodeError.Unavailable)
+  if owner.preimages.retain(blob) != PreimageCacheError.None:
+    return CheckedRequestStart(status: NodeError.LimitExceeded)
+  owner.requestChecked(peer, notice.value.request, limits)
 proc cancelChecked(owner: var ApplicationNode, reason: CheckedCompletionKind) =
   ## Admitted CPU work keeps its exact lease until collection, even when cancellation follows Done.
   if owner.checkedPhase == CheckedRequestPhase.Verifying:
@@ -243,6 +279,8 @@ proc collectChecked(owner: var ApplicationNode) =
     let checked = completed.verifiedReadValue
     if checked.error == ReadVerificationError.None and checked.value.kind == ReadKind.Report:
       discard owner.reports.remember(checked.value) # Local retention refusal cannot turn a complete checked read into failed delivery.
+    if checked.error == ReadVerificationError.None and checked.value.kind == ReadKind.Preimage:
+      discard owner.preimages.retain(checked.value) # Public checked reads can populate detached content without canonical mutation.
   else:
     owner.checkedOutcome = CheckedRequestCompletion(status: CheckedCompletionKind.Interrupted)
   owner.checkedWorker = default(ProofWorkerTicket)
@@ -266,6 +304,7 @@ proc submitChecked(owner: var ApplicationNode): bool {.raises.} =
   else:
     owner.checkedOutcome = CheckedRequestCompletion(status: CheckedCompletionKind.Interrupted)
     owner.checkedPhase = CheckedRequestPhase.Done
+  owner.preferFetch = true
   owner.preferChecked = false # An inbound responder gets first opportunity after this verification turn.
   true
 proc stage(owner: var ApplicationNode, config: ConnectionConfig, limits: SafroleStateConfig,
@@ -297,6 +336,9 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
     owner.services = nil
     return opened # Failed factories retain neither a Services borrow nor native callbacks.
   owner.epochHeld = false
+  owner.preimages.reset()
+  owner.preferFetch = false
+  owner.preferPreimage = false
   owner.clearChecked()
   owner.checkedIdentity = CheckedRequestIdentity(marker: 1)
   owner.checkedNext = 0
@@ -331,6 +373,7 @@ proc clearJob(owner: var ApplicationNode) =
   owner.cancelled = false
   owner.workerTicket = default(ProofWorkerTicket)
   owner.readTicket = default(NodeReadTicket)
+  owner.pendingRequest = default(ReadRequest)
 proc close*(owner: var ApplicationNode) =
   ## Cancel/join only this host's exact worker before retiring native callbacks and the Services borrow.
   owner.streams.stop()
@@ -341,6 +384,7 @@ proc close*(owner: var ApplicationNode) =
   if owner.checkedPhase == CheckedRequestPhase.Verifying and services != nil:
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
+  if services != nil: owner.preimages.close(services[], owner.streams)
   owner.streams.close()
   owner.clearChecked()
   owner.reports.clear()
@@ -352,17 +396,28 @@ proc close*(owner: var ApplicationNode) =
   owner.stamp = default(SourceStamp)
 proc serveCached(owner: var ApplicationNode, task: NodeReadTask): bool =
   ## A hit needs no canonical graph or worker, but still requires the native ticket's exact method/hash binding.
-  if task.request.kind != ReadKind.Report: return false
-  let found = owner.reports.find(task.request)
-  if found.error != ReportCacheError.None: return false
-  if owner.streams.respond(task.ticket, found.value) != ReadError.None:
-    discard owner.streams.reject(task.ticket) # Output pressure cannot orphan an already claimed cached request.
+  case task.request.kind
+  of ReadKind.Report:
+    let found = owner.reports.find(task.request)
+    if found.error != ReportCacheError.None: return false
+    if owner.streams.respond(task.ticket, found.value) != ReadError.None:
+      discard owner.streams.reject(task.ticket) # Output pressure cannot orphan a claimed cached request.
+  of ReadKind.Preimage:
+    let found = owner.preimages.find(task.request)
+    if found.error != PreimageCacheError.None: return false
+    if owner.streams.respond(task.ticket, found.value) != ReadError.None:
+      discard owner.streams.reject(task.ticket) # Retained content has the same exact native ticket constraints.
+  else: return false # Other methods require their canonical backend, never guessed cached state.
   owner.preferChecked = true
   true
 proc serveDetached(owner: var ApplicationNode) =
-  ## Inspect at most one report while a foreign graph is frozen; cache misses return their claim without resetting deadlines.
-  if owner.reports.len == 0: return
-  let task = owner.streams.takeRead(ReadKind.Report)
+  ## Inspect one cached kind per turn; alternate when both are populated and preserve original miss deadlines.
+  if owner.reports.len == 0 and owner.preimages.cachedCount == 0: return
+  let preimage = owner.preimages.cachedCount > 0 and (owner.reports.len == 0 or
+      owner.preferPreimage)
+  owner.preferPreimage = not preimage
+  let selected = if preimage: ReadKind.Preimage else: ReadKind.Report
+  let task = owner.streams.takeRead(selected)
   if task.error != NodeError.None: return
   if owner.serveCached(task.value): return
   if not owner.streams.deferRead(task.value.ticket):
@@ -374,6 +429,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if not owner.streams.poll(clock, maximumMs): return false
   let services = owner.services
   if services == nil: return false
+  owner.preimages.poll(services[], owner.streams, clock)
   owner.receiveChecked(clock)
   owner.collectChecked()
   if not services[].stateProofAvailable: owner.serveDetached()
@@ -386,8 +442,16 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
       let completed = services[].collectStateProof(owner.workerTicket)
       if completed.kind == ProofWorkerCompletionKind.ReadCompleted and
           completed.readValue.error == ReadError.None and owner.streams.readLive(owner.readTicket):
-        if owner.streams.respond(owner.readTicket, completed.readValue.value) != ReadError.None:
-          discard owner.streams.reject(owner.readTicket) # Bounded output pressure cannot orphan an already taken task.
+        let reply = completed.readValue.value
+        var accepted = true
+        if reply.effect == ReadEffect.FetchPreimage:
+          let notice = decodeAnnouncement(owner.pendingRequest.payload)
+          accepted = notice.error == ReadError.None
+          if accepted:
+            accepted = owner.preimages.enqueue(owner.streams, owner.readTicket.sourcePeer,
+                notice.value, clock)
+        if not accepted or owner.streams.respond(owner.readTicket, reply) != ReadError.None:
+          discard owner.streams.reject(owner.readTicket) # Exhausted followup/output capacity never acknowledges unowned work.
       else:
         discard owner.streams.reject(owner.readTicket) # Cancellation/stale collection never emits a successful response prefix.
     else:
@@ -395,10 +459,13 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.clearJob()
   if not services[].stateProofAvailable: return true # Foreign RPC/preparation/publication leases remain untouched.
   if owner.refresh(now) != NodeError.None: return false
+  if owner.preferFetch and owner.preimages.submitWaiting(services[]):
+    owner.preferFetch = false
+    return true
   if owner.preferChecked and owner.submitChecked(): return true
   let request = owner.streams.takeRead()
   if request.error != NodeError.None:
-    discard owner.submitChecked()
+    if not owner.submitChecked(): discard owner.preimages.submitWaiting(services[])
     return true
   if owner.serveCached(request.value): return true
   let admitted = services[].beginNetworkRead(request.value.request)
@@ -407,6 +474,8 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     return true # Busy/missing data resets the request instead of fabricating an empty successful answer.
   owner.workerTicket = admitted.value
   owner.readTicket = request.value.ticket
+  owner.pendingRequest = request.value.request
+  owner.preferFetch = true
   owner.preferChecked = true # Ready inbound and checked outbound work alternate instead of competing by physical stream order.
   owner.pending = true
   owner.cancelled = false

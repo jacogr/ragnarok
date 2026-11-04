@@ -392,7 +392,10 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 136'u8, 143'u8]:
+    elif kind in [128'u8, 129'u8, 136'u8, 142'u8, 143'u8]:
+      if kind == 142'u8 and not owner.node.isValidator:
+        owner[].closeFrame(position)
+        return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
       let inboundReads = owner[].frameCount(peer, FrameKind.Read)
       let outboundReads = owner[].frameCount(peer, FrameKind.Client)
       if owner[].reads >= MaxNodeReads or inboundReads+outboundReads >= 2:
@@ -594,6 +597,18 @@ proc cancelRequest*(owner: var NodeService, ticket: NodeRequestTicket): bool {.r
   if not owner.requestLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
+func sourcePeer*(ticket: NodeReadTicket): NodePeer =
+  ## Copied historical source still requires a live generation before followup; it never causes reconnection.
+  ticket.peer
+proc peerLive*(owner: NodeService, peer: NodePeer): bool =
+  ## Followup may use only the original still-authenticated reservation.
+  owner.isOpen and owner.node.active(peer)
+func isValidator*(owner: NodeService): bool =
+  ## Local accepted role is detached from canonical graph access.
+  owner.isOpen and owner.node.isValidator
+proc isValidator*(owner: NodeService, peer: NodePeer): bool =
+  ## Recipient checks preserve current transport generation and gated roster membership.
+  owner.isOpen and owner.node.isValidator(peer)
 proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.
