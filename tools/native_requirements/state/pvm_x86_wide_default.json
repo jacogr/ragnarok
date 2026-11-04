@@ -1,6 +1,7 @@
 {
   "defines": [
     "pvmX86Jit",
+    "pvmX86MemoryCycleSealWitness",
     "pvmX86WideParentRefusalWitness"
   ],
   "directory": "state",
