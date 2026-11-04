@@ -2286,7 +2286,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return original(f, header)
     # Publication certified the source-bound terminal arms. Temporary budget patching
     # is excluded above; stream reuse preserves these cached offsets and their exact plan.
-    flatReserve(f, header)
+    # This complete, unpaid fast entry cannot expose its paid state until native guard replay.
+    f.info.gas = MachineGas(uint64(f.info.gas)-charge.x)
+    f.remaining-=uint64(charge.y)
+    f.reservation = header or flatReservationHeaderFlag
     var state = default(ArmMixedState)
     var next = flatStop
     block:
@@ -2295,12 +2298,11 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       next = callArmMixedContext(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
     if state[0] == 1:
       let branch = f.arguments[int(terminal)]
-      if next != uint32(branch.x shr 32) and next != branch.y:
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      if state[4] != uint64(operationCount):
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-      f.info.blockCharged = false
-      return next
+      if (next == uint32(branch.x shr 32) or next == branch.y) and
+          state[4] == uint64(operationCount):
+        return next
+    # Guard replay and every malformed receipt retain the original paid reservation.
+    f.info.blockCharged = true
     if state[0] == 2 and next > header and next < terminal and int(next) < f.sites.len:
       let fact = f.plan.facts[int(f.sites[int(next)])]
       if fact.opcode notin 120'u8..130'u8 or fact.ending or not fact.fallthrough:
