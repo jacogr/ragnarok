@@ -490,7 +490,7 @@ proc finishTicket(owner: var ApplicationNode,
   if outcome.error == NetworkTicketError.AlreadyIncluded: return true # Genuine verified finalized inclusion needs no new pending owner.
   if owner.tickets.advance(source.value, now) != TicketPoolError.None: return false
   let retained = owner.tickets.retain(outcome.value, now)
-  retained in [TicketPoolError.None, TicketPoolError.Duplicate]
+  retained in [TicketPoolError.None, TicketPoolError.Duplicate, TicketPoolError.AlreadyIncluded]
 proc beginIncoming(owner: var ApplicationNode, task: NodeReadTask,
     now: StateTime): bool {.raises.} =
   ## Each specialized admission retires staging aliases before its one exact worker can execute.

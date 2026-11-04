@@ -5,15 +5,15 @@
 ## Pool contents are prospective GP inputs, never canonical inclusion or sealer-schedule authority.
 import std/assertions
 import ./ticket_validation
-import ../codec/header
+import ../codec/[header, tickets]
 import ../codec/state/[safrole, trie]
 
 const MaxPendingNetworkTickets* = 2046 ## At most two pinned-network attempts for each of1023 pending validator positions.
 
 type
   TicketPoolError* {.pure.} = enum ## Refused insertion never changes the accepted prefix or manufactures proof authority.
-    None, InvalidTicket, NoSource, InvalidWindow, WrongContext, Duplicate, Full
-  PendingTicketPool* = object ## Independent value owners share only immutable checked proof facts; no mutable sequence or native/worker handle exists.
+    None, InvalidTicket, NoSource, InvalidWindow, WrongContext, Duplicate, AlreadyIncluded, Full
+  PendingTicketPool* = object ## Independent value owners share only immutable checked proofs and inclusion copies; no native/worker handle exists.
     entries: array[MaxPendingNetworkTickets, CheckedNetworkTicket]
     count, limit: int
     active: bool
@@ -21,6 +21,7 @@ type
     context: array[32, byte]
     lastBlock: array[32, byte]
     lastRoot: StateRoot
+    included: seq[WinningTicketId] # Fresh copied immutable IDs never alias the worker-shared source owner.
 func len*(pool: PendingTicketPool): int =
   ## Count retained complete proofs even while an unrelated Services worker owns canonical state.
   pool.count
@@ -55,6 +56,7 @@ proc advance*(pool: var PendingTicketPool, source: TicketSource, now: StateTime)
   let root = source.stateRoot
   if pool.lastBlock == blockHash and array[32, byte](pool.lastRoot) == array[32, byte](
       root): return TicketPoolError.None
+  pool.included = source.includedIdentifiers
   for index in 0..<MaxPendingNetworkTickets:
     if pool.entries[index].valid and source.includes(pool.entries[index].identifier):
       pool.entries[index] = default(CheckedNetworkTicket)
@@ -73,6 +75,8 @@ proc retain*(pool: var PendingTicketPool, ticket: CheckedNetworkTicket,
       ticket.epochLength != pool.duration:
     return TicketPoolError.WrongContext
   let expected = array[32, byte](ticket.identifier)
+  for id in pool.included:
+    if array[32, byte](id) == expected: return TicketPoolError.AlreadyIncluded
   for index in 0..<MaxPendingNetworkTickets:
     if pool.entries[index].valid and array[32, byte](pool.entries[index].identifier) == expected:
       return TicketPoolError.Duplicate
