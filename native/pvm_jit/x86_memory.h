@@ -5,6 +5,7 @@
 #ifndef RAGNAROK_X86_JIT_MEMORY_H
 #define RAGNAROK_X86_JIT_MEMORY_H
 #include <stdint.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -110,6 +111,99 @@ static uint32_t pvm_x86_arena_region(void *handle, uint32_t offset, void *regist
 #else
     (void)handle; (void)offset; (void)registers; (void)state;
     return UINT32_MAX;
+#endif
+}
+
+/* One call's clipped private bytes; all addresses are unsigned guest addresses, and end is exclusive. */
+typedef struct {
+    const uint8_t *read_ptr;
+    uint64_t read_first;
+    uint64_t read_end;
+    uint8_t *write_ptr;
+    uint64_t write_first;
+    uint64_t write_end;
+    uint32_t dirty_words;
+    uint32_t reserved;
+} pvm_x86_cycle_memory;
+
+/* Each visit counts a completed original block; a word group completes four dirty blocks. */
+typedef struct {
+    uint64_t gas;
+    uint64_t attempts;
+    uint64_t visits[3];
+    uint64_t word_groups;
+    uint32_t last_completed;
+    uint32_t exit_kind;
+    uint64_t reserved;
+} pvm_x86_cycle_state;
+
+_Static_assert(sizeof(pvm_x86_cycle_memory) == 56 &&
+    offsetof(pvm_x86_cycle_memory, dirty_words) == 48, "x86 cycle memory ABI");
+_Static_assert(sizeof(pvm_x86_cycle_state) == 64 &&
+    offsetof(pvm_x86_cycle_state, last_completed) == 48 &&
+    offsetof(pvm_x86_cycle_state, exit_kind) == 52, "x86 cycle state ABI");
+
+/* A wider private call keeps the proven child ABI at offset zero and adds only fresh read extents. */
+typedef struct {
+    const uint8_t *data;
+    uint64_t first;
+    uint64_t ending;
+} pvm_x86_wide_read_region;
+typedef struct {
+    pvm_x86_cycle_memory cycle;
+    pvm_x86_wide_read_region regions[3];
+} pvm_x86_wide_memory;
+typedef struct {
+    pvm_x86_cycle_state cycle;
+    uint64_t outer_visits[4];
+    uint64_t child_calls;
+} pvm_x86_wide_state;
+_Static_assert(sizeof(pvm_x86_wide_memory) == 128 &&
+    offsetof(pvm_x86_wide_memory, regions) == 56 &&
+    sizeof(pvm_x86_wide_state) == 104 &&
+    offsetof(pvm_x86_wide_state, outer_visits) == 64 &&
+    offsetof(pvm_x86_wide_state, child_calls) == 96, "x86 wide cycle ABI");
+
+/* The high word distinguishes an untouched pre-call refusal from any return after native execution. */
+static uint64_t pvm_x86_arena_cycle(void *handle, uint32_t offset, uint64_t *registers,
+        const pvm_x86_cycle_memory *memory, const uint64_t *dirty_bitmap,
+        pvm_x86_cycle_state *state) {
+#if PVM_X86_JIT_HOST
+    pvm_x86_arena *owner = handle;
+    if (!owner || !registers || !memory || !state || !memory->write_ptr ||
+            (memory->dirty_words != 0 && !dirty_bitmap) ||
+            (memory->read_ptr == NULL && memory->read_first != memory->read_end) ||
+            offset >= owner->used || (offset & 15)) return 0;
+    typedef uint32_t (*entry_type)(uint64_t *, const pvm_x86_cycle_memory *,
+        const uint64_t *, pvm_x86_cycle_state *);
+    entry_type entry = (entry_type)((uint8_t *)owner->executable + offset);
+    return (UINT64_C(1) << 32) | (uint64_t)entry(registers, memory, dirty_bitmap, state);
+#else
+    (void)handle; (void)offset; (void)registers; (void)memory;
+    (void)dirty_bitmap; (void)state;
+    return 0;
+#endif
+}
+
+/* The wider entry borrows four complete typed inputs; a zero high word proves pre-call refusal. */
+static uint64_t pvm_x86_arena_wide(void *handle, uint32_t offset, uint64_t *registers,
+        const pvm_x86_wide_memory *memory, const uint64_t *dirty_bitmap,
+        pvm_x86_wide_state *state) {
+#if PVM_X86_JIT_HOST
+    pvm_x86_arena *owner = handle;
+    if (!owner || !registers || !memory || !state || !memory->cycle.write_ptr ||
+            (memory->cycle.dirty_words != 0 && !dirty_bitmap) ||
+            (memory->cycle.read_ptr == NULL &&
+                memory->cycle.read_first != memory->cycle.read_end) ||
+            offset >= owner->used || (offset & 15)) return 0;
+    typedef uint32_t (*entry_type)(uint64_t *, const pvm_x86_wide_memory *,
+        const uint64_t *, pvm_x86_wide_state *);
+    entry_type entry = (entry_type)((uint8_t *)owner->executable + offset);
+    return (UINT64_C(1) << 32) | (uint64_t)entry(registers, memory, dirty_bitmap, state);
+#else
+    (void)handle; (void)offset; (void)registers; (void)memory;
+    (void)dirty_bitmap; (void)state;
+    return 0;
 #endif
 }
 #endif
