@@ -113,7 +113,7 @@ type NativeTransportOptions {.importc: "rq_transport_options", header: BridgeHea
     bycopy.} = object
   ## Scalar-only C startup configuration is borrowed only during synchronous factory construction.
   profile, server, ipv6, multi: cint
-  idle_seconds, keepalive: cuint
+  idle_seconds, keepalive, stream_window, connection_window: cuint
 proc transportNew(options: ptr NativeTransportOptions, port: uint16, cert, key, alpn: cstring,
     user: pointer, verify: VerifyCallback, send: SendCallback,
         stream: StreamCallback): nil pointer {.
@@ -276,11 +276,16 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
         multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
             profile = RetainedPeer, acceptedAlpns: seq[string] = @[],
             localAddress = default(NetworkAddress), incomingPeers = IncomingPeerSlots,
-            idleSeconds: range[0..600] = 0, keepalive = false): bool =
+            idleSeconds: range[0..600] = 0, keepalive = false,
+            streamWindow: range[0..16777216] = 0,
+            connectionWindow: range[0..16777216] = 0): bool =
   ## Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
   if incomingPeers < 1 or incomingPeers > MaxIncomingPeers: return false
+  if streamWindow != 0 and streamWindow < 16384: return false # Pinned LSQUIC public minimum applies independently of profile.
+  if connectionWindow != 0 and connectionWindow < 16384: return false
+  if streamWindow != 0 and connectionWindow != 0 and streamWindow > connectionWindow: return false
   if idleSeconds == 0 and keepalive: return false # Default profiles cannot accept a partial timing override.
   if multi and not server: return false # Multiple accepted peers are a server-only ownership policy.
   if not server and incomingPeers != IncomingPeerSlots: return false # Client engines retain their original single-peer policy.
@@ -322,7 +327,9 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   # Defaults retain proof profiles; explicit node timing/family/multi policy is fixed before engine construction.
   let selectedProfile = if family: cint(profile) else: (if multi: 2.cint else: cint(soak))
   var nativeOptions = NativeTransportOptions(profile: selectedProfile, server: cint(server),
-    ipv6: cint(family), multi: cint(multi), idle_seconds: cuint(idleSeconds), keepalive: cuint(keepalive))
+    ipv6: cint(family), multi: cint(multi), idle_seconds: cuint(idleSeconds), keepalive: cuint(
+        keepalive),
+    stream_window: cuint(streamWindow), connection_window: cuint(connectionWindow))
   owner.engine = transportNew(addr nativeOptions, actualPort, certPointer, keyPointer,
     alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
   # Failed TLS/native setup must release the already-bound I/O resources as well.

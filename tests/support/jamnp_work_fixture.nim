@@ -79,9 +79,12 @@ import ../../src/codec/state/safrole
 import ../../src/lib/json/writer as json_writer
 import std/strutils
 import ./jamnp_topology_fixture
-proc workSnapshot*(f: WorkFixture): BlockSnapshot =
+proc workSnapshot*(f: WorkFixture, local = default(StateEdKey)): BlockSnapshot =
   ## Merge actual code and commitments with explicit canonical roster/time context; no consensus certificate is invented.
-  let base = topologyCaptured([topologyRecords(0, 6), topologyRecords(0, 6), topologyRecords(1, 6)],
+  var current = topologyRecords(0, 6)
+  if array[32, byte](local) != default(array[32, byte]): current[
+      0].ed25519 = local # Optional actual TLS identity gives the node its real current-validator role.
+  let base = topologyCaptured([topologyRecords(0, 6), current, topologyRecords(1, 6)],
     cores = 2, atSlot = 20).value
   var state = forkStateStore(f.input.state).value
   var writes: seq[StateWrite] = @[]
@@ -98,9 +101,8 @@ proc hexBytes(input: openArray[byte]): string =
   ## Independent test chainspec spelling exposes no private-key data.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
-proc workChainText*(f: WorkFixture): string =
+proc workChainText*(saved: BlockSnapshot): string =
   ## Serialize only the actual captured source's public complete state and exact profile/header.
-  let saved = f.workSnapshot
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
   assert encodeOwnedHeader(saved.header, wire).error == HeaderError.None
   var entries = JsonObject()
@@ -109,6 +111,9 @@ proc workChainText*(f: WorkFixture): string =
     entries.add(hexBytes(array[31, byte](key)), json(hexBytes(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hexBytes(saved.chainParameters.encodeParameters))),
     ("genesis_header", json(hexBytes(wire))), ("genesis_state", json(entries))])
+proc workChainText*(f: WorkFixture): string =
+  ## Existing managed witnesses retain their source fixture while live tests may supply an actual TLS-bound snapshot.
+  workChainText(f.workSnapshot)
 proc workHeader*(f: WorkFixture): WorkSubmissionHeader =
   ## Prepare actual separate CE146 payloads for managed staging under the shared lease.
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, f.first, f.package,

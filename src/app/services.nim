@@ -57,6 +57,9 @@ import ./proof/ticket_verification as ticket_job
 import ./proof/ticket_production
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
+import ../jamnp-s/work_stream
+from ../codec/work/package import PackageConfig
+from ../codec/work/digest import Gas
 import ../state/input_refinement
 import "../state/import/justification" as work_imports
 from ../codec/work/report import SegmentLookup
@@ -1856,6 +1859,40 @@ proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
   if services.workGeneration == high(uint64): return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
   let staged = services.stageWorkAuthorization(header, limits, execution)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
+  inc services.workGeneration
+  discard services.proofWorker.start()
+  services.submitWork(WorkSessionPhase.Authorizing)
+proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkJobError =
+  ## Raw transcript and decoded package aliases retire here; only private job ownership survives before CPU admission.
+  if not header.valid: return WorkJobError.InvalidInput
+  let first = header.firstMessage
+  let package = header.packageMessage
+  let head = services.canonical.chainView.bestBlock
+  if head.error != GenesisError.None: return WorkJobError.InvalidInput
+  let parameters = head.value.chainParameters
+  let config = PackageConfig(refineGas: Gas(parameters.get(maxRefineGas)),
+    accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(204800))
+  let decoded = decodeWorkSubmission(header.kind, first, package, config)
+  if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
+  services.stageWorkAuthorization(decoded.value, limits, execution)
+proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkSubmissionStart {.raises.} =
+  ## Native actors pass only detached raw bytes; every decoded header/canonical alias retires before the worker starts.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if services.light.active: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  discard services.reapWorkSubmission()
+  if services.workPhase != WorkSessionPhase.Empty: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workGeneration == high(uint64): return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkWire(header, limits, execution)
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
