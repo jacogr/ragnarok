@@ -9,7 +9,7 @@ import ./preimage_followup
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
     report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission,
-    ticket_packet, ticket_validation, ticket_pool]
+    ticket_packet, ticket_validation, ticket_pool, ticket_forwarding]
 import ../chain/[provider, genesis]
 import ../codec/state/[safrole, consensus, service_values, requests]
 import ../codec/bounded
@@ -63,6 +63,8 @@ type
     gossip: PreimageGossip
     reports: ReportCache
     tickets: PendingTicketPool
+    forwarding: TicketForwarding
+    connectivityApplied: StateTime
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
 proc `=dup`*(source: ApplicationNode): ApplicationNode {.error.}
@@ -77,6 +79,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.checkedOutcome)
   `=wasMoved`(owner.reports)
   `=wasMoved`(owner.tickets)
+  `=wasMoved`(owner.forwarding)
   `=wasMoved`(owner.preimages)
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.checkedPeer)
@@ -101,12 +104,22 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.checkedOutcome)
   `=destroy`(owner.reports)
   `=destroy`(owner.tickets)
+  `=destroy`(owner.forwarding)
   `=destroy`(owner.preimages)
   `=destroy`(owner.gossip)
   `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
+func ticketForwardingCount*(owner: ApplicationNode): int =
+  ## Observe retained proxy intents without borrowing canonical state.
+  owner.forwarding.len
+func ticketForwardingActive*(owner: ApplicationNode): int =
+  ## Exact native requests remain separately bounded within the shared read quota.
+  owner.forwarding.sending
+func forwardedTickets*(owner: ApplicationNode): uint64 =
+  ## Count complete transport acknowledgments without claiming canonical inclusion.
+  owner.forwarding.acknowledged
 func cachedReportCount*(owner: ApplicationNode): int =
   ## Detached cache statistics are safe while any canonical worker owns the graph.
   owner.reports.len
@@ -354,6 +367,7 @@ proc stage(owner: var ApplicationNode, config: ConnectionConfig, limits: Safrole
   if head.value.slot > uint64(uint32(now)): return NodeError.InvalidSource
   let opened = owner.streams.open(config, view, limits)
   if opened != NodeError.None: return opened
+  owner.connectivityApplied = now # Initial installation is the first actual connectivity application.
   owner.stamp = SourceStamp(head: array[32, byte](head.value.blockHash),
     finalized: array[32, byte](finalized.value.blockHash), now: now)
   NodeError.None
@@ -396,8 +410,11 @@ proc refresh(owner: var ApplicationNode, now: StateTime): NodeError =
     if not owner.epochHeld or uint32(now) == uint32(owner.stamp.now):
       owner.stamp.now = now
       return NodeError.None # Clock ticks alone cannot broadcast the unchanged header; retry only a held epoch gate.
+  let previousEpoch = owner.streams.connectivityEpoch
   let advanced = owner.streams.advance(view, now)
   if advanced.error != NodeError.None: return advanced.error
+  if owner.streams.connectivityEpoch != previousEpoch:
+    owner.connectivityApplied = now # Same-epoch source updates never restart either ticket delay.
   owner.epochHeld = advanced.value == EpochUpdate.Held
   owner.stamp = SourceStamp(head: headHash, finalized: finalizedHash, now: now)
   NodeError.None
@@ -420,6 +437,7 @@ proc close*(owner: var ApplicationNode) =
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil: owner.preimages.close(services[], owner.streams)
   owner.gossip.close(owner.streams)
+  owner.forwarding.close(owner.streams)
   owner.streams.close()
   owner.clearChecked()
   owner.reports.clear()
@@ -490,7 +508,23 @@ proc finishTicket(owner: var ApplicationNode,
   if outcome.error == NetworkTicketError.AlreadyIncluded: return true # Genuine verified finalized inclusion needs no new pending owner.
   if owner.tickets.advance(source.value, now) != TicketPoolError.None: return false
   let retained = owner.tickets.retain(outcome.value, now)
-  retained in [TicketPoolError.None, TicketPoolError.Duplicate, TicketPoolError.AlreadyIncluded]
+  if retained == TicketPoolError.AlreadyIncluded: return true
+  if retained notin [TicketPoolError.None, TicketPoolError.Duplicate]: return false
+  if outcome.value.delivery == TicketDelivery.Proxy:
+    if owner.forwarding.advance(owner.streams, source.value, now, owner.connectivityApplied):
+      discard owner.forwarding.offer(outcome.value) # Admission after the forwarding window may still supply a valid pending block input.
+  true
+proc dispatchTickets(owner: var ApplicationNode, now: StateTime, clock: MonoTime) =
+  ## Retire all selected-source aliases before another canonical worker can be submitted.
+  if owner.forwarding.len == 0: return
+  let services = owner.services
+  if services == nil or not services[].stateProofAvailable: return
+  let selected = services[].currentTicketSource()
+  if selected.error != NetworkTicketError.None:
+    owner.forwarding.close(owner.streams)
+    return
+  if owner.forwarding.advance(owner.streams, selected.value, now, owner.connectivityApplied):
+    discard owner.forwarding.dispatch(owner.streams, now, clock)
 proc beginIncoming(owner: var ApplicationNode, task: NodeReadTask,
     now: StateTime): bool {.raises.} =
   ## Each specialized admission retires staging aliases before its one exact worker can execute.
@@ -526,6 +560,8 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   let services = owner.services
   if services == nil: return false
   owner.tickets.expire(now) # Host-only proof owners may retire while a different job holds immutable source/context aliases.
+  owner.forwarding.expire(owner.streams, now)
+  owner.forwarding.poll(owner.streams, clock)
   owner.gossip.poll(owner.streams, clock)
   owner.preimages.poll(services[], owner.streams, clock)
   let acquired = owner.preimages.takeAcquired()
@@ -575,6 +611,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if not services[].stateProofAvailable: return true # Foreign RPC/preparation/publication leases remain untouched.
   if owner.refresh(now) != NodeError.None: return false
   owner.refreshTickets(now) # All detached source aliases retire before any subsequent worker admission.
+  owner.dispatchTickets(now, clock) # Finality/context checks precede every actual proxy transmission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
   if owner.preferFetch and owner.preimages.submitWaiting(services[]):
     owner.preferFetch = false
