@@ -10,15 +10,16 @@ import ../../../src/quic/transport
 import ../../../src/codec/bounded
 import ../../../src/codec/state/safrole
 import ../../../src/lib/atomic/file
-import ../../support/arc_evidence
+import ../../support/[arc_evidence, jamnp_guarantee_fixture]
 
-proc cycle(cert, key: string, expected: StateEdKey) =
+proc cycle(cert, key: string, expected: StateEdKey, fixture: GuaranteeFixture) =
   ## Successful private imports and identity-mismatch refusals release every seed owner and backend scratch object.
   let imported = loadWorkSigner(cert, key)
   assert imported.error == WorkSignerError.None
   assert array[32, byte](imported.value.signerIdentity.value) == array[32, byte](expected)
   let wrong = loadWorkSigner(cert, getEnv("RAGNAROK_TEST_KEY_B"))
   assert wrong.error == WorkSignerError.IdentityMismatch
+  fixture.guaranteeCycle(imported.value)
 proc main() {.raises.} =
   ## All key mutation fixtures are generated test-only bytes, never user credential material or printed secrets.
   let cert = getEnv("RAGNAROK_TEST_CERT")
@@ -102,9 +103,13 @@ proc main() {.raises.} =
   let refused = loadWorkSigner(cert, path)
   assert refused.error == WorkSignerError.ReadFailure
   assert refused.readError == AtomicFileError.LimitExceeded
-  cycle(cert, key, expected)
+  let reporting = guaranteeFixture(expected)
+  let otherSigner = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
+  assert otherSigner.error == WorkSignerError.None
+  guaranteeBoundaries(reporting, loadWorkSigner(cert, key).value, otherSigner.value)
+  cycle(cert, key, expected, reporting)
   let before = getOccupiedMem()
-  for iteration in 0..<1000: cycle(cert, key, expected)
+  for iteration in 0..<1000: cycle(cert, key, expected, reporting)
   let after = getOccupiedMem()
   assert before == after, "private signer imports and mismatch refusals release all owners"
   recordArcRelease("jamnp_work_signer", 1000, before, after)

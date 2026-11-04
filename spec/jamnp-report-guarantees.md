@@ -47,8 +47,8 @@ path/file limits, malformed/encrypted/duplicate inputs and1000 cycles retaining8
 
 The existing bounded-file consumer suite, application build, formatting and inventory checks pass.
 Linux-target semantic checking of both new modules passes; this is not native Linux CI. Report
-policy/pipeline eligibility, acceptable shard counts, actual signing, CE134/135 runtime flows and
-operator activation remain unfinished. These foundations stay in the guarantee feature branch;
+policy/pipeline eligibility, acceptable shard counts and typed local signing are implemented below.
+Managed signing jobs, CE134/135 runtime flows and operator activation remain unfinished. These foundations stay in the guarantee feature branch;
 they are not a separate helper PR and do not establish full JAMNP-S completion.
 
 ## Candidate-header inclusion correction
@@ -102,3 +102,42 @@ Native report, assignment and managed-session suites pass, with1000-cycle retain
 at286800,58864 and40816 respectively. The managed regression uses genuine equal-byte separate
 authorizations and complete PVM/input/report execution. Production build and format check pass.
 Full eligibility, acceptable shard populations, signing and CE134/135 remain required.
+
+## Anchor-window populations and qualified contributions
+
+`work_population.nim` derives acceptable shard populations from the H slots strictly after the
+authenticated anchor, including the Hth slot. Its current population is the anchor's exact C(8);
+when the interval reaches the next epoch, its next population is the anchor's exact C(4) pending
+roster. Each count is accepted only when at least one candidate slot lies in that roster's epoch.
+Missing retained anchor state, malformed/nonexact chapters, resource ceilings and slot overflow
+produce typed refusals. A window reaching beyond the next established roster is explicitly
+uncertain. The pinned Full/Tiny profiles have H=8 and E>=12, so their interval crosses at most
+one boundary. No unavailable roster or future staging mutation is guessed.
+
+`work_eligibility.nim` creates a private signing capability only after checking the original
+computed package/core/map and complete parameter profile, fresh anchor/lookup context, acceptable
+shards, actual local assignment and the shared GP service/authorizer/gas/pipeline rules. The
+corrected C(3) used by anchor qualification is retained for exact pipeline inspection. Consensus
+gas and geometry must match the selected profile; independent local decoder/copy ceilings remain
+explicit. The execution map and fresh inclusion map are separate, so historical deterministic
+execution can be requalified without replacing its provenance. This capability does not fabricate
+credential-backed report admission or promise an immediately vacant core.
+
+`signWorkContribution` accepts only this private capability, checks its assigned identity against
+the privately imported TLS key, and signs the exact GP guarantee message. Its opaque result binds
+one actual credential and original roster index to the checked report and computed bundle chain.
+It is one contribution, not a fully guaranteed report. Defaults and a separately valid mismatched
+TLS signer cannot sign. No seed alias or arbitrary-message API is exported. Runtime integration
+must qualify and sign under the same managed graph lease, freeze all aliases until collection/
+join, and check actual host identity/freshness at use.
+
+The native signer suite now performs genuine original package authorization, authenticated import
+inputs, PVM execution, report/availability composition from a parent map, and qualification against
+its actual child view. Fresh wrong-code and duplicate C(15) changes refuse eligibility. Signatures
+verify with the matching public key and fail for altered messages; a distinct valid TLS key is
+refused. Successful signing and later policy refusal repeat1000 times with196768 bytes retained
+both before and after, including the precomputed fixture owners. Population/anchor cycles retain
+87456 bytes unchanged; report and managed-session consumers retain286800/40816 bytes unchanged.
+All four native suites pass, as does Linux-target semantic checking of the signer and its new
+module dependencies. The production build, formatting and verification inventory also pass. This evidence does not
+establish CE134/135 network execution or native Linux CI.

@@ -23,6 +23,7 @@ type
   WorkAnchorData = ref object ## Only the exact original header and complete posterior map may reuse this immutable qualification.
     header: WorkSubmissionHeader
     source: StateStoreSnapshot
+    history: HistorySnapshot
     info: WorkAnchorInfo
   AnchoredWorkContext* = object ## Context validity is separate from authorization, package eligibility and actual report computation.
     data: nil WorkAnchorData
@@ -70,6 +71,11 @@ proc anchorInfo*(context: AnchoredWorkContext): WorkAnchorResult[WorkAnchorInfo]
   let data = context.data
   if data == nil: return WorkAnchorResult[WorkAnchorInfo](status: WorkAnchorError.Uninitialized)
   WorkAnchorResult[WorkAnchorInfo](status: WorkAnchorError.None, completed: data.info)
+proc workAnchorHistory*(context: AnchoredWorkContext): WorkAnchorResult[HistorySnapshot] =
+  ## Share only the exact bounded corrected C3 used to qualify this original header and source map.
+  let data = context.data
+  if data == nil: return WorkAnchorResult[HistorySnapshot](status: WorkAnchorError.Uninitialized)
+  WorkAnchorResult[HistorySnapshot](status: WorkAnchorError.None, completed: data.history)
 proc anchoredWorkMatches*(context: AnchoredWorkContext, header: WorkSubmissionHeader,
     state: StateStoreSnapshot): bool =
   ## Byte-identical independently decoded headers or substituted posterior maps cannot borrow this capability.
@@ -157,5 +163,5 @@ proc captureWorkAnchors*(original: WorkSubmissionHeader, view: ChainView, now: S
           ancestorReason: located.error)
   WorkAnchorResult[AnchoredWorkContext](status: WorkAnchorError.None,
     completed: AnchoredWorkContext(data:
-    WorkAnchorData(header: original, source: source.stateSnapshot,
+    WorkAnchorData(header: original, source: source.stateSnapshot, history: history.value.snapshot,
       info: WorkAnchorInfo(head: source.blockHash, inclusionSlot: StateTime(inclusion)))))

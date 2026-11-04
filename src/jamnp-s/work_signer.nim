@@ -3,6 +3,9 @@
 
 ## Private immutable local signer ownership matches the configured TLS identity; no raw seed or arbitrary-message signing API escapes.
 import ./identity
+import ./work_eligibility
+import ../codec/[guarantees, report_owned]
+import ../state/computed/guarantee
 import ../crypto/primitives
 import ../quic/transport
 import ../codec/bounded
@@ -12,12 +15,17 @@ import ../lib/atomic/file
 type
   WorkSignerError* {.pure.} = enum ## Failed/default imports expose no signer or identity.
     Uninitialized, None, InvalidPath, CertificateFailure, ReadFailure, KeyFailure,
-      KeyAllocationFailure, CryptoFailure, IdentityMismatch
+      KeyAllocationFailure, CryptoFailure, IdentityMismatch, InvalidEligibility
   WorkSignerData = ref object ## Only private seed ownership survives startup; the final EdSeed release wipes its own storage.
     seed: EdSeed
     identity: StateEdKey
   WorkSigner* = object ## Caller cannot obtain a mutable clearable seed alias; managed jobs must freeze this private owner until exact collection/join.
     data: nil WorkSignerData
+  WorkContributionData = ref object ## A single real signature remains bound to the private eligible report, never a fully guaranteed report.
+    eligible: EligibleWorkGuarantee
+    credential: GuaranteeCredential
+  SignedWorkContribution* = object ## No caller-issued signature or copied eligibility facts can construct this owner.
+    data: nil WorkContributionData
   WorkSignerResult*[T] = object ## Only complete success carries an owner or copied public identity; genuine children retain selected reasons.
     case status: WorkSignerError
     of None: completed: T
@@ -89,3 +97,54 @@ proc loadWorkSigner*(certificate, privateKey: string): WorkSignerResult[WorkSign
     return WorkSignerResult[WorkSigner](status: WorkSignerError.IdentityMismatch)
   WorkSignerResult[WorkSigner](status: WorkSignerError.None, completed: WorkSigner(data:
     WorkSignerData(seed: imported.value, identity: expected.value)))
+
+proc contributionInfo*(contribution: SignedWorkContribution): WorkSignerResult[
+    WorkEligibilityInfo] =
+  ## Copy only facts belonging to an actual signer-produced contribution.
+  let data = contribution.data
+  if data == nil: return WorkSignerResult[WorkEligibilityInfo](
+      status: WorkSignerError.Uninitialized)
+  WorkSignerResult[WorkEligibilityInfo](status: WorkSignerError.None,
+    completed: data.eligible.eligibilityInfo.value)
+proc contributionCredential*(contribution: SignedWorkContribution): WorkSignerResult[
+    GuaranteeCredential] =
+  ## Return the original nominal roster index and ordinary Ed25519 signature together.
+  let data = contribution.data
+  if data == nil: return WorkSignerResult[GuaranteeCredential](
+      status: WorkSignerError.Uninitialized)
+  WorkSignerResult[GuaranteeCredential](status: WorkSignerError.None, completed: data.credential)
+proc contributionReport*(contribution: SignedWorkContribution): WorkSignerResult[OwnedReport] =
+  ## Share the exact immutable eligible report for later multi-guarantor assembly.
+  let data = contribution.data
+  if data == nil: return WorkSignerResult[OwnedReport](status: WorkSignerError.Uninitialized)
+  WorkSignerResult[OwnedReport](status: WorkSignerError.None,
+      completed: data.eligible.eligibleReport.value)
+proc contributionTranscript*(contribution: SignedWorkContribution): WorkSignerResult[
+    ComputedGuaranteeTranscript] =
+  ## Retain the exact computation and bundle provenance, never a caller replacement.
+  let data = contribution.data
+  if data == nil: return WorkSignerResult[ComputedGuaranteeTranscript](
+      status: WorkSignerError.Uninitialized)
+  WorkSignerResult[ComputedGuaranteeTranscript](status: WorkSignerError.None,
+    completed: data.eligible.eligibleTranscript.value)
+proc signWorkContribution*(signer: WorkSigner,
+    eligible: EligibleWorkGuarantee): WorkSignerResult[SignedWorkContribution] =
+  ## Sign only a complete source-qualified report matching this actual TLS key; execute under the managed graph lease.
+  ## The runtime must freeze every signer/capability alias through exact worker collection or joined shutdown.
+  let data = signer.data
+  if data == nil: return WorkSignerResult[SignedWorkContribution](
+      status: WorkSignerError.Uninitialized)
+  let info = eligible.eligibilityInfo
+  if info.error != WorkEligibilityError.None:
+    return WorkSignerResult[SignedWorkContribution](status: WorkSignerError.InvalidEligibility)
+  if array[32, byte](data.identity) != array[32, byte](info.value.identity):
+    return WorkSignerResult[SignedWorkContribution](status: WorkSignerError.IdentityMismatch)
+  let message = array[45, byte](eligible.eligibleMessage.value)
+  let signature = data.seed.sign(message)
+  if signature.error != CryptoError.None:
+    return WorkSignerResult[SignedWorkContribution](status: WorkSignerError.CryptoFailure,
+      cryptoReason: signature.error)
+  WorkSignerResult[SignedWorkContribution](status: WorkSignerError.None,
+    completed: SignedWorkContribution(data: WorkContributionData(eligible: eligible,
+      credential: GuaranteeCredential(validator: info.value.validator,
+        signature: GuaranteeSignature(array[64, byte](signature.value))))))

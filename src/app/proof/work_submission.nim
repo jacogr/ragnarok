@@ -13,6 +13,7 @@ from ../../state/computed/guarantee import ComputedGuaranteeTranscript
 from ../../codec/work/report import ErasureShards
 import ../../state/[store, input_refinement, authorized_refinement]
 import ../../state/report/identity
+import ../../state/authorization/invocation
 import "../../state/import/inputs" as import_inputs
 import "../../state/import/justification" as import_justification
 import ../../codec/work/report as work_report
@@ -258,7 +259,8 @@ proc report(data: WorkJobData): WorkJobResult =
     return WorkJobResult(status: WorkJobResultKind.ReportFailure, reportReason: computed)
   let context = data.context.data
   if context == nil: return WorkJobResult(status: WorkJobResultKind.InvalidSource)
-  if not computed.value.workReportMatches(context.source.header, context.source.state):
+  if not computed.value.workReportMatches(context.source.header, context.source.state,
+      context.source.parameters):
     return WorkJobResult(status: WorkJobResultKind.InvalidSource)
   WorkJobResult(status: WorkJobResultKind.Reported, report: computed.value)
 proc captureWorkReport*(context: AuthorizedWorkContext, source: InputRefinement,
@@ -271,6 +273,8 @@ proc captureWorkReport*(context: AuthorizedWorkContext, source: InputRefinement,
     return WorkJobAdmission(status: WorkJobError.InvalidInput)
   let authorization = identity.value.identitySource.value.authorizedSource.value
   if not data.source.header.submissionMatchesAuthorization(authorization, data.source.state):
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  if not authorization.authorizationParameters.value.sameParameterProfile(data.source.parameters):
     return WorkJobAdmission(status: WorkJobError.InvalidInput)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: report, context: context, refined: source, shards: shards, reportLimits: limits)))

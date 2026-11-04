@@ -44,8 +44,9 @@ proc main() =
   assert bound.error == InputRefinementError.None
   let boundReport = prepareWorkReport(bound.value, ErasureShards(6), workReportLimits())
   assert boundReport.error == WorkReportError.None
-  assert boundReport.value.workReportMatches(header, fixture.input.state)
-  assert not boundReport.value.workReportMatches(fixture.workHeader, fixture.input.state)
+  assert boundReport.value.workReportMatches(header, fixture.input.state, fixture.input.parameters)
+  assert not boundReport.value.workReportMatches(fixture.workHeader, fixture.input.state,
+      fixture.input.parameters)
   var fork = forkStateStore(fixture.input.state).value
   let key = fixture.input.state.keyAt(StateEntryIndex(0)).value
   let replacement = fork.apply([StateWrite(kind: StateWriteKind.Put, key: key,
@@ -53,15 +54,19 @@ proc main() =
   assert array[32, byte](replacement.commitment.root) == array[32, byte](
       fixture.input.state.commitment.root)
   assert not sameStateSnapshot(replacement, fixture.input.state)
-  assert not boundReport.value.workReportMatches(header, replacement)
-  assert not default(ComputedGuaranteeTranscript).workReportMatches(header, fixture.input.state)
-  assert not boundReport.value.workReportMatches(default(WorkSubmissionHeader), fixture.input.state)
+  assert not boundReport.value.workReportMatches(header, replacement, fixture.input.parameters)
+  assert not default(ComputedGuaranteeTranscript).workReportMatches(header, fixture.input.state,
+      fixture.input.parameters)
+  assert not boundReport.value.workReportMatches(default(WorkSubmissionHeader), fixture.input.state,
+      fixture.input.parameters)
+  let changedProfile = fixture.input.parameters.withExplicitExpungePeriod.value
+  assert not boundReport.value.workReportMatches(header, fixture.input.state, changedProfile)
   let refined = executionRun(fixture.input, core = 0)
   assert refined.error == InputRefinementError.None, "original refinement: " & $refined.error
   let completed = prepareWorkReport(refined.value, ErasureShards(6), workReportLimits())
   assert completed.error == WorkReportError.None, "report preparation: " & $completed.error
   assert not completed.value.workReportMatches(header,
-      fixture.input.state) # Independent equal-byte package execution is not the admitted source.
+      fixture.input.state, fixture.input.parameters) # Independent equal-byte package execution is not the admitted source.
   let transcript = completed.value
   let computed = transcript.computedGuaranteeReport.value
   let info = computed.computedReportInfo.value
