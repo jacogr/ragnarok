@@ -100,6 +100,17 @@ func bindingError*[T](outcome: WorkSubmissionResult[
     T]): ImportInputsError {.requires: outcome.status == WorkSubmissionError.BindingFailure.} =
   ## A complete table mismatch never exposes its earlier verified rows.
   outcome.bindingReason
+proc submissionContext*(header: WorkSubmissionHeader): WorkSubmissionResult[RefinementContext] =
+  ## Copy fixed original context facts without exposing mutable package storage or a signing capability.
+  let data = header.data
+  if data == nil: return WorkSubmissionResult[RefinementContext](
+      status: WorkSubmissionError.Uninitialized)
+  WorkSubmissionResult[RefinementContext](status: WorkSubmissionError.None,
+    completed: data.package.workPackageInfo.value.context)
+proc sameSubmissionHeader*(left, right: WorkSubmissionHeader): bool =
+  ## Exact owner identity, rather than byte equality, binds later private source capabilities to the original decoded header.
+  let data = left.data
+  data != nil and data == right.data
 proc submissionInfo*(header: WorkSubmissionHeader): WorkSubmissionResult[WorkSubmissionInfo] =
   ## Copy bounded geometry without granting authority to read a body.
   let data = header.data

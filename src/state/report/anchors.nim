@@ -14,6 +14,7 @@ import ../../codec/[header, report_owned]
 import ../ancestor_context
 import ../fuzz/[ancestry as fuzz_ancestry, protocol as fuzz_protocol]
 import ./policy as report_policy
+import ../../codec/work/package as work_package
 import ../guarantee_credentials
 
 type
@@ -89,6 +90,27 @@ proc anchoredRecent*(owner: AnchoredReports): ReportAnchorResult[RecentAnchoredR
         status: ReportAnchorError.Uninitialized) # No disconnected reports.
   ReportAnchorResult[RecentAnchoredReports](status: ReportAnchorError.None, completed: data.recent)
 
+proc inspectRefinementAnchor*(context: RefinementContext, history: HistorySnapshot,
+    slot: StateTime, lookupAge: LookupAge): ReportAnchorError =
+  ## Reason-only shared GP tuple/age inspection grants neither report admission nor work-signing authority.
+  let info = history.historyInfo
+  if info.error != HistoryError.None: return ReportAnchorError.InvalidHistory
+  var found = false
+  for index in 0..<info.value.blocks:
+    # Every anchor field must match one record; fields from different historical blocks cannot be combined.
+    let record = history.historyBlockAt(HistoryBlockIndex(index)).value
+    if context.anchor.bytes == array[32, byte](record.header) and
+        context.stateRoot.bytes == array[32, byte](record.state) and
+        context.accumulationRoot.bytes == array[32, byte](record.superPeak) and
+        uint32(context.anchorSlot) == uint32(record.slot):
+      found = true
+      break
+  if not found: return ReportAnchorError.InvalidRecentAnchor
+  let current = uint64(uint32(slot))
+  if current > uint64(lookupAge) and uint64(uint32(context.lookupSlot)) < current-uint64(lookupAge):
+    return ReportAnchorError.LookupTooOld
+  ReportAnchorError.None
+
 proc checkRecentReportAnchors*(policy: PolicyCheckedReports, correctedHistory: openArray[byte],
     slot: StateTime, config: ReportAnchorConfig): ReportAnchorResult[RecentAnchoredReports] =
   ## Caller supplies the actual beta-dagger after parent-state-root correction, not the appended posterior history.
@@ -111,28 +133,16 @@ proc checkRecentReportAnchors*(policy: PolicyCheckedReports, correctedHistory: o
     return ReportAnchorResult[RecentAnchoredReports](
         status: ReportAnchorError.InvalidHistory) # No suffix fallback.
   let history = decoded.value.snapshot
-  let count = historyInfo(history).value.blocks
-  # Match all fields on one record, not fields scattered over different historical entries.
   for i in 0..<credentials.value.verifiedGuaranteeCount.value:
+    # The work-package and on-chain report paths use the same reason-only tuple and age rules.
     let report = ownedReportInfo(credentials.value.verifiedGuaranteeAt(i).value.report).value.header
-    var found = false
-    # The history codec already bounds this traversal to at most eight records.
-    for j in 0..<count:
-      let record = historyBlockAt(history, HistoryBlockIndex(j)).value
-      if report.anchor.bytes == array[32, byte](record.header) and
-          report.stateRoot.bytes == array[32, byte](record.state) and
-          report.accumulationRoot.bytes == array[32, byte](record.superPeak) and
-          uint32(report.anchorSlot) == uint32(record.slot):
-        found = true # One complete tuple establishes the recent anchor.
-        break
-    if not found:
-      return ReportAnchorResult[RecentAnchoredReports](
-          status: ReportAnchorError.InvalidRecentAnchor) # No hash-only acceptance.
-    let current = uint64(uint32(slot))
-    if current > uint64(config.lookupAge) and
-        uint64(uint32(report.lookupSlot)) < current-uint64(config.lookupAge):
-      return ReportAnchorResult[RecentAnchoredReports](
-          status: ReportAnchorError.LookupTooOld) # Inclusive lower bound, safe near genesis.
+    let context = RefinementContext(anchor: report.anchor, anchorSlot: report.anchorSlot,
+      stateRoot: report.stateRoot, accumulationRoot: report.accumulationRoot,
+      lookupAnchor: report.lookupAnchor, lookupSlot: report.lookupSlot,
+      lookupStateRoot: report.lookupStateRoot)
+    let inspected = inspectRefinementAnchor(context, history, slot, config.lookupAge)
+    if inspected != ReportAnchorError.None:
+      return ReportAnchorResult[RecentAnchoredReports](status: inspected)
   ReportAnchorResult[RecentAnchoredReports](status: ReportAnchorError.None,
     completed: RecentAnchoredReports(data: RecentData(policy: policy, history: history, slot: slot)))
 

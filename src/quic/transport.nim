@@ -109,6 +109,10 @@ proc parseCert*(der: ptr byte, length: csize_t, fields: ptr CertFields): cint {.
     header: CertHeader, cdecl, raises: [].}
   ## Strict primitive DER extraction; the returned fields own their bounded bytes.
 
+proc parseIdentitySeed*(pem: ptr byte, length: csize_t,
+    seed: ptr byte): cint {.importc: "rq_identity_seed", header: CertHeader, cdecl, raises: [].}
+  ## Synchronously parse bounded unencrypted PKCS8 Ed25519; caller wipes its PEM/seed scratch and no pointer is retained.
+
 type NativeTransportOptions {.importc: "rq_transport_options", header: BridgeHeader,
     bycopy.} = object
   ## Scalar-only C startup configuration is borrowed only during synchronous factory construction.

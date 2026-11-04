@@ -64,6 +64,52 @@ static int identity_copy(BIO *bio, uint8_t *output, size_t capacity, size_t *wri
     return 1;
 }
 
+/* Reject password acquisition rather than allowing the PEM reader's interactive default callback. */
+static int identity_no_password(char *buffer, int capacity, int writing, void *user) {
+    (void)buffer; (void)capacity; (void)writing; (void)user;
+    return 0;
+}
+/* PEM framing accepts only ASCII whitespace outside one unencrypted PKCS8 object. */
+static int identity_space(uint8_t byte) {
+    return byte == ' ' || byte == '\t' || byte == '\r' || byte == '\n';
+}
+int rq_identity_seed(const uint8_t *pem, size_t length, uint8_t output[32]) {
+    /* Prove signed BIO length and all prefix reads before parsing secret input. */
+    static const char begin[] = "-----BEGIN PRIVATE KEY-----";
+    if (!pem || !output || !length || length > 65536) return 0;
+    size_t offset = 0;
+    while (offset < length && identity_space(pem[offset])) ++offset;
+    if (length - offset < sizeof(begin) - 1 ||
+        memcmp(pem + offset, begin, sizeof(begin) - 1) != 0) return 0;
+    /* A malformed first BEGIN line cannot be skipped in favor of a later valid key. */
+    size_t line_end = offset + sizeof(begin) - 1;
+    if (line_end == length) return 0;
+    if (pem[line_end] == '\r') {
+        if (length - line_end < 2 || pem[line_end + 1] != '\n') return 0;
+    } else if (pem[line_end] != '\n') {
+        return 0;
+    }
+    BIO *bio = BIO_new_mem_buf(pem + offset, (int)(length - offset));
+    if (!bio) return -1;
+    EVP_PKEY *key = PEM_read_bio_PrivateKey(bio, NULL, identity_no_password, NULL);
+    uint8_t seed[32] = {0};
+    size_t size = sizeof(seed);
+    int ok = key && EVP_PKEY_id(key) == EVP_PKEY_ED25519 &&
+             EVP_PKEY_get_raw_private_key(key, seed, &size) == 1 && size == sizeof(seed);
+    /* A second key or arbitrary suffix is refused before any output escapes. */
+    char *remaining = NULL;
+    long pending = BIO_get_mem_data(bio, &remaining);
+    if (pending < 0) ok = 0;
+    for (long i = 0; ok && i < pending; ++i) {
+        if (!identity_space((uint8_t)remaining[i])) ok = 0;
+    }
+    if (ok) memcpy(output, seed, sizeof(seed));
+    OPENSSL_cleanse(seed, sizeof(seed));
+    EVP_PKEY_free(key);
+    BIO_free(bio);
+    return ok;
+}
+
 int rq_identity_key(uint8_t *pem, size_t capacity, size_t *length, uint8_t public_key[32]) {
     /* Entropy and Ed25519 key generation belong to the maintained TLS implementation. */
     if (!pem || !length || !public_key) return 0;
