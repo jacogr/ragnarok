@@ -6,6 +6,8 @@ import std/[assertions, syncio, envvars, strutils, base64, monotimes, times]
 import std/posix/posix
 import ../../support/[application_checkpoint_context, rpc_socket, storage_io]
 import ../../../src/app/[services, options, chain]
+import ../../../src/jamnp-s/work_submission
+import ../../../src/state/input_refinement
 import ../../../src/app/light/[head as light_head, runtime as light_runtime, policy as light_policy]
 import ../../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
 import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
@@ -206,6 +208,9 @@ proc scenario(fixed: Fixture, disk: bool) {.raises.} =
   discard posix.close(mcp.fd)
   let options = configured(fixed, directory, reserved.port, mcpPort = mcp.port)
   assert owner.start(options, "light runtime test")
+  # Partial light evidence never grants a complete-state work-submission CPU context.
+  assert owner.beginWorkSubmission(default(WorkSubmissionHeader), default(WorkSubmissionLimits),
+    default(InputRefinementLimits)).error == StateProofAdmissionError.QueryFailure
   assert not owner.startupBlockAnchor.available # Partial light startup never grants a full-state configured anchor.
   checkHead(owner, 0)
   let mcpStatus = mcpTool(owner, mcp.port, "get_chain_status")
