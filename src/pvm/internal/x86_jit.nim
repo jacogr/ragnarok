@@ -4,6 +4,7 @@
 ## The SysV leaf borrows one register array in RDI, touches only caller-saved registers and retains no input pointer.
 import std/assertions
 import ../[program, machine]
+import ./jit_rules
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.
@@ -179,10 +180,9 @@ proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
-func supportedX86Opcode*(opcode: byte): bool =
+func supportedX86Opcode*(opcode: byte): bool {.inline.} =
   ## Baseline x86-64 instructions implement these non-exiting scalar operations without optional CPU extensions.
-  opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
-      190..192, 197..202, 207..217, 222..226}
+  supportedScalarOpcode(opcode)
 
 proc put(fragment: var X86Block, bytes: openArray[byte]) =
   ## Every copied byte belongs to the cold builder, never to a source or invocation view.

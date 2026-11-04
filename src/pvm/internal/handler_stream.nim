@@ -10,7 +10,7 @@ import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  import ./arm64_jit
+  import ./[arm64_jit, jit_rules]
 when defined(pvmX86Jit):
   import ./x86_jit
 
@@ -3326,17 +3326,15 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           (1'u32 shl int(slots.bIndex)) or (1'u32 shl int(slots.destinationIndex))
       var entry = default(FlatMixedOp)
       if fact.opcode in 120'u8..130'u8:
+        assert fact.opcode >= 120 and fact.opcode <= 130 # Keep the admitted conversion proof local.
+        let access = indirectMemoryAccess(range[120..130](fact.opcode))
         entry.memory = true
-        entry.store = fact.opcode < 124
+        entry.store = access.kind == IndirectMemoryKind.Store
         entry.base = uint32(slots.bIndex)
         entry.writes = not entry.store
         entry.destination = uint32(slots.aIndex)
         entry.displacement = uint32(fact.args.x and 0xffffffff'u64)
-        entry.width = case fact.opcode
-          of 120, 124, 125: 1'u32
-          of 121, 126, 127: 2'u32
-          of 122, 128, 129: 4'u32
-          else: 8'u32
+        entry.width = access.width
       elif supportedArmOpcode(fact.opcode):
         entry.writes = true
         entry.destination = uint32(slots.destinationIndex)
