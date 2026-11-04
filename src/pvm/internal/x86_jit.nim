@@ -27,6 +27,104 @@ proc nextNative(handle: nil pointer, offset: uint32, registers: pointer): uint32
     importc: "pvm_x86_arena_next", header: "x86_memory.h".}
   ## Execute an entry and return its next control-flow offset without retaining registers.
 
+when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
+  type
+    X86MemoryCycleHandlerKind* {.pure.} = enum
+      ## Only copied identity classes are retained; a callable handler pointer never escapes.
+      Other, Ordinary, CheckedWord, NativeWhole, NativeProbe, NativeRegion
+    X86MemoryCycleHeader* = object
+      ## Copied source and cached-arm coordinates contain no invocation pointer or guest value.
+      pc*, header*, ordinal*, span*, terminal*, yes*, no*: uint32
+      price*: uint64
+      opcode*: byte
+      kind*: X86MemoryCycleHandlerKind
+    X86MemoryCycleCandidate* = object
+      ## One exact source graph and its proved roles remain separate from callable pure regions.
+      prefix*, dirty*, tail*, outside*: X86MemoryCycleHeader
+      readOrdinal*: uint32
+      readImmediate*, storeDisplacement*, initialShift*: uint64
+      readOpcode*, readWidth*: byte
+      data*, shift*, extracted*, base*, bound*, length*, counter*,
+        readResult*: byte
+    X86WideCycleCandidate* = object
+      ## Copied seven-block source graph; no guest value, mutable frame or diagnostic PC is retained.
+      cycle*: X86MemoryCycleCandidate
+      loopGuard*, loopBranch*, readBlock*, rare*: X86MemoryCycleHeader
+      readOperations*, readLoads*: uint32
+    X86MemoryCycleSlot = object
+      ## One published code offset binds copied source facts to an exclusively leased plan owner.
+      candidate: X86MemoryCycleCandidate
+      planIdentity: nil pointer
+      code: uint32
+      active: bool
+    X86MemoryCycleCandidateCache = object
+      ## Eight cold candidate slots cannot overwrite or evict the independent pure-region cache.
+      count: uint8
+      entries: array[8, X86MemoryCycleSlot]
+      calls, groups, tails: uint64
+
+  when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+    type X86WideCycleCache = object
+      ## One private source-bound wider image owns no frame or invocation pointer.
+      status: uint8
+      candidate: X86WideCycleCandidate
+      planIdentity: nil pointer
+      code, childCode: uint32
+      calls, readRefusals: uint64
+      when defined(pvmX86WideParentRefusalWitness):
+        refuseParentOnce: bool
+
+when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
+    defined(pvmX86MemoryCycleSeal)):
+  type
+    X86CycleMemory* = object
+      ## Current invocation's clipped private byte descriptors match pvm_x86_cycle_memory exactly.
+      readPtr*: nil pointer
+      readFirst*, readEnd*: uint64
+      writePtr*: nil pointer
+      writeFirst*, writeEnd*: uint64
+      dirtyWords*, reserved*: uint32
+    X86CycleState* = object
+      ## Native completion ledger matches pvm_x86_cycle_state; no output is trusted before validation.
+      gas*, attempts*: uint64
+      visits*: array[3, uint64]
+      wordGroups*: uint64
+      lastCompleted*, exitKind*: uint32
+      reserved*: uint64
+    X86CycleEmission* = object
+      ## Original sealed operand slots let the existing arithmetic and comparison emitter be reused.
+      prefixLoad*, prefixBound*, prefixStep*, dirtyBranch*: RegisterSlots
+      tailStep*, tailBranch*: RegisterSlots
+
+  when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+    type
+      X86WideOperation* = object
+        ## Copied immutable source operands drive cold wide-body emission.
+        opcode*: byte
+        slots*: RegisterSlots
+        immediate*: uint64
+      X86WideEmission* = object
+        ## The source seal bounds every copied operation before one image is built.
+        prefix*: X86CycleEmission
+        guardOperations*: array[2, X86WideOperation]
+        guardBranch*, loopBranch*: RegisterSlots
+        guardImmediate*, loopImmediate*: uint64
+        readOperations*: array[64, X86WideOperation]
+        readCount*: uint32
+      X86WideReadRegion* = object
+        ## One clipped private readable extent; no pointer survives the native invocation.
+        data*: nil pointer
+        first*, ending*: uint64
+      X86WideMemory* = object
+        ## The narrow child's first 56 bytes retain its C ABI; three fresh regions follow.
+        cycle*: X86CycleMemory
+        regions*: array[3, X86WideReadRegion]
+      X86WideState* = object
+        ## The narrow child's first 64 bytes retain its receipt ABI; four outer visit lanes follow.
+        cycle*: X86CycleState
+        outerVisits*: array[4, uint64]
+        childCalls*: uint64
+
 type
   X86Block* = object ## Cold bytecode builder; every operation loads its original sources before writing its destination.
     bytes: seq[byte]
@@ -46,6 +144,10 @@ type
   X86Jit* = ref object ## Bounded code-only cache; immutable source identity belongs to its exclusive stream owner.
     arena: X86Arena
     region: X86RegionCache
+    when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
+      memoryCycle: X86MemoryCycleCandidateCache
+      when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+        wideCycle: X86WideCycleCache
     entries: seq[X86Entry]
     unavailable: bool
     fragments*, calls*, operations*, codeBytes*, compilationNs*: uint64
@@ -54,6 +156,10 @@ type
 const
   x86NonRegionFragmentLimit = 8191'u64 ## Leave one owner slot for the pure region.
   x86TotalFragmentLimit = 8192'u64     ## Leaves and the one-shot region share this publication budget.
+
+func x86PublicationAvailable(jit: X86Jit, region = false): bool =
+  ## Nonregion entries, including this cycle, leave one shared owner slot for the pure region.
+  jit.fragments < (if region: x86TotalFragmentLimit else: x86NonRegionFragmentLimit)
 
 proc `=copy`(destination: var X86Arena, source: X86Arena) {.error.}
   ## Reject copying the exclusive native executable arena owner.
@@ -207,9 +313,10 @@ proc publishX86Entry*(jit: X86Jit, offset, ending, count: uint32, fragment: X86B
   if conditional and (previous.code < 2 or previous.conditional or previous.ending != ending or
       count != previous.operations+1): return false
   let minimum = if shortPrefix: 1'u32 else: 4'u32
-  if (not conditional and count < minimum) or count > (if conditional: 65'u32 else: 64'u32) or
-      ending <= offset or ending > uint32(jit.entries.len) or
-      jit.fragments >= x86NonRegionFragmentLimit or fragment.bytes.len == 0 or
+  if (not conditional and count < minimum) or count > (
+      if conditional: 65'u32 else: 64'u32) or ending <= offset or ending > uint32(
+          jit.entries.len) or
+      not x86PublicationAvailable(jit) or fragment.bytes.len == 0 or
       fragment.bytes.len >= 4096:
     refuseX86Entry(jit, offset)
     return false
@@ -364,7 +471,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
   let epilogue = code.bytes.len
   put(code, [0x4c'u8, 0x89, 0x0e, 0x4c, 0x89, 0x56, 8, 0xc3])
   if code.bytes.len >= 4096: return false
-  if jit.fragments >= x86TotalFragmentLimit:
+  if not x86PublicationAvailable(jit, region = true):
     # Exhausted owner-wide publication capacity is permanent, unlike this candidate's shape or size.
     jit.region.status = 1
     return false
@@ -431,3 +538,704 @@ proc callX86Region*(jit: X86Jit, registers: var RegisterFile, state: var array[5
 func x86RegionStatistics*(jit: X86Jit): array[2, uint64] =
   ## Distinguish connected entries from completed logical blocks without claiming hardware instruction counts.
   [jit.region.calls, jit.region.blocks]
+
+when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
+    defined(pvmX86MemoryCycleSeal)):
+  type X86CycleFixup = object
+    ## A local signed rel32 patch names one label in the complete unpublished image.
+    at: int
+    target: uint8
+
+  const
+    cycleDirty = 0'u8
+    cycleTail = 1'u8
+    cyclePrefix = 2'u8
+    cycleGuardDirty = 3'u8
+    cycleGuardTail = 4'u8
+    cycleGuardPrefix = 5'u8
+    cycleOutside = 6'u8
+    cycleEpilogue = 7'u8
+
+  proc cycleWord(code: var X86Block, value: uint32) =
+    ## Encode a fixed little-endian scalar without host pointers or native byte-order assumptions.
+    for shift in 0..<4: code.bytes.add(byte((value shr (shift*8)) and 255))
+
+  proc cycleQword(code: var X86Block, value: uint64) =
+    ## All original gas prices and displacements retain their full unsigned 64-bit value.
+    for shift in 0..<8: code.bytes.add(byte((value shr (shift*8)) and 255))
+
+  proc cycleEdge(code: var X86Block, fixes: var seq[X86CycleFixup], condition,
+      target: uint8) =
+    ## A zero condition is JMP; otherwise an unsigned/signed Jcc owns exactly one rel32 field.
+    if condition == 0: put(code, [0xe9'u8])
+    else: put(code, [0x0f'u8, condition])
+    fixes.add(X86CycleFixup(at: code.bytes.len, target: target))
+    cycleWord(code, 0)
+
+  proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
+      price: uint64, span: byte, guard: uint8) =
+    ## Match zero-budget, unpaid gas and full-span precedence without touching current-block state.
+    put(code, [0x49'u8, 0x83, 0x7f, 0x08, 0x00]) # CMP state.attempts,0.
+    cycleEdge(code, fixes, 0x84, guard)
+    put(code, [0x48'u8, 0xb8]) # MOV RAX,original price.
+    cycleQword(code, price)
+    put(code, [0x49'u8, 0x39, 0x07]) # CMP state.gas,RAX.
+    cycleEdge(code, fixes, 0x82, guard)
+    put(code, [0x49'u8, 0x83, 0x7f, 0x08, span]) # CMP state.attempts,span.
+    cycleEdge(code, fixes, 0x82, guard)
+
+  proc cycleDebit(code: var X86Block, price: uint64, span: byte) =
+    ## Debit only after every current-header memory proof has succeeded.
+    put(code, [0x48'u8, 0xb8])
+    cycleQword(code, price)
+    put(code, [0x49'u8, 0x29, 0x07]) # SUB state.gas,RAX.
+    put(code, [0x49'u8, 0x83, 0x6f, 0x08, span]) # SUB state.attempts,span.
+
+  proc cycleComplete(code: var X86Block, visitOffset, visits: byte,
+      header: uint32, group: bool) =
+    ## Publish a completion only after all guest effects and the selected branch have finished.
+    put(code, [0x49'u8, 0x83, 0x47, visitOffset, visits])
+    if group: put(code, [0x49'u8, 0xff, 0x47, 0x28])
+    put(code, [0x41'u8, 0xc7, 0x47, 0x30])
+    cycleWord(code, header)
+
+  proc cycleReturn(code: var X86Block, fixes: var seq[X86CycleFixup],
+      kind: uint32, header: uint32) =
+    ## Return a scalar stream coordinate and an explicit guard/external receipt through one epilogue.
+    put(code, [0x41'u8, 0xc7, 0x47, 0x34]) # MOV state.exitKind,kind.
+    cycleWord(code, kind)
+    put(code, [0xb8'u8]) # MOV EAX,header.
+    cycleWord(code, header)
+    cycleEdge(code, fixes, 0, cycleEpilogue)
+
+  proc buildX86MemoryCycleImage*(candidate: X86MemoryCycleCandidate,
+      operands: X86CycleEmission, image: var seq[byte]): bool =
+    ## Build one bounded dirty→tail→prefix loop with all guards and exits local to a single image.
+    image = @[]
+    if candidate.prefix.header >= 262144 or candidate.dirty.header >= 262144 or
+        candidate.tail.header >= 262144 or candidate.outside.header >= 262144 or
+        candidate.prefix.span == 0 or candidate.prefix.span > 65 or
+        candidate.dirty.span != 5 or candidate.tail.span == 0 or
+            candidate.tail.span > 65 or
+        candidate.dirty.price > high(uint64) div 4 or
+        candidate.data > 12 or candidate.shift > 12 or candidate.extracted >
+            12 or
+        candidate.base > 12 or candidate.bound > 12 or candidate.length > 12 or
+        candidate.counter > 12 or candidate.readResult > 12 or
+        candidate.readOpcode notin {52'u8..58}:
+      return false
+    let expectedWidth: byte = case candidate.readOpcode
+      of 52, 53: 1'u8
+      of 54, 55: 2'u8
+      of 56, 57: 4'u8
+      else: 8'u8
+    if candidate.readWidth != expectedWidth: return false
+    let readAddress = uint32(candidate.readImmediate and 0xffffffff'u64)
+    if readAddress < 65536 or uint64(readAddress) >
+        uint64(high(uint32))-uint64(candidate.readWidth): return false
+    var code = default(X86Block)
+    var labels = default(array[8, int])
+    for index in 0..<labels.len: labels[index] = -1
+    var fixes: seq[X86CycleFixup] = @[]
+    # Every call-local pointer lives in a preserved register; all return stubs share the matching pops.
+    put(code, [0x41'u8, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57,
+      0x49, 0x89, 0xfc, 0x49, 0x89, 0xf5, 0x49, 0x89, 0xd6, 0x49, 0x89, 0xcf])
+
+    labels[int(cycleDirty)] = code.bytes.len
+    cycleBudget(code, fixes, candidate.dirty.price*4, 20, cycleGuardDirty)
+    # The checked word projection requires shift alignment and nonwrapping base+4 <= bound.
+    put(code, [0x49'u8, 0x8b, 0x44, 0x24, byte(int(candidate.shift)*8),
+      0xa9, 0x1f, 0, 0, 0]) # MOV shift; TEST EAX,31.
+    cycleEdge(code, fixes, 0x85, cycleGuardDirty)
+    put(code, [0x49'u8, 0x8b, 0x4c, 0x24, byte(int(candidate.base)*8), 0x48, 0xba])
+    cycleQword(code, high(uint64)-4)
+    put(code, [0x48'u8, 0x39, 0xd1]) # CMP base,UINT64_MAX-4.
+    cycleEdge(code, fixes, 0x87, cycleGuardDirty)
+    put(code, [0x48'u8, 0x8d, 0x41, 0x04,
+      0x49, 0x8b, 0x54, 0x24, byte(int(candidate.bound)*8),
+      0x48, 0x39, 0xd0]) # CMP base+4,bound.
+    cycleEdge(code, fixes, 0x87, cycleGuardDirty)
+    put(code, [0x48'u8, 0xb8])
+    cycleQword(code, candidate.storeDisplacement)
+    # ADD wraps at 64 bits before MOV EAX clips to 32; the low 32 bits equal the source address equation.
+    put(code, [0x48'u8, 0x01, 0xc8, 0x89, 0xc0, 0x49, 0x89, 0xc1])
+    # R9 is the clipped 32-bit guest address; all following pointer arithmetic uses this proven value.
+    put(code, [0x49'u8, 0x81, 0xf9])
+    cycleWord(code, 65536)
+    cycleEdge(code, fixes, 0x82, cycleGuardDirty)
+    put(code, [0xba'u8])
+    cycleWord(code, high(uint32)-4)
+    put(code, [0x49'u8, 0x39, 0xd1])
+    cycleEdge(code, fixes, 0x87, cycleGuardDirty)
+    put(code, [0x44'u8, 0x89, 0xca, 0x81, 0xe2, 0xff, 0x0f, 0, 0,
+      0x81, 0xfa, 0xfc, 0x0f, 0, 0]) # Same-page four-byte store.
+    cycleEdge(code, fixes, 0x87, cycleGuardDirty)
+    put(code, [0x49'u8, 0x8b, 0x55, 0x20, 0x49, 0x39, 0xd1])
+    cycleEdge(code, fixes, 0x82, cycleGuardDirty)
+    put(code, [0x49'u8, 0x8b, 0x55, 0x28, 0x49, 0x8d, 0x41, 0x04,
+      0x48, 0x39, 0xd0])
+    cycleEdge(code, fixes, 0x87, cycleGuardDirty)
+    # flatMarkStore indexes the bitmap by guest page, then 64-page word and low-six-bit mask.
+    put(code, [0x44'u8, 0x89, 0xca, 0xc1, 0xea, 0x0c, 0x89, 0xd0,
+      0xc1, 0xe8, 0x06, 0x41, 0x3b, 0x45, 0x30])
+    cycleEdge(code, fixes, 0x83, cycleGuardDirty)
+    put(code, [0x4d'u8, 0x8b, 0x14, 0xc6, 0x89, 0xd1, 0x83, 0xe1, 0x3f,
+      0x41, 0xbb, 1, 0, 0, 0, 0x49, 0xd3, 0xe3, 0x4d, 0x85, 0xda])
+    cycleEdge(code, fixes, 0x84, cycleGuardDirty)
+    cycleDebit(code, candidate.dirty.price*4, 20)
+    put(code, [0x4d'u8, 0x8b, 0x55, 0x18, 0x49, 0x8b, 0x45, 0x20,
+      0x49, 0x29, 0xc1, 0x41, 0x8b, 0x44, 0x24, byte(int(candidate.data)*8),
+      0x43, 0x89, 0x04, 0x0a, 0xc1, 0xe8, 0x18,
+      0x49, 0x89, 0x44, 0x24, byte(int(candidate.extracted)*8),
+      0x49, 0x83, 0x44, 0x24, byte(int(candidate.base)*8), 4,
+      0x49, 0x83, 0x44, 0x24, byte(int(candidate.shift)*8), 32])
+    put(code, [0x4c'u8, 0x89, 0xe7]) # Existing branch emitter reads registers through RDI.
+    emitX86Branch(code, 171, operands.dirtyBranch, 0, candidate.dirty.header,
+      candidate.tail.header)
+    cycleComplete(code, 24, 4, candidate.dirty.header, true)
+    put(code, [0x3d'u8])
+    cycleWord(code, candidate.dirty.header)
+    cycleEdge(code, fixes, 0x84, cycleDirty)
+    cycleEdge(code, fixes, 0, cycleTail)
+
+    labels[int(cycleTail)] = code.bytes.len
+    cycleBudget(code, fixes, candidate.tail.price, byte(candidate.tail.span), cycleGuardTail)
+    put(code, [0x41'u8, 0xb9])
+    cycleWord(code, readAddress)
+    put(code, [0x49'u8, 0x8b, 0x55, 0x08, 0x49, 0x39, 0xd1])
+    cycleEdge(code, fixes, 0x82, cycleGuardTail)
+    put(code, [0x49'u8, 0x8b, 0x55, 0x10,
+      0x49, 0x8d, 0x41, candidate.readWidth, 0x48, 0x39, 0xd0])
+    cycleEdge(code, fixes, 0x87, cycleGuardTail)
+    cycleDebit(code, candidate.tail.price, byte(candidate.tail.span))
+    put(code, [0x4d'u8, 0x8b, 0x55, 0x00, 0x49, 0x8b, 0x45, 0x08, 0x49, 0x29, 0xc1])
+    case candidate.readOpcode
+    of 52: put(code, [0x43'u8, 0x0f, 0xb6, 0x04, 0x0a])
+    of 53: put(code, [0x4b'u8, 0x0f, 0xbe, 0x04, 0x0a])
+    of 54: put(code, [0x43'u8, 0x0f, 0xb7, 0x04, 0x0a])
+    of 55: put(code, [0x4b'u8, 0x0f, 0xbf, 0x04, 0x0a])
+    of 56: put(code, [0x43'u8, 0x8b, 0x04, 0x0a])
+    of 57: put(code, [0x4b'u8, 0x63, 0x04, 0x0a])
+    of 58: put(code, [0x4b'u8, 0x8b, 0x04, 0x0a])
+    else: return false
+    put(code, [0x49'u8, 0x89, 0x44, 0x24, byte(int(candidate.readResult)*8),
+      0x4c, 0x89, 0xe7])
+    emitX86Operation(code, 131, operands.tailStep, 1)
+    emitX86Branch(code, 173, operands.tailBranch, 0, candidate.prefix.header,
+      candidate.outside.header)
+    cycleComplete(code, 32, 1, candidate.tail.header, false)
+    put(code, [0x3d'u8])
+    cycleWord(code, candidate.prefix.header)
+    cycleEdge(code, fixes, 0x84, cyclePrefix)
+    cycleEdge(code, fixes, 0, cycleOutside)
+
+    labels[int(cyclePrefix)] = code.bytes.len
+    cycleBudget(code, fixes, candidate.prefix.price, byte(
+        candidate.prefix.span),
+      cycleGuardPrefix)
+    cycleDebit(code, candidate.prefix.price, byte(candidate.prefix.span))
+    put(code, [0x4c'u8, 0x89, 0xe7])
+    emitX86Operation(code, 51, operands.prefixLoad, candidate.initialShift)
+    emitX86Operation(code, 200, operands.prefixBound, 0)
+    emitX86Operation(code, 149, operands.prefixStep, 1)
+    cycleComplete(code, 16, 1, candidate.prefix.header, false)
+    cycleEdge(code, fixes, 0, cycleDirty)
+
+    labels[int(cycleGuardDirty)] = code.bytes.len
+    cycleReturn(code, fixes, 1, candidate.dirty.header)
+    labels[int(cycleGuardTail)] = code.bytes.len
+    cycleReturn(code, fixes, 1, candidate.tail.header)
+    labels[int(cycleGuardPrefix)] = code.bytes.len
+    cycleReturn(code, fixes, 1, candidate.prefix.header)
+    labels[int(cycleOutside)] = code.bytes.len
+    cycleReturn(code, fixes, 2, candidate.outside.header)
+    labels[int(cycleEpilogue)] = code.bytes.len
+    put(code, [0x41'u8, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0xc3])
+    if code.bytes.len == 0 or code.bytes.len > 4096: return false
+    for fix in fixes:
+      if int(fix.target) >= labels.len or labels[int(fix.target)] <
+          0: return false
+      let delta = int64(labels[int(fix.target)])-int64(fix.at+4)
+      if delta < -2147483648'i64 or delta > 2147483647'i64: return false
+      let encoded = cast[uint32](int32(delta))
+      for shift in 0..<4:
+        code.bytes[fix.at+shift] = byte((encoded shr (shift*8)) and 255)
+    image = move(code.bytes)
+    true
+
+  proc cycleNative(handle: nil pointer, offset: uint32, registers: pointer,
+      memory, dirty, state: nil pointer): uint64
+      {.cdecl, importc: "pvm_x86_arena_cycle", header: "x86_memory.h".}
+    ## The high return word proves whether the typed C boundary invoked any generated bytes.
+
+  func x86CycleSlot*(jit: X86Jit, dirty: uint32): int =
+    ## A bounded scalar lookup never exposes a native entry or source pointer to the caller.
+    if jit == nil: return -1
+    for index in 0..<int(jit.memoryCycle.count):
+      if jit.memoryCycle.entries[index].active and
+          jit.memoryCycle.entries[index].candidate.dirty.header ==
+              dirty: return index
+    -1
+
+  func x86CycleCandidate*(jit: X86Jit, index: int): X86MemoryCycleCandidate =
+    ## Only an active slot yields its copied source graph.
+    assert jit != nil and index >= 0 and index < int(jit.memoryCycle.count)
+    assert jit.memoryCycle.entries[index].active
+    jit.memoryCycle.entries[index].candidate
+
+  func x86CycleBound*(jit: X86Jit, index: int,
+      planIdentity: nil pointer): bool =
+    ## Same-plan restoration may move the owner; the immutable plan identity must still match.
+    jit != nil and index >= 0 and index < int(jit.memoryCycle.count) and
+      jit.memoryCycle.entries[index].active and planIdentity != nil and
+      jit.memoryCycle.entries[index].planIdentity == planIdentity
+
+  proc retireX86Cycle*(jit: X86Jit, index: int) =
+    ## Revocation only disables this optimization; published bytes and pure regions remain owned.
+    if jit != nil and index >= 0 and index < int(jit.memoryCycle.count):
+      jit.memoryCycle.entries[index].active = false
+
+  proc publishX86MemoryCycle*(jit: X86Jit, candidate: X86MemoryCycleCandidate,
+      operands: X86CycleEmission, planIdentity: nil pointer): int =
+    ## Manual publication is finite and does not install any source handler on failure.
+    result = -1
+    if jit == nil or planIdentity == nil or jit.unavailable or
+        jit.memoryCycle.count >= 8 or not x86PublicationAvailable(jit): return
+    for index in 0..<int(jit.memoryCycle.count):
+      if jit.memoryCycle.entries[index].candidate.dirty.header ==
+          candidate.dirty.header:
+        return
+    var image: seq[byte] = @[]
+    if not buildX86MemoryCycleImage(candidate, operands, image): return
+    if jit.region.status != 2:
+      # This private publisher alone leaves one existing fragment and one maximum image available.
+      if jit.fragments+1 >= x86TotalFragmentLimit or
+          jit.codeBytes > 1024'u64*1024-uint64(image.len)-4126: return
+    if jit.arena.handle == nil:
+      when defined(pvmX86JitRefuse): discard
+      else: jit.arena.handle = createNative()
+    if jit.arena.handle == nil:
+      jit.unavailable = true
+      return
+    let published = publishNative(jit.arena.handle, addr image[0], uint32(image.len))
+    if published < 0: return
+    let index = int(jit.memoryCycle.count)
+    jit.memoryCycle.entries[index] = X86MemoryCycleSlot(candidate: candidate,
+      planIdentity: planIdentity, code: uint32(published), active: true)
+    inc jit.memoryCycle.count
+    inc jit.fragments
+    jit.codeBytes = uint64(published)+uint64(image.len)
+    result = index
+
+  proc callX86MemoryCycle*(jit: X86Jit, index: int, registers: var RegisterFile,
+      memory: var X86CycleMemory, dirty: var seq[uint64],
+          state: var X86CycleState): uint64 =
+    ## A zero high word is only an untouched pre-call refusal; the wrapper validates every native receipt.
+    if jit == nil or index < 0 or index >= int(jit.memoryCycle.count) or
+        not jit.memoryCycle.entries[index].active or jit.arena.handle == nil:
+      return 0
+    assert sizeof(X86CycleMemory) == 56 and sizeof(X86CycleState) == 64
+    let bitmap: nil pointer = if dirty.len == 0: nil else: addr dirty[0]
+    cycleNative(jit.arena.handle, jit.memoryCycle.entries[index].code,
+        addr registers[0],
+      addr memory, bitmap, addr state)
+
+  proc recordX86MemoryCycle*(jit: X86Jit, prefix, dirty, tail,
+      groups: uint64): bool =
+    ## Count logical non-noop guest operations only after the complete native ledger is accepted.
+    if jit == nil or prefix > high(uint64) div 4 or dirty > high(
+        uint64) div 5 or tail > high(uint64) div 3: return false
+    let p = prefix*4
+    let d = dirty*5
+    let t = tail*3
+    if p > high(uint64)-d or p+d > high(uint64)-t or
+        jit.operations > high(uint64)-(p+d+t) or jit.calls == high(uint64) or
+        jit.memoryCycle.calls == high(uint64) or
+        jit.memoryCycle.groups > high(uint64)-groups or
+        jit.memoryCycle.tails > high(uint64)-tail: return false
+    jit.operations += p+d+t
+    inc jit.calls
+    inc jit.memoryCycle.calls
+    jit.memoryCycle.groups += groups
+    jit.memoryCycle.tails += tail
+    true
+
+  func x86MemoryCycleStatistics*(jit: X86Jit): array[2, uint64] =
+    ## Private native invocation and four-block group receipts exclude fallback source attempts.
+    if jit == nil: default(array[2, uint64])
+    else: [jit.memoryCycle.calls, jit.memoryCycle.groups]
+
+  func x86MemoryCycleTailVisits*(jit: X86Jit): uint64 =
+    ## Validated native tail completions exclude checked fallback reads.
+    if jit == nil: 0'u64
+    else: jit.memoryCycle.tails
+
+  when defined(pvmX86Jit) or defined(pvmX86WideCycleProof):
+    const
+      wideBranch = 0'u8
+      wideRead = 1'u8
+      wideChild = 2'u8
+      wideOutside = 3'u8
+      wideGuard = 4'u8
+      wideRare = 5'u8
+      wideReadRefusal = 6'u8
+      wideBranchGuard = 7'u8
+      wideReadGuard = 8'u8
+      wideOutsideGuard = 9'u8
+      wideGuardGuard = 10'u8
+      wideEpilogue = 11'u8
+      widePrefix = 12'u8
+      widePrefixGuard = 13'u8
+
+    proc wideReturn(code: var X86Block, fixes: var seq[X86CycleFixup],
+        kind, header: uint32) =
+      ## The wider image has its own epilogue label, separate from the child image.
+      put(code, [0x41'u8, 0xc7, 0x47, 0x34])
+      cycleWord(code, kind)
+      put(code, [0xb8'u8])
+      cycleWord(code, header)
+      cycleEdge(code, fixes, 0, wideEpilogue)
+
+    proc wideReadOperation(code: var X86Block, fixes: var seq[X86CycleFixup],
+        labels: var array[128, int], nextLabel: var int,
+        operation: X86WideOperation): bool =
+      ## One speculative load reads a complete private extent or returns to canonical replay.
+      let opcode = operation.opcode
+      if opcode notin {52'u8..58'u8, 124'u8..130'u8} or nextLabel > 122:
+        return false
+      let index = if opcode <= 58: int(opcode)-52 else: int(opcode)-124
+      let width = 1 shl (index div 2)
+      let destination = operation.slots.aIndex
+      if opcode >= 124:
+        put(code, [0x4c'u8, 0x8b, 0x47, byte(int(operation.slots.bIndex)*8)])
+        put(code, [0x48'u8, 0xb8])
+        cycleQword(code, operation.immediate)
+        put(code, [0x49'u8, 0x01, 0xc0]) # ADD R8,RAX before 32-bit address clipping.
+      else:
+        put(code, [0x49'u8, 0xb8])
+        cycleQword(code, operation.immediate)
+      put(code, [0x45'u8, 0x89, 0xc0]) # MOV R8D,R8D clips modulo 2^32.
+      put(code, [0x49'u8, 0x81, 0xf8])
+      cycleWord(code, 65536)
+      cycleEdge(code, fixes, 0x82, wideReadRefusal)
+      put(code, [0x48'u8, 0xb8])
+      cycleQword(code, uint64(high(uint32))-uint64(width))
+      put(code, [0x49'u8, 0x39, 0xc0])
+      cycleEdge(code, fixes, 0x87, wideReadRefusal)
+      let accepted = uint8(nextLabel)
+      inc nextLabel
+      for region in 0..<3:
+        let nextRegion = uint8(nextLabel)
+        inc nextLabel
+        let pointerOffset = byte(56+region*24)
+        let firstOffset = byte(64+region*24)
+        let endOffset = byte(72+region*24)
+        put(code, [0x49'u8, 0x8b, 0x45, firstOffset]) # MOV RAX,region.first.
+        put(code, [0x49'u8, 0x39, 0xc0]) # CMP R8,RAX.
+        cycleEdge(code, fixes, 0x82, nextRegion)
+        put(code, [0x49'u8, 0x8d, 0x50, byte(width)]) # LEA RDX,[R8+width].
+        put(code, [0x49'u8, 0x8b, 0x4d, endOffset]) # MOV RCX,region.ending.
+        put(code, [0x48'u8, 0x39, 0xca]) # CMP RDX,RCX.
+        cycleEdge(code, fixes, 0x87, wideReadRefusal)
+        put(code, [0x49'u8, 0x8b, 0x4d, pointerOffset]) # MOV RCX,region.data.
+        put(code, [0x48'u8, 0x85, 0xc9])
+        cycleEdge(code, fixes, 0x84, wideReadRefusal)
+        put(code, [0x49'u8, 0x29, 0xc0, 0x4c, 0x01, 0xc1]) # In-bounds host pointer.
+        case index
+        of 0: put(code, [0x48'u8, 0x0f, 0xb6, 0x01])
+        of 1: put(code, [0x48'u8, 0x0f, 0xbe, 0x01])
+        of 2: put(code, [0x48'u8, 0x0f, 0xb7, 0x01])
+        of 3: put(code, [0x48'u8, 0x0f, 0xbf, 0x01])
+        of 4: put(code, [0x8b'u8, 0x01])
+        of 5: put(code, [0x48'u8, 0x63, 0x01])
+        else: put(code, [0x48'u8, 0x8b, 0x01])
+        put(code, [0x48'u8, 0x89, 0x47, byte(int(destination)*8)])
+        cycleEdge(code, fixes, 0, accepted)
+        labels[int(nextRegion)] = code.bytes.len
+      cycleEdge(code, fixes, 0, wideReadRefusal)
+      labels[int(accepted)] = code.bytes.len
+      true
+
+    proc wideScratchCopy(code: var X86Block, publish: bool) =
+      ## Copy all 13 registers in source order; the scratch bank is never a guest owner.
+      for slot in 0..<13:
+        let displacement = byte(slot*8)
+        if publish:
+          put(code, [0x48'u8, 0x8b, 0x44, 0x24, displacement])
+          put(code, [0x49'u8, 0x89, 0x44, 0x24, displacement])
+        else:
+          put(code, [0x49'u8, 0x8b, 0x44, 0x24, displacement])
+          put(code, [0x48'u8, 0x89, 0x44, 0x24, displacement])
+
+    proc buildX86WideCycleImage*(candidate: X86WideCycleCandidate,
+        emission: X86WideEmission, imageBase, childCode: uint32,
+        image: var seq[byte]): bool =
+      ## One bounded linked driver keeps all read effects private until complete success.
+      image = @[]
+      if childCode >= imageBase or (childCode and 15) != 0 or
+          (imageBase and 15) != 0 or imageBase >= 1048576 or
+          candidate.readBlock.span > 65 or candidate.readBlock.span < 4 or
+          candidate.readOperations == 0 or candidate.readOperations > 64 or
+          candidate.readOperations != emission.readCount or
+          candidate.cycle.prefix.span == 0 or candidate.cycle.prefix.span > 65 or
+          candidate.loopGuard.span != 3 or candidate.loopBranch.span != 1 or
+          candidate.cycle.outside.span != 1 or candidate.readLoads < 2 or
+          candidate.readLoads > 16: return false
+      for operation in emission.guardOperations:
+        if not supportedX86Opcode(operation.opcode): return false
+      var loadCount = 0'u32
+      for index in 0..<int(emission.readCount):
+        let opcode = emission.readOperations[index].opcode
+        if opcode in {52'u8..58'u8, 124'u8..130'u8}: inc loadCount
+        elif not supportedX86Opcode(opcode): return false
+      if loadCount != candidate.readLoads: return false
+      let headers = [candidate.cycle.prefix.header, candidate.cycle.dirty.header,
+        candidate.cycle.tail.header, candidate.cycle.outside.header,
+        candidate.loopGuard.header, candidate.loopBranch.header,
+        candidate.readBlock.header, candidate.rare.header]
+      for header in headers:
+        if header >= 262144: return false
+      var code = default(X86Block)
+      var labels = default(array[128, int])
+      for index in 0..<labels.len: labels[index] = -1
+      var fixes: seq[X86CycleFixup] = @[]
+      var nextLabel = 14
+      # Four preserved pointers and 104 scratch bytes leave the stack aligned for the child call.
+      put(code, [0x41'u8, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57,
+        0x48, 0x83, 0xec, 0x68, 0x49, 0x89, 0xfc, 0x49, 0x89, 0xf5,
+        0x49, 0x89, 0xd6, 0x49, 0x89, 0xcf])
+      labels[int(wideBranch)] = code.bytes.len
+      cycleBudget(code, fixes, candidate.loopBranch.price,
+        byte(candidate.loopBranch.span), wideBranchGuard)
+      cycleDebit(code, candidate.loopBranch.price, byte(candidate.loopBranch.span))
+      put(code, [0x4c'u8, 0x89, 0xe7])
+      emitX86Branch(code, 88, emission.loopBranch, emission.loopImmediate,
+        candidate.loopBranch.yes, candidate.loopBranch.no)
+      cycleComplete(code, 80, 1, candidate.loopBranch.header, false)
+      put(code, [0x3d'u8])
+      cycleWord(code, candidate.loopGuard.header)
+      cycleEdge(code, fixes, 0x84, wideGuard)
+      cycleEdge(code, fixes, 0, wideRead)
+
+      labels[int(wideRead)] = code.bytes.len
+      cycleBudget(code, fixes, candidate.readBlock.price,
+        byte(candidate.readBlock.span), wideReadGuard)
+      cycleDebit(code, candidate.readBlock.price, byte(candidate.readBlock.span))
+      wideScratchCopy(code, false)
+      put(code, [0x48'u8, 0x8d, 0x3c, 0x24]) # LEA RDI,[RSP] selects private registers.
+      for index in 0..<int(emission.readCount):
+        let operation = emission.readOperations[index]
+        if operation.opcode in {52'u8..58'u8, 124'u8..130'u8}:
+          if not wideReadOperation(code, fixes, labels, nextLabel, operation): return false
+        else:
+          emitX86Operation(code, operation.opcode, operation.slots, operation.immediate)
+      wideScratchCopy(code, true)
+      cycleComplete(code, 88, 1, candidate.readBlock.header, false)
+      cycleEdge(code, fixes, 0, widePrefix)
+
+      labels[int(widePrefix)] = code.bytes.len
+      cycleBudget(code, fixes, candidate.cycle.prefix.price,
+        byte(candidate.cycle.prefix.span), widePrefixGuard)
+      cycleDebit(code, candidate.cycle.prefix.price,
+        byte(candidate.cycle.prefix.span))
+      put(code, [0x4c'u8, 0x89, 0xe7])
+      emitX86Operation(code, 51, emission.prefix.prefixLoad,
+        candidate.cycle.initialShift)
+      emitX86Operation(code, 200, emission.prefix.prefixBound, 0)
+      emitX86Operation(code, 149, emission.prefix.prefixStep, 1)
+      cycleComplete(code, 16, 1, candidate.cycle.prefix.header, false)
+      cycleEdge(code, fixes, 0, wideChild)
+
+      labels[int(wideChild)] = code.bytes.len
+      put(code, [0x49'u8, 0xff, 0x47, 0x60]) # One immutable child image call.
+      put(code, [0x4c'u8, 0x89, 0xe7, 0x4c, 0x89, 0xee,
+        0x4c, 0x89, 0xf2, 0x4c, 0x89, 0xf9, 0xe8])
+      let callOrigin = uint64(imageBase)+uint64(code.bytes.len)+4
+      if callOrigin > 1048576: return false
+      let relative = int64(childCode)-int64(callOrigin)
+      let encoded = if relative >= 0: uint32(relative)
+        else: 0'u32-uint32(-relative)
+      cycleWord(code, encoded)
+      put(code, [0x3d'u8])
+      cycleWord(code, candidate.cycle.outside.header)
+      cycleEdge(code, fixes, 0x84, wideOutside)
+      cycleEdge(code, fixes, 0, wideEpilogue) # Child guard preserves its own receipt.
+
+      labels[int(wideOutside)] = code.bytes.len
+      cycleBudget(code, fixes, candidate.cycle.outside.price,
+        byte(candidate.cycle.outside.span), wideOutsideGuard)
+      cycleDebit(code, candidate.cycle.outside.price, byte(candidate.cycle.outside.span))
+      cycleComplete(code, 64, 1, candidate.cycle.outside.header, false)
+      cycleEdge(code, fixes, 0, wideGuard)
+
+      labels[int(wideGuard)] = code.bytes.len
+      cycleBudget(code, fixes, candidate.loopGuard.price,
+        byte(candidate.loopGuard.span), wideGuardGuard)
+      cycleDebit(code, candidate.loopGuard.price, byte(candidate.loopGuard.span))
+      put(code, [0x4c'u8, 0x89, 0xe7])
+      for operation in emission.guardOperations:
+        emitX86Operation(code, operation.opcode, operation.slots, operation.immediate)
+      emitX86Branch(code, 81, emission.guardBranch, emission.guardImmediate,
+        candidate.loopGuard.yes, candidate.loopGuard.no)
+      cycleComplete(code, 72, 1, candidate.loopGuard.header, false)
+      put(code, [0x3d'u8])
+      cycleWord(code, candidate.loopBranch.header)
+      cycleEdge(code, fixes, 0x84, wideBranch)
+      cycleEdge(code, fixes, 0, wideRare)
+
+      labels[int(wideRare)] = code.bytes.len
+      wideReturn(code, fixes, 2, candidate.rare.header)
+      labels[int(wideReadRefusal)] = code.bytes.len
+      wideReturn(code, fixes, 3, candidate.readBlock.header+1)
+      labels[int(wideBranchGuard)] = code.bytes.len
+      wideReturn(code, fixes, 1, candidate.loopBranch.header)
+      labels[int(wideReadGuard)] = code.bytes.len
+      wideReturn(code, fixes, 1, candidate.readBlock.header)
+      labels[int(wideOutsideGuard)] = code.bytes.len
+      wideReturn(code, fixes, 1, candidate.cycle.outside.header)
+      labels[int(wideGuardGuard)] = code.bytes.len
+      wideReturn(code, fixes, 1, candidate.loopGuard.header)
+      labels[int(widePrefixGuard)] = code.bytes.len
+      wideReturn(code, fixes, 1, candidate.cycle.prefix.header)
+      labels[int(wideEpilogue)] = code.bytes.len
+      put(code, [0x48'u8, 0x83, 0xc4, 0x68, 0x41, 0x5f, 0x41, 0x5e,
+        0x41, 0x5d, 0x41, 0x5c, 0xc3])
+      if code.bytes.len == 0 or code.bytes.len > 4096: return false
+      for fix in fixes:
+        if int(fix.target) >= labels.len or labels[int(fix.target)] < 0:
+          return false
+        let displacement = int64(labels[int(fix.target)])-int64(fix.at+4)
+        let value = if displacement >= 0: uint32(displacement)
+          else: 0'u32-uint32(-displacement)
+        for shift in 0..<4:
+          code.bytes[fix.at+shift] = byte((value shr (shift*8)) and 255)
+      image = move(code.bytes)
+      true
+
+    proc wideNative(handle: nil pointer, offset: uint32, registers: pointer,
+        memory, dirty, state: nil pointer): uint64
+        {.cdecl, importc: "pvm_x86_arena_wide", header: "x86_memory.h".}
+      ## A zero high word proves the typed C boundary refused before invoking native bytes.
+
+    func x86WideActive*(jit: X86Jit): bool =
+      ## Only a successfully published, source-bound image may be called.
+      jit != nil and jit.wideCycle.status == 2
+
+    func x86WideCanPublish*(jit: X86Jit): bool =
+      ## Local source refusals keep this owner eligible; consumed storage does not.
+      jit != nil and jit.wideCycle.status == 0
+
+    when defined(pvmX86WideParentRefusalWitness):
+      proc x86WideRefuseParentOnceWitness*(jit: X86Jit) =
+        ## Isolate the child-published/parent-refused transaction in one native unit profile.
+        assert jit != nil
+        jit.wideCycle.refuseParentOnce = true
+
+    func x86WideCandidate*(jit: X86Jit): X86WideCycleCandidate =
+      ## Copy the source proof without exposing the owner's callable code offset.
+      assert x86WideActive(jit)
+      jit.wideCycle.candidate
+
+    func x86WideBound*(jit: X86Jit, planIdentity: nil pointer): bool =
+      ## Restored frames may move; their immutable plan must remain the publication owner.
+      x86WideActive(jit) and planIdentity != nil and
+        jit.wideCycle.planIdentity == planIdentity
+
+    proc x86WidePublishedSourceImage*(jit: X86Jit, emission: X86WideEmission,
+        image: var seq[byte]): bool =
+      ## Rebuild the published source bytes from its retained code offsets, without
+      ## reading the executable arena or changing the callable owner.
+      image = @[]
+      if not x86WideActive(jit) or jit.wideCycle.code >= jit.codeBytes or
+          jit.wideCycle.childCode >= jit.wideCycle.code: return false
+      if not buildX86WideCycleImage(jit.wideCycle.candidate, emission,
+          jit.wideCycle.code, jit.wideCycle.childCode, image): return false
+      uint64(jit.wideCycle.code)+uint64(image.len) == jit.codeBytes
+
+    proc retireX86Wide*(jit: X86Jit) =
+      ## Retirement leaves the published child and all original handlers available.
+      if jit != nil and jit.wideCycle.status == 2: jit.wideCycle.status = 3
+
+    proc publishX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
+        emission: X86WideEmission, childSlot: int, planIdentity: nil pointer): bool =
+      ## One bounded driver links an existing immutable child without copying or replacing it.
+      if jit == nil or jit.wideCycle.status != 0 or planIdentity == nil or
+          jit.unavailable or not x86PublicationAvailable(jit) or
+          childSlot < 0 or childSlot >= int(jit.memoryCycle.count): return false
+      let child = jit.memoryCycle.entries[childSlot]
+      if not child.active or child.planIdentity != planIdentity or
+          child.candidate != candidate.cycle or child.code >= jit.codeBytes or
+          jit.arena.handle == nil or jit.codeBytes > 1048576'u64-4112'u64:
+        return false
+      when defined(pvmX86WideParentRefusalWitness):
+        if jit.wideCycle.refuseParentOnce:
+          jit.wideCycle.refuseParentOnce = false
+          return false
+      let planned = uint32((jit.codeBytes+15'u64) and not 15'u64)
+      var image: seq[byte] = @[]
+      if not buildX86WideCycleImage(candidate, emission, planned, child.code, image):
+        return false
+      if jit.region.status != 2 and
+          (jit.fragments+1 >= x86TotalFragmentLimit or
+            jit.codeBytes > 1048576'u64-uint64(image.len)-4126'u64):
+        jit.wideCycle.status = 1
+        return false
+      jit.wideCycle.status = 1
+      let published = publishNative(jit.arena.handle, addr image[0], uint32(image.len))
+      if published < 0: return false
+      inc jit.fragments
+      jit.codeBytes = uint64(published)+uint64(image.len)
+      if uint32(published) != planned: return false # Account for an unexpected occupied slot.
+      jit.wideCycle.candidate = candidate
+      jit.wideCycle.planIdentity = planIdentity
+      jit.wideCycle.code = uint32(published)
+      jit.wideCycle.childCode = child.code
+      jit.wideCycle.status = 2
+      true
+
+    proc callX86WideCycle*(jit: X86Jit, registers: var RegisterFile,
+        memory: var X86WideMemory, dirty: var seq[uint64],
+        state: var X86WideState): uint64 =
+      ## The four invocation borrows outlive exactly one guarded native call.
+      if not x86WideActive(jit) or jit.arena.handle == nil: return 0
+      assert sizeof(X86WideMemory) == 128 and sizeof(X86WideState) == 104
+      let bitmap: nil pointer = if dirty.len == 0: nil else: addr dirty[0]
+      wideNative(jit.arena.handle, jit.wideCycle.code, addr registers[0],
+        addr memory, bitmap, addr state)
+
+    proc recordX86WideCycle*(jit: X86Jit, candidate: X86WideCycleCandidate,
+        state: X86WideState): bool =
+      ## Publish only validated logical child/outer work without counter overflow.
+      if not x86WideActive(jit) or jit.calls == high(uint64) or
+          jit.wideCycle.calls == high(uint64) or
+          jit.memoryCycle.calls > high(uint64)-state.childCalls or
+          jit.memoryCycle.groups > high(uint64)-state.cycle.wordGroups or
+          jit.memoryCycle.tails > high(uint64)-state.cycle.visits[2] or
+          (state.cycle.exitKind == 3 and jit.wideCycle.readRefusals == high(uint64)):
+        return false
+      let counts = [state.cycle.visits[0], state.cycle.visits[1],
+        state.cycle.visits[2], state.outerVisits[0], state.outerVisits[1],
+        state.outerVisits[2], state.outerVisits[3]]
+      let nodes = [4'u64, 5, 3, 1, 3, 1,
+        uint64(candidate.readOperations)+1'u64] # Include the completed cached jump.
+      var operations = 0'u64
+      for index in 0..<counts.len:
+        if nodes[index] != 0 and counts[index] > high(uint64) div nodes[index]:
+          return false
+        let part = counts[index]*nodes[index]
+        if operations > high(uint64)-part: return false
+        operations += part
+      if jit.operations > high(uint64)-operations: return false
+      jit.operations += operations
+      inc jit.calls
+      inc jit.wideCycle.calls
+      jit.memoryCycle.calls += state.childCalls
+      jit.memoryCycle.groups += state.cycle.wordGroups
+      jit.memoryCycle.tails += state.cycle.visits[2]
+      if state.cycle.exitKind == 3: inc jit.wideCycle.readRefusals
+      true
+
+    func x86WideStatistics*(jit: X86Jit): array[2, uint64] =
+      ## Distinguish wide entries from later-read canonical replays.
+      if jit == nil: default(array[2, uint64])
+      else: [jit.wideCycle.calls, jit.wideCycle.readRefusals]
