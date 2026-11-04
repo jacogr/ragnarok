@@ -5154,9 +5154,15 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     # Reset guest writes even when the incoming source reuses its exact original owner.
     flatRestoreScratchPage(frame, flatScratchSlot(frame.sourcePages, physical))
   for index in 0..<changes.len:
-    let changed = changes[index]
-    # Fresh source bytes can differ outside the previous guest's dirty set; conservative overlap copies are safe.
-    flatRestoreScratchPage(frame, int(uint32(changed)))
+    let page = int(uint32(changes[index]))
+    assert page >= 0 and page < frame.sourcePages.len
+    let physical = uint64(uint32(frame.sourcePages[page].index))
+    let word = physical shr 6
+    # Only a bounded set physical bit proves the first loop already restored incoming bytes.
+    # Unknown/short bitmap metadata and clean changed pages retain their complete source copy.
+    if word >= uint64(frame.dirtyPages.len) or
+        (frame.dirtyPages[int(word)] and (1'u64 shl int(physical and 63))) == 0:
+      flatRestoreScratchPage(frame, page)
   flatClearDirty(frame)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Every borrowed native descriptor is derived anew from this invocation's moved byte owners.

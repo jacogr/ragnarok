@@ -244,6 +244,140 @@ block literal_crossing_publication_and_reuse:
     literalCrossingMemory(memoryOf(literalSource).value, literalImages, false)
     literalCrossingMemory(held, literalImages, true)
 
+block sparse_physical_overlap_readback:
+  ## Physical bitmap words and positional directory slots deliberately name different pages.
+  let sparseOwner = code([@[62'u8, 0, 0xfd, 0xff, 3, 0],
+    @[58'u8, 1, 0xfd, 0xff, 3, 0], @[52'u8, 2, 7, 0xd0, 0x0b, 0],
+    @[52'u8, 3, 11, 0xe0, 0x0b, 0], @[52'u8, 4, 5, 0, 8, 0],
+    @[52'u8, 5, 6, 0x20, 8, 0], @[0'u8]])
+  var sparseImages: seq[PageImage] = @[]
+  var changedImages: seq[PageImage] = @[]
+  for slot in 0..<65:
+    # Dirty physical 63/64 occupy slots 0/1; changed slots 63/64 are physical 189/190.
+    let physical = uint32(if slot < 2: 63+slot else: 126+slot)
+    let access = if slot >= 2 and slot mod 2 == 0: PageAccess.ReadOnly else: PageAccess.ReadWrite
+    var image = PageImage(index: PageIndex(physical), access: access)
+    for offset in 0..<4096: image.bytes[offset] = byte((offset*7+int(physical)) mod 251)
+    sparseImages.add(image)
+    if physical == 64:
+      # These five incoming bytes participate in the cross-page load after dirty restoration.
+      for offset, value in [0xa1'u8, 0xb2, 0xc3, 0xd4, 0xe5]: image.bytes[offset] = value
+    elif physical == 128: image.bytes[5] = 0xc8
+    elif physical == 189: image.bytes[7] = 0xa6
+    elif physical == 190: image.bytes[11] = 0xb7
+    changedImages.add(image)
+  let sparseOriginal = captureMemory(sparseImages, PageLimit(66)).value
+  var sparseChanged = sparseOriginal
+  for slot in [1, 2, 63, 64]:
+    # Keep physical 63 dirty-only and physical 130 neither dirty nor changed by preserving their owners.
+    sparseChanged = withPage(sparseChanged, changedImages[slot]).value
+  let slots = changedMemoryPageSlots(sparseOriginal, sparseChanged).value
+  assert slots.len == 4
+  for index, slot in [1'u32, 2, 63, 64]: assert uint32(slots[index]) == slot
+  let equalSource = withPage(sparseOriginal, sparseImages[1]).value
+  let equalSlots = changedMemoryPageSlots(sparseOriginal, equalSource).value
+  assert equalSlots.len == 1 and uint32(equalSlots[0]) == 1
+  var initial = MachineInfo(gas: MachineGas(7), blockCharged: true,
+    registers: default(RegisterFile))
+  for index in 0..<13: initial.registers[index] = RegisterValue(uint64(100+index))
+  initial.registers[0] = RegisterValue(0x0123456789abcdef'u64)
+  let sparseSource = captureMachine(sparseOwner, sparseOriginal, initial).value
+  var reading = initial
+  reading.pc = CodeAddress(6)
+  var snapshots: seq[Machine] = @[]
+  var controls: seq[Machine] = @[]
+  var readInputs: seq[Machine] = @[]
+  block lease_lifetime:
+    # Retained machines remain usable after the sole reusable prepared owner and its scratch retire.
+    let sparsePrepared = newPreparedProgram(sparseOwner,
+      defaultPreparedLimits(GasCycleLimit(10000))).value
+    let firstFresh = newPreparedProgram(sparseOwner,
+      defaultPreparedLimits(GasCycleLimit(10000))).value
+    let published = execute(sparseSource, ExecutionStepLimit(100), sparsePrepared)
+    let firstExpected = execute(sparseSource, ExecutionStepLimit(100), firstFresh)
+    assert published.error == StepError.None and firstExpected.error == StepError.None
+    assert published.value.exit == StepExit.Panic
+    same(published.value.machine, firstExpected.value.machine)
+    literalCrossingMemory(memoryOf(published.value.machine).value, sparseImages, true)
+    snapshots.add(published.value.machine)
+    controls.add(firstExpected.value.machine)
+    for variant in 0..<3:
+      # An unpublished real store primes both physical dirty words without changing the immutable input.
+      assert execute(sparseSource, ExecutionStepLimit(1), sparsePrepared).error ==
+        StepError.StepLimitExceeded
+      let memory = if variant == 0: sparseChanged elif variant ==
+          1: sparseOriginal else: equalSource
+      let source = captureMachine(sparseOwner, memory, reading).value
+      let fresh = newPreparedProgram(sparseOwner, defaultPreparedLimits(GasCycleLimit(10000))).value
+      let actual = execute(source, ExecutionStepLimit(100), sparsePrepared)
+      let expected = execute(source, ExecutionStepLimit(100), fresh)
+      assert actual.error == StepError.None and expected.error == StepError.None
+      assert actual.value.exit == StepExit.Panic and actual.value.exit == expected.value.exit
+      same(actual.value.machine, expected.value.machine)
+      var expectedCpu = reading
+      expectedCpu.pc = CodeAddress(0)
+      expectedCpu.registers[1] = RegisterValue(if variant == 0: 0xe5d4c3b2a1726b64'u64
+        else: 0x5c554e4740726b64'u64)
+      expectedCpu.registers[2] = RegisterValue(if variant == 0: 0xa6'u64 else: 0xee'u64)
+      expectedCpu.registers[3] = RegisterValue(if variant == 0: 0xb7'u64 else: 0x10'u64)
+      expectedCpu.registers[4] = RegisterValue(if variant == 0: 0xc8'u64 else: 0xa3'u64)
+      expectedCpu.registers[5] = RegisterValue(0xac'u64)
+      assert machineInfo(actual.value.machine).value == expectedCpu, "resident incoming bytes"
+      assert preparedInfo(sparsePrepared).value.memoryReuses == uint64(2*(variant+1))
+      assert preparedInfo(sparsePrepared).value.retainedMemoryPayloadBytes == 65'u64*8192
+      snapshots.add(actual.value.machine)
+      controls.add(expected.value.machine)
+      readInputs.add(source)
+    var readOnly = sparseImages[1]
+    readOnly.access = PageAccess.ReadOnly
+    var remapped: seq[PageImage] = @[]
+    for slot in 0..<sparseImages.len:
+      # Keep the count while moving physical 190; a read of its former address must fault as freshly mapped.
+      var image = sparseImages[slot]
+      if slot == 64: image.index = PageIndex(191)
+      remapped.add(image)
+    let accessChanged = withPage(sparseOriginal, readOnly).value
+    let mapChanged = captureMemory(remapped, PageLimit(66)).value
+    let countChanged = withPage(sparseOriginal,
+      PageImage(index: PageIndex(191), access: PageAccess.ReadOnly)).value
+    for variant, memory in [accessChanged, mapChanged, countChanged]:
+      # All map/access mismatches discard old dirty capabilities and take fresh-frame preparation.
+      assert execute(sparseSource, ExecutionStepLimit(1), sparsePrepared).error ==
+        StepError.StepLimitExceeded
+      let before = preparedInfo(sparsePrepared).value.memoryReuses
+      let source = captureMachine(sparseOwner, memory, reading).value
+      let fresh = newPreparedProgram(sparseOwner, defaultPreparedLimits(GasCycleLimit(10000))).value
+      let actual = execute(source, ExecutionStepLimit(100), sparsePrepared)
+      let expected = execute(source, ExecutionStepLimit(100), fresh)
+      assert actual.error == StepError.None and expected.error == StepError.None
+      assert actual.value.exit == expected.value.exit
+      if actual.value.exit == StepExit.Fault:
+        # Fault metadata remains selected only after the public tagged outcome permits extraction.
+        assert actual.value.faultPage == expected.value.faultPage
+      if variant == 1:
+        # A genuine missing physical page faults at its original address after full map mismatch fallback.
+        assert actual.value.exit == StepExit.Fault
+        assert actual.value.faultPage == PageAddress(190'u64*4096)
+      else:
+        # Read-only access remains readable and an extra mapped row does not change these guest loads.
+        assert actual.value.exit == StepExit.Panic
+      same(actual.value.machine, expected.value.machine)
+      assert preparedInfo(sparsePrepared).value.memoryReuses == before, "map/access fallback"
+      snapshots.add(actual.value.machine)
+      controls.add(expected.value.machine)
+  for index in 0..<snapshots.len:
+    # Later reuse, local exits, fresh fallback and prepared retirement preserve every published predecessor.
+    same(snapshots[index], controls[index])
+  literalCrossingMemory(memoryOf(sparseSource).value, sparseImages, false)
+  literalCrossingMemory(memoryOf(snapshots[0]).value, sparseImages, true)
+  for variant in 0..<readInputs.len:
+    # Held read inputs retain every original or explicitly changed byte after scratch retirement.
+    let memory = memoryOf(readInputs[variant]).value
+    assert machineInfo(readInputs[variant]).value == reading
+    for slot in 0..<sparseImages.len:
+      let expected = if variant == 0: changedImages[slot] else: sparseImages[slot]
+      assert pageImage(memory, expected.index).value == expected
+
 proc releaseCycle(owner: Program, original, changed: Memory) =
   ## A dropped prepared identity must retire its idle byte lease and retained source baseline together.
   let local = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(10000))).value

@@ -38,10 +38,18 @@ blocks skip unchanged work. It allocates no PageImage or copied payload. Existin
 delta behavior remains unchanged.
 
 Only after that preflight, a fresh frame shell consumes the idle buffers and restores the union
-of prior guest-dirty pages and changed source slots from the incoming immutable source. Overlap
-copies conservatively twice. Every other private byte still equals its baseline page, and shared
+of prior guest-dirty pages and changed source slots from the incoming immutable source. Dirty
+physical pages restore first. Each changed slot then resolves its physical page and checks the
+still-live dirty bitmap: only a bounded set bit proves that the first loop already restored it.
+An absent or short bitmap cannot prove overlap, so the changed page keeps its source copy. The
+bitmap clears only after both loops. Every other private byte still equals its baseline page, and shared
 immutable page identity proves equal incoming bytes. Mapping/access/count changes release the
 rejected idle lease before the ordinary full constructor allocates its successor.
+
+For dirty physical pages D and accessible changed physical pages C, this avoids one 4,096-byte
+restore for each page in their intersection. Changed-only rows retain their full copy and gain a
+membership check. This bounds avoided copy demand, not net execution time; an unchanged incoming
+owner has an empty changed-slot list.
 
 Retaining the frame's actual baseline and dirty set is essential for terminal hosts: a host may
 return changed memory without installing it into the stopped resident frame. The returned memory
@@ -58,6 +66,12 @@ interrupted budgets, terminal host responses and fallible reentry. It retains pr
 check immutable ownership. Zero, exact, insufficient and inaccessible-payload budgets are checked,
 including worker cache identity. A thousand prepared-owner cycles release all byte leases and
 baseline references without increasing occupied ARC memory.
+
+A sparse 65-page read-only continuation distinguishes dirty physical pages 63/64 at slots 0/1
+from changed-only physical pages 189/190 at slots 63/64. Literal register expectations consume
+incoming overlap, fragmented RW/RO and untouched bytes, independently of snapshot publication.
+Exact and equal-byte source owners, unpublished stores, same-count physical remapping, access
+changes, count changes and retained inputs/outputs also preserve fresh-execution behavior.
 
 The separate slot suite covers invalid/default/empty owners, shared blocks, equal-byte new page
 identity, dense/sparse/partial-tail changes, sorted copied slots and full metadata refusal before
