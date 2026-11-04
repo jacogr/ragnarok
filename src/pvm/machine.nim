@@ -192,6 +192,29 @@ proc pageFromImage(image: PageImage): PageData =
     chunkFromImage(image, 1536), chunkFromImage(image, 2048), chunkFromImage(image, 2560),
     chunkFromImage(image, 3072), chunkFromImage(image, 3584)])
 
+proc chunkFromReplacement(previous: PageChunk, image: PageImage,
+    first: int): PageChunk {.requires:
+    first >= 0 and first <= 3584.} =
+  ## Reuse equal immutable bytes; differing input copies into one fresh owned chunk.
+  if cmpMem(unsafeAddr previous.bytes[0], unsafeAddr image.bytes[first], 512) == 0:
+    # The caller retains the source page throughout construction; this equal result owns one shared ref.
+    previous
+  else:
+    # Only differing bytes allocate and copy; the previous chunk remains borrowed and untouched.
+    chunkFromImage(image, first)
+
+proc pageFromReplacement(previous: PageData, image: PageImage): PageData =
+  ## Publish a fresh page identity with eight complete immutable chunk owners.
+  PageData(index: image.index, access: image.access, chunks: [
+    chunkFromReplacement(previous.chunks[0], image, 0),
+    chunkFromReplacement(previous.chunks[1], image, 512),
+    chunkFromReplacement(previous.chunks[2], image, 1024),
+    chunkFromReplacement(previous.chunks[3], image, 1536),
+    chunkFromReplacement(previous.chunks[4], image, 2048),
+    chunkFromReplacement(previous.chunks[5], image, 2560),
+    chunkFromReplacement(previous.chunks[6], image, 3072),
+    chunkFromReplacement(previous.chunks[7], image, 3584)])
+
 proc sharedZeroChunk(seed: var nil PageChunk): PageChunk =
   ## Lazily retain one immutable known-zero payload within this mapping operation; no process-global pool exists.
   let current = seed
@@ -547,7 +570,7 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     else:
       while uint32(data.pages[cursor].index) < uint32(replacements[index].index): inc cursor
     slots.add(cursor)
-    changed.add(pageFromImage(replacements[index]))
+    changed.add(pageFromReplacement(data.pages[cursor], replacements[index]))
     inc cursor
   var directory = replacedDirectory(data.pages, slots, changed)
   MachineResult[Memory](status: MachineError.None,

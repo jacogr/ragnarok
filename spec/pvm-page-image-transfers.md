@@ -42,3 +42,27 @@ ownership rules or source fixtures change.
 
 M1 framing retains its documented completion scope. Full state serialization and whole-JAM/STF
 parity remain open. Fuzzing remains deferred pending maintainer Daybreak access.
+
+
+## Shared unchanged replacement chunks
+
+After complete owner, page-index, ordering, presence and access validation, `withReplacedPages`
+compares each replacement's eight 512-byte spans against the prior immutable page. An equal span
+retains one old chunk owner; a differing span allocates and copies one fresh chunk. Eight complete
+owned results construct a fresh page header directly. This preserves explicit replacement identity
+and changed-slot observations even when every byte matches. An empty batch still returns the
+original memory owner. Directory structure, page limits and all public value/copy contracts remain
+unchanged. Initial capture and `withPage` continue to copy complete caller images.
+
+No borrowed address escapes construction. Scalar and host writes, permission changes and sealed
+writer epochs retain their existing copy-on-write behavior. The ordinary persistent-page suite
+checks equal, one-chunk, cross-chunk and dense replacements, independent complete-page bytes,
+caller mutation, fresh page identities, invalid-batch atomicity and writes through both predecessor
+and replacement writer generations. Equal and sparse successors remain usable after their parent
+retires. Its 1,000 ARC cycles cover all added owners and snapshots.
+
+For `k` changed chunks, replacement construction performs eight bounded comparisons, `k` chunk
+allocations and `512*k` copied payload bytes, plus one fresh header and `8-k` shared references. A dense
+replacement therefore keeps all eight allocations/copies and adds the comparisons; equal/sparse
+replacements save payload allocations/copies. End-to-end performance depends on that workload
+balance.
