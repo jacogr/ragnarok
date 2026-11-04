@@ -609,6 +609,10 @@ func isValidator*(owner: NodeService): bool =
 proc isValidator*(owner: NodeService, peer: NodePeer): bool =
   ## Recipient checks preserve current transport generation and gated roster membership.
   owner.isOpen and owner.node.isValidator(peer)
+proc preimageNeighbour*(owner: NodeService, peer: NodePeer): bool =
+  ## Gossip requires both real validator roles and the accepted epoch-gated grid; ordinary UP0 eligibility is insufficient.
+  owner.isOpen and owner.node.isValidator and owner.node.isValidator(peer) and
+      owner.node.announcements(peer)
 proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.

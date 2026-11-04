@@ -12,7 +12,9 @@ import ../../src/state/store
 proc preimageSnapshot*(hash: ServicePreimageHash, length: RequestLength,
     validator = true, recipient = false, malformed = false, history = requestedHistory(),
         account = true,
-    extra: seq[StateEntry] = @[]): BlockSnapshotResult {.raises.} =
+    extra: seq[StateEntry] = @[], hasNeighbour = false,
+    neighbour: array[32, byte] = default(array[32, byte]), neighbourIndex: range[
+        1..8] = 1): BlockSnapshotResult {.raises.} =
   ## TLS fixture A is an actual current validator only when requested; no peer-derived root is trusted.
   var current = topologyRecords(1, 9)
   if validator:
@@ -27,6 +29,8 @@ proc preimageSnapshot*(hash: ServicePreimageHash, length: RequestLength,
     var raw = default(array[32, byte])
     for index in 0..<32: raw[index] = byte(key[index])
     current[1].ed25519 = StateEdKey(raw)
+  if hasNeighbour: current[neighbourIndex].ed25519 = StateEdKey(
+      neighbour) # The default ordinal1 shares ordinal0's grid row; ordinal4 is a diagonal negative witness.
   let base = topologyCaptured([topologyRecords(0, 6), current, topologyRecords(2, 12)])
   assert base.error == GenesisError.None
   var entries: seq[StateEntry] = @[]

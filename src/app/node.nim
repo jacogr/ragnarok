@@ -8,7 +8,7 @@ import ./services
 import ./preimage_followup
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
-    report_cache, preimage_cache, preimage_announcement, admission]
+    report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission]
 import ../chain/[provider, genesis]
 import ../codec/state/[safrole, consensus, service_values, requests]
 import ../codec/bounded
@@ -49,6 +49,7 @@ type
     checkedNext: uint64
     checkedPhase: CheckedRequestPhase
     checkedNetwork: NodeRequestTicket
+    checkedPeer: NodePeer
     checkedWorker: ProofWorkerTicket
     checkedRequest: ReadRequest
     checkedLimits: ReadVerificationLimits
@@ -58,6 +59,7 @@ type
     checkedStarted: MonoTime
     preferChecked, preferFetch, preferPreimage: bool
     preimages: PreimageFollowups
+    gossip: PreimageGossip
     reports: ReportCache
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
@@ -73,6 +75,8 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.checkedOutcome)
   `=wasMoved`(owner.reports)
   `=wasMoved`(owner.preimages)
+  `=wasMoved`(owner.gossip)
+  `=wasMoved`(owner.checkedPeer)
   owner.opened = false
   owner.pending = false
   owner.cancelled = false
@@ -94,6 +98,8 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.checkedOutcome)
   `=destroy`(owner.reports)
   `=destroy`(owner.preimages)
+  `=destroy`(owner.gossip)
+  `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
@@ -112,6 +118,15 @@ func cachedPreimageBytes*(owner: ApplicationNode): int =
 func pendingPreimageCount*(owner: ApplicationNode): int =
   ## Queued and active automatic retrievals have a separate fixed eight-intent capacity.
   owner.preimages.pendingCount
+func preimageGossipCount*(owner: ApplicationNode): int =
+  ## Fixed detached possession intents do not imply inclusion or remote adoption.
+  owner.gossip.len
+func preimageGossipSending*(owner: ApplicationNode): bool =
+  ## Observe detached native announcement ownership without reading canonical state.
+  owner.gossip.sending
+func deliveredPreimageGossip*(owner: ApplicationNode): uint64 =
+  ## Count successful exact bare-FIN deliveries, independently of content/state authority.
+  owner.gossip.deliveredCount
 proc localPort*(owner: ApplicationNode): uint16 =
   ## Observe detached native listener state without a canonical graph alias.
   if owner.opened: owner.streams.localPort else: 0'u16
@@ -170,6 +185,7 @@ proc clearChecked(owner: var ApplicationNode) =
   ## Retire detached buffers and exact tickets only after matching worker collection/join or before admission.
   owner.checkedPhase = CheckedRequestPhase.Idle
   owner.checkedNetwork = default(NodeRequestTicket)
+  owner.checkedPeer = default(NodePeer)
   owner.checkedWorker = default(ProofWorkerTicket)
   owner.checkedRequest = default(ReadRequest)
   owner.checkedLimits = default(ReadVerificationLimits)
@@ -192,6 +208,7 @@ proc requestChecked*(owner: var ApplicationNode, peer: NodePeer, request: ReadRe
   if admitted.error != NodeError.None: return CheckedRequestStart(status: admitted.error)
   inc owner.checkedNext
   owner.checkedNetwork = admitted.value
+  owner.checkedPeer = peer
   owner.checkedRequest = request
   owner.checkedLimits = limits
   owner.checkedStarted = getMonoTime()
@@ -281,6 +298,12 @@ proc collectChecked(owner: var ApplicationNode) =
       discard owner.reports.remember(checked.value) # Local retention refusal cannot turn a complete checked read into failed delivery.
     if checked.error == ReadVerificationError.None and checked.value.kind == ReadKind.Preimage:
       discard owner.preimages.retain(checked.value) # Public checked reads can populate detached content without canonical mutation.
+    if checked.error == ReadVerificationError.None and checked.value.kind ==
+        ReadKind.PreimageAnnouncement:
+      let notice = decodeAnnouncement(checked.value.request.payload)
+      if notice.error == ReadError.None and owner.preimages.has(notice.value):
+        discard owner.gossip.offer(owner.streams, notice.value,
+            owner.checkedPeer) # An already acknowledged publisher recipient needs no duplicate gossip.
   else:
     owner.checkedOutcome = CheckedRequestCompletion(status: CheckedCompletionKind.Interrupted)
   owner.checkedWorker = default(ProofWorkerTicket)
@@ -385,6 +408,7 @@ proc close*(owner: var ApplicationNode) =
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil: owner.preimages.close(services[], owner.streams)
+  owner.gossip.close(owner.streams)
   owner.streams.close()
   owner.clearChecked()
   owner.reports.clear()
@@ -422,6 +446,18 @@ proc serveDetached(owner: var ApplicationNode) =
   if owner.serveCached(task.value): return
   if not owner.streams.deferRead(task.value.ticket):
     discard owner.streams.reject(task.value.ticket) # Failed revocation never leaves taken work without an owner.
+proc dispatchGossip(owner: var ApplicationNode, clock: MonoTime) =
+  ## Retire every temporary canonical request lookup in this activation before the host can admit its next CPU worker.
+  let services = owner.services
+  if services == nil: return
+  let candidate = owner.gossip.candidate()
+  if candidate.valid:
+    let notice = candidate.notice
+    if not owner.preimages.has(notice) or services[].chainView.requested(notice) != ReadError.None:
+      discard owner.gossip.reject(owner.streams, candidate) # No canonical alias is retained across dispatch or worker admission.
+    else:
+      discard owner.gossip.dispatch(owner.streams, candidate,
+          clock) # Accepted topology and live recipient generation are checked at the actual send.
 proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     maximumMs: range[0..1] = 1): bool {.raises.} =
   ## Service detached native data during CPU work; capture/refresh only after the exclusive graph gate opens.
@@ -429,7 +465,11 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if not owner.streams.poll(clock, maximumMs): return false
   let services = owner.services
   if services == nil: return false
+  owner.gossip.poll(owner.streams, clock)
   owner.preimages.poll(services[], owner.streams, clock)
+  let acquired = owner.preimages.takeAcquired()
+  if acquired.error == ReadError.None and owner.preimages.has(acquired.value):
+    discard owner.gossip.offer(owner.streams, acquired.value) # Fresh state/possession checks remain required before transmission.
   owner.receiveChecked(clock)
   owner.collectChecked()
   if not services[].stateProofAvailable: owner.serveDetached()
@@ -450,6 +490,9 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
           if accepted:
             accepted = owner.preimages.enqueue(owner.streams, owner.readTicket.sourcePeer,
                 notice.value, clock)
+            if accepted and owner.preimages.has(notice.value):
+              discard owner.gossip.offer(owner.streams,
+                  notice.value) # Cached reception can announce a separately requested service namespace.
         if not accepted or owner.streams.respond(owner.readTicket, reply) != ReadError.None:
           discard owner.streams.reject(owner.readTicket) # Exhausted followup/output capacity never acknowledges unowned work.
       else:
@@ -459,6 +502,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.clearJob()
   if not services[].stateProofAvailable: return true # Foreign RPC/preparation/publication leases remain untouched.
   if owner.refresh(now) != NodeError.None: return false
+  owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
   if owner.preferFetch and owner.preimages.submitWaiting(services[]):
     owner.preferFetch = false
     return true
