@@ -30,6 +30,7 @@ proc assuredQueueConfig*(source: AssuredComputedReports): AssuredQueueConfig =
   result.admission.credentials.assignments.rotationSlots = GuarantorRotationSlots(params.get(rotationPeriod))
   result.admission.policy.pools.cores = frame.cores
   result.admission.policy.reportGas = ReportGasLimit(params.get(maxAccumulateGas))
+  result.admission.policy.refinementGas = RefinementGasLimit(params.get(maxRefineGas))
   result.admission.anchors.history.cores = frame.cores
   result.admission.anchors.lookupAge = LookupAge(params.get(maxLookupAnchorAge))
   result.admission.packages.availability.guarantee.cores = frame.cores

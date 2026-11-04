@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Strict complete v1 download policies preserve all nominal stage budgets without inferred defaults.
+## Strict complete v2 download policies preserve all nominal stage budgets without inferred defaults.
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
 import std/[strutils, syncio]
@@ -9,8 +9,8 @@ import "../../jamnp-s/block/download/loop" as block_download_loop
 
 const
   DownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.
-  PolicyValues = 314
-  PolicyHeader = "ragnarok-download-policy-v1"
+  PolicyValues = 315
+  PolicyHeader = "ragnarok-download-policy-v2"
 
 type
   DownloadPolicyError* {.pure.} = enum ## Failure alternatives contain only a reason and bounded field diagnostic.
@@ -87,7 +87,7 @@ proc writeField[T](text: var string, name: string, field: T) {.untyped.} =
   text.add(name & "=" & $uint64(field) & "\n")
 
 proc encodeDownloadPolicy*(policy: DownloadLoopLimits): string =
-  ## Emit every explicit v1 value; this serializer provides no defaults or semantic-policy certification.
+  ## Emit every explicit v2 value; this serializer provides no defaults or semantic-policy certification.
   result = PolicyHeader & "\n"
   policyFields(policy, result, writeField)
 

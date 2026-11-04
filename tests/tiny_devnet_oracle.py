@@ -28,7 +28,7 @@ PUBLIC = {encode(multiply(G,secret_from_seed(seed))):secret_from_seed(seed) for 
 
 WIDTHS = (8,8,8,2,4,4,8,8,8,8,2,2,2,2,4,2,2,2,2,2,2,4,4,4,4,4,4,4,4)
 VALUES = (10,1,100,2,32,12,10000000,50000000,1000000000,20000000,
-          8,16,8,3,24,8,6,80,4,128,5,64000,13791360,4000000,3072,49152,128,3072,10)
+          8,16,8,3,24,8,6,80,4,128,5,196608,13791360,4000000,3072,49152,128,3072,10)
 
 
 def original(configuration):
@@ -87,7 +87,7 @@ def freeze(directory, slots):
         (folder/f'state-{slot}.bin').write_bytes(state)
     for slot,block in enumerate(expected['blocks'],1):
         (folder/f'block-{slot}.bin').write_bytes(block)
-    evidence = dict(graypaper_commit='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d',
+    evidence = dict(graypaper_commit='fad0ded4a433052397bf7234352a57fe491883f7',
         slots=slots,genesis_sha256=hashlib.sha256((directory/'chain.json').read_bytes()).hexdigest(),
         ring_input=expected['ring_input'],roots=expected['roots'],
         block_sha256=[hashlib.sha256(raw).hexdigest() for raw in expected['blocks']],

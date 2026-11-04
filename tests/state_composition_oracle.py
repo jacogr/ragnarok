@@ -118,6 +118,15 @@ def composed(values, services, limits, key_limit):
     return verdict+' '+''.join(k.hex()+':'+v.hex()+';' for k, v in pairs)
 
 
+# Explicitly qualify the known historical C13 schema; other chapter bytes retain their identity.
+def current_chapters(raw):
+    result=list(raw)
+    source,consumed=statistics.historical_source(result[12])
+    assert consumed==len(result[12])
+    result[12]=statistics.wire(source)
+    return result
+
+
 # Deterministic exact captures and complete typed compositions, with honest published-component verdicts.
 def requests():
     values = chapters()
@@ -155,24 +164,28 @@ def requests():
     from state_widths_oracle import statistics_wire
     gas_source=([bytes(144),bytes(144)],[[0]*7+[100000],[0]*8],
         [(127,[0,0,0,128,0,0,0,0,0,0,256])])
-    cap(13,statistics_wire(gas_source,4,0))
-    assert capture(13,statistics_wire(gas_source,4,8))!='ok'
-    cap(13,statistics_wire(gas_source,4,8))
+    cap(13,statistics_wire(gas_source,4,0,natural_validators=True))
+    assert capture(13,statistics_wire(gas_source,4,8,natural_validators=True))!='ok'
+    cap(13,statistics_wire(gas_source,4,8,natural_validators=True))
     rng = random.Random(0x434f4d504f5345)
     # Arbitrary raw bytes exercise failures after compilation independently of child codec round trips.
     for _ in range(160):
         cap(rng.randrange(1, 17), rng.randbytes(rng.randrange(256)))
     for profile in ((1, 6, 6, 2), (2, 5, 6, 2), (2, 6, 9, 2), (2, 6, 6, 0)):
         cap(6, b'', profile)
-    # Already pinned raw trace entries retain original bytes and explicit verdicts under the tiny epoch-12 profile.
+    # Pinned blobs stay immutable; current C13 rows are independently derived from explicit historical fields.
     for pairs, provenance in published():
         by_key = dict(pairs)
+        qualified = current_chapters([by_key[chapter_key(i)] for i in range(1,17)])
         for chapter in range(1, 17):
-            data = by_key[chapter_key(chapter)]
+            original = by_key[chapter_key(chapter)]
+            data = qualified[chapter-1]
             verdict = capture(chapter, data, (2, 6, 6, 12))
             cap(chapter, data, (2, 6, 6, 12))
             evidence.append(dict(path=provenance['path'], phase=provenance['phase'], chapter=chapter,
-                bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), verdict=verdict))
+                bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), verdict=verdict,
+                historical_sha256=hashlib.sha256(original).hexdigest(),
+                qualification_target='fad0ded4a433052397bf7234352a57fe491883f7'))
     # Complete compositions observe every key and value in addition to exact roots/counts.
     def add(services, limits=(MAX, MAX, MAX, MAX), key_limit=MAX, replacement=None):
         modified = values.copy()
@@ -224,9 +237,9 @@ def requests():
     # Only states whose sixteen complete chapter captures pass can enter this published composition check.
     for pairs, provenance in published():
         by_key = dict(pairs)
-        raw_chapters = [by_key[chapter_key(i)] for i in range(1, 17)]
+        raw_chapters = current_chapters([by_key[chapter_key(i)] for i in range(1, 17)])
         if any(capture(i+1, data, (2, 6, 6, 12)) != 'ok' for i, data in enumerate(raw_chapters)):
-            continue # Retain the original chapter failures above; never repair them to obtain a root.
+            continue # Independently qualified complete chapters remain mandatory for a derived root.
         accounts = {}
         # Full C(255,service) identities identify metadata; a leading ff alone is never sufficient.
         for key, value in pairs:
@@ -249,6 +262,7 @@ def requests():
         rebuilt = entries(raw_chapters, services)
         # Release inputs are converted explicitly: new metadata necessarily changes the derived root.
         derived_pairs = [(k, v[:33]+bytes(8)+v[33:41]+bytes(8)+v[41:] if len(v)==89 and k[0]==255 and k==chapter_service(255,int.from_bytes(k[1:8:2],'little')) else v) for k,v in pairs]
+        derived_pairs = [(k,raw_chapters[12] if k==chapter_key(13) else v) for k,v in derived_pairs]
         assert sorted(rebuilt) == sorted(derived_pairs)
         lines.append('B 2 6 6 12 '+' '.join(token(v) for v in raw_chapters))
         expected.append('selftest')
@@ -256,5 +270,6 @@ def requests():
             ''.join(' '+service_token(service) for service in services))
         expected.append(composed(raw_chapters, services, (MAX,)*4, MAX))
         whole_evidence.append(dict(provenance, service_values='opaque service-bound captures',
-            chapter_schema='migrated C12 E4/E8 and C13 E4 keys; compact statistics gas accepted by maintainer policy'))
+            qualification_target='fad0ded4a433052397bf7234352a57fe491883f7',
+            chapter_schema='explicit historical C13 conversion to natural counters; E4 service keys and compact gas unchanged'))
     return lines, expected, evidence, whole_evidence

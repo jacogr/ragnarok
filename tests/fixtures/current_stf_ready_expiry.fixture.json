@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_READY_EXPIRY",
   "files": {
-    "current-stf-ready-expiry.json": "72a89a6bcffce8b7e4bc1bd2447b61d1fd6076c74a0f73dc3e935c58fec1532c"
+    "current-stf-ready-expiry.json": "c6741c634950ec7ad238fc806cfcf20803fff7145d2e109c894d3d9d6d287f5f"
   },
   "target": "current-stf-ready-expiry.json"
 }

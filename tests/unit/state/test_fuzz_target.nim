@@ -92,8 +92,8 @@ proc main() {.raises.} =
   assert prepareFuzzTarget(environment, supplied.parameters, supplied.candidate, ElementLimit(1),
       ByteLimit(67108865)).error == FuzzTargetError.InvalidBudget
   block fuzzNetworkPreset:
-    # Independently frozen issue215 tuple must select the new geometry before any socket or seed exists.
-    let raw = decodeParametersHex("0a00000000000000010000000000000064000000000000005500840300003c000000809698000000000080f0fa0200000000807c814a00000000c07027340000000008001000080004005802000008000600500005008000050000fa00008070d20000093d00000c000000c0000080000000000c000032000000").value
+    # Independently specified target tuple selects the fuzz geometry before any socket or seed exists.
+    let raw = decodeParametersHex("0a00000000000000010000000000000064000000000000005500840300003c000000809698000000000080f0fa0200000000807c814a00000000c070273400000000080010000800040058020000080006005000050080000500000003008070d20000093d00000c000000c0000080000000000c000032000000").value
     let policy = fuzzNetworkReplayConfig().candidate
     var selected = environment
     selected.spec = "fuzz"

@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_POPULATION_GAS",
   "files": {
-    "current-stf-population-gas.json": "e659c08d2cb3aa57e6a026b087b5c86f3fb6ae4dbabcd24d372c4c76bdd5c60f"
+    "current-stf-population-gas.json": "f9e462cafc63136dc2d5bf94508af30d40c03f0e76db3dcd4afac1e1e94bf241"
   },
   "target": "current-stf-population-gas.json"
 }

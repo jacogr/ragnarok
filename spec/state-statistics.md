@@ -1,6 +1,6 @@
 # Activity statistics state: chapter 13
 
-Target: Gray Paper v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Target: Gray Paper v0.8.0 `fad0ded4a433052397bf7234352a57fe491883f7`,
 `text/merklization.tex` T chapter **13**, `text/statistics.tex` `eq:activityspec` and core/service
 activity domains, `text/accumulation.tex` accumulation statistics, and C.1 natural, E4, fixed/variable
 sequence and dictionary definitions. Exact hashes are in [pins.json](pins.json). No dependency,
@@ -12,22 +12,20 @@ compiler or toolchain revisions change. Service keys now match published E4 fram
 `decodeActivityState(input, config)` for one complete component prefix:
 
 ```text
-E(current_validator_count) || current_validator_count * (six E4 counters)
-|| E(previous_validator_count) || previous_validator_count * (six E4 counters)
+E(current_validator_count) || current_validator_count * (six canonical natural counters)
+|| E(previous_validator_count) || previous_validator_count * (six canonical natural counters)
 || core_count * (eight ordinary natural fields)
 || E(service_count) || (E4(service_id) || eleven ordinary natural fields) pairs
 ```
 
 There is no outer tuple count, core-array count or per-record field count. The first two
-variable arrays have separate natural count prefixes; E4 applies recursively only to each
-validator tuple. Core and service tuples use ordinary naturals, including their gas fields.
-The service dictionary follows C.1 numeric-key order with fixed E4 keys, following T's general
-fixed-width note and the uint32 service domain. Encoder inputs must already be strictly ascending/unique; no silent
+variable arrays have separate natural count prefixes; every validator tuple contains six canonical naturals. Core and service tuples use ordinary naturals, including their gas fields.
+The service dictionary follows C.1 numeric-key order with fixed E4 keys, following the explicit E4 key encoding and uint32 service domain. Encoder inputs must already be strictly ascending/unique; no silent
 sorting, duplicate merging or source repair occurs. Values need not be monotonic.
 
 `ValidatorActivity` is a fixed array indexed by the named `ValidatorMeasure` enum: blocks,
 tickets, preimage count, preimage bytes, guarantees, assurances. Every `ValidatorCounter` has
-the full uint32 E4 domain. `CoreActivity` contains seven named `ActivityNatural` fields in
+the full uint64 natural domain. `CoreActivity` contains seven named `ActivityNatural` fields in
 DA load/popularity/imports/extrinsic count/extrinsic bytes/exports/bundle bytes order, followed
 by `ActivityGas`. `ServiceActivity` maps to provision(count, bytes), refinement(count, gas),
 imports, extrinsic count, extrinsic bytes, exports, accumulation(work-item count, transfer count,
@@ -46,7 +44,7 @@ exactly match the supplied corresponding populations; fixed core sources must ha
 one tuple per configured core. A codec cannot verify the supplied populations against actual
 roster state; whole-state composition must provide the correct context.
 
-Canonical counts and fixed-array extents are checked before fixed reads. Service count policy
+Canonical counts and every variable-width validator field are preflighted before owned allocation. Service count policy
 and native typed-storage capacity are checked before pair traversal or allocation. All count,
 key, counter and gas bytes consume the complete parent budget. Checked addition and profile
 bounds prevent native arithmetic/conversion overflow. Invalid configuration, wrong roster/source
@@ -78,6 +76,10 @@ reports, assurances or accumulation results. Those are contextual transition/imp
 
 ## Independent and published evidence
 
+The numerical platform receipts below originated before the current source upgrade.
+Current requests use explicit historical-field conversion and the natural-counter schema;
+see the [current qualification](graypaper-current-qualification.md) for fresh validation.
+
 Run the complete checks; Make prepares native dependencies:
 
 ```sh
@@ -92,7 +94,7 @@ before native execution. Decimal source fields are built without production deco
 observations use the public owner accessors after destroying original input, rather than native
 round trips as expected answers.
 
-Cases cover every proper truncation of a mixed-field parent; each validator field's E4 boundaries;
+Cases cover every proper truncation of a mixed-field parent; each validator field's natural-width boundaries;
 each core/service field across every 7-bit natural width transition through full uint64; numeric
 service key ordering and every E4 octet boundary; separate current/previous populations including 6/1023
 and count-prefix boundaries; core counts 2/3/43/86/341; wrong source/announced shapes; invalid
@@ -111,27 +113,28 @@ omit core/service statistics: their **zero core tuples and empty service diction
 authored completion**, not published full-state data or STF execution evidence.
 
 The three `traces/fuzzy/0000000{1,2,3}.json` blobs supply six exact pre/post C(13) entries.
-All six now decode to complete immutable records and re-emit the original bytes unchanged:
+The test-only reference explicitly converts their E4 validator fields to current canonical naturals.
+Current records decode and re-emit exactly; the original blobs remain historical evidence:
 
-| Trace / phase | Supplied bytes | Consumed | Trailing bytes |
+| Trace / phase | Historical bytes | Current bytes / consumed | Trailing bytes |
 | --- | ---: | ---: | ---: |
-| 1 pre | 307 | 307 | 0 |
-| 1 post; 2 pre | 329 | 329 | 0 |
-| 2 post; 3 pre | 332 | 332 | 0 |
-| 3 post | 329 | 329 | 0 |
+| 1 pre | 307 | 91 | 0 |
+| 1 post; 2 pre | 329 | 113 | 0 |
+| 2 post; 3 pre | 332 | 116 | 0 |
+| 3 post | 329 | 113 | 0 |
 
 Sixteen additional exact values from the eight later snapshots in
-[state-widths.md](state-widths.md) decode and re-emit completely, including nonzero service IDs
+[state-widths.md](state-widths.md) receive the same explicit validator-field conversion, including nonzero service IDs
 through 3953987649 and 55 same-state metadata-key associations. The E4 service-key migration is
 complete; the former shorter-prefix and noncanonical verdicts no longer occur for these inputs.
-No fixture rewriting, format fallback or guessed tuple fields are introduced.
+Original published bytes remain unchanged. Production has one format; no guessed tuple fields or fallback are introduced.
 
 **Accepted compact gas policy:** the maintainer directs following the published compact
 representation, documenting the discrepancy and providing no fallback. Core, refinement and
 accumulation gas therefore use the existing canonical JAM natural codec (1–9 bytes). The general
 T fixed-width note and uint64 gas domain are retained as a text discrepancy, not a pending parity
 or implementation decision. The production encoding is unchanged by this policy decision.
-Ordinary measures remain natural; dictionary IDs and validator counters remain E4.
+Ordinary measures and validator counters are canonical naturals; dictionary IDs remain E4.
 
 A native known-answer regression checks gas 100000 -> `c1 a0 86`, 128 -> `80 80` and
 256 -> `81 00` at the three gas positions. Exact capture tests accept that compact component and

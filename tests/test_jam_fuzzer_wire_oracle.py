@@ -14,12 +14,13 @@ class JamFuzzerWireOracle(unittest.TestCase):
         requests,expected,evidence=reference.expected_observations()
         self.assertEqual((len(requests),len(expected),evidence['cases']),(1276,1276,1276))
         self.assertEqual(evidence['accepted']+evidence['refused'],evidence['cases'])
-        self.assertEqual(evidence['refusals'],dict(HeaderFailure=7,BlockFailure=310))
+        # Historical nonempty assurance tuples are explicit current-format refusal witnesses.
+        self.assertEqual(evidence['refusals'],dict(HeaderFailure=7,BlockFailure=600))
         self.assertEqual(set(evidence['variants']),set(reference.NAMES.values()))
         self.assertEqual(evidence['profiles'], {
-            '0.7.0': dict(cases=470,accepted=310,refused=160),
-            '0.7.2': dict(cases=408,accepted=271,refused=137),
-            '0.8.0': dict(cases=398,accepted=378,refused=20)})
+            '0.7.0': dict(cases=470,accepted=240,refused=230),
+            '0.7.2': dict(cases=408,accepted=214,refused=194),
+            '0.8.0': dict(cases=398,accepted=215,refused=183)})
         self.assertEqual({name.split('/')[2] for name in evidence['sources']},
                          set(evidence['profiles']))
         self.assertEqual(len(evidence['sources']),2552)

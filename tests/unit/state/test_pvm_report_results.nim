@@ -94,7 +94,7 @@ assert uint64(badSize.refinedInfo.value.gasUsed) == uint64(badCount.refinedInfo.
 for declared in [0'u64, 2]:
   discard check(reportRun(reportFixture([reportGuest(exporting, declared)]), []).value,
     0, WorkKind.BadExports, 0, declared)
-# BAD/BIG/panic/OOG retain gas semantics; export mismatch takes precedence over those work errors.
+# BAD/BIG/panic/OOG retain their kind even with a mismatched export declaration.
 for variant in 0..<4:
   let guest = if variant == 0: reportGuest(returning, missing = true)
     elif variant == 1: reportGuest(returning, oversized = true)
@@ -106,10 +106,11 @@ for variant in 0..<4:
   if variant != 2: assert uint64(item.refinedInfo.value.gasUsed) == 0
   var mismatched = guest
   mismatched.declared = 1
-  discard check(reportRun(reportFixture([mismatched]), []).value, 0, WorkKind.BadExports, 0, 1)
+  discard check(reportRun(reportFixture([mismatched]), newSeq[byte](49152)).value, 0, expected, 0, 1)
 # An error after exporting discards actual segments, then report I substitutes the declaration's zeros.
 let panic = @[exporting[0], exporting[1], exporting[2], @[0'u8]]
-discard check(reportRun(reportFixture([reportGuest(panic, 1)]), []).value, 0, WorkKind.BadExports, 0, 1)
+discard check(reportRun(reportFixture([reportGuest(panic, 1)]), newSeq[byte](49152)).value, 0,
+    WorkKind.Panic, 0, 1)
 # Return the actual host export index through guest memory: skipped declarations still advance the offset.
 let indexGuest = @[exporting[0], exporting[1], exporting[2], @[62'u8, 7, 0, 0, 3, 0],
   refinementImmediate(7, 196608), refinementImmediate(8, 8), halt]

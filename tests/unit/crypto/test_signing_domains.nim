@@ -75,7 +75,6 @@ proc published(text: string) =
         let rawBits = unhex(row[1])
         assert rawBits.len == (cores+7) div 8
         var value = default(Assurance)
-        value.anchor.bytes = parent
         value.validator = ValidatorIndex(index)
         for j in 0..<rawBits.len: value.bits.bytes[j] = rawBits[j] # Fixed profile width without a count prefix.
         let signature = unhex(row[2])

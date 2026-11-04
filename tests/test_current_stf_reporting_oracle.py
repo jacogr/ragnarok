@@ -71,7 +71,7 @@ class CurrentStfReportingOracle(unittest.TestCase):
     def test_statistics_distinguish_incoming_and_available_reports(self):
         """Same-block replacement accounts incoming refinement/bundles and old available DA bytes separately."""
         (current, _, cores, services), _ = statistics_parse(self.state(0, 5)[chapter_key(13)], DEFAULT)
-        self.assertEqual([row[0] for row in cores], [103+4*4104, 104+5*4104])
+        self.assertEqual([row[0] for row in cores], [103+6*4104, 104+7*4104])
         self.assertEqual([row[6] for row in cores], [105, 106])
         self.assertEqual([row[7] for row in cores], [13, 14])
         self.assertEqual([row[1] for row in cores], [5, 5])
@@ -95,12 +95,12 @@ class CurrentStfReportingOracle(unittest.TestCase):
                 self.assertTrue(all(deps == reference.DEPENDENCY for row in reference.ready(state[chapter_key(14)]) for _, deps in row))
 
     def test_exact_refusals_and_unchanged_complete_entries(self):
-        """Eight contextual failure classes preserve complete canonical parents; no guest or service mutation is implied."""
+        """Contextual failure classes preserve complete canonical parents; no guest or service mutation is implied."""
         self.assertEqual(self.evidence['transitions'], 20)
         self.assertEqual(len(self.evidence['refusals']), 35)
         self.assertEqual(set(self.evidence['refusals']), {'credential/InvalidSignature', 'credential/WrongAssignment',
             'policy/Unauthorized', 'anchor/InvalidRecentAnchor', 'assurance/InvalidSignature',
-            'assurance/WrongParent', 'assignment/OccupiedCore', 'availability/UnassignedCore'})
+            'assignment/OccupiedCore', 'availability/UnassignedCore'})
         changed = {chapter_key(i) for i in (1, 3, 6, 10, 11, 13, 14)}
         for chain in self.states:
             for before, after in zip(chain, chain[1:]):

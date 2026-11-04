@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Strict complete current v1 download policies preserve all nominal stage budgets without inferred defaults.
+## Strict complete current v2 download policies preserve all nominal stage budgets without inferred defaults.
 ## Text/file decoding is bounded and atomic; successful plain policy snapshots own no callback resources.
 
 import std/[strutils, syncio]
@@ -17,8 +17,8 @@ import ../../../state/service/identity_history as service_identity_history
 
 const
   CurrentDownloadPolicyBytes* = 65536 ## Hard startup input cap, independent of block and state resource policies.
-  PolicyValues = 389
-  PolicyHeader = "ragnarok-current-download-policy-v1"
+  PolicyValues = 390
+  PolicyHeader = "ragnarok-current-download-policy-v2"
   LogicalPolicyHeader = "ragnarok-current-logical-policy-v1"
   NamespacePolicyHeader = "ragnarok-current-namespace-policy-v1"
 
@@ -129,7 +129,7 @@ proc writeField[T](text: var string, name: string, field: T) {.untyped.} =
     text.add(name & "=" & $uint64(field) & "\n") # Only the reviewed nominal unsigned leaf widths reach this branch.
 
 proc encodeCurrentDownloadPolicy*(policy: CurrentDownloadLoopLimits): string =
-  ## Emit every explicit v1 value; this serializer provides no defaults or semantic-policy certification.
+  ## Emit every explicit v2 value; this serializer provides no defaults or semantic-policy certification.
   result = PolicyHeader & "\n"
   currentPolicyFields(policy, result, writeField)
 
@@ -175,7 +175,7 @@ proc scanPolicy(text, header: string): PolicyInput =
   input
 
 proc decodeCurrentDownloadPolicy*(text: string): CurrentDownloadPolicyResult =
-  ## Shared strict lexical parsing precedes the original complete v1 schema and outer policy validation.
+  ## Shared strict lexical parsing precedes the original complete v2 schema and outer policy validation.
   var input = scanPolicy(text, PolicyHeader)
   if input.error != CurrentDownloadPolicyError.None: return refused(input.error, input.field)
   var policy = default(CurrentDownloadLoopLimits)

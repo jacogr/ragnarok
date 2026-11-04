@@ -85,14 +85,18 @@ def guarantee(parent, initial, *, slot=3, anchor=None, core=CORE, label=None, pr
     material = b'full-profile guest report'+tree(list(initial.items()))[0]
     if label is not None: material += b'\0'+label # Explicit independent labels prevent package reuse across multiple cores.
     package = digest(material)
+    # High-numbered cores retain distinct statistics while every report respects the GP load bounds.
+    load=(13+core,2+core,3+core%126,4+core,5+core)
+    assert load[0] <= profile.VALUES[8] and load[1] <= 3072 and load[2] <= 128 and load[4] <= 3072
+    assert load[3]+load[1]*4488 <= 13791360 and 100+slot+core <= 13904950 and 17+core <= 50000000
     header = (package+(100+slot+core).to_bytes(4,'little')+digest(package+b'segments')
-              +profile.VALIDATORS.to_bytes(2,'little')+digest(package+b'exports')+(3+core).to_bytes(2,'little')
+              +profile.VALIDATORS.to_bytes(2,'little')+digest(package+b'exports')+load[4].to_bytes(2,'little')
               +anchor+fixed[32:64]+anchor)
     layout = dict(header=header, prerequisites=b'', core=core, authorizer=pools[core][:32],
                   gas=17+core, auth=b'auth'+bytes([core % 256]), lookup=b'',
                   digests=[(99,account_parse(parent[chapter_service(255,99)],105)[0],
                             digest(package+b'payload'),100000,0,bytes([slot % 256,core % 256]),
-                            (13+core,2+core,3+core,4+core,5+core))])
+                            load)])
     raw = report_wire(layout)
     order = guests.permutation(parent[chapter_key(6)][64:96],profile.VALIDATORS)
     indices = [index for index,position in enumerate(order) if (position//3+(slot % profile.EPOCH)//profile.VALUES[18]) % profile.CORES == core]
@@ -116,7 +120,7 @@ def assurances(parent,count,*,indices=None,cores=(CORE,),profile=full):
 
 def body(gs,ass,*,disputes=bytes(3)):
     """Independently encode and commit full-profile guarantee projections and exact assurance tuples."""
-    votes = natural(len(ass))+b''.join(item['anchor']+item['bits']+item['index'].to_bytes(2,'little')+item['signature'] for item in ass)
+    votes = natural(len(ass))+b''.join(item['bits']+item['index'].to_bytes(2,'little')+item['signature'] for item in ass)
     hashes = natural(len(gs))+b''.join(digest(item['report'])+item['slot'].to_bytes(4,'little')+natural(len(item['credentials']))
                        +b''.join(index.to_bytes(2,'little')+signature for index,signature in item['credentials']) for item in gs)
     raw = b'\0\0'+guarantees_wire(gs)+votes+disputes

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Frozen explicit current v1 resource schema; no runtime reflection or legacy ceiling inference.
+## Frozen explicit current v2 resource schema; no runtime reflection or legacy ceiling inference.
 
 template currentPolicyFields(policy, context, visit: untyped) {.untyped.} =
   ## Visit each reviewed current leaf exactly once for atomic assignment and complete serialization.
@@ -129,6 +129,8 @@ template currentPolicyFields(policy, context, visit: untyped) {.untyped.} =
       policy.candidate.reporting.reports.policy.accountBytes)
   visit(context, "candidate.reporting.reports.policy.reportGas",
       policy.candidate.reporting.reports.policy.reportGas)
+  visit(context, "candidate.reporting.reports.policy.refinementGas",
+      policy.candidate.reporting.reports.policy.refinementGas)
   visit(context, "candidate.reporting.reports.anchors.history.cores",
       policy.candidate.reporting.reports.anchors.history.cores)
   visit(context, "candidate.reporting.reports.anchors.history.blocks",

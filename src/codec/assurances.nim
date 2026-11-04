@@ -12,8 +12,6 @@ type
   CoreCount* = distinct uint64 ## Configuration domains remain distinct from each other and from encoded validator indices.
   ValidatorCount* = distinct uint64
   ValidatorIndex* = distinct uint16
-  AssuranceAnchor* = object ## Fixed identity wrappers prevent anchor, availability and signature substitution.
-    bytes*: array[32, byte]
   AssuranceBits* = object
     bytes*: array[43, byte]
   AssuranceSignature* = object
@@ -22,7 +20,6 @@ type
     cores*: CoreCount
     validators*: ValidatorCount
   Assurance* = object ## All record fields own their bytes; no allocation, source pointer or reference cycle remains.
-    anchor*: AssuranceAnchor
     bits*: AssuranceBits
     validator*: ValidatorIndex
     signature*: AssuranceSignature
@@ -109,11 +106,9 @@ proc readRecord(input: openArray[byte], start, width: int): Assurance {.raises: 
   ## Read fixed owned fields only after the caller proves the complete record extent.
   # Explicit zero initialization also clears storage beyond the configured wire bitfield width.
   result = default(Assurance)
-  # Hash bytes retain wire identity order.
-  for i in 0..<32: result.anchor.bytes[i] = input[start+i]
   # Default zero initialization extends the bitset beyond the profile's wire width.
-  for i in 0..<width: result.bits.bytes[i] = input[start+32+i]
-  let position = start+32+width
+  for i in 0..<width: result.bits.bytes[i] = input[start+i]
+  let position = start+width
   result.validator = ValidatorIndex(uint16(input[position]) or (uint16(input[position+1]) shl 8))
   # Signatures are opaque bytes; cryptographic verification requires external context.
   for i in 0..<64: result.signature.bytes[i] = input[position+2+i]
@@ -127,7 +122,7 @@ proc encodeAssurances*(values: openArray[Assurance], config: AssuranceConfig,
   if uint64(values.len) > uint64(config.validators):
     return AssuranceWriteResult(status: AssuranceError.LimitExceeded)
   let width = (int(config.cores)+7) div 8
-  let stride = 98+width
+  let stride = 66+width
   let prefix = natural.encode(JamNatural(values.len))
   # Division proves the complete output product without overflowing it.
   if output.len < prefix.len or values.len > (output.len-prefix.len) div stride:
@@ -153,11 +148,9 @@ proc encodeAssurances*(values: openArray[Assurance], config: AssuranceConfig,
   # Every destination index is covered by the complete output extent proof.
   for i, value in values:
     let start = prefix.len+i*stride
-    # Copy the hash's declared identity bytes.
-    for j in 0..<32: output[start+j] = value.anchor.bytes[j]
     # Fixed profile bitfields carry no inner length prefix.
-    for j in 0..<width: output[start+32+j] = value.bits.bytes[j]
-    let position = start+32+width
+    for j in 0..<width: output[start+j] = value.bits.bytes[j]
+    let position = start+width
     output[position] = byte(uint16(value.validator) and 255)
     output[position+1] = byte(uint16(value.validator) shr 8)
     # Preserve every signature byte without interpreting cryptographic validity.
@@ -183,7 +176,7 @@ proc decodeAssurances*(input: openArray[byte], config: AssuranceConfig,
   if count > uint64(config.validators): return AssuranceDecodeResult(
       status: AssuranceError.LimitExceeded)
   let width = (int(config.cores)+7) div 8
-  let stride = 98+width
+  let stride = 66+width
   # Division proves both complete wire extent and safe host conversion.
   if count > uint64((input.len-prefix.consumed) div stride):
     return AssuranceDecodeResult(status: AssuranceError.Truncated)
@@ -225,7 +218,7 @@ proc inspectAssurances*(input: openArray[byte], config: AssuranceConfig): Assura
   if count > uint64(config.validators): return AssuranceDecodeResult(
       status: AssuranceError.LimitExceeded)
   let width = (int(config.cores)+7) div 8
-  let stride = 98+width
+  let stride = 66+width
   # Prove complete fixed records before inspecting their fields.
   if count > uint64((input.len-int(prefix.consumed)) div stride):
     return AssuranceDecodeResult(status: AssuranceError.Truncated)

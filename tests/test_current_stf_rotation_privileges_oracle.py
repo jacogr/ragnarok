@@ -29,7 +29,7 @@ class RotationPrivilegesTests(unittest.TestCase):
         """A newly granted budget cannot cause participation in its own publication block."""
         for profile in reference.bless.PROFILES:
             states = self.chains['allowances-'+profile]
-            retained = profile not in ('panic','unauthorized')
+            retained = profile not in ('panic','unauthorized','identical-pairs')
             self.assertEqual(account_parse(states[12][chapter_service(255,42)],105)[2][2],0)
             self.assertEqual(account_parse(states[13][chapter_service(255,42)],105)[2][2],13 if retained else 0)
             self.assertEqual(account_parse(states[25][chapter_service(255,42)],105)[2][2],25 if retained else 0)

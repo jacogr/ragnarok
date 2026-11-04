@@ -92,7 +92,8 @@ proc prepareAssuredQueue*(source: AssuredComputedReports,
     return AssuredQueueResult[AssuredAccumulationQueue](
         status: AssuredQueueError.InvalidSource) # Empty authority cannot supply a successful stage or parent.
   let params = source.computedAssuranceParameters.value
-  let sameGas = uint64(config.admission.policy.reportGas) == params.get(maxAccumulateGas)
+  let sameGas = uint64(config.admission.policy.reportGas) == params.get(maxAccumulateGas) and
+      uint64(config.admission.policy.refinementGas) == params.get(maxRefineGas)
   let sameRotation = uint64(config.admission.credentials.assignments.rotationSlots) == params.get(rotationPeriod)
   let sameLookup = uint64(config.admission.anchors.lookupAge) == params.get(maxLookupAnchorAge)
   let sameCores = uint64(config.queue.queues.cores) == params.get(coreCount)

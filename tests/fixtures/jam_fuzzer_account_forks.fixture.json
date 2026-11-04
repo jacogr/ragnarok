@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_ACCOUNT_FORKS",
   "files": {
-    "jam-fuzzer-account-forks.json": "1b2bfb7eecf488776dc3a0d6c4c209ee00b7003210898c18306afee401784fa3"
+    "jam-fuzzer-account-forks.json": "4d20c2ed1bde9d14d6e8801722aa478120b77d8ddf844e84928e39e59653ecdd"
   },
   "target": "jam-fuzzer-account-forks.json"
 }

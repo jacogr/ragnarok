@@ -7,7 +7,7 @@ import std/strutils
 import ../current/download/policy as current_download_policy
 import ../../chain/[parameters, presets]
 
-const PolicyTemplate = """ragnarok-current-download-policy-v1
+const PolicyTemplate = """ragnarok-current-download-policy-v2
 schedule.peers=1
 schedule.attempts=1
 schedule.retryDelay=1
@@ -70,6 +70,7 @@ candidate.reporting.reports.policy.pools.maxHashes=@queueHashes@
 candidate.reporting.reports.policy.pools.maxBytes=1000000
 candidate.reporting.reports.policy.accountBytes=105
 candidate.reporting.reports.policy.reportGas=@reportGas@
+candidate.reporting.reports.policy.refinementGas=@refinementGas@
 candidate.reporting.reports.anchors.history.cores=@cores@
 candidate.reporting.reports.anchors.history.blocks=8
 candidate.reporting.reports.anchors.history.perBlock=@cores@
@@ -410,6 +411,7 @@ proc fuzzPresetPolicy*(preset: ChainPreset): CurrentDownloadPolicyResult =
           epochTailStart)),
       ("rotation", parameters.get(rotationPeriod)), ("lookup", parameters.get(maxLookupAnchorAge)),
       ("blockGas", parameters.get(blockGasLimit)), ("reportGas", parameters.get(maxAccumulateGas)),
+      ("refinementGas", parameters.get(maxRefineGas)),
       ("queueHashes", cores*80), ("historyPackages", cores*8), ("projectionRows", validators*2),
       ("comparisons", validators*validators), ("ancestors", parameters.get(maxLookupAnchorAge)+1)]:
     # Catalog fields are bounded fixed-width scalars and the three reviewed presets keep every product below uint64.

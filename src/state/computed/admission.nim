@@ -73,7 +73,8 @@ proc admitComputedReports*(source: IncludedComputedGuarantees,
   let first = batch.computedBatchSourceAt(ComputedBatchIndex(0)).value
   let configured = first.computedEnvelopeSource.value.computedCredentialSource.value.computedGuarantorSource.value.computedRosterSource.value.computedTransitionSource.value
   let parameters = configured.computedProfileContext.value.parameters
-  let sameGas = uint64(config.policy.reportGas) == parameters.get(maxAccumulateGas)
+  let sameGas = uint64(config.policy.reportGas) == parameters.get(maxAccumulateGas) and
+      uint64(config.policy.refinementGas) == parameters.get(maxRefineGas)
   let sameRotation = uint64(config.credentials.assignments.rotationSlots) == parameters.get(rotationPeriod)
   let sameLookup = uint64(config.anchors.lookupAge) == parameters.get(maxLookupAnchorAge)
   if not sameGas or not sameRotation or not sameLookup: fail(ComputedAdmissionError.ProfileMismatch)

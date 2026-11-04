@@ -1,0 +1,110 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "649116c1c138a0560eb0379866dcb89113974058777c44cbff44507cb272ea69",
+      "3edb4e94db501f1bb8ca1e8a406af7978cc78e182a341395d7ea122e0642cf38",
+      "b069648d1d28925f6f93993aaedb2a7572805b390ba4319adb3581160f0d895e",
+      "2740d7686eb37afa7bd3a3ae1fbeb6e511f92053af1053bbaf7f89be96acd714"
+    ],
+    [
+      "2cc7bb52f13a99d2db058aa674855f7ce1fe5d61ae10d5d81c24bcb56ee3742b",
+      "48b0325549fb2090c13167466ce323d2d123e7e18517d9c56d444643020b11ea",
+      "4fb0b1b934cb96817a892b7773cbd26fb8965115001604ae1bb54bddc2836ac3",
+      "d5de8375413c5edd1fa4d653ac9f0df91e527051948fd491aac7dd04dbf1ff9d"
+    ],
+    [
+      "0e8233abfd8c01156063ebc3195b6ece02d7c45f939c915a64edf661182073c3",
+      "d353a1fec3127b3904d9b58b14b9576f64923043192a10c63b35c1858e6de7e3",
+      "7645b875d9dc32ca8ae5f4c87a1634f609f3d8f457cc6301d8e9aa3db4f81374",
+      "14fedd32b4c3be8a4053a153ccf76c00150ae85901bac934f63617b70c6470dc"
+    ],
+    [
+      "08621267dda73237665ea2219932f31fb1f8935b8c06fec45b5664922d0b98da",
+      "4f5c9449bfe7cd486de4922e3bb865cdb196b32f465c930c90baef61b9a151dc",
+      "823a95bf80e74a25d5846e7611e9015b6f3a85fe0250b0633e5805a123f9cf5e",
+      "01220769049cf8ae88884ef766db461d492eb2ca2d121eb385e4bbcc39722736"
+    ],
+    [
+      "b3af14a214c25ed738c219c05925b36f08c2d2f51f20820d6d257a0b5efa2960",
+      "6bf847dfcc6c7b49749bb06eb4f0628f467f780ef34396b85a51ed24cb680fdf",
+      "a173b9eca44b0d8639d8595c006a0f1e3ff46d82dab1030efb651944b3997838",
+      "bb133f79cf8e76a5cef3315d78ad81f07932d3ac38ee90b8759a5f8c1c6471a4"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "d10e946e1e9b1d8d7fc84a84f8af1f49118cb688dd75b973d24b55faeaa91a81",
+      "74c900db871a332fbb9af5325b91a34ec8a46bc21c695f9bf9ef11f38ce6e69d",
+      "10b618e7f7fe8f5eb19eb091f255c7bb8e7128ea68b2c0093202ba41354f08b0",
+      "c7346dead82de87c107dc8a9c9d488927794019f311752cef2c538199f430a77"
+    ],
+    [
+      "2ffa4dc3f3d0cce419e118e997f7066bd5a57849d43b358dfaf4da79fc5e33e5",
+      "1d9e7aa5e1f74e7cb0da279c4c362a169b7ee4cf21e74e7d4df35718671e2cee",
+      "01d3f4531bc1cfc769cb36be996153ad78a95920f47023759ec3089d58c0a0b0",
+      "c3b19fffb38d754ce0745e1e026eebc10f2b0ad9730dc6213711d527a96ad91e"
+    ],
+    [
+      "5a9147b579dcf2935962f1251d715ff09809982606a88f8b434a564cce609e52",
+      "24afa79e00b830070aafab36793b95bd70f56aca4fa2c9549d3d10cfcb83d3c4",
+      "8a0f362d28f745f852d777ea2a00617b838f7f32c0f4e6d38b73244163ae6eb5",
+      "42bb8c90629725b42929541867d173e67ad69ed0e7b1e4375412c07c5798fa1d"
+    ],
+    [
+      "9090a7366c2187434ee604445cf5eaf3a2453cc8ae0e2de2bb9dab7029b63f0d",
+      "9617e7a989465676aea42b60269168eefe28ca2c792538391263d7c86512fd6f",
+      "3473002dc8a196f2a8be34a41acc5ec2d369737a9a5d631d6535e18f865116ef",
+      "543921c358e8235a68d48f44984411cc4a00e76f8373327eedfaa4b5f78b2411"
+    ],
+    [
+      "0f72d7c8abdcf5bf0b18629c4209693e11e89308691577c6799982ce54283345",
+      "2a3c92f2ef0b973d7c709badd056adea119e7af08885a838eb80dc4fda3a0648",
+      "6801386c5fad9aaf83bba056c5e8fbe67d603bb5ca096d36b1bba82914acc1b9",
+      "2805bd6db098603e5533ac52db933bc28d2bf7b030c2b47f5eb4b36599f184d2"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "receiver_gas": 2960,
+        "retained": true,
+        "fetched": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "receiver_gas": 3026,
+        "retained": true,
+        "fetched": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "receiver_gas": 2960,
+        "retained": false,
+        "fetched": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "receiver_gas": 3064,
+        "retained": true,
+        "fetched": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "receiver_gas": 2960,
+        "retained": true,
+        "fetched": "707172737475767778797a7b7c7d7e7f1027000000000000aaaaaaaaaaaaaaaa"
+      }
+    ]
+  ]
+}

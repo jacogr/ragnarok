@@ -63,7 +63,7 @@ def report(parent, core, stamp, *, cores=2, shards=6):
     authorizer = pools[core][:32]
     package = digest(f'guaranteed package {stamp} core {core}'.encode())
     header = (package+(100+stamp+core).to_bytes(4, 'little')+digest(package+b'segments')
-              +shards.to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
+              +shards.to_bytes(2, 'little')+digest(package+b'exports')+(5+core).to_bytes(2, 'little')
               +anchor+(1).to_bytes(4, 'little')+root+bytes(32)
               +anchor+(1).to_bytes(4, 'little')+root)
     load = (13+core, 2+core, 3+core, 4+core, 5+core)
@@ -97,7 +97,7 @@ def assurances(parent, count, bits):
 def body(guarantees, assurances, preimages=(), *, disputes=bytes(3), tickets=b'\0'):
     """Commit only normative guarantee report hashes and assurance raw tuples, with all other families empty."""
     guarantees_part = guarantees_wire(guarantees)
-    assurances_part = natural(len(assurances))+b''.join(item['anchor']+bytes([item['bits']])
+    assurances_part = natural(len(assurances))+b''.join(bytes([item['bits']])
                         +item['index'].to_bytes(2, 'little')+item['signature'] for item in assurances)
     guaranteed_hashes = natural(len(guarantees))+b''.join(digest(item['report'])+item['slot'].to_bytes(4, 'little')
         +natural(len(item['credentials']))+b''.join(i.to_bytes(2, 'little')+sig for i, sig in item['credentials']) for item in guarantees)
@@ -144,7 +144,6 @@ def validate(parent, slot, guarantees, assured):
     blocks, _ = history(parent[chapter_key(3)])
     anchor = blocks[-1][0][:32]
     for item in assured:
-        assert item['anchor'] == anchor, 'assurance/WrongParent'
         assert item['signature'] == signed(item['index']+1, b'jam_available', digest(anchor+bytes([item['bits']])))[1], 'assurance/InvalidSignature'
         assert all(not (item['bits'] & (1 << core)) or old[core] is not None for core in range(2)), 'availability/UnassignedCore'
     released = [sum(bool(item['bits'] & (1 << core)) for item in assured) >= 5 for core in range(2)]
@@ -291,7 +290,7 @@ def negatives(parent, slot, guarantees, assured):
         for item in changed:
             item['anchor'] = digest(b'wrong parent')
             item['signature'] = signed(item['index']+1, b'jam_available', digest(item['anchor']+bytes([item['bits']])))[1]
-        probes.append((guarantees, changed, 'assurance/WrongParent'))
+        probes.append((guarantees, changed, 'assurance/InvalidSignature'))
         initial_hash = history(original()[chapter_key(3)])[0][0][0][:32]
         still_recent = any(fixed[:32] == initial_hash for fixed, _ in history(parent[chapter_key(3)])[0])
         if not guarantees and still_recent:
@@ -309,7 +308,7 @@ def negatives(parent, slot, guarantees, assured):
 def expected_observations(check_frozen=True):
     """Generate all expected blocks/maps and negative verdicts before native compilation or execution."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert hashlib.sha256(BASE.read_bytes()).hexdigest() == fixture['base_fixture_sha256']
     initial = original()
     requests, lines, roots, hashes, refusals = [], [], [], [], []

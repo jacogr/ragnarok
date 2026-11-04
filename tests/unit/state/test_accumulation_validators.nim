@@ -50,9 +50,9 @@ proc parentActivity(overflow = false, assuranceOverflow = false): StateEntry =
         activity.validators[epoch][index][measure] = ValidatorCounter(uint32(
           1000*ord(epoch)+100*index+10+ord(measure)))
   if overflow: activity.validators[StatisticsEpoch.Current][0][
-      ValidatorMeasure.Blocks] = ValidatorCounter(high(uint32))
+      ValidatorMeasure.Blocks] = ValidatorCounter(high(uint64))
   if assuranceOverflow: activity.validators[StatisticsEpoch.Current][0][
-      ValidatorMeasure.Assurances] = ValidatorCounter(high(uint32))
+      ValidatorMeasure.Assurances] = ValidatorCounter(high(uint64))
   activity.cores[0].gas = ActivityGas(999)
   var old = ServiceStatisticsEntry(service: ServiceIndex(123))
   old.statistics.counters[ServiceMeasure.RefinementCount] = ActivityNatural(77)
@@ -186,7 +186,7 @@ proc witness(source: PreparedAccumulationTimes, available, blobs, ticket, rotate
             of ValidatorMeasure.PreimageCount: expected += uint32(if blobs: 3 else: 0)
             of ValidatorMeasure.PreimageBytes: expected += uint32(if blobs: 4 else: 0)
             else: discard # Other fields use assured/reporter membership above.
-        assert uint32(row[measure]) == expected, "literal certified validator field"
+        assert uint64(row[measure]) == expected, "literal certified validator field"
   assert binding.admittedState.lookup(chapterKey(StateChapter(13))).value.bytes == original, "parent C(13) unchanged"
   assert prior.lookup(chapterKey(StateChapter(13))).value.bytes == original, "candidate C(13) still old until combination"
   assert hashCalls() == 0, "binding performs no hashing or re-verification"
@@ -201,7 +201,7 @@ proc policyWitnesses(source: PreparedAccumulationTimes) =
     of 0: short.chapterBytes = ByteLimit(2016) # Six roster entries need one prefix byte plus 6*336.
     of 1: short.validators = ElementLimit(5) # Roster failure retains its selected codec cause.
     of 2: short.services = ElementLimit(0) # Existing parent activity dictionary must be validated even though not copied.
-    of 3: short.componentBytes = ByteLimit(495) # Five assurances have one count byte plus 5*99 bytes.
+    of 3: short.componentBytes = ByteLimit(335) # Five assurances have one count byte plus 5*67 bytes.
     of 4: short.preimages = ElementLimit(2)
     of 5: short.preimageBytes = ByteLimit(3)
     of 6: short.projection.assurances = ElementLimit(4)
@@ -221,7 +221,7 @@ proc policyWitnesses(source: PreparedAccumulationTimes) =
       assert refused.error == AccumulationValidatorsError.LimitExceeded, "independent source materialization policy"
   var exact = config()
   exact.chapterBytes = ByteLimit(2017)
-  exact.componentBytes = ByteLimit(496)
+  exact.componentBytes = ByteLimit(336)
   assert prepareAccumulationValidators(source, exact).error == AccumulationValidatorsError.None, "exact framed work limits"
   exact.projection.rows = ElementLimit(11)
   assert prepareAccumulationValidators(source, exact).projectionError ==

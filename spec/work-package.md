@@ -62,7 +62,9 @@ values are checked before host conversion/addition; aggregate addition uses rema
 subtraction so sums cannot wrap.
 
 `PackageConfig` supplies explicit refinement/accumulation gas ceilings and a serialized `maxBytes`
-policy. Both gas sums must be **strictly below** their configured ceilings, following `wplimits`.
+policy. Both gas sums are **at most** their configured ceilings, following `wplimits` at
+Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`. Input footprint remains
+13,791,360 bytes; the distinct encoded bundle limit is13,904,950 bytes.
 Zero ceilings are invalid configurations. `fullPackageConfig(maxBytes)` selects the published
 5,000,000,000 refinement and 10,000,000 accumulation ceilings. Other chain profiles supply their
 actual parameters explicitly. The gas domain remains the existing nominal `Gas` unit. Standalone
@@ -116,7 +118,7 @@ capture, copied getters are mutated, and retained child handles outlive their pa
 
 Coverage includes E2/E4/E8 and natural-width boundaries; all representative truncations; empty
 blobs; exact/short/spare capacities and serialized byte budgets; minimum/maximum/excessive counts;
-strict gas boundaries and uint64 aggregate-overflow attempts; inclusive footprint maxima including
+inclusive gas boundaries and uint64 aggregate-overflow attempts; inclusive footprint maxima including
 3072 import proofs; cross-item totals; distinct/repeated import dependencies and prerequisite
 interaction; malformed/overlong/huge count prefixes; deterministic structured/random input;
 late-source atomicity; descriptor/blob/import/commitment aliases; runtime variant guards;

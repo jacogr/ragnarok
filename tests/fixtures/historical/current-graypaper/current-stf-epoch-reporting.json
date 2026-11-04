@@ -1,0 +1,86 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "epoch_fixture_sha256": "38292ab5b05a457e494d383ab9b6e788b4d2e950c9f01dbc61618934e78ac5ba",
+  "evidence": {
+    "transitions": 18,
+    "chains": 2,
+    "roots": [
+      [
+        "328396e8cded8a0fd13af26f259909e25c7f4b08ee6474499ddbbe186aaf91c0",
+        "f764c6b391be60141225a3085b6e51b9898b101d9322edc0058ac89e889ec454",
+        "3a242796ed4539910be80d9cea04fbfbb1e455e000a55f3034124d470acfcb33",
+        "e4cea7abf0e6763acbdd889de7e8ed2f50bb056f3ec0ef1db8ec45e11b9233cc",
+        "6fcec3d7c6869e7668f7099dc4f5859f2d1a99f850e0f203e1a673606a8b3b54",
+        "5f6f7fc5ac1bdda2c83c9c937aaca635be4910dc1b073e82e60048c23e11ae15",
+        "1fab062013dd01dae898056cc947865884b81d352eea2e1557a85b0e8f3c6d76",
+        "402bb6cc108fcf025d78cb03ef94b3e6ac0f4b8af0839a1f7bf2e09883ca0a8c",
+        "accaf06b63e807eb9641fe3cadeccbfb9618a5e49615e63c42d98531031fa410"
+      ],
+      [
+        "328396e8cded8a0fd13af26f259909e25c7f4b08ee6474499ddbbe186aaf91c0",
+        "c9d51ca83fa2ae330175b7af8ad50a7c86daa75ca4c3397f9b861c831b4580bc",
+        "6c44e354c1385a6c115c5c6dcfe9fc59d10863788b9ecc11bc2b0afe711a5487",
+        "18d17f614f1be89f00b309bf01027353e038baff74bb3e0ddf96ff20d0b31647",
+        "3249896ee8dc9cea86a2c47797f261e0e5e2075a3134fde3b28f5549ce1375b8",
+        "44f93c062638ea17337dd233411d1b88a926b24f72714c2a12996b44473c69fc",
+        "53e9dc704f2488f5bc09b87efb249eefbc8fa30c54a8e77b757949441be677de",
+        "46b17c76ac8b16a3adc5ca469c32dcf7ce0e275230718f97e3c08db3f92433b8",
+        "1f18f2eb93c205a92c1c238172268b165debfecd6bd560f29c457740b3c67312"
+      ]
+    ],
+    "checkpoint_sha256": [
+      [
+        "abfb4da5c99c0527a22b934c5179171c8dfaf0db0a24a685e6c70e9b3d97b6cb",
+        "09e684309aaeea26d5e0b227f88bf0c49dacc0ca487dc34063b9dbcf11cd7454",
+        "071f66941564cd5057b01c2f918802e3e9a2812ca58954d8baed6812103a01be",
+        "35d0c2bc9b2f80209ca4940efbed5dc6390e3c3b3ae55444a553ce0f6d675846",
+        "a3c704d2cbea17d3e7ca6b18a5240126859b25edf40fcbf514151ca8c4f659f8",
+        "8ce5ad6f88ce44610cddba693d8d778a50bc3a989aaa8cc3edc3506ebe7e73a4",
+        "6ff9697f07ecadfc42131a26857033a35fe1897799671c30eb0668ff246c5457",
+        "8bd65158097fe136fcf87711638977b2d02b9560f4518a5a1a5854e1ac065030",
+        "1ce05f3d9461d0db74055dd012bc8c5a945c11619e0d11fbd9446d7899aa6cad"
+      ],
+      [
+        "abfb4da5c99c0527a22b934c5179171c8dfaf0db0a24a685e6c70e9b3d97b6cb",
+        "6fe1514984fcf20704666143bccf5597ef4b0cd5b186a0c01447ae3fb86bf16a",
+        "310d3e87ce0e092ee4153ee310dc00ae1d6c834a02dba57719c9a9dcff25b512",
+        "8cb091b1de664c40e856e1114e21fbd33f5c6efba517e7983ac72817814585d4",
+        "17a9c7d5889d894418dae20f13812b891f9b63368635c7e315dd25132df5109e",
+        "585fe056e2ec7a5ff6b803811be395335815ff619b0f1e98c4748d39662737b9",
+        "295a632783d77e7ae652497ba85d75cb53b50b6b99b25a1bfdf97d0cbac904c6",
+        "57f41b357a692b4e9563d87fa56530bb736fef92dd1229405965e7465f4acacd",
+        "457273991aaeb304dc69ebd42e2f6258f899c8bfdc7d278492ca0ac7ce887151"
+      ]
+    ],
+    "refusals": [
+      "credential/InvalidSignature",
+      "credential/WrongAssignment",
+      "credential/InvalidSlot",
+      "assurance/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/WrongAssignment",
+      "credential/InvalidSlot",
+      "assurance/InvalidSignature",
+      "assurance/InvalidSignature",
+      "assurance/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/WrongAssignment",
+      "credential/InvalidSlot",
+      "assurance/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/WrongAssignment",
+      "credential/InvalidSlot",
+      "assurance/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/WrongAssignment",
+      "credential/InvalidSlot",
+      "assurance/InvalidSignature",
+      "assurance/InvalidSignature",
+      "assurance/InvalidSignature",
+      "credential/InvalidSignature",
+      "credential/WrongAssignment",
+      "credential/InvalidSlot",
+      "assurance/InvalidSignature"
+    ]
+  }
+}

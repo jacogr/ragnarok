@@ -15,13 +15,15 @@ import ../[store, guarantee_credentials]
 
 type
   ReportGasLimit* = distinct uint64 ## Maximum accumulation gas for one report, distinct from per-item gas and the block-wide ceiling.
+  RefinementGasLimit* = distinct uint64 ## Profile-bound package refinement ceiling is independent of accumulation gas.
   ReportPolicyConfig* = object ## Pool decode resources, fixed service metadata policy and explicit chain-specific report gas ceiling.
     pools*: AuthorizationConfig
     accountBytes*: ByteLimit
     reportGas*: ReportGasLimit
+    refinementGas*: RefinementGasLimit
   ReportPolicyError* {.pure.} = enum ## Failed/default alternatives contain no checked reports, parent snapshot or partial gas totals.
     Uninitialized, None, InvalidConfig, InvalidCredentials, InvalidState, MissingState,
-    LimitExceeded, Unauthorized, UnknownService, WrongCodeHash, InsufficientGas, ReportGasExceeded
+    LimitExceeded, Unauthorized, UnknownService, WrongCodeHash, InsufficientGas, ReportGasExceeded, RefinementLoadExceeded
   ## Private acyclic owner binds the credential certificate to the exact immutable parent map used for policy.
   PolicyData = ref object
     credentials: VerifiedGuaranteeCredentials
@@ -117,10 +119,37 @@ proc checkReportPolicy*(credentials: VerifiedGuaranteeCredentials, parent: State
     if not authorized:
       return ReportPolicyResult[PolicyCheckedReports](
           status: ReportPolicyError.Unauthorized) # Parent C(1), never C(2) or a posterior pool.
+    if uint64(info.authGas) > 50_000_000 or uint32(info.header.bundleLength) > 13_904_950:
+      return ReportPolicyResult[PolicyCheckedReports](
+          status: ReportPolicyError.RefinementLoadExceeded) # Independent fixed package authorization/bundle limits.
+    var refineGas = 0'u64
+    var imports = 0'u64
+    var exports = 0'u64
+    var extrinsics = 0'u64
+    var inputBytes = 0'u64
     var total = 0'u64
     # Reset accumulation per report and validate every service, including unsuccessful work.
     for j in 0..<info.digestCount:
       let digest = ownedReportDigest(record.report, j).value
+      let load = digest.refine
+      if uint64(load.gasUsed) > uint64(config.refinementGas)-refineGas or
+          uint64(load.imports) > 3072-imports or uint64(load.exports) > 3072-exports or
+          uint64(load.extrinsicCount) > 128-extrinsics:
+        return ReportPolicyResult[PolicyCheckedReports](
+            status: ReportPolicyError.RefinementLoadExceeded) # Prove every aggregate before addition, including full-width counts.
+      refineGas += uint64(load.gasUsed)
+      imports += uint64(load.imports)
+      exports += uint64(load.exports)
+      extrinsics += uint64(load.extrinsicCount)
+      let footprint = uint64(load.imports)*4488 # The3072 import bound proves this product fits uint64.
+      if footprint > 13_791_360-inputBytes:
+        return ReportPolicyResult[PolicyCheckedReports](
+            status: ReportPolicyError.RefinementLoadExceeded)
+      inputBytes += footprint
+      if uint64(load.extrinsicSize) > 13_791_360-inputBytes:
+        return ReportPolicyResult[PolicyCheckedReports](
+            status: ReportPolicyError.RefinementLoadExceeded) # Work-report input excludes unavailable payload/configuration blobs.
+      inputBytes += uint64(load.extrinsicSize)
       let amount = uint64(digest.accumulateGas)
       if amount > uint64(config.reportGas)-total:
         return ReportPolicyResult[PolicyCheckedReports](
@@ -146,5 +175,8 @@ proc checkReportPolicy*(credentials: VerifiedGuaranteeCredentials, parent: State
       if amount < uint64(metadata.value.metadata.minimumAccumulationGas):
         return ReportPolicyResult[PolicyCheckedReports](
             status: ReportPolicyError.InsufficientGas) # Apply even to unsuccessful work outputs.
+    if exports != uint64(info.header.segmentCount):
+      return ReportPolicyResult[PolicyCheckedReports](
+          status: ReportPolicyError.RefinementLoadExceeded) # Availability must commit exactly the declared exported segments.
   ReportPolicyResult[PolicyCheckedReports](status: ReportPolicyError.None,
     completed: PolicyCheckedReports(data: PolicyData(credentials: credentials, parent: parent)))

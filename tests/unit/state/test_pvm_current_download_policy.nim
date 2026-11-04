@@ -52,8 +52,10 @@ proc parser(text: string) =
   assert uint64(good.value.candidate.completion.composition.consensus.totalBytes) ==
       uint64(policy().candidate.completion.composition.consensus.totalBytes)
   assert good.value.input.discoverAncestors
+  assert decodeCurrentDownloadPolicy(text.replace("ragnarok-current-download-policy-v2",
+      "ragnarok-current-download-policy-v1")).error == CurrentDownloadPolicyError.WrongVersion
   let rows = text.splitLines()
-  assert rows.len == 391, "current header, 389 explicit leaves and trailing newline"
+  assert rows.len == 392, "current header, 390 explicit leaves and trailing newline"
   for missing in 1..<rows.high:
     var incomplete = rows[0] & "\n"
     for index in 1..<rows.high:
@@ -95,7 +97,7 @@ proc parser(text: string) =
       CurrentDownloadPolicyError.LimitExceeded
   for invalid in ["", "other\n", "\n", text & "not a key=1\n", text & "name=1=2\n"]:
     assert decodeCurrentDownloadPolicy(invalid).error != CurrentDownloadPolicyError.None
-  let legacy = text.replace("ragnarok-current-download-policy-v1", "ragnarok-download-policy-v1")
+  let legacy = text.replace("ragnarok-current-download-policy-v2", "ragnarok-download-policy-v2")
   assert decodeCurrentDownloadPolicy(legacy).error == CurrentDownloadPolicyError.WrongVersion
   assert decodeDownloadPolicy(text).error == DownloadPolicyError.WrongVersion
 proc files(text: string) {.raises.} =
@@ -107,7 +109,7 @@ proc files(text: string) {.raises.} =
   assert loadCurrentDownloadPolicy(path).error == CurrentDownloadPolicyError.None
   writeFile(path, repeat('x', CurrentDownloadPolicyBytes+1))
   assert loadCurrentDownloadPolicy(path).error == CurrentDownloadPolicyError.LimitExceeded
-  writeFile(path, "ragnarok-download-policy-v1\n")
+  writeFile(path, "ragnarok-download-policy-v2\n")
   assert loadCurrentDownloadPolicy(path).error == CurrentDownloadPolicyError.WrongVersion
   assert posix.unlink(path.toCString()) == 0
   assert loadCurrentDownloadPolicy(path).error == CurrentDownloadPolicyError.FileFailure
@@ -143,6 +145,12 @@ proc cycle(text: string) =
   assert decodeCurrentDownloadPolicy(text & "schedule.peers=1\n").error ==
       CurrentDownloadPolicyError.DuplicateField
 proc main() {.raises.} =
+  # The shipped devnet file must pass the same decoder used before actual listener startup.
+  let shipped = loadCurrentDownloadPolicy(getEnv("RAGNAROK_TINY_DEVNET_POLICY"))
+  assert shipped.error == CurrentDownloadPolicyError.None, "bundled Tiny startup policy decodes"
+  assert uint64(shipped.value.candidate.reporting.reports.policy.refinementGas) == 1_000_000_000,
+      "bundled Tiny refinement ceiling is explicit and matches the existing profile"
+
   ## Lexical/atomicity/ownership witnesses precede independently signed current execution under decoded ceilings.
   let text = encodeCurrentDownloadPolicy(policy())
   assert text.len <= CurrentDownloadPolicyBytes

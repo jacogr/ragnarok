@@ -16,6 +16,7 @@ from state_requests_oracle import key as request_key, wire as request_wire
 from state_statistics_oracle import parse as statistics_parse, wire as statistics_wire, DEFAULT
 
 FIXTURE = Path(__file__).parent/'fixtures/current-stf-bless-allowances.json'
+HISTORICAL = Path(__file__).parent/'fixtures/historical/bless-duplicate-keys/current-stf-bless-allowances.json'
 PROFILES = ('publish','panic','checkpoint-panic','identical-pairs','unsorted-pairs','unauthorized')
 PAYLOAD = b'R'
 
@@ -26,6 +27,11 @@ from state_privileges_oracle import wire as privileges_wire
 def pairs(profile):
     """Raw ordered input is distinct from the canonical dictionary; duplicate identical pairs still pay the raw-item price."""
     return [(99,6000),(42,100)] if profile=='unsorted-pairs' else [(42,100)]*(2 if profile=='identical-pairs' else 1)
+
+
+def distinct_services(raw):
+    """Target cardinality counts raw entries, so identical pairs also fail the service-key test."""
+    return len({service for service, _ in raw}) == len(raw)
 
 
 def program(profile):
@@ -52,11 +58,11 @@ def original(profile):
 
 def effects(result,parent,profile,slot,report):
     """Initial-block allowances select participants; newly blessed entries start with the next block, with zero report operands."""
-    retained=profile not in ('panic','unauthorized');prior=slot>4 and retained
+    retained=profile not in ('panic','unauthorized') and distinct_services(pairs(profile));prior=slot>4 and retained
     active42=prior;active99=report or prior and profile=='unsorted-pairs'
     instructions,_=program(profile);gas99=simulate(instructions,gas_definitions(),prefix=[b'\0']*5)[0]+422+20*len(pairs(profile))+103*int(profile=='checkpoint-panic')
     if active99 and retained:
-        result[chapter_key(12)]=privileges_wire((99,0,0,[0,0],sorted(set(pairs(profile)))))
+        result[chapter_key(12)]=privileges_wire((99,0,0,[0,0],sorted(pairs(profile))))
     (current,previous,cores,services),_=statistics_parse(result[chapter_key(13)],DEFAULT)
     activity={row[0]:list(row) for row in services}
     for sid,active,gas,count in ((42,active42,22,0),(99,active99,gas99,int(report))):
@@ -76,7 +82,7 @@ def expected_observations(check_frozen=True):
         requests.append('C '+str(index+155));lines.append('P '+checkpoint(list(parent.items())).hex())
         roots.append([]);hashes.append([]);traces.append([])
         for slot in range(2,8):
-            gs=[pipeline.guarantee(parent,initial,1,slot,service=99,accumulation_gas=100000)] if slot in (3,5) else []
+            gs=[pipeline.guarantee(parent,initial,1,slot,service=99,accumulation_gas=100000,match_exports=True)] if slot in (3,5) else []
             for item in gs:
                 reports[item['report'][:32]]=item['layout'] # Actual report bytes own the independent layout used for admission/statistics.
             ass=assurances(parent,5 if slot in (4,6) else 0,2)
@@ -89,7 +95,9 @@ def expected_observations(check_frozen=True):
             roots[-1].append(tree(list(parent.items()))[0].hex());hashes[-1].append(hashlib.sha256(encoded).hexdigest())
     if check_frozen:
         fixture=json.loads(FIXTURE.read_text())
-        assert fixture['graypaper_commit']=='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
+        assert fixture['qualification_target']=='fad0ded4a433052397bf7234352a57fe491883f7'
+        assert fixture['historical_fixture_sha256']==hashlib.sha256(HISTORICAL.read_bytes()).hexdigest()
         assert fixture['base_fixture_sha256']==hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes and fixture['traces']==traces
     return requests,lines,dict(transitions=36,chains=6,roots=roots,checkpoint_sha256=hashes,traces=traces)

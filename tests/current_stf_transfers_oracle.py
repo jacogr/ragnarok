@@ -100,7 +100,7 @@ def expected_observations(check_frozen=True):
             roots[-1].append(tree(list(parent.items()))[0].hex()); hashes[-1].append(hashlib.sha256(encoded).hexdigest())
             traces[-1].append(dict(slot=slot, **trace))
     if check_frozen:
-        assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['base_fixture_sha256'] == hashlib.sha256(pipeline.FIXTURE.read_bytes()).hexdigest()
         assert roots == fixture['successor_roots'] and hashes == fixture['successor_checkpoint_sha256']
         assert traces == fixture['traces']

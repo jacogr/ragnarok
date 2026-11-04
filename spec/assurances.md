@@ -1,17 +1,14 @@
 # Assurances extrinsic codec
 
-Normative source: GP v0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`, Appendix C.1
-(bit sequence, natural and fixed integer encoding), C.2 `encodeassurances`, and reporting/assurance
-`xtassurances`. Exact source/vector/profile hashes are retained in `spec/pins.json`.
-The official vector README defines tiny as 2 cores / 6 validators and full as 341 / 1023.
+Target source: Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`, Appendix C.1/C.2
+and `text/reporting_assurance.tex`. Source-pin adoption is the final stack layer; see
+[qualification](graypaper-current-qualification.md). Historical vector hashes stay pinned.
 
 One extrinsic is a canonical natural record count followed by records in strictly increasing
-validator-index order. Each record has an anchor hash (32 identity bytes), a fixed bitstring
-(`ceil(cores/8)` bytes, least-significant bit first, no length prefix), validator index E2 and
-signature (64 identity bytes). Strides are 99 bytes for tiny and 141 for full.
-Unused high bits in the last serialized bitstring octet must be zero. Native bitset storage has
-43 bytes; an encoder also rejects nonzero unused storage octets instead of silently discarding
-caller data. Signatures are nominal byte encodings here, not cryptographic validity claims.
+validator-index order. Each record contains a fixed bitstring (`ceil(cores/8)` bytes, LSB first,
+without a length prefix), validator index E2 and64 signature bytes. There is no embedded parent.
+Tiny and Full strides are67 and109 bytes. The verifier obtains the actual parent externally.
+The final partial bitstring octet and all unused43-byte native bitset storage must be zero.
 
 Configuration is explicit: 2..341 configured cores; validator counts are multiples of three
 from 6 through three times the configured core count (GP 0.8.0 `valcount`). Named tiny/full test
@@ -36,17 +33,16 @@ Errors are failure-only tagged alternatives: uninitialized, invalidconfig, trunc
 noncanonical, limitexceeded, outputtoosmall, aliasedbuffers, lengthoverflow, invalidvalidator.
 Count, consumed/written and data exist only on success. Default results are failures.
 
-This codec does not enforce anchor equality to a block parent, signature validity, validator
-membership/assignments or availability state transitions. Those require external chain context;
-the official structural fixtures themselves have different anchors. The unresolved Ed25519
-backend-policy gate remains separate. This round adds no crypto primitive or networking behavior.
+Cryptographic validity, active validator selection and availability transitions require external
+chain context. The signature binds the actual parent even though that parent is absent on wire.
+Pinned old JSON/bin pairs are verified byte-for-byte as historical evidence; current structural
+corpora explicitly derive the new tuple from their named fields. No old-format decoder exists.
 
-Acceptance: exact official tiny/full JSON and binary vectors; independent source construction
-and named-field decoding; zero/full count bounds; all bit positions and width transitions;
-noncanonical count, ordering, duplicate, invalid index and padding attacks; every truncation of
-representative records; late failure/unused-output sentinels; source lifetime independence;
-encoder/decoder aliases manufactured explicitly in trusted tests; deterministic malformed fuzz;
-and compiler rejection of nominal anchor/signature/index swaps. Official formatters are required.
+Acceptance covers independently authored current bytes, historical binary provenance, zero/full
+counts, every bit and width transition, all truncations, noncanonical counts, duplicate/descending
+indices, invalid validators, padding, atomic destinations, source lifetime, real alias probes and
+malformed fuzz. A prefix codec may leave trailing input; standalone frame consumers must require
+complete consumption, including when handed an old embedded-parent record.
 
 ## Compiler-port evidence
 

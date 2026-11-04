@@ -40,14 +40,14 @@ duplicate.services = @[ServiceStatisticsEntry(service: ServiceIndex(1)), Service
 let encoded = activityStateEntry(original, policy)
 assert encoded.error == ActivityError.None
 let owner = decodeActivityState(encoded.value.value, policy).value.snapshot
-# Literal roster counts and E4 zero counters precede three eight-natural all-zero core tuples.
+# Literal roster counts and canonical natural zero counters precede three eight-natural all-zero core tuples.
 proc prefix(): seq[byte] =
   result = @[6'u8]
-  # Six validator records have exactly 24 bytes each.
-  for i in 0..<6*24: result.add(0'u8)
+  # Six zero counters occupy exactly six bytes per validator.
+  for i in 0..<6*6: result.add(0'u8)
   result.add(9'u8)
   # The previous roster population is independent of the current one.
-  for i in 0..<9*24: result.add(0'u8)
+  for i in 0..<9*6: result.add(0'u8)
   # Fixed core tuple arity has no core-array count and uses one-byte zero naturals here.
   for i in 0..<3*8: result.add(0'u8)
 var excess = prefix()

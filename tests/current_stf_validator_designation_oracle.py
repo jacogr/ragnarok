@@ -28,7 +28,7 @@ import current_stf_epoch_oracle as epoch
 def staging():
     """Reuse the attributed original six-record staging input and KZG commitment, never an observed STF successor."""
     fixture=json.loads(epoch.FIXTURE.read_text())
-    assert fixture['graypaper_commit']=='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
     original=decode_checkpoint(bytes.fromhex(fixture['parent_checkpoint']))
     records=epoch.roster(original[chapter_key(7)])
     assert [epoch.PUBLIC[row[:32]] for row in records]==[6,5,4,3,2,1]
@@ -113,7 +113,7 @@ def expected_observations(check_frozen=True):
             roots[-1].append(tree(list(parent.items()))[0].hex()); hashes[-1].append(hashlib.sha256(encoded).hexdigest())
     if check_frozen:
         fixture = json.loads(FIXTURE.read_text())
-        assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['base_fixture_sha256'] == hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots'] == roots and fixture['successor_checkpoint_sha256'] == hashes
         assert fixture['traces'] == traces

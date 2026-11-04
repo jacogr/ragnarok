@@ -41,8 +41,6 @@ proc capacity(text: string, maximum: int): int {.raises.} =
 # Initialize every named field, including unused bitset bytes, for atomicity tests.
 proc sentinel(): Assurance =
   result = default(Assurance)
-  # Make all 32 anchor bytes observable after a failed decode.
-  for i in 0..<32: result.anchor.bytes[i] = 77
   # Unused storage must survive failure too.
   for i in 0..<43: result.bits.bytes[i] = 77
   result.validator = ValidatorIndex(77)
@@ -51,26 +49,22 @@ proc sentinel(): Assurance =
 
 # Construct logical source fields without calling the new wire decoder.
 proc records(data: openArray[byte]): seq[Assurance] =
-  assert data.len mod 141 == 0
-  result = newSeq[Assurance](data.len div 141)
+  assert data.len mod 109 == 0
+  result = newSeq[Assurance](data.len div 109)
   # Logical records retain full native bitset storage regardless of configured wire width.
   for i in 0..<result.len:
-    let start = i*141
-    # Construct the declared anchor directly.
-    for j in 0..<32: result[i].anchor.bytes[j] = data[start+j]
+    let start = i*109
     # Include octets outside the selected profile to test encoder rejection.
-    for j in 0..<43: result[i].bits.bytes[j] = data[start+32+j]
-    result[i].validator = ValidatorIndex(uint16(data[start+75]) or (uint16(data[start+76]) shl 8))
+    for j in 0..<43: result[i].bits.bytes[j] = data[start+j]
+    result[i].validator = ValidatorIndex(uint16(data[start+43]) or (uint16(data[start+44]) shl 8))
     # Preserve all independent signature bytes.
-    for j in 0..<64: result[i].signature.bytes[j] = data[start+77+j]
+    for j in 0..<64: result[i].signature.bytes[j] = data[start+45+j]
 
 # Render named fields independently of encoder ordering and native struct padding.
 proc logical(values: openArray[Assurance]): seq[byte] =
   result = @[]
   # Every record contributes the same complete fixed logical layout.
   for value in values:
-    # Copy each anchor identity byte without interpreting native object padding.
-    for octet in value.anchor.bytes: result.add(octet)
     # Include every bitset storage byte, including unused profile octets.
     for octet in value.bits.bytes: result.add(octet)
     result.add(byte(uint16(value.validator) and 255))
@@ -130,7 +124,7 @@ proc request(p: seq[string]) {.raises.} =
       # Overwrite source bytes before inspecting retained decoded fields.
       for value in data.mitems: value = 0
       assert logical(output.toOpenArray(decoded.count, output.high)) == before.toOpenArray(
-          decoded.count*141, before.high)
+          decoded.count*109, before.high)
       let bytes = logical(output.toOpenArray(0, decoded.count-1))
       var encoded = newSeq[byte](decoded.consumed)
       let check = encodeAssurances(output.toOpenArray(0, decoded.count-1), config, encoded)

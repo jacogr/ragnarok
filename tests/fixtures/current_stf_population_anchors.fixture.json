@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_POPULATION_ANCHORS",
   "files": {
-    "current-stf-population-anchors.json": "6e6444b27ff643cd32d0fed8c794ba27e770fed613712bee7ca267debb61faa5"
+    "current-stf-population-anchors.json": "b995b3a509f8e4b1b3412d4d120d5685e4386e8c9abfb4d7342ffca8fc29e316"
   },
   "target": "current-stf-population-anchors.json"
 }

@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_PREIMAGE_PROVISION",
   "files": {
-    "current-stf-preimage-provision.json": "d9f72481747f55aab4e0f940524b291d409b4f16d077d5a7fa820c0ff273f6a6"
+    "current-stf-preimage-provision.json": "145bb66dd9b6294344da988de82de21f84f5da91c224f03154b353267ec35320"
   },
   "target": "current-stf-preimage-provision.json"
 }

@@ -82,8 +82,8 @@ def selected(parent,family,profile,invoked):
     assigners = list(assigners); queues = parent[chapter_key(2)]
     if family == 'manager' and invoked and manager == 99 and profile not in ('panic','unauthorized'):
         manager = 99 if profile == 'self' else 42
-    if family == 'allowances' and invoked and profile not in ('panic','unauthorized'):
-        allowances = sorted(set(bless.pairs(profile)))
+    if family == 'allowances' and invoked and profile not in ('panic','unauthorized') and bless.distinct_services(bless.pairs(profile)):
+        allowances = sorted(bless.pairs(profile))
     if family == 'assignment' and invoked and profile in ('assign','checkpoint-panic') and assigners[1] == 99:
         assigners[1] = 42
         queues = queues[:2560]+assign.queue()+queues[5120:]
@@ -128,7 +128,7 @@ def cases():
                 gs = []
                 if slot in (10,12,23,24):
                     for core,sid in (((0,42),(1,99)) if family=='precedence' else ((1,99),)):
-                        item = host.execution.guarantee(parent,core,slot,sid)
+                        item = host.execution.guarantee(parent,core,slot,sid,match_exports=True)
                         gs.append(item); reports[item['report'][:32]] = item['layout']
                 count = {12:5,13:7,24:7,25:5}.get(slot,0)
                 bits = 3 if family=='precedence' else 2

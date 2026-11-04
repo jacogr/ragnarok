@@ -58,7 +58,7 @@ def expected_observations(check_frozen=True):
         assert old_report is not None
         traces.append(dict(profile=profile,old_report_sha256=hashlib.sha256(old_report).hexdigest(),old_code_hash=bytes(32).hex(),fixture_sha256=hashlib.sha256(authority.FIXTURE.read_bytes()).hexdigest(),events=events))
     if check_frozen:
-        fixture=json.loads(FIXTURE.read_text());assert fixture['graypaper_commit']=='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        fixture=json.loads(FIXTURE.read_text());assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['base_fixture_sha256']==hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes
         assert fixture['traces']==json.loads(json.dumps(traces))

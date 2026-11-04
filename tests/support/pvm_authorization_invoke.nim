@@ -28,8 +28,9 @@ type
 proc authorizationLimits*(): AuthorizationInvocationLimits =
   ## Finite policies independently bound code copying, initialization, host capture and execution/output work.
   AuthorizationInvocationLimits(preimage: ByteLimit(200000), initialization: InitializationLimits(
-    envelope: InitializationByteLimit(64000), program: ProgramByteLimit(160), jumps: JumpCountLimit(0),
-    pages: PageLimit(20)), package: FetchPackageLimit(16), encoding: FetchEncodingLimit(4096),
+    envelope: InitializationByteLimit(196608), program: ProgramByteLimit(160),
+        jumps: JumpCountLimit(0),
+    pages: PageLimit(64)), package: FetchPackageLimit(16), encoding: FetchEncodingLimit(4096),
     copy: MemoryByteLimit(512), steps: ExecutionStepLimit(64), calls: HostCallLimit(8),
     cycles: GasCycleLimit(1000), output: OutputByteLimit(65536))
 proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byte] = @[],
@@ -52,9 +53,9 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
     if marked: mask[index div 8] = mask[index div 8] or byte(1 shl (index mod 8))
   for octet in mask: raw.add(octet)
   let writableSize = if codeSize > 0: codeSize-18-raw.len else: 3
-  assert writableSize >= 3 and writableSize <= 65535 # Prove the literal E3 header and test allocation extents.
-  result.envelope = @[3'u8, 0, 0, byte(writableSize and 255), byte(writableSize shr 8),
-    0, 0, 0, 0, 0, 0, 11, 12, 13]
+  assert writableSize >= 3 and writableSize <= 0xffffff # Prove the literal E3 header and test allocation extents.
+  result.envelope = @[3'u8, 0, 0, byte(writableSize and 255), byte((writableSize shr 8) and 255),
+    byte(writableSize shr 16), 0, 0, 0, 0, 0, 11, 12, 13]
   var writable = newSeq[byte](writableSize)
   writable[0] = 21
   writable[1] = 22
