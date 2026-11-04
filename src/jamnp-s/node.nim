@@ -392,10 +392,13 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 136'u8, 142'u8, 143'u8]:
+    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 142'u8, 143'u8]:
       if kind == 142'u8 and not owner.node.isValidator:
         owner[].closeFrame(position)
         return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
+      if kind in [131'u8, 132'u8] and (not owner.node.isValidator or not owner.node.isValidator(peer)):
+        owner[].closeFrame(position)
+        return # Ticket protocols require both authenticated validator roles before any proof work or larger fixed input is admitted.
       let inboundReads = owner[].frameCount(peer, FrameKind.Read)
       let outboundReads = owner[].frameCount(peer, FrameKind.Client)
       if owner[].reads >= MaxNodeReads or inboundReads+outboundReads >= 2:
@@ -553,6 +556,10 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   ## Reserve a bounded read on the existing authenticated connection; only one local open intent per peer is outstanding.
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeRequestTicket](
       status: NodeError.Unavailable)
+  if not request.valid: return NodeResult[NodeRequestTicket](status: NodeError.InvalidConfig)
+  if request.kind in [ReadKind.TicketProxy, ReadKind.TicketDistribution]:
+    if not owner.node.isValidator or not owner.node.isValidator(peer):
+      return NodeResult[NodeRequestTicket](status: NodeError.InvalidSource) # Outbound ticket uploads have the same both-validator role boundary.
   let peerPosition = owner.peerIndex(peer)
   if peerPosition < 0: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
@@ -609,6 +616,12 @@ func isValidator*(owner: NodeService): bool =
 proc isValidator*(owner: NodeService, peer: NodePeer): bool =
   ## Recipient checks preserve current transport generation and gated roster membership.
   owner.isOpen and owner.node.isValidator(peer)
+func localIdentity*(owner: NodeService): StateEdKey {.requires: owner.isOpen.} =
+  ## Copy the actual validated local transport identity into a detached CPU recipient contract.
+  owner.node.localIdentity
+func connectivityEpoch*(owner: NodeService): uint32 {.requires: owner.isOpen.} =
+  ## Packet certainty requires this accepted epoch to match finalized state and the observed local clock.
+  owner.node.connectivityEpoch
 proc preimageNeighbour*(owner: NodeService, peer: NodePeer): bool =
   ## Gossip requires both real validator roles and the accepted epoch-gated grid; ordinary UP0 eligibility is insufficient.
   owner.isOpen and owner.node.isValidator and owner.node.isValidator(peer) and

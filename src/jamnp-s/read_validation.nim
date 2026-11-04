@@ -109,7 +109,7 @@ proc kind*(reply: CheckedReadReply): ReadKind {.requires: reply.valid.} =
   of CheckedKind.Report: ReadKind.Report
   of CheckedKind.State: ReadKind.State
   of CheckedKind.Preimage: ReadKind.Preimage
-  of CheckedKind.Acknowledgment: ReadKind.PreimageAnnouncement
+  of CheckedKind.Acknowledgment: reply.checkedData.request.kind
 proc request*(reply: CheckedReadReply): ReadRequest {.requires: reply.valid.} =
   ## Retain the exact query whose count, direction, range or content identity was checked.
   reply.checkedData.request
@@ -402,7 +402,7 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
   of ReadKind.Report: checkReport(request, wire, source)
   of ReadKind.State: checkState(request, wire, source, limits)
   of ReadKind.Preimage: checkPreimage(request, wire)
-  of ReadKind.PreimageAnnouncement:
+  of ReadKind.PreimageAnnouncement, ReadKind.TicketProxy, ReadKind.TicketDistribution:
     if wire.len != 0: ReadVerificationResult[CheckedReadReply](
         status: ReadVerificationError.InvalidFormat)
     else: ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.None,

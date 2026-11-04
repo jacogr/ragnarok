@@ -172,6 +172,8 @@ proc serveCanonicalRead*(view: ChainView, request: ReadRequest): ReadResult[Read
   ## One full-view host entry point returns only frozen transport bytes, never a retained graph.
   if not request.valid: return readFailure[ReadReply](ReadError.InvalidRequest)
   case request.kind
+  of ReadKind.TicketProxy, ReadKind.TicketDistribution:
+    readFailure[ReadReply](ReadError.InvalidRequest) # These uploads require typed ticket admission, never a generic canonical-read acknowledgment.
   of ReadKind.PreimageAnnouncement: announcementReply(view, request)
   of ReadKind.Report: reportReply(view, request)
   of ReadKind.State: stateReply(view, request)

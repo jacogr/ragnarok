@@ -183,6 +183,13 @@ func peerCount*(owner: NodeConnections): int =
   ## Count current policy reservations; pending physical replacements own no duplicate reservation.
   owner.policy.count(PeerClass.Validator)+owner.policy.count(PeerClass.Builder)+owner.policy.count(
       PeerClass.Other)
+func localIdentity*(owner: NodeConnections): StateEdKey {.requires: owner.opened.} =
+  ## Public identity comes from the validated local certificate; no private key bytes leave the transport.
+  owner.local
+func connectivityEpoch*(owner: NodeConnections): uint32 {.requires: owner.opened.} =
+  ## Return the accepted epoch after finality/delay gating, never a best-head or peer-announced epoch.
+  let selected = owner.policy.topology
+  selected.slot div selected.epochSlots
 func isValidator*(owner: NodeConnections): bool =
   ## Cached accepted topology determines local transport role without touching canonical state in callbacks.
   owner.opened and owner.localValidator

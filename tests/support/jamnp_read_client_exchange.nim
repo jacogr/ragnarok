@@ -104,6 +104,8 @@ proc exchangeClient*(kind: ReadKind, payload, response: seq[byte],
   server.expected = case kind
     of ReadKind.Blocks: @[128'u8, 37, 0, 0, 0]
     of ReadKind.State: @[129'u8, 98, 0, 0, 0]
+    of ReadKind.TicketProxy: @[131'u8, 21, 3, 0, 0]
+    of ReadKind.TicketDistribution: @[132'u8, 21, 3, 0, 0]
     of ReadKind.Report: @[136'u8, 32, 0, 0, 0]
     of ReadKind.PreimageAnnouncement: @[142'u8, 40, 0, 0, 0]
     of ReadKind.Preimage: @[143'u8, 32, 0, 0, 0]
