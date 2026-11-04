@@ -52,7 +52,8 @@ def blob(path):
 def published():
     result=[]
     for chain in ('tiny','full'):
-        for name in ('same_round_storage_isolation-1','same_round_storage_isolation-2'):
+        for name in ('same_round_storage_isolation-1','same_round_storage_isolation-2',
+                     'discarded_junior_keeps_provisions-1'):
             source=blob(f'stf/accumulate/{chain}/{name}.json')
             for phase in ('pre_state','post_state'):
                 for account in source[phase]['accounts']:
