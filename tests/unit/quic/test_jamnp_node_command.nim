@@ -87,6 +87,7 @@ proc main() {.raises.} =
     "--node-finalized", hex(array[32, byte](hash))], defaultOptions)
   assert defaultOptions.argument(6) == "0", "ordinary node lifetime defaults to foreground signal shutdown"
   assert commandHelp("node").contains("--node-finalized")
+  assert commandHelp("node").contains("--node-validator-seed")
   assert not parseOptions(@["node", "--node-finalized", hex(array[32, byte](hash))], defaultOptions)
   assert not parseOptions(@["node", "--with-state"], defaultOptions)
   assert not parseOptions(@["node", "--with-state", "--node-finalized", "00"], defaultOptions)
@@ -103,6 +104,26 @@ proc main() {.raises.} =
   assert parseOptions(finite, rejected)
   assert runNodeCommand(rejected) == NodeCommandError.Stopped,
     "a finite monotonic deadline retires the foreground actor without inventing progress"
+  var signing = finite
+  signing.add("--node-validator-seed")
+  signing.add("node-validator.seed")
+  for extent in [0, 31, 33]:
+    writeFile("node-validator.seed", repeat("x", extent))
+    assert parseOptions(signing, rejected)
+    assert rejected.argumentCount == 7 and rejected.argument(7) == "node-validator.seed"
+    assert runNodeCommand(rejected) == NodeCommandError.InvalidSigner
+  writeFile("node-validator.seed", repeat("x", 32))
+  assert parseOptions(signing, rejected)
+  assert runNodeCommand(rejected) == NodeCommandError.Stopped,
+    "an explicit exact-width seed configures optional signing and still retires before foreground shutdown"
+  signing[signing.len-1] = "missing-validator.seed"
+  assert parseOptions(signing, rejected)
+  assert runNodeCommand(rejected) == NodeCommandError.InvalidSigner
+  signing[signing.len-1] = ""
+  assert not parseOptions(signing, rejected)
+  signing[signing.len-1] = repeat("x", 4097)
+  assert not parseOptions(signing, rejected)
+  assert not parseOptions(@["server", "--node-validator-seed", "node-validator.seed"], rejected)
   var context = RunContext(options: options, outcome: NodeCommandError.Uninitialized, done: 0)
   var thread = default(RawThread)
   thread.create(run, addr context)

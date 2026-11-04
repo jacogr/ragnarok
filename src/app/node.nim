@@ -3,16 +3,16 @@
 
 ## Stable application node host manages inbound replies and bounded checked outbound reads through exact Services leases.
 ## Close this host before retiring Services storage; peer claims never select local finality.
-import std/[monotimes, times]
+import std/[assertions, monotimes, times]
 import ./services
 import ./preimage_followup
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
     report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission,
-    ticket_packet, ticket_validation, ticket_pool, ticket_forwarding]
+    ticket_packet, ticket_validation, ticket_pool, ticket_forwarding, ticket_origin]
 import ../chain/[provider, genesis]
 import ../codec/state/[safrole, consensus, service_values, requests]
-import ../codec/bounded
+import ../codec/[bounded, tickets]
 
 type
   CheckedRequestIdentity = ref object ## Host-only retained namespace prevents stale tickets matching a reopened or foreign host.
@@ -65,6 +65,13 @@ type
     tickets: PendingTicketPool
     forwarding: TicketForwarding
     connectivityApplied: StateTime
+    origins: TicketOrigins
+    producing, productionContextReady: bool
+    productionWorker: ProofWorkerTicket
+    productionContext: array[32, byte]
+    productionKeyVersion, generated: uint64
+    productionAttempt, productionLimit: int
+    lastProduced: NetworkTicketResult[CheckedNetworkTicket]
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
 proc `=dup`*(source: ApplicationNode): ApplicationNode {.error.}
@@ -80,6 +87,9 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.reports)
   `=wasMoved`(owner.tickets)
   `=wasMoved`(owner.forwarding)
+  `=wasMoved`(owner.origins)
+  `=wasMoved`(owner.productionWorker)
+  `=wasMoved`(owner.lastProduced)
   `=wasMoved`(owner.preimages)
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.checkedPeer)
@@ -105,12 +115,30 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.reports)
   `=destroy`(owner.tickets)
   `=destroy`(owner.forwarding)
+  `=destroy`(owner.origins)
+  `=destroy`(owner.productionWorker)
+  `=destroy`(owner.lastProduced)
   `=destroy`(owner.preimages)
   `=destroy`(owner.gossip)
   `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
+func ticketProductionActive*(owner: ApplicationNode): bool =
+  ## Scalar observation grants no cancellation or key access.
+  owner.producing
+func generatedTickets*(owner: ApplicationNode): uint64 =
+  ## Count fresh checked candidates successfully retained for local proxy work or queued for remote first-step delivery.
+  owner.generated
+func originatedTickets*(owner: ApplicationNode): uint64 =
+  ## Observe complete CE131 transport acknowledgments without canonical inclusion authority.
+  owner.origins.acknowledged
+func ticketOriginActive*(owner: ApplicationNode): int =
+  ## At most two exact Native first-step requests are charged independently of CPU work.
+  owner.origins.sending
+proc lastProducedTicket*(owner: ApplicationNode): NetworkTicketResult[CheckedNetworkTicket] =
+  ## Return the last complete cryptographic outcome, which is separate from fresh-clock/pool/delivery admission and contains no secret or source owner.
+  owner.lastProduced
 func ticketForwardingCount*(owner: ApplicationNode): int =
   ## Observe retained proxy intents without borrowing canonical state.
   owner.forwarding.len
@@ -387,6 +415,14 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preimages.reset()
   owner.preferFetch = false
   owner.preferPreimage = false
+  owner.producing = false
+  owner.productionContextReady = false
+  owner.productionWorker = default(ProofWorkerTicket)
+  owner.lastProduced = default(NetworkTicketResult[CheckedNetworkTicket])
+  owner.productionAttempt = 0
+  owner.productionLimit = 0
+  owner.productionKeyVersion = 0
+  owner.generated = 0
   owner.clearChecked()
   owner.checkedIdentity = CheckedRequestIdentity(marker: 1)
   owner.checkedNext = 0
@@ -429,6 +465,13 @@ proc close*(owner: var ApplicationNode) =
   ## Cancel/join only this host's exact worker before retiring native callbacks and the Services borrow.
   owner.streams.stop()
   let services = owner.services
+  if owner.producing and services != nil:
+    if services[].cancelStateProof(owner.productionWorker):
+      services[].stopStateProofs() # Only successful exact cancellation permits joining a secret-borrowing job.
+  owner.producing = false
+  owner.productionWorker = default(ProofWorkerTicket)
+  owner.productionContextReady = false
+  owner.lastProduced = default(NetworkTicketResult[CheckedNetworkTicket])
   if owner.pending and services != nil:
     if services[].cancelStateProof(owner.workerTicket):
       services[].stopStateProofs() # Successful exact-ticket cancellation proves this serialized host owns the joined job.
@@ -438,6 +481,7 @@ proc close*(owner: var ApplicationNode) =
   if services != nil: owner.preimages.close(services[], owner.streams)
   owner.gossip.close(owner.streams)
   owner.forwarding.close(owner.streams)
+  owner.origins.close(owner.streams)
   owner.streams.close()
   owner.clearChecked()
   owner.reports.clear()
@@ -525,6 +569,76 @@ proc dispatchTickets(owner: var ApplicationNode, now: StateTime, clock: MonoTime
     return
   if owner.forwarding.advance(owner.streams, selected.value, now, owner.connectivityApplied):
     discard owner.forwarding.dispatch(owner.streams, now, clock)
+proc finishProduction(owner: var ApplicationNode, outcome: NetworkTicketResult[
+    CheckedNetworkTicket], now: StateTime): bool =
+  ## A genuine generated proof still needs current finalized context/inclusion and the original first-step window.
+  if outcome.error != NetworkTicketError.None: return false
+  let services = owner.services
+  if services == nil or not services[].stateProofAvailable: return false
+  if services[].ticketSigningVersion != owner.productionKeyVersion: return false
+  let source = services[].currentTicketSource()
+  if source.error != NetworkTicketError.None: return false
+  if outcome.value.contextHash != source.value.contextHash or source.value.includes(
+      outcome.value.identifier): return false
+  if not owner.origins.advance(owner.streams, source.value, now,
+      owner.connectivityApplied): return false
+  let local = owner.streams.localIdentity
+  if array[32, byte](outcome.value.proxy) == array[32, byte](local):
+    if owner.tickets.advance(source.value, now) != TicketPoolError.None: return false
+    let retained = owner.tickets.retain(outcome.value, now)
+    if retained notin [TicketPoolError.None, TicketPoolError.Duplicate]: return false
+    if owner.forwarding.advance(owner.streams, source.value, now, owner.connectivityApplied):
+      return owner.forwarding.offer(outcome.value) # Self-proxies skip CE131 and keep the independent later CE132 delay.
+    return false
+  owner.origins.offer(outcome.value)
+proc dispatchOrigins(owner: var ApplicationNode, now: StateTime, clock: MonoTime) =
+  ## Fresh-source staging aliases retire before another shared CPU activation can borrow signer/source storage.
+  if owner.origins.len == 0: return
+  let services = owner.services
+  if services == nil or not services[].stateProofAvailable: return
+  let source = services[].currentTicketSource()
+  if source.error != NetworkTicketError.None:
+    owner.origins.close(owner.streams)
+    return
+  if owner.origins.advance(owner.streams, source.value, now, owner.connectivityApplied):
+    discard owner.origins.dispatch(owner.streams, now, clock)
+proc prepareProduction(owner: var ApplicationNode, now: StateTime): bool =
+  ## Only scalar scheduling decisions escape selected-source capture; no source or signer alias survives admission.
+  let services = owner.services
+  if services == nil or not services[].hasTicketSigner or not services[].stateProofAvailable: return false
+  if not owner.streams.isValidator: return false
+  let source = services[].currentTicketSource()
+  if source.error != NetworkTicketError.None: return false
+  if not source.value.allowsTime(now, owner.streams.connectivityEpoch): return false
+  let duration = source.value.epochLength
+  let first = uint64(uint32(owner.connectivityApplied))+uint64(max(duration div 60, 1'u32))
+  let finish = uint64(source.value.epoch)*uint64(duration)+uint64(source.value.lotteryTail div 2)
+  if uint64(uint32(now)) < first or uint64(uint32(now)) >= finish: return false
+  if uint32(owner.connectivityApplied) div duration != source.value.epoch: return false
+  let context = source.value.contextHash
+  let version = services[].ticketSigningVersion
+  if not owner.productionContextReady or owner.productionContext != context or
+      owner.productionKeyVersion != version:
+    owner.origins.close(owner.streams)
+    owner.productionContext = context
+    owner.productionKeyVersion = version
+    owner.productionAttempt = 0
+    owner.productionLimit = source.value.networkAttempts
+    owner.productionContextReady = true
+  owner.productionAttempt < owner.productionLimit
+proc submitProduction(owner: var ApplicationNode, now: StateTime): bool {.raises.} =
+  ## At most two epoch attempts share the existing worker; all staging activations retire before this exact submission.
+  if owner.producing or not owner.prepareProduction(now): return false
+  let services = owner.services
+  if services == nil: return false
+  assert owner.productionAttempt >= 0 and owner.productionAttempt < 2
+  let admitted = services[].beginTicketProduction(owner.streams.localIdentity, now,
+      owner.streams.connectivityEpoch, TicketAttempt(uint8(owner.productionAttempt)))
+  if admitted.error != StateProofAdmissionError.None: return false
+  owner.productionWorker = admitted.value
+  owner.producing = true
+  inc owner.productionAttempt # Failed native signing still consumes its bounded local attempt for this context/key configuration.
+  true
 proc beginIncoming(owner: var ApplicationNode, task: NodeReadTask,
     now: StateTime): bool {.raises.} =
   ## Each specialized admission retires staging aliases before its one exact worker can execute.
@@ -560,6 +674,8 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   let services = owner.services
   if services == nil: return false
   owner.tickets.expire(now) # Host-only proof owners may retire while a different job holds immutable source/context aliases.
+  owner.origins.expire(owner.streams, now)
+  owner.origins.poll(owner.streams, clock)
   owner.forwarding.expire(owner.streams, now)
   owner.forwarding.poll(owner.streams, clock)
   owner.gossip.poll(owner.streams, clock)
@@ -570,6 +686,17 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.receiveChecked(clock)
   owner.collectChecked()
   if not services[].stateProofAvailable: owner.serveDetached()
+  if owner.producing:
+    let phase = services[].stateProofPhase
+    if phase in [ProofWorkerPhase.Queued, ProofWorkerPhase.Running]: return true
+    if phase == ProofWorkerPhase.Done:
+      let completed = services[].collectStateProof(owner.productionWorker)
+      if completed.kind == ProofWorkerCompletionKind.TicketProduced:
+        owner.lastProduced = completed.producedTicketValue
+        if owner.finishProduction(completed.producedTicketValue, now):
+          if owner.generated < high(uint64): inc owner.generated
+    owner.producing = false
+    owner.productionWorker = default(ProofWorkerTicket) # A stale/foreign completion cannot release another lease or expose a produced prefix.
   if owner.pending:
     if not owner.cancelled and not owner.streams.readLive(owner.readTicket):
       owner.cancelled = services[].cancelStateProof(owner.workerTicket)
@@ -611,8 +738,10 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if not services[].stateProofAvailable: return true # Foreign RPC/preparation/publication leases remain untouched.
   if owner.refresh(now) != NodeError.None: return false
   owner.refreshTickets(now) # All detached source aliases retire before any subsequent worker admission.
+  owner.dispatchOrigins(now, clock)
   owner.dispatchTickets(now, clock) # Finality/context checks precede every actual proxy transmission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
+  if owner.submitProduction(now): return true # Optional production consumes at most two turns per epoch/context, then ordinary read arbitration resumes.
   if owner.preferFetch and owner.preimages.submitWaiting(services[]):
     owner.preferFetch = false
     return true

@@ -19,7 +19,9 @@ type
     flows*: array[16, ProbeFlow]
     issued, opened: int
     served*: int
-    serveReads, holdReplyFin: bool
+    serveReads, holdReplyFin, ticketReads: bool
+    ticketEpoch: uint32
+    ticketSelector: byte
     expectedRead, readReply: seq[byte]
     expected: array[32, byte]
 proc `=copy`(destination: var NodeProbe, source: NodeProbe) {.error.}
@@ -67,14 +69,24 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
         flow.receivedFin = true
         readDone(stream)
         if flow.remote:
-          assert flow.input == probe.expectedRead, "application client sends the independent literal request before FIN"
+          if probe.ticketReads:
+            assert flow.input.len == 794 and flow.input[0] in [131'u8, 132]
+            assert probe.ticketSelector == 0 or flow.input[0] == probe.ticketSelector
+            assert flow.input[1] == 21 and flow.input[2] == 3 and flow.input[3] == 0 and flow.input[
+                4] == 0
+            for index in 0..<4:
+              assert flow.input[5+index] == byte((probe.ticketEpoch shr (index*8)) and 255)
+            assert flow.input[9] <= 1 # Full proof verification happens outside callbacks against an independent source.
+          else:
+            assert flow.input == probe.expectedRead, "application client sends the independent literal request before FIN"
           inc probe.served
           flow.enabled = true
           wantWrite(stream, 1) # Return only the configured literal reply; no canonical graph is present in this raw responder.
       else: flow.reset = true # Reset must never masquerade as an empty successful message.
       wantRead(stream, 0)
     else:
-      assert amount <= int64(bytes.len) and flow.input.len+int(amount) <= 8388608
+      let maximum = if probe.ticketReads and flow.remote: 794 else: 8388608
+      assert amount <= int64(bytes.len) and flow.input.len+int(amount) <= maximum
       for index in 0..<int(amount): flow.input.add(bytes[index])
   of 2:
     if flow.offset < flow.output.len:
@@ -125,9 +137,20 @@ proc authenticated*(probe: NodeProbe): bool =
   probe.transport.authenticatedConnections > 0
 proc expectRead*(probe: var NodeProbe, request, reply: seq[byte], holdFin = false) =
   ## Configure an independent raw response before a node initiates a CE stream on this same connection.
+  probe.ticketReads = false
   probe.holdReplyFin = holdFin
   probe.serveReads = true
   probe.expectedRead = request
+  probe.readReply = reply
+proc expectTickets*(probe: var NodeProbe, epoch: uint32, selector = 0'u8,
+    reply: seq[byte] = @[], holdFin = false) =
+  ## Independently bound the literal ticket envelope; returned proof bytes are checked by the test outside Native callbacks.
+  assert selector in [0'u8, 131, 132]
+  probe.ticketReads = true
+  probe.ticketEpoch = epoch
+  probe.ticketSelector = selector
+  probe.holdReplyFin = holdFin
+  probe.serveReads = true
   probe.readReply = reply
 proc issue*(probe: var NodeProbe, wire: seq[byte], persistent = false, enabled = true): int =
   ## Intent data is installed before the native engine may synchronously report its new stream.

@@ -15,7 +15,7 @@ import ../crypto/primitives
 type
   NetworkTicketError* {.pure.} = enum ## Failed/default outcomes expose only reasons and actual failed child causes.
     Uninitialized, None, InvalidPacket, InvalidConfig, NoSource, InvalidState, InvalidEpoch,
-    InvalidWindow, WrongRecipient, WrongProxy, AlreadyIncluded, LimitExceeded, Exhausted,
+    InvalidWindow, WrongRecipient, WrongProxy, AlreadyIncluded, LimitExceeded, Exhausted, NoSigner,
     StateFailure, RingFailure, HashFailure
   NetworkTicketResult*[T] = object ## Complete success or a genuine child failure selects exactly its private payload.
     case status: NetworkTicketError
@@ -32,6 +32,7 @@ type
     root: StateRingRoot
     entropy2: StateEntropyWord
     previous, current, pending: seq[StateEdKey]
+    pendingBs: seq[StateBsKey]
     included: seq[WinningTicketId]
     fingerprint: array[32, byte]
   TicketSource* = object ## Only a selected finalized complete snapshot can construct this detached source owner.
@@ -144,6 +145,13 @@ proc currentCount*(source: TicketSource): int {.requires: source.valid.} =
 proc pendingCount*(source: TicketSource): int {.requires: source.valid.} =
   ## Network proof/attempt bounds use actual next population, not maximum3*cores.
   source.sourceData.pending.len
+proc networkAttempts*(source: TicketSource): int {.requires: source.valid.} =
+  ## The pinned0/1 domain is further bounded by the GP ceiling for the actual next population.
+  let selected = source.sourceData
+  let twice = uint64(selected.duration)*2
+  let ceiling = twice div uint64(selected.pending.len)+uint64(ord(twice mod uint64(
+      selected.pending.len) != 0))
+  int(min(2'u64, ceiling))
 proc currentAt*(source: TicketSource, index: int): StateEdKey {.requires: source.valid and index >=
     0 and index < source.currentCount.} =
   ## Copy an owner-bound current-roster recipient without exposing mutable sequence storage.
@@ -257,9 +265,11 @@ proc captureTicketSource*(finalized: BlockSnapshotResult): NetworkTicketResult[T
           stateReason: current.stateError)
     return ticketFailure[TicketSource](current.error)
   var pending = newSeq[StateEdKey](info.validators)
+  var pendingBs = newSeq[StateBsKey](info.validators)
   for index in 0..<pending.len:
-    pending[index] = pendingValidatorAt(captured.value.snapshot, StateValidatorIndex(uint64(
-        index))).value.ed25519
+    let record = pendingValidatorAt(captured.value.snapshot, StateValidatorIndex(uint64(index))).value
+    pending[index] = record.ed25519
+    pendingBs[index] = record.bandersnatch
   var included = newSeq[WinningTicketId](info.accumulated)
   for index in 0..<included.len:
     included[index] = accumulatedTicketAt(captured.value.snapshot, SafroleStateIndex(uint64(
@@ -285,6 +295,8 @@ proc captureTicketSource*(finalized: BlockSnapshotResult): NetworkTicketResult[T
     identity.appendU32(uint32(keys.len))
     for key in keys:
       for octet in array[32, byte](key): identity.add(octet)
+  for key in pendingBs:
+    for octet in array[32, byte](key): identity.add(octet)
   let hashed = blake2b256(identity)
   if hashed.error != CryptoError.None:
     return NetworkTicketResult[TicketSource](status: NetworkTicketError.HashFailure,
@@ -292,8 +304,8 @@ proc captureTicketSource*(finalized: BlockSnapshotResult): NetworkTicketResult[T
   let selected = TicketSourceData(source: snapshot.blockHash, posterior: snapshot.stateRoot,
       epoch: snapshot.slot div uint32(duration), duration: uint32(duration), tail: uint32(tail),
       sourceSlot: snapshot.slot, cores: int(cores), root: info.root, entropy2: entropy.value.value[2],
-      previous: previous.value, current: current.value, pending: pending, included: included,
-          fingerprint: array[32, byte](hashed.value))
+      previous: previous.value, current: current.value, pending: pending, pendingBs: pendingBs,
+          included: included, fingerprint: array[32, byte](hashed.value))
   NetworkTicketResult[TicketSource](status: NetworkTicketError.None, completed: TicketSource(
       data: selected))
 proc verifyNetworkTicket*(source: TicketSource, packet: TicketPacket,
@@ -362,3 +374,65 @@ proc verifyNetworkTicket*(source: TicketSource, packet: TicketPacket,
           distributionEpoch: selected.epoch, duration: selected.duration,
           context: selected.fingerprint,
           source: selected.source)))
+
+proc produceNetworkTicket*(source: TicketSource, key: BsKey, local: StateEdKey,
+    now: StateTime, connectivityEpoch: uint32, attempt: TicketAttempt): NetworkTicketResult[
+        CheckedNetworkTicket] =
+  ## Real registered-key signing is CPU-only; the resulting sealed proof binds its selected proxy rather than granting local canonical authority.
+  if not source.allowsTime(now, connectivityEpoch):
+    return ticketFailure[CheckedNetworkTicket](NetworkTicketError.NoSource)
+  let selected = source.sourceData
+  if selected.epoch == high(uint32): return ticketFailure[CheckedNetworkTicket](
+      NetworkTicketError.InvalidEpoch)
+  if uint8(attempt) > 1: return ticketFailure[CheckedNetworkTicket](
+      NetworkTicketError.InvalidPacket)
+  let twice = uint64(selected.duration)*2
+  let attempts = twice div uint64(selected.pending.len)+uint64(ord(twice mod uint64(
+      selected.pending.len) != 0))
+  if uint64(uint8(attempt)) >= attempts:
+    return ticketFailure[CheckedNetworkTicket](NetworkTicketError.InvalidPacket)
+  let public = publicKey(key)
+  if public.error != BsError.None:
+    return NetworkTicketResult[CheckedNetworkTicket](status: NetworkTicketError.RingFailure,
+        ringReason: public.error)
+  let publicBytes = array[32, byte](public.value)
+  var signer = -1
+  for index in 0..<selected.pending.len:
+    let sameIdentity = sameKey(selected.pending[index], local)
+    let samePublic = array[32, byte](selected.pendingBs[index]) == publicBytes
+    if sameIdentity and samePublic:
+      signer = index
+      break # An arbitrary TLS identity or unrelated private key cannot sign for a registered position.
+  if signer < 0: return ticketFailure[CheckedNetworkTicket](NetworkTicketError.WrongRecipient)
+  assert selected.pendingBs.len > 0 and selected.pendingBs.len <= 1023
+  var members = newSeq[byte](selected.pendingBs.len*32)
+  for index in 0..<selected.pendingBs.len:
+    let member = array[32, byte](selected.pendingBs[index])
+    for octet in 0..<32: members[index*32+octet] = member[octet]
+  let setup = newSetup(selected.cores*3)
+  if setup.error != BsError.None:
+    return NetworkTicketResult[CheckedNetworkTicket](status: NetworkTicketError.RingFailure,
+        ringReason: setup.error)
+  var context = default(array[48, byte])
+  for index, character in "jam_ticket_seal": context[index] = byte(character)
+  let entropy = array[32, byte](selected.entropy2)
+  for index in 0..<32: context[15+index] = entropy[index]
+  context[47] = byte(attempt)
+  let signed = signRing(setup.value, key, signer, members, context, [])
+  if signed.error != BsError.None:
+    return NetworkTicketResult[CheckedNetworkTicket](status: NetworkTicketError.RingFailure,
+        ringReason: signed.error)
+  let verified = verifyRing(setup.value, BsRingRoot(array[144, byte](selected.root)), signed.value,
+      context, [])
+  if verified.error != BsError.None:
+    return NetworkTicketResult[CheckedNetworkTicket](status: NetworkTicketError.RingFailure,
+        ringReason: verified.error)
+  let output = array[32, byte](verified.value)
+  var selector = 0'u32
+  for index in 28..<32: selector = (selector shl 8) or uint32(output[index])
+  let proxy = selected.pending[int(uint64(selector) mod uint64(selected.pending.len))]
+  let packet = ticketPacket(TicketEpoch(selected.epoch+1), Ticket(attempt: attempt,
+      proof: TicketProof(array[784, byte](signed.value))))
+  assert packet.error == TicketPacketError.None
+  verifyNetworkTicket(source, packet.value, TicketRecipient(local: proxy, peer: local, now: now,
+      connectivityEpoch: connectivityEpoch, delivery: TicketDelivery.Proxy))

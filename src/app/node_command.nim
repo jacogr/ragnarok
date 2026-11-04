@@ -3,9 +3,11 @@
 
 ## Ordinary authenticated full-state node loop with explicitly trusted local finality.
 ## Stable actor storage retires before Services; wall-clock authority never comes from peers.
-import std/[monotimes, times]
+import std/[monotimes, times, syncio, strutils]
 import ./[options, services, node as application_node]
 import ./cli/commands
+import ./proof/ticket_production
+import ../crypto/primitives
 import ../jamnp-s/[connections, node as node_streams]
 import ../chain/[provider, genesis, parameters]
 import ../codec/[bounded, header, assurances, tickets]
@@ -16,7 +18,7 @@ import ../lib/[logging, stop_signal]
 type
   NodeCommandError* {.pure.} = enum ## Only Stopped denotes completed signal/deadline shutdown; setup failures grant no running node.
     Uninitialized, Stopped, InvalidConfig, StartupFailure, UnknownFinality, InvalidSource,
-    InvalidClock, NetworkFailure
+    InvalidClock, NetworkFailure, InvalidSigner
   NodeClockError* {.pure.} = enum ## Default and invalid clocks expose no narrowed timeslot.
     Uninitialized, None, BeforeCommonEra, InvalidPeriod, Overflow
   NodeClockResult* = object ## A successful complete conversion alone grants the local JAM timeslot.
@@ -47,7 +49,10 @@ proc configuration(options: Options, finalized: var BlockHash, port: var uint16,
   port = 0
   timeout = 0
   if not options.valid or not options.stateEnabled or options.lightMode: return false
-  if options.argumentCount != 6 or options.argument(1) != "node": return false
+  if options.argumentCount notin [6, 7] or options.argument(1) != "node": return false
+  if options.argumentCount == 7:
+    let path = options.argument(7)
+    if path.len == 0 or path.len > 4096 or path.find(char(0)) >= 0: return false
   var number = 0'u64
   if not unsignedValue(options.argument(2), number) or number < 1 or number > 65535: return false
   port = uint16(number)
@@ -81,6 +86,20 @@ proc policy(services: Services, limits: var SafroleStateConfig, period: var uint
     validators: ElementLimit(cores*3), maxBytes: ByteLimit(1048576)),
     epochSlots: EpochSlots(epoch), maxAccumulator: ElementLimit(4096), maxBytes: ByteLimit(1048576))
   true
+proc configureSignerFile(services: var Services, path: string): bool {.raises.} =
+  ## Explicit optional input reads at most33 bytes and wipes all borrowed seed storage on every return/exception path.
+  var seed = default(array[33, byte])
+  defer: clearSecret(seed)
+  try:
+    var input = default(File)
+    if not open(input, path, fmRead): return false
+    defer: close(input)
+    let count = readBuffer(input, addr seed[0], seed.len)
+    if count != 32: return false # Short and suffixed inputs cannot silently select a different signing identity.
+    return services.configureTicketSignerSeed(seed.toOpenArray(0, 31)).error ==
+        TicketSignerError.None
+  except:
+    return false # The typed command outcome reports local configuration failure without exposing file or key contents.
 proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   ## One foreground owner polls authenticated topology/UP0/reads with optional services until signal or finite deadline.
   var finalized = default(BlockHash)
@@ -93,6 +112,8 @@ proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   var services = default(Services)
   defer: services.close()
   if not services.start(options, "node"): return NodeCommandError.StartupFailure
+  if options.argumentCount == 7:
+    if not services.configureSignerFile(options.argument(7)): return NodeCommandError.InvalidSigner
   if services.publishFinalized(finalized) != ViewFinalizeError.None:
     return NodeCommandError.UnknownFinality # Neither best nor recovered startup state silently supplies trusted finality.
   var limits = default(SafroleStateConfig)
