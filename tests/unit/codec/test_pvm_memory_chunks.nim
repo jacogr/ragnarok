@@ -232,16 +232,146 @@ proc zeroCycle() =
     for offset in 0..<4096: assert gone.bytes[offset] == 0 and restored.bytes[offset] == 0
   assert uint32(writablePageCount(blank, PageIndex(16), PageIndex(20)).value) == 0
 
+proc replacementFromTemporary(different: bool): Memory =
+  ## The returned successor must own its shared bytes after both caller image and parent retire.
+  var image = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+  for offset in 0..<4096:
+    # The expected pattern belongs to the fixture, independently of any returned page storage.
+    image.bytes[offset] = byteAt(offset)
+  let parent = captureMemory([image], PageLimit(1)).value
+  if different:
+    # Sparse replacement retains some parent payload while copying the authored difference.
+    image.bytes[700] = image.bytes[700] xor 255'u8
+  withReplacedPages(parent, [image]).value
+
+proc replacementLifetimeCycle() =
+  ## Equal and sparse successors remain complete after the temporary parent scope has ended.
+  for different in [false, true]:
+    let successor = replacementFromTemporary(different)
+    let observed = pageImage(successor, PageIndex(16)).value
+    assert observed.access == PageAccess.ReadWrite
+    for offset in 0..<4096:
+      # Check all retained payloads, including the last chunk and the independently copied byte.
+      let expected = if different and offset == 700: byteAt(offset) xor 255'u8 else: byteAt(offset)
+      assert observed.bytes[offset] == expected
+
+proc replacementCycle() =
+  ## Whole-page public observations cover equal, one-chunk, cross-chunk and all-chunk replacement ownership.
+  var input = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+  for offset in 0..<4096:
+    # Nonuniform bytes expose stale neighboring payloads in every retained generation.
+    input.bytes[offset] = byteAt(offset)
+  let original = captureMemory([input], PageLimit(1)).value
+  for variant in 0..<4:
+    # Explicit equal-byte replacement must still publish a fresh page identity and delta slot.
+    var replacement = input
+    for offset in 0..<4096:
+      # Independent byte equations author exactly zero, one, two or all eight changed chunks.
+      if (variant == 1 and offset == 700) or
+          (variant == 2 and offset >= 509 and offset < 517) or variant == 3:
+        replacement.bytes[offset] = byteAt(offset) xor 255'u8
+    let expected = replacement.bytes
+    let changed = withReplacedPages(original, [replacement]).value
+    assert not samePage(original, changed, PageIndex(16))
+    assert changedMemoryPageSlots(original, changed).value == @[MemoryPageSlot(0)]
+    assert changedMemoryPageSlots(changed, original).value == @[MemoryPageSlot(0)]
+    for offset in 0..<4096:
+      # Mutating the caller after construction must never alter either published owner.
+      replacement.bytes[offset] = 0
+    let predecessor = pageImage(original, PageIndex(16)).value
+    let observed = pageImage(changed, PageIndex(16)).value
+    for offset in 0..<4096:
+      assert predecessor.bytes[offset] == byteAt(offset)
+      assert observed.bytes[offset] == expected[offset]
+  # A literal little-endian scalar straddles a chunk boundary in the replacement image.
+  var crossed = input
+  for octet in 0..<8:
+    crossed.bytes[509+octet] = byte((0x8877665544332211'u64 shr (octet*8)) and 255)
+  let crossing = withReplacedPages(original, [crossed]).value
+  assert uint64(load(crossing, MemoryAddress(65536+509), AccessWidth(
+      8)).value) ==
+    0x8877665544332211'u64
+  let predecessor = pageImage(original, PageIndex(16)).value
+  for offset in 0..<4096:
+    assert predecessor.bytes[offset] == byteAt(offset)
+  # A later invalid item must refuse the full replacement before any valid prefix becomes observable.
+  var absent = input
+  absent.index = PageIndex(17)
+  assert withReplacedPages(original, [crossed, absent]).error ==
+      MachineError.InvalidRange
+  assert withReplacedPages(original, [crossed, crossed]).error ==
+      MachineError.UnsortedPages
+  var wrongAccess = crossed
+  wrongAccess.access = PageAccess.ReadOnly
+  assert withReplacedPages(original, [wrongAccess]).error ==
+      MachineError.InvalidRange
+
+proc replacementWriterCycle() =
+  ## Sharing from a sealed writer epoch must survive later writes through both the old and replacement writer.
+  var input = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
+    bytes: default(array[4096, byte]))
+  for offset in 0..<4096:
+    # Track all bytes, including untouched chunks shared with the original captured memory.
+    input.bytes[offset] = byteAt(offset)
+  let original = captureMemory([input], PageLimit(1)).value
+  let writer = newScalarMemoryWriter(original).value
+  assert store(writer, MemoryAddress(65536+509), AccessWidth(8),
+    RegisterValue(0x8877665544332211'u64)).error == MachineError.None
+  let sealed = snapshotMemory(writer).value
+  var replacement = pageImage(sealed, PageIndex(16)).value
+  replacement.bytes[1600] = replacement.bytes[1600] xor 255'u8
+  let replaced = withReplacedPages(sealed, [replacement]).value
+  replacement.bytes[0] = 0 # The replacement also owns its differing chunk independently of input mutation.
+  # Resume the original epoch in a shared formerly-private chunk and an untouched shared chunk.
+  assert store(writer, MemoryAddress(65536+509), AccessWidth(8), RegisterValue(
+      0)).error == MachineError.None
+  assert store(writer, MemoryAddress(65536+3000), AccessWidth(1), RegisterValue(
+      17)).error == MachineError.None
+  let later = snapshotMemory(writer).value
+  let nextWriter = newScalarMemoryWriter(replaced).value
+  assert store(nextWriter, MemoryAddress(65536+510), AccessWidth(2),
+      RegisterValue(0xffff)).error == MachineError.None
+  assert store(nextWriter, MemoryAddress(65536+1600), AccessWidth(1),
+      RegisterValue(33)).error == MachineError.None
+  let next = snapshotMemory(nextWriter).value
+  let a = pageImage(original, PageIndex(16)).value
+  let b = pageImage(sealed, PageIndex(16)).value
+  let c = pageImage(replaced, PageIndex(16)).value
+  let d = pageImage(later, PageIndex(16)).value
+  let e = pageImage(next, PageIndex(16)).value
+  for offset in 0..<4096:
+    # Authored literals define each generation independently of the memory implementation.
+    let initial = byteAt(offset)
+    let first = if offset >= 509 and offset < 517:
+        byte((0x8877665544332211'u64 shr ((offset-509)*8)) and 255)
+      else: initial
+    let second = if offset == 1600: first xor 255'u8 else: first
+    let resumed = if offset >= 509 and offset < 517: 0'u8
+      elif offset == 3000: 17'u8 else: first
+    let final = if offset == 510 or offset == 511: 255'u8
+      elif offset == 1600: 33'u8 else: second
+    assert a.bytes[offset] == initial and b.bytes[offset] == first
+    assert c.bytes[offset] == second and d.bytes[offset] == resumed and e.bytes[
+        offset] == final
+
 snapshotCycle()
 captureCycle()
 observationCycle()
 zeroCycle()
+replacementLifetimeCycle()
+replacementCycle()
+replacementWriterCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
   snapshotCycle() # Private chunk/header owners and every retained generation must retire without cycles.
   captureCycle()
   observationCycle()
   zeroCycle()
+  replacementLifetimeCycle()
+  replacementCycle()
+  replacementWriterCycle()
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_memory_chunks", 1000, before, after)
