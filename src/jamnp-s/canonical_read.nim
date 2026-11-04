@@ -1,11 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Complete canonical CE128/129/143 read backends. Run outside native callbacks under a host read
+## Complete canonical CE128/129/136/143 read backends. Run outside native callbacks under a host read
 ## lease; only frozen bounded wire replies survive publication. No light-state map is accepted.
 import std/assertions
 import ./[read_stream, block_service]
-import ../chain/[genesis, provider]
+import ../chain/[genesis, provider, reports]
 import ../codec/[bounded, natural]
 import ../codec/state/[layout, service_values]
 import ../state/[store, snapshot_proof, trie_proof]
@@ -125,10 +125,37 @@ proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply]
     appendFrame(wire, bytes)
     return captureReadReply(request, wire)
   readFailure[ReadReply](ReadError.Unavailable)
+proc reportReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
+  ## Reuse bounded selected-head C10/C14 retention; no report archive or peer-provided state authority is inferred.
+  if view.fuzzOnly: return readFailure[ReadReply](ReadError.InvalidRequest)
+  let payload = request.payload
+  var identity = default(array[32, byte])
+  for index in 0..<32: identity[index] = payload[index]
+  let found = view.reportAt(WorkReportHash(identity), ByteLimit(MaxReadReplyBytes-4))
+  case found.error
+  of ReportReadError.None:
+    let metadata = ownedReportInfo(found.value)
+    if metadata.error != OwnershipError.None: return readFailure[ReadReply](
+        ReadError.BackendFailure)
+    if metadata.value.consumed > MaxReadReplyBytes-4: return readFailure[ReadReply](
+        ReadError.LimitExceeded)
+    var body = newSeq[byte](metadata.value.consumed)
+    let encoded = encodeOwnedReport(found.value, body)
+    if encoded.error != OwnershipError.None or encoded.value != body.len:
+      return readFailure[ReadReply](ReadError.BackendFailure)
+    var wire: seq[byte] = @[]
+    appendFrame(wire, body) # CE136 carries the bare report, excluding guarantee slot, credentials and any sequence count.
+    captureReadReply(request, wire)
+  of ReportReadError.Missing, ReportReadError.Uninitialized:
+    readFailure[ReadReply](ReadError.Unavailable) # Missing content resets the exact requesting stream.
+  of ReportReadError.LimitExceeded: readFailure[ReadReply](ReadError.LimitExceeded)
+  of ReportReadError.Malformed, ReportReadError.BackendFailure:
+    readFailure[ReadReply](ReadError.BackendFailure) # Malformed authoritative state cannot be hidden as an ordinary miss.
 proc serveCanonicalRead*(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## One full-view host entry point returns only frozen transport bytes, never a retained graph.
   if not request.valid: return readFailure[ReadReply](ReadError.InvalidRequest)
   case request.kind
+  of ReadKind.Report: reportReply(view, request)
   of ReadKind.State: stateReply(view, request)
   of ReadKind.Preimage: preimageReply(view, request)
   of ReadKind.Blocks:

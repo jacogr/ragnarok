@@ -1,11 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded CE128/129/143 content checks against an independent selected source or requested full content hash.
+## Bounded CE128/129/136/143 content checks against an independent selected source or requested full content hash.
 ## Checked blocks remain structural/query-bound inputs for GP admission; partial state never becomes a full map here.
 import std/assertions
 import ./read_stream
-import ../chain/[genesis, parameters]
+import ../chain/[genesis, parameters, reports]
 import ../codec/[bounded, header, assurances, tickets, composite, block_codec, natural]
 import ../codec/state/[layout, trie, service_values]
 import ../state/range_proof
@@ -15,12 +15,13 @@ type
   ReadVerificationError* {.pure.} = enum ## Failed/default results contain no accepted response prefix.
     Uninitialized, None, InvalidRequest, InvalidConfig, InvalidFormat, NoSource,
     IdentityMismatch, LimitExceeded, HashMismatch, InvalidSequence, StateFailure,
-    BlockFailure, BackendFailure
+    BlockFailure, ReportFailure, BackendFailure
   ReadVerificationResult*[T] = object ## Private success and genuine child failure alternatives preserve their actual meaning.
     case status: ReadVerificationError
     of None: completed: T
     of StateFailure: stateReason: RangeProofError
     of BlockFailure: blockReason: FrameResult[BlockRead]
+    of ReportFailure: reportReason: OwnershipError
     else: discard # No source, body or cursor exists in ordinary failure/default alternatives.
   ReadSource* = object ## Detached fixed metadata is captured from one explicit full-state snapshot, never a peer root.
     available: bool
@@ -35,7 +36,7 @@ type
     frame*: FrameConfig
     map*: StateTrieLimits
   CheckedKind {.pure.} = enum ## Dense internal payload tags remain separate from sparse protocol selector numbers.
-    Blocks, State, Preimage
+    Blocks, State, Report, Preimage
   ReplyData = ref object ## Immutable response ownership contains no native stream, canonical map or selected-state alias.
     request: ReadRequest
     case kind: CheckedKind
@@ -43,6 +44,7 @@ type
       blocks: seq[OwnedBlock]
       hashes: seq[BlockHash]
     of State: page: VerifiedStateRange
+    of Report: report: OwnedReport
     of Preimage:
       blob: seq[byte]
       hash: ServicePreimageHash
@@ -65,6 +67,10 @@ proc blockFailure*[T](outcome: ReadVerificationResult[T]): FrameResult[
     BlockRead] {.requires: outcome.status == ReadVerificationError.BlockFailure.} =
   ## Preserve precise component/limit errors from the actual failed block codec.
   outcome.blockReason
+func reportError*[T](outcome: ReadVerificationResult[
+    T]): OwnershipError {.requires: outcome.status == ReadVerificationError.ReportFailure.} =
+  ## Preserve only the actual failed complete report decoder's cause, never an earlier decoded prefix.
+  outcome.reportReason
 func valid*(source: ReadSource): bool =
   ## A default source never supplies a state root or decoding profile.
   source.available
@@ -99,6 +105,7 @@ proc kind*(reply: CheckedReadReply): ReadKind {.requires: reply.valid.} =
   ## The kind identifies the checks performed and the remaining downstream authority boundary.
   case reply.checkedData.kind
   of CheckedKind.Blocks: ReadKind.Blocks
+  of CheckedKind.Report: ReadKind.Report
   of CheckedKind.State: ReadKind.State
   of CheckedKind.Preimage: ReadKind.Preimage
 proc request*(reply: CheckedReadReply): ReadRequest {.requires: reply.valid.} =
@@ -116,6 +123,10 @@ proc hashAt*(reply: CheckedReadReply, index: int): BlockHash {.requires: reply.v
     reply.kind == ReadKind.Blocks and index >= 0 and index < reply.blockCount.} =
   ## Sealed-header hashes bind the sequence to the requested anchor and parent links.
   reply.checkedData.hashes[index]
+proc workReport*(reply: CheckedReadReply): OwnedReport {.requires: reply.valid and reply.kind ==
+    ReadKind.Report.} =
+  ## Full-hash-bound complete report ownership grants no guarantee, judgment, execution or availability certificate.
+  reply.checkedData.report
 proc statePage*(reply: CheckedReadReply): VerifiedStateRange {.requires: reply.valid and
     reply.kind == ReadKind.State.} =
   ## A verified partial page is distinct from a complete StateStore snapshot.
@@ -249,6 +260,35 @@ proc checkPreimage(request: ReadRequest, wire: openArray[byte]): ReadVerificatio
     completed: CheckedReadReply(
     data: ReplyData(kind: CheckedKind.Preimage, request: request, hash: ServicePreimageHash(
         expected), blob: copyBytes(wire, span.firstStart, span.firstStop))))
+proc checkReport(request: ReadRequest, wire: openArray[byte],
+    source: ReadSource): ReadVerificationResult[CheckedReadReply] =
+  ## Hash the exact one-message body and validate the complete canonical report under the local core profile.
+  if not source.available: return ReadVerificationResult[CheckedReadReply](
+      status: ReadVerificationError.NoSource)
+  if uint64(source.cores) < 2 or uint64(source.cores) > 341:
+    return ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.InvalidConfig)
+  let frames = parts(wire, 1)
+  if frames.error != ReadVerificationError.None: return ReadVerificationResult[CheckedReadReply](
+      status: frames.error)
+  let span = frames.value
+  if span.firstStart == span.firstStop: return ReadVerificationResult[CheckedReadReply](
+      status: ReadVerificationError.InvalidFormat)
+  let digest = blake2b256(wire.toOpenArray(span.firstStart, span.firstStop-1))
+  if digest.error != CryptoError.None: return ReadVerificationResult[CheckedReadReply](
+      status: ReadVerificationError.BackendFailure)
+  if array[32, byte](digest.value) != hash(request.payload):
+    return ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.HashMismatch)
+  let parsed = decodeOwnedReport(wire.toOpenArray(span.firstStart, span.firstStop-1), uint64(source.cores))
+  if parsed.error != OwnershipError.None: return ReadVerificationResult[CheckedReadReply](
+      status: ReadVerificationError.ReportFailure, reportReason: parsed.error)
+  let metadata = ownedReportInfo(parsed.value)
+  if metadata.error != OwnershipError.None: return ReadVerificationResult[CheckedReadReply](
+      status: ReadVerificationError.ReportFailure, reportReason: metadata.error)
+  if metadata.value.consumed != span.firstStop-span.firstStart: return ReadVerificationResult[
+      CheckedReadReply](status: ReadVerificationError.InvalidFormat)
+  ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.None,
+    completed: CheckedReadReply(data: ReplyData(kind: CheckedKind.Report, request: request,
+        report: parsed.value)))
 proc checkBlocks(request: ReadRequest, wire: openArray[byte], source: ReadSource,
     limits: ReadVerificationLimits): ReadVerificationResult[CheckedReadReply] =
   ## Capture every exact GP block and bind hashes/slots/links/count to the query; ordinary execution/consensus remains downstream.
@@ -353,5 +393,6 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
       status: ReadVerificationError.LimitExceeded)
   case request.kind
   of ReadKind.Blocks: checkBlocks(request, wire, source, limits)
+  of ReadKind.Report: checkReport(request, wire, source)
   of ReadKind.State: checkState(request, wire, source, limits)
   of ReadKind.Preimage: checkPreimage(request, wire)

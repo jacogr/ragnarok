@@ -392,7 +392,7 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 143'u8]:
+    elif kind in [128'u8, 129'u8, 136'u8, 143'u8]:
       let inboundReads = owner[].frameCount(peer, FrameKind.Read)
       let outboundReads = owner[].frameCount(peer, FrameKind.Client)
       if owner[].reads >= MaxNodeReads or inboundReads+outboundReads >= 2:
