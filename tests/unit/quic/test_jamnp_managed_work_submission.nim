@@ -11,6 +11,7 @@ import ../../../src/jamnp-s/work_duty
 import ../../../src/state/input_refinement
 import "../../../src/state/import/inputs" as import_inputs
 import ../../../src/codec/bounded
+from ../../../src/codec/work/report import ErasureShards
 from ../../../src/codec/state/safrole import StateTime
 import ../../../src/codec/work/package as work_package
 import ../../../src/chain/genesis
@@ -178,6 +179,27 @@ proc cycle(f: WorkFixture) =
   let completed = executeWorkSubmission(body.value)
   assert completed.kind == WorkJobResultKind.Refined
   assert completed.execution.inputRefinementSource.value.importInputsInfo.value.entries == 2
+proc reportBinding(f: WorkFixture) =
+  ## Session identity gates report staging even when another genuine authorization used exactly equal package bytes.
+  let original = executeWorkSubmission(captureWorkAuthorization(f.workHeader, f.input.state,
+    f.input.parameters, f.limits, executionLimits()).value)
+  let inputs = captureWorkBundle(original.context, f.extrinsics, f.segments, f.proofs)
+  let refined = executeWorkSubmission(inputs.value)
+  assert refined.kind == WorkJobResultKind.Refined
+  let other = executeWorkSubmission(captureWorkAuthorization(f.workHeader, f.input.state,
+    f.input.parameters, f.limits, executionLimits()).value)
+  let wrong = captureWorkReport(other.context, refined.execution, ErasureShards(6),
+      workReportLimits())
+  assert wrong.error == WorkJobError.InvalidInput
+  let absent = captureWorkReport(default(AuthorizedWorkContext), refined.execution,
+    ErasureShards(6), workReportLimits())
+  assert absent.error == WorkJobError.InvalidInput
+  let valid = captureWorkReport(original.context, refined.execution, ErasureShards(6),
+      workReportLimits())
+  assert valid.error == WorkJobError.None
+  let completed = executeWorkSubmission(valid.value)
+  assert completed.kind == WorkJobResultKind.Reported
+
 let fixture = workFixture()
 try:
   # The actual full-state application path performs both CPU stages with opaque host controls.
@@ -185,6 +207,7 @@ try:
 except:
   assert false, "managed work fixture setup"
 cycle(fixture)
+reportBinding(fixture)
 let before = getOccupiedMem()
 for iteration in 0..<1000: cycle(fixture) # Repeated private source contexts and raw body copies must retire completely.
 let after = getOccupiedMem()

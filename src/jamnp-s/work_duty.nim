@@ -27,6 +27,7 @@ type
     ready: bool
     local: StateEdKey
     core: CoreIndex
+    validator: GuarantorIndex
     sourceTime, observed: StateTime
     sourceRoot: StateRoot
     epoch, rotation: uint64
@@ -92,6 +93,9 @@ func localIdentity*(duty: WorkDuty): StateEdKey {.requires: duty.ready.} =
 func core*(duty: WorkDuty): CoreIndex {.requires: duty.ready.} =
   ## The nominal core remains inseparable from source/time and identity.
   duty.core
+func validatorIndex*(duty: WorkDuty): GuarantorIndex {.requires: duty.ready.} =
+  ## Retain the actual original roster ordinal used by the assignment planner, never the shuffled permutation index.
+  duty.validator
 func observedTime*(duty: WorkDuty): StateTime {.requires: duty.ready.} =
   ## Assignment was checked at this host observation, not at a builder-provided timestamp.
   duty.observed
@@ -213,6 +217,7 @@ proc captureWorkDuty*(source: StateStoreSnapshot, parameters: Parameters,
     if matches and uint64(selected.value.core) == uint64(core):
       return WorkDutyResult[WorkDuty](status: WorkDutyError.None,
         completed: WorkDuty(ready: true, local: recipient.local, core: core,
+          validator: GuarantorIndex(uint16(index)),
           sourceTime: clock.value.value, observed: recipient.now,
           sourceRoot: source.commitment.root,
           epoch: epoch, rotation: rotation, shards: ErasureShards(uint16(population))))

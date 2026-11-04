@@ -111,6 +111,18 @@ proc sameSubmissionHeader*(left, right: WorkSubmissionHeader): bool =
   ## Exact owner identity, rather than byte equality, binds later private source capabilities to the original decoded header.
   let data = left.data
   data != nil and data == right.data
+proc submissionMatchesAuthorization*(header: WorkSubmissionHeader,
+    invocation: AuthorizationInvocation, state: StateStoreSnapshot): bool =
+  ## Bind execution to this original decoded package, selected core and exact complete execution map.
+  ## This predicate supplies provenance only; current inclusion policy and assignment remain separate checks.
+  let data = header.data
+  if data == nil: return false
+  let info = invocation.authorizationInfo
+  if info.error != AuthorizationInvocationError.None: return false
+  if uint64(info.value.core) != uint64(data.info.core): return false
+  let package = invocation.authorizationPackage.value
+  let source = invocation.authorizationState.value
+  data.package.sameWorkPackage(package) and sameStateSnapshot(source, state)
 proc submissionInfo*(header: WorkSubmissionHeader): WorkSubmissionResult[WorkSubmissionInfo] =
   ## Copy bounded geometry without granting authority to read a body.
   let data = header.data

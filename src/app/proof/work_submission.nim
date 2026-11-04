@@ -11,7 +11,8 @@ import ../../chain/[provider, genesis]
 from ../../codec/state/safrole import StateValidatorIndex
 from ../../state/computed/guarantee import ComputedGuaranteeTranscript
 from ../../codec/work/report import ErasureShards
-import ../../state/[store, input_refinement]
+import ../../state/[store, input_refinement, authorized_refinement]
+import ../../state/report/identity
 import "../../state/import/inputs" as import_inputs
 import "../../state/import/justification" as import_justification
 import ../../codec/work/report as work_report
@@ -21,8 +22,9 @@ type
   WorkJobError* {.pure.} = enum ## Local capture refusals contain no source-bearing input capability.
     Uninitialized, None, InvalidInput, LimitExceeded
   WorkJobResultKind* {.pure.} = enum ## A completed CPU turn exposes only its selected full success or genuine child failure.
-    Uninitialized, Authorized, Refined, AuthorizationFailure, BodyFailure, RefinementFailure,
-      DutyFailure, Reported, ReportFailure, ImportPlanningFailure, RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure
+    Uninitialized, Authorized, Refined, InvalidSource, AuthorizationFailure, BodyFailure,
+      RefinementFailure, DutyFailure, Reported, ReportFailure, ImportPlanningFailure,
+        RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -254,14 +256,24 @@ proc report(data: WorkJobData): WorkJobResult =
   let computed = prepareWorkReport(data.refined, data.shards, data.reportLimits)
   if computed.error != WorkReportError.None:
     return WorkJobResult(status: WorkJobResultKind.ReportFailure, reportReason: computed)
+  let context = data.context.data
+  if context == nil: return WorkJobResult(status: WorkJobResultKind.InvalidSource)
+  if not computed.value.workReportMatches(context.source.header, context.source.state):
+    return WorkJobResult(status: WorkJobResultKind.InvalidSource)
   WorkJobResult(status: WorkJobResultKind.Reported, report: computed.value)
-proc captureWorkReport*(source: InputRefinement, shards: ErasureShards,
-    limits: WorkReportLimits): WorkJobAdmission =
-  ## Capture only a genuine refinement owner; staging aliases retire before the moved job enters the exclusive worker.
-  if source.inputRefinementIdentity.error != InputRefinementError.None:
+proc captureWorkReport*(context: AuthorizedWorkContext, source: InputRefinement,
+    shards: ErasureShards, limits: WorkReportLimits): WorkJobAdmission =
+  ## Require the original session's package/core/map before encoding; every captured alias remains frozen through exact collection.
+  let data = context.data
+  if data == nil: return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  let identity = source.inputRefinementIdentity
+  if identity.error != InputRefinementError.None:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  let authorization = identity.value.identitySource.value.authorizedSource.value
+  if not data.source.header.submissionMatchesAuthorization(authorization, data.source.state):
     return WorkJobAdmission(status: WorkJobError.InvalidInput)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
-    run: report, refined: source, shards: shards, reportLimits: limits)))
+    run: report, context: context, refined: source, shards: shards, reportLimits: limits)))
 proc captureWorkAuthorization*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits,
     execution: InputRefinementLimits, recipient: WorkRecipient,

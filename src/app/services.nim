@@ -2195,7 +2195,8 @@ proc beginWorkPackage*(services: var Services, token: WorkSessionToken,
 proc stageWorkReport(services: var Services, limits: WorkReportLimits): WorkJobError =
   ## Retain only this session's original completed refinement; every temporary source alias retires before CPU submission.
   if services.workOutcome.kind != WorkJobResultKind.Refined: return WorkJobError.InvalidInput
-  let captured = captureWorkReport(services.workOutcome.execution, services.workDuty.shardCount, limits)
+  let captured = captureWorkReport(services.workContext, services.workOutcome.execution,
+    services.workDuty.shardCount, limits)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None

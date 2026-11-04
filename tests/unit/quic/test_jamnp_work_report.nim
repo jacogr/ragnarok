@@ -4,11 +4,11 @@
 
 ## Genuine original report pipeline preserves bundle bytes, population-dependent commitments and exact failed stages.
 import std/[assertions, syncio]
-import ../../../src/jamnp-s/work_report
+import ../../../src/jamnp-s/[work_report, work_submission]
 import ../../../src/codec/bounded
 import ../../../src/chain/parameters
 import ../../../src/codec/work/report
-import ../../../src/state/[input_refinement, auditable_bundle, bundle_erasure]
+import ../../../src/state/[input_refinement, auditable_bundle, bundle_erasure, store]
 import ../../../src/state/erasure/[layout, words]
 import "../../../src/state/export/erasure" as export_erasure
 import ../../../src/state/availability/specifier
@@ -31,10 +31,37 @@ proc releaseCycle(source: InputRefinement) =
 proc main() =
   ## Complete PVM/import execution precedes all new report work; failed results never act as a source.
   let fixture = workFixture()
+  # Actual header authorization and body authentication preserve the original package into execution and report composition.
+  let header = fixture.workHeader
+  let grant = authorizeWorkSubmission(header, fixture.input.state, fixture.input.parameters,
+    fixture.limits)
+  assert grant.error == WorkSubmissionError.None
+  let inputs = completeBundleSubmission(grant.value, fixture.extrinsics, fixture.segments,
+    fixture.proofs, fixture.limits)
+  assert inputs.error == WorkSubmissionError.None
+  let bound = runInputRefinement(fixture.input.state, inputs.value, CoreIndex(0),
+    fixture.input.parameters, executionLimits())
+  assert bound.error == InputRefinementError.None
+  let boundReport = prepareWorkReport(bound.value, ErasureShards(6), workReportLimits())
+  assert boundReport.error == WorkReportError.None
+  assert boundReport.value.workReportMatches(header, fixture.input.state)
+  assert not boundReport.value.workReportMatches(fixture.workHeader, fixture.input.state)
+  var fork = forkStateStore(fixture.input.state).value
+  let key = fixture.input.state.keyAt(StateEntryIndex(0)).value
+  let replacement = fork.apply([StateWrite(kind: StateWriteKind.Put, key: key,
+    value: fixture.input.state.lookup(key).value.bytes)]).value
+  assert array[32, byte](replacement.commitment.root) == array[32, byte](
+      fixture.input.state.commitment.root)
+  assert not sameStateSnapshot(replacement, fixture.input.state)
+  assert not boundReport.value.workReportMatches(header, replacement)
+  assert not default(ComputedGuaranteeTranscript).workReportMatches(header, fixture.input.state)
+  assert not boundReport.value.workReportMatches(default(WorkSubmissionHeader), fixture.input.state)
   let refined = executionRun(fixture.input, core = 0)
   assert refined.error == InputRefinementError.None, "original refinement: " & $refined.error
   let completed = prepareWorkReport(refined.value, ErasureShards(6), workReportLimits())
   assert completed.error == WorkReportError.None, "report preparation: " & $completed.error
+  assert not completed.value.workReportMatches(header,
+      fixture.input.state) # Independent equal-byte package execution is not the admitted source.
   let transcript = completed.value
   let computed = transcript.computedGuaranteeReport.value
   let info = computed.computedReportInfo.value

@@ -79,6 +79,7 @@ for index in 0..<6:
   assert array[32, byte](duty.localIdentity) == array[32, byte](key(index+1))
   assert uint32(duty.sourceTime) == 16 and uint32(duty.observedTime) == 20
   assert duty.epochDuration == 12 and duty.rotationDuration == 4
+  assert uint16(duty.validatorIndex) == uint16(index) # Credentials use the original roster position.
   assert uint16(duty.shardCount) == 6 # Three configured cores do not imply nine actual validators.
   assert duty.activeAt(StateTime(20)) and duty.activeAt(StateTime(23))
   assert not duty.activeAt(StateTime(19)) and not duty.activeAt(StateTime(24))

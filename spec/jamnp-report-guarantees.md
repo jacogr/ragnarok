@@ -86,3 +86,19 @@ inspection on successful and later dependency-refused paths. Native policy, pack
 admission suites pass; package/admission1000-cycle retained bytes remain156544/398592 before
 and after. The application build and format check pass. This supplies the report-rule boundary
 for the upcoming source-bound signing flow; no signature authority is granted by these helpers.
+
+## Original report and assignment binding
+
+Managed report staging now requires the session's actual authorization context. Before encoding,
+it follows the refinement's original authorization and checks the exact package owner, core and
+complete execution map. The worker also checks the computed transcript's retained provenance
+before returning Reported. A separately authorized equal-byte package, independently published
+equal-root map and default owner cannot substitute. Execution provenance remains distinct from
+requalification against a later canonical inclusion view.
+
+The copied duty now retains the actual original roster ordinal selected by the GP assignment
+planner. A credential must use that nominal index, rather than its shuffled permutation position.
+Native report, assignment and managed-session suites pass, with1000-cycle retained bytes unchanged
+at286800,58864 and40816 respectively. The managed regression uses genuine equal-byte separate
+authorizations and complete PVM/input/report execution. Production build and format check pass.
+Full eligibility, acceptable shard populations, signing and CE134/135 remain required.
