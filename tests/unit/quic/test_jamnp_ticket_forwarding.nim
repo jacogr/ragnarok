@@ -196,6 +196,7 @@ proc live(distribution = false, rejectAck = false, holdFin = false) {.raises.} =
   assert host.ticketForwardingCount == 0 and host.ticketForwardingActive == 0
 proc main() {.raises.} =
   ## Timed real-network positives accompany source retirement, finite invalid-ACK retries and exact joined shutdown.
+  assert sizeof(ApplicationNode) <= 128*1024, "bounded protocol owners must fit ordinary foreground thread stacks"
   pure()
   live()
   live(distribution = true)
