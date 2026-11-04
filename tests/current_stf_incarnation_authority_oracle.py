@@ -111,7 +111,7 @@ def expected_observations(check_frozen=True):
             requests.append('B '+body(gs,ass)[0].hex());lines.extend(('B '+wire.hex(),'O '+encoded.hex()))
             roots[-1].append(tree(list(parent.items()))[0].hex());hashes[-1].append(hashlib.sha256(encoded).hexdigest())
     if check_frozen:
-        fixture=json.loads(FIXTURE.read_text());assert fixture['graypaper_commit']=='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        fixture=json.loads(FIXTURE.read_text());assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['base_fixture_sha256']==hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes and fixture['traces']==json.loads(json.dumps(traces))
     return requests,lines,dict(transitions=40,chains=5,roots=roots,checkpoint_sha256=hashes,traces=traces)

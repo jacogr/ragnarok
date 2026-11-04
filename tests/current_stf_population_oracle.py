@@ -67,7 +67,7 @@ def evidence(parent):
 def expected_observations(check_frozen=True):
     """Calculate complete expected maps before native execution; observations never seed later parents."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert fixture['slots'] == list(SLOTS)
     provider = validate_provider()
     parent = original(fixture)

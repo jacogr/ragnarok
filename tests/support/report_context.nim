@@ -43,7 +43,8 @@ proc policy*(cores: uint64, gas = 10000000'u64): ReportPolicyConfig =
   ## Keep gas limits per report, with independent pool/account byte ceilings.
   ReportPolicyConfig(pools: AuthorizationConfig(cores: CoreCount(cores), maxHashes: ElementLimit(cores*8),
     maxBytes: ByteLimit(100000)), accountBytes: ByteLimit(ServiceMetadataBytes),
-        reportGas: ReportGasLimit(gas))
+        reportGas: ReportGasLimit(gas),
+        refinementGas: RefinementGasLimit(if cores == 2: 1_000_000_000'u64 else: 5_000_000_000'u64))
 
 
 proc limits*(): StateStoreLimits =
@@ -67,20 +68,23 @@ proc reportBytes*(owner: OwnedReport): seq[byte] =
 
 
 proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service = 42'u32,
-    failed = false): OwnedReport =
+    failed = false, refinement = default(RefineLoad)): OwnedReport =
   ## Alter only copied report metadata, then re-encode against the unchanged original payload pool.
   let raw = reportBytes(base)
   var report = decodeReportBorrowed(raw, 341).value
   report.core = CoreIndex(core)
   report.header.erasureShards = ErasureShards(6)
-  report.authGas = Gas(high(uint64)) # Authorization gas is not accumulation gas.
+  report.authGas = Gas(0) # Authored default leaves authorization load available for focused boundary cases.
+  assert uint64(refinement.exports) <= 3072 div uint64(max(1,
+      gases.len)) # Bound the authored aggregate before multiplication.
+  report.header.segmentCount = SegmentCount(uint16(uint64(refinement.exports)*uint64(gases.len)))
   let first = report.digests[0]
   report.digestCount = gases.len
   for i in 0..<gases.len:
     report.digests[i] = first # Keep output/blob spans attached to raw for encoding.
     report.digests[i].service = ServiceIndex(service+uint32(i))
     report.digests[i].accumulateGas = Gas(gases[i])
-    report.digests[i].refine.gasUsed = Gas(high(uint64)) # Refinement accounting is a separate gas domain.
+    report.digests[i].refine = refinement # Callers explicitly author any nonzero load; the default remains zero.
     if failed:
       report.digests[i].output = failedWork(WorkKind.OutOfGas) # Failed work still carries accumulation gas policy.
   var output = newSeq[byte](raw.len+10000)

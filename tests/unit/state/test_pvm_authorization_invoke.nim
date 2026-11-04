@@ -63,14 +63,14 @@ var remaining = 0'u64
 for index, octet in gasResult.authorizationTrace.value: remaining = remaining or (uint64(
     octet) shl (8*index))
 assert remaining == 50000000'u64-gasUsed
-# Metadata never contributes to the 64000-byte code ceiling; exact-sized code remains executable.
-let metadata = authorizationFixture([halt], metadata = newSeq[byte](64000))
-assert metadata.preimage.len > 64000
+# Metadata never contributes to the 196608-byte code ceiling; exact-sized code remains executable.
+let metadata = authorizationFixture([halt], metadata = newSeq[byte](196608))
+assert metadata.preimage.len > 196608
 assert authorizationRun(metadata).value.authorizationTrace.value == @[0x34'u8, 0x12]
-let exact = authorizationFixture([halt], codeSize = 64000)
-assert exact.envelope.len == 64000
+let exact = authorizationFixture([halt], codeSize = 196608)
+assert exact.envelope.len == 196608
 assert authorizationRun(exact).value.authorizationInfo.value.kind == WorkKind.Success
-let big = authorizationFixture([halt], codeSize = 64001)
+let big = authorizationFixture([halt], codeSize = 196609)
 var bigCap = default(AuthorizationInvocationLimits)
 bigCap.preimage = ByteLimit(200000)
 check(authorizationRun(big, bigCap).value, WorkKind.Big,
@@ -97,7 +97,7 @@ for selector in [0'u64, 7, 8, 9, 13]:
   assert done.authorizationTrace.value == expected
 # Psi_I itself accepts traces above the report budget; later report composition must apply its own 49152-byte gate.
 let longSource = authorizationFixture([refinementImmediate(7, 196608), refinementImmediate(8,
-    49153), halt], codeSize = 64000)
+    49153), halt], codeSize = 196608)
 let longTrace = authorizationRun(longSource).value
 assert longTrace.authorizationInfo.value.kind == WorkKind.Success
 assert longTrace.authorizationTrace.value.len == 49153 and longTrace.authorizationTrace.value[0] == 21

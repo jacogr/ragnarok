@@ -48,7 +48,6 @@ proc exercise() =
   var values = default(array[2, Assurance])
   # Ordinary signed records are a lifecycle/fault fixture; independent conformance uses OpenSSL separately.
   for i in 0..<values.len:
-    values[i].anchor.bytes = array[32, byte](expectedParent)
     values[i].bits.bytes[0] = 2
     values[i].validator = ValidatorIndex(i)
     values[i].signature.bytes = signature
@@ -61,7 +60,7 @@ proc exercise() =
   # Distinct public-key encodings compare as copied bytes rather than implicitly interchangeable domains.
   for i in 0..<keys.len: assert array[32, byte](keys[i]) == array[32, byte](savedKeys[i])
   # Each structural failure, including a later one behind an invalid earlier signature, precedes all hashes.
-  for mode in 0..<9:
+  for mode in 0..<8:
     fail(0)
     var changed = savedValues
     var activeConfig = config
@@ -83,10 +82,6 @@ proc exercise() =
     of 4: changed[1].bits.bytes[0] = 4 # Nonzero padding in the final serialized byte is invalid.
     of 5: changed[1].bits.bytes[42] = 1 # Unserialized native storage must also be canonical.
     of 6:
-      changed[0].signature.bytes = default(array[64, byte])
-      changed[1].anchor.bytes[0] = 99 # A late wrong parent wins over the earlier invalid signature.
-      wanted = AssuranceContextError.WrongParent
-    of 7:
       changed[0].validator = ValidatorIndex(1)
       changed[1].validator = ValidatorIndex(0) # Strict ascending order is independent of signature validity.
     else:
@@ -95,6 +90,13 @@ proc exercise() =
     let result = verifyAssurances(changed.toOpenArray(0, count-1), activeConfig, expectedParent,
         keys.toOpenArray(0, keyCount-1))
     assert result.error == wanted and hashCalls() == 0
+  fail(0)
+  var otherParent = array[32, byte](expectedParent)
+  otherParent[0] = otherParent[0] xor 1
+  # Parent-free records cannot carry an alternative context: unchanged credentials reject the actual other parent.
+  assert verifyAssurances(savedValues, config, AssuranceParent(otherParent), keys).error ==
+      AssuranceContextError.InvalidSignature
+  assert hashCalls() == 1
   fail(0)
   let tooMany = default(array[7, Assurance])
   assert verifyAssurances(tooMany, config, expectedParent, keys).error ==

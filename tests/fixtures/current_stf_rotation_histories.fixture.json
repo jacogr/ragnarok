@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_ROTATION_HISTORIES",
   "files": {
-    "current-stf-rotation-histories.json": "c9ca1f96c1cb87bc8ca46425f2316933de7a8bd3052f7057daaa9d85cd5acfc6"
+    "current-stf-rotation-histories.json": "59d3e89c29c97d78f0058a4a7846e9e4ea543eac5a1853d6d7b8640026140cbb"
   },
   "target": "current-stf-rotation-histories.json"
 }

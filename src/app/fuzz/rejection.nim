@@ -25,7 +25,7 @@ proc consensusReportFailure[T](failure: ReportAdmissionResult[T]): bool =
   of ReportAdmissionError.PolicyFailure:
     failure.policyError in {ReportPolicyError.Unauthorized, ReportPolicyError.UnknownService,
       ReportPolicyError.WrongCodeHash, ReportPolicyError.InsufficientGas,
-      ReportPolicyError.ReportGasExceeded}
+      ReportPolicyError.ReportGasExceeded, ReportPolicyError.RefinementLoadExceeded}
   of ReportAdmissionError.AnchorFailure:
     failure.anchorError in {ReportAnchorError.InvalidRecentAnchor, ReportAnchorError.LookupTooOld,
       ReportAnchorError.WrongLookupState}
@@ -73,7 +73,7 @@ proc consensusBlockFailure(failure: BlockTransitionResult): bool =
     if assurance.error == AvailabilityTransitionError.ContextFailure:
       assurance.contextError in {AssuranceContextError.InvalidValidator,
         AssuranceContextError.NonCanonical,
-        AssuranceContextError.WrongParent, AssuranceContextError.InvalidSignature}
+        AssuranceContextError.InvalidSignature}
     else:
       assurance.error in {AvailabilityTransitionError.InvalidSlot,
         AvailabilityTransitionError.InvalidIndex,

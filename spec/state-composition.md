@@ -1,5 +1,9 @@
 # Typed state composition
 
+Current source qualification explicitly derives natural C13 validator counters from the known
+historical E4 rows before current native comparisons. Original published bytes, roots and prior
+platform receipts below remain historical evidence. See [combined qualification](graypaper-current-qualification.md).
+
 Current target: unreleased Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`,
 `text/merklization.tex` T and trie equations, with the component-specific C.1/C.2 contracts linked
 from [M1](../docs/m1.md). Source/vector identities remain those in [pins.json](pins.json).

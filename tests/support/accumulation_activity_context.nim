@@ -62,7 +62,8 @@ proc queuePolicy(): AccumulationReadyConfig =
 
 proc activityOptions*(available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
-    hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
+    maximumRefinement = false, executed = false, provided = false, parentPools: seq[
+        AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
     storeWrites = 1000'u64, completeState = false, serviceNamespaces: seq[ServiceNamespaceSeed] = @[]): ExecutionFixtureConfig =
@@ -77,7 +78,10 @@ proc activityOptions*(available = false, guarantees = 0, blobs = false,
       entries.add(integrationRequest(99, @[]))
       if not missingLast: entries.add(integrationRequest(99, @[81'u8, 82,
           83])) # A late unsolicited blob cannot expose partial activity.
-  let loads = if hugeRefinement: newSeq[RefineLoad]() else:
+  let loads = if maximumRefinement:
+    # Each genuinely signed report reaches the Tiny per-report refinement ceiling exactly.
+    @[RefineLoad(gasUsed: Gas(1_000_000_000)), RefineLoad(gasUsed: Gas(1_000_000_000))]
+    else:
     @[RefineLoad(gasUsed: Gas(11), imports: ImportCount(2),
         extrinsicCount: work_digest.ExtrinsicCount(3), extrinsicSize: work_digest.ExtrinsicBytes(5),
             exports: ExportCount(7)),
@@ -114,14 +118,16 @@ proc activityOptions*(available = false, guarantees = 0, blobs = false,
 
 proc activityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
-    hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
+    maximumRefinement = false, executed = false, provided = false, parentPools: seq[
+        AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
     storeWrites = 1000'u64): ActivityFixture =
   ## Reuse identical authored signed inputs while preserving the established legacy completion witnesses.
   let fixture = executionFixture(base, activityOptions(available = available,
       guarantees = guarantees, blobs = blobs, requested = requested, missingLast = missingLast,
-      disordered = disordered, slot = slot, hugeRefinement = hugeRefinement, executed = executed,
+      disordered = disordered, slot = slot, maximumRefinement = maximumRefinement,
+      executed = executed,
       provided = provided, parentPools = parentPools, authorizationQueue = authorizationQueue,
       omitAuthorizationQueue = omitAuthorizationQueue, withDispute = withDispute,
       withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites))

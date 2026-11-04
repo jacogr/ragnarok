@@ -119,7 +119,8 @@ type
     dependencyCount, dependencyLimit: int
 
 const
-  MaxBundleBytes* = 13_791_360 ## GP checkextractsize/segmentfootprint constants; these are not serialized-byte limits.
+  MaxInputBytes* = 13_791_360 ## GP checkextractsize/segmentfootprint constants; these are not serialized-byte limits.
+  MaxBundleBytes* = 13_904_950 ## Encoded bundle limit includes references, fixed fields and prefixes.
   SegmentFootprint* = 4488
 
 func error*[T](value: PackageResult[T]): PackageError =
@@ -158,7 +159,7 @@ proc fullPackageConfig*(maxBytes: ByteLimit): PackageConfig {.raises: [].} =
       maxBytes: maxBytes)
 
 proc validConfig(config: PackageConfig): bool {.raises: [].} =
-  ## Zero gas ceilings cannot admit even a zero-gas package under the strict normative inequalities.
+  ## Zero ceilings denote uninitialized local execution policy; valid profiles supply positive gas ceilings.
   uint64(config.refineGas) > 0 and uint64(config.accumulateGas) > 0
 
 proc scalar(input: openArray[byte], start, width: int): uint64 {.raises: [].} =
@@ -380,7 +381,7 @@ proc encodeExtrinsicCommitment*(value: ExtrinsicCommitment, output: var openArra
 
 proc charge(state: var Budget, imports, exports, extrinsics, bytes: int, refineGas,
     accumulateGas: uint64, config: PackageConfig): PackageError {.raises: [].} =
-  ## Add nonnegative resources by subtraction before addition, preserving strict gas ceilings without overflow.
+  ## Add nonnegative resources by subtraction before addition, preserving inclusive gas ceilings without overflow.
   # Subtract each bounded count before addition; excessive input never changes the counters.
   if imports > 3072-state.imports or exports > 3072-state.exports:
     return PackageError.LimitExceeded
@@ -388,13 +389,13 @@ proc charge(state: var Budget, imports, exports, extrinsics, bytes: int, refineG
   if extrinsics > 128-state.extrinsics:
     return PackageError.LimitExceeded
   # Advertised/inline bytes must fit the remaining auditable-bundle footprint.
-  if bytes > MaxBundleBytes-state.bundleBytes:
+  if bytes > MaxInputBytes-state.bundleBytes:
     return PackageError.LimitExceeded
-  # Strict E8 gas ceilings are compared by remaining budget before any uint64 sum can wrap.
-  if refineGas >= uint64(config.refineGas)-state.refineGas:
+  # Inclusive E8 gas ceilings are compared by remaining budget before any uint64 sum can wrap.
+  if refineGas > uint64(config.refineGas)-state.refineGas:
     return PackageError.LimitExceeded
-  # Accumulation gas has its own independent strict package-wide ceiling.
-  if accumulateGas >= uint64(config.accumulateGas)-state.accumulateGas:
+  # Accumulation gas has its own independent inclusive package-wide ceiling.
+  if accumulateGas > uint64(config.accumulateGas)-state.accumulateGas:
     return PackageError.LimitExceeded
   state.imports += imports
   state.exports += exports
@@ -437,7 +438,7 @@ proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
   let exports = int(scalar(input, cursor+52, 2))
   layout.info.exports = ExportCount(exports)
   cursor += 54
-  let payload = number(input, cursor, MaxBundleBytes, config.maxBytes)
+  let payload = number(input, cursor, MaxInputBytes, config.maxBytes)
   # Canonical payload length and complete borrowed payload precede later manifest fields.
   if payload.error != PackageError.None:
     return PackageResult[ItemLayout](status: payload.error)
@@ -489,7 +490,7 @@ proc scanItem(input: openArray[byte], cursor: var int, config: PackageConfig,
   # Advertised E4 lengths contribute their full value even though data preimages are supplied elsewhere.
   for i in 0..<extrinsics.value:
     let length = scalar(input, cursor+32, 4)
-    if length > uint64(MaxBundleBytes-state.bundleBytes):
+    if length > uint64(MaxInputBytes-state.bundleBytes):
       return PackageResult[ItemLayout](status: PackageError.LimitExceeded) # Compare unsigned before narrowing E4 on 32-bit hosts.
     state.bundleBytes += int(length)
     cursor += 36
@@ -500,7 +501,7 @@ proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): Pac
     int] {.raises: [].} =
   ## Validate every typed item field and aggregate cost before capacity checks or serialization.
   # These ceilings prove all later host arithmetic and loops before reading nested sources.
-  if value.payload.len > MaxBundleBytes or value.imports.len > 3072 or value.extrinsics.len > 128 or
+  if value.payload.len > MaxInputBytes or value.imports.len > 3072 or value.extrinsics.len > 128 or
       uint64(value.exports) > 3072:
     return PackageResult[int](status: PackageError.LimitExceeded)
   # Preserve import order and duplicates: these are sequences, not canonical sets.
@@ -524,7 +525,7 @@ proc measureItem(value: WorkItem, config: PackageConfig, state: var Budget): Pac
   # Every declared preimage length consumes bundle budget, even for repeated identical commitments.
   for commitment in value.extrinsics:
     let length = uint64(uint32(commitment.length))
-    if length > uint64(MaxBundleBytes-state.bundleBytes):
+    if length > uint64(MaxInputBytes-state.bundleBytes):
       return PackageResult[int](status: PackageError.LimitExceeded) # Bound before conversion/addition.
     state.bundleBytes += int(length)
   let required = 54+int(natural.encode(JamNatural(value.payload.len)).len)+value.payload.len +
@@ -621,7 +622,7 @@ proc encodeWorkPackage*(value: WorkPackage, config: PackageConfig, output: var o
   if value.items.len < 1 or value.items.len > 16:
     return PackageResult[int](status: PackageError.LimitExceeded)
   # Each blob length must be bounded before adding the shared authorization footprint.
-  if value.authorization.len > MaxBundleBytes or value.configuration.len > MaxBundleBytes:
+  if value.authorization.len > MaxInputBytes or value.configuration.len > MaxInputBytes:
     return PackageResult[int](status: PackageError.LimitExceeded)
   var state = Budget(dependencyLimit: 8-value.context.prerequisiteCount)
   let authCost = charge(state, 0, 0, 0, value.authorization.len+value.configuration.len, 0, 0, config)
@@ -703,7 +704,7 @@ proc decodeWorkPackage*(input: openArray[byte], config: PackageConfig): PackageR
   var state = Budget(dependencyLimit: 8-layout.info.context.prerequisiteCount)
   # Both authorization blobs contribute to one package-wide footprint budget before any item scan.
   for field in [PackageBlob.Authorization, PackageBlob.Configuration]:
-    let length = number(input, cursor, MaxBundleBytes, config.maxBytes)
+    let length = number(input, cursor, MaxInputBytes, config.maxBytes)
     # Bound canonical byte lengths before narrowing.
     if length.error != PackageError.None:
       return PackageResult[PackageRead](status: length.error)

@@ -88,6 +88,9 @@ var short = config
 short.admission.policy.reportGas = ReportGasLimit(99999)
 expect(prepareAssuredQueue(source, short), AssuredQueueError.ProfileMismatch)
 short = config
+short.admission.policy.refinementGas = RefinementGasLimit(0)
+expect(prepareAssuredQueue(source, short), AssuredQueueError.ProfileMismatch)
+short = config
 short.admission.credentials.assignments.rotationSlots = GuarantorRotationSlots(5)
 expect(prepareAssuredQueue(source, short), AssuredQueueError.ProfileMismatch)
 short = config

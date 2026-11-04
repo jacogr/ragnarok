@@ -85,7 +85,7 @@ for variant in 0..<4:
     elif variant == 2: @[@[0'u8]] else: @[refinementImmediate(9, high(uint64)), refinementImmediate(
         10, 2), @[10'u8, 2], halt]
   let rejected = authorizedFixture(code, [reportGuest(fetchTrace)], authCodeSize = (if variant ==
-      1: 64001 else: 0), missingAuth = variant == 0)
+      1: 196609 else: 0), missingAuth = variant == 0)
   let result = prepareAuthorizedRefinement(rejected.authorization, default(RefinementInputs),
       default(AuthorizedRefinementLimits))
   let expected = if variant == 0: WorkKind.Bad elif variant == 1: WorkKind.Big
@@ -96,7 +96,7 @@ for variant in 0..<4:
 for size in [49152, 49153]:
   let large = authorizedFixture([refinementImmediate(7, 196608), refinementImmediate(8, uint64(
       size)), halt],
-    [reportGuest(emptyItem)], authCodeSize = 64000)
+    [reportGuest(emptyItem)], authCodeSize = 196608)
   assert large.authorization.authorizationInfo.value.kind == WorkKind.Success,
       "large authorization size " & $size & " kind " &
       $large.authorization.authorizationInfo.value.kind
@@ -110,7 +110,7 @@ for size in [49152, 49153]:
     assert refused.error == AuthorizedRefinementError.TraceTooLarge # This is report E, not a fabricated auth Oversize work error.
 # An accepted large auth trace consumes shared blob budget; I replaces the item's output and declared exports atomically.
 let budget = authorizedFixture([refinementImmediate(7, 196608), refinementImmediate(8, 49150),
-    halt], [reportGuest(exporting, 1)], authCodeSize = 64000)
+    halt], [reportGuest(exporting, 1)], authCodeSize = 196608)
 let budgetDone = prepareAuthorizedRefinement(budget.authorization, budget.inputs, authorizedLimits()).value
 let discarded = budgetDone.authorizedDigests.value.digestAt(FetchItemIndex(0)).value
 assert discarded.digestInfo.value.kind == WorkKind.Oversize

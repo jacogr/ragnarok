@@ -22,13 +22,13 @@ def token(data):
 
 # Store every native fixed bitset octet explicitly; unused storage is part of encoder validation.
 def logical(records):
-    return b''.join(anchor+bits+index.to_bytes(2,'little')+signature for anchor,bits,index,signature in records)
+    return b''.join(bits+index.to_bytes(2,'little')+signature for anchor,bits,index,signature in records)
 
 
 # Evaluate the normative fixed-layout sequence directly with Python integer/byte operations.
 def wire(records, cores):
     width = (cores+7)//8
-    return natural(len(records))+b''.join(anchor+bits[:width]+index.to_bytes(2,'little')+signature
+    return natural(len(records))+b''.join(bits[:width]+index.to_bytes(2,'little')+signature
                                          for anchor,bits,index,signature in records)
 
 
@@ -92,7 +92,7 @@ def decode(cores, validators, capacity, data):
     if count > validators:
         return 'limitexceeded'
     width = (cores+7)//8
-    stride = 98+width
+    stride = 66+width
     # Division checks the full fixed payload without a potentially overflowing product.
     if count > (len(data)-cursor)//stride:
         return 'truncated'
@@ -104,8 +104,8 @@ def decode(cores, validators, capacity, data):
     # Decode named fields independently of the native representation.
     for _ in range(count):
         # Zero-extension is native metadata storage, not additional wire padding.
-        record = (data[cursor:cursor+32],data[cursor+32:cursor+32+width]+bytes(43-width),
-                  int.from_bytes(data[cursor+32+width:cursor+34+width],'little'),data[cursor+34+width:cursor+stride])
+        record = (bytes(32),data[cursor:cursor+width]+bytes(43-width),
+                  int.from_bytes(data[cursor+width:cursor+2+width],'little'),data[cursor+2+width:cursor+stride])
         error = record_error(record,cores,validators,previous)
         # Preserve the first error in the frozen field-validation precedence.
         if error:
@@ -138,7 +138,10 @@ def official(chain, cores):
         assert len(bits)==(cores+7)//8
         result.append((bytes.fromhex(value['anchor'][2:]),bits+bytes(43-len(bits)),value['validator_index'],
                        bytes.fromhex(value['signature'][2:])))
-    assert wire(result,cores)==(folder/'assurances_extrinsic.bin').read_bytes()
+    # Verify original binary provenance separately; current wire deliberately omits each old anchor.
+    historical = natural(len(result))+b''.join(anchor+bits[:(cores+7)//8]+index.to_bytes(2,'little')+signature
+        for anchor,bits,index,signature in result)
+    assert historical==(folder/'assurances_extrinsic.bin').read_bytes()
     return result
 
 

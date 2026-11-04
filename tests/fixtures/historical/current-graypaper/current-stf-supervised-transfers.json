@@ -1,0 +1,115 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "7feac099c67efde5dda43a8652a44baedf7dd89dd3cb779c1172d98453c8140a",
+      "17f764a31ae0b625663fbeb3979a55a7e801015a59aaeb3022a8ade7b8c38fba",
+      "72cd11e1bdae3e740b512187cb986377af559e2d3c810e15e5fed13e3d9fb57e",
+      "e9ce4320e9ebdd50214a5076ae9250407124f95c29d172baecd13578c5dbf4e1"
+    ],
+    [
+      "54802c5bfea9a21553cdc1804231aa72425323c884c73abfe0fc3c07f7155c10",
+      "829097fafd851ec64335d8d3618396721cf6c32f259b958261b8202313ca015d",
+      "f98885a798a37fcdf66a4588574a8331b49b4546ec14411629e2e8aee32662d8",
+      "d63f7ecb836835a71ebf0eb162e2bbe9230614b11b2f27b4983d44d3599d2013"
+    ],
+    [
+      "315edb877ce2a53df646afebcfe2e82d8997814334bdd6a30aa778c6e93aba48",
+      "3a9d5c5e53a33f1146620b4737d0f0772f8b744a7ba719c0341d449907cad3ce",
+      "d661a3cae61baa48857b0dbd25d60ded27c900fd3e93a9f15a450213c2c352c7",
+      "4f379d3aab91ff8437ebfc80205035b4c495fbadc7157f70e127d157e1858649"
+    ],
+    [
+      "4906aeb984f39d85ff63c07d395680cfaf2855acadcf518e38a374241fc4543a",
+      "cf53ff2a0a88b0e625158c17b76d35be0ffd0c23ebd826c2b9314b340009786b",
+      "7300dd392e6d833bfd993c31ef64075abbbbb95b9a1f28d318a471ef52aa9ad9",
+      "bfd251961918f3d7bc0e422aaf1864268b50a20124a457be3c4ce846e2bc3c32"
+    ],
+    [
+      "0f8a59f82e95a0388996734742d519450ad1db7d44cb591ea32bafcb6bbda62c",
+      "56262e083a9a1ba1997eef96c897c78d2a91d304e5a20364bda1aba86728e1a2",
+      "f9c583061949af379f5c2e380c62641b82bc43a076614cf6ad62839f3b953485",
+      "b113fdf15df2a9d5dea395030a6b9b35bab728a48b9dbe3104cc5858bb1b9366"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "fd308db67e4dddadde1efa81a30b2aab1d7cc1679bf5a3d44c5a9dca56f4dae3",
+      "bc582b15d1a77f0e352e1f202a1d5cd30411fa30dfdf7a07e5ad6a95d4d34166",
+      "5cebce9619885c850ad30c5910f78f7b0fe0b585cc3a05aa0896ac556722c441",
+      "ce8333e8597f0007af464f046a24d95cef39285bd7df8d35d7bf54241277ce40"
+    ],
+    [
+      "d517bd55dc516a83635726b95f047132ceaee65fe982a80f14d39614ac6e77b9",
+      "ec832bf985e4c6df01bee8fa79b83d498a694a72bc1212f31dd5b097123acaff",
+      "f57f4d98da7979e74c905984cd35c7629049d83f213eb39c700772bd0d889624",
+      "a776006c03e900911e993b8e0a7393cfcd4a6a222e9ade4c1b9724148b1674a5"
+    ],
+    [
+      "95c6d9ba75f1e24820be51bcdb45b9eec74581def97eabd429be4cad205a2a67",
+      "5423a5c46eb8a22ddffa3693b4f76e86e9304fb1ba57184301ba07266c2ab885",
+      "72e925566258cee8f9044fbfbb767843dfec9b7330900eca5efa1e01d49ba1b5",
+      "b435161807332514c01ecfd0c94417dcb8dfcb8b731a8501e825c56695800b1a"
+    ],
+    [
+      "a4d118a7d05916d8d65e80904b2fbf5fe262e6c8da8de5d3df5969965ef0ee2a",
+      "82d4c3970248e48e87343a7a166aa3d6a18fb86108efe4eab5059c3736f2f33b",
+      "2b61621a66716540c9d1bcaf6a52811d6ec40fb65696739e2922b150d6b4cfdb",
+      "8108834c1367db10f11f62402ded44fc6acb77a63c45e10255989323f9008e49"
+    ],
+    [
+      "b34ce5c01d355d996e6fe7e022cd3ebe55255e47ff92c67eeb0f82f85e68c8dc",
+      "84971a0ea771f954cb26b4f6450b10fffabd4283b947284ab3f6c6a76e8223c0",
+      "92a4961b2df1896f18c1a4f8b28de7c322b8af6e25f475ee0ed2ccb01bbda6d9",
+      "11d473fe389e40dc48e5c3d90cc1da0a766ad4cc395d216095c7db03376fa739"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "report_rounds": 2,
+        "recipient_invocations": 2,
+        "recipient_transfers": 2,
+        "held_while_active": false
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "report_rounds": 2,
+        "recipient_invocations": 1,
+        "recipient_transfers": 2,
+        "held_while_active": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "report_rounds": 2,
+        "recipient_invocations": 2,
+        "recipient_transfers": 2,
+        "held_while_active": false
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "report_rounds": 2,
+        "recipient_invocations": 2,
+        "recipient_transfers": 2,
+        "held_while_active": false
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "report_rounds": 2,
+        "recipient_invocations": 2,
+        "recipient_transfers": 2,
+        "held_while_active": false
+      }
+    ]
+  ]
+}

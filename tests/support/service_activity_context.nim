@@ -171,7 +171,7 @@ proc checkServiceActivity*(source: PreparedAccumulationStatistics,
     if not incoming: sameActivity(row.statistics, original.statistics)
   if incoming:
     let first = plan.serviceActivityAt(StatisticsServiceIndex(0)).value.statistics
-    assert uint64(first.refinementGas) == high(uint64) and uint64(first.counters[
+    assert uint64(first.refinementGas) == 11 and uint64(first.counters[
         ServiceMeasure.RefinementCount]) == 1
     assert uint64(first.counters[ServiceMeasure.ProvisionCount]) == 2 and uint64(first.counters[
         ServiceMeasure.ProvisionBytes]) == 2

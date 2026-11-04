@@ -101,7 +101,7 @@ assert invalidParameters.authorizationError.error == AuthorizationInvocationErro
 for variant in 0..<3:
   let rejected = executionFixture((if variant == 2: @[@[0'u8]] else: @[halt]),
     [reportGuest([refinementImmediate(8, 0), halt])], authCodeSize = (if variant ==
-        1: 64001 else: 0),
+        1: 196609 else: 0),
     missingAuth = variant == 0)
   cap = executionLimits()
   cap.inputBytes = ByteLimit(0)
@@ -111,14 +111,14 @@ for variant in 0..<3:
   let kind = if variant == 0: WorkKind.Bad elif variant == 1: WorkKind.Big else: WorkKind.Panic
   assert refused.authorizationKind == kind, "owned input check: refused.authorizationKind"
 let exactTrace = executionFixture([refinementImmediate(7, 196608), refinementImmediate(8, 49152), halt],
-  [reportGuest([refinementImmediate(8, 0), halt])], external = false, authCodeSize = 64000)
+  [reportGuest([refinementImmediate(8, 0), halt])], external = false, authCodeSize = 196608)
 cap = executionLimits()
 cap.inputBytes = ByteLimit(0)
 let exactDone = executionRun(exactTrace, cap).value
 assert exactDone.inputRefinementIdentity.value.identitySource.value.authorizedInfo.value.traceBytes ==
     49152, "owned input check: exactDone.inputRefinementIdentity.value.identitySource.value.authorizedInfo.value.traceBytes"
 let large = executionFixture([refinementImmediate(7, 196608), refinementImmediate(8, 49153), halt],
-  [reportGuest([refinementImmediate(8, 0), halt])], authCodeSize = 64000)
+  [reportGuest([refinementImmediate(8, 0), halt])], authCodeSize = 196608)
 cap = executionLimits()
 cap.inputBytes = ByteLimit(0)
 cap.refinement = default(AuthorizedRefinementLimits)

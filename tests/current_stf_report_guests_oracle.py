@@ -37,7 +37,7 @@ def original(mode):
     return parent
 
 
-def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None, accumulation_gas=100000):
+def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', lookup=b'', service=None, accumulation_gas=100000, match_exports=True):
     """Sign a full authored report, explicit dependency families and the actual target service code hash."""
     sid = service if service is not None else ((42 if core == 0 else 99) if slot == 3 else 99)
     records = history(initial[chapter_key(3)])[0]
@@ -49,7 +49,7 @@ def guarantee(parent, initial, core, slot, *, package=None, prerequisites=b'', l
         package = digest(f'immediate package slot{slot} core{core}'.encode()) # Preserve original immediate identities.
     anchor = fixed[:32]+fixed[96:100]+anchor_root
     header = (package+(100+slot+core).to_bytes(4, 'little')+digest(package+b'segments')
-              +(6).to_bytes(2, 'little')+digest(package+b'exports')+(3+core).to_bytes(2, 'little')
+              +(6).to_bytes(2, 'little')+digest(package+b'exports')+((5 if match_exports else 3)+core).to_bytes(2, 'little')
               +anchor+fixed[32:64]+anchor)
     value = dict(header=header, prerequisites=prerequisites, core=core, authorizer=pools[core][:32],
                  gas=17+core, auth=b'auth'+bytes([core]), lookup=lookup,
@@ -189,7 +189,7 @@ def advance(parent, initial, mode, slot, gs, ass, *, plan=None, core_count=2, cu
 def expected_observations(check_frozen=True):
     """Freeze every expected whole map before the native program receives the first input."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert fixture['base_fixture_sha256'] == hashlib.sha256(BASE.read_bytes()).hexdigest()
     requests, lines, roots, hashes = [], [], [], []
     for mode in MODES:

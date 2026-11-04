@@ -69,6 +69,7 @@ proc bundleBytes*(bundle: AuditableBundle): AuditableBundleResult[seq[byte]] =
 proc charge(total: var uint64, amount: uint64, limit: ByteLimit): AuditableBundleError =
   ## Preserve a bounded total on refusal; prove E4/native and local representability before adding.
   let ceiling = min(uint64(high(uint32)), uint64(high(int)))
+  if amount > uint64(MaxBundleBytes)-total: return AuditableBundleError.LimitExceeded # Bound encoded bytes before allocation.
   if amount > ceiling-total: return AuditableBundleError.LengthOverflow
   if amount > uint64(limit)-total: return AuditableBundleError.LimitExceeded
   total += amount # Every earlier successful charge proves total lies within both ceilings.

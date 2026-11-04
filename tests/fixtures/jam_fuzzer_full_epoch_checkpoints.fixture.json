@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_FULL_EPOCH_CHECKPOINTS",
   "files": {
-    "jam-fuzzer-full-epoch-checkpoints.json": "dec41178afccc85447848c253e345f6d1c3614b81999ff4c4a1375cc95747061"
+    "jam-fuzzer-full-epoch-checkpoints.json": "5a8dba94f8afe4aff187bb2c4875b7ce10e5b23bfac45b50ef5bb9250e109c16"
   },
   "target": "jam-fuzzer-full-epoch-checkpoints.json"
 }

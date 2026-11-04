@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_SUPERVISED_STORAGE",
   "files": {
-    "current-stf-supervised-storage.json": "60489282fa5fff291cda3ac3ea6dc9e4d4ff869b090eb69f416315af7c92b315"
+    "current-stf-supervised-storage.json": "0d3f832d556ffd4b131b7736b940a71d01f2e52e4efdb6a3edec48350f39b12f"
   },
   "target": "current-stf-supervised-storage.json"
 }

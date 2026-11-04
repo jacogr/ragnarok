@@ -59,3 +59,20 @@ retained parent/post-assurance context. [Atomic report publication](report-trans
 runs that planner inside the private block transaction, preserving whole-parent rollback.
 Next plan accumulation history/queues from newly available reports. PVM execution and complete
 block execution remain later work.
+
+## Current source qualification
+
+Target `fad0ded4a433052397bf7234352a57fe491883f7` adds `reportrefineload`.
+Each report bounds refinement gas against the explicit profile-bound `refinementGas`, imports
+and exports against3072, extrinsics against128, import-footprint plus extrinsic bytes against
+13,791,360, encoded bundle bytes against13,904,950 and authorization gas against50,000,000.
+Availability segment count must equal total digest exports. Check remaining capacities before
+adding and bound imports before multiplying by4488. Failed work digests carry the same load checks.
+All aggregates reset for each report. Computed and assured admission bind the refinement ceiling
+to their original Parameters, just as they bind accumulation gas.
+
+The startup download policy schema is now v2 and requires the new numeric field explicitly.
+Old v1 files refuse WrongVersion; no inferred gas ceiling or format fallback exists. Logical
+and namespace sidecar schemas retain their separate existing versions. Fetch still returns the
+input limit13,791,360, and the authorizer code limit becomes196,608. Historical vector verdicts
+above remain scoped to their source; new authored signed reports isolate each new boundary.

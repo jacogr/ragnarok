@@ -66,9 +66,9 @@ proc active(count = 6): ValidatorStateSnapshot =
   let encoded = validatorEntry(ValidatorChapter.Active, values, policy).value
   decodeStateValidators(encoded.value, policy).value.value
 proc sameValidator(left, right: ValidatorActivity) =
-  ## Compare all six fixed E4 counters without depending on array equality for nominal values.
+  ## Compare all six full-width natural counters without depending on array equality for nominal values.
   for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
-    assert uint32(left[measure]) == uint32(right[measure])
+    assert uint64(left[measure]) == uint64(right[measure])
 proc context(target = 2'u32, author = 2'u64): ValidatorActivityContext =
   ## Original block summary deliberately credits three tickets and preimages to one author.
   ValidatorActivityContext(previousTime: StateTime(1), target: StateTime(target),
@@ -109,22 +109,22 @@ proc checkValidatorProjection*() =
         if (mode == 0 and epoch == StatisticsEpoch.Current) or (mode != 0 and epoch ==
             StatisticsEpoch.Previous):
           if index == 0 or index == 5:
-            expected[ValidatorMeasure.Assurances] = ValidatorCounter(uint32(expected[
+            expected[ValidatorMeasure.Assurances] = ValidatorCounter(uint64(expected[
                 ValidatorMeasure.Assurances])+1)
         if epoch == StatisticsEpoch.Current:
           if index == 2:
             for measure, amount in [1'u32, 3, 3, 3]:
-              expected[ValidatorMeasure(measure)] = ValidatorCounter(uint32(expected[
+              expected[ValidatorMeasure(measure)] = ValidatorCounter(uint64(expected[
                   ValidatorMeasure(measure)])+amount)
           if index == 2 or index == 4:
-            expected[ValidatorMeasure.Guarantees] = ValidatorCounter(uint32(expected[
+            expected[ValidatorMeasure.Guarantees] = ValidatorCounter(uint64(expected[
                 ValidatorMeasure.Guarantees])+1)
         sameValidator(result.values[epoch][index], expected)
   failHash(0)
   for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
     var state = initial
     let index = if measure == ValidatorMeasure.Assurances: 0 else: 2
-    state.validators[StatisticsEpoch.Current][index][measure] = ValidatorCounter(high(uint32))
+    state.validators[StatisticsEpoch.Current][index][measure] = ValidatorCounter(high(uint64))
     let maximum = captured(state)
     failHash(3)
     assert projectValidatorActivity(maximum, roster, context(), preimages, votes, reporters,
@@ -214,27 +214,27 @@ proc checkValidatorSource*(base: OwnedReport) =
         var expected = initial.validators[epoch][index]
         if epoch == StatisticsEpoch.Current:
           if index == author:
-            expected[ValidatorMeasure.Blocks] = ValidatorCounter(uint32(expected[
+            expected[ValidatorMeasure.Blocks] = ValidatorCounter(uint64(expected[
                 ValidatorMeasure.Blocks])+1)
-            expected[ValidatorMeasure.PreimageCount] = ValidatorCounter(uint32(expected[
+            expected[ValidatorMeasure.PreimageCount] = ValidatorCounter(uint64(expected[
                 ValidatorMeasure.PreimageCount])+3)
-            expected[ValidatorMeasure.PreimageBytes] = ValidatorCounter(uint32(expected[
+            expected[ValidatorMeasure.PreimageBytes] = ValidatorCounter(uint64(expected[
                 ValidatorMeasure.PreimageBytes])+3)
           if available and index < 5:
-            expected[ValidatorMeasure.Assurances] = ValidatorCounter(uint32(expected[
+            expected[ValidatorMeasure.Assurances] = ValidatorCounter(uint64(expected[
                 ValidatorMeasure.Assurances])+1)
           let key = array[32, byte](roster.validatorAt(StateValidatorIndex(uint64(
               index))).value.ed25519)
           for ordinal in 0..<credentials.verifiedReporterCount.value:
             if key == array[32, byte](credentials.verifiedReporterAt(ordinal).value):
-              expected[ValidatorMeasure.Guarantees] = ValidatorCounter(uint32(expected[
+              expected[ValidatorMeasure.Guarantees] = ValidatorCounter(uint64(expected[
                   ValidatorMeasure.Guarantees])+1)
               break # A set member earns one increment independently of how many reports it signed.
         sameValidator(plan.validatorActivityAt(epoch, StatisticsValidatorIndex(uint64(
             index))).value, expected)
     var copied = plan.validatorActivityAt(StatisticsEpoch.Current, StatisticsValidatorIndex(0)).value
     copied[ValidatorMeasure.Blocks] = ValidatorCounter(0)
-    assert uint32(plan.validatorActivityAt(StatisticsEpoch.Current, StatisticsValidatorIndex(
+    assert uint64(plan.validatorActivityAt(StatisticsEpoch.Current, StatisticsValidatorIndex(
         0)).value[ValidatorMeasure.Blocks]) != 0
     assert plan.validatorActivityAt(StatisticsEpoch.Current, StatisticsValidatorIndex(high(
         uint64))).error == ValidatorActivityError.InvalidIndex

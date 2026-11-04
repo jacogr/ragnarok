@@ -57,9 +57,11 @@ class PackageHarness(unittest.TestCase):
         value['context']['prerequisites']=[bytes([i])*32 for i in range(8)]
         self.assertEqual(decode('P',wire('P',value),DEFAULT),'limitexceeded')
 
-    # Equality with a gas ceiling rejects; equality with footprint maximum succeeds.
-    def test_strict_and_inclusive_limits(self):
+    # Gas and footprint upper bounds are inclusive; one over either must refuse.
+    def test_inclusive_limits(self):
         value=example('I');value['refine_gas_limit']=DEFAULT[0]
+        self.assertEqual(encode('I',value,DEFAULT,1000),wire('I',value).hex())
+        value['refine_gas_limit']+=1
         self.assertEqual(encode('I',value,DEFAULT,1000),'limitexceeded')
         value=example('I');value['import_segments']=[];value['payload']=b'';value['extrinsic'][0]['len']=MAX_BUNDLE
         data=wire('I',value)
@@ -72,6 +74,8 @@ class PackageHarness(unittest.TestCase):
         value=example('P');value['items']=[example('I'),example('I')]
         value['items'][0]['refine_gas_limit']=DEFAULT[0]-2;value['items'][1]['refine_gas_limit']=2
         self.assertNotEqual(decode('I',wire('I',value['items'][0]),DEFAULT),'limitexceeded')
+        self.assertNotEqual(decode('P',wire('P',value),DEFAULT),'limitexceeded')
+        value['items'][1]['refine_gas_limit']+=1
         self.assertEqual(decode('P',wire('P',value),DEFAULT),'limitexceeded')
         value['items']=[]
         self.assertEqual(decode('P',wire('P',value),DEFAULT),'limitexceeded')

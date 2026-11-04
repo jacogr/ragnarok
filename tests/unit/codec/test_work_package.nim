@@ -32,6 +32,24 @@ proc package(): WorkPackage =
       item(), item()])
 
 let config = fullPackageConfig(ByteLimit(32*1024*1024))
+# Package sums admit equality independently for refinement/accumulation and reject only the next unit.
+for field in 0..<2:
+  for extra in 0..1:
+    var exact = package()
+    if field == 0:
+      exact.items[0].refineGas = Gas(4_999_999_999'u64)
+      exact.items[1].refineGas = Gas(uint64(1+extra))
+    else:
+      exact.items[0].accumulateGas = Gas(9_999_999)
+      exact.items[1].accumulateGas = Gas(uint64(1+extra))
+    var bytes = newSeq[byte](2048)
+    let encoded = encodeWorkPackage(exact, config, bytes)
+    assert encoded.error == (if extra == 0: PackageError.None else: PackageError.LimitExceeded)
+    if extra == 0:
+      # The decoder must accept exactly the same canonical package gas boundary.
+      assert decodeWorkPackage(bytes.toOpenArray(0, encoded.value-1), config).error ==
+          PackageError.None
+assert MaxInputBytes == 13_791_360 and MaxBundleBytes == 13_904_950
 var output: array[2048, byte] = default(array[2048, byte])
 var value = package()
 let written = checked(encodeWorkPackage(value, config, output))

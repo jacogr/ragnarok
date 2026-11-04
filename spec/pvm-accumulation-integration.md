@@ -25,7 +25,7 @@ No new production API, wire format, runtime policy or dependency is introduced.
 
 [Grow_heap integration](pvm-accumulation-heap.md) now follows the explicitly adopted
 merged #533 gas/result ordering and #538 stack reservation with unchanged pins.
-Preserve AmbiguousPrivileges, exact
+Use the current duplicate-service HUH rule, exact
 gas-debt representation and parked request-namespace boundaries. Refused plans
 must publish no credits, request changes or pending provisions. Test stale prior,
 backend refusal, immutable retained sources and fresh 1,000-cycle ARC release.
@@ -57,7 +57,7 @@ Unsupported account ancestry and participating-target deletion conflicts retain 
 | grow_heap (1) | Implemented under the maintainer-adopted merged #533/#538 fixes; see [heap integration](pvm-accumulation-heap.md). |
 | Selected account effects | Bounded self metadata/entries, creation/deletion proofs and [transfer debits](pvm-transfer-publication.md) publish through common-source batches. Unsupported ancestry and participating-target deletion conflicts remain gated; equal roots alone do not permit substitution. |
 | Transfer-aware recursion | [Initial completed-round collection and recursive input/gas preparation](pvm-transfer-continuation.md) are implemented under explicit transfer/memo limits. [Repeated reentry](pvm-transfer-reentry.md) also supports new outgoing effects. [Statistics](pvm-transfer-statistics.md) derives destination counts and gross actual gas under independent local limits. |
-| Conflicting bless allowances | AmbiguousPrivileges; pinned set-to-dictionary semantics remain unresolved. |
+| Repeated bless service keys | HUH for identical or conflicting pairs; full raw-count gas is charged. |
 | 32-byte halt return with provisions | Implemented using the adopted [regular X projection](pvm-hash-return-provisions.md); the historical AmbiguousProvisions value is no longer emitted. |
 | Negative host-gas debt outside the signed domain | GasRangeExceeded; no truncation or clamping. |
 | Request namespace adoption | Preserve the parked 0.8.0 behavior and pending compatible pin review; no interim length bound or alternate format. |

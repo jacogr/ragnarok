@@ -1,0 +1,117 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "cd6bc110f641a712a3ee8680a24bd198714f1f2f6e10a2f294fc591d4eda0fea",
+      "4d6f69d2b7e473c25b4d27f4ace99093d6042591e2e6abc0a75ee0c76b02af42",
+      "0cf8fa51b959dc9f0c47026db83e0a4bc391851baf9c6e0b5cdfc15bc6bdde2a",
+      "ed713504a76004b3942d9c0946a980d8d3ba50107ddaac27ad2bed805071a4e8"
+    ],
+    [
+      "d2abcdc121751713a79ea54d46d2dcd1b30f6ac834a6c9c0d1ae2d547f41f0d5",
+      "75a658cc802de56f7b0447bad190e4b5fa458015c30eaaf55839566e22ac14d1",
+      "76d358684e0d0eb07cbeb028522fbc29d1a542063bebaf7d9d480d77e5d14631",
+      "17d6b4271817e8b674233421be30e5bcf0fb506121017d7f9f5b0da27b29ee44"
+    ],
+    [
+      "2894d50461c61b5506ac7b65814f9babb5cb6c660b106736bb3715d4e810cb73",
+      "c56e2b5707e54c08d84057ed65cc09981d7097591e601dc173fd427532372506",
+      "f1f37ba082798c6c325aec6b623dabb5c3e0bbedf16cfb61392537fdb3c09493",
+      "159b6c1bc6e98633248ce5228a356af90187fb39ed2166a0d52fbd7165e24e2b"
+    ],
+    [
+      "0265241c23a88e5054ef0b0c070402134e61724ce26246dd798fdfa7cb2c29c6",
+      "38c1e54a2f6174147f355c4dbef5b3cad9fbee9fbbfadc81f424f6a39e41bcb1",
+      "e43f1e6232fbae56996d89e8547051a06d935e09dbf6548cce7fa7dff0baed4d",
+      "aae9fc3afbae48ff91846912fd1cc04846d8feb93830c002bb819e3056b883bb"
+    ],
+    [
+      "2fd4baf1d04b75122a4ac2ac074b182dbbf541a93a0b8d537e95e821a00e3ec4",
+      "a3262c47eaf4cd2bf720310b5862a6caf1bb92274957c424b5f67508368770a6",
+      "6045b237d21171906b10fb08e5197cfd2b536055746000fdfd15650ec832a00f",
+      "806ebd9c22b4cb0930a774d3a19987ed2a77ae5c14a3c4d8cb398c6042ac8f1c"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "224615d682dd53fde97442112ed13cbb12d73a90a517c7089a23735fb6049404",
+      "3293ab0d011ceeed596b50f6f69763e9da1948492aa9284b27ecd95553304c50",
+      "ddf5c6e4442a4868733ddcb272af012dea676a3b036a12aa4d7140d424a386f2",
+      "2a9c242bcdf85116dc06a740033c5990ffafc0e04fbe0d97a221318bf785a9a3"
+    ],
+    [
+      "26a47b554dd152ce6f09321513fe2430944f013bf0463d5a9ee7cae02bbbfe7d",
+      "4f65d8fa0d12520ce73a24a1d7fcc7184d1b17ac2cfb27d060763a9cc331f5a5",
+      "ac7bc7d996f83ed4c485943db08ac9b64b61f9c486fd69a084285a6c8cec1a9a",
+      "c1f9f42e896675bd3dc3d675928eacdb0e2e03a10a2c5ae1cdef37fb13f0a4af"
+    ],
+    [
+      "d4bfbb032f58475c219caa1b42d44ee8952958819e0b584c68c59e30c9f463bc",
+      "d5c4c7298a52bff308214c843f960b7b92d15728c80d326e9a46c91b29e72c03",
+      "950e784883bb1c94abecf23ebd5f4ef0718985b4123934dae75aa4eb62c9dbcd",
+      "6b345b1c719b0cf6bff38d213495ab3fe61ef6c3158946e3ac710c7380f97b49"
+    ],
+    [
+      "9aa0386be3c87b0dfcb634ea28c241a210adb8df2455e761de3e04a514cab8aa",
+      "74b7a700085324ac7342df8c3f1edf3601e81eb30694ce3eed2e6824a306defe",
+      "dab17cb0ac7d8e4df32a0093821169b2570060a036072783b66254b6009e387e",
+      "0bf6007901cbb5522eba65c54dd9e7ad47be66d83609bd0bdf2348e24eb3bfb5"
+    ],
+    [
+      "5c873f5d1e29204430256221c89c7a0b71f34b0bf521bb791b819ae1ce034aad",
+      "c166f8d1a0d3a531f5208e0d7cf45fa1b58486e7567351f95216cd3e54fb9a6a",
+      "99d9ad5d1b48805eaa168a50446b3233eb54af2425cd13ab146f13518f2bc005",
+      "3a7fb9bc875d55f07ede85587227595a131e777a67d909fa9026777f8c97898d"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "created": [
+          1187033478
+        ],
+        "gas": 3957,
+        "calls": 1
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "created": [],
+        "gas": 3957,
+        "calls": 1
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "created": [
+          1187033478
+        ],
+        "gas": 4061,
+        "calls": 1
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "created": [
+          1187033478,
+          1187033520
+        ],
+        "gas": 7815,
+        "calls": 2
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "created": [],
+        "gas": 3957,
+        "calls": 1
+      }
+    ]
+  ]
+}

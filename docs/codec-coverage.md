@@ -194,7 +194,7 @@ below. See [the contract](../spec/state-privileges.md).
 ## Activity statistics state extension
 
 `src/codec/state/statistics.nim` implements pinned T chapter 13: separate count-prefixed current/previous
-validator arrays with six E4 counters per record, fixed core tuples of eight naturals, and a
+validator arrays with six canonical natural counters per record, fixed core tuples of eight naturals, and a
 numeric-key service dictionary with eleven natural fields per value. Separate roster populations
 support epoch resizing. Full preflight precedes allocation; private ARC owners expose copied,
 nominally indexed records. No statistics updates, accounting or epoch transitions are executed.

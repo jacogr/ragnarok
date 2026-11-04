@@ -153,7 +153,7 @@ def successor(parent, mode, payloads):
 def expected_observations():
     """Return every original input, independent signed child and complete golden output before native execution."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert [case['mode'] for case in fixture['cases']] == list(MODES)
     lines, roots, inputs = [], [], []
     for case in fixture['cases']:

@@ -91,7 +91,7 @@ proc commandHelp*(topic = ""): string =
     result.add("\nRequires --with-state --chain FILE; telemetry is unavailable.\n")
     result.add("Repeat --net-peer PORT:KEY_FILE for additional peers.\n")
     if topic == "sync-current": result.add("Runs until SIGINT/SIGTERM; --net-timeout-ms bounds each startup ancestor request, not the whole host.\nNo --download-blocks cap applies; slot gaps are not block counts.\n")
-    if topic in ["download-current", "sync-current"]: result.add("Use a ragnarok-current-download-policy-v1 policy; discovery must match its permissions.\n")
+    if topic in ["download-current", "sync-current"]: result.add("Use a ragnarok-current-download-policy-v2 policy; discovery must match its permissions.\n")
   elif topic == "check-traces":
     result.add("\nRequires --with-state --chain FILE. Repeat --trace-file FILE in execution order.\nNo listeners, disk storage or checkpoint import are enabled by this offline command.\n")
   if topic in ["fuzz", "serve-fuzz", "serve-fuzz-preset"]:

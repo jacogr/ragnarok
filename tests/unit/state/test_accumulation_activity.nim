@@ -78,7 +78,7 @@ proc expectedBytes(source: PreparedAccumulationValidators, available, blobs: boo
             of ValidatorMeasure.PreimageCount: value += uint32(if blobs: 3 else: 0)
             of ValidatorMeasure.PreimageBytes: value += uint32(if blobs: 4 else: 0)
             else: discard # These fixtures submit no tickets; all other counters use membership above.
-        appendFixed(result, value)
+        appendNatural(result, uint64(value))
   let gas = [11'u64, 13]
   let imports = [2'u64, 17]
   let xtCounts = [3'u64, 19]
@@ -177,7 +177,7 @@ proc policies(fixture: ActivityFixture, bytes: int) =
   for mode in 0..<12:
     var short = config()
     case mode
-    of 0: short.componentBytes = ByteLimit(495)
+    of 0: short.componentBytes = ByteLimit(335)
     of 1: short.incoming = ElementLimit(1)
     of 2: short.available = ElementLimit(0)
     of 3: short.assurances = ElementLimit(4)
@@ -203,7 +203,7 @@ proc policies(fixture: ActivityFixture, bytes: int) =
       assert refused.error == AccumulationActivityError.LimitExceeded
     assert sameStateSnapshot(prior, fixture.source.accumulationValidatorsState.value), "policy refusal preserves source identity"
   var exact = config()
-  exact.componentBytes = ByteLimit(496)
+  exact.componentBytes = ByteLimit(336)
   exact.activityBytes = ByteLimit(uint64(bytes))
   assert prepareAccumulationActivity(fixture.source, exact).error == AccumulationActivityError.None, "exact byte ceilings retry"
   var full = config()
@@ -289,10 +289,12 @@ proc main() {.raises.} =
     let refused = prepareAccumulationActivity(bad.source, config())
     assert refused.error == AccumulationActivityError.PreimageFailure
     assert refused.preimageError == (if mode == 2: PreimageTransitionError.NotOrderedUnique else: PreimageTransitionError.NotRequested)
-  let huge = activityFixture(base, guarantees = 2, hugeRefinement = true)
-  let overflow = prepareAccumulationActivity(huge.source, config())
-  assert overflow.error == AccumulationActivityError.CoreFailure
-  assert overflow.coreError == CoreServiceActivityError.CounterOverflow, "certified inputs may still overflow combined service metrics"
+  let maximum = activityFixture(base, guarantees = 2, maximumRefinement = true)
+  let bounded = prepareAccumulationActivity(maximum.source, config())
+  assert bounded.error == AccumulationActivityError.None
+  assert uint64(serviceActivityAt(bounded.value.accumulationActivitySnapshot.value,
+      StatisticsServiceIndex(0)).value.statistics.refinementGas) == 2_000_000_000,
+      "two admitted per-report maxima aggregate without truncation"
   backendWitness(combined)
   let defaultOwner = default(PreparedAccumulationActivity)
   assert defaultOwner.accumulationActivitySource.error == AccumulationActivityError.Uninitialized

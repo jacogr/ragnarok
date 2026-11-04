@@ -20,14 +20,16 @@ type CurrentActivityFixture* = object ## Full authored parent keys support indep
   older*: seq[OwnedHeader] ## Original genuine lookup headers support full candidate consumers.
 proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
-    hugeRefinement = false, executed = false, provided = false, parentPools: seq[AuthorizerRow] = @[],
+    maximumRefinement = false, executed = false, provided = false, parentPools: seq[
+        AuthorizerRow] = @[],
     authorizationQueue: seq[byte] = @[], omitAuthorizationQueue = false,
     withDispute = false, withTicket = false, shiftPending = false,
     storeWrites = 1000'u64, completeState = false, serviceNamespaces: seq[ServiceNamespaceSeed] = @[]): CurrentActivityFixture =
   ## All signatures, current guests/selection, statistics, timestamps, queues and recent history remain genuine prerequisites.
   let fixture = executionFixture(base, activityOptions(available = available,
       guarantees = guarantees, blobs = blobs, requested = requested, missingLast = missingLast,
-      disordered = disordered, slot = slot, hugeRefinement = hugeRefinement, executed = executed,
+      disordered = disordered, slot = slot, maximumRefinement = maximumRefinement,
+      executed = executed,
       provided = provided, parentPools = parentPools, authorizationQueue = authorizationQueue,
       omitAuthorizationQueue = omitAuthorizationQueue, withDispute = withDispute,
       withTicket = withTicket, shiftPending = shiftPending, storeWrites = storeWrites,

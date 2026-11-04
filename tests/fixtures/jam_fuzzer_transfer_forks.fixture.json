@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_TRANSFER_FORKS",
   "files": {
-    "jam-fuzzer-transfer-forks.json": "9ba7f732bd21b2fa276610b72aacafcbd1e329c135bd670445498aa969429c8d"
+    "jam-fuzzer-transfer-forks.json": "f5c5d5f86962dc40435adb3ab5478d31565bc69f0c2d35a9f875b2a8f5b6d9d9"
   },
   "target": "jam-fuzzer-transfer-forks.json"
 }

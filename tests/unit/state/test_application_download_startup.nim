@@ -135,8 +135,10 @@ proc textPolicy(text: string) =
   let good = decodeDownloadPolicy(text)
   assert good.error == DownloadPolicyError.None, "complete policy"
   assert encodeDownloadPolicy(good.value) == text, "complete canonical round trip"
+  assert decodeDownloadPolicy(text.replace("ragnarok-download-policy-v2",
+      "ragnarok-download-policy-v1")).error == DownloadPolicyError.WrongVersion
   let rows = text.splitLines()
-  assert rows.len == 316, "v1 header plus 314 leaves and trailing newline"
+  assert rows.len == 317, "v2 header plus 315 leaves and trailing newline"
   for missing in 1..<rows.high:
     var incomplete = rows[0] & "\n"
     for index in 1..<rows.high:

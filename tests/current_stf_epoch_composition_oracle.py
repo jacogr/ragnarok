@@ -50,7 +50,7 @@ def expected_observations(check_frozen=True):
         traces.append(dict(family=family,profile=profile,mode=mode,fixture_sha256=hashlib.sha256(source.FIXTURE.read_bytes()).hexdigest(),events=events))
     if check_frozen:
         fixture=json.loads(FIXTURE.read_text())
-        assert fixture['graypaper_commit']=='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+        assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['base_fixture_sha256']==hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes and fixture['traces']==traces
     return requests,lines,dict(transitions=108,chains=18,roots=roots,checkpoint_sha256=hashes,traces=traces)

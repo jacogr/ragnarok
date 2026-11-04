@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_SUPERVISOR_LIFECYCLE",
   "files": {
-    "current-stf-supervisor-lifecycle.json": "9fc73489ab6b1962f26a73c17f2713e59fb7a4b7f4e300b14f4a991971ede7a2"
+    "current-stf-supervisor-lifecycle.json": "8a931f92003a74ac5e120706e72b017179a1105a21f1cba3baff301d79b865f0"
   },
   "target": "current-stf-supervisor-lifecycle.json"
 }

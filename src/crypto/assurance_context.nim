@@ -11,12 +11,12 @@ import ./primitives
 import ../codec/assurances
 
 type
-  AssuranceParent* = distinct array[32, byte] ## Expected block parent is distinct from an assurance anchor and from a computed digest.
+  AssuranceParent* = distinct array[32, byte] ## Actual block parent comes from authenticated chain context, separately from the wire record.
   AssuranceSigningMessage* = distinct array[45, byte] ## The normative domain and 32-byte digest form one owned, signature-independent message.
   VerifiedAssuranceCount* = distinct uint64 ## Only completed verification may produce a certified count; this is not availability/state approval.
   AssuranceContextError* {.pure.} = enum ## Context errors preserve precise configuration, structural, parent and cryptographic failures.
     Uninitialized, None, InvalidConfig, InvalidKeySet, LimitExceeded, InvalidValidator,
-    NonCanonical, WrongParent, InvalidSignature, BackendFailure
+    NonCanonical, InvalidSignature, BackendFailure
   AssuranceContextResult*[T] = object ## Default and failure alternatives have no transcript, count or partially validated value.
     case status: AssuranceContextError
     of None:
@@ -99,7 +99,6 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     return AssuranceContextResult[VerifiedAssuranceCount](
         status: AssuranceContextError.LimitExceeded)
   var previous = -1
-  let expected = array[32, byte](parent)
   # Complete every structural/context check before an early invalid signature can hide a later failure.
   for value in values:
     if uint64(value.validator) >= uint64(config.validators):
@@ -114,10 +113,6 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
     if not canonicalBits(value.bits, config.cores):
       return AssuranceContextResult[VerifiedAssuranceCount](
           status: AssuranceContextError.NonCanonical)
-    # Every anchor must bind to the externally supplied expected block parent.
-    if value.anchor.bytes != expected:
-      return AssuranceContextResult[VerifiedAssuranceCount](
-          status: AssuranceContextError.WrongParent)
     previous = int(value.validator)
   # Only a fully valid context proceeds to ordinary backend Ed25519 verification.
   for value in values:

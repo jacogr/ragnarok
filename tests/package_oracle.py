@@ -141,7 +141,7 @@ class Policy:
         self.refine+=refine;self.accumulate+=accumulate
         # Gas ceilings are strict; all other aggregate boundaries here are inclusive.
         if (self.imports>3072 or self.exports>3072 or self.xts>128 or self.bytes>MAX_BUNDLE or
-                self.refine>=self.config[0] or self.accumulate>=self.config[1]):
+                self.refine>self.config[0] or self.accumulate>self.config[1]):
             raise Rejected('limitexceeded')
 
     # Repeated package references share one lookup; direct roots never add a dependency.
@@ -399,10 +399,10 @@ def requests():
             value=example(kind)
             value[key]=[example('R' if key=='import_segments' else 'X' if key=='extrinsic' else 'I') for _ in range(count)]
             add_encode(kind,value);add_decode(kind,wire(kind,value))
-    # Zero/maximum E8 fields cannot overflow aggregate gas; equality with the supplied ceiling must reject.
+    # Zero/maximum E8 fields cannot overflow aggregate gas; equality with the supplied ceiling is accepted.
     for field,ceiling in (('refine_gas_limit',DEFAULT[0]),('accumulate_gas_limit',DEFAULT[1])):
-        # Zero and just-below gas values differ from equality/maximal-E8 failures.
-        for gas in (0,ceiling-1,ceiling,2**64-1):
+        # Zero and just-below gas values differ from one-over/maximal-E8 failures.
+        for gas in (0,ceiling-1,ceiling,ceiling+1,2**64-1):
             value=example('I');value[field]=gas;add_encode('I',value);add_decode('I',wire('I',value))
         value=example('P');value['items']=[example('I'),example('I')]
         value['items'][0][field]=ceiling-2;value['items'][1][field]=2

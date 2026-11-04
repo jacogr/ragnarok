@@ -15,16 +15,16 @@ export ServiceIndex, CoreCount, ValidatorCount
 type
   StatisticsEpoch* {.pure.} = enum ## Current and previous epoch populations are separately configured and need not match after resizing.
     Current, Previous
-  ValidatorMeasure* {.pure.} = enum ## Six validator counters follow the exact activityspec tuple order, all encoded E4.
+  ValidatorMeasure* {.pure.} = enum ## Six validator counters follow the exact activityspec tuple order, all encoded as canonical naturals.
     Blocks, Tickets, PreimageCount, PreimageBytes, Guarantees, Assurances
-  ValidatorCounter* = distinct uint32 ## Fixed E4 validator counter; a natural gas allowance cannot be assigned without conversion.
+  ValidatorCounter* = distinct uint64 ## Canonical natural validator counter; a natural gas allowance cannot be assigned without conversion.
   CoreMeasure* {.pure.} = enum ## Core non-gas measures precede the final gas field in their normative order.
     DataAvailabilityLoad, Popularity, Imports, ExtrinsicCount, ExtrinsicBytes, Exports, BundleBytes
   ServiceMeasure* {.pure.} = enum ## Service non-gas fields retain their named tuple positions; gas fields remain separate nominal values.
     ProvisionCount, ProvisionBytes, RefinementCount, Imports, ExtrinsicCount, ExtrinsicBytes,
     Exports, AccumulationCount, TransferCount
   ActivityNatural* = distinct uint64 ## Natural statistic fields support the entire canonical unsigned 64-bit encoding domain.
-  ActivityGas* = distinct uint64 ## Gas statistics cannot accidentally substitute for natural counts or E4 validator counters.
+  ActivityGas* = distinct uint64 ## Gas statistics cannot accidentally substitute for natural counts or validator counters.
   ValidatorActivity* = array[ValidatorMeasure, ValidatorCounter] ## Every validator record is a fixed independent copy, with no nested mutable storage.
   CoreActivity* = object ## Seven natural core measures and final natural gas usage form one fixed eight-field tuple.
     counters*: array[CoreMeasure, ActivityNatural]
@@ -153,7 +153,7 @@ proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout
       status: valid) # Invalid profile cannot authorize reads.
   var layout = default(Layout)
   var cursor = 0
-  # Each epoch has its own natural count followed by six E4 fields per record, not natural counters.
+  # Each epoch has its own natural count followed by six canonical naturals per validator.
   for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     let count = readNatural(input, cursor, config)
     if count.error != ActivityError.None: return ActivityResult[Layout](
@@ -161,11 +161,11 @@ proc scan(input: openArray[byte], config: ActivityConfig): ActivityResult[Layout
     if count.value != uint64(population(config, epoch)):
       return ActivityResult[Layout](status: ActivityError.InvalidCount) # Counts must match their corresponding supplied roster.
     layout.starts[epoch] = cursor
-    let error = grow(cursor, int(count.value)*24, config)
-    if error != ActivityError.None: return ActivityResult[Layout](
-        status: error) # Profile bounds prove multiplication safe.
-    if cursor > input.len: return ActivityResult[Layout](
-        status: ActivityError.Truncated) # Fixed counters must all be present.
+    # Scan all variable-width counters before allocating any retained typed storage.
+    for i in 0..<int(count.value):
+      let fields = readFields[6](input, cursor, config)
+      if fields.error != ActivityError.None: return ActivityResult[Layout](
+          status: fields.error) # Late malformed counters invalidate the whole snapshot.
   layout.coreStart = cursor
   # Core cardinality is fixed by profile: no count discriminator appears here.
   for i in 0..<int(uint64(config.cores)):
@@ -222,16 +222,15 @@ proc decodeActivityState*(input: openArray[byte], config: ActivityConfig): Activ
       status: checked.error) # No earlier owner/progress after failure.
   let layout = checked.value
   let data = ActivityData()
-  # Both roster arrays own copied E4 values and preserve validator-position order.
+  # Both roster arrays own copied natural values and preserve validator-position order.
   for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     data.state.validators[epoch] = newSeq[ValidatorActivity](population(config, epoch))
     var cursor = layout.starts[epoch]
     for i in 0..<data.state.validators[epoch].len:
+      let fields = readFields[6](input, cursor, config).value
       for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
-        var value = 0'u32
-        for j in 0..<4: value = value or (uint32(input[cursor+j]) shl (j*8)) # Explicit E4 little-endian copy.
-        data.state.validators[epoch][i][measure] = ValidatorCounter(value)
-        cursor += 4
+        data.state.validators[epoch][i][measure] = ValidatorCounter(fields[ord(
+            measure)]) # Copy every full-width preflighted counter.
   data.state.cores = newSeq[CoreActivity](int(uint64(config.cores)))
   var cursor = layout.coreStart
   # Read only proved tuples; immutable capture occurs after the whole parent is known valid.
@@ -276,9 +275,13 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
     let count = source.validators[epoch].len
     if count != population(config, epoch): return ActivityResult[StateEntry](
         status: ActivityError.InvalidCount) # Never infer a roster from source count.
-    let error = grow(size, natural.encode(JamNatural(count)).len+count*24, config)
-    if error != ActivityError.None: return ActivityResult[StateEntry](
-        status: error) # Proved profile count bounds native multiplication.
+    let prefix = grow(size, natural.encode(JamNatural(count)).len, config)
+    if prefix != ActivityError.None: return ActivityResult[StateEntry](status: prefix)
+    # Size every validator scalar before allocation, using checked cumulative parent policy.
+    for record in source.validators[epoch]:
+      for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
+        let error = grow(size, natural.encode(JamNatural(uint64(record[measure]))).len, config)
+        if error != ActivityError.None: return ActivityResult[StateEntry](status: error)
   if uint64(source.cores.len) != uint64(config.cores):
     return ActivityResult[StateEntry](status: ActivityError.InvalidCount) # Fixed core sequence has no outer count.
   let count = serviceCount(uint64(source.services.len), config)
@@ -306,15 +309,12 @@ proc activityStateEntry*(source: ActivityState, config: ActivityConfig): Activit
           status: error) # Include the last accumulation gas field.
   var entry = StateEntry(key: chapterKey(StateChapter(13)), value: newSeq[byte](size))
   var cursor = 0
-  # Commit count-prefixed E4 validator tuples in current/previous order.
+  # Commit count-prefixed natural validator tuples in current/previous order.
   for epoch in low(StatisticsEpoch)..high(StatisticsEpoch):
     putNatural(uint64(source.validators[epoch].len), entry.value, cursor)
     for record in source.validators[epoch]:
       for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
-        for j in 0..<4:
-          entry.value[cursor] = byte((uint32(record[measure]) shr (j*8)) and
-              255) # All counters retain their four-byte width.
-          inc cursor
+        putNatural(uint64(record[measure]), entry.value, cursor) # No narrowing or fixed-width padding.
   # Fixed core sequence and variable numeric service dictionary use ordinary natural fields.
   for core in source.cores:
     for field in coreFields(core): putNatural(field, entry.value, cursor) # No core-array count discriminator.

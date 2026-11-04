@@ -1,0 +1,121 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "d280c40e24b6c2d297733bbca7aea02f4c2fef9430aaee050e341aac346ce07d",
+      "4d88afa966af328d1d3a553a8c384c0db284ce8d589daf299a758e6295798d8e",
+      "dbfe31d5440bce3aaf4b08dbda34b4e1ddc9fe2eca5f95c49277c854d390f437",
+      "93fb7a9eb5eaeaabe32f2a999598d992196c635786d8520cef1e43641cb8cd52"
+    ],
+    [
+      "de6710b8c04d5f847ffc208997a03f3dd7ffb3c554e82ae7ac4a055ec7422bf5",
+      "a251c4f4d950a64c1424b08f0b4e7f1ec65336c3efe74984cdb124c91b1a72a5",
+      "c106aa6db5b3701099e12315956ae8c2e43aedaedf9299fe9e71843659487935",
+      "a3cbdf39970873ef6d2c1a6b072d951f04e9779cbae48d84a34d58f9705ff809"
+    ],
+    [
+      "0367893a1dc545bbdb978c910d8df3479c8561bfa0c8163781b00f013fe00aad",
+      "dfd89047d47088fa57018e00d7224258c1de5eb22c0cf8184a5a5bacc2c6d8f1",
+      "3cdb42943d7a1b5827e6cc0a26ba8c2058d73b33f1e05f169a0067b8e60d0156",
+      "c20f31e3631609d6ed0beb37b39f5e03ef0ff3ac08cb8a53d770dd4e900e5786"
+    ],
+    [
+      "6cf7485f60cd5e3e0985089c740fd6ae79ecd8b80c9500f7b9e0bfc48ae71066",
+      "8844606626f1e9bc51aac7e66ea447eb10abcdb4068feb6ed7acaf0c48b49452",
+      "fefcd7ce0aae4e6e370ddc204124aa038813e5b15cb0b2b1b09c60b1cea24595",
+      "7db1351f5a2a497aa95d0df0943b2399bb6c213478558683998cc3ef5ab10ace"
+    ],
+    [
+      "8ac6fdd621ee1ab2ae28364d03e4a8a218eea75f5d8fe9fd3f090cac7ec6e157",
+      "f510066a8cdfb7f3683592fecf6bb97144341a990a7c80608427cb98a0939220",
+      "73c0494e80d8a40a2222411823f81dc3b4bbcd1648531d3012b169b61676c304",
+      "166b5a9b34b28f14fbf0ebb7177ff12eb5a8c95cdf14b38ae48226fcc7d7b96d"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "b6a9942d103d8625c86f8aa296bcba5b51a572566537f906e515fba7385e2fb9",
+      "30b291a39887ff4e72d7c206bafe0ff77c12def5f1b7145e7e97ac46a174d766",
+      "a45331b6666aeeaf8e3c5d7e16d51b4dada1be2d2d3ee74c4b9b287a38cfdea1",
+      "71fe8d29ad06e71ce485080ea15a5748afdeae3bafe258da79439690a14c748b"
+    ],
+    [
+      "5b0ba2e03cba5128cf5ef772baa716253c20b10ede8649c355444b4fbd1eec6d",
+      "bd19e1c4398dfb45f40fc1dfb74287139e522ce234e9a1b881de147bb80477aa",
+      "3fd8c3abd4aee103484daf952e6d1708983097e622f8be5f7b6fc298012feac4",
+      "47098a417cd9ca0bab957dc7bc7e2ca5c62fa11e4b14c689996e4496bbd62fec"
+    ],
+    [
+      "9aeb2d192c0f6dc726059d305e54e4ea33d1033796ee77885ebc02b0bb7bf769",
+      "7116a3e70a44f1023ef65950e18e6db4d3c23da7c63a4c485efcccc2d5cfaf2e",
+      "67a37ae6b1b804e5f59e572558f2d8ce17bc8644f684d6206ab744f60284811c",
+      "5584d669bd8f2505a6fae1aed7438c03e336c2a2853bf2e1d5f7d2ba959c2683"
+    ],
+    [
+      "b86e07ef6c49545b7ac841158eac9c6dc7925f672666d7eb439b5268753cb52b",
+      "1508f8ffbe46b1a0eefa17a8d3d5c2c84443f711a1392e5d503c1ba433e4f758",
+      "816e008d54a384486e0c71828963a105d3aa8f949eb123e22ee08b1d3c27fd42",
+      "e033dc68944da62648d1bc43e6057d4ee09bcf5131c5c58bd76b0035c7cf31d7"
+    ],
+    [
+      "a34c464aa4375809e93b048ab721fc673b592a72f91b6497b473a414b3532140",
+      "090e8f10cb957ed039414fff5a97276e970930129e73cdf29ab81190a2064a2a",
+      "d67d854f46a9322d89c1a564fb6f28becd3eccb4fcf284872099857be56cc0ed",
+      "c62070e7c9569d3bd8f642b9da944ce247778f747d2a53276914c550c380c409"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "gas42": 1920,
+        "gas99": 525,
+        "manager_proposal": 0,
+        "selected_assigner": 0,
+        "queue_retained": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas42": 1920,
+        "gas99": 525,
+        "manager_proposal": 42,
+        "selected_assigner": 99,
+        "queue_retained": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas42": 1920,
+        "gas99": 525,
+        "manager_proposal": 42,
+        "selected_assigner": 99,
+        "queue_retained": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas42": 1920,
+        "gas99": 629,
+        "manager_proposal": 0,
+        "selected_assigner": 0,
+        "queue_retained": true
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas42": 1920,
+        "gas99": 525,
+        "manager_proposal": 0,
+        "selected_assigner": 0,
+        "queue_retained": false
+      }
+    ]
+  ],
+  "max_service_code_size": 4096
+}

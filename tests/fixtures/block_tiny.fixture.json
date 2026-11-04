@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_BLOCK_FIXTURES",
   "files": {
-    "block-tiny/assurances.bin": "5438827a87cfd20f1eaccd8d20858a69af88df2459172a37e6aa9d9639c506e3",
+    "block-tiny/assurances.bin": "e070f8e2d079e40ce455e286e8d10806615d47c2c2e1c0d9ed242079243baefc",
     "block-tiny/disputes.bin": "83e526e84c919fb1efb020bee185c9f63c3692e004d13820546473ed59e31b21",
     "block-tiny/guarantees.bin": "4e5b4574b56bf0f0f974db8f4486fd14219f9d5f5a95c4743100bf5ed75ec690",
     "block-tiny/header.bin": "c4f4658a9c04bca5d249c7ca5f14845bd012311213f6bb24076dcdddbb268fa2",

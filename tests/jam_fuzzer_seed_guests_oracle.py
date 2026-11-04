@@ -33,7 +33,7 @@ def expected_observations(check_frozen=True):
             child, parent = effects.successor(parent, case['mode'], payloads)
             lines.extend(('B '+child.hex(), 'O '+checkpoint(list(parent.items())).hex()))
             roots[-1].append(tree(list(parent.items()))[0].hex())
-    evidence = dict(graypaper_commit='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d',
+    evidence = dict(graypaper_commit='fad0ded4a433052397bf7234352a57fe491883f7',
                     base_sha256=hashlib.sha256(effects.FIXTURE.read_bytes()).hexdigest(),
                     transitions=10, chains=5, guest_executions=20, header_slot=0, state_slot=1,
                     roots=roots, expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())

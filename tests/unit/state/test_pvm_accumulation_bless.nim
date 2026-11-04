@@ -115,11 +115,11 @@ assert context(done, AccumulationDimension.Exceptional).effectPrivileges.value.p
     0, "context(done, AccumulationDimension.Exceptional).effectPri"
 assert uint32(context(done).effectInitialContext.value.contextPrivileges.value.privilegeInfo.value.delegator) ==
     0, "uint32(context(done).effectInitialContext.value.contextPri"
-# Host input is a set: canonical order is numeric and identical complete pairs collapse.
+# Unique raw service keys become a numerically ordered dictionary.
 let unordered = @[AlwaysAccumulate(service: ServiceIndex(high(uint32)), gas: PrivilegeGas(high(uint64))),
   AlwaysAccumulate(service: ServiceIndex(0), gas: PrivilegeGas(17)),
-  AlwaysAccumulate(service: ServiceIndex(0), gas: PrivilegeGas(17))]
-let canonical = @[unordered[1], unordered[0]]
+  AlwaysAccumulate(service: ServiceIndex(1), gas: PrivilegeGas(17))]
+let canonical = @[unordered[1], unordered[2], unordered[0]]
 let sorted = run(source(count = 3, data = payload(unordered)))
 assert sorted.error == AccumulationDispatchError.None, "sorted.error == AccumulationDispatchError.None"
 checkRoles(context(sorted), 42, canonical)
@@ -149,11 +149,37 @@ assert run(source(), limit = 7).error == AccumulationDispatchError.LimitExceeded
 assert run(source(), limit = 11).error == AccumulationDispatchError.LimitExceeded, "run(source(), limit = 11).error == AccumulationDispatchErr"
 assert run(source(count = 101)).error == AccumulationDispatchError.LimitExceeded, "run(source(count = 101)).error == AccumulationDispatchErro"
 assert run(source(), params = pvmParameters()).error == AccumulationDispatchError.InvalidContext, "run(source(), params = pvmParameters()).error == Accumulat"
-# Conflicting service/gas pairs cannot be converted into a dictionary by an arbitrary overwrite rule.
-let conflicting = @[AlwaysAccumulate(service: ServiceIndex(1), gas: PrivilegeGas(1)),
-  AlwaysAccumulate(service: ServiceIndex(1), gas: PrivilegeGas(2))]
-assert run(source(count = 2, data = payload(conflicting))).error ==
-    AccumulationDispatchError.AmbiguousPrivileges, "run(source(count = 2, data = payload(conflicting))).error "
+# Both identical and conflicting duplicate keys return HUH before proposed-role WHO, without hashing or changing C12.
+let identical = @[AlwaysAccumulate(service: ServiceIndex(1), gas: PrivilegeGas(1)),
+  AlwaysAccumulate(service: ServiceIndex(1), gas: PrivilegeGas(1))]
+let conflicting = @[AlwaysAccumulate(service: ServiceIndex(high(uint32)), gas: PrivilegeGas(1)),
+  AlwaysAccumulate(service: ServiceIndex(high(uint32)), gas: PrivilegeGas(high(uint64)))]
+for pairs in [identical, conflicting]:
+  for invalidRole in [false, true]:
+    let prepared = source(count = 2, data = payload(pairs),
+      manager = (if invalidRole: high(uint64) else: 42'u64))
+    failHash(1)
+    let denied = run(prepared)
+    assert denied.error == AccumulationDispatchError.None, "duplicate keys are a protocol HUH"
+    let cpu = machineInfo(denied.value.machine).value
+    assert denied.value.exit == StepExit.Halt and uint64(cpu.registers[7]) == high(uint64)-8,
+      "duplicates precede proposed role-domain WHO"
+    assert uint64(cpu.gas) == 100000-price(prepared)-462, "charge both raw pairs before HUH"
+    let retained = context(denied)
+    assert retained.effectPrivileges.value.privilegeInfo.value.always == 0
+    assert not retained.effectInfo.value.hasPrivileges
+    assert sameStateSnapshot(retained.effectAccounts.value,
+      retained.effectInitialContext.value.contextAccounts.value), "duplicate refusal preserves the exact original map"
+    assert hashCalls() == 0, "duplicate refusal does not attempt Merklization"
+    failHash(0)
+# A refused second call preserves an already successful privilege version and its provenance flag.
+let keptAfterDuplicate = run(source(count = 1, data = payload(identical), suffix = @[
+  registerImmediate(7, 42), registerImmediate(12, 2), @[10'u8, 16], @[50'u8, 0]]))
+assert keptAfterDuplicate.error == AccumulationDispatchError.None
+assert uint64(machineInfo(keptAfterDuplicate.value.machine).value.registers[7]) == high(uint64)-8
+checkRoles(context(keptAfterDuplicate), 42, @[identical[0]])
+assert context(keptAfterDuplicate).effectInfo.value.hasPrivileges,
+    "duplicate HUH preserves the prior successful bless provenance"
 for count in [0'u64, 1, 2, 3]:
   let cost = 422+20*count # Independently authored small integer witness, separate from limb arithmetic.
   let prototype = source(count = count)
@@ -239,6 +265,15 @@ let independent = recorded.value.effectContext(AccumulationDimension.Regular).va
 checkRoles(independent, 42, @[AlwaysAccumulate(service: ServiceIndex(7), gas: PrivilegeGas(9))])
 assert original.effectContext(AccumulationDimension.Regular).value.effectPrivileges.value.privilegeInfo.value.always ==
     0, "prior owner remains empty"
+# The state API independently rejects both forms before any map or role successor is constructed.
+for pairs in [identical, conflicting]:
+  var duplicateRoles = roles
+  duplicateRoles.always = pairs
+  failHash(1)
+  assert recordAccumulationBless(original, duplicateRoles, config().privileges).error ==
+      AccumulationEffectError.DuplicatePrivilege
+  assert hashCalls() == 0
+  failHash(0)
 let defaultContext = default(AccumulationEffectContext)
 assert defaultContext.effectPrivileges.error == AccumulationEffectError.Uninitialized, "defaultContext.effectPrivileges.error == AccumulationEffec"
 assert recordAccumulationBless(default(AccumulationEffects), default(PrivilegeState),
@@ -248,6 +283,10 @@ let before = getOccupiedMem()
 for iteration in 0..<1000:
   let completed = run(valid)
   checkRoles(context(completed), 42, singleton) # Release every private map, role and guest-state successor.
+  let denied = run(source(count = 2, data = payload(identical)))
+  assert denied.error == AccumulationDispatchError.None and
+      uint64(machineInfo(denied.value.machine).value.registers[7]) == high(uint64)-8,
+      "duplicate capture/sort scratch retires each cycle"
 let after = getOccupiedMem()
 assert before == after, "before == after"
 recordArcRelease("pvm_accumulation_bless", 1000, before, after)

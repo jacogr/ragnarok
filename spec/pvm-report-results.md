@@ -1,6 +1,6 @@
 # Ordered refinement report results
 
-Pins: GP 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
+Current qualification: GP `fad0ded4a433052397bf7234352a57fe491883f7`,
 `work_packages_and_reports.tex` computation of work-report, function I;
 `reporting_assurance.tex` limitworkreportsize and definitions Cmaxreportvarsize;
 vector pin `d3c089c9a1d5352ad353626d7a2db8589f137b2a`.
@@ -10,8 +10,8 @@ bootstrap/invocation. Derive each export offset from preceding declared export
 counts, including failed items. The supplied authorization trace is explicit input,
 not proof of authorization. Reject traces exceeding 49152 bytes before execution.
 The shared protocol blob budget includes that trace and only preceding accepted
-Success outputs. Oversize precedes BadExports; BadExports precedes preserving an
-invocation work error. Every error substitutes exactly the declared number of zero
+Success outputs. Invocation work errors retain their kind before blob-size/export validation.
+For successful raw outputs, Oversize precedes BadExports. Every error substitutes exactly the declared number of zero
 4104-byte segments. Error results consume no successful blob budget. Preserve gas.
 
 Return private immutable acyclic owners retaining the original package/item and
@@ -30,7 +30,7 @@ rollback, source lifetime/replay/copy isolation, default/index/output refusals,
 optimized result/detail guards, compiler privacy/nominal rejection and fresh
 1000-cycle ARC release. Regress the invocation normalizer; check inventory/format.
 
-Local evidence: checked optimized native `pvm_report_results` and
+Historical old-pin evidence: checked optimized native `pvm_report_results` and
 `pvm_refinement_outcome` pass with fresh 1000-cycle ARC release, respectively
 448096/448096 and 400192/400192 occupied bytes. Twelve optimized runtime
 alternative/owner/index/output guards, six compiler privacy/nominal rejections,

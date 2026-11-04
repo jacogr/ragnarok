@@ -9,7 +9,7 @@ adoptions and other specification gates remain unchanged.
 Scope: run the original owned package's authorizer, using its authorizer-host
 service and lookup-slot historical preimage, verifying the declared preimage hash
 before stripping canonical metadata. Missing code yields BAD/zero gas. The code
-suffix, excluding metadata, above 64000 bytes yields BIG/zero gas. Present preimages
+suffix, excluding metadata, above196608 bytes yields BIG/zero gas. Present preimages
 require an explicit copy/hash budget even for BIG; malformed metadata/envelopes/
 programs remain typed local gates. Initialize entry zero with exactly E2(core) and
 50000000 gas, after checking the core's full-width chain and E2 domains.
@@ -55,3 +55,7 @@ results; exact-head Linux CI remains independent.
 Next: bind successful authorization output to ordered refinement/report construction.
 Report authentication, segment-root/availability/erasure assembly and publication
 remain open. M1 framing is complete; full state serialization remains open.
+
+Current source qualification targets Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`;
+the authorizer code suffix limit is196,608 bytes, excluding metadata. The exact boundary remains
+executable; one over returns BIG with zero gas before initialization/output policies.

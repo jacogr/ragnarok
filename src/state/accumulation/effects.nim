@@ -29,7 +29,7 @@ type
       StorageFull,               ## Candidate storage footprint requires more balance than the account has.
       InvalidParameters,         ## Deposit settings must come from a valid parameter snapshot.
       NotManager,                ## Only the current privileged manager may replace the privilege state.
-      AmbiguousPrivileges,  ## Conflicting gas values for one service have no pinned dictionary interpretation.
+      DuplicatePrivilege,        ## Every repeated allowance service key refuses, including identical gas values.
       InvalidCore,               ## The selected core is outside the current positional queue layout.
       NotAssigner,               ## Only the current assigner may replace its core queue.
       InvalidValidatorCount,     ## Staging population must be a supported multiple of three.
@@ -1419,18 +1419,16 @@ proc recordAccumulationStorage*(effects: AccumulationEffects, key, value: openAr
       current.initial.contextInfo.value.service)
 
 func comparePrivilege(left, right: AlwaysAccumulate): int =
-  ## Numeric order canonicalizes the host's set independently of little-endian wire ordering.
+  ## Numeric order canonicalizes unique host service keys independently of little-endian wire ordering.
   if uint32(left.service) < uint32(right.service): return -1 # Smaller service precedes larger service.
   if uint32(left.service) > uint32(right.service): return 1 # No subtraction or signed narrowing.
-  if uint64(left.gas) < uint64(right.gas): return -1 # Group identical pairs for set deduplication.
-  if uint64(left.gas) > uint64(right.gas): return 1 # Preserve distinct gas values for explicit ambiguity refusal.
   0
 
 proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeState,
     config: PrivilegeConfig): AccumulationEffectResult[AccumulationEffects] =
   ## Replace regular privileges only for the current manager, preserving accounts, yield, provisions and checkpoint.
   ## Borrowed sequences stay stable during this call; accepted canonical bytes and snapshot own independent copies.
-  ## Identical pairs are set duplicates; conflicting gas for a service refuses explicitly as AmbiguousPrivileges.
+  ## Every repeated service key refuses explicitly; identical gas values do not reduce the raw count.
   # No partially encoded map or privilege owner escapes refusal.
   template fail(reason: AccumulationEffectError) =
     return AccumulationEffectResult[AccumulationEffects](status: reason)
@@ -1449,20 +1447,16 @@ proc recordAccumulationBless*(effects: AccumulationEffects, source: PrivilegeSta
     fail(AccumulationEffectError.InvalidState) # The current profile fixes the exact positional assigner count.
   if uint64(source.always.len) > uint64(config.maxAlways) or
       source.always.len > high(int) div sizeof(AlwaysAccumulate):
-    fail(AccumulationEffectError.LimitExceeded) # Bound raw pair sorting/capture even when many entries would deduplicate.
+    fail(AccumulationEffectError.LimitExceeded) # Bound all raw pair sorting/capture before duplicate rejection.
   var ordered = newSeq[AlwaysAccumulate](source.always.len)
   for i, pair in source.always:
     ordered[i] = pair # Never sort or mutate the caller's borrowed sequence.
   ordered.sort(comparePrivilege)
-  var unique: seq[AlwaysAccumulate] = @[]
-  for pair in ordered:
-    if unique.len != 0 and uint32(unique[unique.len-1].service) == uint32(pair.service):
-      if uint64(unique[unique.len-1].gas) != uint64(pair.gas):
-        fail(AccumulationEffectError.AmbiguousPrivileges) # No arbitrary first/last/max allowance interpretation.
-      continue # Identical raw pairs are one member of the pinned set comprehension.
-    unique.add(pair) # Prior item/native extent bounds also authorize this canonical subset.
+  for index in 1..<ordered.len:
+    if uint32(ordered[index-1].service) == uint32(ordered[index].service):
+      fail(AccumulationEffectError.DuplicatePrivilege) # Compare keys alone; no duplicate pair may become a dictionary entry.
   let canonical = PrivilegeState(manager: source.manager, delegator: source.delegator,
-    registrar: source.registrar, assigners: source.assigners, always: unique)
+    registrar: source.registrar, assigners: source.assigners, always: ordered)
   let encoded = privilegeStateEntry(canonical, config)
   if encoded.error in {PrivilegeError.LimitExceeded, PrivilegeError.LengthOverflow}:
     fail(AccumulationEffectError.LimitExceeded) # Codec byte/item ceilings are local, never HUH or WHO.

@@ -60,8 +60,13 @@ else:
   of "verify-order": values.setLen(2) # Two zero validator identities violate strict order.
   of "verify-padding": values[0].bits.bytes[42] = 1 # Unused native octets are not ignored.
   of "verify-parent":
-    values[0].anchor.bytes[0] = 1 # Expected parent is an external context requirement.
-    wanted = AssuranceContextError.WrongParent
+    var otherParent = default(array[32, byte])
+    otherParent[0] = 1
+    # A valid ordinary signature for another parent still cannot authorize the actual context.
+    let message = assuranceMessage(AssuranceParent(otherParent), bits, config.cores).value
+    values[0].signature = AssuranceSignature(bytes: array[64, byte](sign(seed,
+        array[45, byte](message)).value))
+    wanted = AssuranceContextError.InvalidSignature
   of "verify-backend":
     fail(1) # A refusal cannot expose an earlier verified prefix count.
     wanted = AssuranceContextError.BackendFailure

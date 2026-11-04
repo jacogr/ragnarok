@@ -40,7 +40,7 @@ class ContextOracleTests(unittest.TestCase):
         self.assertEqual(structural(2,6,parent,[],[]),'invalidkeyset')
         self.assertEqual(structural(2,6,parent,keys,[value]*7),'limitexceeded')
         later=list(value);later[0]=bytes([1])*32;later[2]=1
-        self.assertEqual(structural(2,6,parent,keys,[value,later]),'wrongparent')
+        self.assertIsNone(structural(2,6,parent,keys,[value,later])) # Historical source anchors are absent from current records.
         later[2]=6
         self.assertEqual(structural(2,6,parent,keys,[value,later]),'invalidvalidator')
         self.assertIsNone(structural(2,6,parent,keys,[]))

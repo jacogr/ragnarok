@@ -49,11 +49,11 @@ proc blockPrior*(): StateEntry =
       previous: ValidatorCount(6),
     maxServices: ElementLimit(1), maxBytes: ByteLimit(4096))).value
 proc blockTemplate*(base: OwnedReport): OwnedReport =
-  ## Fix independent incoming metrics; genuine signing later overrides identity/code fields and maximal refinement gas.
+  ## Fix independent incoming metrics; genuine signing later overrides identity/code fields and retains bounded refinement gas.
   let raw = reportBytes(base)
   var report = decodeReportBorrowed(raw, 2).value
   report.header.bundleLength = BundleLength(7)
-  report.header.segmentCount = SegmentCount(64)
+  report.header.segmentCount = SegmentCount(23)
   report.digestCount = 1
   report.digests[0].refine = RefineLoad(gasUsed: Gas(11), imports: ImportCount(13),
     extrinsicCount: work_digest.ExtrinsicCount(17), extrinsicSize: work_digest.ExtrinsicBytes(19),
@@ -63,11 +63,8 @@ proc blockTemplate*(base: OwnedReport): OwnedReport =
   assert encoded.error == CompositeError.None
   decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
 proc putE4(output: var seq[byte], value: uint32) =
-  ## Independently emit fixed validator counters and service IDs without using the production codec.
+  ## Independently emit fixed service IDs without using the production codec.
   for index in 0..<4: output.add(byte((value shr (index*8)) and 255))
-proc maximum(output: var seq[byte]) =
-  ## Literal canonical maximal uint64 natural is the discriminator ff and eight ff payload octets.
-  for index in 0..<9: output.add(255'u8)
 proc expectedWire(admission: AdmittedReports, empty: bool): seq[byte] =
   ## Every non-maximal natural in these authored cases fits one octet; neither encoder nor metric producer supplies expected fields.
   let staged = admission.reportBlockStage.value
@@ -87,21 +84,23 @@ proc expectedWire(admission: AdmittedReports, empty: bool): seq[byte] =
     let authored = uint16(index) == author
     for counter in [uint32(if authored: 1 else: 0), 0'u32, uint32(if authored and
         not empty: 3 else: 0),
-      uint32(if authored and not empty: 3 else: 0), reporting, 0'u32]: putE4(result, counter)
+      uint32(if authored and not empty: 3 else: 0), reporting, 0'u32]:
+      assert counter <= 127 # These independently counted contributions fit one canonical natural byte.
+      result.add(byte(counter))
   result.add(6'u8)
-  for index in 0..<144: result.add(0'u8) # Previous six zero E4 tuples stay unchanged within the epoch.
+  for index in 0..<36: result.add(0'u8) # Previous six zero natural tuples stay unchanged within the epoch.
   if empty:
     for index in 0..<16: result.add(0'u8) # Every fresh field of both unused core rows is zero.
     result.add(0'u8) # No old service dictionary entry survives an inactive block.
   else:
     for value in [0'u8, 0, 13, 17, 19, 23, 7]: result.add(
         value) # Incoming refinement and bundle usage on core zero only.
-    maximum(result)
+    result.add(11'u8) # Literal bounded refinement gas is valid in an admitted report.
     for index in 0..<8: result.add(0'u8) # Unused core one is a complete zero tuple.
     result.add(3'u8)
     putE4(result, 42)
     for value in [2'u8, 2, 1]: result.add(value) # Two provisions, two bytes and one incoming refinement.
-    maximum(result)
+    result.add(11'u8) # Literal bounded refinement gas is valid in an admitted report.
     for value in [13'u8, 17, 19, 23, 4, 0, 66]: result.add(
         value) # Four processed work-items and actual PVM consumption.
     putE4(result, 77)
