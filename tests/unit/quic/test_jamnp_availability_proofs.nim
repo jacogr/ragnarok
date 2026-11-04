@@ -4,7 +4,8 @@
 
 ## Genuine independent availability commitments authenticate NP distribution/audit/segment data with exact coordinates and bounded work.
 import std/[assertions, syncio]
-import ../../../src/jamnp-s/[availability_proof, availability_merkle, availability_read, read_stream]
+import ../../../src/jamnp-s/[availability_proof, availability_merkle, availability_read,
+    availability_store, read_stream]
 import ../../../src/state/availability/specifier
 import ../../../src/state/erasure/[layout, words]
 import "../../../src/state/export/erasure" as export_erasure
@@ -65,6 +66,15 @@ proc releaseCycle(source: AvailabilityCommitment) =
   let checked = verifyAvailabilityTransfer(packet.specifier, request, packet.bundleShard,
     packet.segmentShards, packet.justification, limits())
   assert checked.error == AvailabilityTransferError.None
+  let distributionRequest = requested(source, AvailabilityTransferKind.Distribution, 0, 0)
+  let distribution = prepareAvailabilityTransfer(source, distributionRequest, limits()).value
+  let verified = verifyAvailabilityTransfer(distribution.specifier, distributionRequest,
+    distribution.bundleShard, distribution.segmentShards, distribution.justification, limits()).value
+  var store = default(AvailabilityStore)
+  assert store.configure(AvailabilityStoreLimits(entries: ElementLimit(1), bytes: ByteLimit(500000)))
+  assert store.remember(verified) == AvailabilityStoreError.None
+  assert prepareAvailabilityAudit(store.find(distributionRequest).value, request, limits()).error ==
+      AvailabilityTransferError.None
 proc serving(source: AvailabilityCommitment) =
   ## Exact wire framing and existing method ceilings remain independent of proof construction.
   let expected = source.availabilityInfo.value.specifier
@@ -110,6 +120,81 @@ proc serving(source: AvailabilityCommitment) =
   assert captureReadReply(bundle, oversized).error == ReadError.None
   let ordinary = decodeReadRequest(ReadKind.Report, expected.erasureRoot.bytes).value
   assert captureReadReply(ordinary, oversized).error == ReadError.LimitExceeded
+proc distribution(source: AvailabilityCommitment, shard: uint64): VerifiedAvailabilityTransfer =
+  ## Genuine preparation is independently checked before any cache admission can occur.
+  let request = requested(source, AvailabilityTransferKind.Distribution, shard, 0)
+  let prepared = prepareAvailabilityTransfer(source, request, limits()).value
+  let checked = verifyAvailabilityTransfer(prepared.specifier, request, prepared.bundleShard,
+    prepared.segmentShards, prepared.justification, limits())
+  assert checked.error == AvailabilityTransferError.None
+  checked.value
+proc audit(source: AvailabilityCommitment) =
+  ## Derived audit traces match genuine original construction for empty, odd and proof-page geometries.
+  let checked = distribution(source, 0)
+  let request = requested(source, AvailabilityTransferKind.Audit, 0, 0)
+  let derived = prepareAvailabilityAudit(checked, request, limits())
+  assert derived.error == AvailabilityTransferError.None
+  let original = prepareAvailabilityTransfer(source, request, limits()).value
+  assert derived.value.bundleShard == original.bundleShard
+  assert derived.value.justification == original.justification
+  assert verifyAvailabilityTransfer(checked.specifier, request, derived.value.bundleShard,
+    [], derived.value.justification, limits()).error == AvailabilityTransferError.None
+  assert prepareAvailabilityAudit(default(VerifiedAvailabilityTransfer), request, limits()).error ==
+      AvailabilityTransferError.InvalidPayload
+  var wrong = request
+  wrong.shard = ErasureShardIndex(1)
+  assert prepareAvailabilityAudit(checked, wrong, limits()).error ==
+      AvailabilityTransferError.InvalidIndex
+  var cap = limits()
+  cap.bytes = ByteLimit(0)
+  assert prepareAvailabilityAudit(checked, request, cap).error ==
+      AvailabilityTransferError.LimitExceeded
+  assert detachVerifiedAvailability(checked, ByteLimit(0)).error ==
+      AvailabilityTransferError.LimitExceeded
+proc storage(source: AvailabilityCommitment) =
+  ## Count and byte pressure evict only complete oldest entries; refused inserts preserve previous data.
+  let first = distribution(source, 0)
+  let second = distribution(source, 1)
+  let third = distribution(source, 2)
+  var store = default(AvailabilityStore)
+  assert store.remember(first) == AvailabilityStoreError.Unconfigured
+  assert not store.configure(default(AvailabilityStoreLimits))
+  assert store.configure(AvailabilityStoreLimits(entries: ElementLimit(2), bytes: ByteLimit(16000000)))
+  assert not store.configure(AvailabilityStoreLimits(entries: ElementLimit(1), bytes: ByteLimit(1)))
+  assert store.remember(default(VerifiedAvailabilityTransfer)) ==
+      AvailabilityStoreError.InvalidTransfer
+  assert store.remember(first) == AvailabilityStoreError.None
+  assert store.remember(second) == AvailabilityStoreError.None
+  assert store.len == 2 and store.byteLength == first.payloadBytes+second.payloadBytes
+  var conflicting = first.specifier
+  conflicting.packageHash.bytes[0] = conflicting.packageHash.bytes[0] xor 1
+  let conflictingPacket = prepareAvailabilityTransfer(source, first.request, limits()).value
+  let conflictingVerified = verifyAvailabilityTransfer(conflicting, first.request,
+    conflictingPacket.bundleShard, conflictingPacket.segmentShards,
+    conflictingPacket.justification, limits()).value
+  assert store.remember(conflictingVerified) == AvailabilityStoreError.Conflict
+  assert store.len == 2
+  assert store.remember(first) == AvailabilityStoreError.None
+  assert store.remember(third) == AvailabilityStoreError.None
+  assert store.len == 2 and store.find(second.request).error == AvailabilityStoreError.Missing
+  assert store.find(first.request).error == AvailabilityStoreError.None
+  let selected = requested(source, AvailabilityTransferKind.Audit, 0, 0)
+  let derived = prepareAvailabilityAudit(store.find(first.request).value, selected, limits())
+  let auditOnly = verifyAvailabilityTransfer(first.specifier, selected, derived.value.bundleShard,
+    [], derived.value.justification, limits()).value
+  assert store.remember(auditOnly) == AvailabilityStoreError.InvalidTransfer
+  store.clear()
+  assert store.len == 0 and store.byteLength == 0
+  assert store.configure(AvailabilityStoreLimits(entries: ElementLimit(2), bytes: ByteLimit(
+      first.payloadBytes)))
+  assert store.remember(first) == AvailabilityStoreError.None
+  assert store.remember(second) == AvailabilityStoreError.None
+  assert store.len == 1 and store.find(first.request).error == AvailabilityStoreError.Missing
+  assert store.find(second.request).error == AvailabilityStoreError.None
+  store.clear()
+  assert store.configure(AvailabilityStoreLimits(entries: ElementLimit(2), bytes: ByteLimit(
+      first.payloadBytes-1)))
+  assert store.remember(first) == AvailabilityStoreError.LimitExceeded and store.len == 0
 proc main() =
   ## Exercise empty segment trees, odd populations and both export/proof-page row boundaries with genuine PVM/erasure sources.
   let empty = computedAvailability(0)
@@ -117,13 +202,17 @@ proc main() =
     check(empty, AvailabilityTransferKind.Distribution, shard, 0)
     check(empty, AvailabilityTransferKind.Audit, shard, 0)
   serving(empty)
+  audit(empty)
+  storage(empty)
   let populated = computedAvailability(1)
+  audit(populated)
   for shard in [0'u64, 511, 1022]:
     check(populated, AvailabilityTransferKind.Distribution, shard, 0)
     check(populated, AvailabilityTransferKind.Audit, shard, 0)
     check(populated, AvailabilityTransferKind.Segment, shard, 0)
     check(populated, AvailabilityTransferKind.Segment, shard, 1)
   let paged = computedAvailability(65)
+  audit(paged)
   for row in [0'u64, 64, 65, 66]: check(paged, AvailabilityTransferKind.Segment, 0, row)
   check(paged, AvailabilityTransferKind.Distribution, 5, 0)
   let request = requested(populated, AvailabilityTransferKind.Segment, 0, 0)

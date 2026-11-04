@@ -23,6 +23,7 @@ proc main() {.raises.} =
   let shardPayload = newSeq[byte](34)
   let threeFrames = @[0'u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   exchangeClient(ReadKind.Availability, shardPayload, threeFrames, holdFin = true)
+  exchangeClient(ReadKind.Audit, shardPayload, @[0'u8, 0, 0, 0, 0, 0, 0, 0], holdFin = true)
   exchangeClient(ReadKind.Bundle, newSeq[byte](32), @[3'u8, 0, 0, 0, 4, 5, 6], holdFin = true)
   exchangeClient(ReadKind.Blocks, blockPayload, @[0'u8, 0, 0, 0], holdFin = true,
     maximum = ByteLimit(4), budget = 4)

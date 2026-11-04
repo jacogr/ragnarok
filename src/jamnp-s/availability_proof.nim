@@ -376,3 +376,52 @@ proc verifyAvailabilityTransfer*(expected: AvailabilitySpecifier, request: Avail
     completed: VerifiedAvailabilityTransfer(data: TransferData(specifier: expected,
       request: request,
       bundle: copied(bundle), segments: copied(segments), proof: copied(proof))))
+func payloadBytes*(value: VerifiedAvailabilityTransfer): uint64 {.requires: value.data != nil.} =
+  ## Copied logical retention size permits capacity admission before any byte owner is allocated.
+  let data = value.data
+  assert data != nil
+  uint64(data.bundle.len)+uint64(data.segments.len)+uint64(data.proof.len)
+proc detachVerifiedAvailability*(source: VerifiedAvailabilityTransfer,
+    maximum: ByteLimit): AvailabilityTransferResult[VerifiedAvailabilityTransfer] =
+  ## A private cache receives new storage, so an external caller may release its original during a later CPU lease.
+  let data = source.data
+  if data == nil: return failed[VerifiedAvailabilityTransfer](
+      AvailabilityTransferError.InvalidPayload)
+  if source.payloadBytes > uint64(maximum): return failed[VerifiedAvailabilityTransfer](
+      AvailabilityTransferError.LimitExceeded)
+  AvailabilityTransferResult[VerifiedAvailabilityTransfer](status: AvailabilityTransferError.None,
+    completed: VerifiedAvailabilityTransfer(data: TransferData(specifier: data.specifier,
+      request: data.request, bundle: copied(data.bundle), segments: copied(data.segments),
+          proof: copied(data.proof))))
+proc prepareAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: AvailabilityRequest,
+    limits: AvailabilityMerkleLimits): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
+  ## CE138 derives its exact outer trace and bundle bytes solely from one fully verified CE137 distribution.
+  let data = source.data
+  if data == nil: return failed[PreparedAvailabilityTransfer](
+      AvailabilityTransferError.InvalidPayload)
+  if data.request.kind != AvailabilityTransferKind.Distribution or request.kind !=
+      AvailabilityTransferKind.Audit:
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidPayload)
+  if request.root.bytes != data.request.root.bytes:
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.RootMismatch)
+  if uint64(request.shard) != uint64(data.request.shard):
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidIndex)
+  let planned = shape(data.specifier, request)
+  if planned.error != AvailabilityTransferError.None: return propagated[
+      PreparedAvailabilityTransfer, TransferShape](planned)
+  let selected = planned.value
+  let bytes = source.payloadBytes+uint64(data.bundle.len)+uint64(selected.proofBytes)
+  if not admitted(selected.innerTree, bytes, limits):
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.LimitExceeded)
+  let root = availabilityMerkleRoot(data.segments, selected.width, selected.rows, stageLimits(
+      limits, selected.innerTree))
+  if root.error != AvailabilityMerkleError.None: return merkleFailure[PreparedAvailabilityTransfer,
+      Blake2bHash](root)
+  assert data.proof.len+33 == selected.proofBytes # Verified distribution invariants bind the original exact outer path.
+  var proof = newSeq[byte](selected.proofBytes)
+  for index in 0..<data.proof.len: proof[index] = data.proof[index]
+  proof[data.proof.len] = 0
+  for index in 0..<32: proof[data.proof.len+1+index] = array[32, byte](root.value)[index]
+  AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
+    completed: PreparedAvailabilityTransfer(data: TransferData(specifier: data.specifier,
+      request: request, bundle: copied(data.bundle), proof: proof)))

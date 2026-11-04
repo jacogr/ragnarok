@@ -84,3 +84,41 @@ proc serveAvailabilityRead*(source: AvailabilityCommitment, request: ReadRequest
     appendMessage(wire, segments)
     appendMessage(wire, proof)
   captureReadReply(request, wire)
+
+proc serveAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: ReadRequest,
+    limits: AvailabilityReadLimits): ReadResult[ReadReply] =
+  ## Assurers need only their privately retained verified distribution, never the guarantor's execution graph.
+  if not request.valid or request.kind != ReadKind.Audit: return readFailure[ReadReply](
+      ReadError.InvalidRequest)
+  if not limits.valid: return readFailure[ReadReply](ReadError.LimitExceeded)
+  if not source.valid: return readFailure[ReadReply](ReadError.Unavailable)
+  if source.request.kind != AvailabilityTransferKind.Distribution: return readFailure[ReadReply](
+      ReadError.Unavailable)
+  let payload = request.payload
+  let expected = source.specifier
+  for index in 0..<32:
+    if payload[index] != expected.erasureRoot.bytes[index]: return readFailure[ReadReply](
+        ReadError.Unavailable)
+  let index = uint64(payload[32]) or (uint64(payload[33]) shl 8)
+  let maximum = min(uint64(limits.wireBytes), uint64(request.maximumReplyBytes))
+  let reservation = maximum*3 # Both independent hard ceilings prove this subtraction and all detached copies.
+  if uint64(limits.computation.bytes) < reservation: return readFailure[ReadReply](
+      ReadError.LimitExceeded)
+  var budget = limits.computation
+  budget.bytes = ByteLimit(uint64(budget.bytes)-reservation)
+  let selected = AvailabilityRequest(kind: AvailabilityTransferKind.Audit,
+    root: expected.erasureRoot, shard: ErasureShardIndex(index))
+  let prepared = prepareAvailabilityAudit(source, selected, budget)
+  case prepared.error
+  of AvailabilityTransferError.None: discard # Only a complete original-path derivation can produce transport bytes.
+  of AvailabilityTransferError.LimitExceeded: return readFailure[ReadReply](ReadError.LimitExceeded)
+  of AvailabilityTransferError.InvalidIndex: return readFailure[ReadReply](ReadError.InvalidRequest)
+  else: return readFailure[ReadReply](ReadError.Unavailable)
+  let bundle = prepared.value.bundleShard
+  let proof = prepared.value.justification
+  if uint64(bundle.len)+uint64(proof.len)+8 > maximum: return readFailure[ReadReply](
+      ReadError.LimitExceeded)
+  var wire: seq[byte] = @[]
+  appendMessage(wire, bundle)
+  appendMessage(wire, proof)
+  captureReadReply(request, wire)

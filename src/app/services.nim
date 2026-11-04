@@ -54,7 +54,9 @@ import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
-import ../jamnp-s/availability_read
+import ../jamnp-s/[availability_read, availability_store]
+from ../jamnp-s/availability_proof import VerifiedAvailabilityTransfer, AvailabilityRequest, AvailabilityTransferKind
+from ../state/erasure/words import ErasureShardIndex
 from ../state/computed/report import ComputedReportInfo, computedReportInfo, computedReportSource, value
 from ../state/computed/guarantee import computedGuaranteeReport, value
 from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid, activeAt, shardCount
@@ -245,6 +247,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   workReportInfo: ComputedReportInfo
   availabilityEnabled: bool
   availabilityLimits: AvailabilityReadLimits
+  availabilityStore: AvailabilityStore
   workHead: BlockHash
   ticketSigner: TicketSigner
   ticketSignerReady: bool
@@ -317,6 +320,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.workContext)
   `=wasMoved`(services.workDuty)
   `=wasMoved`(services.workReportInfo)
+  `=wasMoved`(services.availabilityStore)
   `=wasMoved`(services.workOutcome)
   `=wasMoved`(services.workIdentity)
   `=wasMoved`(services.workTicket)
@@ -374,6 +378,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.workContext)
   `=destroy`(services.workDuty)
   `=destroy`(services.workReportInfo)
+  `=destroy`(services.availabilityStore)
   `=destroy`(services.workOutcome)
   `=destroy`(services.workIdentity)
   `=destroy`(services.workTicket)
@@ -628,6 +633,7 @@ proc close*(services: var Services) =
   services.workOutcome = default(WorkJobResult)
   services.workIdentity = nil
   services.workTicket = default(ProofWorkerTicket)
+  services.availabilityStore.clear()
   services.availabilityEnabled = false
   services.availabilityLimits = default(AvailabilityReadLimits)
   services.workGeneration = 0
@@ -1646,6 +1652,30 @@ proc configureAvailabilityReads*(services: var Services, limits: AvailabilityRea
   services.availabilityLimits = limits
   services.availabilityEnabled = true
   true
+proc configureAvailabilityStorage*(services: var Services, limits: AvailabilityStoreLimits): bool =
+  ## Optional explicit storage policy cannot rebind entries or mutate a worker-borrowed cache.
+  if not services.started or services.light.active or not services.stateProofAvailable or
+      not services.availabilityEnabled:
+    return false
+  services.availabilityStore.configure(limits)
+proc rememberAvailability*(services: var Services,
+    transfer: VerifiedAvailabilityTransfer): AvailabilityStoreError =
+  ## Private detached storage is changed only while every canonical/availability CPU borrower has retired.
+  if not services.started or not services.availabilityEnabled: return AvailabilityStoreError.Unconfigured
+  if not services.stateProofAvailable: return AvailabilityStoreError.Busy
+  services.availabilityStore.remember(transfer)
+proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadError =
+  ## Exact root/shard selection touches the private cache only before the worker lease is acquired.
+  if not services.availabilityEnabled: return ReadError.Unavailable
+  let payload = request.payload
+  var selected = AvailabilityRequest(kind: AvailabilityTransferKind.Audit,
+    shard: ErasureShardIndex(uint64(payload[32]) or (uint64(payload[33]) shl 8)))
+  for index in 0..<32: selected.root.bytes[index] = payload[index]
+  let found = services.availabilityStore.find(selected)
+  if found.error != AvailabilityStoreError.None: return ReadError.Unavailable
+  let captured = captureAvailabilityAudit(found.value, request, services.availabilityLimits)
+  if captured.error == ReadError.None: services.networkReadInput = captured.value
+  captured.error
 proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadError =
   ## Only this retained completed report supplies provenance; all source aliases retire before CPU submission.
   if not services.availabilityEnabled or services.workPhase != WorkSessionPhase.ReportReady:
@@ -1658,6 +1688,7 @@ proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadEr
   captured.error
 proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
   ## Every temporary canonical alias retires in this activation before native submission.
+  if request.valid and request.kind == ReadKind.Audit: return services.stageAvailabilityAudit(request)
   if request.availabilityRead: return services.stageAvailabilityRead(request)
   let captured = captureNetworkRead(services.canonical.chainView, request)
   if captured.error == ReadError.None: services.networkReadInput = captured.value

@@ -6,7 +6,7 @@ import std/[assertions, envvars, syncio, monotimes, times, strutils]
 import ../../../src/app/[node as application_node, services, options, work_dispatch, work_policy]
 import ../../../src/app/proof/[worker, work_submission]
 import ../../../src/jamnp-s/[node as node_streams, connections, work_duty, work_report, read_stream,
-    availability_read, availability_proof]
+    availability_read, availability_proof, availability_store]
 import ../../../src/codec/bounded
 import ../../../src/state/availability/specifier
 import ../../../src/state/erasure/layout
@@ -26,7 +26,8 @@ type Variant {.pure.} = enum ## Each case has a real positive source and changes
       ReportCancelDone, ReportCloseDone, ReportStaleTime, ReportForeignDone, Package, Availability,
         AvailabilityDisabled, AvailabilityLimit,
       AvailabilityResetDone, AvailabilityCloseDone, AvailabilityRetireDone, AvailabilityWrongRoot,
-        AvailabilityBadIndex, AvailabilityTruncated
+        AvailabilityBadIndex, AvailabilityTruncated, AssurerAudit, AssurerResetDone,
+          AssurerCloseDone, AssurerMissing
 proc publicKey(): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -231,7 +232,7 @@ proc scenario(variant: Variant) {.raises.} =
     assert services.workSubmissionOutcome(token).kind == WorkJobResultKind.Refined
   if variant in [Variant.Report, Variant.ReportFailure, Variant.ReportCancelDone,
       Variant.ReportCloseDone, Variant.ReportStaleTime, Variant.ReportForeignDone] or
-      variant in Variant.Availability..Variant.AvailabilityTruncated:
+      variant in Variant.Availability..Variant.AssurerMissing:
     # Downstream work addresses the retained session, never a replacement execution or caller-selected shard count.
     var limits = workReportLimits()
     if variant == Variant.ReportStaleTime:
@@ -290,7 +291,7 @@ proc scenario(variant: Variant) {.raises.} =
       assert digest.error == CryptoError.None
       let message = array[45, byte](reported.reportTranscript.computedGuaranteeMessage.value)
       for index in 0..<32: assert message[13+index] == array[32, byte](digest.value)[index]
-    if variant in Variant.Availability..Variant.AvailabilityTruncated:
+    if variant in Variant.Availability..Variant.AssurerMissing:
       # Actual TLS reads consume the retained original report via the ordinary ApplicationNode read dispatcher.
       let original = originalBundle(services, token)
       var policy = availabilityLimits()
@@ -358,6 +359,61 @@ proc scenario(variant: Variant) {.raises.} =
           assert verifyAvailabilityTransfer(expected, selected, messages[0], messages[1], messages[
               2],
             policy.computation).error == AvailabilityTransferError.None
+          if variant in Variant.AssurerAudit..Variant.AssurerMissing:
+            # The private store deep-copies sealed distributions; every external verified alias retires before the audit lease.
+            assert services.configureAvailabilityStorage(AvailabilityStoreLimits(
+              entries: ElementLimit(2), bytes: ByteLimit(16000000)))
+            var external = verifyAvailabilityTransfer(expected, selected, messages[0], messages[1],
+              messages[2], policy.computation).value
+            assert services.rememberAvailability(external) == AvailabilityStoreError.None
+            assert host.releaseWork() and services.workSessionPhase(token) == WorkSessionPhase.Empty
+            var auditPayload: seq[byte] = @[]
+            for octet in expected.erasureRoot.bytes: auditPayload.add(octet)
+            auditPayload.add(if variant == Variant.AssurerMissing: 1'u8 else: 0'u8)
+            auditPayload.add(0)
+            var auditWire = @[138'u8]
+            for octet in frame(auditPayload): auditWire.add(octet)
+            let auditRequest = probe.issue(auditWire)
+            if variant == Variant.AssurerMissing:
+              waitReset(host, services, probe, auditRequest)
+              return
+            let auditing = getMonoTime()+initDuration(seconds = 8)
+            while not services.stateProofActive:
+              assert getMonoTime() < auditing
+              assert host.poll(getMonoTime(), StateTime(20), 0)
+              probe.poll()
+            services.waitDone()
+            external = default(VerifiedAvailabilityTransfer) # The cache/worker owns an independent clone, so this external owner may retire even at Done.
+            assert services.rpc.chainPaused
+            assert services.rememberAvailability(default(VerifiedAvailabilityTransfer)) ==
+                AvailabilityStoreError.Busy
+            assert not services.configureAvailabilityStorage(AvailabilityStoreLimits(
+              entries: ElementLimit(1), bytes: ByteLimit(1)))
+            if variant == Variant.AssurerCloseDone:
+              host.close()
+              assert not services.stateProofActive and not services.rpc.chainPaused
+              return
+            if variant == Variant.AssurerResetDone: probe.abort(auditRequest)
+            let audited = getMonoTime()+initDuration(seconds = 8)
+            while true:
+              let pending = if variant == Variant.AssurerResetDone: not probe.flows[
+                  auditRequest].closed
+                else: not probe.flows[auditRequest].receivedFin and not probe.flows[
+                    auditRequest].reset
+              if not services.stateProofActive and not pending: break
+              assert getMonoTime() < audited, "retained assurer read retirement"
+              pump(host, services, probe)
+            assert not services.rpc.chainPaused
+            if variant == Variant.AssurerResetDone:
+              assert not probe.flows[auditRequest].receivedFin and probe.flows[auditRequest].closed
+            else:
+              let auditMessages = responseMessages(probe.bytes(auditRequest))
+              assert auditMessages.len == 2
+              var auditSelection = selected
+              auditSelection.kind = AvailabilityTransferKind.Audit
+              assert verifyAvailabilityTransfer(expected, auditSelection, auditMessages[0], [],
+                auditMessages[1], policy.computation).error == AvailabilityTransferError.None
+            return
           var bundleWire = @[147'u8]
           for octet in frame(metadata.header.erasureRoot.bytes): bundleWire.add(octet)
           let bundleRequest = probe.issue(bundleWire)
@@ -395,7 +451,7 @@ proc scenario(variant: Variant) {.raises.} =
   assert host.workPhase == WorkDispatchPhase.Idle
 proc main() {.raises.} =
   ## Run live lifecycle witnesses serially so native sockets, workers and bridge libraries never share mutable ownership.
-  for variant in Variant.Success..Variant.AvailabilityTruncated:
+  for variant in Variant.Success..Variant.AssurerMissing:
     scenario(variant)
   echo "JAMNP-S application work dispatch passed"
 try:
