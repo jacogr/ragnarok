@@ -51,3 +51,5 @@ Report caches populated by CE135 distribution and audit/judgment work are still 
 canonical C10/C14 retention. Preferred selection of peers that publish/forward negative judgments
 belongs to the CE145 runtime integration. Those obligations and complete auditor operation remain
 open; this layer provides the bounded authenticated request/response path and checked content.
+
+The existing raw read-client exchange consumer includes an independent literal CE136 selector/32-byte request and withheld-response-FIN witness. Adding a sparse read kind must update this exhaustive test helper as well as production dispatch.
