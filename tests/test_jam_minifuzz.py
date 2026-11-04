@@ -4,8 +4,11 @@
 """Strict minifuzz provisioning/framing refuses altered sources, incomplete frames and unsafe archive paths."""
 import io
 import json
+import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -32,6 +35,45 @@ class FragmentedPeer:
 
 class MinifuzzBoundaries(unittest.TestCase):
     """Test exact pinned-source ownership, safe extraction and complete bounded frame observations."""
+
+    def test_current_assurance_schema(self):
+        """Real pinned codecs accept current Tiny/Full records and refuse truncated or anchored records."""
+        from setup_jam_minifuzz import prepare
+        _, environment = prepare()
+        environment['PYTHONPATH'] = str(Path(__file__).parent)+os.pathsep+environment['PYTHONPATH']
+        code = '''
+import json
+from jam_minifuzz_current import configure_schema
+from jam_types import ScaleBytes, spec
+from scalecodec.base import RuntimeConfiguration
+from scalecodec.exceptions import RemainingScaleBytesNotEmptyException
+configure_schema()
+results = []
+for profile, mask_bytes, validator in [('tiny', 1, 5), ('full', 43, 1022)]:
+    # Independent literal fields exercise geometry changes after current-schema registration.
+    spec.set_spec(profile)
+    wire = b'\\x01'+bytes(mask_bytes-1)+validator.to_bytes(2, 'little')+b'Z'*64
+    current = RuntimeConfiguration().create_scale_object('AvailAssurance', data=ScaleBytes(wire))
+    value = current.decode()
+    assert set(value) == {'bitfield', 'validator_index', 'signature'}
+    assert value['validator_index'] == validator
+    encoded = RuntimeConfiguration().create_scale_object('AvailAssurance').encode(value)
+    assert bytes(encoded.data) == wire
+    for malformed in [wire[:size] for size in range(len(wire))]+[bytes(32)+wire, wire+b'\\0']:
+        # Every short prefix and the obsolete anchor/suffix must fail the complete-record decoder.
+        try:
+            RuntimeConfiguration().create_scale_object('AvailAssurance', data=ScaleBytes(malformed)).decode()
+        except RemainingScaleBytesNotEmptyException:
+            pass
+        else:
+            raise AssertionError('Malformed assurance accepted')
+    results.append([profile, len(wire), validator])
+print(json.dumps(results))
+'''
+        result = subprocess.run([sys.executable, '-S', '-c', code], env=environment,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+        self.assertEqual(json.loads(result.stdout), [['tiny', 67, 5], ['full', 109, 1022]])
 
     def archive(self, name='source/value.py'):
         buffer = io.BytesIO()

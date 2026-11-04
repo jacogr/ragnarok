@@ -50,9 +50,10 @@ proc main() {.raises.} =
   for ceiling in 0..<original.len:
     assert owner.copyTraceGenesis(ByteLimit(ceiling)).error == TraceGenesisError.LimitExceeded
   let parameters = currentChainSettings()
+  # Trust literals come from the independently frozen current-STF genesis reference.
   let trust = TraceBootstrapTrust(header: BlockHash(word(
       "1b2fef618dd810d8cedce751dfc54ddc29e0bc16f2989828511f6cd8466e7cad")), state: StateRoot(word(
-      "1248002a5bcc6ad701f8729cbb9e033e26acfabd6fbddcd48164c370d4eb8555")))
+      "e012b245dff85952af852a305b571f14895f63eb6e6a12e03d50eb8cd637c703")))
   assert bootstrapTraceChain(absent, trust, parameters).error == TraceBootstrapError.InvalidOwner
   assert bootstrapTraceChain(owner, trust, default(Parameters)).error ==
       TraceBootstrapError.InvalidParameters
@@ -68,7 +69,7 @@ proc main() {.raises.} =
   wrong.header = BlockHash(changed)
   assert bootstrapTraceChain(owner, wrong, parameters).error == TraceBootstrapError.HeaderMismatch
   wrong = trust
-  changed = word("1248002a5bcc6ad701f8729cbb9e033e26acfabd6fbddcd48164c370d4eb8555")
+  changed = word("e012b245dff85952af852a305b571f14895f63eb6e6a12e03d50eb8cd637c703")
   changed[0] = changed[0] xor 1
   wrong.state = StateRoot(changed)
   assert bootstrapTraceChain(owner, wrong, parameters).error == TraceBootstrapError.StateMismatch

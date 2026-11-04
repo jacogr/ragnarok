@@ -396,8 +396,8 @@ slot.output = ""
 slot.input = masked("", 0)
 slot.process(info, 3)
 assert slot.closing and slot.output == frame("\x03\xea", 8)
-# Independently encoded chapter 13: two six-validator E4 arrays, four core tuples and one service.
-let activityHex = "06" & repeat("00000000", 36) & "06" & repeat("00000000", 36) & repeat("00", 32) &
+# Independently encoded chapter 13: two six-validator natural-counter arrays, four core tuples and one service.
+let activityHex = "06" & repeat("00", 36) & "06" & repeat("00", 36) & repeat("00", 32) &
     "012a000000" & repeat("00", 10) & "ff" & repeat("ff", 8)
 let activityKey = "0d" & repeat("00", 30)
 let previousKey = "09" & repeat("00", 30)
@@ -410,7 +410,7 @@ proc activityInfo(wire: string, previous = "06" & repeat("00", 2016)): ClientInf
 let activityCall = "{\"jsonrpc\":\"2.0\",\"method\":\"statistics\",\"params\":[\"" & genesisHash &
     "\"],\"id\":1}"
 let activityOwner = activityInfo(activityHex)
-let activityAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"BgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEqAAAAAAAAAAAAAAAAAP///////////w==\"}"
+let activityAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"BgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEqAAAAAAAAAAAAAAAAAP///////////w==\"}"
 assert respond(activityCall, activityOwner) == activityAnswer
 assert respond("[" & activityCall & "," & activityCall & "]", activityOwner) == "[" &
     activityAnswer & "," & activityAnswer & "]"
@@ -428,13 +428,13 @@ for bad in [activityHex & "00", "05" & activityHex[2..^1], repeat("00", 32769)]:
   assert "\"code\":0" in respond(activityCall, activityInfo(bad)) # Suffix, population mismatch and size policy.
 # Reject duplicate service keys and an overlong zero gas encoding in otherwise complete chapters.
 let serviceTuple = "2a000000" & repeat("00", 11)
-for bad in [activityHex[0..<644] & "02" & serviceTuple & serviceTuple,
+for bad in [activityHex[0..<212] & "02" & serviceTuple & serviceTuple,
     activityHex[0..^19] & "8000"]:
   assert "\"code\":0" in respond(activityCall, activityInfo(bad))
 assert "\"code\":0" in respond(activityCall, activityInfo(activityHex, "00"))
 assert "\"code\":0" in respond(activityCall, activityInfo(activityHex, "06" & repeat("00", 2016) & "00"))
 # Different valid previous populations are accepted only when chapter 13 matches that actual roster.
-let resizedHex = activityHex[0..<290] & "09" & repeat("00000000", 54) & activityHex[580..^1]
+let resizedHex = activityHex[0..<74] & "09" & repeat("00", 54) & activityHex[148..^1]
 assert "\"result\"" in respond(activityCall, activityInfo(resizedHex, "09" & repeat("00", 3024)))
 assert statistics.statistics(default(Genesis), ByteLimit(32768)).error ==
     StatisticsReadError.Uninitialized
@@ -1397,7 +1397,7 @@ assert cancelStats.queueChainUpdates(historyChild)
 assert cancelStats.nextUpdate() == ""
 
 # A valid large C(13) stays under the raw value ceiling but two serialized notifications exceed the FIFO byte limit.
-var largeActivity = activityHex[0..<644] & "87d0" # Canonical compact 2000-service dictionary count.
+var largeActivity = activityHex[0..<212] & "87d0" # Canonical compact 2000-service dictionary count.
 for identity in 0..<2000:
   largeActivity.add(toHex(identity and 255, 2) & toHex(identity shr 8, 2) & "0000" & repeat("00",
       11)) # Ordered E4 service IDs and zero counters.
