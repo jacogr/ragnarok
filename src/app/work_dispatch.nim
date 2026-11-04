@@ -74,8 +74,12 @@ proc retire(owner: var WorkDispatcher, services: var Services, streams: var Node
 proc release*(owner: var WorkDispatcher, services: var Services): bool =
   ## Downstream consumption explicitly releases the retained completion; no native success is fabricated.
   if owner.phase != WorkDispatchPhase.Ready: return false
+  let ownActive = services.workSubmissionActive(owner.session)
   discard services.retireWorkSubmission(owner.session)
-  owner.clear()
+  if ownActive:
+    owner.phase = WorkDispatchPhase.Retiring # Downstream report work still needs exact collection before this host may forget its session.
+  else:
+    owner.clear()
   true
 proc close*(owner: var WorkDispatcher, services: var Services, streams: var NodeService) =
   ## Joined stop is permitted only when this exact session still owns the active CPU job.
@@ -88,12 +92,8 @@ proc close*(owner: var WorkDispatcher, services: var Services, streams: var Node
   owner.policy = default(WorkDispatchPolicy)
 func currentDuty(services: Services, token: WorkSessionToken, now: StateTime): bool =
   ## Detached duty expiry never borrows selected state, even while a foreign worker owns it.
-  let duty = services.workSubmissionDuty(token)
-  if not duty.valid: return false
-  let observed = uint64(uint32(duty.observedTime))
-  let actual = uint64(uint32(now))
-  if actual < observed: return false
-  actual div duty.rotationDuration == observed div duty.rotationDuration
+  services.workSubmissionDuty(token).activeAt(now)
+
 proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime, now: StateTime) =
   ## Bounded existing work advances independently of foreign CPU capacity; new header admission is a separate arbiter turn.

@@ -5,16 +5,19 @@
 import std/[assertions, envvars, syncio, monotimes, times, strutils]
 import ../../../src/app/[node as application_node, services, options, work_dispatch, work_policy]
 import ../../../src/app/proof/[worker, work_submission]
-import ../../../src/jamnp-s/[node as node_streams, connections, work_duty, read_stream]
+import ../../../src/jamnp-s/[node as node_streams, connections, work_duty, work_report, read_stream]
 import ../../../src/codec/bounded
+import ../../../src/state/computed/[report as computed_report, guarantee]
+import ../../../src/crypto/primitives
 import ../../../src/codec/state/safrole
 import ../../../src/chain/[genesis, provider]
 import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_probe,
-  jamnp_read_validation_context, pvm_input_refinement]
+  jamnp_read_validation_context, pvm_input_refinement, jamnp_work_report_fixture]
 
 type Variant {.pure.} = enum ## Each case has a real positive source and changes one host/network boundary.
   Success, Disabled, WrongCore, CorruptProof, WithheldFin, Rotation, Deadline,
-    ResetDone, CloseDone, ForeignDone, ForeignClose, ReadyForeign, LowBudget, Package
+    ResetDone, CloseDone, ForeignDone, ForeignClose, ReadyForeign, LowBudget, Report, ReportFailure,
+      ReportCancelDone, ReportCloseDone, ReportStaleTime, ReportForeignDone, Package
 proc publicKey(): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -195,6 +198,78 @@ proc scenario(variant: Variant) {.raises.} =
     # Real completed refinement remains inside Services until downstream processing explicitly releases this generation.
     assert services.workSessionPhase(token) == WorkSessionPhase.Complete
     assert services.workSubmissionOutcome(token).kind == WorkJobResultKind.Refined
+  if variant in [Variant.Report, Variant.ReportFailure, Variant.ReportCancelDone,
+      Variant.ReportCloseDone, Variant.ReportStaleTime, Variant.ReportForeignDone]:
+    # Downstream work addresses the retained session, never a replacement execution or caller-selected shard count.
+    var limits = workReportLimits()
+    if variant == Variant.ReportStaleTime:
+      let refused = services.beginWorkReport(token, limits, StateTime(24))
+      assert refused.error == StateProofAdmissionError.QueryFailure
+      assert services.workSessionPhase(token) == WorkSessionPhase.Complete and
+          not services.stateProofActive
+      assert host.releaseWork()
+      return
+    if variant == Variant.ReportFailure: limits.bundleBytes = ByteLimit(0)
+    let reporting = services.beginWorkReport(token, limits, StateTime(20))
+    assert reporting.error == StateProofAdmissionError.None
+    assert services.beginWorkReport(token, limits, StateTime(20)).error ==
+        StateProofAdmissionError.Busy
+    assert services.workSessionPhase(token) == WorkSessionPhase.Reporting
+    services.waitDone()
+    assert services.rpc.chainPaused
+    if variant == Variant.ReportCloseDone:
+      host.close()
+      assert not services.stateProofActive and not services.rpc.chainPaused
+      assert services.workSessionPhase(token) == WorkSessionPhase.Empty
+      return
+    if variant == Variant.ReportCancelDone:
+      assert host.releaseWork() and not host.releaseWork()
+      assert host.workPhase == WorkDispatchPhase.Retiring
+      assert services.stateProofActive and services.rpc.chainPaused
+      let retired = getMonoTime()+initDuration(seconds = 8)
+      while host.workPhase != WorkDispatchPhase.Idle:
+        assert getMonoTime() < retired
+        pump(host, services, probe)
+      assert not services.stateProofActive and not services.rpc.chainPaused
+      assert services.workSessionPhase(token) == WorkSessionPhase.Empty
+      return
+    let collected = services.collectWorkSubmission(token)
+    if variant == Variant.ReportFailure:
+      assert collected == WorkSessionPhase.Failed
+      block:
+        let failed = services.workSubmissionOutcome(token)
+        assert failed.kind == WorkJobResultKind.ReportFailure
+        assert failed.reportPreparationError.error == WorkReportError.BundleFailure
+      assert host.releaseWork()
+      return
+    assert collected == WorkSessionPhase.ReportReady
+    let metadata = services.workSubmissionReportInfo(token)
+    assert uint16(metadata.header.erasureShards) == 6 and uint64(metadata.core) == 0
+    assert metadata.header.erasureRoot.bytes != default(array[32, byte])
+    block:
+      # These genuine source-bearing transcript aliases retire before any subsequent worker can borrow the graph.
+      let reported = services.workSubmissionOutcome(token)
+      assert reported.kind == WorkJobResultKind.Reported
+      let report = reported.reportTranscript.computedGuaranteeReport.value
+      assert report.computedReportInfo.value.header.packageHash.bytes ==
+          metadata.header.packageHash.bytes
+      let bytes = report.computedReportBytes.value
+      let digest = blake2b256(bytes)
+      assert digest.error == CryptoError.None
+      let message = array[45, byte](reported.reportTranscript.computedGuaranteeMessage.value)
+      for index in 0..<32: assert message[13+index] == array[32, byte](digest.value)[index]
+    if variant == Variant.ReportForeignDone:
+      let other = services.beginNetworkRead(readStateRequest(hash))
+      assert other.error == StateProofAdmissionError.None
+      services.waitDone()
+      assert services.workSubmissionReportInfo(token).header.erasureRoot.bytes ==
+          metadata.header.erasureRoot.bytes
+      assert host.releaseWork()
+      assert services.stateProofPhase == ProofWorkerPhase.Done and services.rpc.chainPaused
+      assert services.workSessionPhase(token) == WorkSessionPhase.Retired
+      assert services.collectStateProof(other.value).kind == ProofWorkerCompletionKind.ReadCompleted
+      assert services.reapWorkSubmission()
+      return
   if variant == Variant.ReadyForeign:
     # Releasing a completed source while another worker borrows it must defer private graph destruction until exact collection.
     let other = services.beginNetworkRead(readStateRequest(hash))

@@ -6,7 +6,7 @@
 import ../codec/[bounded, assurances, guarantees]
 import ../codec/state/[safrole, disputes as state_disputes, layout as state_layout,
     trie as state_trie]
-from ../codec/work/report import CoreIndex
+from ../codec/work/report import CoreIndex, ErasureShards
 from ../codec/header import EpochSlots
 import ../chain/parameters
 import ../state/[store, guarantors]
@@ -30,6 +30,7 @@ type
     sourceTime, observed: StateTime
     sourceRoot: StateRoot
     epoch, rotation: uint64
+    shards: ErasureShards
   WorkDutyResult*[T] = object ## Private selected children preserve exact genuine causes without exposing accepted prefixes.
     case status: WorkDutyError
     of None: completed: T
@@ -106,6 +107,16 @@ func epochDuration*(duty: WorkDuty): uint64 {.requires: duty.ready.} =
 func rotationDuration*(duty: WorkDuty): uint64 {.requires: duty.ready.} =
   ## A current-source duty record has explicit positive rotation geometry.
   duty.rotation
+func shardCount*(duty: WorkDuty): ErasureShards {.requires: duty.ready.} =
+  ## Actual current source roster population differs from configured core capacity; inclusion eligibility remains a separate check.
+  duty.shards
+func activeAt*(duty: WorkDuty, now: StateTime): bool =
+  ## Fixed metadata can refuse backwards/changed-rotation observations during any canonical worker lease.
+  if not duty.ready: return false
+  let observed = uint64(uint32(duty.observed))
+  let actual = uint64(uint32(now))
+  if actual < observed: return false
+  actual div duty.rotation == observed div duty.rotation
 proc readChapter(source: StateStoreSnapshot, chapter: StateChapter, limit: ByteLimit,
     bytes: var seq[byte], failure: var WorkDutyResult[WorkDuty]): bool =
   ## Validate the original stored extent before copying, preserving only actual failed store causes.
@@ -187,7 +198,11 @@ proc captureWorkDuty*(source: StateStoreSnapshot, parameters: Parameters,
       rotationSlots: GuarantorRotationSlots(rotation), offenders: limits.disputeItems))
   if planned.error != GuarantorError.None: return WorkDutyResult[WorkDuty](
     status: WorkDutyError.AssignmentFailure, assignmentReason: planned.error)
-  for index in 0..<active.value.value.validatorCount.value:
+  let population = active.value.value.validatorCount.value
+  if population < 6 or population > 1023:
+    return WorkDutyResult[WorkDuty](status: WorkDutyError.InvalidState,
+        invalidChapter: StateChapter(8))
+  for index in 0..<population:
     # Only the actual posterior assignment may select the local identity; offenders have already become null records.
     let selected = planned.value.guarantorAt(GuaranteeSlot(uint32(recipient.now)), GuarantorIndex(
         uint16(index)))
@@ -200,5 +215,5 @@ proc captureWorkDuty*(source: StateStoreSnapshot, parameters: Parameters,
         completed: WorkDuty(ready: true, local: recipient.local, core: core,
           sourceTime: clock.value.value, observed: recipient.now,
           sourceRoot: source.commitment.root,
-          epoch: epoch, rotation: rotation))
+          epoch: epoch, rotation: rotation, shards: ErasureShards(uint16(population))))
   fail(WorkDutyError.NotAssigned)

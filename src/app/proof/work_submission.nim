@@ -5,6 +5,9 @@
 ## All aliases, including completed authorization and refinement, remain untouched until exact collection or joined stop.
 import ../../jamnp-s/work_submission
 import ../../jamnp-s/work_duty
+import ../../jamnp-s/work_report
+from ../../state/computed/guarantee import ComputedGuaranteeTranscript
+from ../../codec/work/report import ErasureShards
 import ../../state/[store, input_refinement]
 import "../../state/import/inputs" as import_inputs
 import "../../state/import/justification" as import_justification
@@ -15,7 +18,8 @@ type
   WorkJobError* {.pure.} = enum ## Local capture refusals contain no source-bearing input capability.
     Uninitialized, None, InvalidInput, LimitExceeded
   WorkJobResultKind* {.pure.} = enum ## A completed CPU turn exposes only its selected full success or genuine child failure.
-    Uninitialized, Authorized, Refined, AuthorizationFailure, BodyFailure, RefinementFailure, DutyFailure
+    Uninitialized, Authorized, Refined, AuthorizationFailure, BodyFailure, RefinementFailure,
+      DutyFailure, Reported, ReportFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -32,6 +36,8 @@ type
     data: nil WorkContextData
   WorkJobResult* = object ## Failed/default results expose no input, grant, partial refinement or unrelated child.
     case status: WorkJobResultKind
+    of Reported: report: ComputedGuaranteeTranscript
+    of ReportFailure: reportReason: WorkReportResult
     of DutyFailure: dutyReason: WorkDutyResult[WorkDuty]
     of Authorized: context: AuthorizedWorkContext
     of Refined: execution: InputRefinement
@@ -45,6 +51,9 @@ type
     run: nil WorkRunner
     source: WorkSource
     context: AuthorizedWorkContext
+    refined: InputRefinement
+    shards: ErasureShards
+    reportLimits: WorkReportLimits
     extrinsics, segments, proofs: seq[byte]
     imports: seq[seq[VerifiedImport]]
     lookup: seq[SegmentLookup]
@@ -94,6 +103,14 @@ proc duty*(context: AuthorizedWorkContext): WorkDuty =
   let data = context.data
   if data == nil: return default(WorkDuty)
   data.duty
+func reportTranscript*(outcome: WorkJobResult): ComputedGuaranteeTranscript {.requires: outcome.status ==
+    WorkJobResultKind.Reported.} =
+  ## Only genuine complete report preparation exposes its original-bound transcript, never a signature or inclusion certificate.
+  outcome.report
+func reportPreparationError*(outcome: WorkJobResult): WorkReportResult {.requires: outcome.status ==
+    WorkJobResultKind.ReportFailure.} =
+  ## Preserve the exact selected report/bundle/availability stage failure without exposing earlier owners.
+  outcome.reportReason
 func valid*(job: WorkSubmissionJob): bool =
   ## Only private factories bind the actual runner and original source.
   job.data != nil
@@ -139,6 +156,19 @@ proc complete(data: WorkJobData): WorkJobResult =
   if executed.error != InputRefinementError.None:
     return WorkJobResult(status: WorkJobResultKind.RefinementFailure, refinementReason: executed)
   WorkJobResult(status: WorkJobResultKind.Refined, execution: executed.value)
+proc report(data: WorkJobData): WorkJobResult =
+  ## Original refinement stays under the same graph lease through every bounded encoding/hash stage.
+  let computed = prepareWorkReport(data.refined, data.shards, data.reportLimits)
+  if computed.error != WorkReportError.None:
+    return WorkJobResult(status: WorkJobResultKind.ReportFailure, reportReason: computed)
+  WorkJobResult(status: WorkJobResultKind.Reported, report: computed.value)
+proc captureWorkReport*(source: InputRefinement, shards: ErasureShards,
+    limits: WorkReportLimits): WorkJobAdmission =
+  ## Capture only a genuine refinement owner; staging aliases retire before the moved job enters the exclusive worker.
+  if source.inputRefinementIdentity.error != InputRefinementError.None:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: report, refined: source, shards: shards, reportLimits: limits)))
 proc captureWorkAuthorization*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits,
     execution: InputRefinementLimits, recipient = default(WorkRecipient),
