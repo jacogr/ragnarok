@@ -22,9 +22,9 @@ type
     row, recipient: int
     started: MonoTime
   TicketForwarding* = object ## Noncopyable scheduler must explicitly retire all native cancellation authority before destruction.
-    rows: array[MaxPendingNetworkTickets, ForwardRow]
+    rows: seq[ForwardRow] # Allocated once to the checked actual population bound; never resized while exchanges are active.
     exchanges: array[MaxTicketForwards, ForwardExchange]
-    recipients: array[MaxTicketRecipients, StateEdKey]
+    recipients: seq[StateEdKey] # Keep roster geometry off the foreground thread stack too.
     local: StateEdKey
     included: seq[WinningTicketId]
     count, population, limit, cursor, active: int
@@ -40,6 +40,7 @@ proc `=dup`*(source: TicketForwarding): TicketForwarding {.error.}
 proc `=wasMoved`*(owner: var TicketForwarding) {.nodestroy, requires: owner.active == 0.} =
   ## Only retired native requests permit moving detached proof and namespace storage.
   `=wasMoved`(owner.rows)
+  `=wasMoved`(owner.recipients)
   `=wasMoved`(owner.exchanges)
   `=wasMoved`(owner.included)
   owner.count = 0
@@ -51,6 +52,7 @@ proc `=destroy`*(owner: TicketForwarding) =
   ## Explicit close retires native authority before checked proofs and peer namespaces leave scope.
   requireClosed(owner)
   `=destroy`(owner.rows)
+  `=destroy`(owner.recipients)
   `=destroy`(owner.exchanges)
   `=destroy`(owner.included)
 func len*(owner: TicketForwarding): int =
@@ -73,6 +75,8 @@ proc close*(owner: var TicketForwarding, streams: var NodeService) =
       discard streams.cancelRequest(owner.exchanges[index].ticket)
       owner.clearExchange(index)
   for index in 0..<owner.count: owner.rows[index] = default(ForwardRow)
+  owner.rows = @[]
+  owner.recipients = @[]
   owner.count = 0
   owner.population = 0
   owner.included = @[]
@@ -128,6 +132,8 @@ proc advance*(owner: var TicketForwarding, streams: var NodeService, source: Tic
     let pending = source.pendingCount
     assert pending > 0 and pending <= MaxPendingNetworkTickets div 2
     owner.limit = pending*2 # Validate the bound before multiplying the actual population.
+    owner.rows = newSeq[ForwardRow](owner.limit)
+    owner.recipients = newSeq[StateEdKey](owner.population)
     assert owner.population <= MaxTicketRecipients and owner.limit <= MaxPendingNetworkTickets
     for index in 0..<owner.population: owner.recipients[index] = source.currentAt(index)
     owner.configured = true

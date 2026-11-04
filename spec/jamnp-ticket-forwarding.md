@@ -44,3 +44,16 @@ Local implementation evidence:
 
 Local production remains separate: this layer forwards only genuinely checked proxy ingress;
 operator Bandersnatch key ownership and CE131 generation are not implied by a transport TLS key.
+
+Foreground ownership must remain small enough for ordinary thread stacks. The original inline
+maximum-capacity row array made ApplicationNode2250560 bytes (TicketForwarding2162736 bytes),
+exceeding the measured default524288-byte pthread stack on the local host. The existing actual
+foreground command test fails with SIGBUS/exit138 on that source, independently of local signing.
+Rows and roster storage now allocate privately on the heap, once per checked actual population;
+rows never resize while exchanges are active and all existing2046/1023/16 limits remain intact.
+A128KiB ApplicationNode size regression prevents reintroducing such inline protocol storage.
+The corrected ApplicationNode is90016 bytes and TicketForwarding2192 bytes on that same host.
+The actual foreground command test and complete forwarding suite pass from fresh generated
+artifacts;1000ARC cycles still preserve occupied memory. Actual lowering still rejects copies
+of both owners. Changing the private field layout required archiving only generated native/build
+caches whose constructors still described the former arrays; no runtime or dependency was changed.
