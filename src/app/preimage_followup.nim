@@ -28,6 +28,8 @@ type
     count, cursor: int
     active: int
     cache: PreimageCache
+    acquired: array[8, PreimageAnnouncement]
+    acquiredCount: int
 proc `=copy`*(destination: var PreimageFollowups, source: PreimageFollowups) {.error.}
   ## Copying would duplicate cancellation authority over network/CPU resources.
 proc `=dup`*(source: PreimageFollowups): PreimageFollowups {.error.}
@@ -50,6 +52,8 @@ proc `=destroy`*(owner: PreimageFollowups) =
 proc reset*(owner: var PreimageFollowups) {.requires: owner.count == 0.} =
   ## Reopening discards retained content and all historical peer generations.
   owner.cache.clear()
+  owner.acquired = default(array[8, PreimageAnnouncement])
+  owner.acquiredCount = 0
   owner.active = -1
   owner.cursor = 0
 func pendingCount*(owner: PreimageFollowups): int =
@@ -74,6 +78,24 @@ proc fetchRequest(notice: PreimageAnnouncement): ReadRequest {.requires: notice.
 proc held(owner: PreimageFollowups, notice: PreimageAnnouncement): bool =
   ## Exact length and full identity suppress redundant retrieval without copying blob bytes.
   owner.cache.contains(fetchRequest(notice), uint32(notice.length))
+proc has*(owner: PreimageFollowups, notice: PreimageAnnouncement): bool =
+  ## Detached full identity/length possession is rechecked before any gossip send.
+  notice.valid and owner.held(notice)
+proc recordAcquired(owner: var PreimageFollowups, notice: PreimageAnnouncement) =
+  ## Eight fixed notifications preserve service namespaces even when content retrieval is shared.
+  for index in 0..<owner.acquiredCount:
+    let previous = owner.acquired[index]
+    if sameAnnouncement(previous, notice): return
+  if owner.acquiredCount >= 8: return # Bounded metadata refusal never drops already verified content.
+  owner.acquired[owner.acquiredCount] = notice
+  inc owner.acquiredCount
+proc takeAcquired*(owner: var PreimageFollowups): AnnouncementResult =
+  ## Notifications carry copied facts only; canonical request and current possession must be rechecked before distribution.
+  if owner.acquiredCount == 0: return default(AnnouncementResult)
+  dec owner.acquiredCount
+  let notice = owner.acquired[owner.acquiredCount]
+  owner.acquired[owner.acquiredCount] = default(preimage_announcement.PreimageAnnouncement)
+  announcementRequest(notice.service, notice.hash, notice.length)
 proc drop(owner: var PreimageFollowups, index: int) {.requires: index >= 0 and index < 8.} =
   ## Caller has retired any native/CPU ticket before dropping detached storage.
   assert owner.entries[index].phase != FetchPhase.Empty
@@ -88,9 +110,8 @@ proc enqueue*(owner: var PreimageFollowups, streams: NodeService, peer: NodePeer
   for index in 0..<8:
     if owner.entries[index].phase != FetchPhase.Empty:
       let previous = owner.entries[index].notice
-      if array[32, byte](previous.hash) == array[32, byte](notice.hash) and uint32(
-          previous.length) == uint32(notice.length):
-        return true # One hash-checked blob serves every service requesting these exact bytes.
+      if sameAnnouncement(previous, notice):
+        return true # One service claim occupies one intent; the content cache still shares verified bytes across services.
   if owner.count >= 8: return false
   for index in 0..<8:
     if owner.entries[index].phase == FetchPhase.Empty:
@@ -130,7 +151,9 @@ proc poll*(owner: var PreimageFollowups, services: var Services,
           let checked = completed.verifiedReadValue
           if checked.error == ReadVerificationError.None and checked.value.kind ==
               ReadKind.Preimage:
-            discard owner.cache.remember(checked.value)
+            if owner.cache.remember(checked.value) == PreimageCacheError.None:
+              let notice = owner.entries[index].notice
+              owner.recordAcquired(notice) # Copy fixed claim facts before mutating notification ownership.
         owner.drop(index) # Failed/stale collection cannot retain content or retire a foreign lease.
     elif expired:
       if owner.entries[index].phase == FetchPhase.Receiving:
@@ -155,8 +178,14 @@ proc poll*(owner: var PreimageFollowups, services: var Services,
     if owner.entries[index].phase != FetchPhase.Queued: continue
     let notice = owner.entries[index].notice
     if clock < owner.entries[index].started or
-        (clock-owner.entries[index].started).inMilliseconds >= 120000 or
-        not streams.peerLive(owner.entries[index].peer) or owner.held(notice):
+        (clock-owner.entries[index].started).inMilliseconds >= 120000:
+      owner.drop(index)
+      continue # Original intent lifetime also bounds waiting for content obtained through another service.
+    if owner.held(notice):
+      owner.recordAcquired(notice)
+      owner.drop(index)
+      continue # One fetched blob can notify multiple independently requested service namespaces.
+    if not streams.peerLive(owner.entries[index].peer):
       owner.drop(index)
       continue # Closure never causes dialing a replacement peer or reusing its generation.
     let admitted = streams.request(owner.entries[index].peer, fetchRequest(notice),

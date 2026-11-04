@@ -99,13 +99,16 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
     wantWrite(stream, 0)
     if not alreadyReset: streamAbort(stream) # Retire our directions as well as observing the peer's directional reset.
   else: discard # Other native events do not establish protocol success.
-proc open*(probe: var NodeProbe, port: uint16, protocol = "jamnp-s/1/00000000") {.raises.} =
+proc open*(probe: var NodeProbe, port: uint16, protocol = "jamnp-s/1/00000000",
+    certificate = "", keyPath = "") {.raises.} =
   ## A fresh engine presents the second certificate while pinning the node's first certificate.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
   assert raw.len == 32
   for index in 0..<32: probe.expected[index] = byte(raw[index])
-  assert openTransport(probe.transport, false, false, 0, getEnv("RAGNAROK_TEST_CERT_B"),
-    getEnv("RAGNAROK_TEST_KEY_B"), protocol, addr probe, verify, event,
+  let certFile = if certificate.len > 0: certificate else: getEnv("RAGNAROK_TEST_CERT_B")
+  let keyFile = if keyPath.len > 0: keyPath else: getEnv("RAGNAROK_TEST_KEY_B")
+  assert openTransport(probe.transport, false, false, 0, certFile, keyFile, protocol, addr probe,
+    verify, event,
     idleSeconds = 30, keepalive = true)
   assert probe.transport.connectTransport(port)
 proc close*(probe: var NodeProbe) =

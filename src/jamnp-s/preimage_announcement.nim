@@ -38,6 +38,13 @@ func hash*(notice: PreimageAnnouncement): ServicePreimageHash {.requires: notice
 func length*(notice: PreimageAnnouncement): RequestLength {.requires: notice.ready.} =
   ## The announced exact byte length remains independently checked against fetched content.
   notice.length
+func sameAnnouncement*(left, right: PreimageAnnouncement): bool =
+  ## Exact valid service/hash/length equality preserves service-specific requested metadata while content is shared.
+  if not left.ready or not right.ready: return false
+  let leftHash = array[32, byte](left.hash)
+  let rightHash = array[32, byte](right.hash)
+  leftHash == rightHash and uint32(left.service) == uint32(right.service) and uint32(left.length) ==
+      uint32(right.length)
 func e4(input: openArray[byte], offset: int): uint32 {.requires: offset >= 0 and offset <=
     input.len and input.len-offset >= 4.} =
   ## Fixed extent precedes every byte access and widened shift.
