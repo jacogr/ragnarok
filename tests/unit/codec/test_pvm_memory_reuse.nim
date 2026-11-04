@@ -56,6 +56,25 @@ proc crossingStore(address, value: uint64): seq[byte] =
   result.addWord(address)
   result.addWord(value)
 
+proc literalCrossingMemory(memory: Memory, images: openArray[PageImage], stored: bool) =
+  ## Literal source bytes and eight stored octets check publication without another execution oracle.
+  const written = [0xef'u8, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01]
+  let layout = memoryLayout(memory).value
+  assert layout.len == images.len, "literal crossing map count"
+  for slot in 0..<images.len:
+    # Compare the complete ordered map and permissions, including untouched read-only padding.
+    let physical = uint32(images[slot].index)
+    assert layout[slot].index == images[slot].index and layout[slot].access == images[slot].access
+    let page = pageImage(memory, images[slot].index).value
+    assert page.access == images[slot].access
+    for offset in 0..<4096:
+      # The oracle is the input pattern plus this literal store, never execute/stepOnce/fresh-owner output.
+      let address = uint64(physical)*4096+uint64(offset)
+      var expected = byte((offset*7+int(physical)) mod 251)
+      if stored and address >= 262141 and address < 262149:
+        expected = written[int(address-262141)]
+      assert page.bytes[offset] == expected, "literal crossing page bytes"
+
 let owner = code([@[52'u8, 0, 0, 0, 1, 0], @[52'u8, 1, 0, 32, 1, 0],
   @[52'u8, 2, 255, 17, 1, 0],
   @[30'u8, 4, 255, 17, 1, 0, 123, 0, 0, 0],
@@ -172,6 +191,58 @@ block crossing_unpublished_reuse:
   assert preparedInfo(crossingPrepared).value.memoryReuses == 2
   for index in 0..<crossingImages.len:
     assert pageImage(crossingOriginal, crossingImages[index].index).value == crossingImages[index]
+
+block literal_crossing_publication_and_reuse:
+  ## Both publication paths must mark page 64 independently and restore it before a later read.
+  # Absolute store/load operands encode address 262141; the last three bytes of page 63 cross into 64.
+  let literalOwner = code([@[62'u8, 0, 0xfd, 0xff, 3, 0],
+    @[58'u8, 1, 0xfd, 0xff, 3, 0], @[0'u8]])
+  for padded in [false, true]:
+    # Two dirty pages select dense publication in a two-page map, sparse publication in a 64-page map.
+    var literalImages: seq[PageImage] = @[]
+    let count = if padded: 64 else: 2
+    for slot in 0..<count:
+      let physical = uint32(if slot < 2: 63+slot else: 126+slot)
+      let access = if slot >= 2 and slot mod 2 == 0: PageAccess.ReadOnly else: PageAccess.ReadWrite
+      var image = PageImage(index: PageIndex(physical), access: access)
+      for offset in 0..<4096: image.bytes[offset] = byte((offset*7+int(physical)) mod 251)
+      literalImages.add(image)
+    let literalOriginal = captureMemory(literalImages, PageLimit(64)).value
+    let literalPrepared = newPreparedProgram(literalOwner,
+      defaultPreparedLimits(GasCycleLimit(10000))).value
+    var initial = MachineInfo(gas: MachineGas(7), blockCharged: true,
+      registers: default(RegisterFile))
+    for index in 0..<13: initial.registers[index] = RegisterValue(uint64(100+index))
+    initial.registers[0] = RegisterValue(0x0123456789abcdef'u64)
+    let literalSource = captureMachine(literalOwner, literalOriginal, initial).value
+    let published = execute(literalSource, ExecutionStepLimit(3), literalPrepared)
+    assert published.error == StepError.None and published.value.exit == StepExit.Panic
+    var expectedCpu = initial
+    expectedCpu.registers[1] = RegisterValue(0x0123456789abcdef'u64)
+    assert machineInfo(published.value.machine).value == expectedCpu
+    let held = memoryOf(published.value.machine).value
+    literalCrossingMemory(held, literalImages, true)
+    literalCrossingMemory(memoryOf(literalSource).value, literalImages, false)
+
+    # A local attempt-limit return publishes no machine, but leaves both dirty physical pages in idle scratch.
+    let unpublished = execute(literalSource, ExecutionStepLimit(1), literalPrepared)
+    assert unpublished.error == StepError.StepLimitExceeded
+    literalCrossingMemory(held, literalImages, true)
+    literalCrossingMemory(literalOriginal, literalImages, false)
+
+    # Enter at the load: no store can hide a missing restoration of either dirty-bitmap word.
+    var reading = initial
+    reading.pc = CodeAddress(6)
+    let readSource = captureMachine(literalOwner, literalOriginal, reading).value
+    let restored = execute(readSource, ExecutionStepLimit(2), literalPrepared)
+    assert restored.error == StepError.None and restored.value.exit == StepExit.Panic
+    expectedCpu.registers[1] = RegisterValue(0x5c554e4740726b64'u64)
+    assert machineInfo(restored.value.machine).value == expectedCpu, "restore precedes read-only suffix"
+    assert preparedInfo(literalPrepared).value.memoryReuses == 2
+    literalCrossingMemory(memoryOf(restored.value.machine).value, literalImages, false)
+    literalCrossingMemory(memoryOf(readSource).value, literalImages, false)
+    literalCrossingMemory(memoryOf(literalSource).value, literalImages, false)
+    literalCrossingMemory(held, literalImages, true)
 
 proc releaseCycle(owner: Program, original, changed: Memory) =
   ## A dropped prepared identity must retire its idle byte lease and retained source baseline together.
