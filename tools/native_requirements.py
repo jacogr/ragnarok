@@ -27,7 +27,7 @@ def validate_requirements(records):
         # Fixed heap-cap and backend profiles exercise refusal without allowing arbitrary compiler switches.
         'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
-                    'pvmX86WideParentRefusalWitness',
+                    'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
                     'pvmInnerPreparedReceipt'},
     }
     for name, record in records.items():
