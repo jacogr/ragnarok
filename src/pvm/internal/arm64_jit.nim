@@ -1426,12 +1426,15 @@ proc armDirtyLoopObserve*(jit: ArmJit, header: uint32, backedge: bool): uint8 =
   0
 
 type ArmDirtyImage = object
+  ## Cold image failure distinguishes a size decline from invalid source/fixups.
   words: seq[uint32]
   continuation: int
+  sizeDeclined: bool
 
 proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
-    displacement: uint32, word: ArmDirtyWordShape, residentMode: bool): ArmDirtyImage =
+    displacement: uint32, word: ArmDirtyWordShape, residentMode, windowCache: bool): ArmDirtyImage =
   ## Emit one validated dirty body with either a standalone ABI or a shared resident-bank exit.
+  assert not windowCache or residentMode
   var continuation = -1
   var words: seq[uint32] = @[]
   if residentMode:
@@ -1498,6 +1501,36 @@ proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
     restore.add(ArmRegionFixup(at: words.len, condition: 8)); words.add(0)
     words.add(0x7200047f'u32) # TST Waddress,#3; alignment keeps all four bytes in one page.
     restore.add(ArmRegionFixup(at: words.len, condition: 1)); words.add(0)
+    var cacheMisses: seq[int] = @[]
+    var cacheSuccess = -1
+    if windowCache:
+      # D3..D6 hold only this invocation's next aligned word, host pointer, page and
+      # remaining selected-region capacity. D3 is zeroed once at macro entry.
+      words.add(0x9e660061'u32) # FMOV X1,D3: next expected guest address.
+      words.add(0xeb01007f'u32) # CMP X3,X1.
+      cacheMisses.add(words.len); words.add(0) # B.NE to original descriptor check.
+      words.add(0xd34cfc61'u32) # LSR X1,X3,#12: current page.
+      words.add(0x9e6600a2'u32) # FMOV X2,D5: cached page.
+      words.add(0xeb02003f'u32) # CMP X1,X2.
+      cacheMisses.add(words.len); words.add(0)
+      words.add(0x9e6600c2'u32) # FMOV X2,D6: original region capacity.
+      words.add(0xf100105f'u32) # CMP X2,#4: next offset must still admit four bytes.
+      cacheMisses.add(words.len); words.add(0) # B.LS to original descriptor check.
+      words.add(0x9e660081'u32) # FMOV X1,D4: next private word pointer.
+      words.add(0x9e670020'u32) # FMOV D0,X1: shared successful store input.
+      words.add(0x91001061'u32) # ADD X1,X3,#4: next expected guest address.
+      words.add(0x9e670023'u32) # FMOV D3,X1.
+      words.add(0x9e660081'u32) # FMOV X1,D4.
+      words.add(0x91001021'u32) # ADD X1,X1,#4: next private word pointer.
+      words.add(0x9e670024'u32) # FMOV D4,X1.
+      words.add(0xd1001042'u32) # SUB X2,X2,#4: remaining descriptor capacity.
+      words.add(0x9e670046'u32) # FMOV D6,X2.
+      cacheSuccess = words.len
+      words.add(0) # B to shared success, after the original bitmap preflight.
+    let cacheMiss = words.len
+    for at in cacheMisses:
+      let condition = if at == cacheMisses[^1]: 9'u32 else: 1'u32
+      words[at] = 0x54000000'u32 or (uint32(cacheMiss-at) shl 5) or condition
     words.add(0xf9401631'u32) # Fresh descriptor pointer, context word 5.
     words.add(0xf100023f'u32)
     restore.add(ArmRegionFixup(at: words.len, condition: 0)); words.add(0)
@@ -1512,6 +1545,9 @@ proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
       words.add(0xeb02003f'u32)
       let outside = words.len
       words.add(0x54000002'u32)
+      if windowCache:
+        words.add(0xcb010042'u32) # SUB X2,X2,X1: positive remaining start capacity.
+        words.add(0x9e670047'u32) # FMOV D7,X2; refresh only after the bitmap passes.
       words.add(0xf9400222'u32 or (uint32(region*3+2) shl 10))
       words.add(0x8b010041'u32)
       words.add(0x9e670020'u32) # Keep borrowed word pointer in D0 through the bitmap check.
@@ -1538,6 +1574,19 @@ proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
     words.add(0xf9400041'u32)
     words.add(0xea11003f'u32)
     restore.add(ArmRegionFixup(at: words.len, condition: 0)); words.add(0) # First touch declines.
+    if windowCache:
+      # A successful full preflight alone publishes this call-local window. No clean bit
+      # or owner metadata changes, and the selected pointer is borrowed only until return.
+      words.add(0x9e660001'u32) # FMOV X1,D0: admitted private pointer.
+      words.add(0x91001021'u32) # ADD X1,X1,#4.
+      words.add(0x9e670024'u32) # FMOV D4,X1.
+      words.add(0x91001061'u32) # ADD X1,X3,#4.
+      words.add(0x9e670023'u32) # FMOV D3,X1.
+      words.add(0xd34cfc61'u32) # LSR X1,X3,#12.
+      words.add(0x9e670025'u32) # FMOV D5,X1.
+      words.add(0x9e6600e2'u32) # FMOV X2,D7: selected region's positive capacity.
+      words.add(0x9e670046'u32) # FMOV D6,X2.
+      words[cacheSuccess] = 0x14000000'u32 or uint32(words.len-cacheSuccess)
     words.add(0x9e660282'u32)
     words.add(0x9e6602a3'u32)
     words.add(0x9e6602d1'u32)
@@ -1688,7 +1737,7 @@ proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
   if residentMode:
     continuation = words.len
     words.add(0) # The owning cycle patches one branch to its post-dirty accounting.
-  if words.len >= 1024: return default(ArmDirtyImage)
+  if words.len >= 1024: return ArmDirtyImage(sizeDeclined: true)
   for at in epilogueBranches: words[at] = 0x14000000'u32 or uint32(epilogue-at)
   for fixIndex, fix in fixes:
     var destination = -1
@@ -1704,6 +1753,7 @@ proc armDirtyLoopImage(item: ArmRegionBlock, baseSlot: range[0..12],
         0x54000000'u32 or ((relative and 0x7ffff'u32) shl 5) or fix.condition
       else: 0x14000000'u32 or (relative and 0x3ffffff'u32)
   result = ArmDirtyImage(words: move(words), continuation: continuation)
+
 proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
     baseSlot: range[0..12], displacement: uint32,
     word: ArmDirtyWordShape = default(ArmDirtyWordShape)): bool =
@@ -1714,7 +1764,7 @@ proc publishArmDirtyLoop*(jit: ArmJit, item: ArmRegionBlock,
   if item.body.terminal.len notin [6, 10]:
     if not item.body.compact or item.body.terminal.len < 7 or item.body.terminal.len > 9:
       return false
-  let image = armDirtyLoopImage(item, baseSlot, displacement, word, false)
+  let image = armDirtyLoopImage(item, baseSlot, displacement, word, false, false)
   if image.words.len == 0: return false
   var words = image.words
   jit.dirtyLoop.status = 1
@@ -2092,12 +2142,17 @@ type ArmResidentCycleCore = object
   ## Guest X4..X16 and accounting X21..X28 remain live, with no register-file publication.
   words: seq[uint32]
   resident, written: uint32
+  sizeDeclined: bool # Propagate only the dirty child's deterministic word-limit failure.
 
-proc armResidentCycleCore(item: ArmMemoryCycleBlock): ArmResidentCycleCore =
+proc armResidentCycleCore(item: ArmMemoryCycleBlock,
+    windowCache: bool = false): ArmResidentCycleCore =
   ## Render an admitted core; the caller initializes/exports its bank and accounting ABI.
   result = default(ArmResidentCycleCore)
   let dirtyImage = armDirtyLoopImage(item.dirty, item.dirtyBaseSlot,
-      item.dirtyDisplacement, item.dirtyWord, true)
+      item.dirtyDisplacement, item.dirtyWord, true, windowCache)
+  if dirtyImage.sizeDeclined:
+    result.sizeDeclined = true
+    return
   if dirtyImage.words.len == 0 or dirtyImage.continuation < 0: return
   let readImage = armReadImage(item.tailRead, item.tailHeader, true, true)
   if readImage.words.len == 0: return
@@ -2474,41 +2529,47 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
       words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
   true
 
-proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
-    cycle: ArmMemoryCycleBlock, pure: ArmBlock, read: ArmReadSpan): bool =
-  ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
-  if (cycle.tailRead.clippedReads or read.clippedReads) and not jit.clippedReads:
-    return false
-  when defined(pvmArmMacroResidentRefuse):
-    return false # A resident-only refusal leaves the linked publication available.
-  if jit.macroRoute.status != 0 or jit.unavailable or jit.fragments >= 8192 or
-      jit.codeBytes > 1048576 or not armMacroShapeValid(jit, shape) or
-      not armResidentCycleSourceValid(jit, cycle): return false
-  if cycle.prefixHeader != shape.cycleHeader or cycle.other != shape.staticHeader or
-      cycle.dirtyHeader != jit.memoryCycle.dirtyHeader or
-      cycle.tailHeader != jit.memoryCycle.tailHeader or
-      cycle.prefixSpan != jit.memoryCycle.prefixSpan or
-      cycle.tailSpan != jit.memoryCycle.tailSpan or
-      cycle.prefixPrice != jit.memoryCycle.prefixPrice or
-      cycle.tailPrice != jit.memoryCycle.tailPrice or
-      cycle.prefixOperations != jit.memoryCycle.prefixOperations or
-      cycle.tailOperations != jit.memoryCycle.tailOperations or
-      pure.words.len == 0 or pure.terminal.len == 0 or
-      read.body.words.len == 0 or read.body.terminal.len != 0: return false
-  let core = armResidentCycleCore(cycle)
+func armWindowInstructionSafe(instruction: uint32): bool =
+  ## Admit only present integer emitter families and the dirty byte body's exact
+  ## FMOV X1,D0. SIMD/FP load-store, SVE/SME, calls and unknown forms decline.
+  if instruction == 0x9e660001'u32: return true
+  let family = (instruction shr 25) and 15'u32
+  if not (family == 4 or family == 5 or family == 8 or family == 9 or
+      family == 10 or family == 11 or family == 12 or family == 13): return false
+  if (instruction and 0xfc000000'u32) == 0x94000000'u32: return false # BL immediate.
+  if (instruction and 0xfe000000'u32) == 0xd6000000'u32: return false # BR/BLR/RET family.
+  true
+
+func armWindowScratchSafe(body: ArmBlock): bool =
+  ## D3..D7 remain private only if every source-supplied word is in the
+  ## audited integer emitter set or the one explicit D0 read.
+  for instruction in body.words:
+    if not armWindowInstructionSafe(instruction): return false
+  for instruction in body.terminal:
+    if not armWindowInstructionSafe(instruction): return false
+  true
+
+type ArmResidentMacroImage = object
+  ## Pure cold rendering owns its words; only size refusal permits a second render.
+  words: seq[uint32]
+  sizeDeclined: bool
+
+proc armResidentMacroImage(shape: ArmMacroShape, cycle: ArmMemoryCycleBlock,
+    pure: ArmBlock, read: ArmReadSpan, branchBody: ArmBlock, cacheWindow: bool,
+    remainingBytes: uint64): ArmResidentMacroImage =
+  ## Render and patch one complete bounded image without touching its executable owner.
+  result = default(ArmResidentMacroImage)
   let readImage = armMacroReadImage(read)
-  if core.words.len == 0 or readImage.words.len == 0: return false
-  var branchBody = default(ArmBlock)
-  emitArmBranchSlots(branchBody, 88'u8, shape.branchSlot, 0,
-      shape.branchImmediate, shape.branchYes, shape.branchNo)
+  if readImage.words.len == 0: return
+  let core = armResidentCycleCore(cycle, cacheWindow)
+  if core.sizeDeclined:
+    result.sizeDeclined = true
+    return
+  if core.words.len == 0: return
   let resident = core.resident or pure.reads or pure.writes or
       branchBody.reads or branchBody.writes or read.body.reads or read.body.writes
   let written = core.written or pure.writes or branchBody.writes or read.body.writes
-  if ((resident or written) shr 13) != 0: return false
-  let root = jit.entries[int(shape.cycleHeader)]
-  let pureChild = jit.entries[int(shape.pureBody)]
-  let readChild = jit.entries[int(shape.readBody)]
-  let planned = jit.codeBytes
+  if ((resident or written) shr 13) != 0: return
 
   # Labels: cycle, static, pure, branch88, read, read-success, four unstarted
   # controls, read rollback, and the common final publication/return.
@@ -2528,6 +2589,10 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
   for slot in 0..<13:
     if (resident and (1'u32 shl slot)) != 0:
       cycleLoad(words, uint32(slot)+4, 19, uint32(slot*8))
+
+  if cacheWindow:
+    words.add(0xd2800001'u32) # MOV X1,#0: an effective guest address cannot match invalid cache.
+    words.add(0x9e670023'u32) # FMOV D3,X1: invalidate only at this outer native entry.
 
   labels[0] = words.len
   armMacroCount(words, 19) # One semantic cycle child, with no physical BL.
@@ -2634,12 +2699,63 @@ proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
     words.add(0xa9400000'u32 or (uint32(pair*2) shl 15) or
         ((first+1) shl 10) or (31'u32 shl 5) or first)
   words.add(0x910183ff'u32) # ADD SP,SP,#96; arena appends RET.
-  if words.len == 0 or words.len >= 1024 or
-      uint64(words.len+1)*4 > 1048576-jit.codeBytes or
-      not armMacroPatch(words, fixes, labels): return false
+  if words.len >= 1024 or uint64(words.len+1)*4 > remainingBytes:
+    # Only a deterministic final footprint refusal can select the smaller resident image.
+    result.sizeDeclined = true
+    return
+  if words.len == 0 or not armMacroPatch(words, fixes, labels): return
+  words.add(0xd65f03c0'u32)
+  result.words = move(words)
+
+proc publishArmResidentMacro*(jit: ArmJit, shape: ArmMacroShape,
+    cycle: ArmMemoryCycleBlock, pure: ArmBlock, read: ArmReadSpan): bool =
+  ## Compose typed cycle, pure and multi-read bodies behind the existing 26-word macro ABI.
+  if (cycle.tailRead.clippedReads or read.clippedReads) and not jit.clippedReads:
+    return false
+  when defined(pvmArmMacroResidentRefuse):
+    return false # A resident-only refusal leaves the linked publication available.
+  if jit.macroRoute.status != 0 or jit.unavailable or jit.fragments >= 8192 or
+      jit.codeBytes > 1048576 or not armMacroShapeValid(jit, shape) or
+      not armResidentCycleSourceValid(jit, cycle): return false
+  if cycle.prefixHeader != shape.cycleHeader or cycle.other != shape.staticHeader or
+      cycle.dirtyHeader != jit.memoryCycle.dirtyHeader or
+      cycle.tailHeader != jit.memoryCycle.tailHeader or
+      cycle.prefixSpan != jit.memoryCycle.prefixSpan or
+      cycle.tailSpan != jit.memoryCycle.tailSpan or
+      cycle.prefixPrice != jit.memoryCycle.prefixPrice or
+      cycle.tailPrice != jit.memoryCycle.tailPrice or
+      cycle.prefixOperations != jit.memoryCycle.prefixOperations or
+      cycle.tailOperations != jit.memoryCycle.tailOperations or
+      pure.words.len == 0 or pure.terminal.len == 0 or
+      read.body.words.len == 0 or read.body.terminal.len != 0: return false
+  # Frame-built full contexts bound every raw writable descriptor to one fixed
+  # private allocation. Legacy raw witness contexts retain the unchanged macro.
+  let windowCache = jit.clippedReads and cycle.dirtyWord.enabled and
+      cycle.dirty.yes == cycle.dirty.header and cycle.dirty.no != cycle.dirty.header and
+      cycle.dirty.price <= high(uint64) div 4
+  var branchBody = default(ArmBlock)
+  emitArmBranchSlots(branchBody, 88'u8, shape.branchSlot, 0,
+      shape.branchImmediate, shape.branchYes, shape.branchNo)
+  let windowScratchSafe = armWindowScratchSafe(cycle.prefixBody) and
+      armWindowScratchSafe(cycle.dirty.body) and
+      armWindowScratchSafe(cycle.tailRead.body) and
+      armWindowScratchSafe(pure) and armWindowScratchSafe(read.body) and
+      armWindowScratchSafe(branchBody)
+  let useWindowCache = windowCache and windowScratchSafe
+  let root = jit.entries[int(shape.cycleHeader)]
+  let pureChild = jit.entries[int(shape.pureBody)]
+  let readChild = jit.entries[int(shape.readBody)]
+  let planned = jit.codeBytes
+  let remainingBytes = 1048576-jit.codeBytes
+  var image = armResidentMacroImage(shape, cycle, pure, read, branchBody,
+      useWindowCache, remainingBytes)
+  if useWindowCache and image.sizeDeclined:
+    # Re-render once before publication; preserve uncached resident admission at either capacity limit.
+    image = armResidentMacroImage(shape, cycle, pure, read, branchBody, false, remainingBytes)
+  if image.words.len == 0: return false
+  var words = move(image.words)
   when defined(pvmArmMacroPublishRefuse):
     return false # The existing macro-append refusal applies to both image kinds.
-  words.add(0xd65f03c0'u32)
   let address = publishArena(jit.arena.handle, addr words[0], uint32(words.len))
   if address < 0: return false
   inc jit.fragments

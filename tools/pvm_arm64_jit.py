@@ -392,7 +392,7 @@ def main():
     for path in [*sorted((ROOT/'tools').rglob('*.py')),DRIVER,
                  ROOT/'tests/performance/pvm_sieve_clock.h',
                  ROOT/'tests/performance/pvm_arm64_jit_witness.nim',
-                 ROOT/'tests/performance/pvm_arm_macro_backend.nim',
+                 ROOT/'tests/support/pvm_arm_macro_backend.nim',
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
                  ROOT/'tests/performance/pvm_arm64_jit_memory.c',
