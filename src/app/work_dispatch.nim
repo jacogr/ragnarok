@@ -7,7 +7,7 @@ import ./services
 import ./work_policy/types as work_policy_types
 export work_policy_types
 import ../jamnp-s/[node, connections, work_submission, work_stream, work_duty, read_stream, read_client]
-import ../jamnp-s/work_recovery
+import ../jamnp-s/[work_recovery, endpoints]
 from ../codec/state/safrole import StateTime, StateEdKey, StateValidatorIndex
 
 type
@@ -26,7 +26,10 @@ type
     recoveryRequest: WorkRecoveryRequest
     recoveryTried: seq[bool]
     recoveryOccurrence, recoveryRemaining, recoveryNext: int
-    recoveryRequests: uint64
+    recoveryRequests, recoveryDials: uint64
+    recoveryDial: DialTicket
+    recoveryDialStarted: MonoTime
+    recoveryDialing: bool
     recoveryProven, recoveryPrepared: bool
     fetchRequest: ReadRequest
     fetchReply: seq[byte]
@@ -47,6 +50,7 @@ proc `=wasMoved`*(owner: var WorkDispatcher) {.nodestroy, requires: owner.phase 
   `=wasMoved`(owner.body)
   `=wasMoved`(owner.acquisition)
   `=wasMoved`(owner.recovery)
+  `=wasMoved`(owner.recoveryDial)
   `=wasMoved`(owner.recoveryRequest)
   `=wasMoved`(owner.recoveryTried)
   `=wasMoved`(owner.fetchRequest)
@@ -65,6 +69,7 @@ proc `=destroy`*(owner: WorkDispatcher) =
   `=destroy`(owner.body)
   `=destroy`(owner.acquisition)
   `=destroy`(owner.recovery)
+  `=destroy`(owner.recoveryDial)
   `=destroy`(owner.recoveryRequest)
   `=destroy`(owner.recoveryTried)
   `=destroy`(owner.fetchRequest)
@@ -110,6 +115,9 @@ proc clear(owner: var WorkDispatcher) =
   owner.recoveryTried = @[]
   owner.recoveryPrepared = false
   owner.recoveryRequests = 0
+  owner.recoveryDials = 0
+  owner.recoveryDial = default(DialTicket)
+  owner.recoveryDialing = false
   owner.recoveryNext = 0
   owner.recoveryRemaining = 0
   owner.fetchRequest = default(ReadRequest)
@@ -120,11 +128,17 @@ proc clear(owner: var WorkDispatcher) =
   owner.requestPrepared = false
   owner.replyReady = false
   owner.phase = WorkDispatchPhase.Idle
+proc retireRecoveryDial(owner: var WorkDispatcher, streams: var NodeService) =
+  ## Temporary connections belong to this exact slot generation; existing authenticated peers have no such lease.
+  discard streams.cancelPeerConnection(owner.recoveryDial)
+  owner.recoveryDial = default(DialTicket)
+  owner.recoveryDialing = false
 proc retire(owner: var WorkDispatcher, services: var Services, streams: var NodeService) =
   ## A reset or deadline cancels only this session; exact collection still precedes graph retirement.
   if owner.fetching:
     discard streams.cancelRequest(owner.fetch) # Only this controller's exact outbound token is cancelled.
     owner.fetching = false
+  owner.retireRecoveryDial(streams)
   discard streams.rejectWork(owner.network)
   discard services.retireWorkSubmission(owner.session)
   owner.body = default(UntrustedWorkBody)
@@ -180,6 +194,20 @@ proc recover(owner: var WorkDispatcher, services: var Services, streams: var Nod
   ## Main-thread work owns only raw bytes, exact tokens and copied original-assurer facts; proof checks run on the shared worker.
   let info = services.workRecoveryInfo(owner.session)
   let limits = owner.recovery.limits
+  if owner.recoveryDialing:
+    let selected = streams.peerForIdentity(owner.recoveryRequest.identity)
+    if selected.error == NodeError.None:
+      owner.recoveryDialing = false
+      owner.recoveryNext = int(uint64(owner.recoveryRequest.validator)) # Resume exactly the original coordinate whose TLS identity is now proved.
+    elif not streams.peerConnectionLive(owner.recoveryDial) or
+        (clock-owner.recoveryDialStarted).inMilliseconds >= limits.timeoutMs:
+      let ordinal = int(uint64(owner.recoveryRequest.validator))
+      owner.retireRecoveryDial(streams)
+      owner.recoveryTried[ordinal] = true
+      dec owner.recoveryRemaining
+      return
+    else:
+      return # No CPU lease or canonical alias is held while the finite TLS handshake progresses.
   if info.complete:
     if not services.stateProofAvailable: return
     let started = services.beginRecoveredWorkPackage(owner.session, owner.body.extrinsics)
@@ -214,6 +242,7 @@ proc recover(owner: var WorkDispatcher, services: var Services, streams: var Nod
   if owner.fetching:
     let reply = streams.takeReply(owner.fetch)
     if reply.error == ReadError.None:
+      owner.retireRecoveryDial(streams)
       owner.fetchReply = reply.value.bytes
       owner.fetching = false
       owner.replyReady = true
@@ -221,6 +250,7 @@ proc recover(owner: var WorkDispatcher, services: var Services, streams: var Nod
     let expired = (clock-owner.fetchStarted).inMilliseconds >= limits.timeoutMs
     if not expired and streams.requestLive(owner.fetch): return
     discard streams.cancelRequest(owner.fetch)
+    owner.retireRecoveryDial(streams)
     owner.fetching = false
   if owner.recoveryRemaining == 0:
     # Even an exhausted incomplete unproven round may retry with authenticated responses, without moving any raw owner on the host.
@@ -239,7 +269,11 @@ proc recover(owner: var WorkDispatcher, services: var Services, streams: var Nod
   if owner.recoveryRequests >= uint64(limits.requests):
     owner.retire(services, streams)
     return
-  for scan in 0..<min(info.population, int(uint64(limits.peersPerPoll))):
+  let ownConnection = streams.peerConnectionLive(owner.recoveryDial)
+  if ownConnection:
+    owner.recoveryNext = int(uint64(owner.recoveryRequest.validator))
+  let scanLimit = if ownConnection: 1 else: min(info.population, int(uint64(limits.peersPerPoll)))
+  for scan in 0..<scanLimit:
     # The explicit per-turn scan ceiling bounds old-roster lookups; unavailable or busy peers consume no request attempt.
     let ordinal = owner.recoveryNext
     owner.recoveryNext = (owner.recoveryNext+1) mod info.population
@@ -257,7 +291,18 @@ proc recover(owner: var WorkDispatcher, services: var Services, streams: var Nod
       dec owner.recoveryRemaining
       continue
     let selected = streams.peerForIdentity(request.value.identity)
-    if selected.error != NodeError.None: continue # Original assurers may be retired; current-validator role cannot replace their exact identity.
+    if selected.error != NodeError.None:
+      if request.value.endpoint.error != EndpointError.None or owner.recoveryDials >= uint64(
+          limits.dials): continue
+      let dialed = streams.beginPeerConnection(request.value.identity, request.value.endpoint.value)
+      if dialed.error == DialError.Unavailable: continue # Existing/pending ownership or local capacity does not grant a new cancellation token.
+      inc owner.recoveryDials # Failed native setup consumes the same explicit connection-attempt budget.
+      if dialed.error == DialError.None:
+        owner.recoveryDial = dialed.value
+        owner.recoveryRequest = request.value
+        owner.recoveryDialStarted = clock
+        owner.recoveryDialing = true
+      return # At most one demanded TLS setup is attempted per host turn, independently of automatic topology work.
     let opened = streams.request(selected.value, request.value.request, request.value.maximum)
     if opened.error in [NodeError.LimitExceeded, NodeError.Unavailable]: continue
     if opened.error != NodeError.None:

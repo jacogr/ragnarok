@@ -29,8 +29,8 @@ proc recoveryPolicy*(): WorkRecoveryPolicy =
   workRecoveryPolicy(WorkRecoveryLimits(catalog: importCatalogLimits(), pair: importRecoveryLimits(),
     transfer: AvailabilityMerkleLimits(bytes: ByteLimit(1000000), hashes: ElementLimit(1000),
         hashBytes: ByteLimit(1000000)),
-    items: ElementLimit(2), requests: ElementLimit(64), hashes: ElementLimit(1000000),
-        peersPerPoll: ElementLimit(6),
+    items: ElementLimit(2), requests: ElementLimit(64), dials: ElementLimit(16),
+        hashes: ElementLimit(1000000), peersPerPoll: ElementLimit(6),
     bytes: ByteLimit(16000000), hashBytes: ByteLimit(1000000000), products: FieldProductLimit(
         1000000000),
     replyBytes: ByteLimit(8192), timeoutMs: 1000))

@@ -4,6 +4,7 @@
 ## Immutable source-bound CE139/140 progress authenticates each proven packet before threshold reconstruction.
 ## Only detached request facts leave the shared graph; all packet/import owners remain under the managed worker lease.
 import ./[work_submission, import_recovery, availability_proof, availability_merkle, read_stream]
+import ./endpoints
 import ../chain/[provider, genesis, import_catalog]
 import ../state/store
 import ../state/erasure/[layout, words]
@@ -20,7 +21,7 @@ type
     catalog*: ImportCatalogLimits
     pair*: ImportRecoveryLimits
     transfer*: AvailabilityMerkleLimits
-    items*, requests*, hashes*, peersPerPoll*: ElementLimit
+    items*, requests*, dials*, hashes*, peersPerPoll*: ElementLimit
     bytes*, hashBytes*, replyBytes*: ByteLimit
     products*: FieldProductLimit
     timeoutMs*: int
@@ -63,6 +64,7 @@ type
     version*: uint64
     validator*: StateValidatorIndex
     identity*: StateEdKey
+    endpoint*: EndpointResult
     request*: ReadRequest
     maximum*: ByteLimit
 func error*[T](outcome: WorkRecoveryResult[T]): WorkRecoveryError =
@@ -100,6 +102,7 @@ func workRecoveryPolicy*(limits: WorkRecoveryLimits): WorkRecoveryPolicy =
   ## Activation requires explicit finite network and computation ceilings; no guessed defaults enable recovery.
   if uint64(limits.items) == 0 or uint64(limits.items) > 3072: return default(WorkRecoveryPolicy)
   if uint64(limits.requests) == 0 or uint64(limits.requests) > 6285312: return default(WorkRecoveryPolicy)
+  if uint64(limits.dials) == 0 or uint64(limits.dials) > 6285312: return default(WorkRecoveryPolicy)
   if uint64(limits.peersPerPoll) == 0 or uint64(limits.peersPerPoll) > 1023: return default(WorkRecoveryPolicy)
   if uint64(limits.replyBytes) < 12 or uint64(limits.replyBytes) > 32'u64*1024*1024: return default(WorkRecoveryPolicy)
   if limits.timeoutMs < 1 or limits.timeoutMs > 120000: return default(WorkRecoveryPolicy)
@@ -262,6 +265,7 @@ proc recoveryRequest*(recovery: WorkRecovery, validator: StateValidatorIndex): W
   WorkRecoveryResult[WorkRecoveryRequest](status: WorkRecoveryError.None,
     completed: WorkRecoveryRequest(
     version: data.version, validator: validator, identity: assigned.value.identity,
+    endpoint: validatorEndpoint(array[128, byte](assigned.value.metadata)),
     request: request.value, maximum: data.plan.policy.limits.replyBytes))
 proc messageLength(wire: openArray[byte], offset: int): uint64 {.requires: offset >= 0 and offset <= wire.len-4.} =
   ## Read E4 only after the complete prefix extent has been proved.

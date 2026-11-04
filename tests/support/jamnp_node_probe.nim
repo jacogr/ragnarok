@@ -15,14 +15,14 @@ type
     number*: NativeStreamId
     output, input, expected: seq[byte]
     offset: int
-    enabled, persistent, remote: bool
+    enabled, persistent, remote, announcement: bool
     opened*, sentFin*, receivedFin*, reset*, closed*: bool
   NodeProbe* = object ## One authenticated client owns fixed flow storage through engine retirement.
     transport: Transport
     flows*: array[16, ProbeFlow]
     issued, opened: int
     served*: int
-    serveReads, holdReplyFin, ticketReads: bool
+    serveReads, holdReplyFin, ticketReads, allowAnnouncements: bool
     ticketEpoch: uint32
     ticketSelector: byte
     expectedRead, readReply: seq[byte]
@@ -79,6 +79,9 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
         flow.receivedFin = true
         readDone(stream)
         if flow.remote:
+          if flow.announcement:
+            wantRead(stream, 0)
+            return # An ignored bounded UP0 cannot consume a scripted CE response or enable its output.
           if probe.ticketReads:
             assert flow.input.len == 794 and flow.input[0] in [131'u8, 132]
             assert probe.ticketSelector == 0 or flow.input[0] == probe.ticketSelector
@@ -95,6 +98,10 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
       else: flow.reset = true # Reset must never masquerade as an empty successful message.
       wantRead(stream, 0)
     else:
+      if flow.remote and probe.allowAnnouncements and flow.input.len == 0 and bytes[0] == 0:
+        flow.announcement = true
+        flow.persistent = true
+        flow.output = @[] # Observe optional UP0 traffic without supplying any chain claim to the node.
       let maximum = if probe.ticketReads and flow.remote: 794 else: 8388608
       assert amount <= int64(bytes.len) and flow.input.len+int(amount) <= maximum
       for index in 0..<int(amount): flow.input.add(bytes[index])
@@ -133,6 +140,18 @@ proc open*(probe: var NodeProbe, port: uint16, protocol = "jamnp-s/1/00000000",
     verify, event,
     idleSeconds = 30, keepalive = true)
   assert probe.transport.connectTransport(port)
+proc listen*(probe: var NodeProbe, protocol = "jamnp-s/1/00000000") {.raises.} =
+  ## The same bounded raw responder can accept a node's demanded connection without joining its validator topology.
+  probe.allowAnnouncements = true
+  let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
+  assert raw.len == 32
+  for index in 0..<32: probe.expected[index] = byte(raw[index])
+  assert openTransport(probe.transport, true, false, 0, getEnv("RAGNAROK_TEST_CERT_B"),
+    getEnv("RAGNAROK_TEST_KEY_B"), protocol, addr probe, verify, event,
+    idleSeconds = 30, keepalive = true)
+proc localPort*(probe: NodeProbe): uint16 =
+  ## A copied bound port is routing data, never identity or peer admission authority.
+  probe.transport.localPort
 proc close*(probe: var NodeProbe) =
   ## Final transport callbacks run while every fixed transcript slot remains alive.
   closeTransport(probe.transport)

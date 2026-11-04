@@ -5,6 +5,7 @@
 ## host code collects fixed read tasks and supplies frozen replies after managed CPU work.
 import std/[assertions, monotimes, times]
 import ./[connections, admission, announcements, announcement_stream, read_stream, read_client, streams]
+import ./network
 import ./work_stream
 import ./work_submission
 import ../chain/[provider, genesis]
@@ -537,7 +538,7 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.frames = @[]
   owner.peers = @[]
   owner.local = default(LocalContext)
-  owner.node = default(NodeConnections)
+  owner.node.releaseClosedStorage()
   owner.opened = false
   assert owner.inputUsed == 0 and owner.handshakeUsed == 0 and owner.outputUsed == 0 and
       owner.replyUsed == 0 and owner.clientUsed == 0
@@ -605,6 +606,16 @@ proc peerAt*(owner: NodeService, ordinal: int): NodeResult[NodePeer] =
           completed: owner.peers[index].peer)
       inc found
   NodeResult[NodePeer](status: NodeError.Unavailable)
+proc beginPeerConnection*(owner: var NodeService, identity: StateEdKey,
+    endpoint: NetworkEndpoint): DialResult =
+  ## Explicit detached demand does not add membership or chain claims; native TLS pins the selected original identity.
+  owner.node.beginDial(identity, endpoint)
+proc peerConnectionLive*(owner: NodeService, ticket: DialTicket): bool =
+  ## Source-free cancellation tokens observe only their exact physical engine lifetime.
+  owner.node.dialLive(ticket)
+proc cancelPeerConnection*(owner: var NodeService, ticket: DialTicket): bool =
+  ## Temporary recovery connections retire through the ordinary bounded callback-safe poll loop.
+  owner.node.cancelDial(ticket)
 proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[NodePeer] =
   ## Find an actual live authenticated generation without requiring announcement-grid eligibility.
   if not owner.isOpen: return NodeResult[NodePeer](status: NodeError.Unavailable)

@@ -10,6 +10,7 @@ import ../../../src/jamnp-s/[node, connections, read_stream, read_client, canoni
     admission, topology]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/quic/[transport, address]
+import ../../../src/codec/bounded
 import ../../../src/codec/state/safrole
 import ../../../src/app/proof/[worker, network_read]
 
@@ -363,6 +364,105 @@ proc bootstrap(finalizeNew: bool) {.raises.} =
       probe.poll()
       assert service.peerCount == 0, "unfinalized new-epoch topology must not grant a startup validator reservation"
     assert service.peerCount == 0 and probe.retiredConnections > 0 # TLS completion is not validator admission.
+proc demandedConnection() {.raises.} =
+  ## A disconnected original assurer may be outside every current topology set; only its exact TLS key and temporary lease apply.
+  let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
+  let other = readFile(getEnv("RAGNAROK_TEST_PEER_B"))
+  assert raw.len == 32 and other.len == 32, "temporary peer: raw.len == 32 and other.len == 32"
+  var localBytes, peerBytes = default(array[32, byte])
+  for index in 0..<32:
+    # Independent raw fixture keys supply expectations, never a claimed peer-provided identity.
+    localBytes[index] = byte(raw[index])
+    peerBytes[index] = byte(other[index])
+  let local = StateEdKey(localBytes)
+  let expected = StateEdKey(peerBytes)
+  var rosters = [topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)]
+  for epoch in 0..<3:
+    for index in 0..<rosters[epoch].len: rosters[epoch][
+        index].ed25519 = local # The demanded key has no validator membership or grid privilege.
+  let seed = topologyCaptured(rosters)
+  let view = genesisView(seed).finalizeView(seed.value.blockHash).value
+  var service = default(NodeService)
+  var probe = default(NodeProbe)
+  defer:
+    probe.close()
+    service.close()
+  var configuration = config()
+  configuration.binding = ipv4Address([127'u8, 0, 0, 1])
+  assert service.open(configuration, view, topologyLimits()) == NodeError.None, "temporary peer: service.open(config(), view, topologyLimits()) == NodeError.None"
+  probe.listen()
+  var mapped = default(array[16, byte])
+  mapped[10] = 255
+  mapped[11] = 255
+  mapped[12] = 127
+  mapped[15] = 1
+  let endpoint = networkEndpoint(ipv6Address(mapped),
+      probe.localPort) # Advertised IPv4-mapped metadata must match the explicit IPv4 binding after normalization.
+  assert service.beginPeerConnection(local, endpoint).error == DialError.Unavailable, "temporary peer: service.beginPeerConnection(local, endpoint).error == DialError.Unavailable"
+  assert service.beginPeerConnection(expected, networkEndpoint(endpoint.address, 0)).error ==
+      DialError.Unavailable, "temporary peer: service.beginPeerConnection(expected, networkEndpoint(endpoint.address, 0)).error == DialError.Unava"
+  let started = service.beginPeerConnection(expected, endpoint)
+  assert started.error == DialError.None, "temporary peer: started.error == DialError.None"
+  assert service.peerConnectionLive(started.value), "temporary peer: service.peerConnectionLive(started.value)"
+  assert service.beginPeerConnection(expected, endpoint).error == DialError.Unavailable, "temporary peer: service.beginPeerConnection(expected, endpoint).error == DialError.Unavailable"
+  let deadline = getMonoTime()+initDuration(seconds = 7)
+  while service.peerCount != 1:
+    assert getMonoTime() < deadline, "demanded non-validator TLS peer"
+    pump(service, probe, 1)
+  let peer = service.peerForIdentity(expected)
+  assert peer.error == NodeError.None, "temporary peer: peer.error == NodeError.None"
+  assert service.source(peer.value).error == NodeError.Unavailable, "temporary peer: service.source(peer.value).error == NodeError.Unavailable"
+  var payload = newSeq[byte](32)
+  for octet in [0'u8, 0, 1, 0, 0]: payload.add(octet)
+  let request = decodeReadRequest(ReadKind.SegmentShards, payload)
+  assert request.error == ReadError.None, "temporary peer: request.error == ReadError.None"
+  var wire = @[139'u8, 37, 0, 0, 0]
+  for octet in payload: wire.add(octet)
+  let reply = @[1'u8, 0, 0, 0, 99]
+  probe.expectRead(wire, reply)
+  var reading = default(NodeResult[NodeRequestTicket])
+  while reading.error != NodeError.None:
+    reading = service.request(peer.value, request.value, ByteLimit(1000))
+    assert reading.error in [NodeError.None, NodeError.Unavailable], "temporary named read admission"
+    assert getMonoTime() < deadline, "temporary named read backpressure"
+    if reading.error != NodeError.None: pump(service, probe,
+        1) # The optional UP0 open must drain before this independent CE request can reserve its own stream.
+  var observed = false
+  while not observed:
+    assert getMonoTime() < deadline, "named read needs no current validator role or UP0 claim"
+    pump(service, probe, 1)
+    let received = service.takeReply(reading.value)
+    if received.error == ReadError.None:
+      assert received.value.bytes == reply, "temporary peer: received.value.bytes == reply"
+      observed = true
+  assert service.cancelPeerConnection(started.value), "temporary peer: service.cancelPeerConnection(started.value)"
+  while service.peerConnectionLive(started.value):
+    assert getMonoTime() < deadline, "temporary connection retirement"
+    pump(service, probe, 1)
+  assert service.peerCount == 0, "temporary peer: service.peerCount == 0"
+  let next = service.beginPeerConnection(expected, endpoint)
+  assert next.error == DialError.None, "temporary peer: next.error == DialError.None"
+  assert not service.cancelPeerConnection(started.value), "temporary peer: not service.cancelPeerConnection(started.value)"
+  assert service.peerConnectionLive(next.value), "temporary peer: service.peerConnectionLive(next.value)"
+  assert service.cancelPeerConnection(next.value), "temporary peer: service.cancelPeerConnection(next.value)"
+  while service.peerConnectionLive(next.value):
+    assert getMonoTime() < deadline, "pending handshake cancellation"
+    pump(service, probe, 1)
+  assert not service.cancelPeerConnection(next.value), "temporary peer: not service.cancelPeerConnection(next.value)"
+  let wrong = service.beginPeerConnection(topologyKey(900), endpoint)
+  assert wrong.error == DialError.None, "temporary peer: wrong.error == DialError.None"
+  while service.peerConnectionLive(wrong.value):
+    assert getMonoTime() < deadline, "wrong TLS identity must retire without admission"
+    pump(service, probe, 1)
+  assert service.peerCount == 0, "temporary peer: service.peerCount == 0"
+  service.close()
+  assert service.open(configuration, view, topologyLimits()) == NodeError.None, "temporary peer: service.open(config(), view, topologyLimits()) == NodeError.None"
+  let reopened = service.beginPeerConnection(expected, endpoint)
+  assert reopened.error == DialError.None, "temporary peer: reopened.error == DialError.None"
+  assert not service.cancelPeerConnection(started.value), "temporary peer: not service.cancelPeerConnection(started.value)"
+  assert not service.cancelPeerConnection(next.value), "temporary peer: not service.cancelPeerConnection(next.value)"
+  assert service.peerConnectionLive(reopened.value), "temporary peer: service.peerConnectionLive(reopened.value)"
+  assert service.cancelPeerConnection(reopened.value), "temporary peer: service.cancelPeerConnection(reopened.value)"
 proc main() {.raises.} =
   ## Failed/default inputs cannot grant a socket, ticket or peer source; repeated full lifetimes release ARC owners.
   bootstrap(false)
@@ -380,6 +480,7 @@ proc main() {.raises.} =
   let noFinality = genesisView(view.bestBlock)
   assert unopened.open(config(), noFinality, topologyLimits()) == NodeError.NoFinality
   assert unopened.open(default(ConnectionConfig), view, topologyLimits()) == NodeError.InvalidConfig
+  demandedConnection()
   transcript(view)
   let beforeTranscript = getOccupiedMem()
   transcript(view)

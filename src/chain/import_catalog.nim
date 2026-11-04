@@ -27,6 +27,7 @@ type
     registered*: uint32
   ImportAssurer* = object ## Detached original roster identity and assigned shard never imply a current connection or current validator role.
     identity*: StateEdKey
+    metadata*: StateValidatorMetadata
     shard*: ErasureShardIndex
   ImportRecord = ref object ## One canonical report and original roster form immutable acyclic recovery provenance.
     info: ReportedImportInfo
@@ -69,7 +70,8 @@ proc importAssurer*(source: ReportedImport, index: StateValidatorIndex): ImportC
   if validator.error != StateComponentError.None: return failure[ImportAssurer](
       ImportCatalogError.InvalidSource)
   ImportCatalogResult[ImportAssurer](status: ImportCatalogError.None,
-    completed: ImportAssurer(identity: validator.value.ed25519, shard: ErasureShardIndex(ordinal)))
+    completed: ImportAssurer(identity: validator.value.ed25519, metadata: validator.value.metadata,
+      shard: ErasureShardIndex(ordinal)))
 proc findImport(catalog: ImportCatalog, root: SegmentRoot, packageBound: bool,
     package: PackageHash): ImportCatalogResult[ReportedImport] =
   ## Deterministically choose an independently canonical source; identical exported content can legitimately have multiple source reports.
