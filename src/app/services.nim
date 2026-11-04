@@ -1808,6 +1808,9 @@ func matchesWork(services: Services, token: WorkSessionToken): bool =
 func workSessionPhase*(services: Services, token: WorkSessionToken): WorkSessionPhase =
   ## Foreign, stale and default controls observe no session; Busy/Done observations remain scalar.
   if services.matchesWork(token): services.workPhase else: WorkSessionPhase.Empty
+func workSubmissionActive*(services: Services, token: WorkSessionToken): bool =
+  ## Only this matching session can authorize joined teardown of its selected CPU turn.
+  services.matchesWork(token) and services.workActive
 proc reapWorkSubmission*(services: var Services): bool =
   ## Deferred graph retirement never collects, cancels or joins an unrelated CPU borrower.
   if services.workPhase != WorkSessionPhase.Retired: return false
@@ -1913,6 +1916,10 @@ proc workSourceCurrent(services: Services): bool =
   let head = services.canonical.chainView.bestBlock
   head.error == GenesisError.None and array[32, byte](head.value.blockHash) == array[32, byte](
       services.workHead)
+proc workSubmissionCurrent*(services: Services, token: WorkSessionToken): bool =
+  ## A foreign lease prevents observation; otherwise compare original captured provenance with the actual canonical best head.
+  if not services.stateProofAvailable or not services.matchesWork(token): return false
+  services.workSourceCurrent
 proc stageWorkBundle(services: var Services, extrinsics, segments,
     proofs: openArray[byte]): WorkJobError =
   ## Every context/capture alias retires in this helper activation before native CPU admission.
