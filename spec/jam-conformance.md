@@ -22,6 +22,15 @@ Upstream requires a matching jam-types-py release when decoding published sessio
 we do not replay these sessions through mismatched Python types or silently advance
 the separately pinned live-driver dependencies.
 
+Current-profile generated replays launch the pristine minifuzz script through
+`tests/jam_minifuzz_current.py`. The separately pinned `jam-types-py` schema still
+includes the historical C.2 assurance anchor. The launcher registers the authorized
+parent-free assurance fields with the codec's public `update_type_registry_types`
+API. Tiny and Full records use the actual profile geometry. Dependency sources,
+pins and the upstream script retain their exact bytes; requests and replies are
+compared byte-for-byte with the independently calculated current-format plan.
+Historical published sessions retain their separately documented compatibility scope.
+
 Standard make sources/setup/check-python provisioning initializes the new
 submodule through tools/setup_submodules.py. A shallow blob-filtered checkout
 materializes root documents, fuzz-proto and scripts. It leaves multi-gigabyte
