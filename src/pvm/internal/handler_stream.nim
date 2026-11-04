@@ -2277,7 +2277,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var terminal = flatStop
     var operationCount = 0'u32
     block:
-      let jit = f.armJit
+      let jit {.cursor.} = f.armJit
       assert jit != nil
       terminal = armEnding(jit, header)
       operationCount = armMixedOperationCount(jit, header)
@@ -2290,7 +2290,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var state = default(ArmMixedState)
     var next = flatStop
     block:
-      let jit = f.armJit
+      let jit {.cursor.} = f.armJit
       assert jit != nil
       next = callArmMixedContext(jit, header, f.info.registers, f.armMemory, f.dirtyPages, state)
     if state[0] == 1:
