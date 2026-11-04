@@ -51,3 +51,14 @@ agree. A separate `Fix=false` unprotected-design control also fails; it is not a
 previously shipped defect. No new production bug is claimed from the model alone. Runtime
 replays cover expiry after Done, finalized-included acknowledgment after expiry, public retention
 with a fresh expired clock, and exact native stream cancellation before collection.
+
+Finality advancing during proof work must also prevent reinsertion: pruning existing rows alone
+is insufficient when a verified old-source completion has not entered the pool yet. The pool
+keeps a fresh independent bounded copy of finalized included identifiers, and refuses that
+completion with `AlreadyIncluded` while the host can acknowledge genuine inclusion. A regression
+on the original source fails exactly at "a completed old-source proof must not reintroduce a
+now-finalized included identifier". This copy shares no ARC source owner with the proof worker.
+The changing finalized-inclusion set is outside the clock-focused model; this source-advancement
+case is covered by the deterministic native regression above. Native reset replay progresses
+transport until the read ticket is actually revoked before collecting Done, avoiding an assumption
+that queued cancellation has already reached the peer.

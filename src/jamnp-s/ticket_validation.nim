@@ -148,6 +148,11 @@ proc currentAt*(source: TicketSource, index: int): StateEdKey {.requires: source
     0 and index < source.currentCount.} =
   ## Copy an owner-bound current-roster recipient without exposing mutable sequence storage.
   source.sourceData.current[index]
+proc includedIdentifiers*(source: TicketSource): seq[WinningTicketId] {.requires: source.valid.} =
+  ## Return a fresh bounded inclusion copy; callers never alias mutable storage or the worker-shared source owner.
+  let selected = source.sourceData
+  result = newSeq[WinningTicketId](selected.included.len)
+  for index in 0..<result.len: result[index] = selected.included[index]
 proc includes*(source: TicketSource, id: WinningTicketId): bool {.requires: source.valid.} =
   ## Sorted finalized accumulator lookup never widens to best-head or untrusted peer hints.
   let selected = source.sourceData

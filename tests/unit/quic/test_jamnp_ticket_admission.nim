@@ -56,6 +56,8 @@ proc pure() =
   assert pool.advance(source.value, StateTime(1)) == TicketPoolError.None
   assert pool.retain(verified.value, StateTime(1)) == TicketPoolError.None
   assert pool.advance(included.value, StateTime(2)) == TicketPoolError.None and pool.len == 0, "finalized inclusion retires a pending identifier"
+  assert pool.retain(verified.value, StateTime(2)) == TicketPoolError.AlreadyIncluded
+  assert pool.len == 0, "a completed old-source proof must not reintroduce a now-finalized included identifier"
   var wrong = recipient
   wrong.local = peer
   assert verifyNetworkTicket(source.value, fixture.packet, wrong).error ==
@@ -121,7 +123,7 @@ proc poll(host: var ApplicationNode, services: var Services, probe: var NodeProb
   assert host.poll(getMonoTime(), now, 0)
   probe.poll()
   services.tick(uint32(host.peerCount))
-proc live(distribution = false, corrupt = false, late = false, disconnect = false,
+proc live(distribution = false, corrupt = false, late = false, closeDone = false,
     foreignReplacement = false, localNotValidator = false, included = false,
         cutoff = false) {.raises.} =
   ## Actual TLS accepts a cryptographic packet only at its finalized proxy/current validator and exact live generation.
@@ -162,7 +164,7 @@ proc live(distribution = false, corrupt = false, late = false, disconnect = fals
     assert getMonoTime() < deadline
     poll(host, services, probe)
   let submitted = probe.issue(wirePacket(fixture.packet, distribution))
-  if late or disconnect or foreignReplacement:
+  if late or closeDone or foreignReplacement:
     while not services.stateProofActive:
       assert getMonoTime() < deadline
       poll(host, services, probe)
@@ -181,15 +183,10 @@ proc live(distribution = false, corrupt = false, late = false, disconnect = fals
       assert services.collectStateProof(foreign.value).kind ==
           ProofWorkerCompletionKind.ReadCompleted
       return # A stale ticket cannot join/release a replacement foreign job.
-    if disconnect:
-      probe.abort(submitted)
-      let flush = getMonoTime()+initDuration(milliseconds = 100)
-      while getMonoTime() < flush: probe.poll() # Progress the real native pacing deadline before the host can collect Done.
-      while services.stateProofActive:
-        assert getMonoTime() < deadline, "reset stream releases its exact completed proof lease"
-        poll(host, services, probe)
-      assert host.pendingTicketCount == 0 and not probe.flows[submitted].receivedFin, "a transmitted stream reset revokes admission before Done collection"
-      return
+    if closeDone:
+      host.close()
+      assert host.pendingTicketCount == 0 and services.stateProofAvailable
+      return # Joined host shutdown cancels its exact Done proof without retaining any completed result.
     while not probe.flows[submitted].reset:
       assert getMonoTime() < deadline
       poll(host, services, probe, if cutoff: StateTime(10) else: StateTime(12))
@@ -218,6 +215,70 @@ proc live(distribution = false, corrupt = false, late = false, disconnect = fals
   assert host.pendingTicketCount == 1 and probe.bytes(duplicate).len == 0
   host.close()
   assert host.pendingTicketCount == 0 and services.stateProofAvailable
+proc observedReset() {.raises.} =
+  ## Separate public transport and CPU collection phases make actual observed reset before Done collection deterministic.
+  let localKey = certificateIdentity(getEnv("RAGNAROK_TEST_CERT")).value
+  let peerKey = certificateIdentity(getEnv("RAGNAROK_TEST_CERT_B")).value
+  let fixture = ticketFixture(localKey, peerKey)
+  writeFile("ticket-reset-chain.json", chainText(fixture.saved.value))
+  var options = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "ticket-reset-chain.json"], options)
+  var services = default(Services)
+  var streams = default(NodeService)
+  var probe = default(NodeProbe)
+  defer:
+    probe.close()
+    streams.close()
+    services.close()
+  assert services.start(options, "ticket observed reset")
+  let hash = services.chainView.bestBlock.value.blockHash
+  assert services.publishFinalized(hash) == ViewFinalizeError.None
+  let protocol = services.nodeProtocol
+  let config = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
+      protocol, streams = 512)
+  assert streams.open(config, services.chainView, topologyLimits(2)) == NodeError.None
+  probe.open(streams.localPort, protocol)
+  let deadline = getMonoTime()+initDuration(seconds = 8)
+  while not probe.authenticated or streams.peerCount == 0:
+    assert getMonoTime() < deadline
+    assert streams.poll(getMonoTime(), 0)
+    probe.poll()
+  var hello = @[0'u8, 37, 0, 0, 0]
+  for octet in array[32, byte](hash): hello.add(octet)
+  hello.add(1)
+  for index in 0..<4: hello.add(0)
+  discard probe.issue(hello, persistent = true)
+  while streams.source(streams.peerAt(0).value).error != NodeError.None:
+    assert getMonoTime() < deadline
+    assert streams.poll(getMonoTime(), 0)
+    probe.poll()
+  let submitted = probe.issue(wirePacket(fixture.packet, false))
+  var task = streams.takeRead()
+  while task.error != NodeError.None:
+    assert getMonoTime() < deadline
+    assert streams.poll(getMonoTime(), 0)
+    probe.poll()
+    task = streams.takeRead()
+  let worker = services.beginNetworkTicket(fixture.packet,
+      TicketRecipient(local: localKey, peer: peerKey, now: StateTime(1), connectivityEpoch: 0,
+          delivery: TicketDelivery.Proxy))
+  assert worker.error == StateProofAdmissionError.None
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < deadline
+    probe.poll()
+  probe.abort(submitted)
+  while streams.readLive(task.value.ticket):
+    assert getMonoTime() < deadline, "real STOP_SENDING must revoke the exact claimed stream before CPU collection"
+    assert streams.poll(getMonoTime(), 0)
+    probe.poll()
+  assert services.stateProofPhase == ProofWorkerPhase.Done and services.stateProofActive
+  let completed = services.collectStateProof(worker.value)
+  assert completed.kind == ProofWorkerCompletionKind.TicketVerified
+  assert completed.verifiedTicketValue.error == NetworkTicketError.None
+  let reply = captureReadReply(task.value.request, [])
+  assert reply.error == ReadError.None
+  assert streams.respond(task.value.ticket, reply.value) == ReadError.InvalidStream
+  assert not probe.flows[submitted].receivedFin and services.stateProofAvailable
 proc cycle(source: TicketSource, ticket: CheckedNetworkTicket) =
   ## One fixed proof-pool activation owns no source map, native handle or worker cancellation authority.
   var pool = default(PendingTicketPool)
@@ -249,7 +310,8 @@ proc main() {.raises.} =
   live(late = true, cutoff = true)
   live(included = true)
   live(late = true, included = true)
-  live(disconnect = true)
+  live(closeDone = true)
+  observedReset()
   live(foreignReplacement = true)
   live(localNotValidator = true)
   echo "jamnp ticket admission: finalized proof and proxy contracts passed"
