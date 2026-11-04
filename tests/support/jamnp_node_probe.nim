@@ -124,3 +124,7 @@ proc bytes*(probe: NodeProbe, index: int): seq[byte] =
   ## Copy the observed transcript to keep test mutations independent of callback-owned buffers.
   result = @[]
   for octet in probe.flows[index].input: result.add(octet)
+
+proc retiredConnections*(probe: NodeProbe): uint64 =
+  ## Observe a completed real transport close, so a rejected admission cannot pass without any handshake attempt.
+  probe.transport.closedConnections
