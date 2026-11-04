@@ -18,7 +18,8 @@ type
     output*: WinningTicketId
     proxyIndex*: int
 proc ticketFixture*(local, peer: StateEdKey, distribution = false,
-    entropyChanged = false, included = false, atSlot = 1'u32): TicketFixture =
+    entropyChanged = false, included = false, atSlot = 1'u32,
+    neighbour = default(StateEdKey), hasNeighbour = false): TicketFixture =
   ## Literal GP context construction is independent of the production network verifier.
   var keys = newSeq[BsKey](6)
   var pending = topologyRecords(2, 6)
@@ -52,6 +53,9 @@ proc ticketFixture*(local, peer: StateEdKey, distribution = false,
   var current = topologyRecords(1, 6)
   current[0].ed25519 = peer
   current[1].ed25519 = local
+  if hasNeighbour:
+    let position = if selected == 4: 2 else: 4
+    current[position].ed25519 = neighbour # Neither the local current row/column nor its next-epoch proxy ordinal.
   let base = topologyCaptured([topologyRecords(0, 6), current, pending], cores = 2, atSlot = atSlot)
   assert base.error == GenesisError.None
   var entries: seq[StateEntry] = @[]

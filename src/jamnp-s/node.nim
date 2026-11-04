@@ -527,6 +527,16 @@ proc peerAt*(owner: NodeService, ordinal: int): NodeResult[NodePeer] =
           completed: owner.peers[index].peer)
       inc found
   NodeResult[NodePeer](status: NodeError.Unavailable)
+proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[NodePeer] =
+  ## Find an actual live authenticated generation without requiring announcement-grid eligibility.
+  if not owner.isOpen: return NodeResult[NodePeer](status: NodeError.Unavailable)
+  for index in 0..<owner.peers.len:
+    if owner.peers[index].used:
+      let peer = owner.peers[index].peer
+      let matches = array[32, byte](peer.identity) == array[32, byte](identity)
+      if matches and owner.node.active(peer):
+        return NodeResult[NodePeer](status: NodeError.None, completed: peer)
+  NodeResult[NodePeer](status: NodeError.Unavailable)
 proc source*(owner: NodeService, peer: NodePeer): NodeResult[NodeClaims] =
   ## Capture only the greatest live UP0 incarnation's claims; they never certify a state root or finality.
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeClaims](
