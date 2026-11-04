@@ -47,8 +47,8 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
     if view.retainedCount > 64: return ReadVerificationAdmission(
         status: ReadVerificationError.LimitExceeded)
     var selected = unavailableGenesis()
-    if request.kind == ReadKind.Blocks:
-      selected = view.bestBlock # Structural block geometry comes from the local chain; an unknown queried tip is not certified by it.
+    if request.kind in [ReadKind.Blocks, ReadKind.Report]:
+      selected = view.bestBlock # Block/report geometry comes from the local chain; queried content is not certified by that profile.
     else:
       let payload = request.payload
       var expected = default(array[32, byte])
