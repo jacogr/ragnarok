@@ -19,7 +19,7 @@ type
     flows*: array[16, ProbeFlow]
     issued, opened: int
     served*: int
-    serveReads: bool
+    serveReads, holdReplyFin: bool
     expectedRead, readReply: seq[byte]
     expected: array[32, byte]
 proc `=copy`(destination: var NodeProbe, source: NodeProbe) {.error.}
@@ -39,7 +39,8 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
       assert probe.serveReads and probe.issued == probe.opened and probe.issued < probe.flows.len
       position = probe.issued
       inc probe.issued
-      probe.flows[position] = ProbeFlow(remote: true, output: probe.readReply)
+      probe.flows[position] = ProbeFlow(remote: true, output: probe.readReply,
+          persistent: probe.holdReplyFin)
     else:
       assert probe.opened < probe.issued
       position = probe.opened # Locally queued probe intents were installed before Native open.
@@ -110,14 +111,18 @@ proc open*(probe: var NodeProbe, port: uint16, protocol = "jamnp-s/1/00000000") 
 proc close*(probe: var NodeProbe) =
   ## Final transport callbacks run while every fixed transcript slot remains alive.
   closeTransport(probe.transport)
+proc disconnect*(probe: var NodeProbe) =
+  ## Queue a real QUIC connection close while the UDP socket can still send it; poll before engine retirement.
+  probe.transport.disconnectTransport()
 proc poll*(probe: var NodeProbe) =
   ## Host polling never overlaps another native executable or mutates shared native libraries.
   assert probe.transport.pollTransport(0)
 proc authenticated*(probe: NodeProbe): bool =
   ## TLS completion is a prerequisite, not proof of application framing or FIN.
   probe.transport.authenticatedConnections > 0
-proc expectRead*(probe: var NodeProbe, request, reply: seq[byte]) =
+proc expectRead*(probe: var NodeProbe, request, reply: seq[byte], holdFin = false) =
   ## Configure an independent raw response before a node initiates a CE stream on this same connection.
+  probe.holdReplyFin = holdFin
   probe.serveReads = true
   probe.expectedRead = request
   probe.readReply = reply

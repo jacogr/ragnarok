@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded CE128/129/136/143 content checks against an independent selected source or requested full content hash.
+## Bounded CE128/129/136/143 content checks and exact CE142 bare-FIN acknowledgments.
 ## Checked blocks remain structural/query-bound inputs for GP admission; partial state never becomes a full map here.
 import std/assertions
 import ./read_stream
@@ -36,7 +36,7 @@ type
     frame*: FrameConfig
     map*: StateTrieLimits
   CheckedKind {.pure.} = enum ## Dense internal payload tags remain separate from sparse protocol selector numbers.
-    Blocks, State, Report, Preimage
+    Blocks, State, Report, Preimage, Acknowledgment
   ReplyData = ref object ## Immutable response ownership contains no native stream, canonical map or selected-state alias.
     request: ReadRequest
     case kind: CheckedKind
@@ -45,6 +45,7 @@ type
       hashes: seq[BlockHash]
     of State: page: VerifiedStateRange
     of Report: report: OwnedReport
+    of Acknowledgment: discard # A transport acknowledgment grants no content, request-state or inclusion authority.
     of Preimage:
       blob: seq[byte]
       hash: ServicePreimageHash
@@ -108,6 +109,7 @@ proc kind*(reply: CheckedReadReply): ReadKind {.requires: reply.valid.} =
   of CheckedKind.Report: ReadKind.Report
   of CheckedKind.State: ReadKind.State
   of CheckedKind.Preimage: ReadKind.Preimage
+  of CheckedKind.Acknowledgment: ReadKind.PreimageAnnouncement
 proc request*(reply: CheckedReadReply): ReadRequest {.requires: reply.valid.} =
   ## Retain the exact query whose count, direction, range or content identity was checked.
   reply.checkedData.request
@@ -135,6 +137,10 @@ proc preimageHash*(reply: CheckedReadReply): ServicePreimageHash {.requires: rep
     reply.kind == ReadKind.Preimage.} =
   ## This full digest was checked over the entire returned blob.
   reply.checkedData.hash
+proc preimageByteLength*(reply: CheckedReadReply): int {.requires: reply.valid and reply.kind ==
+    ReadKind.Preimage.} =
+  ## Length observation avoids a blob copy during bounded offer/cache admission.
+  reply.checkedData.blob.len
 proc preimageBytes*(reply: CheckedReadReply): seq[byte] {.requires: reply.valid and reply.kind ==
     ReadKind.Preimage.} =
   ## Copy immutable verified content; no mutable response storage escapes.
@@ -384,7 +390,7 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
   ## Verify all supplied bytes atomically; no earlier block/page/blob survives a later failure.
   if not request.valid: return ReadVerificationResult[CheckedReadReply](
       status: ReadVerificationError.InvalidRequest)
-  let minimum = if request.kind == ReadKind.State: 8'u64 else: 4'u64
+  let minimum = request.minimumReplyBytes
   if uint64(limits.wireBytes) < minimum: return ReadVerificationResult[CheckedReadReply](
       status: ReadVerificationError.InvalidConfig)
   if uint64(limits.wireBytes) > uint64(MaxReadReplyBytes): return ReadVerificationResult[
@@ -396,3 +402,9 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
   of ReadKind.Report: checkReport(request, wire, source)
   of ReadKind.State: checkState(request, wire, source, limits)
   of ReadKind.Preimage: checkPreimage(request, wire)
+  of ReadKind.PreimageAnnouncement:
+    if wire.len != 0: ReadVerificationResult[CheckedReadReply](
+        status: ReadVerificationError.InvalidFormat)
+    else: ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.None,
+      completed: CheckedReadReply(data: ReplyData(kind: CheckedKind.Acknowledgment,
+          request: request)))

@@ -183,6 +183,12 @@ func peerCount*(owner: NodeConnections): int =
   ## Count current policy reservations; pending physical replacements own no duplicate reservation.
   owner.policy.count(PeerClass.Validator)+owner.policy.count(PeerClass.Builder)+owner.policy.count(
       PeerClass.Other)
+func isValidator*(owner: NodeConnections): bool =
+  ## Cached accepted topology determines local transport role without touching canonical state in callbacks.
+  owner.opened and owner.localValidator
+proc isValidator*(owner: NodeConnections, peer: NodePeer): bool =
+  ## Historical peer facts alone confer no role; require the live generation and accepted gated roster union.
+  owner.active(peer) and owner.policy.topology.contains(peer.key)
 proc announcements*(owner: NodeConnections, peer: NodePeer): bool =
   ## Grid selection uses the accepted gated topology, never a copied capacity class as privilege.
   if not owner.active(peer): return false

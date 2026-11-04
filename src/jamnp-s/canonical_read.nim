@@ -4,7 +4,7 @@
 ## Complete canonical CE128/129/136/143 read backends. Run outside native callbacks under a host read
 ## lease; only frozen bounded wire replies survive publication. No light-state map is accepted.
 import std/assertions
-import ./[read_stream, block_service]
+import ./[read_stream, block_service, preimage_announcement]
 import ../chain/[genesis, provider, reports]
 import ../codec/[bounded, natural]
 import ../codec/state/[layout, service_values]
@@ -108,6 +108,7 @@ proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply]
   if snapshot.serviceCount > 16384: return readFailure[ReadReply](
       ReadError.LimitExceeded) # Bound candidate hashing even for a wider host store.
   let expected = array[32, byte](hashAt(request.payload))
+  var remainingHashBytes = 32*1024*1024
   for index in 0..<snapshot.serviceCount:
     let key = servicePreimageKey(snapshot.serviceAt(ServiceListIndex(index)),
       ServicePreimageHash(expected), ByteLimit(32))
@@ -117,6 +118,9 @@ proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply]
     if found.error != StateStoreError.None: return readFailure[ReadReply](ReadError.BackendFailure)
     if found.value.byteLength > MaxReadReplyBytes-4: return readFailure[ReadReply](
         ReadError.LimitExceeded)
+    if found.value.byteLength > remainingHashBytes: return readFailure[ReadReply](
+        ReadError.LimitExceeded)
+    remainingHashBytes -= found.value.byteLength
     let bytes = found.value.bytes
     let hashed = blake2b256(bytes)
     if hashed.error != CryptoError.None: return readFailure[ReadReply](ReadError.BackendFailure)
@@ -125,6 +129,19 @@ proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply]
     appendFrame(wire, bytes)
     return captureReadReply(request, wire)
   readFailure[ReadReply](ReadError.Unavailable)
+proc announcementReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
+  ## Validate canonical outstanding request state before planning a same-connection fetch; acknowledgment has no E4 body.
+  let decoded = decodeAnnouncement(request.payload)
+  if decoded.error != ReadError.None: return readFailure[ReadReply](decoded.error)
+  let requested = view.requested(decoded.value)
+  if requested != ReadError.None: return readFailure[ReadReply](requested)
+  let lookup = decodeReadRequest(ReadKind.Preimage, array[32, byte](decoded.value.hash))
+  if lookup.error != ReadError.None: return readFailure[ReadReply](ReadError.InvalidRequest)
+  let held = preimageReply(view, lookup.value)
+  case held.error
+  of ReadError.None: captureReadReply(request, []) # Canonical possession suppresses a redundant remote fetch.
+  of ReadError.Unavailable: captureReadReply(request, [], ReadEffect.FetchPreimage)
+  else: readFailure[ReadReply](held.error) # Integrity/resource failures never masquerade as missing local content.
 proc reportReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## Reuse bounded selected-head C10/C14 retention; no report archive or peer-provided state authority is inferred.
   if view.fuzzOnly: return readFailure[ReadReply](ReadError.InvalidRequest)
@@ -155,6 +172,7 @@ proc serveCanonicalRead*(view: ChainView, request: ReadRequest): ReadResult[Read
   ## One full-view host entry point returns only frozen transport bytes, never a retained graph.
   if not request.valid: return readFailure[ReadReply](ReadError.InvalidRequest)
   case request.kind
+  of ReadKind.PreimageAnnouncement: announcementReply(view, request)
   of ReadKind.Report: reportReply(view, request)
   of ReadKind.State: stateReply(view, request)
   of ReadKind.Preimage: preimageReply(view, request)

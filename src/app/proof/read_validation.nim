@@ -34,7 +34,7 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
   ## Bound input before copying, then retire all temporary canonical owners before the caller submits this job.
   if not request.valid: return ReadVerificationAdmission(
       status: ReadVerificationError.InvalidRequest)
-  let minimum = if request.kind == ReadKind.State: 8'u64 else: 4'u64
+  let minimum = request.minimumReplyBytes
   if uint64(limits.wireBytes) < minimum: return ReadVerificationAdmission(
       status: ReadVerificationError.InvalidConfig)
   if uint64(limits.wireBytes) > uint64(MaxReadReplyBytes): return ReadVerificationAdmission(
@@ -42,7 +42,7 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
   if uint64(wire.len) > uint64(limits.wireBytes): return ReadVerificationAdmission(
       status: ReadVerificationError.LimitExceeded)
   var source = default(ReadSource)
-  if request.kind != ReadKind.Preimage:
+  if request.kind notin [ReadKind.Preimage, ReadKind.PreimageAnnouncement]:
     if view.fuzzOnly: return ReadVerificationAdmission(status: ReadVerificationError.NoSource)
     if view.retainedCount > 64: return ReadVerificationAdmission(
         status: ReadVerificationError.LimitExceeded)

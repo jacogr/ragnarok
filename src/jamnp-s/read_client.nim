@@ -45,8 +45,8 @@ proc bytes*(reply: UntrustedReadReply): seq[byte] {.requires: reply.ready.} =
   result = @[]
   for octet in reply.wire: result.add(octet)
 func expectedMessages(route: ReadClientRoute): int =
-  ## CE129 has two E4 messages; block/preimage replies each have exactly one.
-  if route.request.kind == ReadKind.State: 2 else: 1
+  ## CE129 has two E4 messages, CE142 has none, and ordinary content replies have one.
+  route.request.replyMessageCount
 func ready*(route: ReadClientRoute): bool =
   ## Both completed directions and exact response FIN precede host-visible success, even after native close.
   route.configured and route.failure == ReadError.None and route.sentFin and route.receivedFin and
@@ -68,7 +68,7 @@ proc configure*(route: var ReadClientRoute, request: ReadRequest,
   ## Reserve a valid fixed request and hard-bounded reply policy before requesting any native open.
   if route.configured: return ReadError.Busy
   if not request.valid: return ReadError.InvalidRequest
-  let minimum = if request.kind == ReadKind.State: 8'u64 else: 4'u64
+  let minimum = request.minimumReplyBytes
   if uint64(maximum) < minimum or uint64(maximum) > uint64(
       MaxReadReplyBytes): return ReadError.LimitExceeded
   let payload = request.payload
