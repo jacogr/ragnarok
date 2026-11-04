@@ -4,6 +4,7 @@
 ## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
 import std/assertions
 import ../[program, machine]
+import ./jit_rules
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -177,10 +178,9 @@ proc armUseClippedReads*(span: var ArmReadSpan, jit: nil ArmJit) =
   assert jit.clippedReads and span.body.words.len == 0
   span.clippedReads = true
 
-func supportedArmOpcode*(opcode: byte): bool =
+func supportedArmOpcode*(opcode: byte): bool {.inline.} =
   ## Non-exiting arithmetic remains independent of guest memory, branch selection and source accounting.
-  opcode in {20'u8, 51, 100, 107..110, 131..143, 149..154, 158, 160,
-      190..192, 197..202, 207..217, 222..226}
+  supportedScalarOpcode(opcode)
 
 func newArmRegionBody*(): ArmBlock =
   ## Connected bodies have their own measured constant policy; ordinary fragment layout stays unchanged.
@@ -445,12 +445,9 @@ proc armMixedDirtyPage(mixed: var ArmMixedBlock, site: int) =
 proc emitArmMixedMemory*(mixed: var ArmMixedBlock, opcode: range[120..130],
     slots: RegisterSlots, displacement, operation: uint32) =
   ## Every guard precedes this operation's mutation; earlier stores and register writes stay committed.
-  let loading = opcode >= 124
-  let width = case opcode
-    of 120, 124, 125: 1'u32
-    of 121, 126, 127: 2'u32
-    of 122, 128, 129: 4'u32
-    else: 8'u32
+  let access = indirectMemoryAccess(opcode)
+  let loading = access.kind != IndirectMemoryKind.Store
+  let width = access.width
   let site = mixed.sites.len
   mixed.sites.add(ArmMixedSite(operation: operation, completed: mixed.lowered,
       writes: mixed.body.writes))
@@ -529,12 +526,9 @@ proc emitArmMixedWindowMemory*(mixed: var ArmMixedBlock, opcode: range[120..130]
   ## A first-site window proof caches only a byte pointer; source values and stores remain ordered.
   assert cacheReg >= 4 and cacheReg <= 16 and minDisp <= displacement and
       maxEnd > displacement and maxEnd-minDisp <= 4096
-  let loading = opcode >= 124
-  let width = case opcode
-    of 120, 124, 125: 1'u32
-    of 121, 126, 127: 2'u32
-    of 122, 128, 129: 4'u32
-    else: 8'u32
+  let access = indirectMemoryAccess(opcode)
+  let loading = access.kind != IndirectMemoryKind.Store
+  let width = access.width
   assert uint64(displacement)+uint64(width) <= uint64(maxEnd)
   let site = mixed.sites.len
   mixed.sites.add(ArmMixedSite(operation: operation, completed: mixed.lowered,
