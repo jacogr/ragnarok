@@ -27,12 +27,14 @@ type
     package*, first*, extrinsics*, segments*, proofs*: seq[byte]
     limits*: WorkSubmissionLimits
 proc workFixture*(external = true, rejected = false, wrongPool = false,
-    wrongMapping = false): WorkFixture =
+    wrongMapping = false, exported = false): WorkFixture =
   ## Commit genuine PVM code, selected C(1) authorizer and C(3) package mapping into a private original source.
   result = default(WorkFixture)
   let code = if rejected: @[refinementImmediate(7, 0), refinementImmediate(8, 0), @[0'u8]]
     else: @[refinementImmediate(8, 0), @[50'u8, 0]]
-  result.input = executionFixture(code, [fetchedGuest(4), fetchedGuest(4)], external = external)
+  let first = if exported: reportGuest([refinementImmediate(7, 65536), refinementImmediate(8, 3),
+    @[10'u8, 8], refinementImmediate(8, 0), @[50'u8, 0]], declared = 1) else: fetchedGuest(4)
+  result.input = executionFixture(code, [first, fetchedGuest(4)], external = external)
   result.input.parameters = presetParameters(ChainPreset.Tiny).value # Use the actual two-core profile for managed canonical context.
   result.limits = WorkSubmissionLimits(pools: AuthorizationConfig(cores: CoreCount(2),
     maxHashes: ElementLimit(16), maxBytes: ByteLimit(1024)), history: HistoryConfig(

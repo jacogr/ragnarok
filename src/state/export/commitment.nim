@@ -162,3 +162,38 @@ proc prepareExportCommitment*(source: ReportIdentity,
       depth: depth,
       tree: tree, info: ExportCommitmentInfo(root: root, exports: SegmentCount(uint16(count)),
         pages: (count+63) div 64, nodes: nodes, hashBytes: hashBytes))))
+type ExportSegmentIndex* = distinct uint64 ## Original final-export ordinal is separate from proof-page and erasure-row coordinates.
+proc commitmentSegment*(commitment: ExportCommitment,
+    index: ExportSegmentIndex): ExportCommitmentResult[FetchSegment] =
+  ## Extract a final normalized export from the same original execution whose private tree committed it.
+  let data = commitment.data
+  if data == nil: return ExportCommitmentResult[FetchSegment](
+      status: ExportCommitmentError.Uninitialized)
+  if uint64(index) >= uint64(uint16(data.info.exports)):
+    return ExportCommitmentResult[FetchSegment](status: ExportCommitmentError.InvalidIndex)
+  let report = data.source.identitySource.value.authorizedDigests.value.digestReport.value
+  let info = report.reportInfo.value
+  var ordinal = uint64(index)
+  for itemIndex in 0..<info.items:
+    let item = report.reportItem(FetchItemIndex(uint64(itemIndex))).value
+    let count = uint64(item.refinedInfo.value.exports)
+    if ordinal < count: return ExportCommitmentResult[FetchSegment](
+      status: ExportCommitmentError.None,
+      completed: item.refinedSegment(ExportCount(ordinal)).value)
+    ordinal -= count
+  ExportCommitmentResult[FetchSegment](status: ExportCommitmentError.InvalidSource) # A genuine retained commitment cannot lose a previously counted export.
+proc commitmentPath*(commitment: ExportCommitment,
+    index: ExportSegmentIndex): ExportCommitmentResult[seq[SegmentRoot]] =
+  ## Root-first constant-depth GP siblings authenticate only real exports, never padding or proof-page rows.
+  let data = commitment.data
+  if data == nil: return ExportCommitmentResult[seq[SegmentRoot]](
+      status: ExportCommitmentError.Uninitialized)
+  if uint64(index) >= uint64(uint16(data.info.exports)):
+    return ExportCommitmentResult[seq[SegmentRoot]](status: ExportCommitmentError.InvalidIndex)
+  var path = newSeq[SegmentRoot](data.depth)
+  var node = 1
+  for level in 0..<data.depth:
+    let direction = int((uint64(index) shr (data.depth-level-1)) and 1)
+    path[level] = data.tree[node*2+1-direction]
+    node = node*2+direction
+  ExportCommitmentResult[seq[SegmentRoot]](status: ExportCommitmentError.None, completed: path)

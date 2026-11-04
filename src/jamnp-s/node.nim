@@ -255,6 +255,15 @@ proc accountWork(owner: var NodeService, index: int) =
   assert bytes <= InputBudget-owner.inputUsed
   owner.inputUsed += bytes
   frame.inputBytes = bytes
+proc accountRead(owner: var NodeService, index: int) =
+  ## Heap-backed batch requests retain their physical input charge until the actual native close.
+  let frame = addr owner.frames[index]
+  let bytes = frame.read.bufferedBytes
+  assert frame.inputBytes <= owner.inputUsed
+  owner.inputUsed -= frame.inputBytes
+  assert bytes <= InputBudget-owner.inputUsed
+  owner.inputUsed += bytes
+  frame.inputBytes = bytes
 proc accountAnnouncement(owner: var NodeService, index: int) =
   ## One host thread updates buffer deltas after a bounded route event/processing activation.
   let frame = addr owner.frames[index]
@@ -429,7 +438,8 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 142'u8, 143'u8, 147'u8]:
+    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8, 142'u8,
+        143'u8, 147'u8, 148'u8]:
       if kind == 142'u8 and not owner.node.isValidator:
         owner[].closeFrame(position)
         return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
@@ -442,10 +452,14 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
           FrameKind.Work) >= 2:
         owner[].closeFrame(position)
         return
+      if owner.inputUsed >= InputBudget:
+        owner[].closeFrame(position)
+        return # Even the selected read's first byte needs shared input credit before binding.
       if frame.read.bindReadStream(stream, ReadKind(kind), kindConsumed = true) != ReadError.None:
         owner[].closeFrame(position)
         return
       frame.kind = FrameKind.Read
+      owner[].accountRead(position)
     elif kind in [133'u8, 146'u8]:
       # Builder uploads target authenticated validators; core duty and actual authorization remain host-side checks.
       let peerWork = owner[].frameCount(peer, FrameKind.Work)
@@ -476,7 +490,8 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
     owner[].accountWork(position)
   of FrameKind.Read:
     let before = frame.read.receivedBytes
-    frame.read.event(stream, event)
+    frame.read.event(stream, event, ByteLimit(InputBudget-owner.inputUsed+frame.inputBytes))
+    owner[].accountRead(position)
     if frame.read.receivedBytes > before or frame.read.writtenBytes >
         frame.offset: frame.activity = owner.now
     frame.offset = frame.read.writtenBytes

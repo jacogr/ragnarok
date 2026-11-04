@@ -34,6 +34,9 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
   ## Bound input before copying, then retire all temporary canonical owners before the caller submits this job.
   if not request.valid: return ReadVerificationAdmission(
       status: ReadVerificationError.InvalidRequest)
+  if request.kind notin [ReadKind.Blocks, ReadKind.State, ReadKind.Report, ReadKind.Preimage,
+      ReadKind.PreimageAnnouncement, ReadKind.TicketProxy, ReadKind.TicketDistribution]:
+    return ReadVerificationAdmission(status: ReadVerificationError.InvalidRequest)
   let minimum = request.minimumReplyBytes
   if uint64(limits.wireBytes) < minimum: return ReadVerificationAdmission(
       status: ReadVerificationError.InvalidConfig)
@@ -70,7 +73,8 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
   var copied = newSeq[byte](wire.len)
   for index in 0..<wire.len: copied[index] = wire[index]
   ReadVerificationAdmission(status: ReadVerificationError.None, completed: ReadVerificationJob(
-    data: VerificationData(request: request, source: source, wire: copied, limits: limits)))
+    data: VerificationData(request: detachedReadRequest(request), source: source, wire: copied,
+        limits: limits)))
 proc executeReadVerification*(job: ReadVerificationJob): ReadVerificationResult[CheckedReadReply] =
   ## All CPU parsing/hash/proof work uses fresh input; no canonical adoption or native I/O runs here.
   let data = job.data

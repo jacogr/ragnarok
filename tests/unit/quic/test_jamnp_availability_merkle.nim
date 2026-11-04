@@ -46,12 +46,18 @@ proc boundedStack(context: pointer) =
   let whole = availabilityMerkleRoot(selected.flat, AvailabilityLeafBytes,
     AvailabilityTreeLeaves, limits())
   assert whole.error == AvailabilityMerkleError.None
+  let indexed = prepareAvailabilityMerkleTree(selected.flat, AvailabilityLeafBytes,
+    AvailabilityTreeLeaves, limits())
+  assert indexed.error == AvailabilityMerkleError.None
   for index in [0, AvailabilityTreeLeaves-1]:
     # Both edge paths cover the unequal split while temporaries remain thread-local.
     let trace = prepareAvailabilityTrace(selected.flat, AvailabilityLeafBytes,
       AvailabilityTreeLeaves, index, 2, limits())
     assert trace.error == AvailabilityMerkleError.None
     assert array[32, byte](trace.value.root) == array[32, byte](whole.value)
+    let cached = indexedAvailabilityTrace(indexed.value, index, 2, limits().bytes)
+    assert cached.error == AvailabilityMerkleError.None
+    assert cached.value.bytes == trace.value.bytes
   selected.passed = true
 proc main() {.raises.} =
   ## Hash/node/singleton distinctions are checked against frozen independent roots, not only production round trips.

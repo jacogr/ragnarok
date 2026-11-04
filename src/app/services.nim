@@ -1721,8 +1721,18 @@ proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadEr
       services.availabilityLimits)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
+proc stageSegmentShardBatch(services: var Services, request: ReadRequest): ReadError =
+  ## The complete bounded private cache snapshot is frozen before admission; no caller-owned transfer alias enters this job.
+  if not services.availabilityEnabled or not services.availabilityStore.configured: return ReadError.Unavailable
+  let captured = captureSegmentShardBatch(services.availabilityStore.snapshot, request,
+      services.availabilityLimits)
+  if captured.error == ReadError.None: services.networkReadInput = captured.value
+  captured.error
 proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
   ## Every temporary canonical alias retires in this activation before native submission.
+  if request.valid and request.kind in [ReadKind.SegmentShards,
+      ReadKind.ProvenSegmentShards]: return services.stageSegmentShardBatch(request)
+  if request.valid and request.kind == ReadKind.Segments: return services.stageAvailabilityRead(request)
   if request.valid and request.kind == ReadKind.Audit: return services.stageAvailabilityAudit(request)
   if request.availabilityRead: return services.stageAvailabilityRead(request)
   let captured = captureNetworkRead(services.canonical.chainView, request)

@@ -118,3 +118,12 @@ proc find*(store: var AvailabilityStore, request: AvailabilityRequest): Availabi
       return AvailabilityStoreResult(status: AvailabilityStoreError.None, completed: store.entries[
           index].transfer)
   AvailabilityStoreResult(status: AvailabilityStoreError.Missing)
+
+func configured*(store: AvailabilityStore): bool =
+  ## Scalar policy observation remains safe while a worker borrows immutable entries.
+  store.configured
+proc snapshot*(store: AvailabilityStore): seq[VerifiedAvailabilityTransfer] =
+  ## The caller freezes all store aliases through CPU retirement; only module-private Services uses this graph handoff.
+  result = @[]
+  for entry in store.entries:
+    if entry.used: result.add(entry.transfer)

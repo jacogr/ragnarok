@@ -18,7 +18,7 @@ import ../../../src/crypto/primitives
 import ../../../src/codec/state/safrole
 import ../../../src/chain/[genesis, provider]
 import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_probe,
-  jamnp_read_validation_context, pvm_input_refinement, jamnp_work_report_fixture]
+  jamnp_read_validation_context, pvm_input_refinement, jamnp_work_report_fixture, jamnp_segment_batch_fixture]
 
 type Variant {.pure.} = enum ## Each case has a real positive source and changes one host/network boundary.
   Success, Disabled, WrongCore, CorruptProof, WithheldFin, Rotation, Deadline,
@@ -27,7 +27,8 @@ type Variant {.pure.} = enum ## Each case has a real positive source and changes
         AvailabilityDisabled, AvailabilityLimit,
       AvailabilityResetDone, AvailabilityCloseDone, AvailabilityRetireDone, AvailabilityWrongRoot,
         AvailabilityBadIndex, AvailabilityTruncated, AssurerAudit, AssurerResetDone,
-          AssurerCloseDone, AssurerMissing
+          AssurerCloseDone, AssurerMissing, Batch, BatchResetDone, BatchCloseDone, BatchForeignDone,
+            BatchUnknownRoot, BatchTruncated, BatchOverCount
 proc publicKey(): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -111,9 +112,100 @@ proc responseMessages(wire: seq[byte]): seq[seq[byte]] =
     for index in 0..<message.len: message[index] = wire[offset+index]
     result.add(message)
     offset += message.len
+proc batchScenario(variant: Variant, host: var ApplicationNode, services: var Services,
+    probe: var NodeProbe, expected: AvailabilitySpecifier, token: WorkSessionToken,
+    distribution: seq[seq[byte]], hash: BlockHash) {.raises.} =
+  ## One real original exported segment reaches148, then retained137 data alone serves139/140 after report release.
+  let limits = availabilityLimits()
+  assert uint16(expected.segmentCount) == 1
+  assert services.configureAvailabilityStorage(AvailabilityStoreLimits(entries: ElementLimit(2),
+      bytes: ByteLimit(16000000)))
+  block:
+    let selected = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+        root: expected.erasureRoot)
+    let verified = verifyAvailabilityTransfer(expected, selected, distribution[0], distribution[1],
+      distribution[2], limits.computation).value
+    assert services.rememberAvailability(verified) == AvailabilityStoreError.None
+  var originalWire = @[148'u8]
+  for octet in frame(segmentGroup(ReadKind.Segments, expected.segmentRoot.bytes, 0, [0'u16,
+      0])): originalWire.add(octet)
+  let original = probe.issue(originalWire)
+  let fetched = getMonoTime()+initDuration(seconds = 8)
+  while not probe.flows[original].receivedFin:
+    assert getMonoTime() < fetched and not probe.flows[original].reset, "original segment batch"
+    pump(host, services, probe)
+  verifyOriginalSegments(expected, [0'u16, 0], responseMessages(probe.bytes(original)))
+  assert host.releaseWork() and services.workSessionPhase(token) == WorkSessionPhase.Empty
+  let rows = [1'u16, 0, 1]
+  var rawWire = @[139'u8]
+  for octet in frame(segmentGroup(ReadKind.SegmentShards, expected.erasureRoot.bytes, 0,
+      rows)): rawWire.add(octet)
+  let raw = probe.issue(rawWire)
+  let rawReturned = getMonoTime()+initDuration(seconds = 8)
+  while not probe.flows[raw].receivedFin:
+    assert getMonoTime() < rawReturned and not probe.flows[raw].reset, "raw segment shard batch"
+    pump(host, services, probe)
+  let rawMessages = responseMessages(probe.bytes(raw))
+  assert rawMessages.len == 1 and rawMessages[0].len == rows.len*1368
+  var payload = segmentGroup(ReadKind.ProvenSegmentShards, expected.erasureRoot.bytes, 0, rows)
+  if variant == Variant.BatchUnknownRoot: payload[0] = payload[0] xor 1
+  if variant == Variant.BatchTruncated: payload.setLen(payload.len-1)
+  if variant == Variant.BatchOverCount:
+    payload.setLen(34)
+    payload.add(152)
+    payload.add(1) # Canonical6145 exceeds the complete-stream shard limit before any body allocation.
+  var other = default(ProofWorkerTicket)
+  if variant == Variant.BatchForeignDone:
+    let admitted = services.beginNetworkRead(readStateRequest(hash))
+    assert admitted.error == StateProofAdmissionError.None
+    other = admitted.value
+    services.waitDone()
+  var wire = @[140'u8]
+  for octet in frame(payload): wire.add(octet)
+  let request = probe.issue(wire)
+  if variant in [Variant.BatchUnknownRoot, Variant.BatchTruncated, Variant.BatchOverCount]:
+    waitReset(host, services, probe, request)
+    return
+  if variant == Variant.BatchForeignDone:
+    pump(host, services, probe, 20)
+    assert services.stateProofPhase == ProofWorkerPhase.Done and services.rpc.chainPaused
+    assert not probe.flows[request].receivedFin
+    assert services.collectStateProof(other).kind == ProofWorkerCompletionKind.ReadCompleted
+  let admitting = getMonoTime()+initDuration(seconds = 8)
+  while not services.stateProofActive:
+    assert getMonoTime() < admitting
+    assert host.poll(getMonoTime(), StateTime(20), 0)
+    probe.poll()
+  services.waitDone()
+  assert services.rpc.chainPaused
+  if variant == Variant.BatchCloseDone:
+    host.close()
+    assert not services.stateProofActive and not services.rpc.chainPaused
+    return
+  if variant == Variant.BatchResetDone: probe.abort(request)
+  let completed = getMonoTime()+initDuration(seconds = 8)
+  while true:
+    let pending = if variant == Variant.BatchResetDone: not probe.flows[request].closed
+      else: not probe.flows[request].receivedFin and not probe.flows[request].reset
+    if not services.stateProofActive and not pending: break
+    assert getMonoTime() < completed, "authenticated batch retirement"
+    pump(host, services, probe)
+  assert not services.rpc.chainPaused
+  if variant == Variant.BatchResetDone:
+    assert probe.flows[request].closed and not probe.flows[request].receivedFin
+    return
+  let parts = responseMessages(probe.bytes(request))
+  assert parts.len == 4 and parts[0] == rawMessages[0]
+  for ordinal, row in rows:
+    let selected = AvailabilityRequest(kind: AvailabilityTransferKind.Segment,
+      root: expected.erasureRoot,
+      row: export_erasure.ExportErasureIndex(uint64(row)))
+    assert verifyAvailabilityTransfer(expected, selected, [], parts[0].toOpenArray(ordinal*1368, (
+        ordinal+1)*1368-1),
+      parts[ordinal+1], limits.computation).error == AvailabilityTransferError.None
 proc scenario(variant: Variant) {.raises.} =
   ## Every case starts from actual Tiny PVM code, committed imports, a complete source and matching server identity.
-  let fixture = workFixture()
+  let fixture = workFixture(exported = variant in Variant.Batch..Variant.BatchOverCount)
   let saved = fixture.workSnapshot(publicKey())
   writeFile("work-dispatch-chain.json", workChainText(saved))
   var settings = default(Options)
@@ -232,7 +324,7 @@ proc scenario(variant: Variant) {.raises.} =
     assert services.workSubmissionOutcome(token).kind == WorkJobResultKind.Refined
   if variant in [Variant.Report, Variant.ReportFailure, Variant.ReportCancelDone,
       Variant.ReportCloseDone, Variant.ReportStaleTime, Variant.ReportForeignDone] or
-      variant in Variant.Availability..Variant.AssurerMissing:
+      variant in Variant.Availability..Variant.BatchOverCount:
     # Downstream work addresses the retained session, never a replacement execution or caller-selected shard count.
     var limits = workReportLimits()
     if variant == Variant.ReportStaleTime:
@@ -291,7 +383,7 @@ proc scenario(variant: Variant) {.raises.} =
       assert digest.error == CryptoError.None
       let message = array[45, byte](reported.reportTranscript.computedGuaranteeMessage.value)
       for index in 0..<32: assert message[13+index] == array[32, byte](digest.value)[index]
-    if variant in Variant.Availability..Variant.AssurerMissing:
+    if variant in Variant.Availability..Variant.BatchOverCount:
       # Actual TLS reads consume the retained original report via the ordinary ApplicationNode read dispatcher.
       let original = originalBundle(services, token)
       var policy = availabilityLimits()
@@ -359,6 +451,9 @@ proc scenario(variant: Variant) {.raises.} =
           assert verifyAvailabilityTransfer(expected, selected, messages[0], messages[1], messages[
               2],
             policy.computation).error == AvailabilityTransferError.None
+          if variant in Variant.Batch..Variant.BatchOverCount:
+            batchScenario(variant, host, services, probe, expected, token, messages, hash)
+            return
           if variant in Variant.AssurerAudit..Variant.AssurerMissing:
             # The private store deep-copies sealed distributions; every external verified alias retires before the audit lease.
             assert services.configureAvailabilityStorage(AvailabilityStoreLimits(
@@ -451,7 +546,7 @@ proc scenario(variant: Variant) {.raises.} =
   assert host.workPhase == WorkDispatchPhase.Idle
 proc main() {.raises.} =
   ## Run live lifecycle witnesses serially so native sockets, workers and bridge libraries never share mutable ownership.
-  for variant in Variant.Success..Variant.AssurerMissing:
+  for variant in Variant.Success..Variant.BatchOverCount:
     scenario(variant)
   echo "JAMNP-S application work dispatch passed"
 try:
