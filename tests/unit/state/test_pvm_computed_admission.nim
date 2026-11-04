@@ -52,12 +52,13 @@ let rejected = admitComputedReports(duplicate, computedAdmissionConfig(duplicate
 expect(rejected, ComputedAdmissionError.AdmissionFailure)
 assert rejected.admissionError.error == ReportAdmissionError.PackageFailure
 assert rejected.admissionError.packageError == ReportPackageError.DuplicatePackage
-for variant in 0..<3:
+for variant in 0..<4:
   var wrong = config
   case variant
   of 0: wrong.policy.reportGas = ReportGasLimit(0) # Original accumulation ceiling cannot be replaced.
   of 1: wrong.credentials.assignments.rotationSlots = GuarantorRotationSlots(
       1) # Selection domain remains original.
+  of 2: wrong.policy.refinementGas = RefinementGasLimit(0) # Refinement gas is bound independently.
   else: wrong.anchors.lookupAge = LookupAge(0) # Original maximum lookup age participates.
   reset(1)
   expect(admitComputedReports(source, wrong), ComputedAdmissionError.ProfileMismatch)

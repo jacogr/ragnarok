@@ -13,7 +13,7 @@ supplies trusted header/state identity and the complete chain profile. GENESIS u
 the pinned vectors' published Header + RawState binary representation; every TRACE
 is one exact published pre-state + block + post-state file.
 
-CURRENT_POLICY uses the existing ragnarok-current-download-policy-v1 format.
+CURRENT_POLICY uses the existing ragnarok-current-download-policy-v2 format.
 The checker consumes its current-candidate limits. File processing uses bounded
 regular-file EOF for the policy, configured chain, Genesis and each trace.
 The configuration cap is8MiB, each binary file cap16MiB, and one invocation accepts

@@ -25,9 +25,9 @@ limits and deadlines remain the existing scheduler's policy; no discovery or
 implicit reconnection is added. RPC/UI may share the canonical Services owner.
 Telemetry activation is rejected until concrete outgoing-endpoint lifecycle reporting is integrated.
 
-Policy v1 is a bounded UTF-8-compatible ASCII key/value document beginning with
-`ragnarok-download-policy-v1`. Its explicit dotted keys follow DownloadLoopLimits;
-all 314 leaves must occur exactly once. The [frozen schema](../src/app/download/policy/fields.nim)
+Policy v2 is a bounded UTF-8-compatible ASCII key/value document beginning with
+`ragnarok-download-policy-v2`. Its explicit dotted keys follow DownloadLoopLimits;
+all 315 leaves must occur exactly once. The [frozen schema](../src/app/download/policy/fields.nim)
 lists their exact names. Each is canonical unsigned decimal,
 including explicit zero where a stage permits it. Reject unknown, duplicate,
 missing, signed, non-decimal, overflowing and narrow-width values. Blank and
@@ -35,7 +35,7 @@ comment lines after the header are allowed; keys/values have no surrounding
 whitespace. A final newline is optional. The 64 KiB byte limit applies before
 parsing or file allocation beyond limit+1; bounded line/key/value counts constrain
 startup work. The schema is explicit source, with no runtime reflection or silent
-field fallback. Frozen v1 field names require deliberate version review when
+field fallback. Frozen v2 field names require deliberate version review when
 stage APIs change. Stage implementations retain semantic-policy authority.
 
 Parsing returns a private tagged result: defaults/failures never expose a partial
@@ -114,3 +114,6 @@ Local checked ARC/Clang/LTO verification passes `make unit
 SUITE=application_download_startup`, `make build`, executable refusal/selftest
 controls, pinned formatting, inventory and whitespace checks. Logs are retained
 under `build/download-bootstrap-*`; this does not claim exact-head Linux CI.
+
+The GP qualification introduces v2 with explicit report refinement gas. Historical v1
+verification counts above retain their original scope; v1 input now refuses WrongVersion.

@@ -200,10 +200,12 @@ proc refinePackage*(state: StateStoreSnapshot, package: OwnedWorkPackage, core: 
     let invocation = invoked.value
     let raw = invocation.refinementInfo.value
     var kind = raw.kind
-    if raw.outputBytes > 49152-blobs:
-      kind = WorkKind.Oversize # Oversize wins even when actual and declared exports differ.
-    elif uint64(raw.exports) != uint64(declaration.exports):
-      kind = WorkKind.BadExports # Mismatch wins over an invocation work error as prescribed by I.
+    if kind == WorkKind.Success:
+      # Invocation errors keep their exact kind; only blobs enter output-size/export validation.
+      if raw.outputBytes > 49152-blobs:
+        kind = WorkKind.Oversize # Oversize precedes export mismatch for successful raw outputs.
+      elif uint64(raw.exports) != uint64(declaration.exports):
+        kind = WorkKind.BadExports # Failed invocations already selected their zero replacements.
     var size = 0'u64
     if kind == WorkKind.Success:
       size = raw.outputBytes # Only accepted Success contributes to the ordered shared blob counter.

@@ -231,6 +231,16 @@ def unit_report_policy_fixture(folder):
     return {'default': fixture}, evidence
 
 
+# Pass the actual shipped startup file rather than a copied policy that could drift independently.
+@PROVIDERS.fixture(group='sealer', order=205)
+def unit_tiny_devnet_policy_fixture(folder):
+    """Native policy assertions read the bundled file; the digest protects its transport through the runner."""
+    path = ROOT/'config/tiny-devnet-policy.conf'
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    fixture = ('RAGNAROK_TINY_DEVNET_POLICY', path, ((path, digest),))
+    return {'default': fixture}, {'source': str(path.relative_to(ROOT)), 'sha256': digest}
+
+
 # Transport original recent-anchor inputs without inventing unavailable external ancestor headers.
 @PROVIDERS.fixture(group='sealer', order=210)
 def unit_report_anchors_fixture(folder):

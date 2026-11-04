@@ -154,7 +154,7 @@ proc checkCoreSource*(base: OwnedReport) =
     for index in 0..<2:
       var expected = CoreActivity()
       if mode != 2:
-        expected.gas = ActivityGas(high(uint64)) # Authored admission reports deliberately use maximal refinement gas.
+        expected.gas = ActivityGas(11) # Authored admission reports carry bounded refinement gas.
         for measure, amount in [13'u64, 17, 19, 23]: expected.counters[CoreMeasure(ord(
             CoreMeasure.Imports)+measure)] = ActivityNatural(amount)
         expected.counters[CoreMeasure.BundleBytes] = ActivityNatural(7)
@@ -165,7 +165,7 @@ proc checkCoreSource*(base: OwnedReport) =
     var copy = plan.coreActivityAt(StatisticsCoreIndex(0)).value
     copy.gas = ActivityGas(0)
     assert uint64(plan.coreActivityAt(StatisticsCoreIndex(0)).value.gas) == (if mode ==
-        2: 0'u64 else: high(uint64))
+        2: 0'u64 else: 11'u64)
     assert plan.coreActivityAt(StatisticsCoreIndex(high(uint64))).error ==
         CoreActivityError.InvalidIndex
     var short = corePolicy()

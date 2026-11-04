@@ -38,6 +38,7 @@ proc profileReplayConfig(cores, validators, slots, tickets, rotation, tail,
     maxHashes: ElementLimit(cores * 80), maxBytes: ByteLimit(1000000))
   result.candidate.reporting.reports.policy.pools = authorization
   result.candidate.reporting.reports.policy.reportGas = ReportGasLimit(10000000)
+  result.candidate.reporting.reports.policy.refinementGas = RefinementGasLimit(5000000000)
   var historyLimits = result.candidate.completion.composition.recent.history
   historyLimits.cores = frame.cores
   historyLimits.perBlock = ElementLimit(cores) # One reported package per full-profile core can enter a block.
@@ -126,6 +127,7 @@ proc fuzzFullReplayConfig*(): FuzzBackendConfig =
 proc fuzzNetworkReplayConfig*(): FuzzBackendConfig =
   ## Issue215 geometry retains explicit finite host bounds; expected Parameters remain independently supplied.
   result = profileReplayConfig(85, 255, 60, 4, 5, 50, 875000000)
+  result.candidate.reporting.reports.policy.refinementGas = RefinementGasLimit(1250000000)
   result.candidate.reporting.reports.anchors.lookupAge = LookupAge(600)
   result.candidate.reporting.reports.ancestors.headers = ElementLimit(601)
   result.candidate.reporting.reports.ancestors.maxBytes = ByteLimit(16777216)

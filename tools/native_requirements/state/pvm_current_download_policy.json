@@ -22,5 +22,6 @@
     "commit",
     "ring_verify"
   ],
-  "prepared": false
+  "prepared": true,
+  "provider": "tiny_devnet_policy"
 }

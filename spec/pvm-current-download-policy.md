@@ -3,8 +3,8 @@
 Pinned Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` remains definitive. This host resource
 configuration changes no protocol interpretation, dependency pins or wire/storage formats.
 
-Current policy documents begin with the exact header `ragnarok-current-download-policy-v1` and
-supply all 389 unique `name=canonical-unsigned-decimal` rows in the explicit private
+Current policy documents begin with the exact header `ragnarok-current-download-policy-v2` and
+supply all 390 unique `name=canonical-unsigned-decimal` rows in the explicit private
 `src/app/current/download/policy/fields.nim` schema. It covers the scalar scheduler, input/ancestor ceilings,
 current candidate reporting/queue/round, initial execution, continuation planning/execution, every
 current composition stage, sealed-header capture and callback/total deadlines. Discovery permission
@@ -43,3 +43,6 @@ policy extraction control, focused semantic checking, inventory and pinned forma
 Probe success is constructed in a separate checked helper so the compiler does not replace the
 intended runtime refusal with compile-time assertion propagation. Implementation contracts remain
 unchanged; no arbitrary nonzero exit is accepted as guard evidence.
+
+The v2 schema requires `candidate.reporting.reports.policy.refinementGas` and refuses
+old v1 headers; no refinement ceiling is inferred from core geometry or accumulation gas.

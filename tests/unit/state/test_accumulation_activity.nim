@@ -289,10 +289,12 @@ proc main() {.raises.} =
     let refused = prepareAccumulationActivity(bad.source, config())
     assert refused.error == AccumulationActivityError.PreimageFailure
     assert refused.preimageError == (if mode == 2: PreimageTransitionError.NotOrderedUnique else: PreimageTransitionError.NotRequested)
-  let huge = activityFixture(base, guarantees = 2, hugeRefinement = true)
-  let overflow = prepareAccumulationActivity(huge.source, config())
-  assert overflow.error == AccumulationActivityError.CoreFailure
-  assert overflow.coreError == CoreServiceActivityError.CounterOverflow, "certified inputs may still overflow combined service metrics"
+  let maximum = activityFixture(base, guarantees = 2, maximumRefinement = true)
+  let bounded = prepareAccumulationActivity(maximum.source, config())
+  assert bounded.error == AccumulationActivityError.None
+  assert uint64(serviceActivityAt(bounded.value.accumulationActivitySnapshot.value,
+      StatisticsServiceIndex(0)).value.statistics.refinementGas) == 2_000_000_000,
+      "two admitted per-report maxima aggregate without truncation"
   backendWitness(combined)
   let defaultOwner = default(PreparedAccumulationActivity)
   assert defaultOwner.accumulationActivitySource.error == AccumulationActivityError.Uninitialized
