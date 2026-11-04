@@ -124,6 +124,15 @@ proc takeRequest*(route: var ReadRoute): ReadResult[ReadRequest] =
       status: ReadError.Unavailable)
   route.taken = true
   ReadResult[ReadRequest](status: ReadError.None, completed: route.captured)
+proc selectedKind*(route: ReadRoute): ReadKind {.requires: route.stream != NativeStream(nil).} =
+  ## A bound native route exposes its fixed selector without consuming an incomplete or already claimed request.
+  route.selector
+proc deferRequest*(route: var ReadRoute): bool =
+  ## Return a complete claim to admission; responding, reset and retired routes cannot be re-admitted.
+  if route.stream == NativeStream(nil) or route.failed or not route.pending or not route.taken:
+    return false
+  route.taken = false
+  true
 proc respond*(route: var ReadRoute, reply: ReadReply): ReadError =
   ## A reply for any different request cannot be sent through this borrowed stream.
   if route.stream == NativeStream(nil) or route.failed or not route.pending or

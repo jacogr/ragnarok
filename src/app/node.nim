@@ -6,7 +6,8 @@
 import std/[monotimes, times]
 import ./services
 import ./proof/worker
-import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation, admission]
+import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
+    report_cache, admission]
 import ../chain/[provider, genesis]
 import ../codec/state/[safrole, consensus]
 import ../codec/bounded
@@ -54,6 +55,7 @@ type
     checkedCancel: CheckedCompletionKind
     checkedStarted: MonoTime
     preferChecked: bool
+    reports: ReportCache
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
 proc `=dup`*(source: ApplicationNode): ApplicationNode {.error.}
@@ -66,6 +68,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.checkedWorker)
   `=wasMoved`(owner.checkedWire)
   `=wasMoved`(owner.checkedOutcome)
+  `=wasMoved`(owner.reports)
   owner.opened = false
   owner.pending = false
   owner.cancelled = false
@@ -85,9 +88,16 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.checkedWorker)
   `=destroy`(owner.checkedWire)
   `=destroy`(owner.checkedOutcome)
+  `=destroy`(owner.reports)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
+func cachedReportCount*(owner: ApplicationNode): int =
+  ## Detached cache statistics are safe while any canonical worker owns the graph.
+  owner.reports.len
+func cachedReportBytes*(owner: ApplicationNode): int =
+  ## Logical immutable cache wire bytes exclude native buffers and transient response copies.
+  owner.reports.byteLength
 proc localPort*(owner: ApplicationNode): uint16 =
   ## Observe detached native listener state without a canonical graph alias.
   if owner.opened: owner.streams.localPort else: 0'u16
@@ -230,6 +240,9 @@ proc collectChecked(owner: var ApplicationNode) =
   elif completed.kind == ProofWorkerCompletionKind.ReadVerified:
     owner.checkedOutcome = CheckedRequestCompletion(status: CheckedCompletionKind.Completed,
       response: completed.verifiedReadValue)
+    let checked = completed.verifiedReadValue
+    if checked.error == ReadVerificationError.None and checked.value.kind == ReadKind.Report:
+      discard owner.reports.remember(checked.value) # Local retention refusal cannot turn a complete checked read into failed delivery.
   else:
     owner.checkedOutcome = CheckedRequestCompletion(status: CheckedCompletionKind.Interrupted)
   owner.checkedWorker = default(ProofWorkerTicket)
@@ -330,12 +343,30 @@ proc close*(owner: var ApplicationNode) =
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   owner.streams.close()
   owner.clearChecked()
+  owner.reports.clear()
   owner.checkedIdentity = nil
   owner.clearJob()
   owner.opened = false
   owner.epochHeld = false
   owner.services = nil
   owner.stamp = default(SourceStamp)
+proc serveCached(owner: var ApplicationNode, task: NodeReadTask): bool =
+  ## A hit needs no canonical graph or worker, but still requires the native ticket's exact method/hash binding.
+  if task.request.kind != ReadKind.Report: return false
+  let found = owner.reports.find(task.request)
+  if found.error != ReportCacheError.None: return false
+  if owner.streams.respond(task.ticket, found.value) != ReadError.None:
+    discard owner.streams.reject(task.ticket) # Output pressure cannot orphan an already claimed cached request.
+  owner.preferChecked = true
+  true
+proc serveDetached(owner: var ApplicationNode) =
+  ## Inspect at most one report while a foreign graph is frozen; cache misses return their claim without resetting deadlines.
+  if owner.reports.len == 0: return
+  let task = owner.streams.takeRead(ReadKind.Report)
+  if task.error != NodeError.None: return
+  if owner.serveCached(task.value): return
+  if not owner.streams.deferRead(task.value.ticket):
+    discard owner.streams.reject(task.value.ticket) # Failed revocation never leaves taken work without an owner.
 proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     maximumMs: range[0..1] = 1): bool {.raises.} =
   ## Service detached native data during CPU work; capture/refresh only after the exclusive graph gate opens.
@@ -345,6 +376,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if services == nil: return false
   owner.receiveChecked(clock)
   owner.collectChecked()
+  if not services[].stateProofAvailable: owner.serveDetached()
   if owner.pending:
     if not owner.cancelled and not owner.streams.readLive(owner.readTicket):
       owner.cancelled = services[].cancelStateProof(owner.workerTicket)
@@ -368,6 +400,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if request.error != NodeError.None:
     discard owner.submitChecked()
     return true
+  if owner.serveCached(request.value): return true
   let admitted = services[].beginNetworkRead(request.value.request)
   if admitted.error != StateProofAdmissionError.None:
     discard owner.streams.reject(request.value.ticket)
