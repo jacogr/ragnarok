@@ -112,6 +112,7 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   case topic
   of "node":
     recipe = @["--net-port", "--net-cert", "--net-key", "--node-finalized", "--net-timeout-ms"]
+    if fields[optionIndex("--node-validator-seed")].len > 0: recipe.add("--node-validator-seed")
   of "server", "client":
     recipe = @["--net-port", "--net-cert", "--net-key", "--net-peer-key", "--net-alpn",
         "--net-timeout-ms", "--net-mode"]
@@ -162,6 +163,9 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
           DefaultServerMode))
       if not boundedNumber(value, (if listening: 0'u64 else: 1'u64), uint64(maximum)):
         refuse(flag & " must be in " & (if listening: "0" else: "1") & ".." & $maximum)
+    of "--node-validator-seed":
+      if value.len == 0 or value.len > 4096 or value.find(char(0)) >= 0:
+        refuse("--node-validator-seed requires a nonempty bounded file path")
     of "--node-finalized":
       if value.len != 64: refuse("--node-finalized requires exactly 64 lowercase hex digits")
       for character in value:

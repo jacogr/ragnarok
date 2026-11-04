@@ -54,6 +54,10 @@ import ../state/current/logical as current_logical
 import ./proof/[query as proof_query, worker as proof_worker, network_read]
 import ./proof/read_validation as verification_job
 import ./proof/ticket_verification as ticket_job
+import ./proof/ticket_production
+import ../bandersnatch/bandersnatch as bs
+import ../codec/[tickets, header]
+import ../codec/state/safrole
 import ../jamnp-s/[ticket_packet, ticket_validation]
 import ../jamnp-s/read_validation as read_verification
 import ../jamnp-s/read_stream
@@ -118,6 +122,12 @@ type
     of QueryFailure: captureReason: NetworkTicketResult[TicketSource]
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Closed/busy/default results own no stream, input or worker authority.
+
+type
+  TicketSignerConfiguration* = object ## Successful configuration has no extractable key; only genuine derivation failure carries a native cause.
+    case status: TicketSignerError
+    of KeyFailure: keyReason: bs.BsError
+    else: discard # None denotes completed configuration without exposing its private signing owner.
 
 type
   LogicalProofAdmissionError* {.pure.} = enum ## Capture provenance/resource failures remain distinct from managed worker/RPC admission.
@@ -200,6 +210,11 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   networkReadInput: NetworkReadJob
   verificationInput: ReadVerificationJob
   ticketInput: TicketVerificationJob
+  productionInput: TicketProductionJob
+  ticketSigner: TicketSigner
+  ticketSignerReady: bool
+  ticketSignerVersion: uint64
+  ticketSignerPublic: array[32, byte]
   ticketSource: NetworkTicketResult[TicketSource]
   ticketCaptureFailure: NetworkTicketResult[TicketSource]
   rpcProof: RpcProofDispatch        # Detached connection intent never retains canonical state.
@@ -262,6 +277,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.networkReadInput)
   `=wasMoved`(services.verificationInput)
   `=wasMoved`(services.ticketInput)
+  `=wasMoved`(services.productionInput)
+  `=wasMoved`(services.ticketSigner)
   `=wasMoved`(services.ticketSource)
   `=wasMoved`(services.ticketCaptureFailure)
   `=wasMoved`(services.rpcProof)
@@ -312,6 +329,8 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.networkReadInput)
   `=destroy`(services.verificationInput)
   `=destroy`(services.ticketInput)
+  `=destroy`(services.productionInput)
+  `=destroy`(services.ticketSigner)
   `=destroy`(services.ticketSource)
   `=destroy`(services.ticketCaptureFailure)
   `=destroy`(services.rpcProof)
@@ -513,6 +532,7 @@ proc stopStateProofs*(services: var Services) =
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
   services.ticketInput = default(TicketVerificationJob)
+  services.productionInput = default(TicketProductionJob)
   services.ticketSource = default(NetworkTicketResult[TicketSource])
   services.ticketCaptureFailure = default(NetworkTicketResult[TicketSource])
   if services.proofing:
@@ -557,6 +577,10 @@ proc close*(services: var Services) =
     log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping service workers and listeners")
   services.light.close() # Distinct light workers join before the borrowed RPC owner or partial evidence retires.
   services.stopStateProofs() # Join selected-state access before any canonical/RPC owner retires.
+  services.ticketSigner = default(TicketSigner) # Last private-key ownership retires only after every secret-borrowing job joins.
+  services.ticketSignerReady = false
+  services.ticketSignerVersion = 0
+  services.ticketSignerPublic = default(array[32, byte])
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
@@ -1491,6 +1515,87 @@ proc beginNetworkTicket*(services: var Services, packet: TicketPacket,
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
   services.ticketInput = default(TicketVerificationJob)
+  NetworkTicketStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
+
+func error*(outcome: TicketSignerConfiguration): TicketSignerError =
+  ## Observe configuration without exposing seed, scalar or private signer ownership.
+  outcome.status
+func keyError*(outcome: TicketSignerConfiguration): bs.BsError {.requires: outcome.status ==
+    TicketSignerError.KeyFailure.} =
+  ## A failed configuration preserves only its genuine key derivation cause.
+  outcome.keyReason
+func hasTicketSigner*(services: Services): bool =
+  ## Scalar-only availability is safe while the immutable signer is exclusively leased by CPU work.
+  services.started and services.ticketSignerReady
+func ticketSigningVersion*(services: Services): uint64 =
+  ## A nonwrapping host configuration generation carries no key material.
+  if services.started and services.ticketSignerReady: services.ticketSignerVersion else: 0'u64
+proc configureTicketSignerSeed*(services: var Services, masterSeed: openArray[
+    byte]): TicketSignerConfiguration =
+  ## Explicit local configuration retains no caller seed bytes; Busy cannot replace a leased signing allocation.
+  if not services.started: return TicketSignerConfiguration(status: TicketSignerError.Closed)
+  if services.light.active: return TicketSignerConfiguration(status: TicketSignerError.WrongMode)
+  if not services.stateProofAvailable: return TicketSignerConfiguration(
+      status: TicketSignerError.Busy)
+  if services.ticketSignerVersion == high(uint64): return TicketSignerConfiguration(
+      status: TicketSignerError.Exhausted)
+  let captured = captureTicketSigner(masterSeed)
+  if captured.error == TicketSignerError.KeyFailure:
+    return TicketSignerConfiguration(status: TicketSignerError.KeyFailure,
+        keyReason: captured.keyError)
+  if captured.error != TicketSignerError.None: return TicketSignerConfiguration(
+      status: captured.error)
+  let public = captured.value.signingPublic
+  if services.ticketSignerReady and public == services.ticketSignerPublic:
+    return TicketSignerConfiguration(status: TicketSignerError.None) # Reconfiguring the same key does not reopen completed epoch attempts or cancel valid queued work.
+  services.ticketSigner = captured.value
+  services.ticketSignerPublic = public
+  inc services.ticketSignerVersion
+  services.ticketSignerReady = true
+  TicketSignerConfiguration(status: TicketSignerError.None)
+proc stageTicketProduction(services: var Services, local: StateEdKey, now: StateTime,
+    connectivityEpoch: uint32, attempt: TicketAttempt): NetworkTicketError =
+  ## Successful source/signer staging aliases retire in this activation before native CPU submission.
+  let source = services.stageTicketSource()
+  if source.error != NetworkTicketError.None:
+    services.ticketCaptureFailure = source
+    return source.error
+  let captured = captureTicketProduction(source.value, services.ticketSigner, local, now,
+      connectivityEpoch, attempt)
+  if captured.error != NetworkTicketError.None:
+    services.ticketCaptureFailure = ticketFailure[TicketSource](captured.error)
+    return captured.error
+  services.productionInput = captured.value
+  services.ticketCaptureFailure = default(NetworkTicketResult[TicketSource])
+  NetworkTicketError.None
+proc beginTicketProduction*(services: var Services, local: StateEdKey, now: StateTime,
+    connectivityEpoch: uint32, attempt: TicketAttempt): NetworkTicketStart {.raises.} =
+  ## Optional genuine signing uses the existing exact full-state RPC/worker lease and never runs inside Native callbacks.
+  if not services.started: return NetworkTicketStart(status: StateProofAdmissionError.Closed)
+  if services.light.active: return NetworkTicketStart(status: StateProofAdmissionError.QueryFailure,
+      captureReason: ticketFailure[TicketSource](NetworkTicketError.NoSource))
+  if not services.stateProofAvailable: return NetworkTicketStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.ticketSignerReady: return NetworkTicketStart(
+      status: StateProofAdmissionError.QueryFailure,
+
+captureReason: ticketFailure[TicketSource](NetworkTicketError.NoSigner))
+  discard services.proofWorker.start()
+  let captured = services.stageTicketProduction(local, now, connectivityEpoch, attempt)
+  if captured != NetworkTicketError.None:
+    return NetworkTicketStart(status: StateProofAdmissionError.QueryFailure, captureReason: move(
+        services.ticketCaptureFailure))
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.productionInput = default(TicketProductionJob)
+    return NetworkTicketStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.productionInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    return NetworkTicketStart(status: StateProofAdmissionError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.productionInput = default(TicketProductionJob)
   NetworkTicketStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 
 proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
