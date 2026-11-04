@@ -1,7 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Independent Linux x86-64 arithmetic lowering; source charging and every observable boundary stay in the interpreter.
-## The SysV leaf borrows one register array in RDI, touches only caller-saved registers and retains no input pointer.
+## The canonical SysV leaf borrows one register array in RDI and touches only caller-saved registers.
+## A separate default-off proof may preserve a bounded resident bank; neither path retains input pointers.
 import std/assertions
 import ../[program, machine]
 import ./jit_rules
@@ -197,13 +198,29 @@ proc readSlot(fragment: var X86Block, slot: range[0..12], right: bool) =
   ## Eight-byte array offsets fit a positive disp8; RDI remains the sole borrowed array base.
   put(fragment, [0x48'u8, 0x8b, (if right: 0x4f'u8 else: 0x47'u8), byte(int(slot)*8)])
 
-proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlots, value: uint64) =
+type X86CanonicalAccess = object
+  ## Empty cold lowering policy keeps the original RDI register-array instruction forms.
+
+proc readAccess(fragment: var X86Block, access: X86CanonicalAccess,
+    slot: range[0..12], right: bool) =
+  ## Canonical operands preserve the exact original memory load bytes.
+  readSlot(fragment, slot, right)
+
+proc writeAccess(fragment: var X86Block, access: X86CanonicalAccess, slot: range[0..12]) =
+  ## RAX is committed after every operation exactly as before accessor parameterization.
+  put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slot)*8)])
+
+when defined(pvmX86ResidentProof):
+  include ./x86_resident_access
+
+template emitX86OperationAccess(fragment: var X86Block, access: untyped, opcode: byte,
+    slots: RegisterSlots, value: uint64) =
   ## Scratch RAX/RCX/RDX/R8 obey SysV caller-save rules; all aliases consume their old inputs first.
   assert supportedX86Opcode(opcode)
   if opcode in [20'u8, 51]:
     immediate(fragment, 0xb8, value)
   elif opcode == 100 or opcode in {107'u8..110}:
-    readSlot(fragment, slots.aIndex, false)
+    readAccess(fragment, access, slots.aIndex, false)
     case opcode
     of 107: put(fragment, [0x48'u8, 0x0f, 0xbe, 0xc0]) # MOVSX RAX,AL.
     of 108: put(fragment, [0x48'u8, 0x0f, 0xbf, 0xc0]) # MOVSX RAX,AX.
@@ -212,11 +229,11 @@ proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlot
     else: discard # The loaded A value is already the complete move result.
   else:
     if opcode < 190:
-      readSlot(fragment, slots.bIndex, false)
+      readAccess(fragment, access, slots.bIndex, false)
       immediate(fragment, 0xb9, value)
     else:
-      readSlot(fragment, slots.aIndex, false)
-      readSlot(fragment, slots.bIndex, true)
+      readAccess(fragment, access, slots.aIndex, false)
+      readAccess(fragment, access, slots.bIndex, true)
     if opcode in [141'u8, 154]:
       put(fragment, [0x48'u8, 0x91]) # XCHG RAX,RCX makes immediate-minus-B preserve operand order.
     if opcode in {136'u8, 137, 142, 143, 216, 217}:
@@ -257,16 +274,17 @@ proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlot
       else: put(fragment, [0x48'u8, 0x01, 0xc8]) # 149/200 full-width wrapping addition.
       if opcode in {131'u8, 135, 138..141, 160, 190..192, 197..199, 223}:
         put(fragment, [0x48'u8, 0x63, 0xc0]) # MOVSXD RAX,EAX restores the GP's signed low-word result.
-  put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slots.destinationIndex)*8)])
+  writeAccess(fragment, access, slots.destinationIndex)
 
-proc emitX86Branch*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
+template emitX86BranchAccess(fragment: var X86Block, access: untyped, opcode: byte,
+    slots: RegisterSlots,
     value: uint64, yes, no: uint32) =
   ## Positive checked stream destinations become immediate scalar results; MOV/CMOV preserve the full-width comparison.
   assert opcode in {81'u8..90, 170..175}
   assert yes < 2147483646'u32 and no < 2147483646'u32
-  readSlot(fragment, slots.aIndex, false)
+  readAccess(fragment, access, slots.aIndex, false)
   if opcode <= 90: immediate(fragment, 0xb9, value)
-  else: readSlot(fragment, slots.bIndex, true)
+  else: readAccess(fragment, access, slots.bIndex, true)
   put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX consumes both original register/immediate values.
   put(fragment, [0xb8'u8]) # MOV EAX,no leaves comparison flags intact and defines the complete return value.
   for part in 0..<4: fragment.bytes.add(byte((no shr (part*8)) and 255))
@@ -284,6 +302,27 @@ proc emitX86Branch*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
     of 89, 175: 0x4d'u8 # Signed greater or equal.
     else: 0x4f'u8       # Signed greater.
   put(fragment, [0x0f'u8, condition, 0xc2]) # CMOVcc EAX,EDX selects a scalar offset, never a host address.
+
+proc emitX86Operation*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
+    value: uint64) =
+  ## Existing consumers keep canonical array reads/writes and exactly the same machine bytes.
+  emitX86OperationAccess(fragment, X86CanonicalAccess(), opcode, slots, value)
+
+proc emitX86Branch*(fragment: var X86Block, opcode: byte, slots: RegisterSlots,
+    value: uint64, yes, no: uint32) =
+  ## Canonical branch lowering shares its only opcode switch with the private resident backend.
+  emitX86BranchAccess(fragment, X86CanonicalAccess(), opcode, slots, value, yes, no)
+
+when defined(pvmX86ResidentProof):
+  proc emitX86ResidentOperation*(fragment: var X86Block, access: X86ResidentAccess,
+      opcode: byte, slots: RegisterSlots, value: uint64) =
+    ## Hardware-only lowering grants no source, price, memory or publication authority.
+    emitX86OperationAccess(fragment, access, opcode, slots, value)
+
+  proc emitX86ResidentBranch*(fragment: var X86Block, access: X86ResidentAccess,
+      opcode: byte, slots: RegisterSlots, value: uint64, yes, no: uint32) =
+    ## Comparisons read the same current mapped operands used by scalar operations.
+    emitX86BranchAccess(fragment, access, opcode, slots, value, yes, no)
 
 proc x86Ending*(jit: X86Jit, offset: uint32): uint32 =
   ## Only a previously admitted arithmetic record supplies its immutable trailing source coordinate.
