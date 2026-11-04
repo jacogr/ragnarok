@@ -434,6 +434,38 @@ for initial in [0'u64, 5, 31]:
         inc branchPrefixCases
 stdout.writeLine("X86_BRANCH_PREFIX_CASES," & $branchPrefixCases)
 
+# Opcode 173 is the source backedge used by automatic wide admission. Seven complete
+# budgets have literal terminal results; all seventy prefixes compare native and
+# plain plans under both ordinary and forced native-refusal builds.
+let signedProgram = owner([@[149'u8, 0, 1], @[173'u8, 0x10, 0xfd, 0xff, 0xff, 0xff],
+    @[0'u8]])
+let signedPlan = newFlatPlan(signedProgram, GasCycleLimit(100000))
+var signedCapture = prepareFlatPlan(signedProgram, GasCycleLimit(100000), defaultFlatLimits(),
+    false)
+assert signedCapture.error == FlatError.None
+let signedPlainPlan = takeValue(signedCapture)
+var signedBranchCases = 0
+for initial in [0'u64, 1, 17, 30, 31, 32, 33]:
+  for budget in [0'u64, 1, 2, 3, 4, 5, 31, 32, 64, 1000]:
+    var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000),
+        registers: default(RegisterFile))
+    info.registers[0] = RegisterValue(initial)
+    info.registers[1] = RegisterValue(32)
+    var native = newFlatFrame(signedPlan, [], info)
+    var plain = newFlatFrame(signedPlainPlan, [], info)
+    runFlat(native, budget)
+    runFlat(plain, budget)
+    assert native.reason == plain.reason and native.exit == plain.exit
+    assert native.remaining == plain.remaining and native.info == plain.info
+    checkFlatSource(native, [])
+    checkFlatSource(plain, [])
+    if budget == 1000:
+      assert native.reason == StepError.None and native.exit == StepExit.Panic
+      assert native.info.pc == CodeAddress(0)
+      assert native.info.registers[0] == RegisterValue(max(initial+1, 32'u64))
+    inc signedBranchCases
+stdout.writeLine("X86_SIGNED_BRANCH_PREFIX_CASES," & $signedBranchCases)
+
 
 # Both charged blocks have positively cached scalar arms; the second returns to the first or exits to a real panic.
 let pairedProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
