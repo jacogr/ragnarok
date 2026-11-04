@@ -96,3 +96,8 @@ proc narrowReportSource*(): AvailabilityCommitment =
   bytes[25] = 0
   fixture.parameters = decodeParameters(bytes).value
   availabilityFromExecution(executionRun(fixture, core = 0).value, 9)
+
+proc computedAvailabilityAtCore*(kind: int, core: uint64, shards = 6'u16): AvailabilityCommitment =
+  ## Actual execution at a small canonical core supplies independent report/catalog recovery fixtures without changing frozen defaults.
+  let exports = prepareExportErasure(exportBundle(kind, shards, core), exportErasureLimits()).value
+  prepareAvailabilityCommitment(exports, reportAvailabilityLimits()).value
