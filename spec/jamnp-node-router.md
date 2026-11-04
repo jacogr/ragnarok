@@ -62,3 +62,11 @@ native callback addresses must remain stable. Supporting route
 suites separately cover CE129 proofs and CE143 canonical full-hash checks. Ordinary Services/CLI
 wiring and outbound read scheduling remain separate integration work; these tests do not claim
 complete JAMNP-S compatibility.
+
+Bootstrap transport topology is selected from the explicitly finalized snapshot, independently
+of the best-head/finalized claims encoded in UP0. Selecting the unfinalized best snapshot here
+would bypass the ordinary epoch gate before the first advance. A real TLS regression keeps
+finality in the old epoch while the best enters a new epoch whose pending roster adds peer B.
+With guest budgets zero, B must receive a completed connection rejection and consume no
+validator reservation; explicitly finalizing that same child admits B as a positive control.
+The original best-seeded implementation fails the exact unfinalized-reservation assertion.

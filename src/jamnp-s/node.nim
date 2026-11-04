@@ -424,7 +424,8 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   owner.failure = NodeError.None
   owner.version = 1
   owner.opened = true
-  let opened = owner.node.open(config, view.bestBlock, limits, streamEvent, peerEvent, addr owner,
+  let opened = owner.node.open(config, view.finalizedBlock, limits, streamEvent, peerEvent,
+    addr owner,
     admissionCallback = admissible)
   if opened != ConnectionError.None:
     owner.close()

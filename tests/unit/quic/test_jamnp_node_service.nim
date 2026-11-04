@@ -6,7 +6,7 @@
 ## Stable full-state node owner: explicit finality, native factory failure and retirement lifetimes.
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/[jamnp_topology_fixture, arc_evidence, jamnp_node_probe, jamnp_connection_pair]
-import ../../../src/jamnp-s/[node, connections, read_stream, identity, admission]
+import ../../../src/jamnp-s/[node, connections, read_stream, identity, admission, topology]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/quic/[transport, address]
 import ../../../src/codec/state/safrole
@@ -206,8 +206,49 @@ proc paired(ipv6: bool) =
       broadcast = true
       break # Independently scheduled host processing receives the subsequent complete header message.
   assert broadcast and first.source(firstPeer).error == NodeError.None, "paired header announcement"
+proc bootstrap(finalizeNew: bool) {.raises.} =
+  ## A future validator appears only in the unfinalized new epoch's pending roster; it has no old-union reservation.
+  let peerKey = certificateIdentity(getEnv("RAGNAROK_TEST_CERT_B")).value
+  let previous = topologyRecords(0, 6)
+  let current = topologyRecords(1, 9)
+  let pending = topologyRecords(2, 12)
+  let parent = topologyCaptured([previous, current, pending])
+  var next = topologyRecords(3, 6)
+  next[0].ed25519 = peerKey
+  let child = topologyCaptured([current, pending, next], atSlot = 12, parent = parent)
+  assert parent.error == GenesisError.None and child.error == GenesisError.None
+  assert not captureValidatorTopology(parent, topologyLimits()).value.contains(peerKey)
+  assert captureValidatorTopology(child, topologyLimits()).value.contains(peerKey)
+  let selected = if finalizeNew: child else: parent
+  let restored = restoreLocalChainView([parent, child], selected)
+  assert restored.error == ViewAdvanceError.None
+  var service = default(NodeService)
+  var probe = default(NodeProbe)
+  defer:
+    probe.close()
+    service.close()
+  let startup = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
+      "jamnp-s/1/00000000", builders = 0, others = 0, streams = 512)
+  assert service.open(startup, restored.value, topologyLimits()) == NodeError.None
+  probe.open(service.localPort)
+  let deadline = getMonoTime()+initDuration(seconds = 5)
+  if finalizeNew:
+    while not probe.authenticated or service.peerCount == 0:
+      assert getMonoTime() < deadline, "finalized new epoch admits the same authenticated validator"
+      assert service.poll(getMonoTime(), 0)
+      probe.poll()
+    assert service.peerCount == 1
+  else:
+    while probe.retiredConnections == 0:
+      assert getMonoTime() < deadline, "refused source completes a real connection-close observation"
+      assert service.poll(getMonoTime(), 0)
+      probe.poll()
+      assert service.peerCount == 0, "unfinalized new-epoch topology must not grant a startup validator reservation"
+    assert service.peerCount == 0 and probe.retiredConnections > 0 # TLS completion is not validator admission.
 proc main() {.raises.} =
   ## Failed/default inputs cannot grant a socket, ticket or peer source; repeated full lifetimes release ARC owners.
+  bootstrap(false)
+  bootstrap(true)
   let view = source()
   var unopened = default(NodeService)
   assert not unopened.isOpen and unopened.localPort == 0 and unopened.peerCount == 0
