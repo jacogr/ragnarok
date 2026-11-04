@@ -11,10 +11,11 @@ import ../../../src/jamnp-s/work_duty
 import ../../../src/state/input_refinement
 import "../../../src/state/import/inputs" as import_inputs
 import ../../../src/codec/bounded
+from ../../../src/codec/state/safrole import StateTime
 import ../../../src/codec/work/package as work_package
 import ../../../src/chain/genesis
 import ../../support/[jamnp_work_fixture, jamnp_read_validation_context, pvm_input_refinement,
-    pvm_import_inputs, arc_evidence]
+    pvm_import_inputs, arc_evidence, jamnp_work_report_fixture]
 
 proc waitDone(services: var Services) =
   ## A bounded deadline observes only worker scalar state; Done continues to occupy the shared graph lease.
@@ -60,6 +61,13 @@ proc managed(f: WorkFixture) {.raises.} =
   assert services.workSessionPhase(token) == WorkSessionPhase.Completing
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Complete
   services.checkExecution(token)
+  assert services.beginWorkReport(token, workReportLimits(), StateTime(20)).error ==
+    StateProofAdmissionError.QueryFailure # Computation-only typed admission never grants source-derived network duty or shard choice.
+  assert services.beginWorkReport(default(WorkSessionToken), workReportLimits(), StateTime(
+      20)).error ==
+    StateProofAdmissionError.QueryFailure
+  assert services.workSessionPhase(token) == WorkSessionPhase.Complete and
+      services.stateProofAvailable
   assert services.retireWorkSubmission(token)
   assert services.workSessionPhase(token) == WorkSessionPhase.Empty
   assert services.beginWorkBundle(token, f.extrinsics, f.segments, f.proofs).error ==

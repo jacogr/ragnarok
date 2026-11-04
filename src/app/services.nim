@@ -53,7 +53,10 @@ import ./proof/ticket_production
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_stream
-from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid
+import ../jamnp-s/work_report
+from ../state/computed/report import ComputedReportInfo, computedReportInfo, value
+from ../state/computed/guarantee import computedGuaranteeReport, value
+from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid, activeAt, shardCount
 from ../codec/work/package import PackageConfig
 from ../codec/work/digest import Gas
 import ../state/input_refinement
@@ -193,7 +196,7 @@ proc captureStartupAnchor(view: ChainView): StartupBlockAnchor =
 
 type
   WorkSessionPhase* {.pure.} = enum ## Only scalar state is observed while any canonical borrower owns the graph.
-    Empty, Authorizing, Authorized, Completing, Complete, Failed, Retired
+    Empty, Authorizing, Authorized, Completing, Complete, Reporting, ReportReady, Failed, Retired
   WorkSessionIdentity = ref object ## Host-only namespace never crosses into the CPU job or canonical state graph.
     marker: uint8
   WorkSessionToken* = object ## Private owner identity and nonwrapping generation reject foreign and stale session controls.
@@ -238,6 +241,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   workTicket: ProofWorkerTicket
   workInfo: WorkSubmissionInfo
   workDuty: WorkDuty
+  workReportInfo: ComputedReportInfo
   workHead: BlockHash
   ticketSigner: TicketSigner
   ticketSignerReady: bool
@@ -309,6 +313,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.workInput)
   `=wasMoved`(services.workContext)
   `=wasMoved`(services.workDuty)
+  `=wasMoved`(services.workReportInfo)
   `=wasMoved`(services.workOutcome)
   `=wasMoved`(services.workIdentity)
   `=wasMoved`(services.workTicket)
@@ -365,6 +370,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.workInput)
   `=destroy`(services.workContext)
   `=destroy`(services.workDuty)
+  `=destroy`(services.workReportInfo)
   `=destroy`(services.workOutcome)
   `=destroy`(services.workIdentity)
   `=destroy`(services.workTicket)
@@ -624,6 +630,7 @@ proc close*(services: var Services) =
   services.workActive = false
   services.workInfo = default(WorkSubmissionInfo)
   services.workDuty = default(WorkDuty)
+  services.workReportInfo = default(ComputedReportInfo)
   services.workHead = default(BlockHash)
   if services.mcp.enabled: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping MCP listener")
   services.mcp.close()
@@ -1786,6 +1793,7 @@ proc reapWorkSubmission*(services: var Services): bool =
   services.workTicket = default(ProofWorkerTicket)
   services.workInfo = default(WorkSubmissionInfo)
   services.workDuty = default(WorkDuty)
+  services.workReportInfo = default(ComputedReportInfo)
   services.workHead = default(BlockHash)
   services.workPhase = WorkSessionPhase.Empty
   true
@@ -1936,6 +1944,33 @@ proc beginWorkPackage*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Completing)
+proc stageWorkReport(services: var Services, limits: WorkReportLimits): WorkJobError =
+  ## Retain only this session's original completed refinement; every temporary source alias retires before CPU submission.
+  if services.workOutcome.kind != WorkJobResultKind.Refined: return WorkJobError.InvalidInput
+  let captured = captureWorkReport(services.workOutcome.execution, services.workDuty.shardCount, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkReport*(services: var Services, token: WorkSessionToken,
+    limits: WorkReportLimits, now: StateTime): WorkSubmissionStart =
+  ## Only the fresh original network session chooses its actual source roster count; no caller report or shard-count replacement is accepted.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workPhase != WorkSessionPhase.Complete: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.workDuty.activeAt(now): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.workSourceCurrent:
+    services.workPhase = WorkSessionPhase.Retired
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkReport(limits)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.Reporting)
 proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): WorkSessionPhase =
   ## Exact matching Done collection installs source-bearing artifacts privately and exposes only scalar phase.
   if not services.matchesWork(token): return WorkSessionPhase.Empty
@@ -1962,6 +1997,10 @@ proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): Wo
     of WorkJobResultKind.Refined:
       services.workOutcome = outcome
       services.workPhase = WorkSessionPhase.Complete
+    of WorkJobResultKind.Reported:
+      services.workOutcome = outcome
+      services.workReportInfo = outcome.reportTranscript.computedGuaranteeReport.value.computedReportInfo.value
+      services.workPhase = WorkSessionPhase.ReportReady
     else:
       services.workOutcome = outcome
       services.workPhase = WorkSessionPhase.Failed # Genuine failure details stay owned until explicit safe extraction or retirement.
@@ -1981,9 +2020,14 @@ proc workSubmissionInfo*(services: Services, token: WorkSessionToken): WorkSubmi
 func workSubmissionDuty*(services: Services, token: WorkSessionToken): WorkDuty {.requires: services.matchesWork(token).} =
   ## Fixed assignment metadata stays safe to observe while another borrower owns the canonical graph; defaults have no duty claim.
   services.workDuty
+func workSubmissionReportInfo*(services: Services,
+    token: WorkSessionToken): ComputedReportInfo {.requires:
+    services.matchesWork(token) and services.workPhase == WorkSessionPhase.ReportReady.} =
+  ## Fixed copied report metadata is safe during foreign graph leases; source-bearing transcript access remains gated.
+  services.workReportInfo
 proc workSubmissionOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
     services.stateProofAvailable and services.matchesWork(token) and services.workPhase in {
-        WorkSessionPhase.Complete, WorkSessionPhase.Failed}.} =
+        WorkSessionPhase.Complete, WorkSessionPhase.ReportReady, WorkSessionPhase.Failed}.} =
   ## The caller must retire every returned source-bearing alias before admitting any subsequent shared-graph CPU job.
   services.workOutcome
 

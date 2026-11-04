@@ -79,6 +79,10 @@ for index in 0..<6:
   assert array[32, byte](duty.localIdentity) == array[32, byte](key(index+1))
   assert uint32(duty.sourceTime) == 16 and uint32(duty.observedTime) == 20
   assert duty.epochDuration == 12 and duty.rotationDuration == 4
+  assert uint16(duty.shardCount) == 6 # Three configured cores do not imply nine actual validators.
+  assert duty.activeAt(StateTime(20)) and duty.activeAt(StateTime(23))
+  assert not duty.activeAt(StateTime(19)) and not duty.activeAt(StateTime(24))
+  assert not default(WorkDuty).activeAt(StateTime(20))
   assert array[32, byte](duty.sourceRoot) == array[32, byte](source.commitment.root)
   assert captureWorkDuty(source, profile, workRecipient(key(index+1), StateTime(20)),
     CoreIndex(1-expected), cap).error == WorkDutyError.NotAssigned
@@ -119,6 +123,7 @@ for index in 0..<9:
   let selected = captureWorkDuty(larger, profile, workRecipient(key(index+1), StateTime(20)),
     CoreIndex(NineAt20[index]), cap)
   assert selected.error == WorkDutyError.None, "nine-member source duty"
+  assert uint16(selected.value.shardCount) == 9
 let excluded = state(offender = true)
 assert captureWorkDuty(excluded, profile, workRecipient(key(2), StateTime(20)), CoreIndex(0),
     cap).error == WorkDutyError.NotAssigned
