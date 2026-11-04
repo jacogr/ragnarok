@@ -652,8 +652,11 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if peerPosition < 0: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
       NodeRequestTicket](status: NodeError.Unavailable)
-  if owner.node.announcements(peer) and owner.source(peer).error !=
-      NodeError.None: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
+  let independent = request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards,
+      ReadKind.Segments]
+  if not independent and owner.node.announcements(peer) and owner.source(peer).error !=
+      NodeError.None:
+    return NodeResult[NodeRequestTicket](status: NodeError.Unavailable) # Named import data uses independently selected roots, not UP0 chain claims.
   if owner.reads >= MaxNodeReads or owner.frameCount(peer, FrameKind.Read)+owner.frameCount(peer,
       FrameKind.Client)+owner.frameCount(peer, FrameKind.Work) >= 2:
     return NodeResult[NodeRequestTicket](status: NodeError.LimitExceeded)

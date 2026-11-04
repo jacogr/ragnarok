@@ -7,10 +7,13 @@ import ../../src/quic/transport
 import ../../src/jamnp-s/protocol
 
 type
+  ProbeRead* = object ## Bounded independent request/response scripts support several source-coordinate fetches on one authenticated peer.
+    request*, reply*: seq[byte]
+    holdFin*: bool
   ProbeFlow* = object ## Stable slots retain observations after their native handle retires.
     handle: NativeStream
     number*: NativeStreamId
-    output, input: seq[byte]
+    output, input, expected: seq[byte]
     offset: int
     enabled, persistent, remote: bool
     opened*, sentFin*, receivedFin*, reset*, closed*: bool
@@ -23,6 +26,7 @@ type
     ticketEpoch: uint32
     ticketSelector: byte
     expectedRead, readReply: seq[byte]
+    reads: seq[ProbeRead]
     expected: array[32, byte]
 proc `=copy`(destination: var NodeProbe, source: NodeProbe) {.error.}
   ## Native callbacks borrow exactly one stable probe address.
@@ -41,8 +45,14 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
       assert probe.serveReads and probe.issued == probe.opened and probe.issued < probe.flows.len
       position = probe.issued
       inc probe.issued
-      probe.flows[position] = ProbeFlow(remote: true, output: probe.readReply,
-          persistent: probe.holdReplyFin)
+      if probe.reads.len > 0:
+        assert probe.served < probe.reads.len, "unexpected scripted remote read"
+        let selected = probe.reads[probe.served]
+        probe.flows[position] = ProbeFlow(remote: true, output: selected.reply,
+          expected: selected.request, persistent: selected.holdFin)
+      else:
+        probe.flows[position] = ProbeFlow(remote: true, output: probe.readReply,
+          expected: probe.expectedRead, persistent: probe.holdReplyFin)
     else:
       assert probe.opened < probe.issued
       position = probe.opened # Locally queued probe intents were installed before Native open.
@@ -78,7 +88,7 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
               assert flow.input[5+index] == byte((probe.ticketEpoch shr (index*8)) and 255)
             assert flow.input[9] <= 1 # Full proof verification happens outside callbacks against an independent source.
           else:
-            assert flow.input == probe.expectedRead, "application client sends the independent literal request before FIN"
+            assert flow.input == flow.expected, "application client sends the independent literal request before FIN"
           inc probe.served
           flow.enabled = true
           wantWrite(stream, 1) # Return only the configured literal reply; no canonical graph is present in this raw responder.
@@ -142,6 +152,12 @@ proc expectRead*(probe: var NodeProbe, request, reply: seq[byte], holdFin = fals
   probe.serveReads = true
   probe.expectedRead = request
   probe.readReply = reply
+proc expectReads*(probe: var NodeProbe, reads: seq[ProbeRead]) =
+  ## Install a finite script before opening native streams; callbacks compare literal bytes and perform no protocol hashing.
+  assert reads.len > 0 and reads.len < probe.flows.len
+  probe.ticketReads = false
+  probe.serveReads = true
+  probe.reads = reads
 proc expectTickets*(probe: var NodeProbe, epoch: uint32, selector = 0'u8,
     reply: seq[byte] = @[], holdFin = false) =
   ## Independently bound the literal ticket envelope; returned proof bytes are checked by the test outside Native callbacks.

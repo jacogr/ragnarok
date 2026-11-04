@@ -7,6 +7,7 @@ import std/[assertions, monotimes, times]
 import ./services
 import ./preimage_followup
 import ./work_dispatch
+import ../jamnp-s/work_recovery
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
     report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission,
@@ -137,6 +138,10 @@ proc configureWorkAcquisition*(owner: var ApplicationNode, policy: WorkAcquisiti
   ## Optional CE133 fetch participation requires an explicitly configured work dispatcher and independent network ceilings.
   if not owner.opened: return false
   owner.work.configureAcquisition(policy)
+proc configureWorkRecovery*(owner: var ApplicationNode, policy: WorkRecoveryPolicy): bool =
+  ## Explicit original-assurer fallback policies are fixed before any work session is admitted.
+  if not owner.opened: return false
+  owner.work.configureRecovery(policy)
 func workPhase*(owner: ApplicationNode): WorkDispatchPhase =
   ## Observe detached lifecycle without borrowing the retained result.
   owner.work.phase

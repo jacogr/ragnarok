@@ -31,7 +31,7 @@ type Variant {.pure.} = enum ## Each case has a real positive source and changes
           AssurerCloseDone, AssurerMissing, Batch, BatchResetDone, BatchCloseDone, BatchForeignDone,
             BatchUnknownRoot, BatchTruncated, BatchOverCount, PackageFetch, PackageEmpty,
               PackageBadProof, PackageReadLimit, PackageTimeout, PackageReset, PackageClose,
-                PackageForeign, PackageSourceWait
+                PackageForeign, PackageGridRead
 proc publicKey(name = "RAGNAROK_TEST_PEER_A"): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv(name))
@@ -47,8 +47,8 @@ proc frame(payload: openArray[byte]): seq[byte] =
 proc wire(f: WorkFixture, variant: Variant): seq[byte] =
   ## Literal messages include original committed inputs and a real imported-segment proof.
   result = @[if variant == Variant.Package or variant in
-      Variant.PackageFetch..Variant.PackageSourceWait: 133'u8 else: 146'u8]
-  if variant == Variant.Package or variant in Variant.PackageFetch..Variant.PackageSourceWait:
+      Variant.PackageFetch..Variant.PackageGridRead: 133'u8 else: 146'u8]
+  if variant == Variant.Package or variant in Variant.PackageFetch..Variant.PackageGridRead:
     var first = @[0'u8, 0]
     for octet in f.package: first.add(octet)
     for octet in frame(first): result.add(octet)
@@ -58,7 +58,7 @@ proc wire(f: WorkFixture, variant: Variant): seq[byte] =
     for octet in frame(first): result.add(octet)
     for octet in frame(f.package): result.add(octet)
   for octet in frame(f.extrinsics): result.add(octet)
-  if variant != Variant.Package and variant notin Variant.PackageFetch..Variant.PackageSourceWait:
+  if variant != Variant.Package and variant notin Variant.PackageFetch..Variant.PackageGridRead:
     for octet in frame(f.segments): result.add(octet)
     var proofs = f.proofs
     if variant == Variant.CorruptProof: proofs[1] = proofs[1] xor 1
@@ -212,9 +212,9 @@ proc scenario(variant: Variant) {.raises.} =
   ## Every case starts from actual Tiny PVM code, committed imports, a complete source and matching server identity.
   let fixture = workFixture(external = variant != Variant.PackageEmpty, exported = variant in
       Variant.Batch..Variant.BatchOverCount)
-  let saved = if variant in Variant.PackageFetch..Variant.PackageSourceWait:
+  let saved = if variant in Variant.PackageFetch..Variant.PackageGridRead:
     fixture.workSnapshot(publicKey(), publicKey("RAGNAROK_TEST_PEER_B"), neighbour = variant ==
-        Variant.PackageSourceWait)
+        Variant.PackageGridRead)
   else: fixture.workSnapshot(publicKey())
   writeFile("work-dispatch-chain.json", workChainText(saved))
   var settings = default(Options)
@@ -248,7 +248,7 @@ proc scenario(variant: Variant) {.raises.} =
   if variant != Variant.Disabled:
     assert host.configureWork(policy)
     assert not host.configureWork(policy) # A live controller's policy cannot be rebound underneath an admitted source.
-  if variant in Variant.PackageFetch..Variant.PackageSourceWait:
+  if variant in Variant.PackageFetch..Variant.PackageGridRead:
     # Optional fetch policy has explicit independent attempt, deadline and retained-reply ceilings.
     assert not host.configureWorkAcquisition(default(WorkAcquisitionPolicy))
     let cap = ByteLimit(if variant == Variant.PackageReadLimit: 1024 else: 16*1024*1024)
@@ -283,18 +283,6 @@ proc scenario(variant: Variant) {.raises.} =
     # Disabled acquisition, genuine wrong-core duty, resource refusal and invalid fetched proofs never receive success FIN.
     waitReset(host, services, probe, flow)
     assert host.acceptedWork == 0
-    return
-  if variant == Variant.PackageSourceWait:
-    # A valid grid peer without its UP0 source is temporarily unavailable, not a failed fetch attempt.
-    waitPhase(host, services, probe, WorkDispatchPhase.Acquiring)
-    pump(host, services, probe, 20)
-    assert host.workPhase == WorkDispatchPhase.Acquiring and probe.served == 0
-    assert not services.stateProofActive and host.acceptedWork == 0
-    probe.abort(flow)
-    let deadline = getMonoTime()+initDuration(seconds = 8)
-    while host.workPhase != WorkDispatchPhase.Idle:
-      assert getMonoTime() < deadline
-      pump(host, services, probe)
     return
   if variant in [Variant.PackageTimeout, Variant.PackageReset, Variant.PackageClose,
       Variant.PackageForeign]:
@@ -623,7 +611,7 @@ proc scenario(variant: Variant) {.raises.} =
   assert host.workPhase == WorkDispatchPhase.Idle
 proc main() {.raises.} =
   ## Run live lifecycle witnesses serially so native sockets, workers and bridge libraries never share mutable ownership.
-  for variant in Variant.Success..Variant.PackageSourceWait:
+  for variant in Variant.Success..Variant.PackageGridRead:
     scenario(variant)
   echo "JAMNP-S application work dispatch passed"
 try:

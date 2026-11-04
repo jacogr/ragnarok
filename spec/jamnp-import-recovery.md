@@ -42,7 +42,41 @@ and report controls retained746928 and957488 bytes respectively over their1000 c
 Formatting, inventory, application build and Linux-target semantic checking passed. Linux-target
 checking is not native Linux CI. Existing scoped controls remain applicable to unchanged code.
 
-Managed original-grant/catalog binding, CE139-first acquisition, per-piece CE140 authentication and
-retry, whole-package completion, ordinary operator activation and real TLS fallback verification
-remain required before this feature is complete. No detached arithmetic or framing result grants
-report credentials or availability authority.
+The managed controller now binds the original grant and catalog, acquires CE139 pieces, retries
+with independently authenticated CE140 pieces and completes the original package before actual
+refinement. Ordinary operator activation and bounded connection establishment to disconnected
+original assurers remain outstanding. Recovery currently uses existing authenticated connections;
+no current-roster substitution is permitted. No detached arithmetic or framing result grants report
+credentials or availability authority.
+
+## Managed controller contract
+
+The optional policy reserves whole-session field/hash budgets for two recoveries per occurrence
+and every declared proven packet check. Packet memory is bounded separately from decoded import
+retention and arithmetic scratch. The original grant's exact posterior map must match the captured
+view before catalog work; a sealed header hash alone does not prove that identity. All accepted
+packet/import owners remain private immutable progress. Each next step copies bounded descriptors
+and shares immutable children, avoiding repeated copies of the retained raw payloads.
+
+CE139 begins each original occurrence. Inconsistent reconstructed data discards all unproven
+packets and retries that occurrence with CE140. Each proven response verifies both requested rows
+before either contributes to the threshold. Exhausted unproven responders may also switch to
+proven mode. Local backend/resource failures do not accuse a peer or invalidate an erasure root.
+The exact original assurer identity and assigned shard apply even after roster retirement. Host
+polling has explicit peer-scan and request/deadline ceilings, and owns only detached bytes/tokens.
+Named CE139/140/148 reads need no UP0 chain claim: their independent expected roots supply data
+verification, while chain-dependent reads keep their existing UP0 gate.
+
+## Managed controller evidence
+
+The checked native `jamnp_work_recovery` suite passed nine real TLS scenarios: unproven recovery,
+proven retry, refusal of a bad proven piece followed by recovery, proven invalid-root refusal,
+reset/close while awaiting data, a foreign uncollected worker result, and reset/close with the exact
+recovery result uncollected. No rejected or cancelled session acknowledges a package. Source
+controls reject a different posterior map under the same sealed header and every truncated packet.
+One thousand complete two-import sessions retained184320 bytes before and after.
+
+Existing49 work-dispatch scenarios, managed submission, submission components, application
+consumer controls, application build, formatting and inventory checks passed with this controller. Linux-target semantic checking of the recovery core passed. The application cross-target
+check reproduces the unchanged CLI catalog compiler assertion tracked as NIM-007; this is not a
+native Linux runtime result. The pinned compiler and all dependency pins remain unchanged.

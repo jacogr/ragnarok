@@ -57,6 +57,8 @@ import ./proof/ticket_verification as ticket_job
 import ./proof/ticket_production
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
+import ../jamnp-s/work_recovery
+from ../codec/state/safrole import StateValidatorIndex
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
 import ../jamnp-s/[availability_read, availability_store]
@@ -204,7 +206,8 @@ proc captureStartupAnchor(view: ChainView): StartupBlockAnchor =
 
 type
   WorkSessionPhase* {.pure.} = enum ## Only scalar state is observed while any canonical borrower owns the graph.
-    Empty, Authorizing, Authorized, Completing, Complete, Reporting, ReportReady, Failed, Retired
+    Empty, Authorizing, Authorized, Completing, Complete, Reporting, ReportReady, Failed, Retired,
+      Recovering, CheckingRecovery
   WorkSessionIdentity = ref object ## Host-only namespace never crosses into the CPU job or canonical state graph.
     marker: uint8
   WorkSessionToken* = object ## Private owner identity and nonwrapping generation reject foreign and stale session controls.
@@ -243,6 +246,10 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   productionInput: TicketProductionJob
   workInput: WorkSubmissionJob
   workContext: AuthorizedWorkContext
+  workRecovery: WorkRecovery
+  workRecoveryInfo: WorkRecoveryInfo
+  workRecoveryJobs: uint64
+  workRecoveryEnabled, workFallbackAllowed: bool
   workOutcome: WorkJobResult
   workIdentity: nil WorkSessionIdentity
   workGeneration: uint64
@@ -325,6 +332,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.productionInput)
   `=wasMoved`(services.workInput)
   `=wasMoved`(services.workContext)
+  `=wasMoved`(services.workRecovery)
   `=wasMoved`(services.workDuty)
   `=wasMoved`(services.workReportInfo)
   `=wasMoved`(services.availabilityStore)
@@ -385,6 +393,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.productionInput)
   `=destroy`(services.workInput)
   `=destroy`(services.workContext)
+  `=destroy`(services.workRecovery)
   `=destroy`(services.workDuty)
   `=destroy`(services.workReportInfo)
   `=destroy`(services.availabilityStore)
@@ -652,6 +661,11 @@ proc close*(services: var Services) =
   services.stopPreparation() # Join before releasing any canonical or listener alias.
   services.workInput = default(WorkSubmissionJob)
   services.workContext = default(AuthorizedWorkContext)
+  services.workRecovery = default(WorkRecovery)
+  services.workRecoveryInfo = default(WorkRecoveryInfo)
+  services.workRecoveryJobs = 0
+  services.workRecoveryEnabled = false
+  services.workFallbackAllowed = false
   services.workOutcome = default(WorkJobResult)
   services.workIdentity = nil
   services.workTicket = default(ProofWorkerTicket)
@@ -1889,6 +1903,11 @@ proc reapWorkSubmission*(services: var Services): bool =
   if not services.stateProofAvailable or services.workActive: return false
   services.workInput = default(WorkSubmissionJob)
   services.workContext = default(AuthorizedWorkContext)
+  services.workRecovery = default(WorkRecovery)
+  services.workRecoveryInfo = default(WorkRecoveryInfo)
+  services.workRecoveryJobs = 0
+  services.workRecoveryEnabled = false
+  services.workFallbackAllowed = false
   services.workOutcome = default(WorkJobResult)
   services.workTicket = default(ProofWorkerTicket)
   services.workInfo = default(WorkSubmissionInfo)
@@ -1917,19 +1936,22 @@ proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmission
   WorkSubmissionStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 proc stageWorkAuthorization(services: var Services, header: WorkSubmissionHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
-    recipient = default(WorkRecipient), dutyLimits = default(WorkDutyLimits)): WorkJobError =
+    recipient = default(WorkRecipient), dutyLimits = default(WorkDutyLimits),
+    recovery = default(WorkRecoveryPolicy)): WorkJobError =
   ## Complete-state and successful capture aliases retire in this helper before CPU submission.
   let head = services.canonical.chainView.bestBlock
   if head.error != GenesisError.None: return WorkJobError.InvalidInput
   let captured = captureWorkAuthorization(header, head.value.stateSnapshot,
-    head.value.chainParameters, limits, execution, recipient, dutyLimits)
+    head.value.chainParameters, limits, execution, recipient, dutyLimits,
+    services.canonical.chainView, recovery)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   services.workInfo = header.submissionInfo.value
   services.workHead = head.value.blockHash
   WorkJobError.None
 proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
-    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkSubmissionStart {.raises.} =
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recovery = default(WorkRecoveryPolicy)): WorkSubmissionStart {.raises.} =
   ## Optional explicit builder admission shares full-state capacity; partial light state never grants a work context.
   if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
   if services.light.active: return WorkSubmissionStart(
@@ -1941,7 +1963,7 @@ proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
       status: StateProofAdmissionError.Busy)
   if services.workGeneration == high(uint64): return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
-  let staged = services.stageWorkAuthorization(header, limits, execution)
+  let staged = services.stageWorkAuthorization(header, limits, execution, recovery = recovery)
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
@@ -1950,7 +1972,8 @@ proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
   services.submitWork(WorkSessionPhase.Authorizing)
 proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
-    recipient: WorkRecipient, dutyLimits: WorkDutyLimits): WorkJobError =
+    recipient: WorkRecipient, dutyLimits: WorkDutyLimits,
+        recovery: WorkRecoveryPolicy): WorkJobError =
   ## Raw transcript and decoded package aliases retire here; only private job ownership survives before CPU admission.
   if not header.valid or not recipient.valid: return WorkJobError.InvalidInput
   let first = header.firstMessage
@@ -1962,10 +1985,11 @@ proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
     accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(204800))
   let decoded = decodeWorkSubmission(header.kind, first, package, config)
   if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
-  services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits)
+  services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits, recovery)
 proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
-    recipient: WorkRecipient, dutyLimits: WorkDutyLimits): WorkSubmissionStart {.raises.} =
+    recipient: WorkRecipient, dutyLimits: WorkDutyLimits,
+    recovery = default(WorkRecoveryPolicy)): WorkSubmissionStart {.raises.} =
   ## Native actors pass only detached raw bytes; every decoded header/canonical alias retires before the worker starts.
   if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
   if services.light.active: return WorkSubmissionStart(
@@ -1977,7 +2001,7 @@ proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
       status: StateProofAdmissionError.Busy)
   if services.workGeneration == high(uint64): return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
-  let staged = services.stageWorkWire(header, limits, execution, recipient, dutyLimits)
+  let staged = services.stageWorkWire(header, limits, execution, recipient, dutyLimits, recovery)
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
@@ -1993,6 +2017,100 @@ proc workSubmissionCurrent*(services: Services, token: WorkSessionToken): bool =
   ## A foreign lease prevents observation; otherwise compare original captured provenance with the actual canonical best head.
   if not services.stateProofAvailable or not services.matchesWork(token): return false
   services.workSourceCurrent
+func workRecoveryEnabled*(services: Services, token: WorkSessionToken): bool =
+  ## Cached scalar capability presence is safe even through a foreign uncollected Done lease.
+  services.matchesWork(token) and services.workRecoveryEnabled
+func workFallbackAllowed*(services: Services, token: WorkSessionToken): bool =
+  ## Only a collected remote import refusal can resume the retained original authorization for fallback.
+  services.matchesWork(token) and services.workFallbackAllowed
+func workRecoveryInfo*(services: Services, token: WorkSessionToken): WorkRecoveryInfo {.requires: services.matchesWork(token).} =
+  ## Scalar progress copies never touch private packet, catalog or grant aliases while another worker owns them.
+  services.workRecoveryInfo
+proc activateWorkRecovery*(services: var Services, token: WorkSessionToken): ReadError =
+  ## A missing preferred reply or collected peer import refusal can activate only the exact original prepared recovery context.
+  if not services.matchesWork(token) or not services.workRecoveryEnabled: return ReadError.Unavailable
+  if not services.stateProofAvailable: return ReadError.Busy
+  if services.workPhase != WorkSessionPhase.Authorized:
+    if services.workPhase != WorkSessionPhase.Failed or
+        not services.workFallbackAllowed: return ReadError.InvalidRequest
+  if not services.workSourceCurrent: return ReadError.Unavailable
+  services.workOutcome = default(WorkJobResult)
+  services.workFallbackAllowed = false
+  services.workPhase = WorkSessionPhase.Recovering
+  ReadError.None
+proc workRecoveryRequest*(services: Services, token: WorkSessionToken,
+    validator: StateValidatorIndex): WorkRecoveryResult[WorkRecoveryRequest] =
+  ## Return detached request/key facts only while the private graph is idle and this exact session is ready for a packet.
+  if not services.matchesWork(token) or not services.workRecoveryEnabled: return default(
+      WorkRecoveryResult[WorkRecoveryRequest])
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Recovering:
+    return default(WorkRecoveryResult[WorkRecoveryRequest])
+  services.workRecovery.recoveryRequest(validator)
+proc stageWorkRecoveryPacket(services: var Services, version: uint64,
+    validator: StateValidatorIndex, wire: openArray[byte]): WorkJobError =
+  ## Retire every context/progress capture alias before entering the exclusive worker.
+  let captured = captureWorkRecoveryPacket(services.workContext, services.workRecovery, version,
+      validator, wire)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc stageWorkRecoveryRetry(services: var Services): WorkJobError =
+  ## Only the private matching progress is captured; host code cannot set its proven discriminator.
+  let captured = captureWorkRecoveryRetry(services.workContext, services.workRecovery)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc stageRecoveredWorkPackage(services: var Services, extrinsics: openArray[byte]): WorkJobError =
+  ## Original package/progress owners remain private until this staging activation has retired.
+  let captured = captureRecoveredWorkPackage(services.workContext, services.workRecovery, extrinsics)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkRecoveryPacket*(services: var Services, token: WorkSessionToken, version: uint64,
+    validator: StateValidatorIndex, wire: openArray[byte]): WorkSubmissionStart =
+  ## Admit at most the declared number of bounded proof-check turns, independent from native/peer cancellation.
+  if not services.matchesWork(token) or not services.workRecoveryEnabled:
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Recovering:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  if not services.workSourceCurrent: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let limit = uint64(services.workRecovery.recoveryPolicy.limits.requests)
+  if services.workRecoveryJobs >= limit: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkRecoveryPacket(version, validator, wire)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  inc services.workRecoveryJobs
+  services.submitWork(WorkSessionPhase.CheckingRecovery)
+proc beginWorkRecoveryRetry*(services: var Services, token: WorkSessionToken): WorkSubmissionStart =
+  ## Exhaustion can only discard unproven bytes through a closed private CPU job.
+  if not services.matchesWork(token) or not services.workRecoveryEnabled:
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Recovering:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  if not services.workSourceCurrent: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkRecoveryRetry()
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.CheckingRecovery)
+proc beginRecoveredWorkPackage*(services: var Services, token: WorkSessionToken,
+    extrinsics: openArray[byte]): WorkSubmissionStart =
+  ## Complete recovered original input tables and refine only under this fresh source's next exclusive CPU turn.
+  if not services.matchesWork(token) or not services.workRecoveryEnabled:
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Recovering:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  if not services.workSourceCurrent: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageRecoveredWorkPackage(extrinsics)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.Completing)
 proc stageWorkBundle(services: var Services, extrinsics, segments,
     proofs: openArray[byte]): WorkJobError =
   ## Every context/capture alias retires in this helper activation before native CPU admission.
@@ -2123,7 +2241,34 @@ proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): Wo
     of WorkJobResultKind.Authorized:
       services.workContext = outcome.context
       services.workDuty = services.workContext.duty
+      services.workRecovery = services.workContext.recovery
+      let recovery = services.workRecovery.recoveryInfo
+      services.workRecoveryEnabled = recovery.error == WorkRecoveryError.None
+      if services.workRecoveryEnabled: services.workRecoveryInfo = recovery.value
       services.workPhase = WorkSessionPhase.Authorized
+    of WorkJobResultKind.RecoveryUpdated:
+      services.workRecovery = outcome.recovery
+      services.workRecoveryInfo = services.workRecovery.recoveryInfo.value
+      services.workOutcome = default(WorkJobResult)
+      services.workPhase = WorkSessionPhase.Recovering
+    of WorkJobResultKind.RecoveryFailure:
+      services.workOutcome = outcome
+      if services.workPhase == WorkSessionPhase.CheckingRecovery and
+          outcome.recoveryError.peerRejected:
+        services.workPhase = WorkSessionPhase.Recovering
+      else:
+        services.workPhase = WorkSessionPhase.Failed
+    of WorkJobResultKind.BodyFailure:
+      services.workOutcome = outcome
+      services.workPhase = WorkSessionPhase.Failed
+      if services.workRecoveryEnabled and services.workInfo.kind == WorkSubmissionKind.Package:
+        let reason = outcome.bodyError
+        if reason.error == WorkSubmissionError.InvalidMessage: services.workFallbackAllowed = true
+        if reason.error == WorkSubmissionError.ImportFailure:
+          services.workFallbackAllowed = reason.importError in [
+            work_imports.ImportJustificationError.InvalidProof,
+            work_imports.ImportJustificationError.InvalidIndex,
+            work_imports.ImportJustificationError.RootMismatch]
     of WorkJobResultKind.Refined:
       services.workOutcome = outcome
       services.workPhase = WorkSessionPhase.Complete

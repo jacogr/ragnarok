@@ -7,20 +7,27 @@ import ./services
 import ./work_policy/types as work_policy_types
 export work_policy_types
 import ../jamnp-s/[node, connections, work_submission, work_stream, work_duty, read_stream, read_client]
-from ../codec/state/safrole import StateTime, StateEdKey
+import ../jamnp-s/work_recovery
+from ../codec/state/safrole import StateTime, StateEdKey, StateValidatorIndex
 
 type
   WorkDispatchPhase* {.pure.} = enum ## Ready reserves the completed Services source until downstream processing releases it.
-    Idle, Authorizing, Receiving, Acquiring, Completing, Ready, Retiring
+    Idle, Authorizing, Receiving, Acquiring, Completing, Ready, Retiring, Recovering, CheckingRecovery
   WorkDispatcher* = object ## Stable noncopyable token owner contains no canonical ARC owner or worker ticket.
     policy: WorkDispatchPolicy
     phase: WorkDispatchPhase
     session: WorkSessionToken
     network: NodeWorkTicket
     body: UntrustedWorkBody
-    started: MonoTime
+    started, preferredStarted: MonoTime
     accepted: uint64
     acquisition: WorkAcquisitionPolicy
+    recovery: WorkRecoveryPolicy
+    recoveryRequest: WorkRecoveryRequest
+    recoveryTried: seq[bool]
+    recoveryOccurrence, recoveryRemaining, recoveryNext: int
+    recoveryRequests: uint64
+    recoveryProven, recoveryPrepared: bool
     fetchRequest: ReadRequest
     fetchReply: seq[byte]
     tried: seq[StateEdKey]
@@ -39,6 +46,9 @@ proc `=wasMoved`*(owner: var WorkDispatcher) {.nodestroy, requires: owner.phase 
   `=wasMoved`(owner.network)
   `=wasMoved`(owner.body)
   `=wasMoved`(owner.acquisition)
+  `=wasMoved`(owner.recovery)
+  `=wasMoved`(owner.recoveryRequest)
+  `=wasMoved`(owner.recoveryTried)
   `=wasMoved`(owner.fetchRequest)
   `=wasMoved`(owner.fetchReply)
   `=wasMoved`(owner.tried)
@@ -54,6 +64,9 @@ proc `=destroy`*(owner: WorkDispatcher) =
   `=destroy`(owner.network)
   `=destroy`(owner.body)
   `=destroy`(owner.acquisition)
+  `=destroy`(owner.recovery)
+  `=destroy`(owner.recoveryRequest)
+  `=destroy`(owner.recoveryTried)
   `=destroy`(owner.fetchRequest)
   `=destroy`(owner.fetchReply)
   `=destroy`(owner.tried)
@@ -82,11 +95,23 @@ proc configureAcquisition*(owner: var WorkDispatcher, policy: WorkAcquisitionPol
       WorkDispatchPhase.Idle: return false
   owner.acquisition = policy
   true
+proc configureRecovery*(owner: var WorkDispatcher, policy: WorkRecoveryPolicy): bool =
+  ## Fallback requires explicit policies and an idle configured acquisition owner; live source policy cannot be rebound.
+  if not owner.acquisition.valid or not policy.valid or owner.recovery.valid: return false
+  if owner.phase != WorkDispatchPhase.Idle: return false
+  owner.recovery = policy
+  true
 proc clear(owner: var WorkDispatcher) =
   ## Only detached buffers and host token namespaces retire here; Services controls source graph retirement.
   owner.session = default(WorkSessionToken)
   owner.network = default(NodeWorkTicket)
   owner.body = default(UntrustedWorkBody)
+  owner.recoveryRequest = default(WorkRecoveryRequest)
+  owner.recoveryTried = @[]
+  owner.recoveryPrepared = false
+  owner.recoveryRequests = 0
+  owner.recoveryNext = 0
+  owner.recoveryRemaining = 0
   owner.fetchRequest = default(ReadRequest)
   owner.fetchReply = @[]
   owner.tried = @[]
@@ -124,6 +149,7 @@ proc close*(owner: var WorkDispatcher, services: var Services, streams: var Node
     owner.clear()
   owner.policy = default(WorkDispatchPolicy)
   owner.acquisition = default(WorkAcquisitionPolicy)
+  owner.recovery = default(WorkRecoveryPolicy)
 func currentDuty(services: Services, token: WorkSessionToken, now: StateTime): bool =
   ## Detached duty expiry never borrows selected state, even while a foreign worker owns it.
   services.workSubmissionDuty(token).activeAt(now)
@@ -133,6 +159,118 @@ proc alreadyTried(owner: WorkDispatcher, identity: StateEdKey): bool =
   for previous in owner.tried:
     if array[32, byte](previous) == array[32, byte](identity): return true
   false
+proc fallback(owner: var WorkDispatcher, services: var Services, streams: var NodeService) =
+  ## Failed preferred data resumes only the retained original authorization; foreign leases cause a bounded wait.
+  if not owner.recovery.valid or not services.workRecoveryEnabled(owner.session):
+    owner.retire(services, streams)
+    return
+  let activated = services.activateWorkRecovery(owner.session)
+  if activated == ReadError.Busy: return
+  if activated != ReadError.None:
+    owner.retire(services, streams)
+    return
+  if owner.fetching: discard streams.cancelRequest(owner.fetch)
+  owner.fetching = false
+  owner.fetchReply = @[]
+  owner.replyReady = false
+  owner.recoveryPrepared = false
+  owner.phase = WorkDispatchPhase.Recovering
+proc recover(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
+    clock: MonoTime) =
+  ## Main-thread work owns only raw bytes, exact tokens and copied original-assurer facts; proof checks run on the shared worker.
+  let info = services.workRecoveryInfo(owner.session)
+  let limits = owner.recovery.limits
+  if info.complete:
+    if not services.stateProofAvailable: return
+    let started = services.beginRecoveredWorkPackage(owner.session, owner.body.extrinsics)
+    if started.error == StateProofAdmissionError.Busy: return
+    if started.error != StateProofAdmissionError.None:
+      owner.retire(services, streams)
+      return
+    owner.body = default(UntrustedWorkBody)
+    owner.phase = WorkDispatchPhase.Completing
+    return
+  if not owner.recoveryPrepared or info.occurrence != owner.recoveryOccurrence or info.proven !=
+      owner.recoveryProven:
+    # A new occurrence or proven retry never inherits attempted ordinals or unproven packet trust from the previous round.
+    owner.recoveryTried = newSeq[bool](info.population)
+    owner.recoveryOccurrence = info.occurrence
+    owner.recoveryProven = info.proven
+    owner.recoveryRemaining = info.population
+    owner.recoveryNext = 0
+    owner.recoveryPrepared = true
+  if owner.replyReady:
+    if not services.stateProofAvailable: return
+    let started = services.beginWorkRecoveryPacket(owner.session, owner.recoveryRequest.version,
+      owner.recoveryRequest.validator, owner.fetchReply)
+    if started.error == StateProofAdmissionError.Busy: return
+    if started.error != StateProofAdmissionError.None:
+      owner.retire(services, streams)
+      return
+    owner.fetchReply = @[]
+    owner.replyReady = false
+    owner.phase = WorkDispatchPhase.CheckingRecovery
+    return
+  if owner.fetching:
+    let reply = streams.takeReply(owner.fetch)
+    if reply.error == ReadError.None:
+      owner.fetchReply = reply.value.bytes
+      owner.fetching = false
+      owner.replyReady = true
+      return
+    let expired = (clock-owner.fetchStarted).inMilliseconds >= limits.timeoutMs
+    if not expired and streams.requestLive(owner.fetch): return
+    discard streams.cancelRequest(owner.fetch)
+    owner.fetching = false
+  if owner.recoveryRemaining == 0:
+    # Even an exhausted incomplete unproven round may retry with authenticated responses, without moving any raw owner on the host.
+    if info.proven:
+      owner.retire(services, streams)
+      return
+    if not services.stateProofAvailable: return
+    let started = services.beginWorkRecoveryRetry(owner.session)
+    if started.error == StateProofAdmissionError.Busy: return
+    if started.error != StateProofAdmissionError.None:
+      owner.retire(services, streams)
+      return
+    owner.phase = WorkDispatchPhase.CheckingRecovery
+    return
+  if not services.stateProofAvailable: return
+  if owner.recoveryRequests >= uint64(limits.requests):
+    owner.retire(services, streams)
+    return
+  for scan in 0..<min(info.population, int(uint64(limits.peersPerPoll))):
+    # The explicit per-turn scan ceiling bounds old-roster lookups; unavailable or busy peers consume no request attempt.
+    let ordinal = owner.recoveryNext
+    owner.recoveryNext = (owner.recoveryNext+1) mod info.population
+    if owner.recoveryTried[ordinal]: continue
+    let request = services.workRecoveryRequest(owner.session, StateValidatorIndex(ordinal))
+    if request.error == WorkRecoveryError.InvalidIndex:
+      owner.recoveryTried[ordinal] = true
+      dec owner.recoveryRemaining
+      continue
+    if request.error != WorkRecoveryError.None:
+      owner.retire(services, streams)
+      return
+    if array[32, byte](request.value.identity) == array[32, byte](streams.localIdentity):
+      owner.recoveryTried[ordinal] = true # A self connection is not an available remote assurer request.
+      dec owner.recoveryRemaining
+      continue
+    let selected = streams.peerForIdentity(request.value.identity)
+    if selected.error != NodeError.None: continue # Original assurers may be retired; current-validator role cannot replace their exact identity.
+    let opened = streams.request(selected.value, request.value.request, request.value.maximum)
+    if opened.error in [NodeError.LimitExceeded, NodeError.Unavailable]: continue
+    if opened.error != NodeError.None:
+      owner.retire(services, streams)
+      return
+    owner.recoveryTried[ordinal] = true
+    dec owner.recoveryRemaining
+    owner.recoveryRequest = request.value
+    owner.fetch = opened.value
+    owner.fetchStarted = clock
+    owner.fetching = true
+    inc owner.recoveryRequests
+    return
 proc acquire(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime) =
   ## Host polling owns only detached request/reply bytes and exact tokens; roots and proof results remain inside Services.
@@ -164,7 +302,7 @@ proc acquire(owner: var WorkDispatcher, services: var Services, streams: var Nod
     if started.error != StateProofAdmissionError.None:
       owner.retire(services, streams)
       return
-    owner.body = default(UntrustedWorkBody)
+    # Keep the bounded original extrinsics for a genuine import-proof fallback; the worker has an independent body copy.
     owner.fetchReply = @[] # Worker capture has its own bytes before this host buffer retires.
     owner.phase = WorkDispatchPhase.Completing
     return
@@ -179,8 +317,12 @@ proc acquire(owner: var WorkDispatcher, services: var Services, streams: var Nod
     if not expired and streams.requestLive(owner.fetch): return
     discard streams.cancelRequest(owner.fetch)
     owner.fetching = false
+  if owner.recovery.valid and (clock-owner.preferredStarted).inMilliseconds >=
+      owner.acquisition.timeoutMs:
+    owner.fallback(services, streams)
+    return
   if owner.tried.len >= owner.acquisition.attempts:
-    owner.retire(services, streams)
+    owner.fallback(services, streams)
     return
   for index in 0..<streams.peerCount:
     # Scan only the transport's finite live population; no peer discovery or connection attempt is triggered by builder input.
@@ -211,6 +353,12 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
       discard services.reapWorkSubmission()
       owner.clear()
     return
+  if phase == WorkSessionPhase.Failed and owner.phase == WorkDispatchPhase.Completing:
+    if services.workFallbackAllowed(owner.session):
+      owner.fallback(services, streams)
+      return
+  if owner.phase == WorkDispatchPhase.CheckingRecovery and phase == WorkSessionPhase.Recovering:
+    owner.phase = WorkDispatchPhase.Recovering
   if phase in [WorkSessionPhase.Empty, WorkSessionPhase.Failed, WorkSessionPhase.Retired]:
     owner.retire(services, streams)
     return
@@ -233,6 +381,7 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
       owner.body = received.value
     if not services.stateProofAvailable: return
     if services.workSubmissionInfo(owner.session).kind == WorkSubmissionKind.Package:
+      owner.preferredStarted = clock
       owner.phase = WorkDispatchPhase.Acquiring
       return
     let started = services.beginWorkBundle(owner.session, owner.body.extrinsics,
@@ -243,6 +392,9 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
       return
     owner.body = default(UntrustedWorkBody) # The worker retains independent byte copies, never this host's raw transcript.
     owner.phase = WorkDispatchPhase.Completing
+    return
+  if owner.phase == WorkDispatchPhase.Recovering:
+    owner.recover(services, streams, clock)
     return
   if owner.phase == WorkDispatchPhase.Acquiring:
     owner.acquire(services, streams, clock)
@@ -256,6 +408,7 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
     if streams.acknowledgeWork(owner.network) != ReadError.None:
       owner.retire(services, streams)
       return
+    owner.body = default(UntrustedWorkBody)
     owner.phase = WorkDispatchPhase.Ready
     if owner.accepted < high(uint64): inc owner.accepted
 proc submit*(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
@@ -270,7 +423,7 @@ proc submit*(owner: var WorkDispatcher, services: var Services, streams: var Nod
     return true
   let started = services.beginWorkSubmission(task.value.header, owner.policy.admissionLimits,
     owner.policy.executionLimits, workRecipient(streams.localIdentity, now),
-        owner.policy.dutyLimits)
+        owner.policy.dutyLimits, owner.recovery)
   if started.error != StateProofAdmissionError.None:
     discard streams.rejectWork(task.value.ticket)
     return true

@@ -222,4 +222,5 @@ proc captureImportCatalog*(view: ChainView, limits: ImportCatalogLimits): Import
       rows.add(ImportRecord(info: ReportedImportInfo(specifier: specifier,
         core: facts.core, registered: selected.slot), roster: validators.value.value))
   ImportCatalogResult[ImportCatalog](status: ImportCatalogError.None,
-    completed: ImportCatalog(data: CatalogData(head: head.value.blockHash, rows: rows)))
+    completed: ImportCatalog(data: CatalogData(head: head.value.blockHash,
+        rows: rows)))

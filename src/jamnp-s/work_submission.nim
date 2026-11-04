@@ -48,6 +48,12 @@ type
     grant: GrantData
     lookup: seq[SegmentLookup]
     request: seq[byte]
+  WorkImportShape* = object ## Original row and occurrence cardinalities are copied before recovery allocates any manifest table.
+    items*, entries*: int
+  WorkImportEntry* = object ## Detached original occurrence facts cannot themselves construct an authorization or proof capability.
+    reference*: ImportReference
+    root*: SegmentRoot
+    item*, occurrence*: int
   WorkImportPlan* = object ## A plan is derived only from a genuine original CE133 grant and its selected C(3) source.
     data: nil ImportPlanData
   WorkSubmissionResult*[T] = object ## Guarded children preserve genuine stage causes, without retagging partial results.
@@ -373,6 +379,54 @@ proc workImportRequest*(plan: WorkImportPlan): WorkSubmissionResult[seq[byte]] =
   var wire = newSeq[byte](data.request.len)
   for index in 0..<wire.len: wire[index] = data.request[index]
   WorkSubmissionResult[seq[byte]](status: WorkSubmissionError.None, completed: wire)
+proc importPlanMatches*(plan: WorkImportPlan, grant: AuthorizedWorkSubmission): bool =
+  ## Exact grant identity prevents another authorization from substituting even byte-identical package inputs.
+  let data = plan.data
+  let granted = grant.data
+  if data == nil or granted == nil: return false
+  data.grant == granted
+proc importPlanStateMatches*(plan: WorkImportPlan, state: StateStoreSnapshot): bool =
+  ## A recovery catalog must describe the exact immutable state used by this original grant.
+  let data = plan.data
+  if data == nil: return false
+  sameStateSnapshot(data.grant.authorization.authorizationState.value, state)
+proc importPlanShape*(plan: WorkImportPlan): WorkSubmissionResult[WorkImportShape] =
+  ## Copy bounded original geometry without retaining any private package or grant alias in the result.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[WorkImportShape](
+      status: WorkSubmissionError.Uninitialized)
+  WorkSubmissionResult[WorkImportShape](status: WorkSubmissionError.None,
+    completed: WorkImportShape(
+    items: data.grant.header.package.workPackageInfo.value.items,
+    entries: data.grant.header.info.importCount))
+proc importPlanEntries*(plan: WorkImportPlan): WorkSubmissionResult[seq[WorkImportEntry]] =
+  ## Copy every bounded original occurrence and resolved root in manifest order, without exposing package storage.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[seq[WorkImportEntry]](
+      status: WorkSubmissionError.Uninitialized)
+  let header = data.grant.header
+  var entries = newSeq[WorkImportEntry](header.info.importCount)
+  var position = 0
+  for item in 0..<header.package.workPackageInfo.value.items:
+    let selected = header.package.workItemAt(item).value
+    for occurrence in 0..<selected.workItemInfo.value.imports:
+      # Only the already source-bound canonical dictionary resolves package-relative roots.
+      let reference = selected.importAt(occurrence).value
+      let resolved = importRoot(reference, data.lookup)
+      if resolved.error != WorkSubmissionError.None:
+        return WorkSubmissionResult[seq[WorkImportEntry]](status: resolved.error)
+      entries[position] = WorkImportEntry(reference: reference, root: resolved.value, item: item,
+          occurrence: occurrence)
+      inc position
+  WorkSubmissionResult[seq[WorkImportEntry]](status: WorkSubmissionError.None, completed: entries)
+proc importPlanLookup*(plan: WorkImportPlan): WorkSubmissionResult[seq[SegmentLookup]] =
+  ## Detach the complete bounded canonical dictionary, never a borrowed sequence descriptor.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[seq[SegmentLookup]](
+      status: WorkSubmissionError.Uninitialized)
+  var lookup = newSeq[SegmentLookup](data.lookup.len)
+  for index in 0..<lookup.len: lookup[index] = data.lookup[index]
+  WorkSubmissionResult[seq[SegmentLookup]](status: WorkSubmissionError.None, completed: lookup)
 proc verifiedExtrinsics(grant: AuthorizedWorkSubmission, payload: openArray[byte],
     limits: ExtrinsicInputsLimits): WorkSubmissionResult[VerifiedExtrinsics] =
   ## Exact expected length and policy checks precede nested table allocations and hashing.
