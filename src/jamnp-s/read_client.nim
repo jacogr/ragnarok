@@ -70,7 +70,7 @@ proc configure*(route: var ReadClientRoute, request: ReadRequest,
   if not request.valid: return ReadError.InvalidRequest
   let minimum = request.minimumReplyBytes
   if uint64(maximum) < minimum or uint64(maximum) > uint64(
-      MaxReadReplyBytes): return ReadError.LimitExceeded
+      request.maximumReplyBytes): return ReadError.LimitExceeded
   let payload = request.payload
   route = ReadClientRoute(configured: true, failure: ReadError.None, request: request,
     maximum: uint64(maximum), output: @[byte(request.kind)])

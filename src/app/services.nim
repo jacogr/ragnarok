@@ -59,7 +59,8 @@ import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
-from ../state/computed/report import ComputedReportInfo, computedReportInfo, value
+import ../jamnp-s/availability_read
+from ../state/computed/report import ComputedReportInfo, computedReportInfo, computedReportSource, value
 from ../state/computed/guarantee import computedGuaranteeReport, value
 from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid, activeAt, shardCount
 from ../codec/work/package import PackageConfig
@@ -249,6 +250,8 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   workInfo: WorkSubmissionInfo
   workDuty: WorkDuty
   workReportInfo: ComputedReportInfo
+  availabilityEnabled: bool
+  availabilityLimits: AvailabilityReadLimits
   workHead: BlockHash
   ticketSigner: TicketSigner
   ticketSignerReady: bool
@@ -647,6 +650,8 @@ proc close*(services: var Services) =
   services.workOutcome = default(WorkJobResult)
   services.workIdentity = nil
   services.workTicket = default(ProofWorkerTicket)
+  services.availabilityEnabled = false
+  services.availabilityLimits = default(AvailabilityReadLimits)
   services.workGeneration = 0
   services.workPhase = WorkSessionPhase.Empty
   services.workActive = false
@@ -1668,8 +1673,27 @@ captureReason: ticketFailure[TicketSource](NetworkTicketError.NoSigner))
   services.productionInput = default(TicketProductionJob)
   NetworkTicketStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 
+proc configureAvailabilityReads*(services: var Services, limits: AvailabilityReadLimits): bool =
+  ## Explicit one-time policy activation never rebinds a live worker's source or resource contract.
+  if not services.started or not services.stateProofAvailable or services.availabilityEnabled or
+      not limits.valid:
+    return false
+  services.availabilityLimits = limits
+  services.availabilityEnabled = true
+  true
+proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadError =
+  ## Only this retained completed report supplies provenance; all source aliases retire before CPU submission.
+  if not services.availabilityEnabled or services.workPhase != WorkSessionPhase.ReportReady:
+    return ReadError.Unavailable
+  if services.workOutcome.kind != WorkJobResultKind.Reported: return ReadError.Unavailable
+  let report = services.workOutcome.reportTranscript.computedGuaranteeReport.value
+  let captured = captureAvailabilityRead(report.computedReportSource.value, request,
+      services.availabilityLimits)
+  if captured.error == ReadError.None: services.networkReadInput = captured.value
+  captured.error
 proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
   ## Every temporary canonical alias retires in this activation before native submission.
+  if request.availabilityRead: return services.stageAvailabilityRead(request)
   let captured = captureNetworkRead(services.canonical.chainView, request)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error

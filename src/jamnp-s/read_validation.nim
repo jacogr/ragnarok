@@ -398,6 +398,9 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
   if uint64(wire.len) > uint64(limits.wireBytes): return ReadVerificationResult[CheckedReadReply](
       status: ReadVerificationError.LimitExceeded)
   case request.kind
+  of ReadKind.Availability, ReadKind.Bundle:
+    # Availability needs an independently selected report specifier, never the generic chain-read source.
+    ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.InvalidRequest)
   of ReadKind.Blocks: checkBlocks(request, wire, source, limits)
   of ReadKind.Report: checkReport(request, wire, source)
   of ReadKind.State: checkState(request, wire, source, limits)

@@ -109,6 +109,8 @@ proc exchangeClient*(kind: ReadKind, payload, response: seq[byte],
     of ReadKind.Report: @[136'u8, 32, 0, 0, 0]
     of ReadKind.PreimageAnnouncement: @[142'u8, 40, 0, 0, 0]
     of ReadKind.Preimage: @[143'u8, 32, 0, 0, 0]
+    of ReadKind.Availability: @[137'u8, 34, 0, 0, 0]
+    of ReadKind.Bundle: @[147'u8, 32, 0, 0, 0]
   for octet in payload: server.expected.add(octet)
   server.response = response
   server.finAllowed = not holdFin

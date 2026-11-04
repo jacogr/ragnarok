@@ -4,7 +4,7 @@
 
 ## Genuine independent availability commitments authenticate NP distribution/audit/segment data with exact coordinates and bounded work.
 import std/[assertions, syncio]
-import ../../../src/jamnp-s/[availability_proof, availability_merkle]
+import ../../../src/jamnp-s/[availability_proof, availability_merkle, availability_read, read_stream]
 import ../../../src/state/availability/specifier
 import ../../../src/state/erasure/[layout, words]
 import "../../../src/state/export/erasure" as export_erasure
@@ -65,12 +65,58 @@ proc releaseCycle(source: AvailabilityCommitment) =
   let checked = verifyAvailabilityTransfer(packet.specifier, request, packet.bundleShard,
     packet.segmentShards, packet.justification, limits())
   assert checked.error == AvailabilityTransferError.None
+proc serving(source: AvailabilityCommitment) =
+  ## Exact wire framing and existing method ceilings remain independent of proof construction.
+  let expected = source.availabilityInfo.value.specifier
+  var payload: seq[byte] = @[]
+  for octet in expected.erasureRoot.bytes: payload.add(octet)
+  let bundle = decodeReadRequest(ReadKind.Bundle, payload).value
+  payload.add(0)
+  payload.add(0)
+  let shards = decodeReadRequest(ReadKind.Availability, payload).value
+  let policy = AvailabilityReadLimits(computation: AvailabilityMerkleLimits(
+    bytes: ByteLimit(64000000), hashBytes: ByteLimit(16000000), hashes: ElementLimit(10000)),
+    wireBytes: ByteLimit(16000000))
+  assert not default(AvailabilityReadLimits).valid and policy.valid
+  assert serveAvailabilityRead(source, bundle, default(AvailabilityReadLimits)).error ==
+      ReadError.LimitExceeded
+  assert serveAvailabilityRead(default(AvailabilityCommitment), bundle, policy).error ==
+      ReadError.Unavailable
+  let complete = serveAvailabilityRead(source, bundle, policy)
+  assert complete.error == ReadError.None
+  assert complete.value.byteLength == int(uint32(expected.bundleLength))+4
+  let distributed = serveAvailabilityRead(source, shards, policy)
+  assert distributed.error == ReadError.None and distributed.value.byteLength > 12
+  payload[0] = payload[0] xor 1
+  assert serveAvailabilityRead(source, decodeReadRequest(ReadKind.Availability, payload).value,
+    policy).error == ReadError.Unavailable
+  payload[0] = payload[0] xor 1
+  payload[32] = 255
+  payload[33] = 255
+  assert serveAvailabilityRead(source, decodeReadRequest(ReadKind.Availability, payload).value,
+    policy).error == ReadError.InvalidRequest
+  var refused = policy
+  refused.computation.bytes = ByteLimit(1)
+  assert serveAvailabilityRead(source, shards, refused).error == ReadError.LimitExceeded
+  refused = policy
+  refused.computation.hashes = ElementLimit(1)
+  assert serveAvailabilityRead(source, shards, refused).error == ReadError.LimitExceeded
+  refused = policy
+  refused.wireBytes = ByteLimit(4)
+  assert serveAvailabilityRead(source, bundle, refused).error == ReadError.LimitExceeded
+  var oversized = newSeq[byte](MaxReadReplyBytes+5)
+  let size = oversized.len-4
+  for index in 0..<4: oversized[index] = byte((uint32(size) shr (8*index)) and 255)
+  assert captureReadReply(bundle, oversized).error == ReadError.None
+  let ordinary = decodeReadRequest(ReadKind.Report, expected.erasureRoot.bytes).value
+  assert captureReadReply(ordinary, oversized).error == ReadError.LimitExceeded
 proc main() =
   ## Exercise empty segment trees, odd populations and both export/proof-page row boundaries with genuine PVM/erasure sources.
   let empty = computedAvailability(0)
   for shard in [0'u64, 3, 5]:
     check(empty, AvailabilityTransferKind.Distribution, shard, 0)
     check(empty, AvailabilityTransferKind.Audit, shard, 0)
+  serving(empty)
   let populated = computedAvailability(1)
   for shard in [0'u64, 511, 1022]:
     check(populated, AvailabilityTransferKind.Distribution, shard, 0)

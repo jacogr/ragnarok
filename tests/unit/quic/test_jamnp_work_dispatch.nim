@@ -5,8 +5,14 @@
 import std/[assertions, envvars, syncio, monotimes, times, strutils]
 import ../../../src/app/[node as application_node, services, options, work_dispatch, work_policy]
 import ../../../src/app/proof/[worker, work_submission]
-import ../../../src/jamnp-s/[node as node_streams, connections, work_duty, work_report, read_stream]
+import ../../../src/jamnp-s/[node as node_streams, connections, work_duty, work_report, read_stream,
+    availability_read, availability_proof]
 import ../../../src/codec/bounded
+import ../../../src/state/availability/specifier
+import ../../../src/state/erasure/layout
+import ../../../src/state/bundle_erasure
+import ../../../src/state/auditable_bundle
+import "../../../src/state/export/erasure" as export_erasure
 import ../../../src/state/computed/[report as computed_report, guarantee]
 import ../../../src/crypto/primitives
 import ../../../src/codec/state/safrole
@@ -17,7 +23,10 @@ import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_pro
 type Variant {.pure.} = enum ## Each case has a real positive source and changes one host/network boundary.
   Success, Disabled, WrongCore, CorruptProof, WithheldFin, Rotation, Deadline,
     ResetDone, CloseDone, ForeignDone, ForeignClose, ReadyForeign, LowBudget, Report, ReportFailure,
-      ReportCancelDone, ReportCloseDone, ReportStaleTime, ReportForeignDone, Package
+      ReportCancelDone, ReportCloseDone, ReportStaleTime, ReportForeignDone, Package, Availability,
+        AvailabilityDisabled, AvailabilityLimit,
+      AvailabilityResetDone, AvailabilityCloseDone, AvailabilityRetireDone, AvailabilityWrongRoot,
+        AvailabilityBadIndex, AvailabilityTruncated
 proc publicKey(): StateEdKey {.raises.} =
   ## Only the server certificate's public identity enters the complete canonical fixture.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -79,6 +88,28 @@ proc waitReset(host: var ApplicationNode, services: var Services, probe: var Nod
     assert not probe.flows[flow].receivedFin
     pump(host, services, probe, now = now, clockOffsetMs = clockOffsetMs)
   assert not probe.flows[flow].receivedFin
+proc availabilityLimits(): AvailabilityReadLimits =
+  ## Explicit separate serving policy has no implied relationship to authorization/refinement ceilings.
+  AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
+    hashBytes: ByteLimit(16000000), hashes: ElementLimit(10000)), wireBytes: ByteLimit(16000000))
+proc originalBundle(services: Services, token: WorkSessionToken): seq[byte] =
+  ## Return only copied original bytes; every source-bearing alias retires before network CPU admission.
+  let report = services.workSubmissionOutcome(token).reportTranscript.computedGuaranteeReport.value
+  report.computedReportSource.value.availabilitySource.value.exportErasureSource.value.bundleErasureSource.value.layoutSource.value.bundleBytes.value
+proc responseMessages(wire: seq[byte]): seq[seq[byte]] =
+  ## Independent literal E4 parsing checks complete response framing before cryptographic verification.
+  result = @[]
+  var offset = 0
+  while offset < wire.len:
+    assert wire.len-offset >= 4
+    var length = 0'u64
+    for index in 0..<4: length = length or (uint64(wire[offset+index]) shl (8*index))
+    offset += 4
+    assert length <= uint64(wire.len-offset)
+    var message = newSeq[byte](int(length))
+    for index in 0..<message.len: message[index] = wire[offset+index]
+    result.add(message)
+    offset += message.len
 proc scenario(variant: Variant) {.raises.} =
   ## Every case starts from actual Tiny PVM code, committed imports, a complete source and matching server identity.
   let fixture = workFixture()
@@ -199,7 +230,8 @@ proc scenario(variant: Variant) {.raises.} =
     assert services.workSessionPhase(token) == WorkSessionPhase.Complete
     assert services.workSubmissionOutcome(token).kind == WorkJobResultKind.Refined
   if variant in [Variant.Report, Variant.ReportFailure, Variant.ReportCancelDone,
-      Variant.ReportCloseDone, Variant.ReportStaleTime, Variant.ReportForeignDone]:
+      Variant.ReportCloseDone, Variant.ReportStaleTime, Variant.ReportForeignDone] or
+      variant in Variant.Availability..Variant.AvailabilityTruncated:
     # Downstream work addresses the retained session, never a replacement execution or caller-selected shard count.
     var limits = workReportLimits()
     if variant == Variant.ReportStaleTime:
@@ -258,6 +290,83 @@ proc scenario(variant: Variant) {.raises.} =
       assert digest.error == CryptoError.None
       let message = array[45, byte](reported.reportTranscript.computedGuaranteeMessage.value)
       for index in 0..<32: assert message[13+index] == array[32, byte](digest.value)[index]
+    if variant in Variant.Availability..Variant.AvailabilityTruncated:
+      # Actual TLS reads consume the retained original report via the ordinary ApplicationNode read dispatcher.
+      let original = originalBundle(services, token)
+      var policy = availabilityLimits()
+      if variant == Variant.AvailabilityLimit: policy.computation.hashes = ElementLimit(1)
+      assert not services.configureAvailabilityReads(default(AvailabilityReadLimits))
+      if variant != Variant.AvailabilityDisabled:
+        assert services.configureAvailabilityReads(policy)
+        assert not services.configureAvailabilityReads(policy)
+      var payload: seq[byte] = @[]
+      for octet in metadata.header.erasureRoot.bytes: payload.add(octet)
+      if variant == Variant.AvailabilityWrongRoot: payload[0] = payload[0] xor 1
+      payload.add(if variant == Variant.AvailabilityBadIndex: 255'u8 else: 0'u8)
+      payload.add(if variant == Variant.AvailabilityBadIndex: 255'u8 else: 0'u8)
+      var requestWire = @[137'u8]
+      for octet in frame(payload): requestWire.add(octet)
+      if variant == Variant.AvailabilityTruncated: requestWire.setLen(requestWire.len-1)
+      let request = probe.issue(requestWire)
+      if variant in [Variant.AvailabilityDisabled, Variant.AvailabilityLimit,
+          Variant.AvailabilityWrongRoot, Variant.AvailabilityBadIndex,
+          Variant.AvailabilityTruncated]:
+        waitReset(host, services, probe, request)
+      else:
+        let admitted = getMonoTime()+initDuration(seconds = 8)
+        while not services.stateProofActive:
+          assert getMonoTime() < admitted
+          assert host.poll(getMonoTime(), StateTime(20), 0)
+          probe.poll()
+        services.waitDone()
+        assert services.rpc.chainPaused
+        assert services.beginNetworkRead(readStateRequest(hash)).error ==
+            StateProofAdmissionError.Busy
+        if variant == Variant.AvailabilityCloseDone:
+          host.close()
+          assert not services.stateProofActive and not services.rpc.chainPaused
+          return
+        if variant == Variant.AvailabilityRetireDone:
+          assert host.releaseWork()
+          assert services.workSessionPhase(token) == WorkSessionPhase.Retired
+          assert services.stateProofPhase == ProofWorkerPhase.Done and services.rpc.chainPaused
+        if variant == Variant.AvailabilityResetDone: probe.abort(request)
+        let completed = getMonoTime()+initDuration(seconds = 8)
+        while true:
+          # Local cancellation observes close; ordinary replies observe FIN or a peer refusal.
+          let pending = if variant == Variant.AvailabilityResetDone: not probe.flows[request].closed
+            else: not probe.flows[request].receivedFin and not probe.flows[request].reset
+          if not services.stateProofActive and not pending: break
+          assert getMonoTime() < completed, "availability read retirement " & $variant
+          pump(host, services, probe)
+        assert not services.rpc.chainPaused
+        if variant == Variant.AvailabilityRetireDone:
+          assert services.reapWorkSubmission(), "retired report reaps only after read collection"
+          return
+        if variant == Variant.AvailabilityResetDone:
+          assert probe.flows[request].closed and not probe.flows[request].receivedFin,
+            "locally aborted availability read closes without success FIN"
+        else:
+          let messages = responseMessages(probe.bytes(request))
+          assert messages.len == 3
+          let expected = AvailabilitySpecifier(packageHash: metadata.header.packageHash,
+            bundleLength: metadata.header.bundleLength, erasureRoot: metadata.header.erasureRoot,
+            erasureShards: metadata.header.erasureShards, segmentRoot: metadata.header.segmentRoot,
+            segmentCount: metadata.header.segmentCount)
+          let selected = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+            root: expected.erasureRoot)
+          assert verifyAvailabilityTransfer(expected, selected, messages[0], messages[1], messages[
+              2],
+            policy.computation).error == AvailabilityTransferError.None
+          var bundleWire = @[147'u8]
+          for octet in frame(metadata.header.erasureRoot.bytes): bundleWire.add(octet)
+          let bundleRequest = probe.issue(bundleWire)
+          let returned = getMonoTime()+initDuration(seconds = 8)
+          while not probe.flows[bundleRequest].receivedFin:
+            assert getMonoTime() < returned and not probe.flows[bundleRequest].reset
+            pump(host, services, probe)
+          let bundles = responseMessages(probe.bytes(bundleRequest))
+          assert bundles.len == 1 and bundles[0] == original
     if variant == Variant.ReportForeignDone:
       let other = services.beginNetworkRead(readStateRequest(hash))
       assert other.error == StateProofAdmissionError.None
@@ -286,7 +395,7 @@ proc scenario(variant: Variant) {.raises.} =
   assert host.workPhase == WorkDispatchPhase.Idle
 proc main() {.raises.} =
   ## Run live lifecycle witnesses serially so native sockets, workers and bridge libraries never share mutable ownership.
-  for variant in Variant.Success..Variant.Package:
+  for variant in Variant.Success..Variant.AvailabilityTruncated:
     scenario(variant)
   echo "JAMNP-S application work dispatch passed"
 try:
