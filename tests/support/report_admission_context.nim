@@ -110,7 +110,7 @@ proc transcript(domain: string, seed: array[32, byte]): seq[byte] =
 ## Copy a template into an authored report whose recent/lookup tuples refer to the same actual parent chain.
 proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash, lookupHash: array[
     32, byte], mode: int, refinementGas = 11'u64, refinement: seq[RefineLoad] = @[],
-    accumulationGas = 10'u64): OwnedReport =
+    accumulationGas = 10'u64, lookupParent = false): OwnedReport =
   let raw = reportBytes(reportFor(base, core, [accumulationGas]))
   var value = decodeReportBorrowed(raw, 2).value
   value.header.packageHash.bytes = default(array[32, byte])
@@ -122,6 +122,11 @@ proc report(base: OwnedReport, core: int, root: state_trie.StateRoot, parentHash
   value.header.lookupAnchor.bytes = lookupHash
   value.header.lookupSlot = LookupSlot(0)
   value.header.lookupStateRoot.bytes = default(array[32, byte])
+  if lookupParent:
+    # The real candidate's prior-state commitment proves this parent root; no older header is required.
+    value.header.lookupAnchor.bytes = parentHash
+    value.header.lookupSlot = LookupSlot(1)
+    value.header.lookupStateRoot.bytes = array[32, byte](root)
   value.digests[0].refine = ownedReportDigest(base,
       0).value.refine # Preserve explicitly authored non-gas activity metrics.
   value.digests[0].refine.gasUsed = Gas(refinementGas) # Optional bounded activity keeps multi-report aggregation inside its natural domain.
@@ -163,6 +168,7 @@ type SignedBlockFixtureConfig* = object ## Authored signed-parent/block data is 
   reports*: int                    ## Number of newly guaranteed reports.
   maxWriteBytes*: uint64           ## Inherited store write-byte ceiling.
   withDispute*: bool               ## Include genuine new-offender evidence.
+  lookupParent*: bool              ## Select the actual parent as lookup anchor, proved by the admitted candidate.
   withAvailable*: bool             ## Assure a previously assigned report.
   extra*: seq[StateEntry]          ## Additional original-parent entries, committed before signing.
   accountSupervisor*, accountSupervisorCreated*: uint32 ## Explicit original supervisor incarnation for scheduling witnesses.
@@ -342,7 +348,7 @@ proc authored*(base: OwnedReport, options = signedBlockFixtureConfig()): Context
   var children = newSeq[OwnedReport](options.reports)
   for i in 0..<options.reports: children[i] = report(selectedBase, i, root, parentHash, lookupHash,
       options.mode, options.refinementGas, options.refinement,
-      options.accumulationGas) # Signed metadata includes corrected parent root and authored refinement work.
+      options.accumulationGas, options.lookupParent) # Signed metadata includes corrected parent root and authored refinement work.
   var guarantees = newSeq[Guarantee](options.reports)
   let signedSlot = if options.guaranteeSlot == 0: target else: options.guaranteeSlot
   let signed = certify(children, signedSlot, punished)

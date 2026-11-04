@@ -149,6 +149,61 @@ proc releaseCycle(recent: RecentAnchoredReports, parent, oldest: OwnedHeader, re
   assert outcome.error == (if refuse: ReportAnchorError.BackendFailure else: ReportAnchorError.None)
   failHash(0) # Faults cannot escape this sequential observer-linked test.
 
+proc candidateBoundaries(report: OwnedReport, fields: ReportHeader, parent, oldest: OwnedHeader) =
+  ## Real signed reports may name the parent: the actual candidate is its child in the GP ancestor set.
+  var parentState = default(array[32, byte])
+  parentState[0] = 92 # Deliberately differ from the parent's prior root, which commits the older block's state.
+  let candidate = makeHeader(14, headerHash(parent), parentState)
+  var declared = fields
+  declared.stateRoot = work_report.StateRoot(bytes: parentState)
+  declared.lookupAnchor = BlockHash(bytes: headerHash(parent))
+  declared.lookupSlot = LookupSlot(12)
+  declared.lookupStateRoot = LookupStateRoot(bytes: parentState)
+  let signed = withContext(report, declared)
+  let recent = checkRecentReportAnchors(checked([signed]), historyBytes(declared), StateTime(14),
+      anchorConfig(2)).value
+  assert checkReportLookupAnchors(recent, parent, [oldest], ancestors()).error ==
+      ReportAnchorError.MissingLookupAnchor
+  let context = captureReportAncestorContext(candidate, parent, [oldest], ancestors())
+  assert context.error == ReportAnchorError.None
+  assert checkReportLookupAnchors(recent, context.value).error == ReportAnchorError.None, "candidate commits the parent lookup root"
+  assert checkReportLookupAnchors(recent, candidate, [parent, oldest], ancestors()).error ==
+      ReportAnchorError.None
+  let demand = planReportLookupDemand(recent, context.value)
+  assert demand.error == ReportAnchorError.None and demand.value.missingLookups.value == 0
+  let badCandidate = makeHeader(14, headerHash(parent), default(array[32, byte]))
+  let wrong = captureReportAncestorContext(badCandidate, parent, [oldest], ancestors())
+  assert wrong.error == ReportAnchorError.None
+  assert checkReportLookupAnchors(recent, wrong.value).error == ReportAnchorError.WrongLookupState
+  assert planReportLookupDemand(recent, wrong.value).error == ReportAnchorError.WrongLookupState
+  var self = declared
+  self.lookupAnchor = BlockHash(bytes: headerHash(candidate))
+  self.lookupSlot = LookupSlot(14)
+  let selfRecent = checkRecentReportAnchors(checked([withContext(report, self)]), historyBytes(
+      declared), StateTime(14), anchorConfig(2)).value
+  assert checkReportLookupAnchors(selfRecent, context.value).error ==
+      ReportAnchorError.MissingLookupAnchor
+  assert planReportLookupDemand(selfRecent, context.value).error ==
+      ReportAnchorError.MissingLookupAnchor
+  var tight = ancestors()
+  tight.headers = ElementLimit(2)
+  assert captureReportAncestorContext(candidate, parent, [oldest], tight).error ==
+      ReportAnchorError.LimitExceeded
+  tight.headers = ElementLimit(3)
+  assert captureReportAncestorContext(candidate, parent, [oldest], tight).error ==
+      ReportAnchorError.None
+  tight.maxBytes = ByteLimit(uint64(candidate.headerInfo.value.consumed+parent.headerInfo.value.consumed+oldest.headerInfo.value.consumed)-1)
+  assert captureReportAncestorContext(candidate, parent, [oldest], tight).error ==
+      ReportAnchorError.LimitExceeded
+  tight.maxBytes = ByteLimit(uint64(tight.maxBytes)+1)
+  assert captureReportAncestorContext(candidate, parent, [oldest], tight).error ==
+      ReportAnchorError.None
+  failHash(1)
+  let invalidHeader = captureReportAncestorContext(candidate, parent, [default(OwnedHeader)],
+      ancestors())
+  assert invalidHeader.error == ReportAnchorError.InvalidHeader
+  failHash(0) # All extents are checked before the first sealed-header digest.
+
 ## Check age arithmetic, full-seal ancestry, child-root direction, resource refusal and retained ownership.
 proc boundaries(base: OwnedReport) =
   let zero = default(array[32, byte])
@@ -164,6 +219,7 @@ proc boundaries(base: OwnedReport) =
   fields.lookupSlot = LookupSlot(10)
   fields.lookupStateRoot = LookupStateRoot(bytes: posterior)
   let report = withContext(reportFor(base, 0, [10'u64]), fields)
+  candidateBoundaries(report, fields, parent, oldest)
   let policy = checked([report])
   var history = historyBytes(fields)
   let config = anchorConfig(2)
@@ -216,6 +272,8 @@ proc boundaries(base: OwnedReport) =
   assert checkReportLookupAnchors(recent, wrongParent, [oldest], ancestors()).error ==
       ReportAnchorError.WrongLookupState
   assert checkReportLookupAnchors(recent, makeHeader(14, headerHash(oldest), posterior), [oldest],
+      ancestors()).error == ReportAnchorError.None # The actual candidate is a valid member of the GP ancestor set.
+  assert checkReportLookupAnchors(recent, makeHeader(15, headerHash(oldest), posterior), [oldest],
       ancestors()).error == ReportAnchorError.InvalidSlot
   var tight = ancestors()
   tight.headers = ElementLimit(1)

@@ -47,8 +47,27 @@ proc unchanged(before, after: StateStoreSnapshot) =
 proc cycle(context: Context, expected: ReportAdmissionError) =
   assert planBlockReports(context.staged, context.older, config()).error == expected
 
+proc parentLookup(base: OwnedReport) =
+  ## Genuine signed block admission must accept the current parent lookup using the candidate, without an older-header fetch.
+  var options = signedBlockFixtureConfig()
+  options.lookupParent = true
+  let context = authored(base, options)
+  let prepared = prepareBlockReports(context.staged, config())
+  assert prepared.error == ReportAdmissionError.None
+  let demand = planPreparedReportLookupDemand(prepared.value, [])
+  assert demand.error == ReportAdmissionError.None, "current candidate satisfies parent lookup discovery"
+  assert demand.value.missingLookups.value == 0
+  let completed = completeBlockReports(prepared.value, [])
+  assert completed.error == ReportAdmissionError.None, "current candidate proves both signed parent lookup roots"
+  assert completed.value.reportCredentials.value.verifiedGuaranteeCount.value == 2
+  var publishing = context.original
+  let published = advanceBlockReports(publishing, context.candidate, context.parent, [],
+      transitionConfig())
+  assert published.error == BlockReportError.None, "ordinary report publication accepts the candidate child proof"
+
 ## Compose every report check, retain exact block/source owners and reject cross-context substitutes by API design.
 proc boundaries(base: OwnedReport) =
+  parentLookup(base)
   checkValidatorProjection()
   checkValidatorSource(base)
   checkCoreProjection(base)

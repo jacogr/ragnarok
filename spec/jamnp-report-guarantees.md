@@ -50,3 +50,23 @@ Linux-target semantic checking of both new modules passes; this is not native Li
 policy/pipeline eligibility, acceptable shard counts, actual signing, CE134/135 runtime flows and
 operator activation remain unfinished. These foundations stay in the guarantee feature branch;
 they are not a separate helper PR and do not establish full JAMNP-S completion.
+
+## Candidate-header inclusion correction
+
+The pinned header definition includes the current candidate in the ancestor set. The prior report
+validator excluded it, so a valid lookup naming the parent could not use the candidate's prior-state
+commitment as its child proof. Ordinary block-bound completion and missing-header discovery now
+capture the actual admitted candidate and parent together, with whole-input count/byte preflight.
+Trusted older subsets continue to prove older lookups. A candidate lookup still lacks a newer child;
+a future header or the lookup header's own prior-state root cannot substitute.
+
+The regression uses distinct prior/posterior roots and genuine signed reports. The normal staged
+coordinator, missing-context plan and atomic report publication accept a parent lookup without any
+older-header fetch. Existing report-anchor, report-admission and report-transition suites pass.
+This fixes the on-chain counterpart of current-head work-context qualification; it does not by
+itself activate signed CE134/135 streams.
+
+The candidate-inclusive correction also passes the managed worker ancestor discovery/resume/
+cancellation suite, including1000 cycles retaining222336 bytes. The latest anchor and admission
+cycles retain82080 and398592 bytes respectively, unchanged before/after. The production build,
+formatting and Linux-target admission semantic check pass. No native Linux CI verdict is claimed.
