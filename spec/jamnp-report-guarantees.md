@@ -70,3 +70,19 @@ The candidate-inclusive correction also passes the managed worker ancestor disco
 cancellation suite, including1000 cycles retaining222336 bytes. The latest anchor and admission
 cycles retain82080 and398592 bytes respectively, unchanged before/after. The production build,
 formatting and Linux-target admission semantic check pass. No native Linux CI verdict is claimed.
+
+## Shared pre-signing report rules
+
+Unsigned report inspection now shares the block validator's exact authorizer, service/code,
+minimum gas, aggregate gas/load, package uniqueness, dependency and segment-root rules. The
+state-backed pipeline inspector derives its existing-package set from bounded exact C(10),
+C(14) and C(15) decodes. Raw/default report owners fail, and report/index cardinalities are
+checked before traversal or allocation. These inspections return reasons only; admission owners
+still require genuine verified credentials and their preceding certified stages.
+
+Unsigned/signed policy agreement covers inclusive gas and refinement load boundaries and overflow
+fields. Package tests cover the shared relation implementation and compare unsigned/state-backed
+inspection on successful and later dependency-refused paths. Native policy, package and signed
+admission suites pass; package/admission1000-cycle retained bytes remain156544/398592 before
+and after. The application build and format check pass. This supplies the report-rule boundary
+for the upcoming source-bound signing flow; no signature authority is granted by these helpers.

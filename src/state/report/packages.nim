@@ -11,7 +11,7 @@ import std/algorithm
 import ../../codec/bounded
 import ../../codec/state/[history as state_history, availability as state_availability,
     workqueues as state_workqueues]
-import ../../codec/report_owned
+import ../../codec/[report_owned, owned]
 import ../../codec/work/report as work_report
 import ./[anchors as report_anchors, policy as report_policy]
 import ../[guarantee_credentials, store]
@@ -23,8 +23,14 @@ type
     queues*: WorkQueueConfig
     indexItems*: ElementLimit
   ReportPackageError* {.pure.} = enum ## Default and failed alternatives contain no certificate, partial index or accepted prefix.
-    Uninitialized, None, InvalidRecent, InvalidCredentials, InvalidHistory, InvalidConfig,
+    Uninitialized, None, InvalidRecent, InvalidCredentials, InvalidReport, InvalidHistory,
+      InvalidConfig,
     MissingState, InvalidState, LimitExceeded, DuplicatePackage, MissingDependency, InvalidSegmentRoot
+  PackageState = object ## Private decoded pipeline and bounded identity index convey no report certificate.
+    availability: AvailabilitySnapshot
+    ready: ReadySnapshot
+    accumulated: AccumulatedSnapshot
+    known: seq[PackageHash]
   ## Acyclic private owner retains the exact earlier stage and all decoded parent pipeline views.
   PackageData = ref object
     recent: RecentAnchoredReports
@@ -102,21 +108,21 @@ func contains(values: seq[ReportedPackage], key: ReportedPackage): bool =
       high = middle # Preserve the first possible exact match.
   low < values.len and comparePair(values[low], key) == 0
 
-proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: HistorySnapshot,
+proc inspectReportRelations*(reports: openArray[OwnedReport], history: HistorySnapshot,
     known: openArray[PackageHash], limit: ElementLimit): ReportPackageError =
   ## Reason-only relation inspection; known is caller-supplied existing-pipeline evidence, not a state certificate.
   ## Inputs are borrowed stably for this call. This helper never produces an application admission owner.
   ## The state-backed entry point below derives known itself; projections may use the STF's summarized known set.
-  let records = credentials.verifiedGuaranteeCount
-  if records.error != GuaranteeCredentialError.None:
-    return ReportPackageError.InvalidCredentials # No raw/default extrinsic bypass.
+  let maximum = uint64(limit)
+  if uint64(reports.len) > maximum or uint64(known.len) > maximum or
+      maximum > uint64(high(int) div sizeof(ReportedPackage)):
+    return ReportPackageError.LimitExceeded # Bound descriptor storage before any index allocation.
+  for report in reports:
+    # A raw/default owner cannot borrow a credential decoder's validity guarantee.
+    if ownedReportInfo(report).error != OwnershipError.None: return ReportPackageError.InvalidReport
   let info = historyInfo(history)
   if info.error != HistoryError.None:
     return ReportPackageError.InvalidHistory # Missing history cannot mean an empty set.
-  let maximum = uint64(limit)
-  if uint64(records.value) > maximum or uint64(known.len) > maximum or
-      maximum > uint64(high(int) div sizeof(ReportedPackage)):
-    return ReportPackageError.LimitExceeded # Bound descriptor storage before any index allocation.
   var count = 0'u64
   # Count historical pairs before copying, with checked aggregate growth.
   for i in 0..<info.value.blocks:
@@ -124,12 +130,12 @@ proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: 
     if uint64(record.packages) > maximum-count:
       return ReportPackageError.LimitExceeded # No overflow when accumulating package counts.
     count += uint64(record.packages)
-  if uint64(records.value) > maximum-count or uint64(known.len) > maximum-count:
+  if uint64(reports.len) > maximum-count or uint64(known.len) > maximum-count:
     return ReportPackageError.LimitExceeded # Both mapping and existing-key indices have independent same-sized ceilings.
-  var incoming = newSeq[PackageHash](records.value)
+  var incoming = newSeq[PackageHash](reports.len)
   var existing = newSeq[PackageHash](known.len+int(count))
-  var available = newSeq[PackageHash](records.value+int(count))
-  var mappings = newSeq[ReportedPackage](records.value+int(count))
+  var available = newSeq[PackageHash](reports.len+int(count))
+  var mappings = newSeq[ReportedPackage](reports.len+int(count))
   # Preserve caller evidence in a private sorting index, never normalizing protocol fields.
   for i in 0..<known.len: existing[i] = known[i]
   var cursor = 0
@@ -143,8 +149,8 @@ proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: 
       mappings[cursor] = pair
       inc cursor # Preflight proved all destination extents.
   # Collect the whole batch first: forward references, self references and dependency cycles are allowed.
-  for i in 0..<records.value:
-    let report = ownedReportInfo(credentials.verifiedGuaranteeAt(i).value.report).value
+  for i in 0..<reports.len:
+    let report = ownedReportInfo(reports[i]).value
     incoming[i] = report.header.packageHash
     available[cursor+i] = report.header.packageHash
     mappings[cursor+i] = ReportedPackage(package: report.header.packageHash,
@@ -158,8 +164,8 @@ proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: 
     if (i > 0 and compareHash(incoming[i-1], incoming[i]) == 0) or existing.contains(incoming[i]):
       return ReportPackageError.DuplicatePackage # Segment differences cannot create a new package identity.
   # Resolve prerequisites and lookup keys only against current reports or recent history, never queues/accumulated alone.
-  for i in 0..<records.value:
-    let report = credentials.verifiedGuaranteeAt(i).value.report
+  for i in 0..<reports.len:
+    let report = reports[i]
     let meta = ownedReportInfo(report).value
     for j in 0..<meta.prerequisiteCount:
       if not available.contains(ownedReportPrerequisite(report, j).value):
@@ -172,34 +178,39 @@ proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: 
         return ReportPackageError.InvalidSegmentRoot # Verify the associated root, not just the key.
   ReportPackageError.None
 
-proc checkReportPackages*(recent: RecentAnchoredReports,
-    config: ReportPackageConfig): ReportPackageResult[PackageCheckedReports] =
-  ## Load exact parent C(10)/C(14)/C(15), derive the prior-pipeline identities and certify all package relations.
-  ## Corrected recent history retains the parent's package dictionaries; no post-assurance substitution or writes occur.
-  let policy = recent.recentPolicy
-  if policy.error != ReportAnchorError.None:
-    return ReportPackageResult[PackageCheckedReports](
-        status: ReportPackageError.InvalidRecent) # Require completed policy/recent context.
+proc inspectReportPackages*(credentials: VerifiedGuaranteeCredentials, history: HistorySnapshot,
+    known: openArray[PackageHash], limit: ElementLimit): ReportPackageError =
+  ## Keep credential-backed projection callers while sharing unsigned relation rules; no admission certificate is produced here.
+  let count = credentials.verifiedGuaranteeCount
+  if count.error != GuaranteeCredentialError.None: return ReportPackageError.InvalidCredentials
+  if uint64(count.value) > uint64(limit) or count.value > high(int) div sizeof(OwnedReport):
+    return ReportPackageError.LimitExceeded
+  var reports = newSeq[OwnedReport](count.value)
+  for index in 0..<reports.len: reports[index] = credentials.verifiedGuaranteeAt(index).value.report
+  inspectReportRelations(reports, history, known, limit)
+
+proc capturePackageState(parent: StateStoreSnapshot,
+    config: ReportPackageConfig): ReportPackageResult[PackageState] =
+  ## Decode exact C(10)/C(14)/C(15) and bound the whole prior-pipeline index before allocating it.
   if uint64(config.queues.cores) < 2 or uint64(config.queues.cores) > 341 or
       uint64(config.queues.cores) != uint64(config.availability.guarantee.cores):
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.InvalidConfig) # One explicit chain profile across parent chapters.
-  let parent = policy.value.policyParent.value
   let assignments = parent.lookup(chapterKey(StateChapter(10)))
   let ready = parent.lookup(chapterKey(StateChapter(14)))
   let accumulated = parent.lookup(chapterKey(StateChapter(15)))
   if assignments.error == StateStoreError.MissingKey or ready.error == StateStoreError.MissingKey or
       accumulated.error == StateStoreError.MissingKey:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.MissingState) # Absence never means an empty ring/core table.
   if assignments.error != StateStoreError.None or ready.error != StateStoreError.None or
       accumulated.error != StateStoreError.None:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.InvalidState) # Refuse unusable parent views.
   if uint64(assignments.value.byteLength) > uint64(config.availability.maxBytes) or
       uint64(ready.value.byteLength) > uint64(config.queues.maxBytes) or
       uint64(accumulated.value.byteLength) > uint64(config.queues.maxBytes):
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Check before copying any chapter bytes.
   let assignmentRead = decodeAvailabilityState(assignments.value.bytes, config.availability)
   let readyRead = decodeReadyState(ready.value.bytes, config.queues)
@@ -208,36 +219,36 @@ proc checkReportPackages*(recent: RecentAnchoredReports,
   let limitedReady = readyRead.error == WorkQueueError.LimitExceeded
   let limitedAccumulated = accumulatedRead.error == WorkQueueError.LimitExceeded
   if limitedAssignments or limitedReady or limitedAccumulated:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Preserve child resource refusals.
   let validAssignments = assignmentRead.error == AvailabilityError.None
   let validReady = readyRead.error == WorkQueueError.None
   let validAccumulated = accumulatedRead.error == WorkQueueError.None
   if not validAssignments or not validReady or not validAccumulated:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.InvalidState) # Never extract a failed child payload.
   let exactAssignments = assignmentRead.value.consumed == assignments.value.byteLength
   let exactReady = readyRead.value.consumed == ready.value.byteLength
   let exactAccumulated = accumulatedRead.value.consumed == accumulated.value.byteLength
   if not exactAssignments or not exactReady or not exactAccumulated:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.InvalidState) # Exact values, no prefix acceptance.
   let assignmentMeta = availabilityInfo(assignmentRead.value.snapshot).value
   let readyMeta = readyInfo(readyRead.value.snapshot).value
   let accumulatedMeta = accumulatedInfo(accumulatedRead.value.snapshot).value
   let maximum = uint64(config.indexItems)
   if maximum > uint64(high(int) div sizeof(ReportedPackage)):
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Bound every index descriptor before allocation.
   if uint64(assignmentMeta.present) > maximum:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # The first source must fit before subtraction.
   if uint64(readyMeta.items) > maximum-uint64(assignmentMeta.present):
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Prove the first sum before adding it.
   let first = uint64(assignmentMeta.present)+uint64(readyMeta.items)
   if uint64(accumulatedMeta.items) > maximum-first:
-    return ReportPackageResult[PackageCheckedReports](
+    return ReportPackageResult[PackageState](
         status: ReportPackageError.LimitExceeded) # Check the last aggregate before native narrowing.
   var known = newSeq[PackageHash](int(first+uint64(accumulatedMeta.items)))
   var cursor = 0
@@ -260,13 +271,34 @@ proc checkReportPackages*(recent: RecentAnchoredReports,
     for j in 0..<accumulatedSlotCount(accumulatedRead.value.snapshot, slot).value:
       known[cursor] = accumulatedHashAt(accumulatedRead.value.snapshot, slot, WorkQueueHashIndex(j)).value
       inc cursor # Aggregate preflight proved the destination extent.
+  ReportPackageResult[PackageState](status: ReportPackageError.None,
+    completed: PackageState(availability: assignmentRead.value.snapshot,
+      ready: readyRead.value.snapshot,
+      accumulated: accumulatedRead.value.snapshot, known: known))
+
+proc inspectReportPipeline*(reports: openArray[OwnedReport], parent: StateStoreSnapshot,
+    history: HistorySnapshot, config: ReportPackageConfig): ReportPackageError =
+  ## State-backed unsigned eligibility inspection returns reasons only; it cannot create credentials or package admission.
+  if uint64(reports.len) > uint64(config.indexItems): return ReportPackageError.LimitExceeded
+  let source = capturePackageState(parent, config)
+  if source.error != ReportPackageError.None: return source.error
+  inspectReportRelations(reports, history, source.value.known, config.indexItems)
+
+proc checkReportPackages*(recent: RecentAnchoredReports,
+    config: ReportPackageConfig): ReportPackageResult[PackageCheckedReports] =
+  ## Only completed credential/policy/recent owners can construct a package certificate; unsigned inspection shares its exact rules.
+  let policy = recent.recentPolicy
+  if policy.error != ReportAnchorError.None:
+    return ReportPackageResult[PackageCheckedReports](status: ReportPackageError.InvalidRecent)
+  let source = capturePackageState(policy.value.policyParent.value, config)
+  if source.error != ReportPackageError.None:
+    return ReportPackageResult[PackageCheckedReports](status: source.error)
   let reason = inspectReportPackages(policy.value.policyCredentials.value,
     recent.anchorHistory.value,
-    known, config.indexItems)
+    source.value.known, config.indexItems)
   if reason != ReportPackageError.None:
-    return ReportPackageResult[PackageCheckedReports](
-        status: reason) # No state-backed certificate from partial relation success.
+    return ReportPackageResult[PackageCheckedReports](status: reason)
   ReportPackageResult[PackageCheckedReports](status: ReportPackageError.None,
     completed: PackageCheckedReports(data: PackageData(recent: recent,
-      availability: assignmentRead.value.snapshot,
-      ready: readyRead.value.snapshot, accumulated: accumulatedRead.value.snapshot)))
+      availability: source.value.availability, ready: source.value.ready,
+      accumulated: source.value.accumulated)))

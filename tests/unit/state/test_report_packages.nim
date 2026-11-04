@@ -189,6 +189,16 @@ proc recentFor(reports: openArray[OwnedReport], entries: seq[StateEntry], histor
 ## Fresh parent decodes and index construction must release on complete success and later dependency refusal.
 proc releaseCycle(recent: RecentAnchoredReports, expected: ReportPackageError) =
   assert checkReportPackages(recent, config()).error == expected # No certificate or transient index escapes.
+  let policy = recent.recentPolicy.value
+  let credentials = policy.policyCredentials.value
+  let count = credentials.verifiedGuaranteeCount.value
+  var reports = newSeq[OwnedReport](count)
+  for index in 0..<count: reports[index] = credentials.verifiedGuaranteeAt(index).value.report
+  assert inspectReportPipeline(reports, policy.policyParent.value, recent.anchorHistory.value,
+      config()) == expected
+  let invalid = inspectReportRelations([default(OwnedReport)], recent.anchorHistory.value, [],
+    config().indexItems)
+  assert invalid == ReportPackageError.InvalidReport
 
 ## Exercise all exclusion sources, current/history-only dependencies, cycles, roots, malformed parents and retention.
 proc boundaries(base: OwnedReport) =

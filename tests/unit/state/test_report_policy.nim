@@ -117,6 +117,13 @@ proc boundaries(base: OwnedReport) =
   let original = array[32, byte](parent.commitment.root)
   let completed = checkReportPolicy(credentials, parent, policy(2, 30))
   assert completed.error == ReportPolicyError.None # Two exact-cap reports, not a 60-gas batch ceiling.
+  assert inspectReportPolicy(one, parent, policy(2, 30)) == ReportPolicyError.None
+  assert inspectReportPolicy(two, parent, policy(2, 30)) == ReportPolicyError.None
+  assert inspectReportPolicy(default(OwnedReport), parent, policy(2)) ==
+      ReportPolicyError.InvalidReport
+  assert inspectReportPolicy(one, parent, policy(2, 29)) == ReportPolicyError.ReportGasExceeded
+  assert inspectReportPolicy(reportFor(base, 0, [9'u64]), parent, policy(2)) ==
+      ReportPolicyError.InsufficientGas
   assert checkReportPolicy(credentials, parent, policy(2, 29)).error ==
       ReportPolicyError.ReportGasExceeded
   assert checkReportPolicy(credentials, parent, policy(2, 9)).error ==
@@ -249,6 +256,7 @@ proc loadBoundaries(base: OwnedReport) =
       assert encoded.error == CompositeError.None
       let owned = decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
       let verdict = checkReportPolicy(certify([owned]), parent, config)
+      assert inspectReportPolicy(owned, parent, config) == verdict.error, "unsigned/certified load policy agreement"
       assert verdict.error == (if extra == 0: ReportPolicyError.None else:
         ReportPolicyError.RefinementLoadExceeded), "refine load boundary " & $field & "/" & $extra
   for field in 0..<5:
@@ -266,6 +274,7 @@ proc loadBoundaries(base: OwnedReport) =
     let owned = decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
     assert checkReportPolicy(certify([owned]), parent, config).error ==
         ReportPolicyError.RefinementLoadExceeded
+    assert inspectReportPolicy(owned, parent, config) == ReportPolicyError.RefinementLoadExceeded
 
 ## Missing fixtures and any failed assertion must fail the native runner.
 proc main() {.raises.} =
