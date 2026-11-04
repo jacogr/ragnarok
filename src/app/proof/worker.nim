@@ -8,6 +8,8 @@
 import std/[assertions, locks, rawthreads]
 import ./query as proof_query
 import ./network_read
+import ./ticket_verification
+import ../../jamnp-s/ticket_validation
 import ./read_validation as verification_job
 import ../../jamnp-s/read_validation as read_verification
 import ../../jamnp-s/read_stream
@@ -19,7 +21,7 @@ type
   ProofWorkerError* {.pure.} = enum ## Admission failures retain no ticket or borrowed graph.
     Uninitialized, None, Closed, Busy, NotReady, Exhausted
   ProofWorkerOperation {.pure.} = enum ## One bounded CPU slot owns proof production, network reads, response verification or current-root ingestion.
-    Query, Ingestion, NetworkRead, ReadVerification
+    Query, Ingestion, NetworkRead, ReadVerification, TicketVerification
   ProofWorkerIdentity = ref object ## Host-only namespace; the worker never accesses this ARC reference.
     marker: uint8
   ProofWorkerTicket* = object ## Retained namespace and nonwrapping generation prevent foreign or stale retirement.
@@ -30,13 +32,14 @@ type
     of None: ticket: ProofWorkerTicket
     else: discard                # Refusals retain no authority.
   ProofWorkerCompletionKind* {.pure.} = enum ## Cancellation never exposes a proof success prefix.
-    Uninitialized, Completed, Cancelled, Imported, ReadCompleted, ReadVerified
+    Uninitialized, Completed, Cancelled, Imported, ReadCompleted, ReadVerified, TicketVerified
   ProofWorkerCompletion* = object ## Only a collected uncancelled completion exposes its typed query outcome.
     case status: ProofWorkerCompletionKind
     of Completed: response: ProofQueryResult[ProofResponse]
     of Imported: ingestion: LightImportResult[ImportedLightProofs]
     of ReadCompleted: readResponse: ReadResult[ReadReply]
     of ReadVerified: verifiedResponse: ReadVerificationResult[CheckedReadReply]
+    of TicketVerified: ticketResponse: NetworkTicketResult[CheckedNetworkTicket]
     else: discard # Defaults and cancellation have no response payload.
   StateProofWorker* = object ## Must remain at one address from start through explicit joined close.
     lock: Lock
@@ -49,6 +52,8 @@ type
     operation: ProofWorkerOperation
     importJob: LightProofImport
     importOutcome: LightImportResult[ImportedLightProofs]
+    ticketJob: TicketVerificationJob
+    ticketOutcome: NetworkTicketResult[CheckedNetworkTicket]
     verifyJob: ReadVerificationJob
     verifyOutcome: ReadVerificationResult[CheckedReadReply]
     readJob: NetworkReadJob
@@ -59,6 +64,8 @@ type
 proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Moving a live worker would invalidate the address borrowed by its native thread.
+  `=wasMoved`(worker.ticketJob)
+  `=wasMoved`(worker.ticketOutcome)
   `=wasMoved`(worker.verifyJob)
   `=wasMoved`(worker.verifyOutcome)
   `=wasMoved`(worker.readJob)
@@ -82,6 +89,8 @@ proc requireClosed(worker: StateProofWorker) {.requires: not worker.started.} =
 proc `=destroy`*(worker: StateProofWorker) =
   ## Host cleanup joins explicitly while all borrowed inputs and aliases still exist.
   requireClosed(worker)
+  `=destroy`(worker.ticketJob)
+  `=destroy`(worker.ticketOutcome)
   `=destroy`(worker.verifyJob)
   `=destroy`(worker.verifyOutcome)
   `=destroy`(worker.readJob)
@@ -126,9 +135,18 @@ func verifiedReadValue*(completion: ProofWorkerCompletion): ReadVerificationResu
   ## Complete verification is distinct from raw network replies and ordinary RPC proof production.
   completion.verifiedResponse
 
+func verifiedTicketValue*(completion: ProofWorkerCompletion): NetworkTicketResult[
+    CheckedNetworkTicket] {.requires: completion.status ==
+    ProofWorkerCompletionKind.TicketVerified.} =
+  ## Only exact uncancelled ticket-proof collection exposes the actual complete verifier outcome.
+  completion.ticketResponse
+
 proc execute(worker: ptr StateProofWorker) =
   ## All selected-state aliases and generation scratch retire before run publishes Done.
   case worker.operation
+  of ProofWorkerOperation.TicketVerification:
+    worker.ticketOutcome = executeTicketVerification(
+        worker.ticketJob) # Only detached immutable source/proof facts cross this CPU boundary.
   of ProofWorkerOperation.ReadVerification:
     worker.verifyOutcome = executeReadVerification(
         worker.verifyJob) # Fresh immutable input contains no selected-state aliases.
@@ -171,6 +189,8 @@ proc start*(worker: var StateProofWorker): bool {.raises.} =
   worker.readOutcome = default(ReadResult[ReadReply])
   worker.verifyJob = default(ReadVerificationJob)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -208,6 +228,8 @@ proc submit*(worker: var StateProofWorker, query: var ProofQuery): ProofWorkerAd
   worker.readOutcome = default(ReadResult[ReadReply])
   worker.verifyJob = default(ReadVerificationJob)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -237,6 +259,8 @@ proc submit*(worker: var StateProofWorker, request: var LightProofImport): Proof
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.verifyJob = default(ReadVerificationJob)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.operation = ProofWorkerOperation.Ingestion
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -262,6 +286,8 @@ proc submit*(worker: var StateProofWorker, request: var NetworkReadJob): ProofWo
   worker.readOutcome = default(ReadResult[ReadReply])
   worker.verifyJob = default(ReadVerificationJob)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.operation = ProofWorkerOperation.NetworkRead
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -287,12 +313,41 @@ proc submit*(worker: var StateProofWorker, request: var ReadVerificationJob): Pr
   worker.readOutcome = default(ReadResult[ReadReply])
   worker.verifyJob = move(request)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.operation = ProofWorkerOperation.ReadVerification
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
   signal(worker.changed)
   ProofWorkerAdmission(status: ProofWorkerError.None,
     ticket: ProofWorkerTicket(owner: worker.identity, generation: worker.next))
+
+proc submit*(worker: var StateProofWorker, request: var TicketVerificationJob): ProofWorkerAdmission =
+  ## Move one detached ticket-verification capability into the same exact bounded CPU slot.
+  if not worker.started: return ProofWorkerAdmission(status: ProofWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != ProofWorkerPhase.Idle: return ProofWorkerAdmission(
+      status: ProofWorkerError.Busy)
+  if not request.valid: return ProofWorkerAdmission(status: ProofWorkerError.NotReady)
+  if worker.next == high(uint64): return ProofWorkerAdmission(status: ProofWorkerError.Exhausted)
+  inc worker.next
+  worker.query = default(ProofQuery)
+  worker.outcome = default(ProofQueryResult[ProofResponse])
+  worker.importJob = default(LightProofImport)
+  worker.importOutcome = default(LightImportResult[ImportedLightProofs])
+  worker.readJob = default(NetworkReadJob)
+  worker.readOutcome = default(ReadResult[ReadReply])
+  worker.verifyJob = default(ReadVerificationJob)
+  worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = move(request)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
+  worker.operation = ProofWorkerOperation.TicketVerification
+  worker.cancelled = false
+  worker.phase = ProofWorkerPhase.Queued
+  signal(worker.changed)
+  ProofWorkerAdmission(status: ProofWorkerError.None, ticket: ProofWorkerTicket(
+      owner: worker.identity, generation: worker.next))
 
 func matches(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
   ## Called under the lock; generation zero and idle slots never authorize retirement.
@@ -319,6 +374,9 @@ proc collect*(worker: var StateProofWorker, ticket: ProofWorkerTicket): ProofWor
   if worker.cancelled:
     worker.outcome = default(ProofQueryResult[ProofResponse])
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.Cancelled)
+  elif worker.operation == ProofWorkerOperation.TicketVerification:
+    result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.TicketVerified,
+        ticketResponse: move(worker.ticketOutcome)) # Complete detached proof facts leave no worker aliases after exact collection.
   elif worker.operation == ProofWorkerOperation.ReadVerification:
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.ReadVerified,
       verifiedResponse: move(worker.verifyOutcome)) # No worker-owned aliases survive matching Done collection.
@@ -335,6 +393,8 @@ proc collect*(worker: var StateProofWorker, ticket: ProofWorkerTicket): ProofWor
   worker.readOutcome = default(ReadResult[ReadReply])
   worker.verifyJob = default(ReadVerificationJob)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -354,6 +414,8 @@ proc close*(worker: var StateProofWorker) =
   worker.readOutcome = default(ReadResult[ReadReply])
   worker.verifyJob = default(ReadVerificationJob)
   worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query

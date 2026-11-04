@@ -1,19 +1,22 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded fixed-request CE128/129/136/142/143 framing. Parent owns native retirement and deadlines;
+## Bounded fixed-request CE128/129/131/132/136/142/143 framing. Parent owns native retirement and deadlines;
 ## callbacks retain bytes only, and the host resolves canonical requests outside engine calls.
 import ../quic/transport
 
+const MaxReadRequestPayload* = 789 ## Largest supported fixed payload is the exact CE131/132 epoch/attempt/proof.
+
 type
   ReadKind* {.pure.} = enum ## Fixed-request content retrieval and bare-FIN announcements share bounded framing.
-    Blocks = 128, State = 129, Report = 136, PreimageAnnouncement = 142, Preimage = 143
+    Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Report = 136,
+        PreimageAnnouncement = 142, Preimage = 143
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
     ready: bool
     selector: ReadKind
-    payload: array[98, byte]
+    payload: array[MaxReadRequestPayload, byte]
     length: int
   ReadEffect* {.pure.} = enum ## Local backend planning hints never travel on the wire or establish a state certificate.
     None, FetchPreimage
@@ -28,7 +31,7 @@ type
   ReadRoute* = object ## Native stream is borrowed through close; fixed-address parent owns capacity and cancellation.
     stream: NativeStream
     selector: ReadKind
-    request: array[103, byte]
+    request: array[MaxReadRequestPayload+5, byte]
     used, offset: int
     captured: ReadRequest
     output: seq[byte]
@@ -56,6 +59,7 @@ func requestLength(kind: ReadKind): int =
   of ReadKind.State: 98
   of ReadKind.Report, ReadKind.Preimage: 32
   of ReadKind.PreimageAnnouncement: 40
+  of ReadKind.TicketProxy, ReadKind.TicketDistribution: 789
 proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
   ## Copy only complete admitted payload bytes; no mutable fixed backing array escapes.
   result = newSeq[byte](request.length)
@@ -74,7 +78,8 @@ func sameRequest(left, right: ReadRequest): bool =
 func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## CE142 acknowledges with FIN alone; ordinary content replies use one message and CE129 uses two.
   if request.selector == ReadKind.State: 2
-  elif request.selector == ReadKind.PreimageAnnouncement: 0
+  elif request.selector in [ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
+      ReadKind.TicketDistribution]: 0
   else: 1
 func minimumReplyBytes*(request: ReadRequest): uint64 {.requires: request.valid.} =
   ## Framing minima include only actual E4 messages, never a fabricated acknowledgment prefix.
@@ -189,11 +194,14 @@ proc event*(route: var ReadRoute, stream: NativeStream, event: cint) =
       for index in 0..<int(count): route.request[route.used+index] = buffer[index]
       route.used += int(count)
       return # Even exact full payloads wait for native FIN.
-    if route.used != extent or route.request[0] != byte(route.selector) or
-        route.request[1] != byte(extent-5) or route.request[2] != 0 or route.request[3] != 0 or
-            route.request[4] != 0:
+    if route.used != extent or route.request[0] != byte(route.selector):
       route.reject()
       return # One exact fixed-size E4 message is the entire request.
+    for index in 0..<4:
+      let expected = byte((uint32(extent-5) shr (index*8)) and 255)
+      if route.request[1+index] != expected:
+        route.reject()
+        return # Larger fixed tickets require all four E4 length octets, never a truncated low-byte prefix.
     let decoded = decodeReadRequest(route.selector, route.request.toOpenArray(5, extent-1))
     if decoded.error != ReadError.None:
       route.reject()

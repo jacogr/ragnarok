@@ -42,7 +42,8 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
   if uint64(wire.len) > uint64(limits.wireBytes): return ReadVerificationAdmission(
       status: ReadVerificationError.LimitExceeded)
   var source = default(ReadSource)
-  if request.kind notin [ReadKind.Preimage, ReadKind.PreimageAnnouncement]:
+  if request.kind notin [ReadKind.Preimage, ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
+      ReadKind.TicketDistribution]:
     if view.fuzzOnly: return ReadVerificationAdmission(status: ReadVerificationError.NoSource)
     if view.retainedCount > 64: return ReadVerificationAdmission(
         status: ReadVerificationError.LimitExceeded)

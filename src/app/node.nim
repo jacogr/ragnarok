@@ -8,7 +8,8 @@ import ./services
 import ./preimage_followup
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
-    report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission]
+    report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission,
+    ticket_packet, ticket_validation, ticket_pool]
 import ../chain/[provider, genesis]
 import ../codec/state/[safrole, consensus, service_values, requests]
 import ../codec/bounded
@@ -61,6 +62,7 @@ type
     preimages: PreimageFollowups
     gossip: PreimageGossip
     reports: ReportCache
+    tickets: PendingTicketPool
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
 proc `=dup`*(source: ApplicationNode): ApplicationNode {.error.}
@@ -74,6 +76,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.checkedWire)
   `=wasMoved`(owner.checkedOutcome)
   `=wasMoved`(owner.reports)
+  `=wasMoved`(owner.tickets)
   `=wasMoved`(owner.preimages)
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.checkedPeer)
@@ -97,6 +100,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.checkedWire)
   `=destroy`(owner.checkedOutcome)
   `=destroy`(owner.reports)
+  `=destroy`(owner.tickets)
   `=destroy`(owner.preimages)
   `=destroy`(owner.gossip)
   `=destroy`(owner.checkedPeer)
@@ -127,6 +131,13 @@ func preimageGossipSending*(owner: ApplicationNode): bool =
 func deliveredPreimageGossip*(owner: ApplicationNode): uint64 =
   ## Count successful exact bare-FIN deliveries, independently of content/state authority.
   owner.gossip.deliveredCount
+func pendingTicketCount*(owner: ApplicationNode): int =
+  ## Detached prospective GP ticket count grants no canonical inclusion authority.
+  owner.tickets.len
+proc pendingTicketAt*(owner: ApplicationNode, ordinal: int): CheckedNetworkTicket {.requires: ordinal >=
+    0 and ordinal < owner.tickets.len.} =
+  ## Only complete sealed proof metadata leaves retention; no mutable pool row or worker ticket escapes.
+  owner.tickets.ticketAt(ordinal)
 proc localPort*(owner: ApplicationNode): uint16 =
   ## Observe detached native listener state without a canonical graph alias.
   if owner.opened: owner.streams.localPort else: 0'u16
@@ -412,6 +423,7 @@ proc close*(owner: var ApplicationNode) =
   owner.streams.close()
   owner.clearChecked()
   owner.reports.clear()
+  owner.tickets.clear()
   owner.checkedIdentity = nil
   owner.clearJob()
   owner.opened = false
@@ -458,6 +470,54 @@ proc dispatchGossip(owner: var ApplicationNode, clock: MonoTime) =
     else:
       discard owner.gossip.dispatch(owner.streams, candidate,
           clock) # Accepted topology and live recipient generation are checked at the actual send.
+proc refreshTickets(owner: var ApplicationNode, now: StateTime) =
+  ## Source aliases retire here before another CPU job can borrow the shared ARC input context.
+  if owner.tickets.len == 0: return
+  let services = owner.services
+  if services == nil or not services[].stateProofAvailable: return
+  let selected = services[].currentTicketSource()
+  if selected.error == NetworkTicketError.None:
+    discard owner.tickets.advance(selected.value, now)
+proc finishTicket(owner: var ApplicationNode,
+    outcome: NetworkTicketResult[CheckedNetworkTicket], now: StateTime): bool =
+  ## Completed proof work still needs fresh clock/context/stream eligibility before retention or acknowledgment.
+  if outcome.error notin [NetworkTicketError.None, NetworkTicketError.AlreadyIncluded]: return false
+  let services = owner.services
+  if services == nil or not services[].stateProofAvailable: return false
+  let source = services[].currentTicketSource()
+  if source.error != NetworkTicketError.None: return false
+  if not source.value.allowsTime(now, owner.streams.connectivityEpoch): return false
+  if outcome.error == NetworkTicketError.AlreadyIncluded: return true # Genuine verified finalized inclusion needs no new pending owner.
+  if owner.tickets.advance(source.value, now) != TicketPoolError.None: return false
+  let retained = owner.tickets.retain(outcome.value, now)
+  retained in [TicketPoolError.None, TicketPoolError.Duplicate]
+proc beginIncoming(owner: var ApplicationNode, task: NodeReadTask,
+    now: StateTime): bool {.raises.} =
+  ## Each specialized admission retires staging aliases before its one exact worker can execute.
+  let services = owner.services
+  if services == nil: return false
+  if task.request.kind in [ReadKind.TicketProxy, ReadKind.TicketDistribution]:
+    let peer = task.ticket.sourcePeer
+    if not owner.streams.isValidator or not owner.streams.isValidator(peer): return false
+    let packet = decodeTicketPacket(task.request.payload)
+    if packet.error != TicketPacketError.None: return false
+    let delivery = if task.request.kind == ReadKind.TicketProxy: TicketDelivery.Proxy else: TicketDelivery.Distribution
+    let recipient = TicketRecipient(local: owner.streams.localIdentity, peer: peer.identity,
+        now: now, connectivityEpoch: owner.streams.connectivityEpoch, delivery: delivery)
+    let admitted = services[].beginNetworkTicket(packet.value, recipient)
+    if admitted.error != StateProofAdmissionError.None: return false
+    owner.workerTicket = admitted.value
+  else:
+    let admitted = services[].beginNetworkRead(task.request)
+    if admitted.error != StateProofAdmissionError.None: return false
+    owner.workerTicket = admitted.value
+  owner.readTicket = task.ticket
+  owner.pendingRequest = task.request
+  owner.preferFetch = true
+  owner.preferChecked = true # Inbound semantic admission keeps existing arbitration with public checked reads and private content fetches.
+  owner.pending = true
+  owner.cancelled = false
+  true
 proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     maximumMs: range[0..1] = 1): bool {.raises.} =
   ## Service detached native data during CPU work; capture/refresh only after the exclusive graph gate opens.
@@ -465,6 +525,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if not owner.streams.poll(clock, maximumMs): return false
   let services = owner.services
   if services == nil: return false
+  owner.tickets.expire(now) # Host-only proof owners may retire while a different job holds immutable source/context aliases.
   owner.gossip.poll(owner.streams, clock)
   owner.preimages.poll(services[], owner.streams, clock)
   let acquired = owner.preimages.takeAcquired()
@@ -480,7 +541,18 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     if phase in [ProofWorkerPhase.Queued, ProofWorkerPhase.Running]: return true
     if phase == ProofWorkerPhase.Done:
       let completed = services[].collectStateProof(owner.workerTicket)
-      if completed.kind == ProofWorkerCompletionKind.ReadCompleted and
+      if completed.kind == ProofWorkerCompletionKind.TicketVerified and owner.streams.readLive(
+          owner.readTicket):
+        let accepted = owner.finishTicket(completed.verifiedTicketValue, now)
+        if accepted:
+          let reply = captureReadReply(owner.pendingRequest, [])
+          if reply.error != ReadError.None:
+            discard owner.streams.reject(owner.readTicket) # A failed frozen acknowledgment never exposes an empty default reply.
+          elif owner.streams.respond(owner.readTicket, reply.value) != ReadError.None:
+            discard owner.streams.reject(owner.readTicket) # Output pressure retires the exact claimed stream.
+        else:
+          discard owner.streams.reject(owner.readTicket) # Epoch/window/context failures expose no accepted ticket prefix or success FIN.
+      elif completed.kind == ProofWorkerCompletionKind.ReadCompleted and
           completed.readValue.error == ReadError.None and owner.streams.readLive(owner.readTicket):
         let reply = completed.readValue.value
         var accepted = true
@@ -502,6 +574,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.clearJob()
   if not services[].stateProofAvailable: return true # Foreign RPC/preparation/publication leases remain untouched.
   if owner.refresh(now) != NodeError.None: return false
+  owner.refreshTickets(now) # All detached source aliases retire before any subsequent worker admission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
   if owner.preferFetch and owner.preimages.submitWaiting(services[]):
     owner.preferFetch = false
@@ -512,15 +585,6 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     if not owner.submitChecked(): discard owner.preimages.submitWaiting(services[])
     return true
   if owner.serveCached(request.value): return true
-  let admitted = services[].beginNetworkRead(request.value.request)
-  if admitted.error != StateProofAdmissionError.None:
-    discard owner.streams.reject(request.value.ticket)
-    return true # Busy/missing data resets the request instead of fabricating an empty successful answer.
-  owner.workerTicket = admitted.value
-  owner.readTicket = request.value.ticket
-  owner.pendingRequest = request.value.request
-  owner.preferFetch = true
-  owner.preferChecked = true # Ready inbound and checked outbound work alternate instead of competing by physical stream order.
-  owner.pending = true
-  owner.cancelled = false
+  if not owner.beginIncoming(request.value, now):
+    discard owner.streams.reject(request.value.ticket) # Busy/missing/invalid semantic admission never fabricates an empty successful response.
   true
