@@ -7,12 +7,16 @@ import ../../chain/[provider, genesis]
 import ../../codec/bounded
 import ../../jamnp-s/[read_stream, canonical_read, availability_read]
 import ../../state/availability/specifier
+import ../../jamnp-s/availability_proof
 
 type
-  NetworkReadData = ref object ## One acyclic retained canonical view and copied fixed request survive worker handoff.
+  NetworkSource {.pure.} = enum ## Only module-owned capture chooses an original canonical/report/assurer source.
+    Canonical, Computed, Assured
+  NetworkReadData = ref object ## One privately selected immutable source and copied fixed request survive worker handoff.
     view: ChainView
     request: ReadRequest
-    availability: bool
+    kind: NetworkSource
+    stored: VerifiedAvailabilityTransfer
     source: AvailabilityCommitment
     limits: AvailabilityReadLimits
   NetworkReadJob* = object ## Default jobs contain neither a canonical source nor an admitted request.
@@ -58,10 +62,22 @@ proc captureAvailabilityRead*(source: AvailabilityCommitment, request: ReadReque
   if not request.matchesAvailability(described.value.specifier): return NetworkReadAdmission(
       status: ReadError.Unavailable)
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
-    availability: true, source: source, request: request, limits: limits)))
+    kind: NetworkSource.Computed, source: source, request: request, limits: limits)))
+proc captureAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: ReadRequest,
+    limits: AvailabilityReadLimits): NetworkReadAdmission =
+  ## Services keeps the private cache frozen through exact collection; no external caller alias is retained by the store.
+  if not limits.valid: return NetworkReadAdmission(status: ReadError.LimitExceeded)
+  if not request.valid or request.kind != ReadKind.Audit: return NetworkReadAdmission(
+      status: ReadError.InvalidRequest)
+  if not source.valid or source.request.kind != AvailabilityTransferKind.Distribution:
+    return NetworkReadAdmission(status: ReadError.Unavailable)
+  NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
+    kind: NetworkSource.Assured, stored: source, request: request, limits: limits)))
 proc executeNetworkRead*(job: NetworkReadJob): ReadResult[ReadReply] =
   ## Only the worker touches the admitted source graph during the exclusive lease.
   let data = job.data
   if data == nil: return readFailure[ReadReply](ReadError.InvalidRequest)
-  if data.availability: serveAvailabilityRead(data.source, data.request, data.limits)
-  else: serveCanonicalRead(data.view, data.request)
+  case data.kind
+  of NetworkSource.Computed: serveAvailabilityRead(data.source, data.request, data.limits)
+  of NetworkSource.Assured: serveAvailabilityAudit(data.stored, data.request, data.limits)
+  of NetworkSource.Canonical: serveCanonicalRead(data.view, data.request)
