@@ -4,18 +4,12 @@
 ## Main-thread bundle dispatch owns detached wire and exact tokens; canonical grants/results remain private in Services.
 import std/[monotimes, times, assertions]
 import ./services
+import ./work_policy/types as work_policy_types
+export work_policy_types
 import ../jamnp-s/[node, work_submission, work_stream, work_duty, read_stream]
-import ../state/input_refinement
-from ../codec/bounded import ByteLimit, ElementLimit
 from ../codec/state/safrole import StateTime
 
 type
-  WorkDispatchPolicy* = object ## Explicit finite child policies never come from builder wire or inferred execution defaults.
-    ready: bool
-    admission: WorkSubmissionLimits
-    execution: InputRefinementLimits
-    duty: WorkDutyLimits
-    timeout: int
   WorkDispatchPhase* {.pure.} = enum ## Ready reserves the completed Services source until downstream processing releases it.
     Idle, Authorizing, Receiving, Completing, Ready, Retiring
   WorkDispatcher* = object ## Stable noncopyable token owner contains no canonical ARC owner or worker ticket.
@@ -47,17 +41,6 @@ proc `=destroy`*(owner: WorkDispatcher) =
   `=destroy`(owner.session)
   `=destroy`(owner.network)
   `=destroy`(owner.body)
-func workDispatchPolicy*(admission: WorkSubmissionLimits, execution: InputRefinementLimits,
-    duty: WorkDutyLimits, timeoutMs: range[1..120000] = 120000): WorkDispatchPolicy =
-  ## Positive independent ceilings make activation intentional; children retain their own validation.
-  ## Any supplied logging handle must outlive the host and its joined CPU work, as for the underlying execution policies.
-  if uint64(execution.inputBytes) == 0 or uint64(duty.chapterBytes) == 0 or
-      uint64(duty.disputeItems) == 0: return default(WorkDispatchPolicy)
-  WorkDispatchPolicy(ready: true, admission: admission, execution: execution,
-    duty: duty, timeout: timeoutMs)
-func valid*(policy: WorkDispatchPolicy): bool =
-  ## A default policy never enables native work selectors.
-  policy.ready
 func phase*(owner: WorkDispatcher): WorkDispatchPhase =
   ## Detached scalar state is safe during any foreign graph lease.
   owner.phase
@@ -71,7 +54,7 @@ func completed*(owner: WorkDispatcher): WorkSessionToken {.requires: owner.phase
 proc configure*(owner: var WorkDispatcher, streams: var NodeService,
     policy: WorkDispatchPolicy): bool =
   ## Native route activation occurs only after installing the real bounded dispatcher.
-  if not policy.ready or owner.policy.ready or owner.phase != WorkDispatchPhase.Idle: return false
+  if not policy.valid or owner.policy.valid or owner.phase != WorkDispatchPhase.Idle: return false
   if not streams.enableWorkStreams(): return false
   owner.policy = policy
   owner.accepted = 0
@@ -116,7 +99,7 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
   ## Bounded existing work advances independently of foreign CPU capacity; new header admission is a separate arbiter turn.
   if owner.phase in [WorkDispatchPhase.Idle, WorkDispatchPhase.Ready]: return
   if owner.phase != WorkDispatchPhase.Retiring:
-    let expired = (clock-owner.started).inMilliseconds >= owner.policy.timeout
+    let expired = (clock-owner.started).inMilliseconds >= owner.policy.timeoutMs
     if expired or not streams.workLive(owner.network): owner.retire(services, streams)
   let phase = services.collectWorkSubmission(owner.session)
   if owner.phase == WorkDispatchPhase.Retiring:
@@ -169,15 +152,16 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
 proc submit*(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime, now: StateTime): bool {.raises.} =
   ## At most one new small header is claimed per arbiter turn, after every canonical staging alias has retired.
-  if not owner.policy.ready or owner.phase != WorkDispatchPhase.Idle: return false
+  if not owner.policy.valid or owner.phase != WorkDispatchPhase.Idle: return false
   if not services.stateProofAvailable: return false
   let task = streams.takeWorkHeader()
   if task.error != NodeError.None: return false
   if task.value.header.kind != WorkSubmissionKind.Bundle:
     discard streams.rejectWork(task.value.ticket) # CE133 requires real availability acquisition before this dispatcher can serve it.
     return true
-  let started = services.beginWorkSubmission(task.value.header, owner.policy.admission,
-    owner.policy.execution, workRecipient(streams.localIdentity, now), owner.policy.duty)
+  let started = services.beginWorkSubmission(task.value.header, owner.policy.admissionLimits,
+    owner.policy.executionLimits, workRecipient(streams.localIdentity, now),
+        owner.policy.dutyLimits)
   if started.error != StateProofAdmissionError.None:
     discard streams.rejectWork(task.value.ticket)
     return true

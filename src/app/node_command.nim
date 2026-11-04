@@ -7,6 +7,7 @@ import std/[monotimes, times, syncio, strutils]
 import ./[options, services, node as application_node]
 import ./cli/commands
 import ./proof/ticket_production
+import ./[work_dispatch, work_policy]
 import ../crypto/primitives
 import ../jamnp-s/[connections, node as node_streams]
 import ../chain/[provider, genesis, parameters]
@@ -18,7 +19,7 @@ import ../lib/[logging, stop_signal]
 type
   NodeCommandError* {.pure.} = enum ## Only Stopped denotes completed signal/deadline shutdown; setup failures grant no running node.
     Uninitialized, Stopped, InvalidConfig, StartupFailure, UnknownFinality, InvalidSource,
-    InvalidClock, NetworkFailure, InvalidSigner
+    InvalidClock, NetworkFailure, InvalidSigner, InvalidWorkPolicy
   NodeClockError* {.pure.} = enum ## Default and invalid clocks expose no narrowed timeslot.
     Uninitialized, None, BeforeCommonEra, InvalidPeriod, Overflow
   NodeClockResult* = object ## A successful complete conversion alone grants the local JAM timeslot.
@@ -49,9 +50,13 @@ proc configuration(options: Options, finalized: var BlockHash, port: var uint16,
   port = 0
   timeout = 0
   if not options.valid or not options.stateEnabled or options.lightMode: return false
-  if options.argumentCount notin [6, 7] or options.argument(1) != "node": return false
-  if options.argumentCount == 7:
+  if options.argumentCount notin [6, 7, 8] or options.argument(1) != "node": return false
+  if options.argumentCount >= 7:
     let path = options.argument(7)
+    if path.len > 4096 or path.find(char(0)) >= 0: return false
+    if path.len == 0 and options.argumentCount == 7: return false
+  if options.argumentCount == 8:
+    let path = options.argument(8)
     if path.len == 0 or path.len > 4096 or path.find(char(0)) >= 0: return false
   var number = 0'u64
   if not unsignedValue(options.argument(2), number) or number < 1 or number > 65535: return false
@@ -106,13 +111,21 @@ proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   var port = 0'u16
   var timeout = 0'u64
   if not configuration(options, finalized, port, timeout): return NodeCommandError.InvalidConfig
+  var workPolicy = default(WorkDispatchPolicy)
+  if options.argumentCount == 8:
+    let loaded = loadWorkPolicy(options.argument(8), options.logWriter)
+    if loaded.error != WorkPolicyError.None:
+      log(options.logWriter, LogTarget.Startup, LogLevel.Error,
+        "Invalid node work policy: " & $loaded.error & "; field=" & loaded.fieldName)
+      return NodeCommandError.InvalidWorkPolicy
+    workPolicy = loaded.value # Complete policy parsing precedes Services, sockets and optional private signer loading.
   var signals = default(StopSignals)
   signals.start()
   defer: signals.close() # Keep handlers installed through every native close and joined worker teardown.
   var services = default(Services)
   defer: services.close()
   if not services.start(options, "node"): return NodeCommandError.StartupFailure
-  if options.argumentCount == 7:
+  if options.argumentCount >= 7 and options.argument(7).len > 0:
     if not services.configureSignerFile(options.argument(7)): return NodeCommandError.InvalidSigner
   if services.publishFinalized(finalized) != ViewFinalizeError.None:
     return NodeCommandError.UnknownFinality # Neither best nor recovered startup state silently supplies trusted finality.
@@ -132,6 +145,8 @@ proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   defer: host.close() # Native callbacks and this host's exact worker lease retire before borrowed Services storage.
   if host.open(services, config, limits, initial.value) != NodeError.None:
     return NodeCommandError.NetworkFailure
+  if workPolicy.valid:
+    if not host.configureWork(workPolicy): return NodeCommandError.InvalidWorkPolicy
   if not services.configureTelemetry(options, options.argument(3), host.localPort,
       ipv6): return NodeCommandError.StartupFailure
   log(options.logWriter, LogTarget.Network, LogLevel.Info,
