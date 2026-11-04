@@ -74,10 +74,11 @@ def witnesses():
             elif kind == 1:
                 digests = [work_digest(good, 0, 1, host=3521)]
             elif kind == 3:
-                digests = [work_digest(good, 0, 1, host=3521), work_digest([halt], 1, 1, kind=3, missing=True),
-                           work_digest(good[:3]+[bytes([0])], 2, 1, kind=3, host=3521)]
+                # Missing code (Bad) and Panic precede export-count validation; rejected exports stay zero-filled.
+                digests = [work_digest(good, 0, 1, host=3521), work_digest([halt], 1, 1, kind=5, missing=True),
+                           work_digest(good[:3]+[bytes([0])], 2, 1, kind=2, host=3521)]
             else:
-                digests = [work_digest([halt], 0, 65, kind=3, missing=True)]
+                digests = [work_digest([halt], 0, 65, kind=5, missing=True)]
         authorizer = digest(digest(preimage(auth))+bytes([81, 82]))
         wire = (availability+ctx+natural(0x1234)+authorizer+natural(gas(auth))+natural(len(trace))+trace
                 +lookup+natural(len(digests))+b''.join(digests))
