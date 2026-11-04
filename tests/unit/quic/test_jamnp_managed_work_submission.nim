@@ -7,6 +7,7 @@ import std/[assertions, syncio, monotimes, times]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[worker, work_submission as work_jobs]
 import ../../../src/jamnp-s/[work_submission, read_stream]
+import ../../../src/jamnp-s/work_duty
 import ../../../src/state/input_refinement
 import "../../../src/state/import/inputs" as import_inputs
 import ../../../src/codec/bounded
@@ -50,6 +51,7 @@ proc managed(f: WorkFixture) {.raises.} =
   assert services.stateProofActive
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Authorized
   assert services.stateProofAvailable, "a network body wait must not reserve the CPU worker"
+  assert not services.workSubmissionDuty(token).valid # Generic computation does not imply network guarantor eligibility.
   assert services.beginWorkSubmission(header, f.limits, executionLimits()).error ==
       StateProofAdmissionError.Busy
   let body = services.beginWorkBundle(token, f.extrinsics, f.segments, f.proofs)
