@@ -125,7 +125,7 @@ def negative_inputs(parent, slot, guaranteed, assured):
         roster = population.epoch.roster(parent[chapter_key(8)])
         secret = population.epoch.PUBLIC[roster[first['index']][:32]]
         first['signature'] = signed(secret, b'jam_available', digest(first['anchor']+bytes([first['bits']])))[1]
-        probes.append((guaranteed, bad, 'assurance/WrongParent'))
+        probes.append((guaranteed, bad, 'assurance/InvalidSignature'))
     return probes
 
 

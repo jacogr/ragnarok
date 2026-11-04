@@ -1,9 +1,13 @@
 # Complete current-schema serialization across chain profiles
 
-Scope: Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Appendix C and
+Current encoding follows the [authorized source qualification](graypaper-current-qualification.md).
+Earlier revision IDs and observed platform receipts below describe the original qualification;
+they do not claim Linux validation of the new counter representation.
+
+Original qualification scope: Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, Appendix C and
 T in `text/merklization.tex`; vectors remain pinned at
 `23061ae1f9b51171c01387e7dde0f15794c98e24`. Preserve accepted compact C13 gas,
-fixed E4 validator counters and E4/E8 C12 pairs. No pin, format or production-policy change.
+E4/E8 C12 pairs. Current validator counters use canonical uint64 naturals under the authorized source upgrade.
 
 The existing complete corpus uses one two-core/six-validator/two-slot profile.
 This increment qualifies complete mappings with tiny (2/6/6/12), expanded current

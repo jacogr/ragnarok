@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_PRIVILEGED_FORKS",
   "files": {
-    "jam-fuzzer-privileged-forks.json": "53454dec40038ff908be6d6d5ba36745a603569685ed27328bbcc832f2643365"
+    "jam-fuzzer-privileged-forks.json": "16d8931c52f114fe947377a557958373637c15fdd43261d9979730111ec89183"
   },
   "target": "jam-fuzzer-privileged-forks.json"
 }

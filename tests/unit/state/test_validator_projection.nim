@@ -28,7 +28,7 @@ proc key(index: int): StateEdKey =
 
 # Populate all six measures so retained rows cannot accidentally become zeros or swap epochs.
 proc source(current = 6, previous = 9, overflow = -1,
-    measure = ValidatorMeasure.Blocks, counter = high(uint32)): ActivitySnapshot =
+    measure = ValidatorMeasure.Blocks, counter = high(uint64)): ActivitySnapshot =
   var state = default(ActivityState)
   state.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](current)
   state.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](previous)
@@ -86,7 +86,7 @@ proc witnesses() =
             of ValidatorMeasure.PreimageCount: expected += 3
             of ValidatorMeasure.PreimageBytes: expected += 17
             else: discard # No assurance from the author in this witness.
-        assert uint32(row[measure]) == expected, "literal same-epoch field"
+        assert uint64(row[measure]) == expected, "literal same-epoch field"
   for slot in [12'u32, 48'u32, high(uint32)]:
     let rotated = projectValidatorActivity(parent, roster(9, reverse = true), observations(slot),
       [ValidatorIndex(5)], [key(0), key(99)], limits(15, 1, 2, 18)).value
@@ -97,7 +97,7 @@ proc witnesses() =
         StatisticsValidatorIndex(uint64(index))).value
       for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
         let extra = if index == 5 and measure == ValidatorMeasure.Assurances: 1 else: 0
-        assert uint32(row[measure]) == uint32(100*index+ord(measure)+extra), "assurance before rotation"
+        assert uint64(row[measure]) == uint32(100*index+ord(measure)+extra), "assurance before rotation"
     for index in 0..<9:
       let row = rotated.projectedValidatorAt(StatisticsEpoch.Current,
         StatisticsValidatorIndex(uint64(index))).value
@@ -144,14 +144,14 @@ proc overflowWitnesses() =
     if measure == ValidatorMeasure.Tickets: events.tickets = ActivityNatural(1)
     if measure == ValidatorMeasure.PreimageCount: events.preimages = ActivityNatural(1)
     if measure == ValidatorMeasure.PreimageBytes: events.preimageBytes = ActivityNatural(1)
-    let near = source(overflow = 1, measure = measure, counter = high(uint32)-1)
+    let near = source(overflow = 1, measure = measure, counter = high(uint64)-1)
     let endpoint = projectValidatorActivity(near, after, events,
       [ValidatorIndex(1)], [key(1)], limits()).value
-    assert uint32(endpoint.projectedValidatorAt(StatisticsEpoch.Current,
-      StatisticsValidatorIndex(1)).value[measure]) == high(uint32), "each counter accepts exact endpoint"
+    assert uint64(endpoint.projectedValidatorAt(StatisticsEpoch.Current,
+      StatisticsValidatorIndex(1)).value[measure]) == high(uint64), "each counter accepts exact endpoint"
     let failed = projectValidatorActivity(parent, after, events,
       [ValidatorIndex(1)], [key(1)], limits())
-    assert failed.error == ValidatorActivityError.CounterOverflow, "each E4 counter refuses wrap"
+    assert failed.error == ValidatorActivityError.CounterOverflow, "each natural counter refuses wrap"
     if measure == ValidatorMeasure.Assurances:
       events.slot = StateTime(12)
       assert projectValidatorActivity(parent, after, events, [ValidatorIndex(1)], [],
@@ -167,14 +167,14 @@ proc overflowWitnesses() =
       ValidatorMeasure.PreimageBytes]:
     events = observations()
     let base = uint64(100+ord(measure))
-    let exact = ActivityNatural(uint64(high(uint32))-base)
+    let exact = ActivityNatural(high(uint64)-base)
     case measure
     of ValidatorMeasure.Tickets: events.tickets = exact
     of ValidatorMeasure.PreimageCount: events.preimages = exact
     else: events.preimageBytes = exact # Only selected author-byte measure remains.
     let plan = projectValidatorActivity(parent, after, events, [], [], limits()).value
-    assert uint32(plan.projectedValidatorAt(StatisticsEpoch.Current,
-      StatisticsValidatorIndex(1)).value[measure]) == high(uint32), "exact E4 endpoint"
+    assert uint64(plan.projectedValidatorAt(StatisticsEpoch.Current,
+      StatisticsValidatorIndex(1)).value[measure]) == high(uint64), "exact natural endpoint"
     case measure
     of ValidatorMeasure.Tickets: events.tickets = ActivityNatural(uint64(exact)+1)
     of ValidatorMeasure.PreimageCount: events.preimages = ActivityNatural(uint64(exact)+1)

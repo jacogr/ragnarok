@@ -1,0 +1,216 @@
+{
+  "graypaper": "3861aed15d7d016a3a416e14e61fc67dddf6daec",
+  "sources": [
+    {
+      "blob_sha256": "5435b72a0a1b5ad382054631dd10073abe71693728f4e9648293a17fc76d9cd5",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "120e45528852f79241b280a9c6f7b8372bec7d32a456a77172853150ea525226",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/fuzzy/00000001.json",
+      "phase": "pre_state",
+      "published_root": "4c884e427bdada22fd6aae91a0bb694f1db04a4ab31de41f624ddf96fdbc02b0",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "5435b72a0a1b5ad382054631dd10073abe71693728f4e9648293a17fc76d9cd5",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "40fd29e7e3686e906bfbcb947c56605fc4e054af3857c373b4e67652429e09bc",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/fuzzy/00000001.json",
+      "phase": "post_state",
+      "published_root": "eb92f456468fb48e44d6126d74963af6d9afec5224ec01a8913f55bced1e766a",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "1c86ad7961eb1c9a8574c2f3607b23c8c6f26e6017ed033ffdad10cdca7b9099",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "40fd29e7e3686e906bfbcb947c56605fc4e054af3857c373b4e67652429e09bc",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/fuzzy/00000002.json",
+      "phase": "pre_state",
+      "published_root": "eb92f456468fb48e44d6126d74963af6d9afec5224ec01a8913f55bced1e766a",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "1c86ad7961eb1c9a8574c2f3607b23c8c6f26e6017ed033ffdad10cdca7b9099",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "de8f0175422d07acd4763b72aec8cc5dd08100b1ab2eb49b21dc4b1a556f7f59",
+      "entries": 26,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 9,
+      "path": "traces/fuzzy/00000002.json",
+      "phase": "post_state",
+      "published_root": "922703cb6054990bce132c5e21be89f15acf27bda3b06ef250768f616f82ef1a",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "11227abdcca9f009a55f5599a8eab0ef9c365adcd4a25ac35512a2c8f43138ae",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "de8f0175422d07acd4763b72aec8cc5dd08100b1ab2eb49b21dc4b1a556f7f59",
+      "entries": 26,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 9,
+      "path": "traces/fuzzy/00000003.json",
+      "phase": "pre_state",
+      "published_root": "922703cb6054990bce132c5e21be89f15acf27bda3b06ef250768f616f82ef1a",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "11227abdcca9f009a55f5599a8eab0ef9c365adcd4a25ac35512a2c8f43138ae",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "f3342efc25acdefe3fffb248a2f5cbdd03db9833530a423232eab5ecbcc26ba2",
+      "entries": 26,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 9,
+      "path": "traces/fuzzy/00000003.json",
+      "phase": "post_state",
+      "published_root": "be95cc549c55e5df980e80948c1a570ff201e40d8e31a137bdd9536436cc91d9",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "e60eb891e54ba9b75b9dd073b032e155cd53dc86ee1a0cc6969e7ebccc836642",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "a01c39991a096057577abca0471c93935cf84c32a678d82a159792d95a8f2ff0",
+      "entries": 83,
+      "metadata_rows": 7,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 60,
+      "path": "traces/fuzzy/00000010.json",
+      "phase": "pre_state",
+      "published_root": "a2bc9b1ae508d95b5d92f1e0359be4896226a227f625e8589a9cb62e4bdfc0bf",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "e60eb891e54ba9b75b9dd073b032e155cd53dc86ee1a0cc6969e7ebccc836642",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "a9f62d87a0cc272ff56b6571176154568a02b045ec5ea923251c0b3aa7d709b0",
+      "entries": 93,
+      "metadata_rows": 7,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 70,
+      "path": "traces/fuzzy/00000010.json",
+      "phase": "post_state",
+      "published_root": "f847682ad8181fc40383f51e0bebcd0b0896ab127492ccf4a26d1b828efbfb68",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "d4c48b72483c0dda92d490d60d1fef1aab49dd50e0db87d3a3671129c0f38b52",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "120e45528852f79241b280a9c6f7b8372bec7d32a456a77172853150ea525226",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000001.json",
+      "phase": "pre_state",
+      "published_root": "4c884e427bdada22fd6aae91a0bb694f1db04a4ab31de41f624ddf96fdbc02b0",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "d4c48b72483c0dda92d490d60d1fef1aab49dd50e0db87d3a3671129c0f38b52",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "a8fb3b40d137ceb43df7050a5ac106b64f94349b1e36f312f768a7ce51cbcf1b",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000001.json",
+      "phase": "post_state",
+      "published_root": "0db56c50e646d67bf75281188f902ceba89d431482c6087a6e5cbf866b9abc07",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "c39f764a493f4d730cdb871be783b3518b6cdc6e5ab62f52b54197f8922b7dab",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "a8fb3b40d137ceb43df7050a5ac106b64f94349b1e36f312f768a7ce51cbcf1b",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000002.json",
+      "phase": "pre_state",
+      "published_root": "0db56c50e646d67bf75281188f902ceba89d431482c6087a6e5cbf866b9abc07",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "c39f764a493f4d730cdb871be783b3518b6cdc6e5ab62f52b54197f8922b7dab",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "72c0646a1d6c40ddd5b1b5f67da11a7144b251d7f50a6dec10b29fcc9345e6e3",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/storage/00000002.json",
+      "phase": "post_state",
+      "published_root": "b3d554a3b4040a71d2d287f59c0eec41913454685c9792bc7364f867090ace95",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "da578907d0f73ba040c25e088d07066efdb505345742c4bb98f641c9786601ec",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "120e45528852f79241b280a9c6f7b8372bec7d32a456a77172853150ea525226",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/preimages/00000001.json",
+      "phase": "pre_state",
+      "published_root": "4c884e427bdada22fd6aae91a0bb694f1db04a4ab31de41f624ddf96fdbc02b0",
+      "unmodified_current_metadata": false
+    },
+    {
+      "blob_sha256": "da578907d0f73ba040c25e088d07066efdb505345742c4bb98f641c9786601ec",
+      "current_pin_complete_typed_parity": false,
+      "derived_root": "15ead764e04eb5ba7682c1aa4cd509b6e9161c1d695d7bc51240aca06c9a7eaf",
+      "entries": 21,
+      "metadata_rows": 1,
+      "metadata_widths": [
+        89
+      ],
+      "opaque_service_rows": 4,
+      "path": "traces/preimages/00000001.json",
+      "phase": "post_state",
+      "published_root": "a1ca65aca73bf655c208905665eb57290e99f07cf3aa8ac94683011fbd33660b",
+      "unmodified_current_metadata": false
+    }
+  ],
+  "vectors": "d7b73e396d2f872fcfca37cbbb7d7869675d34d6"
+}

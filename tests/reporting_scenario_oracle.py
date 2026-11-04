@@ -45,6 +45,6 @@ def collect(cases, fixture, sources, check_frozen=True):
 def validate_frozen(fixture, sources, evidence):
     """Bind independently calculated complete evidence to its exact pinned source fixtures."""
     frozen = json.loads(fixture.read_text())
-    assert frozen['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert frozen['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert frozen['sources_sha256'] == {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
     assert frozen['evidence'] == evidence

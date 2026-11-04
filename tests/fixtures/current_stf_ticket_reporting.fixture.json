@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_TICKET_REPORTING",
   "files": {
-    "current-stf-ticket-reporting.json": "4d18eb70bb6a330b9d75c65904d884556151f26c32d7bb9eb0d9396b51897e5b"
+    "current-stf-ticket-reporting.json": "1ea8bc9ef03b46854fade57dd5263fa66a74b9d16c88350591920722a57bf812"
   },
   "target": "current-stf-ticket-reporting.json"
 }

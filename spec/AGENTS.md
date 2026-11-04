@@ -14,7 +14,7 @@ For encoding-width discrepancies, the maintainer directs following the published
 vectors encode a field compactly, use that compact encoding and document the text discrepancy.
 Use exactly one representation, with no alternate-format fallback. This accepts C13 statistics gas
 as canonical JAM compact naturals (1–9 bytes); it is not a pending implementation/parity gate.
-Fixed encodings used by the vectors remain fixed.
+Fixed vector encodings remain fixed unless a later explicitly authorized source upgrade changes that field.
 
 GP token notation's dollar sign is not a token byte: signing domains use ASCII `jam_available` and
 `jam_guarantee`; general-tree domains use ASCII `node` and `peak`. Preserve exact token bytes with
@@ -41,3 +41,12 @@ pinned revisions and sections in protocol changes. `spec/` records interpretatio
 Feature contracts record applicable scope, pinned references, completion tests, interpretation,
 observed evidence, limitations and next bounded work. Passing local tests is not proof of complete
 JAM parity. Keep routine progress out of the shared design pages.
+
+- On 2026-11-03 the maintainer authorized source revision
+  `fad0ded4a433052397bf7234352a57fe491883f7`, superseding the earlier source targets.
+  Adopt parent-free assurance records, natural validator counters, the larger authorizer-code
+  limit, inclusive package gas, bounded report refinement and unique bless service keys.
+  Preserve fixed E4 service keys, C12 E8 allowances and the accepted compact statistics-gas policy.
+  The pinned vector dataset remains historical encoding evidence; current qualification uses
+  explicitly derived target records without alternate production decoding. See
+  [current qualification](graypaper-current-qualification.md).

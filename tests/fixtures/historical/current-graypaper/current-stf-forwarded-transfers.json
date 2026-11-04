@@ -1,0 +1,115 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "c8a10854dcf218126bee40e9d38eb190ae4cd6a1c845c33382601ef5fdc77801",
+      "785a82e1d5955aa77c97f0f554624f613b98903009672af0d8b5937f28817904",
+      "fa980e1cd32fcc527beeb1f489a5d744b0499243ebf11c60ca9aafb59b61bbd6",
+      "1c484096449b73c8302460947f2cc17e23f44b01e63ba843d7958b3092838c2a"
+    ],
+    [
+      "60df47d61e97cc0762484ff0bc765ecae4cb8361173564e6837c453e72d2b51f",
+      "4230f3e562c91433334cd45f712ab6a7ed061f2fe7e58aeef7e2d1f9faed9b84",
+      "d963ef83602b17d5746d642d345a7be3d1d411c0c290eb7373efc675da3a4036",
+      "c58a394fc766156ce6b66261579ff28b319de5108be7b2ad302e5c1f1e49cf16"
+    ],
+    [
+      "079b0ba6e9079550337dca64e4420c00256c2b9ee782cae405db3d92e296a33f",
+      "011b44383380be8e80a8a88848f89db9cfaeba75dddbe85421f03b731713060d",
+      "7108999a523bb7f71c5965b62489033265916917cbeab6f5e5d7c839ad437255",
+      "59f193a6c153c481ab9f180148292484e7c5856c7fe11052df8c682df21159ea"
+    ],
+    [
+      "479637c810c1e2cbe3cea809d7c27f3331d000283773ad80718607830b459384",
+      "feb6012765da6347d1bbeb1494e966e7bb2a3bb647ec1fe2892070961fdf687d",
+      "8d9f72afd55b3a177b980f405bf93a385f1560af501a107080a806a051e12c12",
+      "16d4e48c57576c9360b23255a709d6010013464d5bb7b69293e3a31a848a55d3"
+    ],
+    [
+      "6abb6017aade21c811a512c14f6b31d3443e163723e49e19d977d0aea005225a",
+      "b96320237f698a10ca95c0f8b2e893d319c3c8cb39a2fcfcbb38784d81592d8c",
+      "76fa2c6ca6b602f577d067a61ba7ff57dcb0961478fbe7506334fcb5a9591d75",
+      "7aacad1f0ad61110ea5a4fe0f318ae46940c4674b4e416ed0c4c6ca98c919164"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "e473aa81ef1efca6ae090d8163c8788c318765159f588b64ea2eb077831632c5",
+      "eed9b5d1242b994cfb8f4d8deec72942609fb8329dc8969ba12047fb82fb68bb",
+      "c269eb6f5a211f85a4a841c005c0be2d22506fda76908460993b32a12a199b0e",
+      "8802555760813a6670890737eadeff718287d8d32d480299268cff33645f2242"
+    ],
+    [
+      "84a878c04c8624169f49572d2b174a2787305b84b05a9de76c12374f749b3c4e",
+      "b7563088f0dc1feb93f103a5779010f81a28652cb1a2a755962acc696d4af0fe",
+      "b622557dd54aa10c0f9aafb3a2637e41e5df92816853cb64b686a2f763ff6eeb",
+      "62b8621c1fd97de5952cb684311fd8d7ec2e2365b73f5cdfbbf0c9322cee65a5"
+    ],
+    [
+      "c6df752b1d650b74b700e5624d6800f357e51f037b3572ea32a7fbfe6ebee15c",
+      "4b3d93e01c9d31e262db1d97f217bd5d7d290f9547378a520c1efeabf2400578",
+      "68531333e4fa2d612ecf971fb310fdb1d7a624e6cf1492909ba593680d86ae3d",
+      "71e98a870ebfd005d0e9e8f36f18ba7178fd1902b0a182cbe070b20468f36989"
+    ],
+    [
+      "0b90a26178c2c2794a3e0423e8de9fff90f8732e0e7075ad46af2a374bfbd05a",
+      "3a0dadb9af0950ebb538f83a9dcac7724c971e1e6c1ccea01313fbf714d1a01c",
+      "5154a1cb86487a2d2658a83042c679625f9d00ec7e198f59cb8b388824ff3950",
+      "ef7e0bf40978bcad88d0d638d097a401ee57aa3642b7b7e5e21a7b93d7a22a65"
+    ],
+    [
+      "61c90580ab2061523f6b7a7dd4385c9cca97953d970e348d2dc97c0bcd35ffc3",
+      "940002a828e23b18679c38dd733177f58b7f6a103003e4125da6d571b78bd0fb",
+      "b14d0895d7c530402709368b3eb09b72e74b75ce0b11e1ef93531d0e2a8388c8",
+      "b6a5fee5b84dfbb9461d2ad5082827e6f84b38aba346e7013377d1fcd2fcc4f2"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "forwarded": 1,
+        "returned_amount": 3,
+        "receiver_gas": 1678,
+        "sender_reentry_gas": 1000
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "forwarded": 0,
+        "returned_amount": 0,
+        "receiver_gas": 1678,
+        "sender_reentry_gas": 0
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "forwarded": 1,
+        "returned_amount": 3,
+        "receiver_gas": 1782,
+        "sender_reentry_gas": 1000
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "forwarded": 1,
+        "returned_amount": 3,
+        "receiver_gas": 678,
+        "sender_reentry_gas": 0
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "forwarded": 1,
+        "returned_amount": 0,
+        "receiver_gas": 1678,
+        "sender_reentry_gas": 1000
+      }
+    ]
+  ]
+}

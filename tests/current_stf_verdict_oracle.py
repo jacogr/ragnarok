@@ -238,7 +238,7 @@ def negative(parent, case, slot, value, targets):
 def expected_observations(check_frozen=True):
     """Produce signed requests and all complete expected outputs before native execution."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert hashlib.sha256(population.FIXTURE.read_bytes()).hexdigest() == fixture['population_fixture_sha256']
     provider = validate_provider()
     original = population.original(json.loads(population.FIXTURE.read_text()))

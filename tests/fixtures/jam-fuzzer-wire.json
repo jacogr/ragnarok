@@ -1,27 +1,27 @@
 {
   "upstream_commit": "3a488be18fe7b94aa1d35bd0d6f8981ec5bbefae",
   "cases": 1276,
-  "accepted": 959,
-  "refused": 317,
+  "accepted": 669,
+  "refused": 607,
   "refusals": {
     "HeaderFailure": 7,
-    "BlockFailure": 310
+    "BlockFailure": 600
   },
   "profiles": {
     "0.7.0": {
       "cases": 470,
-      "accepted": 310,
-      "refused": 160
+      "accepted": 240,
+      "refused": 230
     },
     "0.7.2": {
       "cases": 408,
-      "accepted": 271,
-      "refused": 137
+      "accepted": 214,
+      "refused": 194
     },
     "0.8.0": {
       "cases": 398,
-      "accepted": 378,
-      "refused": 20
+      "accepted": 215,
+      "refused": 183
     }
   },
   "variants": {
@@ -2587,5 +2587,5 @@
     "fuzz-proto/examples/0.8.0/no_forks/00000101_target_state_root.json": "001c6bdec6d57e353b9f64a222f5fb7e09b964686e006b34888ce8c534542930",
     "fuzz-proto/examples/0.8.0/no_forks/00000101_target_state_root.bin": "7cc9637bdf8c2649ec36c02ba6e864ad399f0351b2d7dd4d4803498b5a956cc3"
   },
-  "expected_sha256": "24cac329cf7447abc06a727250696188bd7b4746d7f69de6dfa1a1a2ec9f0d95"
+  "expected_sha256": "4c214e59d4b4566b16beb0953c0241a8223d21aa3aef9a1146655dd614c26b65"
 }

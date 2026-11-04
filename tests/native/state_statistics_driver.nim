@@ -72,7 +72,7 @@ proc source(parts: seq[string]): ActivityState =
     result.validators[epoch] = newSeq[ValidatorActivity](fields.len div 6)
     for i in 0..<result.validators[epoch].len:
       for measure in low(ValidatorMeasure)..high(ValidatorMeasure): result.validators[epoch][i][
-          measure] = ValidatorCounter(fields[i*6+ord(measure)]) # Fixed E4 source values.
+          measure] = ValidatorCounter(fields[i*6+ord(measure)]) # Full-width natural source values.
   let cores = numbers(parts[8])
   assert cores.len mod 8 == 0
   for i in 0..<cores.len div 8: result.cores.add(core(cores.toOpenArray(i*8,
@@ -93,7 +93,7 @@ proc observation(owner: ActivitySnapshot, consumed: int): string =
     var fields: seq[string] = @[]
     for i in 0..<info.validators[epoch]:
       let record = validatorActivityAt(owner, epoch, StatisticsValidatorIndex(i)).value
-      for measure in low(ValidatorMeasure)..high(ValidatorMeasure): fields.add(uint32(record[
+      for measure in low(ValidatorMeasure)..high(ValidatorMeasure): fields.add(uint64(record[
           measure])) # Observe all six fixed counter values.
     result.add(" " & $info.validators[epoch] & ":" & (if fields.len == 0: "-" else: fields.join(
         ","))) # Preserve empty array observations.

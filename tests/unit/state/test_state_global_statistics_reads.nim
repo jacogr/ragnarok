@@ -14,7 +14,7 @@ let config = ActivityConfig(cores: CoreCount(3), current: ValidatorCount(6),
 var source = default(ActivityState)
 source.validators[StatisticsEpoch.Current] = newSeq[ValidatorActivity](6)
 source.validators[StatisticsEpoch.Previous] = newSeq[ValidatorActivity](9)
-source.validators[StatisticsEpoch.Current][0][ValidatorMeasure.Blocks] = ValidatorCounter(high(uint32))
+source.validators[StatisticsEpoch.Current][0][ValidatorMeasure.Blocks] = ValidatorCounter(high(uint64))
 source.validators[StatisticsEpoch.Previous][8][ValidatorMeasure.Assurances] = ValidatorCounter(128)
 source.cores = newSeq[CoreActivity](3)
 source.cores[2].gas = ActivityGas(high(uint64))
@@ -25,9 +25,9 @@ let view = globalView(@[entry], [entry.key])
 let owner = view.readGlobalStatistics(config).value
 assert owner.activityInfo.value.validators[StatisticsEpoch.Current] == 6
 assert owner.activityInfo.value.validators[StatisticsEpoch.Previous] == 9
-assert uint32(owner.validatorActivityAt(StatisticsEpoch.Current, StatisticsValidatorIndex(0)).value[
-    ValidatorMeasure.Blocks]) == high(uint32)
-assert uint32(owner.validatorActivityAt(StatisticsEpoch.Previous, StatisticsValidatorIndex(
+assert uint64(owner.validatorActivityAt(StatisticsEpoch.Current, StatisticsValidatorIndex(0)).value[
+    ValidatorMeasure.Blocks]) == high(uint64)
+assert uint64(owner.validatorActivityAt(StatisticsEpoch.Previous, StatisticsValidatorIndex(
     8)).value[ValidatorMeasure.Assurances]) == 128
 assert uint64(owner.coreActivityAt(StatisticsCoreIndex(2)).value.gas) == high(uint64)
 source = default(ActivityState)
@@ -48,8 +48,9 @@ assert view.readGlobalStatistics(policy).error == GlobalProofError.LimitExceeded
 policy = config
 policy.previous = ValidatorCount(0)
 assert view.readGlobalStatistics(policy).error == GlobalProofError.InvalidConfig
-for length in [0, 1, 145, 362, entry.value.len-1]:
-  # Probe current/previous roster, core statistics and final compact-gas boundaries.
+for length in [0, 1, 45, 101, 133, entry.value.len-1]:
+  # Canonical scalar widths put roster ends at45/101 and the core end at133.
+  # Probe those independent boundaries and the final compact-gas field.
   var truncated = newSeq[byte](length)
   for i in 0..<length: truncated[i] = entry.value[i]
   assert globalView(@[StateEntry(key: entry.key, value: truncated)], [

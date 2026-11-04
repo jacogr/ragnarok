@@ -44,7 +44,7 @@ type
     InvalidIndex,   ## Author or extraction ordinal lies outside the selected population.
     InvalidTag,     ## Forged epoch selector.
     LimitExceeded,  ## Inspected work/capture/output exceeds local policy.
-    CounterOverflow ## Mathematical counter cannot fit the fixed E4 representation.
+    CounterOverflow ## Mathematical counter exceeds the supported canonical uint64 natural domain.
   ActivityData = ref object # Acyclic private storage retains one exact source and independent immutable epoch rows.
     source: AdmittedReports
     info: ValidatorActivityInfo
@@ -80,9 +80,9 @@ func populations(current, previous, active, preimages, assurances, reporters: in
     uint64(reporters) <= uint64(config.reporterWork) div uint64(active)
 
 proc add(target: var ValidatorCounter, amount: uint64): bool =
-  ## Prove the E4 sum in a wider domain before changing private scratch.
-  if amount > uint64(high(uint32))-uint64(uint32(target)): return false # Never wrap or clamp a natural statistic.
-  target = ValidatorCounter(uint32(uint64(uint32(target))+amount))
+  ## Check remaining uint64 capacity before changing the private natural counter.
+  if amount > high(uint64)-uint64(target): return false # Never wrap or clamp a natural statistic.
+  target = ValidatorCounter(uint64(target)+amount)
   true
 
 proc projectValidatorActivity*(prior: ActivitySnapshot, active: ValidatorStateSnapshot,

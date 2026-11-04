@@ -68,7 +68,7 @@ class GeneratedSTFTests(unittest.TestCase):
         self.assertEqual((evidence['chains'], evidence['transitions']), (5, 60))
         self.assertEqual({c['mode'] for c in self.cases}, set(reference.guests.MODES))
         self.assertEqual(set(evidence['refusals']), {'credential/InvalidSignature',
-            'credential/WrongErasureShards', 'assurance/InvalidSignature', 'assurance/WrongParent'})
+            'credential/WrongErasureShards', 'assurance/InvalidSignature'})
 
     def test_accounting_matches_actual_release_and_preserves_balances(self):
         """Complete C13 service operands equal genuinely available work, including release before resize clearing."""

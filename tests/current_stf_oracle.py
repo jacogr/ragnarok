@@ -103,7 +103,7 @@ def authored_child(parent, body=bytes(7), extrinsic_root=None):
 def expected_observations():
     """Freeze complete expected wires from two explicit original maps and independent equations."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     lines = []
     for case in fixture['cases']:
         original = bytes.fromhex(case['parent_checkpoint'])

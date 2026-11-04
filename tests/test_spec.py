@@ -52,7 +52,7 @@ class SpecificationTests(unittest.TestCase):
         self.assertNotIn('tag', entry)
         self.assertEqual(entry['release_status'], 'unreleased')
         self.assertEqual(entry['base_release'], 'v0.8.0')
-        self.assertEqual(entry['commit'], '3861aed15d7d016a3a416e14e61fc67dddf6daec')
+        self.assertEqual(entry['commit'], 'fad0ded4a433052397bf7234352a57fe491883f7')
         # Verify whole upstream chapter files rather than relying on a mutable tag name alone.
         for name, digest in entry['source_sha256'].items():
             self.assertEqual(hashlib.sha256((path/name).read_bytes()).hexdigest(), digest, name)
@@ -78,7 +78,9 @@ class SpecificationTests(unittest.TestCase):
         self.assertNotIn('tag', entry)
         self.assertEqual(entry['release_status'], 'unreleased')
         self.assertEqual(entry['commit'], 'd7b73e396d2f872fcfca37cbbb7d7869675d34d6')
-        self.assertEqual(entry['graypaper_commit'], PINS['graypaper']['commit'])
+        # These immutable vectors predate the new assurance/C13 formats; keep their last qualified source identity.
+        self.assertEqual(entry['graypaper_commit'], '3861aed15d7d016a3a416e14e61fc67dddf6daec')
+        self.assertNotEqual(entry['graypaper_commit'], PINS['graypaper']['commit'])
         # Hash every consumed fixture and the upstream changelog, not merely the JSON representation.
         for path, digest in entry['files'].items():
             self.assertEqual(hashlib.sha256((ROOT/path).read_bytes()).hexdigest(), digest, path)

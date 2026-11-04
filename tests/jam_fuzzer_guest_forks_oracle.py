@@ -34,7 +34,7 @@ def expected_observations(check_frozen=True):
             lines.extend(('B '+wire.hex(), 'O '+checkpoint(list(posterior.items())).hex()))
             roots[-1].append(tree(list(posterior.items()))[0].hex())
             parent = posterior # Only the independently calculated original-last result continues.
-    evidence = dict(graypaper_commit='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d',
+    evidence = dict(graypaper_commit='fad0ded4a433052397bf7234352a57fe491883f7',
                     base_sha256=hashlib.sha256(guests.FIXTURE.read_bytes()).hexdigest(),
                     transitions=50, chains=5, nonempty_guest_siblings=15,
                     original_last=35, original_roots=roots, sibling_roots=sibling_roots,

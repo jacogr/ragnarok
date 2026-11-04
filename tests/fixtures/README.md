@@ -60,6 +60,6 @@ compares them with the original oracle. Production codec output is never used to
 
 `composition-chapters.txt` stores the exact sixteen hex lines returned by
 `state_composition_oracle.chapters()`, previously prepared by the cumulative launcher. SHA-256:
-`3d45577099002c493cb7dc6fa4b3ee2f7ebfa389952a0c4cae3c7c382db7265b`.
+`f3b1ea49f24366d1ff529eb8b864ae20a1532fcf9cdb937170fadf3b853bb5e7`.
 The native launcher checks this identity and supplies `RAGNAROK_COMPOSITION_FIXTURE`.
 A harness check compares every line with the independent oracle; production encoding is not used.

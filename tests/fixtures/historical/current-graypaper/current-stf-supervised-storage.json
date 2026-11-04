@@ -1,0 +1,160 @@
+{
+  "graypaper_commit": "1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d",
+  "base_fixture_sha256": "b3f3e0df9b7be08edca890add2fba8f187c9db847ea7d558e25c271e01140bc9",
+  "successor_roots": [
+    [
+      "2de58a0a39faceba74f23e498cf3c836d0b3c565d09146458043b44300bc5c2b",
+      "3cd582ffd4e68d30d0c67d6cbfef35c2aafcc7f818ebea5643a422afb476632f",
+      "0260255acffc9ff3ff1d170d7b672f61ac89122268e38ff93a40fada3b5ccecc",
+      "e15868860031af9efb10dc2c41d775a1b44eae425b4c7c527cb6cc59d7ec26a6",
+      "112c954a08620942ce1575479109840813837c6d66b39aafc6c02dca198454b0",
+      "05a2e434b086483ef7eee9358bb4f24ae66b9febbe9b3145c63c8a5594194fe9"
+    ],
+    [
+      "d0698e5ac697c224b79b8c5fe14eb7c8fcabbbd0dc31b40bbca3dd34805d6e0f",
+      "ec52faa649618d3d690e97431adef30cc453cfc5232f168a1d35ae5849f2b163",
+      "69499429e2178f0de952c548123e1bb56a3b577d749ff5b0a7ffc84ce6df1e16",
+      "841ee2398c6dfaaf9570dda4dca0e46333dc3c13376b34901a5fe9d92c77453b",
+      "0cd9c3420b8e73f89d3cda29c815c2c3a99d6e47647759981b7dc440e03dfe5e",
+      "432e2afd4c41a30a9397cec834cfac53fbf51ca802991d7c0ad01b3e7a05827b"
+    ],
+    [
+      "6f994adde5ee5fa8237d6805bb0002c218f5c5dce3ba85ebee33c5c16d5b0ba7",
+      "e36c699260bf3e87196b634f7c6020ab64a273b3b465a7355c703f2501b17577",
+      "8a2f5bff83e24e9c920ca8f0b950f698ce7cdfc78811053f4219a7fe031dc6b8",
+      "0d2275fb6dc8ad07b8b76fb68ef34cad504e8de8706cbfba3a77584d1510e8cf",
+      "a2e9df06867e39d84b59723f037bd31934032e6ca49a18e4434edf52d9e52e70",
+      "754c9e4bb683b639a9139c37fd3eaed668ea53d60b79c1cd623d813135523b39"
+    ],
+    [
+      "499631d726abbead1362be158c03c7255cd9dbf282db58e53036a0b41aa8805d",
+      "3a9831950d6c15078533727ff5b965a753a78cfd063ef7c902b44093559c5644",
+      "924d0416466cdf88258d2e85c0c8865de7e8a09a5b032ada399da7aaab2813dc",
+      "397d74c8abb83a88f15a7c2f0a2fff5653c55c43f88b49a02e3bb6ce00018de9",
+      "fab43538ab0fa19dab2b89a51ec210c8209c25f8076e97a97d49dfcff997731d",
+      "5001ae67fb9f30f865c361b4f655a3eaea5a13438ba1d5f72d3de7a70c6c7da1"
+    ],
+    [
+      "dd187c4cd6522f5a111635ac9315674346f972e145526be9c04bb40591523baa",
+      "184b51e44a298e1cdb69afe0181f2ec47cd7cde8ff54a63d761dee31aa66e24f",
+      "40792965dbb65e6874b706c51d085ee11811496687002892d58071e5a437b61d",
+      "c011b477652bdc335139fab407582cf5c99232b88ab5069e1b5eb67bc39460a1",
+      "a3a3e91fa16efc1b0ff834eff5e8068acc1e03f4003644d2bbd1bae7205fe8fc",
+      "95915c286d7c5c17b5f55e9a0ef4c5ab34e58dd052006703f8d845c3760e18b8"
+    ]
+  ],
+  "successor_checkpoint_sha256": [
+    [
+      "407dc6420a24ebbb95086cc319967e10160438be8a7546ced4461be0b35b72e9",
+      "b9254041dc4fde5a3f131a4f7b06d4f21df14c9eba10e604f7860235f1a82c7d",
+      "bb4d7755db7c1ae4f2fc53963b7599e0f278f0c966d2890215d933f290c17621",
+      "e8f3aeb56bc4a9711f199ee1eab164cffcdb3392e2d15ba851cda14c866ea096",
+      "144060ea8ce0a83af48a0cdc154b7f3965040a4a8f0478c01eae2e67ecac807a",
+      "001e562d723ef248b7dafdbaff22e0c4b8a05f5d4859cf9be7515a6adbfc0b4d"
+    ],
+    [
+      "44d8424539625bef560a040a350cfcef8b75b004edfe486b71d2c04984dc5d39",
+      "ac20a7162b433751439ee2598e26391bf40651f277cb2bd9ef8b46f838a80117",
+      "1082d7080ee805171ae184653e6df94590593df0164ae52e3490135b97e64a99",
+      "e3b2dc10b8eb92fe6f06e91d50a5c65994b89aec362bfedb714aeb817a437fa7",
+      "e57707159ec71d782deb51da9cd61186ca028d15c532a16766def86c1a814ac3",
+      "64075336a11d3be7fbaa3d8232d23a14938cb2d631cac4301ae9ffaf10500c08"
+    ],
+    [
+      "15c8d6669ab2975ee8388ec33c0c67b24dfe221a7fa7de9b90f6dafc41e10efc",
+      "5e7095bc8a0e99852c6c33e95c4652cfb9fa92da5041708b8c5d823741ab77d5",
+      "fba7ff86866be5749295a44548dc7cf4f7743d44981eeb57934b3c4efa43472a",
+      "8f433ab7f41e87f3c9e281725652a0cf1774e87721d068344bd38fd1a567f036",
+      "a066ab9c84c25bd7e76ab797dd52edc2b72aeaf6cd74a44f66483d279cf17520",
+      "e00e0f88b40aa9e93e3c34296059b594e2c8397e5d4aabdafcda77f173c04b40"
+    ],
+    [
+      "c63f1a268dc547f9a34cf544bdc20934cd0df3cc8cee9e34effb3fb6406f2334",
+      "50789aadc80788e5611276517464424d046eb96f7cace39e1359a114980f378b",
+      "95785197daf292b285042252f7e0ce4104638b0a111d4a479752f19ba2973420",
+      "d2c990018a64dd8234eb67fde34ea9e1d19032139557887f19c22df4aa38c354",
+      "10557baa1037e85fadc0ab2f593f0ded85cba24ea372a8786a8e5c895aeb0291",
+      "f574e08d94e54e802c99c3e6d84460017f1e1b1627bd42761d394bd1ae190084"
+    ],
+    [
+      "6f47922d7257aaabb72ab4076f675fe5a1c7489d9126917fa46bbb170d76cda8",
+      "e33d68c9d9716a9406d82cca7199ab9f391463d4b30dc4260dc97b65d095914f",
+      "6c160caa72e9824ac952206f5db58a4572916f2e2f9b81faadd8bb6f36fd4825",
+      "351d4c22d143839ce6ca87b102d879c7fb99f06b7483ff529f8f94eca14c14e0",
+      "675366bed6aa77f032f06fc6741cb309cacc1f4de3ed1bf9edaacd84c1c4acd9",
+      "9d4ec8ba2e7e8f9cf8a05db8a2e2209419237b9b859af70341b8c6a69aee9f2f"
+    ]
+  ],
+  "traces": [
+    [
+      {
+        "slot": 4,
+        "gas": 2550,
+        "foreign_write_retained": true,
+        "target_last_accumulation": 0
+      },
+      {
+        "slot": 6,
+        "gas": 2550,
+        "foreign_write_retained": true,
+        "target_last_accumulation": 0
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 2550,
+        "foreign_write_retained": false,
+        "target_last_accumulation": 0
+      },
+      {
+        "slot": 6,
+        "gas": 2550,
+        "foreign_write_retained": false,
+        "target_last_accumulation": 0
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 2654,
+        "foreign_write_retained": true,
+        "target_last_accumulation": 0
+      },
+      {
+        "slot": 6,
+        "gas": 2654,
+        "foreign_write_retained": true,
+        "target_last_accumulation": 0
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 2550,
+        "foreign_write_retained": false,
+        "target_last_accumulation": 0
+      },
+      {
+        "slot": 6,
+        "gas": 2550,
+        "foreign_write_retained": false,
+        "target_last_accumulation": 0
+      }
+    ],
+    [
+      {
+        "slot": 4,
+        "gas": 2550,
+        "foreign_write_retained": false,
+        "target_last_accumulation": 0
+      },
+      {
+        "slot": 6,
+        "gas": 2550,
+        "foreign_write_retained": false,
+        "target_last_accumulation": 0
+      }
+    ]
+  ]
+}

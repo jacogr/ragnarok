@@ -45,7 +45,7 @@ def expected_observations(check_frozen=True):
             lines.extend(('B '+wire.hex(), 'O '+checkpoint(list(posterior.items())).hex()))
             roots[-1].append(tree(list(posterior.items()))[0].hex())
             parent = posterior
-    evidence = dict(graypaper_commit='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d',
+    evidence = dict(graypaper_commit='fad0ded4a433052397bf7234352a57fe491883f7',
                     base_sha256=hashlib.sha256(source.FIXTURE.read_bytes()).hexdigest(),
                     lookup_age=LOOKUP_AGE, expunge_period=LOOKUP_AGE+4800,
                     transitions=35, chains=5, roots=roots, traces=traces,

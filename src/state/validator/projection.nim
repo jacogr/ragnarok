@@ -12,7 +12,7 @@ type
     parentSlot*, slot*: StateTime ## Strict chronology determines whether to rotate once.
     epochSlots*: EpochSlots       ## Nonzero chain parameter, independent of slot representation.
     author*: AuthorIndex          ## Position in the posterior active roster.
-    tickets*, preimages*, preimageBytes*: ActivityNatural ## Author contributions, checked against fixed E4 counters.
+    tickets*, preimages*, preimageBytes*: ActivityNatural ## Author contributions, checked against full-width natural counters.
   ValidatorActivityLimits* = object ## Independent work/storage ceilings never request maximum-sized allocation.
     rows*: ElementLimit ## Total retained current and previous validator tuples.
     assurances*, reporters*, comparisons*: ElementLimit ## Borrowed observations and key-membership comparisons.
@@ -67,10 +67,10 @@ proc projectedValidatorAt*(projection: ValidatorActivityProjection, epoch: Stati
     completed: data.rows[epoch][int(uint64(index))])
 
 proc add(row: var ValidatorActivity, measure: ValidatorMeasure, amount: uint64): bool =
-  ## Checked fixed-counter addition is explicit because Nimony arithmetic wraps.
-  let prior = uint64(uint32(row[measure]))
-  if amount > uint64(high(uint32))-prior: return false # Check before addition/narrowing.
-  row[measure] = ValidatorCounter(uint32(prior+amount))
+  ## Checked uint64 addition is explicit because Nimony arithmetic wraps.
+  let prior = uint64(row[measure])
+  if amount > high(uint64)-prior: return false # Check before addition/narrowing.
+  row[measure] = ValidatorCounter(prior+amount)
   true
 
 proc projectValidatorActivity*(parent: ActivitySnapshot, posterior: ValidatorStateSnapshot,
@@ -144,7 +144,7 @@ proc projectValidatorActivity*(parent: ActivitySnapshot, posterior: ValidatorSta
       if array[32, byte](reporter) == key:
         reported = true # Each posterior position receives a single existential increment.
     if reported and not add(row, ValidatorMeasure.Guarantees, 1):
-      fail(ValidatorActivityError.CounterOverflow) # Old reporter totals cannot wrap E4.
+      fail(ValidatorActivityError.CounterOverflow) # Old reporter totals cannot wrap the natural counter domain.
     projected[StatisticsEpoch.Current][index] = row
   ValidatorActivityResult[ValidatorActivityProjection](status: ValidatorActivityError.None,
     completed: ValidatorActivityProjection(data: ValidatorActivityData(rows: projected,

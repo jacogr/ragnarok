@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_CURRENT_STF_TRACE_OBSERVATIONS",
   "files": {
-    "current-stf-trace-observations.json": "599f8410ba2ae7def05cd1c67d033ef259827e3ae8c3833bc641c3ba9880e261"
+    "current-stf-trace-observations.json": "f20e88fd1e45e870d842502981501fd5f1f9565a29622f42c4c73aa0d3bca0e2"
   },
   "target": "current-stf-trace-observations.json"
 }

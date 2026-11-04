@@ -82,7 +82,7 @@ proc expectedBytes(source: PreparedCurrentAccumulationValidators, available, blo
             of ValidatorMeasure.PreimageCount: value += uint32(if blobs: 3 else: 0)
             of ValidatorMeasure.PreimageBytes: value += uint32(if blobs: 4 else: 0)
             else: discard # These fixtures submit no tickets; all other counters use membership above.
-        appendFixed(result, value)
+        appendNatural(result, uint64(value))
   let gas = [11'u64, 13]
   let imports = [2'u64, 17]
   let xtCounts = [3'u64, 19]

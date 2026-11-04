@@ -34,7 +34,7 @@ def expected_observations(check_frozen=True):
             roots[-1].append(tree(list(posterior.items()))[0].hex())
             parent = posterior
             header = wire[:297]
-    evidence = dict(graypaper_commit='1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d',
+    evidence = dict(graypaper_commit='fad0ded4a433052397bf7234352a57fe491883f7',
                     base_sha256=hashlib.sha256(guests.FIXTURE.read_bytes()).hexdigest(),
                     transitions=35, chains=5, checkpoints=15, sessions=20,
                     roots=roots, expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())

@@ -65,7 +65,7 @@ def plan(parent, mode, ass, reports):
 def expected_observations(check_frozen=True):
     """Freeze175 full-map transitions before the shared native driver reads its first body."""
     fixture = json.loads(FIXTURE.read_text())
-    assert fixture['graypaper_commit'] == '1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d'
+    assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
     assert fixture['base_fixture_sha256'] == hashlib.sha256(pipeline.FIXTURE.read_bytes()).hexdigest()
     requests, lines, roots, hashes = [], [], [], []
     for mode, budget in CASES:
