@@ -1,0 +1,20 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "includes": [
+    "bandersnatch",
+    "crypto",
+    "quic",
+    "storage_io"
+  ],
+  "libraries": [
+    "bandersnatch",
+    "crypto",
+    "quic",
+    "storage_io"
+  ],
+  "observers": [
+    "io_read"
+  ],
+  "prepared": false
+}

@@ -192,3 +192,73 @@ under checked ARC/Clang thinLTO, including the witnessed child deaths, real sync
 point pass semantic compilation. The ordinary registered ownership-guard build rejects the
 actual composite duplication at ARC lowering. These are scoped local results, not native Linux
 CI, managed-worker integration or complete assurance-runtime evidence.
+
+
+## Managed namespace ownership and cancellation
+
+`app/proof/assurance_storage.nim` captures only an explicit create/open operation, bounded
+independently owned path, expected full chain identity, policy and borrowed fixed-address
+namespace. Capture performs no filesystem work. Its staging helper retires capture wrappers and
+path aliases before `StateProofWorker.submit` moves the job into the existing single bounded
+slot. There is no arbitrary queued I/O callback. The synchronous scan receives a non-owning,
+non-raising cancellation view of the live worker; that view is never retained in a job or store.
+
+Existing-namespace accounting polls before directory/entry work and before publishing opened
+state. Cancellation refuses without accepting a scanned prefix or deleting published records.
+Fresh creation completes its fixed 256-bucket/identity initialization before scanning, so
+cancellation does not deliberately strand half of that fixed initialization. Individual OS
+operations retain their existing blocking semantics; this is cooperative cancellation between
+bounded operations, not preemption of an OS call. The worker releases its mutex before execution
+and before joining, allowing the scan to observe cancellation/stopping without a lock-held join.
+
+Queued, Running and Done all retain capacity and the entire mutable namespace borrow until exact
+collection or joined close. Neither cancellation nor observing Done permits host access to store
+fields. A cancelled already-completed open cannot undo its native descriptor side effects; the
+host must explicitly close that owner after collection/join, even though the cancelled completion
+exposes no result payload. A foreign/stale ticket cannot collect, cancel or release this lease.
+
+Services now owns that stable namespace and delegates its native destruction/move hooks. Explicit
+`beginAssuranceStorage` derives the complete original genesis hash from the already captured
+configuration; callers cannot choose a chain identity or substitute a current best head. Full
+state, idle shared capacity and the exact RPC pause token are required. Default/ordinary startup
+opens no assurance namespace. Light mode cannot admit this complete-state work. Only successful
+exact collection publishes host-owned cached counts/bytes; status polling never reads fields of
+the store being mutated on the worker. Cancelled/failed collection and joined startup stop close
+the actual namespace before resuming RPC. Unrelated idle proof stop preserves installed storage;
+Services shutdown joins before closing its native gate. No public namespace alias escapes.
+
+The selected native worker suite uses 1023 genuine independently verified shard records and
+byte-limited real reads. It observes Running, rejects foreign cancellation/collection, confirms
+scan cancellation stops before all headers are read, distinguishes completed-open cancellation,
+and joins during a live scan before restarting. Disabling the actual polling hook makes the
+suite fail its first cancelled-archive early-stop/closed-owner assertion; restoring the exact
+source passes. Its 1000 moved-job/failure/Done-cancellation cycles retain 720 occupied bytes.
+The genuine complete-state Services suite checks actual independent lock contention/release,
+canonical/RPC exclusion through Done, stale-ticket refusal, completed cancellation cleanup,
+uncollected Done join, close/restart and 1000 alternating I/O-failure/cancellation cycles with
+8848224 occupied bytes unchanged. These local witnesses establish managed namespace lifetime,
+not source-fresh possession, signing, network acquisition/delivery or complete validator startup.
+
+
+The scan policy now requires enough work for the entire configured record capacity, all 258
+fixed namespace names and one interrupted writer sibling before any filesystem admission.
+An undersized policy previously allowed fresh creation but could refuse reopening the same
+namespace at its promised capacity. The native regression first reproduces that admission;
+the corrected boundary rejects one-work-unit deficits and the uint32 maximum-count/overhead
+case before creating a namespace. The same path then creates successfully with the exact
+minimum budget. Extra unexpected debris remains bounded by the existing whole-scan refusal.
+
+
+Final qualification of the managed namespace increment passes both selected native suites,
+the existing proof-worker/Services/consecutive-download lease consumers, the exact registered
+Services ARC duplication rejection, and the real Services lifecycle under checked ARC/Clang
+thinLTO (1000 cycles, 8847040 bytes unchanged). After the scan-policy correction, the selected
+store, Services and worker suites pass again. The corrected complete store suite also passes
+checked ARC/Clang thinLTO, including real sync faults, supervised process deaths, scan-cap
+boundaries and 1000 release cycles (14864 bytes unchanged). The Services owner/callback ABI
+is unchanged by that pure policy predicate correction. These are local macOS results; no native
+Linux CI or full assurance signing/network/startup completion is claimed.
+
+Pinned formatting (2416 Nim sources and Rust), verification inventory and the complete final
+source graph (559 production modules plus the actual application entry point) pass after the
+policy correction. The assurance layer remains unpublished until its full scoped feature is ready.

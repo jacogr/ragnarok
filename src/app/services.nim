@@ -55,6 +55,8 @@ import ./proof/[query as proof_query, worker as proof_worker, network_read]
 import ./proof/read_validation as verification_job
 import ./proof/ticket_verification as ticket_job
 import ./proof/ticket_production
+import ./proof/assurance_storage
+import ../jamnp-s/[assurance_store, assurance_record]
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_recovery
@@ -118,6 +120,18 @@ import ../mcp/protocol as mcp_protocol
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
     Uninitialized, None, Closed, Busy, QueryFailure, WorkerFailure
+  AssuranceStorageStartError* {.pure.} = enum ## Namespace startup has its own closed capture/worker alternatives and never grants possession or signing authority.
+    Uninitialized, None, Closed, Unavailable, Busy, IdentityFailure, CaptureFailure, WorkerFailure
+  AssuranceStorageStart* = object ## Only admitted full-state storage work exposes the exact shared-worker collection ticket.
+    case status: AssuranceStorageStartError
+    of None: ticket: ProofWorkerTicket
+    of IdentityFailure: identityReason: NetworkIdentityError
+    of CaptureFailure: captureReason: AssuranceStorageJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # No failed/default alternative retains a path, job or native owner.
+  AssuranceStorageInfo* = object ## Host-owned cached accounting remains readable while a mutable namespace lease runs elsewhere.
+    opened*: bool
+    records*, bytes*: uint64
   ReadVerificationStart* = object ## Bounded fresh verification shares the existing exact Services worker lease.
     case status: StateProofAdmissionError
     of None: ticket: ProofWorkerTicket
@@ -399,6 +413,10 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   nativeRuntime: NativeRuntime      # Explicit application-wide compiler lifecycle, never per-code thread creation.
   executionContext: ServiceExecutionContext # Full-state lifetime; bounded baseline/scratch is allowed, but no live CPU/host/result/chain state.
   proofWorker: StateProofWorker
+  assuranceStore: AssuranceStore
+  assuranceStorageInput: AssuranceStorageJob
+  assuranceStorageActive: bool
+  assuranceInfo: AssuranceStorageInfo
   proofInput: ProofQuery
   networkReadInput: NetworkReadJob
   verificationInput: ReadVerificationJob
@@ -508,6 +526,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
   `=wasMoved`(services.light)
   `=wasMoved`(services.proofWorker)
+  `=wasMoved`(services.assuranceStore)
+  `=wasMoved`(services.assuranceStorageInput)
   `=wasMoved`(services.proofInput)
   `=wasMoved`(services.networkReadInput)
   `=wasMoved`(services.verificationInput)
@@ -592,6 +612,8 @@ proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
   `=destroy`(services.light)
   `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
+  `=destroy`(services.assuranceStorageInput)
+  `=destroy`(services.assuranceStore) # Its native borrower has joined and its single-writer gate is explicitly closed.
   `=destroy`(services.proofInput)
   `=destroy`(services.networkReadInput)
   `=destroy`(services.verificationInput)
@@ -824,6 +846,12 @@ proc stopStateProofs*(services: var Services) =
     services.light.stopProofs()
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
+  services.assuranceStorageInput = default(AssuranceStorageJob)
+  if services.assuranceStorageActive:
+    # Joined startup may already have opened the namespace; cancellation cannot roll that side effect back on the worker.
+    discard services.assuranceStore.close()
+    services.assuranceInfo = default(AssuranceStorageInfo)
+    services.assuranceStorageActive = false
   services.distributionInput = default(WorkSubmissionJob)
   services.distributionTicket = default(ProofWorkerTicket)
   services.distributionActive = false # Joined stop revokes this namespace before its worker can reopen.
@@ -890,6 +918,8 @@ proc close*(services: var Services) =
     log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping service workers and listeners")
   services.light.close() # Distinct light workers join before the borrowed RPC owner or partial evidence retires.
   services.stopStateProofs() # Join selected-state access before any canonical/RPC owner retires.
+  discard services.assuranceStore.close() # No namespace descriptor or owner address retires before its borrower joins.
+  services.assuranceInfo = default(AssuranceStorageInfo)
   services.ticketSigner = default(TicketSigner) # Last private-key ownership retires only after every secret-borrowing job joins.
   services.ticketSignerReady = false
   services.ticketSignerVersion = 0
@@ -2181,9 +2211,82 @@ proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): Proo
       ticket) # Only actual matching Done collection ends its own request lease.
   result = services.proofWorker.collect(ticket)
   if result.kind != ProofWorkerCompletionKind.Uninitialized:
+    if services.assuranceStorageActive:
+      # Exact collection ends mutation before touching any native-owner fields; a cancelled Done result still needs explicit close.
+      if result.kind == ProofWorkerCompletionKind.AssuranceCompleted and
+          result.assuranceStorageValue.error == AssuranceStoreError.None:
+        services.assuranceInfo = AssuranceStorageInfo(opened: true,
+          records: services.assuranceStore.len, bytes: services.assuranceStore.byteLength)
+      else:
+        discard services.assuranceStore.close()
+        services.assuranceInfo = default(AssuranceStorageInfo)
+      services.assuranceStorageInput = default(AssuranceStorageJob)
+      services.assuranceStorageActive = false
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # A stale/foreign/early ticket never resumes another lease.
+
+func error*(outcome: AssuranceStorageStart): AssuranceStorageStartError =
+  ## Read the selected startup refusal before accessing its ticket or child reason.
+  outcome.status
+func value*(outcome: AssuranceStorageStart): ProofWorkerTicket {.requires: outcome.status ==
+    AssuranceStorageStartError.None.} =
+  ## Only successful native admission grants collection or cancellation authority.
+  outcome.ticket
+func identityError*(outcome: AssuranceStorageStart): NetworkIdentityError {.requires: outcome.status ==
+    AssuranceStorageStartError.IdentityFailure.} =
+  ## Preserve actual configured-genesis identity refusal; a best head or caller-selected chain cannot replace the original network.
+  outcome.identityReason
+func captureError*(outcome: AssuranceStorageStart): AssuranceStorageJobError {.requires: outcome.status ==
+    AssuranceStorageStartError.CaptureFailure.} =
+  ## Preserve bounded path/policy capture failure without opening a namespace.
+  outcome.captureReason
+func workerError*(outcome: AssuranceStorageStart): ProofWorkerError {.requires: outcome.status ==
+    AssuranceStorageStartError.WorkerFailure.} =
+  ## Worker refusal leaves no live namespace job or canonical/RPC exclusion.
+  outcome.workerReason
+func assuranceStorageInfo*(services: Services): AssuranceStorageInfo =
+  ## Poll only host-owned cached accounting; the actual namespace can be mutating on the native thread.
+  services.assuranceInfo
+proc stageAssuranceStorage(services: var Services, folder: string, chain: AssuranceChainId,
+    limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageJobError =
+  ## Retire the capture wrapper and its private path aliases before a native thread can execute the staged job.
+  let captured = captureAssuranceStorage(services.assuranceStore, folder, chain, limits, mode)
+  if captured.error == AssuranceStorageJobError.None:
+    services.assuranceStorageInput = captured.value
+  captured.error
+proc beginAssuranceStorage*(services: var Services, folder: string,
+    limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageStart {.raises.} =
+  ## Explicit full-state startup uses the same single CPU/I/O capacity and exact RPC lease; no foreground callback scans files.
+  if not services.started: return AssuranceStorageStart(status: AssuranceStorageStartError.Closed)
+  if services.light.active: return AssuranceStorageStart(
+      status: AssuranceStorageStartError.Unavailable)
+  if not services.stateProofAvailable or services.assuranceInfo.opened:
+    return AssuranceStorageStart(status: AssuranceStorageStartError.Busy)
+  discard services.proofWorker.start()
+  let identity = readNetworkIdentity(services.chainText)
+  if identity.error != NetworkIdentityError.None:
+    return AssuranceStorageStart(status: AssuranceStorageStartError.IdentityFailure,
+        identityReason: identity.error)
+  let chain = AssuranceChainId(array[32, byte](identity.value.genesisHash))
+  let captured = services.stageAssuranceStorage(folder, chain, limits, mode)
+  if captured != AssuranceStorageJobError.None:
+    return AssuranceStorageStart(status: AssuranceStorageStartError.CaptureFailure,
+        captureReason: captured)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.assuranceStorageInput = default(AssuranceStorageJob)
+    return AssuranceStorageStart(status: AssuranceStorageStartError.Busy)
+  let admitted = services.proofWorker.submit(services.assuranceStorageInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    services.assuranceStorageActive = true
+    return AssuranceStorageStart(status: AssuranceStorageStartError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.assuranceStorageInput = default(AssuranceStorageJob)
+  AssuranceStorageStart(status: AssuranceStorageStartError.WorkerFailure,
+      workerReason: admitted.error)
 
 func error*(outcome: WorkSubmissionStart): StateProofAdmissionError =
   ## Failed starts never expose a session token.

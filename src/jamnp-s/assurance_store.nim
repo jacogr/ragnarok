@@ -15,6 +15,11 @@ import ../crypto/primitives
 
 const IdentityMagic = "RAGAF001"
 type
+  AssuranceScanStop* = proc(context: nil pointer): bool {.nimcall, raises: [].}
+    ## A trusted host reads cancellation only; the borrowed context outlives this synchronous call and grants no storage/signing authority.
+  AssuranceScanControl* = object ## Optional non-owning cancellation is supplied at execution, never retained in the namespace or a queued job.
+    stop: nil AssuranceScanStop
+    context: nil pointer
   AssuranceStoreLimits* = object ## Logical serialized-record bytes, retained count, directory scan work and per-record verification are independent explicit policies.
     entries*, scanEntries*: ElementLimit
     bytes*: ByteLimit
@@ -32,7 +37,7 @@ type
     ready, failed: bool
   AssuranceStoreError* {.pure.} = enum ## A failure/default contains no stored-data receipt or partially opened namespace.
     Uninitialized, None, Closed, Busy, Faulted, InvalidPolicy, InvalidPath, AlreadyExists,
-    InvalidNamespace, Missing, InvalidRequest, Conflict, InvalidTime, LimitExceeded,
+    InvalidNamespace, Missing, InvalidRequest, Conflict, InvalidTime, LimitExceeded, Cancelled,
     FileFailure, HeaderFailure, RecordFailure, EncodingFailure, BackendFailure
   AssuranceStoreResult*[T] = object ## The actual failed filesystem, codec or primitive alternative remains selected.
     case status: AssuranceStoreError
@@ -124,10 +129,19 @@ func propagated[T, U](outcome: AssuranceStoreResult[U]): AssuranceStoreResult[
       status: AssuranceStoreError.BackendFailure, cryptoReason: outcome.cryptoReason)
   of AssuranceStoreError.None: refused[T](AssuranceStoreError.Uninitialized) # Excluded by the checked precondition.
   else: refused[T](outcome.status)
+func assuranceScanControl*(stop: AssuranceScanStop, context: nil pointer): AssuranceScanControl =
+  ## The host owns this stable callback/context through the current synchronous execution only.
+  AssuranceScanControl(stop: stop, context: context)
+proc stopped*(control: AssuranceScanControl): bool =
+  ## No control leaves the ordinary standalone API unchanged; an actual callback can only stop admission.
+  let stop = control.stop
+  if stop == nil: return false
+  stop(control.context)
 func valid*(limits: AssuranceStoreLimits): bool =
-  ## Large disk histories remain possible without an archive-sized resident table; every traversal is still explicitly bounded.
+  ## The whole configured archive, 258 fixed namespace entries and one interrupted writer sibling must fit the independent scan ceiling; the preceding uint32 record bound proves addition safe.
   uint64(limits.entries) >= 1 and uint64(limits.entries) <= uint64(high(uint32)) and uint64(
-      limits.scanEntries) >= 258 and uint64(limits.scanEntries) <= uint64(high(uint32)) and uint64(
+      limits.scanEntries) >= uint64(limits.entries)+259 and uint64(limits.scanEntries) <= uint64(
+          high(uint32)) and uint64(
       limits.bytes) >= uint64(AssuranceRecordHeaderBytes) and limits.record.valid and uint64(
       limits.record.verification.hashBytes) >= 174
 func opened*(owner: AssuranceStore): bool =
@@ -137,7 +151,7 @@ func faulted*(owner: AssuranceStore): bool =
   ## Uncertain publication or failed recovery bars further stored-data receipts until close/reopen.
   owner.failed
 func len*(owner: AssuranceStore): uint64 =
-  ## Only fixed scalar accounting is observable through any managed borrow.
+  ## Read scalar accounting only after the mutable managed store lease retires; Services may cache earlier values separately.
   owner.count
 func byteLength*(owner: AssuranceStore): uint64 =
   ## Logical serialized-record bytes exclude directory/lock filesystem overhead.
@@ -285,8 +299,9 @@ proc removeTemporary(path: string): AssuranceStoreResult[bool] =
   if posix.unlink(name.toCString()) != 0: return fileFailure[bool](AtomicFileError.IoFailure)
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
 proc scanDirectory(owner: AssuranceStore, folder: string, root: bool,
-    info: var ScanInfo): AssuranceStoreResult[bool] =
+    info: var ScanInfo, control: AssuranceScanControl): AssuranceStoreResult[bool] =
   ## Public POSIX iteration preserves EOF versus failure and keeps only one copied entry/header in memory.
+  if control.stopped: return refused[bool](AssuranceStoreError.Cancelled)
   var path = folder
   var metadata = default(Stat)
   if posix.lstat(path.toCString(), metadata) != 0 or not S_ISDIR(metadata.st_mode): return refused[
@@ -300,6 +315,7 @@ proc scanDirectory(owner: AssuranceStore, folder: string, root: bool,
   var removed = false
   while true:
     # Entry names borrow the native buffer only until the next call; copied bounded names alone escape this iteration.
+    if control.stopped: return refused[bool](AssuranceStoreError.Cancelled)
     var raw: cstring = ""
     var kind = 0'u8
     let next = nextDirEntry(stream, raw, kind)
@@ -365,10 +381,11 @@ proc close*(owner: var AssuranceStore): AssuranceStoreResult[bool] =
   if closed != AtomicFileError.None: return fileFailure[bool](closed)
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
 proc acquire(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
-    limits: AssuranceStoreLimits, create: bool): AssuranceStoreResult[bool] =
+    limits: AssuranceStoreLimits, create: bool, control: AssuranceScanControl): AssuranceStoreResult[bool] =
   ## One explicit startup transaction establishes private namespace shape, chain identity, synchronization and bounded scalar accounting.
   if owner.ready or owner.gate.opened: return refused[bool](AssuranceStoreError.Busy)
   if not limits.valid: return refused[bool](AssuranceStoreError.InvalidPolicy)
+  if control.stopped: return refused[bool](AssuranceStoreError.Cancelled)
   if folder.len == 0 or folder.len > 4000 or folder[folder.len-1] == '/': return refused[bool](
       AssuranceStoreError.InvalidPath)
   for character in folder:
@@ -413,25 +430,26 @@ proc acquire(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
   let parentSync = syncDirectory(parent(owner.folder))
   if parentSync != AtomicFileError.None: return fileFailure[bool](parentSync)
   var info = default(ScanInfo)
-  let top = owner.scanDirectory(owner.folder, true, info)
+  let top = owner.scanDirectory(owner.folder, true, info, control)
   if top.error != AssuranceStoreError.None: return top
   for index in 0..<256:
     # Every known bucket must exist and finish enumeration; no directory failure can become a valid empty history.
-    let checked = owner.scanDirectory(owner.folder & "/" & bucket(index), false, info)
+    let checked = owner.scanDirectory(owner.folder & "/" & bucket(index), false, info, control)
     if checked.error != AssuranceStoreError.None: return checked
+  if control.stopped: return refused[bool](AssuranceStoreError.Cancelled)
   owner.count = info.count
   owner.bytes = info.bytes
   owner.observed = info.observed
   owner.ready = true
   AssuranceStoreResult[bool](status: AssuranceStoreError.None, completed: true)
 proc createAssuranceStore*(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
-    limits: AssuranceStoreLimits): AssuranceStoreResult[bool] =
+    limits: AssuranceStoreLimits, control = default(AssuranceScanControl)): AssuranceStoreResult[bool] =
   ## Only an explicitly requested fresh directory may initialize this independent availability database.
-  owner.acquire(folder, chain, limits, true)
+  owner.acquire(folder, chain, limits, true, control)
 proc openAssuranceStore*(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
-    limits: AssuranceStoreLimits): AssuranceStoreResult[bool] =
+    limits: AssuranceStoreLimits, control = default(AssuranceScanControl)): AssuranceStoreResult[bool] =
   ## Existing storage must pass exact identity and complete bounded accounting before admission; missing identity is never recreated.
-  owner.acquire(folder, chain, limits, false)
+  owner.acquire(folder, chain, limits, false, control)
 proc loadPath(owner: var AssuranceStore, path: string, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceStoreResult[StoredAssuranceShard] =
   ## Full data re-verification and file/parent synchronization, not header accounting, grant a restored stored-data receipt.

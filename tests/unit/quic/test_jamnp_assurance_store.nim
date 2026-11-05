@@ -262,6 +262,15 @@ proc namespaceBounds(first: VerifiedAvailabilityTransfer) =
   defer: discard owner.close()
   var policy = limits()
   policy.entries = ElementLimit(1)
+  policy.scanEntries = ElementLimit(259)
+  let insufficient = owner.createAssuranceStore(folder, chain(), policy)
+  assert insufficient.error == AssuranceStoreError.InvalidPolicy, "configured scan budget must reopen every promised record and interrupted sibling"
+  assert not owner.opened, "inconsistent scan policy cannot acquire a native namespace"
+  policy.entries = ElementLimit(high(uint32))
+  policy.scanEntries = ElementLimit(high(uint32))
+  assert owner.createAssuranceStore(folder, chain(), policy).error ==
+      AssuranceStoreError.InvalidPolicy, "maximum record count cannot wrap fixed scan overhead"
+  policy.entries = ElementLimit(1)
   policy.scanEntries = ElementLimit(260)
   assert owner.createAssuranceStore(folder, chain(), policy).error == AssuranceStoreError.None, "exact bounded namespace policy"
   assert owner.rememberAssuranceShard(first, AssuranceTime(1000)).error == AssuranceStoreError.None, "bounded history"
