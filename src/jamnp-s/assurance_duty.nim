@@ -125,6 +125,8 @@ proc captureAssuranceDuty*(source: BlockSnapshotResult, local: StateEdKey,
     return refused[AssuranceDuty](reason)
   if source.error != GenesisError.None: fail(AssuranceDutyError.InvalidSource)
   if array[32, byte](local) == default(array[32, byte]): fail(AssuranceDutyError.InvalidIdentity)
+  if array[32, byte](local) == array[32, byte](nullValidator().ed25519): fail(
+      AssuranceDutyError.InvalidIdentity)
   if uint64(limits.chapterBytes) == 0 or uint64(limits.readBytes) == 0 or uint64(limits.reports) ==
       0 or uint64(limits.requests) == 0:
     fail(AssuranceDutyError.InvalidPolicy)

@@ -73,3 +73,54 @@ independently trusted structural fixtures with placeholder guarantee credentials
 establish GP block admission. Genuine admitted assignments, durable possession, signing, CE137/141
 runtime and optional activation remain mandatory completion evidence. The feature stays in its
 unpublished assurance layer until those parts are implemented and verified.
+
+## Per-shard persistence record
+
+The `RAGAS001` format stores one complete verified CE137 distribution. Records do not require
+an archive-sized in-memory table or rewrite unrelated payloads. The forthcoming namespace owner
+will enforce chain identity, aggregate disk/count budgets, single-writer exclusion and successful
+file/directory synchronization before granting any durable possession. The record codec alone
+confers none of those capabilities.
+
+All integers below are fixed little-endian. Hash/key fields retain their complete 32 bytes.
+
+| Offset | Bytes | Meaning |
+| --- | --- | --- |
+| 0 | 8 | Exact ASCII `RAGAS001` |
+| 8 | 32 | Independently expected configured chain identity |
+| 40 | 104 | Package hash, E4 bundle length, erasure root, E2 shard count, segment root, E2 export count |
+| 144 | 2 | Original assigned erasure-shard index |
+| 146 | 8 | Promise time in whole seconds since the GP Common Era |
+| 154 | 8 | Export retention deadline in the same time domain |
+| 162 | 12 | E4 byte lengths of bundle shard, all segment shards and justification |
+| 174 | 32 | Blake2b-256 of the preceding 174 metadata bytes |
+| 206 | Variable | Exactly the three payloads, in their declared order, with no trailing data |
+
+The deadline is at least 2419200 seconds after the promise time. Arithmetic refuses overflow;
+renewal cannot move time backwards or shorten an existing promise. Both bundle and exports stay
+in the complete record; the record's existence or deadline alone does not certify that a report
+has completed auditing. No timeout or absent pending assignment grants deletion authority.
+
+Directory accounting may check only the fixed header checksum and exact file extent. Before
+serving or considering possession, full restore verifies all three CE137 payloads against the
+record's precise root/coordinate. A self-rooted persisted descriptor still cannot substitute
+for independently canonical metadata: `recordMatches` compares all six fields and the requested
+coordinate. Construction detaches incoming verified data; serving extraction returns another
+private copy. The signing path must still establish durable publication, fresh duty and every
+original local index.
+
+`availabilityVerificationInfo` supplies bounded expected extents and exact real proof work
+without granting data or authority. Record restore charges the metadata checksum and all payload
+verification before even its first hash. Exact file size, geometry and work deficits refuse
+without hashing. The native record suite confirms empty, ordinary and proof-page distributions,
+metadata/payload corruption, wrong chain, truncation/trailing data, exact/minus-one aggregate
+budgets, actual immediate and delayed backend refusal, recovery, renewal and full-width time
+boundaries. The actual primitive call counts match the preflight, and 1000 create/restore/serve/
+refusal cycles retain 71344 occupied bytes unchanged.
+
+The duty suite also now uses the actual GP null-validator record (`02` followed by zeros for its
+Ed25519 key) and rejects that identity as well as an all-zero key. Its 1000-cycle result remains
+122128 bytes unchanged. The existing availability suite passes with 714816 bytes unchanged.
+Pinned formatting and verification inventory pass. Actual disk publication, restart I/O,
+non-evicting capacity, managed acquisition and CE141 remain in progress; no durable assurance
+promise or complete runtime flow is claimed by these record tests.

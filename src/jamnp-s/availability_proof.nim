@@ -54,6 +54,9 @@ type
     shards: seq[PreparedAvailabilityTransfer]
   GuarantorAvailability* = object ## Only complete source-bound capture constructs the immutable full-bundle/all-shard serving owner.
     data: nil GuarantorAvailabilityData
+  AvailabilityVerificationInfo* = object ## Expected-only fixed extents and exact verifier work grant no authenticated payload or canonical authority.
+    bundleBytes*, segmentBytes*, proofBytes*, payloadBytes*, workspaceBytes*: uint64
+    hashes*, hashBytes*: uint64
   TransferShape = object ## Every extent and hash-stage budget is derived from bounded expected metadata before extraction.
     geometry: ErasureGeometry
     validators, rows, width, shard, row: int
@@ -249,6 +252,23 @@ func verificationWork(shape: TransferShape, kind: AvailabilityTransferKind): Ava
     result = combined(result, AvailabilityMerkleWork(hashes: 1,
         hashBytes: shape.geometry.bundleChunkBytes))
     if kind == AvailabilityTransferKind.Distribution: result = combined(result, shape.innerTree)
+proc availabilityVerificationInfo*(expected: AvailabilitySpecifier,
+    request: AvailabilityRequest): AvailabilityTransferResult[AvailabilityVerificationInfo] =
+  ## Persistence and batch callers precharge exact whole-input verification before hashing or copying any received payload.
+  let planned = shape(expected, request)
+  if planned.error != AvailabilityTransferError.None: return propagated[
+      AvailabilityVerificationInfo, TransferShape](planned)
+  let selected = planned.value
+  let bundle = if request.kind == AvailabilityTransferKind.Segment: 0'u64 else: selected.geometry.bundleChunkBytes
+  let segments = if request.kind == AvailabilityTransferKind.Audit: 0'u64
+    elif request.kind == AvailabilityTransferKind.Segment: uint64(selected.width)
+    else: uint64(selected.rows*selected.width)
+  let payload = bundle+segments+uint64(selected.proofBytes)
+  let work = verificationWork(selected, request.kind)
+  AvailabilityTransferResult[AvailabilityVerificationInfo](status: AvailabilityTransferError.None,
+    completed: AvailabilityVerificationInfo(bundleBytes: bundle, segmentBytes: segments,
+      proofBytes: uint64(selected.proofBytes), payloadBytes: payload, workspaceBytes: payload*2,
+      hashes: work.hashes, hashBytes: work.hashBytes))
 func constructionBytes(shape: TransferShape, kind: AvailabilityTransferKind): uint64 =
   ## Include flat source extraction, all temporary/final proof copies and the largest per-row extraction before allocating.
   result = uint64(shape.validators)*64+uint64(shape.proofBytes)*3

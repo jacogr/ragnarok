@@ -38,7 +38,7 @@ proc changed(source: AvailabilityCommitment, count: int): BlockSnapshotResult =
   let original = registrationSnapshot(source, active = count, previous = count)
   assert original.error == GenesisError.None, "capture registration fixture"
   var roster = topologyRecords(1, count)
-  roster[0].ed25519 = default(StateEdKey)
+  roster[0] = nullValidator()
   roster[2].ed25519 = roster[1].ed25519
   roster[count-1].ed25519 = roster[1].ed25519
   replaceRoster(original, roster)
@@ -89,6 +89,8 @@ proc refuse(source: AvailabilityCommitment) =
       AssuranceDutyError.InvalidSource, "unavailable canonical source refused"
   assert captureAssuranceDuty(saved, default(StateEdKey), limits()).error ==
       AssuranceDutyError.InvalidIdentity, "null local identity refused"
+  assert captureAssuranceDuty(saved, nullValidator().ed25519, limits()).error ==
+      AssuranceDutyError.InvalidIdentity, "GP null identity refused"
   assert captureAssuranceDuty(saved, topologyKey(300), limits()).error ==
       AssuranceDutyError.NotValidator, "non-validator identity refused"
   assert captureAssuranceDuty(saved, topologyKey(61), default(AssuranceDutyLimits)).error ==
