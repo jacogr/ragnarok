@@ -200,6 +200,18 @@ func assuranceAcquisitionPhase*(owner: ApplicationNode): AssuranceAcquirerPhase 
 func assuranceDemandConnections*(owner: ApplicationNode): int =
   ## Closing owned acquisition dials remain charged until native retirement.
   owner.acquisition.demandConnections
+func isValidator*(owner: ApplicationNode): bool =
+  ## Only the actual open native host's authenticated topology can select validator-only optional startup.
+  owner.opened and owner.streams.isValidator
+proc configureAssuranceSigner*(owner: var ApplicationNode, certificate, privateKey: string): bool =
+  ## Explicit startup imports a private signer only against this open host's actual bound TLS identity.
+  if not owner.opened: return false
+  let services = owner.services
+  if services == nil: return false
+  let identity = owner.streams.localIdentity
+  if services[].assuranceSigningConfigured: return services[].assuranceSigningMatches(identity)
+  services[].configureAssuranceSigner(certificate, privateKey, identity).error ==
+      WorkSigningSetupError.None
 proc configureAssuranceBroadcast*(owner: var ApplicationNode,
     policy: AssuranceBroadcastPolicy): bool =
   ## Explicit outgoing setup requires the independently installed archive and actual TLS-matched signer.

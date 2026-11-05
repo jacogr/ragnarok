@@ -15,7 +15,7 @@ import ../../src/codec/work/report
 import ../../src/chain/[genesis, provider, parameters]
 import ../../src/crypto/primitives
 import ../../src/quic/address
-import ./[jamnp_assurance_fixture, jamnp_topology_fixture, assurance_signer_context]
+import ./[jamnp_assurance_fixture, jamnp_topology_fixture, assurance_signer_context, storage_io]
 proc waitBroadcastJob(owner: var Services) =
   ## Synchronized phase polling touches no leased source/archive/private graph.
   let deadline = getMonoTime()+initDuration(seconds = 10)
@@ -141,10 +141,28 @@ proc assuranceBroadcastRuntime*(settings: Options, fixture: AssuranceAcquisition
     for turn in 0..<10:
       assert a.poll(getMonoTime(), now, prepare, 0) and b.poll(getMonoTime(), now, 0), "broadcast boundary 141"
     assert a.attemptedAssuranceBroadcasts == 0, "private preparation never transmits before due time"
+  let waiting = sender.beginAssurancePlanning(fixture.local, AssuranceFetchLimits(
+    duty: acquisition.duty, plannedBytes: ByteLimit(1000000))).value
+  sender.waitBroadcastJob()
+  for turn in 0..<10:
+    assert a.poll(getMonoTime(), now, window.sendAt, 0), "foreign Done across actual send time"
+  assert sender.stateProofActive(waiting) and a.assuranceBroadcastPhase ==
+      AssuranceBroadcastPhase.Waiting,
+    "a foreign lease alone neither invalidates prepared signing nor permits a new send"
+  assert a.attemptedAssuranceBroadcasts == 0, "due output waits for the canonical admission gate"
+  discard sender.collectStateProof(waiting)
+  while a.attemptedAssuranceBroadcasts == 0:
+    assert getMonoTime() < deadline, "bounded due native request admission"
+    assert a.poll(getMonoTime(), now, window.sendAt, 0), "fresh full-source send admission"
+  let sending = sender.beginAssurancePlanning(fixture.local, AssuranceFetchLimits(
+    duty: acquisition.duty, plannedBytes: ByteLimit(1000000))).value
+  sender.waitBroadcastJob()
   while a.acknowledgedAssuranceBroadcasts == 0 or b.receivedAssurances == 0:
     assert getMonoTime() < deadline, "actual CE141 signature/receipt/both FINs: " &
         $a.assuranceBroadcastPhase
     assert a.poll(getMonoTime(), now, window.sendAt, 0) and b.poll(getMonoTime(), now, 0), "broadcast boundary 146"
+  assert sender.stateProofActive(sending), "in-flight FIN progress never collects a foreign Done job"
+  discard sender.collectStateProof(sending)
   assert a.attemptedAssuranceBroadcasts == 1 and a.acknowledgedAssuranceBroadcasts == 1,
     "duplicate author positions produce one upload to the actual connected identity"
   assert b.pendingAssurances > 0, "actual retained author candidate"
@@ -179,3 +197,25 @@ proc assuranceBroadcastRuntime*(settings: Options, fixture: AssuranceAcquisition
   assert sender.stateProofAvailable and a.assuranceBroadcastPhase == AssuranceBroadcastPhase.Idle,
     "expired plan is collected without signing or a partial send"
   assert a.attemptedAssuranceBroadcasts == attempts, "broadcast boundary 180"
+  a.close()
+  assert a.open(sender, initConnectionConfig(senderCert, senderKey, sender.nodeProtocol,
+    streams = 512), geometry, now) == NodeError.None, "fault-case native lifetime"
+  assert a.configureAssuranceBroadcast(policy), "explicit fault-case activation"
+  let faultDeadline = getMonoTime()+initDuration(seconds = 10)
+  while a.assuranceBroadcastPhase != AssuranceBroadcastPhase.Waiting:
+    assert getMonoTime() < faultDeadline, "actual fresh signature before namespace fault"
+    assert a.poll(getMonoTime(), now, prepare, 0), "fault-case managed preparation"
+  let previousAttempts = a.attemptedAssuranceBroadcasts
+  resetIo()
+  armIo(syncIo, 0, 1, failedIo)
+  let fault = sender.beginAssuranceProbe(fixture.local, CoreIndex(0), 0, prepare, acquisition).value
+  sender.waitBroadcastJob()
+  let checked = sender.collectStateProof(fault)
+  assert checked.kind == ProofWorkerCompletionKind.AssuranceAcquired and pendingIo() == 0,
+    "real foreign stored-proof durability failure is collected"
+  assert checked.assuranceAcquisitionValue.error == AssuranceAcquisitionError.StorageFailure and
+    sender.assuranceStorageInfo.faulted, "actual cached namespace fault refresh"
+  resetIo()
+  assert a.poll(getMonoTime(), now, window.sendAt, 0), "revoke prepared wire before native polling"
+  assert a.assuranceBroadcastPhase == AssuranceBroadcastPhase.Idle and
+    a.attemptedAssuranceBroadcasts == previousAttempts, "known namespace fault prevents disclosure of a previously prepared signature"

@@ -127,17 +127,25 @@ proc retire(owner: var AssuranceBroadcaster, streams: var NodeService, force: bo
 func expired(owner: AssuranceBroadcaster, clock: MonoTime): bool =
   ## A finite monotonic upper bound still retires resources when a caller stops supplying wall time.
   (clock-owner.started).inMilliseconds >= owner.deadlineMs
+func healthySigning(services: Services, streams: NodeService): bool =
+  ## Only cached host scalars are observed during a foreign borrow; a collected namespace fault immediately revokes future disclosure.
+  if not streams.isOpen or not services.assuranceSigningMatches(streams.localIdentity): return false
+  let storage = services.assuranceStorageInfo
+  storage.opened and not storage.faulted
 proc beforePoll*(owner: var AssuranceBroadcaster, services: var Services,
     streams: var NodeService, clock: MonoTime, hasTime: bool, now: AssuranceTime) =
-  ## Revoke stale queued output before native callbacks can flush it; foreign canonical leases grant no fresh-send authority.
+  ## Revoke known-stale queued output before native callbacks flush it; an exclusive foreign job leaves the installed canonical stamp unchanged and grants no new-send authority.
   if owner.phase == AssuranceBroadcastPhase.Idle: return
   let overdue = owner.expired(clock) or (hasTime and uint64(now) >= uint64(owner.window.closeAt))
   if overdue:
     if owner.active: discard services.cancelStateProof(owner.proof)
     owner.retire(streams, true)
   elif owner.phase in [AssuranceBroadcastPhase.Waiting, AssuranceBroadcastPhase.Sending]:
-    if not services.stateProofAvailable or not services.assuranceScheduleCurrent(owner.plan):
+    if not healthySigning(services, streams):
       owner.retire(streams, false)
+    elif services.stateProofAvailable:
+      if not services.assuranceScheduleCurrent(owner.plan):
+        owner.retire(streams, false) # Foreign exclusion alone is not a source change; actual canonical installation is checked as soon as its gate opens.
 proc finish(owner: var AssuranceBroadcaster) =
   ## Exact collection and physical dial retirement precede dropping public plan/wire storage.
   owner.plan = default(AssuranceSchedule)
@@ -261,6 +269,7 @@ proc submit*(owner: var AssuranceBroadcaster, services: var Services,
     streams: var NodeService, clock: MonoTime, now: AssuranceTime): bool {.raises.} =
   ## An explicit Common Era observation and idle canonical gate are mandatory for new planning, private signing and native output.
   if not owner.policy.ready or not services.stateProofAvailable: return false
+  if not healthySigning(services, streams): return false
   if owner.phase == AssuranceBroadcastPhase.Idle:
     let selected = assuranceWindow(now, owner.policy.period)
     if selected.error != AssuranceScheduleError.None: return false

@@ -47,7 +47,7 @@ preflight and capacity refusal, real durable restart and I/O failure, 28-day bou
 profiles, proof serving after session retirement, exact independent signing/bitfield vectors,
 real TLS acquisition and CE141 delivery, epoch timing, cancellation/Done/join ownership and
 explicit optional foreground activation. Full JAMNP-S still needs audit/judgment lifecycles and
-CE147-to-138 auditor fallback. This feature is in progress and is not yet publishable.
+CE147-to-138 auditor fallback. The assurance workflow is implemented as one coherent review unit; audit/judgment and bundle-recovery completion remain separate parts of the full JAMNP-S goal.
 
 ## Assignment qualification evidence
 
@@ -827,8 +827,9 @@ are explicit policy. At most 64 destinations receive new native admission attemp
 Each distinct non-null author identity receives one upload; the immutable plan preserves all
 original ordinal positions. Existing authenticated connections take precedence over advertised
 endpoints. An owned dial stays charged until physical retirement; round/host cancellation never
-claims a pre-existing transport. Stale/unknown canonical authority revokes queued output before
-native polling, and foreign worker leases are neither collected nor joined.
+claims a pre-existing transport. Known-stale canonical authority revokes queued output before native polling. Foreign worker
+exclusion alone does not change the installed canonical source; existing native work can retire
+while new admissions await a fresh full-source check. Foreign leases are neither collected nor joined.
 
 Outgoing CE141 activation has its own native flag and requires an independently installed healthy
 archive and an explicitly imported private signer matching the actual TLS identity. It does not
@@ -845,3 +846,54 @@ composite copy guard fails with the required unavailable-dup diagnostic. All 572
 modules plus entry point, formatting and verification inventory pass. Optional foreground
 activation remains the next required assurance increment; complete audit/judgment work remains
 part of the full JAMNP-S goal.
+
+### Explicit foreground assurance activation
+
+The ordinary `node` command accepts `--node-assurance-policy FILE` together with
+`--node-assurance-store DIR`. Omission keeps storage, acquisition, private assurance signing,
+durable serving, receipt and outgoing delivery inactive. Policy and directory must both be
+present; neither a directory nor a certificate enables a default policy. The existing optional
+validator-seed and work-policy positions retain their meaning when assurance options are used.
+
+The strict `ragnarok-assurance-policy-v1` text schema requires all declared scalar controls:
+namespace open/create mode and startup timeout; exact slot/core/validator/epoch geometry and
+bounded topology decoding; canonical duty and proof budgets; namespace and record capacity;
+CE137 capture and whole-round network limits; fresh signing work; author-plan workspace;
+whole-request durable restore and reply limits; bounded receipt and timed delivery reservations.
+The common duty/proof fields apply independently to each operation; acquisition's schema includes
+its raw capture limits and signing's schema its additional possession work limits. Unknown,
+duplicate, missing, noncanonical or out-of-range values refuse the whole file. No private key or
+caller-selected chain identity is accepted from it. `encodeNodeAssurancePolicy` emits every
+required explicit setting for operators and tools; loading never fills absent budgets.
+
+Mode zero opens an existing namespace; mode one creates a fresh namespace. There is no existence
+fallback. Complete file parsing precedes Services, sockets and private key loading. The parsed
+profile must match actual full-state Services dimensions before namespace activation. Actual
+non-validator TLS roles refuse assurance startup before disk creation. A selected namespace uses
+its exact managed lease, a finite monotonic scan deadline and signal-aware joined cleanup.
+Only completed healthy startup permits importing the actual TLS-matched signer and installing
+bounded acquisition, serving, receipt and delivery. Any failure closes the whole command owner.
+The foreground loop supplies checked Common Era seconds separately from the local slot, retaining
+the existing clock monotonicity and shutdown rules.
+
+The native complete-policy/foreground suite passes explicit create and restart/open, refusal of
+existing-create and missing-open namespaces, profile and non-validator identity rejection before
+disk activation, omitted-policy default-off behavior, and every schema refusal class. The parser
+releases all transient allocations across 1,000 cycles (95,568 occupied bytes before and after).
+Optimized and whole-feature consumer qualification follows before publication.
+
+Shared-worker delivery additionally preserves prepared and in-flight source-free work across
+a foreign completed lease: no new send is admitted while excluded, while already admitted
+requests can complete both FINs without collecting the foreign job. Namespace health and the
+actual cached signer identity are rechecked before native polling and every new admission, so
+a collected storage fault revokes even already prepared wire. Canonical installation is
+rechecked as soon as its full graph gate reopens.
+
+Final local qualification passes both complete acquisition/delivery and foreground-policy matrices
+under checked ARC/Clang ThinLTO, including foreign waiting/in-flight leases and actual namespace
+fault revocation. The acquisition matrix releases all transient data across 1,000 cycles
+(93,504 occupied bytes before and after); policy parsing likewise retains 95,568 bytes before
+and after. Existing CLI, options, foreground node, application node and private signing consumers
+pass. All 573 production modules plus entry point, formatting and source-owned inventory pass.
+Complete source and linked-native identities, command arguments and independent fresh ARC evidence
+are retained with the qualification logs. Native Linux CI is a separate result.
