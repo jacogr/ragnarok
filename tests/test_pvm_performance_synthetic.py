@@ -5,6 +5,7 @@ import unittest
 
 from pvm_benchmark_report import NAMES
 from pvm_performance_synthetic import parse_synthetic
+from pvm_performance_fixtures import lifetime_wire
 
 
 def cohort(role):
@@ -15,6 +16,7 @@ def cohort(role):
         lines.append(f'SYNTHETIC_PREPARE,1,{row},101,207')
         if role == 'reference':
             lines.append(f'SYNTHETIC_REFERENCE,1,{row},interpreter,interpreter,0')
+            lines.extend(lifetime_wire(f'synthetic-{row}').splitlines())
         lines.extend(f'SYNTHETIC_SAMPLE,1,{row},{sample},{1000+sample},{2000+sample}'
                      for sample in range(13))
         if role == 'jit':

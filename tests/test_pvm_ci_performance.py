@@ -13,6 +13,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 import pvm_ci_performance as performance
+from pvm_performance_fixtures import SYNTHETICS, retained_instance
 
 EXPECTED_CASES = {
     'arithmetic-10000', 'memory-aligned-1000', 'memory-crossing-1000', 'hosts-aligned-1000',
@@ -59,7 +60,8 @@ class InertChecks:
             next(iter(self.runner.seals)).write_bytes(b'changed canonical fixture')
         family = ('synthetic' if 'RAGNAROK_PVM_BENCHMARK' in environment else
                   'guest' if 'RAGNAROK_PVM_SIEVE_EXPECTED' in environment else 'doom')
-        engine = 'reference' if 'reference-' in args[0] else 'native'
+        # The executable identity selects its role; a parent checkout's name cannot relabel a process.
+        engine = 'reference' if args[0] in {str(path) for path in self.runner.references.values()} else 'native'
         if name.endswith('-assertions'):
             diagnostic = {'synthetic': 'pvm synthetic', 'guest': 'pvm sieve', 'doom': 'doom'}[family]
             diagnostic += ' '+engine+' assertion control'
@@ -107,7 +109,8 @@ class InertRunner(performance.PerformanceRunner):
             ci=dict(GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='2', GITHUB_EVENT_NAME='push',
                 GITHUB_REF='refs/heads/master', GITHUB_SHA='a'*40, GITHUB_REPOSITORY='example/pvm',
                 GITHUB_JOB='pvm-comparison', PVM_CI_JOB_NAME='Perf / PVM (Linux x86_64)'),
-            reference_revision='b'*40, toolchain={}, native_build_defines=['pvmX86Jit'])
+            reference_revision='b'*40, toolchain={}, native_build_defines=['pvmX86Jit'],
+            code_lifetime='retained-code-v1')
 
     def prepare_micro(self):
         """Create independent small placeholders at every canonical input path."""
@@ -165,9 +168,10 @@ class InertRunner(performance.PerformanceRunner):
         for item in cases:
             execution = dict(preparation_ns=[3], preparation_wall_ns=[5],
                 samples=[dict(sample=index, cpu_ns=10+index, wall_ns=40+index) for index in range(13)])
-            if role == 'reference' and item['family'] == 'doom':
-                execution['lifecycle'] = [dict(restore_ns=2, cpu_ns=10+index, teardown_ns=3,
-                    lifecycle_ns=15+index) for index in range(13)]
+            if role == 'reference':
+                label = ('synthetic-'+str(SYNTHETICS.index(item['case_id']))
+                         if item['family'] == 'synthetic' else item['case_id'])
+                execution['reference_instance'] = retained_instance(label)
             native = policy = None
             if role != 'reference':
                 native = dict(fragments=1 if role == 'jit' else 0,

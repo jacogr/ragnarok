@@ -311,9 +311,14 @@ fn main() {
     let timing = requested == "1";
     let lifecycle_requested = std::env::var("RAGNAROK_PVM_DOOM_LIFECYCLE").unwrap_or_default();
     assert!(matches!(lifecycle_requested.as_str(), "" | "0" | "1"));
-    let lifecycle = timing && lifecycle_requested == "1";
+    let canonical = measurement::retained_protocol();
+    // Historical lifecycle consumers measure fresh-instance teardown; canonical metadata has one final drop.
+    let lifecycle = timing && lifecycle_requested == "1" && !canonical;
     let samples = if timing { 13 } else { 1 };
     let expected_events = fs::read(folder.join(format!("{}.events", args[5]))).unwrap();
+    let label = format!("doom-{}", args[5]);
+    let mut retained =
+        canonical.then(|| measurement::RetainedInterpreter::new(&guest.module, &label, samples));
     for sample in 0..samples {
         // Keep call-only timing unchanged; optionally account for private instance construction and restoration separately.
         let restore_start = if lifecycle {
@@ -321,23 +326,36 @@ fn main() {
         } else {
             0
         };
-        let mut instance = guest.module.instantiate().unwrap();
-        guest.reset(&mut instance, phase);
-        let mut cursor = 152 + guest.wire.len();
-        assert_eq!(word(&input, 8, 4) as usize, guest.wire.len());
-        assert_eq!(input.len(), cursor + guest.pages.len() * 4101);
-        for &(address, access) in &guest.pages {
-            // Read-only bytes are checked against the module; only writable pages may be restored.
-            assert_eq!(word(&input, cursor, 4), u64::from(address / 4096));
-            assert_eq!(input[cursor + 4], access);
-            let bytes = &input[cursor + 5..cursor + 4101];
-            if access == 2 {
-                instance.write_memory(address, bytes).unwrap();
-            } else {
-                assert_eq!(instance.read_memory(address, 4096).unwrap(), bytes);
+        let mut legacy_instance = if canonical {
+            None
+        } else {
+            Some(guest.module.instantiate().unwrap())
+        };
+        let restore = |instance: &mut RawInstance| {
+            guest.reset(instance, phase);
+            let mut cursor = 152 + guest.wire.len();
+            assert_eq!(word(&input, 8, 4) as usize, guest.wire.len());
+            assert_eq!(input.len(), cursor + guest.pages.len() * 4101);
+            for &(address, access) in &guest.pages {
+                // Read-only bytes are checked against the module; only writable pages may be restored.
+                assert_eq!(word(&input, cursor, 4), u64::from(address / 4096));
+                assert_eq!(input[cursor + 4], access);
+                let bytes = &input[cursor + 5..cursor + 4101];
+                if access == 2 {
+                    instance.write_memory(address, bytes).unwrap();
+                } else {
+                    assert_eq!(instance.read_memory(address, 4096).unwrap(), bytes);
+                }
+                cursor += 4101;
             }
-            cursor += 4101;
-        }
+        };
+        let instance = if let Some(retained) = retained.as_mut() {
+            retained.restore(sample, restore)
+        } else {
+            let instance = legacy_instance.as_mut().unwrap();
+            restore(instance);
+            instance
+        };
         // Complete independent input-state validation stays outside both execution and restoration accounting.
         let restore_elapsed = if lifecycle {
             measurement::process_cpu() - restore_start
@@ -345,17 +363,17 @@ fn main() {
             0
         };
         assert!(
-            guest.input(&mut instance, phase) == input,
+            guest.input(instance, phase) == input,
             "DOOM initial state mismatch"
         );
-        let cpu = timing.then(|| measurement::CpuTimer::start(&instance));
+        let cpu = timing.then(|| measurement::CpuTimer::start(instance));
         let wall = timing.then(std::time::Instant::now);
-        let events = guest.run(&mut instance, &rom);
+        let events = guest.run(instance, &rom);
         let wall_elapsed = wall.map(|value| value.elapsed().as_nanos()).unwrap_or(0);
         let cpu = cpu.map(|clock| clock.finish());
         let cpu_elapsed = cpu.as_ref().map_or(0, |value| value.total);
         assert!(
-            guest.expected(&mut instance)
+            guest.expected(instance)
                 == fs::read(folder.join(format!("{}.expected", args[5]))).unwrap(),
             "DOOM terminal state mismatch"
         );
@@ -363,10 +381,17 @@ fn main() {
             events.encode() == fs::read(folder.join(format!("{}.events", args[5]))).unwrap(),
             "DOOM event mismatch"
         );
+        if let Some(retained) = retained.as_mut() {
+            // Both full golden oracles precede any accepted cache/restore receipt.
+            if timing {
+                assert!(cpu_elapsed > 0 && wall_elapsed > 0);
+            }
+            retained.complete_sample(sample);
+        }
         let teardown_elapsed = if lifecycle {
             // Dispose the exclusive instance after validation; keep teardown outside call-only timing but inside lifecycle accounting.
             let teardown_start = measurement::process_cpu();
-            drop(instance);
+            drop(legacy_instance.take().unwrap());
             measurement::process_cpu() - teardown_start
         } else {
             // Ordinary call-only runs retain their original automatic end-of-iteration cleanup.
@@ -392,6 +417,10 @@ fn main() {
                 );
             }
         }
+    }
+    if let Some(retained) = retained {
+        // The retained case has exactly one teardown after its complete sample cohort.
+        retained.finish();
     }
     println!("DOOM_OK,reference,{},{}", args[5], expected_events.len());
 }

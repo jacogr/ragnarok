@@ -48,13 +48,26 @@ by the measured candidate.
 
 ## Measurement and reporting
 
+The `pvm-performance-v2` cohort binds `code_lifetime=retained-code-v1`. Each case
+retains one prepared owner on our side and one actual PolkaVM interpreter instance
+on the reference side. Invocation memory, all thirteen registers, gas, PC and host
+progress are reset for every call. Public `reset_memory` preserves the reference's
+lowered-code cache; no private hooks or interpreter-cache reset are used.
+The former v1 reference created a fresh instance for every sample. Those historical
+ratios are a different lifecycle cohort, not evidence of a source-code speedup when
+compared with v2. Latest retrieval accepts only the current schema and never mixes
+the two cohorts or silently substitutes an older result.
+
 Each process emits thirteen validated calls. Sample zero is the cold call; the
 first three calls are excluded from the ten-call reused median. Forward and reverse
 engine orders remain separate. CPU and wall statistics remain separate, with raw
 samples retained. Constructor cost is outside public call clocks and reported
 separately. Our public prepared call includes fresh invocation memory, callbacks,
 immutable publication and lease return. The reference call clock excludes its
-restore and teardown; DOOM reference lifecycle measurements are shown separately.
+invocation restore. One-time reference instance construction/destruction and
+per-call restore CPU/wall clocks are retained separately for every workload family.
+The reference still does not publish immutable memory snapshots inside its call;
+retained code aligns code lifetime, not all embedding capabilities or timing scopes.
 These are explicitly scoped call comparisons, not complete application startup or
 an additive decomposition of nested clocks.
 
@@ -67,6 +80,27 @@ through the observed window. Break-even includes equality; reuse count is call
 count minus one. A missing crossing remains unobserved. These observations neither
 establish steady state nor predict a future crossover. Constructor and reference
 lifecycle scopes remain separate; cumulative totals use the existing call clocks.
+
+Every reference case emits exactly one `REFERENCE_INSTANCE,1,label,cpu,wall,cache`
+and one `REFERENCE_INSTANCE_DROP,1,label,cpu,wall`, surrounding thirteen ordered
+`REFERENCE_RESTORE,1,label,sample,cpu,wall` and
+`REFERENCE_CACHE,1,label,sample,before_reset,after_reset,after_run` pairs. Initial
+cache size must be zero. Each later entry must equal the preceding completed cache;
+the complete memory/ABI restore must preserve that size, and execution must leave
+a positive, nonshrinking cache. Per-sample receipts follow the corresponding complete
+state/event checks before acceptance. Constructor receipts validate the new empty
+cache before any call; destruction follows the complete case. Missing, recreated, warmed-outside-call or
+reset caches cannot qualify as a retained instance. Subsidiary constructor/restore/
+destruction clocks may legitimately report zero observed ticks at clock resolution;
+no floor is applied, and execution CPU/wall clocks remain strictly positive.
+
+CSV rows retain actual per-call restoration clocks and cache sizes. Restore includes
+its preflight and read-only-page comparisons; the separate complete input/final-state/
+event oracles remain outside these clocks. Explicitly named restore-plus-call sums
+exclude those complete oracles and one-time construction/destruction; they are not
+whole-process timings. One final instance destruction is
+never duplicated into thirteen per-call teardown observations. Unobserved module
+constructor clocks remain absent rather than becoming zero.
 
 Tables show both current interpreter / PolkaVM interpreted and current JIT /
 PolkaVM interpreted ratios, with lower values meaning less time. Requested policy,

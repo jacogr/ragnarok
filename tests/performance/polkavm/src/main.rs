@@ -148,36 +148,57 @@ fn main() {
             println!("SYNTHETIC_PREPARE,1,{row},{prepare_cpu_ns},{prepare_wall_ns}");
             println!("SYNTHETIC_REFERENCE,1,{row},interpreter,interpreter,{machine_code_bytes}");
         }
+        // Canonical samples share one real code cache; historical commands keep fresh instances.
+        let mut retained =
+            modern.then(|| measurement::RetainedInterpreter::new(&module, &label, 13));
         for sample in 0..13 {
-            // Instantiation, input resets and register setup are excluded from execution time.
-            let mut instance = module.instantiate().unwrap();
+            let mut legacy_instance = if modern {
+                None
+            } else {
+                Some(module.instantiate().unwrap())
+            };
             let mut original = vec![33_u8; 8192];
             let pairs = if kind == 4 { 64 } else { 1 };
             if matches!(kind, 1 | 2 | 4) {
                 assert!(matches!(address, 0x10000 | 0x10fff));
                 let offset = (address - 0x10000) as usize;
                 original[offset..offset + 8].copy_from_slice(&word(h, 13, 8).to_le_bytes());
-                // Sparse cases contain exactly the same mapped pairs and holes as the native owner.
-                for pair in 0..pairs {
-                    let base = 0x10000 + pair * 16384;
-                    instance
-                        .zero_memory_with_memory_protection(base, 8192, MemoryProtection::ReadWrite)
-                        .unwrap();
-                    if pair == 0 {
-                        instance.write_memory(base, &original).unwrap();
-                    } else {
-                        // Untouched pages carry independent canaries and are checked completely after execution.
-                        instance.write_memory(base, &[33_u8; 8192]).unwrap();
+            }
+            let restore = |instance: &mut polkavm::RawInstance| {
+                if matches!(kind, 1 | 2 | 4) {
+                    // Public reset removed prior mappings; restore the complete same-permission map and holes.
+                    for pair in 0..pairs {
+                        let base = 0x10000 + pair * 16384;
+                        instance
+                            .zero_memory_with_memory_protection(
+                                base,
+                                8192,
+                                MemoryProtection::ReadWrite,
+                            )
+                            .unwrap();
+                        if pair == 0 {
+                            instance.write_memory(base, &original).unwrap();
+                        } else {
+                            // Untouched pages carry independent canaries and are checked completely after execution.
+                            instance.write_memory(base, &[33_u8; 8192]).unwrap();
+                        }
                     }
                 }
-            }
-            for i in 0..13 {
-                instance.set_reg(Reg::from_raw(i as u32).unwrap(), word(h, 65 + i * 8, 8));
-            }
-            instance.set_gas((iterations * (price + second_price) + halt_price + 7) as i64);
-            instance.set_next_program_counter(ProgramCounter(0));
+                for i in 0..13 {
+                    instance.set_reg(Reg::from_raw(i as u32).unwrap(), word(h, 65 + i * 8, 8));
+                }
+                instance.set_gas((iterations * (price + second_price) + halt_price + 7) as i64);
+                instance.set_next_program_counter(ProgramCounter(0));
+            };
+            let instance = if let Some(retained) = retained.as_mut() {
+                retained.restore(sample, restore)
+            } else {
+                let instance = legacy_instance.as_mut().unwrap();
+                restore(instance);
+                instance
+            };
             let mut calls = 0_u64;
-            let cpu = measurement::CpuTimer::start(&instance);
+            let cpu = measurement::CpuTimer::start(instance);
             let start = Instant::now();
             loop {
                 // Host dispatch/replies are part of embedding execution; validation stays outside timing.
@@ -232,11 +253,16 @@ fn main() {
                 // CpuTimer's checked total is process CPU here; never relabel the legacy Instant delta.
                 let cpu_ns = cpu.total;
                 assert!(cpu_ns > 0);
+                retained.as_mut().unwrap().complete_sample(sample);
                 println!("SYNTHETIC_SAMPLE,1,{row},{sample},{cpu_ns},{elapsed}");
             } else {
                 // Existing diagnostics continue to consume their unchanged wall-only sample format.
                 println!("sample\t{row}\t{sample}\t{elapsed}\t{prepare_ns}");
             }
+        }
+        if let Some(retained) = retained {
+            // One final instance teardown is separate from all execution/restore sample scopes.
+            retained.finish();
         }
     }
     assert_eq!(cursor, data.len());
