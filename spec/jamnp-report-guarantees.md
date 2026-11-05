@@ -571,3 +571,66 @@ source-owned inventory, all550 production modules/entry point and the production
 pass. The changed native node selector also passes Linux/amd64 semantic checking; the application
 controller cross-check still reaches the documented CLI compiler assertion. These observations
 establish this receiving path's tested scope, not full protocol completion or native Linux CI.
+
+## Outbound CE135 continuation scope
+
+The ordinary distribution controller will consume each exact collected local session once, use
+only detached original guarantee bytes, and qualify current/required-next targets through its
+existing managed Services namespace. Incoming and outgoing verification must alternate when both
+are ready. Delivery must bound active native requests, demand dials, peer and overall deadlines;
+self-retention is distinct from remote bare-FIN acknowledgment. Changed clock/head/root observations
+retire queued sends before native polling and requalify the same original signatures/slot. Known
+acknowledged identities survive refresh; offline or refusing recipients never count as delivered.
+The potential next inclusion slot must remain within the GP credential window. Completion tests
+must use the real CE146/134/135 node path, foreign worker leases, source/clock refresh, cancellation,
+explicit optional activation and exact joined cleanup. This scope remains in the guarantee PR.
+
+## Implemented automatic CE135 delivery
+
+The optional distribution policy now controls both receipt and automatic delivery; `deliver=false`
+selects receipt only. ApplicationNode offers each exact retained Guaranteed session once. The
+controller preflights raw byte size, preserves the original canonical guarantee bytes and shares
+one managed verification namespace fairly between incoming and local work. Completed qualification
+must still match the actual complete head/root and observed slot. Its potential next inclusion
+slot must fit the GP credential window: a report can remain valid at slot27 while already being
+ineligible for a next block at28. A genuine previous-roster fixture and the ordinary GP verifier
+pin that boundary without inventing future entropy or a block admission certificate.
+
+The verified current/required-next records alone select recipient identities and endpoints. Local
+retention does not count as a remote acknowledgment. Requests, demand connections, peer/round
+lifetimes and acknowledgment history are bounded. Only real complete bare-FIN responses increment
+the acknowledgment counter. Unavailable recipients remain refusals or unfinished attempts at the
+original deadline; a finished round never claims all-recipient delivery. Demand dials are separately
+owned from pre-existing connections. Busy or closing owned connections remain charged until exact
+native retirement, and an original overall deadline bounds peers that keep another stream active.
+
+Before native polling, changed observed time or available complete source facts revoke queued
+sends and retire owned controls. Fresh verification reuses the original signatures and guarantee
+slot. Already acknowledged identities survive refresh so delivery does not repeatedly restart at
+the first validators. A foreign canonical lease permits only detached native progress and scalar
+observations; new queues require fresh available-source checks. Shutdown joins only an exactly
+owned verification job and preserves unrelated completed leases.
+
+The ordinary runtime suite now drives CE146/134/135 across real Services/node lifetimes, including
+successful delivery, default-disabled receivers, foreign Done progress, controlled clock refresh
+with a known acknowledgment, incoming/outgoing coexistence, own Done close and foreign Done close.
+The metadata suite keeps a fourth validator's actual IPv6 socket bound while preparing its complete
+state and original anchored package. A genuine three-credential guarantee reaches that validator
+through the verified metadata endpoint, is retained before FIN, and its owned dial retires. Further
+cases hold the recipient's worker or keep a reverse ordinary read unanswered after acknowledgment.
+At parallelism one, replacing the fixed resource accounting with the old phase-only predicate
+reproduces two owned connections and fails the native concurrency assertion; restoring the exact
+fixed source passes all three cases. The helper's optional extra records enter before computation;
+no completed report, signature or admission result is patched into existence.
+
+Final local checks pass the metadata suite and its restored-source counterexample control, source
+qualification, extended ordinary runtime, managed exchange and application-node consumers. The
+1000-cycle qualification and managed workloads retain590864 and338944 bytes respectively, equal
+before/after. Actual ARC lowering rejects copies of the expanded dispatcher and ApplicationNode.
+Formatting, source-owned inventory, all550 production modules/entry point and the ARC/LTO build
+pass. Linux/amd64 semantic checking passes for the changed qualifier; application cross-target
+coverage remains limited by the documented CLI compiler issue. No native Linux CI is claimed.
+
+Retained guarantor bundle capacity before signature disclosure and strict optional startup remain
+required before the guarantee feature is published. This delivery implementation does not establish
+long-lived assurance retention or complete the remaining assurance/audit lifecycles.

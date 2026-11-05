@@ -158,6 +158,9 @@ proc includeTarget(values: var seq[StateValidator], candidate: StateValidator,
   if uint64(values.len) >= uint64(limit): return false
   values.add(candidate)
   true
+func withinCredentialWindow*(info: WorkDistributionInfo): bool =
+  ## Potential next inclusion must precede fixed GP expiry; this scalar check alone grants no source, credential or delivery authority.
+  uint32(info.inclusion) <= uint32(info.lastSlot)
 proc qualifyWorkDistribution*(wire: openArray[byte], view: ChainView, now: StateTime,
     limits: WorkDistributionLimits): WorkDistributionResult[CheckedWorkDistribution] =
   ## Verify under one managed exclusive lease against actual current complete state; later block admission must still use its own posterior context.

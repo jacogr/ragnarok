@@ -68,7 +68,8 @@ proc captured(source: BlockSnapshot, state: StateStoreSnapshot,
   var wire = newSeq[byte](source.header.headerInfo.value.consumed)
   assert source.header.encodeOwnedHeader(wire).error == HeaderError.None
   captureBlockSnapshot(wire, state, parameters)
-proc source(fixture: WorkFixture, local, peer, third: StateEdKey): BlockSnapshotResult =
+proc source(fixture: WorkFixture, local, peer, third: StateEdKey,
+    recipient, additionalRecipient: StateValidator): BlockSnapshotResult =
   ## Populate all report-policy and pipeline chapters before binding the package anchor to this complete state root.
   let seed = fixture.workSnapshot(local, peer, third = third)
   let config = guaranteeLimits()
@@ -88,6 +89,18 @@ proc source(fixture: WorkFixture, local, peer, third: StateEdKey): BlockSnapshot
     let item = fixture.input.package.workItemAt(index).value.workItemInfo.value
     let entry = serviceMetadataEntry(item.service, ServiceMetadata(codeHash: item.codeHash),
         ByteLimit(ServiceMetadataBytes)).value
+    writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
+  let firstRecipient = array[32, byte](recipient.ed25519) != default(array[32, byte])
+  let secondRecipient = array[32, byte](additionalRecipient.ed25519) != default(array[32, byte])
+  if firstRecipient or secondRecipient:
+    # Optional genuine fourth-validator routing enters the complete map before the original package anchor and report are computed.
+    var current = topologyRecords(0, 6)
+    if firstRecipient: current[0] = recipient
+    if secondRecipient: current[3] = additionalRecipient
+    current[1].ed25519 = local
+    if array[32, byte](peer) != default(array[32, byte]): current[2].ed25519 = peer
+    if array[32, byte](third) != default(array[32, byte]): current[5].ed25519 = third
+    let entry = validatorEntry(ValidatorChapter.Active, current, topologyLimits(2).validators).value
     writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   assert state.apply(writes).error == StateStoreError.None
   captured(seed, state.snapshot.value, seed.chainParameters)
@@ -142,10 +155,11 @@ proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotR
         StateStoreError.None
   captured(seed.value, state.snapshot.value, parent.value.chainParameters)
 proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey), third = default(
-    StateEdKey)): GuaranteeFixture =
+    StateEdKey), recipient = default(StateValidator), additionalRecipient = default(
+        StateValidator)): GuaranteeFixture =
   ## Only genuine original-header authorization, complete imported inputs, PVM execution and availability composition yield the transcript.
   let fixture = workFixture()
-  let parent = source(fixture, local, peer, third)
+  let parent = source(fixture, local, peer, third, recipient, additionalRecipient)
   assert parent.error == GenesisError.None, "guarantee parent"
   let wire = anchoredPackage(fixture.input.package, parent.value)
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, fixture.first, wire,

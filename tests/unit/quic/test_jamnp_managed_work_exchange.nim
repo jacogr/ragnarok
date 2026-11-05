@@ -11,6 +11,7 @@ import ../../../src/jamnp-s/[work_signer, work_eligibility, work_guarantee, work
   report_cache, read_validation]
 import ../../../src/codec/[bounded, guarantees, assurances]
 import ../../../src/codec/state/safrole
+import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/work/package
 import ../../../src/state/guarantee_credentials
 import ../../../src/chain/[provider, genesis]
@@ -115,6 +116,16 @@ proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq
   assert uint32(facts.lastSlot) == 27 and facts.credentials == 3 and facts.wireBytes == bytes.len
   assert services.workDistributionCurrent(facts, StateTime(20))
   assert not services.workDistributionCurrent(facts, StateTime(21))
+  var changed = facts
+  var root = array[32, byte](facts.root)
+  root[0] = root[0] xor 1
+  changed.root = state_trie.StateRoot(root)
+  assert not services.workDistributionCurrent(changed, StateTime(20)), "same header cannot authenticate a substituted complete root"
+  changed = facts
+  var head = array[32, byte](facts.head)
+  head[0] = head[0] xor 1
+  changed.head = genesis.BlockHash(head)
+  assert not services.workDistributionCurrent(changed, StateTime(20)), "same root cannot substitute another complete head"
   assert sameWorkSession(primary, primary)
   assert not sameWorkSession(primary, default(WorkSessionToken))
   var pool = default(WorkGuaranteePool)

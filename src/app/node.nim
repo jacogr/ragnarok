@@ -159,9 +159,27 @@ proc configureWorkExchange*(owner: var ApplicationNode, policy: WorkExchangePoli
     if configured.error != WorkSigningSetupError.None: return false
   owner.exchange.configure(owner.streams, policy)
 proc configureWorkDistribution*(owner: var ApplicationNode, policy: WorkDistributionPolicy): bool =
-  ## Independently optional receiver admission installs a bounded managed consumer before enabling CE135.
+  ## Independently optional receipt/delivery installs bounded managed consumers before enabling CE135.
   if not owner.opened: return false
   owner.distribution.configure(owner.streams, policy)
+func workDeliveryPhase*(owner: ApplicationNode): WorkDeliveryPhase =
+  ## Fixed delivery state grants no claim that every configured validator acknowledged.
+  owner.distribution.deliveryPhase
+func workDeliveryAcknowledgments*(owner: ApplicationNode): uint64 =
+  ## Actual remote FIN responses are separate from local credential collection and self-retention.
+  owner.distribution.acknowledged
+func workDeliveryAttempts*(owner: ApplicationNode): uint64 =
+  ## Observe admitted native requests independently from remote success.
+  owner.distribution.attempted
+func workDeliveryRefusals*(owner: ApplicationNode): uint64 =
+  ## Offline, invalid endpoint and transport refusals do not count as delivered reports.
+  owner.distribution.refused
+func workDeliveryDemandConnections*(owner: ApplicationNode): int =
+  ## Observe exact controller-owned dial reservations, including busy or closing connections.
+  owner.distribution.demandConnections
+func workDeliveryRounds*(owner: ApplicationNode): uint64 =
+  ## A finished bounded round may contain refused/unavailable recipients.
+  owner.distribution.rounds
 func receivedWorkGuarantees*(owner: ApplicationNode): uint64 =
   ## Count actual fresh retained incoming CE135 acknowledgments, separately from locally collected credentials.
   owner.distribution.received
@@ -766,9 +784,10 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     maximumMs: range[0..1] = 1): bool {.raises.} =
   ## Service detached native data during CPU work; capture/refresh only after the exclusive graph gate opens.
   if not owner.opened or owner.services == nil: return false
-  if not owner.streams.poll(clock, maximumMs): return false
   let services = owner.services
   if services == nil: return false
+  owner.distribution.beforePoll(services[], owner.streams, now)
+  if not owner.streams.poll(clock, maximumMs): return false
   owner.tickets.expire(now) # Host-only proof owners may retire while a different job holds immutable source/context aliases.
   owner.origins.expire(owner.streams, now)
   owner.origins.poll(owner.streams, clock)
@@ -786,6 +805,9 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
       discard owner.work.release(services[]) # A refused/timed-out downstream exchange must not strand the builder controller at Ready.
     else:
       discard owner.exchange.beginCompleted(services[], completed, clock)
+  if owner.exchange.phase == WorkExchangePhase.Ready and owner.work.phase ==
+      WorkDispatchPhase.Ready:
+    discard owner.distribution.beginLocal(services[], owner.work.completed, clock)
   let acquired = owner.preimages.takeAcquired()
   if acquired.error == ReadError.None and owner.preimages.has(acquired.value):
     discard owner.gossip.offer(owner.streams, acquired.value) # Fresh state/possession checks remain required before transmission.

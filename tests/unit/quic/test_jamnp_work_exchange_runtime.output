@@ -4,4 +4,11 @@ runtime Foreign passed
 runtime CloseDone passed
 runtime ReceiverClose passed
 runtime Refused passed
+runtime Deliver passed
+runtime DeliveryForeign passed
+runtime DeliveryRefresh passed
+runtime DeliveryClose passed
+runtime DeliveryRefused passed
+runtime DeliveryConcurrent passed
+runtime DeliveryCloseForeign passed
 jamnp work exchange runtime tests passed

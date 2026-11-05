@@ -19,7 +19,8 @@ import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_re
   jamnp_node_probe, pvm_input_refinement]
 
 type Variant {.pure.} = enum ## The same real builder source proves optional activation, three credentials, bounded third-peer grace and joined cancellation.
-  Three, Two, Foreign, CloseDone, ReceiverClose, Refused
+  Three, Two, Foreign, CloseDone, ReceiverClose, Refused, Deliver, DeliveryForeign, DeliveryRefresh,
+    DeliveryClose, DeliveryRefused, DeliveryConcurrent, DeliveryCloseForeign
 proc policy(raw: WorkFixture): WorkExchangePolicy =
   ## Every cryptographic/execution/copy ceiling is explicit; only peer response timing differs from the production default.
   let limits = WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes),
@@ -91,7 +92,7 @@ proc distributionReceipt(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
   ## Ordinary host admission proves default refusal, exclusive worker waiting, exact retention before FIN, duplicate handling and bounded refusal.
   let limits = WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
       targets: ElementLimit(12))
-  let selected = workDistributionPolicy(limits, 1, ByteLimit(20000))
+  let selected = workDistributionPolicy(limits, 1, ByteLimit(20000), deliver = false)
   assert selected.valid
   assert not b.configureWorkDistribution(default(WorkDistributionPolicy))
   assert a.configureWorkDistribution(selected) and b.configureWorkDistribution(selected)
@@ -220,6 +221,99 @@ proc distributionReceipt(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
       sb.nodeProtocol, streams = 512)
   assert b.open(sb, reopened, topologyLimits(2), StateTime(21)) == NodeError.None
   assert b.configureWorkDistribution(selected)
+proc deliveryPolicy(outgoing: bool): WorkDistributionPolicy =
+  ## Genuine roster contains three real peers and nine unreachable fixture endpoints; bounded refusals must remain distinct from two remote acknowledgments.
+  let limits = WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
+      targets: ElementLimit(12))
+  workDistributionPolicy(limits, 4, ByteLimit(80000), timeoutMs = 8000,
+      peerTimeoutMs = 500, parallel = 16, deliver = outgoing)
+proc deliver(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
+    probe: var NodeProbe, variant: Variant, original: seq[byte],
+        source: BlockHash, origin: StateEdKey): StateTime {.raises.} =
+  ## The ordinary host automatically offers the collected session; tests never supply a recipient list or forge a remote acknowledgment.
+  let deadline = getMonoTime()+initDuration(seconds = 15)
+  var now = StateTime(20)
+  var refreshed = false
+  var releasedRefresh = false
+  var refreshLease = default(ProofWorkerTicket)
+  var incoming = default(NodeResult[NodeRequestTicket])
+  if variant == Variant.DeliveryRefresh:
+    let admitted = sc.beginNetworkRead(readStateRequest(source))
+    assert admitted.error == StateProofAdmissionError.None
+    refreshLease = admitted.value
+    sc.waitDone() # Keep C's initial request unaccepted while B's acknowledgment becomes known to A.
+  if variant == Variant.DeliveryConcurrent:
+    let request = decodeReadRequest(ReadKind.Guarantee, original).value
+    incoming = distributionRequest(c, a, b, sc, sa, sb, probe, c.peer(origin), request, now)
+    assert incoming.error == NodeError.None
+  while a.workDeliveryPhase != WorkDeliveryPhase.Sending:
+    assert getMonoTime() < deadline, "outgoing qualification phase " & $a.workDeliveryPhase
+    if variant == Variant.DeliveryClose and a.workDeliveryPhase == WorkDeliveryPhase.Checking:
+      sa.waitDone()
+      assert sa.rpc.chainPaused
+      a.close()
+      assert sa.stateProofAvailable
+      return now
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+  assert a.pendingWorkGuarantees == 1 and a.pendingWorkGuarantee(0) == original
+  if variant == Variant.DeliveryCloseForeign:
+    assert a.workDeliveryAttempts > 0, "foreign close owns queued delivery requests"
+    let admitted = sa.beginNetworkRead(readStateRequest(source))
+    assert admitted.error == StateProofAdmissionError.None
+    sa.waitDone()
+    a.close()
+    assert sa.stateProofPhase == ProofWorkerPhase.Done and sa.rpc.chainPaused
+    assert a.workDeliveryPhase == WorkDeliveryPhase.Idle and a.workDeliveryDemandConnections == 0
+    assert sa.collectStateProof(admitted.value).kind == ProofWorkerCompletionKind.ReadCompleted
+    assert sa.stateProofAvailable
+    return now
+  if variant == Variant.DeliveryForeign:
+    let foreign = sa.beginNetworkRead(readStateRequest(source))
+    assert foreign.error == StateProofAdmissionError.None
+    sa.waitDone()
+    while b.receivedWorkGuarantees == 0 or c.receivedWorkGuarantees == 0:
+      # Already queued source-free sends and complete remote verification progress while this unrelated Done lease remains uncollected.
+      assert getMonoTime() < deadline, "delivery peers through foreign lease"
+      pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+      assert sa.stateProofPhase == ProofWorkerPhase.Done and sa.rpc.chainPaused
+    assert sa.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted
+  while a.workDeliveryRounds == 0:
+    assert getMonoTime() < deadline, "bounded outgoing delivery phase " & $a.workDeliveryPhase
+    if variant == Variant.DeliveryRefresh and not refreshed and a.workDeliveryAcknowledgments > 0:
+      now = StateTime(21)
+      refreshed = true # Preserve B's known acknowledgment and original slot/signatures; C has not accepted yet.
+    if refreshed and not releasedRefresh and a.workDeliveryPhase == WorkDeliveryPhase.Checking:
+      assert sc.stateProofPhase == ProofWorkerPhase.Done and sc.rpc.chainPaused
+      assert sc.collectStateProof(refreshLease).kind == ProofWorkerCompletionKind.ReadCompleted
+      releasedRefresh = true
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+  assert a.workDeliveryPhase == WorkDeliveryPhase.Idle
+  assert a.pendingWorkGuarantees == 1 and a.pendingWorkGuarantee(0) == original
+  assert a.workDeliveryRefusals > 0 and a.workDeliveryRounds == 1
+  if variant == Variant.DeliveryRefused:
+    assert a.workDeliveryAcknowledgments == 0
+    assert b.receivedWorkGuarantees == 0 and c.receivedWorkGuarantees == 0
+  else:
+    assert a.workDeliveryAcknowledgments == 2
+    assert b.pendingWorkGuarantee(0) == original and c.pendingWorkGuarantee(0) == original
+    assert b.receivedWorkGuarantees == 1 and c.receivedWorkGuarantees == 1
+    if variant == Variant.DeliveryRefresh: assert refreshed and releasedRefresh
+  if variant == Variant.DeliveryConcurrent:
+    while true:
+      assert getMonoTime() < deadline, "concurrent incoming/outgoing namespace progress"
+      pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+      let reply = c.takeReply(incoming.value)
+      if reply.error == ReadError.None:
+        assert reply.value.bytes.len == 0 and a.receivedWorkGuarantees == 1
+        break
+      assert reply.error == ReadError.Unavailable
+    assert a.pendingWorkGuarantees == 1 and a.pendingWorkGuarantee(0) == original
+  let attempts = a.workDeliveryAttempts
+  for turn in 0..<4:
+    # A retained Ready primary session is offered exactly once, even after the bounded round finishes with unavailable recipients.
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+  assert a.workDeliveryRounds == 1 and a.workDeliveryAttempts == attempts
+  now
 proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKey) {.raises.} =
   ## A fresh trio gives every case independent native sockets, worker namespaces and private signing owners.
   let raw = workFixture()
@@ -252,6 +346,13 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
     assert b.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
   if variant notin [Variant.Two, Variant.Refused]:
     assert c.configureWorkExchange(selected, "work-exchange-c/cert.pem", "work-exchange-c/key.pem")
+  if variant in [Variant.Deliver, Variant.DeliveryForeign, Variant.DeliveryRefresh,
+      Variant.DeliveryClose, Variant.DeliveryRefused, Variant.DeliveryConcurrent,
+      Variant.DeliveryCloseForeign]:
+    assert a.configureWorkDistribution(deliveryPolicy(true))
+    if variant != Variant.DeliveryRefused:
+      assert b.configureWorkDistribution(deliveryPolicy(false))
+      assert c.configureWorkDistribution(deliveryPolicy(false))
   assert a.beginPeerConnection(keyB, networkEndpoint(loopbackAddress(false), b.localPort)).error == DialError.None
   assert a.beginPeerConnection(keyC, networkEndpoint(loopbackAddress(false), c.localPort)).error == DialError.None
   probe.open(a.localPort, sa.nodeProtocol & "/builder", "work-exchange-builder/cert.pem", "work-exchange-builder/key.pem")
@@ -337,6 +438,12 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
   if variant == Variant.Three:
     retirementSlot = StateTime(21)
     distributionReceipt(a, b, c, sa, sb, sc, probe, sa.workGuaranteePayload(token), keyB, keyC)
+  if variant in [Variant.Deliver, Variant.DeliveryForeign, Variant.DeliveryRefresh,
+      Variant.DeliveryClose, Variant.DeliveryRefused, Variant.DeliveryConcurrent,
+      Variant.DeliveryCloseForeign]:
+    retirementSlot = deliver(a, b, c, sa, sb, sc, probe, variant, sa.workGuaranteePayload(token),
+        sourceHash, fixture.local)
+    if variant in [Variant.DeliveryClose, Variant.DeliveryCloseForeign]: return
   assert a.releaseWork()
   while a.workExchangePhase != WorkExchangePhase.Idle:
     assert getMonoTime() < deadline, "runtime retirement"
@@ -362,7 +469,7 @@ proc main() {.raises.} =
     keyB = b.signerIdentity.value
     keyC = c.signerIdentity.value
   let fixture = guaranteeFixture(keyA, keyB, keyC)
-  for variant in Variant.Three..Variant.Refused:
+  for variant in Variant.Three..Variant.DeliveryCloseForeign:
     scenario(variant, fixture, keyB, keyC)
     echo "runtime ", variant, " passed"
   echo "jamnp work exchange runtime tests passed"

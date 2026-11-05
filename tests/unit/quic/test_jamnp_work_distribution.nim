@@ -25,8 +25,9 @@ proc shares(raw: WorkFixture): WorkSharingLimits =
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
       submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
       eligibility: guaranteeLimits())
-proc epochHead(fixture: GuaranteeFixture): ChainView =
-  ## A trusted complete fixture crosses into slot24 with the genuine prior active roster copied into C9; no fabricated block-admission result is constructed.
+proc epochHead(fixture: GuaranteeFixture, atSlot: uint8 = 24): ChainView =
+  ## A trusted complete fixture selects a slot in the next epoch and copies the genuine prior roster into C9.
+  ## The snapshot remains test authority and grants no block admission certificate.
   let child = fixture.view.bestBlock.value
   let parent = fixture.view.parentOf(child.blockHash)
   assert parent.error == GenesisError.None
@@ -37,10 +38,10 @@ proc epochHead(fixture: GuaranteeFixture): ChainView =
   assert source.apply([StateWrite(kind: StateWriteKind.Put, key: active.key, value: active.value),
       StateWrite(kind: StateWriteKind.Put, key: chapterKey(StateChapter(9)), value: previous),
           StateWrite(kind: StateWriteKind.Put, key: chapterKey(StateChapter(11)),
-      value: @[24'u8, 0, 0, 0])]).error == StateStoreError.None
+      value: @[atSlot, 0'u8, 0, 0])]).error == StateStoreError.None
   var wire = newSeq[byte](child.header.headerInfo.value.consumed)
   assert child.header.encodeOwnedHeader(wire).error == HeaderError.None
-  wire[96] = 24
+  wire[96] = atSlot
   let saved = captureBlockSnapshot(wire, source.snapshot.value, child.chainParameters)
   assert saved.error == GenesisError.None
   let view = advanceView(genesisView(parent), saved)
@@ -146,6 +147,14 @@ proc main() {.raises.} =
   assert array[32, byte](next.value.distributionTarget(0).value.ed25519) == array[32, byte](
       topologyKey(60))
   assert next.value.distributionGuarantee.value.credentialCount == 3
+  let last = qualifyWorkDistribution(bytes, epochHead(fixture, 27), StateTime(27), limits())
+  assert last.error == WorkDistributionError.None, "last current credential slot: " & $last.error
+  assert uint32(last.value.distributionInfo.value.inclusion) == 28
+  assert not last.value.distributionInfo.value.withinCredentialWindow
+  let expired = qualifyWorkDistribution(bytes, epochHead(fixture, 28), StateTime(28), limits())
+  assert expired.error == WorkDistributionError.CredentialFailure
+  assert expired.credentialError.error == GuaranteeCredentialError.AssignmentFailure
+  assert expired.credentialError.assignmentError == GuarantorError.InvalidSlot
   echo "distribution epochs checked"
   assert qualifyWorkDistribution(bytes, view, StateTime(19), limits()).error ==
       WorkDistributionError.InvalidSlot
