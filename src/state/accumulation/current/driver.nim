@@ -3,6 +3,7 @@
 
 ## Bounded current accumulation driving and genuine terminal-sequence ownership.
 ## Completion covers recursive accumulation entries, not final statistics/time/history or whole-block publication.
+import ../residency
 import ../../../chain/parameters
 import ../../../codec/bounded
 import ./[round as accumulation_current_round, sequence as accumulation_current_sequence]
@@ -80,7 +81,8 @@ proc finishCurrentAccumulationSequence*(terminal: PreparedCurrentContinuation): 
         terminal: terminal)))
 
 proc runCurrentAccumulationSequence*(source: CurrentAccumulationSequence,
-    planning: CurrentContinuationLimits, execution: CurrentContinuationExecutionLimits):
+    planning: CurrentContinuationLimits, execution: CurrentContinuationExecutionLimits,
+    residency: nil ptr ServiceExecutionContext = nil):
     CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence] =
   ## Drive only genuine current history; each successful dispatch appends one fact, and its explicit entry cap bounds the loop.
   if source.currentSequenceInfo.error != CurrentSequenceError.None:
@@ -95,7 +97,8 @@ proc runCurrentAccumulationSequence*(source: CurrentAccumulationSequence,
         planningReason: planned) # All earlier private successes release on refusal.
     if not planned.value.currentContinuationInfo.value.dispatch:
       return finishCurrentAccumulationSequence(planned.value) # Terminal proof requires no extra guest/history slot, including at the exact entry ceiling.
-    let executed = runCurrentAccumulationContinuation(planned.value, execution)
+    let executed = runCurrentAccumulationContinuation(planned.value, execution,
+        residency = residency)
     if executed.error != CurrentSequenceError.None:
       return CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence](
         status: CurrentSequenceDriverError.ExecutionFailure,
@@ -103,13 +106,15 @@ proc runCurrentAccumulationSequence*(source: CurrentAccumulationSequence,
     current = executed.value # A fresh flat vector has strictly one more fact; the pre-execution cap makes further dispatch finite.
 
 proc runCurrentBlockAccumulationSequence*(round: BlockAccumulationRound, parameters: Parameters,
-    limits: CurrentSequenceDriverLimits): CurrentSequenceDriverResult[
+    limits: CurrentSequenceDriverLimits,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentSequenceDriverResult[
         CompletedCurrentAccumulationSequence] =
   ## Execute the initial cohort once and drive all current continuations without caller-supplied replacement frame, gas or prefix data.
   if uint64(limits.execution.entries) == 0:
     return CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence](
         status: CurrentSequenceDriverError.LimitExceeded) # A retained initial fact needs capacity before any guest work.
-  let initial = runCurrentBlockAccumulationRound(round, parameters, limits.initial)
+  let initial = runCurrentBlockAccumulationRound(round, parameters, limits.initial,
+      residency = residency)
   if initial.error != CurrentAccumulationRoundError.None:
     return CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence](
       status: CurrentSequenceDriverError.InitialFailure,
@@ -118,7 +123,8 @@ proc runCurrentBlockAccumulationSequence*(round: BlockAccumulationRound, paramet
   if source.error != CurrentSequenceError.None:
     return CurrentSequenceDriverResult[CompletedCurrentAccumulationSequence](
         status: CurrentSequenceDriverError.InvalidSequence) # Genuine initial orchestration must retain an initialized source graph.
-  runCurrentAccumulationSequence(source.value, limits.planning, limits.execution)
+  runCurrentAccumulationSequence(source.value, limits.planning, limits.execution,
+      residency = residency)
 
 proc completedSequencePlan*(completed: CompletedCurrentAccumulationSequence): CurrentSequenceDriverResult[
     PreparedCurrentContinuation] =

@@ -1,10 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One fixed-address worker borrows an exclusively leased input/chain graph until collect or joined close.
+## One fixed-address worker borrows an exclusively leased input/chain graph and service execution
+## context until exact collect or joined close, including Queued, Running, Done and cancellation.
 ## Plain ARC requires every host alias to remain untouched throughout that lease, including on cancellation.
-## One host thread serializes control calls; worker/input/chain addresses cannot move while borrowed.
+## One host thread serializes control calls; worker/input/chain/context addresses cannot move while
+## borrowed. Every context alias and cache-info query stays untouched until the same lease ends.
 
+import ../state/accumulation/residency
 import std/[assertions, locks, rawthreads]
 import "./block/input" as block_input
 import "./current/block/input" as current_block_input
@@ -43,6 +46,7 @@ type
     identity: nil PreparationIdentity
     input: nil ptr BlockInput
     chain: nil ptr ApplicationChain
+    executionContext: nil ptr ServiceExecutionContext # Same exclusive job borrow lasts through Done/cancel until collect/join.
     id: BlockInputId
     outcome: BlockInputResult
     operation: PreparationOperation
@@ -74,6 +78,7 @@ proc `=wasMoved`*(worker: var PreparationWorker) {.nodestroy, inline,
   `=wasMoved`(worker.identity)
   `=wasMoved`(worker.input)
   `=wasMoved`(worker.chain)
+  worker.executionContext = nil # Closed/joined moves cannot preserve even a dormant context borrow.
   `=wasMoved`(worker.id)
   `=wasMoved`(worker.outcome)
   `=wasMoved`(worker.operation)
@@ -121,12 +126,13 @@ proc execute(worker: ptr PreparationWorker) =
     let borrowedInput = worker.currentInput
     assert borrowedInput != nil, "active current preparation borrow"
     let input: ptr CurrentBlockInput = borrowedInput
-    worker.currentOutcome = input[].prepare(worker.currentId, chain[])
+    worker.currentOutcome = input[].prepare(worker.currentId, chain[],
+        residency = worker.executionContext)
   of PreparationOperation.Legacy:
     let borrowedInput = worker.input
     assert borrowedInput != nil, "active legacy preparation borrow"
     let input: ptr BlockInput = borrowedInput
-    worker.outcome = input[].prepare(worker.id, chain[])
+    worker.outcome = input[].prepare(worker.id, chain[], residency = worker.executionContext)
 
 proc run(raw: pointer) =
   ## A single condition-driven thread performs no service, transport or canonical-publication work.
@@ -171,8 +177,10 @@ proc phase*(worker: var PreparationWorker): PreparationPhase =
   release(worker.lock)
 
 proc submit*(worker: var PreparationWorker, input: var BlockInput, id: BlockInputId,
-    chain: var ApplicationChain): PreparationAdmission =
-  ## Borrow stable input/chain exclusively, including ALL aliases, until collect or close; no canonical host work is allowed.
+    chain: var ApplicationChain,
+    residency: nil ptr ServiceExecutionContext = nil): PreparationAdmission =
+  ## Borrow stable input/chain/context exclusively, including ALL aliases and cache queries,
+  ## until exact collect or joined close; cancellation and Done never grant host access.
   if not worker.started: return PreparationAdmission(status: PreparationError.Closed)
   acquire(worker.lock)
   defer: release(worker.lock)
@@ -185,6 +193,7 @@ proc submit*(worker: var PreparationWorker, input: var BlockInput, id: BlockInpu
   worker.operation = PreparationOperation.Legacy
   worker.input = addr input
   worker.chain = addr chain
+  worker.executionContext = residency
   worker.id = id
   worker.cancelled = false
   worker.phase = PreparationPhase.Queued
@@ -193,8 +202,10 @@ proc submit*(worker: var PreparationWorker, input: var BlockInput, id: BlockInpu
     ticket: PreparationTicket(owner: worker.identity, generation: worker.next))
 
 proc submit*(worker: var PreparationWorker, input: var CurrentBlockInput, id: CurrentBlockInputId,
-    chain: var ApplicationChain): PreparationAdmission =
-  ## Borrow the genuine current receiver and every input/chain alias exclusively until collection or joined close.
+    chain: var ApplicationChain,
+    residency: nil ptr ServiceExecutionContext = nil): PreparationAdmission =
+  ## Borrow the genuine current receiver, chain and context with EVERY alias exclusively until
+  ## exact collection or joined close, including cancellation/Done and context-info queries.
   if not worker.started: return PreparationAdmission(status: PreparationError.Closed)
   acquire(worker.lock)
   defer: release(worker.lock)
@@ -207,6 +218,7 @@ proc submit*(worker: var PreparationWorker, input: var CurrentBlockInput, id: Cu
   worker.operation = PreparationOperation.Current
   worker.currentInput = addr input
   worker.chain = addr chain
+  worker.executionContext = residency
   worker.currentId = id
   worker.cancelled = false
   worker.phase = PreparationPhase.Queued
@@ -230,7 +242,7 @@ proc cancel*(worker: var PreparationWorker, ticket: PreparationTicket): bool =
   true
 
 proc collect*(worker: var PreparationWorker, ticket: PreparationTicket): PreparationCompletion =
-  ## Only Done collection ends the lease; defaults leave the slot and graph entirely untouched.
+  ## Only exact Done collection ends the input/chain/context lease; stale/early calls leave EVERY alias untouched.
   if not worker.started: return default(PreparationCompletion)
   acquire(worker.lock)
   defer: release(worker.lock)
@@ -249,10 +261,11 @@ proc collect*(worker: var PreparationWorker, ticket: PreparationTicket): Prepara
   worker.input = nil
   worker.currentInput = nil
   worker.chain = nil
+  worker.executionContext = nil # Exact collect or joined close alone returns context ownership.
   worker.phase = PreparationPhase.Idle
 
 proc close*(worker: var PreparationWorker) =
-  ## Join before releasing results or ending the exclusive graph lease; running computation is not preemptible.
+  ## Join before releasing results or ending input/chain/context exclusion; running computation is not preemptible.
   if not worker.started: return # Defaults and repeated cleanup have no native lifetime.
   acquire(worker.lock)
   worker.stopping = true
@@ -264,6 +277,7 @@ proc close*(worker: var PreparationWorker) =
   worker.input = nil
   worker.currentInput = nil
   worker.chain = nil
+  worker.executionContext = nil # Exact collect or joined close alone returns context ownership.
   worker.phase = PreparationPhase.Idle
   worker.started = false
   deinitCond(worker.changed)

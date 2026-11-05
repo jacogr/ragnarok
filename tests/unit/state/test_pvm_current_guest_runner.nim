@@ -3,6 +3,8 @@
 # @@Verification={"arc": "pvm_current_guest_runner_arc_release"}
 
 ## Actual current guests connect creation, skipped credit and absent identity to complete provider and selected-state proofs.
+import ../../../src/state/accumulation/residency
+import ../../../src/codec/state/service_values
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[guest_runner as accumulation_guest_runner,
     effects as accumulation_effects, coverage as accumulation_coverage,
@@ -84,19 +86,21 @@ proc fixture(): BatchFixture =
       ByteLimit(ServiceMetadataBytes)).value
   result = batchFixture(incoming = false, firstEnvelope = code, extra = @[target])
   result.inputs = mixedInputs(result.inputs)
-proc run(source: BatchFixture, limits = policy()): AccumulationGuestResult =
+proc run(source: BatchFixture, limits = policy(),
+    residency: nil ptr ServiceExecutionContext = nil): AccumulationGuestResult =
   ## The pure runner receives explicit immutable source/profile choices; no block or completed publication owner is forged.
   runAccumulationGuests(source.inputs, source.state.snapshot.value, HeaderSlot(128), default(
-      StateEntropyWord), profile(), limits)
+      StateEntropyWord), profile(), limits, residency = residency)
+var resident = default(ServiceExecutionContext)
 let source = fixture()
 let prior = source.state.snapshot.value
-let completed = run(source)
+let completed = run(source, residency = addr resident)
 assert completed.error == AccumulationGuestError.None, $completed.error
 let coverage = completed.value
 # The explicit current guest policy reaches the actual new host's original request identity capture.
 var traceLimits = policy()
 traceLimits.requestFacts = ElementLimit(4)
-let traced = run(source, traceLimits)
+let traced = run(source, traceLimits, residency = addr resident)
 assert traced.error == AccumulationGuestError.None
 let tracedContext = traced.value.coverageOriginalAt(AccumulationCoverageIndex(
     0)).value.outcomeContext.value
@@ -162,7 +166,7 @@ for mode in 0..<8:
   of 5: short.steps = ExecutionStepLimit(0) # Runtime quotas never become fake successful panic/skip results.
   of 6: short.annulment.modified = ElementLimit(0) # A successful actual new still needs its original membership proof ceiling.
   else: short.coverage.gas = Gas(0) # Original consumed gas must fit complete coverage even after private guest work.
-  let refused = run(source, short)
+  let refused = run(source, short, residency = addr resident)
   case mode
   of 0: assert refused.error == AccumulationGuestError.LimitExceeded,
       "current guest check: refused.error == AccumulationGuestError.LimitExceeded mode=" & $mode &
@@ -221,9 +225,10 @@ assert runAccumulationGuests(source.inputs, prior, HeaderSlot(0), default(StateE
     default(Parameters), policy()).error == AccumulationGuestError.InvalidParameters, "current guest check: runAccumulationGuests(source.inputs, prior, HeaderSlot(0), default(StateEntropyWord),"
 var wrongProfile = policy()
 wrongProfile.contexts.queues.cores = CoreCount(3)
-assert run(source, wrongProfile).error == AccumulationGuestError.InvalidParameters, "current guest check: run(source, wrongProfile).error == AccumulationGuestError.InvalidParameters"
+assert run(source, wrongProfile, residency = addr resident).error ==
+    AccumulationGuestError.InvalidParameters, "current guest check: run(source, wrongProfile).error == AccumulationGuestError.InvalidParameters"
 failHash(1)
-let refusal = run(source)
+let refusal = run(source, residency = addr resident)
 assert refusal.error == AccumulationGuestError.ServiceFailure and refusal.serviceFailure ==
     AccumulationServiceError.BackendFailure, "current guest check: refusal.error == AccumulationGuestError.ServiceFailure and refusal.serviceFailure =="
 failHash(0)
@@ -232,20 +237,73 @@ assert malformed.state.apply([StateWrite(key: chapterServiceKey(StateChapter(255
     77)), kind: StateWriteKind.Put,
   value: @[0'u8])]).error == StateStoreError.None, "current guest check: malformed.state.apply([StateWrite(key: chapterServiceKey(StateChapter(255), ServiceIndex("
 let malformedPrior = malformed.state.snapshot.value
-let laterFailure = run(malformed)
+let laterFailure = run(malformed, residency = addr resident)
 assert laterFailure.error == AccumulationGuestError.ServiceFailure and
     laterFailure.serviceFailure == AccumulationServiceError.MalformedAccount,
   "a later malformed account does not release the already successful creator as complete coverage"
 assert sameStateSnapshot(malformedPrior, malformed.state.snapshot.value), "current guest check: sameStateSnapshot(malformedPrior, malformed.state.snapshot.value)"
 # Present ready code with malformed VM structure is a machine failure, not an unavailable-code completion.
 let invalidProgram = batchFixture(incoming = false, firstEnvelope = pvmEnvelope(@[0'u8]))
-let invalid = run(invalidProgram)
+let invalid = run(invalidProgram, residency = addr resident)
 assert invalid.error == AccumulationGuestError.MachineFailure and invalid.machineFailure ==
     AccumulationMachineError.InvalidProgram, "current guest check: invalid.error == AccumulationGuestError.MachineFailure and invalid.machineFailure =="
+# Prior resident hits cannot replace current missing or hash-mismatched code with an earlier valid program.
+block:
+  var missing = fixture()
+  let metadata = decodeServiceMetadata(missing.state.snapshot.value.lookup(
+    chapterServiceKey(StateChapter(255), ServiceIndex(42))).value.bytes,
+    ByteLimit(ServiceMetadataBytes)).value.metadata
+  let key = servicePreimageKey(ServiceIndex(42), ServicePreimageHash(array[32, byte](
+      metadata.codeHash)),
+    ByteLimit(32)).value
+  assert missing.state.apply([StateWrite(key: key, kind: StateWriteKind.Delete)]).error ==
+      StateStoreError.None
+  let unavailable = run(missing, residency = addr resident)
+  assert unavailable.error == AccumulationGuestError.None
+  assert unavailable.value.coverageInfo.value.executed == 0
+  assert unavailable.value.coverageInfo.value.skipped == 2
+  var corrupt = fixture()
+  assert corrupt.state.apply([StateWrite(key: key, kind: StateWriteKind.Put, value: @[
+      0'u8])]).error == StateStoreError.None
+  let mismatched = run(corrupt, residency = addr resident)
+  assert mismatched.error == AccumulationGuestError.ServiceFailure
+  assert mismatched.serviceFailure == AccumulationServiceError.InvalidState
+  assert sameStateSnapshot(source.state.snapshot.value, prior)
+# The same authenticated code remains present, but a smaller protocol eligibility cap must skip after a hit.
+block:
+  assert run(source, residency = addr resident).error == AccumulationGuestError.None
+  var wire = profile().encodeParameters
+  for index in 98..<102: wire[index] = 0 # Appendix B maxServiceCodeSize is the complete E4 field here.
+  let smaller = decodeParameters(wire).value
+  assert smaller.get(maxServiceCodeSize) == 0
+  let cached = runAccumulationGuests(source.inputs, prior, HeaderSlot(128), default(
+      StateEntropyWord),
+    smaller, policy(), residency = addr resident)
+  let oneShot = runAccumulationGuests(source.inputs, prior, HeaderSlot(128), default(
+      StateEntropyWord),
+    smaller, policy())
+  assert cached.error == AccumulationGuestError.None and oneShot.error ==
+      AccumulationGuestError.None
+  assert cached.value.coverageInfo.value == oneShot.value.coverageInfo.value
+  assert cached.value.coverageInfo.value.executed == 0 and
+      cached.value.coverageInfo.value.skipped == 2
+  for index in 0..<2:
+    let actual = cached.value.coverageSkippedAt(AccumulationCoverageIndex(uint64(index))).value
+    let expected = oneShot.value.coverageSkippedAt(AccumulationCoverageIndex(uint64(index))).value
+    assert actual.skipInfo.value == expected.skipInfo.value
+    if index == 0: assert actual.skipInfo.value.code == AccumulationCodeStatus.Oversized
+    let a = actual.skipState.value
+    let b = expected.skipState.value
+    assert a.commitment.entries == b.commitment.entries
+    assert array[32, byte](a.commitment.root) == array[32, byte](b.commitment.root)
+    for row in 0..<a.commitment.entries:
+      let key = a.keyAt(StateEntryIndex(row)).value
+      assert a.lookup(key).value.bytes == b.lookup(key).value.bytes
+  assert sameStateSnapshot(source.state.snapshot.value, prior)
 # Optional downstream capture gates remain explicit even though current guest execution itself is successful.
 var noCreation = policy()
 noCreation.createdAccounts = ElementLimit(0)
-let locallyCreated = run(source, noCreation)
+let locallyCreated = run(source, noCreation, residency = addr resident)
 assert locallyCreated.error == AccumulationGuestError.None, "current guest check: locallyCreated.error == AccumulationGuestError.None"
 let incomplete = prepareAccumulationCreationUnion(locallyCreated.value.coverageAnnulment.value,
   AccumulationCreationLimits(outcomes: ElementLimit(1), creations: ElementLimit(1),
@@ -262,7 +320,7 @@ zero.contexts.totalBytes = ByteLimit(0)
 zero.steps = ExecutionStepLimit(0)
 zero.calls = HostCallLimit(0)
 zero.coverage.gas = Gas(0)
-let noGuest = run(uninvoked, zero)
+let noGuest = run(uninvoked, zero, residency = addr resident)
 assert noGuest.error == AccumulationGuestError.None, "current guest check: noGuest.error == AccumulationGuestError.None"
 assert noGuest.value.coverageInfo.value.executed == 0 and
     noGuest.value.coverageInfo.value.skipped == 1 and
@@ -270,7 +328,7 @@ assert noGuest.value.coverageInfo.value.executed == 0 and
       noGuest.value.coverageInfo.value.gasUsed) == 0, "current guest check: noGuest.value.coverageInfo.value.executed == 0 and"
 # Actual supervision conflict retains original gas/provisions while clearing the junior's selected account/yield contribution.
 let conflict = annulmentFixture(emit = false)
-let selected = run(conflict).value
+let selected = run(conflict, residency = addr resident).value
 assert selected.coverageAnnulment.value.annulmentInfo.value.annulled == 1, "current guest check: selected.coverageAnnulment.value.annulmentInfo.value.annulled == 1"
 let left = selected.coverageOriginalAt(AccumulationCoverageIndex(0)).value.outcomeInfo.value
 let right = selected.coverageOriginalAt(AccumulationCoverageIndex(1)).value.outcomeInfo.value
@@ -286,9 +344,11 @@ emptyLimits.coverage = default(AccumulationCoverageLimits)
 let empty = runAccumulationGuests(emptyInputs, prior, HeaderSlot(0), default(StateEntropyWord),
     profile(), emptyLimits)
 assert empty.error == AccumulationGuestError.None and empty.value.coverageInfo.value.services == 0, "current guest check: empty.error == AccumulationGuestError.None and empty.value.coverageInfo.value.services == 0"
+# Stabilize the same resident source before counting repeated invocation-local ARC retirement.
+assert run(source, residency = addr resident).error == AccumulationGuestError.None
 let before = getOccupiedMem()
 for iteration in 0..<1000:
-  let local = run(source)
+  let local = run(source, residency = addr resident)
   assert local.error == AccumulationGuestError.None and local.value.coverageInfo.value.services ==
       3, "current guest check: local.error == AccumulationGuestError.None and local.value.coverageInfo.value.services ==" # Actual guests, private credited maps and all retained source domains release together.
 let after = getOccupiedMem()

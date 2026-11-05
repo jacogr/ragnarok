@@ -3,6 +3,7 @@
 
 ## Authenticated current accumulation sequence ownership and bounded continuation input planning.
 ## Flat per-entry facts avoid recursive certificate ownership; selected successor state governs pending partitioning.
+import ../residency
 import ../../../chain/parameters
 import ../../../codec/[bounded, composite]
 import ../../../codec/work/digest as work_digest
@@ -407,7 +408,8 @@ func pendingFailure*[T](outcome: CurrentSequenceResult[T]): PendingTransferError
   outcome.pendingReason
 
 proc runCurrentAccumulationContinuation*(plan: PreparedCurrentContinuation,
-    limits: CurrentContinuationExecutionLimits): CurrentSequenceResult[
+    limits: CurrentContinuationExecutionLimits,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentSequenceResult[
         CurrentAccumulationSequence] =
   ## Execute this genuine selected entry once using frozen initial Parameters and admitted frame, then append genuine flat facts privately.
   template fail(reason: CurrentSequenceError) =
@@ -454,7 +456,8 @@ proc runCurrentAccumulationContinuation*(plan: PreparedCurrentContinuation,
   var guestLimits = limits.round.guests
   if uint64(guestLimits.coverage.gas) > uint64(data.info.budget):
     guestLimits.coverage.gas = data.info.budget # A generous caller cap cannot relax this entry's source-derived gas budget.
-  let guests = runAccumulationGuests(data.inputs, prior, slot, entropy.value.value[0], parameters, guestLimits)
+  let guests = runAccumulationGuests(data.inputs, prior, slot, entropy.value.value[0], parameters,
+      guestLimits, residency = residency)
   if guests.error != AccumulationGuestError.None:
     return CurrentSequenceResult[CurrentAccumulationSequence](
         status: CurrentSequenceError.GuestFailure, guestReason: guests)

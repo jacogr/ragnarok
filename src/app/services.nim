@@ -6,6 +6,10 @@
 ## transport callbacks must retire before close/destruction. A bounded chain snapshot is shared once.
 ## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
 
+import ../state/accumulation/residency
+import ../codec/composite
+import ../codec/work/digest
+from ../pvm/step import PvmBackend, PreparationResult, PreparedCacheInfo
 import ../lib/logging
 
 import std/[syncio, strutils, base64, assertions, monotimes, times]
@@ -161,6 +165,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   adoption: AccumulationHandoff
   currentAdoption: CurrentAccumulationHandoff
   worker: PreparationWorker
+  executionContext: ServiceExecutionContext # Full-state lifetime; bounded baseline/scratch is allowed, but no live CPU/host/result/chain state.
   proofWorker: StateProofWorker
   proofInput: ProofQuery
   rpcProof: RpcProofDispatch        # Detached connection intent never retains canonical state.
@@ -238,6 +243,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.diskCommitOutcome)
   `=wasMoved`(services.checkpointExport)
   `=wasMoved`(services.worker)
+  `=wasMoved`(services.executionContext)
   `=wasMoved`(services.rpcLease)
   `=wasMoved`(services.mcp)
   `=wasMoved`(services.mcpInfo)
@@ -280,6 +286,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.diskCommitOutcome)
   `=destroy`(services.checkpointExport) # Explicit close joins the detached I/O child before aggregate destruction.
   `=destroy`(services.worker) # Explicit close must join before any shared chain alias retires.
+  `=destroy`(services.executionContext) # Joined preparation ends every cross-thread context borrow first.
   `=destroy`(services.rpcLease)
   `=destroy`(services.mcp)
   `=destroy`(services.mcpInfo)
@@ -467,6 +474,17 @@ proc stopStateProofs*(services: var Services) =
     services.rpcProof = default(RpcProofDispatch)
     services.rpcProofTicket = default(ProofWorkerTicket)
 
+func residentServiceCount*(services: Services): int {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Observe idle finite code occupancy only after exact collection/join; this is not memory accounting.
+  residentServices(services.executionContext)
+
+proc residentServiceInfo*(services: Services, service: ServiceIndex, version: CodeHash,
+    backend: PvmBackend): PreparationResult[PreparedCacheInfo] {.requires:
+    not (services.proofing or services.preparing or services.publishing).} =
+  ## Copy existing worker facts only after exact collection/join; Done/cancel never reopen this gate.
+  residentServiceInfo(services.executionContext, service, version, backend)
+
 proc stopPreparation*(services: var Services) =
   ## Join and discard private execution before reopening canonical/RPC access; listeners and canonical state remain owned.
   if services.light.active: return # Distinct light actor owns its own CPU/IO lease and joins.
@@ -489,6 +507,7 @@ proc close*(services: var Services) =
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
+  services.executionContext = default(ServiceExecutionContext) # Full Services close retires code; stopPreparation alone preserves it.
   if services.mcp.enabled: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping MCP listener")
   services.mcp.close()
   services.mcpInfo = default(ClientInfo)
@@ -1150,7 +1169,8 @@ proc enqueueCandidate*(services: var Services, candidate: OwnedBlock,
     not (services.proofing or services.preparing or services.publishing) and
       services.currentAdoption.phase == CurrentHandoffPhase.Idle.} =
   ## Prepare from this selected head and queue the genuine successor; publication waits for the next service tick.
-  services.adoption.enqueueCandidate(services.canonical, candidate, ancestors, limits, composition)
+  services.adoption.enqueueCandidate(services.canonical, candidate, ancestors, limits, composition,
+    residency = addr services.executionContext)
 
 proc beginBlockInput*(services: Services, input: var BlockInput, extent: ByteLimit,
     ancestors: openArray[OwnedHeader], resources: BlockInputLimits,
@@ -1164,7 +1184,8 @@ proc enqueueBlockInput*(services: var Services, input: var BlockInput, id: Block
     not (services.proofing or services.preparing or services.publishing) and
       services.currentAdoption.phase == CurrentHandoffPhase.Idle.} =
   ## Explicit producer work runs outside transport callbacks; finalized success waits for a later adoption tick.
-  input.enqueue(id, services.canonical, services.adoption, composition)
+  input.enqueue(id, services.canonical, services.adoption, composition,
+      residency = addr services.executionContext)
 
 func currentAccumulationPhase*(services: Services): CurrentHandoffPhase =
   ## Physical cleanup delays graph-bearing acknowledgment until the shared native lease ends.
@@ -1370,10 +1391,11 @@ proc preparationAvailable*(services: Services): bool =
 
 proc beginPreparation*(services: var Services, input: var BlockInput,
     id: BlockInputId): PreparationAdmission {.raises, requires: services.preparationAvailable.} =
-  ## Pause RPC before worker admission; all existing external graph aliases must also remain untouched until collection/join.
+  ## Pause RPC before worker admission; all existing input/chain/context aliases and info queries remain untouched until exact collection/join.
   discard services.worker.start() # Reuse an existing idle thread without spawning per job.
   services.rpcLease = services.rpc.pauseChain()
-  let admitted = services.worker.submit(input, id, services.canonical)
+  let admitted = services.worker.submit(input, id, services.canonical,
+      residency = addr services.executionContext)
   if admitted.error == PreparationError.None:
     services.preparing = true # No fallible canonical/alias work follows successful worker submission.
   else:
@@ -1384,10 +1406,11 @@ proc beginPreparation*(services: var Services, input: var BlockInput,
 proc beginPreparation*(services: var Services, input: var CurrentBlockInput,
     id: CurrentBlockInputId): PreparationAdmission {.raises,
         requires: services.preparationAvailable.} =
-  ## Pause RPC before current submission; all external input/canonical aliases remain frozen until collect or join.
+  ## Pause RPC before current submission; all external input/canonical/context aliases and info queries remain frozen until exact collect or join.
   discard services.worker.start() # The existing fixed-address thread handles both payload alternatives.
   services.rpcLease = services.rpc.pauseChain()
-  let admitted = services.worker.submit(input, id, services.canonical)
+  let admitted = services.worker.submit(input, id, services.canonical,
+      residency = addr services.executionContext)
   if admitted.error == PreparationError.None:
     services.preparing = true # No host graph work follows successful native admission.
   else:

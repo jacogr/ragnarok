@@ -3,6 +3,7 @@
 
 ## Actual native preparation preserves exact-parent authority across an exclusive ARC graph lease.
 
+import ../../../src/state/accumulation/residency
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../../src/app/preparation_worker
@@ -37,20 +38,23 @@ proc cycle(context: SeedFixture, wire: seq[byte], cancel: bool, malformed: bool,
   var chain = initialized(context)
   let parent = chain.stateSnapshot.value
   var input = default(BlockInput)
+  var resident = default(ServiceExecutionContext)
   var worker = default(PreparationWorker)
   var foreign = default(PreparationWorker)
-  assert worker.submit(input, BlockInputId(0), chain).error == PreparationError.Closed
+  assert worker.submit(input, BlockInputId(0), chain, residency = addr resident).error ==
+      PreparationError.Closed
   assert worker.start(), "start worker"
   assert foreign.start(), "start independent idle worker"
   defer: foreign.close()
   defer: worker.close()
   assert not worker.start(), "start cannot replace a live thread"
-  assert worker.submit(input, BlockInputId(0), chain).error == PreparationError.NotReady
+  assert worker.submit(input, BlockInputId(0), chain, residency = addr resident).error ==
+      PreparationError.NotReady
   let id = receive(input, chain, if malformed: @[255'u8] else: wire)
-  let admitted = worker.submit(input, id, chain)
+  let admitted = worker.submit(input, id, chain, residency = addr resident)
   assert admitted.error == PreparationError.None, "submit ready"
   let ticket = admitted.value
-  assert worker.submit(input, id, chain).error == PreparationError.Busy, "busy without graph access"
+  assert worker.submit(input, id, chain, residency = addr resident).error == PreparationError.Busy, "busy without graph access"
   assert not foreign.cancel(ticket), "foreign cancellation"
   assert worker.collect(default(PreparationTicket)).kind == PreparationCompletionKind.Uninitialized
   if cancel:
@@ -58,7 +62,7 @@ proc cycle(context: SeedFixture, wire: seq[byte], cancel: bool, malformed: bool,
   worker.waitDone()
   if lateCancel:
     assert worker.cancel(ticket), "completed cancellation retains result until collection"
-  assert worker.submit(input, id, chain).error == PreparationError.Busy, "Done retains capacity"
+  assert worker.submit(input, id, chain, residency = addr resident).error == PreparationError.Busy, "Done retains capacity"
   let completion = worker.collect(ticket)
   assert worker.phase == PreparationPhase.Idle, "collection releases slot"
   assert not worker.cancel(ticket), "collected ticket is stale"
@@ -81,7 +85,7 @@ proc cycle(context: SeedFixture, wire: seq[byte], cancel: bool, malformed: bool,
   worker.close() # Explicit cleanup is idempotent and default destruction is safe.
   assert worker.start(), "restart uses a new generation"
   let next = receive(input, chain, @[255'u8])
-  let later = worker.submit(input, next, chain)
+  let later = worker.submit(input, next, chain, residency = addr resident)
   assert later.error == PreparationError.None
   assert not worker.cancel(ticket), "restart cannot revive a previous ticket"
   worker.close() # Join with queued/running/completed work before input, chain and aliases retire.
@@ -91,11 +95,12 @@ proc reuse(context: SeedFixture) {.raises.} =
   ## Reuse one native thread and stable host graph through stale-ID and repeated decode-failure handoffs.
   var chain = initialized(context)
   var input = default(BlockInput)
+  var resident = default(ServiceExecutionContext)
   var worker = default(PreparationWorker)
   assert worker.start(), "start reusable worker"
   defer: worker.close()
   let id = receive(input, chain, @[255'u8])
-  let wrong = worker.submit(input, BlockInputId(0), chain)
+  let wrong = worker.submit(input, BlockInputId(0), chain, residency = addr resident)
   assert wrong.error == PreparationError.None
   worker.waitDone()
   assert worker.collect(wrong.value).value.error == BlockInputError.StaleInput, "wrong input generation"
@@ -103,7 +108,7 @@ proc reuse(context: SeedFixture) {.raises.} =
   assert input.cancel(id), "host retires input after stale completion"
   for iteration in 0..<100:
     let current = receive(input, chain, @[255'u8])
-    let admitted = worker.submit(input, current, chain)
+    let admitted = worker.submit(input, current, chain, residency = addr resident)
     assert admitted.error == PreparationError.None
     worker.waitDone()
     assert worker.collect(admitted.value).value.error == BlockInputError.DecodeFailure

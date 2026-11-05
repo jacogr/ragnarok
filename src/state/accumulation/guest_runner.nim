@@ -3,6 +3,7 @@
 
 ## Run current explicit-input accumulation guests under one parameter/profile configuration, retaining exact provider coverage.
 ## Ready code executes; unavailable code and absent accounts keep distinct genuine no-execution proofs. No caller state is published.
+import ./residency
 import ../../pvm/worker
 
 import ../../lib/logging
@@ -44,7 +45,7 @@ type
     annulment*: AccumulationAnnulmentLimits  ## Complete original source/modification/conflict inspection ceilings.
     coverage*: AccumulationCoverageLimits    ## Final provider families, row work and aggregate actual gas budget.
   AccumulationGuestError* {.pure.} = enum ## Refusal never exposes earlier successful guests or a partially completed cohort.
-    Uninitialized, None, InvalidInputs, InvalidState, InvalidParameters, LimitExceeded,
+    Uninitialized, None, Busy, InvalidInputs, InvalidState, InvalidParameters, LimitExceeded,
     ModifiedAccountsDisabled,
     ServiceFailure, InvocationFailure, ContextFailure, MachineFailure, DispatchFailure,
       OutcomeFailure, SkipFailure, AbsentFailure, AnnulmentFailure, CoverageFailure
@@ -137,7 +138,8 @@ func coverageFailure*(outcome: AccumulationGuestResult): AccumulationCoverageErr
 proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStoreSnapshot,
     slot: HeaderSlot, entropy: StateEntropyWord, parameters: Parameters,
     limits: AccumulationGuestLimits, worker: ExecutionWorker = default(
-        ExecutionWorker)): AccumulationGuestResult =
+        ExecutionWorker),
+    residency: nil ptr ServiceExecutionContext = nil): AccumulationGuestResult =
   ## Execute each independent source service once and certify exact provider coverage; all inputs/state/profile choices are explicit caller authority.
   ## State credit and guest effects remain on private complete-map branches until a separate full selected publication path exists.
   let count = inputs.invocationServiceCount
@@ -164,7 +166,8 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
   let config = AccumulationServiceConfig(codeLimit: ServiceCodeLimit(parameters.get(
       maxServiceCodeSize)),
     preimageBytes: limits.preimageBytes)
-  let activeWorker = if worker.initialized: worker else: newExecutionWorker() # One bounded slot spans this actual service batch.
+  let activeWorker = if residency != nil: default(ExecutionWorker)
+    elif worker.initialized: worker else: newExecutionWorker() # One bounded slot spans this actual service batch.
   var outcomes: seq[AccumulationOutcome] = @[]
   var skipped: seq[SkippedAccumulation] = @[]
   var absent: seq[AbsentAccumulation] = @[]
@@ -198,7 +201,16 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
     if initial.error != AccumulationContextError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.ContextFailure,
           contextReason: initial.error) # Explicit shape/copy policy is validated before machine execution.
-    let machine = initializeAccumulationMachine(invocation.value, limits.initialization, activeWorker)
+    var lease = default(ServiceExecutionLease)
+    if residency != nil:
+      # Ready classification rechecked the full account/preimage/envelope before resident selection.
+      let identity = service.value.serviceInfo.value
+      lease = acquireServiceExecution(residency[], identity.service, identity.account.codeHash,
+          limits.backend)
+      if not lease.initialized:
+        return AccumulationGuestResult(status: AccumulationGuestError.Busy) # Nested admission is a local refusal before any initializer mutation.
+    let machine = initializeAccumulationMachine(invocation.value, limits.initialization,
+        activeWorker, execution = addr lease)
     if machine.error != AccumulationMachineError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.MachineFailure,
           machineReason: machine.error) # Malformed programs remain typed local setup refusals, never fake skips or panic outcomes.
@@ -208,7 +220,7 @@ proc runAccumulationGuests*(inputs: PreparedAccumulationInputs, state: StateStor
       limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
       limits.deletedAccounts, limits.modifiedAccounts, limits.accountWriteFacts,
       limits.storageFacts, limits.requestFacts, logging = limits.logging, backend = limits.backend,
-      worker = activeWorker)
+      worker = activeWorker, execution = addr lease)
     if executed.error != AccumulationDispatchError.None:
       return AccumulationGuestResult(status: AccumulationGuestError.DispatchFailure,
           dispatchReason: executed) # Preserve actual step/refusal detail; prior successful guests remain private and release.

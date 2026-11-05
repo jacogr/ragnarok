@@ -3,6 +3,7 @@
 
 ## Execute one authenticated current initial round once, preparing selected state, outputs and next-transfer accounting together.
 ## This complete parallel-round owner remains distinct from whole-block history/statistics/publication and recursive continuation.
+import ../residency
 import ../../../chain/parameters
 import ../round as accumulation_round
 import "../block/guests" as accumulation_block_guests
@@ -67,10 +68,11 @@ func value*[T](outcome: CurrentAccumulationRoundResult[T]): T {.inline,
   outcome.completed
 
 proc runCurrentBlockAccumulationRound*(round: BlockAccumulationRound, parameters: Parameters,
-    limits: CurrentAccumulationRoundLimits): CurrentAccumulationRoundResult[
+    limits: CurrentAccumulationRoundLimits,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentAccumulationRoundResult[
         PreparedCurrentAccumulationRound] =
   ## Execute each ready guest once, prepare all selected state privately, then bind output/transfer decisions to that exact annulment owner.
-  let guests = runBlockAccumulationGuests(round, parameters, limits.guests)
+  let guests = runBlockAccumulationGuests(round, parameters, limits.guests, residency = residency)
   if guests.error != BlockGuestError.None:
     return CurrentAccumulationRoundResult[PreparedCurrentAccumulationRound](
       status: CurrentAccumulationRoundError.GuestFailure, guestReason: guests)

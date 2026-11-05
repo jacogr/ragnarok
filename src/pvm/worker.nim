@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit sequential execution workers retain one decoded source and one source/policy-bound prepared cache.
-## CPU, memory, arguments, gas and callbacks are rebuilt per invocation; no process-global state is retained.
+## Logical CPU, arguments, gas and callbacks are rebuilt per invocation; bounded immutable memory
+## baseline/private scratch may remain for restoration. No process-global state is retained.
 
 import ./[program, machine, initialize, step]
 import ./gas/gas
 
 type
-  WorkerData = ref object ## Acyclic code-only storage has no back-reference to application inputs or published outputs.
+  WorkerData = ref object ## Acyclic prepared storage has no live CPU/host/result/chain back-reference; bounded baseline/scratch may persist.
     initialization: InitializationCode
     prepared: PreparedProgramCache
   ExecutionWorker* = object ## Copyable identity for one exclusive synchronous worker; never share it across threads.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Compose all current PVM state phases from a terminal sequence; failures retain no successful prefix.
+import ../residency
 import ./[statistics as accumulation_current_statistics, accounts as accumulation_current_accounts,
     finalization as accumulation_current_finalization, ready as accumulation_current_ready,
     recent as accumulation_current_recent, validators as accumulation_current_validators,
@@ -174,9 +175,11 @@ proc prepareCurrentAccumulationComposition*(source: CompletedCurrentAccumulation
       completed: consensus.value)
 
 proc runCurrentAccumulationCompletion*(round: BlockAccumulationRound, parameters: Parameters,
-    limits: CurrentAccumulationCompletionLimits): CurrentAccumulationCompletionResult =
+    limits: CurrentAccumulationCompletionLimits,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentAccumulationCompletionResult =
   ## Drive the initial and subsequent current guests once, then run the same terminal composition entry point.
-  let executed = runCurrentBlockAccumulationSequence(round, parameters, limits.execution)
+  let executed = runCurrentBlockAccumulationSequence(round, parameters, limits.execution,
+      residency = residency)
   if executed.error != CurrentSequenceDriverError.None:
     return CurrentAccumulationCompletionResult(status: CurrentAccumulationCompletionError.SequenceFailure,
       sequenceReason: executed) # Preserve the actual failed execution stage; no state composition runs.
