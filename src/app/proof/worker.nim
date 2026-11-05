@@ -228,7 +228,9 @@ proc execute(worker: ptr StateProofWorker) =
     worker.assuranceOutcome = executeAssuranceStorage(worker.assuranceJob,
       assuranceScanControl(stopAssuranceScan, cast[pointer](worker)))
   of ProofWorkerOperation.WorkSubmission:
-    worker.workOutcome = executeWorkSubmission(worker.workJob) # Original state aliases retire before Done.
+    worker.workOutcome = executeWorkSubmission(worker.workJob,
+      assuranceScanControl(stopAssuranceScan, cast[pointer](
+          worker))) # Closed cooperative runners borrow cancellation only during execution; original source aliases retire before Done.
   of ProofWorkerOperation.TicketProduction:
     worker.ticketOutcome = executeTicketProduction(
         worker.productionJob) # Private signer/source aliases retire before Done.

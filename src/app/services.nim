@@ -72,6 +72,7 @@ import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_
 import ../jamnp-s/assurance_distribution
 import ../jamnp-s/assurance_fetch
 import ../jamnp-s/assurance_schedule
+import ../jamnp-s/[audit_context, audit_receipt]
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
 from ../state/availability/specifier import AvailabilityCommitment
@@ -148,6 +149,12 @@ type
     of QueryFailure: captureReason: WorkJobError
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Default/closed/busy starts contain no accepted job.
+  AuditPlanningStart* = object ## Only admitted full-state audit work exposes an exact shared-worker ticket; failed starts retain no source.
+    case status: StateProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of QueryFailure: captureReason: WorkJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Default/closed/busy cannot expose an audit context or accepted input alias.
   AssuranceSigningStart* = object ## Only accepted native signing exposes a ticket; the caller provides a selection, never a purported possession proof or raw message.
     case status: AssuranceStorageStartError
     of None: ticket: ProofWorkerTicket
@@ -2500,6 +2507,21 @@ func workerError*(outcome: AssuranceWorkStart): ProofWorkerError {.requires: out
     StateProofAdmissionError.WorkerFailure.} =
   ## Native slot refusal remains distinct from raw request admission.
   outcome.workerReason
+func error*(outcome: AuditPlanningStart): StateProofAdmissionError =
+  ## Read the selected admission branch before accessing a ticket or actual child failure.
+  outcome.status
+func value*(outcome: AuditPlanningStart): ProofWorkerTicket {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Only exact admitted audit planning grants collection/cancellation authority.
+  outcome.ticket
+func captureError*(outcome: AuditPlanningStart): WorkJobError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Failed closed capture cannot retain canonical source authority.
+  outcome.captureReason
+func workerError*(outcome: AuditPlanningStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## Preserve real bounded native admission refusal independently of source capture.
+  outcome.workerReason
 proc stageAssuranceDistribution(services: var Services, request: ReadRequest,
     peer: StateEdKey, limits: AssuranceDistributionLimits): WorkJobError =
   ## Source and capture wrapper aliases retire before shared-worker publication.
@@ -2523,6 +2545,67 @@ proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
   services.assuranceWorkInput = default(WorkSubmissionJob)
   AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
       workerReason: admitted.error)
+proc stageAuditPlanning(services: var Services, blockHash: genesis.BlockHash,
+    limits: AuditContextLimits): WorkJobError =
+  ## Retire all temporary actual-view aliases before native submission can use the captured full history.
+  let captured = captureAuditPlanning(services.canonical.chainView, blockHash, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditPlanning*(services: var Services, blockHash: genesis.BlockHash,
+    limits: AuditContextLimits): AuditPlanningStart {.raises.} =
+  ## Only actual full-state Services history can feed this fixed audit context runner; a foreign lease is left untouched.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if services.light.active: return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
+      captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageAuditPlanning(blockHash, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  let admitted = services.admitAssuranceWork()
+  case admitted.error
+  of StateProofAdmissionError.None: AuditPlanningStart(status: StateProofAdmissionError.None,
+      ticket: admitted.value)
+  of StateProofAdmissionError.WorkerFailure: AuditPlanningStart(
+      status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.workerError)
+  of StateProofAdmissionError.Busy: AuditPlanningStart(status: StateProofAdmissionError.Busy)
+  of StateProofAdmissionError.QueryFailure: AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: admitted.captureError)
+  of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
+      status: StateProofAdmissionError.Uninitialized) # Every selected refusal preserves its actual branch; no future child may silently default.
+proc stageAuditAnnouncements(services: var Services, wire: openArray[byte],
+    limits: AuditReceiptLimits): WorkJobError =
+  ## Capture wrappers and copied caller bytes retire before the worker borrows actual full history.
+  let captured = captureAuditAnnouncements(services.canonical.chainView, wire, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditAnnouncements*(services: var Services, wire: openArray[byte],
+    limits: AuditReceiptLimits): AuditPlanningStart {.raises.} =
+  ## Only the actual full-state Services history feeds whole-batch proof qualification; a foreign exact lease remains untouched.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if services.light.active: return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
+      captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageAuditAnnouncements(wire, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  let admitted = services.admitAssuranceWork()
+  case admitted.error
+  of StateProofAdmissionError.None: AuditPlanningStart(status: StateProofAdmissionError.None,
+      ticket: admitted.value)
+  of StateProofAdmissionError.WorkerFailure: AuditPlanningStart(
+      status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.workerError)
+  of StateProofAdmissionError.Busy: AuditPlanningStart(status: StateProofAdmissionError.Busy)
+  of StateProofAdmissionError.QueryFailure: AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: admitted.captureError)
+  of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
+      status: StateProofAdmissionError.Uninitialized) # Every selected refusal preserves its actual branch; no future child may silently default.
+proc auditContextCurrent*(services: Services, context: AuditContext): bool =
+  ## Historical child/body and predecessor identities are compared only after every canonical lease retires.
+  services.stateProofAvailable and context.matches(services.canonical.chainView)
 proc stageAssurancePlanning(services: var Services, local: StateEdKey,
     limits: AssuranceFetchLimits): WorkJobError =
   ## The actual selected complete source is captured independently of peers and retired temporary view wrappers.

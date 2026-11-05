@@ -10,6 +10,8 @@ import ./work_dispatch
 import ./work_exchange
 import ./work_distribution
 import ./assurance_distribution
+import ./audit_distribution
+import ../jamnp-s/audit_validation
 import ./assurance_broadcast
 import ./assurance_acquirer
 import ../jamnp-s/assurance_record
@@ -74,6 +76,8 @@ type
     gossip: PreimageGossip
     work: WorkDispatcher
     exchange: WorkExchangeDispatcher
+    audits: AuditDispatcher
+    preferAudits: bool
     assurances: AssuranceDispatcher
     preferAssurances: bool
     acquisition: AssuranceAcquirer
@@ -116,6 +120,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.work)
   `=wasMoved`(owner.exchange)
+  `=wasMoved`(owner.audits)
   `=wasMoved`(owner.assurances)
   `=wasMoved`(owner.acquisition)
   `=wasMoved`(owner.broadcaster)
@@ -150,6 +155,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.gossip)
   `=destroy`(owner.work)
   `=destroy`(owner.exchange)
+  `=destroy`(owner.audits)
   `=destroy`(owner.assurances)
   `=destroy`(owner.acquisition)
   `=destroy`(owner.broadcaster)
@@ -228,6 +234,21 @@ func attemptedAssuranceBroadcasts*(owner: ApplicationNode): uint64 =
 func acknowledgedAssuranceBroadcasts*(owner: ApplicationNode): uint64 =
   ## Only complete remote FINs count as acknowledged delivery.
   owner.broadcaster.acknowledged
+proc configureAuditReceipt*(owner: var ApplicationNode, policy: AuditReceiptPolicy): bool =
+  ## A real bounded managed verifier and retained intent pool must exist before native CE144 selection is enabled.
+  if not owner.opened: return false
+  owner.audits.configure(owner.streams, policy)
+func receivedAuditAnnouncements*(owner: ApplicationNode): uint64 =
+  ## Count wholly authenticated uploads acknowledged through their original live native ticket.
+  owner.audits.received
+func pendingAuditAnnouncements*(owner: ApplicationNode): int =
+  ## Distinct original declarations retain their obligations across later positive information.
+  owner.audits.pendingCount
+proc pendingAuditAnnouncement*(owner: ApplicationNode,
+    ordinal: int): CheckedAuditAnnouncement {.requires: ordinal >= 0 and ordinal <
+    owner.audits.pendingCount.} =
+  ## Source-free immutable intent metadata grants neither private judgment nor finality authority.
+  owner.audits.pendingAt(ordinal)
 proc configureAssuranceReceipt*(owner: var ApplicationNode, policy: AssuranceReceiptPolicy): bool =
   ## Independently optional bounded CE141 receipt enables no archive, private signer or outgoing assurance schedule.
   if not owner.opened: return false
@@ -608,6 +629,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferWork = true
   owner.preferExchange = true
   owner.preferDistribution = true
+  owner.preferAudits = true
   owner.preferAssurances = true
   owner.preferPreimage = false
   owner.producing = false
@@ -674,6 +696,7 @@ proc close*(owner: var ApplicationNode) =
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil:
+    owner.audits.close(services[], owner.streams)
     owner.assurances.close(services[], owner.streams)
     owner.acquisition.close(services[], owner.streams)
     owner.broadcaster.close(services[], owner.streams)
@@ -886,6 +909,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.preimages.poll(services[], owner.streams, clock)
   owner.work.poll(services[], owner.streams, clock, now)
   owner.exchange.poll(services[], owner.streams, clock)
+  owner.audits.poll(services[], owner.streams, clock)
   owner.assurances.poll(services[], owner.streams, clock)
   owner.acquisition.poll(services[], owner.streams, clock)
   owner.broadcaster.poll(services[], owner.streams, clock)
@@ -971,6 +995,10 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
       owner.preferAcquisition = false
       return true
   owner.preferAcquisition = true # A continuously missing archive alternates with ordinary incoming/read work.
+  if owner.preferAudits and owner.audits.submit(services[], owner.streams, clock):
+    owner.preferAudits = false
+    return true
+  owner.preferAudits = true # A continuous audit backlog alternates with other bounded managed CPU consumers.
   if owner.preferAssurances and owner.assurances.submit(services[], owner.streams, clock):
     owner.preferAssurances = false
     return true
@@ -992,12 +1020,14 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.preferFetch = false
     return true
   if owner.preferChecked and owner.submitChecked(): return true
-  let request = owner.streams.takeReadExcept({ReadKind.Guarantee, ReadKind.Assurance})
+  let request = owner.streams.takeReadExcept({ReadKind.Guarantee, ReadKind.Assurance,
+      ReadKind.AuditAnnouncement})
   if request.error != NodeError.None:
     if assuranceClock and owner.broadcaster.submit(services[], owner.streams, clock,
         assuranceNow): return true
     if assuranceClock and owner.acquisition.submit(services[], owner.streams, clock,
         assuranceNow): return true
+    if owner.audits.submit(services[], owner.streams, clock): return true
     if owner.assurances.submit(services[], owner.streams, clock): return true
     if owner.distribution.submit(services[], owner.streams, clock, now): return true
     if owner.exchange.submit(services[], owner.streams, clock, now): return true

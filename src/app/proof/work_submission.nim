@@ -10,6 +10,8 @@ import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire,
 import ../../jamnp-s/assurance_distribution
 import ../../jamnp-s/assurance_fetch
 import ../../jamnp-s/assurance_schedule
+import ../../jamnp-s/[audit_context, audit_receipt]
+from ../../jamnp-s/assurance_store import AssuranceScanControl
 import ../../jamnp-s/work_recovery
 import ../../jamnp-s/availability_proof
 import ../../jamnp-s/[work_distribution, read_stream, read_validation]
@@ -39,7 +41,8 @@ type
     GuaranteeCollectionFailure, DistributionQualified, DistributionFailure,
     DistributionEncodingFailure, DistributionCacheFailure, DistributionOutputLimit,
     AssuranceQualified, AssuranceFailure, AssurancePlanned, AssurancePlanningFailure,
-    AssuranceScheduled, AssuranceScheduleFailure
+    AssuranceScheduled, AssuranceScheduleFailure, AuditPlanned, AuditPlanningFailure,
+      AuditAnnouncementsQualified, AuditAnnouncementFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -75,6 +78,10 @@ type
     of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
     of GuaranteeCollected: collected: CollectedWorkGuarantee
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
+    of AuditAnnouncementsQualified: auditBatch: CheckedAuditBatch
+    of AuditAnnouncementFailure: auditReceiptReason: AuditReceiptResult[CheckedAuditBatch]
+    of AuditPlanned: auditContext: AuditContext
+    of AuditPlanningFailure: auditReason: AuditContextResult[AuditContext]
     of AssuranceScheduled: assuranceSchedule: AssuranceSchedule
     of AssuranceScheduleFailure: assuranceScheduleReason: AssuranceScheduleResult[AssuranceSchedule]
     of AssurancePlanned: assurancePlan: AssuranceFetchPlan
@@ -101,8 +108,16 @@ type
     else: discard # Defaults contain neither selected-state ownership nor an invented success.
   WorkRunner = proc(data: WorkJobData): WorkJobResult {.nimcall.}
     ## Closed capability is bound only to the actual implementation in this module.
+  CancellableWorkRunner = proc(data: WorkJobData, control: AssuranceScanControl): WorkJobResult {.nimcall.}
+    ## Only private closed factories select this runner; live cancellation control is supplied at execution and is never stored in a queued job.
   WorkJobData = ref object ## Detached bounded bytes accompany immutable selected-state owners; no stream pointer crosses the CPU boundary.
     run: nil WorkRunner
+    cancellable: nil CancellableWorkRunner
+    auditView: ChainView
+    auditHash: genesis.BlockHash
+    auditLimits: AuditContextLimits
+    auditWire: seq[byte]
+    auditReceiptLimits: AuditReceiptLimits
     source: WorkSource
     context: AuthorizedWorkContext
     refined: InputRefinement
@@ -191,6 +206,22 @@ func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
     WorkJobResultKind.GuaranteeCollectionFailure.} =
   ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
   outcome.collectionReason
+func qualifiedAuditAnnouncements*(outcome: WorkJobResult): CheckedAuditBatch {.requires: outcome.status ==
+    WorkJobResultKind.AuditAnnouncementsQualified.} =
+  ## Only a wholly qualified batch contains source-free authenticated obligations.
+  outcome.auditBatch
+func auditAnnouncementError*(outcome: WorkJobResult): AuditReceiptResult[
+    CheckedAuditBatch] {.requires: outcome.status == WorkJobResultKind.AuditAnnouncementFailure.} =
+  ## Late source/proof/cancellation refusal never exposes an earlier accepted record.
+  outcome.auditReceiptReason
+func plannedAuditContext*(outcome: WorkJobResult): AuditContext {.requires: outcome.status ==
+    WorkJobResultKind.AuditPlanned.} =
+  ## Only exact uncancelled managed collection grants a whole source-free audit context.
+  outcome.auditContext
+func auditPlanningError*(outcome: WorkJobResult): AuditContextResult[
+    AuditContext] {.requires: outcome.status == WorkJobResultKind.AuditPlanningFailure.} =
+  ## Preserve the actual context/prefix/role failure without an accepted audit prefix.
+  outcome.auditReason
 func scheduledAssurance*(outcome: WorkJobResult): AssuranceSchedule {.requires: outcome.status ==
     WorkJobResultKind.AssuranceScheduled.} =
   ## Exact collection exposes only source-free author routing, timing and requested-core metadata.
@@ -292,8 +323,11 @@ func sharingError*(outcome: WorkJobResult): WorkSharingResult[
   ## Preserve the genuine failed whole-bundle receiver stage without signature authority.
   outcome.sharingReason
 func valid*(job: WorkSubmissionJob): bool =
-  ## Only private factories bind the actual runner and original source.
-  job.data != nil
+  ## Exactly one private closed runner selects the operation; defaults or ambiguous dispatch grant no execution capability.
+  let data = job.data
+  if data == nil: return false
+  if data.run != nil: return data.cancellable == nil
+  data.cancellable != nil
 func valid*(context: AuthorizedWorkContext): bool =
   ## Default contexts never grant body CPU admission.
   context.data != nil
@@ -587,6 +621,38 @@ proc captureAssurancePlanning*(source: BlockSnapshotResult, local: StateEdKey,
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: planAssurance, assuranceSource: source, assurancePeer: local,
     assuranceFetchLimits: limits)))
+proc planAuditContext(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Canonical body, prior rosters and all authentication run only behind the existing managed graph lease.
+  let selected = captureAuditContext(data.auditView, data.auditHash, data.auditLimits, control)
+  if selected.error != AuditContextError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditPlanningFailure, auditReason: selected)
+  WorkJobResult(status: WorkJobResultKind.AuditPlanned, auditContext: selected.value)
+proc captureAuditPlanning*(source: ChainView, blockHash: genesis.BlockHash,
+    limits: AuditContextLimits): WorkJobAdmission =
+  ## Capturing immutable source authority performs no body decoding, hashing or crypto; only this fixed cancellable runner can be queued.
+  if source.fuzzOnly or source.bestBlock.error != GenesisError.None or not limits.valid:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: planAuditContext, auditView: source, auditHash: blockHash, auditLimits: limits)))
+proc qualifyIncomingAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## All body admission, actual prior-role lookup and batch crypto execute behind the managed graph lease.
+  let checked = qualifyAuditAnnouncements(data.auditView, data.auditWire, data.auditReceiptLimits, control)
+  if checked.error != AuditReceiptError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditAnnouncementFailure,
+        auditReceiptReason: checked)
+  WorkJobResult(status: WorkJobResultKind.AuditAnnouncementsQualified, auditBatch: checked.value)
+proc captureAuditAnnouncements*(source: ChainView, wire: openArray[byte],
+    limits: AuditReceiptLimits): WorkJobAdmission =
+  ## Capture only finite detached bytes and the actual immutable chain; callers cannot enqueue a verifier or an invented context.
+  if source.fuzzOnly or source.bestBlock.error != GenesisError.None or not limits.valid:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  if uint64(wire.len) > uint64(limits.message.bytes):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  var captured = newSeq[byte](wire.len)
+  for index in 0..<wire.len: captured[index] = wire[index] # No caller buffer alias crosses native submission.
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: qualifyIncomingAudit, auditView: source, auditWire: captured,
+    auditReceiptLimits: limits)))
 proc planAssuranceSchedule(data: WorkJobData): WorkJobResult =
   ## All complete-source and C4/C8/C9 copying executes under the existing exclusive native lease.
   let planned = captureAssuranceSchedule(data.assuranceSource, data.assurancePeer,
@@ -796,10 +862,13 @@ proc captureWorkPackage*(context: AuthorizedWorkContext, extrinsics: openArray[b
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: complete, source: data.source, context: context,
     extrinsics: copied(extrinsics), imports: rows, lookup: dictionary)))
-proc executeWorkSubmission*(job: WorkSubmissionJob): WorkJobResult =
+proc executeWorkSubmission*(job: WorkSubmissionJob, control: AssuranceScanControl = default(
+    AssuranceScanControl)): WorkJobResult =
   ## The worker invokes a private genuine capability outside native callbacks and retires all activation aliases before Done.
   let data = job.data
   if data == nil: return default(WorkJobResult)
+  let cancellable = data.cancellable
+  if cancellable != nil: return cancellable(data, control)
   let run = data.run
   if run == nil: return default(WorkJobResult)
   run(data)

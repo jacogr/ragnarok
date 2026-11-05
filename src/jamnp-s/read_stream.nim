@@ -14,7 +14,7 @@ type
     Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Guarantee = 135,
         Report = 136, Availability = 137, Audit = 138, SegmentShards = 139,
             ProvenSegmentShards = 140, Assurance = 141, PreimageAnnouncement = 142, Preimage = 143,
-                Bundle = 147, Segments = 148
+                AuditAnnouncement = 144, Bundle = 147, Segments = 148
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -66,11 +66,12 @@ func batch*(kind: ReadKind): bool =
   kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments]
 func variable*(kind: ReadKind): bool =
   ## Opaque guaranteed reports share bounded variable storage with grouped requests, without borrowing the grouped-request grammar.
-  kind.batch or kind in [ReadKind.Guarantee, ReadKind.Assurance]
+  kind.batch or kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement]
 func maximumRequestBytes(kind: ReadKind): int =
   ## CE135 has an independent local hard ceiling; grouped requests retain their exact existing grammar ceiling.
   if kind == ReadKind.Assurance: 139 # Anchor, largest fixed profile bitfield and Ed25519 signature.
   elif kind == ReadKind.Guarantee: MaxReadReplyBytes
+  elif kind == ReadKind.AuditAnnouncement: 16*133 # Whole batches have at most sixteen fixed initial/later records.
   else: kind.segmentKind.maximumPayload
 func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
   ## Only declared batch selectors enter the matching protocol grammar.
@@ -81,8 +82,8 @@ func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
 func requestLength(kind: ReadKind): int =
   ## Pinned fixed payload extents exclude selector and E4 header.
   case kind
-  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.SegmentShards, ReadKind.ProvenSegmentShards,
-      ReadKind.Segments: -1
+  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement, ReadKind.SegmentShards,
+      ReadKind.ProvenSegmentShards, ReadKind.Segments: -1
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
   of ReadKind.Report, ReadKind.Preimage, ReadKind.Bundle: 32
@@ -96,10 +97,11 @@ proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
     result[index] = if request.selector.variable: request.variable[index] else: request.payload[index]
 proc decodeReadRequest*(kind: ReadKind, payload: openArray[byte]): ReadResult[ReadRequest] =
   ## Validate exact extents before retaining transport facts; method-specific semantics stay in services.
-  if kind in [ReadKind.Guarantee, ReadKind.Assurance]:
+  if kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement]:
     if kind == ReadKind.Assurance and payload.len < 97: return readFailure[ReadRequest](
         ReadError.InvalidRequest)
-    if payload.len == 0: return readFailure[ReadRequest](ReadError.InvalidRequest)
+    if kind == ReadKind.Guarantee and payload.len == 0: return readFailure[ReadRequest](
+        ReadError.InvalidRequest)
     if payload.len > kind.maximumRequestBytes: return readFailure[ReadRequest](
         ReadError.LimitExceeded)
     var bytes = newSeq[byte](payload.len)
@@ -156,8 +158,8 @@ func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   elif request.selector == ReadKind.Segments: 2
   elif request.selector == ReadKind.Availability: 3
   elif request.selector in [ReadKind.State, ReadKind.Audit]: 2
-  elif request.selector in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.PreimageAnnouncement,
-      ReadKind.TicketProxy, ReadKind.TicketDistribution]: 0
+  elif request.selector in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
+      ReadKind.PreimageAnnouncement, ReadKind.TicketProxy, ReadKind.TicketDistribution]: 0
   else: 1
 func maximumReplyBytes*(request: ReadRequest): int {.requires: request.valid.} =
   ## Large original bundles and all-row distributions have their own hard ceiling; existing reads retain their prior bound.
