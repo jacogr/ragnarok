@@ -146,6 +146,10 @@ proc exchangeClient*(kind: ReadKind, payload, response: seq[byte],
     of ReadKind.Availability: @[137'u8, 34, 0, 0, 0]
     of ReadKind.Audit: @[138'u8, 34, 0, 0, 0]
     of ReadKind.Bundle: @[147'u8, 32, 0, 0, 0]
+    of ReadKind.Assurance:
+      var header = @[141'u8] # Independent literal CE141 selector, followed by its one E4-framed upload.
+      for index in 0..<4: header.add(byte((uint32(payload.len) shr (8*index)) and 255))
+      header
     of ReadKind.Guarantee, ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments:
       var header = @[byte(kind)]
       for index in 0..<4: header.add(byte((uint32(payload.len) shr (8*index)) and 255))

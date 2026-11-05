@@ -17,6 +17,14 @@ proc main() {.raises.} =
   exchangeClient(ReadKind.Guarantee, guarantee, @[], holdFin = true, maximum = ByteLimit(0), budget = 0)
   exchangeClient(ReadKind.Guarantee, guarantee, @[0'u8], maximum = ByteLimit(0),
       failure = ReadError.InvalidRequest)
+  assert decodeReadRequest(ReadKind.Assurance, newSeq[byte](96)).error == ReadError.InvalidRequest
+  assert decodeReadRequest(ReadKind.Assurance, newSeq[byte](140)).error == ReadError.LimitExceeded
+  for size in [97, 139]:
+    # Exact raw upload and both FINs are transport completion only, not an accepted credential.
+    let assurance = newSeq[byte](size)
+    exchangeClient(ReadKind.Assurance, assurance, @[], holdFin = true, maximum = ByteLimit(0), budget = 0)
+  exchangeClient(ReadKind.Assurance, newSeq[byte](97), @[0'u8], maximum = ByteLimit(0),
+      failure = ReadError.InvalidRequest)
   let blockPayload = newSeq[byte](37)
   let blockRequest = decodeReadRequest(ReadKind.Blocks, blockPayload).value
   assert route.configure(blockRequest, ByteLimit(3)) == ReadError.LimitExceeded

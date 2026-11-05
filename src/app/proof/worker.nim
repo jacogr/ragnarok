@@ -682,6 +682,13 @@ func matches(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
     worker.phase != ProofWorkerPhase.Idle
 
 
+proc active*(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
+  ## Exact synchronized membership covers Queued, Running and uncollected Done without accessing shared job graphs.
+  if not worker.started: return false
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  worker.matches(ticket)
+
 proc cancel*(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
   ## Mark unwanted work without freeing capacity or ending its lease; archive scans poll cooperatively while proof/FFI execution finishes normally.
   if not worker.started: return false # A closed/default owner never accepts cancellation.

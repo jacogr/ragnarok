@@ -5,10 +5,10 @@
 ## Genuine admitted pending data, real TLS private ownership, all-local durable renewal and native Services/worker leases precede exact independent assurance signature checks.
 import std/[assertions, syncio, dirs, paths, monotimes, times, strutils]
 import std/posix/posix
-import ../../../src/app/[services, options]
-import ../../../src/app/proof/[worker, assurance_storage, assurance_acquisition, assurance_signing]
+import ../../../src/app/[services, options, assurance_pool]
+import ../../../src/app/proof/[worker, assurance_storage, assurance_acquisition, assurance_signing, work_submission]
 import ../../../src/jamnp-s/[work_signer, assurance_possession, assurance_duty, assurance_store,
-  assurance_record, availability_proof]
+  assurance_record, availability_proof, assurance_distribution, read_stream]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[assurances, bounded, header]
 import ../../../src/codec/state/[safrole, layout, trie]
@@ -19,7 +19,8 @@ import ../../../src/crypto/primitives
 import ../../../src/rpc/server
 import ../../../src/lib/atomic/file
 import ../../support/[jamnp_assurance_fixture, assurance_signer_context,
-  current_application_context,
+  jamnp_assurance_receipt_runtime,
+  current_application_context, jamnp_import_recovery_fixture,
   pvm_computed_chain, storage_io, arc_evidence]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observed actual crypto attempts and explicitly selected maintained-provider failures.
@@ -81,6 +82,19 @@ proc repeated(source: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResu
         value: saved.lookup(selected).value.bytes))
   entries.add(chapter)
   captureBlockSnapshot(chainHeaderBytes(saved.header), entries, saved.chainParameters)
+proc withoutAssignments(source: BlockSnapshotResult): BlockSnapshotResult =
+  ## An explicitly independently trusted structural empty-C10 variant tests pending-bit exclusion; it is not a GP-admitted transition.
+  let saved = source.value
+  let key = chapterKey(StateChapter(10))
+  var entries: seq[StateEntry] = @[]
+  for index in 0..<saved.keyCount:
+    # Preserve every other complete chapter and the exact sealed anchor while recomputing the full posterior map root.
+    let selected = saved.keyAt(StateKeyIndex(index))
+    if array[31, byte](selected) != array[31, byte](key):
+      entries.add(StateEntry(key: selected, value: saved.lookup(selected).value.bytes))
+  entries.add(StateEntry(key: key, value: @[0'u8, 0,
+      0])) # Three literal absent optional assignments match this fixture's actual core count.
+  captureBlockSnapshot(chainHeaderBytes(saved.header), entries, saved.chainParameters)
 proc verifyWire(signed: SignedAssurance, source: BlockSnapshotResult, local: StateEdKey) =
   ## Independent literal transcript assembly never calls the production assurance-message constructor or codec verifier.
   let encoded = signed.assuranceBytes(source, ByteLimit(97))
@@ -102,6 +116,59 @@ proc verifyWire(signed: SignedAssurance, source: BlockSnapshotResult, local: Sta
   for index in 0..<64: signature[index] = wire[33+index]
   assert verify(EdPublicKey(array[32, byte](local)), EdSignature(signature), message), "actual Ed25519 signature over independent fixed transcript"
   assert signed.assuranceBytes(source, ByteLimit(96)).error == AssuranceSigningError.LimitExceeded, "whole output deficit has no prefix"
+  let receiptLimits = AssuranceDistributionLimits(duty: limits().duty, wireBytes: ByteLimit(139))
+  let request = decodeReadRequest(ReadKind.Assurance, wire).value
+  let checked = qualifyAssuranceDistribution(request, source, local, receiptLimits)
+  assert checked.error == AssuranceDistributionError.None and checked.value.matches(source), "real source-bound CE141 signature receipt"
+  let duty = captureAssuranceDuty(source, local, limits().duty).value
+  assert checked.value.distributionInfo.value.duty.localIndices == duty.dutyInfo.value.localIndices, "all original repeated peer positions retained"
+  for ordinal in 0..<duty.dutyInfo.value.localIndices:
+    let record = checked.value.assuranceAt(ordinal).value
+    assert record.validator == duty.localIndex(ordinal).value and record.bits.bytes[0] == 1, "exact original validator index and signed bitfield"
+  assert checked.value.assuranceAt(-1).error == AssuranceDistributionError.InvalidIndex, "no invalid index extraction"
+  var disabledPool = default(AssurancePool)
+  assert not disabledPool.remember(checked.value), "default pending assurance pool has zero capacity"
+  var pool = default(AssurancePool)
+  assert pool.configure(1, 1), "explicit whole original-index capacity"
+  if duty.dutyInfo.value.localIndices == 1:
+    assert pool.remember(checked.value) and pool.remember(checked.value), "same authenticated key replaces within capacity"
+    assert pool.len == 1 and pool.candidateCount == 1 and pool.candidateAt(0).validator ==
+        duty.localIndex(0).value, "duplicate never appends original positions"
+    assert not checked.value.matches(repeated(source, local)), "same header with changed complete C8 root revokes received candidate"
+  else:
+    assert not pool.remember(checked.value) and pool.len == 0, "whole repeated-key index capacity refuses without retaining a prefix"
+    var completePool = default(AssurancePool)
+    assert completePool.configure(1, 2) and completePool.remember(checked.value), "exact two-index policy retains complete repeated identity"
+    assert completePool.candidateAt(0).validator == ValidatorIndex(1) and completePool.candidateAt(
+        1).validator == ValidatorIndex(2), "both original repeated positions survive candidate extraction"
+  var wrong = wire
+  wrong[0] = wrong[0] xor 1
+  reset(0)
+  assert qualifyAssuranceDistribution(decodeReadRequest(ReadKind.Assurance, wrong).value, source,
+      local, receiptLimits).error == AssuranceDistributionError.WrongAnchor, "wrong parent anchor"
+  assert hashes() == 0, "wrong anchor refused before canonical hashing"
+  wrong = wire
+  wrong[32] = 8
+  assert qualifyAssuranceDistribution(decodeReadRequest(ReadKind.Assurance, wrong).value, source,
+      local, receiptLimits).error == AssuranceDistributionError.InvalidBits, "nonexistent tail bit rejected"
+  assert hashes() == 0, "invalid tail bit precedes signature transcript"
+  let emptyAssignments = withoutAssignments(source)
+  assert emptyAssignments.error == GenesisError.None, "explicit complete structural empty pending source"
+  reset(0)
+  assert qualifyAssuranceDistribution(request, emptyAssignments, local, receiptLimits).error ==
+      AssuranceDistributionError.InvalidBits, "absent canonical assignment cannot be assured"
+  assert hashes() == 0, "unassigned bit precedes signature transcript"
+  wrong = wire
+  wrong[96] = wrong[96] xor 1
+  assert qualifyAssuranceDistribution(decodeReadRequest(ReadKind.Assurance, wrong).value, source,
+      local, receiptLimits).error == AssuranceDistributionError.InvalidSignature, "actual modified signature refused"
+  wrong = wire
+  wrong.add(0)
+  assert qualifyAssuranceDistribution(decodeReadRequest(ReadKind.Assurance, wrong).value, source,
+      local, receiptLimits).error == AssuranceDistributionError.InvalidWire, "exact profile width excludes trailing data"
+  assert qualifyAssuranceDistribution(request, source, default(StateEdKey), receiptLimits).error ==
+      AssuranceDistributionError.DutyFailure, "unauthenticated/default peer is never an assurer"
+
 proc direct(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, signer: WorkSigner,
     folder: string) =
   ## Actual storage, whole preflight and all original local coordinates must precede every private signature attempt.
@@ -222,6 +289,66 @@ proc direct(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, sig
     else: assert owner.faulted, "visible uncertain renewal closes the signing gate"
   resetIo()
   reset(0)
+proc rosterSeed(index: int): array[32, byte] =
+  ## Two literal seed bytes provide 1023 distinct real test identities without exposing a production key-import shortcut.
+  assert index >= 0 and index < 1023, "bounded wide roster fixture index"
+  result = default(array[32, byte])
+  result[0] = byte(index mod 256)
+  result[1] = byte(index div 256)
+proc productionPool(fixture: AssuranceAcquisitionFixture) =
+  ## An explicitly independently trusted structural 341-core/1023-validator parent checks quorum-sized candidate retention, not GP block admission or actual shard possession.
+  let original = registrationSnapshot(fixture.availability, active = 1023, previous = 1023)
+  assert original.error == GenesisError.None, "complete structural production-size parent"
+  let saved = original.value
+  var roster = newSeq[StateValidator](1023)
+  for index in 0..<1023:
+    # Every member has a genuine unique Ed25519 public key rather than arbitrary placeholder bytes.
+    let seed = importSeed(rosterSeed(index)).value
+    roster[index].ed25519 = StateEdKey(array[32, byte](seed.publicKey.value))
+  let chapter = validatorEntry(ValidatorChapter.Active, roster,
+    ValidatorStateConfig(cores: CoreCount(341), validators: ElementLimit(1023), maxBytes: ByteLimit(
+        1000000))).value
+  let pending = chapterKey(StateChapter(10))
+  var entries: seq[StateEntry] = @[]
+  for index in 0..<saved.keyCount:
+    # Replace both independently trusted chapters and preserve the exact structural header; an empty pending map permits only zero signed bits.
+    let key = saved.keyAt(StateKeyIndex(index))
+    if array[31, byte](key) != array[31, byte](chapter.key) and array[31, byte](key) != array[31,
+        byte](pending):
+      entries.add(StateEntry(key: key, value: saved.lookup(key).value.bytes))
+  entries.add(chapter)
+  entries.add(StateEntry(key: pending, value: newSeq[byte](
+      341))) # Literal absent assignment tags, one per actual core.
+  let source = captureBlockSnapshot(chainHeaderBytes(saved.header), entries, saved.chainParameters)
+  assert source.error == GenesisError.None, "complete production-size roster and empty pending map"
+  let anchor = array[32, byte](source.value.blockHash)
+  var preimage = default(array[75, byte])
+  for index in 0..<32: preimage[index] = anchor[index]
+  let digest = array[32, byte](blake2b256(preimage).value)
+  var message = default(array[45, byte])
+  const domain = [106'u8, 97, 109, 95, 97, 118, 97, 105, 108, 97, 98, 108, 101]
+  for index in 0..<13: message[index] = domain[index]
+  for index in 0..<32: message[13+index] = digest[index]
+  var pool = default(AssurancePool)
+  assert pool.configure(MaxPendingAssurances, 683), "explicit capacity for a clear production supermajority"
+  let policy = AssuranceDistributionLimits(duty: limits().duty, wireBytes: ByteLimit(139))
+  for index in 0..<684:
+    # Distinct actual signatures over the independent literal zero-bitfield transcript must qualify before exercising whole pool admission.
+    let seed = importSeed(rosterSeed(index)).value
+    let signature = array[64, byte](seed.sign(message).value)
+    var wire = default(array[139, byte])
+    for octet in 0..<32: wire[octet] = anchor[octet]
+    for octet in 0..<64: wire[75+octet] = signature[octet]
+    let request = decodeReadRequest(ReadKind.Assurance, wire).value
+    let checked = qualifyAssuranceDistribution(request, source, roster[index].ed25519, policy)
+    assert checked.error == AssuranceDistributionError.None, "real original production-roster credential"
+    if index < 683:
+      assert pool.remember(checked.value), "a production quorum cannot be limited to 64 distinct TLS identities"
+    else:
+      assert not pool.remember(checked.value), "expanded-index ceiling refuses a whole new identity without eviction"
+  assert pool.len == 683 and pool.candidateCount == 683, "clear two-thirds production-size candidate capacity"
+  assert pool.candidateAt(0).validator == ValidatorIndex(0) and pool.candidateAt(682).validator ==
+      ValidatorIndex(682), "capacity refusal preserves every original retained coordinate"
 proc staged(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, signer: WorkSigner,
     now: uint64): AssuranceSigningJob =
   ## Retire temporary source/key/result aliases before moving this closed job into native execution.
@@ -242,6 +369,15 @@ proc waitDone(owner: var Services) =
     assert getMonoTime() < deadline, "bounded managed signing completion"
     owner.tick(0)
     discard pauseMicros(100)
+proc stagedReceipt(fixture: AssuranceAcquisitionFixture,
+    signed: SignedAssurance): WorkSubmissionJob =
+  ## Temporary detached wire, canonical snapshot and capture wrapper aliases retire before moved receipt publication.
+  let request = decodeReadRequest(ReadKind.Assurance, signed.assuranceBytes(fixture.source,
+      ByteLimit(139)).value).value
+  let captured = captureAssuranceDistribution(request, fixture.source, fixture.local,
+    AssuranceDistributionLimits(duty: limits().duty, wireBytes: ByteLimit(139)))
+  assert captured.error == WorkJobError.None, "closed receipt capture"
+  captured.value
 proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
     fixture: AssuranceAcquisitionFixture, signer: WorkSigner, index: int) =
   ## Completed cancellation hides the real signature while preserving every already renewed record until exact collection.
@@ -257,6 +393,20 @@ proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
   else:
     assert completed.kind == ProofWorkerCompletionKind.AssuranceSigned, "exact native signed completion"
     assert completed.assuranceSigningValue.error == AssuranceSigningError.None, "actual native durable possession and signature"
+    var receipt = stagedReceipt(fixture, completed.assuranceSigningValue.value)
+    let receiving = worker.submit(receipt)
+    assert receiving.error == ProofWorkerError.None and not receipt.valid, "moved managed assurance verification"
+    worker.waitDone()
+    assert worker.active(receiving.value) and not worker.active(admitted.value), "exact receipt namespace remains live through Done"
+    if index mod 4 == 1: assert worker.cancel(receiving.value), "Done receipt cancellation before collection"
+    let verified = worker.collect(receiving.value)
+    if index mod 4 == 1:
+      assert verified.kind == ProofWorkerCompletionKind.Cancelled, "cancelled verified candidate remains hidden"
+    else:
+      assert verified.kind == ProofWorkerCompletionKind.WorkSubmitted and
+          verified.workSubmissionValue.kind == WorkJobResultKind.AssuranceQualified, "native signature/source verification before candidate extraction"
+    assert not worker.active(receiving.value), "exact receipt retirement revokes old generation"
+
   assert not owner.faulted, "namespace observed only after exact retirement"
 proc managed(fixture: AssuranceAcquisitionFixture, keyPath, certificatePath,
     suffix: string) {.raises.} =
@@ -307,6 +457,27 @@ proc managed(fixture: AssuranceAcquisitionFixture, keyPath, certificatePath,
       completed.assuranceSigningValue.error == AssuranceSigningError.None, "actual managed stored-possession signature"
   let signed = completed.assuranceSigningValue.value
   assert owner.currentAssuranceBytes(signed, ByteLimit(97)).error == AssuranceSigningError.None, "only this Services instance's collected signature may publish"
+  assuranceReceiptRuntime(owner, options, signed, fixture, certificatePath, keyPath, suffix, limits().duty)
+  assuranceReceiptRuntime(owner, options, signed, fixture, certificatePath, keyPath, suffix &
+      "-owned", limits().duty, ownClose = true)
+  let incoming = decodeReadRequest(ReadKind.Assurance, owner.currentAssuranceBytes(signed,
+      ByteLimit(97)).value).value
+  let receiptLimits = AssuranceDistributionLimits(duty: limits().duty, wireBytes: ByteLimit(139))
+  let receipt = owner.beginAssuranceDistribution(incoming, fixture.local, receiptLimits)
+  assert receipt.error == StateProofAdmissionError.None and not owner.stateProofAvailable, "managed CE141 receipt reserves canonical/RPC lease"
+  assert owner.collectStateProof(default(ProofWorkerTicket)).kind ==
+      ProofWorkerCompletionKind.Uninitialized, "foreign receipt collection cannot release lease"
+  owner.waitDone()
+  let verified = owner.collectStateProof(receipt.value)
+  assert verified.kind == ProofWorkerCompletionKind.WorkSubmitted and
+      verified.workSubmissionValue.kind == WorkJobResultKind.AssuranceQualified, "managed real CE141 signature verification"
+  let checked = verified.workSubmissionValue.qualifiedAssurance
+  assert owner.assuranceDistributionCurrent(checked), "fresh complete-source gate after exact collection"
+  let stoppedReceipt = owner.beginAssuranceDistribution(incoming, fixture.local,
+      receiptLimits).value
+  owner.waitDone()
+  assert owner.cancelStateProof(stoppedReceipt), "Done receipt cancellation"
+  assert owner.collectStateProof(stoppedReceipt).kind == ProofWorkerCompletionKind.Cancelled, "cancelled receipt exposes no accepted candidate"
   let cancelled = owner.beginAssuranceSigning(selection(), AssuranceTime(1002), limits()).value
   owner.waitDone()
   assert owner.cancelStateProof(cancelled), "completed signature cancellation"
@@ -366,6 +537,8 @@ proc main() {.raises.} =
       AssuranceTime(1005), limits())
   assert refused.error == AssuranceSigningError.CryptoFailure and signatures() == 1, "real signing backend refusal has no successful signature"
   reset(0)
+  productionPool(fixture)
+  reset(0) # Retire all capacity-fixture signing attempts before managed private-key observation.
   managed(fixture, keyPath, certificatePath, suffix)
   var worker = default(StateProofWorker)
   defer: worker.close() # Join private key/source/archive borrowers before any outer alias retires.

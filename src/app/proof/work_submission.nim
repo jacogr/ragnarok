@@ -7,6 +7,7 @@ import ../../jamnp-s/work_submission
 import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
 import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
+import ../../jamnp-s/assurance_distribution
 import ../../jamnp-s/work_recovery
 import ../../jamnp-s/availability_proof
 import ../../jamnp-s/[work_distribution, read_stream, read_validation]
@@ -34,7 +35,8 @@ type
     EligibilityFailure, SigningFailure, SharingFailure, ExchangePrepared,
     ExchangePreparationFailure, PeerAccepted, PeerResponseFailure, GuaranteeCollected,
     GuaranteeCollectionFailure, DistributionQualified, DistributionFailure,
-    DistributionEncodingFailure, DistributionCacheFailure, DistributionOutputLimit
+    DistributionEncodingFailure, DistributionCacheFailure, DistributionOutputLimit,
+    AssuranceQualified, AssuranceFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -70,6 +72,8 @@ type
     of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
     of GuaranteeCollected: collected: CollectedWorkGuarantee
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
+    of AssuranceQualified: assured: CheckedAssurance
+    of AssuranceFailure: assuranceReason: AssuranceDistributionResult[CheckedAssurance]
     of DistributionQualified:
       distributed: CheckedWorkDistribution
       distributionReport: CheckedReadReply
@@ -105,6 +109,9 @@ type
     retainedSources: seq[GuarantorAvailability]
     signingIdentity: StateEdKey
     signingTime: StateTime
+    assuranceSource: BlockSnapshotResult
+    assurancePeer: StateEdKey
+    assuranceLimits: AssuranceDistributionLimits
     distributionRequest: ReadRequest
     distributionView: ChainView
     distributionLimits: WorkDistributionLimits
@@ -174,6 +181,14 @@ func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
     WorkJobResultKind.GuaranteeCollectionFailure.} =
   ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
   outcome.collectionReason
+func qualifiedAssurance*(outcome: WorkJobResult): CheckedAssurance {.requires: outcome.status ==
+    WorkJobResultKind.AssuranceQualified.} =
+  ## Exact collection exposes a source-free verified assurance, never the worker's canonical graph.
+  outcome.assured
+func assuranceError*(outcome: WorkJobResult): AssuranceDistributionResult[
+    CheckedAssurance] {.requires: outcome.status == WorkJobResultKind.AssuranceFailure.} =
+  ## Real selected canonical/signature refusal remains guarded and has no accepted prefix.
+  outcome.assuranceReason
 func qualifiedDistribution*(outcome: WorkJobResult): CheckedWorkDistribution {.requires:
     outcome.status == WorkJobResultKind.DistributionQualified.} =
   ## Source-bearing qualification remains behind the managed graph gate until its fixed facts and detached bytes are cut.
@@ -529,6 +544,24 @@ proc qualifyDistribution(data: WorkJobData): WorkJobResult =
         distributionCacheReason: cached)
   WorkJobResult(status: WorkJobResultKind.DistributionQualified, distributed: checked.value,
     distributionReport: cached.value)
+proc qualifyIncomingAssurance(data: WorkJobData): WorkJobResult =
+  ## This closed operation performs all canonical reads, bit checks and signature work outside native callbacks.
+  let checked = qualifyAssuranceDistribution(data.distributionRequest, data.assuranceSource,
+    data.assurancePeer, data.assuranceLimits)
+  if checked.error != AssuranceDistributionError.None:
+    return WorkJobResult(status: WorkJobResultKind.AssuranceFailure, assuranceReason: checked)
+  WorkJobResult(status: WorkJobResultKind.AssuranceQualified, assured: checked.value)
+proc captureAssuranceDistribution*(request: ReadRequest, source: BlockSnapshotResult,
+    peer: StateEdKey, limits: AssuranceDistributionLimits): WorkJobAdmission =
+  ## Whole detached-wire admission precedes private capture; all source/result aliases retire before moved submission.
+  if not request.valid or request.kind != ReadKind.Assurance or not limits.valid:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  if uint64(request.payloadLength) > uint64(limits.wireBytes):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  if source.error != GenesisError.None: return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: qualifyIncomingAssurance, distributionRequest: detachedReadRequest(request),
+    assuranceSource: source, assurancePeer: peer, assuranceLimits: limits)))
 proc captureWorkDistribution*(request: ReadRequest, view: ChainView, now: StateTime,
     limits: WorkDistributionLimits): WorkJobAdmission =
   ## Bound the complete raw input before its independent copy; staging view aliases retire before this job is submitted.

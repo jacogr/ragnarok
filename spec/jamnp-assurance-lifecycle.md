@@ -424,3 +424,88 @@ metadata conflict after only its metadata hash and before any payload proof or E
 The original record is restored before reporting the corruption-test result. These checks use
 real filesystem I/O and production restoration; no replacement protocol or storage path supplies
 the verdict.
+
+## Managed CE141 receipt and bounded candidates
+
+The ordinary read transport now recognizes CE141 as one E4-framed upload of 97–139 bytes,
+followed by the sender's FIN and a bare receiver FIN. The selected profile determines the exact
+bitfield width during verification. The separately optional selector stays disabled by default;
+activating CE135 does not activate it. Both endpoints must have actual validator transport roles.
+Native callbacks only retain bounded detached raw bytes. Neither a response body nor a validator
+ordinal is accepted as part of this exchange.
+
+`qualifyAssuranceDistribution` checks the exact selected-parent anchor, complete source, unused
+tail bits, actual authenticated peer's C8 membership and current pending assignments before the
+single real Ed25519 verification. It retains every original C8 position sharing that key, including
+null gaps. Its private source-free result exposes independent GP assurance candidates with those
+original indices. It grants no block-inclusion authority: a block builder must still sort indices,
+exclude duplicates and validate every signed bit against its actual post-judgment assignments.
+A signature's bitfield cannot be altered to remove a subsequently invalid core.
+
+The closed managed receipt operation reuses the existing bounded worker slot. Services stages
+and retires source/capture aliases before moved submission and keeps canonical/RPC exclusion
+through exact collection or joined stop. A synchronized exact-ticket membership check covers
+Queued, Running and uncollected Done; a stale/foreign ticket or a later worker generation cannot
+be cancelled or joined by this controller. Incoming receipt requires neither local shard storage
+nor a private signer. The host obtains the peer key from the actual live native request ticket.
+
+`AssuranceDispatcher` admits one FIN-complete claim under its original native deadline. Only an
+uncancelled successful collection, a still-live native claim and a fresh complete-source comparison
+allow retention and acknowledgment. Source changes require requalification rather than an old
+success stamp. The source-free pool has explicit distinct-key and expanded-original-index caps,
+with fixed maximums of 1023 each, so a production quorum of distinct identities can fit. Default capacity is zero. Whole repeated-key
+capacity is checked before replacement, same-key updates never append duplicate positions, and
+refusal evicts no unrelated candidate. Head or full-root changes remove stale retained candidates
+when canonical access is available. Ordinary reads skip dedicated CE135/141 consumers while
+weighted admission preserves opportunities for other CPU work.
+
+The native receipt path has passed between two ordinary TLS-authenticated `ApplicationNode`
+loops. An actual Services-collected durable-possession signature reaches another independently
+decoded instance of the genuinely computed complete parent. This parent is explicitly configured
+as the trusted seed; this test does not claim bootstrap/adoption from another genesis. The peers'
+real certificates/private keys match their actual parent-roster identities. Default receipt
+refuses; an uncollected foreign Done result keeps canonical exclusion while UDP progresses;
+matching collection permits fresh retention before the bare-FIN acknowledgment. Repeated valid
+uploads stay within one retained identity row; a modified signature cannot replace it. Closing
+the receiver preserves another controller's exact worker lease for its owner to retire.
+
+Independent component checks cover wrong anchors, high bits, exact profile-width suffix refusal,
+actual bad signatures, default/non-validator keys, original repeated positions and whole-index
+capacity refusal. The empty-C10 case is explicitly an independently trusted structural variant,
+not a fabricated GP-admitted transition; the genuine computed fixture has all its cores assigned.
+Both native signing and receipt cycles preserve 93488 occupied bytes across 1000 cycles. The
+shared crypto observer now counts Blake2b attempts atomically for concurrent node/worker use;
+delayed fault selection remains quiescent and serial. Protocol verification still calls the
+unchanged maintained primitive implementation.
+
+These results establish receipt and candidate retention. Timed automatic outgoing CE141,
+network-driven CE137 acquisition/retries, durable post-session shard serving and explicit
+foreground assurance policy remain required before publishing this feature layer. Audit-backed
+release of retained data and the broader audit/judgment lifecycle remain separate unfinished
+parts of the full JAMNP-S objective.
+
+Final receipt qualification also retains 683 distinct genuinely signed candidates from an
+explicitly structural 341-core/1023-validator parent. Every candidate is independently verified
+against its actual original roster key and a literal zero-bitfield transcript; the test does not
+claim actual availability or GP block admission for that structural source. A 684th valid identity
+refuses the configured expanded-index budget without evicting any earlier candidate. The fixed
+row ceiling is 1023, supporting a production supermajority rather than an arbitrary 64-peer cap;
+ordinary iteration is bounded by the explicitly configured row limit.
+
+A second real TLS run observes the receipt controller's own worker at uncollected Done. Closing
+that controller joins its exact borrow, releases canonical exclusion and clears candidate storage
+without acknowledging the uncollected result. The sender cannot collect a successful reply. Its
+route retires under the existing 30-second idle policy, exercised by advancing the explicit host
+monotonic clock and sweeping bounded physical slots. This is a local deadline witness, not a
+claim that a disconnected peer observes remote teardown instantaneously.
+
+The complete expanded signing/receipt suite passes checked ARC/Clang thinLTO, including both real
+TLS close variants, production-sized candidate capacity, exact durable signing, cancellation and
+1000 cycles with 93488 occupied bytes unchanged. Actual ARC lowering rejects duplication of both
+Services and the new receipt controller with their exact registered diagnostics. All 565 production
+modules plus the actual entry point compile. Formatting and verification inventory pass. The read
+client, sharing client, native node service, application node, generic read verification, managed
+guarantee exchange and its full TLS runtime pass; application-node and guarantee-runtime consumers
+also pass after enlarging the pool. A retained incremental cache still emitted an old 64-entry
+initializer after that layout change; a fresh profile build passes without compiler or production
+workarounds. These remain local macOS results, not native Linux CI or complete assurance activation.

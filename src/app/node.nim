@@ -9,6 +9,8 @@ import ./preimage_followup
 import ./work_dispatch
 import ./work_exchange
 import ./work_distribution
+import ./assurance_distribution
+import ../codec/assurances
 import ../jamnp-s/work_signer
 import ../quic/address
 import ../jamnp-s/work_recovery
@@ -69,6 +71,8 @@ type
     gossip: PreimageGossip
     work: WorkDispatcher
     exchange: WorkExchangeDispatcher
+    assurances: AssuranceDispatcher
+    preferAssurances: bool
     distribution: WorkDistributionDispatcher
     preferDistribution: bool
     preferWork, preferExchange: bool
@@ -105,6 +109,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.work)
   `=wasMoved`(owner.exchange)
+  `=wasMoved`(owner.assurances)
   `=wasMoved`(owner.distribution)
   `=wasMoved`(owner.checkedPeer)
   owner.opened = false
@@ -136,6 +141,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.gossip)
   `=destroy`(owner.work)
   `=destroy`(owner.exchange)
+  `=destroy`(owner.assurances)
   `=destroy`(owner.distribution)
   `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
@@ -161,6 +167,20 @@ proc configureWorkExchange*(owner: var ApplicationNode, policy: WorkExchangePoli
   if not services[].availabilityReadsMatch(policy.servingLimits):
     if not services[].configureAvailabilityReads(policy.servingLimits): return false
   owner.exchange.configure(owner.streams, policy)
+proc configureAssuranceReceipt*(owner: var ApplicationNode, policy: AssuranceReceiptPolicy): bool =
+  ## Independently optional bounded CE141 receipt enables no archive, private signer or outgoing assurance schedule.
+  if not owner.opened: return false
+  owner.assurances.configure(owner.streams, policy)
+func receivedAssurances*(owner: ApplicationNode): uint64 =
+  ## Count real retained fresh incoming candidates whose native reply accepted FIN.
+  owner.assurances.received
+func pendingAssurances*(owner: ApplicationNode): int =
+  ## Expanded original validator positions remain unadmitted block candidates.
+  owner.assurances.pendingCount
+proc pendingAssurance*(owner: ApplicationNode, ordinal: int): Assurance {.requires: ordinal >= 0 and
+    ordinal < owner.assurances.pendingCount.} =
+  ## Return an owned candidate only; block construction must sort and freshly apply its post-judgment rules.
+  owner.assurances.pendingAt(ordinal)
 proc configureWorkDistribution*(owner: var ApplicationNode, policy: WorkDistributionPolicy): bool =
   ## Independently optional receipt/delivery installs bounded managed consumers before enabling CE135.
   if not owner.opened: return false
@@ -527,6 +547,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferWork = true
   owner.preferExchange = true
   owner.preferDistribution = true
+  owner.preferAssurances = true
   owner.preferPreimage = false
   owner.producing = false
   owner.productionContextReady = false
@@ -592,6 +613,7 @@ proc close*(owner: var ApplicationNode) =
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil:
+    owner.assurances.close(services[], owner.streams)
     owner.distribution.close(services[], owner.streams)
     owner.exchange.close(services[], owner.streams)
     owner.work.close(services[], owner.streams)
@@ -800,6 +822,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.preimages.poll(services[], owner.streams, clock)
   owner.work.poll(services[], owner.streams, clock, now)
   owner.exchange.poll(services[], owner.streams, clock)
+  owner.assurances.poll(services[], owner.streams, clock)
   owner.distribution.poll(services[], owner.streams, owner.reports, clock, now)
   if owner.exchange.configured and owner.work.phase == WorkDispatchPhase.Ready:
     let completed = owner.work.completed
@@ -872,6 +895,10 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.dispatchOrigins(now, clock)
   owner.dispatchTickets(now, clock) # Finality/context checks precede every actual proxy transmission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
+  if owner.preferAssurances and owner.assurances.submit(services[], owner.streams, clock):
+    owner.preferAssurances = false
+    return true
+  owner.preferAssurances = true # A continuous assurance backlog alternates with other ordinary CPU consumers.
   if owner.preferDistribution and owner.distribution.submit(services[], owner.streams, clock, now):
     owner.preferDistribution = false
     return true
@@ -889,8 +916,9 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.preferFetch = false
     return true
   if owner.preferChecked and owner.submitChecked(): return true
-  let request = owner.streams.takeReadExcept(ReadKind.Guarantee)
+  let request = owner.streams.takeReadExcept({ReadKind.Guarantee, ReadKind.Assurance})
   if request.error != NodeError.None:
+    if owner.assurances.submit(services[], owner.streams, clock): return true
     if owner.distribution.submit(services[], owner.streams, clock, now): return true
     if owner.exchange.submit(services[], owner.streams, clock, now): return true
     if owner.work.submit(services[], owner.streams, clock, now): return true
