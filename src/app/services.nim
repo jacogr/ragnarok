@@ -70,6 +70,7 @@ import ../jamnp-s/work_report
 import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_distribution]
 import ../jamnp-s/assurance_distribution
+import ../jamnp-s/assurance_fetch
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
 from ../state/availability/specifier import AvailabilityCommitment
@@ -140,7 +141,7 @@ type
     of CaptureFailure: captureReason: AssuranceAcquisitionError
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Closed, unavailable and busy starts cannot access the namespace or canonical graph.
-  AssuranceDistributionStart* = object ## Successful bounded receipt owns only an exact shared-worker ticket; failed admission retains no source.
+  AssuranceWorkStart* = object ## Closed assurance planning or receipt owns only an exact shared-worker ticket; failed admission retains no source.
     case status: StateProofAdmissionError
     of None: ticket: ProofWorkerTicket
     of QueryFailure: captureReason: WorkJobError
@@ -445,7 +446,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   assuranceSigner: WorkSigner
   assuranceSignerReady: bool
   assuranceSignerIdentity: StateEdKey
-  assuranceDistributionInput: WorkSubmissionJob
+  assuranceWorkInput: WorkSubmissionJob
   assuranceSigningInput: AssuranceSigningJob
   assuranceSigningActive: bool
   lastAssurance: SignedAssurance
@@ -564,7 +565,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.assuranceStorageInput)
   `=wasMoved`(services.assuranceAcquisitionInput)
   `=wasMoved`(services.assuranceSigner)
-  `=wasMoved`(services.assuranceDistributionInput)
+  `=wasMoved`(services.assuranceWorkInput)
   `=wasMoved`(services.assuranceSigningInput)
   `=wasMoved`(services.lastAssurance)
   `=wasMoved`(services.proofInput)
@@ -654,7 +655,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.assuranceStorageInput)
   `=destroy`(services.assuranceAcquisitionInput)
   `=destroy`(services.assuranceSigner)
-  `=destroy`(services.assuranceDistributionInput)
+  `=destroy`(services.assuranceWorkInput)
   `=destroy`(services.assuranceSigningInput)
   `=destroy`(services.lastAssurance)
   `=destroy`(services.assuranceStore) # Its native borrower has joined and its single-writer gate is explicitly closed.
@@ -900,7 +901,7 @@ proc stopStateProofs*(services: var Services) =
     services.light.stopProofs()
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
-  services.assuranceDistributionInput = default(WorkSubmissionJob)
+  services.assuranceWorkInput = default(WorkSubmissionJob)
   services.assuranceSigningInput = default(AssuranceSigningJob)
   if services.assuranceSigningActive:
     # Joined cancellation may have renewed data but must not leave a publishable signature from this stopped turn.
@@ -2285,7 +2286,7 @@ proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): Proo
       ticket) # Only actual matching Done collection ends its own request lease.
   result = services.proofWorker.collect(ticket)
   if result.kind != ProofWorkerCompletionKind.Uninitialized:
-    services.assuranceDistributionInput = default(
+    services.assuranceWorkInput = default(
         WorkSubmissionJob) # Matching collection retires the canonical receipt borrow before RPC resumes.
     if services.assuranceSigningActive:
       # Only this Services lifetime's actual uncancelled completed signature becomes publishable; cancellation still refreshes real retained promises/faults.
@@ -2434,18 +2435,18 @@ proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core:
   AssuranceAcquisitionStart(status: AssuranceStorageStartError.WorkerFailure,
       workerReason: admitted.error)
 
-func error*(outcome: AssuranceDistributionStart): StateProofAdmissionError =
+func error*(outcome: AssuranceWorkStart): StateProofAdmissionError =
   ## Read admission before selecting an exact ticket or real capture/native failure.
   outcome.status
-func value*(outcome: AssuranceDistributionStart): ProofWorkerTicket {.requires: outcome.status ==
+func value*(outcome: AssuranceWorkStart): ProofWorkerTicket {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Foreign/stale tickets cannot collect or cancel this receipt's lease.
   outcome.ticket
-func captureError*(outcome: AssuranceDistributionStart): WorkJobError {.requires: outcome.status ==
+func captureError*(outcome: AssuranceWorkStart): WorkJobError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Failed closed capture never retains a canonical alias.
   outcome.captureReason
-func workerError*(outcome: AssuranceDistributionStart): ProofWorkerError {.requires: outcome.status ==
+func workerError*(outcome: AssuranceWorkStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Native slot refusal remains distinct from raw request admission.
   outcome.workerReason
@@ -2454,32 +2455,55 @@ proc stageAssuranceDistribution(services: var Services, request: ReadRequest,
   ## Source and capture wrapper aliases retire before shared-worker publication.
   let captured = captureAssuranceDistribution(request, services.canonical.chainView.bestBlock, peer, limits)
   if captured.error != WorkJobError.None: return captured.error
-  services.assuranceDistributionInput = captured.value
+  services.assuranceWorkInput = captured.value
   WorkJobError.None
-proc beginAssuranceDistribution*(services: var Services, request: ReadRequest,
-    peer: StateEdKey, limits: AssuranceDistributionLimits): AssuranceDistributionStart {.raises.} =
-  ## Receipt requires full-state canonical/RPC exclusion but neither local shard storage nor a private signer.
-  if not services.started: return AssuranceDistributionStart(
-      status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable: return AssuranceDistributionStart(
-      status: StateProofAdmissionError.Busy)
-  let staged = services.stageAssuranceDistribution(request, peer, limits)
-  if staged != WorkJobError.None: return AssuranceDistributionStart(
-      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
+  ## Staging activations have retired every temporary alias before this exact canonical/RPC admission publishes the private job.
   discard services.proofWorker.start()
   services.rpcLease = services.rpc.pauseChain()
   if services.rpcLease == nil:
-    services.assuranceDistributionInput = default(WorkSubmissionJob)
-    return AssuranceDistributionStart(status: StateProofAdmissionError.Busy)
-  let admitted = services.proofWorker.submit(services.assuranceDistributionInput)
+    services.assuranceWorkInput = default(WorkSubmissionJob)
+    return AssuranceWorkStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.assuranceWorkInput)
   if admitted.error == ProofWorkerError.None:
     services.proofing = true
-    return AssuranceDistributionStart(status: StateProofAdmissionError.None, ticket: admitted.value)
+    return AssuranceWorkStart(status: StateProofAdmissionError.None, ticket: admitted.value)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
-  services.assuranceDistributionInput = default(WorkSubmissionJob)
-  AssuranceDistributionStart(status: StateProofAdmissionError.WorkerFailure,
+  services.assuranceWorkInput = default(WorkSubmissionJob)
+  AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
       workerReason: admitted.error)
+proc stageAssurancePlanning(services: var Services, local: StateEdKey,
+    limits: AssuranceFetchLimits): WorkJobError =
+  ## The actual selected complete source is captured independently of peers and retired temporary view wrappers.
+  let captured = captureAssurancePlanning(services.canonical.chainView.bestBlock, local, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.assuranceWorkInput = captured.value
+  WorkJobError.None
+proc beginAssurancePlanning*(services: var Services, local: StateEdKey,
+    limits: AssuranceFetchLimits): AssuranceWorkStart {.raises.} =
+  ## Planning requires full-state exclusion but neither a namespace nor a private signing key.
+  if not services.started: return AssuranceWorkStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAssurancePlanning(local, limits)
+  if staged != WorkJobError.None: return AssuranceWorkStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitAssuranceWork()
+proc assurancePlanningCurrent*(services: Services, plan: AssuranceFetchPlan): bool =
+  ## Host comparison touches the actual best source only after every foreign lease has retired.
+  services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
+proc beginAssuranceDistribution*(services: var Services, request: ReadRequest,
+    peer: StateEdKey, limits: AssuranceDistributionLimits): AssuranceWorkStart {.raises.} =
+  ## Receipt requires full-state canonical/RPC exclusion but neither local shard storage nor a private signer.
+  if not services.started: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAssuranceDistribution(request, peer, limits)
+  if staged != WorkJobError.None: return AssuranceWorkStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitAssuranceWork()
 proc assuranceDistributionCurrent*(services: Services, checked: CheckedAssurance): bool =
   ## Fresh actual head and complete root are checked only while no foreign canonical lease exists.
   services.stateProofAvailable and checked.matches(services.canonical.chainView.bestBlock)

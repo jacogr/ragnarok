@@ -8,7 +8,7 @@ import std/posix/posix
 import ../../../src/app/[services, options, assurance_pool]
 import ../../../src/app/proof/[worker, assurance_storage, assurance_acquisition, assurance_signing, work_submission]
 import ../../../src/jamnp-s/[work_signer, assurance_possession, assurance_duty, assurance_store,
-  assurance_record, availability_proof, assurance_distribution, read_stream]
+  assurance_record, availability_proof, assurance_distribution, assurance_fetch, read_stream]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[assurances, bounded, header]
 import ../../../src/codec/state/[safrole, layout, trie]
@@ -427,6 +427,25 @@ proc managed(fixture: AssuranceAcquisitionFixture, keyPath, certificatePath,
   assert not owner.assuranceSigningConfigured, "private signing disabled by default"
   assert owner.configureAssuranceSigner(certificatePath, keyPath, fixture.local).error ==
       WorkSigningSetupError.InvalidStorage, "no implicit archive activation"
+  let fetchLimits = AssuranceFetchLimits(duty: limits().duty, plannedBytes: ByteLimit(1000000))
+  assert owner.beginAssurancePlanning(default(StateEdKey), fetchLimits).error ==
+      StateProofAdmissionError.QueryFailure and owner.stateProofAvailable, "invalid local planning identity retains no canonical lease"
+  let planning = owner.beginAssurancePlanning(fixture.local, fetchLimits)
+  assert planning.error == StateProofAdmissionError.None and not owner.stateProofAvailable and
+      owner.rpc.chainPaused, "planning freezes the actual canonical source without archive or signer"
+  assert owner.collectStateProof(default(ProofWorkerTicket)).kind ==
+      ProofWorkerCompletionKind.Uninitialized, "foreign planning collection cannot reopen canonical access"
+  owner.waitDone()
+  let planned = owner.collectStateProof(planning.value)
+  assert planned.kind == ProofWorkerCompletionKind.WorkSubmitted and
+      planned.workSubmissionValue.kind == WorkJobResultKind.AssurancePlanned, "managed complete canonical request plan"
+  let plan = planned.workSubmissionValue.plannedAssurance
+  assert owner.assurancePlanningCurrent(plan) and plan.matches(fixture.source), "actual selected complete parent/root binding"
+  assert not owner.assuranceSigningConfigured, "planning never imports a private signing key"
+  let cancelledPlan = owner.beginAssurancePlanning(fixture.local, fetchLimits).value
+  owner.waitDone()
+  assert owner.cancelStateProof(cancelledPlan), "exact completed planning cancellation"
+  assert owner.collectStateProof(cancelledPlan).kind == ProofWorkerCompletionKind.Cancelled, "cancelled plan has no metadata prefix"
   let opened = owner.beginAssuranceStorage(folder, storage(), AssuranceStorageMode.Create).value
   owner.waitDone()
   assert owner.collectStateProof(opened).assuranceStorageValue.error == AssuranceStoreError.None, "actual namespace setup"

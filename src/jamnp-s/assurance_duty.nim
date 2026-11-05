@@ -18,7 +18,7 @@ type
   AssuranceDutyError* {.pure.} = enum ## Failure cannot expose an accepted prefix, source plan or possession authority.
     Uninitialized, None, InvalidSource, InvalidPolicy, InvalidIdentity, NotValidator,
     LimitExceeded, InvalidState, InvalidIndex, StateFailure, ComponentFailure,
-    AvailabilityFailure, GeometryFailure
+    AvailabilityFailure, GeometryFailure, UncertainEpoch
   AssuranceDutyInfo* = object ## Copied anchor/root and actual parent geometry grant no signature or durable possession by themselves.
     anchor*: genesis.BlockHash
     root*: trie.StateRoot
@@ -31,6 +31,8 @@ type
   DutyData = ref object ## Immutable decoded chapters retain neither a mutable ChainView nor a full execution graph.
     info: AssuranceDutyInfo
     assignments: AvailabilitySnapshot
+    active, previous: ValidatorStateSnapshot
+    epochSlots: uint64
     local: seq[uint16]
     thresholds: array[341, uint64]
   AssuranceDuty* = object ## Only complete canonical chapter capture constructs this bounded acquisition plan.
@@ -118,6 +120,34 @@ proc shardRequest*(duty: AssuranceDuty, core: CoreIndex, ordinal: int): Assuranc
   AssuranceDutyResult[AvailabilityRequest](status: AssuranceDutyError.None,
     completed: AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
       root: facts.header.erasureRoot, shard: ErasureShardIndex(position)))
+proc guarantorAt*(duty: AssuranceDuty, core: CoreIndex, ordinal: int): AssuranceDutyResult[
+    StateValidator] =
+  ## A canonical guarantee's credential index selects the original current/prior-epoch roster position; it is never a shuffled or null-compressed offset.
+  let data = duty.data
+  if data == nil: return refused[StateValidator](AssuranceDutyError.Uninitialized)
+  let selected = duty.assignment(core)
+  if selected.error != AssuranceDutyError.None or not selected.value.present:
+    return refused[StateValidator](AssuranceDutyError.InvalidIndex)
+  let guarantee = selected.value.guarantee
+  if guarantee.credentialCount < 2 or guarantee.credentialCount > guarantee.credentials.len:
+    return refused[StateValidator](AssuranceDutyError.InvalidState)
+  if ordinal < 0 or ordinal >= guarantee.credentialCount:
+    return refused[StateValidator](AssuranceDutyError.InvalidIndex)
+  if data.epochSlots == 0: return refused[StateValidator](AssuranceDutyError.InvalidState)
+  let current = uint64(uint32(data.info.slot)) div data.epochSlots
+  let reported = uint64(uint32(guarantee.slot)) div data.epochSlots
+  var roster = default(ValidatorStateSnapshot)
+  if reported == current:
+    roster = data.active # Evaluation in this epoch uses C8, regardless of the registration slot.
+  elif current > 0 and reported == current-1:
+    roster = data.previous # A prior-epoch evaluation retains C9's own population and original indices.
+  else:
+    return refused[StateValidator](AssuranceDutyError.UncertainEpoch) # No older or invented future roster is available here.
+  let index = uint64(uint16(guarantee.credentials[ordinal].validator))
+  let record = roster.validatorAt(StateValidatorIndex(index))
+  if record.error != StateComponentError.None:
+    return refused[StateValidator](AssuranceDutyError.InvalidState)
+  AssuranceDutyResult[StateValidator](status: AssuranceDutyError.None, completed: record.value)
 proc captureAssuranceDuty*(source: BlockSnapshotResult, local: StateEdKey,
     limits: AssuranceDutyLimits): AssuranceDutyResult[AssuranceDuty] =
   ## Complete parent C8/C9/C10/C11 preflight precedes chapter copies, decoded owners and whole-request plan publication.
@@ -209,4 +239,5 @@ proc captureAssuranceDuty*(source: BlockSnapshotResult, local: StateEdKey,
       root: head.stateRoot, slot: StateTime(head.slot), local: local, cores: CoreCount(cores),
       validators: ValidatorCount(uint64(count)), assignments: present, localIndices: indices.len,
       requests: int(requests), slotSeconds: period), assignments: assignments.value.snapshot,
-      local: indices, thresholds: thresholds)))
+      local: indices, thresholds: thresholds, active: active.value.value,
+      previous: previous.value.value, epochSlots: uint64(head.epochSlots))))

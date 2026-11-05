@@ -509,3 +509,50 @@ guarantee exchange and its full TLS runtime pass; application-node and guarantee
 also pass after enlarging the pool. A retained incremental cache still emitted an old 64-entry
 initializer after that layout change; a fresh profile build passes without compiler or production
 workarounds. These remain local macOS results, not native Linux CI or complete assurance activation.
+
+## Canonical CE137 planning boundary
+
+CE137 request planning must return bounded source-free metadata: exact parent/full-root facts,
+all original local positions, canonical pending-core descriptors and the actual two/three
+credential positions' validator records. Guarantor keys come from C8 for the guarantee's evaluation
+epoch and C9 for the immediately preceding epoch, preserving original indices rather than a
+shuffled position or compressed non-null list. Unknown epochs/indices cannot invent a key. Null
+records remain unavailable targets; repeated keys may retain distinct routing metadata.
+
+Planned output storage must be charged in full before allocation independently of canonical
+chapter/read budgets. Do not allocate the core/local-position Cartesian product; keep per-core
+facts and original local positions separately and derive exact coordinates on demand. The
+managed plan freezes the actual selected source through matching collection/join and exposes
+no canonical graph, private key or possession capability. Completion witnesses include genuinely
+computed C10 credentials, exact current/prior-epoch roster selection, null/repeated original
+positions, output-budget refusal, source-root revocation, native exact-ticket cancellation and
+real FIN-complete CE137 retries before durable acquisition. The planning boundary is now implemented; network acquisition remains in progress.
+
+`AssuranceFetchPlan` now contains only copied source facts, fixed per-core descriptors/guarantor
+records and the original local-index vector. Coordinates are derived in O(1) without allocating
+one object per core/index pair. A conservative owned-output reservation includes fixed metadata,
+actual native row storage, per-row headroom and local-index storage, all checked before output
+allocation; the private vectors move into the immutable result. C8/C9 owners stay private inside
+canonical qualification and do not escape in the plan. Unknown epochs and out-of-range indices
+return their actual selected failures rather than falling back to another roster.
+
+The closed managed planner shares the existing exact worker/canonical/RPC lease. Services
+captures its actual best complete source and retires staging aliases before submission. Planning
+needs neither an opened namespace nor a private key. The same guarded `AssuranceWorkStart` serves
+planning and receipt; shared private input and admission cleanup retain one actual slot through
+Done/cancellation. A host must compare the full source again before using the detached plan.
+
+Native witnesses pass genuine computed C10 targets, independent raw C8/C9 lookup, literal
+nine-validator/repeated-key coordinates, full-root revocation and exact/minus-one output bounds.
+Explicitly structural epoch fixtures distinguish C8 from C9, allow original C9 tail indices that
+cannot fit the current roster, and reject both wrong-current-population fallback and older
+unknown history. Null targets are skipped without renumbering; repeated keys retain distinct
+original routing metadata, and returned copies cannot mutate a plan. These structural fixtures
+do not assert changed credentials have GP admission. Native success, late target failure and
+completed-cancellation jobs retire all canonical/input/output owners across 1000 cycles with
+119168 occupied bytes unchanged. Checked ARC/Clang thinLTO passes the same planner cases and the
+complete managed planning/signing/TLS receipt suite (93488 bytes unchanged across 1000 cycles).
+The current Services aggregate still rejects exact ARC duplication. All 566 production modules
+and the actual entry point compile; formatting and inventory pass. These are local macOS
+results. The actual CE137 request/retry actor, durable serving, timed outgoing CE141 and explicit
+foreground policy remain unfinished; this feature branch remains unpublished.

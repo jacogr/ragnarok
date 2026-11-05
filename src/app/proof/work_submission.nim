@@ -8,6 +8,7 @@ import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
 import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../../jamnp-s/assurance_distribution
+import ../../jamnp-s/assurance_fetch
 import ../../jamnp-s/work_recovery
 import ../../jamnp-s/availability_proof
 import ../../jamnp-s/[work_distribution, read_stream, read_validation]
@@ -36,7 +37,7 @@ type
     ExchangePreparationFailure, PeerAccepted, PeerResponseFailure, GuaranteeCollected,
     GuaranteeCollectionFailure, DistributionQualified, DistributionFailure,
     DistributionEncodingFailure, DistributionCacheFailure, DistributionOutputLimit,
-    AssuranceQualified, AssuranceFailure
+    AssuranceQualified, AssuranceFailure, AssurancePlanned, AssurancePlanningFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -72,6 +73,8 @@ type
     of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
     of GuaranteeCollected: collected: CollectedWorkGuarantee
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
+    of AssurancePlanned: assurancePlan: AssuranceFetchPlan
+    of AssurancePlanningFailure: assurancePlanReason: AssuranceFetchResult[AssuranceFetchPlan]
     of AssuranceQualified: assured: CheckedAssurance
     of AssuranceFailure: assuranceReason: AssuranceDistributionResult[CheckedAssurance]
     of DistributionQualified:
@@ -112,6 +115,7 @@ type
     assuranceSource: BlockSnapshotResult
     assurancePeer: StateEdKey
     assuranceLimits: AssuranceDistributionLimits
+    assuranceFetchLimits: AssuranceFetchLimits
     distributionRequest: ReadRequest
     distributionView: ChainView
     distributionLimits: WorkDistributionLimits
@@ -181,6 +185,14 @@ func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
     WorkJobResultKind.GuaranteeCollectionFailure.} =
   ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
   outcome.collectionReason
+func plannedAssurance*(outcome: WorkJobResult): AssuranceFetchPlan {.requires: outcome.status ==
+    WorkJobResultKind.AssurancePlanned.} =
+  ## Exact collection exposes source-free per-core/target metadata, never the canonical input graph.
+  outcome.assurancePlan
+func assurancePlanningError*(outcome: WorkJobResult): AssuranceFetchResult[
+    AssuranceFetchPlan] {.requires: outcome.status == WorkJobResultKind.AssurancePlanningFailure.} =
+  ## Real source, complete output-admission or historical-key refusal cannot expose a partial request plan.
+  outcome.assurancePlanReason
 func qualifiedAssurance*(outcome: WorkJobResult): CheckedAssurance {.requires: outcome.status ==
     WorkJobResultKind.AssuranceQualified.} =
   ## Exact collection exposes a source-free verified assurance, never the worker's canonical graph.
@@ -544,6 +556,23 @@ proc qualifyDistribution(data: WorkJobData): WorkJobResult =
         distributionCacheReason: cached)
   WorkJobResult(status: WorkJobResultKind.DistributionQualified, distributed: checked.value,
     distributionReport: cached.value)
+proc planAssurance(data: WorkJobData): WorkJobResult =
+  ## Complete canonical roster/assignment work executes only on the bounded managed worker.
+  let planned = captureAssuranceFetch(data.assuranceSource, data.assurancePeer,
+      data.assuranceFetchLimits)
+  if planned.error != AssuranceFetchError.None:
+    return WorkJobResult(status: WorkJobResultKind.AssurancePlanningFailure,
+        assurancePlanReason: planned)
+  WorkJobResult(status: WorkJobResultKind.AssurancePlanned, assurancePlan: planned.value)
+proc captureAssurancePlanning*(source: BlockSnapshotResult, local: StateEdKey,
+    limits: AssuranceFetchLimits): WorkJobAdmission =
+  ## Capture owns no I/O or proof side effects; its wrapper and source aliases retire before moved native submission.
+  if source.error != GenesisError.None or not limits.valid or array[32, byte](local) == default(
+      array[32, byte]):
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: planAssurance, assuranceSource: source, assurancePeer: local,
+    assuranceFetchLimits: limits)))
 proc qualifyIncomingAssurance(data: WorkJobData): WorkJobResult =
   ## This closed operation performs all canonical reads, bit checks and signature work outside native callbacks.
   let checked = qualifyAssuranceDistribution(data.distributionRequest, data.assuranceSource,
