@@ -280,3 +280,51 @@ rosters, a configured third core, following-slot boundaries and defaults.
 Final assembly verification also passes formatting, inventory, the production build, and refreshed
 Linux-target assembly/preparation semantics after the population/core eligibility correction.
 The native anchor/population suite retains87456 bytes across1000 cycles, unchanged before/after.
+
+
+## Native outgoing CE134
+
+The native sharing client reserves complete request output credit before allocation, writes at
+most4096 bytes per callback, and requires E4(96), the complete fixed response and exact FIN.
+All bytes remain untrusted until managed credential verification. Closing/queued/completed client
+frames retain their reservations through native retirement or exact host collection. Public
+queued-open cancellation suppresses delayed fulfillment before reuse. Actual peer generation and
+a nonwrapping serial bind each outbound ticket; response bytes do not choose their TLS identity.
+
+Outgoing sharing uses two dedicated global slots independently from the two incoming work slots,
+while all ephemeral families still share64 global slots and two physical directions per peer.
+One incoming and one outgoing sharing direction can therefore coexist on each pair. This avoids
+three guarantors occupying all work slots with their own requests and deadlocking each other.
+Both endpoints must be actual validators and sharing remains explicitly disabled by default.
+The new native suite checks literal malformed/FIN framing with the existing raw TLS harness,
+large multi-callback requests, and six simultaneous directions between three actual node owners.
+Managed job/actor integration, grace and CE135 handling remain outstanding.
+
+
+Pinned LSQUIC permits zero-progress writes when its send buffer/flow credit is exhausted
+(include/lsquic.h write contract and src/liblsquic/lsquic_stream.c stream_write_to_buffer).
+The large native request exposed treating zero as a fatal error. Sharing and ordinary read
+clients now retain their exact unsent offset and write subscription on zero/-2; only other
+negative returns fail. No vendor source, native ABI or dependency pin changes are needed.
+The same raw TLS harness covers both client families, preserving exact first-error/FIN behavior.
+
+
+Clean native verification passes every truncated response extent, malformed low/high E4 lengths,
+suffixes, exhausted response credit, withheld FIN and a262,144-byte multi-callback request.
+Three actual authenticated node owners simultaneously hold two outgoing and two incoming sharing
+routes each, then collect all six replies and assemble genuine three-credential guarantees with
+the exact ticket TLS identities. Default-disabled activation, invalid requests, queued and active
+cancellation, stale/foreign tickets, physical quota release and complete-reply expiry are checked.
+A complete uncollected reply survives the queued-open deadline and expires at the ordinary read
+lifetime while its authenticated peer remains connected. All temporary trace output is removed.
+One thousand large client snapshot release cycles retain549296 bytes, unchanged before/after.
+
+The existing raw read-client, native node-service, staged work-stream and managed receiving suites
+also pass. Their observed ARC release baselines are39664,21712 and215808 bytes for the latter
+three suites, unchanged before/after1000 cycles. Linux-target node/client semantic checking passes;
+this is not native Linux CI. Closed-worker preparation/response/collection, runtime grace and
+CE135 receiving/distribution are still required for the complete guarantee feature.
+
+Final native-client verification passes formatting, inventory and the production build. Actual ARC
+lowering rejects duplicating NodeService with the added client buffers; the checked probe retains
+the exact expected unavailable-dup diagnostic. All native callback owners retire before their buffers.

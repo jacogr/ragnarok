@@ -181,7 +181,7 @@ proc streamRead*(stream: NativeStream, bytes: ptr byte,
 
 proc streamWrite*(stream: NativeStream, bytes: ptr byte,
     length: csize_t): int64 {.importc: "rq_stream_write", header: BridgeHeader, cdecl, raises: [].}
-  ## Write borrowed bytes synchronously; accepted bytes are copied into native transport storage.
+  ## Write borrowed bytes synchronously; accepted bytes are copied into native storage. Zero/-2 mean no progress; other negatives are errors.
 
 proc wantRead*(stream: NativeStream, want: cint) {.importc: "rq_stream_want_read",
     header: BridgeHeader, cdecl, raises: [].}
