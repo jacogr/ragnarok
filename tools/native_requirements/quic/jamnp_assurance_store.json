@@ -10,7 +10,8 @@
     "storage_io"
   ],
   "observers": [
-    "io_fsync"
+    "io_fsync",
+    "io_read"
   ],
   "prepared": false
 }

@@ -24,6 +24,9 @@ type
     entries*, scanEntries*: ElementLimit
     bytes*: ByteLimit
     record*: AssuranceRecordLimits
+  AssuranceRestoreLimits* = object ## Network-serving lookup separately bounds fixed metadata, total logical file reads, whole proof/checksum work and peak payload buffers; defaults allow no IO.
+    verification*: AvailabilityMerkleLimits
+    ioBytes*, workspaceBytes*: ByteLimit
   StoredAssuranceShard* = object ## Only successful publication or synchronized full restore constructs detached stored data; this is not current canonical duty or signing authority.
     ready: bool
     record: AssuranceRecord
@@ -501,6 +504,58 @@ proc loadAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecif
       request.shard) >= count or count > 1023 or request.root.bytes != expected.erasureRoot.bytes:
     return refused[StoredAssuranceShard](AssuranceStoreError.InvalidRequest)
   owner.loadPath(owner.pathFor(expected, request.shard), expected, request)
+func valid*(limits: AssuranceRestoreLimits): bool =
+  ## These finite per-lookup limits do not change the installed namespace policy or supply canonical report authority.
+  let verification = limits.verification
+  uint64(verification.bytes) > 0 and uint64(verification.bytes) <= 256'u64*1024*1024 and
+    uint64(verification.hashes) > 0 and uint64(verification.hashes) <= 1000000 and
+    uint64(verification.hashBytes) >= 174 and uint64(verification.hashBytes) <=
+        256'u64*1024*1024 and
+    uint64(limits.ioBytes) >= uint64(AssuranceRecordHeaderBytes) and
+    uint64(limits.ioBytes) <= 1024'u64*1024*1024 and
+    uint64(limits.workspaceBytes) >= uint64(AssuranceRecordHeaderBytes) and
+    uint64(limits.workspaceBytes) <= 256'u64*1024*1024
+proc restoreAssuranceShard*(owner: var AssuranceStore, request: AvailabilityRequest,
+    limits: AssuranceRestoreLimits): AssuranceStoreResult[StoredAssuranceShard] =
+  ## Root-only serving recovery authenticates fixed metadata and complete persisted proofs; current-duty/signing callers must retain their independent full-specifier load path.
+  if not owner.ready: return refused[StoredAssuranceShard](AssuranceStoreError.Closed)
+  if owner.failed: return refused[StoredAssuranceShard](AssuranceStoreError.Faulted)
+  if not limits.valid: return refused[StoredAssuranceShard](AssuranceStoreError.InvalidPolicy)
+  if request.kind != AvailabilityTransferKind.Distribution or uint64(request.row) != 0 or
+      uint64(request.shard) >= 1023:
+    return refused[StoredAssuranceShard](AssuranceStoreError.InvalidRequest)
+  var expected = default(AvailabilitySpecifier)
+  expected.erasureRoot = request.root
+  let path = owner.pathFor(expected, request.shard)
+  let present = regular(path)
+  if present.error != AssuranceStoreError.None: return propagated[StoredAssuranceShard, uint64](present)
+  let inspected = readHeader(path, owner.chain, owner.limits.record)
+  if inspected.error != AssuranceStoreError.None:
+    # Corrupt or unreadable retained metadata cannot be hidden by an attempted network fallback; policy ceilings alone do not fault storage.
+    if inspected.error in [AssuranceStoreError.FileFailure, AssuranceStoreError.HeaderFailure,
+        AssuranceStoreError.InvalidNamespace]: owner.failed = true
+    return propagated[StoredAssuranceShard, AssuranceRecordInfo](inspected)
+  let info = inspected.value
+  if info.specifier.erasureRoot.bytes != request.root.bytes or
+      uint64(info.shard) != uint64(request.shard):
+    return refused[StoredAssuranceShard](AssuranceStoreError.Conflict)
+  let planned = availabilityVerificationInfo(info.specifier, request)
+  if planned.error != AvailabilityTransferError.None:
+    return refused[StoredAssuranceShard](AssuranceStoreError.InvalidRequest)
+  let work = planned.value
+  let header = uint64(AssuranceRecordHeaderBytes)
+  if work.payloadBytes > MaxAssuranceRecordBytes-header:
+    return refused[StoredAssuranceShard](AssuranceStoreError.LimitExceeded)
+  let io = info.encodedBytes+header+1
+  let workspace = work.payloadBytes*3+header*3
+  if io > uint64(limits.ioBytes) or workspace > uint64(limits.workspaceBytes):
+    return refused[StoredAssuranceShard](AssuranceStoreError.LimitExceeded)
+  if work.workspaceBytes > uint64(limits.verification.bytes) or
+      work.hashes+2 > uint64(limits.verification.hashes) or
+      work.hashBytes+348 > uint64(limits.verification.hashBytes):
+    return refused[StoredAssuranceShard](AssuranceStoreError.LimitExceeded)
+  # A second exact context check during full decode closes header/payload replacement races; only complete proof plus real sync constructs a stored-data receipt.
+  owner.loadPath(path, info.specifier, request)
 proc renewAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecifier,
     request: AvailabilityRequest, now: AssuranceTime): AssuranceStoreResult[StoredAssuranceShard] =
   ## Reverify original complete bytes and atomically extend a full promise before any assurance signature; no unverified record or pre-publication receipt escapes.

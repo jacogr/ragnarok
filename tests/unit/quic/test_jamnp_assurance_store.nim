@@ -45,6 +45,51 @@ proc location(folder: string, transfer: VerifiedAvailabilityTransfer): string =
   for octet in transfer.specifier.erasureRoot.bytes: text.add(toHex(int(octet), 2).toLowerAscii())
   folder & "/" & text.substr(0, 1) & "/" & text & "-" & toHex(int(uint64(transfer.request.shard)),
       4).toLowerAscii() & ".shard"
+proc restoreLimits(first: VerifiedAvailabilityTransfer): AssuranceRestoreLimits =
+  ## Literal total equations include two metadata hashes, the EOF probe and bounded live restore buffers.
+  let described = availabilityVerificationInfo(first.specifier, first.request).value
+  let header = uint64(AssuranceRecordHeaderBytes)
+  AssuranceRestoreLimits(verification: AvailabilityMerkleLimits(
+    bytes: ByteLimit(described.workspaceBytes), hashes: ElementLimit(described.hashes+2),
+    hashBytes: ByteLimit(described.hashBytes+348)),
+    ioBytes: ByteLimit(described.payloadBytes+header*2+1),
+    workspaceBytes: ByteLimit(described.payloadBytes*3+header*3))
+proc servingRestore(owner: var AssuranceStore, first: VerifiedAvailabilityTransfer) =
+  ## A request knows only root and shard after restart; exact total budgets still precede complete payload reads.
+  let exact = restoreLimits(first)
+  resetIo()
+  assert owner.restoreAssuranceShard(first.request, default(AssuranceRestoreLimits)).error ==
+    AssuranceStoreError.InvalidPolicy and ioCalls(readIo) == 0, "default root lookup performs no file reads"
+  let restored = owner.restoreAssuranceShard(first.request, exact)
+  assert restored.error == AssuranceStoreError.None and ioCalls(readIo) > 1, "exact root lookup actually reads header and full proven record"
+  let transfer = restored.value.storedTransfer(ByteLimit(16000000)).value
+  assert transfer.bundleShard == first.bundleShard and transfer.segmentShards ==
+      first.segmentShards and
+    transfer.justification == first.justification, "root-only recovery preserves exact original proven payloads"
+  assert uint64(restored.value.storedInfo.value.promisedAt) == 1100, "serving restore cannot renew an existing promise"
+  for boundary in 0..<5:
+    # Every independent total budget must refuse before payload reads; fixed metadata discovery remains permitted only by its own admitted ceiling.
+    var short = exact
+    case boundary
+    of 0: short.ioBytes = ByteLimit(uint64(exact.ioBytes)-1)
+    of 1: short.workspaceBytes = ByteLimit(uint64(exact.workspaceBytes)-1)
+    of 2: short.verification.bytes = ByteLimit(uint64(exact.verification.bytes)-1)
+    of 3: short.verification.hashes = ElementLimit(uint64(exact.verification.hashes)-1)
+    else: short.verification.hashBytes = ByteLimit(uint64(exact.verification.hashBytes)-1)
+    resetIo()
+    assert owner.restoreAssuranceShard(first.request, short).error ==
+      AssuranceStoreError.LimitExceeded and ioCalls(readIo) == 1, "minus-one root lookup stops after fixed header"
+    assert not owner.faulted, "operator lookup policy refusal cannot fault retained storage"
+  var missing = first.request
+  missing.root.bytes[0] = missing.root.bytes[0] xor 1
+  assert owner.restoreAssuranceShard(missing, exact).error == AssuranceStoreError.Missing and
+    not owner.faulted, "missing requested root is ordinary absence"
+  var invalid = first.request
+  invalid.kind = AvailabilityTransferKind.Audit
+  resetIo()
+  assert owner.restoreAssuranceShard(invalid, exact).error == AssuranceStoreError.InvalidRequest and
+    ioCalls(readIo) == 0, "stored full-distribution lookup never reinterprets another proof shape"
+  resetIo()
 proc ordinary(first, second, third: VerifiedAvailabilityTransfer) =
   ## Successful publication, duplicate extension and actual close/reopen preserve all promises, exact bytes and fixed scalar accounting.
   let folder = name("ordinary")
@@ -86,6 +131,7 @@ proc ordinary(first, second, third: VerifiedAvailabilityTransfer) =
   assert owner.len == 2 and owner.byteLength == occupied, "restart count and byte preservation"
   let restored = owner.loadAssuranceShard(first.specifier, first.request)
   assert restored.error == AssuranceStoreError.None, "restart full proof and sync"
+  servingRestore(owner, first)
   let copied = restored.value.storedTransfer(ByteLimit(16000000)).value
   assert copied.bundleShard == first.bundleShard and copied.segmentShards == first.segmentShards and
       copied.justification == first.justification, "exact restored CE137 payloads"
@@ -295,11 +341,35 @@ proc namespaceBounds(first: VerifiedAvailabilityTransfer) =
   assert posix.mkdir(absent.toCString(), Mode(0o700)) == 0, "repair empty bucket"
   assert owner.openAssuranceStore(folder, chain(), policy).error == AssuranceStoreError.None, "reopen exact repaired namespace"
   assert owner.loadAssuranceShard(first.specifier, first.request).error == AssuranceStoreError.None, "original promise after repair"
+proc rootDamage(first: VerifiedAvailabilityTransfer) =
+  ## Startup accepts fixed intact metadata, but root-only serving must reverify corrupted payload bytes instead of trusting startup counts.
+  let folder = name("root-damage")
+  clean(folder)
+  defer: clean(folder)
+  var owner = default(AssuranceStore)
+  defer: discard owner.close()
+  assert owner.createAssuranceStore(folder, chain(), limits()).error == AssuranceStoreError.None, "root damage namespace"
+  assert owner.rememberAssuranceShard(first, AssuranceTime(1000)).error == AssuranceStoreError.None, "genuine stored root damage fixture"
+  assert owner.close().error == AssuranceStoreError.None, "close before independently corrupting file payload"
+  let filename = location(folder, first)
+  try:
+    # Only the exact independently owned test file is edited, after all native handles have retired.
+    var encoded = readFile(filename)
+    assert encoded.len > AssuranceRecordHeaderBytes, "nonempty real distribution payload"
+    encoded[encoded.len-1] = char(byte(encoded[encoded.len-1]) xor 1)
+    writeFile(filename, encoded)
+  except: assert false, "test-owned payload corruption IO"
+  assert owner.openAssuranceStore(folder, chain(), limits()).error == AssuranceStoreError.None, "intact metadata does not prove persisted payload"
+  let failed = owner.restoreAssuranceShard(first.request, restoreLimits(first))
+  assert failed.error == AssuranceStoreError.RecordFailure and owner.faulted,
+    "root-only restore rejects actual corrupted proof and faults retained storage"
 proc cycle(owner: var AssuranceStore, first: VerifiedAvailabilityTransfer) =
   ## Every full file read, proof owner, synchronization path and detached serving copy retires before allocation comparison.
   let restored = owner.loadAssuranceShard(first.specifier, first.request)
   assert restored.error == AssuranceStoreError.None, "ARC restore"
   assert restored.value.storedTransfer(ByteLimit(16000000)).error == AvailabilityTransferError.None, "ARC serving copy"
+  assert owner.restoreAssuranceShard(first.request, restoreLimits(first)).error ==
+    AssuranceStoreError.None, "ARC root-only full verified restore"
 proc main() =
   ## Native IO observer retains real files and barriers except for the exact explicitly armed failure.
   resetIo()
@@ -313,6 +383,7 @@ proc main() =
   restartDamage(first)
   crashes(first, second)
   namespaceBounds(first)
+  rootDamage(first)
   let folder = name("arc")
   clean(folder)
   defer: clean(folder)

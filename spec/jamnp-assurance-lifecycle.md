@@ -661,3 +661,33 @@ Logs, source identities and optimized build/run/copy results are retained under 
 `build/jamnp-implementation/assurance-acquirer-*`. These are local results, not Linux CI evidence.
 Durable serving, timed outgoing CE141 and explicit foreground startup activation remain required
 before this grouped assurance feature is ready for review.
+
+### Durable serving lookup contract
+
+A root/shard request may recover fixed metadata from the exact private record name after restart;
+it must not require that report to remain in C10 or in an in-memory work session. Explicit restore
+limits bound fixed-header work, total logical reads, proof/checksum work and payload workspace.
+Validate the header and exact root/shard binding before payload allocation, then fully verify and
+synchronize the stored distribution before returning data for a network-serving job. Header
+metadata alone grants no possession. This lookup must never replace independently expected full
+canonical descriptors in assurance signing, acquisition or possession probes. Refusal cannot renew
+promises, evict data or silently activate serving. Managed CE138/139/140 integration and real
+restart-serving witnesses remain required beyond the storage lookup itself.
+
+The serving lookup is implemented as `restoreAssuranceShard(request, AssuranceRestoreLimits)`.
+It reads the fixed checked header from the exact safe root/shard filename, rejects coordinate
+mismatch, derives proof geometry and precharges total payload-read, workspace and hash limits
+before the complete payload is read. It then uses the existing full-context decoder and real
+file/directory synchronization. A second descriptor check during full decode prevents changed
+header/payload files from exceeding the admitted geometry. The separate canonical
+`loadAssuranceShard(expected, request)` path is unchanged.
+
+The native storage suite proves exact and minus-one bounds for logical reads, workspace,
+verification workspace, hash calls and hash bytes. Default policy and invalid proof kind perform
+zero observed reads; a minus-one total permits only the fixed header read. A real corrupted proof
+with intact startup metadata is rejected and faults the owner. Root recovery preserves original
+payload bytes and promise time. Full and root-only restores both participate in 1000 ARC cycles,
+with 14864 occupied bytes unchanged. The suite also passes checked ARC/Clang ThinLTO; all 567
+production modules and the entry point, formatting and inventory checks pass. Evidence is under
+ignored `build/jamnp-implementation/assurance-restore-*`. This establishes bounded storage
+recovery, not yet managed durable RPC serving or Linux CI coverage.
