@@ -11,7 +11,11 @@ import ../codec/work/[package, report, digest]
 import ../codec/state/safrole
 import ../state/input_refinement
 import "../state/import/inputs" as import_inputs
-import ../state/computed/guarantee
+import ../state/computed/[guarantee, report]
+import ../state/availability/specifier
+import "../state/export/erasure" as export_erasure
+import ../state/[bundle_erasure, auditable_bundle]
+import ../state/erasure/layout
 
 type
   WorkSharingLimits* = object ## Independent explicit resource ceilings supplement the selected source's actual consensus gas limits.
@@ -182,7 +186,7 @@ proc receiveSharedWork*(request: SharedWorkRequest, view: ChainView, local, peer
   if population.error != WorkPopulationError.None:
     return WorkSharingResult[SignedWorkContribution](status: WorkSharingError.PopulationFailure,
         populationReason: population)
-  if not population.value.accepts(ErasureShards(shards)): fail(WorkSharingError.InvalidShards)
+  if not population.value.accepts(ErasureShards(shards), core): fail(WorkSharingError.InvalidShards)
   let authorized = authorizeWorkSubmission(original, source, parameters, limits.submission)
   if authorized.error != WorkSubmissionError.None:
     return WorkSharingResult[SignedWorkContribution](status: WorkSharingError.AuthorizationFailure,
@@ -229,3 +233,41 @@ proc sharingResponse*(contribution: SignedWorkContribution): WorkSharingResult[a
   for index in 0..<64: response[32+index] = signature[index]
   WorkSharingResult[array[SharingResponseBytes, byte]](status: WorkSharingError.None,
       completed: response)
+
+proc prepareWorkSharing*(contribution: SignedWorkContribution,
+    maximum: ByteLimit): WorkSharingResult[SharedWorkRequest] =
+  ## Encode the exact original bundle/mappings after preflight; all canonical aliases remain on the managed CPU lease.
+  let selected = contribution.contributionTranscript
+  if selected.error != WorkSignerError.None:
+    return WorkSharingResult[SharedWorkRequest](status: WorkSharingError.InvalidSource)
+  let computed = selected.value.computedGuaranteeReport.value
+  let available = computed.computedReportSource.value
+  let erasure = available.availabilitySource.value.exportErasureSource.value
+  let bundle = erasure.bundleErasureSource.value.layoutSource.value
+  let size = uint64(bundle.bundleInfo.value.length)
+  if size > uint64(maximum) or size > uint64(MaxSharingBundleBytes):
+    return WorkSharingResult[SharedWorkRequest](status: WorkSharingError.LimitExceeded)
+  let executed = bundle.bundleSource.value
+  let lookup = executed.inputRefinementSource.value.importInputsLookup.value
+  if lookup.len > 8:
+    return WorkSharingResult[SharedWorkRequest](status: WorkSharingError.InvalidSource)
+  let info = computed.computedReportInfo.value
+  let core = uint64(info.core)
+  if core > 65535:
+    return WorkSharingResult[SharedWorkRequest](status: WorkSharingError.InvalidSource)
+  let shards = uint16(info.header.erasureShards)
+  var first = newSeq[byte](5+lookup.len*64)
+  first[0] = byte(core and 255)
+  first[1] = byte(core shr 8)
+  first[2] = byte(shards and 255)
+  first[3] = byte(shards shr 8)
+  first[4] = byte(lookup.len) # Counts0..8 use the single-octet canonical natural encoding.
+  for entry in 0..<lookup.len:
+    # Exact original verified mappings retain package/root pairing and canonical order.
+    for octet in 0..<32:
+      first[5+entry*64+octet] = lookup[entry].packageHash.bytes[octet]
+      first[37+entry*64+octet] = lookup[entry].segmentRoot.bytes[octet]
+  let captured = captureSharedWork(first, bundle.bundleBytes.value)
+  if captured.error != SharingWireError.None:
+    return WorkSharingResult[SharedWorkRequest](status: WorkSharingError.InvalidMessage)
+  WorkSharingResult[SharedWorkRequest](status: WorkSharingError.None, completed: captured.value)

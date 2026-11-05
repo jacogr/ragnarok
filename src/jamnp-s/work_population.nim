@@ -56,6 +56,9 @@ func accepts*(window: WorkShardWindow, shards: ErasureShards): bool =
   ## A default or a roster absent from every candidate slot cannot authorize this erasure population.
   window.ready and ((window.current and uint16(shards) == uint16(window.active)) or
     (window.next and uint16(shards) == uint16(window.pending)))
+func accepts*(window: WorkShardWindow, shards: ErasureShards, core: CoreIndex): bool =
+  ## GP reporting_assurance limits active cores to population/3; a future acceptable count cannot activate a higher core.
+  window.accepts(shards) and uint64(core) < uint64(uint16(shards)) div 3
 func firstSlot*(window: WorkShardWindow): StateTime {.requires: window.ready.} =
   ## The anchor slot itself is excluded by the protocol's following-slot window.
   window.first

@@ -171,6 +171,11 @@ proc populationBoundaries() =
     assert window.accepts(ErasureShards(9)) == (slot != 12), "population boundary 14"
     assert not window.accepts(ErasureShards(12)), "population boundary 15"
     assert not default(WorkShardWindow).accepts(ErasureShards(6)), "population boundary 16"
+    # GP active cores scale with the selected population, independently from configured capacity and current duty.
+    assert not window.accepts(ErasureShards(6), CoreIndex(2))
+    assert window.accepts(ErasureShards(6), CoreIndex(1)) == (slot != 23)
+    assert window.accepts(ErasureShards(9), CoreIndex(2)) == (slot != 12)
+    assert not default(WorkShardWindow).accepts(ErasureShards(6), CoreIndex(0))
     let other = submission(context(head.value))
     let wrong = captureWorkPopulation(qualified.value, other, view, topologyLimits(3))
     assert wrong.error == WorkPopulationError.InvalidSource, "population boundary 19"

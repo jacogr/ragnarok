@@ -68,9 +68,9 @@ proc captured(source: BlockSnapshot, state: StateStoreSnapshot,
   var wire = newSeq[byte](source.header.headerInfo.value.consumed)
   assert source.header.encodeOwnedHeader(wire).error == HeaderError.None
   captureBlockSnapshot(wire, state, parameters)
-proc source(fixture: WorkFixture, local, peer: StateEdKey): BlockSnapshotResult =
+proc source(fixture: WorkFixture, local, peer, third: StateEdKey): BlockSnapshotResult =
   ## Populate all report-policy and pipeline chapters before binding the package anchor to this complete state root.
-  let seed = fixture.workSnapshot(local, peer)
+  let seed = fixture.workSnapshot(local, peer, third = third)
   let config = guaranteeLimits()
   var state = forkStateStore(seed.stateSnapshot).value
   var writes: seq[StateWrite] = @[]
@@ -141,10 +141,11 @@ proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotR
     StateWrite(kind: StateWriteKind.Put, key: time.key, value: time.value)]).error ==
         StateStoreError.None
   captured(seed.value, state.snapshot.value, parent.value.chainParameters)
-proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey)): GuaranteeFixture =
+proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey), third = default(
+    StateEdKey)): GuaranteeFixture =
   ## Only genuine original-header authorization, complete imported inputs, PVM execution and availability composition yield the transcript.
   let fixture = workFixture()
-  let parent = source(fixture, local, peer)
+  let parent = source(fixture, local, peer, third)
   assert parent.error == GenesisError.None, "guarantee parent"
   let wire = anchoredPackage(fixture.input.package, parent.value)
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, fixture.first, wire,
@@ -201,7 +202,7 @@ proc guaranteeCycle*(fixture: GuaranteeFixture, signer: WorkSigner) =
   assert refused.error == WorkEligibilityError.PolicyFailure
   assert refused.policyError == ReportPolicyError.InvalidConfig
 
-proc replacedHead(fixture: GuaranteeFixture, entry: StateEntry): ChainView =
+proc replacedHead*(fixture: GuaranteeFixture, entry: StateEntry): ChainView =
   ## A fresh private child-state version preserves its real parent/header identity while changing one eligibility input.
   let head = fixture.view.bestBlock.value
   let parent = fixture.view.parentOf(head.blockHash)

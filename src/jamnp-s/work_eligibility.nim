@@ -145,7 +145,7 @@ proc qualifyWorkGuarantee*(transcript: ComputedGuaranteeTranscript,
       populationReason: population)
   let computed = transcript.computedGuaranteeReport.value
   let facts = computed.computedReportInfo.value
-  if not population.value.accepts(facts.header.erasureShards): fail(
+  if not population.value.accepts(facts.header.erasureShards, facts.core): fail(
       WorkEligibilityError.InvalidShards)
   let duty = captureWorkDuty(head.value.stateSnapshot, parameters, workRecipient(local, now),
     facts.core, limits.duty)

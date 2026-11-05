@@ -236,3 +236,47 @@ state-chapter decoder. These source-bound facts do not yet establish outgoing ex
 Final cohort verification also passes Linux-target signer/dependency semantics, formatting, inventory
 and the production build. The final native duty run includes the separate cohort-shape reason.
 These checks do not constitute native Linux CI or outgoing CE134/135 completion.
+
+
+## Outgoing preparation and credential assembly
+
+Outgoing CE134 preparation must serialize the signed transcript's exact original auditable bundle
+and verified package/root dictionary, with the report's selected shard count. The local byte
+ceiling is checked before copying bundle bytes. Sealed peer targets bind an original assigned
+ordinal, full validator record, report signing message, slot, core, qualification head and complete posterior source root.
+Assembly must check actual authenticated transport identity, exact96-byte response, original
+report hash and ordinary Ed25519 signature, and reject repeated validator indices. Immutable
+collection versions preserve earlier rounds on any refusal. Only two/three verified credentials
+can produce a private collected guarantee and canonical standalone CE135 payload. Original
+indices are sorted before the existing guarantee codec. Output budgets and codec failures grant
+no credential authority. Actor grace timing, native sending, fresh distribution and ordinary
+startup activation remain required before this feature is complete.
+
+
+The new native assembly suite uses three real TLS fixture keys. Both peers independently execute
+and sign the outgoing exact bundle. It verifies two/three thresholds, reverse arrival and strict
+original-index ordering, byte-budget refusal, immutable copies, defaults, wrong transport keys,
+truncated/suffixed replies, wrong report hashes, invalid/mismatched signatures, repeated indices
+and cross-slot targets. A same-head/same-report test replaces the complete posterior cohort map;
+the root binding rejects its otherwise matching target. These checks run real signature
+verification over1000 assembly cycles with542368 bytes retained before and after.
+The production GP credential verifier also cross-checks emitted payloads against the actual
+canonical roster/entropy/dispute chapters. This verifies credential compatibility, not complete
+block admission, network sending, grace timing, or runtime distribution.
+
+Existing duty, signer, managed signing and real-TLS sharing suites pass after outgoing preparation;
+1000-cycle retained bytes are58864,204480,175120 and215808 respectively, unchanged before/after.
+Linux-target assembly and preparation semantic checks pass; no native Linux CI is claimed.
+
+
+Shard acceptability also checks the requested report core against the selected population's
+active-core domain, count/3. A count present in the anchor window cannot make a higher core active.
+Both pre-signing eligibility and CE134 basic verification apply this check before signing or
+refinement. The primary rule is GP reporting_assurance.tex active-core assignment (near the
+scaling discussion and R/P functions); the independent production credential verifier already
+rejects such reports as InactiveCore. Source-bound population boundary tests cover both6/9-member
+rosters, a configured third core, following-slot boundaries and defaults.
+
+Final assembly verification also passes formatting, inventory, the production build, and refreshed
+Linux-target assembly/preparation semantics after the population/core eligibility correction.
+The native anchor/population suite retains87456 bytes across1000 cycles, unchanged before/after.

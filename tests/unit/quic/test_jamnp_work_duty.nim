@@ -85,6 +85,7 @@ for index in 0..<6:
   assert uint32(duty.sourceTime) == 16 and uint32(duty.observedTime) == 20
   assert duty.epochDuration == 12 and duty.rotationDuration == 4
   assert uint16(duty.validatorIndex) == uint16(index) # Credentials use the original roster position.
+  assert uint64(duty.coreCapacity) == 3 # Configured capacity is not inferred from the six-member active population.
   assert duty.participantCount == 3
   var ordinal = 0
   for original in 0..<6:

@@ -35,6 +35,7 @@ type
     sourceRoot: StateRoot
     epoch, rotation: uint64
     shards: ErasureShards
+    capacity: CoreCount
     participants: array[3, WorkParticipant]
   WorkDutyResult*[T] = object ## Private selected children preserve exact genuine causes without exposing accepted prefixes.
     case status: WorkDutyError
@@ -118,6 +119,9 @@ func rotationDuration*(duty: WorkDuty): uint64 {.requires: duty.ready.} =
 func shardCount*(duty: WorkDuty): ErasureShards {.requires: duty.ready.} =
   ## Actual current source roster population differs from configured core capacity; inclusion eligibility remains a separate check.
   duty.shards
+func coreCapacity*(duty: WorkDuty): CoreCount {.requires: duty.ready.} =
+  ## Preserve configured core capacity independently from the smaller actual active validator population.
+  duty.capacity
 func participantCount*(duty: WorkDuty): int =
   ## A complete assignment contains exactly three original positions, including any GP-null offender positions.
   if duty.ready: 3 else: 0
@@ -241,6 +245,7 @@ proc captureWorkDuty*(source: StateStoreSnapshot, parameters: Parameters,
   WorkDutyResult[WorkDuty](status: WorkDutyError.None,
     completed: WorkDuty(ready: true, local: recipient.local, core: core,
       validator: GuarantorIndex(uint16(localIndex)), participants: participants,
+          capacity: CoreCount(cores),
       sourceTime: clock.value.value, observed: recipient.now,
       sourceRoot: source.commitment.root,
       epoch: epoch, rotation: rotation, shards: ErasureShards(uint16(population))))
