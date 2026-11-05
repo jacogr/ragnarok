@@ -26,7 +26,7 @@ proc limits(): WorkSharingLimits =
   let raw = workFixture()
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
-        eligibility: guaranteeLimits())
+        eligibility: guaranteeLimits(), retention: guarantorLimits())
 proc frame(bytes: openArray[byte]): seq[byte] =
   ## Independent literal E4 framing detects wrong message grouping and response shape.
   result = @[]
@@ -103,7 +103,7 @@ proc live(variant: Variant, local, remoteKey: StateEdKey) {.raises.} =
       protocol, streams = 512)
   assert server.open(config, services.chainView, topologyLimits(2)) == NodeError.None
   let configured = services.configureWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv(
-      "RAGNAROK_TEST_KEY"), server.localIdentity)
+      "RAGNAROK_TEST_KEY"), server.localIdentity, guarantorStorageLimits())
   assert configured.error == WorkSigningSetupError.None
   if variant != Variant.Disabled: assert server.enableSharingStreams()
   # A real primary builder authorization remains retained while sharing uses the otherwise idle CPU.

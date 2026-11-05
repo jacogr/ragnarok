@@ -33,7 +33,7 @@ proc sharing(raw: WorkFixture): WorkSharingLimits =
   ## All execution, report and independent bundle-copy bounds are explicit.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
-        eligibility: guaranteeLimits())
+        eligibility: guaranteeLimits(), retention: guarantorLimits())
 proc policy(outgoing: bool): WorkDistributionPolicy =
   ## Finish before the nonpreferred topology fallback; the positive real connection must therefore come from this delivery's exact demand dial.
   let limits = WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
@@ -59,11 +59,12 @@ proc guaranteed(services: var Services, fixture: GuaranteeFixture, b,
   ## Real TLS header, managed execution/signing and independently recomputed peer signatures yield the original retained primary guarantee.
   let raw = workFixture()
   assert services.configureWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
-      fixture.local).error == WorkSigningSetupError.None, "delivery: services.configureWorkSigner(getEnv('RAGNAROK_TEST_CERT'), getEnv('RAGNAROK_TEST_KEY'),"
+      fixture.local, guarantorStorageLimits()).error == WorkSigningSetupError.None, "delivery: services.configureWorkSigner(getEnv('RAGNAROK_TEST_CERT'), getEnv('RAGNAROK_TEST_KEY'),"
   let header = services.networkHeader(fixture, raw, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
   let token = services.reportSession(fixture, raw, header)
   let eligibility = guaranteeLimits()
-  let admitted = services.beginWorkContribution(token, fixture.local, StateTime(20), eligibility)
+  let admitted = services.beginWorkContribution(token, fixture.local, StateTime(20), eligibility,
+      guarantorLimits())
   assert admitted.error == StateProofAdmissionError.None, "delivery: admitted.error == StateProofAdmissionError.None"
   services.waitDone()
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Contributed, "delivery: services.collectWorkSubmission(token) == WorkSessionPhase.Contributed"

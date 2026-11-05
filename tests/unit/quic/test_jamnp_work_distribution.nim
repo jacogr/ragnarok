@@ -24,7 +24,7 @@ proc shares(raw: WorkFixture): WorkSharingLimits =
   ## Independent guarantors execute the real package rather than signing a caller-selected report digest.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
       submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
-      eligibility: guaranteeLimits())
+      eligibility: guaranteeLimits(), retention: guarantorLimits())
 proc epochHead(fixture: GuaranteeFixture, atSlot: uint8 = 24): ChainView =
   ## A trusted complete fixture selects a slot in the next epoch and copies the genuine prior roster into C9.
   ## The snapshot remains test authority and grants no block admission certificate.
@@ -85,7 +85,7 @@ proc main() {.raises.} =
   let eligible = qualifyWorkGuarantee(fixture.transcript, fixture.original, fixture.execution, view,
       keyA, StateTime(20), guaranteeLimits())
   assert eligible.error == WorkEligibilityError.None
-  let local = a.signWorkContribution(eligible.value).value
+  let local = a.signWorkContribution(eligible.value, guarantorLimits()).value
   let request = prepareWorkSharing(local, ByteLimit(20000)).value
   let receivedB = receiveSharedWork(request, view, keyB, keyA, StateTime(20), b, shares(raw))
   let receivedC = receiveSharedWork(request, view, keyC, keyA, StateTime(20), c, shares(raw))

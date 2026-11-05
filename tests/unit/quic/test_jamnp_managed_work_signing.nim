@@ -7,11 +7,11 @@ import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[worker, work_submission as work_jobs]
 import ../../../src/jamnp-s/[work_signer, work_eligibility, work_submission, work_duty, work_stream,
-    connections, node, read_stream, availability_read, availability_merkle]
+    connections, node, read_stream, availability_read, availability_merkle, availability_proof]
 import ../../../src/codec/state/safrole
 import ../../../src/codec/bounded
 import ../../../src/chain/[genesis, provider]
-import ../../../src/state/computed/guarantee
+import ../../../src/state/computed/[guarantee, report]
 import ../../../src/crypto/primitives
 import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_report_fixture,
     pvm_input_refinement, arc_evidence, jamnp_node_probe, jamnp_topology_fixture]
@@ -50,35 +50,42 @@ proc managed(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", "managed-signing-chain.json"], settings)
   var services = default(Services)
   defer: services.close()
-  assert services.configureWorkSigner(cert, key, fixture.local).error ==
+  assert services.configureWorkSigner(cert, key, fixture.local, guarantorStorageLimits()).error ==
       WorkSigningSetupError.Closed
   assert services.start(settings, "managed work signing")
   assert not services.workSigningConfigured
-  let wrong = services.configureWorkSigner(cert, getEnv("RAGNAROK_TEST_KEY_B"), fixture.local)
+  let wrong = services.configureWorkSigner(cert, getEnv("RAGNAROK_TEST_KEY_B"), fixture.local,
+      guarantorStorageLimits())
   assert wrong.error == WorkSigningSetupError.SignerFailure
   assert wrong.signerError.error == WorkSignerError.IdentityMismatch
-  let wrongIdentity = services.configureWorkSigner(cert, key, default(StateEdKey))
+  let wrongIdentity = services.configureWorkSigner(cert, key, default(StateEdKey),
+      guarantorStorageLimits())
   assert wrongIdentity.error == WorkSigningSetupError.InvalidIdentity
   assert not services.workSigningConfigured
-  assert services.configureWorkSigner(cert, key, fixture.local).error == WorkSigningSetupError.None
+  assert services.configureWorkSigner(cert, key, fixture.local, guarantorStorageLimits()).error ==
+      WorkSigningSetupError.None
   assert services.workSigningConfigured
-  assert services.configureWorkSigner(cert, key, fixture.local).error == WorkSigningSetupError.Busy
+  assert services.configureWorkSigner(cert, key, fixture.local, guarantorStorageLimits()).error ==
+      WorkSigningSetupError.Busy
   let raw = workFixture()
   let headHash = services.chainView.bestBlock.value.blockHash
   assert services.publishFinalized(headHash) == ViewFinalizeError.None
   let header = services.networkHeader(fixture, raw, cert, key)
   let token = services.reportSession(fixture, raw, header)
   let foreign = services.beginWorkContribution(default(WorkSessionToken), fixture.local,
-    StateTime(20), guaranteeLimits())
+    StateTime(20), guaranteeLimits(), guarantorLimits())
   assert foreign.error == StateProofAdmissionError.QueryFailure
   let mismatch = services.beginWorkContribution(token, default(StateEdKey), StateTime(20),
-      guaranteeLimits())
+      guaranteeLimits(), guarantorLimits())
   assert mismatch.error == StateProofAdmissionError.QueryFailure
-  let signing = services.beginWorkContribution(token, fixture.local, StateTime(20), guaranteeLimits())
+  let eligibility = guaranteeLimits()
+  let signing = services.beginWorkContribution(token, fixture.local, StateTime(20), eligibility,
+      guarantorLimits())
   assert signing.error == StateProofAdmissionError.None
   assert services.workSessionPhase(token) == WorkSessionPhase.Signing
   assert services.workSigningConfigured # Scalar only; no key/source owner is touched by this observation.
-  let busy = services.configureWorkSigner("missing-certificate", "missing-key", fixture.local)
+  let busy = services.configureWorkSigner("missing-certificate", "missing-key", fixture.local,
+      guarantorStorageLimits())
   assert busy.error == WorkSigningSetupError.Busy
   services.waitDone()
   assert not services.stateProofAvailable and services.workSessionPhase(token) ==
@@ -116,7 +123,7 @@ proc managed(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   # Cancelling an already Done signature cannot expose it or release the signer lease early.
   let cancelled = services.reportSession(fixture, raw, header)
   let cancelAdmission = services.beginWorkContribution(cancelled, fixture.local, StateTime(20),
-      guaranteeLimits())
+      guaranteeLimits(), guarantorLimits())
   assert cancelAdmission.error == StateProofAdmissionError.None
   services.waitDone()
   assert services.retireWorkSubmission(cancelled)
@@ -127,17 +134,159 @@ proc managed(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   # Joined close owns all pending aliases and wipes its private key only after the worker terminates.
   let closing = services.reportSession(fixture, raw, header)
   let closeAdmission = services.beginWorkContribution(closing, fixture.local, StateTime(20),
-      guaranteeLimits())
+      guaranteeLimits(), guarantorLimits())
   assert closeAdmission.error == StateProofAdmissionError.None
   services.close()
   assert not services.workSigningConfigured
   assert services.workSessionPhase(closing) == WorkSessionPhase.Empty
+proc capacity(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
+  ## Real signing refuses inadequate capture and a full retained store before disclosing another signature; old roots survive primary release.
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "managed-signing-chain.json"], settings)
+  var services = default(Services)
+  defer: services.close()
+  assert services.start(settings, "retained guarantor capacity")
+  var storage = guarantorStorageLimits()
+  storage.entries = ElementLimit(1)
+  let configured = services.configureWorkSigner(cert, key, fixture.local, storage)
+  assert configured.error == WorkSigningSetupError.None
+  let readPolicy = guarantorReadLimits()
+  assert services.configureAvailabilityReads(readPolicy)
+  let raw = workFixture()
+  let finalized = services.chainView.bestBlock.value.blockHash
+  assert services.publishFinalized(finalized) == ViewFinalizeError.None
+  let header = services.networkHeader(fixture, raw, cert, key)
+  let inadequate = services.reportSession(fixture, raw, header)
+  var tiny = guarantorLimits()
+  tiny.bytes = ByteLimit(1)
+  let attempted = services.beginWorkContribution(inadequate, fixture.local, StateTime(20),
+    guaranteeLimits(), tiny)
+  assert attempted.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.retainedWorkBundles == 0 and services.retainedWorkBytes == 0
+  assert services.collectWorkSubmission(inadequate) == WorkSessionPhase.Failed
+  block:
+    # Only a genuine failed retention child exists; no successful contribution can be extracted from this outcome.
+    let failure = services.workSubmissionOutcome(inadequate)
+    assert failure.kind == WorkJobResultKind.SigningFailure
+    assert failure.signingError.error == WorkSignerError.RetentionFailure
+    assert failure.signingError.retentionError.error == AvailabilityTransferError.LimitExceeded
+  assert services.retireWorkSubmission(inadequate)
+  let first = services.reportSession(fixture, raw, header)
+  let admitted = services.beginWorkContribution(first, fixture.local, StateTime(20),
+    guaranteeLimits(), guarantorLimits())
+  assert admitted.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.retainedWorkBundles == 0 # Done bytes remain exclusively in the uncollected worker result.
+  assert services.collectWorkSubmission(first) == WorkSessionPhase.Contributed
+  let metadata = services.workSubmissionReportInfo(first)
+  assert services.retainedWorkBundles == 1 and services.retainedWorkBytes > 0
+  let bytes = services.retainedWorkBytes
+  assert services.retireWorkSubmission(first)
+  assert services.workSessionPhase(first) == WorkSessionPhase.Empty
+  let next = services.reportSession(fixture, raw, header)
+  let full = services.beginWorkContribution(next, fixture.local, StateTime(20),
+    guaranteeLimits(), guarantorLimits())
+  assert full.error == StateProofAdmissionError.QueryFailure
+  assert full.captureError == WorkJobError.LimitExceeded
+  assert services.stateProofAvailable and services.workSessionPhase(next) ==
+      WorkSessionPhase.ReportReady
+  for kind in [ReadKind.Bundle, ReadKind.Availability]:
+    # The old source is served by a fresh managed read after its entire signed session retired and later work reached ReportReady.
+    var payload: seq[byte] = @[]
+    for octet in metadata.header.erasureRoot.bytes: payload.add(octet)
+    if kind == ReadKind.Availability:
+      payload.add(0)
+      payload.add(0)
+    let request = decodeReadRequest(kind, payload).value
+    let reading = services.beginNetworkRead(request)
+    assert reading.error == StateProofAdmissionError.None
+    services.waitDone()
+    assert services.retainedWorkBundles == 1 and services.retainedWorkBytes == bytes
+    let blocked = services.beginWorkContribution(next, fixture.local, StateTime(20),
+      guaranteeLimits(), guarantorLimits())
+    assert blocked.error == StateProofAdmissionError.Busy
+    block:
+      # Matching read collection exposes independent wire; ARC aliases retire before the next signing/read admission.
+      let completed = services.collectStateProof(reading.value)
+      assert completed.kind == ProofWorkerCompletionKind.ReadCompleted
+      let reply = completed.readValue
+      assert reply.error == ReadError.None
+      if kind == ReadKind.Bundle:
+        var expected: seq[byte] = @[]
+        for octet in fixture.package: expected.add(octet)
+        for octet in raw.extrinsics: expected.add(octet)
+        for octet in raw.segments: expected.add(octet)
+        for octet in raw.proofs: expected.add(octet)
+        assert reply.value.bytes == frame(expected)
+  assert services.retireWorkSubmission(next)
+  assert services.retainedWorkBundles == 1 and services.retainedWorkBytes == bytes
+proc retainedRoot(services: var Services, fixture: GuaranteeFixture, raw: WorkFixture,
+    cert, key: string): array[32, byte] {.raises.} =
+  ## Independent genuine builder headers produce signatures and then retire every session-owned source before returning only fixed root bytes.
+  let header = services.networkHeader(fixture, raw, cert, key)
+  let token = services.reportSession(fixture, raw, header)
+  let signing = services.beginWorkContribution(token, fixture.local, StateTime(20),
+    guaranteeLimits(), guarantorLimits())
+  assert signing.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.Contributed
+  result = services.workSubmissionReportInfo(token).header.erasureRoot.bytes
+  assert services.retireWorkSubmission(token)
+  assert services.workSessionPhase(token) == WorkSessionPhase.Empty
+proc multiple(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
+  ## Two actual packages share one canonical source but distinct authorization bytes; later signatures cannot replace earlier serving roots.
+  let changed = guaranteeFixture(fixture.local, authorizationSalt = 1)
+  let oldParent = fixture.view.parentOf(fixture.view.bestBlock.value.blockHash).value
+  let newParent = changed.view.parentOf(changed.view.bestBlock.value.blockHash).value
+  assert array[32, byte](oldParent.stateRoot) == array[32, byte](newParent.stateRoot)
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", "managed-signing-chain.json"], settings)
+  var services = default(Services)
+  defer: services.close()
+  assert services.start(settings, "multiple retained guarantor roots")
+  var storage = guarantorStorageLimits()
+  storage.entries = ElementLimit(2)
+  let configured = services.configureWorkSigner(cert, key, fixture.local, storage)
+  assert configured.error == WorkSigningSetupError.None
+  let policy = guarantorReadLimits()
+  assert services.configureAvailabilityReads(policy)
+  let finalized = services.chainView.bestBlock.value.blockHash
+  assert services.publishFinalized(finalized) == ViewFinalizeError.None
+  let raw = workFixture()
+  let roots = [services.retainedRoot(fixture, raw, cert, key), services.retainedRoot(changed, raw,
+      cert, key)]
+  assert roots[0] != roots[1] and services.retainedWorkBundles == 2
+  for ordinal in 0..<2:
+    # Check every six-validator shard plus the full original bundle through fresh managed jobs after both sessions retired.
+    let original = if ordinal == 0: fixture.transcript else: changed.transcript
+    let source = original.computedGuaranteeReport.value.computedReportSource.value
+    for coordinate in 0..6:
+      let kind = if coordinate == 6: ReadKind.Bundle else: ReadKind.Availability
+      var payload: seq[byte] = @[]
+      for octet in roots[ordinal]: payload.add(octet)
+      if kind == ReadKind.Availability:
+        payload.add(byte(coordinate))
+        payload.add(0)
+      let request = decodeReadRequest(kind, payload).value
+      let expected = serveAvailabilityRead(source, request, policy)
+      assert expected.error == ReadError.None
+      let admitted = services.beginNetworkRead(request)
+      assert admitted.error == StateProofAdmissionError.None
+      services.waitDone()
+      block:
+        # Exact collection retires the raw reply before any next worker can borrow cache aliases.
+        let completed = services.collectStateProof(admitted.value)
+        assert completed.kind == ProofWorkerCompletionKind.ReadCompleted
+        assert completed.readValue.error == ReadError.None
+        assert completed.readValue.value.bytes == expected.value.bytes
+  assert services.retainedWorkBundles == 2
 proc cycle(worker: var StateProofWorker, context: AuthorizedWorkContext, fixture: GuaranteeFixture,
     signer: WorkSigner, mode: int) =
   ## Shared worker ownership covers real success, Done cancellation and a late mismatched-private-key refusal.
   let expected = fixture.local
   var captured = captureWorkContribution(context, fixture.transcript, fixture.view, expected,
-    StateTime(21), signer, guaranteeLimits()).value
+    StateTime(21), signer, guaranteeLimits(), guarantorLimits()).value
   let admitted = worker.submit(captured)
   assert admitted.error == ProofWorkerError.None
   assert not captured.valid
@@ -173,6 +322,8 @@ proc main() {.raises.} =
   assert other.error == WorkSignerError.None
   let fixture = guaranteeFixture(signer.value.signerIdentity.value)
   managed(fixture, cert, key)
+  capacity(fixture, cert, key)
+  multiple(fixture, cert, key)
   let raw = workFixture()
   let admitted = captureWorkAuthorization(fixture.original, fixture.execution,
     fixture.view.bestBlock.value.chainParameters, raw.limits, executionLimits())

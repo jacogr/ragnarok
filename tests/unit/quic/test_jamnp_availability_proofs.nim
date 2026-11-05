@@ -5,7 +5,7 @@
 ## Genuine independent availability commitments authenticate NP distribution/audit/segment data with exact coordinates and bounded work.
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[availability_proof, availability_merkle, availability_read,
-    availability_store, read_stream]
+    availability_store, guarantor_store, read_stream]
 import ../../../src/state/availability/specifier
 import ../../../src/state/erasure/[layout, words]
 import "../../../src/state/export/erasure" as export_erasure
@@ -175,11 +175,77 @@ proc retention(source: AvailabilityCommitment) =
   cap = AvailabilityMerkleLimits(bytes: ByteLimit(info.retainedBytes+info.workspaceBytes),
     hashes: ElementLimit(info.hashes), hashBytes: ByteLimit(info.hashBytes))
   assert retainGuarantorAvailability(source, cap).error == AvailabilityTransferError.None
+proc retainedStorage(first, second: AvailabilityCommitment) =
+  ## Distinct signed-source commitments coexist without LRU replacement; full entry or byte capacity preserves every earlier source.
+  let a = retainGuarantorAvailability(first, retentionLimits()).value
+  let b = retainGuarantorAvailability(second, retentionLimits()).value
+  let ai = a.guarantorInfo.value
+  let bi = b.guarantorInfo.value
+  assert ai.specifier.erasureRoot.bytes != bi.specifier.erasureRoot.bytes
+  var store = default(GuarantorStore)
+  assert not store.configured and store.len == 0 and store.byteLength == 0
+  assert store.find(ai.specifier.erasureRoot).error == GuarantorStoreError.Unconfigured
+  assert store.remember(a) == GuarantorStoreError.Unconfigured
+  assert not store.captureLimits.validGuarantorLimits
+  assert not store.configure(default(GuarantorStorageLimits))
+  let policy = GuarantorStorageLimits(entries: ElementLimit(2), computation: retentionLimits())
+  assert store.configure(policy)
+  assert store.captureLimits.validGuarantorLimits
+  assert not store.configure(policy)
+  assert store.remember(default(GuarantorAvailability)) == GuarantorStoreError.InvalidSource
+  assert store.find(ai.specifier.erasureRoot).error == GuarantorStoreError.Missing
+  assert store.remember(a) == GuarantorStoreError.None
+  assert store.len == 1 and store.byteLength == ai.retainedBytes
+  assert uint64(store.captureLimits.bytes) == uint64(policy.computation.bytes)-ai.retainedBytes
+  assert store.remember(b) == GuarantorStoreError.None
+  assert store.len == 2 and store.byteLength == ai.retainedBytes+bi.retainedBytes
+  assert not store.captureLimits.validGuarantorLimits
+  assert store.remember(a) == GuarantorStoreError.None
+  assert store.len == 2 and store.byteLength == ai.retainedBytes+bi.retainedBytes
+  checkRetention(store.find(ai.specifier.erasureRoot).value, 0)
+  checkRetention(store.find(bi.specifier.erasureRoot).value, uint64(uint16(
+      bi.specifier.erasureShards))-1)
+  let candidates = store.snapshot
+  let beforeReuse = getOccupiedMem()
+  let reused = retainGuarantorAvailability(second, retentionLimits(), candidates)
+  let afterReuse = getOccupiedMem()
+  assert reused.error == AvailabilityTransferError.None
+  assert beforeReuse == afterReuse, "a cached root must reuse charged bytes rather than allocate a second snapshot"
+  assert reused.value.guarantorBundle.value == b.guarantorBundle.value
+  var insufficient = retentionLimits()
+  insufficient.bytes = ByteLimit(1)
+  let refusedReuse = retainGuarantorAvailability(second, insufficient, candidates)
+  assert refusedReuse.error == AvailabilityTransferError.LimitExceeded
+  var limited = default(GuarantorStore)
+  var small = policy
+  small.computation.bytes = ByteLimit(ai.retainedBytes)
+  assert limited.configure(small)
+  assert limited.remember(a) == GuarantorStoreError.None
+  assert uint64(limited.captureLimits.bytes) == 0
+  assert limited.remember(b) == GuarantorStoreError.LimitExceeded
+  assert limited.len == 1 and limited.byteLength == ai.retainedBytes
+  assert limited.find(bi.specifier.erasureRoot).error == GuarantorStoreError.Missing
+  checkRetention(limited.find(ai.specifier.erasureRoot).value, 0)
+  var one = default(GuarantorStore)
+  small = policy
+  small.entries = ElementLimit(1)
+  assert one.configure(small)
+  assert one.remember(a) == GuarantorStoreError.None
+  assert one.remember(b) == GuarantorStoreError.LimitExceeded
+  checkRetention(one.find(ai.specifier.erasureRoot).value, 0)
+  one.clear() # Only this test owns the store; no worker borrow survives explicit shutdown.
+  assert not one.configured and one.len == 0 and one.byteLength == 0
 proc releaseCycle(source: AvailabilityCommitment) =
   ## Every new prepared/verified owner and independent byte copy retires before the next ARC sample.
   let retained = retainGuarantorAvailability(source, retentionLimits())
   assert retained.error == AvailabilityTransferError.None
   assert retained.value.guarantorBundle.value.len > 0
+  var promised = default(GuarantorStore)
+  assert promised.configure(GuarantorStorageLimits(entries: ElementLimit(1),
+      computation: retentionLimits()))
+  assert promised.remember(retained.value) == GuarantorStoreError.None
+  let root = retained.value.guarantorInfo.value.specifier.erasureRoot
+  assert promised.find(root).error == GuarantorStoreError.None
   let request = requested(source, AvailabilityTransferKind.Audit, 0, 0)
   let prepared = prepareAvailabilityTransfer(source, request, limits())
   assert prepared.error == AvailabilityTransferError.None
@@ -330,6 +396,7 @@ proc main() =
   for shard in [0'u64, 3, 5]: checkRetention(detached, shard)
   let populated = computedAvailability(1)
   retention(populated)
+  retainedStorage(empty, populated)
   audit(populated)
   for shard in [0'u64, 511, 1022]:
     check(populated, AvailabilityTransferKind.Distribution, shard, 0)

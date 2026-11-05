@@ -8,6 +8,7 @@ import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
 import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../../jamnp-s/work_recovery
+import ../../jamnp-s/availability_proof
 import ../../jamnp-s/[work_distribution, read_stream, read_validation]
 import ../../codec/[report_owned, owned]
 import ../../chain/[provider, genesis]
@@ -100,6 +101,8 @@ type
     transcript: ComputedGuaranteeTranscript
     signingView: ChainView
     signingLimits: WorkEligibilityLimits
+    retentionLimits: AvailabilityMerkleLimits
+    retainedSources: seq[GuarantorAvailability]
     signingIdentity: StateEdKey
     signingTime: StateTime
     distributionRequest: ReadRequest
@@ -404,18 +407,26 @@ proc contribute(data: WorkJobData): WorkJobResult =
     data.signingView, data.signingIdentity, data.signingTime, data.signingLimits)
   if qualified.error != WorkEligibilityError.None:
     return WorkJobResult(status: WorkJobResultKind.EligibilityFailure, eligibilityReason: qualified)
-  let signed = data.signer.signWorkContribution(qualified.value)
+  let signed = data.signer.signWorkContribution(qualified.value, data.retentionLimits,
+      data.retainedSources)
   if signed.error != WorkSignerError.None:
     return WorkJobResult(status: WorkJobResultKind.SigningFailure, signingReason: signed)
   WorkJobResult(status: WorkJobResultKind.Contributed, contribution: signed.value)
+proc copyRetainedSources(existing: openArray[GuarantorAvailability]): seq[GuarantorAvailability] =
+  ## Capture validates the fixed entry bound before privately copying source-free aliases; all tables freeze through collection.
+  result = newSeq[GuarantorAvailability](existing.len)
+  for index in 0..<existing.len: result[index] = existing[index]
 proc captureWorkContribution*(context: AuthorizedWorkContext,
     transcript: ComputedGuaranteeTranscript, view: ChainView, local: StateEdKey, now: StateTime,
         signer: WorkSigner,
-    limits: WorkEligibilityLimits): WorkJobAdmission =
+    limits: WorkEligibilityLimits, retention: AvailabilityMerkleLimits,
+    existing: openArray[GuarantorAvailability] = []): WorkJobAdmission =
   ## Capture only while all owners are host-exclusive; every alias, including signer and view, stays frozen until exact collect/join.
   ## Services supplies its privately loaded key; callers never install an external signer alias into Services.
   let data = context.data
   if data == nil: return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  if existing.len > 64 or not retention.validGuarantorLimits:
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
   if not transcript.workReportMatches(data.source.header, data.source.state,
       data.source.parameters):
     return WorkJobAdmission(status: WorkJobError.InvalidInput)
@@ -427,7 +438,8 @@ proc captureWorkContribution*(context: AuthorizedWorkContext,
     return WorkJobAdmission(status: WorkJobError.LimitExceeded)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: contribute, context: context, transcript: transcript, signingView: view,
-    signingIdentity: local, signingTime: now, signer: signer, signingLimits: limits)))
+    signingIdentity: local, signingTime: now, signer: signer, signingLimits: limits,
+    retentionLimits: retention, retainedSources: copyRetainedSources(existing))))
 proc prepareExchange(data: WorkJobData): WorkJobResult =
   ## Bundle copying/encoding and sealed target discovery execute only on the exclusive managed CPU lease.
   let prepared = prepareWorkSharing(data.contribution, data.exchangeBytes)
@@ -534,13 +546,15 @@ proc captureWorkDistribution*(request: ReadRequest, view: ChainView, now: StateT
 proc receiveSharing(data: WorkJobData): WorkJobResult =
   ## The whole received bundle, actual sender/local facts, current view and private key remain on one managed lease.
   let received = receiveSharedWork(data.sharingRequest, data.signingView, data.signingIdentity,
-    data.sharingPeer, data.signingTime, data.signer, data.sharingLimits)
+    data.sharingPeer, data.signingTime, data.signer, data.sharingLimits, data.retainedSources)
   if received.error != WorkSharingError.None:
     return WorkJobResult(status: WorkJobResultKind.SharingFailure, sharingReason: received)
   WorkJobResult(status: WorkJobResultKind.Contributed, contribution: received.value)
 proc captureWorkSharing*(request: SharedWorkRequest, view: ChainView, local, peer: StateEdKey,
-    now: StateTime, signer: WorkSigner, limits: WorkSharingLimits): WorkJobAdmission =
+    now: StateTime, signer: WorkSigner, limits: WorkSharingLimits,
+    existing: openArray[GuarantorAvailability] = []): WorkJobAdmission =
   ## Independent wire ownership permits native task retirement immediately after submission without racing ARC counters.
+  if existing.len > 64: return WorkJobAdmission(status: WorkJobError.LimitExceeded)
   let sizes = request.sharingInfo
   if sizes.error != SharingWireError.None: return WorkJobAdmission(
       status: WorkJobError.InvalidInput)
@@ -556,7 +570,8 @@ proc captureWorkSharing*(request: SharedWorkRequest, view: ChainView, local, pee
       status: WorkJobError.InvalidInput)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: receiveSharing, sharingRequest: copied.value, sharingPeer: peer, signingView: view,
-    signingIdentity: local, signingTime: now, signer: signer, sharingLimits: limits)))
+    signingIdentity: local, signingTime: now, signer: signer, sharingLimits: limits,
+    retainedSources: copyRetainedSources(existing))))
 proc captureWorkAuthorization*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits,
     execution: InputRefinementLimits, recipient: WorkRecipient,

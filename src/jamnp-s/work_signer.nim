@@ -3,9 +3,11 @@
 
 ## Private immutable local signer ownership matches the configured TLS identity; no raw seed or arbitrary-message signing API escapes.
 import ./identity
+import ./availability_proof
 import ./[work_eligibility, work_duty]
 import ../codec/[guarantees, report_owned]
 import ../state/computed/guarantee
+import ../state/computed/report
 import ../crypto/primitives
 import ../quic/transport
 import ../codec/bounded
@@ -15,7 +17,7 @@ import ../lib/atomic/file
 type
   WorkSignerError* {.pure.} = enum ## Failed/default imports expose no signer or identity.
     Uninitialized, None, InvalidPath, CertificateFailure, ReadFailure, KeyFailure,
-      KeyAllocationFailure, CryptoFailure, IdentityMismatch, InvalidEligibility
+      KeyAllocationFailure, CryptoFailure, IdentityMismatch, InvalidEligibility, RetentionFailure
   WorkSignerData = ref object ## Only private seed ownership survives startup; the final EdSeed release wipes its own storage.
     seed: EdSeed
     identity: StateEdKey
@@ -24,6 +26,7 @@ type
   WorkContributionData = ref object ## A single real signature remains bound to the private eligible report, never a fully guaranteed report.
     eligible: EligibleWorkGuarantee
     credential: GuaranteeCredential
+    available: GuarantorAvailability
   SignedWorkContribution* = object ## No caller-issued signature or copied eligibility facts can construct this owner.
     data: nil WorkContributionData
   WorkSignerResult*[T] = object ## Only complete success carries an owner or copied public identity; genuine children retain selected reasons.
@@ -32,6 +35,7 @@ type
     of CertificateFailure: certificateReason: CertificateIdentityError
     of ReadFailure: readReason: AtomicFileError
     of CryptoFailure: cryptoReason: CryptoError
+    of RetentionFailure: retentionReason: AvailabilityTransferResult[GuarantorAvailability]
     else: discard # No partial private key survives a local refusal.
 func error*[T](outcome: WorkSignerResult[T]): WorkSignerError =
   ## Inspect a reason without permitting writable discriminator access.
@@ -53,6 +57,17 @@ func cryptoError*[T](outcome: WorkSignerResult[T]): CryptoError {.requires: outc
     WorkSignerError.CryptoFailure.} =
   ## Preserve the actual private seed/public-key backend refusal.
   outcome.cryptoReason
+func retentionError*[T](outcome: WorkSignerResult[T]): AvailabilityTransferResult[
+    GuarantorAvailability] {.requires: outcome.status == WorkSignerError.RetentionFailure.} =
+  ## Expose only the actual failed pre-sign serving capture, without a signature or retained prefix.
+  outcome.retentionReason
+proc contributionAvailability*(contribution: SignedWorkContribution): WorkSignerResult[
+    GuarantorAvailability] =
+  ## Only a genuine signed contribution exposes the independent serving owner captured before its private signature.
+  let data = contribution.data
+  if data == nil: return WorkSignerResult[GuarantorAvailability](
+      status: WorkSignerError.Uninitialized)
+  WorkSignerResult[GuarantorAvailability](status: WorkSignerError.None, completed: data.available)
 proc signerIdentity*(signer: WorkSigner): WorkSignerResult[StateEdKey] =
   ## Copy only public bytes; a default or refused signer carries no fabricated all-zero identity.
   let data = signer.data
@@ -136,7 +151,9 @@ proc contributionTranscript*(contribution: SignedWorkContribution): WorkSignerRe
   WorkSignerResult[ComputedGuaranteeTranscript](status: WorkSignerError.None,
     completed: data.eligible.eligibleTranscript.value)
 proc signWorkContribution*(signer: WorkSigner,
-    eligible: EligibleWorkGuarantee): WorkSignerResult[SignedWorkContribution] =
+    eligible: EligibleWorkGuarantee, retention: AvailabilityMerkleLimits,
+    existing: openArray[GuarantorAvailability] = []): WorkSignerResult[
+        SignedWorkContribution] =
   ## Sign only a complete source-qualified report matching this actual TLS key; execute under the managed graph lease.
   ## The runtime must freeze every signer/capability alias through exact worker collection or joined shutdown.
   let data = signer.data
@@ -147,6 +164,11 @@ proc signWorkContribution*(signer: WorkSigner,
     return WorkSignerResult[SignedWorkContribution](status: WorkSignerError.InvalidEligibility)
   if array[32, byte](data.identity) != array[32, byte](info.value.identity):
     return WorkSignerResult[SignedWorkContribution](status: WorkSignerError.IdentityMismatch)
+  let source = eligible.eligibleTranscript.value.computedGuaranteeReport.value.computedReportSource.value
+  let retained = retainGuarantorAvailability(source, retention, existing)
+  if retained.error != AvailabilityTransferError.None:
+    return WorkSignerResult[SignedWorkContribution](status: WorkSignerError.RetentionFailure,
+      retentionReason: retained)
   let message = array[45, byte](eligible.eligibleMessage.value)
   let signature = data.seed.sign(message)
   if signature.error != CryptoError.None:
@@ -154,5 +176,6 @@ proc signWorkContribution*(signer: WorkSigner,
       cryptoReason: signature.error)
   WorkSignerResult[SignedWorkContribution](status: WorkSignerError.None,
     completed: SignedWorkContribution(data: WorkContributionData(eligible: eligible,
+      available: retained.value,
       credential: GuaranteeCredential(validator: info.value.validator,
         signature: GuaranteeSignature(array[64, byte](signature.value))))))

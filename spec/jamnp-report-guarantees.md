@@ -660,31 +660,67 @@ not native Linux CI evidence. Formatting, verification inventory, all 550 produc
 the production ARC/LTO build pass; the generated self-comparison warning is unchanged. These
 adjustments remain in the existing guarantee feature layer.
 
-## Guarantor availability retention boundary (in progress)
+## Guarantor availability retention
 
-Before startup can enable signing, each signed report must reserve bounded serving data independent
-of its session and original canonical graph. The existing source-free CE137 transfer constructor
-can retain every shard and proof together with the original CE147 bundle. Capture must preflight
-aggregate retained bytes, peak workspace and complete hash work before constructing any prefix;
-default limits refuse capture. Immutable getters copy payload bytes, and the retained owner must
-remain usable after all original execution/state aliases retire. This owner alone grants neither
-an assurance nor a durable storage promise. Services must admit capacity before private signing,
-retain every admitted source before disclosing its signature, and preserve it across later work
-and session release. The existing latest-only source does not satisfy that integration requirement.
+Each private contribution now captures bounded source-free serving data before invoking the
+private signing primitive. `GuarantorAvailability` owns the original CE147 bundle and all CE137
+shards/proofs, with no execution, canonical-map or private-key alias. Complete preflight includes
+all retained logical payload, peak construction workspace and aggregate hash work. Defaults refuse
+capture; valid explicit local ceilings are at most 256 MiB of payload/workspace, sixteen million
+hash calls and one GiB of hash preimages. These are local resource policies, not protocol limits or
+an assurance/durable-storage promise.
 
-Completion witnesses include independently verifying captured shards at boundary indices and odd
-validator populations, exact resource boundaries, detached byte mutation, source retirement,
-managed capacity refusal before disclosure, multiple retained roots, actual CE137/147 requests
-after release, and ARC release cycles. Ordinary Services serving still uses the live source until the retained owner and Services
-admission path are integrated and verified together.
+`GuarantorStore` keeps every admitted root without LRU eviction or a guessed expiry. Startup
+installs explicit entry/byte/work limits together with the actual TLS-matched private signer.
+Services checks free entries and clamps capture work to remaining cache bytes before submitting
+local or incoming signing work. Its single graph lease freezes that budget and all source aliases
+through Queued, Running, Done and cancellation until exact collection or joined shutdown. Exact
+collection retains the serving owner before exposing a local contribution or CE134 response.
+Session release and later signing do not discard earlier roots. A full store conservatively
+refuses new signing admission, including repeated submissions; it preserves existing data.
 
-The `GuarantorAvailability` component now captures all original CE137 payloads/proofs and the
-CE147 bundle after complete aggregate preflight. Its serving overload checks exact roots,
-full-width shard indices and all response-copy limits before extraction; no original session is
-needed. The native `jamnp_availability_proofs` suite passes byte-for-byte comparisons with original
-computed serving, empty and populated exports, six- and 1023-validator boundary coordinates,
-exact aggregate memory/hash boundaries, malformed/default queries, detached mutation and source
-retirement. The expanded 1,000-cycle ARC check reports 714816 occupied bytes both before and after.
-The changed serving modules also pass Linux-target semantic checking. These are component results;
-capacity reservation in Services, signing integration and real post-release network serving remain
-required before this retention boundary is complete.
+Frozen cache snapshots also enter the closed signing jobs. A repeated root with the same complete
+specifier reuses its existing immutable byte owner after full preflight. This avoids allocating
+additional snapshots behind the cache's accounting while earlier contributions remain live. The
+allocation witness holds the reused owner across the sample and proves unchanged occupied memory;
+inadequate capture limits still refuse reuse. Original execution/report memory remains governed by
+its separate policies; cache counters describe retained serving payload, excluding bounded metadata
+and allocator bookkeeping.
+
+The ordinary signed host policy requires explicit storage and CE137/147 response budgets before
+enabling sharing. Reopening a host reuses only its original key identity and policies. Retained
+read capture selects exact roots from the complete private store and dispatches source-free
+CE137/147 replies under the same managed lease. Kind, root, full-width shard and complete response
+copy limits precede extraction. Joined Services shutdown retires every worker before releasing
+private keys and stored sources. Fixed bundle/byte counters remain safe during foreign leases.
+
+Native verification passes:
+
+- `jamnp_availability_proofs`: original-versus-retained wire equality, empty/populated exports,
+  six- and 1023-validator coordinates, exact resource bounds, detached mutation/source retirement,
+  distinct roots, non-evicting entry/byte refusal and cached-owner allocation reuse. Its expanded
+  1,000-cycle ARC check reports 714816 occupied bytes both before and after.
+- `jamnp_managed_work_signing`: a one-byte budget returns the genuine pre-sign retention failure;
+  full capacity refuses another signing job; foreign Done remains exclusive. Two independently
+  authorized packages with different opaque authorization inputs use the same canonical root,
+  produce distinct signed availability roots, retire both sessions, then serve all six shards and
+  each bundle through fresh managed jobs. Its ARC check reports 180928 bytes unchanged over 1,000
+  cycles.
+- `jamnp_work_exchange_runtime`: actual authenticated QUIC CE137 requests for all six shards and
+  CE147 still return exact original wire after the source's signed session is Empty. All sixteen
+  existing exchange/distribution/repeated-key scenarios pass with explicit retention policies.
+- Managed exchange, work sharing, guarantee collection, distribution, sharing client and metadata
+  delivery consumers pass. Their 1,000-cycle ARC checks report unchanged pairs of 436096, 215808,
+  736672, 688016 and 549296 bytes respectively; metadata delivery also passes its real socket and
+  connection-cap scenarios. Actual Services/ApplicationNode ARC lowering rejects duplication after
+  the retained-store field and both ownership-hook delegations are installed.
+
+Pinned formatting, verification inventory, all 551 production modules and the production ARC/LTO
+build pass. The final closed work factories pass Linux-target semantic checking; this is not
+native Linux CI evidence. The existing generated C self-comparison warning is unchanged.
+
+The retained source currently serves CE137/147. CE148 still uses live original computation and
+must also gain retained multi-root serving before this feature closes. Strict optional startup
+configuration and final feature validation also remain. Assurer possession/signing, its long-lived
+retention obligations, audit/judgment lifecycles and audit recovery are separate outstanding parts
+of the full pinned JAMNP-S objective; this retention work does not claim them complete.

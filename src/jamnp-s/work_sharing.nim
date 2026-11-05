@@ -5,6 +5,7 @@
 ## No network callback may invoke this state/crypto/PVM pipeline. One returned signature is not a fully guaranteed report.
 import ./[sharing_wire, work_submission, work_duty, work_anchors, work_population, work_report,
     work_eligibility, work_signer]
+import ./availability_proof
 import ../chain/[provider, genesis, parameters]
 import ../codec/bounded
 import ../codec/work/[package, report, digest]
@@ -24,6 +25,7 @@ type
     execution*: InputRefinementLimits
     report*: WorkReportLimits
     eligibility*: WorkEligibilityLimits
+    retention*: AvailabilityMerkleLimits
   WorkSharingError* {.pure.} = enum ## Refusals contain no decoded source, computed prefix or signature authority.
     Uninitialized, None, InvalidSource, InvalidPolicy, InvalidMessage, InvalidPeer, InvalidShards,
     LimitExceeded, PackageFailure, HeaderFailure, DutyFailure, AnchorFailure, PopulationFailure,
@@ -135,7 +137,8 @@ proc decodeShared(first, bundle: openArray[byte], config: PackageConfig): WorkSh
     completed: DecodedSharedWork(header: header.value, extrinsics: size, segments: segments,
         proofs: proofs))
 proc receiveSharedWork*(request: SharedWorkRequest, view: ChainView, local, peer: StateEdKey,
-    now: StateTime, signer: WorkSigner, limits: WorkSharingLimits): WorkSharingResult[
+    now: StateTime, signer: WorkSigner, limits: WorkSharingLimits,
+    retained: openArray[GuarantorAvailability] = []): WorkSharingResult[
         SignedWorkContribution] =
   ## Host identities are actual cached TLS observations, never fields supplied by the sharing packet.
   ## This entire call, including every source/signer alias, belongs to one exclusive managed CPU lease.
@@ -146,6 +149,7 @@ proc receiveSharedWork*(request: SharedWorkRequest, view: ChainView, local, peer
   if uint64(sizes.value.bundleBytes) > uint64(limits.bundleBytes): fail(
       WorkSharingError.LimitExceeded)
   if uint64(limits.packageBytes) > uint64(MaxBundleBytes): fail(WorkSharingError.InvalidPolicy)
+  if not limits.retention.validGuarantorLimits: fail(WorkSharingError.InvalidPolicy)
   let head = view.bestBlock
   if head.error != GenesisError.None or view.fuzzOnly: fail(WorkSharingError.InvalidSource)
   if array[32, byte](peer) == array[32, byte](local): fail(WorkSharingError.InvalidPeer)
@@ -212,7 +216,7 @@ proc receiveSharedWork*(request: SharedWorkRequest, view: ChainView, local, peer
   if qualified.error != WorkEligibilityError.None:
     return WorkSharingResult[SignedWorkContribution](status: WorkSharingError.EligibilityFailure,
         eligibilityReason: qualified)
-  let signed = signer.signWorkContribution(qualified.value)
+  let signed = signer.signWorkContribution(qualified.value, limits.retention, retained)
   if signed.error != WorkSignerError.None:
     return WorkSharingResult[SignedWorkContribution](status: WorkSharingError.SigningFailure,
         signingReason: signed)

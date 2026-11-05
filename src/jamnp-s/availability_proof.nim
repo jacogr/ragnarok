@@ -352,16 +352,21 @@ proc guarantorTransfer*(owner: GuarantorAvailability,
     return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidIndex)
   AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
     completed: data.shards[int(uint64(shard))])
+func validGuarantorLimits*(limits: AvailabilityMerkleLimits): bool =
+  ## Shared explicit policy validation keeps startup capacity and complete snapshot capture on the same finite domain.
+  uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 256'u64*1024*1024 and
+    uint64(limits.hashes) > 0 and uint64(limits.hashes) <= 16000000 and
+    uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 1024'u64*1024*1024
 proc retainGuarantorAvailability*(source: AvailabilityCommitment,
-    limits: AvailabilityMerkleLimits): AvailabilityTransferResult[GuarantorAvailability] =
+    limits: AvailabilityMerkleLimits,
+    existing: openArray[GuarantorAvailability] = []): AvailabilityTransferResult[
+        GuarantorAvailability] =
   ## Precharge the whole source-free serving snapshot before cloning or hashing; no accepted prefix escapes a refusal.
   ## Explicit local ceilings cover every validator, unlike a per-request budget multiplied by an unchecked population.
   let maximum = uint64(limits.bytes)
-  if maximum == 0 or maximum > 256'u64*1024*1024:
-    return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
-  if uint64(limits.hashes) == 0 or uint64(limits.hashes) > 16000000:
-    return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
-  if uint64(limits.hashBytes) == 0 or uint64(limits.hashBytes) > 1024'u64*1024*1024:
+  if existing.len > 64: return failed[GuarantorAvailability](
+      AvailabilityTransferError.LimitExceeded)
+  if not limits.validGuarantorLimits:
     return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
   let described = source.availabilityInfo
   if described.error != AvailabilityCommitmentError.None:
@@ -403,6 +408,19 @@ proc retainGuarantorAvailability*(source: AvailabilityCommitment,
   # Retained buffers plus a complete construction scratch budget conservatively include the current output twice.
   if info.workspaceBytes > maximum-info.retainedBytes:
     return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+  for owner in existing:
+    # A repeated signed root must share the already charged immutable byte owner; equal fixed metadata binds genuine computed provenance without replacing report authority.
+    let retained = owner.guarantorInfo
+    if retained.error != AvailabilityTransferError.None: continue
+    let previous = retained.value.specifier
+    if previous.erasureRoot.bytes != expected.erasureRoot.bytes: continue
+    if previous.packageHash.bytes != expected.packageHash.bytes: continue
+    if previous.segmentRoot.bytes != expected.segmentRoot.bytes: continue
+    if uint32(previous.bundleLength) != uint32(expected.bundleLength): continue
+    if uint16(previous.erasureShards) != uint16(expected.erasureShards): continue
+    if uint16(previous.segmentCount) != uint16(expected.segmentCount): continue
+    return AvailabilityTransferResult[GuarantorAvailability](status: AvailabilityTransferError.None,
+      completed: owner)
   let original = source.availabilitySource.value.exportErasureSource.value.bundleErasureSource.value.layoutSource.value.bundleBytes
   if original.error != AuditableBundleError.None:
     return failed[GuarantorAvailability](AvailabilityTransferError.InvalidSpecifier)

@@ -4,6 +4,7 @@
 ## Genuine package/body/PVM report execution uses an older complete map while fresh eligibility reads its actual child view.
 import std/assertions
 import ../../src/jamnp-s/[work_submission, work_report, work_anchors, work_duty, work_eligibility, work_signer]
+import ../../src/jamnp-s/[availability_proof, availability_read, guarantor_store]
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, header, guarantees, report_owned, owned, assurances]
 import ../../src/codec/work/[package, report]
@@ -25,6 +26,17 @@ type
     view*: ChainView
     transcript*: ComputedGuaranteeTranscript
     local*: StateEdKey
+proc guarantorLimits*(): AvailabilityMerkleLimits =
+  ## Explicit whole-report serving capture covers real fixture data; no production policy is inferred from the test geometry.
+  AvailabilityMerkleLimits(bytes: ByteLimit(64*1024*1024), hashBytes: ByteLimit(128*1024*1024),
+    hashes: ElementLimit(2000000))
+proc guarantorReadLimits*(): AvailabilityReadLimits =
+  ## Signed managed hosts explicitly enable finite retained-source responses with ordinary public framing ceilings.
+  AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
+    hashes: ElementLimit(10000), hashBytes: ByteLimit(16000000)), wireBytes: ByteLimit(16000000))
+proc guarantorStorageLimits*(): GuarantorStorageLimits =
+  ## Every managed fixture installs finite retained entries and a whole-cache/capture byte ceiling before private signing.
+  GuarantorStorageLimits(entries: ElementLimit(16), computation: guarantorLimits())
 proc guaranteeLimits*(): WorkEligibilityLimits =
   ## Actual Tiny consensus geometry and gas are separate from finite local copy/decoder policies.
   result = WorkEligibilityLimits(
@@ -104,7 +116,8 @@ proc source(fixture: WorkFixture, local, peer, third: StateEdKey,
     writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   assert state.apply(writes).error == StateStoreError.None
   captured(seed, state.snapshot.value, seed.chainParameters)
-proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot): seq[byte] =
+proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot,
+    authorizationSalt: byte): seq[byte] =
   ## Re-encode every actual original item/commitment with the final context before authorization/body verification, never patch a completed report.
   let info = original.workPackageInfo.value
   var package = WorkPackage(host: info.host, codeHash: info.codeHash,
@@ -133,6 +146,9 @@ proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot): seq[byt
     for ordinal in 0..<fields.imports: item.imports.add(selected.importAt(ordinal).value)
     for ordinal in 0..<fields.extrinsics: item.extrinsics.add(selected.extrinsicAt(ordinal).value)
     package.items.add(item)
+  if authorizationSalt != 0:
+    # The genuine authorizer accepts this opaque authorization input; a changed package/bundle leaves canonical state and code/configuration unchanged.
+    package.authorization.add(authorizationSalt)
   var wire = newSeq[byte](4096)
   let encoded = encodeWorkPackage(package, fullPackageConfig(ByteLimit(4096)), wire)
   assert encoded.error == PackageError.None
@@ -156,12 +172,12 @@ proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotR
   captured(seed.value, state.snapshot.value, parent.value.chainParameters)
 proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey), third = default(
     StateEdKey), recipient = default(StateValidator), additionalRecipient = default(
-        StateValidator)): GuaranteeFixture =
+        StateValidator), authorizationSalt: byte = 0): GuaranteeFixture =
   ## Only genuine original-header authorization, complete imported inputs, PVM execution and availability composition yield the transcript.
   let fixture = workFixture()
   let parent = source(fixture, local, peer, third, recipient, additionalRecipient)
   assert parent.error == GenesisError.None, "guarantee parent"
-  let wire = anchoredPackage(fixture.input.package, parent.value)
+  let wire = anchoredPackage(fixture.input.package, parent.value, authorizationSalt)
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, fixture.first, wire,
       fullPackageConfig(ByteLimit(4096)))
   assert decoded.error == WorkSubmissionError.None, "guarantee header"
@@ -191,7 +207,7 @@ proc guaranteeCycle*(fixture: GuaranteeFixture, signer: WorkSigner) =
   ## Successful source checks and a genuine private-key signature release all intermediate/retained owners on each cycle.
   let qualified = fixture.qualify(guaranteeLimits())
   assert qualified.error == WorkEligibilityError.None, "report eligibility: " & $qualified.error
-  let contribution = signer.signWorkContribution(qualified.value)
+  let contribution = signer.signWorkContribution(qualified.value, guarantorLimits())
   assert contribution.error == WorkSignerError.None, "report signing: " & $contribution.error
   let facts = contribution.value.contributionInfo.value
   let duty = contribution.value.contributionDuty.value
@@ -237,11 +253,11 @@ proc guaranteeBoundaries*(fixture: GuaranteeFixture, signer, otherSigner: WorkSi
   let info = qualified.value.eligibilityInfo.value
   assert uint16(info.validator) == 1 and uint32(info.slot) == 21
   assert array[32, byte](info.head) == array[32, byte](fixture.view.bestBlock.value.blockHash)
-  let absent = default(WorkSigner).signWorkContribution(qualified.value)
+  let absent = default(WorkSigner).signWorkContribution(qualified.value, guarantorLimits())
   assert absent.error == WorkSignerError.Uninitialized
-  let wrongKey = otherSigner.signWorkContribution(qualified.value)
+  let wrongKey = otherSigner.signWorkContribution(qualified.value, guarantorLimits())
   assert wrongKey.error == WorkSignerError.IdentityMismatch
-  let ineligible = signer.signWorkContribution(default(EligibleWorkGuarantee))
+  let ineligible = signer.signWorkContribution(default(EligibleWorkGuarantee), guarantorLimits())
   assert ineligible.error == WorkSignerError.InvalidEligibility
   var limits = guaranteeLimits()
   limits.reportBytes = ByteLimit(0)

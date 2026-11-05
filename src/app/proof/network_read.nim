@@ -11,7 +11,7 @@ import ../../jamnp-s/availability_proof
 
 type
   NetworkSource {.pure.} = enum ## Only module-owned capture chooses an original canonical/report/assurer source.
-    Canonical, Computed, Assured, ShardBatch
+    Canonical, Computed, Retained, Assured, ShardBatch
   NetworkReadData = ref object ## One privately selected immutable source and copied fixed request survive worker handoff.
     view: ChainView
     request: ReadRequest
@@ -19,6 +19,7 @@ type
     stored: VerifiedAvailabilityTransfer
     snapshot: seq[VerifiedAvailabilityTransfer]
     source: AvailabilityCommitment
+    retained: GuarantorAvailability
     limits: AvailabilityReadLimits
   NetworkReadJob* = object ## Default jobs contain neither a canonical source nor an admitted request.
     data: nil NetworkReadData
@@ -67,6 +68,19 @@ proc captureAvailabilityRead*(source: AvailabilityCommitment, request: ReadReque
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.Computed, source: source, request: detachedReadRequest(request),
         limits: limits)))
+proc captureAvailabilityRead*(source: GuarantorAvailability, request: ReadRequest,
+    limits: AvailabilityReadLimits): NetworkReadAdmission =
+  ## Only a Services-owned retained root crosses this lease; no completed work session or canonical map is required.
+  if not limits.valid: return NetworkReadAdmission(status: ReadError.LimitExceeded)
+  if not request.availabilityRead: return NetworkReadAdmission(status: ReadError.InvalidRequest)
+  let described = source.guarantorInfo
+  if described.error != AvailabilityTransferError.None:
+    return NetworkReadAdmission(status: ReadError.Unavailable)
+  if not request.matchesAvailability(described.value.specifier):
+    return NetworkReadAdmission(status: ReadError.Unavailable)
+  NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
+    kind: NetworkSource.Retained, retained: source, request: detachedReadRequest(request),
+        limits: limits)))
 proc captureAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## Services keeps the private cache frozen through exact collection; no external caller alias is retained by the store.
@@ -98,6 +112,7 @@ proc executeNetworkRead*(job: NetworkReadJob): ReadResult[ReadReply] =
   of NetworkSource.Computed:
     if data.request.kind == ReadKind.Segments: serveOriginalSegmentBatch(data.source, data.request, data.limits)
     else: serveAvailabilityRead(data.source, data.request, data.limits)
+  of NetworkSource.Retained: serveAvailabilityRead(data.retained, data.request, data.limits)
   of NetworkSource.ShardBatch: serveSegmentShardBatch(data.snapshot, data.request, data.limits)
   of NetworkSource.Assured: serveAvailabilityAudit(data.stored, data.request, data.limits)
   of NetworkSource.Canonical: serveCanonicalRead(data.view, data.request)

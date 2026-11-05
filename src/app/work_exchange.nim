@@ -9,6 +9,7 @@ import ./proof/work_submission
 import ../jamnp-s/[node, connections, work_sharing, work_guarantee, work_signer,
   sharing_client, read_stream, endpoints]
 import ../codec/bounded
+import ../jamnp-s/[guarantor_store, availability_proof, availability_read]
 import ../codec/state/safrole
 
 type
@@ -16,6 +17,8 @@ type
     ready: bool
     limits: WorkSharingLimits
     guarantee: ByteLimit
+    storage: GuarantorStorageLimits
+    serving: AvailabilityReadLimits
     timeout, peerTimeout, grace: int
   WorkExchangePhase* {.pure.} = enum ## Ready means collected signatures, not fresh block admission or completed CE135 distribution.
     Idle, Reporting, Signing, Preparing, Exchanging, Checking, Collecting, Ready, Retiring
@@ -42,18 +45,27 @@ type
     incomingActive, incomingCancelled, preferIncoming: bool
     received, collected: uint64
 func workExchangePolicy*(limits: WorkSharingLimits, guaranteeBytes: ByteLimit,
+    storage: GuarantorStorageLimits, serving: AvailabilityReadLimits,
     timeoutMs: range[2001..120000] = 120000, peerTimeoutMs: range[1..120000] = 10000,
     graceMs: range[2000..120000] = 2000): WorkExchangePolicy =
   ## At least two seconds gives the third guarantor a reasonable response opportunity; every allocation/stage still has explicit child bounds.
   if uint64(limits.packageBytes) == 0 or uint64(limits.bundleBytes) == 0: return default(WorkExchangePolicy)
   if uint64(limits.report.reportBytes) == 0 or uint64(limits.eligibility.reportBytes) == 0:
     return default(WorkExchangePolicy)
+  if not storage.valid or not serving.valid or not limits.retention.validGuarantorLimits: return default(WorkExchangePolicy)
   if uint64(guaranteeBytes) == 0 or timeoutMs <= graceMs: return default(WorkExchangePolicy)
-  WorkExchangePolicy(ready: true, limits: limits, guarantee: guaranteeBytes,
+  WorkExchangePolicy(ready: true, limits: limits, guarantee: guaranteeBytes, storage: storage,
+    serving: serving,
     timeout: timeoutMs, peerTimeout: peerTimeoutMs, grace: graceMs)
 func valid*(policy: WorkExchangePolicy): bool =
   ## Omission never enables signed exchange or incoming sharing handlers.
   policy.ready
+func storageLimits*(policy: WorkExchangePolicy): GuarantorStorageLimits {.requires: policy.ready.} =
+  ## Startup installs this explicit whole-cache/capture policy together with the private signer.
+  policy.storage
+func servingLimits*(policy: WorkExchangePolicy): AvailabilityReadLimits {.requires: policy.ready.} =
+  ## Signed activation includes explicit CE137/147 response budgets for the retained serving data.
+  policy.serving
 func phase*(owner: WorkExchangeDispatcher): WorkExchangePhase =
   ## Only fixed host state is observable through foreign CPU leases.
   owner.phase
@@ -292,7 +304,7 @@ proc submitLocal(owner: var WorkExchangeDispatcher, services: var Services,
   of WorkExchangePhase.Signing:
     if services.workSessionPhase(owner.session) != WorkSessionPhase.ReportReady: return false
     admitted = services.beginWorkContribution(owner.session, streams.localIdentity, now,
-        owner.policy.limits.eligibility)
+        owner.policy.limits.eligibility, owner.policy.limits.retention)
   of WorkExchangePhase.Preparing:
     if services.workSessionPhase(owner.session) != WorkSessionPhase.Contributed: return false
     admitted = services.beginWorkExchange(owner.session, owner.policy.limits.bundleBytes)

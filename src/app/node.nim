@@ -153,10 +153,13 @@ proc configureWorkExchange*(owner: var ApplicationNode, policy: WorkExchangePoli
   if services == nil: return false
   let identity = owner.streams.localIdentity
   if services[].workSigningConfigured:
-    if not services[].workSignerMatches(identity): return false
+    if not services[].workSignerMatches(identity, policy.storageLimits): return false
   else:
-    let configured = services[].configureWorkSigner(certificate, privateKey, identity)
+    let configured = services[].configureWorkSigner(certificate, privateKey, identity,
+        policy.storageLimits)
     if configured.error != WorkSigningSetupError.None: return false
+  if not services[].availabilityReadsMatch(policy.servingLimits):
+    if not services[].configureAvailabilityReads(policy.servingLimits): return false
   owner.exchange.configure(owner.streams, policy)
 proc configureWorkDistribution*(owner: var ApplicationNode, policy: WorkDistributionPolicy): bool =
   ## Independently optional receipt/delivery installs bounded managed consumers before enabling CE135.

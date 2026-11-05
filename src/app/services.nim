@@ -62,9 +62,10 @@ from ../codec/state/safrole import StateValidatorIndex, StateValidator
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
 import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
-import ../jamnp-s/[availability_read, availability_store, work_distribution]
+import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_distribution]
 from ../codec/owned import OwnershipError
-from ../jamnp-s/availability_proof import VerifiedAvailabilityTransfer, AvailabilityRequest, AvailabilityTransferKind
+from ../codec/work/report import ErasureRoot
+import ../jamnp-s/availability_proof
 from ../state/erasure/words import ErasureShardIndex
 from ../state/computed/report import ComputedReportInfo, computedReportInfo, computedReportSource, value
 from ../state/computed/guarantee import ComputedGuaranteeTranscript, ComputedGuaranteeError,
@@ -239,7 +240,7 @@ func exchangeWorkPhase(phase: WorkSessionPhase): bool =
 
 type
   WorkSigningSetupError* {.pure.} = enum ## Startup-only failures never expose a private signer owner.
-    Uninitialized, None, Closed, Busy, InvalidIdentity, SignerFailure
+    Uninitialized, None, Closed, Busy, InvalidIdentity, InvalidStorage, SignerFailure
   WorkSigningSetupResult* = object ## Only an actual failed import carries its guarded child; successful installation returns no alias.
     case status: WorkSigningSetupError
     of SignerFailure: reason: WorkSignerResult[WorkSigner]
@@ -414,6 +415,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   sharingActive: bool
   sharingTicket: ProofWorkerTicket
   sharedContribution: SignedWorkContribution
+  guarantorStore: GuarantorStore
   workContext: AuthorizedWorkContext
   workRecovery: WorkRecovery
   workRecoveryInfo: WorkRecoveryInfo
@@ -517,6 +519,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.sharingIdentity)
   `=wasMoved`(services.sharingTicket)
   `=wasMoved`(services.sharedContribution)
+  `=wasMoved`(services.guarantorStore)
   services.distributionGeneration = 0
   services.distributionActive = false
   services.sharingGeneration = 0
@@ -600,6 +603,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.sharingIdentity)
   `=destroy`(services.sharingTicket)
   `=destroy`(services.sharedContribution)
+  `=destroy`(services.guarantorStore)
   `=destroy`(services.workInput)
   `=destroy`(services.workExchangeOutcome)
   `=destroy`(services.workRound)
@@ -893,6 +897,7 @@ proc close*(services: var Services) =
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical, signer or listener alias.
   services.sharedContribution = default(SignedWorkContribution)
+  services.guarantorStore.clear() # Joined shutdown retires every retained serving alias before dropping the cache.
   services.distributionIdentity = nil
   services.distributionGeneration = 0
   services.distributionInput = default(WorkSubmissionJob)
@@ -1943,6 +1948,14 @@ captureReason: ticketFailure[TicketSource](NetworkTicketError.NoSigner))
   services.productionInput = default(TicketProductionJob)
   NetworkTicketStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 
+func availabilityReadsMatch*(services: Services, limits: AvailabilityReadLimits): bool =
+  ## A reopened signed host can observe the same fixed serving policy through foreign leases without rebinding any source.
+  services.availabilityEnabled and uint64(services.availabilityLimits.wireBytes) == uint64(
+      limits.wireBytes) and
+    uint64(services.availabilityLimits.computation.bytes) == uint64(limits.computation.bytes) and
+    uint64(services.availabilityLimits.computation.hashes) == uint64(limits.computation.hashes) and
+    uint64(services.availabilityLimits.computation.hashBytes) == uint64(
+        limits.computation.hashBytes)
 proc configureAvailabilityReads*(services: var Services, limits: AvailabilityReadLimits): bool =
   ## Explicit one-time policy activation never rebinds a live worker's source or resource contract.
   if not services.started or not services.stateProofAvailable or services.availabilityEnabled or
@@ -1976,8 +1989,18 @@ proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadE
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
 proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadError =
-  ## Primary and most-recent shared reports retain exact independent availability provenance; staging aliases retire before submission.
+  ## Exact retained roots survive completed sessions and later signatures; staging aliases retire before CPU submission.
   if not services.availabilityEnabled: return ReadError.Unavailable
+  if request.availabilityRead:
+    # Root lookup covers every non-evicted signed source before considering an unsigned/current best-effort source.
+    var root = default(ErasureRoot)
+    let payload = request.payload
+    for index in 0..<32: root.bytes[index] = payload[index]
+    let found = services.guarantorStore.find(root)
+    if found.error == GuarantorStoreError.None:
+      let captured = captureAvailabilityRead(found.value, request, services.availabilityLimits)
+      if captured.error == ReadError.None: services.networkReadInput = captured.value
+      return captured.error
   var reason = ReadError.Unavailable
   if services.workPhase == WorkSessionPhase.ReportReady or signedWorkPhase(services.workPhase):
     var transcript = default(ComputedGuaranteeTranscript)
@@ -2209,18 +2232,21 @@ proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmission
   services.workInput = default(WorkSubmissionJob)
   WorkSubmissionStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
 proc configureWorkSigner*(services: var Services, certificate, privateKey: string,
-    transportIdentity: StateEdKey): WorkSigningSetupResult =
+    transportIdentity: StateEdKey, storage: GuarantorStorageLimits): WorkSigningSetupResult =
   ## Import privately before any work session; the actual transport's cached public identity must match the loaded TLS key.
   if not services.started: return WorkSigningSetupResult(status: WorkSigningSetupError.Closed)
   if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Empty or
       services.workSignerReady:
     return WorkSigningSetupResult(status: WorkSigningSetupError.Busy)
+  if not storage.valid: return WorkSigningSetupResult(status: WorkSigningSetupError.InvalidStorage)
   let loaded = loadWorkSigner(certificate, privateKey)
   if loaded.error != WorkSignerError.None:
     return WorkSigningSetupResult(status: WorkSigningSetupError.SignerFailure, reason: loaded)
   let identity = loaded.value.signerIdentity.value
   if array[32, byte](identity) != array[32, byte](transportIdentity):
     return WorkSigningSetupResult(status: WorkSigningSetupError.InvalidIdentity)
+  if not services.guarantorStore.configure(storage):
+    return WorkSigningSetupResult(status: WorkSigningSetupError.InvalidStorage)
   services.workSigner = loaded.value
   services.workSignerIdentity = identity
   services.workSignerReady = true
@@ -2228,12 +2254,27 @@ proc configureWorkSigner*(services: var Services, certificate, privateKey: strin
 func workSigningConfigured*(services: Services): bool =
   ## This scalar is safe to observe while any canonical/signer alias belongs to the worker.
   services.started and services.workSignerReady
-func workSignerMatches*(services: Services, identity: StateEdKey): bool =
+func workSignerMatches*(services: Services, identity: StateEdKey,
+    storage: GuarantorStorageLimits): bool =
   ## Fixed cached public identity allows a reopened native host to reuse private setup without importing or inspecting the key again.
   if not services.started or not services.workSignerReady: return false
   let original = array[32, byte](services.workSignerIdentity)
   let requested = array[32, byte](identity)
-  original == requested
+  original == requested and services.guarantorStore.matches(storage)
+func retainedWorkBundles*(services: Services): int =
+  ## A scalar count is safe during foreign work and does not expose any serving or canonical alias.
+  services.guarantorStore.len
+func retainedWorkBytes*(services: Services): uint64 =
+  ## Logical retained payload remains separate from transient worker/canonical memory.
+  services.guarantorStore.byteLength
+proc contributionRetention(services: Services, requested: AvailabilityMerkleLimits): AvailabilityMerkleLimits =
+  ## The single Services lease keeps this remaining entry/byte budget stable until exact collection or joined cancellation.
+  if not requested.validGuarantorLimits: return default(AvailabilityMerkleLimits)
+  let available = services.guarantorStore.captureLimits
+  if not available.validGuarantorLimits: return default(AvailabilityMerkleLimits)
+  AvailabilityMerkleLimits(bytes: ByteLimit(min(uint64(requested.bytes), uint64(available.bytes))),
+    hashes: ElementLimit(min(uint64(requested.hashes), uint64(available.hashes))),
+    hashBytes: ByteLimit(min(uint64(requested.hashBytes), uint64(available.hashBytes))))
 func sameWorkSession*(left, right: WorkSessionToken): bool =
   ## Host-only exact session comparison grants no graph access or cancellation authority.
   left.owner != nil and left.owner == right.owner and left.generation != 0 and left.generation ==
@@ -2346,8 +2387,11 @@ proc collectWorkDistribution*(services: var Services,
 proc stageWorkSharing(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
     now: StateTime, limits: WorkSharingLimits): WorkJobError =
   ## Native task aliases remain independent from the detached job; view/key staging aliases retire before admission.
+  var bounded = limits
+  bounded.retention = services.contributionRetention(limits.retention)
+  if not bounded.retention.validGuarantorLimits: return WorkJobError.LimitExceeded
   let captured = captureWorkSharing(request, services.canonical.chainView, local, peer,
-    now, services.workSigner, limits)
+    now, services.workSigner, bounded, services.guarantorStore.snapshot)
   if captured.error != WorkJobError.None: return captured.error
   services.sharingInput = captured.value
   WorkJobError.None
@@ -2421,6 +2465,11 @@ proc collectWorkSharing*(services: var Services, token: WorkSharingToken): WorkS
   let contribution = outcome.signedContribution
   let encoded = contribution.sharingResponse
   if encoded.error != WorkSharingError.None:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.InvalidResult)
+  let source = contribution.contributionAvailability
+  if source.error != WorkSignerError.None:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.InvalidResult)
+  if services.guarantorStore.remember(source.value) != GuarantorStoreError.None:
     return WorkSharingCompletion(status: WorkSharingCompletionKind.InvalidResult)
   services.sharedContribution = contribution
   WorkSharingCompletion(status: WorkSharingCompletionKind.Completed, response: encoded.value,
@@ -2713,17 +2762,18 @@ proc beginWorkReport*(services: var Services, token: WorkSessionToken,
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Reporting)
 proc stageWorkContribution(services: var Services, local: StateEdKey, now: StateTime,
-    limits: WorkEligibilityLimits): WorkJobError =
+    limits: WorkEligibilityLimits, retention: AvailabilityMerkleLimits): WorkJobError =
   ## Original execution and the actual fresh canonical view retire from staging before the exclusive CPU lease begins.
   let captured = captureWorkContribution(services.workContext,
     services.workOutcome.reportTranscript,
-    services.canonical.chainView, local, now, services.workSigner, limits)
+    services.canonical.chainView, local, now, services.workSigner, limits, retention,
+    services.guarantorStore.snapshot)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
 proc beginWorkContribution*(services: var Services, token: WorkSessionToken,
     transportIdentity: StateEdKey, now: StateTime,
-        limits: WorkEligibilityLimits): WorkSubmissionStart =
+        limits: WorkEligibilityLimits, retention: AvailabilityMerkleLimits): WorkSubmissionStart =
   ## Omission remains disabled; requalify original execution against fresh state and sign on the same managed turn.
   if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
   if not services.matchesWork(token) or not services.workSignerReady:
@@ -2736,7 +2786,11 @@ proc beginWorkContribution*(services: var Services, token: WorkSessionToken,
       status: StateProofAdmissionError.Busy)
   if services.workPhase != WorkSessionPhase.ReportReady:
     return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
-  let staged = services.stageWorkContribution(transportIdentity, now, limits)
+  let bounded = services.contributionRetention(retention)
+  if not bounded.validGuarantorLimits:
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkContribution(transportIdentity, now, limits, bounded)
   if staged != WorkJobError.None:
     return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Signing)
@@ -2878,6 +2932,12 @@ proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): Wo
       services.workOutcome = outcome
       services.workPhase = WorkSessionPhase.Complete
     of WorkJobResultKind.Contributed:
+      let source = outcome.signedContribution.contributionAvailability
+      if source.error != WorkSignerError.None or services.guarantorStore.remember(source.value) !=
+          GuarantorStoreError.None:
+        services.workOutcome = default(WorkJobResult) # A failed local retention invariant must never expose a signature.
+        services.workPhase = WorkSessionPhase.Failed
+        return services.workPhase
       services.clearWorkExchange() # A new signature never inherits a prior round's targets or peer credentials.
       services.workOutcome = outcome
       services.workContributionInfo = outcome.signedContribution.contributionInfo.value

@@ -118,7 +118,7 @@ proc signed(fixture: GuaranteeFixture, signer: WorkSigner): SignedWorkContributi
   let qualified = qualifyWorkGuarantee(fixture.transcript, fixture.original, fixture.execution,
     fixture.view, key, StateTime(21), guaranteeLimits())
   assert qualified.error == WorkEligibilityError.None
-  let contributed = signer.signWorkContribution(qualified.value)
+  let contributed = signer.signWorkContribution(qualified.value, guarantorLimits())
   assert contributed.error == WorkSignerError.None
   contributed.value
 proc simultaneous() {.raises.} =

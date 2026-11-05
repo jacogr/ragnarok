@@ -10,6 +10,8 @@ import ../../../src/jamnp-s/[node as node_streams, connections, endpoints, work_
   work_sharing, work_duty, work_guarantee, sharing_wire, read_stream, read_client,
   work_distribution as distribution_rules]
 import ../../../src/quic/address
+import ../../../src/jamnp-s/availability_read
+import ../../../src/state/computed/[guarantee, report]
 import ../../../src/codec/[bounded, guarantees, assurances]
 import ../../../src/codec/work/package
 import ../../../src/codec/state/safrole
@@ -25,8 +27,8 @@ proc policy(raw: WorkFixture): WorkExchangePolicy =
   ## Every cryptographic/execution/copy ceiling is explicit; only peer response timing differs from the production default.
   let limits = WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes),
     bundleBytes: ByteLimit(MaxBundleBytes), submission: raw.limits, execution: executionLimits(),
-    report: workReportLimits(), eligibility: guaranteeLimits())
-  workExchangePolicy(limits, ByteLimit(20000))
+    report: workReportLimits(), eligibility: guaranteeLimits(), retention: guarantorLimits())
+  workExchangePolicy(limits, ByteLimit(20000), guarantorStorageLimits(), guarantorReadLimits())
 proc start(services: var Services, host: var ApplicationNode, certificate,
     privateKey: string) {.raises.} =
   ## Each Services instance decodes independent complete canonical ownership before this host borrows its stable address.
@@ -70,6 +72,45 @@ proc peer(host: ApplicationNode, key: StateEdKey): NodePeer =
       if array[32, byte](found.value.identity) == array[32, byte](key): return found.value
   assert false, "missing authenticated distribution peer"
   default(NodePeer)
+proc retainedRequests(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
+    probe: var NodeProbe, fixture: GuaranteeFixture) {.raises.} =
+  ## Actual authenticated CE137/147 requests must still succeed after the source's completed signed session is gone.
+  assert sa.retainedWorkBundles == 1
+  let source = fixture.transcript.computedGuaranteeReport.value.computedReportSource.value
+  let policy = guarantorReadLimits()
+  let target = peer(b, fixture.local)
+  let deadline = getMonoTime()+initDuration(seconds = 15)
+  for coordinate in 0..6:
+    # Independent original computation supplies exact expected wire for every real six-validator shard and the original full bundle.
+    let kind = if coordinate == 6: ReadKind.Bundle else: ReadKind.Availability
+    var payload: seq[byte] = @[]
+    let root = fixture.transcript.computedGuaranteeReport.value.computedReportInfo.value.header.erasureRoot
+    for octet in root.bytes: payload.add(octet)
+    if kind == ReadKind.Availability:
+      payload.add(byte(coordinate))
+      payload.add(0)
+    let request = decodeReadRequest(kind, payload).value
+    let expected = serveAvailabilityRead(source, request, policy)
+    assert expected.error == ReadError.None
+    var ticket = default(NodeRequestTicket)
+    while true:
+      # Completed/closing streams remain physically charged until native retirement, so bounded progress may be required before the next query.
+      let admitted = b.request(target, request, ByteLimit(uint64(expected.value.byteLength)))
+      if admitted.error == NodeError.None:
+        ticket = admitted.value
+        break
+      assert admitted.error in [NodeError.Unavailable, NodeError.LimitExceeded]
+      assert getMonoTime() < deadline, "retained native request admission"
+      pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+    while true:
+      let reply = b.takeReply(ticket)
+      if reply.error == ReadError.None:
+        assert reply.value.bytes == expected.value.bytes
+        break
+      assert reply.error == ReadError.Unavailable, "retained native reply " & $reply.error
+      assert getMonoTime() < deadline, "retained native response FIN"
+      pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+  assert sa.retainedWorkBundles == 1
 proc otherSlot(bytes: seq[byte]): seq[byte] =
   ## The GP signature transcript omits the slot: a second structurally valid current-rotation candidate tests distinct retention capacity.
   let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
@@ -449,6 +490,8 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
     assert getMonoTime() < deadline, "runtime retirement"
     pump(a, b, c, sa, sb, sc, probe, getMonoTime(), retirementSlot)
   assert sa.workSessionPhase(token) == WorkSessionPhase.Empty
+  if variant == Variant.Two:
+    retainedRequests(a, b, c, sa, sb, sc, probe, fixture)
   a.close()
   let reopened = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
       sa.nodeProtocol, streams = 512)

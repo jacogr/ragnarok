@@ -23,7 +23,7 @@ proc policy(raw: WorkFixture): WorkSharingLimits =
   ## Actual source consensus limits remain independent from explicit local execution and byte budgets.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
-        eligibility: guaranteeLimits())
+        eligibility: guaranteeLimits(), retention: guarantorLimits())
 proc refused(outcome: WorkGuaranteeResult[WorkGuaranteeRound], reason: WorkGuaranteeError) =
   ## A rejected reply never extracts an accepted prefix or changes the caller's original immutable round.
   assert outcome.error == reason
@@ -33,7 +33,7 @@ proc signed(fixture: GuaranteeFixture, signer: WorkSigner, identity: StateEdKey,
   let eligible = qualifyWorkGuarantee(fixture.transcript, fixture.original, fixture.execution,
     fixture.view, identity, StateTime(atSlot), guaranteeLimits())
   assert eligible.error == WorkEligibilityError.None
-  let signedResult = signer.signWorkContribution(eligible.value)
+  let signedResult = signer.signWorkContribution(eligible.value, guarantorLimits())
   assert signedResult.error == WorkSignerError.None
   signedResult.value
 proc checkedPayload(collected: CollectedWorkGuarantee, expectedCount: int): seq[byte] =

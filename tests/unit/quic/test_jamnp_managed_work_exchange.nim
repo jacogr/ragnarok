@@ -23,13 +23,13 @@ proc policy(raw: WorkFixture): WorkSharingLimits =
   ## Resource budgets remain explicit and cannot replace consensus parameters obtained from the real canonical source.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
-        eligibility: guaranteeLimits())
+        eligibility: guaranteeLimits(), retention: guarantorLimits())
 proc session(services: var Services, fixture: GuaranteeFixture, raw: WorkFixture,
     header: UntrustedWorkHeader): WorkSessionToken {.raises.} =
   ## The existing real TLS header feeds actual Services authorization, refinement, report computation and private-key signing.
   let token = services.reportSession(fixture, raw, header)
   let admitted = services.beginWorkContribution(token, fixture.local, StateTime(20),
-      guaranteeLimits())
+      guaranteeLimits(), guarantorLimits())
   assert admitted.error == StateProofAdmissionError.None
   services.waitDone()
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Contributed
@@ -240,7 +240,7 @@ proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
   assert services.publishFinalized(services.chainView.bestBlock.value.blockHash) ==
       ViewFinalizeError.None
   let configured = services.configureWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv(
-      "RAGNAROK_TEST_KEY"), fixture.local)
+      "RAGNAROK_TEST_KEY"), fixture.local, guarantorStorageLimits())
   assert configured.error == WorkSigningSetupError.None
   let header = services.networkHeader(fixture, raw, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
   let token = session(services, fixture, raw, header)
@@ -491,7 +491,7 @@ proc main() {.raises.} =
   let fixture = guaranteeFixture(a.signerIdentity.value, keyB, keyC)
   managed(fixture, b, c)
   let qualified = fixture.qualify(guaranteeLimits()).value
-  let local = a.signWorkContribution(qualified).value
+  let local = a.signWorkContribution(qualified, guarantorLimits()).value
   let request = prepareWorkSharing(local, ByteLimit(20000)).value
   let raw = workFixture()
   let responseB = receiveSharedWork(request, fixture.view, keyB, fixture.local, StateTime(21), b,
