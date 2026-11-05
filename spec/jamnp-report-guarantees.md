@@ -659,3 +659,32 @@ also pass 1,000-cycle ARC checks with equal occupied-memory readings before and 
 not native Linux CI evidence. Formatting, verification inventory, all 550 production modules and
 the production ARC/LTO build pass; the generated self-comparison warning is unchanged. These
 adjustments remain in the existing guarantee feature layer.
+
+## Guarantor availability retention boundary (in progress)
+
+Before startup can enable signing, each signed report must reserve bounded serving data independent
+of its session and original canonical graph. The existing source-free CE137 transfer constructor
+can retain every shard and proof together with the original CE147 bundle. Capture must preflight
+aggregate retained bytes, peak workspace and complete hash work before constructing any prefix;
+default limits refuse capture. Immutable getters copy payload bytes, and the retained owner must
+remain usable after all original execution/state aliases retire. This owner alone grants neither
+an assurance nor a durable storage promise. Services must admit capacity before private signing,
+retain every admitted source before disclosing its signature, and preserve it across later work
+and session release. The existing latest-only source does not satisfy that integration requirement.
+
+Completion witnesses include independently verifying captured shards at boundary indices and odd
+validator populations, exact resource boundaries, detached byte mutation, source retirement,
+managed capacity refusal before disclosure, multiple retained roots, actual CE137/147 requests
+after release, and ARC release cycles. Ordinary Services serving still uses the live source until the retained owner and Services
+admission path are integrated and verified together.
+
+The `GuarantorAvailability` component now captures all original CE137 payloads/proofs and the
+CE147 bundle after complete aggregate preflight. Its serving overload checks exact roots,
+full-width shard indices and all response-copy limits before extraction; no original session is
+needed. The native `jamnp_availability_proofs` suite passes byte-for-byte comparisons with original
+computed serving, empty and populated exports, six- and 1023-validator boundary coordinates,
+exact aggregate memory/hash boundaries, malformed/default queries, detached mutation and source
+retirement. The expanded 1,000-cycle ARC check reports 714816 occupied bytes both before and after.
+The changed serving modules also pass Linux-target semantic checking. These are component results;
+capacity reservation in Services, signing integration and real post-release network serving remain
+required before this retention boundary is complete.

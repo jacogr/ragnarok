@@ -57,8 +57,129 @@ proc retained(): PreparedAvailabilityTransfer =
       AvailabilityTransferKind.Audit, 0, 0), limits())
   assert prepared.error == AvailabilityTransferError.None
   prepared.value
+proc retentionLimits(): AvailabilityMerkleLimits =
+  ## Whole-report retention budgets cover all 1023 real validator coordinates and their complete independent proofs.
+  AvailabilityMerkleLimits(bytes: ByteLimit(128*1024*1024),
+    hashBytes: ByteLimit(512*1024*1024), hashes: ElementLimit(8000000))
+proc retainedGuarantor(): GuarantorAvailability =
+  ## Return serving data only after all original execution, canonical map and erasure commitment aliases retire.
+  let source = computedAvailability(0)
+  let retained = retainGuarantorAvailability(source, retentionLimits())
+  assert retained.error == AvailabilityTransferError.None
+  retained.value
+proc retainedReadLimits(): AvailabilityReadLimits =
+  ## Bounded detached response copies do not need fresh hashes, but ordinary serving policy remains explicit and independently valid.
+  AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
+    hashBytes: ByteLimit(16000000), hashes: ElementLimit(10000)), wireBytes: ByteLimit(16000000))
+proc retainedRequest(owner: GuarantorAvailability, kind: ReadKind,
+    shard: uint64 = 0): ReadRequest =
+  ## Only immutable captured commitment facts select the original root; query parsing still validates exact NP framing.
+  var payload: seq[byte] = @[]
+  for octet in owner.guarantorInfo.value.specifier.erasureRoot.bytes: payload.add(octet)
+  if kind == ReadKind.Availability:
+    payload.add(byte(shard and 255))
+    payload.add(byte((shard shr 8) and 255))
+  decodeReadRequest(kind, payload).value
+proc checkRetention(owner: GuarantorAvailability, shard: uint64) =
+  ## Independently verify an archived full distribution against its original computed specifier and exact coordinate.
+  let info = owner.guarantorInfo.value
+  let selected = owner.guarantorTransfer(ErasureShardIndex(shard))
+  assert selected.error == AvailabilityTransferError.None
+  let packet = selected.value
+  let request = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+    root: info.specifier.erasureRoot, shard: ErasureShardIndex(shard))
+  let checked = verifyAvailabilityTransfer(info.specifier, request, packet.bundleShard,
+    packet.segmentShards, packet.justification, limits())
+  assert checked.error == AvailabilityTransferError.None
+  assert uint64(packet.specifier.erasureShards) == uint64(info.specifier.erasureShards)
+  assert serveAvailabilityRead(owner, retainedRequest(owner, ReadKind.Availability, shard),
+      retainedReadLimits()).error == ReadError.None
+  assert serveAvailabilityRead(owner, retainedRequest(owner, ReadKind.Bundle), retainedReadLimits()).error == ReadError.None
+proc retention(source: AvailabilityCommitment) =
+  ## Exact aggregate resource boundaries and detached mutations must not alter later shard or bundle serving.
+  let readLimits = retainedReadLimits()
+  assert not default(GuarantorAvailability).valid
+  assert default(GuarantorAvailability).guarantorInfo.error ==
+      AvailabilityTransferError.Uninitialized
+  assert default(GuarantorAvailability).guarantorBundle.error ==
+      AvailabilityTransferError.Uninitialized
+  assert default(GuarantorAvailability).guarantorTransfer(ErasureShardIndex(0)).error ==
+      AvailabilityTransferError.Uninitialized
+  assert retainGuarantorAvailability(source, default(AvailabilityMerkleLimits)).error ==
+      AvailabilityTransferError.LimitExceeded
+  let invalid = retainGuarantorAvailability(default(AvailabilityCommitment), retentionLimits())
+  assert invalid.error == AvailabilityTransferError.SourceFailure
+  assert invalid.sourceError == AvailabilityCommitmentError.Uninitialized
+  let captured = retainGuarantorAvailability(source, retentionLimits())
+  assert captured.error == AvailabilityTransferError.None
+  let owner = captured.value
+  assert owner.valid
+  let info = owner.guarantorInfo.value
+  let count = uint64(uint16(info.specifier.erasureShards))
+  for shard in [0'u64, count div 2, count-1]:
+    # Compare every framed message with independently served original computation, not another archive getter.
+    checkRetention(owner, shard)
+    let request = retainedRequest(owner, ReadKind.Availability, shard)
+    let original = serveAvailabilityRead(source, request, readLimits)
+    let archived = serveAvailabilityRead(owner, request, readLimits)
+    assert original.error == ReadError.None and archived.error == ReadError.None
+    assert original.value.bytes == archived.value.bytes
+  let bundleRequest = retainedRequest(owner, ReadKind.Bundle)
+  assert serveAvailabilityRead(source, bundleRequest, readLimits).value.bytes ==
+      serveAvailabilityRead(owner, bundleRequest, readLimits).value.bytes
+  let absentReply = serveAvailabilityRead(default(GuarantorAvailability), bundleRequest, readLimits)
+  assert absentReply.error == ReadError.Unavailable
+  assert serveAvailabilityRead(owner, bundleRequest, default(AvailabilityReadLimits)).error ==
+      ReadError.LimitExceeded
+  let excessive = retainedRequest(owner, ReadKind.Availability, count)
+  assert serveAvailabilityRead(owner, excessive, readLimits).error ==
+      ReadError.InvalidRequest
+  var wrong = bundleRequest.payload
+  wrong[0] = wrong[0] xor 1
+  assert serveAvailabilityRead(owner, decodeReadRequest(ReadKind.Bundle, wrong).value,
+      readLimits).error == ReadError.Unavailable
+  let report = decodeReadRequest(ReadKind.Report, bundleRequest.payload).value
+  assert serveAvailabilityRead(owner, report, readLimits).error ==
+      ReadError.InvalidRequest
+  var readCap = readLimits
+  readCap.wireBytes = ByteLimit(4)
+  assert serveAvailabilityRead(owner, bundleRequest, readCap).error == ReadError.LimitExceeded
+  assert serveAvailabilityRead(owner, retainedRequest(owner, ReadKind.Availability),
+      readCap).error == ReadError.LimitExceeded
+  readCap = readLimits
+  readCap.computation.bytes = ByteLimit(4)
+  assert serveAvailabilityRead(owner, bundleRequest, readCap).error == ReadError.LimitExceeded
+  assert owner.guarantorTransfer(ErasureShardIndex(count)).error ==
+      AvailabilityTransferError.InvalidIndex
+  assert owner.guarantorTransfer(ErasureShardIndex(high(uint64))).error ==
+      AvailabilityTransferError.InvalidIndex
+  let original = owner.guarantorBundle.value
+  assert uint64(original.len) == uint64(uint32(info.specifier.bundleLength))
+  var changed = owner.guarantorBundle.value
+  changed[0] = changed[0] xor 1
+  assert owner.guarantorBundle.value == original
+  let packet = owner.guarantorTransfer(ErasureShardIndex(0)).value
+  let before = packet.justification
+  var damaged = packet.justification
+  damaged[0] = damaged[0] xor 1
+  assert owner.guarantorTransfer(ErasureShardIndex(0)).value.justification == before
+  var cap = retentionLimits()
+  cap.bytes = ByteLimit(info.retainedBytes+info.workspaceBytes-1)
+  assert retainGuarantorAvailability(source, cap).error == AvailabilityTransferError.LimitExceeded
+  cap = retentionLimits()
+  cap.hashes = ElementLimit(info.hashes-1)
+  assert retainGuarantorAvailability(source, cap).error == AvailabilityTransferError.LimitExceeded
+  cap = retentionLimits()
+  cap.hashBytes = ByteLimit(info.hashBytes-1)
+  assert retainGuarantorAvailability(source, cap).error == AvailabilityTransferError.LimitExceeded
+  cap = AvailabilityMerkleLimits(bytes: ByteLimit(info.retainedBytes+info.workspaceBytes),
+    hashes: ElementLimit(info.hashes), hashBytes: ByteLimit(info.hashBytes))
+  assert retainGuarantorAvailability(source, cap).error == AvailabilityTransferError.None
 proc releaseCycle(source: AvailabilityCommitment) =
   ## Every new prepared/verified owner and independent byte copy retires before the next ARC sample.
+  let retained = retainGuarantorAvailability(source, retentionLimits())
+  assert retained.error == AvailabilityTransferError.None
+  assert retained.value.guarantorBundle.value.len > 0
   let request = requested(source, AvailabilityTransferKind.Audit, 0, 0)
   let prepared = prepareAvailabilityTransfer(source, request, limits())
   assert prepared.error == AvailabilityTransferError.None
@@ -204,7 +325,11 @@ proc main() =
   serving(empty)
   audit(empty)
   storage(empty)
+  retention(empty)
+  let detached = retainedGuarantor()
+  for shard in [0'u64, 3, 5]: checkRetention(detached, shard)
   let populated = computedAvailability(1)
+  retention(populated)
   audit(populated)
   for shard in [0'u64, 511, 1022]:
     check(populated, AvailabilityTransferKind.Distribution, shard, 0)

@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Original report-backed CE137/147 computation produces detached exact-framed replies only under a managed CPU lease.
+## Original and retained guarantor CE137/147 sources produce detached exact-framed replies for managed CPU dispatch.
 import ./[availability_proof, availability_merkle, read_stream, segment_request]
 import ../codec/natural
 import "../state/export/commitment" as export_commitment
@@ -85,6 +85,46 @@ proc serveAvailabilityRead*(source: AvailabilityCommitment, request: ReadRequest
     appendMessage(wire, bundle)
     appendMessage(wire, segments)
     appendMessage(wire, proof)
+  captureReadReply(request, wire)
+
+proc serveAvailabilityRead*(source: GuarantorAvailability, request: ReadRequest,
+    limits: AvailabilityReadLimits): ReadResult[ReadReply] =
+  ## Retained CE137/147 serving uses no canonical graph, original session or signer; exact root and all copy budgets precede extraction.
+  if not request.availabilityRead: return readFailure[ReadReply](ReadError.InvalidRequest)
+  if not limits.valid: return readFailure[ReadReply](ReadError.LimitExceeded)
+  let described = source.guarantorInfo
+  if described.error != AvailabilityTransferError.None:
+    return readFailure[ReadReply](ReadError.Unavailable)
+  if not request.matchesAvailability(described.value.specifier):
+    return readFailure[ReadReply](ReadError.Unavailable)
+  let maximum = min(uint64(limits.wireBytes), uint64(request.maximumReplyBytes))
+  if uint64(limits.computation.bytes) < maximum*3:
+    return readFailure[ReadReply](ReadError.LimitExceeded)
+  var wire: seq[byte] = @[]
+  if request.kind == ReadKind.Bundle:
+    # The original computed bundle length is fixed private metadata, independent of the caller's output budget.
+    let length = uint64(uint32(described.value.specifier.bundleLength))
+    if length == 0 or length > MaxAvailabilityBundleBytes or length+4 > maximum:
+      return readFailure[ReadReply](ReadError.LimitExceeded)
+    let bundle = source.guarantorBundle
+    if bundle.error != AvailabilityTransferError.None:
+      return readFailure[ReadReply](ReadError.Unavailable)
+    appendMessage(wire, bundle.value)
+  else:
+    # Full-width request coordinates select only an existing immutable transfer; size inspection performs no byte extraction.
+    let payload = request.payload
+    let index = uint64(payload[32]) or (uint64(payload[33]) shl 8)
+    let selected = source.guarantorTransfer(ErasureShardIndex(index))
+    if selected.error == AvailabilityTransferError.InvalidIndex:
+      return readFailure[ReadReply](ReadError.InvalidRequest)
+    if selected.error != AvailabilityTransferError.None:
+      return readFailure[ReadReply](ReadError.Unavailable)
+    let transfer = selected.value
+    if transfer.payloadBytes+12 > maximum:
+      return readFailure[ReadReply](ReadError.LimitExceeded)
+    appendMessage(wire, transfer.bundleShard)
+    appendMessage(wire, transfer.segmentShards)
+    appendMessage(wire, transfer.justification)
   captureReadReply(request, wire)
 
 proc serveAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: ReadRequest,
