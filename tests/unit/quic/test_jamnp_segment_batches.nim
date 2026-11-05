@@ -33,6 +33,22 @@ proc cycle(source: VerifiedAvailabilityTransfer) =
   let payload = segmentGroup(ReadKind.ProvenSegmentShards, source.request.root.bytes, 0, [0'u16, 1, 0])
   let request = decodeReadRequest(ReadKind.ProvenSegmentShards, payload).value
   assert serveSegmentShardBatch([source], request, policy()).error == ReadError.None
+proc indexedSources(source: VerifiedAvailabilityTransfer) =
+  ## The full NP source bound, default gaps and duplicate coordinates must retain exact replies without a quadratic payload scan or arbitrary 64-source ceiling.
+  let payload = segmentGroup(ReadKind.ProvenSegmentShards, source.request.root.bytes,
+    uint16(uint64(source.request.shard)), [0'u16, 1, 0])
+  let request = decodeReadRequest(ReadKind.ProvenSegmentShards, payload).value
+  let expected = serveSegmentShardBatch([source], request, policy()).value.bytes
+  var sources = newSeq[VerifiedAvailabilityTransfer](6144)
+  for index in 1..<sources.len:
+    # Leave the first source default so lower-bound indexing must preserve actual original source positions rather than compressed ordinals.
+    sources[index] = source
+  let result = serveSegmentShardBatch(sources, request, policy())
+  assert result.error == ReadError.None and result.value.bytes == expected,
+    "6144 indexed source slots preserve exact repeated-item proof reply"
+  sources.add(source)
+  assert serveSegmentShardBatch(sources, request, policy()).error == ReadError.LimitExceeded,
+    "NP whole-source ceiling rejects 6145 slots before proof allocation"
 proc archive(source: AvailabilityCommitment): GuarantorAvailability =
   ## Explicit aggregate capture covers the real 1023-validator source; it grants no canonical report or signing authority.
   let limits = AvailabilityMerkleLimits(bytes: ByteLimit(128*1024*1024),
@@ -198,6 +214,7 @@ proc main() =
   assert unconfigured.consume(0) == SegmentRequestError.Uninitialized
   let source = computedAvailability(1)
   let packet = checked(source, 0)
+  indexedSources(packet)
   let expected = packet.specifier
   let rows = [0'u16, 1, 0]
   let raw = decodeReadRequest(ReadKind.SegmentShards, segmentGroup(ReadKind.SegmentShards,

@@ -15,8 +15,8 @@ import ../../../src/codec/work/report
 import ../../../src/state/availability/specifier
 import ../../../src/lib/atomic/file
 import ../../../src/rpc/server
-import ../../support/[jamnp_assurance_fixture, jamnp_assurance_audit_runtime,
-    current_application_context, storage_io, arc_evidence]
+import ../../support/[jamnp_assurance_fixture, jamnp_assurance_read_runtime,
+    jamnp_assurance_batch_runtime, current_application_context, storage_io, arc_evidence]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count actual crypto attempts and inject only explicitly selected maintained-backend failure.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -366,7 +366,7 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   assert served.kind == ProofWorkerCompletionKind.ReadCompleted and
     served.readValue.error == ReadError.None and served.readValue.value.bytes == audit.expected,
     "managed durable audit serves exact original proof without a work session"
-  assuranceAuditRuntime(owner, options, fixture, audit.request, audit.expected, suffix)
+  assuranceReadRuntime(owner, options, fixture, audit.request, audit.expected, suffix)
   let checking = owner.beginAssuranceProbe(fixture.local, CoreIndex(0), 0, AssuranceTime(9000),
       limits()).value
   owner.waitDone()
@@ -420,7 +420,7 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   assert restoredReply.kind == ProofWorkerCompletionKind.ReadCompleted and
     restoredReply.readValue.error == ReadError.None and
     restoredReply.readValue.value.bytes == audit.expected, "restart serves original durable audit proof"
-  assuranceAuditRuntime(owner, options, fixture, audit.request, audit.expected, suffix & "-restart")
+  assuranceReadRuntime(owner, options, fixture, audit.request, audit.expected, suffix & "-restart")
   resetIo()
   armIo(syncIo, 0, 1, failedIo)
   let failedRead = owner.beginNetworkRead(audit.request).value
@@ -435,6 +435,7 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
     "faulted durable namespace refuses subsequent read capture"
   assert not owner.assuranceSigningConfigured, "durable serving requires no private signer"
   resetIo()
+  assuranceBatchRuntime(options, fixture, suffix)
 proc main() {.raises.} =
   ## Original reports and pending assignments are genuinely executed/admitted/published before any network-like response is constructed.
   reset(0)

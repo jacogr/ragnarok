@@ -20,7 +20,8 @@
     "setup_free",
     "commit",
     "ring_verify",
-    "io_fsync"
+    "io_fsync",
+    "io_read"
   ],
   "prepared": false
 }

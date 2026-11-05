@@ -735,3 +735,62 @@ application-node and work-exchange runtime suites pass, as do all 567 production
 real entry point, formatting and verification inventory. Exact source/build/run evidence remains
 under ignored `build/jamnp-implementation/assurance-serving-*`. No Linux CI result is claimed.
 Durable CE139/140 batches, timed outgoing CE141 and explicit foreground activation remain open.
+
+### Durable segment batch contract
+
+CE139/140 retain their NP stream-wide maximum of 6144 requested items. Durable serving must bound
+unique root/shard sources explicitly; different roots mean this is not a 1023-source bound.
+Restore each requested root/shard once, preserve original response order and duplicates, and
+charge whole-request metadata, resident payloads, cumulative restore reads and proof/checksum work.
+A late missing or invalid coordinate yields no successful response prefix. Indexed source lookup
+must avoid quadratic scans at the full bound. Cancellation is observed between durable records;
+all namespace borrows remain held until exact worker collection or joined stop. Existing CE138
+activation remains independently usable without enabling segment batches.
+
+Durable CE139/140 now use the same closed namespace-read mode. `batchSources` is explicitly
+bounded to 6144 and defaults to zero, so CE138-only configuration does not enable durable segment
+batches. Capture reserves variable request copies before cloning. On the worker, private copied
+coordinates are sorted and each root/shard restored once. Cumulative logical reads, metadata and
+proof/checksum hashes are deducted across the entire request; later restores also reserve already
+resident payload graphs. Failure releases the complete intermediate snapshot without returning a
+prefix. The later reply phase charges both resident payloads and allocated source-vector capacity.
+It reparses the original request and preserves its exact order and duplicate items.
+
+The shared shard-reply component now uses bounded dynamic work arrays and a sorted fixed-key
+source index with logarithmic lookup. It supports up to 6144 source slots, skips default sources
+and preserves the first original source when coordinates repeat. Both item and source metadata
+are precharged independently of raw reply bytes. Existing byte/hash/output preflight remains in
+force; the independent 32 MiB CE139/140 method ceiling is unchanged. A full proof reply may need
+more than the tests' ordinary 16-million-byte policy, so the maximum-item witness explicitly
+reserves its independently computed output extent and sufficient computation workspace.
+
+The proof worker supplies its existing synchronized cancellation control at execution; it is not
+retained in queued jobs. Durable reads check it between records and before/after reply derivation.
+A test-only atomic OS-read gate pauses the second uninjected read after one genuine byte, allowing
+exact Running cancellation to be installed before release. The test observes only the atomic gate
+receipt while IO runs and samples ordinary counters after collection. A complete positive control
+proves the full logical read count, while cancellation completes fewer record reads, returns only
+Cancelled and preserves every stored promise. Gate configuration is quiescent, release precedes
+joined cleanup and the gate has no effect when unarmed. Vendor and production SDK sources remain
+unchanged.
+
+The expanded fixture independently computes 65 exported segments with six erasure shards and
+persists actual verified distributions for coordinates 0, 4 and 5. Its root is explicitly outside
+current C10; this establishes public retained-data serving without claiming GP admission of a
+historical block. Literal grouped requests and original guarantor-derived rows/co-paths check
+mixed shard order, duplicate rows, raw and proven replies. Native tests cover exact total budgets,
+six independent minus-one/source-cap refusals, late missing coordinates, variable capture limits,
+empty batches, causal cancellation and a 6144-item proof reply whose restore budget permits only
+one read of its repeated coordinate. Ordinary application-node TLS tests serve both variants after
+service/archive restart without a signer or work session.
+
+Checked ARC/Clang ThinLTO passes the expanded acquisition and segment-batch suites. The acquisition
+suite retains 93504 occupied bytes across 1000 cycles; segment batches retain 4129088. Selected
+normal native suites for segment batches, assurance storage, assurance workers, ordinary proof
+workers, signing, application nodes and work-exchange runtime pass. The two affected preparation
+and requirements harness modules pass all 25 tests. All 570 production modules and the real entry
+point, formatting and verification inventory pass on master
+`d0c26f878c96abab6fa3b91e8d96f5bfb27d1a60`. Evidence and exact input/build/run identities are under
+ignored `build/jamnp-implementation/assurance-batch-*`. These are local results, not native Linux CI.
+Timed outgoing CE141 and explicit optional foreground activation remain required for the complete
+assurance feature.

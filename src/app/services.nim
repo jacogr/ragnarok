@@ -2095,7 +2095,7 @@ proc rememberAvailability*(services: var Services,
   if not services.stateProofAvailable: return AvailabilityStoreError.Busy
   services.availabilityStore.remember(transfer)
 proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadError =
-  ## Exact root/shard selection touches the private cache only before the worker lease is acquired.
+  ## Durable lookup stays on the worker; legacy memory-cache sources are selected only while the host owns the idle lease.
   if services.assuranceReadsEnabled:
     # Durable selection performs no foreground filesystem IO; all lookup, proof and synchronization work stays in the closed job.
     let captured = captureAssuranceRead(services.assuranceStore, request,
@@ -2173,6 +2173,12 @@ proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadEr
   reason
 proc stageSegmentShardBatch(services: var Services, request: ReadRequest): ReadError =
   ## The complete bounded private cache snapshot is frozen before admission; no caller-owned transfer alias enters this job.
+  if services.assuranceReadsEnabled and uint64(services.assuranceReadLimits.batchSources) > 0:
+    # A separately selected durable batch policy captures no payload graphs or filesystem data on the foreground thread.
+    let captured = captureAssuranceRead(services.assuranceStore, request,
+        services.assuranceReadLimits)
+    if captured.error == ReadError.None: services.networkReadInput = captured.value
+    return captured.error
   if not services.availabilityEnabled or not services.availabilityStore.configured: return ReadError.Unavailable
   let captured = captureSegmentShardBatch(services.availabilityStore.snapshot, request,
       services.availabilityLimits)
@@ -2206,7 +2212,10 @@ proc beginNetworkRead*(services: var Services, request: ReadRequest): NetworkRea
   let admitted = services.proofWorker.submit(services.networkReadInput)
   if admitted.error == ProofWorkerError.None:
     services.proofing = true # Disconnect/cancel must not clear this flag before matching Done collection or join.
-    services.assuranceReadActive = services.assuranceReadsEnabled and request.kind == ReadKind.Audit
+    let batch = request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards] and
+      uint64(services.assuranceReadLimits.batchSources) > 0
+    services.assuranceReadActive = services.assuranceReadsEnabled and (request.kind ==
+        ReadKind.Audit or batch)
     return NetworkReadStart(status: StateProofAdmissionError.None, ticket: admitted.value)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil

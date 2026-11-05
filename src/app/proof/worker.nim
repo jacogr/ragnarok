@@ -239,7 +239,9 @@ proc execute(worker: ptr StateProofWorker) =
     worker.verifyOutcome = executeReadVerification(
         worker.verifyJob) # Fresh immutable input contains no selected-state aliases.
   of ProofWorkerOperation.NetworkRead:
-    worker.readOutcome = executeNetworkRead(worker.readJob) # Only frozen wire survives the worker activation.
+    worker.readOutcome = executeNetworkRead(worker.readJob,
+      assuranceScanControl(stopAssuranceScan, cast[pointer](
+          worker))) # Only frozen wire survives; durable batches may observe cancellation between records.
   of ProofWorkerOperation.Query:
     worker.outcome = executeProofQuery(worker.query) # Full/partial query sources retain the same bounded response contract.
   of ProofWorkerOperation.Ingestion:

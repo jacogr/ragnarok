@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Real ordinary application nodes serve CE138 from the caller's durable namespace through managed proof work and both native FINs, without a guarantor session or private signer.
+## Real ordinary application nodes serve bounded assurance reads from the caller's durable namespace through managed proof work and both native FINs, without a guarantor session or private signer.
 import std/[assertions, monotimes, times, posix/posix]
 import ../../src/app/[services, options, node as application_node]
 import ../../src/jamnp-s/[node as node_streams, connections, endpoints, read_stream]
@@ -10,9 +10,9 @@ import ../../src/codec/[bounded, assurances]
 import ../../src/codec/state/safrole
 import ../../src/quic/address
 import ./[jamnp_assurance_fixture, jamnp_topology_fixture, assurance_signer_context]
-proc assuranceAuditRuntime*(server: var Services, settings: Options,
+proc assuranceReadRuntime*(server: var Services, settings: Options,
     fixture: AssuranceAcquisitionFixture, request: ReadRequest, expected: seq[byte],
-    suffix: string) {.raises.} =
+    suffix: string, records = 1'u64) {.raises.} =
   ## Each Services instance independently decodes the explicit complete trusted seed; only the server owns the already configured archive/read policy.
   var serverKey = "assurance-audit-server-key-" & suffix & ".pem"
   var serverCert = "assurance-audit-server-cert-" & suffix & ".pem"
@@ -78,9 +78,9 @@ proc assuranceAuditRuntime*(server: var Services, settings: Options,
     let reply = b.takeReply(ticket)
     if reply.error == ReadError.Unavailable: continue
     assert reply.error == ReadError.None and reply.value.bytes == expected,
-      "real durable CE138 reply matches independently derived original two-frame proof"
+      "real durable assurance reply matches independently derived original framed data/proof reply"
     break
-  assert server.assuranceStorageInfo.records == 1 and not server.assuranceStorageInfo.faulted,
+  assert server.assuranceStorageInfo.records == records and not server.assuranceStorageInfo.faulted,
     "native serving preserves the actual retained namespace"
   assert not server.assuranceSigningConfigured and not receiver.assuranceStorageInfo.opened,
     "no private signer or client archive is implicitly enabled"
