@@ -229,6 +229,40 @@ proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): Pa
   let chunk = sharedZeroChunk(seed)
   PageData(index: index, access: access, chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
 
+proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: PageAccess,
+    total: int): PageDirectory =
+  ## An admitted append shares complete immutable blocks and privately fills only the old partial tail.
+  assert uint32(first) < uint32(past) and uint32(past) <= 0x100000'u32
+  assert total >= pages.len and total <= 0x100000
+  assert uint32(total-pages.len) == uint32(past)-uint32(first)
+  let complete = pages.len div 64
+  let remainder = pages.len mod 64
+  let blockCount = total div 64 + int(total mod 64 != 0)
+  result = PageDirectory(len: total, blocks: newSeqOfCap[PageBlock](blockCount))
+  for group in 0..<complete:
+    # Sharing a block retains one owner without retaining its sixty-four page children again.
+    result.blocks.add(pages.blocks[group])
+  var entries = newSeqOfCap[PageData](min(64, total-complete*64))
+  for offset in 0..<remainder:
+    # Only initialized final-block references enter the private replacement tail.
+    entries.add(pages.blocks[complete].entries[offset])
+  var zero: nil PageChunk = nil
+  var ordinal = uint32(first)
+  while ordinal < uint32(past):
+    # The caller proves every new ordinal follows all old pages; existing chunks stay immutable.
+    entries.add(zeroPage(PageIndex(ordinal), access, zero))
+    inc ordinal
+    if entries.len == 64:
+      # Publish a complete private block once; an exact fill must not allocate an empty final block.
+      result.blocks.add(PageBlock(entries: move(entries)))
+      if ordinal < uint32(past):
+        # The validated remaining ordinal count bounds this final capacity and its native conversion.
+        entries = newSeqOfCap[PageData](min(64, int(uint32(past)-ordinal)))
+  if entries.len != 0:
+    # A partial final block exposes exactly its initialized entries, never spare capacity.
+    result.blocks.add(PageBlock(entries: move(entries)))
+  assert result.blocks.len == blockCount
+
 func pageByte(page: PageData, offset: int): byte {.inline.} =
   ## Read one proven page offset without returning a mutable chunk or retaining a transient reference.
   page.chunks[offset div 512].bytes[offset mod 512]
@@ -662,6 +696,11 @@ proc withPageRange*(memory: Memory, first, past: PageIndex, access: PageAccess,
   let total = uint64(data.pages.len-(stop-start))+interval
   if total > uint64(uint32(data.limit)) or total > uint64(high(int) div sizeof(PageData)):
     return MachineResult[Memory](status: MachineError.LimitExceeded) # All prospective pages count before any private allocation.
+  if not dropped and start == data.pages.len:
+    # Ordered endpoints imply stop == start: append new pages without rebuilding complete prefix blocks.
+    var directory = appendedDirectory(data.pages, first, past, access, int(total))
+    return MachineResult[Memory](status: MachineError.None,
+      completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
   var pages = newSeqOfCap[PageData](int(total))
   for index in 0..<start: pages.add(data.pages[index]) # Preserve immutable outside prefix owners.
   if not dropped:

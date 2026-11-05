@@ -1,2 +1,3 @@
+PVM appended argument memory reuse passed
 PVM bounded memory reuse passed
 ARC_RELEASE cycles=1000 unchanged
