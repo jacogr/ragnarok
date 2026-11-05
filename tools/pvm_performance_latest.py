@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""Retrieve one explicit CI attempt's complete dual-architecture PVM performance reports.
+"""Retrieve the latest PVM job executions within one source-bound CI run or attempt limit.
 
 Default selection is the newest master-push CI run, including pending or failed runs: an older
-green result is never substituted. Authenticated gh owns API access and artifact downloads.
+green result is never substituted. Selective reruns retain each CPU's actual measurement attempt;
+workflow conclusion and successful PVM measurements are reported separately. Authenticated gh
+owns API access and artifact downloads.
 """
 import argparse
 import json
@@ -96,24 +98,88 @@ def select_run(repo, run_id=None, attempt=None, gh=None):
     return run
 
 
-def _artifacts(repo, run, gh):
-    """Require exactly one nonexpired artifact per architecture for the explicitly selected attempt."""
-    pages = _json(gh(['api', '--paginate', '--slurp',
-                     f'repos/{repo}/actions/runs/{run["id"]}/artifacts?per_page=100']))
-    if not isinstance(pages, list):
-        raise ValueError('Malformed paginated artifact response')
+def _rows(endpoint, field, gh):
+    """Read all metadata pages; malformed or omitted pages cannot silently remove newer evidence."""
+    pages = _json(gh(['api', '--paginate', '--slurp', endpoint]))
+    if not isinstance(pages, list) or not pages:
+        raise ValueError('Malformed paginated '+field+' response')
     rows = []
     for page in pages:
-        if not isinstance(page, dict) or not isinstance(page.get('artifacts'), list):
-            raise ValueError('Malformed artifact page')
-        rows.extend(page['artifacts'])
+        if (not isinstance(page, dict) or not isinstance(page.get(field), list) or
+                any(not isinstance(row, dict) for row in page[field])):
+            raise ValueError('Malformed '+field+' page')
+        rows.extend(page[field])
+    return rows
+
+
+def _artifacts(repo, run, gh):
+    """Choose newest available artifacts within the limit, pending verification against actual jobs."""
+    rows = _rows(f'repos/{repo}/actions/runs/{run["id"]}/artifacts?per_page=100', 'artifacts', gh)
+    limit = _positive(run['run_attempt'], 'selected attempt limit')
     selected = {}
     for arch in ARCHITECTURES:
-        name = f'pvm-performance-{arch}-{run["run_attempt"]}'
-        matches = [row for row in rows if isinstance(row, dict) and row.get('name') == name]
+        # Expired/duplicate newest artifacts are failures, never permission to choose older green.
+        candidates = []
+        for row in rows:
+            match = re.fullmatch('pvm-performance-'+arch+r'-([1-9][0-9]*)', str(row.get('name', '')))
+            if match is not None and int(match[1]) <= limit:
+                candidates.append((int(match[1]), row))
+        if not candidates:
+            raise ValueError('Missing PVM artifact for '+arch+' within attempt '+str(limit))
+        newest = max(number for number, _ in candidates)
+        matches = [row for number, row in candidates if number == newest]
         if len(matches) != 1 or matches[0].get('expired') is not False:
-            raise ValueError('Missing, duplicate or expired artifact: '+name)
-        selected[arch] = matches[0]
+            raise ValueError('Duplicate or expired newest artifact for '+arch)
+        _positive(matches[0].get('id'), 'artifact ID')
+        selected[arch] = dict(matches[0], measurement_attempt=newest)
+    return selected
+
+
+def _jobs(repo, run, reports, gh):
+    """Find each report-declared job's latest execution, including failures that forbid fallback."""
+    names = {arch: reports[arch]['identity']['ci']['PVM_CI_JOB_NAME'] for arch in ARCHITECTURES}
+    if len(set(names.values())) != len(ARCHITECTURES):
+        raise ValueError('Ambiguous PVM architecture job names')
+    selected = {}
+    for attempt in range(_positive(run['run_attempt'], 'job attempt limit'), 0, -1):
+        rows = _rows(f'repos/{repo}/actions/runs/{run["id"]}/attempts/{attempt}/jobs?per_page=100',
+                     'jobs', gh)
+        for arch, name in names.items():
+            if arch in selected:
+                continue  # An earlier execution can never override the newest one already selected.
+            matches = []
+            for row in rows:
+                if row.get('name') != name:
+                    continue  # Other jobs cannot supply identity or status for this architecture.
+                if 'run_attempt' in row:
+                    actual = _positive(row['run_attempt'], 'actual PVM job attempt')
+                    if actual > attempt:
+                        raise ValueError('PVM job belongs to a future attempt')
+                    if actual < attempt:
+                        continue  # Some API views carry earlier jobs; inspect their real attempt below.
+                matches.append(row)
+            if not matches:
+                continue  # A selective rerun of unrelated jobs leaves this CPU's execution unchanged.
+            if len(matches) != 1:
+                raise ValueError('Duplicate PVM job for '+arch+' in attempt '+str(attempt))
+            job = matches[0]
+            identifier = _positive(job.get('id'), 'PVM job ID')
+            if job.get('run_id') != run['id'] or job.get('head_sha') != run['head_sha']:
+                raise ValueError('PVM job source/run disagreement')
+            if job.get('status') != 'completed' or job.get('conclusion') != 'success':
+                raise ValueError('Latest '+arch+' PVM execution is '+str(job.get('status'))+'/'+
+                                 str(job.get('conclusion'))+' in attempt '+str(attempt))
+            ci = reports[arch]['identity']['ci']
+            if _positive(ci['GITHUB_RUN_ATTEMPT'], 'measurement attempt') != attempt:
+                raise ValueError('Latest '+arch+' PVM execution has no matching measurement artifact')
+            selected[arch] = dict(id=identifier, name=name, run_attempt=attempt,
+                                  status=job['status'], conclusion=job['conclusion'])
+        if len(selected) == len(ARCHITECTURES):
+            break  # All newer attempts have been checked; older executions are irrelevant.
+    if len(selected) != len(ARCHITECTURES):
+        raise ValueError('Missing PVM job execution for one or both architectures')
+    if len({job['id'] for job in selected.values()}) != len(ARCHITECTURES):
+        raise ValueError('One PVM job cannot identify two native architectures')
     return selected
 
 
@@ -143,7 +209,7 @@ def _retire(folder):
 
 def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest',
              run_id=None, attempt=None, gh=None):
-    """Download and atomically expose same-run full reports for both native CPUs, or record failure."""
+    """Expose each CPU's latest successful PVM execution in the selected source/run, or fail closed."""
     gh = _gh if gh is None else gh
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -161,14 +227,16 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
             if master != selected['head_sha']:
                 raise ValueError('Newest master CI run does not yet match current master '+master+
                                  '; no older result substituted')
-        if selected.get('status') != 'completed' or selected.get('conclusion') != 'success':
+        if selected.get('status') != 'completed':
             raise ValueError('Newest/selected master CI run is '+str(selected.get('status'))+'/'+
                              str(selected.get('conclusion'))+'; no older result substituted')
+        if not isinstance(selected.get('conclusion'), str) or not selected['conclusion'].strip():
+            raise ValueError('Completed workflow has no conclusion')
         artifacts = _artifacts(repo, selected, gh)
         reports = {}
         with tempfile.TemporaryDirectory(prefix='pvm-performance-') as temporary:
             for arch in ARCHITECTURES:
-                # Name includes attempt; gh never chooses a different run or an older architecture artifact.
+                # Exact names bind downloaded evidence to its real producing attempt, not the workflow counter.
                 destination = Path(temporary)/arch
                 destination.mkdir()
                 gh(['run', 'download', str(selected['id']), '--repo', repo, '--name',
@@ -178,12 +246,14 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
                 if (report['architecture'] != arch or report['scope'] != 'all' or
                         report['revision'] != selected['head_sha'] or
                         _positive(ci['GITHUB_RUN_ID'], 'report run ID') != selected['id'] or
-                        _positive(ci['GITHUB_RUN_ATTEMPT'], 'report attempt') != selected['run_attempt'] or
+                        _positive(ci['GITHUB_RUN_ATTEMPT'], 'report attempt') !=
+                        artifacts[arch]['measurement_attempt'] or
                         ci['GITHUB_EVENT_NAME'] != selected['event'] or
                         ci['GITHUB_REF'] != 'refs/heads/'+selected['head_branch'] or
                         ci['GITHUB_REPOSITORY'].lower() != repo.lower()):
                     raise ValueError('Artifact source/run/attempt/architecture/scope disagreement')
                 reports[arch] = report
+        jobs = _jobs(repo, selected, reports, gh)
         # Architectures may have different compiler/native binaries, never different source/reference/golden cohorts.
         arm, x86 = (reports[arch]['identity'] for arch in ARCHITECTURES)
         if (arm['reference_revision'] != x86['reference_revision'] or
@@ -196,9 +266,19 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
             revision=selected['head_sha'], run_id=selected['id'], run_attempt=selected['run_attempt'],
             selection='newest-master-push' if run_id is None and attempt is None else 'explicit-history',
             event=selected['event'], ref='refs/heads/'+selected['head_branch'],
-            architectures=list(ARCHITECTURES), artifacts={arch: artifacts[arch]['name'] for arch in ARCHITECTURES})
-        _atomic_text(folder/'summary.md', 'Same-source native reports; no cross-architecture ratio.\n\n'+
-                     '\n'.join(summaries))
+            workflow_status=selected['status'], workflow_conclusion=selected['conclusion'],
+            measurement_attempts={arch: jobs[arch]['run_attempt'] for arch in ARCHITECTURES},
+            jobs=jobs, architectures=list(ARCHITECTURES),
+            artifacts={arch: artifacts[arch]['name'] for arch in ARCHITECTURES},
+            artifact_ids={arch: artifacts[arch]['id'] for arch in ARCHITECTURES})
+        provenance = ('PVM measurements: passed. Source '+selected['head_sha']+', run '+
+                      str(selected['id'])+'. Selected workflow attempt '+str(selected['run_attempt'])+
+                      ': '+selected['status']+'/'+selected['conclusion']+'.\n\n')
+        for arch in ARCHITECTURES:
+            provenance += (arch+': measurement attempt '+str(jobs[arch]['run_attempt'])+
+                           ', job '+str(jobs[arch]['id'])+', artifact '+str(artifacts[arch]['id'])+'.\n\n')
+        _atomic_text(folder/'summary.md', provenance+
+                     'Same-source native reports; no cross-architecture ratio.\n\n'+'\n'.join(summaries))
         _atomic_text(folder/'latest.json', json.dumps(result, indent=2)+'\n')
         return result
     except BaseException as error:
@@ -216,10 +296,14 @@ def main():
     parser.add_argument('--repo', default='jacogr/ragnarok')
     parser.add_argument('--output', default='build/tests/pvm-performance-latest')
     parser.add_argument('--run-id', help='Explicit historical CI push/manual run (full reports only)')
-    parser.add_argument('--attempt', help='Explicit attempt; default is the selected run latest attempt')
+    parser.add_argument('--attempt', help='Historical attempt limit; use each CPU\'s latest PVM execution at or before it')
     args = parser.parse_args()
     result = retrieve(args.repo, args.output, args.run_id, args.attempt)
-    print(f'PVM performance: {result["revision"]}, run{result["run_id"]}/attempt{result["run_attempt"]}')
+    print(f'PVM performance passed: {result["revision"]}, run{result["run_id"]}; '
+          f'workflow attempt{result["run_attempt"]} {result["workflow_conclusion"]}')
+    for arch in ARCHITECTURES:
+        print(f'{arch}: measurement attempt{result["measurement_attempts"][arch]}, '
+              f'job{result["jobs"][arch]["id"]}, artifact{result["artifact_ids"][arch]}')
 
 
 if __name__ == '__main__':

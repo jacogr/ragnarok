@@ -28,6 +28,8 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
                 request = dict(context, matrix=dict(family=family))
                 self.assertEqual(expression(section['env']['PVM_PERF_SCOPE'], request), 'all')
                 self.assertEqual(expression(section['env']['PVM_CI_ARCH'], request), family['group'])
+                self.assertEqual(expression(section['env']['PVM_CI_JOB_NAME'], request),
+                                 expression(section['name'], request))
                 self.assertEqual(expression(section['runs-on'], request), family['os'])
                 self.assertIn('build/tests/pvm-performance/*.json', artifact_paths(section))
                 self.assertIn('build/tests/pvm-performance/*.csv', artifact_paths(section))

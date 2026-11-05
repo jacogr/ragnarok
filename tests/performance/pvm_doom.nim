@@ -235,6 +235,7 @@ for sample in 0..<samples:
     let finalPage = pageImage(finalMemory, images[page].index).value
     let original = pageImage(captured.value, images[page].index).value
     assert finalPage.access == images[page].access
+    assert original.access == images[page].access
     for i in 0..<4096:
       assert finalPage.bytes[i] == byte(expected[120+page*4096+i])
       assert original.bytes[i] == images[page].bytes[i]

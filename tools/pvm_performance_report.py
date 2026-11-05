@@ -110,6 +110,11 @@ def _identity(report):
         raise ValueError('CI source/event disagreement')
     for key in ('GITHUB_REF', 'GITHUB_REPOSITORY'):
         _text(ci.get(key), key)
+    # Bind matrix presentation to the actual workflow receipt; retrieval never guesses job names.
+    if ci.get('GITHUB_JOB') != 'pvm-comparison':
+        raise ValueError('Foreign PVM workflow job')
+    if not _text(ci.get('PVM_CI_JOB_NAME'), 'PVM CI job name').strip():
+        raise ValueError('Blank PVM CI job name')
     if re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', ci['GITHUB_REPOSITORY']) is None:
         raise ValueError('Invalid CI repository')
     files = _mapping(identity.get('files'), 'sealed file identities')

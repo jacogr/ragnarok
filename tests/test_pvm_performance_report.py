@@ -78,6 +78,10 @@ class PerformanceReportTests(unittest.TestCase):
         """Source, actual host, compiler, warmup and executable seals must describe this cohort."""
         mutations = (
             lambda r: r['identity']['ci'].update(GITHUB_SHA='f'*40),
+            lambda r: r['identity']['ci'].pop('GITHUB_JOB'),
+            lambda r: r['identity']['ci'].update(GITHUB_JOB='foreign-job'),
+            lambda r: r['identity']['ci'].pop('PVM_CI_JOB_NAME'),
+            lambda r: r['identity']['ci'].update(PVM_CI_JOB_NAME=' \t'),
             lambda r: r['identity']['host']['runner'].update(RUNNER_ARCH='X64'),
             lambda r: r['identity']['compiler'].update(sha256='e'*64),
             lambda r: r['identity']['native_qualification'].update(revision='e'*40),

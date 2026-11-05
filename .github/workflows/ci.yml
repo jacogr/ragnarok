@@ -640,7 +640,8 @@ jobs:
   # Focused manual requests reuse this runner/report protocol, without diagnostic benchmark paths.
   pvm-comparison:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / PVM (${{ matrix.family.name }})
+    # Reports retain the actual API job name without maintaining a separate display-name selector.
+    name: &pvm-performance-name ${{ format('Perf / PVM ({0})', matrix.family.name) }}
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
@@ -650,6 +651,7 @@ jobs:
     env:
       PVM_CI_SYSTEM: Linux
       PVM_CI_ARCH: ${{ matrix.family.group }}
+      PVM_CI_JOB_NAME: *pvm-performance-name
       PVM_PERF_SCOPE: ${{ inputs.suite == 'bench-doom' && 'doom' || 'all' }}
     steps:
       - *checkout

@@ -189,6 +189,9 @@ class PerformanceRunner:
         """Require the exact current clean source, production native host and passed prerequisite receipt."""
         if os.environ.get('GITHUB_ACTIONS') != 'true':
             raise RuntimeError('PVM performance sampling requires native CI')
+        if (os.environ.get('GITHUB_JOB') != 'pvm-comparison'
+                or not os.environ.get('PVM_CI_JOB_NAME', '').strip()):
+            raise ValueError('Missing canonical PVM performance CI job identity')
         host = host_identity()
         if host['system'] != 'Linux' or host['architecture'] not in ('arm64', 'x86_64'):
             raise ValueError('PVM performance requires a supported native Linux runner')
@@ -218,7 +221,8 @@ class PerformanceRunner:
             path=str(receipt_path.relative_to(ROOT)), sha256=digest(receipt_path), revision=revision),
             compiler=dict(sha256=digest(compiler), identity=(compiler.parent.parent/'NIGHTLY.txt').read_text()),
             ci={key: os.environ.get(key) for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
-                'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY')},
+                'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY',
+                'GITHUB_JOB', 'PVM_CI_JOB_NAME')},
             doom_warmup_ticks=DOOM_WARMUP, native_build_defines=defines,
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             build_environment={key: os.environ[key] for key in

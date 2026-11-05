@@ -108,6 +108,14 @@ fn main() {
         profile.set_cost_model(Some(CostModelKind::Full(CacheModel::L2Hit)));
         let module =
             Module::from_blob(&engine, &profile, ProgramBlob::from_parts(parts).unwrap()).unwrap();
+        let modern_preparation = if modern {
+            // Constructor clocks stop before the independent gas oracles; publish only after they pass.
+            let cpu = measurement::process_cpu() - preparation_cpu;
+            Some((cpu, preparation.elapsed().as_nanos()))
+        } else {
+            // Historical wall-only observations retain their existing stop after the oracle checks.
+            None
+        };
         assert_eq!(
             module.calculate_gas_cost_for(ProgramCounter(0)),
             Some(price as i64)
@@ -123,7 +131,6 @@ fn main() {
             );
         }
         let prepare_ns = preparation.elapsed().as_nanos();
-        let prepare_cpu_ns = measurement::process_cpu() - preparation_cpu;
         let label = format!("synthetic-{row}");
         measurement::module_receipt(
             &label,
@@ -133,11 +140,12 @@ fn main() {
         );
         if modern {
             // Bind actual engine/module identity and both real constructor clocks before sample zero.
+            let (prepare_cpu_ns, prepare_wall_ns) = modern_preparation.unwrap();
             let machine_code_bytes = module.machine_code().map_or(0, |code| code.len());
             assert_eq!(engine.backend(), BackendKind::Interpreter);
             assert_eq!(machine_code_bytes, 0);
-            assert!(prepare_cpu_ns > 0 && prepare_ns > 0);
-            println!("SYNTHETIC_PREPARE,1,{row},{prepare_cpu_ns},{prepare_ns}");
+            assert!(prepare_cpu_ns > 0 && prepare_wall_ns > 0);
+            println!("SYNTHETIC_PREPARE,1,{row},{prepare_cpu_ns},{prepare_wall_ns}");
             println!("SYNTHETIC_REFERENCE,1,{row},interpreter,interpreter,{machine_code_bytes}");
         }
         for sample in 0..13 {

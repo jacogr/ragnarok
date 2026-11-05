@@ -459,6 +459,8 @@ native-policy receipts, clock scopes, lifecycle separation and failure-safe repo
 
 Artifacts carry source/compiler/binary/input, host/CPU, run/attempt and sample identities.
 The supported `make pvm-perf-latest` resolver downloads and validates the newest master result
-on both architectures without building or executing a benchmark. It does not conceal a newer
-pending or failed cohort behind old successful reports. Emulated correctness evidence and
+on both architectures without building or executing a benchmark. Selective retries retain each
+CPU's actual PVM attempt; unrelated job failures are shown separately from valid measurements.
+It does not conceal a newer pending or failed cohort behind old successful reports.
+Emulated correctness evidence and
 historical wall-only synthetic timings cannot supply native CPU comparison cells.

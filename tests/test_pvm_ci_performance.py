@@ -105,7 +105,8 @@ class InertRunner(performance.PerformanceRunner):
                                       sha256=performance.digest(receipt),
                                       revision='a'*40),
             ci=dict(GITHUB_RUN_ID='1', GITHUB_RUN_ATTEMPT='2', GITHUB_EVENT_NAME='push',
-                GITHUB_REF='refs/heads/master', GITHUB_SHA='a'*40, GITHUB_REPOSITORY='example/pvm'),
+                GITHUB_REF='refs/heads/master', GITHUB_SHA='a'*40, GITHUB_REPOSITORY='example/pvm',
+                GITHUB_JOB='pvm-comparison', PVM_CI_JOB_NAME='Perf / PVM (Linux x86_64)'),
             reference_revision='b'*40, toolchain={}, native_build_defines=['pvmX86Jit'])
 
     def prepare_micro(self):
@@ -326,13 +327,42 @@ class PerformanceOrchestrationTests(unittest.TestCase):
                             side_effect=lambda args, **kwargs: 'a'*40 if 'rev-parse' in args else ''), \
                         patch.object(runner, 'build_images') as builds, \
                         patch.object(runner, 'command') as commands, \
-                        patch.dict(os.environ, GITHUB_ACTIONS='true'):
+                        patch.dict(os.environ, GITHUB_ACTIONS='true', GITHUB_JOB='pvm-comparison',
+                                   PVM_CI_JOB_NAME='Perf / PVM (Linux x86_64)'):
                     with self.assertRaises(ValueError):
                         runner.execute()
                 builds.assert_not_called()
                 commands.assert_not_called()
                 self.assertEqual(runner.report['status'], 'failed')
                 self.assertEqual(runner.report['runs'], [])
+
+    def test_missing_or_foreign_ci_job_identity_refuses_before_qualification_tools(self):
+        """Selective-rerun artifacts require an actual canonical job ID and declared display name."""
+        for job, name in ((None, 'PVM job'), ('other-job', 'PVM job'),
+                          ('pvm-comparison', None), ('pvm-comparison', ''),
+                          ('pvm-comparison', ' \t')):
+            with self.subTest(job=job, name=name):
+                env = dict(os.environ, GITHUB_ACTIONS='true')
+                env.pop('GITHUB_JOB', None)
+                env.pop('PVM_CI_JOB_NAME', None)
+                if job is not None:
+                    env['GITHUB_JOB'] = job
+                if name is not None:
+                    env['PVM_CI_JOB_NAME'] = name
+                runner = performance.PerformanceRunner(self.folder/'job-identity', 'doom')
+                with patch.dict(os.environ, env, clear=True), \
+                        patch.object(performance, 'host_identity') as host, \
+                        patch.object(performance, 'installed') as compiler, \
+                        patch.object(runner, 'command') as commands, \
+                        patch.object(runner, 'build_images') as builds:
+                    with self.assertRaisesRegex(ValueError, 'CI job identity'):
+                        runner.execute()
+                host.assert_not_called()
+                compiler.assert_not_called()
+                commands.assert_not_called()
+                builds.assert_not_called()
+                self.assertEqual(runner.report['runs'], [])
+                self.assertEqual(runner.report['status'], 'failed')
 
     def test_doom_constructor_cpu_wall_and_sample_indices_are_distinct(self):
         """The modern DOOM extension preserves genuine constructor clocks and legacy complete framing."""

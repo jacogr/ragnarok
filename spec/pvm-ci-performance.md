@@ -78,9 +78,15 @@ private experiments and fixture memory are excluded.
 
 `make pvm-perf-latest` uses authenticated `gh` to locate the newest master-push CI
 run and retrieve both native architecture reports. It validates complete scope,
-matching measured revision/run identity and explicit attempt identity before
-rendering. A pending, failed, missing or incomplete newest measurement is reported
-as such; retrieval never silently substitutes an older successful revision. Explicit
+matching measured revision/run identity and each architecture's latest actual PVM
+job execution before rendering. Selective retries may leave the two CPUs on different
+attempts; both actual attempts remain explicit. Retrying an unrelated job does not
+discard valid measurements. A newer failed, cancelled, skipped or incomplete PVM
+execution blocks retrieval; an older green execution cannot replace it. The workflow
+must finish, and its overall conclusion is shown separately from PVM validity.
+The concrete job identity comes from the source-bound report, so display-name changes
+need no duplicated selector update. Retrieval never silently substitutes an older
+successful revision. Explicit
 historical run selection remains available through the helper's `--help` interface.
 Downloading reports builds no toolchain and executes no guests.
 

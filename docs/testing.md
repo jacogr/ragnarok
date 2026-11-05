@@ -115,9 +115,11 @@ Missing or foreign evidence fails the job. Ratios are informational, with no noi
 See the [monitoring contract](../spec/pvm-ci-performance.md) for inventory and scope details.
 
 Use `make pvm-perf-latest` to download and validate both reports from the newest master-push CI
-run, with exact revision/architecture/coverage identities. It reports pending or failed newest
-data rather than silently returning an older green result. No toolchain or benchmark runs during
-retrieval. JSON, CSV, summaries and logs remain available as architecture-specific Actions
+run, with exact revision/architecture/coverage identities. It follows each CPU's latest actual PVM
+execution across selective retries and shows its attempt separately from the overall CI conclusion.
+It reports pending or failed newest PVM data rather than silently returning an older green result.
+No toolchain or benchmark runs during retrieval. JSON, CSV, summaries and logs remain available as
+architecture-specific Actions
 artifacts for 30 days.
 
 A manual `bench-pvm` workflow request runs the same complete PVM path without Storage or unrelated
