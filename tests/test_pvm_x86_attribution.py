@@ -228,6 +228,17 @@ class AttributionTests(unittest.TestCase):
             with self.subTest(text=text[-120:]), self.assertRaises(ValueError):
                 attribution.positioned_costs(text, True)
 
+    def test_uncompressed_parenthesized_ancestry_preserves_exclusive_work(self):
+        """Callgrind's ordinary ancestry name is valid; its zero-call inclusive arc is not additional self work."""
+        text = profile().replace('totals: 15',
+            'fn=(below main)\ncfn=runPreparedKernel_0_test\ncalls=0 11\n'
+            '0 15 4 1 2 1\ntotals: 15')
+        result = attribution.positioned_costs(text)
+        self.assertEqual(result['counts'], dict(Ir=15, Bc=4, Bcm=1, Bi=2, Bim=1))
+        self.assertEqual(sum(row['Ir'] for row in result['self_costs'].values()), 15)
+        self.assertEqual(result['arcs'][-1]['function'], '(below main)')
+        self.assertEqual(result['arcs'][-1]['calls'], 0)
+
     def test_cross_object_call_targets_persist_until_rebound(self):
         """Shared-library target metadata must not silently become the caller's object after a function change."""
         text = profile(True).replace('cfn=guard\n', 'cob=/lib/runtime.so\ncfi=runtime.c\ncfn=guard\n')

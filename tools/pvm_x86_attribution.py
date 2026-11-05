@@ -139,7 +139,8 @@ def positioned_costs(text, instructions=False):
                                callee_file=destination.get('file', context['fl']), calls=unsigned(fields[0]),
                                target=[unsigned(item, True) for item in fields[1:]])
             elif key in ('ob', 'fl', 'fi', 'fe', 'fn', 'cob', 'cfl', 'cfi', 'cfn'):
-                if not value or value.startswith('('):
+                # Compression starts with '(' plus a digit (decimal/0x ID), not an ordinary ancestry name.
+                if not value or re.match(r'\([0-9]', value):
                     raise ValueError('Missing or compressed Callgrind name')
                 if key == 'fn':
                     # Target specifications persist until explicitly rebound, including across caller functions.
