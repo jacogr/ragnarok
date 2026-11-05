@@ -2234,6 +2234,19 @@ func workSignerMatches*(services: Services, identity: StateEdKey): bool =
   let original = array[32, byte](services.workSignerIdentity)
   let requested = array[32, byte](identity)
   original == requested
+func sameWorkSession*(left, right: WorkSessionToken): bool =
+  ## Host-only exact session comparison grants no graph access or cancellation authority.
+  left.owner != nil and left.owner == right.owner and left.generation != 0 and left.generation ==
+      right.generation
+proc workDistributionCurrent*(services: Services, info: WorkDistributionInfo,
+    now: StateTime): bool =
+  ## Capture a fixed comparison only while canonical access is available; all temporary aliases retire before a caller submits work.
+  if not services.stateProofAvailable or uint32(info.observed) != uint32(now): return false
+  let head = services.canonical.chainView.bestBlock
+  if head.error != GenesisError.None: return false
+  let sameHead = array[32, byte](head.value.blockHash) == array[32, byte](info.head)
+  let sameRoot = array[32, byte](head.value.stateRoot) == array[32, byte](info.root)
+  sameHead and sameRoot
 proc stageWorkDistribution(services: var Services, request: ReadRequest, now: StateTime,
     limits: WorkDistributionLimits): WorkJobError =
   ## The staging activation retires all temporary canonical/job aliases before the exact shared lease is granted.

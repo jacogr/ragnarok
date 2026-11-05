@@ -838,7 +838,7 @@ proc preimageNeighbour*(owner: NodeService, peer: NodePeer): bool =
   ## Gossip requires both real validator roles and the accepted epoch-gated grid; ordinary UP0 eligibility is insufficient.
   owner.isOpen and owner.node.isValidator and owner.node.isValidator(peer) and
       owner.node.announcements(peer)
-proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResult[
+proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind, excluded = false): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.
   if not owner.isOpen: return NodeResult[NodeReadTask](status: NodeError.Unavailable)
@@ -847,7 +847,9 @@ proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResul
     owner.readCursor = (owner.readCursor+1) mod owner.frames.len
     if owner.frames[index].kind != FrameKind.Read or owner.frames[index].closing: continue
     if not owner.node.active(owner.frames[index].peer): continue
-    if filtered and owner.frames[index].read.selectedKind != kind: continue
+    if filtered:
+      let matches = owner.frames[index].read.selectedKind == kind
+      if matches == excluded: continue # Inclusion/exclusion select before claiming, so skipped consumers retain their original activity and deadline.
     let request = owner.frames[index].read.takeRequest()
     if request.error != ReadError.None: continue # Incomplete, already taken and reset frames cannot create duplicate jobs.
     if owner.serial == high(uint64):
@@ -868,6 +870,10 @@ proc takeRead*(owner: var NodeService, kind: ReadKind): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Detached responders may inspect one method without taking unrelated canonical work while its graph is leased.
   owner.takeRead(true, kind)
+proc takeReadExcept*(owner: var NodeService, kind: ReadKind): NodeResult[
+    NodeReadTask] {.requires: owner.callbacks == 0.} =
+  ## A dedicated consumer cannot monopolize general admission by repeatedly returning a request that general code must defer.
+  owner.takeRead(true, kind, true)
 proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   ## Stale/foreign/closed tickets contain no native pointer and cannot target a reused slot.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=

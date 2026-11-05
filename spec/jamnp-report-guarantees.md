@@ -494,3 +494,80 @@ complete protocol runtime.
 Final managed-distribution verification also passes formatting, all548 production modules/entry
 point and the production ARC/LTO build. The existing generated self-comparison warning remains;
 no compiler/dependency pin or vendor checkout was changed.
+
+
+The ordinary CE135 controller must retain accepted canonical guarantees in a bounded source-free
+pool before acknowledging them, with GP credential-expiry metadata and no implied assurance
+retention promise. Received and locally collected reports share the closed verifier namespace
+through fair arbitration. Incoming reset/cancellation cannot release another lease. Delivery must
+use only the verified current/required-next records, preserve original signatures/timeslot and
+revalidate when the complete source or observed slot changes. Previously acknowledged identities
+must survive revalidation to prevent repeatedly starting at the first recipients. Native pending
+opens, output credit, request lifetimes and owned temporary dials remain bounded and explicitly
+retired. Ordinary multi-node tests must prove verification before acknowledgment and source-free
+retention/serving through foreign leases before this runtime is complete.
+
+## Ordinary managed CE135 receipt and pending candidates
+
+`app/work_distribution.nim` is a separately optional noncopyable controller installed through
+`ApplicationNode.configureWorkDistribution`. Its explicit policy bounds the shared CPU job,
+retained rows/bytes and original request deadline. Receiving does not require a private signing
+key. The node's general read dispatcher defers CE135 to this consumer rather than treating it as
+an ordinary canonical read. A continuous incoming queue alternates with other CPU consumers.
+Native callbacks still handle only bounded framing and detached bytes.
+
+A complete incoming request waits for an available Services lease. Matching collection must
+produce a genuine managed qualification, and its observed slot, actual complete head and posterior
+root must still match before acceptance. A stale observation keeps the original native request
+and deadline for requalification; it neither changes the original guarantee slot nor re-signs the
+report. Verification failure, reset, elapsed deadline or failed storage/output reservation rejects
+that exact stream. External joined shutdown revokes the old namespace. Host shutdown can join
+only after successful cancellation of its own exact distribution token.
+
+`app/work_guarantee_pool.nim` retains independent canonical candidate bytes with fixed provenance,
+up to64 explicitly selected rows and32MiB. Default capacity is zero. The key is report hash plus
+encoded guarantee slot. A stronger fresh credential set can replace the same candidate only when
+its byte budget permits; a weaker set from the same complete source cannot discard stronger
+credentials. A newly qualified source can replace obsolete credential provenance. Distinct
+candidates cannot evict live entries to obtain an acknowledgment. Expiry uses the GP current/prior
+rotation window: the final candidate inclusion slot is the guarantee rotation start plus twice the
+rotation length minus one, saturated at the E4 timeslot ceiling with widened checked arithmetic.
+Every block/assurer consumer must freshly qualify copied candidates; this pool grants no block
+admission, shard possession or long-lived assurance retention promise.
+
+Only after the pool and detached hash-checked report cache accept the completion does the host
+queue bare FIN. Real three-node TLS tests verify default-disabled refusal, waiting behind a
+foreign completed lease, zero retained/acknowledged candidates before matching collection,
+duplicate success without another row, bad-signature refusal, refusal of a distinct valid candidate
+at capacity, fresh-slot requalification after completed work, client cancellation with exact worker retirement, joined own-job
+shutdown before acknowledgment, and preservation of a foreign Done lease on repeated close. The existing CE146/134
+runtime cases remain in that same native suite. Actual ARC lowering rejects copies of both the
+new controller and its ApplicationNode aggregate. Linux-target semantic compilation reaches the
+already recorded NIM-007 assertion in the unchanged CLI dependency; no Linux pass is claimed.
+
+Automatic outbound CE135 scheduling, retained guarantor bundle capacity before signature
+publication and strict optional startup activation remain required for the guarantee feature.
+The complete JAMNP-S objective also retains the assurance and audit lifecycle requirements
+recorded in the readiness plan; this receiving path alone is not a merge-readiness claim.
+
+The cancellation test distinguishes client cancellation from the receiver observing a reset.
+A previously valid server acceptance can race with a reset still in transit; client cancellation
+still yields no successful client completion and must release the exact worker/native controls.
+Locally stopping the receiver while its job is Done deterministically prevents acknowledgment.
+Test requests also wait for legitimate native closing-stream quota pressure rather than assuming
+that taking a reply immediately releases its physical stream slot.
+
+Ordinary node admission uses `NodeService.takeReadExcept(Guarantee)`. Filtering happens before
+claiming a stream: a dedicated ready backlog cannot repeatedly consume ordinary admission turns
+through claim/defer cycles or refresh its original inactivity deadline. The transport regression
+keeps a complete guarantee pending, repeatedly excludes it, then selects an ordinary CE136 request
+and proves the guarantee is still available to its dedicated consumer with the old claim revoked.
+
+Final receiving verification passes the managed exchange, source qualification, distribution
+framing/selection, existing native node, ordinary work runtime, application node and preimage
+consumer suites. Managed/source/native-node/preimage1000-cycle occupied memory is respectively
+338944/543600/40144/168352 bytes, equal before and after each workload. Final formatting,
+source-owned inventory, all550 production modules/entry point and the production ARC/LTO build
+pass. The changed native node selector also passes Linux/amd64 semantic checking; the application
+controller cross-check still reaches the documented CLI compiler assertion. These observations
+establish this receiving path's tested scope, not full protocol completion or native Linux CI.

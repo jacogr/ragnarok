@@ -4,7 +4,7 @@
 
 ## Actual managed preparation/peer verification/collection preserves original sessions and independent native bytes through Done, cancellation and joined shutdown.
 import std/[assertions, envvars, syncio, monotimes, times]
-import ../../../src/app/[services, options, startup]
+import ../../../src/app/[services, options, startup, work_guarantee_pool]
 import ../../../src/app/proof/[worker, work_submission as jobs]
 import ../../../src/jamnp-s/[work_signer, work_eligibility, work_guarantee, work_sharing,
   sharing_wire, work_stream, availability_read, availability_merkle, read_stream, work_distribution,
@@ -77,6 +77,24 @@ proc distributionPolicy(): WorkDistributionLimits =
   ## CPU report/source limits and recipient capacity are independent from native framing reservations.
   WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
       targets: ElementLimit(12))
+proc candidate(bytes: seq[byte], count: int, slot: uint32): seq[byte] =
+  ## Derive canonical credential subsets/current-rotation slots from genuine signatures without fabricating credential authority.
+  let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
+      maxBytes: ByteLimit(20000))
+  var value = decodeGuarantee(bytes, config).value.value
+  value.credentialCount = count
+  value.slot = GuaranteeSlot(slot)
+  encodeGuaranteeValue(value, config).value
+proc qualifyCandidate(services: var Services, bytes: seq[
+    byte], now = StateTime(20)): WorkDistributionCompletion {.raises.} =
+  ## Raw/source staging aliases retire before returning only a source-free matching completion.
+  let request = decodeReadRequest(ReadKind.Guarantee, bytes).value
+  let admitted = services.beginWorkDistribution(request, now, distributionPolicy())
+  assert admitted.error == StateProofAdmissionError.None
+  services.waitDone()
+  let completed = services.collectWorkDistribution(admitted.value)
+  assert completed.kind == WorkDistributionCompletionKind.Completed, "fresh candidate must qualify at its observed slot"
+  completed
 proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq[byte]) {.raises.} =
   ## Distinct incoming verification never consumes a waiting primary guarantee or an unrelated proof ticket.
   let hash = services.chainView.bestBlock.value.blockHash
@@ -93,6 +111,24 @@ proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq
   assert completed.kind == WorkDistributionCompletionKind.Completed
   assert services.stateProofAvailable and not services.rpc.chainPaused
   assert completed.distributionInfo.targets == 12
+  let facts = completed.distributionInfo
+  assert uint32(facts.lastSlot) == 27 and facts.credentials == 3 and facts.wireBytes == bytes.len
+  assert services.workDistributionCurrent(facts, StateTime(20))
+  assert not services.workDistributionCurrent(facts, StateTime(21))
+  assert sameWorkSession(primary, primary)
+  assert not sameWorkSession(primary, default(WorkSessionToken))
+  var pool = default(WorkGuaranteePool)
+  assert not pool.remember(completed) # Default-disabled retention cannot justify an acknowledgment.
+  assert pool.configure(1, ByteLimit(bytes.len))
+  assert not pool.configure(2, ByteLimit(20000))
+  assert pool.remember(completed) and pool.remember(completed)
+  assert pool.len == 1 and pool.byteLength == bytes.len
+  var retainedCopy = pool.payloadAt(0)
+  retainedCopy[0] = retainedCopy[0] xor 1
+  assert pool.payloadAt(0) == bytes
+  var small = default(WorkGuaranteePool)
+  assert small.configure(1, ByteLimit(bytes.len-1))
+  assert not small.remember(completed) and small.len == 0 and small.byteLength == 0
   assert completed.distributionPayload == bytes
   var altered = completed.distributionPayload
   altered[0] = altered[0] xor 1
@@ -100,6 +136,21 @@ proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq
   var cache = default(ReportCache)
   assert cache.remember(completed.distributionReport) == ReportCacheError.None
   let query = decodeReadRequest(ReadKind.Report, completed.distributionInfo.reportHash).value
+  let pairBytes = candidate(bytes, 2, 20)
+  let pair = qualifyCandidate(services, pairBytes)
+  assert pool.remember(pair) and pool.payloadAt(0) ==
+      bytes # Fewer credentials cannot replace a stronger equally fresh candidate.
+  var upgraded = default(WorkGuaranteePool)
+  assert upgraded.configure(1, ByteLimit(bytes.len))
+  assert upgraded.remember(pair) and upgraded.payloadAt(0) == pairBytes
+  assert upgraded.remember(completed) and upgraded.payloadAt(0) == bytes
+  assert upgraded.len == 1 and upgraded.byteLength == bytes.len
+  var tight = default(WorkGuaranteePool)
+  assert tight.configure(1, ByteLimit(pairBytes.len)) and tight.remember(pair)
+  assert not tight.remember(completed) and tight.payloadAt(0) == pairBytes
+  let other = qualifyCandidate(services, candidate(bytes, 3, 21), StateTime(21))
+  assert not pool.canRemember(other.distributionInfo) and not pool.remember(other)
+  assert pool.len == 1 and pool.payloadAt(0) == bytes
   let foreign = services.beginNetworkRead(readStateRequest(hash))
   assert foreign.error == StateProofAdmissionError.None
   services.waitDone()
@@ -108,6 +159,12 @@ proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq
   assert not services.cancelWorkDistribution(admitted.value)
   let retained = cache.find(query)
   assert retained.error == ReportCacheError.None and retained.value.byteLength > 4
+  assert not services.workDistributionCurrent(facts, StateTime(20))
+  assert pool.payloadAt(0) == bytes
+  pool.expire(StateTime(27))
+  assert pool.len == 1
+  pool.expire(StateTime(28))
+  assert pool.len == 0 and pool.byteLength == 0
   assert completed.distributionPayload == bytes # Detached completion/cache ownership has no canonical alias through the foreign Done lease.
   assert services.stateProofPhase == ProofWorkerPhase.Done and services.rpc.chainPaused
   assert services.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted

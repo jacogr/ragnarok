@@ -167,6 +167,49 @@ proc transfer(view: ChainView, keyB: StateEdKey) =
   assert a.takeReply(renewed.value).error == ReadError.InvalidStream
   body.add(0)
   assert decodeReadRequest(ReadKind.Guarantee, body).error == ReadError.LimitExceeded
+proc ordinarySelection(view: ChainView) {.raises.} =
+  ## Excluding a dedicated method never claims/deadline-refreshes it, and ordinary work remains selectable beside that ready backlog.
+  var server = default(NodeService)
+  var probe = default(NodeProbe)
+  defer:
+    probe.close()
+    server.close()
+  assert server.open(config(), view, topologyLimits(2)) == NodeError.None
+  assert server.enableDistributionStreams()
+  probe.open(server.localPort, "jamnp-s/1/00000000")
+  let deadline = getMonoTime()+initDuration(seconds = 8)
+  while not probe.authenticated or server.peerCount == 0:
+    assert getMonoTime() < deadline, "ordinary selection TLS"
+    assert server.poll(getMonoTime(), 0)
+    probe.poll()
+  discard probe.issue(@[135'u8, 1, 0, 0, 0, 7])
+  var guarantee = default(NodeResult[NodeReadTask])
+  while true:
+    guarantee = server.takeRead(ReadKind.Guarantee)
+    if guarantee.error == NodeError.None: break
+    assert getMonoTime() < deadline, "complete dedicated request"
+    assert server.poll(getMonoTime(), 0)
+    probe.poll()
+  assert server.deferRead(guarantee.value.ticket)
+  for attempt in 0..<4:
+    # A ready guarantee alone cannot satisfy ordinary selection or become claimed as a side effect.
+    assert server.takeReadExcept(ReadKind.Guarantee).error == NodeError.Unavailable
+  var report = newSeq[byte](37)
+  report[0] = 136
+  report[1] = 32 # The ordinary hash is itself one E4-framed message, independent of the CE135 opaque-body prefix.
+  discard probe.issue(report)
+  var ordinary = default(NodeResult[NodeReadTask])
+  while true:
+    ordinary = server.takeReadExcept(ReadKind.Guarantee)
+    if ordinary.error == NodeError.None: break
+    assert getMonoTime() < deadline, "ordinary request beside dedicated backlog"
+    assert server.poll(getMonoTime(), 0)
+    probe.poll()
+  assert ordinary.value.request.kind == ReadKind.Report
+  let remaining = server.takeRead(ReadKind.Guarantee)
+  assert remaining.error == NodeError.None and remaining.value.request.payload == @[7'u8]
+  assert not server.readLive(guarantee.value.ticket)
+  assert server.reject(ordinary.value.ticket) and server.reject(remaining.value.ticket)
 proc main() {.raises.} =
   ## Frame completion is deliberately opaque here; only the separate managed qualification pipeline may accept actual report credentials.
   var diagnostic = ""
@@ -177,6 +220,7 @@ proc main() {.raises.} =
   reject(view, false, false)
   reject(view, true, true)
   inputBoundaries(view)
+  ordinarySelection(view)
   transfer(view, keyB)
   echo "JAMNP-S distribution framing passed"
 try:

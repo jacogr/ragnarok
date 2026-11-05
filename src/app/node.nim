@@ -8,6 +8,7 @@ import ./services
 import ./preimage_followup
 import ./work_dispatch
 import ./work_exchange
+import ./work_distribution
 import ../jamnp-s/work_signer
 import ../quic/address
 import ../jamnp-s/work_recovery
@@ -68,6 +69,8 @@ type
     gossip: PreimageGossip
     work: WorkDispatcher
     exchange: WorkExchangeDispatcher
+    distribution: WorkDistributionDispatcher
+    preferDistribution: bool
     preferWork, preferExchange: bool
     reports: ReportCache
     tickets: PendingTicketPool
@@ -102,6 +105,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.work)
   `=wasMoved`(owner.exchange)
+  `=wasMoved`(owner.distribution)
   `=wasMoved`(owner.checkedPeer)
   owner.opened = false
   owner.pending = false
@@ -132,6 +136,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.gossip)
   `=destroy`(owner.work)
   `=destroy`(owner.exchange)
+  `=destroy`(owner.distribution)
   `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
@@ -153,6 +158,23 @@ proc configureWorkExchange*(owner: var ApplicationNode, policy: WorkExchangePoli
     let configured = services[].configureWorkSigner(certificate, privateKey, identity)
     if configured.error != WorkSigningSetupError.None: return false
   owner.exchange.configure(owner.streams, policy)
+proc configureWorkDistribution*(owner: var ApplicationNode, policy: WorkDistributionPolicy): bool =
+  ## Independently optional receiver admission installs a bounded managed consumer before enabling CE135.
+  if not owner.opened: return false
+  owner.distribution.configure(owner.streams, policy)
+func receivedWorkGuarantees*(owner: ApplicationNode): uint64 =
+  ## Count actual fresh retained incoming CE135 acknowledgments, separately from locally collected credentials.
+  owner.distribution.received
+func pendingWorkGuarantees*(owner: ApplicationNode): int =
+  ## Detached candidates remain observable through foreign worker leases.
+  owner.distribution.pendingCount
+func pendingWorkGuaranteeBytes*(owner: ApplicationNode): int =
+  ## Exact retained payload bytes follow the explicitly configured local capacity.
+  owner.distribution.pendingBytes
+proc pendingWorkGuarantee*(owner: ApplicationNode, ordinal: int): seq[byte] {.requires:
+    ordinal >= 0 and ordinal < owner.distribution.pendingCount.} =
+  ## Candidate bytes grant no fresh block/assurer admission authority.
+  owner.distribution.pendingPayload(ordinal)
 func workExchangePhase*(owner: ApplicationNode): WorkExchangePhase =
   ## Fixed controller state remains observable through canonical/private-key worker leases.
   owner.exchange.phase
@@ -483,6 +505,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferFetch = false
   owner.preferWork = true
   owner.preferExchange = true
+  owner.preferDistribution = true
   owner.preferPreimage = false
   owner.producing = false
   owner.productionContextReady = false
@@ -548,6 +571,7 @@ proc close*(owner: var ApplicationNode) =
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil:
+    owner.distribution.close(services[], owner.streams)
     owner.exchange.close(services[], owner.streams)
     owner.work.close(services[], owner.streams)
     owner.preimages.close(services[], owner.streams)
@@ -754,6 +778,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.preimages.poll(services[], owner.streams, clock)
   owner.work.poll(services[], owner.streams, clock, now)
   owner.exchange.poll(services[], owner.streams, clock)
+  owner.distribution.poll(services[], owner.streams, owner.reports, clock, now)
   if owner.exchange.configured and owner.work.phase == WorkDispatchPhase.Ready:
     let completed = owner.work.completed
     let phase = services[].workSessionPhase(completed)
@@ -822,6 +847,10 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.dispatchOrigins(now, clock)
   owner.dispatchTickets(now, clock) # Finality/context checks precede every actual proxy transmission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
+  if owner.preferDistribution and owner.distribution.submit(services[], owner.streams, clock, now):
+    owner.preferDistribution = false
+    return true
+  owner.preferDistribution = true # A continuously supplied CE135 queue alternates with other ordinary CPU consumers.
   if owner.preferExchange and owner.exchange.submit(services[], owner.streams, clock, now):
     owner.preferExchange = false
     return true
@@ -835,8 +864,9 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.preferFetch = false
     return true
   if owner.preferChecked and owner.submitChecked(): return true
-  let request = owner.streams.takeRead()
+  let request = owner.streams.takeReadExcept(ReadKind.Guarantee)
   if request.error != NodeError.None:
+    if owner.distribution.submit(services[], owner.streams, clock, now): return true
     if owner.exchange.submit(services[], owner.streams, clock, now): return true
     if owner.work.submit(services[], owner.streams, clock, now): return true
     if not owner.submitChecked(): discard owner.preimages.submitWaiting(services[])

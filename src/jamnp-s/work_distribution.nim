@@ -24,11 +24,11 @@ type
   WorkDistributionInfo* = object ## Fixed facts identify the exact complete source and clock observation used by this qualification.
     head*: genesis.BlockHash
     root*: trie.StateRoot
-    observed*, inclusion*: StateTime
+    observed*, inclusion*, lastSlot*: StateTime
     slot*: GuaranteeSlot
     reportHash*: array[32, byte]
     core*: CoreIndex
-    targets*: int
+    targets*, credentials*, wireBytes*: int
   DistributionData = ref object ## Acyclic immutable provenance retains complete source, actual verified credentials and full anchor evidence together.
     source: StateStoreSnapshot
     credentials: VerifiedGuaranteeCredentials
@@ -175,6 +175,8 @@ proc qualifyWorkDistribution*(wire: openArray[byte], view: ChainView, now: State
   if cores < 2 or cores > 341 or epoch == 0 or rotation == 0 or rotation > epoch:
     fail(WorkDistributionError.InvalidPolicy)
   if epoch mod rotation != 0: fail(WorkDistributionError.InvalidPolicy)
+  if epoch > uint64(high(uint32)) or rotation > uint64(high(uint32)):
+    fail(WorkDistributionError.InvalidPolicy)
   let local = limits.eligibility
   let sameCores = uint64(local.policy.pools.cores) == cores and uint64(
       local.pipeline.queues.cores) == cores
@@ -309,6 +311,10 @@ proc qualifyWorkDistribution*(wire: openArray[byte], view: ChainView, now: State
   let length = report.ownedReportInfo.value.consumed
   let hash = blake2b256(wire.toOpenArray(0, length-1))
   if hash.error != CryptoError.None: fail(WorkDistributionError.BackendFailure)
+  let start = uint64(uint32(value.slot))-uint64(uint32(value.slot)) mod rotation
+  let span = 2*rotation-1 # Positive E4 geometry proves this widened product/subtraction cannot wrap.
+  let remaining = uint64(high(uint32))-start
+  let last = if span > remaining: uint64(high(uint32)) else: start+span
   var payload = newSeq[byte](wire.len)
   for index in 0..<wire.len: payload[index] = wire[index]
   WorkDistributionResult[CheckedWorkDistribution](status: WorkDistributionError.None,
@@ -319,4 +325,5 @@ proc qualifyWorkDistribution*(wire: openArray[byte], view: ChainView, now: State
       root: saved.stateRoot, observed: now, inclusion: anchors.value.anchorInfo.value.inclusionSlot,
       slot: value.slot, reportHash: array[32, byte](hash.value),
           core: report.ownedReportInfo.value.core,
+      lastSlot: StateTime(uint32(last)), credentials: value.credentialCount, wireBytes: wire.len,
       targets: recipients.len))))

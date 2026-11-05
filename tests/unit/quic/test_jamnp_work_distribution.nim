@@ -103,6 +103,7 @@ proc main() {.raises.} =
   let facts = checked.value.distributionInfo.value
   assert array[32, byte](facts.head) == array[32, byte](parent.value.blockHash) and uint32(
       facts.observed) == 20 and uint32(facts.inclusion) == 21
+  assert uint32(facts.lastSlot) == 27 and facts.credentials == 3 and facts.wireBytes == bytes.len
   assert array[32, byte](facts.root) == array[32, byte](parent.value.stateRoot)
   assert checked.value.distributionGuarantee.value.credentialCount == 3
   var copy = checked.value.distributionPayload.value

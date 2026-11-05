@@ -3,10 +3,12 @@
 
 ## Three ordinary ApplicationNode loops drive CE146 through managed report/signing and independent CE134 receivers to canonical credential collection.
 import std/[assertions, envvars, syncio, monotimes, times]
-import ../../../src/app/[node as application_node, services, options, startup, work_dispatch, work_exchange]
+import ../../../src/app/[node as application_node, services, options, startup, work_dispatch,
+    work_exchange, work_distribution as distribution_host]
 import ../../../src/app/proof/worker
 import ../../../src/jamnp-s/[node as node_streams, connections, endpoints, work_signer,
-  work_sharing, work_duty, work_guarantee, sharing_wire, read_stream]
+  work_sharing, work_duty, work_guarantee, sharing_wire, read_stream, read_client,
+  work_distribution as distribution_rules]
 import ../../../src/quic/address
 import ../../../src/codec/[bounded, guarantees, assurances]
 import ../../../src/codec/work/package
@@ -35,11 +37,11 @@ proc start(services: var Services, host: var ApplicationNode, certificate,
   let config = initConnectionConfig(certificate, privateKey, services.nodeProtocol, streams = 512)
   assert host.open(services, config, topologyLimits(2), StateTime(20)) == NodeError.None
 proc pump(a, b, c: var ApplicationNode, sa, sb, sc: var Services, probe: var NodeProbe,
-    clock: MonoTime) {.raises.} =
+    clock: MonoTime, now = StateTime(20)) {.raises.} =
   ## The production poll entry owns all admission and collection; the test never calls a worker stage or computes a remote response itself.
-  assert a.poll(clock, StateTime(20), 0), "exchange origin poll"
-  assert b.poll(clock, StateTime(20), 0), "exchange peer B poll"
-  assert c.poll(clock, StateTime(20), 0), "exchange peer C poll"
+  assert a.poll(clock, now, 0), "exchange origin poll"
+  assert b.poll(clock, now, 0), "exchange peer B poll"
+  assert c.poll(clock, now, 0), "exchange peer C poll"
   probe.poll()
   sa.tick(uint32(a.peerCount))
   sb.tick(uint32(b.peerCount))
@@ -59,6 +61,165 @@ proc verify(bytes: seq[byte], count: int) =
   assert uint16(value.credentials[0].validator) == 1
   assert uint16(value.credentials[1].validator) == 2
   if count == 3: assert uint16(value.credentials[2].validator) == 5
+proc peer(host: ApplicationNode, key: StateEdKey): NodePeer =
+  ## Compare actual authenticated identities rather than relying on connection arrival order.
+  for index in 0..<host.peerCount:
+    let found = host.peerAt(index)
+    if found.error == NodeError.None:
+      if array[32, byte](found.value.identity) == array[32, byte](key): return found.value
+  assert false, "missing authenticated distribution peer"
+  default(NodePeer)
+proc otherSlot(bytes: seq[byte]): seq[byte] =
+  ## The GP signature transcript omits the slot: a second structurally valid current-rotation candidate tests distinct retention capacity.
+  let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
+      maxBytes: ByteLimit(20000))
+  var value = decodeGuarantee(bytes, config).value.value
+  value.slot = GuaranteeSlot(21)
+  encodeGuaranteeValue(value, config).value
+proc distributionRequest(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
+    probe: var NodeProbe, target: NodePeer, request: ReadRequest, now: StateTime): NodeResult[
+        NodeRequestTicket] {.raises.} =
+  ## Completed/closing native streams still consume the real two-per-peer quota; bounded polling retires them before another test request is admitted.
+  let deadline = getMonoTime()+initDuration(seconds = 5)
+  while true:
+    let admitted = a.request(target, request, ByteLimit(0))
+    if admitted.error notin [NodeError.Unavailable, NodeError.LimitExceeded]: return admitted
+    assert getMonoTime() < deadline, "distribution request backpressure deadline"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+proc distributionReceipt(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
+    probe: var NodeProbe, bytes: seq[byte], keyB, keyC: StateEdKey) {.raises.} =
+  ## Ordinary host admission proves default refusal, exclusive worker waiting, exact retention before FIN, duplicate handling and bounded refusal.
+  let limits = WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
+      targets: ElementLimit(12))
+  let selected = workDistributionPolicy(limits, 1, ByteLimit(20000))
+  assert selected.valid
+  assert not b.configureWorkDistribution(default(WorkDistributionPolicy))
+  assert a.configureWorkDistribution(selected) and b.configureWorkDistribution(selected)
+  assert not b.configureWorkDistribution(selected)
+  let targetB = a.peer(keyB)
+  let targetC = a.peer(keyC)
+  let raw = decodeReadRequest(ReadKind.Guarantee, bytes).value
+  let second = decodeReadRequest(ReadKind.Guarantee, otherSlot(bytes)).value
+  var corrupted = bytes
+  corrupted[corrupted.high] = corrupted[corrupted.high] xor 1
+  let bad = decodeReadRequest(ReadKind.Guarantee, corrupted).value
+  let disabled = distributionRequest(a, b, c, sa, sb, sc, probe, targetC, raw, StateTime(20))
+  assert disabled.error == NodeError.None
+  let deadline = getMonoTime()+initDuration(seconds = 15)
+  block:
+    while true:
+      assert getMonoTime() < deadline, "default CE135 refusal"
+      pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+      let reply = a.takeReply(disabled.value)
+      if reply.error != ReadError.Unavailable:
+        assert reply.error != ReadError.None and c.receivedWorkGuarantees == 0
+        break
+  let foreign = sb.beginNetworkRead(readStateRequest(sb.chainView.bestBlock.value.blockHash))
+  assert foreign.error == StateProofAdmissionError.None
+  sb.waitDone()
+  let accepted = distributionRequest(a, b, c, sa, sb, sc, probe, targetB, raw, StateTime(20))
+  assert accepted.error == NodeError.None
+  let heldUntil = getMonoTime()+initDuration(milliseconds = 100)
+  while getMonoTime() < heldUntil:
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+    assert sb.stateProofPhase == ProofWorkerPhase.Done and sb.rpc.chainPaused
+    assert a.takeReply(accepted.value).error == ReadError.Unavailable
+    assert b.pendingWorkGuarantees == 0 and b.receivedWorkGuarantees == 0
+  assert sb.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted
+  while not sb.stateProofActive:
+    assert getMonoTime() < deadline, "managed CE135 admission"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+  sb.waitDone()
+  assert b.pendingWorkGuarantees == 0 and b.receivedWorkGuarantees == 0
+  assert a.takeReply(accepted.value).error == ReadError.Unavailable
+  while true:
+    assert getMonoTime() < deadline, "retained CE135 FIN"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+    let reply = a.takeReply(accepted.value)
+    if reply.error == ReadError.None:
+      assert reply.value.bytes.len == 0
+      break
+    assert reply.error == ReadError.Unavailable
+  assert b.pendingWorkGuarantees == 1 and b.pendingWorkGuaranteeBytes == bytes.len
+  assert b.pendingWorkGuarantee(0) == bytes and b.receivedWorkGuarantees == 1
+  assert b.cachedReportCount == 1
+  for variant in 0..<2:
+    # Exact duplicate succeeds without another row; invalid credentials never receive success FIN.
+    let request = if variant == 0: raw else: bad
+    let sent = distributionRequest(a, b, c, sa, sb, sc, probe, targetB, request, StateTime(20))
+    assert sent.error == NodeError.None
+    while true:
+      assert getMonoTime() < deadline, "CE135 duplicate/refusal"
+      pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+      let reply = a.takeReply(sent.value)
+      if reply.error != ReadError.Unavailable:
+        assert (reply.error == ReadError.None) == (variant == 0)
+        break
+    assert b.receivedWorkGuarantees == 2 and b.pendingWorkGuarantees == 1
+    assert b.pendingWorkGuarantee(0) == bytes and sb.stateProofAvailable
+  let stale = distributionRequest(a, b, c, sa, sb, sc, probe, targetB, raw, StateTime(20))
+  assert stale.error == NodeError.None, "clock-change request admission: " & $stale.error
+  while not sb.stateProofActive:
+    assert getMonoTime() < deadline, "CE135 clock-change admission"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+  sb.waitDone()
+  pump(a, b, c, sa, sb, sc, probe, getMonoTime(), StateTime(21))
+  assert b.receivedWorkGuarantees == 2 and sb.stateProofActive, "new clock must requeue verification before FIN"
+  assert a.takeReply(stale.value).error == ReadError.Unavailable
+  sb.waitDone() # A fresh observed-slot job must replace the old completed result before acknowledgment.
+  while true:
+    assert getMonoTime() < deadline, "CE135 fresh-slot acknowledgment"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), StateTime(21))
+    let reply = a.takeReply(stale.value)
+    if reply.error == ReadError.None: break
+    assert reply.error == ReadError.Unavailable
+  assert b.receivedWorkGuarantees == 3 and b.pendingWorkGuarantee(0) == bytes
+  let full = distributionRequest(a, b, c, sa, sb, sc, probe, targetB, second, StateTime(21))
+  assert full.error == NodeError.None, "full-pool request admission: " & $full.error
+  while true:
+    # Slot21 is current now: the independently verified managed fixture proves this refusal exercises retention capacity rather than a future credential.
+    assert getMonoTime() < deadline, "CE135 full-pool refusal"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), StateTime(21))
+    let reply = a.takeReply(full.value)
+    if reply.error != ReadError.Unavailable:
+      assert reply.error != ReadError.None, "full pool cannot acknowledge another valid candidate"
+      break
+  assert b.receivedWorkGuarantees == 3 and b.pendingWorkGuarantee(0) == bytes
+  let cancelled = distributionRequest(a, b, c, sa, sb, sc, probe, targetB, raw, StateTime(21))
+  assert cancelled.error == NodeError.None, "cancellation request admission: " & $cancelled.error
+  while not sb.stateProofActive:
+    assert getMonoTime() < deadline, "CE135 cancellation admission"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), StateTime(21))
+  sb.waitDone()
+  assert a.cancelRequest(cancelled.value)
+  while not sb.stateProofAvailable:
+    assert getMonoTime() < deadline, "CE135 exact cancellation collection"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), StateTime(21))
+  # The remote reset may arrive after a valid server acceptance: client cancellation cannot retroactively revoke that earlier acceptance.
+  assert b.receivedWorkGuarantees in [3'u64, 4'u64]
+  assert not a.requestLive(cancelled.value)
+  assert a.takeReply(cancelled.value).error != ReadError.None
+  assert b.pendingWorkGuarantees == 1 and b.pendingWorkGuarantee(0) == bytes
+  let beforeClose = b.receivedWorkGuarantees
+  let closing = distributionRequest(a, b, c, sa, sb, sc, probe, targetB, raw, StateTime(21))
+  assert closing.error == NodeError.None, "joined-close request admission: " & $closing.error
+  while not sb.stateProofActive:
+    assert getMonoTime() < deadline, "CE135 joined-close admission"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), StateTime(21))
+  sb.waitDone()
+  b.close()
+  assert sb.stateProofAvailable and b.pendingWorkGuarantees == 0
+  assert b.receivedWorkGuarantees == beforeClose, "locally stopped stream cannot be acknowledged by Done collection"
+  let unrelated = sb.beginNetworkRead(readStateRequest(sb.chainView.bestBlock.value.blockHash))
+  assert unrelated.error == StateProofAdmissionError.None
+  sb.waitDone()
+  b.close() # An already retired dispatcher cannot join this foreign completed worker.
+  assert sb.stateProofPhase == ProofWorkerPhase.Done and sb.rpc.chainPaused
+  assert sb.collectStateProof(unrelated.value).kind == ProofWorkerCompletionKind.ReadCompleted
+  let reopened = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"),
+      sb.nodeProtocol, streams = 512)
+  assert b.open(sb, reopened, topologyLimits(2), StateTime(21)) == NodeError.None
+  assert b.configureWorkDistribution(selected)
 proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKey) {.raises.} =
   ## A fresh trio gives every case independent native sockets, worker namespaces and private signing owners.
   let raw = workFixture()
@@ -172,10 +333,14 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
   else:
     assert c.receivedWorkContributions == 1
   if variant == Variant.Foreign: assert foreignStarted
+  var retirementSlot = StateTime(20)
+  if variant == Variant.Three:
+    retirementSlot = StateTime(21)
+    distributionReceipt(a, b, c, sa, sb, sc, probe, sa.workGuaranteePayload(token), keyB, keyC)
   assert a.releaseWork()
   while a.workExchangePhase != WorkExchangePhase.Idle:
     assert getMonoTime() < deadline, "runtime retirement"
-    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime(), retirementSlot)
   assert sa.workSessionPhase(token) == WorkSessionPhase.Empty
   a.close()
   let reopened = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
