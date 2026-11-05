@@ -4928,7 +4928,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       f.barrier = flatStop
       f.barrierFact = 0
       f.savedHandler = nil
-      f.dynamicOffsets = default(array[256, uint64])
+      # The next runFlat entry clears jump offsets before any resumed dispatch.
       f.hostReady = false
       f.hostSnapshot = default(Memory)
       inc f.fastResumes
