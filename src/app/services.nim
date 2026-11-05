@@ -71,6 +71,7 @@ import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, wo
 import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_distribution]
 import ../jamnp-s/assurance_distribution
 import ../jamnp-s/assurance_fetch
+import ../jamnp-s/assurance_schedule
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
 from ../state/availability/specifier import AvailabilityCommitment
@@ -2541,6 +2542,27 @@ proc beginAssurancePlanning*(services: var Services, local: StateEdKey,
   services.admitAssuranceWork()
 proc assurancePlanningCurrent*(services: Services, plan: AssuranceFetchPlan): bool =
   ## Host comparison touches the actual best source only after every foreign lease has retired.
+  services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
+proc stageAssuranceSchedule(services: var Services, local: StateEdKey,
+    window: AssuranceWindow, limits: AssuranceScheduleLimits): WorkJobError =
+  ## The actual best complete source is captured while idle; temporary snapshot/wrapper aliases retire before native publication.
+  let captured = captureAssuranceScheduleJob(services.canonical.chainView.bestBlock,
+    local, window, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.assuranceWorkInput = captured.value
+  WorkJobError.None
+proc beginAssuranceSchedule*(services: var Services, local: StateEdKey,
+    window: AssuranceWindow, limits: AssuranceScheduleLimits): AssuranceWorkStart {.raises.} =
+  ## Timed author planning uses the same exact canonical/RPC lease and requires no archive or private signer.
+  if not services.started: return AssuranceWorkStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAssuranceSchedule(local, window, limits)
+  if staged != WorkJobError.None: return AssuranceWorkStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitAssuranceWork()
+proc assuranceScheduleCurrent*(services: Services, plan: AssuranceSchedule): bool =
+  ## Compare the full selected source only after foreign and owned native leases have retired.
   services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
 proc beginAssuranceDistribution*(services: var Services, request: ReadRequest,
     peer: StateEdKey, limits: AssuranceDistributionLimits): AssuranceWorkStart {.raises.} =

@@ -794,3 +794,22 @@ point, formatting and verification inventory pass on master
 ignored `build/jamnp-implementation/assurance-batch-*`. These are local results, not native Linux CI.
 Timed outgoing CE141 and explicit optional foreground activation remain required for the complete
 assurance feature.
+
+### Timed CE141 planning contract
+
+Outgoing distribution selects an upcoming slot and its approximately two-second-early send time
+from explicit Common Era seconds and the configured slot period. Preparation may begin two
+seconds earlier; expiry is the target slot boundary. Planning is bound to a complete parent,
+its original C8 assurer positions and the full header/map identity. The assurer set is selected
+at the send time with the NP four-second epoch delay, while possible authors use the target
+slot's epoch. A next-epoch author set comes from pending Safrole C4, not staging C7. No plan may
+substitute a different source epoch, extrapolate unknown keysets or treat metadata as possession.
+All private stored verification/signing remains behind its existing exact managed lease.
+
+The native schedule suite qualifies literal six-second and epoch-boundary timing, genuine C8/C4
+routing, poisoned C7 independence, exact workspace refusal and malformed/overflow/default inputs.
+Managed Services tests preserve foreign Done leases and discard cancelled plans. Checked ARC and
+Clang ThinLTO pass; 1,000 managed cleanup cycles retain 92,928 occupied bytes before and after.
+The existing fetch, private signing and managed submission consumers pass. All 571 production
+modules plus the entry point, formatting and verification inventory pass. Outgoing delivery and
+explicit foreground activation remain required; a plan alone grants no possession or signature.
