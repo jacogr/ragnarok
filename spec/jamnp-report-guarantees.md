@@ -391,3 +391,40 @@ second builder submission after both peers refuse. Native runtime verification p
 ARC/release compilation. This is collected guarantee evidence, not CE135 distribution or fresh
 block inclusion. Both CE135 directions, retained availability promises and strict optional startup
 integration remain required before publishing the complete guarantee feature.
+
+
+## CE135 qualification work
+
+The CE135 validator must decode one complete canonical standalone guarantee under explicit local
+wire bounds, derive credential context from the actual complete selected state and chain parameters,
+verify current/previous-rotation signatures, and recheck report policy, complete recent/lookup
+anchors and package dependencies. A fabricated block transition cannot supply this authority.
+Fresh source facts must bind any distribution plan; later block admission still owns actual
+post-judgment/post-Safrole/post-assurance candidate state. Incoming report bytes establish neither
+execution nor availability. Tests must include real two/three credentials, malformed/trailing input,
+wrong signatures/indices/slots/population, changed source/policy/anchors, bounded missing state and
+required current/last-rotation next validator targets. CE135 sending and receiving must use managed
+jobs outside native callbacks and real TLS/runtime evidence before this feature is complete.
+
+
+Standalone CE135 qualification now derives exact C8/C9/C6/C5 context and chain geometry from the
+selected complete snapshot, verifies all credentials under GP current/previous-rotation rules,
+and inspects the same source's report policy, corrected recent/lookup anchors and package pipeline.
+The shared refinement-anchor implementation also preserves the original work header's private
+matching contract. Its context-only owner grants no package authorization or block-transition
+certificate. Distribution evidence retains exact head/root/observed/candidate facts, checked
+credentials and anchors. Detached payloads and fixed recipient copies are separate from that graph.
+The recipient union includes current validators, adding pending identities during the final core
+rotation; vacant records are skipped, overlap is delivered once and current routing metadata wins.
+
+The native qualification suite uses three independent genuine signers and independently computed
+CE134 responses. It covers canonical two/three-credential results, changed source rosters, current
+offender exclusion, actual previous-roster credentials with a different active roster, source-root
+changes, current/next overlap and vacant records, malformed signatures and every truncated prefix,
+future/stale slots, wire/target/chapter budgets, fresh policy/package/anchor refusal and component
+decoding. One thousand qualification cycles retain544016 bytes before and after. Existing work
+anchor, guarantee, sharing, managed exchange and ordinary runtime suites pass after the shared
+anchor extraction. Linux-target qualification semantics pass; this is not native Linux CI.
+CE135 native transport, managed host admission/collection, fresh send-time checks, retained source
+capacity and explicit startup activation remain unfinished; the qualifier alone is not a runtime
+protocol implementation.
