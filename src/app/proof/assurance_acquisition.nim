@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Closed canonical CE137 acquisition verifies exact three-message framing and all assigned shard data before synchronized retention; fixed completion facts grant no signing capability.
+## Closed canonical CE137 acquisition and existing-coordinate probes verify exact assigned data before synchronized retention or restoration; fixed completion facts grant no signing capability.
 import std/assertions
 import ../../jamnp-s/[assurance_duty, assurance_store, assurance_record, availability_proof]
 import ../../chain/genesis
@@ -28,6 +28,7 @@ type
     core: CoreIndex
     ordinal: int
     wire: seq[byte]
+    existingOnly: bool
     now: AssuranceTime
     limits: AssuranceAcquisitionLimits
   AssuranceAcquisitionJob* = object ## Only bounded capture can stage this closed source/verification/retention operation.
@@ -84,10 +85,10 @@ func valid*(limits: AssuranceAcquisitionLimits): bool =
 func valid*(job: AssuranceAcquisitionJob): bool =
   ## Default jobs retain no source, path, native owner or input bytes.
   job.data != nil
-proc captureAssuranceAcquisition*(owner: var AssuranceStore, source: BlockSnapshotResult,
+proc captureAcquisition(owner: var AssuranceStore, source: BlockSnapshotResult,
     chain: AssuranceChainId, local: StateEdKey, core: CoreIndex, ordinal: int,
-    wire: openArray[byte], now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
-        AssuranceAcquisitionJob] =
+    wire: openArray[byte], now: AssuranceTime, limits: AssuranceAcquisitionLimits,
+        existingOnly: bool): AssuranceAcquisitionResult[AssuranceAcquisitionJob] =
   ## Capture performs no proof work or filesystem I/O; every source/raw-frame alias and the fixed owner stay frozen until exact collection/join.
   if not owner.opened: return refused[AssuranceAcquisitionJob](AssuranceAcquisitionError.Closed)
   if owner.faulted: return refused[AssuranceAcquisitionJob](AssuranceAcquisitionError.Faulted)
@@ -97,9 +98,9 @@ proc captureAssuranceAcquisition*(owner: var AssuranceStore, source: BlockSnapsh
       AssuranceAcquisitionError.InvalidSource)
   if not limits.valid: return refused[AssuranceAcquisitionJob](
       AssuranceAcquisitionError.InvalidPolicy)
-  if ordinal < 0 or ordinal >= 1023 or uint64(core) >= 341 or wire.len < 12:
+  if ordinal < 0 or ordinal >= 1023 or uint64(core) >= 341 or (not existingOnly and wire.len < 12):
     return refused[AssuranceAcquisitionJob](AssuranceAcquisitionError.InvalidInput)
-  if uint64(wire.len) > uint64(limits.wireBytes) or uint64(wire.len) > uint64(
+  if uint64(wire.len) > uint64(limits.wireBytes) or uint64(wire.len)*2 > uint64(
       limits.workspaceBytes):
     return refused[AssuranceAcquisitionJob](AssuranceAcquisitionError.LimitExceeded)
   var copied = newSeq[byte](wire.len)
@@ -107,8 +108,21 @@ proc captureAssuranceAcquisition*(owner: var AssuranceStore, source: BlockSnapsh
       index] # Raw callback/input owners may retire before execution, independently of the canonical snapshot lease.
   AssuranceAcquisitionResult[AssuranceAcquisitionJob](status: AssuranceAcquisitionError.None,
     completed: AssuranceAcquisitionJob(data: AcquisitionData(owner: addr owner, source: source,
-      chain: chain, local: local, core: core, ordinal: ordinal, wire: copied, now: now,
+      chain: chain, local: local, core: core, ordinal: ordinal, wire: move(copied),
+          existingOnly: existingOnly, now: now,
       limits: limits)))
+proc captureAssuranceAcquisition*(owner: var AssuranceStore, source: BlockSnapshotResult,
+    chain: AssuranceChainId, local: StateEdKey, core: CoreIndex, ordinal: int,
+    wire: openArray[byte], now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
+        AssuranceAcquisitionJob] =
+  ## Both original and private raw transcript storage are admitted before cloning; this closed mode always requires the three actual network frames.
+  captureAcquisition(owner, source, chain, local, core, ordinal, wire, now, limits, false)
+proc captureAssuranceProbe*(owner: var AssuranceStore, source: BlockSnapshotResult,
+    chain: AssuranceChainId, local: StateEdKey, core: CoreIndex, ordinal: int,
+    now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
+        AssuranceAcquisitionJob] =
+  ## Existing-coordinate lookup derives its expected root from fresh canonical duty on the worker; a caller cannot supply a purported possession flag or stored receipt.
+  captureAcquisition(owner, source, chain, local, core, ordinal, [], now, limits, true)
 func frames(wire: openArray[byte], lengths: array[3, uint64], parts: var FrameParts): bool =
   ## Exact E4 extents come from the canonical report geometry, never peer-selected counts; reject every truncated prefix, body or suffix before hashing.
   parts = default(FrameParts)
@@ -176,19 +190,39 @@ proc executeAssuranceAcquisition*(job: AssuranceAcquisitionJob,
   let work = planned.value
   if work.payloadBytes > 16'u64*1024*1024:
     return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
-  let workspace = uint64(data.wire.len)+work.payloadBytes*4+uint64(AssuranceRecordHeaderBytes)*2
-  if workspace > uint64(data.limits.workspaceBytes):
-    return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
-  var parts = default(FrameParts)
-  if not frames(data.wire, [work.bundleBytes, work.segmentBytes, work.proofBytes], parts):
-    return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.InvalidInput)
+  var stored = default(AssuranceStoreResult[StoredAssuranceShard])
+  if data.existingOnly:
+    # Full persisted proof/restore work and transient record buffers have independent ceilings; a probe never shortens or renews an existing promise.
+    let recordWorkspace = work.payloadBytes*3+uint64(AssuranceRecordHeaderBytes)
+    if recordWorkspace > uint64(data.limits.workspaceBytes):
+      return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
+    if work.workspaceBytes > uint64(data.limits.verification.bytes):
+      return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
+    if work.hashes > uint64(data.limits.verification.hashes):
+      return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
+    if work.hashBytes > uint64(data.limits.verification.hashBytes):
+      return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
+    if control.stopped: return refused[AssuranceAcquisitionInfo](
+        AssuranceAcquisitionError.Cancelled)
+    stored = owner[].loadAssuranceShard(expected, requested.value)
+  else:
+    # Only a complete exact three-frame transfer may create/extend namespace data; the received wire cannot select its own descriptor.
+    let workspace = uint64(data.wire.len)+work.payloadBytes*4+uint64(AssuranceRecordHeaderBytes)*2
+    if workspace > uint64(data.limits.workspaceBytes):
+      return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.LimitExceeded)
+    var parts = default(FrameParts)
+    if not frames(data.wire, [work.bundleBytes, work.segmentBytes, work.proofBytes], parts):
+      return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.InvalidInput)
+    if control.stopped: return refused[AssuranceAcquisitionInfo](
+        AssuranceAcquisitionError.Cancelled)
+    let verified = verify(data, expected, requested.value, parts)
+    if verified.error != AvailabilityTransferError.None:
+      return AssuranceAcquisitionResult[AssuranceAcquisitionInfo](
+          status: AssuranceAcquisitionError.TransferFailure, transferReason: verified)
+    if control.stopped: return refused[AssuranceAcquisitionInfo](
+        AssuranceAcquisitionError.Cancelled)
+    stored = owner[].rememberAssuranceShard(verified.value, data.now)
   if control.stopped: return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.Cancelled)
-  let verified = verify(data, expected, requested.value, parts)
-  if verified.error != AvailabilityTransferError.None:
-    return AssuranceAcquisitionResult[AssuranceAcquisitionInfo](
-        status: AssuranceAcquisitionError.TransferFailure, transferReason: verified)
-  if control.stopped: return refused[AssuranceAcquisitionInfo](AssuranceAcquisitionError.Cancelled)
-  let stored = owner[].rememberAssuranceShard(verified.value, data.now)
   if stored.error != AssuranceStoreError.None:
     return AssuranceAcquisitionResult[AssuranceAcquisitionInfo](
         status: AssuranceAcquisitionError.StorageFailure, storageReason: stored)

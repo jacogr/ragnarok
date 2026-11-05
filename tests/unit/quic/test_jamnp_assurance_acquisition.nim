@@ -65,6 +65,19 @@ proc execute(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
   ## Synchronous boundary tests never have a second thread touching any retained source, result or native owner.
   let job = captured(owner, fixture, input, now, policy)
   executeAssuranceAcquisition(job, default(AssuranceScanControl))
+proc capturedProbe(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
+    now: uint64, policy: AssuranceAcquisitionLimits): AssuranceAcquisitionJob =
+  ## Retire every source/capture wrapper before the native owner may execute a closed existing-coordinate lookup.
+  let staged = captureAssuranceProbe(owner, fixture.source, fixture.chain, fixture.local,
+    CoreIndex(0), 0, AssuranceTime(now), policy)
+  assert staged.error == AssuranceAcquisitionError.None, "complete canonical probe capture"
+  staged.value
+proc probe(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
+    now: uint64, policy: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
+        AssuranceAcquisitionInfo] =
+  ## Direct checks execute the same closed operation used by the managed worker, with no substitute storage or possession marker.
+  let job = capturedProbe(owner, fixture, now, policy)
+  executeAssuranceAcquisition(job, default(AssuranceScanControl))
 proc waitDone(worker: var StateProofWorker) =
   ## Only the synchronized phase is polled while the native worker owns all canonical/record aliases.
   let deadline = getMonoTime()+initDuration(seconds = 20)
@@ -83,6 +96,19 @@ proc stopping(context: nil pointer): bool {.nimcall, raises: [].} =
   true
 proc ordinary(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, input: seq[byte]) =
   ## Deep raw input ownership, exact complete framing, whole preflight and actual proof refusal all precede publication.
+  var copyBudget = limits()
+  copyBudget.workspaceBytes = ByteLimit(uint64(input.len)*2-1)
+  reset(0)
+  assert captureAssuranceAcquisition(owner, fixture.source, fixture.chain, fixture.local, CoreIndex(
+      0), 0,
+    input, AssuranceTime(1000), copyBudget).error == AssuranceAcquisitionError.LimitExceeded, "both raw owners are charged before cloning even before frame verification"
+  assert calls() == 0, "raw copy admission hashes nothing"
+  block:
+    # Exact clone admission is independent from the later, larger whole proof/storage buffer reservation.
+    copyBudget.workspaceBytes = ByteLimit(uint64(input.len)*2)
+    assert captureAssuranceAcquisition(owner, fixture.source, fixture.chain, fixture.local,
+        CoreIndex(0), 0,
+      input, AssuranceTime(1000), copyBudget).error == AssuranceAcquisitionError.None, "exact pair of raw buffers admitted"
   var owned = input
   let job = captured(owner, fixture, owned, 1000, limits())
   owned[4] = owned[4] xor 1 # The original raw owner is independent of the captured private frame.
@@ -119,6 +145,24 @@ proc ordinary(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, i
   let duty = captureAssuranceDuty(fixture.source, fixture.local, limits().duty).value
   let request = duty.shardRequest(CoreIndex(0), 0).value
   let plan = availabilityVerificationInfo(fixture.availability.availabilityInfo.value.specifier, request).value
+  var probePolicy = limits()
+  let recordWorkspace = plan.payloadBytes*3+uint64(AssuranceRecordHeaderBytes)
+  probePolicy.workspaceBytes = ByteLimit(recordWorkspace-1)
+  reset(0)
+  assert probe(owner, fixture, 9000, probePolicy).error ==
+      AssuranceAcquisitionError.LimitExceeded and calls() == 0, "probe workspace deficit refuses before stored hashing"
+  probePolicy.workspaceBytes = ByteLimit(recordWorkspace)
+  let existing = probe(owner, fixture, 9000, probePolicy)
+  assert existing.error == AssuranceAcquisitionError.None and uint64(
+      existing.value.record.promisedAt) == 1000, "verified existing coordinate does not renew or move the promise clock"
+  assert uint64(calls()) == plan.hashes+1, "probe actually verifies metadata and complete payload proofs"
+  reset(0)
+  let missingJob = captureAssuranceProbe(owner, fixture.source, fixture.chain, fixture.other,
+    CoreIndex(0), 0, AssuranceTime(9000), limits()).value
+  let missing = executeAssuranceAcquisition(missingJob, default(AssuranceScanControl))
+  assert missing.error == AssuranceAcquisitionError.StorageFailure and missing.storageError.error ==
+      AssuranceStoreError.Missing, "absent canonical coordinate requests acquisition, never default possession"
+  assert calls() == 0 and not owner.faulted, "missing lookup preserves the healthy namespace without proof work"
   let workspace = uint64(input.len)+plan.payloadBytes*4+uint64(AssuranceRecordHeaderBytes)*2
   var narrow = limits()
   narrow.workspaceBytes = ByteLimit(workspace-1)
@@ -181,6 +225,19 @@ proc failures(fixture: AssuranceAcquisitionFixture, input: seq[byte], folder: st
       AssuranceStoreError.None, "restart counts the actual visible record"
   assert owner.len == 1 and execute(owner, fixture, input, 1001).error ==
       AssuranceAcquisitionError.None, "full re-verification and resync recover retained acquisition"
+proc probeFaults(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, folder: string) =
+  ## A real restore sync failure faults the owner; only exact close/reopen and full verification permit another fixed observation.
+  resetIo()
+  armIo(syncIo, 0, 1, failedIo)
+  let failed = probe(owner, fixture, 9000, limits())
+  assert failed.error == AssuranceAcquisitionError.StorageFailure and failed.storageError.error ==
+      AssuranceStoreError.FileFailure, "actual probe restore durability refusal"
+  assert pendingIo() == 0 and owner.faulted, "probe never hides a real namespace fault"
+  resetIo()
+  assert owner.close().error == AssuranceStoreError.None, "close faulted probe owner"
+  assert owner.openAssuranceStore(folder, fixture.chain, storageLimits()).error ==
+      AssuranceStoreError.None, "verified namespace restart after failed probe"
+  assert probe(owner, fixture, 9000, limits()).error == AssuranceAcquisitionError.None, "actual record proof and sync recovery"
 proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
     fixture: AssuranceAcquisitionFixture, input: seq[byte], index: int) =
   ## Native source/frame/record owners retire before the next capture; completed cancellation retains stored data without exposing a result.
@@ -196,6 +253,20 @@ proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
   else:
     assert completed.kind == ProofWorkerCompletionKind.AssuranceAcquired, "exact acquisition completion"
     assert completed.assuranceAcquisitionValue.error == AssuranceAcquisitionError.None, "genuine durable native acquisition"
+    var checking = capturedProbe(owner, fixture, 9000, limits())
+    let checked = worker.submit(checking)
+    assert checked.error == ProofWorkerError.None and not checking.valid, "moved native existing-record job"
+    worker.waitDone()
+    if index mod 4 == 1: assert worker.cancel(checked.value), "Done probe cancellation"
+    let verified = worker.collect(checked.value)
+    if index mod 4 == 1:
+      assert verified.kind == ProofWorkerCompletionKind.Cancelled, "cancelled probe metadata stays hidden"
+    else:
+      assert verified.kind == ProofWorkerCompletionKind.AssuranceAcquired and
+          verified.assuranceAcquisitionValue.error == AssuranceAcquisitionError.None, "complete synchronized native stored-coordinate check"
+      assert uint64(verified.assuranceAcquisitionValue.value.record.promisedAt) == uint64(
+          2000+index), "probe has not renewed the last real acquisition promise"
+
   assert owner.len == 1 and not owner.faulted, "inspect namespace only after exact retirement"
 proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: string) {.raises.} =
   ## An independently configured trusted seed is the actual complete computed child; Services must select its own head and namespace identity rather than peer-provided facts.
@@ -218,6 +289,15 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
       AssuranceStorageMode.Create).value
   owner.waitDone()
   assert owner.collectStateProof(opened).assuranceStorageValue.error == AssuranceStoreError.None, "actual managed namespace creation"
+  let absent = owner.beginAssuranceProbe(fixture.local, CoreIndex(0), 0, AssuranceTime(1000),
+      limits())
+  assert absent.error == AssuranceStorageStartError.None and owner.rpc.chainPaused, "managed probe owns namespace and canonical lease"
+  owner.waitDone()
+  let absentResult = owner.collectStateProof(absent.value).assuranceAcquisitionValue
+  assert absentResult.error == AssuranceAcquisitionError.StorageFailure and
+      absentResult.storageError.error == AssuranceStoreError.Missing, "missing native namespace coordinate is not possession"
+  assert owner.assuranceStorageInfo.opened and not owner.assuranceStorageInfo.faulted and
+      owner.assuranceStorageInfo.records == 0, "missing probe preserves installed empty archive"
   let admitted = owner.beginAssuranceAcquisition(fixture.local, CoreIndex(0), 0, input,
     AssuranceTime(1000), limits())
   assert admitted.error == AssuranceStorageStartError.None and owner.rpc.chainPaused, "managed canonical acquisition lease"
@@ -231,6 +311,12 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
       not owner.rpc.chainPaused, "exact collection refreshes actual stored accounting"
   assert array[32, byte](completed.assuranceAcquisitionValue.value.record.chain) == array[32, byte](
       owner.assuranceStorageInfo.chain), "configured namespace identity, not caller-supplied original fixture domain"
+  let checking = owner.beginAssuranceProbe(fixture.local, CoreIndex(0), 0, AssuranceTime(9000),
+      limits()).value
+  owner.waitDone()
+  let checked = owner.collectStateProof(checking).assuranceAcquisitionValue
+  assert checked.error == AssuranceAcquisitionError.None and uint64(
+      checked.value.record.promisedAt) == 1000, "managed probe returns actual unchanged stored promise"
   let cancelled = owner.beginAssuranceAcquisition(fixture.local, CoreIndex(0), 0, input,
     AssuranceTime(1001), limits()).value
   owner.waitDone()
@@ -244,6 +330,12 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   owner.stopStateProofs()
   assert owner.assuranceStorageInfo.opened and owner.assuranceStorageInfo.records == 1 and
       not owner.rpc.chainPaused, "joined acquisition stop preserves installed namespace"
+  let restarted = owner.beginAssuranceProbe(fixture.local, CoreIndex(0), 0, AssuranceTime(9000),
+      limits())
+  assert restarted.error == AssuranceStorageStartError.None, "ordinary probe restarts a joined worker while preserving its installed namespace"
+  owner.waitDone()
+  assert owner.collectStateProof(restarted.value).assuranceAcquisitionValue.error ==
+      AssuranceAcquisitionError.None, "real stored data remains usable after worker restart"
   resetIo()
   armIo(syncIo, 1, 1, failedIo)
   let fault = owner.beginAssuranceAcquisition(fixture.local, CoreIndex(0), 0, input,
@@ -271,6 +363,7 @@ proc main() {.raises.} =
   assert owner.createAssuranceStore(folder, fixture.chain, storageLimits()).error ==
       AssuranceStoreError.None, "independent configured chain namespace"
   ordinary(owner, fixture, input)
+  probeFaults(owner, fixture, folder)
   failures(fixture, input, folder & "-faults")
   managed(fixture, input, suffix)
   var worker = default(StateProofWorker)

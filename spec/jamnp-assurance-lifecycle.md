@@ -556,3 +556,42 @@ The current Services aggregate still rejects exact ARC duplication. All 566 prod
 and the actual entry point compile; formatting and inventory pass. These are local macOS
 results. The actual CE137 request/retry actor, durable serving, timed outgoing CE141 and explicit
 foreground policy remain unfinished; this feature branch remains unpublished.
+
+## Existing-coordinate acquisition preflight
+
+The acquisition actor must first probe its exact canonical assigned coordinate through the
+managed namespace owner. A successful probe re-verifies the full record and crosses the actual
+restore sync barriers, then returns fixed metadata only; it does not renew a promise or grant a
+signature capability. Missing data permits a bounded network attempt. Corruption or failed
+restore durability retains the actual namespace fault gate. The canonical source and mutable
+namespace stay leased through Done/cancellation until exact collection or joined stop.
+
+Raw CE137 capture must also reserve both the caller's original transcript and its private copy
+before cloning, even for a malformed large transcript rejected later by exact framing. The
+private byte vector must move into the closed job. Completion witnesses include absent/present
+probes, unchanged promise time, exact/minus-one record workspace, real sync refusal and fault
+recovery, native cancellation/restart, default-off Services, and raw-copy workspace admission.
+
+The closed existing-coordinate mode is now implemented in `AssuranceAcquisitionJob`, with
+`captureAssuranceProbe` and Services `beginAssuranceProbe`. It derives the complete expected
+specifier and assigned shard from the actual current source, precharges record/verification
+workspace, then calls full `loadAssuranceShard`. Missing coordinates return their actual Missing
+child while preserving a healthy namespace. Success returns only actual stored metadata after
+proof verification and file/directory restore synchronization. Probe time cannot move the
+stored promise clock; later private signing still performs its own fresh verification/renewal.
+
+Capture reserves `2 * transcript_length` before copying any received bytes and moves the private
+vector into the job. Exact/minus-one clone reservation is tested independently of the later
+larger proof/storage workspace. The existing full-workspace admission remains in force before
+verification or publication; malformed inputs cannot consume an unreserved second raw buffer.
+
+Native checks pass absent/present probes, exact/minus-one record workspace before hashing,
+observed complete metadata/payload proof counts, unchanged promise time, actual restore sync
+failure/faulted-owner refusal, verified reopen and ordinary worker restart with retained data.
+Moved native probe jobs, stale/foreign collection and Done cancellation retain the exact source/
+namespace lease; cancelled results expose no record prefix. The expanded acquisition/probe suite
+also passes checked ARC/Clang thinLTO and 1000 interleaved cycles with 93504 occupied bytes
+unchanged. The complete signing/TLS receipt suite passes, all 566 modules and the actual entry
+point compile, and pinned formatting/inventory pass. This establishes local lookup for the
+forthcoming network acquirer; it is not yet a live CE137 retry scheduler or complete foreground
+assurance activation, and remains local macOS evidence rather than native Linux CI.

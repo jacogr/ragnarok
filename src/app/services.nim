@@ -2396,17 +2396,20 @@ func workerError*(outcome: AssuranceAcquisitionStart): ProofWorkerError {.requir
   outcome.workerReason
 proc stageAssuranceAcquisition(services: var Services, local: StateEdKey, core: CoreIndex,
     ordinal: int, wire: openArray[byte], now: AssuranceTime,
-    limits: AssuranceAcquisitionLimits): AssuranceAcquisitionError =
+    limits: AssuranceAcquisitionLimits, existingOnly: bool): AssuranceAcquisitionError =
   ## All temporary best-head/capture aliases retire before submission; the peer supplies no canonical source, descriptor or shard coordinate.
-  let captured = captureAssuranceAcquisition(services.assuranceStore,
-    services.canonical.chainView.bestBlock, services.assuranceInfo.chain, local, core, ordinal,
-    wire, now, limits)
+  let captured = if existingOnly:
+    captureAssuranceProbe(services.assuranceStore, services.canonical.chainView.bestBlock,
+      services.assuranceInfo.chain, local, core, ordinal, now, limits)
+  else:
+    captureAssuranceAcquisition(services.assuranceStore, services.canonical.chainView.bestBlock,
+      services.assuranceInfo.chain, local, core, ordinal, wire, now, limits)
   if captured.error == AssuranceAcquisitionError.None:
     services.assuranceAcquisitionInput = captured.value
   captured.error
-proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core: CoreIndex,
+proc beginAcquisition(services: var Services, local: StateEdKey, core: CoreIndex,
     ordinal: int, wire: openArray[byte], now: AssuranceTime,
-    limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
+    limits: AssuranceAcquisitionLimits, existingOnly: bool): AssuranceAcquisitionStart {.raises.} =
   ## Optional full-state acquisition binds current canonical assignments and the installed chain namespace under one reusable worker/RPC lease.
   if not services.started: return AssuranceAcquisitionStart(
       status: AssuranceStorageStartError.Closed)
@@ -2415,7 +2418,7 @@ proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core:
   if not services.stateProofAvailable: return AssuranceAcquisitionStart(
       status: AssuranceStorageStartError.Busy)
   discard services.proofWorker.start()
-  let reason = services.stageAssuranceAcquisition(local, core, ordinal, wire, now, limits)
+  let reason = services.stageAssuranceAcquisition(local, core, ordinal, wire, now, limits, existingOnly)
   if reason != AssuranceAcquisitionError.None:
     return AssuranceAcquisitionStart(status: AssuranceStorageStartError.CaptureFailure,
         captureReason: reason)
@@ -2434,6 +2437,16 @@ proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core:
   services.assuranceAcquisitionInput = default(AssuranceAcquisitionJob)
   AssuranceAcquisitionStart(status: AssuranceStorageStartError.WorkerFailure,
       workerReason: admitted.error)
+
+proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core: CoreIndex,
+    ordinal: int, wire: openArray[byte], now: AssuranceTime,
+    limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
+  ## Detached actual CE137 bytes enter only fresh canonical verification and real durable publication under the shared lease.
+  services.beginAcquisition(local, core, ordinal, wire, now, limits, false)
+proc beginAssuranceProbe*(services: var Services, local: StateEdKey, core: CoreIndex,
+    ordinal: int, now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
+  ## Full stored verification and actual restore synchronization return fixed observations only; absence never claims possession or opens a namespace implicitly.
+  services.beginAcquisition(local, core, ordinal, [], now, limits, true)
 
 func error*(outcome: AssuranceWorkStart): StateProofAdmissionError =
   ## Read admission before selecting an exact ticket or real capture/native failure.
