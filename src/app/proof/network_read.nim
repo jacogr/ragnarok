@@ -7,11 +7,19 @@ import ../../chain/[provider, genesis]
 import ../../codec/bounded
 import ../../jamnp-s/[read_stream, canonical_read, availability_read]
 import ../../state/availability/specifier
-import ../../jamnp-s/availability_proof
+import ../../state/erasure/words
+import ../../jamnp-s/[availability_proof, assurance_store, assurance_record]
 
 type
+  AssuranceReadLimits* = object ## Durable root recovery and later reply derivation have separate explicit workspace, proof and wire ceilings; omission enables neither.
+    restore*: AssuranceRestoreLimits
+    reply*: AvailabilityReadLimits
+  AuditRestore = object ## A failed private restore carries only its read error, never a source or record alias.
+    case status: ReadError
+    of None: transfer: VerifiedAvailabilityTransfer
+    else: discard # Only a successful complete stored verification and detached copy grants a serving source.
   NetworkSource {.pure.} = enum ## Only module-owned capture chooses an original canonical/report/assurer source.
-    Canonical, Computed, Retained, OriginalSegments, Assured, ShardBatch
+    Canonical, Computed, Retained, OriginalSegments, Assured, ShardBatch, DurableAssured
   NetworkReadData = ref object ## One privately selected immutable source and copied fixed request survive worker handoff.
     view: ChainView
     request: ReadRequest
@@ -22,6 +30,8 @@ type
     retained: GuarantorAvailability
     retainedSources: seq[GuarantorAvailability]
     limits: AvailabilityReadLimits
+    archive: nil ptr AssuranceStore
+    restore: AssuranceRestoreLimits
   NetworkReadJob* = object ## Default jobs contain neither a canonical source nor an admitted request.
     data: nil NetworkReadData
   NetworkReadAdmission* = object ## Guarded capture exposes a complete job or only its refusal reason.
@@ -38,6 +48,19 @@ func value*(outcome: NetworkReadAdmission): NetworkReadJob {.requires: outcome.s
 func valid*(job: NetworkReadJob): bool =
   ## Default jobs cannot claim a worker lease.
   job.data != nil
+func valid*(limits: AssuranceReadLimits): bool =
+  ## Default policies cannot perform fixed-header IO or derive any reply.
+  limits.restore.valid and limits.reply.valid
+proc captureAssuranceRead*(owner: var AssuranceStore, request: ReadRequest,
+    limits: AssuranceReadLimits): NetworkReadAdmission =
+  ## Borrow only this fixed owner address and copied bounded request; the caller freezes the namespace until exact collection or joined stop.
+  if not limits.valid: return NetworkReadAdmission(status: ReadError.LimitExceeded)
+  if not request.valid or request.kind != ReadKind.Audit:
+    return NetworkReadAdmission(status: ReadError.InvalidRequest)
+  if not owner.opened or owner.faulted: return NetworkReadAdmission(status: ReadError.Unavailable)
+  NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
+    kind: NetworkSource.DurableAssured, archive: addr owner, restore: limits.restore,
+    request: detachedReadRequest(request), limits: limits.reply)))
 proc captureNetworkRead*(view: ChainView, request: ReadRequest): NetworkReadAdmission =
   ## Bound the retained view before copying its indexes; callers keep all aliases frozen until retirement.
   if view.fuzzOnly: return NetworkReadAdmission(status: ReadError.InvalidRequest) # Test-only origin never grants an ordinary network source.
@@ -118,6 +141,32 @@ proc captureSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer],
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.ShardBatch, snapshot: snapshot, request: detachedReadRequest(request),
         limits: limits)))
+proc restoreAuditSource(data: NetworkReadData): AuditRestore =
+  ## Fixed request bytes select the exact durable record on the worker; the intermediate record owner retires before later audit derivation can allocate.
+  let archive = data.archive
+  if archive == nil: return AuditRestore(status: ReadError.Unavailable)
+  let payload = data.request.payload
+  var selected = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+    shard: ErasureShardIndex(uint64(payload[32]) or (uint64(payload[33]) shl 8)))
+  for index in 0..<32: selected.root.bytes[index] = payload[index]
+  let stored = archive[].restoreAssuranceShard(selected, data.restore)
+  if stored.error == AssuranceStoreError.LimitExceeded or stored.error ==
+      AssuranceStoreError.InvalidPolicy:
+    return AuditRestore(status: ReadError.LimitExceeded)
+  if stored.error != AssuranceStoreError.None:
+    return AuditRestore(status: ReadError.Unavailable)
+  # A detached record/transfer pair costs at most twice the payload, within restore's three-payload reservation. No record alias survives this return.
+  let copied = stored.value.storedTransfer(ByteLimit(uint64(data.restore.workspaceBytes) div 2))
+  if copied.error == AvailabilityTransferError.LimitExceeded: return AuditRestore(
+      status: ReadError.LimitExceeded)
+  if copied.error != AvailabilityTransferError.None: return AuditRestore(
+      status: ReadError.Unavailable)
+  AuditRestore(status: ReadError.None, transfer: copied.value)
+proc serveDurableAudit(data: NetworkReadData): ReadResult[ReadReply] =
+  ## Full original-distribution verification and synchronization precede existing bounded two-frame audit derivation, with no namespace alias in the response.
+  let restored = restoreAuditSource(data)
+  if restored.status != ReadError.None: return readFailure[ReadReply](restored.status)
+  serveAvailabilityAudit(restored.transfer, data.request, data.limits)
 proc executeNetworkRead*(job: NetworkReadJob): ReadResult[ReadReply] =
   ## Only the worker touches the admitted source graph during the exclusive lease.
   let data = job.data
@@ -131,4 +180,5 @@ proc executeNetworkRead*(job: NetworkReadJob): ReadResult[ReadReply] =
     serveRetainedSegmentBatch(data.retainedSources, data.source, data.request, data.limits)
   of NetworkSource.ShardBatch: serveSegmentShardBatch(data.snapshot, data.request, data.limits)
   of NetworkSource.Assured: serveAvailabilityAudit(data.stored, data.request, data.limits)
+  of NetworkSource.DurableAssured: serveDurableAudit(data)
   of NetworkSource.Canonical: serveCanonicalRead(data.view, data.request)

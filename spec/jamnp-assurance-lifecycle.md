@@ -691,3 +691,47 @@ with 14864 occupied bytes unchanged. The suite also passes checked ARC/Clang Thi
 production modules and the entry point, formatting and inventory checks pass. Evidence is under
 ignored `build/jamnp-implementation/assurance-restore-*`. This establishes bounded storage
 recovery, not yet managed durable RPC serving or Linux CI coverage.
+
+### Managed durable CE138 contract
+
+An independently optional assurance-read policy may capture the installed namespace address into
+one closed network-read job under the existing exact Services worker lease. Fixed root/shard
+metadata and all payload IO/proofs execute on that worker, never during foreground capture.
+The restoration helper must retire record aliases before existing bounded audit derivation runs;
+its transient detached-copy pair remains within the declared restore workspace. Read completion,
+cancellation and joined stop must refresh actual archive fault state before ordinary host access
+resumes. Explicit close clears serving activation. No key or work session is needed, and no
+serving operation may renew a promise or grant canonical possession/signing authority.
+
+The managed audit path is now implemented with `AssuranceReadLimits` and the closed network-read
+job's `DurableAssured` mode. Capture retains only the fixed namespace address, explicit limits and
+an owned request. The private restore helper fully recovers a distribution, creates a detached
+serving copy within the restore reservation, and retires the record before existing audit
+construction executes. Services' independently optional `configureAssuranceReads` requires an
+already installed healthy full-state archive; it opens no archive, loads no signer and requires
+no guarantor work session. With this policy enabled CE138 uses the durable namespace; the legacy
+memory-cache path remains available when durable serving is not selected. Exact collection,
+including cancelled `Done` results, and joined stop refresh actual namespace fault state before
+the host can access it again. Service close clears optional serving activation.
+
+The expanded acquisition suite derives its expected CE138 bytes independently from the genuine
+original guarantor erasure source and literal two-message E4 framing. Managed read tests cover
+default refusal, missing-archive configuration, once-only activation, full canonical/RPC exclusion
+through `Done`, exact proof bytes, explicit service/archive restart and disabled serving after
+restart. A real restore-sync failure remains worker-owned until exact retirement; cancelling that
+completed read hides its reply but still refreshes the faulted archive gate without deleting the
+retained promise. Native worker cycles additionally cover moved closed read inputs, completed
+cancellation and exact full read results.
+
+Ordinary application-node TLS witnesses run both before and after service restart. The server
+selects durable data through the same managed path; the client receives the independently expected
+bundle shard and justification only after both FINs. The client owns no archive and the server
+needs no private signer or work session. These component witnesses use explicit complete trusted
+seeds; they do not claim network bootstrap or a canonical transition removing C10 entries.
+
+The expanded native suite passes with 93504 occupied bytes unchanged across 1000 acquisition,
+probe and read cycles. Checked ARC/Clang ThinLTO passes the same suite. The affected signing,
+application-node and work-exchange runtime suites pass, as do all 567 production modules and the
+real entry point, formatting and verification inventory. Exact source/build/run evidence remains
+under ignored `build/jamnp-implementation/assurance-serving-*`. No Linux CI result is claimed.
+Durable CE139/140 batches, timed outgoing CE141 and explicit foreground activation remain open.

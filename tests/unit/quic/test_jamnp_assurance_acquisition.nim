@@ -6,15 +6,17 @@
 import std/[assertions, syncio, dirs, paths, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
-import ../../../src/app/proof/[worker, assurance_storage, assurance_acquisition]
-import ../../../src/jamnp-s/[assurance_store, assurance_record, assurance_duty, availability_proof]
+import ../../../src/app/proof/[worker, assurance_storage, assurance_acquisition, network_read]
+import ../../../src/jamnp-s/[assurance_store, assurance_record, assurance_duty, availability_proof,
+    availability_read, read_stream]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, assurances]
 import ../../../src/codec/work/report
 import ../../../src/state/availability/specifier
 import ../../../src/lib/atomic/file
 import ../../../src/rpc/server
-import ../../support/[jamnp_assurance_fixture, current_application_context, storage_io, arc_evidence]
+import ../../support/[jamnp_assurance_fixture, jamnp_assurance_audit_runtime,
+    current_application_context, storage_io, arc_evidence]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count actual crypto attempts and inject only explicitly selected maintained-backend failure.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -52,6 +54,29 @@ proc wire(fixture: AssuranceAcquisitionFixture): seq[byte] =
   frame(result, prepared.value.bundleShard)
   frame(result, prepared.value.segmentShards)
   frame(result, prepared.value.justification)
+type AuditFixture = object ## Independently framed expected original audit bytes are never supplied to the serving worker.
+  request: ReadRequest
+  expected: seq[byte]
+proc servingLimits(): AssuranceReadLimits =
+  ## Restore and later audit derivation have independent finite budgets; neither policy loads a key or opens storage.
+  AssuranceReadLimits(restore: AssuranceRestoreLimits(verification: limits().verification,
+    ioBytes: ByteLimit(64000000), workspaceBytes: ByteLimit(128000000)),
+    reply: AvailabilityReadLimits(computation: limits().verification, wireBytes: ByteLimit(8000000)))
+proc auditFixture(fixture: AssuranceAcquisitionFixture): AuditFixture =
+  ## Select an original canonical coordinate, then independently compute its two-frame audit response from the genuine original guarantor erasure source.
+  var selected = captureAssuranceDuty(fixture.source, fixture.local,
+    limits().duty).value.shardRequest(CoreIndex(0), 0).value
+  selected.kind = AvailabilityTransferKind.Audit
+  let prepared = prepareAvailabilityTransfer(fixture.availability, selected, limits().verification)
+  assert prepared.error == AvailabilityTransferError.None, "original genuine audit derivation"
+  var request = default(array[34, byte])
+  for index in 0..<32: request[index] = selected.root.bytes[index]
+  request[32] = byte(uint64(selected.shard) and 255)
+  request[33] = byte((uint64(selected.shard) shr 8) and 255)
+  var expected: seq[byte] = @[]
+  frame(expected, prepared.value.bundleShard)
+  frame(expected, prepared.value.justification)
+  AuditFixture(request: decodeReadRequest(ReadKind.Audit, request).value, expected: expected)
 proc captured(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     input: openArray[byte], now: uint64, policy: AssuranceAcquisitionLimits): AssuranceAcquisitionJob =
   ## Temporary factory/result and source aliases retire before native submit moves this final private input.
@@ -267,6 +292,21 @@ proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
       assert uint64(verified.assuranceAcquisitionValue.value.record.promisedAt) == uint64(
           2000+index), "probe has not renewed the last real acquisition promise"
 
+  if index mod 2 != 0:
+    # The same native pool borrows only the installed archive address and returns complete durable audit data after exact retirement.
+    let audit = auditFixture(fixture)
+    var read = captureAssuranceRead(owner, audit.request, servingLimits()).value
+    let admittedRead = worker.submit(read)
+    assert admittedRead.error == ProofWorkerError.None and not read.valid, "moved closed durable read input"
+    worker.waitDone()
+    if index mod 4 == 1: assert worker.cancel(admittedRead.value), "cancel completed durable read"
+    let completedRead = worker.collect(admittedRead.value)
+    if index mod 4 == 1:
+      assert completedRead.kind == ProofWorkerCompletionKind.Cancelled, "cancelled durable read exposes no bytes"
+    else:
+      assert completedRead.kind == ProofWorkerCompletionKind.ReadCompleted and
+        completedRead.readValue.error == ReadError.None and
+        completedRead.readValue.value.bytes == audit.expected, "actual durable audit matches original two-frame proof"
   assert owner.len == 1 and not owner.faulted, "inspect namespace only after exact retirement"
 proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: string) {.raises.} =
   ## An independently configured trusted seed is the actual complete computed child; Services must select its own head and namespace identity rather than peer-provided facts.
@@ -285,6 +325,8 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   assert owner.start(options, "genuine assurance acquisition"), "actual complete seeded Services"
   assert owner.beginAssuranceAcquisition(fixture.local, CoreIndex(0), 0, input,
     AssuranceTime(1000), limits()).error == AssuranceStorageStartError.Unavailable, "storage never implicitly enabled"
+  assert not owner.configureAssuranceReads(default(AssuranceReadLimits)) and
+    not owner.configureAssuranceReads(servingLimits()), "no implicit durable read policy or archive opening"
   let opened = owner.beginAssuranceStorage(folder, storageLimits(),
       AssuranceStorageMode.Create).value
   owner.waitDone()
@@ -311,6 +353,20 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
       not owner.rpc.chainPaused, "exact collection refreshes actual stored accounting"
   assert array[32, byte](completed.assuranceAcquisitionValue.value.record.chain) == array[32, byte](
       owner.assuranceStorageInfo.chain), "configured namespace identity, not caller-supplied original fixture domain"
+  let audit = auditFixture(fixture)
+  assert owner.beginNetworkRead(audit.request).error == StateProofAdmissionError.QueryFailure and
+    owner.stateProofAvailable, "durable reads remain disabled after acquisition"
+  assert owner.configureAssuranceReads(servingLimits()) and
+    not owner.configureAssuranceReads(servingLimits()), "once-only explicit durable audit activation"
+  let reading = owner.beginNetworkRead(audit.request).value
+  assert owner.rpc.chainPaused and owner.assuranceStorageInfo.records == 1, "exact archive/read canonical lease"
+  owner.waitDone()
+  assert not owner.stateProofAvailable and owner.assuranceStorageInfo.records == 1, "Done keeps archive excluded with cached accounting"
+  let served = owner.collectStateProof(reading)
+  assert served.kind == ProofWorkerCompletionKind.ReadCompleted and
+    served.readValue.error == ReadError.None and served.readValue.value.bytes == audit.expected,
+    "managed durable audit serves exact original proof without a work session"
+  assuranceAuditRuntime(owner, options, fixture, audit.request, audit.expected, suffix)
   let checking = owner.beginAssuranceProbe(fixture.local, CoreIndex(0), 0, AssuranceTime(9000),
       limits()).value
   owner.waitDone()
@@ -347,6 +403,37 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   assert owner.assuranceStorageInfo.faulted and owner.assuranceStorageInfo.records == 1, "exact collection refreshes actual archive fault gate without dropping promises"
   assert owner.beginAssuranceAcquisition(fixture.local, CoreIndex(0), 0, input,
     AssuranceTime(1004), limits()).error == AssuranceStorageStartError.Unavailable, "faulted namespace cannot admit another possession acquisition"
+  resetIo()
+  owner.close()
+  assert owner.start(options, "restarted durable audit service"), "independent Services restart"
+  assert owner.beginNetworkRead(audit.request).error == StateProofAdmissionError.QueryFailure,
+    "restart clears optional durable serving activation"
+  let reopening = owner.beginAssuranceStorage(folder, storageLimits(),
+      AssuranceStorageMode.Open).value
+  owner.waitDone()
+  assert owner.collectStateProof(reopening).assuranceStorageValue.error == AssuranceStoreError.None,
+    "restart recovers actual retained namespace without session or key"
+  assert owner.configureAssuranceReads(servingLimits()), "explicit restart serving activation"
+  let restoredRead = owner.beginNetworkRead(audit.request).value
+  owner.waitDone()
+  let restoredReply = owner.collectStateProof(restoredRead)
+  assert restoredReply.kind == ProofWorkerCompletionKind.ReadCompleted and
+    restoredReply.readValue.error == ReadError.None and
+    restoredReply.readValue.value.bytes == audit.expected, "restart serves original durable audit proof"
+  assuranceAuditRuntime(owner, options, fixture, audit.request, audit.expected, suffix & "-restart")
+  resetIo()
+  armIo(syncIo, 0, 1, failedIo)
+  let failedRead = owner.beginNetworkRead(audit.request).value
+  owner.waitDone()
+  assert pendingIo() == 0 and not owner.assuranceStorageInfo.faulted,
+    "real restore sync fault remains worker-owned until exact retirement"
+  assert owner.cancelStateProof(failedRead), "cancel completed durable audit refusal"
+  assert owner.collectStateProof(failedRead).kind == ProofWorkerCompletionKind.Cancelled and
+    owner.assuranceStorageInfo.faulted and owner.assuranceStorageInfo.records == 1,
+    "cancelled read refreshes actual archive fault without losing the retained promise"
+  assert owner.beginNetworkRead(audit.request).error == StateProofAdmissionError.QueryFailure,
+    "faulted durable namespace refuses subsequent read capture"
+  assert not owner.assuranceSigningConfigured, "durable serving requires no private signer"
   resetIo()
 proc main() {.raises.} =
   ## Original reports and pending assignments are genuinely executed/admitted/published before any network-like response is constructed.

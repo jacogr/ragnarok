@@ -443,6 +443,8 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   assuranceStorageChain: AssuranceChainId
   assuranceAcquisitionInput: AssuranceAcquisitionJob
   assuranceAcquisitionActive: bool
+  assuranceReadActive, assuranceReadsEnabled: bool
+  assuranceReadLimits: AssuranceReadLimits
   assuranceSigner: WorkSigner
   assuranceSignerReady: bool
   assuranceSignerIdentity: StateEdKey
@@ -913,6 +915,10 @@ proc stopStateProofs*(services: var Services) =
     # A cancelled completed publication remains stored; only joined observation can refresh accounting or its fault gate.
     services.refreshAssuranceStorage()
     services.assuranceAcquisitionActive = false
+  if services.assuranceReadActive:
+    # A cancelled read may already have detected corrupt durable data; join precedes cached fault observation.
+    services.refreshAssuranceStorage()
+    services.assuranceReadActive = false
   services.assuranceStorageInput = default(AssuranceStorageJob)
   if services.assuranceStorageActive:
     # Joined startup may already have opened the namespace; cancellation cannot roll that side effect back on the worker.
@@ -1026,6 +1032,8 @@ proc close*(services: var Services) =
   services.workIdentity = nil
   services.workTicket = default(ProofWorkerTicket)
   services.availabilityStore.clear()
+  services.assuranceReadsEnabled = false
+  services.assuranceReadLimits = default(AssuranceReadLimits)
   services.availabilityEnabled = false
   services.availabilityLimits = default(AvailabilityReadLimits)
   services.workGeneration = 0
@@ -2058,6 +2066,14 @@ func availabilityReadsMatch*(services: Services, limits: AvailabilityReadLimits)
     uint64(services.availabilityLimits.computation.hashes) == uint64(limits.computation.hashes) and
     uint64(services.availabilityLimits.computation.hashBytes) == uint64(
         limits.computation.hashBytes)
+proc configureAssuranceReads*(services: var Services, limits: AssuranceReadLimits): bool =
+  ## Explicit durable audit serving requires an installed healthy full-state namespace, and opens no archive or key itself.
+  if not services.started or services.light.active or not services.stateProofAvailable or
+      services.assuranceReadsEnabled or not limits.valid: return false
+  if not services.assuranceInfo.opened or services.assuranceInfo.faulted: return false
+  services.assuranceReadLimits = limits
+  services.assuranceReadsEnabled = true
+  true
 proc configureAvailabilityReads*(services: var Services, limits: AvailabilityReadLimits): bool =
   ## Explicit one-time policy activation never rebinds a live worker's source or resource contract.
   if not services.started or not services.stateProofAvailable or services.availabilityEnabled or
@@ -2080,6 +2096,12 @@ proc rememberAvailability*(services: var Services,
   services.availabilityStore.remember(transfer)
 proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadError =
   ## Exact root/shard selection touches the private cache only before the worker lease is acquired.
+  if services.assuranceReadsEnabled:
+    # Durable selection performs no foreground filesystem IO; all lookup, proof and synchronization work stays in the closed job.
+    let captured = captureAssuranceRead(services.assuranceStore, request,
+        services.assuranceReadLimits)
+    if captured.error == ReadError.None: services.networkReadInput = captured.value
+    return captured.error
   if not services.availabilityEnabled: return ReadError.Unavailable
   let payload = request.payload
   var selected = AvailabilityRequest(kind: AvailabilityTransferKind.Audit,
@@ -2184,6 +2206,7 @@ proc beginNetworkRead*(services: var Services, request: ReadRequest): NetworkRea
   let admitted = services.proofWorker.submit(services.networkReadInput)
   if admitted.error == ProofWorkerError.None:
     services.proofing = true # Disconnect/cancel must not clear this flag before matching Done collection or join.
+    services.assuranceReadActive = services.assuranceReadsEnabled and request.kind == ReadKind.Audit
     return NetworkReadStart(status: StateProofAdmissionError.None, ticket: admitted.value)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
@@ -2302,6 +2325,10 @@ proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): Proo
       services.refreshAssuranceStorage()
       services.assuranceAcquisitionInput = default(AssuranceAcquisitionJob)
       services.assuranceAcquisitionActive = false
+    if services.assuranceReadActive:
+      # Exact collection ends the namespace borrow before observing real restore faults, including cancelled Done reads.
+      services.refreshAssuranceStorage()
+      services.assuranceReadActive = false
     if services.assuranceStorageActive:
       # Exact collection ends mutation before touching any native-owner fields; a cancelled Done result still needs explicit close.
       if result.kind == ProofWorkerCompletionKind.AssuranceCompleted and
