@@ -255,9 +255,8 @@ def final_return_dump(output, executions):
 
 
 def collect(checks, binary, name, scope, environment, timeout, instructions=False,
-            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False,
-            absolute_positions=False):
-    """Collect a fresh selected scope; return dumps isolate calls and explicit absolute positions bind addresses."""
+            dump_symbols=(), executions=1, arguments=(), deep=False, requests=False):
+    """Collect a fresh selected scope; optional complete return dumps isolate its final invocation."""
     output = checks.folder/(name+'.callgrind')
     output.unlink(missing_ok=True)
     for part in output.parent.glob(output.name+'.*'):
@@ -266,7 +265,6 @@ def collect(checks, binary, name, scope, environment, timeout, instructions=Fals
     result = checks.command(['valgrind', '--tool=callgrind', '--collect-atstart=no',
         *(['--toggle-collect='+scope] if not requests else []), '--cache-sim='+('yes' if deep else 'no'), '--branch-sim=yes',
         '--compress-strings=no', *(['--dump-instr=yes'] if instructions else []),
-        *(['--compress-pos=no'] if absolute_positions and not deep else []),
         *(['--read-inline-info=yes', '--compress-pos=no', '--demangle=no',
            '--I1=32768,8,64', '--D1=32768,8,64', '--LL=8388608,16,64'] if deep else []),
         *('--dump-after='+symbol for symbol in dump_symbols if not requests),

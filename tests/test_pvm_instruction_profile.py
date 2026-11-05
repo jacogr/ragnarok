@@ -152,14 +152,6 @@ class InstructionProfileTests(unittest.TestCase):
                     collect(checks, 'binary', 'sample', 'selected', {}, 30)
             self.assertFalse((checks.folder/'sample.callgrind').exists())
 
-            # Address attribution must explicitly disable compression without switching to cache simulation.
-            collect(checks, 'binary', 'absolute', 'selected', {}, 30,
-                    requests=True, instructions=True, absolute_positions=True)
-            command = checks.calls[-1][0]
-            self.assertIn('--compress-pos=no', command)
-            self.assertIn('--cache-sim=no', command)
-            self.assertFalse(any(str(value).startswith('--toggle-collect=') for value in command))
-
     def test_complete_return_parts_and_empty_final_dump_are_required(self):
         """Missing/extra/partial parts, invalid counts and leftover selected work cannot pass last-call selection."""
         with tempfile.TemporaryDirectory() as directory:

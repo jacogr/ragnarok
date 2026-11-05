@@ -32,22 +32,6 @@ name: CI
         default: all
         required: false
 
-      pvm_x86_diagnostic:
-        description: Collect bounded x86 sieve1000 instruction attribution instead of PVM timings
-        type: boolean
-        default: false
-        required: false
-      pvm_parent_runtime:
-        description: Exact parent runtime commit SHA for the optional x86 diagnostic
-        type: string
-        default: ""
-        required: false
-      pvm_candidate_runtime:
-        description: Exact candidate runtime commit SHA for the optional x86 diagnostic
-        type: string
-        default: ""
-        required: false
-
       pvm_doom_calls:
         description: "Shared-backend DOOM calls (1 is a sizing pilot; 2 is the continuing check)"
         required: false
@@ -655,74 +639,38 @@ jobs:
   # Every merge measures the same complete current-source PVM cohort on both native CPUs.
   # Focused manual requests reuse this runner/report protocol, without diagnostic benchmark paths.
   pvm-comparison:
-    permissions:
-      contents: read
-      actions: read
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     # Reports retain the actual API job name without maintaining a separate display-name selector.
-    name: &pvm-performance-name ${{ format('{0} / PVM ({1})', inputs.pvm_x86_diagnostic && 'Attribution' || 'Perf', matrix.family.name) }}
-    timeout-minutes: ${{ inputs.pvm_x86_diagnostic && 35 || 60 }}
+    name: &pvm-performance-name ${{ format('Perf / PVM ({0})', matrix.family.name) }}
+    timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.pvm_x86_diagnostic && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || (inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom') && inputs.pvm_architecture == 'arm64' && '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"}]' || (inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom') && inputs.pvm_architecture == 'x86_64' && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
+        family: ${{ fromJSON((inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom') && inputs.pvm_architecture == 'arm64' && '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"}]' || (inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom') && inputs.pvm_architecture == 'x86_64' && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
       PVM_CI_ARCH: ${{ matrix.family.group }}
       PVM_CI_JOB_NAME: *pvm-performance-name
-      PVM_PERF_SCOPE: ${{ inputs.pvm_x86_diagnostic && 'micro' || inputs.suite == 'bench-doom' && 'doom' || 'all' }}
-      PVM_PERF_DIAGNOSTIC: ${{ inputs.pvm_x86_diagnostic && 'x86-attribution' || '' }}
-      PVM_DIAGNOSTIC_PARENT: ${{ inputs.pvm_x86_diagnostic && inputs.pvm_parent_runtime || '' }}
-      PVM_DIAGNOSTIC_CANDIDATE: ${{ inputs.pvm_x86_diagnostic && inputs.pvm_candidate_runtime || '' }}
+      PVM_PERF_SCOPE: ${{ inputs.suite == 'bench-doom' && 'doom' || 'all' }}
     steps:
       - *checkout
       - *python
-      - name: Validate explicit diagnostic selectors before provisioning
-        if: inputs.pvm_x86_diagnostic
-        env:
-          PVM_DIAGNOSTIC_SUITE: ${{ inputs.suite }}
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          import sys
-          sys.path.insert(0, 'tools')
-          from pvm_x86_attribution import AttributionRunner
-          if (os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch'
-                  or os.environ.get('PVM_DIAGNOSTIC_SUITE') != 'bench-pvm'
-                  or os.environ.get('PVM_CI_ARCH') != 'x86_64'):
-              raise SystemExit('Attribution requires manual bench-pvm on Linux x86')
-          AttributionRunner(Path('build/tests/pvm-performance/diagnostics/x86-attribution'),
-              os.environ.get('PVM_DIAGNOSTIC_PARENT'),
-              os.environ.get('PVM_DIAGNOSTIC_CANDIDATE'))
-          PY
       - name: Install pinned asset decompression prerequisite
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
-      - name: Install diagnostic collector without changing project toolchain pins
-        if: inputs.pvm_x86_diagnostic
-        run: sudo apt-get install --yes --no-install-recommends valgrind
-      - name: ${{ inputs.pvm_x86_diagnostic && 'Qualify and attribute x86 PVM work' || 'Qualify and compare current PVM backends' }}
-        env:
-          GH_TOKEN: ${{ inputs.pvm_x86_diagnostic && github.token || '' }}
+      - name: Qualify and compare current PVM backends
         run: make bench-pvm-performance
-      - name: ${{ inputs.pvm_x86_diagnostic && 'Show x86 instruction attribution' || 'Show complete current-source comparison' }}
+      - name: Show complete current-source comparison
         if: always()
         run: |
-          if test "$PVM_PERF_DIAGNOSTIC" = x86-attribution; then
-            if test -f build/tests/pvm-performance/diagnostics/x86-attribution/summary.md; then
-              cat build/tests/pvm-performance/diagnostics/x86-attribution/summary.md >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo 'X86 attribution did not complete; no timing evidence was collected.' >> "$GITHUB_STEP_SUMMARY"
-            fi
-          elif test -f build/tests/pvm-performance/summary.md; then
+          if test -f build/tests/pvm-performance/summary.md; then
             cat build/tests/pvm-performance/summary.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'PVM comparison did not complete; inspect the native qualification and build logs.' >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: ${{ inputs.pvm_x86_diagnostic && 'Retain x86 attribution and failure evidence' || 'Retain source-bound PVM measurements and failure evidence' }}
+      - name: Retain source-bound PVM measurements and failure evidence
         if: always()
         uses: *upload-artifact
         with:
@@ -734,11 +682,6 @@ jobs:
             build/tests/pvm-performance/*.csv
             build/tests/pvm-performance/*.md
             build/tests/pvm-performance/**/*.log
-            build/tests/pvm-performance/diagnostics/x86-attribution/*.json
-            build/tests/pvm-performance/diagnostics/x86-attribution/*.md
-            build/tests/pvm-performance/diagnostics/x86-attribution/*.callgrind*
-            build/tests/pvm-performance/diagnostics/x86-attribution/historical/**/*.json
-            build/tests/pvm-performance/diagnostics/x86-attribution/*-generated-source/**/*.c
             build/tests/pvm-native/*.json
             build/tests/pvm-native/*.log
             build/tests/native/selected/pvm_memory_reuse.log

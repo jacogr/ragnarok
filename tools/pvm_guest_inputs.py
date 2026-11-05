@@ -15,7 +15,6 @@ from pvm_sieve_benchmark import verify_fixture
 
 CASES = (('sieve', 1000), ('sieve', 100000), ('minimal', 1000), ('minimal', 100000),
          ('memset', 1000), ('memset', 100000), ('pinky', 1))
-SIEVE_DIAGNOSTIC_CASES = (('sieve', 1000),)
 
 
 def digest(path):
@@ -23,10 +22,9 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def validate_cases(cases, diagnostic=False):
-    """Admit maintained cohorts and the explicit single-input x86 attribution selection."""
-    allowed = (SIEVE_DIAGNOSTIC_CASES,) if diagnostic else (CASES, CASES[:-1])
-    if (type(diagnostic) is not bool or type(cases) is not tuple or cases not in allowed
+def validate_cases(cases):
+    """Admit only the complete bounded matrix or its explicit six-input control subset."""
+    if (type(cases) is not tuple or cases not in (CASES, CASES[:-1])
             or any(type(guest) is not str or type(limit) is not int for guest, limit in cases)):
         raise ValueError('unsupported paired guest matrix')
 
@@ -51,9 +49,9 @@ def preparation_identity(output, guest, limit):
     return dict(mapped_pages=pages, code_bytes=code)
 
 
-def prepare_inputs(checks, folder, cases=CASES, diagnostic=False):
+def prepare_inputs(checks, folder, cases=CASES):
     """Verify frozen sources, build the pinned reference offline, and prepare complete checked states."""
-    validate_cases(cases, diagnostic)
+    validate_cases(cases)
     contracts = load_fixture_contracts(ROOT/'tests/fixtures')
     identities = {}
     for key in ('pvm_guests', 'pvm_pinky', 'pvm_sieve'):
