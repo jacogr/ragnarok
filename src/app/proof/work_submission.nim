@@ -440,11 +440,18 @@ proc prepareExchange(data: WorkJobData): WorkJobResult =
   var targets = default(array[2, WorkShareTarget])
   var count = 0
   for position in 0..<3:
-    # GP-null offenders and the original local position cannot become outgoing request targets.
+    # Null/local keys need no request; each physical remote key is contacted once even when it owns several distinct original indices.
     let selected = sharingTarget(data.contribution, position)
     if selected.error == WorkGuaranteeError.InvalidTarget: continue
-    if selected.error != WorkGuaranteeError.None or count >= targets.len:
+    if selected.error != WorkGuaranteeError.None:
       return WorkJobResult(status: WorkJobResultKind.InvalidSource)
+    var present = false
+    for index in 0..<count:
+      let prior = targets[index].participant.validator.ed25519
+      let current = selected.value.participant.validator.ed25519
+      if array[32, byte](prior) == array[32, byte](current): present = true
+    if present: continue
+    if count >= targets.len: return WorkJobResult(status: WorkJobResultKind.InvalidSource)
     targets[count] = selected.value
     inc count
   WorkJobResult(status: WorkJobResultKind.ExchangePrepared, preparedRequest: prepared.value,

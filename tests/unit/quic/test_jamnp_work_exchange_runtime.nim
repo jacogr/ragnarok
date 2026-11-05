@@ -455,6 +455,54 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
   assert a.open(sa, reopened, topologyLimits(2), StateTime(20)) == NodeError.None
   assert a.configureWorkExchange(selected, "unused", "unused")
   assert a.workExchangePhase == WorkExchangePhase.Idle
+proc repeatedRuntime(fixture: GuaranteeFixture, keyB, keyC: StateEdKey, remote: int) {.raises.} =
+  ## Physical peer discovery must retain all GP indices while issuing zero self requests and one request per distinct remote key.
+  let raw = workFixture()
+  let parent = fixture.view.parentOf(fixture.view.bestBlock.value.blockHash)
+  assert parent.error == GenesisError.None
+  writeFile("work-exchange-chain.json", workChainText(parent.value))
+  var sa, sb, sc = default(Services)
+  var a, b, c = default(ApplicationNode)
+  var probe = default(NodeProbe)
+  defer:
+    probe.close()
+    a.close()
+    b.close()
+    c.close()
+    sa.close()
+    sb.close()
+    sc.close()
+  start(sa, a, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
+  start(sb, b, getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
+  start(sc, c, "work-exchange-c/cert.pem", "work-exchange-c/key.pem")
+  let selected = policy(raw)
+  assert a.configureWork(workDispatchPolicy(raw.limits, executionLimits(), guaranteeLimits().duty))
+  assert a.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
+  if remote > 0:
+    assert b.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
+  assert a.beginPeerConnection(keyB, networkEndpoint(loopbackAddress(false), b.localPort)).error == DialError.None
+  assert a.beginPeerConnection(keyC, networkEndpoint(loopbackAddress(false), c.localPort)).error == DialError.None
+  probe.open(a.localPort, sa.nodeProtocol & "/builder", "work-exchange-builder/cert.pem", "work-exchange-builder/key.pem")
+  let deadline = getMonoTime()+initDuration(seconds = 25)
+  while not probe.authenticated or a.peerCount < 3:
+    assert getMonoTime() < deadline, "repeated-key native setup"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+  let flow = probe.issue(packet(fixture, raw))
+  while a.workExchangePhase != WorkExchangePhase.Ready:
+    assert getMonoTime() < deadline, "repeated-key collection phase " & $a.workExchangePhase
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+  assert probe.flows[flow].receivedFin and not probe.flows[flow].reset
+  let token = a.completedWork
+  let info = sa.workExchangeInfo(token)
+  assert info.targets == remote and info.credentials == 3, "physical targets and original credential positions are different counts"
+  verify(sa.workGuaranteePayload(token), 3)
+  assert b.receivedWorkContributions == uint64(remote) and c.receivedWorkContributions == 0, "one actual remote response per distinct key"
+  assert not sc.workSigningConfigured
+  if remote == 0: assert not sb.workSigningConfigured
+  assert a.releaseWork()
+  while a.workExchangePhase != WorkExchangePhase.Idle:
+    assert getMonoTime() < deadline, "repeated-key retirement"
+    pump(a, b, c, sa, sb, sc, probe, getMonoTime())
 proc main() {.raises.} =
   ## Only public identity leaves the temporary signer scopes; private production setup subsequently imports its own independent owner from paths.
   var diagnostic = ""
@@ -472,6 +520,13 @@ proc main() {.raises.} =
   for variant in Variant.Three..Variant.DeliveryCloseForeign:
     scenario(variant, fixture, keyB, keyC)
     echo "runtime ", variant, " passed"
+  let otherCore = StateValidator(ed25519: keyA)
+  repeatedRuntime(guaranteeFixture(keyA, keyA, keyA, otherCore), keyB, keyC, 0)
+  echo "runtime AllLocal passed"
+  repeatedRuntime(guaranteeFixture(keyA, keyA, keyB, otherCore), keyB, keyC, 1)
+  echo "runtime TwoLocal passed"
+  repeatedRuntime(guaranteeFixture(keyA, keyB, keyB), keyB, keyC, 1)
+  echo "runtime RepeatedPeer passed"
   echo "jamnp work exchange runtime tests passed"
 try:
   main()

@@ -65,7 +65,7 @@ proc sharingTarget*(contribution: SignedWorkContribution, position: int): WorkGu
   let selected = duty.participantAt(position)
   if selected.error != WorkDutyError.None:
     return WorkGuaranteeResult[WorkShareTarget](status: WorkGuaranteeError.InvalidTarget)
-  if uint16(selected.value.index) == uint16(info.value.validator):
+  if array[32, byte](selected.value.validator.ed25519) == array[32, byte](duty.localIdentity):
     return WorkGuaranteeResult[WorkShareTarget](status: WorkGuaranteeError.InvalidTarget)
   if not workRecipient(selected.value.validator.ed25519, duty.observedTime).valid:
     return WorkGuaranteeResult[WorkShareTarget](status: WorkGuaranteeError.InvalidTarget)
@@ -75,18 +75,31 @@ proc sharingTarget*(contribution: SignedWorkContribution, position: int): WorkGu
       root: array[32, byte](duty.sourceRoot), info: info.value))
 proc beginWorkGuarantee*(contribution: SignedWorkContribution): WorkGuaranteeResult[
     WorkGuaranteeRound] =
-  ## Begin with exactly the original signer-produced credential; copying public facts cannot begin an accepted collection.
+  ## One signer-produced signature certifies each distinct same-core index owned by its actual local key; public facts cannot manufacture that signature.
   let info = contribution.contributionInfo
   if info.error != WorkSignerError.None:
     return WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.InvalidSource)
   let message = array[45, byte](contribution.contributionTranscript.value.computedGuaranteeMessage.value)
   var credentials = default(array[3, GuaranteeCredential])
-  credentials[0] = contribution.contributionCredential.value
+  let credential = contribution.contributionCredential.value
   let duty = contribution.contributionDuty.value
+  var count = 0
+  for position in 0..<duty.participantCount:
+    # GP credentials identify original indices while the signing transcript omits that index; repeated local keys must not create self requests.
+    let participant = duty.participantAt(position).value
+    if array[32, byte](participant.validator.ed25519) != array[32, byte](
+        duty.localIdentity): continue
+    if count >= credentials.len:
+      return WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.InvalidSource)
+    credentials[count] = GuaranteeCredential(validator: participant.index,
+        signature: credential.signature)
+    inc count
+  if count == 0:
+    return WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.InvalidSource)
   WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.None,
     completed: WorkGuaranteeRound(data: WorkGuaranteeData(local: contribution, message: message,
         root: array[32, byte](duty.sourceRoot),
-      info: info.value, credentials: credentials, count: 1)))
+      info: info.value, credentials: credentials, count: count)))
 proc credentialCount*(round: WorkGuaranteeRound): int =
   ## Call only while owning the graph lease; a default collection has no implicit all-zero local signature.
   let data = round.data
@@ -132,12 +145,25 @@ reply: openArray[byte]): WorkGuaranteeResult[WorkGuaranteeRound] =
   if not verify(EdPublicKey(assignedIdentity), EdSignature(signature), data.message):
     return WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.InvalidSignature)
   var credentials = data.credentials
-  credentials[data.count] = GuaranteeCredential(validator: target.member.index,
-    signature: GuaranteeSignature(signature))
+  var count = data.count
+  let duty = data.local.contributionDuty.value
+  for position in 0..<duty.participantCount:
+    # A verified physical peer may control several original cohort positions; append every still-missing index, not another network request.
+    let participant = duty.participantAt(position).value
+    if array[32, byte](participant.validator.ed25519) != assignedIdentity: continue
+    var present = false
+    for ordinal in 0..<data.count:
+      if uint16(data.credentials[ordinal].validator) == uint16(participant.index): present = true
+    if present: continue
+    if count >= credentials.len:
+      return WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.LimitExceeded)
+    credentials[count] = GuaranteeCredential(validator: participant.index,
+        signature: GuaranteeSignature(signature))
+    inc count
   WorkGuaranteeResult[WorkGuaranteeRound](status: WorkGuaranteeError.None,
     completed: WorkGuaranteeRound(data: WorkGuaranteeData(local: data.local, message: data.message,
       root: data.root,
-      info: data.info, credentials: credentials, count: data.count+1)))
+      info: data.info, credentials: credentials, count: count)))
 proc collectWorkGuarantee*(round: WorkGuaranteeRound, maximum: ByteLimit): WorkGuaranteeResult[
     CollectedWorkGuarantee] =
   ## Structural output budgets are independent of credential authority; this step does not promise next-block inclusion or assurance retention.

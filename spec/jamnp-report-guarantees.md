@@ -634,3 +634,28 @@ coverage remains limited by the documented CLI compiler issue. No native Linux C
 Retained guarantor bundle capacity before signature disclosure and strict optional startup remain
 required before the guarantee feature is published. This delivery implementation does not establish
 long-lived assurance retention or complete the remaining assurance/audit lifecycles.
+
+## Repeated Ed25519 keys in a guarantor cohort
+
+The pinned GP key-rotation definitions use validator sequences; reporting/assurance requires unique
+credential indices, while the reporters bookkeeping set deduplicates Ed25519 keys. Its guarantee
+signature message contains the work-report hash and domain, not the validator index. The focused
+`jamnp_work_guarantee` witness first passes two credentials at distinct original indices sharing
+one key to the actual GP credential verifier; its reporters set contains one key. Against the old
+collector this then failed because the initial round retained only one local credential. Assembly
+now fills every eligible local index from the actual local signature, and one verified peer
+response fills all of that peer's still-missing original indices. Managed target discovery contacts
+each remote key once and skips every local position. Duty selection already filters by requested
+core before choosing a local index; fixtures preserve that behavior with the same key also present
+on another core.
+
+The component suite passes all-local, two-local and repeated-remote cases through the real GP
+verifier, including canonical indices 1, 2 and 5. The ordinary `jamnp_work_exchange_runtime` suite
+adds the same three arrangements through actual CE146 submission and managed CE134 collection,
+asserting zero or one physical targets, three credentials, and zero or one actual remote
+contributions. All sixteen runtime scenarios pass. The component and managed exchange suites
+also pass 1,000-cycle ARC checks with equal occupied-memory readings before and after (542368 and
+338944 bytes respectively). The changed collector passes Linux-target semantic checking; this is
+not native Linux CI evidence. Formatting, verification inventory, all 550 production modules and
+the production ARC/LTO build pass; the generated self-comparison warning is unchanged. These
+adjustments remain in the existing guarantee feature layer.

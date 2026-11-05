@@ -74,6 +74,74 @@ proc cycle(local: SignedWorkContribution, second, third: WorkShareTarget,
   assert tiny.error == WorkGuaranteeError.CodecFailure
   assert tiny.codecError == GuaranteeError.LimitExceeded
   refused(addWorkResponse(full.value, second, secondKey, secondReply), WorkGuaranteeError.Duplicate)
+proc verifyRepeated(fixture: GuaranteeFixture, value: Guarantee, reporters: int) =
+  ## The ordinary GP verifier proves genuine repeated-key credentials, using actual complete roster/entropy and distinct original indices.
+  let source = fixture.view.bestBlock.value.stateSnapshot
+  let parameters = fixture.view.bestBlock.value.chainParameters
+  let roster = ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
+      maxBytes: ByteLimit(10000))
+  let active = decodeStateValidators(source.lookup(chapterKey(StateChapter(8))).value.bytes,
+      roster).value.value
+  let previous = decodeStateValidators(source.lookup(chapterKey(StateChapter(9))).value.bytes,
+      roster).value.value
+  let entropy = decodeStateEntropy(source.lookup(chapterKey(StateChapter(
+      6))).value.bytes).value.value
+  let config = GuaranteeCredentialConfig(assignments: GuarantorConfig(roster: roster,
+    epochSlots: EpochSlots(parameters.get(epochPeriod)), rotationSlots: GuarantorRotationSlots(
+        parameters.get(rotationPeriod)), offenders: ElementLimit(128)),
+    maxBytes: ByteLimit(20000), reporters: ElementLimit(6))
+  let verified = verifyGuaranteeCredentials([value], active, previous, entropy, StateTime(22), [], config)
+  assert verified.error == GuaranteeCredentialError.None, "ordinary GP repeated-key credentials"
+  assert verified.value.verifiedReporterCount.value == reporters, "reporters count keys independently of original credential indices"
+proc repeatedKeys(a, b: WorkSigner) =
+  ## A key shared by another core must not hide its valid local positions on this core; signature reuse follows the pinned GP transcript.
+  let aKey = a.signerIdentity.value
+  let bKey = b.signerIdentity.value
+  let otherCore = StateValidator(ed25519: aKey)
+  let fixture = guaranteeFixture(aKey, aKey, bKey, otherCore)
+  let local = signed(fixture, a, aKey)
+  assert uint16(local.contributionDuty.value.validatorIndex) == 1, "requested core selects the eligible local position"
+  var direct = default(array[3, GuaranteeCredential])
+  direct[0] = local.contributionCredential.value
+  direct[1] = direct[0]
+  direct[1].validator = GuarantorIndex(2)
+  let witness = Guarantee(report: local.contributionReport.value, slot: GuaranteeSlot(21),
+      credentials: direct, credentialCount: 2)
+  verifyRepeated(fixture, witness, 1) # This independent positive control passes before assembly is changed.
+  let initial = beginWorkGuarantee(local).value
+  assert initial.credentialCount == 2, "both original local positions must contribute without a self request"
+  assert sharingTarget(local, 0).error == WorkGuaranteeError.InvalidTarget
+  assert sharingTarget(local, 1).error == WorkGuaranteeError.InvalidTarget
+  let target = sharingTarget(local, 2).value
+  let raw = workFixture()
+  let response = receiveSharedWork(prepareWorkSharing(local, ByteLimit(20000)).value, fixture.view,
+    bKey, aKey, StateTime(21), b, policy(raw))
+  assert response.error == WorkSharingError.None
+  let complete = addWorkResponse(initial, target, bKey, response.value.sharingResponse.value).value
+  assert complete.credentialCount == 3
+  let bytes = collectWorkGuarantee(complete, ByteLimit(20000)).value.checkedPayload(3)
+  let wire = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
+      maxBytes: ByteLimit(20000))
+  verifyRepeated(fixture, decodeGuarantee(bytes, wire).value.value, 2)
+  let all = guaranteeFixture(aKey, aKey, aKey, otherCore)
+  let allLocal = signed(all, a, aKey)
+  let allRound = beginWorkGuarantee(allLocal).value
+  assert allRound.credentialCount == 3, "three original local positions need no remote signer"
+  for position in 0..<3:
+    assert sharingTarget(allLocal, position).error == WorkGuaranteeError.InvalidTarget
+  verifyRepeated(all, decodeGuarantee(collectWorkGuarantee(allRound, ByteLimit(
+      20000)).value.checkedPayload(3), wire).value.value, 1)
+  let remote = guaranteeFixture(aKey, bKey, bKey)
+  let origin = signed(remote, a, aKey)
+  let offered = prepareWorkSharing(origin, ByteLimit(20000)).value
+  let returned = receiveSharedWork(offered, remote.view, bKey, aKey, StateTime(21), b, policy(raw))
+  assert returned.error == WorkSharingError.None
+  let remoteTarget = sharingTarget(origin, 1).value
+  let accepted = addWorkResponse(beginWorkGuarantee(origin).value, remoteTarget, bKey,
+      returned.value.sharingResponse.value)
+  assert accepted.error == WorkGuaranteeError.None and accepted.value.credentialCount == 3, "one authenticated remote response covers its two original positions"
+  verifyRepeated(remote, decodeGuarantee(collectWorkGuarantee(accepted.value, ByteLimit(
+      20000)).value.checkedPayload(3), wire).value.value, 2)
 proc main() {.raises.} =
   ## Generate only test-owned third credentials; original provider identities and pinned crypto implementations remain unchanged.
   let a = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
@@ -86,6 +154,7 @@ proc main() {.raises.} =
   let aKey = a.value.signerIdentity.value
   let bKey = b.value.signerIdentity.value
   let cKey = c.value.signerIdentity.value
+  repeatedKeys(a.value, b.value)
   let fixture = guaranteeFixture(aKey, bKey, cKey)
   let local = signed(fixture, a.value, aKey)
   let targetB = sharingTarget(local, 1)
