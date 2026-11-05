@@ -19,7 +19,7 @@ import ../../../src/crypto/primitives
 import ../../../src/rpc/server
 import ../../../src/lib/atomic/file
 import ../../support/[jamnp_assurance_fixture, assurance_signer_context,
-  jamnp_assurance_receipt_runtime,
+  jamnp_assurance_receipt_runtime, jamnp_assurance_acquirer_runtime,
   current_application_context, jamnp_import_recovery_fixture,
   pvm_computed_chain, storage_io, arc_evidence]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
@@ -476,6 +476,10 @@ proc managed(fixture: AssuranceAcquisitionFixture, keyPath, certificatePath,
       completed.assuranceSigningValue.error == AssuranceSigningError.None, "actual managed stored-possession signature"
   let signed = completed.assuranceSigningValue.value
   assert owner.currentAssuranceBytes(signed, ByteLimit(97)).error == AssuranceSigningError.None, "only this Services instance's collected signature may publish"
+  assuranceAcquirerRuntime(options, fixture, certificatePath, keyPath,
+    folder & "-acquirer", acquisition, storage())
+  assuranceAcquirerNetworkRuntime(options, fixture, folder & "-network-acquirer", acquisition,
+      storage())
   assuranceReceiptRuntime(owner, options, signed, fixture, certificatePath, keyPath, suffix, limits().duty)
   assuranceReceiptRuntime(owner, options, signed, fixture, certificatePath, keyPath, suffix &
       "-owned", limits().duty, ownClose = true)

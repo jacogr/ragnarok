@@ -595,3 +595,69 @@ unchanged. The complete signing/TLS receipt suite passes, all 566 modules and th
 point compile, and pinned formatting/inventory pass. This establishes local lookup for the
 forthcoming network acquirer; it is not yet a live CE137 retry scheduler or complete foreground
 assurance activation, and remains local macOS evidence rather than native Linux CI.
+
+## Network acquisition actor contract
+
+The optional acquirer must serialize source planning, exact existing-coordinate probes, genuine
+guarantee-target selection, FIN-complete CE137 replies and managed verified retention. It owns
+only source-free plans, detached raw bytes and exact native/worker tokens. Recheck the full source
+before each new request or worker admission; an unavailable foreign canonical lease alone is not
+evidence of a source change. A cancelled or stale result cannot count as acquired data.
+
+Per-round admitted requests, owned dials and reserved response bytes, plus per-peer/job/round
+deadlines and retry delay, must be explicit. Budget backoff preserves coordinate progress rather
+than repeatedly starving later cores. Request only the independently expected complete payload
+ceiling, including all three E4 prefixes. Try only actual C10 credential records; use existing
+pinned peers first, then their validated numeric metadata endpoints. A local guarantor may use
+ordinary managed availability reading, followed by the same acquisition verifier. Normal owned
+dial retirement keeps its physical demand until the native owner retires it and does not close
+pre-existing connections. Successful probes skip network fetches; only missing/failed transfer
+coordinates need further attempts. Namespace faults bar new acquisition without evicting promises.
+
+### Implemented acquisition host and local evidence
+
+`app/assurance_acquirer.nim` now implements this traversal as an explicitly configured,
+noncopyable foreground owner. Its closed jobs share Services' existing worker with receipt,
+signing and ordinary reads. Collection preserves exact ownership through `Done`, cancellation
+and joined shutdown. Each original local coordinate is probed before fetching; a successful
+probe counts only actual full verification and restore synchronization, without renewal or
+new-retention authority. Missing coordinates try only the copied canonical guarantor records.
+Network replies become retention input only after the ordinary client observes both FINs.
+Invalid proofs advance to another target. Request reservations and backoff preserve that target
+and coordinate rather than restarting the pass. Owned closing dials remain charged; the round
+deadline can close that owner's dial even if unrelated streams keep it busy. Pre-existing
+connections never acquire that cancellation token.
+
+ApplicationNode delegates ownership hooks, foreground progress, fair shared-worker admission and
+shutdown. Its existing slot-clock polling API admits no new acquisition work. An overload requires
+explicit `AssuranceTime` in Common Era seconds, independently of `StateTime` slots, before new
+planning/probe/retention jobs may start. Configuration neither opens an archive nor imports a key.
+It requires an already installed healthy namespace and an actual validator transport. Cached
+counts distinguish restored proofs, new retention and admitted remote requests. Namespace faults
+bar new work; foreign worker exclusion alone never invalidates a source-free plan.
+
+The native signing suite now includes two ordinary application-host witnesses against independently
+decoded complete trusted seeds. The first checks default refusal, missing-archive refusal,
+clock-free polling, real existing-coordinate probes without network requests, unchanged promise
+times, preservation of a foreign `Done` lease, owned-probe shutdown and a reopened host's foreign
+lease preservation. The genuine fixture has three pending cores and retains original erasure data
+for core zero; these checks do not claim possession of the other pending cores.
+
+The second opens real bundled-TLS guarantor endpoints whose public keys are the original canonical
+credential targets, and a distinct actual parent-roster client. One serialized native read worker
+constructs genuine original CE137 evidence. The first target sends a framing-valid transcript with
+a corrupted proof byte. With only one request permitted per round, the client must reject it,
+enter actual backoff, advance to a different canonical credential/TLS identity, verify its real
+reply and durably acquire exactly one record. It makes exactly two admitted requests. Independently
+owned pre-existing connections remain present, acquisition owns no demand connections, and no
+private signer is configured. This witness uses pre-existing authenticated peers; it does not
+claim native coverage of metadata-driven owned dialing or continuously busy retirement.
+
+The expanded native signing suite passes with 93488 occupied bytes before and after 1000 cycles.
+Checked ARC/Clang ThinLTO passes the same suite and the exact controller copy-rejection diagnostic.
+The affected application-node and work-exchange runtime suites pass. All 567 production modules
+and the real entry point pass semantic checking; formatting and verification inventory pass.
+Logs, source identities and optimized build/run/copy results are retained under ignored
+`build/jamnp-implementation/assurance-acquirer-*`. These are local results, not Linux CI evidence.
+Durable serving, timed outgoing CE141 and explicit foreground startup activation remain required
+before this grouped assurance feature is ready for review.
