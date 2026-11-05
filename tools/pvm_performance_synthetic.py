@@ -9,6 +9,7 @@ import re
 
 from pvm_benchmark_report import NAMES
 from pvm_comparison_policy import policy_receipt
+from pvm_reference_lifetime import reference_instances
 
 NATIVE_FIELDS = ('fragments', 'calls', 'operations', 'code_bytes', 'compilation_ns')
 
@@ -32,6 +33,10 @@ def parse_synthetic(output, role):
     """
     if role not in ('interpreted', 'jit', 'reference') or not isinstance(output, str):
         raise ValueError('Unknown synthetic role/output')
+    instances = {}
+    if role == 'reference':
+        # Canonical reference calls retain the same actual interpreter cache across all thirteen runs.
+        output, instances = reference_instances(output, [f'synthetic-{row}' for row in range(11)])
     lines = output.splitlines()
     position = 0
 
@@ -54,6 +59,7 @@ def parse_synthetic(output, role):
             if identity != ['interpreter', 'interpreter', '0']:
                 raise ValueError('Synthetic reference must be actual PolkaVM interpreted')
             execution['reference'] = dict(requested='interpreter', actual='interpreter', machine_code_bytes=0)
+            execution['reference_instance'] = instances[f'synthetic-{row}']
         for sample in range(13):
             # Ordering binds all warmups/cold/reused calls; no filtering or process pooling occurs.
             observed, cpu, wall = integers(record('SYNTHETIC_SAMPLE', row, 6))

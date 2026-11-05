@@ -17,8 +17,9 @@ import tempfile
 
 from pvm_benchmark_report import NAMES
 from pvm_sieve_report import limits_for_guest
+from pvm_reference_lifetime import CODE_LIFETIME, validate_instance
 
-SCHEMA = 'pvm-performance-v1'
+SCHEMA = 'pvm-performance-v2'
 ROLES = ('interpreted', 'jit', 'reference')
 ORDERS = (ROLES, ROLES[::-1])
 ARCHITECTURES = ('arm64', 'x86_64')
@@ -91,6 +92,8 @@ def _identity(report):
     if arch not in ARCHITECTURES:
         raise ValueError('Invalid report architecture')
     identity = _mapping(report.get('identity'), 'identity')
+    if identity.get('code_lifetime') != CODE_LIFETIME:
+        raise ValueError('Foreign prepared/reference code lifetime')
     host = _mapping(identity.get('host'), 'native host')
     runner = _mapping(host.get('runner'), 'Actions host')
     uname = host.get('uname')
@@ -207,8 +210,8 @@ def _policy(parsed, role, required):
         raise ValueError('Required native cell fell back to checked interpretation')
 
 
-def _execution(execution, reference_doom):
-    """Validate every cold/reused observation and keep reference lifecycle clocks distinct."""
+def _execution(execution, reference_label=None):
+    """Validate all call clocks and independently retained reference-instance evidence."""
     execution = _mapping(execution, 'execution samples')
     samples = execution.get('samples')
     if not isinstance(samples, list) or len(samples) != 13:
@@ -226,19 +229,12 @@ def _execution(execution, reference_doom):
                 raise ValueError('Invalid constructor clock')
             for value in values:
                 _integer(value, key, 1, (1 << 63)-1)
-    if 'lifecycle' in execution and not reference_doom:
-        raise ValueError('Lifecycle belongs only to reference DOOM scope')
-    if reference_doom:
-        lifecycle = execution.get('lifecycle')
-        if not isinstance(lifecycle, list) or len(lifecycle) != 13:
-            raise ValueError('Missing reference DOOM lifecycle')
-        for index, row in enumerate(lifecycle):
-            row = _mapping(row, 'reference lifecycle')
-            for key in ('restore_ns', 'cpu_ns', 'teardown_ns', 'lifecycle_ns'):
-                _integer(row.get(key), key, 0 if key == 'teardown_ns' else 1, (1 << 63)-1)
-            if (row['cpu_ns'] != samples[index]['cpu_ns'] or row['lifecycle_ns'] !=
-                    row['restore_ns']+row['cpu_ns']+row['teardown_ns']):
-                raise ValueError('Reference lifecycle sum/call disagreement')
+    if 'lifecycle' in execution:
+        raise ValueError('Fresh-instance lifecycle cannot enter a retained-code cohort')
+    if reference_label is not None:
+        validate_instance(execution.get('reference_instance'), reference_label)
+    elif 'reference_instance' in execution:
+        raise ValueError('Independent engine cannot supply reference-instance evidence')
 
 
 def validate_report(report):
@@ -267,7 +263,11 @@ def validate_report(report):
         if row.get('case') != case['case'] or type(row.get('limit')) is not int or row['limit'] != case['limit']:
             raise ValueError('Case/limit identity disagreement')
         parsed = _mapping(row.get('parsed'), 'parsed process')
-        _execution(parsed.get('execution'), case['family'] == 'doom' and key[1] == 'reference')
+        label = None
+        if key[1] == 'reference':
+            label = ('synthetic-'+str(NAMES.index(case['case_id'])) if case['family'] == 'synthetic'
+                     else case['case_id'])
+        _execution(parsed.get('execution'), label)
         _policy(parsed, key[1], report['architecture'] in case['native_required'])
         binary = _command(row.get('run'), files)
         image_key = (case['family'], 'reference' if key[1] == 'reference' else 'production')
@@ -392,6 +392,8 @@ def render_summary(report):
     observations = statistics_rows(report)
     lines = ['# PVM performance ('+report['architecture']+')', '',
              'Source `'+report['revision']+'`; scope '+report['scope']+'.',
+             'Cohort '+CODE_LIFETIME+': one prepared owner / reference instance per case, '
+             'invocation state restored between calls. Historical fresh-reference results are a different cohort.',
              'Thirteen validated calls per process. Cold is sample0; reused is the median of3–12.',
              'CPU and wall milliseconds, each process order separate. Ratios compare only this native runner.', '']
     for phase in ('cold', 'reused'):
@@ -445,39 +447,73 @@ def render_summary(report):
             for index, value in enumerate(row['parsed']['execution'].get(key, [])):
                 lines.append(f'| {row["case_id"]} | {row["role"]} | {row["order"]} | '+
                              f'{clock} | {index} | {value/1e6:.6f} |')
-    lines += ['', 'Reference DOOM lifecycle CPU (restore/call/teardown/total; no wall lifecycle inferred)', '',
-              '| Case | Order | Phase | Restore ms | Call ms | Teardown ms | Total ms |',
-              '|---|---:|---|---:|---:|---:|---:|']
+    lines += ['', 'Reference retained-instance construction and destruction (once per case/process)', '',
+              'Zero subsidiary clock deltas are observed ticks, not evidence of zero work. '
+              'Module construction remains in its separately observed constructor scope.', '',
+              '| Case | Order | Component | CPU ms | Wall ms |', '|---|---:|---|---:|---:|']
     for row in report['runs']:
-        lifecycle = row['parsed']['execution'].get('lifecycle')
-        if row['role'] == 'reference' and lifecycle is not None:
-            for phase in ('cold', 'reused'):
-                values = [lifecycle[0][key] if phase == 'cold' else
-                          statistics.median(v[key] for v in lifecycle[3:13])
-                          for key in ('restore_ns', 'cpu_ns', 'teardown_ns', 'lifecycle_ns')]
-                lines.append(f'| {row["case_id"]} | {row["order"]} | {phase} | '+
+        if row['role'] == 'reference':
+            instance = row['parsed']['execution']['reference_instance']
+            for component in ('constructor', 'teardown'):
+                lines.append(f'| {row["case_id"]} | {row["order"]} | {component} | '+
+                    ' | '.join(f'{instance[component+"_"+clock+"_ns"]/1e6:.6f}'
+                               for clock in ('cpu', 'wall'))+' |')
+    lines += ['', 'Reference restoration and calls (one-time scopes shown separately)', '',
+              'Columns are independently reduced observations; medians need not add. '
+              'Restore includes its input preflight and read-only-page checks. Full input/final-state/event '
+              'oracles are outside these clocks. The sum covers measured restore + call only, '
+              'not immutable publication or whole-process time.', '',
+              '| Case | Order | Window | Clock | Restore ms | Call ms | Restore + call ms |',
+              '|---|---:|---|---|---:|---:|---:|']
+    for row in report['runs']:
+        if row['role'] != 'reference':
+            continue
+        execution = row['parsed']['execution']
+        for clock in ('cpu', 'wall'):
+            restore = [s['restore_'+clock+'_ns'] for s in execution['reference_instance']['samples']]
+            calls = [s[clock+'_ns'] for s in execution['samples']]
+            combined = [r+c for r, c in zip(restore, calls)]
+            for window in ('cold', 'reused', 'all13'):
+                values = [(v[0] if window == 'cold' else statistics.median(v[3:]) if
+                           window == 'reused' else sum(v)) for v in (restore, calls, combined)]
+                lines.append(f'| {row["case_id"]} | {row["order"]} | {window} | {clock} | '+
                              ' | '.join(f'{v/1e6:.6f}' for v in values)+' |')
+    lines += ['', 'Reference interpreter-cache retention (public byte observations)', '',
+              '| Case | Order | Initial | After call1 | After call13 |', '|---|---:|---:|---:|---:|']
+    for row in report['runs']:
+        if row['role'] == 'reference':
+            instance = row['parsed']['execution']['reference_instance']
+            lines.append(f'| {row["case_id"]} | {row["order"]} | '+
+                ' | '.join(str(v) for v in (instance['initial_cache_bytes'],
+                    instance['samples'][0]['after_run_bytes'],
+                    instance['samples'][-1]['after_run_bytes']))+' |')
     return '\n'.join(lines)+'\n'
 
 
 def render_samples_csv(report):
-    """Retain raw samples, cold/reused membership and reference CPU lifecycle without fabricated zeros."""
+    """Retain actual calls and restoration/cache receipts without spreading one-time work over samples."""
     validate_report(report)
     output = io.StringIO(newline='')
     writer = csv.writer(output, lineterminator='\n')
     writer.writerow(('revision', 'architecture', 'scope', 'case_id', 'role', 'order', 'sample',
                      'cold', 'reused', 'cpu_ns', 'wall_ns',
-                     'reference_restore_ns', 'reference_teardown_ns', 'reference_lifecycle_ns'))
+                     'reference_restore_cpu_ns', 'reference_restore_wall_ns',
+                     'reference_restore_plus_call_cpu_ns', 'reference_restore_plus_call_wall_ns',
+                     'reference_cache_before_reset_bytes', 'reference_cache_after_reset_bytes',
+                     'reference_cache_after_run_bytes'))
     for row in report['runs']:
         execution = row['parsed']['execution']
         for sample in execution['samples']:
             index = sample['sample']
-            lifecycle = execution.get('lifecycle', [{}]*13)[index] if row['role'] == 'reference' else {}
+            instance = (execution['reference_instance']['samples'][index]
+                        if row['role'] == 'reference' else None)
+            extra = (instance['restore_cpu_ns'], instance['restore_wall_ns'],
+                instance['restore_cpu_ns']+sample['cpu_ns'],
+                instance['restore_wall_ns']+sample['wall_ns'], instance['before_reset_bytes'],
+                instance['after_reset_bytes'], instance['after_run_bytes']) if instance else ('',)*7
             writer.writerow((report['revision'], report['architecture'], report['scope'],
                 row['case_id'], row['role'], row['order'], index, int(index == 0),
-                int(index >= 3), sample['cpu_ns'], sample['wall_ns'],
-                lifecycle.get('restore_ns', ''), lifecycle.get('teardown_ns', ''),
-                lifecycle.get('lifecycle_ns', '')))
+                int(index >= 3), sample['cpu_ns'], sample['wall_ns'], *extra))
     return output.getvalue()
 
 

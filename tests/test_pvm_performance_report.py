@@ -77,6 +77,9 @@ class PerformanceReportTests(unittest.TestCase):
     def test_identity_and_matched_binary_tampering(self):
         """Source, actual host, compiler, warmup and executable seals must describe this cohort."""
         mutations = (
+            lambda r: r.update(schema='pvm-performance-v1'),
+            lambda r: r['identity'].pop('code_lifetime'),
+            lambda r: r['identity'].update(code_lifetime='fresh-instance-per-call'),
             lambda r: r['identity']['ci'].update(GITHUB_SHA='f'*40),
             lambda r: r['identity']['ci'].pop('GITHUB_JOB'),
             lambda r: r['identity']['ci'].update(GITHUB_JOB='foreign-job'),
@@ -131,9 +134,24 @@ class PerformanceReportTests(unittest.TestCase):
             report.validate_report(value)
         value = observations('doom')
         ref = next(r for r in value['runs'] if r['role'] == 'reference')
-        ref['parsed']['execution']['lifecycle'][0]['lifecycle_ns'] += 1
+        ref['parsed']['execution']['reference_instance']['samples'][1]['after_reset_bytes'] = 0
         with self.assertRaises(ValueError):
             report.validate_report(value)
+
+    def test_retained_reference_evidence_is_required_beyond_the_first_case(self):
+        """A policy label or another cell's warm cache cannot qualify a missing/recreated instance."""
+        for scope in ('micro', 'doom'):
+            for order in (0, 1):
+                value = observations(scope)
+                ref = next(r for r in reversed(value['runs']) if r['role'] == 'reference' and r['order'] == order)
+                ref['parsed']['execution'].pop('reference_instance')
+                with self.assertRaises(ValueError):
+                    report.validate_report(value)
+                value = observations(scope)
+                ref = next(r for r in reversed(value['runs']) if r['role'] == 'reference' and r['order'] == order)
+                ref['parsed']['execution']['reference_instance']['label'] = 'unrelated-case'
+                with self.assertRaises(ValueError):
+                    report.validate_report(value)
 
     def test_raw_derived_clocks_orders_cold_and_reused_ratios(self):
         """Independent numeric expectations detect pooled orders, fake CPU and discarded-cold substitution."""
@@ -224,10 +242,10 @@ class PerformanceReportTests(unittest.TestCase):
             row['parsed']['execution']['preparation_ns'] = [10**12]
             row['parsed']['execution']['preparation_wall_ns'] = [2*10**12]
             if row['role'] == 'reference':
-                for item in row['parsed']['execution']['lifecycle']:
-                    item['restore_ns'] = 10**9
-                    item['teardown_ns'] = 10**9
-                    item['lifecycle_ns'] = item['restore_ns']+item['cpu_ns']+item['teardown_ns']
+                instance = row['parsed']['execution']['reference_instance']
+                instance['constructor_cpu_ns'] = instance['teardown_cpu_ns'] = 10**9
+                for item in instance['samples']:
+                    item['restore_cpu_ns'] = 10**9
         self.assertEqual(report.cumulative_rows(value), expected)
 
     def test_cumulative_nanoseconds_remain_exact_integers_above_machine_word_total(self):
@@ -248,10 +266,11 @@ class PerformanceReportTests(unittest.TestCase):
         rows = list(csv.DictReader(io.StringIO(report.render_samples_csv(value))))
         self.assertEqual(len(rows), 2*3*2*13)
         cold = next(r for r in rows if r['role'] == 'reference' and r['sample'] == '0')
-        self.assertEqual((cold['cpu_ns'], cold['reference_restore_ns'], cold['reference_lifecycle_ns']),
+        self.assertEqual((cold['cpu_ns'], cold['reference_restore_cpu_ns'],
+                          cold['reference_restore_plus_call_cpu_ns']),
                          ('50', '10', '60'))
         public = next(r for r in rows if r['role'] == 'jit' and r['sample'] == '1')
-        self.assertEqual(public['reference_restore_ns'], '')
+        self.assertEqual(public['reference_restore_cpu_ns'], '')
         self.assertEqual((public['cold'], public['reused']), ('0', '0'))
 
     def test_publication_and_render_failure_retire_success(self):

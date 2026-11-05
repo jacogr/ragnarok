@@ -212,14 +212,15 @@ assert requestedSamples in ["1", "4", "13"]
 let samples = if requestedSamples == "1": 1 elif requestedSamples == "4": 4 else: 13
 for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
-  let wallStart = if clocked: getMonoTime().ticks else: 0'i64
   let cpuStart = if clocked: cpuNanoseconds() else: 0'i64
+  # Match reference execution scopes: wall timing excludes both process-CPU clock reads.
+  let wallStart = if clocked: getMonoTime().ticks else: 0'i64
   let done = if preparedMode: runPreparedKernel(source, prepared)
     elif memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
     elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
     else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
-  let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
   let elapsed = if clocked: getMonoTime().ticks - wallStart else: 0'i64
+  let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
   assert done.error == reference.StepError.None, "current sieve execution"
   assert done.value.exit == reference.StepExit.Halt
   check(done.value.machine, indices, access, expected, limit, guest)
