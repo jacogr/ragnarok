@@ -212,3 +212,27 @@ managed signing ARC cycles retain921088,21712 and174096 bytes respectively, unch
 Actual Services ARC lowering still rejects duplication. Linux-target worker and native-node
 semantic checks pass; this is not native Linux CI. The earlier new upload regression lacked a
 required direct Gas import; that test-only compile failure is corrected and the suite passes.
+
+
+## Source-bound sharing cohort
+
+Work duty retains all three original same-core roster positions and their full copied validator
+records from the exact observed assignment. GP-null offender records retain their positions; they
+cannot become valid signing identities. Qualification binds this fixed cohort alongside the
+original transcript and fresh-source report checks. A signed contribution can expose only that
+bound cohort, so sending and signature assembly do not derive peers from an older computation
+snapshot, packet claims, or unbound public eligibility metadata. This is a dependency of actual
+outgoing CE134 and assembly, not a separate helper PR.
+
+
+The native duty suite checks all three original positions against an independent GP shuffle,
+full metadata, out-of-range/default access, independently mutable copies and an offender's exact
+nulled position. The signer suite binds the retained cohort to the fresh head's complete root and
+observed signing slot. Native duty, signer, managed signing and real CE134 sharing suites pass;
+1000-cycle ARC observations are58864,204480,175104 and215808 bytes respectively, unchanged
+before/after. Cohort-shape refusals have a separate local reason, rather than inventing a failed
+state-chapter decoder. These source-bound facts do not yet establish outgoing exchange or assembly.
+
+Final cohort verification also passes Linux-target signer/dependency semantics, formatting, inventory
+and the production build. The final native duty run includes the separate cohort-shape reason.
+These checks do not constitute native Linux CI or outgoing CE134/135 completion.

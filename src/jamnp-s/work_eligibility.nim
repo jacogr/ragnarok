@@ -35,6 +35,7 @@ type
     transcript: ComputedGuaranteeTranscript
     report: OwnedReport
     info: WorkEligibilityInfo
+    duty: WorkDuty
   EligibleWorkGuarantee* = object ## Only complete original/fresh-source qualification can produce a signing input.
     data: nil EligibleWorkData
   WorkEligibilityResult*[T] = object ## Selected failures preserve actual child causes; success alone carries qualified ownership.
@@ -86,6 +87,11 @@ proc eligibilityInfo*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[
       status: WorkEligibilityError.Uninitialized)
   WorkEligibilityResult[WorkEligibilityInfo](status: WorkEligibilityError.None,
       completed: data.info)
+proc eligibleDuty*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[WorkDuty] =
+  ## The complete copied cohort belongs to the exact fresh-source qualification, not the older execution or packet claims.
+  let data = qualified.data
+  if data == nil: return default(WorkEligibilityResult[WorkDuty])
+  WorkEligibilityResult[WorkDuty](status: WorkEligibilityError.None, completed: data.duty)
 proc eligibleTranscript*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[
     ComputedGuaranteeTranscript] =
   ## Retain the exact privately bound computed transcript; callers cannot replace any part of the capability.
@@ -166,7 +172,7 @@ proc qualifyWorkGuarantee*(transcript: ComputedGuaranteeTranscript,
       pipelineReason: pipeline)
   WorkEligibilityResult[EligibleWorkGuarantee](status: WorkEligibilityError.None,
     completed: EligibleWorkGuarantee(data: EligibleWorkData(transcript: transcript,
-      report: decoded.value,
+      report: decoded.value, duty: duty.value,
       info: WorkEligibilityInfo(head: head.value.blockHash,
         inclusion: anchored.value.anchorInfo.value.inclusionSlot,
         slot: GuaranteeSlot(uint32(now)), validator: duty.value.validatorIndex,

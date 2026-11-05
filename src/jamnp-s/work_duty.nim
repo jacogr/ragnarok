@@ -14,8 +14,8 @@ import ../state/[store, guarantors]
 type
   WorkDutyError* {.pure.} = enum ## Refusals contain no source, assignment prefix or fabricated credential authority.
     Uninitialized, None, InvalidPolicy, InvalidIdentity, InvalidCore, InvalidTime,
-    UncertainEpoch, NotAssigned, LimitExceeded, InvalidState, StateFailure,
-    ComponentFailure, DisputeFailure, AssignmentFailure
+    UncertainEpoch, NotAssigned, InvalidIndex, LimitExceeded, InvalidState, StateFailure,
+    ComponentFailure, DisputeFailure, AssignmentFailure, InvalidCohort
   WorkDutyLimits* = object ## Canonical state chapters and cumulative dispute sets have explicit independent local ceilings.
     chapterBytes*: ByteLimit
     disputeItems*: ElementLimit
@@ -23,6 +23,9 @@ type
     ready: bool
     local: StateEdKey
     now: StateTime
+  WorkParticipant* = object ## Copied GP cohort position and complete validator record permit authenticated dialing without a retained canonical alias.
+    index*: GuarantorIndex
+    validator*: StateValidator
   WorkDuty* = object ## Fixed copied success contains no canonical ARC alias, signer, signature or inclusion certificate.
     ready: bool
     local: StateEdKey
@@ -32,6 +35,7 @@ type
     sourceRoot: StateRoot
     epoch, rotation: uint64
     shards: ErasureShards
+    participants: array[3, WorkParticipant]
   WorkDutyResult*[T] = object ## Private selected children preserve exact genuine causes without exposing accepted prefixes.
     case status: WorkDutyError
     of None: completed: T
@@ -114,6 +118,15 @@ func rotationDuration*(duty: WorkDuty): uint64 {.requires: duty.ready.} =
 func shardCount*(duty: WorkDuty): ErasureShards {.requires: duty.ready.} =
   ## Actual current source roster population differs from configured core capacity; inclusion eligibility remains a separate check.
   duty.shards
+func participantCount*(duty: WorkDuty): int =
+  ## A complete assignment contains exactly three original positions, including any GP-null offender positions.
+  if duty.ready: 3 else: 0
+func participantAt*(duty: WorkDuty, index: int): WorkDutyResult[WorkParticipant] =
+  ## Copy a fixed complete record; defaults/out-of-range requests cannot expose an apparent member.
+  if not duty.ready: return default(WorkDutyResult[WorkParticipant])
+  if index < 0 or index >= 3:
+    return WorkDutyResult[WorkParticipant](status: WorkDutyError.InvalidIndex)
+  WorkDutyResult[WorkParticipant](status: WorkDutyError.None, completed: duty.participants[index])
 func activeAt*(duty: WorkDuty, now: StateTime): bool =
   ## Fixed metadata can refuse backwards/changed-rotation observations during any canonical worker lease.
   if not duty.ready: return false
@@ -206,19 +219,28 @@ proc captureWorkDuty*(source: StateStoreSnapshot, parameters: Parameters,
   if population < 6 or population > 1023:
     return WorkDutyResult[WorkDuty](status: WorkDutyError.InvalidState,
         invalidChapter: StateChapter(8))
+  var participants = default(array[3, WorkParticipant])
+  var participantCount = 0
+  var localIndex = -1
   for index in 0..<population:
-    # Only the actual posterior assignment may select the local identity; offenders have already become null records.
+    # Capture every original same-core position before publishing; null records still occupy their GP positions.
     let selected = planned.value.guarantorAt(GuaranteeSlot(uint32(recipient.now)), GuarantorIndex(
         uint16(index)))
     if selected.error != GuarantorError.None: return WorkDutyResult[WorkDuty](
       status: WorkDutyError.AssignmentFailure, assignmentReason: selected.error)
+    if uint64(selected.value.core) != uint64(core): continue
+    if participantCount >= 3: fail(WorkDutyError.InvalidCohort)
+    participants[participantCount] = WorkParticipant(index: GuarantorIndex(uint16(index)),
+      validator: selected.value.validator)
+    inc participantCount
     let matches = array[32, byte](selected.value.validator.ed25519) == array[32, byte](
         recipient.local)
-    if matches and uint64(selected.value.core) == uint64(core):
-      return WorkDutyResult[WorkDuty](status: WorkDutyError.None,
-        completed: WorkDuty(ready: true, local: recipient.local, core: core,
-          validator: GuarantorIndex(uint16(index)),
-          sourceTime: clock.value.value, observed: recipient.now,
-          sourceRoot: source.commitment.root,
-          epoch: epoch, rotation: rotation, shards: ErasureShards(uint16(population))))
-  fail(WorkDutyError.NotAssigned)
+    if matches and localIndex < 0: localIndex = index
+  if localIndex < 0: fail(WorkDutyError.NotAssigned)
+  if participantCount != 3: fail(WorkDutyError.InvalidCohort)
+  WorkDutyResult[WorkDuty](status: WorkDutyError.None,
+    completed: WorkDuty(ready: true, local: recipient.local, core: core,
+      validator: GuarantorIndex(uint16(localIndex)), participants: participants,
+      sourceTime: clock.value.value, observed: recipient.now,
+      sourceRoot: source.commitment.root,
+      epoch: epoch, rotation: rotation, shards: ErasureShards(uint16(population))))

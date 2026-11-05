@@ -3,7 +3,7 @@
 
 ## Private immutable local signer ownership matches the configured TLS identity; no raw seed or arbitrary-message signing API escapes.
 import ./identity
-import ./work_eligibility
+import ./[work_eligibility, work_duty]
 import ../codec/[guarantees, report_owned]
 import ../state/computed/guarantee
 import ../crypto/primitives
@@ -106,6 +106,14 @@ proc contributionInfo*(contribution: SignedWorkContribution): WorkSignerResult[
       status: WorkSignerError.Uninitialized)
   WorkSignerResult[WorkEligibilityInfo](status: WorkSignerError.None,
     completed: data.eligible.eligibilityInfo.value)
+proc contributionDuty*(contribution: SignedWorkContribution): WorkSignerResult[WorkDuty] =
+  ## Only an actual signed owner exposes its original fresh-source cohort; copied public facts cannot replace it.
+  let data = contribution.data
+  if data == nil: return default(WorkSignerResult[WorkDuty])
+  let selected = data.eligible.eligibleDuty
+  if selected.error != WorkEligibilityError.None:
+    return WorkSignerResult[WorkDuty](status: WorkSignerError.InvalidEligibility)
+  WorkSignerResult[WorkDuty](status: WorkSignerError.None, completed: selected.value)
 proc contributionCredential*(contribution: SignedWorkContribution): WorkSignerResult[
     GuaranteeCredential] =
   ## Return the original nominal roster index and ordinary Ed25519 signature together.

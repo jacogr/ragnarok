@@ -179,6 +179,13 @@ proc guaranteeCycle*(fixture: GuaranteeFixture, signer: WorkSigner) =
   let contribution = signer.signWorkContribution(qualified.value)
   assert contribution.error == WorkSignerError.None, "report signing: " & $contribution.error
   let facts = contribution.value.contributionInfo.value
+  let duty = contribution.value.contributionDuty.value
+  assert duty.valid and duty.participantCount == 3
+  assert uint16(duty.validatorIndex) == uint16(facts.validator)
+  assert uint32(duty.observedTime) == uint32(facts.slot)
+  let root = array[32, byte](duty.sourceRoot)
+  let headRoot = array[32, byte](fixture.view.bestBlock.value.stateSnapshot.commitment.root)
+  assert root == headRoot # Fresh inclusion qualification supplies the cohort, independently from older execution provenance.
   let credential = contribution.value.contributionCredential.value
   assert uint16(credential.validator) == 1 and uint32(facts.slot) == 21
   let message = array[45, byte](qualified.value.eligibleMessage.value)
