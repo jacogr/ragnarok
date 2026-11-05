@@ -23,13 +23,14 @@ from native_dependencies import require_submodule
 from pvm_arm64_jit_applications import parse_run
 from pvm_benchmark import CRATE
 from pvm_doom_attribution import (CRATE as DOOM_CRATE, TARGET as DOOM_TARGET,
-                                  event_hashes, tga_rgba)
+                                  event_hashes, tga_rgba, timing_samples)
 from pvm_guest_compare import unchanged
 from pvm_guest_inputs import prepare_inputs
 from pvm_jit_platform import native_defines
 from pvm_native_ci import host_identity
-from pvm_performance_report import case_inventory, publish_report
+from pvm_performance_report import SCHEMA, case_inventory, publish_report
 from pvm_performance_synthetic import parse_synthetic
+from pvm_reference_lifetime import CODE_LIFETIME, reference_instances
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-performance'
@@ -100,8 +101,14 @@ def normalize_execution(parsed, doom=False):
 
 
 def parse_application(output, role, case, limit, event_bytes=0):
-    """Extend the strict existing public grammar only with the canonical DOOM constructor wall clock."""
+    """Bind retained-reference receipts and the canonical constructor wall clock to strict call grammars."""
     doom = case in ('init', 'tick')
+    instance = None
+    if role == 'reference':
+        # Validate retained-code evidence before the maintained strict family call parser sees its grammar.
+        label = 'doom-'+case if doom else f'{case}-{limit}'
+        output, instances = reference_instances(output, [label])
+        instance = instances[label]
     wall = None
     if doom and role != 'reference':
         lines = output.splitlines()
@@ -112,8 +119,15 @@ def parse_application(output, role, case, limit, event_bytes=0):
             raise ValueError('Missing or invalid DOOM constructor wall clock')
         wall = int(fields[2])
         output = '\n'.join(lines)+'\n'
-    parsed = parse_run(output, 'interpreter' if role == 'interpreted' else role, case, limit,
-                       event_bytes, 'matched-owner-policy-v2')
+    if doom and role == 'reference':
+        # A retained instance has one final destruction; old per-call fresh-instance lifecycle is inapplicable.
+        parsed = dict(execution=dict(samples=timing_samples(output, 'reference', case, event_bytes)),
+                      native=None, policy=None)
+    else:
+        parsed = parse_run(output, 'interpreter' if role == 'interpreted' else role, case, limit,
+                           event_bytes, 'matched-owner-policy-v2')
+    if instance is not None:
+        parsed['execution']['reference_instance'] = instance
     if wall is not None:
         parsed['execution']['preparation_wall_ns'] = [wall]
     return normalize_execution(parsed, doom)
@@ -148,7 +162,7 @@ class PerformanceRunner:
         self.references = {}
         self.inputs = {}
         self.doom_folder = self.folder/'doom/prepared'
-        self.report = dict(schema='pvm-performance-v1', status='incomplete', scope=scope,
+        self.report = dict(schema=SCHEMA, status='incomplete', scope=scope,
                            runs=[], controls=[], builds=[], identity={})
 
     def checkpoint(self):
@@ -223,7 +237,7 @@ class PerformanceRunner:
             ci={key: os.environ.get(key) for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
                 'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY',
                 'GITHUB_JOB', 'PVM_CI_JOB_NAME')},
-            doom_warmup_ticks=DOOM_WARMUP, native_build_defines=defines,
+            doom_warmup_ticks=DOOM_WARMUP, native_build_defines=defines, code_lifetime=CODE_LIFETIME,
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             build_environment={key: os.environ[key] for key in
                 ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CFLAGS', 'LDFLAGS') if key in os.environ})
@@ -397,7 +411,7 @@ class PerformanceRunner:
             args = ([self.references['micro'], '--sieve', fixture, data.parent, limit, 13]
                     if role == 'reference' else [self.images[family]])
         else:
-            # A reference lifecycle accounts restore/call/teardown separately; public samples retain publication.
+            # Reference retained-instance/restore scopes stay separate; public calls retain publication.
             controlled = self.doom_folder/(name+'.expected')
             env.update(RAGNAROK_PVM_DOOM_PRICING='prepared', RAGNAROK_PVM_DOOM_PREPARATION='1',
                 RAGNAROK_PVM_DOOM_TIMING='1', RAGNAROK_PVM_DOOM_ASSERT='0',

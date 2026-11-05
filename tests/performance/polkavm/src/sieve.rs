@@ -108,29 +108,45 @@ fn pages(module: &Module) -> Vec<(u32, u8)> {
     result
 }
 
-// Each fresh instance receives all thirteen registers and the same finite gas supply before timing.
-fn instance(module: &Module, entry: polkavm::ProgramCounter, registers: &[u64; 13]) -> RawInstance {
-    let mut instance = module.instantiate().unwrap();
+// Every invocation receives all thirteen registers and the same finite gas/entry ABI.
+fn restore_abi(instance: &mut RawInstance, entry: polkavm::ProgramCounter, registers: &[u64; 13]) {
     for (index, value) in registers.iter().enumerate() {
         instance.set_reg(Reg::from_raw(index as u32).unwrap(), *value);
     }
     instance.set_gas(GAS);
     instance.set_next_program_counter(entry);
+}
+
+// Preparatory initialization remains a fresh instance and never warms the retained sample instance.
+fn instance(module: &Module, entry: polkavm::ProgramCounter, registers: &[u64; 13]) -> RawInstance {
+    let mut instance = module.instantiate().unwrap();
+    restore_abi(&mut instance, entry, registers);
     instance
 }
 
-// Restore writable initialized pages before timing; every run still owns a fresh public instance.
+// Reapply initialized writable bytes after public memory reset; module RO/zero bytes remain authoritative.
+fn restore_call(
+    instance: &mut RawInstance,
+    entry: polkavm::ProgramCounter,
+    registers: &[u64; 13],
+    images: &[(u32, Vec<u8>)],
+) {
+    restore_abi(instance, entry, registers);
+    for (address, bytes) in images {
+        // Public writes restore exact initialized RAM; read-only module pages are never changed.
+        instance.write_memory(*address, bytes).unwrap();
+    }
+}
+
+// Historical consumers and preparation retain their fresh-instance lifecycle and unchanged framing.
 fn restored_instance(
     module: &Module,
     entry: polkavm::ProgramCounter,
     registers: &[u64; 13],
     images: &[(u32, Vec<u8>)],
 ) -> RawInstance {
-    let mut fresh = instance(module, entry, registers);
-    for (address, bytes) in images {
-        // Public writes restore exact initialized RAM; read-only module pages are never changed.
-        fresh.write_memory(*address, bytes).unwrap();
-    }
+    let mut fresh = module.instantiate().unwrap();
+    restore_call(&mut fresh, entry, registers, images);
     fresh
 }
 
@@ -267,9 +283,29 @@ pub fn command(args: &[String]) {
         // A mandatory family prefix prevents cross-family sample relabeling.
         println!("GUEST,{}", guest.name());
     }
+    let label = format!("{}-{limit}", guest.name());
+    let canonical = crate::measurement::retained_protocol();
+    let mut retained =
+        canonical.then(|| crate::measurement::RetainedInterpreter::new(&module, &label, samples));
     for sample in 0..samples {
-        let mut instance = restored_instance(&module, entry, &registers, &initialized_pages);
-        let cpu = crate::measurement::CpuTimer::start(&instance);
+        let mut legacy_instance = if canonical {
+            None
+        } else {
+            Some(restored_instance(
+                &module,
+                entry,
+                &registers,
+                &initialized_pages,
+            ))
+        };
+        let instance = if let Some(retained) = retained.as_mut() {
+            retained.restore(sample, |instance| {
+                restore_call(instance, entry, &registers, &initialized_pages);
+            })
+        } else {
+            legacy_instance.as_mut().unwrap()
+        };
+        let cpu = crate::measurement::CpuTimer::start(instance);
         let wall = Instant::now();
         let result = instance.run().unwrap();
         let elapsed = wall.elapsed().as_nanos();
@@ -278,12 +314,21 @@ pub fn command(args: &[String]) {
         assert_eq!(result, InterruptKind::Finished);
         // Equality still covers every byte; a mismatch retains a bounded diagnostic instead of the arrays.
         assert!(
-            snapshot(&mut instance, &mapped, guest, limit) == reference,
+            snapshot(instance, &mapped, guest, limit) == reference,
             "sieve terminal state mismatch"
         );
-        cpu.receipt(&format!("{}-{limit}", guest.name()), sample);
+        if let Some(retained) = retained.as_mut() {
+            // Cache evidence follows the complete independent final-state snapshot oracle.
+            assert!(cpu_elapsed > 0 && elapsed > 0);
+            retained.complete_sample(sample);
+        }
+        cpu.receipt(&label, sample);
         let backend =
             crate::measurement::name(crate::measurement::selected(BackendKind::Interpreter));
         println!("SIEVE,polkavm_{backend},{limit},{sample},{elapsed},{cpu_elapsed}");
+    }
+    if let Some(retained) = retained {
+        // No per-call instance teardown is charged to a resident-code case.
+        retained.finish();
     }
 }

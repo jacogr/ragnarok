@@ -12,6 +12,26 @@ GUESTS = (('sieve', 1000), ('sieve', 10000), ('sieve', 100000), ('sieve', 100000
           ('minimal', 1000), ('minimal', 100000), ('memset', 1000), ('memset', 100000), ('pinky', 1))
 
 
+def retained_instance(label):
+    """Independent literal observations include zero initial code and subsequent retained growth."""
+    return dict(version=1, label=label, instances=1, constructor_cpu_ns=11,
+        constructor_wall_ns=17, initial_cache_bytes=0, teardown_cpu_ns=3, teardown_wall_ns=7,
+        samples=[dict(sample=i, restore_cpu_ns=10, restore_wall_ns=20,
+            before_reset_bytes=0 if i == 0 else 64+8*(i-1),
+            after_reset_bytes=0 if i == 0 else 64+8*(i-1), after_run_bytes=64+8*i)
+            for i in range(13)])
+
+
+def lifetime_wire(label):
+    """Encode fixture observations explicitly, independently of the production receipt parser."""
+    lines = [f'REFERENCE_INSTANCE,1,{label},11,17,0']
+    for i in range(13):
+        before = 0 if i == 0 else 64+8*(i-1)
+        lines += [f'REFERENCE_RESTORE,1,{label},{i},10,20',
+                  f'REFERENCE_CACHE,1,{label},{i},{before},{before},{64+8*i}']
+    return '\n'.join([*lines, f'REFERENCE_INSTANCE_DROP,1,{label},3,7'])+'\n'
+
+
 def observations(scope='all', architecture='arm64', run_id='100', attempt='1'):
     """Build literal positive processes without computing expectations through the report module."""
     cases = []
@@ -36,9 +56,9 @@ def observations(scope='all', architecture='arm64', run_id='100', attempt='1'):
         compiler=dict(sha256='2'*64, identity='pinned compiler'), files=files,
         native_qualification=dict(path='build/tests/pvm-native/results.json', sha256='3'*64,
             revision=REVISION), native_build_defines=[define], toolchain=dict(commit='c'*40),
-        reference_revision=REFERENCE, doom_warmup_ticks=1320,
+        reference_revision=REFERENCE, doom_warmup_ticks=1320, code_lifetime='retained-code-v1',
         doom=dict(warmup_ticks=1320, golden_rgba_sha256='d'*64))
-    report = dict(schema='pvm-performance-v1', status='passed', revision=REVISION,
+    report = dict(schema='pvm-performance-v2', status='passed', revision=REVISION,
                   architecture=architecture, scope=scope, identity=identity, runs=[], controls=[], builds=[])
     for family in families:
         report['builds'].append(dict(family=family, binary='/sealed/current-'+family,
@@ -64,9 +84,9 @@ def observations(scope='all', architecture='arm64', run_id='100', attempt='1'):
                     policy = dict(version=1, requested=role, actual='jit' if active else 'interpreted',
                         jit_built=True, platform_supported=True, fallback_enabled=role == 'jit',
                         **{key: native[key] for key in ('fragments', 'calls', 'operations')})
-                if role == 'reference' and family == 'doom':
-                    execution['lifecycle'] = [dict(restore_ns=10, cpu_ns=s['cpu_ns'],
-                        teardown_ns=0, lifecycle_ns=10+s['cpu_ns']) for s in samples]
+                if role == 'reference':
+                    label = 'synthetic-'+str(SYNTHETICS.index(case_id)) if family == 'synthetic' else case_id
+                    execution['reference_instance'] = retained_instance(label)
                 binary = '/sealed/'+('reference-' if role == 'reference' else 'current-')+family
                 run = dict(command=[binary, case_id], log=f'logs/{case_id}-{role}-{order}.log', exit_code=0)
                 report['runs'].append(dict(case_id=case_id, case=case, limit=limit, role=role,
