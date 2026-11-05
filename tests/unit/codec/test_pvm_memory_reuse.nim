@@ -522,6 +522,110 @@ proc hostTransitions() =
   assert preparedInfo(reused).value.memoryReuses == 2
 
 
+proc argumentSuccessor(base: Memory, value: byte): Memory =
+  ## Fresh argument owners exercise the public append/replacement path without an initializer template.
+  let mapped = withPageRange(base, PageIndex(256), PageIndex(257), PageAccess.ReadOnly,
+    PageContent.Zeroed).value
+  var argument = PageImage(index: PageIndex(256), access: PageAccess.ReadOnly,
+    bytes: default(array[4096, byte]))
+  argument.bytes[0] = value
+  withReplacedPages(mapped, [argument]).value
+
+proc literalArgumentMemory(memory: Memory, baseCount, argumentCount: int,
+    argument: byte, written: bool) =
+  ## Literal complete images expose stale dirty base bytes, argument bytes and padding independently of execute.
+  let layout = memoryLayout(memory).value
+  assert layout.len == baseCount+argumentCount
+  for slot in 0..<layout.len:
+    # The sorted map has a contiguous writable base and a separate fresh read-only argument region.
+    let physical = uint32(if slot < baseCount: 16+slot else: 256+slot-baseCount)
+    let access = if slot < baseCount: PageAccess.ReadWrite else: PageAccess.ReadOnly
+    assert layout[slot].index == PageIndex(physical) and layout[slot].access == access
+    let page = pageImage(memory, PageIndex(physical)).value
+    for offset in 0..<4096:
+      # Expected bytes come from input literals/patterns, never another execution or mapping operation.
+      var expected = 0'u8
+      if slot < baseCount:
+        expected = byte((slot*11+offset*3+7) mod 251)
+        if written and slot == 0 and offset == 0: expected = 123
+      elif slot == baseCount and offset == 0:
+        expected = argument
+      assert page.bytes[offset] == expected
+
+proc appendedArgumentReuse() =
+  ## A real retained-frame consumer must restore a shared dirty prefix before reading each fresh invocation.
+  let argumentOwner = code([@[52'u8, 0, 0, 0, 16, 0], @[52'u8, 1, 0, 0, 1, 0],
+    @[30'u8, 4, 0, 0, 1, 0, 123, 0, 0, 0], @[0'u8]])
+  for baseCount in [64, 65]:
+    # Both a complete prefix block and a partial old tail receive independently owned arguments.
+    var pages: seq[PageImage] = @[]
+    for slot in 0..<baseCount:
+      var page = PageImage(index: PageIndex(uint32(16+slot)), access: PageAccess.ReadWrite,
+        bytes: default(array[4096, byte]))
+      for offset in 0..<4096:
+        page.bytes[offset] = byte((slot*11+offset*3+7) mod 251)
+      pages.add(page)
+    let base = captureMemory(pages, PageLimit(uint32(baseCount+2))).value
+    let retained = newPreparedProgram(argumentOwner,
+      defaultPreparedLimits(GasCycleLimit(10000))).value
+    var previous = default(Memory)
+    var sources: seq[Machine] = @[]
+    var results: seq[Machine] = @[]
+    var expectedCpus: seq[MachineInfo] = @[]
+    var initialCpus: seq[MachineInfo] = @[]
+    for iteration, value in [13'u8, 19, 23]:
+      # Same-sized argument successors retain the base but require a real one-slot memory delta.
+      let memory = argumentSuccessor(base, value)
+      if iteration != 0:
+        let delta = changedMemoryPageSlots(previous, memory).value
+        assert delta.len == 1 and uint32(delta[0]) == uint32(baseCount)
+      var initial = MachineInfo(gas: MachineGas(7), blockCharged: true,
+        registers: default(RegisterFile))
+      for register in 0..<13:
+        initial.registers[register] = RegisterValue(uint64(100+iteration*19+register))
+      let source = captureMachine(argumentOwner, memory, initial).value
+      let actual = execute(source, ExecutionStepLimit(4), retained)
+      assert actual.error == StepError.None and actual.value.exit == StepExit.Panic
+      var expectedCpu = initial
+      expectedCpu.registers[0] = RegisterValue(uint64(value))
+      expectedCpu.registers[1] = RegisterValue(7)
+      assert machineInfo(actual.value.machine).value == expectedCpu
+      assert preparedInfo(retained).value.memoryReuses == uint64(iteration)
+      literalArgumentMemory(memoryOf(source).value, baseCount, 1, value, false)
+      literalArgumentMemory(memoryOf(actual.value.machine).value, baseCount, 1, value, true)
+      sources.add(source)
+      results.add(actual.value.machine)
+      expectedCpus.add(expectedCpu)
+      initialCpus.add(initial)
+      previous = memory
+    # A changed map must still discard scratch instead of treating shared prefix blocks as complete admission.
+    let fresh = argumentSuccessor(base, 31)
+    let expanded = withPage(fresh, PageImage(index: PageIndex(257), access: PageAccess.ReadOnly,
+      bytes: default(array[4096, byte]))).value
+    assert changedMemoryPageSlots(previous, expanded).error == MachineError.InvalidRange
+    var initial = MachineInfo(gas: MachineGas(7), blockCharged: true,
+      registers: default(RegisterFile))
+    for register in 0..<13: initial.registers[register] = RegisterValue(uint64(300+register))
+    let source = captureMachine(argumentOwner, expanded, initial).value
+    let fallback = execute(source, ExecutionStepLimit(4), retained)
+    assert fallback.error == StepError.None and fallback.value.exit == StepExit.Panic
+    initial.registers[0] = RegisterValue(31)
+    initial.registers[1] = RegisterValue(7)
+    assert machineInfo(fallback.value.machine).value == initial
+    assert preparedInfo(retained).value.memoryReuses == 2
+    literalArgumentMemory(memoryOf(fallback.value.machine).value, baseCount, 2, 31, true)
+    literalArgumentMemory(expanded, baseCount, 2, 31, false)
+    for iteration, value in [13'u8, 19, 23]:
+      # Later dirty restoration and a cold map fallback cannot alter earlier input or result snapshots.
+      assert machineInfo(results[iteration]).value == expectedCpus[iteration]
+      assert machineInfo(sources[iteration]).value == initialCpus[iteration]
+      literalArgumentMemory(memoryOf(sources[iteration]).value, baseCount, 1, value, false)
+      literalArgumentMemory(memoryOf(results[iteration]).value, baseCount, 1, value, true)
+    for page in pages:
+      assert pageImage(base, page.index).value == page
+
 hostTransitions()
+appendedArgumentReuse()
+echo "PVM appended argument memory reuse passed"
 echo "PVM bounded memory reuse passed"
 echo "ARC_RELEASE cycles=1000 unchanged"
