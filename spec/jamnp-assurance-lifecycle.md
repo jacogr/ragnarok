@@ -124,3 +124,71 @@ Ed25519 key) and rejects that identity as well as an all-zero key. Its 1000-cycl
 Pinned formatting and verification inventory pass. Actual disk publication, restart I/O,
 non-evicting capacity, managed acquisition and CE141 remain in progress; no durable assurance
 promise or complete runtime flow is claimed by these record tests.
+
+## Durable per-shard namespace
+
+`AssuranceStore` now owns one explicitly created private directory with 256 lower-case
+hexadecimal buckets. Each record is named by its complete erasure root, a fixed four-hex-digit
+original shard index and `.shard`; its bucket is the first root octet. Header metadata and file
+names must agree exactly. A fixed 72-byte `IDENTITY` contains ASCII `RAGAF001`, the independently
+expected 32-byte chain identity and Blake2b-256 of those first 40 bytes. The sibling identity
+writer lock remains held until explicit close. Creation never overwrites an existing directory;
+opening never recreates missing identity or adopts another schema or chain.
+
+Only count, logical serialized-record bytes, maximum promise time, policy and the owned path/lock
+remain resident. Startup walks the complete namespace with public POSIX `DirStream`, preserving
+negative error results separately from EOF. It checks fixed record headers and exact regular-file
+sizes without retaining or reading all payloads. Missing buckets, symlinks, unknown entries and
+incomplete scans cannot become a valid empty history. Separate scan-work admission includes the
+fixed namespace, configured record capacity and an interrupted writer sibling. Only exact regular
+unpublished atomic siblings may be reclaimed; cleanup synchronizes their directory. Startup
+refusal preserves published records and releases the writer lease.
+
+Creation synchronizes each new bucket, the identity file/root and the root's parent. New records
+are precharged against count and serialized-byte capacity before copying or encoding; no old
+promise is evicted. Duplicate coordinates must retain all six exact specifier fields and are
+fully restored before renewal. Successful atomic file publication includes file and bucket sync
+before updating counters or exposing `StoredAssuranceShard`. Data-sync refusal before publication
+preserves the previous usable prefix. Visible-but-unsynced publication faults the owner and bars
+all new receipts/publication until close and verified reopen. Full restored record verification
+and another actual file/parent synchronization precede a restored receipt. Failed restore cannot
+bypass the fault gate. Header accounting alone grants no possession or signing authority.
+
+`AssuranceStore` has its own unavailable copy/dup hooks and explicit closed-only destruction/move
+contract, delegating its writer and owned string hooks. Callers must retire any managed I/O borrow
+before close. A retained data receipt owns detached immutable bytes and exposes only fixed
+metadata or another private serving copy; the namespace keeps no shared payload cache. Actual
+ARC/Clang lowering rejects duplication of the composite itself, independent of its child's hooks.
+This registered guard protects single-writer exclusion and consistent capacity/promise clocks.
+
+The native store suite passes real creation, contention, close/reopen, exact byte accounting,
+count/byte refusal, same-root metadata conflict, monotonically extended promises, preserved
+restart clock, wrong-chain/no-overwrite checks, header/payload corruption and bounded cleanup.
+The existing OS observer injects actual file-sync and directory-sync failures without replacing
+protocol or persistence logic. Both ordinary and visible-but-unsynced cases retain their distinct
+outcomes, and actual restore synchronization refusal cannot return a receipt.
+
+A separately supervised child baseline reaches both real publication sync barriers. Witnessed
+stops followed by SIGKILL and exact reap after data-file sync and after directory sync preserve
+the original committed record. The former leaves only an unpublished sibling, which startup
+removes; the latter leaves a complete visible record that is fully verified and synchronized
+before use. These are process-death and successful-OS-barrier witnesses, not a simulated error
+or a claim of independently tested physical power loss. A whole-scan cap and a missing bucket
+also refuse without accepting a prefix or losing the old record. The expanded 1000 real
+read/proof/sync/serving cycles retain 14848 occupied bytes before and after in the selected native
+profile. Formatting, inventory and the observed composite ARC rejection pass.
+
+Managed I/O cancellation/startup scheduling, source-fresh possession and private signing,
+CE137 acquisition, CE141 handling/timing and optional foreground activation remain in progress.
+Large histories must not move an archive-sized graph into memory or perform scans in a native
+callback; the worker integration must qualify bounded/cancellable scan progress and shutdown.
+Safe pruning still needs authenticated audit completion plus the independent export deadline;
+this store currently retains complete records conservatively and never infers audit completion
+from timeout or disappearance from C10.
+
+Final local qualification of this file-owner increment also passes the complete store suite
+under checked ARC/Clang thinLTO, including the witnessed child deaths, real sync failures and
+1000-cycle release (14848 bytes unchanged). All 558 production modules and the application entry
+point pass semantic compilation. The ordinary registered ownership-guard build rejects the
+actual composite duplication at ARC lowering. These are scoped local results, not native Linux
+CI, managed-worker integration or complete assurance-runtime evidence.
