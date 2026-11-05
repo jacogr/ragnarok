@@ -35,12 +35,27 @@ fn main() {
         return;
     }
     assert_eq!(args.len(), 3);
+    let protocol = std::env::var("RAGNAROK_PVM_PERFORMANCE").unwrap_or_default();
+    assert!(matches!(protocol.as_str(), "" | "0" | "1"));
+    let modern = protocol == "1";
+    if modern && std::env::var("RAGNAROK_PVM_BENCH_ASSERT_PROBE").as_deref() == Ok("1") {
+        // The canonical runner must prove optimized reference assertions remain active.
+        panic!("pvm synthetic reference assertion control");
+    }
     let backend = match args[2].as_str() {
         "interpreter" => BackendKind::Interpreter,
         "compiler" => BackendKind::Compiler,
         _ => panic!("explicit backend required"),
     };
     assert_eq!(measurement::selected(backend), backend);
+    if modern {
+        // This protocol has exactly one denominator; optional compiled-clock records belong elsewhere.
+        assert_eq!(backend, BackendKind::Interpreter);
+        assert!(
+            !measurement::explicit(),
+            "synthetic reference override is forbidden"
+        );
+    }
     let data = std::fs::read(&args[1]).unwrap();
     assert!(data.len() >= 12 && &data[..8] == b"PVMBEN01");
     assert_eq!(word(&data, 8, 4), 11);
@@ -93,6 +108,14 @@ fn main() {
         profile.set_cost_model(Some(CostModelKind::Full(CacheModel::L2Hit)));
         let module =
             Module::from_blob(&engine, &profile, ProgramBlob::from_parts(parts).unwrap()).unwrap();
+        let modern_preparation = if modern {
+            // Constructor clocks stop before the independent gas oracles; publish only after they pass.
+            let cpu = measurement::process_cpu() - preparation_cpu;
+            Some((cpu, preparation.elapsed().as_nanos()))
+        } else {
+            // Historical wall-only observations retain their existing stop after the oracle checks.
+            None
+        };
         assert_eq!(
             module.calculate_gas_cost_for(ProgramCounter(0)),
             Some(price as i64)
@@ -115,6 +138,16 @@ fn main() {
             &module,
             measurement::process_cpu() - preparation_cpu,
         );
+        if modern {
+            // Bind actual engine/module identity and both real constructor clocks before sample zero.
+            let (prepare_cpu_ns, prepare_wall_ns) = modern_preparation.unwrap();
+            let machine_code_bytes = module.machine_code().map_or(0, |code| code.len());
+            assert_eq!(engine.backend(), BackendKind::Interpreter);
+            assert_eq!(machine_code_bytes, 0);
+            assert!(prepare_cpu_ns > 0 && prepare_wall_ns > 0);
+            println!("SYNTHETIC_PREPARE,1,{row},{prepare_cpu_ns},{prepare_wall_ns}");
+            println!("SYNTHETIC_REFERENCE,1,{row},interpreter,interpreter,{machine_code_bytes}");
+        }
         for sample in 0..13 {
             // Instantiation, input resets and register setup are excluded from execution time.
             let mut instance = module.instantiate().unwrap();
@@ -171,7 +204,8 @@ fn main() {
             for i in 0..13 {
                 assert_eq!(
                     instance.reg(Reg::from_raw(i as u32).unwrap()),
-                    word(h, 169 + i * 8, 8)
+                    word(h, 169 + i * 8, 8),
+                    "pvm synthetic terminal register mismatch"
                 );
             }
             if matches!(kind, 1 | 2 | 4) {
@@ -194,8 +228,19 @@ fn main() {
             }
             assert!(elapsed > 0);
             cpu.receipt(&label, sample);
-            println!("sample\t{row}\t{sample}\t{elapsed}\t{prepare_ns}");
+            if modern {
+                // CpuTimer's checked total is process CPU here; never relabel the legacy Instant delta.
+                let cpu_ns = cpu.total;
+                assert!(cpu_ns > 0);
+                println!("SYNTHETIC_SAMPLE,1,{row},{sample},{cpu_ns},{elapsed}");
+            } else {
+                // Existing diagnostics continue to consume their unchanged wall-only sample format.
+                println!("sample\t{row}\t{sample}\t{elapsed}\t{prepare_ns}");
+            }
         }
     }
     assert_eq!(cursor, data.len());
+    if modern {
+        println!("SYNTHETIC_OK,1,reference");
+    }
 }

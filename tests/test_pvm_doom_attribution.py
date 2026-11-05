@@ -96,29 +96,6 @@ class DoomAttributionTests(unittest.TestCase):
             self.assertIn('--cache-sim=no',checks.arguments)
             self.assertNotIn('--read-inline-info=yes',checks.arguments)
 
-    def test_doom_runs_with_regular_performance_requests(self):
-        """Master/Perf/full include the real guest, while standalone requests remain isolated."""
-        from workflow_fixtures import selected_families,family_section
-        text=(ROOT/'.github/workflows/ci.yml').read_text()
-        for context,wanted in [(event_context(),True),
-                (event_context('workflow_dispatch',suite='full'),True),
-                (event_context('workflow_dispatch',suite='perf'),True),
-                (event_context('workflow_dispatch',suite='bench-doom'),True),
-                (event_context('workflow_dispatch',suite='bench-pvm'),False),
-                (event_context('pull_request','labeled','ci:perf'),True),
-                (event_context('pull_request','synchronize'),False),
-                (event_context('pull_request','labeled','ci:perf',state='closed'),False)]:
-            families=selected_families(text,'perf',context)
-            sections=[family_section(text,'perf',family['group'],context=context) for family in families]
-            self.assertEqual(any('make bench-pvm-doom' in commands(section) for section in sections),wanted)
-        sections=[family_section(text,'perf',family['group'])
-                  for family in selected_families(text,'perf',event_context())]
-        section=next(section for section in sections if 'make bench-pvm-doom' in commands(section))
-        self.assertIn('make bench-pvm-doom',commands(section))
-        self.assertFalse(any('valgrind' in command for command in commands(section)))
-        make=make_plan('bench-pvm-doom', skip=('setup',))
-        self.assertIn('--timings-only --warmup 1320',make)
-        self.assertIn('cargo fetch --locked',make)
 
     def test_cpu_summary_requires_both_phases_and_orders(self):
         """An empty instruction table is valid for CPU-only runs; partial/fabricated ratios are not."""

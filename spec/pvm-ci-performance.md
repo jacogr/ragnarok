@@ -1,58 +1,97 @@
+<!-- Copyright (c) 2026 Ragnarök contributors -->
+<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # PVM CI performance monitoring
 
-## Scope and scheduling
+## One current-source comparison
 
-Regular CI retains **Perf / PVM** and adds **Perf / PVM DOOM** as independent members of the existing
-Perf matrix. Both run on every master push, manual `perf`/`full` requests and open-PR label
-additions `ci:perf`/`ci:full`. Ordinary PR updates request Smoke only. Standalone `bench-pvm`
-and `bench-doom` scopes select one workload, without claiming the whole Perf group. The existing
-Perf aggregate requires every selected family; storage performance families are unchanged.
+**Perf / PVM** runs on native Linux ARM64 (`ubuntu-26.04-arm`) and x86-64
+(`ubuntu-26.04`) on every master push, manual `perf`/`full` request and open-PR
+`ci:perf`/`ci:full` request. Ordinary PR updates run Smoke only. Both architecture
+jobs use `make bench-pvm-performance` and the same runner, workload inventory and
+versioned report. Storage performance is independent. New master pushes retain
+CI's existing cancellation policy, superseding unfinished older revisions.
 
-Retired CI jobs: PVM Instructions, PVM Prepared, PVM Revisions, DOOM Attribution and DOOM Revisions.
-The instruction job reported current counts without a revision baseline; prepared measurements
-still selected an old experiment parent. The revision/attribution jobs were explicit investigation
-lanes rather than ongoing monitoring. Their dispatch options, diagnostic input fields and
-`ci:pvm-compare` event handling are removed. Existing Make tools and their tests remain available
-under their current platform/timing restrictions; historical numerical evidence is preserved.
+The manual `bench-pvm` scope runs the complete PVM cohort without Storage or
+unrelated CI groups. `bench-doom` selects its DOOM subset. Both default to the two
+architectures; `pvm_architecture` can select one native CPU for these focused
+requests. Partial reports identify their scope and cannot satisfy complete
+master-report retrieval. Native CI diagnostics may select `PVM_PERF_SCOPE=micro`
+through the same Make target. Profiling, calibration, retained-core, replay and
+historical pricing/revision tools remain explicit Make diagnostics, outside this
+CI measurement path. Their former `jit-*` CI dispatch choices and optional previous
+baseline inputs are retired.
 
-## DOOM workload and correctness
+## Workloads and engines
 
-`make bench-pvm-doom` uses the existing pinned headless DOOM ELF, WAD, interpreter-only Rust
-reference and checked Nimony host adapter. Pins, guest behavior, gas policy and callback behavior
-are unchanged. The warmup is fixed at 1,320 ticks, admitting the matching upstream normalized
-rendered-frame golden. Initialization and one gameplay tick are distinct input states.
+The complete inventory composes the maintained eleven synthetic micro workloads,
+sieve at 1k/10k/100k/10 million, minimal and memory fill at 1k/100k, one initialized
+Pinky frame, and separate DOOM initialization/gameplay calls. The three engines are
+current public prepared execution with forced interpreted policy, the same current
+production image with JIT policy, and pinned PolkaVM interpreted. Native compiler
+and reference source pins are unchanged. No standalone native backend, historical
+baseline or retained-core timing substitutes for a current public call.
 
-Before clocks, both engines pass complete CPU/memory/output checks and assertion, wrong-gas and
-wrong-event controls. Every timed invocation checks all registers, gas/PC/paid state, mapped page
-bytes/permissions, original source bytes and ordered host output. Thirteen ordered validated
-samples are mandatory; the first three warm up and the last ten supply reused CPU medians.
-Both process orders run sequentially after builds. Source, fixture and image hashes must still
-match after collection. Failed/partial runs cannot retain an old successful summary.
+The synthetic harness records genuine process CPU and wall nanoseconds. Historical
+wall-only observations are never relabeled CPU. All native policies use production
+architecture flags and the checked ARC/Clang ThinLTO profile; native-host
+qualification must pass before timing. The declared runner, actual uname/Python
+architecture, native compiler archive and measured source must agree.
 
-`--timings-only` skips optional Callgrind collection/calibration and source annotation, without
-skipping preparation, the golden, refusal controls or reference-state checking. Other existing
-check/profile modes remain available; contradictory mode flags are refused. Timings still require
-the isolated Linux x86-64 CI runner. Regular DOOM setup needs zstd, not Valgrind.
+DOOM uses the canonical 1,320-tick prepared gameplay state and upstream rendered-frame
+golden, with independent initialization and tick fixtures. The warmup count, guest,
+WAD, expected state and event hashes identify this cohort. Historical warmup-zero
+comparison results are a different workload. Complete CPU, gas, PC, paid state,
+registers, final page layout/permissions/bytes, source snapshots and ordered host
+output are checked outside clocks. Assertion/state/event refusal controls and
+source/fixture identity checks remain required. Expected results are never generated
+by the measured candidate.
 
-## Reports and limits
+## Measurement and reporting
 
-Actions summaries show initialization/gameplay CPU milliseconds for both interpreters and
-Ragnarök/reference ratios in each process order. JSON retains all samples, cold first calls,
-source/input/compiler build evidence and exact reference identities. Raw logs, JSON and the
-summary are retained for 30 days; generated fixture memory and compiler caches are excluded.
+Each process emits thirteen validated calls. Sample zero is the cold call; the
+first three calls are excluded from the ten-call reused median. Forward and reverse
+engine orders remain separate. CPU and wall statistics remain separate, with raw
+samples retained. Constructor cost is outside public call clocks and reported
+separately. Our public prepared call includes fresh invocation memory, callbacks,
+immutable publication and lease return. The reference call clock excludes its
+restore and teardown; DOOM reference lifecycle measurements are shown separately.
+These are explicitly scoped call comparisons, not complete application startup or
+an additive decomposition of nested clocks.
 
-Call CPU includes in-memory host callbacks. Preparation, input reset, file I/O and final reference
-validation are outside the clock; this is not full application startup time. No native/JIT backend
-is selected. Timing ratios are informational, with no universal or cross-runner regression threshold;
-semantic, identity or sample failures fail CI. There is no claim of a revision instruction baseline.
+Tables show both current interpreter / PolkaVM interpreted and current JIT /
+PolkaVM interpreted ratios, with lower values meaning less time. Requested policy,
+actual completed native work, availability and counters accompany each workload.
+A JIT request which executes no native operations is an explicit interpreted
+fallback cell. Eligibility-based native coverage requirements cannot be satisfied
+by unrelated workloads. Source/backend/clock/sample/coverage failures fail the job;
+there is no noisy universal speed threshold or cross-architecture timing ratio.
 
-## Completion evidence
+The canonical JSON validates the exact configured workload/engine/order/sample
+matrix, actual native policy, source and host identities before success. Summary
+and CSV rendering precede atomic passed publication. Exceptions preserve current
+failed evidence and cannot expose an old green table. Per-architecture artifacts
+`pvm-performance-<architecture>-<attempt>` retain JSON, CSV, summaries and logs for
+30 days, including failure diagnostics; executable images, compiler caches,
+private experiments and fixture memory are excluded.
 
-Workflow safeguards cover master, full/Perf, standalone, PR-update and closed-PR scheduling,
-retired experiment absence and aggregate coverage. A complete inert-tool orchestration test
-exercises CPU-only preparation, all six refusal controls, eight timing processes and source identity
-checks while refusing profiler calls. Summary tests reject partial phases/orders, invalid durations
-and forged ratios. Existing reference event/golden/parser tests remain authoritative.
+## Retrieve current results
 
-Local tooling tests and workflow lint are recorded in the PR. Actual Linux performance evidence
-will come from the new job; local macOS tests do not claim an executed Linux benchmark.
+`make pvm-perf-latest` uses authenticated `gh` to locate the newest master-push CI
+run and retrieve both native architecture reports. It validates complete scope,
+matching measured revision/run identity and each architecture's latest actual PVM
+job execution before rendering. Selective retries may leave the two CPUs on different
+attempts; both actual attempts remain explicit. Retrying an unrelated job does not
+discard valid measurements. A newer failed, cancelled, skipped or incomplete PVM
+execution blocks retrieval; an older green execution cannot replace it. The workflow
+must finish, and its overall conclusion is shown separately from PVM validity.
+The concrete job identity comes from the source-bound report, so display-name changes
+need no duplicated selector update. Retrieval never silently substitutes an older
+successful revision. Explicit
+historical run selection remains available through the helper's `--help` interface.
+Downloading reports builds no toolchain and executes no guests.
+
+Local behavioral tests cover scheduling and Make dependency expansion, complete
+inventory, clock/policy/ratio validation, failure-safe publication, reference
+selection and latest-report retrieval. Native Linux CI on both architectures is the
+qualification for actual timing. A sub-resolution local CPU sample is a measurement
+failure, not a value to floor, discard or relabel as wall time.

@@ -175,6 +175,8 @@ else:
   assert requestedBackend.len == 0
 let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
 assert requestedPreparation in ["", "0", "1"]
+let performance = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
+let prepareWallStart = if requestedPreparation == "1": getMonoTime().ticks else: 0'i64
 let prepareStart = if requestedPreparation == "1": cpuNanoseconds() else: 0'i64
 var plan = default(GasPlan)
 var prepared = default(PreparedProgram)
@@ -196,7 +198,12 @@ else:
   plan = created.value
 if requestedPreparation == "1":
   # Only the explicit lifecycle comparison accepts this constructor record; ordinary reports stay unchanged.
-  echo "API_PREPARE,", (if preparedMode: "prepared" else: "planned"), ",", cpuNanoseconds()-prepareStart
+  let prepareCpuElapsed = cpuNanoseconds()-prepareStart
+  let prepareWallElapsed = getMonoTime().ticks-prepareWallStart
+  echo "API_PREPARE,", (if preparedMode: "prepared" else: "planned"), ",", prepareCpuElapsed
+  if performance:
+    # The canonical protocol retains a genuine constructor wall clock beside its existing CPU clock.
+    echo "API_PREPARE_WALL,prepared,", prepareWallElapsed
 let requestedTiming = getEnv("RAGNAROK_PVM_DOOM_TIMING")
 assert requestedTiming in ["", "0", "1"]
 let timing = requestedTiming == "1"
@@ -217,14 +224,31 @@ for sample in 0..<samples:
   assert uint64(cpu.gas) == word(expected, 8, 8), "doom terminal gas mismatch"
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16+i*8, 8)
   let finalMemory = memoryOf(done.value.machine).value
+  let finalIndices = pageIndices(finalMemory)
+  let sourceIndices = pageIndices(captured.value)
+  assert finalIndices.error == MachineError.None and sourceIndices.error == MachineError.None
+  assert finalIndices.value.len == pages and sourceIndices.value.len == pages
   for page in 0..<pages:
     # Complete final-state comparison and source immutability validation stay outside collection.
+    assert uint32(finalIndices.value[page]) == uint32(images[page].index)
+    assert uint32(sourceIndices.value[page]) == uint32(images[page].index)
     let finalPage = pageImage(finalMemory, images[page].index).value
     let original = pageImage(captured.value, images[page].index).value
     assert finalPage.access == images[page].access
+    assert original.access == images[page].access
     for i in 0..<4096:
       assert finalPage.bytes[i] == byte(expected[120+page*4096+i])
       assert original.bytes[i] == images[page].bytes[i]
+  let originalCpu = machineInfo(source).value
+  assert uint64(originalCpu.pc) == uint64(info.pc) and not originalCpu.blockCharged
+  assert uint64(originalCpu.gas) == uint64(info.gas) and uint64(originalCpu.gasDeficit) == 0
+  for i in 0..<13:
+    # Reused calls cannot inherit a preceding invocation's registers through the immutable source.
+    assert uint64(originalCpu.registers[i]) == uint64(info.registers[i])
+  assert context.rom.len == rom.len
+  for i in 0..<rom.len:
+    # Host callbacks read the canonical WAD; no invocation may alter this retained source.
+    assert context.rom[i] == byte(rom[i])
   assert context.outputBytes == events.len
   var cursor = 0
   for event in context.events:
