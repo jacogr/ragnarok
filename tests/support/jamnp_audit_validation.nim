@@ -132,6 +132,16 @@ proc auditValidationChecks*(context: AuditContext, source: ChainView,
   let limits = receiptLimits(contextLimits)
   var batch = wire
   for octet in wire: batch.add(octet) # Repeated declarations remain visible to the later obligation pool; receipt does not invent duplicate consensus authority.
+  var invalid = limits
+  invalid.message.validators = ValidatorCount(0)
+  assert not invalid.valid and qualifyAuditAnnouncements(source, batch, invalid).error ==
+      AuditReceiptError.InvalidPolicy, "missing wire population cannot activate managed receipt"
+  invalid = limits
+  invalid.message.cores = CoreCount(2)
+  assert not invalid.valid, "wire core domain must match actual context capture policy"
+  invalid = limits
+  invalid.message.validators = ValidatorCount(6)
+  assert not invalid.valid, "wire original-ordinal ceiling must match canonical roster policy"
   let complete = qualifyAuditAnnouncements(source, batch, limits)
   assert complete.error == AuditReceiptError.None and complete.value.valid and complete.value.len ==
       2, "whole two-record authenticated batch"

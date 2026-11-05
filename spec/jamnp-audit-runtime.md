@@ -120,3 +120,8 @@ Final qualification of this initial-receipt review unit:
 This unit does not claim later-tranche support, locally produced audit obligations, complete
 judgment or bundle-evaluation behavior, or audited-block/finality authority. The normative
 later-tranche decision above remains pending; source and dependency pins remain unchanged.
+
+Receipt policy construction also validates the entire wire schema and requires its core and
+original-validator ceilings to agree with the context-capture policy. Missing or contradictory
+wire profiles cannot enable the native selector. Focused native refusal cases and both checked
+ThinLTO matrices passed after this final configuration hardening.

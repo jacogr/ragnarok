@@ -47,7 +47,10 @@ func proofError*[T](outcome: AuditReceiptResult[T]): AuditValidationResult[
   outcome.proofReason
 func valid*(limits: AuditReceiptLimits): bool =
   ## At most sixteen bounded private consensus-prefix executions occur per job; omission activates no receipt.
-  limits.context.valid and limits.proof.valid and uint64(limits.message.records) in
+  limits.context.valid and limits.proof.valid and limits.message.valid and
+    uint64(limits.message.cores) == uint64(limits.context.admission.frame.cores) and
+    uint64(limits.message.validators) == uint64(limits.context.availability.rosters.validators) and
+    uint64(limits.message.records) in
       1'u64..16'u64 and
     uint64(limits.message.bytes) > 0 and uint64(limits.message.bytes) <= 16'u64*133 and
     uint64(limits.retainedBytes) > 0 and uint64(limits.retainedBytes) <= 256'u64*1024*1024
