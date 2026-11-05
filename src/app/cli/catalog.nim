@@ -146,7 +146,7 @@ const
       fallback: OptionDefault.Timeout, commands: "node|server|client|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--node-work-policy", value: "FILE", group: OptionGroup.Network,
-      description: "Optional complete work-policy v1 file enables managed builder bundles; disabled when omitted.",
+      description: "Optional complete work policy: v1 unsigned bundles, v2 guarantor pipeline; disabled when omitted.",
       fallback: OptionDefault.None, commands: "node", repeatable: false),
     OptionSpec(name: "--node-validator-seed", value: "FILE", group: OptionGroup.Network,
       description: "Optional exact 32-byte JIP-5 validator master seed for local Safrole tickets; disabled when omitted.",

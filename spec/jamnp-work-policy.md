@@ -12,8 +12,8 @@ resource ceilings; actual state/duty/authorization/proof/refinement checks still
 
 Verification must cover all-field round trips, actual execution using decoded limits, complete
 schema refusal cases, bounded file reads, CLI normalization with/without the independent ticket
-seed, failed startup, actual finite node shutdown and the disabled default. This activation does
-not add CE133 availability acquisition, report credentials or the remaining availability/audit flows.
+seed, failed startup, actual finite node shutdown and the disabled default. The v1 profile remains unsigned. The explicit v2 extension below activates the bounded guarantee
+pipeline; assurance and audit lifecycles remain separate outstanding work.
 
 ## File format
 
@@ -40,3 +40,40 @@ The CLI release check retained 101,488 bytes before/after 1,000 cycles. Fresh ac
 rejected copying WorkDispatcher and ApplicationNode after the policy type was separated from
 transport. Application build, formatting and inventory passed. These are local results, not
 exact-head Linux CI evidence.
+
+## Explicit guarantor profile (v2)
+
+Selecting `ragnarok-work-policy-v2` explicitly opts into the complete bounded guarantor pipeline;
+omission and v1 never load its private signer. V2 requires the original submission fields plus
+all fields in [the guarantor schema](../src/app/work_policy/guarantor_fields.nim). It adds report
+composition and eligibility, private serving retention, CE137/147/148 response work, signature
+collection, CE135 receipt/delivery, CE133 segment acquisition and original-assurer fallback
+recovery. There are no inferred child budgets. Shared submission/execution stages use the same
+explicit base policy, and distribution uses the same explicit eligibility policy.
+
+`NodeWorkSettings`/`encodeGuarantorPolicy` serialize explicit inputs. The node's versioned loader
+preserves the v1 contract and accepts v2 only when every required field and bounded controller
+constructor succeeds. Both versions share strict lexical, canonical-number and backend parsing.
+The complete file is validated before Services, sockets or optional key loading. The actual node
+TLS certificate/key arguments supply signing identity; the policy cannot name replacement keys.
+The existing full-state/light-mode command gate remains mandatory. CE135 activation also requires
+the actual TLS identity to have the configured validator role; an explicit file cannot bypass it.
+
+The foreground command and ordinary application-node tests use one `configureNodeWork` activation
+path. It enables submission, acquisition, recovery, TLS-matched signing with retained serving, and
+receipt/delivery before polling. Default policies enable nothing. Startup failure returns through
+joined host/Services cleanup without admitting work. A bounded `NodeWorkSetupError` identifies
+the refused controller through startup logging without exposing key or policy contents. Read and
+signing operations still require
+fresh genuine source/state/duty/authorization/refinement evidence; a parsed policy is not such
+authority. The independent ticket seed continues to control Safrole ticket production.
+
+Checked native verification passes `jamnp_work_policy`, `jamnp_node_command`,
+`jamnp_work_exchange_runtime` and `app_cli`. Coverage includes every required v2 leaf being
+removed independently, strict malformed/overflow/whole-file refusals, unchanged unsigned v1,
+real file-driven three-node signature collection and CE135 delivery, foreground v2 startup and
+joined shutdown with/without the independent ticket seed, and refusal of a distinct non-validator
+TLS identity. All eighteen runtime scenarios pass. CLI ARC evidence retains 101488 bytes before
+and after 1,000 cycles. Pinned formatting, verification inventory and all 555 production modules
+plus the application entry point pass locally. The checked production ARC/LTO build also passes.
+These checks do not claim native Linux CI.

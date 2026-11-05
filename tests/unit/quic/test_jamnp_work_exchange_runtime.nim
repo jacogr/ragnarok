@@ -6,6 +6,8 @@ import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[node as application_node, services, options, startup, work_dispatch,
     work_exchange, work_distribution as distribution_host]
 import ../../../src/app/proof/worker
+import ../../../src/app/[node_work_policy, work_policy]
+import ../../support/jamnp_node_work_policy
 import ../../../src/jamnp-s/[node as node_streams, connections, endpoints, work_signer,
   work_sharing, work_duty, work_guarantee, sharing_wire, read_stream, read_client,
   work_distribution as distribution_rules]
@@ -24,7 +26,7 @@ import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_re
 
 type Variant {.pure.} = enum ## The same real builder source proves optional activation, three credentials, bounded third-peer grace and joined cancellation.
   Three, Two, Foreign, CloseDone, ReceiverClose, Refused, Deliver, DeliveryForeign, DeliveryRefresh,
-    DeliveryClose, DeliveryRefused, DeliveryConcurrent, DeliveryCloseForeign, Segments
+    DeliveryClose, DeliveryRefused, DeliveryConcurrent, DeliveryCloseForeign, Segments, Startup
 proc policy(raw: WorkFixture): WorkExchangePolicy =
   ## Every cryptographic/execution/copy ceiling is explicit; only peer response timing differs from the production default.
   let limits = WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes),
@@ -390,13 +392,26 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
   assert selected.valid
   assert not a.configureWorkExchange(default(WorkExchangePolicy), "missing", "missing")
   assert not sa.workSigningConfigured
-  assert a.configureWork(workDispatchPolicy(raw.limits, executionLimits(), guaranteeLimits().duty))
-  assert a.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
+  if variant == Variant.Startup:
+    # The same file loader and activation function used by the foreground command configures all real actors, not a parallel test setup path.
+    writeFile("work-exchange.policy", encodeGuarantorPolicy(guarantorSettings()))
+    let loaded = loadNodeWorkPolicy("work-exchange.policy")
+    assert loaded.error == WorkPolicyError.None and loaded.value.guaranteeing
+    let configured = loaded.value
+    let setupA = a.configureNodeWork(configured, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
+    assert setupA == NodeWorkSetupError.None, "startup a: " & $setupA
+    let setupB = b.configureNodeWork(configured, getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
+    assert setupB == NodeWorkSetupError.None, "startup b: " & $setupB
+    let setupC = c.configureNodeWork(configured, "work-exchange-c/cert.pem", "work-exchange-c/key.pem")
+    assert setupC == NodeWorkSetupError.None, "startup c: " & $setupC
+  else:
+    assert a.configureWork(workDispatchPolicy(raw.limits, executionLimits(), guaranteeLimits().duty))
+    assert a.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
+    if variant != Variant.Refused:
+      assert b.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
+    if variant notin [Variant.Two, Variant.Refused]:
+      assert c.configureWorkExchange(selected, "work-exchange-c/cert.pem", "work-exchange-c/key.pem")
   assert not a.configureWorkExchange(selected, "missing", "missing")
-  if variant != Variant.Refused:
-    assert b.configureWorkExchange(selected, getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"))
-  if variant notin [Variant.Two, Variant.Refused]:
-    assert c.configureWorkExchange(selected, "work-exchange-c/cert.pem", "work-exchange-c/key.pem")
   if variant in [Variant.Deliver, Variant.DeliveryForeign, Variant.DeliveryRefresh,
       Variant.DeliveryClose, Variant.DeliveryRefused, Variant.DeliveryConcurrent,
       Variant.DeliveryCloseForeign]:
@@ -491,7 +506,7 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
     distributionReceipt(a, b, c, sa, sb, sc, probe, sa.workGuaranteePayload(token), keyB, keyC)
   if variant in [Variant.Deliver, Variant.DeliveryForeign, Variant.DeliveryRefresh,
       Variant.DeliveryClose, Variant.DeliveryRefused, Variant.DeliveryConcurrent,
-      Variant.DeliveryCloseForeign]:
+      Variant.DeliveryCloseForeign, Variant.Startup]:
     retirementSlot = deliver(a, b, c, sa, sb, sc, probe, variant, sa.workGuaranteePayload(token),
         sourceHash, fixture.local)
     if variant in [Variant.DeliveryClose, Variant.DeliveryCloseForeign]: return
@@ -575,6 +590,8 @@ proc main() {.raises.} =
     echo "runtime ", variant, " passed"
   scenario(Variant.Segments, guaranteeFixture(keyA, keyB, keyC, exported = true), keyB, keyC)
   echo "runtime Segments passed"
+  scenario(Variant.Startup, fixture, keyB, keyC)
+  echo "runtime Startup passed"
   let otherCore = StateValidator(ed25519: keyA)
   repeatedRuntime(guaranteeFixture(keyA, keyA, keyA, otherCore), keyB, keyC, 0)
   echo "runtime AllLocal passed"

@@ -25,7 +25,22 @@ code, negative/source/lifetime tests, real multi-peer TLS evidence and ordinary 
 in the same coherent feature group. No report signature or complete runtime guarantee flow is
 claimed by an anchor-only component.
 
-## Implemented foundations and evidence
+## Current feature boundary
+
+The guarantee feature now includes actual TLS-bound source-qualified signing, complete CE134
+receiving and outgoing collection with third-peer grace, both CE135 directions, non-evicting
+bounded serving retention before signature disclosure, and retained CE137/147/148 responses after
+the execution session retires. Complete optional v2 startup activates these controllers through
+the ordinary foreground node; omission enables none of them and legacy v1 remains unsigned.
+A configured validator role is still required for CE135. The [startup policy contract](jamnp-work-policy.md)
+records every explicit resource-policy input and activation/refusal witness.
+
+The sections below retain incremental implementation evidence and the gaps at each checkpoint;
+the final startup section records the latest scoped result. Assurer possession/signing and its
+long-lived retention, audit/judgment lifecycles and audit fallback remain separate requirements
+of the full pinned JAMNP-S implementation. This guarantee feature does not claim them complete.
+
+## Implementation history and evidence
 
 `work_anchors.nim` qualifies the exact original decoded header and posterior source map using
 bounded corrected C(3), the shared reason-only GP anchor tuple/age rule, and retained sealed
@@ -760,3 +775,26 @@ Strict optional startup configuration and final feature validation remain. Assur
 possession/signing, its long-lived retention obligations, audit/judgment lifecycles and audit
 recovery remain separate outstanding parts of the full pinned JAMNP-S objective; this retention
 work does not claim them complete.
+
+## Complete optional startup and final local qualification
+
+The original unsigned v1 schema retains its exact grammar and error API. A private shared parser
+now supplies both explicit versions, and v2 requires all 193 declared leaves before producing
+ready immutable controller policies. No file or incomplete file enables signing. The actual node
+TLS paths supply identity; neither resource configuration nor wire input can replace them.
+The common `configureNodeWork` path installs submission, acquisition, original-assurer recovery,
+signing/retained reads and CE135 receipt/delivery before polling. Setup refusal identifies only a
+bounded controller stage, then returns through joined host/Services cleanup.
+
+The native policy suite passes legacy compatibility, every missing v2 leaf, malformed numbers,
+unknown/duplicate fields, limits and file loading. The real foreground command passes v2 startup,
+finite joined shutdown, independent ticket-seed coexistence and a distinct TLS non-validator's
+refusal. Its successful fixture now binds the actual public TLS key into the validator roster;
+configuration does not bypass the production role check. The ordinary three-node runtime uses
+an actual file and the same activation helper to collect three genuine credentials and deliver
+their original guarantee. All eighteen runtime scenarios pass. Existing retained-source and
+worker/cancellation evidence above remains applicable; no resource-owner layout changed here.
+
+`app_cli` passes with 101488 occupied bytes before/after 1,000 cycles. Pinned formatting,
+verification inventory and all 555 production modules plus the entry point pass. The checked production ARC/LTO build also passes; the existing generated C
+self-comparison warning is unchanged. Local semantic results are not a native Linux CI verdict.
