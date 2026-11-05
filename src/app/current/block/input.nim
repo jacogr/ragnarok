@@ -4,6 +4,7 @@
 ## Single-slot current raw-block reception with bounded copying and generation-safe callback retirement.
 ## Explicit preparation runs outside transport callbacks; only a current prepared update can reach adoption.
 
+import ../../../state/accumulation/residency
 import ../../[chain, candidate]
 import ../handoff as current_handoff
 import ../../../chain/[genesis, provider]
@@ -186,7 +187,8 @@ proc cancel*(input: var CurrentBlockInput, id: CurrentBlockInputId): bool =
   true
 
 proc prepare*(input: var CurrentBlockInput, id: CurrentBlockInputId,
-    chain: ApplicationChain): CurrentBlockInputResult =
+    chain: ApplicationChain,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentBlockInputResult =
   ## Consume Ready once outside transport callbacks; terminal failures release raw storage just like success.
   if input.stage == CurrentBlockInputStage.Idle or input.pending.id != id:
     return CurrentBlockInputResult(status: CurrentBlockInputError.StaleInput) # No other generation is consumed.
@@ -206,7 +208,7 @@ proc prepare*(input: var CurrentBlockInput, id: CurrentBlockInputId,
       return CurrentBlockInputResult(status: CurrentBlockInputError.TrailingBytes) # Input remains exactly one full block, including on discovery paths.
     if not pending.resources.discoverAncestors:
       let prepared = prepareCurrentCandidate(chain, decoded.value.owner, pending.ancestors,
-          pending.policies)
+          pending.policies, residency = residency)
       if prepared.error != CurrentCandidateError.None:
         return CurrentBlockInputResult(status: CurrentBlockInputError.PreparationFailure,
             preparationReason: prepared)
@@ -226,7 +228,8 @@ proc prepare*(input: var CurrentBlockInput, id: CurrentBlockInputId,
     input.pending = move(pending)
     return CurrentBlockInputResult(status: CurrentBlockInputError.NeedsAncestors,
         demand: needed.value)
-  let prepared = completeCurrentCandidateReports(chain, reports, pending.ancestors)
+  let prepared = completeCurrentCandidateReports(chain, reports, pending.ancestors,
+      residency = residency)
   if prepared.error != CurrentCandidateError.None:
     return CurrentBlockInputResult(status: CurrentBlockInputError.PreparationFailure,
         preparationReason: prepared)
@@ -258,11 +261,12 @@ proc resumeAncestors*(input: var CurrentBlockInput, id: CurrentBlockInputId,
   CurrentBlockInputError.None
 
 proc enqueue*(input: var CurrentBlockInput, id: CurrentBlockInputId, chain: ApplicationChain,
-    handoff: var CurrentAccumulationHandoff): CurrentBlockInputResult =
+    handoff: var CurrentAccumulationHandoff,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentBlockInputResult =
   ## Producer-only synchronous preparation checks handoff backpressure first; dispatcher ticks still only adopt.
   if handoff.phase != CurrentHandoffPhase.Idle:
     return CurrentBlockInputResult(status: CurrentBlockInputError.Busy) # Keep Ready input for retry without decoding or hashing.
-  let prepared = input.prepare(id, chain)
+  let prepared = input.prepare(id, chain, residency = residency)
   if prepared.error != CurrentBlockInputError.None: return prepared # Terminal preparation already retired raw bytes.
   let admitted = handoff.enqueue(chain, prepared.value)
   if admitted != CurrentHandoffAdmission.None:

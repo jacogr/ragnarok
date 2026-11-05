@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_worker_ancestors_arc_release"}
 
 ## Actual native worker leases span signed report discovery and resumed execution with explicit cancellation/collection barriers.
+import ../../../src/state/accumulation/residency
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import "../../../src/app/block/input" as block_input
@@ -32,10 +33,11 @@ proc scenario(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader],
     ancestors: ElementLimit(1), discoverAncestors: true)
   let id = input.begin(chain, ByteLimit(wire.len), [], resources, preparationLimits()).value
   assert input.append(id, wire, true) == BlockInputError.None
+  var resident = default(ServiceExecutionContext)
   var worker = default(PreparationWorker)
   assert worker.start()
   defer: worker.close() # Join precedes input/canonical/outer fixture alias retirement on every test exit.
-  let first = worker.submit(input, id, chain).value
+  let first = worker.submit(input, id, chain, residency = addr resident).value
   waitDone(worker)
   if cancel == 1:
     assert worker.cancel(first) # A Done discovery still owns its lease until collection.
@@ -51,9 +53,10 @@ proc scenario(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader],
       $discovered.value.error
   assert discovered.value.ancestorDemand.missingLookups.value == 1
   assert input.stage == BlockInputStage.AwaitingAncestors
-  assert worker.submit(input, id, chain).error == PreparationError.NotReady
+  assert worker.submit(input, id, chain, residency = addr resident).error ==
+      PreparationError.NotReady
   assert input.resumeAncestors(id, chain, older) == BlockInputError.None
-  let second = worker.submit(input, id, chain).value
+  let second = worker.submit(input, id, chain, residency = addr resident).value
   assert worker.collect(first).kind == PreparationCompletionKind.Uninitialized # A stale first ticket cannot retire the resumed lease.
   waitDone(worker)
   if cancel == 2:

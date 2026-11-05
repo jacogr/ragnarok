@@ -4,6 +4,7 @@
 ## Drive genuine completed initial accumulation through bounded report-only rounds to an actual stopped certificate.
 ## Exposes explicit per-entry/depth policy and guarded terminal alternatives/reasons; never publishes caller state.
 
+import ./residency
 import ../../pvm/worker
 
 import ../../chain/parameters
@@ -102,7 +103,8 @@ func reentryExecutionFailure*(outcome: AccumulationDriverResult):
   outcome.executionReason
 
 proc driveAccumulation*(source: CompletedBlockAccumulation, parameters: Parameters,
-    limits: AccumulationDriverLimits): AccumulationDriverResult =
+    limits: AccumulationDriverLimits,
+    residency: nil ptr ServiceExecutionContext = nil): AccumulationDriverResult =
   ## Start at genuine initial completion, never replay initial guests, and return only a certified n=0 history.
   ## Each next preparation applies only its immediate completed batch on a private full-state fork.
   if source.executionInfo.error != AccumulationExecutionError.None:
@@ -119,8 +121,9 @@ proc driveAccumulation*(source: CompletedBlockAccumulation, parameters: Paramete
   if inputs.error != AccumulationContinuationInputError.None:
     return AccumulationDriverResult(status: AccumulationDriverError.InputFailure,
       inputReason: inputs) # No partially applied initial batch or selected inputs survive failure.
-  let worker = newExecutionWorker() # One code-only worker spans continuation and every bounded reentry round.
-  let later = runAccumulationContinuation(inputs.value, parameters, limits.execution, worker)
+  let worker = if residency != nil: default(ExecutionWorker) else: newExecutionWorker() # One code-only worker spans continuation and every bounded reentry round.
+  let later = runAccumulationContinuation(inputs.value, parameters, limits.execution, worker,
+      residency = residency)
   if later.error != AccumulationLaterRunnerError.None:
     return AccumulationDriverResult(status: AccumulationDriverError.ContinuationFailure,
       continuationReason: later) # Preserve exact local engine, context and completion causes.
@@ -135,7 +138,8 @@ proc driveAccumulation*(source: CompletedBlockAccumulation, parameters: Paramete
   var entry = first.value
   while true:
     # Each successful live iteration advances a checked depth below the explicit cap; stopped entries return immediately.
-    let completed = runAccumulationReentry(entry, parameters, limits.execution, worker)
+    let completed = runAccumulationReentry(entry, parameters, limits.execution, worker,
+        residency = residency)
     if completed.error != AccumulationLaterRunnerError.None:
       return AccumulationDriverResult(status: AccumulationDriverError.ReentryExecutionFailure,
         executionReason: completed) # Release all earlier successful rounds on late refusal.

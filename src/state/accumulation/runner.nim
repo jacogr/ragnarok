@@ -4,6 +4,7 @@
 ## Execute independent source-bound initial-round services and certify one complete supported batch.
 ## Exposes explicit local ceilings and guarded completion/reasons; never mutates a caller store.
 
+import ./residency
 import ../../pvm/worker
 
 import ../../lib/logging
@@ -39,7 +40,7 @@ type
     transfers*, accountWriteKeys*, createdAccounts*, deletedAccounts*: ElementLimit
       ## Independent effect-proof ceilings; zero preserves existing support gates.
   AccumulationRunnerError* {.pure.} = enum ## No refusal exposes earlier successful services or a partial completed round.
-    Uninitialized, None, InvalidRound, InvalidParameters, LimitExceeded, ServiceFailure,
+    Uninitialized, None, Busy, InvalidRound, InvalidParameters, LimitExceeded, ServiceFailure,
     InvocationFailure, ContextFailure, MachineFailure, SkipFailure, DispatchFailure, CompletionFailure
   AccumulationRunnerResult* = object ## Private alternatives preserve reasons alone until the complete round succeeds.
     case status: AccumulationRunnerError
@@ -110,7 +111,8 @@ func completionFailure*(outcome: AccumulationRunnerResult):
 
 proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters,
     limits: AccumulationRunnerLimits, worker: ExecutionWorker = default(
-        ExecutionWorker)): AccumulationRunnerResult =
+        ExecutionWorker),
+    residency: nil ptr ServiceExecutionContext = nil): AccumulationRunnerResult =
   ## Resolve every source service, execute ready code and complete once; source state/slot/entropy cannot be replaced.
   ## Each independent service starts at the admitted parent. All successful intermediates remain local until completion.
   let queue = round.roundBlockQueue
@@ -131,7 +133,8 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
       count > high(int) div sizeof(AccumulationDispatchResult) or
       count > high(int) div sizeof(SkippedAccumulation):
     return AccumulationRunnerResult(status: AccumulationRunnerError.LimitExceeded) # Prove extents before allocation/work.
-  let activeWorker = if worker.initialized: worker else: newExecutionWorker() # Share code only over the actual round-service lifetime.
+  let activeWorker = if residency != nil: default(ExecutionWorker)
+    elif worker.initialized: worker else: newExecutionWorker() # Share code only over the actual round-service lifetime.
   var executions: seq[AccumulationDispatchResult] = @[]
   var skipped: seq[SkippedAccumulation] = @[]
   # Canonical input-service enumeration also bounds guest work by the checked complete count.
@@ -159,8 +162,16 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
       if initial.error != AccumulationContextError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.ContextFailure,
           contextReason: initial.error) # Bind the dispatch policy to the authenticated profile before execution.
+      var lease = default(ServiceExecutionLease)
+      if residency != nil:
+        # Ready classification rechecked the full account/preimage/envelope before resident selection.
+        let identity = service.value.serviceProjection.value.serviceInfo.value
+        lease = acquireServiceExecution(residency[], identity.service, identity.account.codeHash,
+            limits.backend)
+        if not lease.initialized:
+          return AccumulationRunnerResult(status: AccumulationRunnerError.Busy) # Nested admission is a local refusal before any initializer mutation.
       let machine = initializeAccumulationMachine(invocation.value.bootstrapProjection.value,
-        limits.initialization, activeWorker)
+        limits.initialization, activeWorker, execution = addr lease)
       if machine.error != AccumulationMachineError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.MachineFailure,
           machineReason: machine.error) # Malformed envelopes remain local setup refusals.
@@ -168,7 +179,7 @@ proc runBlockAccumulation*(round: BlockAccumulationRound, parameters: Parameters
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
         limits.deletedAccounts, logging = limits.logging, backend = limits.backend,
-        worker = activeWorker)
+        worker = activeWorker, execution = addr lease)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationRunnerResult(status: AccumulationRunnerError.DispatchFailure,
           dispatchReason: executed) # Preserve StepError; prior successes die locally.

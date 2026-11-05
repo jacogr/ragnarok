@@ -4,6 +4,7 @@
 ## Prepare finalized successors from owned blocks against the selected complete-map application head.
 ## Existing state/PVM stages retain authority; private prefixes never publish until a later handoff tick.
 
+import ../state/accumulation/residency
 import ../lib/logging
 
 import ./[chain, handoff]
@@ -214,7 +215,8 @@ proc prepareCandidateReports*(chain: ApplicationChain, candidate: OwnedBlock,
       reports: reports.value, limits: limits)))
 
 proc completeCandidateReports*(chain: ApplicationChain, prepared: PreparedCandidateReports,
-    ancestors: openArray[OwnedHeader]): ApplicationCandidateResult =
+    ancestors: openArray[OwnedHeader],
+    residency: nil ptr ServiceExecutionContext = nil): ApplicationCandidateResult =
   ## Recheck exact canonical ownership before completing the original reports and executing accumulation once.
   let data = prepared.data
   if data == nil:
@@ -235,11 +237,12 @@ proc completeCandidateReports*(chain: ApplicationChain, prepared: PreparedCandid
     return ApplicationCandidateResult(status: ApplicationCandidateError.RoundFailure,
         roundReason: round.error)
   let parameters = data.parameters
-  let executed = runBlockAccumulation(round.value, parameters, limits.execution)
+  let executed = runBlockAccumulation(round.value, parameters, limits.execution,
+      residency = residency)
   if executed.error != AccumulationRunnerError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.RunnerFailure,
         runnerReason: executed)
-  let stopped = driveAccumulation(executed.value, parameters, limits.driver)
+  let stopped = driveAccumulation(executed.value, parameters, limits.driver, residency = residency)
   if stopped.error != AccumulationDriverError.None:
     return ApplicationCandidateResult(status: ApplicationCandidateError.DriverFailure,
         driverReason: stopped)
@@ -250,19 +253,21 @@ proc completeCandidateReports*(chain: ApplicationChain, prepared: PreparedCandid
   ApplicationCandidateResult(status: ApplicationCandidateError.None, completed: finalized.value)
 
 proc prepareCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
-    ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits): ApplicationCandidateResult =
+    ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits,
+    residency: nil ptr ServiceExecutionContext = nil): ApplicationCandidateResult =
   ## One-shot callers use the same original report preparation and exact-parent completion without requesting acquisition.
   let prepared = prepareCandidateReports(chain, candidate, limits)
   if prepared.error != ApplicationCandidateError.None: return prepared.failure
-  completeCandidateReports(chain, prepared.value, ancestors)
+  completeCandidateReports(chain, prepared.value, ancestors, residency = residency)
 
 proc enqueueCandidate*(handoff: var AccumulationHandoff, chain: ApplicationChain,
     candidate: OwnedBlock, ancestors: openArray[OwnedHeader], limits: ApplicationCandidateLimits,
-    composition: AccumulationCompositionLimits): ApplicationCandidateResult =
+    composition: AccumulationCompositionLimits,
+    residency: nil ptr ServiceExecutionContext = nil): ApplicationCandidateResult =
   ## Backpressure precedes expensive preparation; enqueue only the actual finalized result without publishing it.
   if handoff.stage != AccumulationHandoffStage.Idle:
     return ApplicationCandidateResult(status: ApplicationCandidateError.Busy) # Pending/finished work is never replaced.
-  let prepared = prepareCandidate(chain, candidate, ancestors, limits)
+  let prepared = prepareCandidate(chain, candidate, ancestors, limits, residency = residency)
   if prepared.error != ApplicationCandidateError.None: return prepared # Failed prefixes leave the slot idle.
   let admitted = handoff.enqueue(chain, prepared.value, composition)
   if admitted != AccumulationEnqueueError.None:
@@ -378,7 +383,8 @@ proc currentCandidateLookupDemand*(prepared: PreparedCurrentCandidateReports,
 proc completeCurrentReports(chain: ApplicationChain,
     prepared: PreparedCurrentCandidateReports,
 
-reports: ReportAdmissionResult[AdmittedReports]): CurrentCandidateResult =
+reports: ReportAdmissionResult[AdmittedReports],
+    residency: nil ptr ServiceExecutionContext = nil): CurrentCandidateResult =
   ## Recheck exact original history before current sequence execution, full state composition and one private capture.
   let data = prepared.prefix.data
   if data == nil: return default(CurrentCandidateResult) # A default prefix has no original map/profile authority.
@@ -396,7 +402,8 @@ reports: ReportAdmissionResult[AdmittedReports]): CurrentCandidateResult =
   if round.error != AccumulationRoundError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.RoundFailure,
         roundReason: round.error)
-  let composed = runCurrentAccumulationCompletion(round.value, data.parameters, limits.completion)
+  let composed = runCurrentAccumulationCompletion(round.value, data.parameters, limits.completion,
+      residency = residency)
   if composed.error != CurrentAccumulationCompletionError.None:
     return CurrentCandidateResult(status: CurrentCandidateError.CompletionFailure,
         completionReason: composed)
@@ -409,13 +416,15 @@ reports: ReportAdmissionResult[AdmittedReports]): CurrentCandidateResult =
 
 proc completeCurrentCandidateReports*(chain: ApplicationChain,
     prepared: PreparedCurrentCandidateReports, ancestors: openArray[
-        OwnedHeader]): CurrentCandidateResult =
+        OwnedHeader],
+    residency: nil ptr ServiceExecutionContext = nil): CurrentCandidateResult =
   ## Keep ordinary full-header completion on its original authenticated preparation.
   let data = prepared.prefix.data
   if data == nil: return default(CurrentCandidateResult)
   if not sameChainView(data.original, chain.chainView):
     return CurrentCandidateResult(status: CurrentCandidateError.StateChanged) # Preserve stale-prefix failure ordering.
-  completeCurrentReports(chain, prepared, completeBlockReports(data.reports, ancestors))
+  completeCurrentReports(chain, prepared, completeBlockReports(data.reports, ancestors),
+      residency = residency)
 
 proc prepareFuzzCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
     context: FuzzAncestry, limits: CurrentCandidateLimits): CurrentCandidateResult =
@@ -429,11 +438,12 @@ proc prepareFuzzCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock
   completeCurrentReports(chain, prepared.value, completeFuzzBlockReports(data.reports, context))
 
 proc prepareCurrentCandidate*(chain: ApplicationChain, candidate: OwnedBlock,
-    ancestors: openArray[OwnedHeader], limits: CurrentCandidateLimits): CurrentCandidateResult =
+    ancestors: openArray[OwnedHeader], limits: CurrentCandidateLimits,
+    residency: nil ptr ServiceExecutionContext = nil): CurrentCandidateResult =
   ## One-shot consumers use the same original prefix and current-only completion without publishing any head.
   let prepared = prepareCurrentCandidateReports(chain, candidate, limits)
   if prepared.error != CurrentCandidateError.None: return prepared.failure
-  completeCurrentCandidateReports(chain, prepared.value, ancestors)
+  completeCurrentCandidateReports(chain, prepared.value, ancestors, residency = residency)
 
 proc selectLogging*(limits: var ApplicationCandidateLimits, writer: LogWriter) =
   ## Initial and later accumulation cohorts borrow the same application-owned diagnostic sink.

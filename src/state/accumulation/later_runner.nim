@@ -4,6 +4,7 @@
 ## Execute one genuine report-only continuation or reentry from its actual posterior state.
 ## Reuses explicit initial-runner policies and existing completion certificates; no recursion or publication.
 
+import ./residency
 import ../../pvm/worker
 
 import ../../chain/parameters
@@ -24,7 +25,7 @@ import ./reentry/invocation as accumulation_reentry_invocation
 
 type
   AccumulationLaterRunnerError* {.pure.} = enum ## Refusals contain no successful earlier guest or partially certified round.
-    Uninitialized, None, InvalidSource, InvalidParameters, LimitExceeded, ServiceFailure,
+    Uninitialized, None, Busy, InvalidSource, InvalidParameters, LimitExceeded, ServiceFailure,
     InvocationFailure, ContextFailure, MachineFailure, SkipFailure, DispatchFailure,
     ContinuationFailure, ReentryFailure
   # A failed branch has only reasons; copying it between result instantiations cannot retain a success owner.
@@ -234,7 +235,8 @@ proc invocationFor(source: LaterSource, index: InvocationServiceIndex,
 
 proc runServices(source: LaterSource, round: BlockAccumulationRound,
     inputs: PreparedAccumulationInputs, parameters: Parameters,
-    limits: AccumulationRunnerLimits, worker: ExecutionWorker): AccumulationLaterRunnerResult[GuestBatch] =
+    limits: AccumulationRunnerLimits, worker: ExecutionWorker,
+    residency: nil ptr ServiceExecutionContext = nil): AccumulationLaterRunnerResult[GuestBatch] =
   ## Private callers already proved source ownership; neither root nor inputs are public substitution points.
   ## Both source families use the same bounded service/CPU loop and retain their own invocation adapters.
   let profile = round.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.blockTransitionProfile
@@ -283,14 +285,25 @@ proc runServices(source: LaterSource, round: BlockAccumulationRound,
       if initial.error != AccumulationContextError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.ContextFailure, contextReason: initial.error))
-      let machine = initializeAccumulationMachine(bootstrap, limits.initialization, worker)
+      var lease = default(ServiceExecutionLease)
+      if residency != nil:
+        # Ready classification rechecked the full account/preimage/envelope before resident selection.
+        let identity = service.value.serviceInfo.value
+        lease = acquireServiceExecution(residency[], identity.service, identity.account.codeHash,
+            limits.backend)
+        if not lease.initialized:
+          return AccumulationLaterRunnerResult[GuestBatch](succeeded: false,
+          refusal: LaterFailure(status: AccumulationLaterRunnerError.Busy)) # Nested admission is a local refusal before any initializer mutation.
+      let machine = initializeAccumulationMachine(bootstrap, limits.initialization, worker,
+          execution = addr lease)
       if machine.error != AccumulationMachineError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.MachineFailure, machineReason: machine.error))
       let executed = executeAccumulationMachine(machine.value, parameters, limits.fetch,
         limits.copyBytes, limits.steps, limits.calls, limits.cycles, contexts, limits.provisions,
         limits.probes, limits.transfers, limits.accountWriteKeys, limits.createdAccounts,
-        limits.deletedAccounts, logging = limits.logging, backend = limits.backend, worker = worker)
+        limits.deletedAccounts, logging = limits.logging, backend = limits.backend, worker = worker,
+        execution = addr lease)
       if executed.error != AccumulationDispatchError.None:
         return AccumulationLaterRunnerResult[GuestBatch](succeeded: false, refusal: LaterFailure(
           status: AccumulationLaterRunnerError.DispatchFailure,
@@ -301,7 +314,8 @@ proc runServices(source: LaterSource, round: BlockAccumulationRound,
 
 proc runAccumulationContinuation*(source: PreparedAccumulationContinuationInputs,
     parameters: Parameters, limits: AccumulationRunnerLimits, worker: ExecutionWorker = default(
-        ExecutionWorker)):
+        ExecutionWorker),
+    residency: nil ptr ServiceExecutionContext = nil):
     AccumulationLaterRunnerResult[CompletedAccumulationContinuation] =
   ## Execute all selected continuation services against their actual post-initial-batch map; certify completion once.
   let plan = source.continuationPlan
@@ -312,7 +326,8 @@ proc runAccumulationContinuation*(source: PreparedAccumulationContinuationInputs
   let round = plan.value.continuationSource.value.executionRound.value
   let guests = runServices(LaterSource(kind: LaterSourceKind.Continuation, continuation: source),
       round, source.continuationInputs.value, parameters, limits,
-      if worker.initialized: worker else: newExecutionWorker())
+      if residency != nil: default(ExecutionWorker)
+      elif worker.initialized: worker else: newExecutionWorker(), residency)
   if guests.error != AccumulationLaterRunnerError.None:
     return AccumulationLaterRunnerResult[CompletedAccumulationContinuation](succeeded: false,
         refusal: guests.refusal) # Copy reasons alone.
@@ -328,7 +343,8 @@ proc runAccumulationContinuation*(source: PreparedAccumulationContinuationInputs
 
 proc runAccumulationReentry*(source: PreparedAccumulationReentry,
     parameters: Parameters, limits: AccumulationRunnerLimits, worker: ExecutionWorker = default(
-        ExecutionWorker)):
+        ExecutionWorker),
+    residency: nil ptr ServiceExecutionContext = nil):
     AccumulationLaterRunnerResult[CompletedAccumulationReentry] =
   ## Execute one genuine reentry at any prepared depth, with direct original-block provenance and exact posterior state.
   if source.reentryInfo.error != AccumulationReentryError.None:
@@ -338,7 +354,8 @@ proc runAccumulationReentry*(source: PreparedAccumulationReentry,
   let round = source.reentrySource.value.executionContinuation.value.continuationPlan.value.continuationSource.value.executionRound.value
   let guests = runServices(LaterSource(kind: LaterSourceKind.Reentry, reentry: source), round,
       source.reentryInputs.value, parameters, limits,
-      if worker.initialized: worker else: newExecutionWorker())
+      if residency != nil: default(ExecutionWorker)
+      elif worker.initialized: worker else: newExecutionWorker(), residency)
   if guests.error != AccumulationLaterRunnerError.None:
     return AccumulationLaterRunnerResult[CompletedAccumulationReentry](succeeded: false,
         refusal: guests.refusal) # No successful intermediates retained.

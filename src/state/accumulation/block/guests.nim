@@ -3,6 +3,7 @@
 
 ## Bind current guest execution to genuine initial-round admission, posterior entropy and chain shape.
 ## Coverage remains private preparation; complete selected publication owns the subsequent state transition.
+import ../residency
 import ../../../chain/parameters
 import ../../../codec/header
 import ../../../codec/state/[layout as state_layout, safrole as state_safrole]
@@ -61,7 +62,8 @@ proc guestCoverage*(guests: BlockAccumulationGuests): BlockGuestResult[
       completed: data.coverage)
 
 proc runBlockAccumulationGuests*(round: BlockAccumulationRound, parameters: Parameters,
-    limits: AccumulationGuestLimits): BlockGuestResult[BlockAccumulationGuests] =
+    limits: AccumulationGuestLimits,
+    residency: nil ptr ServiceExecutionContext = nil): BlockGuestResult[BlockAccumulationGuests] =
   ## Derive state, slot and entropy from the genuine round; bind caller Parameters to the admitted profile before any guest work.
   template fail(reason: BlockGuestError) =
     return BlockGuestResult[BlockAccumulationGuests](status: reason)
@@ -97,7 +99,7 @@ proc runBlockAccumulationGuests*(round: BlockAccumulationRound, parameters: Para
   if uint64(bounded.coverage.gas) > uint64(budget):
     bounded.coverage.gas = budget # Preserve a stricter local cap; a generous caller cap cannot relax protocol gas.
   let completed = runAccumulationGuests(projection.roundInputs.value, stage.admitted.admittedState,
-    slot, entropy.value.value[0], parameters, bounded)
+    slot, entropy.value.value[0], parameters, bounded, residency = residency)
   if completed.error != AccumulationGuestError.None:
     return BlockGuestResult[BlockAccumulationGuests](status: BlockGuestError.GuestFailure,
       failed: completed) # Earlier successes remain local and source state remains unchanged.

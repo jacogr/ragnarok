@@ -6,19 +6,24 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../../src/app/services
+import ../../../src/codec/state/[accounts, service_values, layout, outputs, privileges]
+import ../../../src/crypto/primitives
+import ../../../src/pvm/step as pvm_step
 import "../../../src/app/current/block/download" as current_block_download
 import "../../../src/app/current/block/input" as current_block_input
 import ../../../src/app/current/handoff as current_handoff
 import ../../../src/app/[preparation_worker, candidate, chain, options]
 import ../../../src/rpc/server
 import ../../../src/chain/[genesis, provider]
-import ../../../src/codec/[bounded, header, report_owned]
+import ../../../src/codec/[bounded, header, report_owned, block_codec]
 import ../../../src/state/store
 import ../../../src/state/accumulation/current/[update as accumulation_current_update,
     consensus as accumulation_current_consensus]
 import ../../../src/state/report/anchors as report_anchors
 import ../../support/[current_services_disk_samples, current_application_context,
-  accumulation_current_chain_context, accumulation_current_candidate_context, arc_evidence]
+  accumulation_current_chain_context, accumulation_current_candidate_context, arc_evidence,
+  current_consecutive_context, accumulation_current_round_context, pvm_accumulation_program,
+  current_preimage_sequence_context, accumulation_execution_context, accumulation_activity_context]
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Native reception and resumption must do no hashing or execution.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -98,7 +103,7 @@ proc framing(owner: Services, wire: seq[byte]) =
   assert download.cancel(extra)
   assert hashCalls() == 0
   failHash(0)
-proc jobs(owner: var Services, wire: seq[byte]) =
+proc jobs(owner: var Services, wire: seq[byte], executed: bool) =
   ## Completed cancellation and joined retirement retain stable input/parent ownership and never enqueue unwanted work.
   var download = default(CurrentBlockDownload)
   let parent = owner.stateSnapshot.value
@@ -121,13 +126,21 @@ proc jobs(owner: var Services, wire: seq[byte]) =
       assert download.stage == CurrentBlockDownloadStage.Idle
     assert not owner.preparationActive and not owner.rpc.chainPaused
     assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
+    if executed:
+      # Both collected success and Done cancellation retain authenticated code after actual execution.
+      assert owner.residentServiceCount > 0
+    else:
+      # The original missing-code fixture cannot populate a resident guest entry.
+      assert owner.residentServiceCount == 0
+  let retained = owner.residentServiceCount
   let joined = download.ready(owner, wire)
   assert download.beginPreparation(joined, owner).error == CurrentBlockDownloadError.None
   owner.waitDone()
   assert download.retirePreparation(joined, owner)
   assert not owner.preparationActive and download.stage == CurrentBlockDownloadStage.Idle
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
-proc scenario(context: CurrentChainFixture, ancestry = false) {.raises.} =
+  assert owner.residentServiceCount == retained # retirePreparation joined the worker without closing Services.
+proc scenario(context: CurrentChainFixture, ancestry = false, executed = false) {.raises.} =
   ## Complete independent parent startup supplies real current execution and original-history ancestry resumption.
   var path = "pvm-current-block-download-chain"
   writeFile(path, context.currentApplicationText)
@@ -142,8 +155,9 @@ proc scenario(context: CurrentChainFixture, ancestry = false) {.raises.} =
   assert owner.start(options, "current receiver")
   let wire = context.frame
   if not ancestry:
-    framing(owner, wire)
-    jobs(owner, wire)
+    if not executed:
+      framing(owner, wire) # Preserve original no-work framing coverage without duplicating it for positive execution.
+    jobs(owner, wire, executed)
   let id = download.ready(owner, wire, ancestry)
   assert download.beginPreparation(id, owner).error == CurrentBlockDownloadError.None
   owner.waitDone()
@@ -163,6 +177,12 @@ proc scenario(context: CurrentChainFixture, ancestry = false) {.raises.} =
     owner.waitDone()
     completed = download.collectPreparation(id, owner)
   assert completed.error == CurrentBlockDownloadError.None
+  if executed:
+    # Both direct and ancestor-completed positive cases consume the Services-owned context.
+    assert owner.residentServiceCount > 0
+  else:
+    # Successful missing-code preparation still produces no resident guest entry.
+    assert owner.residentServiceCount == 0
   equalCurrentDiskMap(completed.value.currentUpdateState,
       context.source.currentConsensusState.value)
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Pending
@@ -171,6 +191,8 @@ proc scenario(context: CurrentChainFixture, ancestry = false) {.raises.} =
   assert installed.error == CurrentHandoffError.None
   assert sameStateSnapshot(owner.stateSnapshot.value, completed.value.currentUpdateState)
   assert download.stage == CurrentBlockDownloadStage.Idle
+  owner.close()
+  assert owner.residentServiceCount == 0 # Full close releases code after joined preparation.
 proc cycle(context: CurrentChainFixture, wire: seq[byte]) =
   ## Isolated reception-only cycles release their bounded raw bytes and captured immutable owners without worker allocator claims.
   var download = default(CurrentBlockDownload)
@@ -180,6 +202,123 @@ proc cycle(context: CurrentChainFixture, wire: seq[byte]) =
   assert download.requestFinished(admitted.value) == CurrentBlockDownloadError.None
   assert download.append(admitted.value, wire, true) == CurrentBlockDownloadError.None
   assert download.cancel(admitted.value)
+proc slotOutput(state: StateStoreSnapshot): array[32, byte] =
+  ## Decode the real published output; this guest yields its current compact slot byte and31 zeros.
+  let read = decodeOutputLog(state.lookup(chapterKey(StateChapter(16))).value.bytes,
+    OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(1000)))
+  assert read.error == OutputLogError.None
+  let values = read.value.snapshot
+  for index in 0..<values.outputLogCount.value:
+    let item = values.outputLogAt(OutputLogIndex(uint64(index))).value
+    if uint32(item.service) == 42:
+      return array[32, byte](item.commitment)
+  assert false, "real slot-dependent yield must be present"
+  default(array[32, byte])
+
+proc consecutiveResidency(base: OwnedReport) {.raises.} =
+  ## Two genuinely adopted children change parent maps and guest arguments while preserving one prepared service identity.
+  let seed = currentChainFixture(base, available = true)
+  var state = seed.parent.value.stateSnapshot.forkStateStore.value
+  var metadata = decodeServiceMetadata(state.snapshot.value.lookup(chapterServiceKey(
+    StateChapter(255), ServiceIndex(42))).value.bytes, ByteLimit(
+        ServiceMetadataBytes)).value.metadata
+  let privilegePolicy = PrivilegeConfig(cores: CoreCount(2), maxAlways: ElementLimit(2),
+    maxBytes: ByteLimit(1000))
+  let privileges = decodePrivilegeState(state.snapshot.value.lookup(chapterKey(
+    StateChapter(12))).value.bytes, privilegePolicy).value.snapshot
+  let roles = privileges.privilegeInfo.value
+  assert roles.always == 0, "original empty-child seed schedules no services"
+  var assigners = newSeq[ServiceIndex](roles.cores)
+  for index in 0..<roles.cores:
+    # Preserve every existing role while explicitly scheduling the literal guest on empty children.
+    assigners[index] = privileges.privilegeAssignerAt(PrivilegeCoreIndex(index)).value
+  let scheduled = privilegeStateEntry(PrivilegeState(manager: roles.manager,
+    delegator: roles.delegator, registrar: roles.registrar, assigners: assigners,
+    always: @[AlwaysAccumulate(service: ServiceIndex(42), gas: PrivilegeGas(10000))]),
+    privilegePolicy).value
+  assert state.apply([StateWrite(key: scheduled.key, kind: StateWriteKind.Put,
+    value: scheduled.value)]).error == StateStoreError.None
+  # Read arg[0] from the fresh argument page, store it in fresh RW memory, and yield all32 bytes.
+  let preimage = currentRoundServiceCode(@[@[124'u8, 115], registerImmediate(4, 196608),
+    @[120'u8, 67], registerImmediate(7, 196608), @[10'u8, 27], @[50'u8, 0]])
+  let hashed = blake2b256(preimage)
+  assert hashed.error == CryptoError.None
+  metadata.codeHash = CodeHash(array[32, byte](hashed.value))
+  let account = serviceMetadataEntry(ServiceIndex(42), metadata, ByteLimit(
+      ServiceMetadataBytes)).value
+  let code = servicePreimageEntry(ServiceIndex(42), ServicePreimageHash(array[32, byte](
+      hashed.value)),
+    preimage, ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(
+        preimage.len))).value
+  assert state.apply([StateWrite(key: account.key, kind: StateWriteKind.Put, value: account.value),
+    StateWrite(key: code.key, kind: StateWriteKind.Put, value: code.value)]).error ==
+        StateStoreError.None
+  let captured = captureBlockSnapshot(currentChainBytes(seed.parent.value.header),
+      state.snapshot.value,
+    seed.parent.value.chainParameters)
+  assert captured.error == GenesisError.None
+  var reference = initApplicationChain(genesisView(captured)).value
+  var path = "pvm-resident-consecutive-services-chain"
+  writeFile(path, captured.value.currentApplicationText)
+  defer: discard posix.unlink(path.toCString())
+  var input = default(CurrentBlockInput)
+  var owner = default(Services)
+  defer: owner.close() # The context and every retained historical output outlive joined preparation.
+  var options = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], options)
+  assert owner.start(options, "resident consecutive")
+  let policy = currentConsecutiveLimits()
+  let selected = policy.completion.execution.initial.guests.backend
+  var previousHits = 0'u64
+  var priorOutputs: seq[StateStoreSnapshot] = @[]
+  for index in 0..<2:
+    let before = owner.chainView.bestBlock.value
+    let child = currentEmptyChild(reference.chainView.bestBlock.value)
+    # One-shot phase composition independently establishes every expected map/output byte.
+    let expected = phaseCurrentUpdate(reference, child, [], policy)
+    assert reference.canInstallPrepared(expected)
+    reference.installPrepared(expected)
+    var wire = newSeq[byte](child.blockInfo.value.consumed)
+    assert child.encodeOwnedBlock(wire).error == FrameError.None
+    let prepared = owner.prepareCurrentServicesUpdate(input, wire)
+    equalCurrentDiskMap(prepared.currentUpdateState, expected.currentUpdateState)
+    let info = owner.residentServiceInfo(ServiceIndex(42), metadata.codeHash, selected)
+    assert info.error == pvm_step.PreparationError.None
+    assert info.value.preparations == 1 # Both blocks use the actual existing worker counter.
+    assert info.value.prepared.streamNodes > 0
+    if index == 1:
+      assert info.value.hits > previousHits
+      assert owner.chainView.bestBlock.value.slot == uint32(captured.value.slot)+1
+    previousHits = info.value.hits
+    assert owner.enqueueCurrentAccumulation(prepared) == CurrentHandoffAdmission.None
+    owner.tick(0)
+    assert owner.takeCurrentAccumulation.error == CurrentHandoffError.None
+    let actual = owner.stateSnapshot.value
+    equalCurrentDiskMap(actual, reference.stateSnapshot.value)
+    assert owner.chainView.bestBlock.value.slot == before.slot+1
+    assert array[32, byte](owner.chainView.bestBlock.value.blockHash) ==
+      array[32, byte](reference.chainView.bestBlock.value.blockHash)
+    assert owner.chainView.bestBlock.value.slot < 128 # Compact slot arguments are exactly one byte in this witness.
+    var expectedOutput = default(array[32, byte])
+    expectedOutput[0] = byte(owner.chainView.bestBlock.value.slot)
+    assert slotOutput(actual) == expectedOutput
+    priorOutputs.add(actual)
+    owner.stopPreparation() # Joined restart preserves the same residency and full canonical lifetime.
+    let idle = owner.residentServiceInfo(ServiceIndex(42), metadata.codeHash, selected)
+    assert idle.error == pvm_step.PreparationError.None and idle.value.preparations == 1
+    assert idle.value.hits == previousHits
+  assert slotOutput(priorOutputs[0])[0] == byte(uint32(captured.value.slot)+1)
+  assert slotOutput(priorOutputs[1])[0] == byte(uint32(captured.value.slot)+2)
+  owner.close()
+  assert owner.residentServiceCount == 0
+  assert owner.residentServiceInfo(ServiceIndex(42), metadata.codeHash, selected).error !=
+      pvm_step.PreparationError.None
+
+proc executedFixture(base: OwnedReport, uses = 0): CurrentChainFixture =
+  ## Real authenticated code and explicit allowances make the direct/ancestor cache checks nonvacuous.
+  currentExecutionSeed(executionFixture(base, activityOptions(available = true,
+    executed = true, guarantees = uses)), currentConsecutiveLimits())
+
 proc main() {.raises.} =
   ## Independent current state and signed report inputs qualify actual execution separately from callback/ARC work.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
@@ -194,8 +333,11 @@ proc main() {.raises.} =
   let after = getOccupiedMem()
   assert before == after, "current download reception releases"
   recordArcRelease("pvm_current_block_download", 1000, before, after)
+  consecutiveResidency(base)
   scenario(context)
   scenario(currentChainFixture(base, uses = 2, available = true), true)
+  scenario(executedFixture(base), executed = true) # Positive code retention stays outside reception ARC stress.
+  scenario(executedFixture(base, uses = 2), ancestry = true, executed = true)
   echo "PVM current block download passed"
   echo "ARC_RELEASE cycles=1000 unchanged"
 try:
