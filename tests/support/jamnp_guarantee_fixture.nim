@@ -20,6 +20,7 @@ import ./[jamnp_work_fixture, jamnp_work_report_fixture, jamnp_topology_fixture,
 type
   GuaranteeFixture* = object ## Test-owned immutable inputs retain real execution/source ownership, not a fabricated eligibility or signature.
     original*: WorkSubmissionHeader
+    package*: seq[byte]
     execution*: StateStoreSnapshot
     view*: ChainView
     transcript*: ComputedGuaranteeTranscript
@@ -163,7 +164,7 @@ proc guaranteeFixture*(local: StateEdKey): GuaranteeFixture =
   assert next.error == GenesisError.None, "guarantee child"
   let view = advanceView(genesisView(parent), next)
   assert view.error == ViewAdvanceError.None, "guarantee view: " & $view.error
-  GuaranteeFixture(original: decoded.value, execution: parent.value.stateSnapshot,
+  GuaranteeFixture(original: decoded.value, package: wire, execution: parent.value.stateSnapshot,
     view: view.value, transcript: computed.value, local: local)
 proc qualify*(fixture: GuaranteeFixture, limits: WorkEligibilityLimits): WorkEligibilityResult[
     EligibleWorkGuarantee] =

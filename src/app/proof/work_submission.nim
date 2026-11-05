@@ -6,9 +6,10 @@
 import ../../jamnp-s/work_submission
 import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
+import ../../jamnp-s/[work_signer, work_eligibility]
 import ../../jamnp-s/work_recovery
 import ../../chain/[provider, genesis]
-from ../../codec/state/safrole import StateValidatorIndex
+from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime
 from ../../state/computed/guarantee import ComputedGuaranteeTranscript
 from ../../codec/work/report import ErasureShards
 import ../../state/[store, input_refinement, authorized_refinement]
@@ -25,7 +26,8 @@ type
   WorkJobResultKind* {.pure.} = enum ## A completed CPU turn exposes only its selected full success or genuine child failure.
     Uninitialized, Authorized, Refined, InvalidSource, AuthorizationFailure, BodyFailure,
       RefinementFailure, DutyFailure, Reported, ReportFailure, ImportPlanningFailure,
-        RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure
+        RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure, Contributed,
+          EligibilityFailure, SigningFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -50,6 +52,9 @@ type
     of RecoveryFailure: recoveryReason: WorkRecoveryResult[WorkRecovery]
     of RecoveryCompletionFailure: recoveryCompletionReason: WorkRecoveryResult[VerifiedImportInputs]
     of ImportPlanningFailure: planningReason: WorkSubmissionResult[WorkImportPlan]
+    of Contributed: contribution: SignedWorkContribution
+    of EligibilityFailure: eligibilityReason: WorkEligibilityResult[EligibleWorkGuarantee]
+    of SigningFailure: signingReason: WorkSignerResult[SignedWorkContribution]
     of Reported: report: ComputedGuaranteeTranscript
     of ReportFailure: reportReason: WorkReportResult
     of DutyFailure: dutyReason: WorkDutyResult[WorkDuty]
@@ -68,6 +73,12 @@ type
     refined: InputRefinement
     shards: ErasureShards
     reportLimits: WorkReportLimits
+    signer: WorkSigner
+    transcript: ComputedGuaranteeTranscript
+    signingView: ChainView
+    signingLimits: WorkEligibilityLimits
+    signingIdentity: StateEdKey
+    signingTime: StateTime
     recovery: WorkRecovery
     recoveryVersion: uint64
     validator: StateValidatorIndex
@@ -129,6 +140,18 @@ func reportPreparationError*(outcome: WorkJobResult): WorkReportResult {.require
     WorkJobResultKind.ReportFailure.} =
   ## Preserve the exact selected report/bundle/availability stage failure without exposing earlier owners.
   outcome.reportReason
+func signedContribution*(outcome: WorkJobResult): SignedWorkContribution {.requires: outcome.status ==
+    WorkJobResultKind.Contributed.} =
+  ## Only one genuine fully qualified signature escapes a successful signing job.
+  outcome.contribution
+func eligibilityError*(outcome: WorkJobResult): WorkEligibilityResult[
+    EligibleWorkGuarantee] {.requires: outcome.status == WorkJobResultKind.EligibilityFailure.} =
+  ## Preserve the exact failed fresh-view qualification without an eligible prefix.
+  outcome.eligibilityReason
+func signingError*(outcome: WorkJobResult): WorkSignerResult[
+    SignedWorkContribution] {.requires: outcome.status == WorkJobResultKind.SigningFailure.} =
+  ## Preserve actual signer identity/backend failure without a signature.
+  outcome.signingReason
 func valid*(job: WorkSubmissionJob): bool =
   ## Only private factories bind the actual runner and original source.
   job.data != nil
@@ -278,6 +301,38 @@ proc captureWorkReport*(context: AuthorizedWorkContext, source: InputRefinement,
     return WorkJobAdmission(status: WorkJobError.InvalidInput)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: report, context: context, refined: source, shards: shards, reportLimits: limits)))
+proc contribute(data: WorkJobData): WorkJobResult =
+  ## Qualification and private-key signing share one exact managed graph lease and one fresh canonical view.
+  let context = data.context.data
+  if context == nil: return WorkJobResult(status: WorkJobResultKind.InvalidSource)
+  let qualified = qualifyWorkGuarantee(data.transcript, context.source.header, context.source.state,
+    data.signingView, data.signingIdentity, data.signingTime, data.signingLimits)
+  if qualified.error != WorkEligibilityError.None:
+    return WorkJobResult(status: WorkJobResultKind.EligibilityFailure, eligibilityReason: qualified)
+  let signed = data.signer.signWorkContribution(qualified.value)
+  if signed.error != WorkSignerError.None:
+    return WorkJobResult(status: WorkJobResultKind.SigningFailure, signingReason: signed)
+  WorkJobResult(status: WorkJobResultKind.Contributed, contribution: signed.value)
+proc captureWorkContribution*(context: AuthorizedWorkContext,
+    transcript: ComputedGuaranteeTranscript, view: ChainView, local: StateEdKey, now: StateTime,
+        signer: WorkSigner,
+    limits: WorkEligibilityLimits): WorkJobAdmission =
+  ## Capture only while all owners are host-exclusive; every alias, including signer and view, stays frozen until exact collect/join.
+  ## Services supplies its privately loaded key; callers never install an external signer alias into Services.
+  let data = context.data
+  if data == nil: return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  if not transcript.workReportMatches(data.source.header, data.source.state,
+      data.source.parameters):
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  let count = view.retainedCount
+  if uint64(count) > uint64(limits.anchors.ancestors.headers) or
+      count > high(int) div sizeof(BlockSnapshotResult):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  if uint64(view.validationHeaderCount) > uint64(limits.anchors.ancestors.headers):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: contribute, context: context, transcript: transcript, signingView: view,
+    signingIdentity: local, signingTime: now, signer: signer, signingLimits: limits)))
 proc captureWorkAuthorization*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits,
     execution: InputRefinementLimits, recipient: WorkRecipient,

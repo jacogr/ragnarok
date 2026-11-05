@@ -48,7 +48,7 @@ path/file limits, malformed/encrypted/duplicate inputs and1000 cycles retaining8
 The existing bounded-file consumer suite, application build, formatting and inventory checks pass.
 Linux-target semantic checking of both new modules passes; this is not native Linux CI. Report
 policy/pipeline eligibility, acceptable shard counts and typed local signing are implemented below.
-Managed signing jobs, CE134/135 runtime flows and operator activation remain unfinished. These foundations stay in the guarantee feature branch;
+Managed signing is implemented below. CE134/135 exchange and ordinary startup activation remain unfinished. These foundations stay in the guarantee feature branch;
 they are not a separate helper PR and do not establish full JAMNP-S completion.
 
 ## Candidate-header inclusion correction
@@ -141,3 +141,35 @@ both before and after, including the precomputed fixture owners. Population/anch
 All four native suites pass, as does Linux-target semantic checking of the signer and its new
 module dependencies. The production build, formatting and verification inventory also pass. This evidence does not
 establish CE134/135 network execution or native Linux CI.
+
+## Managed private-key lifetime and contribution collection
+
+Services now imports its work signer privately from certificate/key paths only while full-state
+access and an empty work session are available. The supplied actual transport identity must match
+the imported key. Setup returns reasons, never a signer alias. Cached public identity/readiness
+are scalar observations; configuration cannot inspect or replace key ownership during a foreign
+worker lease. Omission remains disabled. Ordinary CLI work-policy v1 does not yet invoke this setup.
+
+The closed contribution job retains original execution provenance, a fresh canonical view and
+explicit limits. It qualifies and signs on the same managed CPU turn, returning either a genuine
+contribution or the precise eligibility/signer failure. Done continues to occupy the exact lease.
+Foreign collection, cancellation and joined close cannot expose a result early or release a key
+while the worker may use it. Services delegates the new owner through both aggregate hooks and
+retires its private signer after worker join. Actual ARC lowering rejects copying Services.
+
+Collected contributions preserve fixed report metadata and the original availability source. CE147
+bundle serving remains available after signing, with exact original package, extrinsic, imported
+segment and proof bytes. Signing does not create a new assurance retention promise.
+
+The new native managed-signing suite obtains a real TLS-framed CE146 header, then drives genuine
+Services authorization/body/refinement/report/signing and exact contribution collection. It checks
+private-path setup refusal, mismatched identity/key, foreign controls, Done cancellation, joined
+close and post-signing managed bundle readback. A separate real CPU worker qualifies the older
+execution against its child view and repeats success, Done cancellation and late key refusal1000
+times, retaining173376 bytes before and after. The existing proof-worker, managed submission,
+network dispatcher and signer suites pass. These tests establish managed signing and lifetime
+boundaries; automatic CE134 exchange, multi-guarantor assembly/grace, CE135 distribution and strict
+versioned startup activation remain required before this feature group is ready for publication.
+
+Final managed-signing verification also passes production build, formatting/inventory and Linux-target
+semantic checking of the closed contribution job and its dependencies. This is not native Linux CI.
