@@ -75,6 +75,31 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
         self.assertNotIn('cargo ', latest)
         self.assertNotIn('tools/pvm_native_ci.py', latest)
 
+    def test_explicit_x86_diagnostic_reuses_one_job_with_sealed_inputs_and_separate_evidence(self):
+        """The diagnostic request cannot add an ARM job or enter the ordinary timing/latest report path."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        context = event_context('workflow_dispatch', suite='bench-pvm')
+        context['inputs'].update(pvm_x86_diagnostic=True, pvm_architecture='x86_64',
+            pvm_parent_runtime='e2858bf5bc0cf34fd82a71ffd91b35336f8399c1',
+            pvm_candidate_runtime='52e72e4b7a9ebf8ec6f8ff40cee9e4d995d22d65')
+        families = selected_families(text, 'pvm-comparison', context)
+        self.assertEqual([family['group'] for family in families], ['x86_64'])
+        section = family_section(text, 'pvm-comparison', 'x86_64', context=context)
+        request = dict(context, matrix=dict(family=families[0]))
+        self.assertEqual(commands(section).count('make bench-pvm-performance'), 1)
+        self.assertEqual(expression(section['env']['PVM_PERF_DIAGNOSTIC'], request), 'x86-attribution')
+        self.assertEqual(expression(section['env']['PVM_PERF_SCOPE'], request), 'micro')
+        self.assertEqual(expression(section['env']['PVM_DIAGNOSTIC_PARENT'], request),
+                         context['inputs']['pvm_parent_runtime'])
+        self.assertEqual(expression(section['env']['PVM_DIAGNOSTIC_CANDIDATE'], request),
+                         context['inputs']['pvm_candidate_runtime'])
+        self.assertEqual(expression(section['timeout-minutes'], request), 35)
+        paths = artifact_paths(section)
+        self.assertIn('build/tests/pvm-performance/diagnostics/x86-attribution/*.callgrind*', paths)
+        self.assertIn('build/tests/pvm-performance/diagnostics/x86-attribution/*-generated-source/**/*.c', paths)
+        self.assertFalse(any('.elf' in path or 'snapshot' in path for path in paths))
+        self.assertEqual(selected_families(text, 'perf', context), [])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -600,6 +600,9 @@ check-pvm-native: toolchain check-inventory
 PVM_PERF_SCOPE ?= all
 .PHONY: bench-pvm-performance pvm-perf-latest
 bench-pvm-performance: export RAGNAROK_PVM_PERF_SCOPE = $(value PVM_PERF_SCOPE)
+bench-pvm-performance: export PVM_PERF_DIAGNOSTIC := $(value PVM_PERF_DIAGNOSTIC)
+bench-pvm-performance: export PVM_DIAGNOSTIC_PARENT := $(value PVM_DIAGNOSTIC_PARENT)
+bench-pvm-performance: export PVM_DIAGNOSTIC_CANDIDATE := $(value PVM_DIAGNOSTIC_CANDIDATE)
 bench-pvm-performance: toolchain sources rust-tools check-pvm-native
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml

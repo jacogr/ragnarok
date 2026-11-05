@@ -25,7 +25,7 @@ from pvm_benchmark import CRATE
 from pvm_doom_attribution import (CRATE as DOOM_CRATE, TARGET as DOOM_TARGET,
                                   event_hashes, tga_rgba, timing_samples)
 from pvm_guest_compare import unchanged
-from pvm_guest_inputs import prepare_inputs
+from pvm_guest_inputs import CASES, SIEVE_DIAGNOSTIC_CASES, prepare_inputs
 from pvm_jit_platform import native_defines
 from pvm_native_ci import host_identity
 from pvm_performance_report import SCHEMA, case_inventory, publish_report
@@ -278,8 +278,8 @@ class PerformanceRunner:
         self.report['builds'].append(dict(family=package, run=command_record(row)))
         return upstream
 
-    def prepare_micro(self):
-        """Prepare all maintained guests and independent synthetic expectations, including both extra sieve sizes."""
+    def prepare_micro(self, diagnostic=False):
+        """Prepare canonical inputs; explicit attribution omits all larger guest executions."""
         sys.path.insert(0, str(ROOT/'tests'))
         from pvm_benchmark_reference import fixtures
         fixture = ROOT/'tests/fixtures/pvm-benchmark.bin'
@@ -291,7 +291,9 @@ class PerformanceRunner:
         gray = json.loads((ROOT/'spec/pins.json').read_text())['graypaper']
         require_submodule(dict(gray, repository=gray['repository'].removeprefix('https://github.com/')))
         self.reference_sources(CRATE, 'ragnarok-pvm-benchmark')
-        prepared = prepare_inputs(PreparationChecks(self), self.folder/'inputs')
+        prepared = prepare_inputs(PreparationChecks(self), self.folder/'inputs',
+                                  cases=SIEVE_DIAGNOSTIC_CASES if diagnostic else CASES,
+                                  diagnostic=diagnostic)
         self.references['micro'] = prepared['reference']
         self.report['identity']['guest_provenance'] = prepared['provenance']
         self.report['preparations'] = list(prepared['preparations'])
@@ -299,7 +301,7 @@ class PerformanceRunner:
                                      for row in prepared['builds'])
         for guest, limit, data, expected in prepared['inputs']:
             self.inputs[f'{guest}-{limit}'] = (data, expected)
-        for limit in (10000, 10000000):
+        for limit in (() if diagnostic else (10000, 10000000)):
             # Generate missing sizes by name, never by a positional index in an evolving cohort.
             destination = self.folder/'inputs/sieve'/str(limit)
             destination.mkdir(parents=True, exist_ok=True)
@@ -430,13 +432,13 @@ class PerformanceRunner:
                        if case['family'] == 'doom' else 0)
         return {case['case_id']: parse_application(output, role, case['case'], case['limit'], event_bytes)}
 
-    def controls(self, case, role):
+    def controls(self, case, role, name_prefix=''):
         """A valid full process precedes assertion/state/event refusals using isolated copied expectations."""
         args, env, controlled = self.invocation(case, role)
         identity = 'synthetic' if case['family'] == 'synthetic' else case['case_id']
-        prefix = identity+'-'+role
+        prefix = name_prefix+identity+'-'+role
         positive = self.command(args, prefix+'-positive', env)
-        self.parse(positive['output'], case, role)
+        parsed = self.parse(positive['output'], case, role)
         self.report['controls'].append(dict(case_id=identity, role=role, kind='positive',
                                             run=command_record(positive)))
         for kind in ('assertions', 'state', 'events') if case['family'] == 'doom' else ('assertions', 'state'):
@@ -491,6 +493,9 @@ class PerformanceRunner:
             self.report['controls'].append(dict(case_id=identity, role=role, kind=kind,
                                                 run=command_record(refused)))
         self.checkpoint()
+
+        # Diagnostic callers reuse the validated positive without executing a second control process.
+        return parsed
 
     def execute(self):
         """Complete every positive/refusal gate before sampling both role orders and publishing once."""
@@ -547,7 +552,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scope', choices=('all', 'micro', 'doom'), default='all')
     parser.add_argument('--revision', help='Exact immutable trigger SHA; otherwise GITHUB_SHA')
+    parser.add_argument('--diagnostic', choices=('x86-attribution',),
+                        default=os.environ.get('PVM_PERF_DIAGNOSTIC') or None)
+    parser.add_argument('--parent-runtime', default=os.environ.get('PVM_DIAGNOSTIC_PARENT'))
+    parser.add_argument('--candidate-runtime', default=os.environ.get('PVM_DIAGNOSTIC_CANDIDATE'))
     arguments = parser.parse_args()
+    if arguments.diagnostic not in (None, 'x86-attribution'):
+        parser.error('Unsupported diagnostic mode')
+    if arguments.diagnostic:
+        # Keep diagnostic evidence outside the timing schema and its successful/latest publication path.
+        from pvm_x86_attribution import AttributionRunner
+        report = AttributionRunner(BUILD/'diagnostics/x86-attribution', arguments.parent_runtime,
+            arguments.candidate_runtime, arguments.revision, arguments.scope).execute()
+        print('PVM x86 attribution '+report['status']+'; clocks discarded; '+str(BUILD/'diagnostics'))
+        return
+    if arguments.parent_runtime or arguments.candidate_runtime:
+        parser.error('Runtime revision selectors require explicit x86-attribution mode')
     report = PerformanceRunner(BUILD, arguments.scope, arguments.revision).execute()
     print('PVM performance passed: '+report['architecture']+', '+str(len(case_inventory(report['scope'])))
           +' cases; CPU/wall raw samples and ratios in '+str(BUILD/'summary.md'), flush=True)
