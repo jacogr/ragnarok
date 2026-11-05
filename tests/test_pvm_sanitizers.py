@@ -14,6 +14,72 @@ from pvm_sanitizers import calibration_passed, suite_passed, main
 class PvmSanitizerTests(unittest.TestCase):
     """Only an exact positive control and classified instrumented reads establish the analyzer profile."""
 
+    def test_readonly_receipt_profile_keeps_native_defines_forbidden(self):
+        """The explicit observer profile is admitted without accepting native or unknown switches."""
+        import pvm_sanitizers
+        name = 'pvm_stream_all_opcodes'
+        profile = dict(prepared=False, includes=[], libraries=[], observers=[],
+                       defines=['pvmStreamFusionReceipt'])
+        with patch.object(pvm_sanitizers, 'SUITES', (name,)), patch.dict(
+                pvm_sanitizers.NATIVE_REQUIREMENTS, {name: profile}, clear=True):
+            pvm_sanitizers.validate_profiles()
+            for defines in (['pvmArm64Jit'], ['unknown'], ['pvmStreamFusionReceipt', 'pvmX86Jit']):
+                # An admitted receipt never turns sanitizer selection into native execution.
+                profile['defines'] = defines
+                with self.assertRaisesRegex(ValueError, 'unsupported sanitizer corpus profile'):
+                    pvm_sanitizers.validate_profiles()
+
+    def test_registered_receipt_reaches_sanitized_compiler(self):
+        """An inert full selection forwards the receipt while retaining ASan and golden checks."""
+        import hashlib
+        import io
+        import pvm_sanitizers
+        name = 'pvm_stream_all_opcodes'
+        expected = pvm_sanitizers.unit_source(name).with_suffix('.output').read_text()
+        builds = []
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+
+            def compile_fixture(checks, compiler, source, target, **options):
+                """Capture compiler-bound options without compiling or executing native code."""
+                builds.append((target, options))
+                binary = folder/target
+                binary.write_bytes(b'inert compiler output')
+                return dict(exit_code=0, output=''), binary
+
+            def command_fixture(checks, arguments, target, **options):
+                """Supply classified controls and the complete existing suite output."""
+                outputs = {'clang-version': (0, 'inert clang version'),
+                           'control-positive': (0, 'PVM sanitizer positive passed\n'),
+                           'control-heap': (1, 'ERROR: AddressSanitizer: heap-use-after-free\n'
+                                           'pvm_sanitizer_read READ of size 1'),
+                           'control-stack': (1, 'ERROR: AddressSanitizer: stack-buffer-overflow\n'
+                                            'pvm_sanitizer_read READ of size 1'),
+                           name+'-run': (0, expected)}
+                code, output = outputs[target]
+                return dict(exit_code=code, output=output, log=target+'.log')
+
+            with patch.object(pvm_sanitizers.SanitizerChecks, 'build', new=compile_fixture), patch.object(
+                    pvm_sanitizers.SanitizerChecks, 'command', new=command_fixture), patch.object(
+                    pvm_sanitizers, 'unit_environment', return_value={}), patch(
+                    'sys.stdout', new_callable=io.StringIO):
+                report = pvm_sanitizers.run_selected(Path('/compiler'), [name], folder)
+            self.assertEqual(report['status'], 'checks-passed', report.get('error'))
+            self.assertEqual([row['name'] for row in report['suites']], [name])
+            requirement = (pvm_sanitizers.ROOT/'tools/native_requirements'/
+                           pvm_sanitizers.unit_source(name).parent.name/(name+'.json'))
+            relative = str(requirement.relative_to(pvm_sanitizers.ROOT))
+            self.assertEqual(report['source_sha256'][relative],
+                             hashlib.sha256(requirement.read_bytes()).hexdigest())
+        self.assertEqual(builds[-1][0], name)
+        self.assertEqual(builds[-1][1]['defines'], ['pvmStreamFusionReceipt'])
+        for target, options in builds:
+            # Receipt forwarding retains instrumentation and leaves calibration controls undefined.
+            self.assertIn('-fsanitize=address', options['cflags'])
+            self.assertIn('-fsanitize=address', options['link_flags'])
+            if target.startswith('control-'):
+                self.assertEqual(options['defines'], ())
+
     def test_positive_control(self):
         """A matching success line with nonzero status or extra diagnostics cannot calibrate ASan."""
         self.assertTrue(calibration_passed('positive', dict(exit_code=0, output='PVM sanitizer positive passed\n')))

@@ -15,6 +15,7 @@ from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
 from pvm_jit_platform import native_defines
 from pvm_x86_jit import qualify as qualify_x86
+from native_tests import unit_verification_sources
 from setup_nimony import host_pins, installed
 
 BUILD = ROOT/'build/tests/pvm-native'
@@ -100,7 +101,9 @@ def run():
         report['revision'] = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  ROOT/'tools/pvm_arm64_jit.py', ROOT/'tools/pvm_native_ci.py', ROOT/'tools/pvm_x86_jit.py',
-                 ROOT/'tools/pvm_jit_platform.py', ROOT/'spec/toolchain.json',
+                 ROOT/'tools/pvm_jit_platform.py', ROOT/'tools/native_tests.py',
+                 ROOT/'tools/native_requirements.py',
+                 *unit_verification_sources('pvm_stream_all_opcodes'), ROOT/'spec/toolchain.json',
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
                  ROOT/'tests/support/pvm_arm_macro_backend.nim',
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),

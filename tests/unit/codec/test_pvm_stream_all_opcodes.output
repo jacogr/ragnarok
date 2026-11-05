@@ -2506,3 +2506,5 @@ PASS dynamic target working sets / aliases / full ordinals / invalid targets
 PASS unsigned high gas / pricing-policy refusal
 PASS Interpreter ARC1000 unchanged
 PASS fused-register boundaries /5184/ aliases / saturated decoding / independent second entry / paid-unpaid / folded gaps / uint64 gas-budget
+PASS add32-branch Step prefixes / literals / aliases / width / paid-interior / retained-owner
+PASS add32-branch activation / positive arms / partial refusal / changing state

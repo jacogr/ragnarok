@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import pvm_native_ci as ci
 from pvm_arm64_jit import qualify
+from native_tests import unit_source
 
 
 class NativeHostTests(unittest.TestCase):
@@ -204,6 +205,9 @@ class QualificationTests(unittest.TestCase):
                                    for order in ('0,0','0,1','1,1'))
                     if name=='region-refusal-run' and region_receipt is not None:
                         output=region_receipt
+                elif name=='all-opcodes-run':
+                    # The native gate now requires the complete source-owned unit contract.
+                    output=unit_source('pvm_stream_all_opcodes').with_suffix('.output').read_text()
                 elif '-move-run' in name:
                     output='0\n0\n'
                 return dict(exit_code=0,output=output)

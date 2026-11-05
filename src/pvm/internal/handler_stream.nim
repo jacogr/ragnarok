@@ -684,6 +684,27 @@ proc flatRegisterBranchCold[First, Branch: static[int]](f: var FlatFrame, off: u
     f.handlers[int(off)] = combined
   outcome
 
+when defined(pvmStreamFusionReceipt):
+  func flatAddBranchFusionActive*(f: FlatFrame, pc: uint32): bool =
+    ## Test-only copied activation fact; no handler pointer, mutable node or invocation view escapes.
+    if f.plan == nil or f.preparationFailure != FlatError.None or
+        uint64(pc) >= uint64(f.compiledForPc.len): return false
+    let packed = f.compiledForPc[int(pc)]
+    if packed == 0: return false
+    let coordinate = packed-1
+    var node = coordinate and 0x7fffffff'u32
+    if (coordinate and 0x80000000'u32) != 0:
+      # A complete source entry names its synthetic charge header before the first real operation.
+      inc node
+    if uint64(node) >= uint64(f.handlers.len) or uint64(node) >= uint64(f.sites.len):
+      return false
+    let ordinal = int(f.sites[int(node)])
+    if ordinal >= f.plan.facts.len or f.plan.facts.len-ordinal < 2: return false
+    if f.plan.facts[ordinal].pc != pc or f.plan.facts[ordinal].opcode != 131 or
+        f.plan.facts[ordinal+1].opcode != 83: return false
+    let fused: FlatHandler = flatFusedRegisterBranch[131, 83]
+    f.handlers[int(node)] == fused
+
 template flatShapeRegister(f: var FlatFrame, off: uint32, Code: static[int]) =
   ## Expand the shared register equation inside a charged shape, without an out-of-line composed worker call.
   block:
@@ -1532,6 +1553,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             if fact.opcode == 151 and second == 152: selected = flatFusedRegisters[151, 152]
             elif fact.opcode == 200 and second == 139: selected = flatFusedRegisters[200, 139]
             elif fact.opcode == 149 and second == 149: selected = flatFusedRegisters[149, 149]
+            elif fact.opcode == 131 and second == 83: selected = flatRegisterBranchCold[131, 83]
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
           inc continuations
         else: continuations = 0

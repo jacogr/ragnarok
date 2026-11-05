@@ -45,6 +45,13 @@ def unit_source(name):
     return UNIT_SOURCES[name]
 
 
+def unit_verification_sources(name):
+    """Bind a custom native gate to its discovered source, golden output and declared profile."""
+    source = unit_source(name)
+    return (source, source.with_suffix('.output'),
+            ROOT/'tools/native_requirements'/source.parent.name/(name+'.json'))
+
+
 # Bound independent test workers explicitly; callers can request serial controls without changing semantics.
 def unit_jobs():
     raw = os.environ.get('COMPILE_CHECK_JOBS', '4')

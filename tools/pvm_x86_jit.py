@@ -9,10 +9,30 @@ from pathlib import Path
 import subprocess
 
 from native_checks import NativeChecks, ROOT
+from native_tests import NATIVE_REQUIREMENTS, unit_source, unit_verification_sources
 from pvm_guest_compare import unchanged
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-x86-jit'
+
+
+def qualification_cases():
+    """Return ordered qualification cases independently of their native execution."""
+    return (
+        ('x86-native', 'tests/performance/pvm_x86_jit_witness.nim', False),
+        ('x86-refused', 'tests/performance/pvm_x86_jit_witness.nim', True),
+        ('fragment-cap-native', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', False),
+        ('fragment-cap-refused', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', True),
+        ('region-refusal-native', 'tests/unit/state/test_pvm_x86_region_refusal.nim', False),
+        ('region-refusal-forced', 'tests/unit/state/test_pvm_x86_region_refusal.nim', True),
+        ('boundaries', 'tests/performance/pvm_arm64_jit_witness.nim', False),
+        ('boundaries-refused', 'tests/performance/pvm_arm64_jit_witness.nim', True),
+        ('all-opcodes', unit_source('pvm_stream_all_opcodes'), False),
+        ('checked-store-native', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', False),
+        ('checked-store-refused', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', True),
+        ('regions-host', 'tests/unit/codec/test_pvm_stream_regions_and_host.nim', False),
+        ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
+        ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True))
 
 
 def qualify(checks, compiler, rows=None):
@@ -26,30 +46,24 @@ def qualify(checks, compiler, rows=None):
     if tested['exit_code'] or tested['output'] != 'X86_EXECUTABLE_MEMORY_OK,1000\n':
         raise ValueError('x86 executable-memory control failed')
     rows.append(dict(name='memory', build=compiled, run=tested))
-    for name, source, refused in (
-        ('x86-native', 'tests/performance/pvm_x86_jit_witness.nim', False),
-        ('x86-refused', 'tests/performance/pvm_x86_jit_witness.nim', True),
-        ('fragment-cap-native', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', False),
-        ('fragment-cap-refused', 'tests/performance/pvm_x86_jit_fragment_cap_witness.nim', True),
-        ('region-refusal-native', 'tests/unit/state/test_pvm_x86_region_refusal.nim', False),
-        ('region-refusal-forced', 'tests/unit/state/test_pvm_x86_region_refusal.nim', True),
-        ('boundaries', 'tests/performance/pvm_arm64_jit_witness.nim', False),
-        ('boundaries-refused', 'tests/performance/pvm_arm64_jit_witness.nim', True),
-        ('all-opcodes', 'tests/unit/codec/test_pvm_stream_all_opcodes.nim', False),
-        ('checked-store-native', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', False),
-        ('checked-store-refused', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', True),
-        ('regions-host', 'tests/unit/codec/test_pvm_stream_regions_and_host.nim', False),
-        ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
-        ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
+    for name, source, refused in qualification_cases():
         flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else []),
                  *(['pvmX86RegionRefusalNativeRequired'] if name == 'region-refusal-native' else []),
                  *(['pvmX86RegionRefusalForcedRequired'] if name == 'region-refusal-forced' else []),
                  *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else [])]
+        if name == 'all-opcodes':
+            # The shared suite declaration owns receipt defines independently of this backend profile.
+            flags += NATIVE_REQUIREMENTS['pvm_stream_all_opcodes']['defines']
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])
         run = checks.command([binary], name+'-run', timeout=900)
         if run['exit_code']: raise RuntimeError(run['output'][-3000:])
+        if name == 'all-opcodes':
+            # Require the complete source-owned output, including actual fusion activation assertions.
+            expected = unit_source('pvm_stream_all_opcodes').with_suffix('.output').read_text()
+            if run['output'] != expected:
+                raise ValueError('Incomplete all-opcode qualification output')
         if name.startswith('fragment-cap-'):
             # A Linux native run must cross the shared quota; refusal proves allocation failure separately.
             expected = 'X86_FRAGMENT_CAP_FORCED_REFUSAL_OK\n' if refused else 'X86_FRAGMENT_CAP_NATIVE_OK\n'
@@ -148,7 +162,9 @@ def run():
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tests/performance').glob('pvm_*jit*')),
                  ROOT/'tests/unit/state/test_pvm_x86_region_refusal.nim',
-                 ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'spec/toolchain.json', compiler]
+                 ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'tools/native_tests.py',
+                 ROOT/'tools/native_requirements.py', *unit_verification_sources('pvm_stream_all_opcodes'),
+                 ROOT/'spec/toolchain.json', compiler]
         identities = {p:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
         report.update(host=host, revision=subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip(),
             compiler_sha256=identities[compiler], toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),

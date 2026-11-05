@@ -10,7 +10,7 @@ import platform
 import subprocess
 
 from native_checks import NativeChecks, ROOT
-from native_tests import NATIVE_REQUIREMENTS, unit_environment, unit_source, unit_static_fixtures, UNIT_SUITES, ARC_SUITES, unit_evidence
+from native_tests import NATIVE_REQUIREMENTS, unit_environment, unit_source, unit_static_fixtures, UNIT_SUITES, ARC_SUITES, unit_evidence, unit_verification_sources
 from setup_nimony import installed
 
 SUITES = ('pvm_conditional_control_reference', 'pvm_jump_table_reference',
@@ -38,9 +38,10 @@ def suite_passed(result, expected):
             and result['output'].strip() == expected.strip())
 
 
-def build(checks, compiler, source, name, includes=()):
+def build(checks, compiler, source, name, includes=(), defines=()):
     """Share the maintained checked native profile and retain exact failed compiler output."""
-    row, binary = checks.build(compiler, source, name, cflags=(*CFLAGS, *includes), link_flags=LFLAGS)
+    row, binary = checks.build(compiler, source, name, cflags=(*CFLAGS, *includes),
+                               link_flags=LFLAGS, defines=defines)
     output = row.pop('output')
     (checks.folder/(name+'-build.log')).write_text(output)
     if row['exit_code'] or 'Error:' in output or 'FAILURE' in output:
@@ -54,9 +55,11 @@ def validate_profiles():
     if len(SUITES) != len(set(SUITES)):
         raise ValueError('Duplicate sanitizer suite')
     for name in SUITES:
-        # New generated, linked or defined requirements need explicit sanitizer support.
+        # This read-only test receipt adds no native backend or linking; all other defines still refuse.
         requirements = NATIVE_REQUIREMENTS[name]
-        if requirements['prepared'] or any(requirements[key] for key in ('defines', 'includes', 'libraries', 'observers')):
+        unsupported = set(requirements['defines']) - {'pvmStreamFusionReceipt'}
+        if (requirements['prepared'] or unsupported or
+                any(requirements[key] for key in ('includes', 'libraries', 'observers'))):
             raise ValueError('unsupported sanitizer corpus profile: '+name)
 
 
@@ -114,9 +117,11 @@ def run_selected(compiler, names, folder):
         # Capture exact source/output identities before execution, including failed/partial runs.
         sources = [*sorted((ROOT/'src/pvm').rglob('*.nim')), control_source,
                    control_source.with_suffix('.h'), ROOT/'src/codec/natural.nim',
-                   ROOT/'tools/native_checks.py', ROOT/'tools/pvm_sanitizers.py']
+                   ROOT/'tools/native_checks.py', ROOT/'tools/pvm_sanitizers.py',
+                   ROOT/'tools/native_requirements.py']
         for name in names:
-            sources.extend((unit_source(name), unit_source(name).with_suffix('.output')))
+            # Bind the declared receipt profile as well as the source-owned golden output.
+            sources.extend(unit_verification_sources(name))
         report['source_sha256'] = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                                    for path in sources}
         version = checks.command(['clang', '--version'], 'clang-version', environment=environment)
@@ -139,7 +144,8 @@ def run_selected(compiler, names, folder):
             source = unit_source(name)
             env = unit_environment(compiler, name=name, base=environment)
             env['RAGNAROK_TEST_EVIDENCE'] = str(evidence)
-            row, binary = build(checks, compiler, source, name)
+            row, binary = build(checks, compiler, source, name,
+                                defines=NATIVE_REQUIREMENTS[name]['defines'])
             report['builds'].append(row)
             result = checks.command([binary], name+'-run', environment=env, timeout=180)
             valid = suite_passed(result, source.with_suffix('.output').read_text())

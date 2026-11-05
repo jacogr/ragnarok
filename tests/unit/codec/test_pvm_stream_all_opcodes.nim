@@ -299,3 +299,254 @@ for codes in [[151'u8, 152'u8], [200'u8, 139'u8], [149'u8, 149'u8]]:
                 compare(input, plan, budget, 100000)
                 inc fusedCases
 echo "PASS fused-register boundaries /", fusedCases, "/ aliases / saturated decoding / independent second entry / paid-unpaid / folded gaps / uint64 gas-budget"
+
+proc branchWord(bytes: var seq[byte], value: uint32) =
+  ## Literal four-byte branch operands do not use the runtime operand decoder.
+  for shift in 0..<4:
+    bytes.add(byte((uint64(value) shr (8*shift)) and 255))
+
+proc addBranchOwner(slots, branch, increment: byte, threshold: uint32, gap: bool,
+    validTarget: bool = true): Program =
+  ## Two genuine targets leave distinct literal markers; an optional folded noop forbids adjacency.
+  var condition = @[83'u8, byte(0x40'u8 or branch)]
+  branchWord(condition, threshold)
+  branchWord(condition, if validTarget: 14'u32 else: 13'u32)
+  var parts = @[@[131'u8, slots, increment]]
+  if gap:
+    # Noops retain their original source budget even though no physical worker is emitted.
+    parts.add(@[2'u8])
+  parts.add(condition)
+  parts.add(@[51'u8, 6, 17])
+  parts.add(@[0'u8])
+  parts.add(@[51'u8, 6, 29])
+  parts.add(@[0'u8])
+  owner(parts)
+
+proc branchCpu(left, right: MachineInfo, context: string) =
+  ## Preserve every existing CPU equality, reporting the precise field only on a failure.
+  assert uint64(left.pc) == uint64(right.pc), context & " pc actual=" & $uint64(left.pc) &
+    " expected=" & $uint64(right.pc)
+  assert uint64(left.gas) == uint64(right.gas), context & " gas actual=" & $uint64(left.gas) &
+    " expected=" & $uint64(right.gas)
+  assert uint64(left.gasDeficit) == uint64(right.gasDeficit), context & " deficit actual=" &
+    $uint64(left.gasDeficit) & " expected=" & $uint64(right.gasDeficit)
+  assert left.blockCharged == right.blockCharged, context & " paid actual=" & $left.blockCharged &
+    " expected=" & $right.blockCharged
+  for index in 0..<13:
+    # Registers retain the original exact comparison, including unrelated and saturated lanes.
+    assert uint64(left.registers[index]) == uint64(right.registers[index]), context & " register=" &
+      $index & " actual=" & $uint64(left.registers[index]) & " expected=" & $uint64(right.registers[index])
+
+proc branchPrefix(frame: var FlatFrame, program: Program, info: MachineInfo, budget: uint64,
+    pages: openArray[PageImage], stage: string) =
+  ## Single-instruction execution independently checks composition, charge/refund and original PCs.
+  var context = stage & " entry=" & $uint64(info.pc) & " gas=" & $uint64(info.gas) &
+    " paid=" & $info.blockCharged & " budget=" & $budget & " input-registers="
+  for index in 0..<13:
+    # Failure context identifies the complete immutable invocation input, without success output.
+    context.add(" " & $index & ":" & $uint64(info.registers[index]))
+  let captured = captureMemory(pages, PageLimit(2)).value
+  let input = captureMachine(program, captured, info).value
+  var expected = input
+  var exit = StepExit.Continued
+  var reason = StepError.StepLimitExceeded
+  var consumed = 0'u64
+  for attempt in 0'u64..<budget:
+    # stepOnce uses the scalar adapter, never the newly selected two-source fused worker.
+    let next = stepOnce(expected, GasCycleLimit(100000))
+    assert next.error == StepError.None, context & " oracle attempt=" & $attempt &
+      " error=" & $ord(next.error)
+    expected = next.value.machine
+    exit = next.value.exit
+    if exit != StepExit.OutOfGas: inc consumed
+    if exit != StepExit.Continued:
+      reason = StepError.None
+      break
+  resetFlatFrame(frame, info)
+  runFlat(frame, budget)
+  assert frame.reason == reason and frame.exit == exit, context & " reason actual=" &
+    $ord(frame.reason) & " expected=" & $ord(reason) & " exit actual=" & $ord(frame.exit) &
+    " expected=" & $ord(exit)
+  assert frame.remaining == budget-consumed, context & " remaining actual=" & $frame.remaining &
+    " expected=" & $(budget-consumed) & " oracle-consumed=" & $consumed
+  var wanted = machineInfo(expected).value
+  if exit in [StepExit.Halt, StepExit.Panic]:
+    # Recursive terminal execution normalizes PC; scalar stepping retains its terminal successor.
+    wanted.pc = CodeAddress(0)
+  branchCpu(frame.info, wanted, context & " final CPU")
+  branchCpu(machineInfo(input).value, info, context & " immutable input CPU")
+  checkFlatSource(frame, pages)
+  let actual = flatMemorySnapshot(frame)
+  for page in pages:
+    # These pure operations cannot alter either original page bytes or permissions.
+    let finalPage = pageImage(actual, page.index).value
+    let sourcePage = pageImage(captured, page.index).value
+    assert finalPage.access == page.access and sourcePage.access == page.access, context &
+      " page access changed index=" & $uint32(page.index)
+    assert finalPage.bytes == page.bytes and sourcePage.bytes == page.bytes, context &
+      " page bytes changed index=" & $uint32(page.index)
+
+proc branchCase(slots, condition, increment: byte, threshold: uint32, values: RegisterFile,
+    destination: int, expectedValue: uint64, taken: bool): uint64 =
+  ## Reuse one captured code owner across all changing source entries, budgets, paid state and gas.
+  result = 0
+  let pages = [pageImage(mapped, PageIndex(16)).value, pageImage(mapped, PageIndex(17)).value]
+  for gap in [false, true]:
+    # A genuinely adjacent branch may fuse; its folded-gap control must retain scalar composition.
+    let context = "slots=" & $uint64(slots) & " condition=" & $uint64(condition) &
+      " increment=" & $uint64(increment) & " threshold=" & $uint64(threshold) & " gap=" & $gap &
+      " destination=" & $destination & " before=" & $uint64(values[destination]) &
+      " literal-after=" & $expectedValue & " taken=" & $taken
+    let program = addBranchOwner(slots, condition, increment, threshold, gap)
+    var captured = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+    assert captured.error == FlatError.None, context & " prepare error=" & $ord(captured.error)
+    let plan = takeValue(captured)
+    let initial = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+      blockCharged: false, registers: values)
+    var frame = newFlatFrame(plan, pages, initial)
+    when defined(pvmStreamFusionReceipt):
+      assert not flatAddBranchFusionActive(frame, 0), context & " activation before run expected=false"
+    branchPrefix(frame, program, initial, 0, pages, context & " zero")
+    when defined(pvmStreamFusionReceipt):
+      assert not flatAddBranchFusionActive(frame, 0), context & " activation after zero expected=false"
+    branchPrefix(frame, program, initial, 1, pages, context & " one")
+    when defined(pvmStreamFusionReceipt):
+      # A temporary branch-budget barrier cannot certify either cached arm or enable fusion.
+      assert not flatAddBranchFusionActive(frame, 0), context & " activation after one expected=false"
+    branchPrefix(frame, program, initial, 8, pages, context & " full")
+    assert uint64(frame.info.registers[destination]) == expectedValue, context &
+      " literal result actual=" & $uint64(frame.info.registers[destination]) & " expected=" & $expectedValue
+    assert uint64(frame.info.registers[6]) == (if taken: 29'u64 else: 17'u64), context &
+      " literal marker actual=" & $uint64(frame.info.registers[6]) & " expected=" &
+      $(if taken: 29'u64 else: 17'u64)
+    when defined(pvmStreamFusionReceipt):
+      assert flatAddBranchFusionActive(frame, 0) == (not gap), context &
+          " warm activation actual=" &
+        $flatAddBranchFusionActive(frame, 0) & " expected=" & $(not gap)
+    let priced = blockGas(program, CodeAddress(0), GasCycleLimit(100000))
+    assert priced.error == GasError.None, context & " block price error=" & $ord(priced.error)
+    let price = uint64(priced.value)
+    assert price > 0 and price < 1000000, context & " unexpected block price=" & $price
+    for pc in [0'u64, if gap: 4'u64 else: 3'u64]:
+      # The branch itself remains a separately addressable paid or unpaid original instruction.
+      for paid in [false, true]:
+        for gas in [0'u64, 1, price-1, price, price+1, high(uint64)]:
+          var input = initial
+          input.pc = CodeAddress(pc)
+          input.blockCharged = paid
+          input.gas = MachineGas(gas)
+          for budget in [0'u64, 1, 2, 3, 4, 5, 8, high(uint64)]:
+            branchPrefix(frame, program, input, budget, pages, context & " matrix")
+            inc result
+    var stream = takeFlatStream(frame)
+    when defined(pvmStreamFusionReceipt):
+      assert not flatAddBranchFusionActive(frame, 0), context & " moved-from activation expected=false"
+    var retained = newFlatFrame(plan, pages, initial)
+    restoreFlatStream(retained, stream)
+    branchPrefix(retained, program, initial, 8, pages, context & " restored stream")
+    when defined(pvmStreamFusionReceipt):
+      assert flatAddBranchFusionActive(retained, 0) == (not gap), context &
+          " restored activation actual=" &
+        $flatAddBranchFusionActive(retained, 0) & " expected=" & $(not gap)
+    var held = takeFlatStream(retained)
+    let heldNodes = streamNodes(held)
+    let changed = addBranchOwner(slots, condition, increment, threshold xor 1'u32, gap)
+    var different = prepareFlatPlan(changed, GasCycleLimit(100000), defaultFlatLimits(), false)
+    assert different.error == FlatError.None, context & " changed plan error=" & $ord(
+        different.error)
+    let changedPlan = takeValue(different)
+    var rejected = newFlatFrame(changedPlan, pages, initial)
+    restoreFlatStream(rejected, held)
+    runFlat(rejected, 8)
+    assert rejected.reason == StepError.InvalidPreparedProgram and streamNodes(held) == heldNodes,
+      context & " changed-source rejection reason=" & $ord(rejected.reason) &
+          " held nodes actual=" &
+      $streamNodes(held) & " expected=" & $heldNodes
+    when defined(pvmStreamFusionReceipt):
+      assert not flatAddBranchFusionActive(rejected, 0), context & " rejected activation expected=false"
+    restoreFlatStream(retained, held)
+    branchPrefix(retained, program, initial, 8, pages, context & " restored after rejection")
+
+type BranchLiteral = object ## Independent width/wrap equations, without another opcode evaluator.
+  before: uint64
+  increment: byte
+  threshold: uint32
+  after: uint64
+  taken: bool
+
+const branchLiterals = [
+  BranchLiteral(before: 0, increment: 1, threshold: 2, after: 1, taken: true),
+  BranchLiteral(before: 1, increment: 1, threshold: 2, after: 2, taken: false),
+  BranchLiteral(before: 0x7fffffff, increment: 1, threshold: 0,
+    after: 0xffffffff80000000'u64, taken: false),
+  BranchLiteral(before: 0xffffffff'u64, increment: 1, threshold: 1, after: 0, taken: true),
+  BranchLiteral(before: 0x12345678ffffffff'u64, increment: 1, threshold: 1, after: 0, taken: true),
+  BranchLiteral(before: 0, increment: 255, threshold: 0xffffffff'u32,
+    after: high(uint64), taken: false),
+  BranchLiteral(before: 0x80000000'u64, increment: 0, threshold: 0x7fffffff,
+    after: 0xffffffff80000000'u64, taken: false),
+  BranchLiteral(before: 0x7fffffff, increment: 1, threshold: 0xffffffff'u32,
+    after: 0xffffffff80000000'u64, taken: true)]
+
+var branchControls = 0'u64
+for alias in 0..<3:
+  # Explicit source encodings cover two real lanes and saturated register IDs without a test decoder.
+  let lane = if alias == 0: 7 elif alias == 1: 8 else: 12
+  let slots = [0x77'u8, 0x88, 0xff][alias]
+  let condition = if alias == 2: 15'u8 else: byte(lane)
+  for literal in branchLiterals:
+    var values = registers
+    values[lane] = RegisterValue(literal.before)
+    branchControls += branchCase(slots, condition, literal.increment, literal.threshold, values,
+      lane, literal.after, literal.taken)
+for condition in [7'u8, 8]:
+  # The branch must use its actual lane after the write, whether aliased with the source or destination.
+  var values = registers
+  values[7] = RegisterValue(5)
+  values[8] = RegisterValue(13)
+  branchControls += branchCase(0x78, condition, 1, 6, values, 8, 6, condition == 7)
+assert branchControls == 9984, "add32-branch matrix count actual=" & $branchControls & " expected=9984"
+echo "PASS add32-branch Step prefixes / literals / aliases / width / paid-interior / retained-owner"
+
+block retainedBranchState:
+  # One service-like code lifetime observes both branch outcomes as the caller changes block state.
+  let program = addBranchOwner(0x77, 7, 1, 2, false)
+  var captured = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+  assert captured.error == FlatError.None, "retained-state prepare error=" & $ord(captured.error)
+  let plan = takeValue(captured)
+  let pages = [pageImage(mapped, PageIndex(16)).value, pageImage(mapped, PageIndex(17)).value]
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+    registers: registers, blockCharged: false)
+  var frame = newFlatFrame(plan, pages, info)
+  for before in [0'u64, 1, 0, 1]:
+    # Retain the warmed code/targets while replacing invocation-local register state.
+    info.registers[7] = RegisterValue(before)
+    let context = "retained-state slots=119 condition=7 increment=1 threshold=2 gap=false before=" & $before
+    branchPrefix(frame, program, info, 8, pages, context)
+    assert uint64(frame.info.registers[7]) == before+1, context & " result actual=" &
+      $uint64(frame.info.registers[7]) & " expected=" & $(before+1)
+    assert uint64(frame.info.registers[6]) == (if before == 0: 29'u64 else: 17'u64), context &
+      " marker actual=" & $uint64(frame.info.registers[6]) & " expected=" &
+      $(if before == 0: 29'u64 else: 17'u64)
+    when defined(pvmStreamFusionReceipt):
+      assert flatAddBranchFusionActive(frame, 0), context & " retained activation expected=true"
+
+block rejectedBranchTarget:
+  # An invalid taken target never becomes a positive cached capability, even on a fallthrough run.
+  let program = addBranchOwner(0x77, 7, 1, 2, false, false)
+  var captured = prepareFlatPlan(program, GasCycleLimit(100000), defaultFlatLimits(), false)
+  assert captured.error == FlatError.None, "invalid-target prepare error=" & $ord(captured.error)
+  let plan = takeValue(captured)
+  let pages = [pageImage(mapped, PageIndex(16)).value, pageImage(mapped, PageIndex(17)).value]
+  var info = MachineInfo(pc: CodeAddress(0), gas: MachineGas(1000000),
+    registers: registers, blockCharged: false)
+  var frame = newFlatFrame(plan, pages, info)
+  for before in [0'u64, 1]:
+    info.registers[7] = RegisterValue(before)
+    let context = "invalid-target slots=119 condition=7 increment=1 threshold=2 gap=false before=" & $before
+    branchPrefix(frame, program, info, 8, pages, context)
+    when defined(pvmStreamFusionReceipt):
+      assert not flatAddBranchFusionActive(frame, 0), context & " invalid-target activation expected=false"
+
+when defined(pvmStreamFusionReceipt):
+  echo "PASS add32-branch activation / positive arms / partial refusal / changing state"

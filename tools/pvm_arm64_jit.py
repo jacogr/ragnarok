@@ -17,6 +17,7 @@ import platform
 import shutil
 import statistics
 from native_checks import NativeChecks, ROOT
+from native_tests import NATIVE_REQUIREMENTS, unit_source, unit_verification_sources
 from setup_nimony import installed, cache_directory
 from pvm_guest_inputs import prepare_inputs, digest
 from pvm_guest_compare import unchanged, revision, snapshot_imports
@@ -157,19 +158,9 @@ def macro_witness_receipts(output, mode):
     return expected
 
 
-def qualify(checks, compiler, *, native=True):
-    """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
-    rows = []
-    memory = checks.command(['clang','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'native/pvm_jit'),
-        ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',checks.folder/'memory-check'],'memory-build')
-    if memory['exit_code']: raise RuntimeError(memory['output'])
-    memory = checks.command([checks.folder/'memory-check'],'memory-run')
-    expected = ('ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n' if native
-                else 'ARM_MEMORY_UNAVAILABLE,checked-fallback\n')
-    if memory['exit_code'] or memory['output'] != expected:
-        raise ValueError('Executable storage controls failed')
-    rows.append(memory)
-    for name,source,defines in (
+def qualification_cases(native):
+    """Return ordered qualification cases independently of their native execution."""
+    return (
         ('witness-legacy-abi-refused','tests/performance/pvm_arm64_jit_witness.nim',
             ['pvmArm64Jit','pvmArmClippedLegacyAbiRefuse']),
         ('witness','tests/performance/pvm_arm64_jit_witness.nim',
@@ -185,9 +176,27 @@ def qualify(checks, compiler, *, native=True):
              'pvmArmDirtyLoopOwnerReceipt']),
         ('region-refusal','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefusalReceipt']),
         ('region-refusal-forced','tests/unit/state/test_pvm_arm_region_refusal.nim',['pvmArm64Jit','pvmArm64JitRefuse','pvmArm64JitRefusalReceipt']),
-        ('all-opcodes','tests/unit/codec/test_pvm_stream_all_opcodes.nim',['pvmArm64Jit'] if native else []),
-        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else [])):
+        ('all-opcodes',unit_source('pvm_stream_all_opcodes'),['pvmArm64Jit'] if native else []),
+        ('regions-host','tests/unit/codec/test_pvm_stream_regions_and_host.nim',['pvmArm64Jit'] if native else []))
+
+
+def qualify(checks, compiler, *, native=True):
+    """Share native/refusal and checked-fallback gates without enabling ARM64 execution on other hosts."""
+    rows = []
+    memory = checks.command(['clang','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'native/pvm_jit'),
+        ROOT/'tests/performance/pvm_arm64_jit_memory.c','-o',checks.folder/'memory-check'],'memory-build')
+    if memory['exit_code']: raise RuntimeError(memory['output'])
+    memory = checks.command([checks.folder/'memory-check'],'memory-run')
+    expected = ('ARM_MEMORY_OK,1000,capacity,publication,retirement,integer64\n' if native
+                else 'ARM_MEMORY_UNAVAILABLE,checked-fallback\n')
+    if memory['exit_code'] or memory['output'] != expected:
+        raise ValueError('Executable storage controls failed')
+    rows.append(memory)
+    for name,source,defines in qualification_cases(native):
         # Qualify native execution, explicit OS refusal and the established whole-state boundary suites before timing.
+        if name == 'all-opcodes':
+            # Preserve architecture/refusal switches while consuming the source-owned receipt profile.
+            defines = [*defines, *NATIVE_REQUIREMENTS['pvm_stream_all_opcodes']['defines']]
         if name == 'witness-legacy-abi-refused' and not native:
             continue  # A checked-only host has no ARM native bridge to guard.
         if name in ('witness-macro-refused', 'witness-resident-refused') and not native:
@@ -207,6 +216,11 @@ def qualify(checks, compiler, *, native=True):
             rows.append(checked)
             continue
         if checked['exit_code']: raise RuntimeError(checked['output'][-3000:])
+        if name == 'all-opcodes':
+            # Exit zero alone cannot certify activation or completion of the independent prefix controls.
+            expected = unit_source('pvm_stream_all_opcodes').with_suffix('.output').read_text()
+            if checked['output'] != expected:
+                raise ValueError('Incomplete all-opcode qualification output')
         if name.startswith('region-refusal'):
             # Require actual native coverage for all three ownership orders, not a silent checked-only pass.
             records=[line.split(',')[1:] for line in checked['output'].splitlines()
@@ -396,7 +410,8 @@ def main():
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
                  ROOT/'tests/performance/pvm_arm64_jit_memory.c',
-                 ROOT/'tests/performance/pvm_arm64_jit_ownership.nim']:
+                 ROOT/'tests/performance/pvm_arm64_jit_ownership.nim',
+                 *unit_verification_sources('pvm_stream_all_opcodes')]:
         identities[path] = digest(path)
     images = {}
     for mode in ('interpreter','baseline','jit'):
