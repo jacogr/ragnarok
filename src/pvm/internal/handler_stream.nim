@@ -1750,6 +1750,8 @@ func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
     price: f.arguments[int(header)].x)
   true
 
+include ./handler_trace_source
+
 when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
   func flatSourceIntervalProof*(f: FlatFrame, pc, maxSpan: uint32,
       fields: var array[5, uint64]): bool =
@@ -2066,33 +2068,13 @@ when defined(pvmX86Jit):
         found: var X86MemoryCycleHeader): bool =
       ## Recheck one published basic-block header, its original priced span and every emitted site.
       found = default(X86MemoryCycleHeader)
-      if int(pc) >= f.compiledForPc.len: return false
-      let packed = f.compiledForPc[int(pc)]
-      if packed == 0: return false
-      let value = packed-1
-      if (value and 0x80000000'u32) == 0: return false
-      let header = value and 0x7fffffff'u32
-      if int(header) >= f.handlers.len or int(header) >= f.sites.len or
-          int(header) >= f.arguments.len: return false
-      let ordinal = f.sites[int(header)]
-      if int(ordinal) >= f.plan.facts.len: return false
-      let first = f.plan.facts[int(ordinal)]
-      if first.pc != pc or int(first.priceIndex) >= f.plan.pricePcs.len or
-          f.plan.pricePcs[int(first.priceIndex)] != CodeAddress(uint64(pc)): return false
-      let span = f.arguments[int(header)].y
-      if span != first.sourceCount: return false
+      var header = 0'u32
       var source = default(FlatSourceInterval)
-      if not flatSourceIntervalAt(f, header, 65, source): return false
+      if not flatCompleteOriginalHeader(f, pc, 65, header, source): return false
+      let ordinal = source.first
       let last = source.last
-      var node = header+1
-      for at in ordinal..last:
-        let fact = f.plan.facts[int(at)]
-        if at != last and (fact.ending or not fact.fallthrough): return false
-        if fact.opcode != 2:
-          if int(node) >= f.sites.len or int(node) >= f.handlers.len or
-              int(node) >= f.arguments.len or f.sites[int(node)] != at: return false
-          inc node
-      if node <= header+1: return false
+      var summary = default(FlatSourceSummary)
+      if not flatWalkCompleteSource(f, header, source, summary): return false
       let handler = f.handlers[int(header)]
       let kind = if handler == flatCharge: X86MemoryCycleHandlerKind.Ordinary
         elif handler == flatChargedWordLoop: X86MemoryCycleHandlerKind.CheckedWord
@@ -2100,8 +2082,8 @@ when defined(pvmX86Jit):
         elif handler == flatX86ProbeWhole: X86MemoryCycleHandlerKind.NativeProbe
         elif handler == flatX86Region: X86MemoryCycleHandlerKind.NativeRegion
         else: X86MemoryCycleHandlerKind.Other
-      found = X86MemoryCycleHeader(pc: pc, header: header, ordinal: ordinal, span: span,
-        terminal: node-1, price: source.price,
+      found = X86MemoryCycleHeader(pc: pc, header: header, ordinal: ordinal, span: source.span,
+        terminal: summary.terminal, price: source.price,
         opcode: f.plan.facts[int(last)].opcode, kind: kind)
       true
 

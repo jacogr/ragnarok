@@ -14,6 +14,12 @@ checked memory ordering and runtime assertions/bounds checks are unchanged. Exec
 was informed by the pinned PolkaVM interpreter; instruction semantics, unsigned accounting and
 JAM-specific boundaries use our implementations. This change does not enable guest compilation.
 
+The complete x86 source query shares a private original-header prelude and an ordered source/site
+walk in `src/pvm/internal/handler_trace_source.nim`. Its 65-fact limit uses only a terminal/count
+summary. Folded noops retain their source span and captured price. The prelude binds the complete
+PC map, original price-PC and source count; backend handler classification remains with the caller.
+Interval-only queries, including ARM macro admission, retain their existing weaker checks.
+
 ## Ownership and API
 
 The ordinary `execute`, scoped stepping, `applyHostResponse` and response-only/fallible
