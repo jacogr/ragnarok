@@ -58,11 +58,12 @@ import ./proof/ticket_production
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_recovery
-from ../codec/state/safrole import StateValidatorIndex
+from ../codec/state/safrole import StateValidatorIndex, StateValidator
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
 import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
-import ../jamnp-s/[availability_read, availability_store]
+import ../jamnp-s/[availability_read, availability_store, work_distribution]
+from ../codec/owned import OwnershipError
 from ../jamnp-s/availability_proof import VerifiedAvailabilityTransfer, AvailabilityRequest, AvailabilityTransferKind
 from ../state/erasure/words import ErasureShardIndex
 from ../state/computed/report import ComputedReportInfo, computedReportInfo, computedReportSource, value
@@ -301,6 +302,82 @@ func sharingError*(outcome: WorkSharingCompletion): WorkSharingResult[
   ## Refusal has only the genuine failed worker result, never a completed contribution prefix.
   outcome.reason
 
+type
+  WorkDistributionToken* = object ## Independent host namespace never aliases builder, sharing or generic proof controls.
+    owner: nil WorkSessionIdentity
+    generation: uint64
+  WorkDistributionStart* = object ## Only successful capture/admission grants a collection or cancellation token.
+    case status: StateProofAdmissionError
+    of None: token: WorkDistributionToken
+    of QueryFailure: captureReason: WorkJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Closed/busy alternatives grant no operation authority.
+  WorkDistributionCompletionKind* {.pure.} = enum ## No cancellation or failure exposes a report/guarantee prefix.
+    Uninitialized, Completed, Cancelled, Refused, EncodingFailure, CacheFailure, LimitExceeded, InvalidResult
+  WorkDistributionCompletion* = object ## Successful detached facts/bytes/report retain no canonical source graph, signer or native stream.
+    case status: WorkDistributionCompletionKind
+    of Completed:
+      info: WorkDistributionInfo
+      targets: seq[StateValidator]
+      payload: seq[byte]
+      report: read_verification.CheckedReadReply
+    of Refused: reason: WorkDistributionResult[CheckedWorkDistribution]
+    of EncodingFailure: encodingReason: OwnershipError
+    of CacheFailure: cacheReason: read_verification.ReadVerificationResult[
+        read_verification.CheckedReadReply]
+    else: discard # Failure payloads contain only actual selected causes.
+func error*(outcome: WorkDistributionStart): StateProofAdmissionError =
+  ## Read admission status before selecting its token or cause.
+  outcome.status
+func value*(outcome: WorkDistributionStart): WorkDistributionToken {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Exact Services identity and a nonwrapping generation are required for later control.
+  outcome.token
+func captureError*(outcome: WorkDistributionStart): WorkJobError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Return only the actual request/view capture refusal.
+  outcome.captureReason
+func workerError*(outcome: WorkDistributionStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## Preserve the actual shared worker's admission error.
+  outcome.workerReason
+func kind*(outcome: WorkDistributionCompletion): WorkDistributionCompletionKind =
+  ## Fixed completion tags are safe after exact collection and through unrelated later worker leases.
+  outcome.status
+func distributionInfo*(outcome: WorkDistributionCompletion): WorkDistributionInfo {.requires: outcome.status ==
+    WorkDistributionCompletionKind.Completed.} =
+  ## Copy source/observation facts without retaining the checked canonical graph.
+  outcome.info
+func distributionTarget*(outcome: WorkDistributionCompletion,
+    index: int): StateValidator {.requires:
+    outcome.status == WorkDistributionCompletionKind.Completed and index >= 0 and index <
+    outcome.targets.len.} =
+  ## Return an independent fixed validator record within this exact completed plan.
+  outcome.targets[index]
+proc distributionPayload*(outcome: WorkDistributionCompletion): seq[
+    byte] {.requires: outcome.status == WorkDistributionCompletionKind.Completed.} =
+  ## Caller mutation of detached bytes cannot alter this immutable completion or any future transport request.
+  result = newSeq[byte](outcome.payload.len)
+  for index in 0..<result.len: result[index] = outcome.payload[index]
+func distributionReport*(outcome: WorkDistributionCompletion): read_verification.CheckedReadReply {.requires: outcome.status ==
+    WorkDistributionCompletionKind.Completed.} =
+  ## Independently hash-checked source-free report ownership may enter detached serving retention.
+  outcome.report
+func distributionError*(outcome: WorkDistributionCompletion): WorkDistributionResult[
+    CheckedWorkDistribution] {.requires: outcome.status ==
+    WorkDistributionCompletionKind.Refused.} =
+  ## Failed context/signature/policy checks cannot expose a qualified source or report.
+  outcome.reason
+func distributionEncodingError*(outcome: WorkDistributionCompletion): OwnershipError {.requires: outcome.status ==
+    WorkDistributionCompletionKind.EncodingFailure.} =
+  ## Keep the actual report encoder's failed status selected.
+  outcome.encodingReason
+func distributionCacheError*(outcome: WorkDistributionCompletion): read_verification.ReadVerificationResult[
+    read_verification.CheckedReadReply] {.requires: outcome.status ==
+    WorkDistributionCompletionKind.CacheFailure.} =
+  ## Preserve the real detached verifier's cause, without a synthesized checked report.
+  outcome.cacheReason
+
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   light: light_actor.LightRuntime
   rpc*: Server
@@ -326,6 +403,11 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   ticketInput: TicketVerificationJob
   productionInput: TicketProductionJob
   workInput: WorkSubmissionJob
+  distributionInput: WorkSubmissionJob
+  distributionIdentity: nil WorkSessionIdentity
+  distributionGeneration: uint64
+  distributionActive: bool
+  distributionTicket: ProofWorkerTicket
   sharingInput: WorkSubmissionJob
   sharingIdentity: nil WorkSessionIdentity
   sharingGeneration: uint64
@@ -428,10 +510,15 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.verificationInput)
   `=wasMoved`(services.ticketInput)
   `=wasMoved`(services.productionInput)
+  `=wasMoved`(services.distributionInput)
+  `=wasMoved`(services.distributionIdentity)
+  `=wasMoved`(services.distributionTicket)
   `=wasMoved`(services.sharingInput)
   `=wasMoved`(services.sharingIdentity)
   `=wasMoved`(services.sharingTicket)
   `=wasMoved`(services.sharedContribution)
+  services.distributionGeneration = 0
+  services.distributionActive = false
   services.sharingGeneration = 0
   services.sharingActive = false
   `=wasMoved`(services.workInput)
@@ -506,6 +593,9 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.verificationInput)
   `=destroy`(services.ticketInput)
   `=destroy`(services.productionInput)
+  `=destroy`(services.distributionInput)
+  `=destroy`(services.distributionIdentity)
+  `=destroy`(services.distributionTicket)
   `=destroy`(services.sharingInput)
   `=destroy`(services.sharingIdentity)
   `=destroy`(services.sharingTicket)
@@ -729,6 +819,9 @@ proc stopStateProofs*(services: var Services) =
     services.light.stopProofs()
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
+  services.distributionInput = default(WorkSubmissionJob)
+  services.distributionTicket = default(ProofWorkerTicket)
+  services.distributionActive = false # Joined stop revokes this namespace before its worker can reopen.
   services.sharingInput = default(WorkSubmissionJob)
   services.sharingTicket = default(ProofWorkerTicket)
   services.sharingActive = false # Joined stop revokes the exact incoming namespace before another controller can reopen it.
@@ -800,6 +893,11 @@ proc close*(services: var Services) =
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical, signer or listener alias.
   services.sharedContribution = default(SignedWorkContribution)
+  services.distributionIdentity = nil
+  services.distributionGeneration = 0
+  services.distributionInput = default(WorkSubmissionJob)
+  services.distributionTicket = default(ProofWorkerTicket)
+  services.distributionActive = false
   services.sharingIdentity = nil
   services.sharingGeneration = 0
   services.workSigner = default(WorkSigner)
@@ -2136,6 +2234,102 @@ func workSignerMatches*(services: Services, identity: StateEdKey): bool =
   let original = array[32, byte](services.workSignerIdentity)
   let requested = array[32, byte](identity)
   original == requested
+proc stageWorkDistribution(services: var Services, request: ReadRequest, now: StateTime,
+    limits: WorkDistributionLimits): WorkJobError =
+  ## The staging activation retires all temporary canonical/job aliases before the exact shared lease is granted.
+  let captured = captureWorkDistribution(request, services.canonical.chainView, now, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.distributionInput = captured.value
+  WorkJobError.None
+proc beginWorkDistribution*(services: var Services, request: ReadRequest, now: StateTime,
+    limits: WorkDistributionLimits): WorkDistributionStart {.raises.} =
+  ## Incoming verification can run while a primary guarantee waits; it neither signs nor replaces that primary source.
+  if not services.started: return WorkDistributionStart(status: StateProofAdmissionError.Closed)
+  if services.distributionActive or not services.stateProofAvailable:
+    return WorkDistributionStart(status: StateProofAdmissionError.Busy)
+  if services.distributionGeneration == high(uint64):
+    return WorkDistributionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkDistribution(request, now, limits)
+  if staged != WorkJobError.None:
+    return WorkDistributionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: staged)
+  if services.distributionIdentity == nil: services.distributionIdentity = WorkSessionIdentity(marker: 3)
+  discard services.proofWorker.start()
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.distributionInput = default(WorkSubmissionJob)
+    return WorkDistributionStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.distributionInput)
+  if admitted.error != ProofWorkerError.None:
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    services.distributionInput = default(WorkSubmissionJob)
+    return WorkDistributionStart(status: StateProofAdmissionError.WorkerFailure,
+        workerReason: admitted.error)
+  inc services.distributionGeneration
+  services.proofing = true
+  services.distributionActive = true
+  services.distributionTicket = admitted.value
+  WorkDistributionStart(status: StateProofAdmissionError.None, token: WorkDistributionToken(
+      owner: services.distributionIdentity, generation: services.distributionGeneration))
+func workDistributionActive*(services: Services, token: WorkDistributionToken): bool =
+  ## Host-only identity/generation checks never inspect the leased canonical/job graph.
+  services.distributionActive and token.owner != nil and token.owner ==
+      services.distributionIdentity and token.generation != 0 and token.generation ==
+      services.distributionGeneration
+proc cancelWorkDistribution*(services: var Services, token: WorkDistributionToken): bool =
+  ## Cancellation touches only this exact active proof ticket, leaving every alias frozen until collect or joined stop.
+  if not services.workDistributionActive(token): return false
+  let ticket = services.distributionTicket
+  services.cancelStateProof(ticket)
+proc collectWorkDistribution*(services: var Services,
+    token: WorkDistributionToken): WorkDistributionCompletion =
+  ## Cut source-free results only after matching collection; no caller receives the worker's canonical qualification owner.
+  if not services.workDistributionActive(token): return default(WorkDistributionCompletion)
+  let ticket = services.distributionTicket
+  let completed = services.collectStateProof(ticket)
+  if completed.kind == ProofWorkerCompletionKind.Uninitialized: return default(WorkDistributionCompletion)
+  services.distributionActive = false
+  services.distributionTicket = default(ProofWorkerTicket)
+  services.distributionInput = default(WorkSubmissionJob)
+  if completed.kind == ProofWorkerCompletionKind.Cancelled:
+    return WorkDistributionCompletion(status: WorkDistributionCompletionKind.Cancelled)
+  if completed.kind != ProofWorkerCompletionKind.WorkSubmitted:
+    return WorkDistributionCompletion(status: WorkDistributionCompletionKind.InvalidResult)
+  let outcome = completed.workSubmissionValue
+  case outcome.kind
+  of WorkJobResultKind.DistributionFailure:
+    return WorkDistributionCompletion(status: WorkDistributionCompletionKind.Refused,
+        reason: outcome.distributionError)
+  of WorkJobResultKind.DistributionEncodingFailure:
+    return WorkDistributionCompletion(status: WorkDistributionCompletionKind.EncodingFailure,
+        encodingReason: outcome.distributionEncodingError)
+  of WorkJobResultKind.DistributionCacheFailure:
+    return WorkDistributionCompletion(status: WorkDistributionCompletionKind.CacheFailure,
+        cacheReason: outcome.distributionCacheError)
+  of WorkJobResultKind.DistributionOutputLimit:
+    return WorkDistributionCompletion(status: WorkDistributionCompletionKind.LimitExceeded)
+  of WorkJobResultKind.DistributionQualified: discard # This exact success alone permits graph-free extraction below.
+  else: return WorkDistributionCompletion(status: WorkDistributionCompletionKind.InvalidResult)
+  let checked = outcome.qualifiedDistribution
+  let facts = checked.distributionInfo
+  if facts.error != WorkDistributionError.None: return WorkDistributionCompletion(
+      status: WorkDistributionCompletionKind.InvalidResult)
+  if facts.value.targets < 0 or facts.value.targets > 2046: return WorkDistributionCompletion(
+      status: WorkDistributionCompletionKind.InvalidResult)
+  var targets = newSeq[StateValidator](facts.value.targets)
+  for index in 0..<targets.len:
+    # Every record is fixed copied data; no snapshot/roster pointer can escape into native routing.
+    let selected = checked.distributionTarget(index)
+    if selected.error != WorkDistributionError.None: return WorkDistributionCompletion(
+        status: WorkDistributionCompletionKind.InvalidResult)
+    targets[index] = selected.value
+  let payload = checked.distributionPayload
+  if payload.error != WorkDistributionError.None: return WorkDistributionCompletion(
+      status: WorkDistributionCompletionKind.InvalidResult)
+  WorkDistributionCompletion(status: WorkDistributionCompletionKind.Completed, info: facts.value,
+    targets: targets, payload: payload.value, report: outcome.distributionReport)
 proc stageWorkSharing(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
     now: StateTime, limits: WorkSharingLimits): WorkJobError =
   ## Native task aliases remain independent from the detached job; view/key staging aliases retire before admission.

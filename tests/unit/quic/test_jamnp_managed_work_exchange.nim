@@ -7,13 +7,15 @@ import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options, startup]
 import ../../../src/app/proof/[worker, work_submission as jobs]
 import ../../../src/jamnp-s/[work_signer, work_eligibility, work_guarantee, work_sharing,
-  sharing_wire, work_stream, availability_read, availability_merkle, read_stream]
+  sharing_wire, work_stream, availability_read, availability_merkle, read_stream, work_distribution,
+  report_cache, read_validation]
 import ../../../src/codec/[bounded, guarantees, assurances]
 import ../../../src/codec/state/safrole
 import ../../../src/codec/work/package
+import ../../../src/state/guarantee_credentials
 import ../../../src/chain/[provider, genesis]
 import ../../support/[jamnp_guarantee_fixture, jamnp_managed_work_context, jamnp_work_fixture,
-  jamnp_work_report_fixture, pvm_input_refinement, arc_evidence]
+  jamnp_work_report_fixture, jamnp_read_validation_context, pvm_input_refinement, arc_evidence]
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield while observing only synchronized worker phase or independent raw bytes.
 proc policy(raw: WorkFixture): WorkSharingLimits =
@@ -71,6 +73,89 @@ proc accept(services: var Services, token: WorkSessionToken, position: int,
   assert not services.stateProofAvailable
   assert services.workSharingRequest(token).sharingInfo.value.bundleBytes > 0
   assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
+proc distributionPolicy(): WorkDistributionLimits =
+  ## CPU report/source limits and recipient capacity are independent from native framing reservations.
+  WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
+      targets: ElementLimit(12))
+proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq[byte]) {.raises.} =
+  ## Distinct incoming verification never consumes a waiting primary guarantee or an unrelated proof ticket.
+  let hash = services.chainView.bestBlock.value.blockHash
+  let request = decodeReadRequest(ReadKind.Guarantee, bytes).value
+  let admitted = services.beginWorkDistribution(request, StateTime(20), distributionPolicy())
+  assert admitted.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.rpc.chainPaused and services.workDistributionActive(admitted.value)
+  assert services.collectWorkDistribution(default(WorkDistributionToken)).kind ==
+      WorkDistributionCompletionKind.Uninitialized
+  assert services.collectWorkSubmission(primary) == WorkSessionPhase.Guaranteed
+  assert services.workExchangeInfo(primary).credentials == 3
+  let completed = services.collectWorkDistribution(admitted.value)
+  assert completed.kind == WorkDistributionCompletionKind.Completed
+  assert services.stateProofAvailable and not services.rpc.chainPaused
+  assert completed.distributionInfo.targets == 12
+  assert completed.distributionPayload == bytes
+  var altered = completed.distributionPayload
+  altered[0] = altered[0] xor 1
+  assert completed.distributionPayload == bytes
+  var cache = default(ReportCache)
+  assert cache.remember(completed.distributionReport) == ReportCacheError.None
+  let query = decodeReadRequest(ReadKind.Report, completed.distributionInfo.reportHash).value
+  let foreign = services.beginNetworkRead(readStateRequest(hash))
+  assert foreign.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkDistribution(admitted.value).kind ==
+      WorkDistributionCompletionKind.Uninitialized
+  assert not services.cancelWorkDistribution(admitted.value)
+  let retained = cache.find(query)
+  assert retained.error == ReportCacheError.None and retained.value.byteLength > 4
+  assert completed.distributionPayload == bytes # Detached completion/cache ownership has no canonical alias through the foreign Done lease.
+  assert services.stateProofPhase == ProofWorkerPhase.Done and services.rpc.chainPaused
+  assert services.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted
+  var broken = bytes
+  broken[broken.high] = broken[broken.high] xor 1
+  let invalid = services.beginWorkDistribution(decodeReadRequest(ReadKind.Guarantee, broken).value,
+      StateTime(20), distributionPolicy())
+  assert invalid.error == StateProofAdmissionError.None
+  services.waitDone()
+  let refused = services.collectWorkDistribution(invalid.value)
+  assert refused.kind == WorkDistributionCompletionKind.Refused
+  assert refused.distributionError.error == WorkDistributionError.CredentialFailure
+  assert refused.distributionError.credentialError.error ==
+      GuaranteeCredentialError.InvalidSignature
+  let cancelled = services.beginWorkDistribution(request, StateTime(20), distributionPolicy())
+  assert cancelled.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.cancelWorkDistribution(cancelled.value)
+  assert services.rpc.chainPaused
+  assert services.collectWorkDistribution(cancelled.value).kind ==
+      WorkDistributionCompletionKind.Cancelled
+  let stopped = services.beginWorkDistribution(request, StateTime(20), distributionPolicy())
+  assert stopped.error == StateProofAdmissionError.None
+  services.waitDone()
+  services.stopStateProofs()
+  assert not services.workDistributionActive(stopped.value)
+  assert services.collectWorkDistribution(stopped.value).kind ==
+      WorkDistributionCompletionKind.Uninitialized
+  let restarted = services.beginWorkDistribution(request, StateTime(20), distributionPolicy())
+  assert restarted.error == StateProofAdmissionError.None
+  assert not services.cancelWorkDistribution(stopped.value)
+  services.waitDone()
+  assert services.collectWorkDistribution(restarted.value).kind ==
+      WorkDistributionCompletionKind.Completed
+  assert services.workSessionPhase(primary) == WorkSessionPhase.Guaranteed
+proc unsignedReceiver(settings: Options, bytes: seq[byte]) {.raises.} =
+  ## A validator receiving CE135 needs no private report-signing key; only its actual complete source is captured.
+  var services = default(Services)
+  defer: services.close()
+  assert services.start(settings, "distribution receiver")
+  assert not services.workSigningConfigured
+  let request = decodeReadRequest(ReadKind.Guarantee, bytes).value
+  let admitted = services.beginWorkDistribution(request, StateTime(20), distributionPolicy())
+  assert admitted.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkDistribution(admitted.value).kind ==
+      WorkDistributionCompletionKind.Completed
+  assert not services.workSigningConfigured
 proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
   ## Private Services signing ownership never comes from an external signer alias; only actual certificate/key paths configure it.
   let raw = workFixture()
@@ -171,6 +256,8 @@ proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Guaranteed
   let bytes = services.workGuaranteePayload(token)
   verifyPayload(bytes, 3)
+  distributions(services, token, bytes)
+  unsignedReceiver(settings, bytes)
   var copy = bytes
   copy[0] = copy[0] xor 1
   assert services.workGuaranteePayload(token) == bytes
@@ -283,6 +370,47 @@ proc cycle(worker: var StateProofWorker, local: SignedWorkContribution, targetB,
     var input = captureWorkGuarantee(round, ByteLimit(20000)).value
     let completed = run(worker, input)
     assert completed.kind == WorkJobResultKind.GuaranteeCollected
+proc distributionCycle(worker: var StateProofWorker, bytes: seq[byte], view: ChainView, mode: int) =
+  ## Native raw input may retire immediately after capture; every selected canonical/result alias remains untouched until matching collection.
+  var payload = bytes
+  if mode == 1: payload[payload.high] = payload[payload.high] xor 1
+  var request = decodeReadRequest(ReadKind.Guarantee, payload).value
+  var input = captureWorkDistribution(request, view, StateTime(21), distributionPolicy()).value
+  let admitted = worker.submit(input)
+  assert admitted.error == ProofWorkerError.None and not input.valid
+  request = default(ReadRequest) # Retire native-side bytes while the independent input is queued/running/Done, before any collection.
+  let deadline = getMonoTime()+initDuration(seconds = 20)
+  while worker.phase != ProofWorkerPhase.Done:
+    assert getMonoTime() < deadline
+    discard pauseMicros(100)
+  if mode == 2: assert worker.cancel(admitted.value)
+  let collected = worker.collect(admitted.value)
+  if mode == 2:
+    assert collected.kind == ProofWorkerCompletionKind.Cancelled
+    return
+  assert collected.kind == ProofWorkerCompletionKind.WorkSubmitted
+  let completed = collected.workSubmissionValue
+  if mode == 1:
+    assert completed.kind == WorkJobResultKind.DistributionFailure
+    assert completed.distributionError.error == WorkDistributionError.CredentialFailure
+  else:
+    assert completed.kind == WorkJobResultKind.DistributionQualified
+    assert completed.qualifiedDistribution.distributionInfo.value.targets == 12
+    assert completed.distributionReport.valid and completed.distributionReport.kind ==
+        ReadKind.Report
+proc distributionWorkers(local: SignedWorkContribution, b: WorkShareTarget, keyB: StateEdKey,
+    responseB: array[96, byte], view: ChainView) {.raises.} =
+  ## A genuine two-credential guarantee drives repeated managed qualification, refusal and Done cancellation without retaining prior graphs.
+  let round = addWorkResponse(beginWorkGuarantee(local).value, b, keyB, responseB).value
+  let bytes = collectWorkGuarantee(round, ByteLimit(20000)).value.guaranteePayload.value
+  var worker = default(StateProofWorker)
+  defer: worker.close()
+  assert worker.start()
+  for mode in 0..<3: distributionCycle(worker, bytes, view, mode)
+  let before = getOccupiedMem()
+  for iteration in 0..<1000: distributionCycle(worker, bytes, view, iteration mod 3)
+  let after = getOccupiedMem()
+  assert before == after
 proc main() {.raises.} =
   ## Real independent fixture keys and sources remain untouched through every exact worker lease and joined close.
   let a = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")).value
@@ -308,6 +436,9 @@ proc main() {.raises.} =
       WorkJobError.InvalidInput
   assert captureWorkGuarantee(default(WorkGuaranteeRound), ByteLimit(20000)).error ==
       WorkJobError.InvalidInput
+  let parent = fixture.view.parentOf(fixture.view.bestBlock.value.blockHash)
+  assert parent.error == GenesisError.None
+  distributionWorkers(local, targetB, keyB, responseB, genesisView(parent))
   var worker = default(StateProofWorker)
   defer: worker.close()
   assert worker.start()

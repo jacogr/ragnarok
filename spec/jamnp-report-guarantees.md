@@ -458,3 +458,39 @@ rejects copying the changed owner. Linux-target node semantics, all548 productio
 formatting and the production ARC/LTO build pass; native Linux CI is not claimed. Managed CE135
 admission/collection and ordinary send/receive orchestration, retained source capacity and explicit
 startup remain required before this guarantee feature can be published as complete.
+
+
+Managed CE135 qualification must use a closed worker factory with independently detached native
+request bytes and the actual immutable canonical view. Its successful result must also produce a
+source-free, hash-checked report for detached CE136 serving. Failed/default results carry only their
+selected genuine causes. Incoming verification needs a separate exact namespace from a waiting
+primary guarantee round, and joined stop must revoke it before another generation can run.
+
+
+Closed CE135 worker jobs now qualify against the actual immutable view and independently encode
+and hash-check a source-free report for later CE136 serving. Input length is checked before an
+independent request copy; native-side input may retire after submission. Source-bearing checked
+owners remain private until matching collection. A separate Services token namespace preserves
+waiting builder/guarantee ownership, uses the shared bounded CPU/RPC lease, and revokes its exact
+control on cancellation, collection or joined stop. Successful completion exposes only fixed
+source facts, copied validator records, detached canonical payload and source-free checked report;
+failures preserve genuine selected causes and expose no accepted prefix. Receiving requires no
+private signing key.
+
+The native managed suite passes coexistence with a waiting three-credential primary guarantee,
+wrong/stale token refusal, mutation isolation, source-free report-cache/payload use through a foreign
+uncollected Done lease, invalid signatures, Done cancellation, joined stop/restart and receiving
+without signing setup. Another thousand closed CE135 worker cycles cover success, signature refusal
+and Done cancellation, including raw input retirement after worker admission, with equal occupied
+memory before/after. The existing thousand-cycle exchange group also releases completely, now
+retaining339424 bytes before/after with the larger closed-job storage. Existing proof-worker,
+managed-signing, sharing, work-dispatch, ordinary exchange-runtime and application-node suites pass.
+Actual Services ARC lowering rejects copying the expanded owner; Linux-target closed-job semantics
+pass. Ordinary CE135 controller admission, verify-before-ack/cache, fresh send orchestration,
+retained source capacity and optional startup remain required; a managed factory alone is not the
+complete protocol runtime.
+
+
+Final managed-distribution verification also passes formatting, all548 production modules/entry
+point and the production ARC/LTO build. The existing generated self-comparison warning remains;
+no compiler/dependency pin or vendor checkout was changed.

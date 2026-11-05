@@ -8,6 +8,8 @@ import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
 import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../../jamnp-s/work_recovery
+import ../../jamnp-s/[work_distribution, read_stream, read_validation]
+import ../../codec/[report_owned, owned]
 import ../../chain/[provider, genesis]
 import ../../codec/bounded
 from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime
@@ -26,10 +28,12 @@ type
     Uninitialized, None, InvalidInput, LimitExceeded
   WorkJobResultKind* {.pure.} = enum ## A completed CPU turn exposes only its selected full success or genuine child failure.
     Uninitialized, Authorized, Refined, InvalidSource, AuthorizationFailure, BodyFailure,
-      RefinementFailure, DutyFailure, Reported, ReportFailure, ImportPlanningFailure,
-        RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure, Contributed,
-          EligibilityFailure, SigningFailure, SharingFailure, ExchangePrepared,
-            ExchangePreparationFailure, PeerAccepted, PeerResponseFailure, GuaranteeCollected, GuaranteeCollectionFailure
+    RefinementFailure, DutyFailure, Reported, ReportFailure, ImportPlanningFailure,
+    RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure, Contributed,
+    EligibilityFailure, SigningFailure, SharingFailure, ExchangePrepared,
+    ExchangePreparationFailure, PeerAccepted, PeerResponseFailure, GuaranteeCollected,
+    GuaranteeCollectionFailure, DistributionQualified, DistributionFailure,
+    DistributionEncodingFailure, DistributionCacheFailure, DistributionOutputLimit
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -65,6 +69,12 @@ type
     of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
     of GuaranteeCollected: collected: CollectedWorkGuarantee
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
+    of DistributionQualified:
+      distributed: CheckedWorkDistribution
+      distributionReport: CheckedReadReply
+    of DistributionFailure: distributionReason: WorkDistributionResult[CheckedWorkDistribution]
+    of DistributionEncodingFailure: distributionEncodingReason: OwnershipError
+    of DistributionCacheFailure: distributionCacheReason: ReadVerificationResult[CheckedReadReply]
     of Contributed: contribution: SignedWorkContribution
     of EligibilityFailure: eligibilityReason: WorkEligibilityResult[EligibleWorkGuarantee]
     of SigningFailure: signingReason: WorkSignerResult[SignedWorkContribution]
@@ -92,6 +102,10 @@ type
     signingLimits: WorkEligibilityLimits
     signingIdentity: StateEdKey
     signingTime: StateTime
+    distributionRequest: ReadRequest
+    distributionView: ChainView
+    distributionLimits: WorkDistributionLimits
+    distributionTime: StateTime
     sharingRequest: SharedWorkRequest
     sharingPeer: StateEdKey
     sharingLimits: WorkSharingLimits
@@ -157,6 +171,28 @@ func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
     WorkJobResultKind.GuaranteeCollectionFailure.} =
   ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
   outcome.collectionReason
+func qualifiedDistribution*(outcome: WorkJobResult): CheckedWorkDistribution {.requires:
+    outcome.status == WorkJobResultKind.DistributionQualified.} =
+  ## Source-bearing qualification remains behind the managed graph gate until its fixed facts and detached bytes are cut.
+  outcome.distributed
+func distributionReport*(outcome: WorkJobResult): CheckedReadReply {.requires:
+    outcome.status == WorkJobResultKind.DistributionQualified.} =
+  ## Independently decoded/hash-checked report bytes retain no canonical graph and may enter detached CE136 retention after matching collection.
+  outcome.distributionReport
+func distributionError*(outcome: WorkJobResult): WorkDistributionResult[
+    CheckedWorkDistribution] {.requires:
+    outcome.status == WorkJobResultKind.DistributionFailure.} =
+  ## Preserve exact genuine context/credential/policy refusals without a successful prefix.
+  outcome.distributionReason
+func distributionEncodingError*(outcome: WorkJobResult): OwnershipError {.requires:
+    outcome.status == WorkJobResultKind.DistributionEncodingFailure.} =
+  ## Only an actual owned-report encoder refusal exposes this cause.
+  outcome.distributionEncodingReason
+func distributionCacheError*(outcome: WorkJobResult): ReadVerificationResult[
+    CheckedReadReply] {.requires:
+    outcome.status == WorkJobResultKind.DistributionCacheFailure.} =
+  ## Retain the real detached report verification failure rather than inventing a cache certificate.
+  outcome.distributionCacheReason
 func context*(outcome: WorkJobResult): AuthorizedWorkContext {.requires: outcome.status ==
     WorkJobResultKind.Authorized.} =
   ## Retain the original authorization context only while the host owns the shared graph lease.
@@ -445,6 +481,49 @@ proc captureWorkGuarantee*(round: WorkGuaranteeRound, maximum: ByteLimit): WorkJ
   if round.credentialCount == 0: return WorkJobAdmission(status: WorkJobError.InvalidInput)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: collectGuarantee, round: round, exchangeBytes: maximum)))
+proc qualifyDistribution(data: WorkJobData): WorkJobResult =
+  ## All signatures, source checks and report-cache hashing run inside this closed managed turn, never in native callbacks.
+  let wire = data.distributionRequest.payload
+  let checked = qualifyWorkDistribution(wire, data.distributionView, data.distributionTime,
+    data.distributionLimits)
+  if checked.error != WorkDistributionError.None:
+    return WorkJobResult(status: WorkJobResultKind.DistributionFailure, distributionReason: checked)
+  let report = checked.value.distributionGuarantee.value.report
+  let length = report.ownedReportInfo.value.consumed
+  if length <= 0 or length > MaxReadReplyBytes-4:
+    return WorkJobResult(status: WorkJobResultKind.DistributionOutputLimit)
+  var framed = newSeq[byte](length+4)
+  for index in 0..<4: framed[index] = byte((uint32(length) shr (8*index)) and 255)
+  let encoded = encodeOwnedReport(report, framed.toOpenArray(4, framed.high))
+  if encoded.error != OwnershipError.None:
+    return WorkJobResult(status: WorkJobResultKind.DistributionEncodingFailure,
+      distributionEncodingReason: encoded.error)
+  let source = captureReadSource(data.distributionView.bestBlock)
+  if source.error != ReadVerificationError.None:
+    return WorkJobResult(status: WorkJobResultKind.InvalidSource) # The already-qualified immutable view cannot become unavailable within this turn.
+  let query = decodeReadRequest(ReadKind.Report, checked.value.distributionInfo.value.reportHash)
+  if query.error != ReadError.None: return WorkJobResult(status: WorkJobResultKind.InvalidSource)
+  let cached = verifyReadReply(query.value, framed, source.value,
+    ReadVerificationLimits(wireBytes: data.distributionLimits.wireBytes))
+  if cached.error != ReadVerificationError.None:
+    return WorkJobResult(status: WorkJobResultKind.DistributionCacheFailure,
+        distributionCacheReason: cached)
+  WorkJobResult(status: WorkJobResultKind.DistributionQualified, distributed: checked.value,
+    distributionReport: cached.value)
+proc captureWorkDistribution*(request: ReadRequest, view: ChainView, now: StateTime,
+    limits: WorkDistributionLimits): WorkJobAdmission =
+  ## Bound the complete raw input before its independent copy; staging view aliases retire before this job is submitted.
+  if not request.valid or request.kind != ReadKind.Guarantee:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  let size = uint64(request.payloadLength)
+  if size > uint64(limits.wireBytes) or size > uint64(MaxReadReplyBytes):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  if view.fuzzOnly or view.bestBlock.error != GenesisError.None:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: qualifyDistribution, distributionRequest: detachedReadRequest(request),
+        distributionView: view,
+    distributionTime: now, distributionLimits: limits)))
 proc receiveSharing(data: WorkJobData): WorkJobResult =
   ## The whole received bundle, actual sender/local facts, current view and private key remain on one managed lease.
   let received = receiveSharedWork(data.sharingRequest, data.signingView, data.signingIdentity,
