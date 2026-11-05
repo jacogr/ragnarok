@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded fixed-request canonical, upload and availability framing. Parent owns native retirement and deadlines;
+## Bounded canonical reads, opaque uploads and availability framing. Parent owns native retirement and deadlines;
 ## callbacks retain bytes only, and the host resolves canonical requests outside engine calls.
 import ../quic/transport
 import ./segment_request
@@ -10,10 +10,10 @@ import ../codec/bounded
 const MaxReadRequestPayload* = 789 ## Largest supported fixed payload is the exact CE131/132 epoch/attempt/proof.
 
 type
-  ReadKind* {.pure.} = enum ## Fixed-request content retrieval and bare-FIN announcements share bounded framing.
-    Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Report = 136,
-        Availability = 137, Audit = 138, SegmentShards = 139, ProvenSegmentShards = 140,
-            PreimageAnnouncement = 142, Preimage = 143, Bundle = 147, Segments = 148
+  ReadKind* {.pure.} = enum ## Content retrieval and fixed/variable bare-FIN uploads share bounded framing.
+    Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Guarantee = 135,
+        Report = 136, Availability = 137, Audit = 138, SegmentShards = 139,
+            ProvenSegmentShards = 140, PreimageAnnouncement = 142, Preimage = 143, Bundle = 147, Segments = 148
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -63,6 +63,13 @@ func kind*(request: ReadRequest): ReadKind {.requires: request.ready.} =
 func batch*(kind: ReadKind): bool =
   ## Variable grouped retrieval has a separate finite payload ceiling and incremental grammar.
   kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments]
+func variable*(kind: ReadKind): bool =
+  ## Opaque guaranteed reports share bounded variable storage with grouped requests, without borrowing the grouped-request grammar.
+  kind.batch or kind == ReadKind.Guarantee
+func maximumRequestBytes(kind: ReadKind): int =
+  ## CE135 has an independent local hard ceiling; grouped requests retain their exact existing grammar ceiling.
+  if kind == ReadKind.Guarantee: MaxReadReplyBytes
+  else: kind.segmentKind.maximumPayload
 func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
   ## Only declared batch selectors enter the matching protocol grammar.
   case kind
@@ -72,7 +79,7 @@ func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
 func requestLength(kind: ReadKind): int =
   ## Pinned fixed payload extents exclude selector and E4 header.
   case kind
-  of ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments: -1
+  of ReadKind.Guarantee, ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments: -1
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
   of ReadKind.Report, ReadKind.Preimage, ReadKind.Bundle: 32
@@ -83,9 +90,16 @@ proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
   ## Copy only complete admitted payload bytes; no mutable fixed backing array escapes.
   result = newSeq[byte](request.length)
   for index in 0..<request.length:
-    result[index] = if request.selector.batch: request.variable[index] else: request.payload[index]
+    result[index] = if request.selector.variable: request.variable[index] else: request.payload[index]
 proc decodeReadRequest*(kind: ReadKind, payload: openArray[byte]): ReadResult[ReadRequest] =
   ## Validate exact extents before retaining transport facts; method-specific semantics stay in services.
+  if kind == ReadKind.Guarantee:
+    if payload.len == 0: return readFailure[ReadRequest](ReadError.InvalidRequest)
+    if payload.len > MaxReadReplyBytes: return readFailure[ReadRequest](ReadError.LimitExceeded)
+    var bytes = newSeq[byte](payload.len)
+    for index in 0..<payload.len: bytes[index] = payload[index]
+    return ReadResult[ReadRequest](status: ReadError.None, completed: ReadRequest(ready: true,
+      selector: kind, length: payload.len, variable: bytes))
   if kind.batch:
     if payload.len > kind.segmentKind.maximumPayload: return readFailure[ReadRequest](
         ReadError.LimitExceeded)
@@ -116,6 +130,13 @@ proc detachedReadRequest*(request: ReadRequest): ReadRequest {.requires: request
 func payloadLength*(request: ReadRequest): int {.requires: request.valid.} =
   ## Logical request copy admission uses scalar extent before allocating a detached payload view.
   request.length
+proc requestBytes*(request: ReadRequest): seq[byte] {.requires: request.valid.} =
+  ## Serialize one exact selector/E4/body with a single exact-sized allocation after the parent reserves output credit.
+  result = newSeq[byte](request.length+5)
+  result[0] = byte(request.selector)
+  for index in 0..<4: result[1+index] = byte((uint32(request.length) shr (8*index)) and 255)
+  for index in 0..<request.length:
+    result[5+index] = if request.selector.variable: request.variable[index] else: request.payload[index]
 func itemCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## Validated scalar counts determine exact response message arity without reparsing payloads in callbacks.
   request.items
@@ -129,7 +150,7 @@ func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   elif request.selector == ReadKind.Segments: 2
   elif request.selector == ReadKind.Availability: 3
   elif request.selector in [ReadKind.State, ReadKind.Audit]: 2
-  elif request.selector in [ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
+  elif request.selector in [ReadKind.Guarantee, ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
       ReadKind.TicketDistribution]: 0
   else: 1
 func maximumReplyBytes*(request: ReadRequest): int {.requires: request.valid.} =
@@ -180,7 +201,7 @@ func receivedBytes*(route: ReadRoute): int =
   route.used
 func bufferedBytes*(route: ReadRoute): uint64 =
   ## Declared heap storage is charged immediately, even when a peer withholds the body or FIN.
-  if route.selector.batch and route.used >= 5: uint64(route.declared)+5
+  if route.selector.variable and route.used >= 5: uint64(route.declared)+5
   else: uint64(route.used)
 func handle*(route: ReadRoute): NativeStream =
   ## Parent compares the borrowed pointer only during its native lifetime.
@@ -268,8 +289,11 @@ proc event*(route: var ReadRoute, stream: NativeStream, event: cint,
               return
             var length = 0'u64
             for position in 0..<4: length = length or (uint64(route.request[position+1]) shl (8*position))
-            if route.selector.batch:
-              if length > uint64(route.selector.segmentKind.maximumPayload) or length+5 > uint64(inputBudget):
+            if route.selector.variable:
+              if length > uint64(route.selector.maximumRequestBytes) or length+5 > uint64(inputBudget):
+                route.reject()
+                return
+              if route.selector == ReadKind.Guarantee and length == 0:
                 route.reject()
                 return
               route.declared = int(length)
@@ -283,9 +307,9 @@ proc event*(route: var ReadRoute, stream: NativeStream, event: cint,
           if route.used-5 >= route.declared:
             route.reject()
             return
-          if route.selector.batch:
+          if route.selector.variable:
             route.variable[route.used-5] = octet
-            if route.cursor.consume(octet) != SegmentRequestError.None:
+            if route.selector.batch and route.cursor.consume(octet) != SegmentRequestError.None:
               route.reject()
               return
           else: route.request[route.used] = octet
@@ -294,8 +318,8 @@ proc event*(route: var ReadRoute, stream: NativeStream, event: cint,
     if route.used < 5 or route.used-5 != route.declared:
       route.reject()
       return
-    if route.selector.batch:
-      if not route.cursor.complete:
+    if route.selector.variable:
+      if route.selector.batch and not route.cursor.complete:
         route.reject()
         return
       route.captured = ReadRequest(ready: true, selector: route.selector, length: route.declared,

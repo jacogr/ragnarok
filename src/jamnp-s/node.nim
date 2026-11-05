@@ -84,7 +84,7 @@ type
     limits: AnnouncementLimits
     body: seq[byte]
   NodeService* = object ## Explicit noncopyable aggregate owns one connection actor and fixed protocol slots.
-    opened, stopping, workEnabled, sharingEnabled: bool
+    opened, stopping, workEnabled, sharingEnabled, distributionEnabled: bool
     failure: NodeError
     callbacks, sweep, processCursor, peerCursor, broadcastCursor, readCursor: int
     serial, version, inputUsed, handshakeUsed, outputUsed, replyUsed, clientUsed: uint64
@@ -116,6 +116,7 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   owner.stopping = false
   owner.workEnabled = false
   owner.sharingEnabled = false
+  owner.distributionEnabled = false
   owner.failure = NodeError.Uninitialized
   owner.callbacks = 0
   owner.sweep = 0
@@ -508,8 +509,13 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8, 142'u8,
-        143'u8, 147'u8, 148'u8]:
+    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 135'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8,
+        142'u8, 143'u8, 147'u8, 148'u8]:
+      if kind == 135'u8:
+        let validators = owner.node.isValidator and owner.node.isValidator(peer)
+        if not owner.distributionEnabled or not validators:
+          owner[].closeFrame(position)
+          return # Only an explicitly installed managed guarantee consumer may buffer these validator uploads.
       if kind == 142'u8 and not owner.node.isValidator:
         owner[].closeFrame(position)
         return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
@@ -618,6 +624,7 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.stopping = true
   owner.workEnabled = false
   owner.sharingEnabled = false
+  owner.distributionEnabled = false
   owner.node.close()
   for index in 0..<owner.frames.len:
     assert owner.frames[index].kind == FrameKind.Empty, "every borrowed stream must receive native close"
@@ -647,6 +654,7 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   owner.limits = limits
   owner.workEnabled = false
   owner.sharingEnabled = false
+  owner.distributionEnabled = false
   owner.sweep = 0
   owner.processCursor = 0
   owner.peerCursor = 0
@@ -750,15 +758,17 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeRequestTicket](
       status: NodeError.Unavailable)
   if not request.valid: return NodeResult[NodeRequestTicket](status: NodeError.InvalidConfig)
-  if request.kind in [ReadKind.TicketProxy, ReadKind.TicketDistribution]:
+  if request.kind == ReadKind.Guarantee and not owner.distributionEnabled:
+    return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
+  if request.kind in [ReadKind.Guarantee, ReadKind.TicketProxy, ReadKind.TicketDistribution]:
     if not owner.node.isValidator or not owner.node.isValidator(peer):
-      return NodeResult[NodeRequestTicket](status: NodeError.InvalidSource) # Outbound ticket uploads have the same both-validator role boundary.
+      return NodeResult[NodeRequestTicket](status: NodeError.InvalidSource) # Outbound validator uploads have the same both-validator role boundary.
   let peerPosition = owner.peerIndex(peer)
   if peerPosition < 0: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
       NodeRequestTicket](status: NodeError.Unavailable)
-  let independent = request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards,
-      ReadKind.Segments]
+  let independent = request.kind in [ReadKind.Guarantee, ReadKind.SegmentShards,
+      ReadKind.ProvenSegmentShards, ReadKind.Segments]
   if not independent and owner.node.announcements(peer) and owner.source(peer).error !=
       NodeError.None:
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable) # Named import data uses independently selected roots, not UP0 chain claims.
@@ -771,12 +781,19 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
       index = candidate
       break # Fixed global slots include queued clients before any raw native route is claimed.
   if index < 0: return NodeResult[NodeRequestTicket](status: NodeError.LimitExceeded)
+  let body = uint64(request.payloadLength)
+  if body > (OutputBudget-5) div 2: return NodeResult[NodeRequestTicket](
+      status: NodeError.LimitExceeded)
+  let reserved = 2*body+5 # Exact detached request and encoded selector/E4/output storage, before any copy.
+  if reserved > OutputBudget-owner.outputUsed: return NodeResult[NodeRequestTicket](
+      status: NodeError.LimitExceeded)
   var route = default(ReadClientRoute)
   if route.configure(request, maximum) != ReadError.None: return NodeResult[NodeRequestTicket](
       status: NodeError.InvalidConfig)
   inc owner.serial
   owner.frames[index] = Frame(kind: FrameKind.Client, peer: peer, serial: owner.serial,
-    started: owner.now, activity: owner.now, client: route)
+    started: owner.now, activity: owner.now, outputBytes: reserved, client: route)
+  owner.outputUsed += reserved
   owner.peers[peerPosition].readQueued = true
   owner.peers[peerPosition].readIndex = index
   if not owner.node.queueStream(peer):
@@ -930,6 +947,11 @@ proc cancelSharingRequest*(owner: var NodeService,
   ## Public queued cancellation precedes slot reuse; active streams retain charges through physical retirement.
   if not owner.sharingRequestLive(ticket): return false
   owner.closeFrame(ticket.index)
+  true
+proc enableDistributionStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
+  ## Managed CE135 verification must be installed before this separately optional validator-only selector is enabled.
+  if not owner.isOpen or not owner.node.isValidator: return false
+  owner.distributionEnabled = true
   true
 proc enableSharingStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## A real managed receiver must be installed before explicitly enabling CE134; omission always rejects it.

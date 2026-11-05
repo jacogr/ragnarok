@@ -428,3 +428,33 @@ anchor extraction. Linux-target qualification semantics pass; this is not native
 CE135 native transport, managed host admission/collection, fresh send-time checks, retained source
 capacity and explicit startup activation remain unfinished; the qualifier alone is not a runtime
 protocol implementation.
+
+
+CE135 transport will share the existing bounded variable request and bare-FIN acknowledgment
+machinery. The native selector remains separately disabled by default and requires both actual
+validator roles. Its single E4 body is opaque until managed verification; framing alone cannot
+acknowledge a valid guarantee. Full declared input storage is charged before allocation, including
+withheld bodies/FIN. Outgoing variable requests must reserve both their retained request and exact
+encoded output before either copy, under the existing shared output ceiling. Native tests must
+prove default/role gates, complete FIN, truncation/trailing bytes, byte credit and exact retirement.
+
+
+The native CE135 framing path is implemented through existing ReadRequest/ReadRoute/ReadClient
+owners, without another callback/frame family. Its switch defaults off across close/reopen and
+requires actual local/remote validator roles. Payloads are opaque, nonempty, single E4 messages
+bounded by the independent eight-MiB transport ceiling; complete request FIN precedes host claim,
+and response FIN carries no framed body. Generic canonical serving explicitly refuses CE135.
+Variable request serialization uses exact-sized allocation and independent retained request bytes.
+Before copying, NodeService charges both retained payload and encoded output to the existing
+32-MiB output budget; cancellation/collection/native retirement refund only owned reservations.
+
+Native tests pass default-off and guest rejection, empty/truncated/trailing/oversized declarations,
+withheld FIN, an actual eight-MiB two-node transfer, no acknowledgment before host response, second
+large-request quota refusal and exact cancellation/refund. The generic client also checks bare FIN
+and rejects junk response bytes. These raw tests deliberately grant no report credential authority.
+Existing native node, read verification, canonical serving, preimage announcements, ticket production,
+sharing client, work dispatcher and managed runtime consumers pass. Actual NodeService ARC lowering
+rejects copying the changed owner. Linux-target node semantics, all548 production modules/entry point,
+formatting and the production ARC/LTO build pass; native Linux CI is not claimed. Managed CE135
+admission/collection and ordinary send/receive orchestration, retained source capacity and explicit
+startup remain required before this guarantee feature can be published as complete.
