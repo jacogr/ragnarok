@@ -12,6 +12,8 @@ import ../../../src/jamnp-s/[node as node_streams, connections, endpoints, work_
 import ../../../src/quic/address
 import ../../../src/jamnp-s/availability_read
 import ../../../src/state/computed/[guarantee, report]
+import ../../../src/state/availability/specifier
+import ../../support/jamnp_segment_batch_fixture
 import ../../../src/codec/[bounded, guarantees, assurances]
 import ../../../src/codec/work/package
 import ../../../src/codec/state/safrole
@@ -22,7 +24,7 @@ import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_re
 
 type Variant {.pure.} = enum ## The same real builder source proves optional activation, three credentials, bounded third-peer grace and joined cancellation.
   Three, Two, Foreign, CloseDone, ReceiverClose, Refused, Deliver, DeliveryForeign, DeliveryRefresh,
-    DeliveryClose, DeliveryRefused, DeliveryConcurrent, DeliveryCloseForeign
+    DeliveryClose, DeliveryRefused, DeliveryConcurrent, DeliveryCloseForeign, Segments
 proc policy(raw: WorkFixture): WorkExchangePolicy =
   ## Every cryptographic/execution/copy ceiling is explicit; only peer response timing differs from the production default.
   let limits = WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes),
@@ -74,23 +76,29 @@ proc peer(host: ApplicationNode, key: StateEdKey): NodePeer =
   default(NodePeer)
 proc retainedRequests(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     probe: var NodeProbe, fixture: GuaranteeFixture) {.raises.} =
-  ## Actual authenticated CE137/147 requests must still succeed after the source's completed signed session is gone.
+  ## Actual authenticated CE137/147/148 requests must still succeed after the source's completed signed session is gone.
   assert sa.retainedWorkBundles == 1
   let source = fixture.transcript.computedGuaranteeReport.value.computedReportSource.value
   let policy = guarantorReadLimits()
   let target = peer(b, fixture.local)
   let deadline = getMonoTime()+initDuration(seconds = 15)
-  for coordinate in 0..6:
-    # Independent original computation supplies exact expected wire for every real six-validator shard and the original full bundle.
-    let kind = if coordinate == 6: ReadKind.Bundle else: ReadKind.Availability
+  let metadata = source.availabilityInfo.value.specifier
+  for coordinate in 0..7:
+    # Independent original computation supplies exact shard/bundle wire and actual original-export paths; default fixtures have no export to request.
+    if coordinate == 7 and uint16(metadata.segmentCount) == 0: continue
+    let kind = if coordinate == 7: ReadKind.Segments elif coordinate ==
+        6: ReadKind.Bundle else: ReadKind.Availability
     var payload: seq[byte] = @[]
-    let root = fixture.transcript.computedGuaranteeReport.value.computedReportInfo.value.header.erasureRoot
-    for octet in root.bytes: payload.add(octet)
-    if kind == ReadKind.Availability:
-      payload.add(byte(coordinate))
-      payload.add(0)
+    if kind == ReadKind.Segments:
+      payload = segmentGroup(kind, metadata.segmentRoot.bytes, 0, [0'u16, 0])
+    else:
+      for octet in metadata.erasureRoot.bytes: payload.add(octet)
+      if kind == ReadKind.Availability:
+        payload.add(byte(coordinate))
+        payload.add(0)
     let request = decodeReadRequest(kind, payload).value
-    let expected = serveAvailabilityRead(source, request, policy)
+    let expected = if kind == ReadKind.Segments: serveOriginalSegmentBatch(source, request,
+        policy) else: serveAvailabilityRead(source, request, policy)
     assert expected.error == ReadError.None
     var ticket = default(NodeRequestTicket)
     while true:
@@ -106,6 +114,8 @@ proc retainedRequests(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
       let reply = b.takeReply(ticket)
       if reply.error == ReadError.None:
         assert reply.value.bytes == expected.value.bytes
+        if kind == ReadKind.Segments:
+          verifyOriginalSegments(metadata, [0'u16, 0], segmentMessages(reply.value.bytes))
         break
       assert reply.error == ReadError.Unavailable, "retained native reply " & $reply.error
       assert getMonoTime() < deadline, "retained native response FIN"
@@ -357,7 +367,7 @@ proc deliver(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
   now
 proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKey) {.raises.} =
   ## A fresh trio gives every case independent native sockets, worker namespaces and private signing owners.
-  let raw = workFixture()
+  let raw = workFixture(exported = variant == Variant.Segments)
   let parent = fixture.view.parentOf(fixture.view.bestBlock.value.blockHash)
   assert parent.error == GenesisError.None
   writeFile("work-exchange-chain.json", workChainText(parent.value))
@@ -490,7 +500,7 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
     assert getMonoTime() < deadline, "runtime retirement"
     pump(a, b, c, sa, sb, sc, probe, getMonoTime(), retirementSlot)
   assert sa.workSessionPhase(token) == WorkSessionPhase.Empty
-  if variant == Variant.Two:
+  if variant in [Variant.Two, Variant.Segments]:
     retainedRequests(a, b, c, sa, sb, sc, probe, fixture)
   a.close()
   let reopened = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
@@ -563,6 +573,8 @@ proc main() {.raises.} =
   for variant in Variant.Three..Variant.DeliveryCloseForeign:
     scenario(variant, fixture, keyB, keyC)
     echo "runtime ", variant, " passed"
+  scenario(Variant.Segments, guaranteeFixture(keyA, keyB, keyC, exported = true), keyB, keyC)
+  echo "runtime Segments passed"
   let otherCore = StateValidator(ed25519: keyA)
   repeatedRuntime(guaranteeFixture(keyA, keyA, keyA, otherCore), keyB, keyC, 0)
   echo "runtime AllLocal passed"

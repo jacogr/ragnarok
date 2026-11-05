@@ -13,6 +13,8 @@ import ../state/availability/specifier
 import ../state/erasure/[layout, words]
 import ../state/bundle_erasure
 import ../state/auditable_bundle
+from "../state/export/commitment" import ExportSegmentIndex
+from ../pvm/host/fetch import FetchSegment
 import "../state/export/erasure" as export_erasure
 
 const MaxAvailabilityBundleBytes* = 13904950'u64 ## GP full-bundle ceiling also bounds untrusted availability geometry before native allocation.
@@ -352,6 +354,36 @@ proc guarantorTransfer*(owner: GuarantorAvailability,
     return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidIndex)
   AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
     completed: data.shards[int(uint64(shard))])
+proc guarantorSegment*(owner: GuarantorAvailability,
+    index: ExportSegmentIndex): AvailabilityTransferResult[FetchSegment] =
+  ## Join only original systematic shards for one final export; no original execution graph or parity recovery is needed.
+  let data = owner.data
+  if data == nil: return failed[FetchSegment](AvailabilityTransferError.Uninitialized)
+  let expected = data.info.specifier
+  if uint64(index) >= uint64(uint16(expected.segmentCount)):
+    return failed[FetchSegment](AvailabilityTransferError.InvalidIndex)
+  let geometry = erasureGeometry(expected.bundleLength, expected.erasureShards)
+  if geometry.error != ErasureLayoutError.None:
+    return AvailabilityTransferResult[FetchSegment](
+      status: AvailabilityTransferError.GeometryFailure,
+      geometryReason: geometry.error)
+  let info = geometry.value
+  if info.originalShards*info.segmentChunkBytes != 4104 or info.originalShards > uint64(
+      data.shards.len):
+    return failed[FetchSegment](AvailabilityTransferError.InvalidSpecifier)
+  let width = int(info.segmentChunkBytes) # Validated greatest-divisor geometry bounds width to 12..1368 and original count to 3..342.
+  let first = int(uint64(index))*width # Original export ordinal <=3071 proves this product fits native indexing.
+  var segment = default(array[4104, byte])
+  for ordinal in 0..<int(info.originalShards):
+    # The first R encoded words are systematic originals; proof-page rows follow final exports and cannot be selected by this API.
+    let transfer = data.shards[ordinal].data
+    if transfer == nil or first > transfer.segments.len:
+      return failed[FetchSegment](AvailabilityTransferError.InvalidPayload)
+    if width > transfer.segments.len-first:
+      return failed[FetchSegment](AvailabilityTransferError.InvalidPayload)
+    for position in 0..<width: segment[ordinal*width+position] = transfer.segments[first+position]
+  AvailabilityTransferResult[FetchSegment](status: AvailabilityTransferError.None,
+    completed: FetchSegment(segment))
 func validGuarantorLimits*(limits: AvailabilityMerkleLimits): bool =
   ## Shared explicit policy validation keeps startup capacity and complete snapshot capture on the same finite domain.
   uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 256'u64*1024*1024 and

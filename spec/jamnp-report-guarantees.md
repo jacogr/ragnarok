@@ -719,8 +719,44 @@ Pinned formatting, verification inventory, all 551 production modules and the pr
 build pass. The final closed work factories pass Linux-target semantic checking; this is not
 native Linux CI evidence. The existing generated C self-comparison warning is unchanged.
 
-The retained source currently serves CE137/147. CE148 still uses live original computation and
-must also gain retained multi-root serving before this feature closes. Strict optional startup
-configuration and final feature validation also remain. Assurer possession/signing, its long-lived
-retention obligations, audit/judgment lifecycles and audit recovery are separate outstanding parts
-of the full pinned JAMNP-S objective; this retention work does not claim them complete.
+### Retained original segments (CE148)
+
+CE148 now recovers final original segments from the retained systematic export shards. It uses the
+actual `erasureGeometry.originalShards` greatest-divisor rule, rather than assuming `N/3+1`, and
+excludes proof-page rows from the original-export index namespace. It needs no additional retained
+copy of the exports or original execution graph.
+
+`GuarantorSegmentTree` preflights complete tree storage/workspace and hash calls/preimages, uses
+the GP `leaf`/`node` domains and zero-hash padding, and verifies the computed root against the
+retained source's signed segment root before exposing any path. A complete CE148 batch can combine
+up to 64 retained sources and the current unsigned original. The managed worker validates every
+root/index and aggregate output/work budget before hashing, builds each distinct retained tree
+once, and preserves request order and duplicates. Missing/invalid entries refuse the whole batch.
+An unsigned current report does not hide older retained roots; both source families remain frozen
+through exact collection. Only detached complete E4 reply bytes leave the worker.
+
+`jamnp_segment_batches` passes independent original-source byte/path comparisons and GP import
+verification for one and 65 exports, six and 1023 validators, and the non-optimal 12-validator
+geometry. It covers mixed roots, duplicates, source retirement, exact tree and aggregate budgets,
+all 3072 requested segments, empty batches and whole-request refusal. Its expanded 1,000-cycle ARC
+check reports 4129088 occupied bytes both before and after.
+
+`jamnp_managed_work_signing` creates actual exporting packages and signatures, retires the signed
+session, then combines its retained root with a distinct unsigned report produced through genuine
+refinement/count normalization. Retiring the unsigned session while the read is Done preserves
+both source families until matching collection. Another 1,000 asynchronous read submissions,
+GP-verified completions and Done cancellations run alongside the existing signing cycles; the ARC
+check reports 229728 bytes unchanged. The ordinary runtime adds an exporting scenario with three
+actual peer credentials, session release and authenticated CE148 responses verified independently
+against the original GP root. All seventeen scenarios pass, including the existing CE137/147
+post-release reads.
+
+Pinned formatting, verification inventory, all 552 production modules and the production ARC/LTO
+build pass with this CE148 integration. The complete managed read factory passes Linux-target
+semantic checking; this is not native Linux CI evidence. The generated self-comparison warning
+is unchanged.
+
+Strict optional startup configuration and final feature validation remain. Assurer
+possession/signing, its long-lived retention obligations, audit/judgment lifecycles and audit
+recovery remain separate outstanding parts of the full pinned JAMNP-S objective; this retention
+work does not claim them complete.

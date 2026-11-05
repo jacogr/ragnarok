@@ -5,7 +5,7 @@
 ## Actual Services keeps private TLS signing keys frozen through exact CPU collection/cancellation and joined close.
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options]
-import ../../../src/app/proof/[worker, work_submission as work_jobs]
+import ../../../src/app/proof/[worker, network_read, work_submission as work_jobs]
 import ../../../src/jamnp-s/[work_signer, work_eligibility, work_submission, work_duty, work_stream,
     connections, node, read_stream, availability_read, availability_merkle, availability_proof]
 import ../../../src/codec/state/safrole
@@ -17,6 +17,8 @@ import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_re
     pvm_input_refinement, arc_evidence, jamnp_node_probe, jamnp_topology_fixture]
 
 import ../../support/jamnp_managed_work_context
+import ../../support/jamnp_segment_batch_fixture
+import ../../../src/state/availability/specifier
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield between scalar polls without reading any signer/source owner held by the CPU.
@@ -281,6 +283,69 @@ proc multiple(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
         assert completed.readValue.error == ReadError.None
         assert completed.readValue.value.bytes == expected.value.bytes
   assert services.retainedWorkBundles == 2
+proc segments(local: StateEdKey, cert, key: string) {.raises.} =
+  ## A real exporting signature remains queryable after retirement while a distinct unsigned report supplies another root in the same batch.
+  let fixture = guaranteeFixture(local, exported = true)
+  let next = guaranteeFixture(local, exported = true, declaredExports = 2)
+  let parent = fixture.view.parentOf(fixture.view.bestBlock.value.blockHash).value
+  let nextParent = next.view.parentOf(next.view.bestBlock.value.blockHash).value
+  assert array[32, byte](parent.stateRoot) == array[32, byte](nextParent.stateRoot)
+  writeFile("managed-segments-chain.json", workChainText(parent))
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
+      "managed-segments-chain.json"], settings)
+  var services = default(Services)
+  defer: services.close()
+  assert services.start(settings, "retained original segment batches")
+  let configured = services.configureWorkSigner(cert, key, local, guarantorStorageLimits())
+  assert configured.error == WorkSigningSetupError.None
+  var policy = guarantorReadLimits()
+  policy.computation.hashes = ElementLimit(1) # Only the retained one-export tree needs a fresh hash; the live original tree already exists.
+  policy.computation.hashBytes = ByteLimit(4108)
+  assert services.configureAvailabilityReads(policy)
+  assert services.publishFinalized(services.chainView.bestBlock.value.blockHash) ==
+      ViewFinalizeError.None
+  let raw = workFixture(exported = true)
+  discard services.retainedRoot(fixture, raw, cert, key)
+  let previous = fixture.transcript.computedGuaranteeReport.value.computedReportSource.value
+  let incoming = next.transcript.computedGuaranteeReport.value.computedReportSource.value
+  let a = previous.availabilityInfo.value.specifier
+  let b = incoming.availabilityInfo.value.specifier
+  assert uint16(a.segmentCount) == 1 and uint16(b.segmentCount) == 2
+  assert a.segmentRoot.bytes != b.segmentRoot.bytes
+  let header = services.networkHeader(next, raw, cert, key)
+  let token = services.reportSession(next, raw, header)
+  assert services.workSessionPhase(token) == WorkSessionPhase.ReportReady
+  assert services.retainedWorkBundles == 1
+  var payload = segmentGroup(ReadKind.Segments, a.segmentRoot.bytes, 0, [0'u16])
+  for octet in segmentGroup(ReadKind.Segments, b.segmentRoot.bytes, 0, [1'u16]): payload.add(octet)
+  for octet in segmentGroup(ReadKind.Segments, a.segmentRoot.bytes, 0, [0'u16]): payload.add(octet)
+  let request = decodeReadRequest(ReadKind.Segments, payload).value
+  let reading = services.beginNetworkRead(request)
+  assert reading.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert not services.stateProofAvailable and services.retainedWorkBundles == 1
+  assert services.retireWorkSubmission(token) # Retiring the live primary cannot release any alias held by this foreign Done read.
+  assert services.workSessionPhase(token) == WorkSessionPhase.Retired
+  block:
+    # Only exact read collection releases both live-original and retained-source aliases; independent original computation checks every ordered fragment.
+    let completed = services.collectStateProof(reading.value)
+    assert completed.kind == ProofWorkerCompletionKind.ReadCompleted
+    assert completed.readValue.error == ReadError.None
+    var data, proofs: seq[byte] = @[]
+    for ordinal in 0..<3:
+      let original = if ordinal == 1: incoming else: previous
+      let info = if ordinal == 1: b else: a
+      let row = if ordinal == 1: 1'u16 else: 0'u16
+      let single = decodeReadRequest(ReadKind.Segments, segmentGroup(ReadKind.Segments,
+          info.segmentRoot.bytes, 0, [row])).value
+      let parts = segmentMessages(serveOriginalSegmentBatch(original, single, guarantorReadLimits()).value.bytes)
+      verifyOriginalSegments(info, [row], parts)
+      for octet in parts[0]: data.add(octet)
+      for octet in parts[1]: proofs.add(octet)
+    assert segmentMessages(completed.readValue.value.bytes) == @[data, proofs]
+  assert services.reapWorkSubmission()
+  assert services.retainedWorkBundles == 1
 proc cycle(worker: var StateProofWorker, context: AuthorizedWorkContext, fixture: GuaranteeFixture,
     signer: WorkSigner, mode: int) =
   ## Shared worker ownership covers real success, Done cancellation and a late mismatched-private-key refusal.
@@ -312,6 +377,39 @@ proc cycle(worker: var StateProofWorker, context: AuthorizedWorkContext, fixture
     else:
       verifyContribution(outcome.signedContribution, expected, 21)
   assert worker.phase == ProofWorkerPhase.Idle
+proc readSource(local: StateEdKey, signer: WorkSigner): GuarantorAvailability =
+  ## Every temporary qualification/signature alias retires before the source-free archive is handed to the worker stress loop.
+  let fixture = guaranteeFixture(local, exported = true)
+  let qualified = fixture.qualify(guaranteeLimits())
+  assert qualified.error == WorkEligibilityError.None
+  let contributed = signer.signWorkContribution(qualified.value, guarantorLimits())
+  assert contributed.error == WorkSignerError.None
+  contributed.value.contributionAvailability.value
+proc readJob(source: GuarantorAvailability, request: ReadRequest): NetworkReadJob =
+  ## Array/admission temporaries leave this staging activation before submit transfers the only job owner to the worker.
+  let captured = captureOriginalSegments(default(AvailabilityCommitment), [source], request,
+      guarantorReadLimits())
+  assert captured.error == ReadError.None
+  captured.value
+proc readCycle(worker: var StateProofWorker, source: GuarantorAvailability, cancel: bool) =
+  ## Actual immutable archive/table/tree lifetimes survive handoff, foreign collection and Done cancellation without leaking across cycles.
+  let info = source.guarantorInfo.value.specifier
+  let request = decodeReadRequest(ReadKind.Segments, segmentGroup(ReadKind.Segments,
+      info.segmentRoot.bytes, 0, [0'u16, 0])).value
+  var job = readJob(source, request)
+  let admitted = worker.submit(job)
+  assert admitted.error == ProofWorkerError.None and not job.valid
+  worker.waitDone()
+  assert worker.collect(default(ProofWorkerTicket)).kind == ProofWorkerCompletionKind.Uninitialized
+  if cancel: assert worker.cancel(admitted.value)
+  let completed = worker.collect(admitted.value)
+  if cancel:
+    assert completed.kind == ProofWorkerCompletionKind.Cancelled
+  else:
+    assert completed.kind == ProofWorkerCompletionKind.ReadCompleted
+    assert completed.readValue.error == ReadError.None
+    verifyOriginalSegments(info, [0'u16, 0], segmentMessages(completed.readValue.value.bytes))
+  assert worker.phase == ProofWorkerPhase.Idle
 proc main() {.raises.} =
   ## Test-only TLS fixtures are read privately; no key material is printed or installed by mutable alias.
   let cert = getEnv("RAGNAROK_TEST_CERT")
@@ -324,6 +422,7 @@ proc main() {.raises.} =
   managed(fixture, cert, key)
   capacity(fixture, cert, key)
   multiple(fixture, cert, key)
+  segments(fixture.local, cert, key)
   let raw = workFixture()
   let admitted = captureWorkAuthorization(fixture.original, fixture.execution,
     fixture.view.bestBlock.value.chainParameters, raw.limits, executionLimits())
@@ -334,12 +433,15 @@ proc main() {.raises.} =
   defer: worker.close()
   assert worker.start()
   cycle(worker, authorized.context, fixture, signer.value, 0)
+  let archive = readSource(fixture.local, signer.value)
+  readCycle(worker, archive, false)
   let before = getOccupiedMem()
   for iteration in 0..<1000:
     # All source/key aliases remain untouched between submit and matching collection inside each cycle.
     let mode = iteration mod 3
     if mode == 2: cycle(worker, authorized.context, fixture, other.value, mode)
     else: cycle(worker, authorized.context, fixture, signer.value, mode)
+    readCycle(worker, archive, iteration mod 2 == 1)
   let after = getOccupiedMem()
   assert before == after, "managed signing releases private key/job/report aliases on every terminal path"
   recordArcRelease("jamnp_managed_work_signing", 1000, before, after)

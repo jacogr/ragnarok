@@ -65,6 +65,7 @@ import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, wo
 import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_distribution]
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot
+from ../state/availability/specifier import AvailabilityCommitment
 import ../jamnp-s/availability_proof
 from ../state/erasure/words import ErasureShardIndex
 from ../state/computed/report import ComputedReportInfo, computedReportInfo, computedReportSource, value
@@ -1988,9 +1989,26 @@ proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadE
   let captured = captureAvailabilityAudit(found.value, request, services.availabilityLimits)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
+proc stageOriginalSegments(services: var Services, request: ReadRequest): ReadError =
+  ## Retained report roots coexist with the current unsigned original; only worker-side bounded selection/hash work interprets the batch.
+  if not services.availabilityEnabled: return ReadError.Unavailable
+  var original = default(AvailabilityCommitment)
+  if services.workPhase == WorkSessionPhase.ReportReady or signedWorkPhase(services.workPhase):
+    var transcript = default(ComputedGuaranteeTranscript)
+    case services.workOutcome.kind
+    of WorkJobResultKind.Reported: transcript = services.workOutcome.reportTranscript
+    of WorkJobResultKind.Contributed: transcript = services.workOutcome.signedContribution.contributionTranscript.value
+    else: discard # A default/non-report session contributes no unsigned source authority.
+    let report = transcript.computedGuaranteeReport
+    if report.error == ComputedGuaranteeError.None: original = report.value.computedReportSource.value
+  let captured = captureOriginalSegments(original, services.guarantorStore.snapshot,
+    request, services.availabilityLimits)
+  if captured.error == ReadError.None: services.networkReadInput = captured.value
+  captured.error
 proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadError =
   ## Exact retained roots survive completed sessions and later signatures; staging aliases retire before CPU submission.
   if not services.availabilityEnabled: return ReadError.Unavailable
+  if request.valid and request.kind == ReadKind.Segments: return services.stageOriginalSegments(request)
   if request.availabilityRead:
     # Root lookup covers every non-evicted signed source before considering an unsigned/current best-effort source.
     var root = default(ErasureRoot)

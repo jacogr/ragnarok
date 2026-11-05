@@ -15,6 +15,7 @@ import ../../src/codec/state/authorization
 import ../../src/state/report/[policy, packages]
 import ../../src/state/computed/guarantee
 import ../../src/crypto/[primitives, guarantee as crypto_guarantee]
+from ../../src/codec/work/digest import ExportCount
 import ./[jamnp_work_fixture, jamnp_work_report_fixture, jamnp_topology_fixture,
   pvm_input_refinement, pvm_import_inputs, pvm_import_vectors]
 
@@ -117,7 +118,7 @@ proc source(fixture: WorkFixture, local, peer, third: StateEdKey,
   assert state.apply(writes).error == StateStoreError.None
   captured(seed, state.snapshot.value, seed.chainParameters)
 proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot,
-    authorizationSalt: byte): seq[byte] =
+    authorizationSalt: byte, declaredExports: uint64): seq[byte] =
   ## Re-encode every actual original item/commitment with the final context before authorization/body verification, never patch a completed report.
   let info = original.workPackageInfo.value
   var package = WorkPackage(host: info.host, codeHash: info.codeHash,
@@ -145,6 +146,9 @@ proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot,
     assert selected.copyItemPayload(item.payload).error == PackageError.None
     for ordinal in 0..<fields.imports: item.imports.add(selected.importAt(ordinal).value)
     for ordinal in 0..<fields.extrinsics: item.extrinsics.add(selected.extrinsicAt(ordinal).value)
+    if index == 0 and declaredExports > 0:
+      # Changing only the declared export quota preserves the authorizer/code/canonical source; genuine refinement performs its normal count checking.
+      item.exports = ExportCount(declaredExports)
     package.items.add(item)
   if authorizationSalt != 0:
     # The genuine authorizer accepts this opaque authorization input; a changed package/bundle leaves canonical state and code/configuration unchanged.
@@ -172,12 +176,13 @@ proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotR
   captured(seed.value, state.snapshot.value, parent.value.chainParameters)
 proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey), third = default(
     StateEdKey), recipient = default(StateValidator), additionalRecipient = default(
-        StateValidator), authorizationSalt: byte = 0): GuaranteeFixture =
+        StateValidator), authorizationSalt: byte = 0, exported = false,
+    declaredExports: uint64 = 0): GuaranteeFixture =
   ## Only genuine original-header authorization, complete imported inputs, PVM execution and availability composition yield the transcript.
-  let fixture = workFixture()
+  let fixture = workFixture(exported = exported)
   let parent = source(fixture, local, peer, third, recipient, additionalRecipient)
   assert parent.error == GenesisError.None, "guarantee parent"
-  let wire = anchoredPackage(fixture.input.package, parent.value, authorizationSalt)
+  let wire = anchoredPackage(fixture.input.package, parent.value, authorizationSalt, declaredExports)
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, fixture.first, wire,
       fullPackageConfig(ByteLimit(4096)))
   assert decoded.error == WorkSubmissionError.None, "guarantee header"

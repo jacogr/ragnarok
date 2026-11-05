@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original and retained guarantor CE137/147 sources produce detached exact-framed replies for managed CPU dispatch.
-import ./[availability_proof, availability_merkle, read_stream, segment_request]
+import ./[availability_proof, availability_merkle, guarantor_segments, read_stream, segment_request]
 import ../codec/natural
 import "../state/export/commitment" as export_commitment
 import ../codec/bounded
+from ../codec/work/report import SegmentRoot
 import ../state/availability/specifier
 import ../state/erasure/[layout, words]
 import ../state/bundle_erasure
@@ -300,6 +301,136 @@ proc serveOriginalSegmentBatch*(source: AvailabilityCommitment, request: ReadReq
     let prefix = encode(JamNatural(uint64(path.value.len)))
     for position in 0..<prefix.len: proofs.add(prefix.bytes[position])
     for sibling in path.value:
+      for octet in sibling.bytes: proofs.add(octet)
+  var wire: seq[byte] = @[]
+  appendMessage(wire, segments)
+  appendMessage(wire, proofs)
+  captureReadReply(request, wire)
+
+proc retainedSegmentSource(sources: openArray[GuarantorAvailability], root: array[32, byte]): int =
+  ## Root lookup touches only the bounded private source table; an absent/default source never supplies a root by default.
+  for index in 0..<sources.len:
+    let info = sources[index].guarantorInfo
+    if info.error == AvailabilityTransferError.None:
+      if info.value.specifier.segmentRoot.bytes == root: return index
+  -1
+proc serveRetainedSegmentBatch*(sources: openArray[GuarantorAvailability],
+    original: AvailabilityCommitment, request: ReadRequest,
+    limits: AvailabilityReadLimits): ReadResult[ReadReply] =
+  ## CE148 can combine retained roots and the current unsigned source without retaining any original session after its release.
+  if not request.valid or request.kind != ReadKind.Segments:
+    return readFailure[ReadReply](ReadError.InvalidRequest)
+  if not limits.valid or sources.len > 64: return readFailure[ReadReply](ReadError.LimitExceeded)
+  let maximum = min(uint64(limits.wireBytes), uint64(request.maximumReplyBytes))
+  let base = maximum*3+uint64(request.payloadLength)*2+uint64(request.itemCount)*64
+  if maximum < 8 or base > uint64(limits.computation.bytes):
+    return readFailure[ReadReply](ReadError.LimitExceeded)
+  let parsed = segmentSelections(SegmentRequestKind.Segments, request.payload)
+  if parsed.error != SegmentRequestError.None: return readFailure[ReadReply](
+      ReadError.InvalidRequest)
+  let selected = parsed.value
+  let live = original.availabilityInfo
+  var liveCount, liveDepth = 0
+  var liveRoot = default(array[32, byte])
+  let liveReady = live.error == AvailabilityCommitmentError.None
+  if liveReady:
+    # The optional current original source preserves best-effort unsigned serving without masking older retained roots.
+    liveCount = int(uint16(live.value.specifier.segmentCount))
+    if liveCount > 3072: return readFailure[ReadReply](ReadError.Unavailable)
+    liveRoot = live.value.specifier.segmentRoot.bytes
+    var capacity = 1
+    while capacity < liveCount:
+      capacity *= 2
+      inc liveDepth
+  var positions = newSeq[int](selected.len)
+  var plans = default(array[64, GuarantorSegmentInfo])
+  var needed = default(array[64, bool])
+  var trees = default(array[64, GuarantorSegmentTree])
+  var treeBytes, scratchBytes, hashCalls, hashBytes = 0'u64
+  var total = 8'u64
+  var needOriginal = false
+  let space = uint64(limits.computation.bytes)-base
+  for ordinal, item in selected:
+    # Validate every root/index and aggregate all unique tree work before any tree allocation or hash call.
+    var count, depth = 0
+    if liveReady and item.root == liveRoot:
+      positions[ordinal] = -1
+      count = liveCount
+      depth = liveDepth
+      needOriginal = true
+    else:
+      let index = retainedSegmentSource(sources, item.root)
+      if index < 0: return readFailure[ReadReply](ReadError.Unavailable)
+      positions[ordinal] = index
+      if not needed[index]:
+        let planned = sources[index].guarantorSegmentPlan
+        if planned.error != GuarantorSegmentError.None:
+          return readFailure[ReadReply](ReadError.Unavailable)
+        let plan = planned.value
+        if plan.retainedBytes > space-treeBytes:
+          return readFailure[ReadReply](ReadError.LimitExceeded)
+        if plan.hashes > uint64(limits.computation.hashes)-hashCalls:
+          return readFailure[ReadReply](ReadError.LimitExceeded)
+        if plan.hashBytes > uint64(limits.computation.hashBytes)-hashBytes:
+          return readFailure[ReadReply](ReadError.LimitExceeded)
+        treeBytes += plan.retainedBytes
+        scratchBytes = max(scratchBytes, plan.workspaceBytes)
+        hashCalls += plan.hashes
+        hashBytes += plan.hashBytes
+        plans[index] = plan
+        needed[index] = true
+      count = int(uint16(plans[index].exports))
+      depth = int(plans[index].depth)
+    if int(item.index) >= count: return readFailure[ReadReply](ReadError.InvalidRequest)
+    let bytes = 4105'u64+uint64(depth)*32 # Depth <=12 proves its canonical natural count occupies one byte.
+    if bytes > maximum-total: return readFailure[ReadReply](ReadError.LimitExceeded)
+    total += bytes
+  if scratchBytes > space-treeBytes: return readFailure[ReadReply](ReadError.LimitExceeded)
+  for index in 0..<sources.len:
+    if needed[index]:
+      # Every distinct source tree receives only its precharged complete work budget; duplicate selections reuse that same tree.
+      let plan = plans[index]
+      let budget = AvailabilityMerkleLimits(bytes: ByteLimit(
+          plan.retainedBytes+plan.workspaceBytes),
+        hashes: ElementLimit(plan.hashes), hashBytes: ByteLimit(plan.hashBytes))
+      let prepared = prepareGuarantorSegments(sources[index], budget)
+      if prepared.error != GuarantorSegmentError.None:
+        return readFailure[ReadReply](ReadError.Unavailable)
+      trees[index] = prepared.value
+  var commitment = default(ExportCommitment)
+  if needOriginal:
+    commitment = original.availabilitySource.value.exportErasureCommitment.value
+  var segments = newSeq[byte](selected.len*4104)
+  var proofs: seq[byte] = @[]
+  for ordinal, item in selected:
+    # Complete output stays private until all original bytes and paths are available; request ordering and duplicates are preserved exactly.
+    let index = ExportSegmentIndex(uint64(item.index))
+    var raw = default(array[4104, byte])
+    var path: seq[SegmentRoot] = @[]
+    if positions[ordinal] < 0:
+      let segment = commitment.commitmentSegment(index)
+      let selectedPath = commitment.commitmentPath(index)
+      if segment.error != ExportCommitmentError.None or selectedPath.error !=
+          ExportCommitmentError.None:
+        return readFailure[ReadReply](ReadError.Unavailable)
+      raw = array[4104, byte](segment.value)
+      path = selectedPath.value
+      if path.len != liveDepth: return readFailure[ReadReply](ReadError.Unavailable)
+    else:
+      let position = positions[ordinal]
+      let segment = sources[position].guarantorSegment(index)
+      let selectedPath = trees[position].guarantorSegmentPath(index)
+      if segment.error != AvailabilityTransferError.None or selectedPath.error !=
+          GuarantorSegmentError.None:
+        return readFailure[ReadReply](ReadError.Unavailable)
+      raw = array[4104, byte](segment.value)
+      path = selectedPath.value
+      if uint64(path.len) != plans[position].depth: return readFailure[ReadReply](
+          ReadError.Unavailable)
+    for position in 0..<4104: segments[ordinal*4104+position] = raw[position]
+    let prefix = encode(JamNatural(uint64(path.len)))
+    for position in 0..<prefix.len: proofs.add(prefix.bytes[position])
+    for sibling in path:
       for octet in sibling.bytes: proofs.add(octet)
   var wire: seq[byte] = @[]
   appendMessage(wire, segments)

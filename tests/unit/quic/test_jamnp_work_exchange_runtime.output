@@ -11,6 +11,7 @@ runtime DeliveryClose passed
 runtime DeliveryRefused passed
 runtime DeliveryConcurrent passed
 runtime DeliveryCloseForeign passed
+runtime Segments passed
 runtime AllLocal passed
 runtime TwoLocal passed
 runtime RepeatedPeer passed
