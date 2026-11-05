@@ -73,6 +73,9 @@ proc `=destroy`*(owner: AssuranceStore) =
 proc openDescriptor(path: cstring, flags: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## Non-creation opens use the SDK's actual variadic ABI.
+proc readDescriptor(descriptor: cint, buffer: pointer, length: csize_t): int {.importc: "read",
+    cdecl, header: "<unistd.h>", sideEffect.}
+  ## The public SDK preserves the native ssize_t ABI and exposes actual header reads to fault/short-read observation.
 proc synchronizeDescriptor(descriptor: cint): cint {.importc: "fsync", cdecl, header: "<unistd.h>".}
   ## Maintained OS file/directory synchronization has an explicit result, never implicit success.
 let noFollow {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
@@ -240,7 +243,7 @@ proc readHeader(path: string, chain: AssuranceChainId,
   var used = 0
   while used < header.len:
     # The fixed remaining extent bounds every native read and offset before indexing scratch.
-    let count = posix.read(descriptor, addr header[used], header.len-used)
+    let count = readDescriptor(descriptor, addr header[used], csize_t(header.len-used))
     if count <= 0 or count > header.len-used: return fileFailure[AssuranceRecordInfo](
         AtomicFileError.IoFailure)
     used += count
@@ -453,30 +456,41 @@ proc openAssuranceStore*(owner: var AssuranceStore, folder: string, chain: Assur
     limits: AssuranceStoreLimits, control = default(AssuranceScanControl)): AssuranceStoreResult[bool] =
   ## Existing storage must pass exact identity and complete bounded accounting before admission; missing identity is never recreated.
   owner.acquire(folder, chain, limits, false, control)
-proc loadPath(owner: var AssuranceStore, path: string, expected: AvailabilitySpecifier,
-    request: AvailabilityRequest): AssuranceStoreResult[StoredAssuranceShard] =
-  ## Full data re-verification and file/parent synchronization, not header accounting, grant a restored stored-data receipt.
+proc readRecord(owner: var AssuranceStore, path: string, expected: AvailabilitySpecifier,
+    request: AvailabilityRequest): AssuranceStoreResult[AssuranceRecord] =
+  ## Restore exact independently selected data without creating a durability receipt; a caller must synchronize or republish before granting stored possession.
+  let planned = availabilityVerificationInfo(expected, request)
+  if planned.error != AvailabilityTransferError.None: return refused[AssuranceRecord](
+      AssuranceStoreError.InvalidRequest)
+  let maximum = min(uint64(owner.limits.record.bytes), planned.value.payloadBytes+uint64(AssuranceRecordHeaderBytes))
   let stat = regular(path)
-  if stat.error != AssuranceStoreError.None: return propagated[StoredAssuranceShard, uint64](stat)
-  if stat.value > uint64(owner.limits.record.bytes): return refused[StoredAssuranceShard](
+  if stat.error != AssuranceStoreError.None: return propagated[AssuranceRecord, uint64](stat)
+  if stat.value > maximum: return refused[AssuranceRecord](
       AssuranceStoreError.LimitExceeded)
-  let file = readBoundedFile(path, owner.limits.record.bytes)
+  let file = readBoundedFile(path, ByteLimit(maximum))
   if file.error != AtomicFileError.None:
     owner.failed = true
-    return fileFailure[StoredAssuranceShard](file.error)
-  let decoded = decodeAssuranceRecord(file.value, owner.chain, owner.limits.record)
+    return fileFailure[AssuranceRecord](file.error)
+  let decoded = decodeAssuranceRecord(file.value, owner.chain, owner.limits.record, expected, request)
+  if decoded.error == AssuranceRecordError.ContextMismatch:
+    return refused[AssuranceRecord](AssuranceStoreError.Conflict)
   if decoded.error != AssuranceRecordError.None:
     owner.failed = true
-    return AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.RecordFailure,
+    return AssuranceStoreResult[AssuranceRecord](status: AssuranceStoreError.RecordFailure,
         recordReason: decoded)
-  if not decoded.value.recordMatches(expected, request): return refused[StoredAssuranceShard](
-      AssuranceStoreError.Conflict)
+  AssuranceStoreResult[AssuranceRecord](status: AssuranceStoreError.None, completed: decoded.value)
+proc loadPath(owner: var AssuranceStore, path: string, expected: AvailabilitySpecifier,
+    request: AvailabilityRequest): AssuranceStoreResult[StoredAssuranceShard] =
+  ## A verified record becomes a stored-data receipt only after actual file/parent synchronization.
+  let restored = owner.readRecord(path, expected, request)
+  if restored.error != AssuranceStoreError.None: return propagated[StoredAssuranceShard,
+      AssuranceRecord](restored)
   let confirmed = syncAtomicFile(path)
   if confirmed != AtomicFileError.None:
     owner.failed = true
     return fileFailure[StoredAssuranceShard](confirmed)
   AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.None,
-    completed: StoredAssuranceShard(ready: true, record: decoded.value))
+    completed: StoredAssuranceShard(ready: true, record: restored.value))
 proc loadAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceStoreResult[StoredAssuranceShard] =
   ## Only this live healthy namespace can grant a newly verified synchronized data receipt for exact independently selected metadata.
@@ -487,6 +501,37 @@ proc loadAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecif
       request.shard) >= count or count > 1023 or request.root.bytes != expected.erasureRoot.bytes:
     return refused[StoredAssuranceShard](AssuranceStoreError.InvalidRequest)
   owner.loadPath(owner.pathFor(expected, request.shard), expected, request)
+proc renewAssuranceShard*(owner: var AssuranceStore, expected: AvailabilitySpecifier,
+    request: AvailabilityRequest, now: AssuranceTime): AssuranceStoreResult[StoredAssuranceShard] =
+  ## Reverify original complete bytes and atomically extend a full promise before any assurance signature; no unverified record or pre-publication receipt escapes.
+  if not owner.ready: return refused[StoredAssuranceShard](AssuranceStoreError.Closed)
+  if owner.failed: return refused[StoredAssuranceShard](AssuranceStoreError.Faulted)
+  if uint64(now) < uint64(owner.observed) or uint64(now) > high(uint64)-AssuranceRetentionSeconds:
+    return refused[StoredAssuranceShard](AssuranceStoreError.InvalidTime)
+  if request.kind != AvailabilityTransferKind.Distribution or uint64(request.row) != 0 or
+      uint64(request.shard) >= uint64(uint16(expected.erasureShards)) or
+      uint64(uint16(expected.erasureShards)) > 1023 or
+      request.root.bytes != expected.erasureRoot.bytes:
+    return refused[StoredAssuranceShard](AssuranceStoreError.InvalidRequest)
+  let path = owner.pathFor(expected, request.shard)
+  let restored = owner.readRecord(path, expected, request)
+  if restored.error != AssuranceStoreError.None: return propagated[StoredAssuranceShard,
+      AssuranceRecord](restored)
+  let renewed = renewAssuranceRecord(restored.value, now, owner.limits.record)
+  if renewed.error != AssuranceRecordError.None:
+    return AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.RecordFailure,
+        recordReason: renewed)
+  let encoded = encodeAssuranceRecord(renewed.value, owner.limits.record)
+  if encoded.error != AssuranceRecordError.None:
+    return AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.EncodingFailure,
+        encodingReason: encoded)
+  let published = replaceAtomicFile(path, encoded.value, owner.limits.record.bytes)
+  if published != AtomicFileError.None:
+    if published == AtomicFileError.PublishedUnsynced: owner.failed = true # Visible uncertain renewal cannot support another signature until verified reopen.
+    return fileFailure[StoredAssuranceShard](published)
+  owner.observed = now
+  AssuranceStoreResult[StoredAssuranceShard](status: AssuranceStoreError.None,
+    completed: StoredAssuranceShard(ready: true, record: renewed.value))
 proc rememberAssuranceShard*(owner: var AssuranceStore, transfer: VerifiedAvailabilityTransfer,
     now: AssuranceTime): AssuranceStoreResult[StoredAssuranceShard] =
   ## Preserve old promises and refuse capacity before cloning/encoding; only successful file+directory sync publishes new counters and a receipt.

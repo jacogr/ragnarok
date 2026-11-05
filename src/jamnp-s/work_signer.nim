@@ -4,6 +4,10 @@
 ## Private immutable local signer ownership matches the configured TLS identity; no raw seed or arbitrary-message signing API escapes.
 import ./identity
 import ./availability_proof
+import ./[assurance_possession, assurance_store, assurance_record, assurance_duty]
+import ../chain/genesis
+import ../crypto/assurance_context
+import ../codec/assurances
 import ./[work_eligibility, work_duty]
 import ../codec/[guarantees, report_owned]
 import ../state/computed/guarantee
@@ -37,6 +41,85 @@ type
     of CryptoFailure: cryptoReason: CryptoError
     of RetentionFailure: retentionReason: AvailabilityTransferResult[GuarantorAvailability]
     else: discard # No partial private key survives a local refusal.
+type
+  AssuranceSigningError* {.pure.} = enum ## Failed signing exposes no reusable possession result, signature prefix or private-key alias.
+    Uninitialized, None, InvalidSigner, PossessionFailure, ContextFailure, CryptoFailure,
+      Cancelled, StaleSource, LimitExceeded
+  SignedAssuranceData = ref object ## Source-free immutable ownership retains only exact fresh-check facts and the one real Ed25519 signature.
+    info: AssurancePossessionInfo
+    signature: AssuranceSignature
+  SignedAssurance* = object ## Only fresh stored verification and private signing in this module constructs a complete assurance.
+    data: nil SignedAssuranceData
+  AssuranceSigningResult*[T] = object ## Every actual failed proof, transcript or signing primitive preserves its selected reason alone.
+    case status: AssuranceSigningError
+    of None: completed: T
+    of PossessionFailure: possessionReason: AssurancePossessionResult[AssurancePossessionInfo]
+    of ContextFailure: contextReason: AssuranceContextError
+    of CryptoFailure: cryptoReason: CryptoError
+    else: discard # Default/simple failure cannot expose an accepted signature or unrelated successful child.
+func error*[T](outcome: AssuranceSigningResult[T]): AssuranceSigningError =
+  ## Inspect the selected signing/refusal branch before any guarded extraction.
+  outcome.status
+func value*[T](outcome: AssuranceSigningResult[T]): T {.requires: outcome.status ==
+    AssuranceSigningError.None.} =
+  ## Only a fully completed signature or detached wire payload is accessible.
+  outcome.completed
+func possessionError*[T](outcome: AssuranceSigningResult[T]): AssurancePossessionResult[
+    AssurancePossessionInfo] {.requires: outcome.status ==
+    AssuranceSigningError.PossessionFailure.} =
+  ## Preserve complete source, aggregate-work and durability failures without a signed prefix.
+  outcome.possessionReason
+func contextError*[T](outcome: AssuranceSigningResult[
+    T]): AssuranceContextError {.requires: outcome.status ==
+    AssuranceSigningError.ContextFailure.} =
+  ## Retain the actual canonical fixed-bitfield transcript refusal.
+  outcome.contextReason
+func cryptoError*[T](outcome: AssuranceSigningResult[T]): CryptoError {.requires: outcome.status ==
+    AssuranceSigningError.CryptoFailure.} =
+  ## A failed maintained Ed25519 provider cannot become a default successful signature.
+  outcome.cryptoReason
+func assuranceSigningFailure*[T](reason: AssuranceSigningError): AssuranceSigningResult[
+    T] {.requires: reason notin {AssuranceSigningError.None,
+    AssuranceSigningError.PossessionFailure, AssuranceSigningError.ContextFailure,
+    AssuranceSigningError.CryptoFailure}.} =
+  ## Host publication gates may create only payload-free simple refusals, never a successful signature or fabricated child.
+  AssuranceSigningResult[T](status: reason)
+func valid*(assurance: SignedAssurance): bool =
+  ## A default handle grants no signature, source tag or wire prefix.
+  assurance.data != nil
+func sameAssurance*(left, right: SignedAssurance): bool =
+  ## Compare only actual private signature-owner identity; a retained old signature cannot become the newly authorized Services publication after restart.
+  left.data != nil and left.data == right.data
+proc assuranceInfo*(assurance: SignedAssurance): AssuranceSigningResult[AssurancePossessionInfo] =
+  ## Copy fixed source/bitfield facts without sharing any private signer or stored record graph.
+  let data = assurance.data
+  if data == nil: return default(AssuranceSigningResult[AssurancePossessionInfo])
+  AssuranceSigningResult[AssurancePossessionInfo](status: AssuranceSigningError.None,
+      completed: data.info)
+proc matches*(assurance: SignedAssurance, source: BlockSnapshotResult): bool =
+  ## A different complete posterior root revokes publication even when the sealed anchor header is unchanged.
+  let data = assurance.data
+  if data == nil or source.error != GenesisError.None: return false
+  array[32, byte](data.info.duty.anchor) == array[32, byte](source.value.blockHash) and
+    array[32, byte](data.info.duty.root) == array[32, byte](source.value.stateRoot)
+proc assuranceBytes*(assurance: SignedAssurance, source: BlockSnapshotResult,
+    maximum: ByteLimit): AssuranceSigningResult[seq[byte]] =
+  ## CE141 contains exactly anchor, fixed LSB-first bitfield and signature, with no validator ordinal; fresh source and whole extent precede copying.
+  let data = assurance.data
+  if data == nil: return default(AssuranceSigningResult[seq[byte]])
+  if not assurance.matches(source): return AssuranceSigningResult[seq[byte]](
+      status: AssuranceSigningError.StaleSource)
+  let width = int((uint64(data.info.duty.cores)+7) div 8)
+  let length = 32+width+64
+  if uint64(length) > uint64(maximum): return AssuranceSigningResult[seq[byte]](
+      status: AssuranceSigningError.LimitExceeded)
+  var wire = newSeq[byte](length)
+  let anchor = array[32, byte](data.info.duty.anchor)
+  for index in 0..<32: wire[index] = anchor[index] # Anchor precedes precisely the configured bitfield width.
+  for index in 0..<width: wire[32+index] = data.info.bits.bytes[index]
+  for index in 0..<64: wire[32+width+index] = data.signature.bytes[index]
+  AssuranceSigningResult[seq[byte]](status: AssuranceSigningError.None, completed: wire)
+
 func error*[T](outcome: WorkSignerResult[T]): WorkSignerError =
   ## Inspect a reason without permitting writable discriminator access.
   outcome.status
@@ -179,3 +262,34 @@ proc signWorkContribution*(signer: WorkSigner,
       available: retained.value,
       credential: GuaranteeCredential(validator: info.value.validator,
         signature: GuaranteeSignature(array[64, byte](signature.value))))))
+
+proc signStoredAssurance*(signer: WorkSigner, owner: var AssuranceStore,
+    source: BlockSnapshotResult, chain: AssuranceChainId, requested: AssuranceBits,
+    now: AssuranceTime, limits: AssurancePossessionLimits,
+    control = default(AssuranceScanControl)): AssuranceSigningResult[SignedAssurance] =
+  ## Execute within one fixed-owner/source/key lease: reverify and durably renew every selected local coordinate before the only private signature attempt.
+  let data = signer.data
+  if data == nil: return AssuranceSigningResult[SignedAssurance](
+      status: AssuranceSigningError.InvalidSigner)
+  let possessed = qualifyStoredAssurance(owner, source, chain, data.identity, requested, now,
+      limits, control)
+  if possessed.error != AssurancePossessionError.None:
+    return AssuranceSigningResult[SignedAssurance](status: AssuranceSigningError.PossessionFailure,
+        possessionReason: possessed)
+  if control.stopped: return AssuranceSigningResult[SignedAssurance](
+      status: AssuranceSigningError.Cancelled)
+  let info = possessed.value
+  let message = assuranceMessage(AssuranceParent(array[32, byte](info.duty.anchor)), info.bits,
+      info.duty.cores)
+  if message.error != AssuranceContextError.None:
+    return AssuranceSigningResult[SignedAssurance](status: AssuranceSigningError.ContextFailure,
+        contextReason: message.error)
+  if control.stopped: return AssuranceSigningResult[SignedAssurance](
+      status: AssuranceSigningError.Cancelled)
+  let signed = data.seed.sign(array[45, byte](message.value))
+  if signed.error != CryptoError.None:
+    return AssuranceSigningResult[SignedAssurance](status: AssuranceSigningError.CryptoFailure,
+        cryptoReason: signed.error)
+  AssuranceSigningResult[SignedAssurance](status: AssuranceSigningError.None,
+    completed: SignedAssurance(data: SignedAssuranceData(info: info,
+      signature: AssuranceSignature(bytes: array[64, byte](signed.value)))))

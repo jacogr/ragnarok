@@ -35,7 +35,7 @@ type
     data: nil RecordData
   AssuranceRecordError* {.pure.} = enum ## Failure/default alternatives contain no accepted record, metadata prefix or possession receipt.
     Uninitialized, None, InvalidSource, InvalidFormat, WrongChain, InvalidTime,
-    LimitExceeded, ChecksumMismatch, PlanFailure, TransferFailure, BackendFailure
+    LimitExceeded, ChecksumMismatch, PlanFailure, TransferFailure, BackendFailure, ContextMismatch
   AssuranceRecordResult*[T] = object ## Selected genuine planning, transfer and primitive failures remain distinguishable.
     case status: AssuranceRecordError
     of None: completed: T
@@ -177,14 +177,19 @@ proc renewAssuranceRecord*(record: AssuranceRecord, now: AssuranceTime,
   info.retainUntil = AssuranceTime(max(uint64(info.retainUntil), clock+AssuranceRetentionSeconds))
   AssuranceRecordResult[AssuranceRecord](status: AssuranceRecordError.None,
     completed: AssuranceRecord(data: RecordData(info: info, transfer: data.transfer)))
+func contextMatches(info: AssuranceRecordInfo, expected: AvailabilitySpecifier,
+    request: AvailabilityRequest): bool =
+  ## Canonical expected metadata and coordinate comparison grants no proof or durability authority by itself.
+  request.kind == AvailabilityTransferKind.Distribution and uint64(request.row) == 0 and
+    request.root.bytes == expected.erasureRoot.bytes and uint64(request.shard) == uint64(
+        info.shard) and
+    sameSpecifier(info.specifier, expected)
 proc recordMatches*(record: AssuranceRecord, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): bool =
-  ## A self-rooted persisted proof cannot replace independently canonical package/geometry metadata or the exact assigned coordinate.
+  ## A self-rooted persisted proof cannot replace independently canonical metadata or the exact assigned coordinate.
   let data = record.data
-  if data == nil or request.kind != AvailabilityTransferKind.Distribution or uint64(request.row) !=
-      0: return false
-  request.root.bytes == expected.erasureRoot.bytes and uint64(request.shard) == uint64(
-      data.info.shard) and sameSpecifier(data.info.specifier, expected)
+  if data == nil: return false
+  contextMatches(data.info, expected, request)
 proc encodeAssuranceRecord*(record: AssuranceRecord,
     limits: AssuranceRecordLimits): AssuranceRecordResult[seq[byte]] =
   ## Encode exact metadata and authenticated payloads only after complete size/work preflight; no partially encoded record escapes.
@@ -303,8 +308,9 @@ proc verifyPayload(wire: openArray[byte], info: AssuranceRecordInfo,
   verifyAvailabilityTransfer(info.specifier, request,
     wire.toOpenArray(AssuranceRecordHeaderBytes, bundleEnd-1),
     wire.toOpenArray(bundleEnd, segmentEnd-1), wire.toOpenArray(segmentEnd, wire.len-1), limits)
-proc decodeAssuranceRecord*(wire: openArray[byte], chain: AssuranceChainId,
-    limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecord] =
+proc decodeRecord(wire: openArray[byte], chain: AssuranceChainId,
+    limits: AssuranceRecordLimits, bindExpected: bool, expected: AvailabilitySpecifier,
+    request: AvailabilityRequest): AssuranceRecordResult[AssuranceRecord] =
   ## Complete exact EOF, fixed metadata, aggregate work and all CE137 proof checks precede a restored record owner.
   if not limits.valid or uint64(wire.len) > uint64(limits.bytes): return refused[AssuranceRecord](
       AssuranceRecordError.LimitExceeded)
@@ -322,11 +328,22 @@ proc decodeAssuranceRecord*(wire: openArray[byte], chain: AssuranceChainId,
       AssuranceRecordError.LimitExceeded)
   let checksum = verifyMetadata(wire)
   if checksum.error != AssuranceRecordError.None: return propagated[AssuranceRecord, bool](checksum)
+  if bindExpected and not contextMatches(info, expected, request):
+    return refused[AssuranceRecord](AssuranceRecordError.ContextMismatch)
   let verified = verifyPayload(wire, info, limits.verification)
   if verified.error != AvailabilityTransferError.None: return AssuranceRecordResult[
       AssuranceRecord](status: AssuranceRecordError.TransferFailure, transferReason: verified)
   AssuranceRecordResult[AssuranceRecord](status: AssuranceRecordError.None,
     completed: AssuranceRecord(data: RecordData(info: info, transfer: verified.value)))
+proc decodeAssuranceRecord*(wire: openArray[byte], chain: AssuranceChainId,
+    limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecord] =
+  ## General restore verifies the complete self-described record; canonical callers must independently bind context before granting current possession.
+  decodeRecord(wire, chain, limits, false, default(AvailabilitySpecifier), default(AvailabilityRequest))
+proc decodeAssuranceRecord*(wire: openArray[byte], chain: AssuranceChainId,
+    limits: AssuranceRecordLimits, expected: AvailabilitySpecifier,
+    request: AvailabilityRequest): AssuranceRecordResult[AssuranceRecord] =
+  ## After bounded metadata checksum, reject differing canonical fields before any self-described payload proof work can exceed the caller's expected plan.
+  decodeRecord(wire, chain, limits, true, expected, request)
 proc recordTransfer*(record: AssuranceRecord, maximum: ByteLimit): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] =
   ## Return a detached verified copy for later serving without exposing the persistence owner's ARC graph to another worker lifetime.

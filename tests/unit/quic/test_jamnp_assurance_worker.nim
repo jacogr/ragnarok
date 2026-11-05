@@ -154,12 +154,15 @@ proc main() {.raises.} =
   assert ioCalls(readIo) < 1023'u64*206 and not owner.opened, "cancelled existing namespace remains closed without reading the whole archive"
   resetIo()
   assert foreign.collect(foreignTicket).kind == ProofWorkerCompletionKind.AssuranceCompleted, "foreign failure retires independently"
+  limitReads(1) # An uncancelled scan must exercise the same observed one-byte read loop.
   opening = staged(owner, folder, AssuranceStorageMode.Open)
   let done = worker.submit(opening).value
   worker.waitDone()
   assert worker.cancel(done), "Done cancellation remains supported"
   assert worker.collect(done).kind == ProofWorkerCompletionKind.Cancelled, "Done result hidden"
   assert owner.opened, "cancellation cannot undo completed filesystem ownership; caller retires only after collection"
+  assert ioCalls(readIo) >= 1023'u64*206, "complete scan observes every fixed header byte under short reads"
+  resetIo()
   assert owner.close().error == AssuranceStoreError.None, "retire completed cancelled owner"
   active(worker, owner, folder, false)
   active(worker, owner, folder, true)

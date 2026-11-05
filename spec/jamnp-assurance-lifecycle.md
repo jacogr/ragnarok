@@ -328,3 +328,99 @@ unpublished until those remaining runtime requirements are implemented and verif
 Final formatting (2419 Nim files plus Rust) and source-owned verification inventory (1072 native
 suites) pass for this acquisition increment. Supporting source, tests and evidence remain in the
 same unpublished assurance feature layer.
+
+
+## Fresh stored-possession signing work
+
+The signing operation will select only requested canonical pending cores and verify every original
+local roster position for each selected core. Missing or metadata-conflicting data clears that
+core; hard I/O, verification, resource or durability failure refuses the whole signature. Whole
+selected read/write/hash work and maximum per-record workspace must be precharged before the
+first record hash. Stored renewal will restore exact data without granting an early receipt,
+then atomically extend the full 28-day promise before a private signature is attempted. The
+private TLS-matched signer will invoke this check directly in the same managed operation; no
+caller-supplied reusable possession flag or arbitrary signing message will be accepted. Expected
+coverage includes partial/all-local possession, repeated keys, source changes, real sync refusal,
+whole-work deficits before hashing/signing, exact GP transcript/CE141 bytes and cancellation/join.
+
+
+Fresh stored-possession signing is now implemented. `qualifyStoredAssurance` preflights every
+selected core and original local index, including aggregate read/write bytes, actual proof and
+metadata hash work, final transcript hash and maximum per-record workspace. Only one record
+graph is resident at a time. Missing or metadata-conflicting coordinates clear that entire core;
+other fully possessed selected cores remain eligible. Hard storage, verification, resource or
+renewal failure refuses the whole signature with its actual selected child reason. Every complete
+core requires independently verified and durably renewed bundle/export/proof data for all original
+positions sharing the local TLS identity.
+
+`renewAssuranceShard` restores a verified record without constructing an early stored-data receipt.
+It atomically republishes the complete record with a monotonic promise of at least 28 days from
+the supplied GP Common Era time. Actual file and directory synchronization precede the receipt.
+A prepublication refusal preserves the old usable promise; visible uncertain renewal faults the
+namespace until verified reopen. Ordinary existing restore still synchronizes before granting a
+receipt. This separates proof verification from the persistence capability without retaining an
+archive-sized in-memory index or payload cache.
+
+The existing private TLS-matched `WorkSigner` performs fresh qualification directly in the same
+closed native operation before its sole assurance signature attempt. It accepts a requested core
+selection, never a caller-provided possession flag or arbitrary signing message. The signature
+uses the established `jam_available || Blake2b256(anchor || fixed_bits)` constructor. Its opaque
+source-free result retains only copied duty/bit facts and the real signature; it retains neither
+private key nor stored payload graphs. CE141 encoding checks the current anchor and full posterior
+root and emits exactly 32 anchor bytes, ceil(C/8) LSB-first bytes and 64 signature bytes, without
+an ordinal. A changed complete map revokes encoding even with an identical sealed header.
+
+Services explicitly imports a separate private assurance signer only after archive setup and
+checks it against the actual bound TLS public identity. Ordinary startup still enables neither
+archive nor signer. The shared worker freezes source/key/archive aliases through Queued, Running,
+Done, cancellation and joined close. Every signing collection refreshes actual archive accounting
+and faults, including already completed cancelled renewals. Only its latest uncancelled collected
+signature may pass the Services publication gate. Beginning another signing turn, cancellation or
+Services close revokes that publication owner. The signature cache holds no key alias, and an old
+result cannot revive after restart even when the new signature's deterministic wire bytes, key,
+anchor and map are identical. A future network actor must use this gate before sending.
+
+The native signing suite uses genuinely computed/admitted/published pending reports and an actual
+TLS certificate/private key for the original roster's known test seed. Independent literal
+transcript construction and maintained Ed25519 verification check the exact 97-byte three-core
+CE141 body. Observed real signature-attempt counts prove zero attempts for missing shards,
+invalid high bits, aggregate deficits, incomplete repeated-key possession and failed sync barriers;
+complete success attempts exactly one signature. The test observer's copied attempt counter is
+atomic, while fault controls retain their existing quiescent test contract.
+
+A separately labelled independently trusted structural roster variant gives the same real local
+key two original positions while preserving the sealed header. It requires both assigned shard
+proofs and renewals before signing and proves full-root publication revocation; this variant alone
+is not evidence of GP admission. Real data-sync/directory-sync refusal, verified restart, actual
+signing-provider failure, foreign/stale collection, Done cancellation, joined cleanup and Services
+restart revocation also pass. In particular, identical deterministic wire bytes do not replace
+this Services lifetime's actual latest collected signature owner.
+
+Both selected native and checked ARC/Clang thinLTO signing runs pass 1000 complete proof/renewal/
+signature/collection cycles with 93488 occupied bytes unchanged. The existing Services aggregate
+copy guard rejects exact duplication at ARC lowering. Existing archive, acquisition, assurance
+startup worker/Services, proof worker/Services and managed guarantee-signing suites pass after
+the renewal/refcount changes. All 562 production modules and the actual entry point compile.
+These are local macOS results, not native Linux CI or completion of live CE137/141 transport,
+peer validation, pool/inclusion behavior, slot/epoch timing or optional foreground activation.
+
+The final read-budget audit found that a record's own declared extent could exceed the smaller
+canonical expected extent. Store restoration now derives its read ceiling from the independently
+expected descriptor and request before reading payload bytes. A regular file larger than that
+ceiling refuses before the first payload read. After the metadata checksum, restoration compares
+all six descriptor fields and the exact shard request before performing any payload proof hashes.
+A checksummed descriptor conflict is unavailable possession, rather than permission to verify an
+unrelated record. The aggregate signing I/O budget includes the bounded reader's one-byte EOF
+probe in addition to its complete read and atomic renewal write.
+
+These regressions observe actual public SDK `read` calls. The pinned stdlib's assembler alias
+bypassed the existing C test redirection, so a zero counter previously could not establish zero
+reads. The bounded file reader and namespace header reader now bind the maintained public SDK
+symbol with its declared ABI. An uncancelled 1023-record startup under one-byte short reads must
+observe at least every one of the 206 fixed header bytes per record; the same instrumented path
+then proves cancellation stops before a whole scan. The signing test independently reproduces
+an oversized archive refusal before any payload read, and a same-size checksummed canonical
+metadata conflict after only its metadata hash and before any payload proof or Ed25519 attempt.
+The original record is restored before reporting the corruption-test result. These checks use
+real filesystem I/O and production restoration; no replacement protocol or storage path supplies
+the verdict.

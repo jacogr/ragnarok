@@ -1,0 +1,27 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "includes": [
+    "crypto",
+    "bandersnatch",
+    "quic",
+    "storage_io"
+  ],
+  "libraries": [
+    "bandersnatch_observer",
+    "bandersnatch",
+    "observer",
+    "quic",
+    "storage_io"
+  ],
+  "observers": [
+    "verify",
+    "setup_new",
+    "setup_free",
+    "commit",
+    "ring_verify",
+    "io_fsync",
+    "io_read"
+  ],
+  "prepared": false
+}
