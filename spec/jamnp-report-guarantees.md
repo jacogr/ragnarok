@@ -173,3 +173,42 @@ versioned startup activation remain required before this feature group is ready 
 
 Final managed-signing verification also passes production build, formatting/inventory and Linux-target
 semantic checking of the closed contribution job and its dependencies. This is not native Linux CI.
+
+
+## Same-core sharing receiver
+
+The CE134 receiver now has a dedicated, default-disabled native route. It admits only actual
+local/peer validators, bounds the two E4 messages, requires exact request FIN, and returns only
+one E4-framed96-byte report-hash/signature response. Native callbacks copy bounded raw bytes;
+they never inspect canonical state, sign, or run guest computation. Physical stream and global
+input/reply credit remain charged through native retirement.
+
+A distinct Services sharing namespace leases the same managed CPU without replacing a waiting
+builder session. Capture detaches raw request ownership before admission. Both authenticated
+identities must have the requested current-core duty; the declared shard count must be acceptable
+for the original anchor window. Complete bundle proof validation, original package authorization,
+refinement, report preparation, fresh-source eligibility and private TLS-key signing all occur on
+that single lease. Failed/cancelled collection yields no response signature. The most recent
+successful shared contribution retains its original bundle for CE147 after primary retirement;
+this bounded cache does not establish an assurance-retention promise.
+
+The new native sharing suite passes real TLS requests, withheld FIN, suffixes,
+truncation, unknown peers, wrong cores, unacceptable shard counts, invalid mappings/proofs,
+Done cancellation, primary-session isolation and post-primary CE147 readback. Outgoing CE134,
+unique peer contribution assembly, third-guarantor grace, CE135 and normal startup integration
+remain outstanding. No full sharing or full JAMNP-S completion verdict is claimed yet.
+
+Upload framing also uses the pinned GP auditable-bundle ceiling,13,904,950 bytes, rather than the
+previous200 KiB cap. GP work_packages_and_reports.tex input/bundle limits permit larger payloads;
+explicit local package/input/execution policy and global transport credit still apply. A decoder
+regression uses a valid262,144-byte payload, plus explicit local-limit and protocol-limit refusals.
+
+
+Receiver verification: genuine success/proof-refusal computation cycles retain215808 bytes before
+and after1000 repetitions. Upload decoding and real CE133/146 TLS header tests accept valid
+262,144-byte payloads; the latter preserve complete header ownership while body admission remains
+paused. Existing network dispatcher and managed signing suites pass. Upload, staged transport and
+managed signing ARC cycles retain921088,21712 and174096 bytes respectively, unchanged before/after.
+Actual Services ARC lowering still rejects duplication. Linux-target worker and native-node
+semantic checks pass; this is not native Linux CI. The earlier new upload regression lacked a
+required direct Gas import; that test-only compile failure is corrected and the suite passes.

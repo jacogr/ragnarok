@@ -68,9 +68,9 @@ proc captured(source: BlockSnapshot, state: StateStoreSnapshot,
   var wire = newSeq[byte](source.header.headerInfo.value.consumed)
   assert source.header.encodeOwnedHeader(wire).error == HeaderError.None
   captureBlockSnapshot(wire, state, parameters)
-proc source(fixture: WorkFixture, local: StateEdKey): BlockSnapshotResult =
+proc source(fixture: WorkFixture, local, peer: StateEdKey): BlockSnapshotResult =
   ## Populate all report-policy and pipeline chapters before binding the package anchor to this complete state root.
-  let seed = fixture.workSnapshot(local)
+  let seed = fixture.workSnapshot(local, peer)
   let config = guaranteeLimits()
   var state = forkStateStore(seed.stateSnapshot).value
   var writes: seq[StateWrite] = @[]
@@ -125,10 +125,11 @@ proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot): seq[byt
   assert encoded.error == PackageError.None
   wire.setLen(encoded.value)
   wire
-proc child(parent: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResult =
+proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotResult =
   ## The actual child header commits the parent's complete root and advances the canonical clock; execution still retains the parent.
   var current = topologyRecords(0, 6)
   current[1].ed25519 = local
+  if array[32, byte](peer) != default(array[32, byte]): current[2].ed25519 = peer
   let seed = topologyCaptured([topologyRecords(0, 6), current, topologyRecords(1, 6)], cores = 2,
       atSlot = 21, parent = parent)
   assert seed.error == GenesisError.None
@@ -140,10 +141,10 @@ proc child(parent: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResult 
     StateWrite(kind: StateWriteKind.Put, key: time.key, value: time.value)]).error ==
         StateStoreError.None
   captured(seed.value, state.snapshot.value, parent.value.chainParameters)
-proc guaranteeFixture*(local: StateEdKey): GuaranteeFixture =
+proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey)): GuaranteeFixture =
   ## Only genuine original-header authorization, complete imported inputs, PVM execution and availability composition yield the transcript.
   let fixture = workFixture()
-  let parent = source(fixture, local)
+  let parent = source(fixture, local, peer)
   assert parent.error == GenesisError.None, "guarantee parent"
   let wire = anchoredPackage(fixture.input.package, parent.value)
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, fixture.first, wire,
@@ -160,7 +161,7 @@ proc guaranteeFixture*(local: StateEdKey): GuaranteeFixture =
   assert executed.error == InputRefinementError.None, "guarantee execution: " & $executed.error
   let computed = prepareWorkReport(executed.value, ErasureShards(6), workReportLimits())
   assert computed.error == WorkReportError.None, "guarantee report: " & $computed.error
-  let next = child(parent, local)
+  let next = child(parent, local, peer)
   assert next.error == GenesisError.None, "guarantee child"
   let view = advanceView(genesisView(parent), next)
   assert view.error == ViewAdvanceError.None, "guarantee view: " & $view.error

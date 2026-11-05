@@ -13,10 +13,11 @@ that successful private grant. It authenticates every extrinsic and imported seg
 original package ownership and import order. The result is the existing `VerifiedImportInputs`
 owner consumed by refinement; it is not a guaranteed report or canonical adoption certificate.
 
-CE133's first payload is E2 core followed by the package, capped at 204802 bytes. CE146's first
+CE133's first payload is E2 core followed by the package, capped at the GP encoded-bundle ceiling
+plus two bytes. CE146's first
 payload is E2 core followed by a canonical natural mapping count and strictly ordered unique
-32-byte package/32-byte segment-root pairs; its second payload is the package, capped at 204800
-bytes. A package must consume its entire message. Dictionary keys must exactly match package
+32-byte package/32-byte segment-root pairs; its second payload is the package, bounded by the same GP encoded-bundle ceiling and the
+caller's explicit package-byte policy. A package must consume its entire message. Dictionary keys must exactly match package
 import references, with the existing total dependency limit of eight.
 
 A grant retains its original immutable complete state and successful authorization. Native callbacks
@@ -54,3 +55,10 @@ One thousand success/late-proof-failure cycles retained 748784 bytes before and 
 The first runner attempt exposed a test evidence filename mismatch; the test used the suite
 identity for `recordArcRelease` and the corrected supported invocation passed. Inventory and
 format checks passed. These are local results, not an exact-head Linux CI claim.
+
+The earlier200KiB package ceiling was an implementation restriction, not the pinned GP input rule.
+Target work_packages_and_reports.tex107..126 permits payloads up to the aggregate13,791,360-byte input
+footprint and bounds the entire encoded bundle by13,904,950 bytes. Upload framing now uses that
+existing codec ceiling; the package decoder still checks all footprint/gas/item constraints and
+callers may impose smaller explicit resource limits. Global/per-peer physical quotas and the
+authorization pause before reading body messages remain in force.

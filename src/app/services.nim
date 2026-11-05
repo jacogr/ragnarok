@@ -61,14 +61,15 @@ import ../jamnp-s/work_recovery
 from ../codec/state/safrole import StateValidatorIndex
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
-import ../jamnp-s/[work_signer, work_eligibility]
+import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire]
 import ../jamnp-s/[availability_read, availability_store]
 from ../jamnp-s/availability_proof import VerifiedAvailabilityTransfer, AvailabilityRequest, AvailabilityTransferKind
 from ../state/erasure/words import ErasureShardIndex
 from ../state/computed/report import ComputedReportInfo, computedReportInfo, computedReportSource, value
-from ../state/computed/guarantee import ComputedGuaranteeTranscript, computedGuaranteeReport, value
+from ../state/computed/guarantee import ComputedGuaranteeTranscript, ComputedGuaranteeError,
+    computedGuaranteeReport, error, value
 from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid, activeAt, shardCount
-from ../codec/work/package import PackageConfig
+from ../codec/work/package import PackageConfig, MaxBundleBytes
 from ../codec/work/digest import Gas
 import ../state/input_refinement
 import "../state/import/justification" as work_imports
@@ -236,6 +237,56 @@ func signerError*(outcome: WorkSigningSetupResult): WorkSignerResult[
   ## Inspect only the genuine failed loader result, whose success payload is inaccessible.
   outcome.reason
 
+type
+  WorkSharingToken* = object ## Host-only namespace cannot be used to collect the primary builder's CPU ticket.
+    owner: nil WorkSessionIdentity
+    generation: uint64
+  WorkSharingStart* = object ## Only accepted admission exposes a distinct sharing control token.
+    case status: StateProofAdmissionError
+    of None: token: WorkSharingToken
+    of QueryFailure: captureReason: WorkJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard            # Busy/closed/source refusals contain no request or collection authority.
+  WorkSharingCompletionKind* {.pure.} = enum ## Missing, cancelled and failed work never expose a response signature.
+    Uninitialized, Completed, Cancelled, Refused, InvalidResult
+  WorkSharingCompletion* = object ## Only complete genuine signing has response bytes; failures preserve their actual receiver cause.
+    case status: WorkSharingCompletionKind
+    of Completed:
+      response: array[SharingResponseBytes, byte]
+      info: WorkEligibilityInfo
+    of Refused: reason: WorkSharingResult[SignedWorkContribution]
+    else: discard # No partial result or source-bearing owner escapes.
+func error*(outcome: WorkSharingStart): StateProofAdmissionError =
+  ## Inspect admission before extracting any token.
+  outcome.status
+func value*(outcome: WorkSharingStart): WorkSharingToken {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Tokens control only this Services namespace and admission generation.
+  outcome.token
+func captureError*(outcome: WorkSharingStart): WorkJobError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Preserve actual independent-wire/view capture refusal.
+  outcome.captureReason
+func workerError*(outcome: WorkSharingStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## Expose the actual shared CPU admission failure.
+  outcome.workerReason
+func kind*(outcome: WorkSharingCompletion): WorkSharingCompletionKind =
+  ## Fixed status observations grant no graph or signing authority.
+  outcome.status
+func response*(outcome: WorkSharingCompletion): array[SharingResponseBytes,
+    byte] {.requires: outcome.status == WorkSharingCompletionKind.Completed.} =
+  ## Copy only the complete hash/signature wire payload of an actual received package computation.
+  outcome.response
+func sharingInfo*(outcome: WorkSharingCompletion): WorkEligibilityInfo {.requires: outcome.status ==
+    WorkSharingCompletionKind.Completed.} =
+  ## Detached original source/credential facts do not carry a signer alias.
+  outcome.info
+func sharingError*(outcome: WorkSharingCompletion): WorkSharingResult[
+    SignedWorkContribution] {.requires: outcome.status == WorkSharingCompletionKind.Refused.} =
+  ## Refusal has only the genuine failed worker result, never a completed contribution prefix.
+  outcome.reason
+
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   light: light_actor.LightRuntime
   rpc*: Server
@@ -261,6 +312,12 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   ticketInput: TicketVerificationJob
   productionInput: TicketProductionJob
   workInput: WorkSubmissionJob
+  sharingInput: WorkSubmissionJob
+  sharingIdentity: nil WorkSessionIdentity
+  sharingGeneration: uint64
+  sharingActive: bool
+  sharingTicket: ProofWorkerTicket
+  sharedContribution: SignedWorkContribution
   workContext: AuthorizedWorkContext
   workRecovery: WorkRecovery
   workRecoveryInfo: WorkRecoveryInfo
@@ -350,6 +407,12 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.verificationInput)
   `=wasMoved`(services.ticketInput)
   `=wasMoved`(services.productionInput)
+  `=wasMoved`(services.sharingInput)
+  `=wasMoved`(services.sharingIdentity)
+  `=wasMoved`(services.sharingTicket)
+  `=wasMoved`(services.sharedContribution)
+  services.sharingGeneration = 0
+  services.sharingActive = false
   `=wasMoved`(services.workInput)
   `=wasMoved`(services.workContext)
   `=wasMoved`(services.workRecovery)
@@ -415,6 +478,10 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.verificationInput)
   `=destroy`(services.ticketInput)
   `=destroy`(services.productionInput)
+  `=destroy`(services.sharingInput)
+  `=destroy`(services.sharingIdentity)
+  `=destroy`(services.sharingTicket)
+  `=destroy`(services.sharedContribution)
   `=destroy`(services.workInput)
   `=destroy`(services.workContext)
   `=destroy`(services.workRecovery)
@@ -685,10 +752,16 @@ proc close*(services: var Services) =
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical, signer or listener alias.
+  services.sharedContribution = default(SignedWorkContribution)
+  services.sharingIdentity = nil
+  services.sharingGeneration = 0
   services.workSigner = default(WorkSigner)
   services.workSignerReady = false
   services.workSignerIdentity = default(StateEdKey)
   services.workContributionInfo = default(WorkEligibilityInfo)
+  services.sharingInput = default(WorkSubmissionJob)
+  services.sharingTicket = default(ProofWorkerTicket)
+  services.sharingActive = false
   services.workInput = default(WorkSubmissionJob)
   services.workContext = default(AuthorizedWorkContext)
   services.workRecovery = default(WorkRecovery)
@@ -1757,25 +1830,37 @@ proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadE
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
 proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadError =
-  ## Only this retained completed report supplies provenance; all source aliases retire before CPU submission.
-  if not services.availabilityEnabled or services.workPhase notin {WorkSessionPhase.ReportReady,
-      WorkSessionPhase.Contributed}:
-    return ReadError.Unavailable
-  var transcript = default(ComputedGuaranteeTranscript)
-  case services.workOutcome.kind
-  of WorkJobResultKind.Reported:
-    # Unsigned computed reports retain their original source until explicit retirement.
-    transcript = services.workOutcome.reportTranscript
-  of WorkJobResultKind.Contributed:
-    # Signing preserves the same availability source; contribution collection must not make its bundle unavailable.
-    transcript = services.workOutcome.signedContribution.contributionTranscript.value
-  else:
-    return ReadError.Unavailable # A failed/default session never supplies a report source.
-  let report = transcript.computedGuaranteeReport.value
-  let captured = captureAvailabilityRead(report.computedReportSource.value, request,
-      services.availabilityLimits)
-  if captured.error == ReadError.None: services.networkReadInput = captured.value
-  captured.error
+  ## Primary and most-recent shared reports retain exact independent availability provenance; staging aliases retire before submission.
+  if not services.availabilityEnabled: return ReadError.Unavailable
+  var reason = ReadError.Unavailable
+  if services.workPhase in {WorkSessionPhase.ReportReady, WorkSessionPhase.Contributed}:
+    var transcript = default(ComputedGuaranteeTranscript)
+    case services.workOutcome.kind
+    of WorkJobResultKind.Reported:
+      # Primary unsigned reports keep their original source until explicit retirement.
+      transcript = services.workOutcome.reportTranscript
+    of WorkJobResultKind.Contributed:
+      # Local signing preserves the same original availability source.
+      transcript = services.workOutcome.signedContribution.contributionTranscript.value
+    else:
+      discard # An inconsistent/default outcome cannot provide a source.
+    let report = transcript.computedGuaranteeReport
+    if report.error == ComputedGuaranteeError.None:
+      let captured = captureAvailabilityRead(report.value.computedReportSource.value, request,
+        services.availabilityLimits)
+      if captured.error == ReadError.None:
+        services.networkReadInput = captured.value
+        return ReadError.None
+      reason = captured.error
+  let shared = services.sharedContribution.contributionInfo
+  if shared.error == WorkSignerError.None:
+    # Received sharing never overwrites the builder context; its separately retained bundle remains serveable.
+    let report = services.sharedContribution.contributionTranscript.value.computedGuaranteeReport.value
+    let captured = captureAvailabilityRead(report.computedReportSource.value, request,
+        services.availabilityLimits)
+    if captured.error == ReadError.None: services.networkReadInput = captured.value
+    return captured.error
+  reason
 proc stageSegmentShardBatch(services: var Services, request: ReadRequest): ReadError =
   ## The complete bounded private cache snapshot is frozen before admission; no caller-owned transfer alias enters this job.
   if not services.availabilityEnabled or not services.availabilityStore.configured: return ReadError.Unavailable
@@ -1996,6 +2081,85 @@ proc configureWorkSigner*(services: var Services, certificate, privateKey: strin
 func workSigningConfigured*(services: Services): bool =
   ## This scalar is safe to observe while any canonical/signer alias belongs to the worker.
   services.started and services.workSignerReady
+proc stageWorkSharing(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
+    now: StateTime, limits: WorkSharingLimits): WorkJobError =
+  ## Native task aliases remain independent from the detached job; view/key staging aliases retire before admission.
+  let captured = captureWorkSharing(request, services.canonical.chainView, local, peer,
+    now, services.workSigner, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.sharingInput = captured.value
+  WorkJobError.None
+proc beginWorkSharing*(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
+    now: StateTime, limits: WorkSharingLimits): WorkSharingStart {.raises.} =
+  ## A waiting primary builder does not monopolize idle CPU capacity or lose its original context.
+  if not services.started: return WorkSharingStart(status: StateProofAdmissionError.Closed)
+  if not services.workSignerReady or array[32, byte](local) != array[32, byte](
+      services.workSignerIdentity):
+    return WorkSharingStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  if services.sharingActive or not services.stateProofAvailable:
+    return WorkSharingStart(status: StateProofAdmissionError.Busy)
+  if services.sharingGeneration == high(uint64):
+    return WorkSharingStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkSharing(request, local, peer, now, limits)
+  if staged != WorkJobError.None: return WorkSharingStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  if services.sharingIdentity == nil: services.sharingIdentity = WorkSessionIdentity(marker: 2)
+  discard services.proofWorker.start()
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.sharingInput = default(WorkSubmissionJob)
+    return WorkSharingStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.sharingInput)
+  if admitted.error != ProofWorkerError.None:
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+    services.sharingInput = default(WorkSubmissionJob)
+    return WorkSharingStart(status: StateProofAdmissionError.WorkerFailure,
+        workerReason: admitted.error)
+  inc services.sharingGeneration
+  services.proofing = true
+  services.sharingActive = true
+  services.sharingTicket = admitted.value
+  WorkSharingStart(status: StateProofAdmissionError.None,
+    token: WorkSharingToken(owner: services.sharingIdentity,
+        generation: services.sharingGeneration))
+func matchesSharing(services: Services, token: WorkSharingToken): bool =
+  ## Sharing namespaces are host-only and independent from primary work sessions or native stream tickets.
+  services.sharingActive and token.owner != nil and token.owner == services.sharingIdentity and
+    token.generation != 0 and token.generation == services.sharingGeneration
+proc cancelWorkSharing*(services: var Services, token: WorkSharingToken): bool =
+  ## Cancellation marks only the exact sharing lease; signer/source aliases remain frozen until collect/join.
+  if not services.matchesSharing(token): return false
+  let ticket = services.sharingTicket
+  services.cancelStateProof(ticket)
+proc collectWorkSharing*(services: var Services, token: WorkSharingToken): WorkSharingCompletion =
+  ## Only exact Done collection installs the most recent privately retained shared bundle and exposes fixed response bytes.
+  if not services.matchesSharing(token): return default(WorkSharingCompletion)
+  let ticket = services.sharingTicket
+  let completed = services.collectStateProof(ticket)
+  if completed.kind == ProofWorkerCompletionKind.Uninitialized: return default(WorkSharingCompletion)
+  services.sharingActive = false
+  services.sharingTicket = default(ProofWorkerTicket)
+  services.sharingInput = default(WorkSubmissionJob)
+  if completed.kind == ProofWorkerCompletionKind.Cancelled:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.Cancelled)
+  if completed.kind != ProofWorkerCompletionKind.WorkSubmitted:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.InvalidResult)
+  let outcome = completed.workSubmissionValue
+  if outcome.kind == WorkJobResultKind.SharingFailure:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.Refused,
+        reason: outcome.sharingError)
+  if outcome.kind != WorkJobResultKind.Contributed:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.InvalidResult)
+  let contribution = outcome.signedContribution
+  let encoded = contribution.sharingResponse
+  if encoded.error != WorkSharingError.None:
+    return WorkSharingCompletion(status: WorkSharingCompletionKind.InvalidResult)
+  services.sharedContribution = contribution
+  WorkSharingCompletion(status: WorkSharingCompletionKind.Completed, response: encoded.value,
+    info: contribution.contributionInfo.value)
 proc stageWorkAuthorization(services: var Services, header: WorkSubmissionHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
     recipient = default(WorkRecipient), dutyLimits = default(WorkDutyLimits),
@@ -2044,7 +2208,7 @@ proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
   if head.error != GenesisError.None: return WorkJobError.InvalidInput
   let parameters = head.value.chainParameters
   let config = PackageConfig(refineGas: Gas(parameters.get(maxRefineGas)),
-    accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(204800))
+    accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(MaxBundleBytes))
   let decoded = decodeWorkSubmission(header.kind, first, package, config)
   if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
   services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits, recovery)

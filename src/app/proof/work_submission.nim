@@ -6,7 +6,7 @@
 import ../../jamnp-s/work_submission
 import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
-import ../../jamnp-s/[work_signer, work_eligibility]
+import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire]
 import ../../jamnp-s/work_recovery
 import ../../chain/[provider, genesis]
 from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime
@@ -27,7 +27,7 @@ type
     Uninitialized, Authorized, Refined, InvalidSource, AuthorizationFailure, BodyFailure,
       RefinementFailure, DutyFailure, Reported, ReportFailure, ImportPlanningFailure,
         RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure, Contributed,
-          EligibilityFailure, SigningFailure
+          EligibilityFailure, SigningFailure, SharingFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -52,6 +52,7 @@ type
     of RecoveryFailure: recoveryReason: WorkRecoveryResult[WorkRecovery]
     of RecoveryCompletionFailure: recoveryCompletionReason: WorkRecoveryResult[VerifiedImportInputs]
     of ImportPlanningFailure: planningReason: WorkSubmissionResult[WorkImportPlan]
+    of SharingFailure: sharingReason: WorkSharingResult[SignedWorkContribution]
     of Contributed: contribution: SignedWorkContribution
     of EligibilityFailure: eligibilityReason: WorkEligibilityResult[EligibleWorkGuarantee]
     of SigningFailure: signingReason: WorkSignerResult[SignedWorkContribution]
@@ -79,6 +80,9 @@ type
     signingLimits: WorkEligibilityLimits
     signingIdentity: StateEdKey
     signingTime: StateTime
+    sharingRequest: SharedWorkRequest
+    sharingPeer: StateEdKey
+    sharingLimits: WorkSharingLimits
     recovery: WorkRecovery
     recoveryVersion: uint64
     validator: StateValidatorIndex
@@ -152,6 +156,10 @@ func signingError*(outcome: WorkJobResult): WorkSignerResult[
     SignedWorkContribution] {.requires: outcome.status == WorkJobResultKind.SigningFailure.} =
   ## Preserve actual signer identity/backend failure without a signature.
   outcome.signingReason
+func sharingError*(outcome: WorkJobResult): WorkSharingResult[
+    SignedWorkContribution] {.requires: outcome.status == WorkJobResultKind.SharingFailure.} =
+  ## Preserve the genuine failed whole-bundle receiver stage without signature authority.
+  outcome.sharingReason
 func valid*(job: WorkSubmissionJob): bool =
   ## Only private factories bind the actual runner and original source.
   job.data != nil
@@ -333,6 +341,32 @@ proc captureWorkContribution*(context: AuthorizedWorkContext,
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: contribute, context: context, transcript: transcript, signingView: view,
     signingIdentity: local, signingTime: now, signer: signer, signingLimits: limits)))
+proc receiveSharing(data: WorkJobData): WorkJobResult =
+  ## The whole received bundle, actual sender/local facts, current view and private key remain on one managed lease.
+  let received = receiveSharedWork(data.sharingRequest, data.signingView, data.signingIdentity,
+    data.sharingPeer, data.signingTime, data.signer, data.sharingLimits)
+  if received.error != WorkSharingError.None:
+    return WorkJobResult(status: WorkJobResultKind.SharingFailure, sharingReason: received)
+  WorkJobResult(status: WorkJobResultKind.Contributed, contribution: received.value)
+proc captureWorkSharing*(request: SharedWorkRequest, view: ChainView, local, peer: StateEdKey,
+    now: StateTime, signer: WorkSigner, limits: WorkSharingLimits): WorkJobAdmission =
+  ## Independent wire ownership permits native task retirement immediately after submission without racing ARC counters.
+  let sizes = request.sharingInfo
+  if sizes.error != SharingWireError.None: return WorkJobAdmission(
+      status: WorkJobError.InvalidInput)
+  if uint64(sizes.value.bundleBytes) > uint64(limits.bundleBytes):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  let count = view.retainedCount
+  if uint64(count) > uint64(limits.eligibility.anchors.ancestors.headers) or
+      count > high(int) div sizeof(BlockSnapshotResult) or
+      uint64(view.validationHeaderCount) > uint64(limits.eligibility.anchors.ancestors.headers):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  let copied = request.detachedSharingRequest
+  if copied.error != SharingWireError.None: return WorkJobAdmission(
+      status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: receiveSharing, sharingRequest: copied.value, sharingPeer: peer, signingView: view,
+    signingIdentity: local, signingTime: now, signer: signer, sharingLimits: limits)))
 proc captureWorkAuthorization*(header: WorkSubmissionHeader, state: StateStoreSnapshot,
     parameters: Parameters, limits: WorkSubmissionLimits,
     execution: InputRefinementLimits, recipient: WorkRecipient,
