@@ -16,7 +16,8 @@ import ../../../src/state/availability/specifier
 import ../../../src/lib/atomic/file
 import ../../../src/rpc/server
 import ../../support/[jamnp_assurance_fixture, jamnp_assurance_read_runtime,
-    jamnp_assurance_batch_runtime, current_application_context, storage_io, arc_evidence]
+    jamnp_assurance_batch_runtime, jamnp_assurance_broadcast_runtime, current_application_context,
+    storage_io, arc_evidence]
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count actual crypto attempts and inject only explicitly selected maintained-backend failure.
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
@@ -436,6 +437,10 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   assert not owner.assuranceSigningConfigured, "durable serving requires no private signer"
   resetIo()
   assuranceBatchRuntime(options, fixture, suffix)
+  var broadcastStorage = storageLimits()
+  broadcastStorage.entries = ElementLimit(16)
+  broadcastStorage.scanEntries = ElementLimit(400)
+  assuranceBroadcastRuntime(options, fixture, suffix, limits(), broadcastStorage)
 proc main() {.raises.} =
   ## Original reports and pending assignments are genuinely executed/admitted/published before any network-like response is constructed.
   reset(0)

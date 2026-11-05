@@ -2615,6 +2615,10 @@ proc configureAssuranceSigner*(services: var Services, certificate, privateKey: 
 func assuranceSigningConfigured*(services: Services): bool =
   ## Cached scalar observation never touches a private-key ARC owner while a job holds its lease.
   services.started and services.assuranceSignerReady
+func assuranceSigningMatches*(services: Services, identity: StateEdKey): bool =
+  ## Cached scalar identity checks do not inspect a private signer while another job owns it.
+  services.started and services.assuranceSignerReady and
+    array[32, byte](services.assuranceSignerIdentity) == array[32, byte](identity)
 proc stageAssuranceSigning(services: var Services, requested: AssuranceBits,
     now: AssuranceTime, limits: AssurancePossessionLimits): AssuranceSigningJobError =
   ## Retire every temporary canonical/signer/capture alias before native submission can access the private key.

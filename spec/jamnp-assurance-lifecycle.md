@@ -813,3 +813,35 @@ Clang ThinLTO pass; 1,000 managed cleanup cycles retain 92,928 occupied bytes be
 The existing fetch, private signing and managed submission consumers pass. All 571 production
 modules plus the entry point, formatting and verification inventory pass. Outgoing delivery and
 explicit foreground activation remain required; a plan alone grants no possession or signature.
+
+### Managed timed CE141 delivery
+
+The optional source-free broadcaster plans current/pending-C4 authors on the shared worker,
+then obtains a fresh private stored assurance through the existing exact signing lease. It
+uses the latest collected Services signature and full-source check to construct the wire body;
+metadata, prior signatures and completed acquisition counters grant no signing authority.
+Preparation begins within four seconds of the upcoming slot, sending waits until two seconds
+before it, and both explicit Common Era expiry and a finite monotonic deadline revoke output.
+Whole-window request, dial and framed-upload byte reservations, parallelism and peer/job deadlines
+are explicit policy. At most 64 destinations receive new native admission attempts in one turn.
+Each distinct non-null author identity receives one upload; the immutable plan preserves all
+original ordinal positions. Existing authenticated connections take precedence over advertised
+endpoints. An owned dial stays charged until physical retirement; round/host cancellation never
+claims a pre-existing transport. Stale/unknown canonical authority revokes queued output before
+native polling, and foreign worker leases are neither collected nor joined.
+
+Outgoing CE141 activation has its own native flag and requires an independently installed healthy
+archive and an explicitly imported private signer matching the actual TLS identity. It does not
+enable incoming CE141; bounded managed receipt remains an independent option. Ordinary slot-only
+polling services and retires already owned resources without admitting new planning, signing or
+sending. No foreground policy enables these operations by default.
+
+Native and checked ARC/Clang ThinLTO qualification pass the genuine acquired-shard delivery,
+independent full-state/TLS recipient verification and both FINs. Duplicate author positions share
+one actual upload. Preparation does not send early, ordinary slot-only polling starts no job,
+foreign completed leases survive polling and inactive teardown, expiry cancels an owned Done
+plan without signing/sending, and round retirement preserves pre-existing transport. The explicit
+composite copy guard fails with the required unavailable-dup diagnostic. All 572 production
+modules plus entry point, formatting and verification inventory pass. Optional foreground
+activation remains the next required assurance increment; complete audit/judgment work remains
+part of the full JAMNP-S goal.

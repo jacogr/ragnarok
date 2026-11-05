@@ -84,7 +84,8 @@ type
     limits: AnnouncementLimits
     body: seq[byte]
   NodeService* = object ## Explicit noncopyable aggregate owns one connection actor and fixed protocol slots.
-    opened, stopping, workEnabled, sharingEnabled, distributionEnabled, assuranceEnabled: bool
+    opened, stopping, workEnabled, sharingEnabled, distributionEnabled, assuranceEnabled,
+      assuranceSending: bool
     failure: NodeError
     callbacks, sweep, processCursor, peerCursor, broadcastCursor, readCursor: int
     serial, version, inputUsed, handshakeUsed, outputUsed, replyUsed, clientUsed: uint64
@@ -118,6 +119,7 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   owner.sharingEnabled = false
   owner.distributionEnabled = false
   owner.assuranceEnabled = false
+  owner.assuranceSending = false
   owner.failure = NodeError.Uninitialized
   owner.callbacks = 0
   owner.sweep = 0
@@ -631,6 +633,7 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.sharingEnabled = false
   owner.distributionEnabled = false
   owner.assuranceEnabled = false
+  owner.assuranceSending = false
   owner.node.close()
   for index in 0..<owner.frames.len:
     assert owner.frames[index].kind == FrameKind.Empty, "every borrowed stream must receive native close"
@@ -662,6 +665,7 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   owner.sharingEnabled = false
   owner.distributionEnabled = false
   owner.assuranceEnabled = false
+  owner.assuranceSending = false
   owner.sweep = 0
   owner.processCursor = 0
   owner.peerCursor = 0
@@ -767,7 +771,7 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if not request.valid: return NodeResult[NodeRequestTicket](status: NodeError.InvalidConfig)
   if request.kind == ReadKind.Guarantee and not owner.distributionEnabled:
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
-  if request.kind == ReadKind.Assurance and not owner.assuranceEnabled:
+  if request.kind == ReadKind.Assurance and not (owner.assuranceEnabled or owner.assuranceSending):
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if request.kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.TicketProxy,
       ReadKind.TicketDistribution]:
@@ -967,6 +971,11 @@ proc cancelSharingRequest*(owner: var NodeService,
   ## Public queued cancellation precedes slot reuse; active streams retain charges through physical retirement.
   if not owner.sharingRequestLive(ticket): return false
   owner.closeFrame(ticket.index)
+  true
+proc enableAssuranceSending*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
+  ## Outgoing CE141 needs its own explicitly configured managed signer; it never activates receipt.
+  if not owner.isOpen or not owner.node.isValidator: return false
+  owner.assuranceSending = true
   true
 proc enableAssuranceStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## CE141 remains separately disabled until a real managed verifier and bounded consumer are installed.

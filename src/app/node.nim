@@ -10,6 +10,7 @@ import ./work_dispatch
 import ./work_exchange
 import ./work_distribution
 import ./assurance_distribution
+import ./assurance_broadcast
 import ./assurance_acquirer
 import ../jamnp-s/assurance_record
 import ../codec/assurances
@@ -77,6 +78,8 @@ type
     preferAssurances: bool
     acquisition: AssuranceAcquirer
     preferAcquisition: bool
+    broadcaster: AssuranceBroadcaster
+    preferBroadcast: bool
     distribution: WorkDistributionDispatcher
     preferDistribution: bool
     preferWork, preferExchange: bool
@@ -115,6 +118,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.exchange)
   `=wasMoved`(owner.assurances)
   `=wasMoved`(owner.acquisition)
+  `=wasMoved`(owner.broadcaster)
   `=wasMoved`(owner.distribution)
   `=wasMoved`(owner.checkedPeer)
   owner.opened = false
@@ -148,6 +152,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.exchange)
   `=destroy`(owner.assurances)
   `=destroy`(owner.acquisition)
+  `=destroy`(owner.broadcaster)
   `=destroy`(owner.distribution)
   `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
@@ -195,6 +200,22 @@ func assuranceAcquisitionPhase*(owner: ApplicationNode): AssuranceAcquirerPhase 
 func assuranceDemandConnections*(owner: ApplicationNode): int =
   ## Closing owned acquisition dials remain charged until native retirement.
   owner.acquisition.demandConnections
+proc configureAssuranceBroadcast*(owner: var ApplicationNode,
+    policy: AssuranceBroadcastPolicy): bool =
+  ## Explicit outgoing setup requires the independently installed archive and actual TLS-matched signer.
+  if not owner.opened: return false
+  let services = owner.services
+  if services == nil: return false
+  owner.broadcaster.configure(services[], owner.streams, policy)
+func assuranceBroadcastPhase*(owner: ApplicationNode): AssuranceBroadcastPhase =
+  ## Detached scalar progress grants no signature or canonical inclusion authority.
+  owner.broadcaster.phase
+func attemptedAssuranceBroadcasts*(owner: ApplicationNode): uint64 =
+  ## Count actual queued CE141 requests independently from receipt and shard acquisition.
+  owner.broadcaster.attempted
+func acknowledgedAssuranceBroadcasts*(owner: ApplicationNode): uint64 =
+  ## Only complete remote FINs count as acknowledged delivery.
+  owner.broadcaster.acknowledged
 proc configureAssuranceReceipt*(owner: var ApplicationNode, policy: AssuranceReceiptPolicy): bool =
   ## Independently optional bounded CE141 receipt enables no archive, private signer or outgoing assurance schedule.
   if not owner.opened: return false
@@ -643,6 +664,7 @@ proc close*(owner: var ApplicationNode) =
   if services != nil:
     owner.assurances.close(services[], owner.streams)
     owner.acquisition.close(services[], owner.streams)
+    owner.broadcaster.close(services[], owner.streams)
     owner.distribution.close(services[], owner.streams)
     owner.exchange.close(services[], owner.streams)
     owner.work.close(services[], owner.streams)
@@ -840,6 +862,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if not owner.opened or owner.services == nil: return false
   let services = owner.services
   if services == nil: return false
+  owner.broadcaster.beforePoll(services[], owner.streams, clock, assuranceClock, assuranceNow)
   owner.distribution.beforePoll(services[], owner.streams, now)
   if not owner.streams.poll(clock, maximumMs): return false
   owner.tickets.expire(now) # Host-only proof owners may retire while a different job holds immutable source/context aliases.
@@ -853,6 +876,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.exchange.poll(services[], owner.streams, clock)
   owner.assurances.poll(services[], owner.streams, clock)
   owner.acquisition.poll(services[], owner.streams, clock)
+  owner.broadcaster.poll(services[], owner.streams, clock)
   owner.distribution.poll(services[], owner.streams, owner.reports, clock, now)
   if owner.exchange.configured and owner.work.phase == WorkDispatchPhase.Ready:
     let completed = owner.work.completed
@@ -925,6 +949,11 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.dispatchOrigins(now, clock)
   owner.dispatchTickets(now, clock) # Finality/context checks precede every actual proxy transmission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
+  if assuranceClock and owner.preferBroadcast:
+    if owner.broadcaster.submit(services[], owner.streams, clock, assuranceNow):
+      owner.preferBroadcast = false
+      return true
+  owner.preferBroadcast = true # Timed signing alternates with acquisition and incoming work rather than monopolizing the shared worker.
   if assuranceClock and owner.preferAcquisition:
     if owner.acquisition.submit(services[], owner.streams, clock, assuranceNow):
       owner.preferAcquisition = false
@@ -953,6 +982,8 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if owner.preferChecked and owner.submitChecked(): return true
   let request = owner.streams.takeReadExcept({ReadKind.Guarantee, ReadKind.Assurance})
   if request.error != NodeError.None:
+    if assuranceClock and owner.broadcaster.submit(services[], owner.streams, clock,
+        assuranceNow): return true
     if assuranceClock and owner.acquisition.submit(services[], owner.streams, clock,
         assuranceNow): return true
     if owner.assurances.submit(services[], owner.streams, clock): return true
