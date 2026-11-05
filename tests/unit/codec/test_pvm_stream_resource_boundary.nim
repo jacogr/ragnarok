@@ -269,4 +269,93 @@ let invalidMemory = default(Memory)
 assert memoryPageCount(invalidMemory).error == MachineError.InvalidOwner
 assert uint32(memoryPageCount(observation).value) == 1
 
+proc posteriorOwnerReentry() =
+  ## Changed writable deltas and full readonly/inaccessible replacements retain exact posterior owners.
+  let program = owner([@[10'u8, 1], @[10'u8, 1], @[130'u8, 0x18, 0],
+    @[149'u8, 0x88, 1], @[149'u8, 0x88, 1], @[149'u8, 0x88, 1], @[149'u8, 0x88, 1],
+    @[50'u8, 0]])
+  var policy = defaultFlatLimits()
+  policy.pages = PageLimit(4)
+  var admitted = prepareFlatPlan(program, cycles, policy)
+  let plan = takeValue(admitted)
+  var original = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(17), access: PageAccess.ReadOnly),
+    PageImage(index: PageIndex(18), access: PageAccess.Inaccessible)]
+  for page in 0..<original.len:
+    # Every retained inaccessible byte participates in the independent snapshot witness.
+    for offset in 0..<4096: original[page].bytes[offset] = byte((offset+page*17) mod 251)
+  var registers = default(RegisterFile)
+  registers[0] = RegisterValue(0xffff0000'u64)
+  registers[1] = RegisterValue(69632)
+  var current = newFlatFrame(plan, original, MachineInfo(gas: MachineGas(10000),
+    registers: registers))
+  runFlat(current, 3)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let held = observeFlatHostMemory(current)
+  var writable = original[0]
+  writable.bytes[9] = 88
+  let changed = withReplacedPages(held, [writable]).value
+  registers[7] = RegisterValue(77)
+  assert resumeFlatHostMemory(current, changed, MachineGas(950), registers) == StepError.None
+  assert current.info.pc == CodeAddress(2) and current.info.blockCharged
+  assert flatHostStats(current) == [1'u64, 0, 1]
+  assert samePage(flatMemorySnapshot(current), changed, PageIndex(16))
+  runFlat(current, 2)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let before = observeFlatHostMemory(current)
+  let stopped = current.info
+  let nodes = flatNodes(current)
+  let work = flatPreparationUnits(current)
+  var expected = original
+  expected[0] = writable
+  # Fresh readonly bytes distinguish the replacement native view from the old allocation.
+  for offset in 0..<8: expected[1].bytes[offset] = 0
+  expected[1].bytes[0] = 77
+  expected[1].bytes[23] = 99
+  expected[2].bytes[4095] = 111
+  let posterior = captureMemory(expected, PageLimit(3)).value
+  let oversized = captureMemory([expected[0], expected[1], expected[2],
+    PageImage(index: PageIndex(19)), PageImage(index: PageIndex(20))], PageLimit(5)).value
+  registers[8] = RegisterValue(123)
+  assert resumeFlatHostMemory(current, oversized, MachineGas(900), registers) ==
+    StepError.InvalidHostResponse
+  sameCpu(current.info, stopped)
+  assert current.exit == StepExit.Host and flatHostStats(current) == [1'u64, 0, 1]
+  assert flatNodes(current) == nodes and flatPreparationUnits(current) == work
+  for page in expected:
+    # Failed admission cannot consume the stopped observation or apply an earlier writable delta.
+    assert samePage(flatMemorySnapshot(current), before, page.index)
+  assert resumeFlatHostMemory(current, posterior, MachineGas(900), registers) == StepError.None
+  assert current.info.pc == CodeAddress(4) and current.info.blockCharged
+  assert current.info.registers == registers and uint64(current.info.gas) == 900
+  assert flatHostStats(current) == [1'u64, 1, 1]
+  assert flatNodes(current) == nodes and flatPreparationUnits(current) == work
+  let resumed = flatMemorySnapshot(current)
+  for page in 0..<expected.len:
+    # Equal-byte writable replacement still has its fresh identity; all posterior pages stay authoritative.
+    assert samePage(resumed, posterior, expected[page].index)
+    assert not samePage(resumed, before, expected[page].index)
+    assert pageImage(resumed, expected[page].index).value == expected[page]
+    assert pageImage(held, original[page].index).value == original[page]
+  assert withPage(resumed, PageImage(index: PageIndex(19))).error == MachineError.LimitExceeded
+  when defined(pvmArm64Jit) and defined(arm64) and not defined(pvmArm64JitRefuse):
+    # The source's native read span was prepared before replacement and must use fresh readonly backing.
+    let native = flatArmStatistics(current)
+    assert native[0] > 0, "posterior-owner native read span prepared"
+  runFlat(current, 6)
+  registers[8] = RegisterValue(81)
+  assert current.reason == StepError.None and current.exit == StepExit.Halt
+  assert uint64(current.info.gas) == 900 and current.info.registers == registers
+  when defined(pvmArm64Jit) and defined(arm64) and not defined(pvmArm64JitRefuse):
+    let executed = flatArmStatistics(current)
+    if executed[1] != native[1]+1 or executed[2] != native[2]+5:
+      # Exact native coverage separates the memory read from an arithmetic-only checked fallback.
+      echo "OWNER_REENTRY_NATIVE,", native[0], ",", native[1], ",", native[2], ",",
+        executed[0], ",", executed[1], ",", executed[2]
+    assert executed[0] == native[0], "posterior-owner code survives replacement"
+    assert executed[1] == native[1]+1, "posterior-owner native read span invoked"
+    assert executed[2] == native[2]+5, "posterior-owner native memory operation included"
+
+posteriorOwnerReentry()
+
 echo "PASS typed plan/frame limits / consumed results / exact suffix nodes / sticky refusal / jump policy / preparation spans / host retry"
