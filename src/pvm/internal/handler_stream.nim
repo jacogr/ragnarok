@@ -4791,12 +4791,20 @@ proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
         else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at))
       assert current == byte(expected[offset+page*4096+at])
 
-proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
-    info: MachineInfo): FlatError =
-  ## Trusted observation/reentry replaces memory capabilities wholesale; code cache offsets never retain memory or register owners.
-  var prepared = prepareFlatFrame(f.plan, images, info)
-  if prepared.error != FlatError.None: return prepared.error
-  var replacement = takeValue(prepared)
+proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame] =
+  ## A validated immutable Memory already owns checked page capabilities; retain it instead of recapturing them.
+  let count = memoryPageCount(memory)
+  if count.error != MachineError.None: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
+  if uint32(count.value) > uint32(plan.limits.pages):
+    return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
+  var layout = memoryLayout(memory)
+  if layout.error != MachineError.None: return FlatResult[FlatFrame](
+      status: FlatError.InvalidMemory)
+  var retained = machine.takeValue(layout)
+  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory))
+
+proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
+  ## Both callers fully validate a fresh same-plan frame before moving the code-only cache and policies.
   replacement.preparationFailure = f.preparationFailure
   replacement.preparationUsed = f.preparationUsed
   replacement.pricingPlan = f.pricingPlan
@@ -4816,6 +4824,22 @@ proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
     replacement.x86WideAdmission = move(f.x86WideAdmission)
   f = move(replacement)
 
+proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
+    info: MachineInfo): FlatError =
+  ## Trusted observation/reentry replaces memory capabilities wholesale; code cache offsets never retain memory or register owners.
+  var prepared = prepareFlatFrame(f.plan, images, info)
+  if prepared.error != FlatError.None: return prepared.error
+  var replacement = takeValue(prepared)
+  flatCommitMemoryReplacement(f, replacement)
+  FlatError.None
+
+proc flatReplaceMemoryOwner(f: var FlatFrame, memory: Memory,
+    info: MachineInfo): FlatError {.noinline.} =
+  ## Keep complete Frame construction off resident host resumes; commit only a fully admitted owner.
+  var prepared = prepareFlatMemoryFrame(f.plan, memory, info)
+  if prepared.error != FlatError.None: return prepared.error
+  var replacement = takeValue(prepared)
+  flatCommitMemoryReplacement(f, replacement)
   FlatError.None
 
 proc replaceFlatMemory*(f: var FlatFrame, images: openArray[PageImage], info: MachineInfo) =
@@ -4870,11 +4894,11 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
   let fact = f.plan.factAt[int(pc)]
   if fact < 0: return oracle.StepError.InvalidHostSuspension
-  # Reject oversized host mappings before extracting a copied delta or any complete page array.
+  # Reject oversized host mappings before extracting changed pages or allocating replacement storage.
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
-  let delta = changedMemoryPages(f.hostSnapshot, posterior)
+  var delta = changedMemoryPages(f.hostSnapshot, posterior)
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var info = f.info
   info.pc = CodeAddress(f.plan.facts[fact].next)
@@ -4882,7 +4906,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   info.registers = registers
   var replace = delta.error != MachineError.None
   if not replace:
-    let changes = delta.value
+    let changes = machine.takeValue(delta)
     for i in 0..<changes.len:
       # Complete preflight precedes the first host-byte mutation; unusual capabilities take the slow path.
       if not flatHostPage(f, changes[i], false): replace = true
@@ -4911,14 +4935,11 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
       f.hostCopiedPages+=uint64(changes.len)
       return oracle.StepError.None
   # Mapping/permission/RO replacement rebuilds all capabilities from a genuine validated snapshot.
-  let complete = memoryImages(posterior)
-  if complete.error != MachineError.None: return oracle.StepError.InvalidHostResponse
   let fast = f.fastResumes
   let fallbacks = f.fallbackResumes
   let pages = f.hostCopiedPages
-  if replaceFlatMemoryChecked(f, complete.value, info) != FlatError.None:
+  if flatReplaceMemoryOwner(f, posterior, info) != FlatError.None:
     return oracle.StepError.InvalidHostResponse
-  f.sourceMemory = posterior # Preserve the host snapshot's local mapping policy as well as bytes/permissions.
   f.fastResumes = fast
   f.fallbackResumes = fallbacks+1
   f.hostCopiedPages = pages
@@ -5055,18 +5076,6 @@ func streamPreparation*(stream: FlatStream): uint64 =
 func planFacts*(plan: FlatPlan): uint64 =
   ## Immutable decoded-fact occupancy belongs to the admitted source owner.
   uint64(plan.facts.len)
-
-proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame] =
-  ## A validated immutable Memory already owns checked page capabilities; retain it instead of recapturing them.
-  let count = memoryPageCount(memory)
-  if count.error != MachineError.None: return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
-  if uint32(count.value) > uint32(plan.limits.pages):
-    return FlatResult[FlatFrame](status: FlatError.PageLimitExceeded)
-  var layout = memoryLayout(memory)
-  if layout.error != MachineError.None: return FlatResult[FlatFrame](
-      status: FlatError.InvalidMemory)
-  var retained = machine.takeValue(layout)
-  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory))
 
 func flatScratchSlot(pages: seq[PageDescription], physical: uint32): int =
   ## Same-map validation proves every retained dirty ordinal still belongs to this sorted mapping.

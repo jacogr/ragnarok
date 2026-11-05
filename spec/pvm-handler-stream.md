@@ -49,11 +49,16 @@ against fresh frames, including CPU and gas on refusal. Public prepared overload
 pricing, while public memo/complete-plan overloads create a fresh prepared owner per call; they
 do not expose cross-policy stream restoration.
 
-Memory construction accepts a genuine immutable `Memory`, checks its page count before copying
-page images, and retains that original root rather than recapturing it. Mutable contiguous regions
+Memory construction accepts a genuine immutable `Memory`, checks its page count before materializing
+private bytes, and retains that original root rather than recapturing it. Mutable contiguous regions
 and fragmented slow-path regions remain private to the invocation. Host suspension publishes an
 immutable observation; checked resident deltas resume the same frame. Mapping/permission changes
-use complete transactional re-admission. Host terminal replies retain the causing PC, and fallible
+use complete transactional re-admission directly from the posterior immutable owner. Successful
+delta results transfer their page images without duplicating the result payload. Full replacement
+builds fresh private regions and native views before moving the existing code-only cache and pricing
+policy; refusal preserves the stopped frame and observation for retry. Equal-byte replacements keep
+their fresh page identities, retained inaccessible bytes and the posterior owner's local page limit.
+Host terminal replies retain the causing PC, and fallible
 callbacks preserve the original selected enum reason. Attempt and callback budgets span the whole
 outer invocation. Local refusal never exposes a successful partial machine.
 
