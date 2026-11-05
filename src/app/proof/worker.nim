@@ -12,6 +12,7 @@ import ./ticket_verification
 import ./ticket_production
 import ./work_submission
 import ./assurance_storage
+import ./assurance_acquisition
 import ../../jamnp-s/assurance_store
 import ../../jamnp-s/ticket_validation
 import ./read_validation as verification_job
@@ -26,7 +27,7 @@ type
     Uninitialized, None, Closed, Busy, NotReady, Exhausted
   ProofWorkerOperation {.pure.} = enum ## One bounded CPU slot owns proof production, network reads, response verification or current-root ingestion.
     Query, Ingestion, NetworkRead, ReadVerification, TicketVerification, TicketProduction,
-      WorkSubmission, AssuranceStorage
+      WorkSubmission, AssuranceStorage, AssuranceAcquisition
   ProofWorkerIdentity = ref object ## Host-only namespace; the worker never accesses this ARC reference.
     marker: uint8
   ProofWorkerTicket* = object ## Retained namespace and nonwrapping generation prevent foreign or stale retirement.
@@ -38,7 +39,7 @@ type
     else: discard                # Refusals retain no authority.
   ProofWorkerCompletionKind* {.pure.} = enum ## Cancellation never exposes a proof success prefix.
     Uninitialized, Completed, Cancelled, Imported, ReadCompleted, ReadVerified, TicketVerified,
-      TicketProduced, WorkSubmitted, AssuranceCompleted
+      TicketProduced, WorkSubmitted, AssuranceCompleted, AssuranceAcquired
   ProofWorkerCompletion* = object ## Only a collected uncancelled completion exposes its typed query outcome.
     case status: ProofWorkerCompletionKind
     of Completed: response: ProofQueryResult[ProofResponse]
@@ -47,6 +48,7 @@ type
     of ReadVerified: verifiedResponse: ReadVerificationResult[CheckedReadReply]
     of WorkSubmitted: workResponse: WorkJobResult
     of AssuranceCompleted: assuranceResponse: AssuranceStoreResult[bool]
+    of AssuranceAcquired: acquisitionResponse: AssuranceAcquisitionResult[AssuranceAcquisitionInfo]
     of TicketVerified, TicketProduced: ticketResponse: NetworkTicketResult[CheckedNetworkTicket]
     else: discard # Defaults and cancellation have no response payload.
   StateProofWorker* = object ## Must remain at one address from start through explicit joined close.
@@ -63,6 +65,8 @@ type
     ticketJob: TicketVerificationJob
     productionJob: TicketProductionJob
     workJob: WorkSubmissionJob
+    acquisitionJob: AssuranceAcquisitionJob
+    acquisitionOutcome: AssuranceAcquisitionResult[AssuranceAcquisitionInfo]
     assuranceJob: AssuranceStorageJob
     assuranceOutcome: AssuranceStoreResult[bool]
     workOutcome: WorkJobResult
@@ -81,6 +85,8 @@ proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
   `=wasMoved`(worker.productionJob)
   `=wasMoved`(worker.workJob)
   `=wasMoved`(worker.workOutcome)
+  `=wasMoved`(worker.acquisitionJob)
+  `=wasMoved`(worker.acquisitionOutcome)
   `=wasMoved`(worker.assuranceJob)
   `=wasMoved`(worker.assuranceOutcome)
   `=wasMoved`(worker.ticketOutcome)
@@ -111,6 +117,8 @@ proc `=destroy`*(worker: StateProofWorker) =
   `=destroy`(worker.productionJob)
   `=destroy`(worker.workJob)
   `=destroy`(worker.workOutcome)
+  `=destroy`(worker.acquisitionJob)
+  `=destroy`(worker.acquisitionOutcome)
   `=destroy`(worker.assuranceJob)
   `=destroy`(worker.assuranceOutcome)
   `=destroy`(worker.ticketOutcome)
@@ -179,6 +187,11 @@ func assuranceStorageValue*(completion: ProofWorkerCompletion): AssuranceStoreRe
     bool] {.requires: completion.status == ProofWorkerCompletionKind.AssuranceCompleted.} =
   ## Exact uncancelled collection alone exposes the completed namespace I/O outcome.
   completion.assuranceResponse
+func assuranceAcquisitionValue*(completion: ProofWorkerCompletion): AssuranceAcquisitionResult[
+    AssuranceAcquisitionInfo] {.requires: completion.status ==
+    ProofWorkerCompletionKind.AssuranceAcquired.} =
+  ## Only exact uncancelled collection exposes persisted progress; no completion grants a possession bit or signing capability.
+  completion.acquisitionResponse
 proc stopAssuranceScan(context: nil pointer): bool {.nimcall, raises: [].} =
   ## Execution holds no worker mutex; close/cancel release it before waiting so a scan can observe the stop without deadlocking.
   let worker = cast[ptr StateProofWorker](context)
@@ -189,6 +202,10 @@ proc stopAssuranceScan(context: nil pointer): bool {.nimcall, raises: [].} =
 proc execute(worker: ptr StateProofWorker) =
   ## All selected-state aliases and generation scratch retire before run publishes Done.
   case worker.operation
+  of ProofWorkerOperation.AssuranceAcquisition:
+    # Canonical/frame/native-owner aliases remain exclusively borrowed until exact collection or joined close.
+    worker.acquisitionOutcome = executeAssuranceAcquisition(worker.acquisitionJob,
+      assuranceScanControl(stopAssuranceScan, cast[pointer](worker)))
   of ProofWorkerOperation.AssuranceStorage:
     # Store/path aliases stay private through Done; cancellation checks borrow this worker only during execution.
     worker.assuranceOutcome = executeAssuranceStorage(worker.assuranceJob,
@@ -250,6 +267,8 @@ proc start*(worker: var StateProofWorker): bool {.raises.} =
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -294,6 +313,8 @@ proc submit*(worker: var StateProofWorker, query: var ProofQuery): ProofWorkerAd
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -330,6 +351,8 @@ proc submit*(worker: var StateProofWorker, request: var LightProofImport): Proof
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.operation = ProofWorkerOperation.Ingestion
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -362,6 +385,8 @@ proc submit*(worker: var StateProofWorker, request: var NetworkReadJob): ProofWo
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.operation = ProofWorkerOperation.NetworkRead
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -394,6 +419,8 @@ proc submit*(worker: var StateProofWorker, request: var ReadVerificationJob): Pr
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.operation = ProofWorkerOperation.ReadVerification
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -426,6 +453,8 @@ proc submit*(worker: var StateProofWorker, request: var TicketVerificationJob): 
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.operation = ProofWorkerOperation.TicketVerification
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -458,6 +487,8 @@ proc submit*(worker: var StateProofWorker, request: var TicketProductionJob): Pr
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.operation = ProofWorkerOperation.TicketProduction
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -491,6 +522,8 @@ proc submit*(worker: var StateProofWorker, request: var WorkSubmissionJob): Proo
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.operation = ProofWorkerOperation.WorkSubmission
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
@@ -523,8 +556,45 @@ proc submit*(worker: var StateProofWorker, request: var AssuranceStorageJob): Pr
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.assuranceJob = move(request)
   worker.operation = ProofWorkerOperation.AssuranceStorage
+  worker.cancelled = false
+  worker.phase = ProofWorkerPhase.Queued
+  signal(worker.changed)
+  ProofWorkerAdmission(status: ProofWorkerError.None, ticket: ProofWorkerTicket(
+      owner: worker.identity, generation: worker.next))
+
+proc submit*(worker: var StateProofWorker, request: var AssuranceAcquisitionJob): ProofWorkerAdmission =
+  ## Move one canonical acquired-shard retention job into the existing bounded lease; native namespace and source aliases stay frozen through collection/join.
+  if not worker.started: return ProofWorkerAdmission(status: ProofWorkerError.Closed)
+  acquire(worker.lock)
+  defer: release(worker.lock)
+  if worker.phase != ProofWorkerPhase.Idle: return ProofWorkerAdmission(
+      status: ProofWorkerError.Busy)
+  if not request.valid: return ProofWorkerAdmission(status: ProofWorkerError.NotReady)
+  if worker.next == high(uint64): return ProofWorkerAdmission(status: ProofWorkerError.Exhausted)
+  inc worker.next
+  worker.query = default(ProofQuery)
+  worker.outcome = default(ProofQueryResult[ProofResponse])
+  worker.importJob = default(LightProofImport)
+  worker.importOutcome = default(LightImportResult[ImportedLightProofs])
+  worker.readJob = default(NetworkReadJob)
+  worker.readOutcome = default(ReadResult[ReadReply])
+  worker.verifyJob = default(ReadVerificationJob)
+  worker.verifyOutcome = default(ReadVerificationResult[CheckedReadReply])
+  worker.ticketJob = default(TicketVerificationJob)
+  worker.productionJob = default(TicketProductionJob)
+  worker.workJob = default(WorkSubmissionJob)
+  worker.workOutcome = default(WorkJobResult)
+  worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
+  worker.assuranceJob = default(AssuranceStorageJob)
+  worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
+  worker.acquisitionJob = move(request)
+  worker.operation = ProofWorkerOperation.AssuranceAcquisition
   worker.cancelled = false
   worker.phase = ProofWorkerPhase.Queued
   signal(worker.changed)
@@ -557,6 +627,9 @@ proc collect*(worker: var StateProofWorker, ticket: ProofWorkerTicket): ProofWor
   if worker.cancelled:
     worker.outcome = default(ProofQueryResult[ProofResponse])
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.Cancelled)
+  elif worker.operation == ProofWorkerOperation.AssuranceAcquisition:
+    result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.AssuranceAcquired,
+      acquisitionResponse: move(worker.acquisitionOutcome)) # Only fixed metadata survives the complete source/proof/retention turn.
   elif worker.operation == ProofWorkerOperation.AssuranceStorage:
     result = ProofWorkerCompletion(status: ProofWorkerCompletionKind.AssuranceCompleted,
       assuranceResponse: move(worker.assuranceOutcome)) # Collection ends every mutable namespace borrow before host observation or close.
@@ -592,6 +665,8 @@ proc collect*(worker: var StateProofWorker, ticket: ProofWorkerTicket): ProofWor
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query
@@ -618,6 +693,8 @@ proc close*(worker: var StateProofWorker) =
   worker.ticketOutcome = default(NetworkTicketResult[CheckedNetworkTicket])
   worker.assuranceJob = default(AssuranceStorageJob)
   worker.assuranceOutcome = default(AssuranceStoreResult[bool])
+  worker.acquisitionJob = default(AssuranceAcquisitionJob)
+  worker.acquisitionOutcome = default(AssuranceAcquisitionResult[AssuranceAcquisitionInfo])
   worker.importJob = default(LightProofImport)
   worker.importOutcome = default(LightImportResult[ImportedLightProofs])
   worker.operation = ProofWorkerOperation.Query

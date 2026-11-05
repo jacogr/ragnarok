@@ -147,6 +147,9 @@ func valid*(limits: AssuranceStoreLimits): bool =
 func opened*(owner: AssuranceStore): bool =
   ## An opened namespace has completed identity and bounded accounting admission, not proof verification of every archived payload.
   owner.ready
+func matchesChain*(owner: AssuranceStore, chain: AssuranceChainId): bool =
+  ## Only an idle/exclusively borrowed live namespace can match independently configured chain identity; this observation grants no possession authority.
+  owner.ready and array[32, byte](owner.chain) == array[32, byte](chain)
 func faulted*(owner: AssuranceStore): bool =
   ## Uncertain publication or failed recovery bars further stored-data receipts until close/reopen.
   owner.failed

@@ -262,3 +262,69 @@ Linux CI or full assurance signing/network/startup completion is claimed.
 Pinned formatting (2416 Nim sources and Rust), verification inventory and the complete final
 source graph (559 production modules plus the actual application entry point) pass after the
 policy correction. The assurance layer remains unpublished until its full scoped feature is ready.
+
+
+## Canonical acquired-shard retention work
+
+The next managed operation binds a complete selected source, configured full chain identity,
+local parent-roster identity and original local ordinal/core to one detached CE137 response.
+The worker derives the expected six-field descriptor and exact assigned shard from fresh C8/C10
+qualification. Three exact E4-framed extents, full payload geometry, suffix absence, incoming
+proof work and aggregate raw/verification/duplicate-restore/encoding buffer bounds precede
+verification. Aggregate transfer workspace reserves raw wire plus four payload copies and two
+record headers; canonical chapter reads and store-internal record work retain independent caps.
+Only successful actual synchronized retention returns fixed progress facts. The result is not
+signing authority: final possession/signing must requalify source and re-open/verify every required
+local stored shard. Cancellation may leave correctly retained data but cannot expose a completed
+acquisition result or a possession bit. Tests must use genuinely computed and admitted pending
+reports, verify raw-owner independence, empty exports, exact/malformed frames, wrong coordinates,
+workspace/hash deficits, chain mismatch, real sync faults, native Done/cancel/join and ARC release.
+
+
+The canonical acquisition operation is now connected to the ordinary `StateProofWorker` and
+Services. Admission stages only detached raw bytes and the actual best complete source; all
+capture/source aliases retire before moved submission. The worker derives duty/coordinates,
+checks the namespace's full independently configured chain identity, validates all three message
+extents and verifies the complete transfer before `rememberAssuranceShard` crosses actual file
+and directory barriers. The completion owns only fixed duty/record progress metadata. No raw
+received specifier, peer-selected source, mutable archive alias or signing capability escapes.
+
+Services keeps opened/faulted/count/byte/chain observations in a separate host-owned cache.
+Queued/Running/Done and cancellation retain the global canonical/RPC lease. Only exact collection
+or joined stop refreshes actual mutable archive counters and its fault gate. A cancelled completed
+write remains retained but exposes no acquisition metadata; acquisition stop preserves the healthy
+installed namespace. Failed durability updates fault status without discarding earlier promises.
+A faulted namespace refuses subsequent acquisition. Full Services close still joins before native
+namespace destruction.
+
+The native acquisition fixture follows original report execution through profile/transition,
+roster, guarantor credentials, envelope/batch inclusion, report admission, publication, accumulation
+and complete computed-chain advancement. Original erasure data is extracted only through those
+sealed provenance getters. Its C10 assignments and credentials are genuinely produced; they are
+not manually replaced structural fixtures. The Services component test explicitly configures that
+actual complete computed child as its trusted seed. It does not establish network bootstrap or
+adoption from a different configured genesis, which remain runtime integration requirements.
+
+Observed checks cover independent raw-owner mutation, literal original-index coordinate, real
+retained restore, namespace mismatch, malformed lengths/truncation/suffix, exact/minus-one
+aggregate workspace, verifier hash deficits before the first primitive, corrupted bundle data,
+actual crypto refusal, cancellation before execution, full 28-day promises and a second genuine
+coordinate refused by actual archive capacity. Real data-sync and directory-sync refusal retain
+their ordinary/visible-unsynced distinctions, with full verified restart. An injected managed
+restore-sync refusal refreshes Services' actual fault gate and bars another acquisition. Native
+Done cancellation, stale/foreign collection, joined stop and 1000 actual duplicate read/verify/
+renew/encode/sync cycles retain 93504 occupied bytes before and after.
+
+The existing assurance startup-worker, namespace-Services, selected proof-worker and proof-Services
+consumer suites pass with the new job family and ownership fields. The ordinary registered Services
+copy guard rejects the exact aggregate duplication at ARC lowering. The entire expanded acquisition
+suite also passes checked ARC/Clang thinLTO, including genuine source construction, sync faults,
+managed lifecycle and 1000 release cycles (93504 bytes unchanged). All 560 production modules and
+the actual entry point pass semantic compilation. These are local macOS results, not native Linux
+CI or completed CE137 network acquisition, fresh all-local-shard possession/signing, CE141 transport,
+clock/epoch cutovers or optional foreground activation. The coherent assurance feature stays
+unpublished until those remaining runtime requirements are implemented and verified.
+
+Final formatting (2419 Nim files plus Rust) and source-owned verification inventory (1072 native
+suites) pass for this acquisition increment. Supporting source, tests and evidence remain in the
+same unpublished assurance feature layer.
