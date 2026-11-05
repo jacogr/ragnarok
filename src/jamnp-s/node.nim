@@ -713,6 +713,13 @@ proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[Node
       if matches and owner.node.active(peer):
         return NodeResult[NodePeer](status: NodeError.None, completed: peer)
   NodeResult[NodePeer](status: NodeError.Unavailable)
+func peerBusy*(owner: NodeService, identity: StateEdKey): bool =
+  ## Temporary demand connections may also carry remote work; selectors and closing frames retain that peer until actual native retirement.
+  for index in 0..<owner.frames.len:
+    let frame = addr owner.frames[index]
+    if frame.kind in [FrameKind.Empty, FrameKind.Persistent]: continue
+    if array[32, byte](frame.peer.identity) == array[32, byte](identity): return true
+  false
 proc source*(owner: NodeService, peer: NodePeer): NodeResult[NodeClaims] =
   ## Capture only the greatest live UP0 incarnation's claims; they never certify a state root or finality.
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeClaims](

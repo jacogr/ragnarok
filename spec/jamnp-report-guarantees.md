@@ -322,8 +322,8 @@ One thousand large client snapshot release cycles retain549296 bytes, unchanged 
 The existing raw read-client, native node-service, staged work-stream and managed receiving suites
 also pass. Their observed ARC release baselines are39664,21712 and215808 bytes for the latter
 three suites, unchanged before/after1000 cycles. Linux-target node/client semantic checking passes;
-this is not native Linux CI. Closed-worker preparation/response/collection, runtime grace and
-CE135 receiving/distribution are still required for the complete guarantee feature.
+this is not native Linux CI. The following sections record subsequent closed-worker integration
+and runtime grace. CE135 receiving/distribution remain required for the complete guarantee feature.
 
 Final native-client verification passes formatting, inventory and the production build. Actual ARC
 lowering rejects duplicating NodeService with the added client buffers; the checked probe retains
@@ -339,7 +339,8 @@ progress; rejected peers and output budgets preserve every accepted credential. 
 bytes and fixed targets are cached independently from the worker-owned round graph, so native
 I/O can continue while verification borrows canonical state. Complete payload bytes are detached
 from the collected guarantee graph before transport access. Both aggregate hooks and joined
-teardown/reaping cover the new owners. Actor grace, CE135 and startup integration remain required.
+teardown/reaping cover the new owners. The following section records ordinary actor grace;
+CE135 and startup integration remain required.
 
 
 The native managed-exchange suite starts from a real TLS CE146 header and drives actual Services
@@ -357,7 +358,36 @@ dispatcher suites pass. Signing/submission/receiving retain175744,40816 and21580
 cycles respectively, unchanged before/after. The genuine TLS/Services test setup is shared between
 signing and exchange suites. Actual Services ARC lowering still rejects duplication with the new
 round/result/raw owners. Linux-target closed-job semantics pass; no native Linux CI is claimed.
-Runtime grace, both CE135 directions and strict optional startup remain unfinished.
+Both CE135 directions, retained availability promises and strict optional startup remain unfinished.
 
 Final managed-exchange verification also passes formatting, inventory and the production build.
 All required worker/source owners remain private until exact collection or joined shutdown.
+
+
+## Ordinary managed sharing controller
+
+`ApplicationNode.configureWorkExchange` separately enables CE134 only with an explicit bounded
+policy and a private signer matching the actual TLS identity. Omission enables neither sending
+nor receiving. An already configured matching private signer may survive a host close/reopen;
+no external signer alias enters Services. Completed CE146 work advances through managed report,
+private signing, request preparation, two independently bounded peer requests, exact peer-response
+verification and canonical guarantee collection. Receiver-only nodes use the same ordinary host
+loop and independent managed incoming namespace. Native callbacks still handle raw framing only.
+
+Incoming and local work alternate through the existing single-worker arbiter. Fixed targets and
+detached raw bytes remain available during unrelated canonical leases; only the matching token
+can collect or join a job. A second credential starts a minimum two-second grace period for the
+third, while three verified credentials permit immediate collection. Peer failure preserves prior
+credentials. Global and peer deadlines bound progress. Failed exchanges retire the builder's
+completed session too, permitting the next submission. Owned demand connections wait for remote
+ephemeral streams to retire before cancellation, bounded by the round's explicit overall deadline;
+persistent announcements alone do not prevent cleanup. Whole-host shutdown joins exact owned
+jobs before retiring native callbacks. Joined Services shutdown also revokes the incoming namespace.
+
+The ordinary runtime suite exercises three complete independent Services owners over actual TLS,
+a separate builder identity, genuine peer execution/signing, three-credential collection, two-peer
+grace, an unrelated uncollected Done lease, outgoing/incoming Done close and host reopen, and a
+second builder submission after both peers refuse. Native runtime verification passes with checked
+ARC/release compilation. This is collected guarantee evidence, not CE135 distribution or fresh
+block inclusion. Both CE135 directions, retained availability promises and strict optional startup
+integration remain required before publishing the complete guarantee feature.

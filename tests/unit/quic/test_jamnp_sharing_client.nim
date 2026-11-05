@@ -204,6 +204,7 @@ proc simultaneous() {.raises.} =
     takeIncoming(c, tasksC, countC)
     pump(a, b, c)
   assert a.workStreamCount == 2 and b.workStreamCount == 2 and c.workStreamCount == 2
+  assert a.peerBusy(keyB) and a.peerBusy(keyC) # Bidirectional remote work prevents early demand-connection cleanup.
   answer(a, tasksA, request, responseA)
   answer(b, tasksB, request, responseB)
   answer(c, tasksC, request, responseC)
@@ -222,6 +223,7 @@ proc simultaneous() {.raises.} =
   while a.sharingRequestCount+b.sharingRequestCount+c.sharingRequestCount+a.workStreamCount+b.workStreamCount+c.workStreamCount > 0:
     assert getMonoTime() < deadline
     pump(a, b, c)
+  assert not a.peerBusy(keyB) and not a.peerBusy(keyC) # Persistent announcements alone do not retain temporary request ownership.
   assert a.takeSharingReply(ticketsA[0]).error == ReadError.InvalidStream
   assert b.takeSharingRequest().error == NodeError.Unavailable
   # Active cancellation revokes both exact directions without disconnecting the authenticated peer.

@@ -121,6 +121,22 @@ proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
   let shared = services.collectWorkSharing(incoming.value)
   assert shared.kind == WorkSharingCompletionKind.Completed
   assert services.workSessionPhase(token) == WorkSessionPhase.AwaitingContributions
+  block:
+    # Joined external stop revokes the incoming namespace, preserves the waiting primary round and permits a fresh generation to run.
+    let stopped = services.beginWorkSharing(request, fixture.local, keyB, StateTime(20), policy(raw))
+    assert stopped.error == StateProofAdmissionError.None
+    services.waitDone()
+    assert services.workSharingActive(stopped.value)
+    services.stopStateProofs()
+    assert services.stateProofAvailable and not services.workSharingActive(stopped.value)
+    assert services.collectWorkSharing(stopped.value).kind ==
+        WorkSharingCompletionKind.Uninitialized
+    assert services.workSessionPhase(token) == WorkSessionPhase.AwaitingContributions
+    let resumed = services.beginWorkSharing(request, fixture.local, keyB, StateTime(20), policy(raw))
+    assert resumed.error == StateProofAdmissionError.None
+    assert not services.cancelWorkSharing(stopped.value)
+    services.waitDone()
+    assert services.collectWorkSharing(resumed.value).kind == WorkSharingCompletionKind.Completed
   let premature = services.beginWorkGuaranteeCollection(token, ByteLimit(20000))
   assert premature.error == StateProofAdmissionError.QueryFailure
   let absent = services.beginWorkPeerResponse(token, 2, keyB, responseB)

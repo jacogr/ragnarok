@@ -729,6 +729,9 @@ proc stopStateProofs*(services: var Services) =
     services.light.stopProofs()
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
+  services.sharingInput = default(WorkSubmissionJob)
+  services.sharingTicket = default(ProofWorkerTicket)
+  services.sharingActive = false # Joined stop revokes the exact incoming namespace before another controller can reopen it.
   if services.workActive:
     # Joined external stop retires this session without releasing source owners borrowed by other worker families.
     services.workActive = false
@@ -2127,6 +2130,12 @@ proc configureWorkSigner*(services: var Services, certificate, privateKey: strin
 func workSigningConfigured*(services: Services): bool =
   ## This scalar is safe to observe while any canonical/signer alias belongs to the worker.
   services.started and services.workSignerReady
+func workSignerMatches*(services: Services, identity: StateEdKey): bool =
+  ## Fixed cached public identity allows a reopened native host to reuse private setup without importing or inspecting the key again.
+  if not services.started or not services.workSignerReady: return false
+  let original = array[32, byte](services.workSignerIdentity)
+  let requested = array[32, byte](identity)
+  original == requested
 proc stageWorkSharing(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
     now: StateTime, limits: WorkSharingLimits): WorkJobError =
   ## Native task aliases remain independent from the detached job; view/key staging aliases retire before admission.
@@ -2175,6 +2184,9 @@ func matchesSharing(services: Services, token: WorkSharingToken): bool =
   ## Sharing namespaces are host-only and independent from primary work sessions or native stream tickets.
   services.sharingActive and token.owner != nil and token.owner == services.sharingIdentity and
     token.generation != 0 and token.generation == services.sharingGeneration
+func workSharingActive*(services: Services, token: WorkSharingToken): bool =
+  ## Host-only namespace/generation observation never touches the worker's canonical or signer graph.
+  services.matchesSharing(token)
 proc cancelWorkSharing*(services: var Services, token: WorkSharingToken): bool =
   ## Cancellation marks only the exact sharing lease; signer/source aliases remain frozen until collect/join.
   if not services.matchesSharing(token): return false
