@@ -351,8 +351,42 @@ def statistics_rows(report):
     return result
 
 
+def cumulative_rows(report):
+    """Sum every public-call prefix exactly; observed crossovers make no future reuse prediction."""
+    validate_report(report)
+    rows, result = _rows(report), []
+    for case in case_inventory(report['scope']):
+        for order in (0, 1):
+            for clock in ('cpu_ns', 'wall_ns'):
+                # Each process/clock owns thirteen independent integer prefixes, including samples1/2.
+                totals, prefixes = dict.fromkeys(ROLES, 0), []
+                for sample in range(13):
+                    for role in ROLES:
+                        totals[role] += rows[case['case_id'], role, order]['execution'][
+                            'samples'][sample][clock]
+                    prefixes.append(dict(call_count=sample+1, **totals,
+                        jit_minus_interpreted_ns=totals['jit']-totals['interpreted'],
+                        jit_over_interpreted=totals['jit']/totals['interpreted'],
+                        interpreted_over_reference=totals['interpreted']/totals['reference'],
+                        jit_over_reference=totals['jit']/totals['reference']))
+                # A delayed spike can undo a crossing; retain the first and the observed lasting one.
+                first, through_final = None, None
+                for index, prefix in enumerate(prefixes):
+                    if prefix['jit_minus_interpreted_ns'] <= 0:
+                        if first is None: first = prefix['call_count']
+                        if (through_final is None and all(
+                                p['jit_minus_interpreted_ns'] <= 0 for p in prefixes[index:])):
+                            through_final = prefix['call_count']
+                result.append(dict(case_id=case['case_id'], order=order, clock=clock,
+                    prefixes=prefixes, first_break_even_call_count=first,
+                    first_break_even_holds_through_final=(
+                        through_final == first if first is not None else None),
+                    break_even_through_final_from_call_count=through_final))
+    return result
+
+
 def render_summary(report):
-    """Render separate order/clock cold and reused tables plus honest native and lifecycle scopes."""
+    """Render call windows, cumulative costs and observed crossovers with separate constructor scope."""
     validate_report(report)
     rows = _rows(report)
     observations = statistics_rows(report)
@@ -372,6 +406,27 @@ def render_summary(report):
                     f' | {observation["interpreted_over_reference"]:.6f} | '+
                     f'{observation["jit_over_reference"]:.6f} |')
         lines.append('')
+    lines += ['All thirteen public calls (samples0–12, including delayed costs)', '',
+              'Break-even counts are calls, including the cold call; reuses are calls minus one. '
+              'JIT <= interpreted is break-even. A first crossing can reverse. '
+              'Holding through call13 describes only this observed window, without a future prediction.', '',
+              '| Case | Order | Clock | Interpreted total ms | JIT total ms | Reference total ms | J/I | I/ref | J/ref | First break-even call | Holds through13 | Break-even from call through13 |',
+              '|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|---:|']
+    for observation in cumulative_rows(report):
+        total = observation['prefixes'][-1]
+        first = observation['first_break_even_call_count']
+        through = observation['break_even_through_final_from_call_count']
+        holds = observation['first_break_even_holds_through_final']
+        # Missing crossovers stay absent observations; no extrapolated reuse count fills the gap.
+        lines.append('| '+observation['case_id']+' | '+str(observation['order'])+' | '+
+            observation['clock'][:-3]+' | '+
+            ' | '.join(f'{total[role]/1e6:.6f}' for role in ROLES)+' | '+
+            ' | '.join(f'{total[key]:.6f}' for key in ('jit_over_interpreted',
+                'interpreted_over_reference', 'jit_over_reference'))+' | '+
+            (str(first) if first is not None else 'not observed')+' | '+
+            ('not observed' if holds is None else 'yes' if holds else 'no')+' | '+
+            (str(through) if through is not None else 'not observed')+' |')
+    lines.append('')
     lines += ['Actual JIT policy and cumulative owner work (positive operations do not imply all work is native)', '',
               '| Case | Order | Actual | Checked-only fallback | Fragments | Calls | Operations | Code bytes | Compilation CPU ns | Branches | Headers |',
               '|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|']

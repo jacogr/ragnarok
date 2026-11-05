@@ -153,6 +153,95 @@ class PerformanceReportTests(unittest.TestCase):
         self.assertEqual((cold['interpreted'], cold['jit'], cold['reference']), (400, 200, 100))
         self.assertEqual(cold['interpreted_over_reference'], 4)
 
+    def cumulative_fixture(self, interpreted, jit, reference=None, order=0, clock='cpu_ns'):
+        """Supply independent literal clocks for one valid micro case without native or lifecycle changes."""
+        value = observations('micro')
+        vectors = dict(interpreted=interpreted, jit=jit, reference=reference or [2]*13)
+        for row in value['runs']:
+            if row['case_id'] == 'arithmetic-1' and row['order'] == order:
+                for sample, duration in zip(row['parsed']['execution']['samples'], vectors[row['role']]):
+                    sample[clock] = duration
+        return value
+
+    def test_cumulative_delayed_spike_reverses_an_observed_crossing(self):
+        """A lower reused median cannot hide sample8 or guarantee an earlier cumulative advantage persists."""
+        for spike, total, through in ((80, 155, None), (40, 115, 10)):
+            value = self.cumulative_fixture([10]*13, [20]+[5]*7+[spike]+[5]*4)
+            selected = next(r for r in report.cumulative_rows(value) if
+                (r['case_id'], r['order'], r['clock']) == ('arithmetic-1', 0, 'cpu_ns'))
+            prefixes = selected['prefixes']
+            self.assertEqual([p['interpreted'] for p in prefixes], list(range(10, 131, 10)))
+            self.assertEqual([p['jit'] for p in prefixes[:8]], [20, 25, 30, 35, 40, 45, 50, 55])
+            self.assertEqual(prefixes[8]['jit'], 55+spike)
+            self.assertEqual((prefixes[-1]['interpreted'], prefixes[-1]['jit'],
+                              prefixes[-1]['reference']), (130, total, 26))
+            self.assertEqual(prefixes[-1]['jit_minus_interpreted_ns'], total-130)
+            self.assertEqual(prefixes[-1]['jit_over_interpreted'], total/130)
+            self.assertEqual(prefixes[-1]['interpreted_over_reference'], 5)
+            self.assertEqual(prefixes[-1]['jit_over_reference'], total/26)
+            self.assertEqual(selected['first_break_even_call_count'], 3)
+            self.assertFalse(selected['first_break_even_holds_through_final'])
+            self.assertEqual(selected['break_even_through_final_from_call_count'], through)
+
+    def test_cumulative_includes_warmup_cost_and_keeps_clocks_and_orders_separate(self):
+        """Samples1/2 remain paid, and each clock and process has its own cost and observed crossover."""
+        value = self.cumulative_fixture([10]*13, [1, 50, 50]+[1]*10)
+        for row in value['runs']:
+            if row['case_id'] == 'arithmetic-1':
+                for sample in row['parsed']['execution']['samples']:
+                    # CPU order1 and both wall orders deliberately disagree with the CPU order0 curve.
+                    if row['order'] == 1:
+                        sample['cpu_ns'] = dict(interpreted=20, jit=30, reference=4)[row['role']]
+                    sample['wall_ns'] = dict(interpreted=100, jit=90, reference=40)[row['role']]
+        selected = {(r['order'], r['clock']):r for r in report.cumulative_rows(value)
+                    if r['case_id'] == 'arithmetic-1'}
+        cpu = selected[0, 'cpu_ns']
+        self.assertEqual(cpu['prefixes'][2]['jit'], 101)
+        self.assertEqual(cpu['prefixes'][-1]['jit'], 111)
+        self.assertEqual(cpu['first_break_even_call_count'], 1)
+        self.assertFalse(cpu['first_break_even_holds_through_final'])
+        self.assertEqual(cpu['break_even_through_final_from_call_count'], 11)
+        reverse = selected[1, 'cpu_ns']
+        self.assertEqual((reverse['prefixes'][-1]['interpreted'], reverse['prefixes'][-1]['jit'],
+                          reverse['prefixes'][-1]['reference']), (260, 390, 52))
+        self.assertIsNone(reverse['first_break_even_call_count'])
+        self.assertIsNone(reverse['first_break_even_holds_through_final'])
+        self.assertIsNone(reverse['break_even_through_final_from_call_count'])
+        for order in (0, 1):
+            wall = selected[order, 'wall_ns']
+            self.assertEqual((wall['prefixes'][-1]['interpreted'], wall['prefixes'][-1]['jit'],
+                              wall['prefixes'][-1]['reference']), (1300, 1170, 520))
+            self.assertEqual(wall['first_break_even_call_count'], 1)
+            self.assertTrue(wall['first_break_even_holds_through_final'])
+            self.assertEqual(wall['break_even_through_final_from_call_count'], 1)
+
+    def test_cumulative_excludes_constructor_lifecycle_and_forged_cached_statistics(self):
+        """Large outside-call receipts and supplied summaries cannot alter exact raw call costs."""
+        value = observations('doom')
+        expected = report.cumulative_rows(value)
+        value['forged_cumulative_statistics'] = {'jit_over_interpreted': 0}
+        for row in value['runs']:
+            row['parsed']['execution']['preparation_ns'] = [10**12]
+            row['parsed']['execution']['preparation_wall_ns'] = [2*10**12]
+            if row['role'] == 'reference':
+                for item in row['parsed']['execution']['lifecycle']:
+                    item['restore_ns'] = 10**9
+                    item['teardown_ns'] = 10**9
+                    item['lifecycle_ns'] = item['restore_ns']+item['cpu_ns']+item['teardown_ns']
+        self.assertEqual(report.cumulative_rows(value), expected)
+
+    def test_cumulative_nanoseconds_remain_exact_integers_above_machine_word_total(self):
+        """Summation preserves nanosecond differences even when thirteen valid durations exceed u64."""
+        base = 1 << 61
+        value = self.cumulative_fixture([base+3]*13, [base+4]*13, [base+1]*13)
+        selected = next(r for r in report.cumulative_rows(value) if
+            (r['case_id'], r['order'], r['clock']) == ('arithmetic-1', 0, 'cpu_ns'))
+        total = selected['prefixes'][-1]
+        self.assertEqual((total['interpreted'], total['jit'], total['reference']),
+                         (13*(base+3), 13*(base+4), 13*(base+1)))
+        self.assertEqual(total['jit_minus_interpreted_ns'], 13)
+        self.assertTrue(all(type(total[role]) is int for role in ('interpreted', 'jit', 'reference')))
+
     def test_csv_preserves_actual_data_and_absent_lifecycle(self):
         """Every raw sample survives with explicit window membership and no fabricated reference clocks."""
         value = observations('doom')

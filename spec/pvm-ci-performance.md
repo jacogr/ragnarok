@@ -58,6 +58,16 @@ restore and teardown; DOOM reference lifecycle measurements are shown separately
 These are explicitly scoped call comparisons, not complete application startup or
 an additive decomposition of nested clocks.
 
+Cumulative observations sum public-call samples zero through twelve, including
+samples one/two and delayed work. Every call prefix retains integer CPU and wall
+totals separately by engine and process order. The all-thirteen-call table shows
+totals and ratios, the first observed JIT/interpreted break-even call count, whether
+that crossing holds through call thirteen, and any later crossing that does hold
+through the observed window. Break-even includes equality; reuse count is call
+count minus one. A missing crossing remains unobserved. These observations neither
+establish steady state nor predict a future crossover. Constructor and reference
+lifecycle scopes remain separate; cumulative totals use the existing call clocks.
+
 Tables show both current interpreter / PolkaVM interpreted and current JIT /
 PolkaVM interpreted ratios, with lower values meaning less time. Requested policy,
 actual completed native work, availability and counters accompany each workload.
