@@ -61,7 +61,7 @@ import ../jamnp-s/work_recovery
 from ../codec/state/safrole import StateValidatorIndex
 import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
-import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire]
+import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../jamnp-s/[availability_read, availability_store]
 from ../jamnp-s/availability_proof import VerifiedAvailabilityTransfer, AvailabilityRequest, AvailabilityTransferKind
 from ../state/erasure/words import ErasureShardIndex
@@ -209,7 +209,11 @@ proc captureStartupAnchor(view: ChainView): StartupBlockAnchor =
 type
   WorkSessionPhase* {.pure.} = enum ## Only scalar state is observed while any canonical borrower owns the graph.
     Empty, Authorizing, Authorized, Completing, Complete, Reporting, ReportReady, Failed, Retired,
-      Recovering, CheckingRecovery, Signing, Contributed
+      Recovering, CheckingRecovery, Signing, Contributed, PreparingExchange, AwaitingContributions,
+        CheckingContribution, CollectingGuarantee, Guaranteed
+  WorkExchangeInfo* = object ## Fixed committed progress remains observable while a worker owns source-bearing graphs.
+    targets*, credentials*, requestBytes*, guaranteeBytes*: int
+    status*: WorkJobResultKind
   WorkSessionIdentity = ref object ## Host-only namespace never crosses into the CPU job or canonical state graph.
     marker: uint8
   WorkSessionToken* = object ## Private owner identity and nonwrapping generation reject foreign and stale session controls.
@@ -221,6 +225,16 @@ type
     of QueryFailure: captureReason: WorkJobError
     of WorkerFailure: workerReason: ProofWorkerError
     else: discard # Refusals contain no session, graph or collection authority.
+
+func signedWorkPhase(phase: WorkSessionPhase): bool =
+  ## Cached signing/report metadata describes the original contribution through every exchange stage.
+  phase in {WorkSessionPhase.Contributed, WorkSessionPhase.PreparingExchange,
+    WorkSessionPhase.AwaitingContributions, WorkSessionPhase.CheckingContribution,
+    WorkSessionPhase.CollectingGuarantee, WorkSessionPhase.Guaranteed}
+func exchangeWorkPhase(phase: WorkSessionPhase): bool =
+  ## Prepared independent bytes and fixed targets remain usable while another graph job runs.
+  phase in {WorkSessionPhase.AwaitingContributions, WorkSessionPhase.CheckingContribution,
+    WorkSessionPhase.CollectingGuarantee, WorkSessionPhase.Guaranteed}
 
 type
   WorkSigningSetupError* {.pure.} = enum ## Startup-only failures never expose a private signer owner.
@@ -324,6 +338,13 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   workRecoveryJobs: uint64
   workRecoveryEnabled, workFallbackAllowed: bool
   workOutcome: WorkJobResult
+  workExchangeOutcome: WorkJobResult
+  workRound: WorkGuaranteeRound
+  workSharedRequest: SharedWorkRequest
+  workShareTargets: array[2, WorkShareTarget]
+  workExchangeState: WorkExchangeInfo
+  workGuarantee: CollectedWorkGuarantee
+  workGuaranteeBytes: seq[byte]
   workIdentity: nil WorkSessionIdentity
   workGeneration: uint64
   workPhase: WorkSessionPhase
@@ -414,6 +435,13 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   services.sharingGeneration = 0
   services.sharingActive = false
   `=wasMoved`(services.workInput)
+  `=wasMoved`(services.workExchangeOutcome)
+  `=wasMoved`(services.workRound)
+  `=wasMoved`(services.workSharedRequest)
+  `=wasMoved`(services.workShareTargets)
+  `=wasMoved`(services.workExchangeState)
+  `=wasMoved`(services.workGuarantee)
+  `=wasMoved`(services.workGuaranteeBytes)
   `=wasMoved`(services.workContext)
   `=wasMoved`(services.workRecovery)
   `=wasMoved`(services.workSigner)
@@ -483,6 +511,13 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.sharingTicket)
   `=destroy`(services.sharedContribution)
   `=destroy`(services.workInput)
+  `=destroy`(services.workExchangeOutcome)
+  `=destroy`(services.workRound)
+  `=destroy`(services.workSharedRequest)
+  `=destroy`(services.workShareTargets)
+  `=destroy`(services.workExchangeState)
+  `=destroy`(services.workGuarantee)
+  `=destroy`(services.workGuaranteeBytes)
   `=destroy`(services.workContext)
   `=destroy`(services.workRecovery)
   `=destroy`(services.workSigner)
@@ -739,6 +774,15 @@ proc stopCheckpointExport*(services: var Services) =
   ## Join detached I/O outside callbacks and retain actual uncollected work/retirement uncertainty until explicit acknowledgement.
   services.checkpointExport.close()
 
+proc clearWorkExchange(services: var Services) =
+  ## Call only after CPU borrowers retire; independent raw caches and retained credential graphs reset together.
+  services.workExchangeOutcome = default(WorkJobResult)
+  services.workRound = default(WorkGuaranteeRound)
+  services.workSharedRequest = default(SharedWorkRequest)
+  services.workShareTargets = default(array[2, WorkShareTarget])
+  services.workExchangeState = default(WorkExchangeInfo)
+  services.workGuarantee = default(CollectedWorkGuarantee)
+  services.workGuaranteeBytes = @[]
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
   if services.started:
@@ -770,6 +814,7 @@ proc close*(services: var Services) =
   services.workRecoveryEnabled = false
   services.workFallbackAllowed = false
   services.workOutcome = default(WorkJobResult)
+  services.clearWorkExchange()
   services.workIdentity = nil
   services.workTicket = default(ProofWorkerTicket)
   services.availabilityStore.clear()
@@ -1833,7 +1878,7 @@ proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadEr
   ## Primary and most-recent shared reports retain exact independent availability provenance; staging aliases retire before submission.
   if not services.availabilityEnabled: return ReadError.Unavailable
   var reason = ReadError.Unavailable
-  if services.workPhase in {WorkSessionPhase.ReportReady, WorkSessionPhase.Contributed}:
+  if services.workPhase == WorkSessionPhase.ReportReady or signedWorkPhase(services.workPhase):
     var transcript = default(ComputedGuaranteeTranscript)
     case services.workOutcome.kind
     of WorkJobResultKind.Reported:
@@ -2035,6 +2080,7 @@ proc reapWorkSubmission*(services: var Services): bool =
   services.workRecoveryEnabled = false
   services.workFallbackAllowed = false
   services.workOutcome = default(WorkJobResult)
+  services.clearWorkExchange()
   services.workTicket = default(ProofWorkerTicket)
   services.workInfo = default(WorkSubmissionInfo)
   services.workDuty = default(WorkDuty)
@@ -2261,6 +2307,7 @@ proc activateWorkRecovery*(services: var Services, token: WorkSessionToken): Rea
         not services.workFallbackAllowed: return ReadError.InvalidRequest
   if not services.workSourceCurrent: return ReadError.Unavailable
   services.workOutcome = default(WorkJobResult)
+  services.clearWorkExchange()
   services.workFallbackAllowed = false
   services.workPhase = WorkSessionPhase.Recovering
   ReadError.None
@@ -2474,6 +2521,90 @@ proc beginWorkContribution*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None:
     return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Signing)
+proc stageWorkExchange(services: var Services, maximum: ByteLimit): WorkJobError =
+  ## Temporary contribution aliases retire before preparation takes its exclusive graph lease.
+  if services.workOutcome.kind != WorkJobResultKind.Contributed: return WorkJobError.InvalidInput
+  let captured = captureWorkExchange(services.workOutcome.signedContribution, maximum)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkExchange*(services: var Services, token: WorkSessionToken,
+    maximum: ByteLimit): WorkSubmissionStart =
+  ## Prepare only this genuine signed session; signer setup and exact prior collection are prerequisites.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Contributed:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  let staged = services.stageWorkExchange(maximum)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.PreparingExchange)
+proc stageWorkResponse(services: var Services, position: int, peer: StateEdKey,
+    response: array[96, byte]): WorkJobError =
+  ## Only the private round and fixed copies enter verification, never its native raw-request cache.
+  let captured = captureWorkResponse(services.workRound, services.workShareTargets[position], peer, response)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkPeerResponse*(services: var Services, token: WorkSessionToken,
+    position: int, transportIdentity: StateEdKey, response: array[96, byte]): WorkSubmissionStart =
+  ## The ordinal selects a privately prepared target; actual TLS identity is a host observation, never packet metadata.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase !=
+      WorkSessionPhase.AwaitingContributions:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  if position < 0 or position >= services.workExchangeState.targets: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkResponse(position, transportIdentity, response)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.CheckingContribution)
+proc stageWorkGuarantee(services: var Services, maximum: ByteLimit): WorkJobError =
+  ## Temporary round aliases retire before final canonical encoding borrows the shared graph.
+  let captured = captureWorkGuarantee(services.workRound, maximum)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkGuaranteeCollection*(services: var Services, token: WorkSessionToken,
+    maximum: ByteLimit): WorkSubmissionStart =
+  ## Two actual collected credentials are necessary; resource policy never supplies missing credential authority.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable or services.workPhase !=
+      WorkSessionPhase.AwaitingContributions:
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  if services.workExchangeState.credentials < 2: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkGuarantee(maximum)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.CollectingGuarantee)
+func workExchangeInfo*(services: Services, token: WorkSessionToken): WorkExchangeInfo =
+  ## Fixed committed counters/status retain no alias to worker-owned canonical state.
+  if services.matchesWork(token): services.workExchangeState else: default(WorkExchangeInfo)
+func workShareTarget*(services: Services, token: WorkSessionToken,
+    position: int): WorkShareTarget {.requires:
+    services.matchesWork(token) and exchangeWorkPhase(services.workPhase) and
+    position >= 0 and position < services.workExchangeState.targets.} =
+  ## Complete fixed target metadata can be copied through an active or unrelated CPU lease.
+  services.workShareTargets[position]
+proc workSharingRequest*(services: Services, token: WorkSessionToken): SharedWorkRequest {.requires:
+    services.matchesWork(token) and exchangeWorkPhase(services.workPhase).} =
+  ## Independent raw bytes carry no canonical/signer reference and remain safe for native sends during verification.
+  services.workSharedRequest
+proc workGuaranteePayload*(services: Services, token: WorkSessionToken): seq[byte] {.requires:
+    services.matchesWork(token) and services.workPhase == WorkSessionPhase.Guaranteed.} =
+  ## Copy the independent raw cache rather than the collected guarantee graph's private sequence.
+  result = newSeq[byte](services.workGuaranteeBytes.len)
+  for index in 0..<result.len: result[index] = services.workGuaranteeBytes[index]
+proc workExchangeOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
+    services.stateProofAvailable and services.matchesWork(token).} =
+  ## Retire every extracted source-bearing alias before admitting another shared-graph borrower.
+  services.workExchangeOutcome
 proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): WorkSessionPhase =
   ## Exact matching Done collection installs source-bearing artifacts privately and exposes only scalar phase.
   if not services.matchesWork(token): return WorkSessionPhase.Empty
@@ -2528,9 +2659,47 @@ proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): Wo
       services.workOutcome = outcome
       services.workPhase = WorkSessionPhase.Complete
     of WorkJobResultKind.Contributed:
+      services.clearWorkExchange() # A new signature never inherits a prior round's targets or peer credentials.
       services.workOutcome = outcome
       services.workContributionInfo = outcome.signedContribution.contributionInfo.value
       services.workPhase = WorkSessionPhase.Contributed
+    of WorkJobResultKind.ExchangePrepared:
+      services.workRound = outcome.exchangeRound
+      services.workSharedRequest = outcome.exchangeRequest
+      services.workShareTargets = outcome.exchangeTargets
+      services.workExchangeState.targets = outcome.exchangeTargetCount
+      services.workExchangeState.credentials = services.workRound.credentialCount
+      let sizes = services.workSharedRequest.sharingInfo.value
+      services.workExchangeState.requestBytes = sizes.headerBytes+sizes.bundleBytes+9
+      services.workExchangeState.status = outcome.kind
+      services.workExchangeOutcome = outcome
+      services.workPhase = WorkSessionPhase.AwaitingContributions
+    of WorkJobResultKind.PeerAccepted:
+      services.workRound = outcome.exchangeRound
+      services.workExchangeState.credentials = services.workRound.credentialCount
+      services.workExchangeState.status = outcome.kind
+      services.workExchangeOutcome = outcome
+      services.workPhase = WorkSessionPhase.AwaitingContributions
+    of WorkJobResultKind.ExchangePreparationFailure:
+      services.workExchangeOutcome = outcome
+      services.workExchangeState.status = outcome.kind
+      services.workPhase = WorkSessionPhase.Contributed # Genuine original signing can retry a larger byte budget.
+    of WorkJobResultKind.PeerResponseFailure, WorkJobResultKind.GuaranteeCollectionFailure:
+      services.workExchangeOutcome = outcome
+      services.workExchangeState.status = outcome.kind
+      services.workPhase = WorkSessionPhase.AwaitingContributions # Refusal preserves every previously accepted credential.
+    of WorkJobResultKind.GuaranteeCollected:
+      let guarantee = outcome.collectedGuarantee
+      let payload = guarantee.guaranteePayload
+      if payload.error != WorkGuaranteeError.None:
+        services.workPhase = WorkSessionPhase.Failed
+        return services.workPhase # An inconsistent/default owner cannot expose completed wire bytes.
+      services.workGuarantee = guarantee
+      services.workGuaranteeBytes = payload.value
+      services.workExchangeState.guaranteeBytes = services.workGuaranteeBytes.len
+      services.workExchangeState.status = outcome.kind
+      services.workExchangeOutcome = outcome
+      services.workPhase = WorkSessionPhase.Guaranteed
     of WorkJobResultKind.Reported:
       services.workOutcome = outcome
       services.workReportInfo = outcome.reportTranscript.computedGuaranteeReport.value.computedReportInfo.value
@@ -2556,18 +2725,19 @@ func workSubmissionDuty*(services: Services, token: WorkSessionToken): WorkDuty 
   services.workDuty
 func workSubmissionReportInfo*(services: Services,
     token: WorkSessionToken): ComputedReportInfo {.requires:
-    services.matchesWork(token) and services.workPhase in {WorkSessionPhase.ReportReady,
-        WorkSessionPhase.Contributed}.} =
+    services.matchesWork(token) and (services.workPhase == WorkSessionPhase.ReportReady or
+      signedWorkPhase(services.workPhase)).} =
   ## Fixed copied report metadata is safe during foreign graph leases; source-bearing transcript access remains gated.
   services.workReportInfo
 func workSignedInfo*(services: Services, token: WorkSessionToken): WorkEligibilityInfo {.requires: services.matchesWork(
-    token) and services.workPhase == WorkSessionPhase.Contributed.} =
+    token) and signedWorkPhase(services.workPhase).} =
   ## Only fixed scalar facts escape while the genuine contribution remains private to the collected session.
   services.workContributionInfo
 proc workSubmissionOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
-    services.stateProofAvailable and services.matchesWork(token) and services.workPhase in {
-        WorkSessionPhase.Complete, WorkSessionPhase.ReportReady, WorkSessionPhase.Contributed,
-            WorkSessionPhase.Failed}.} =
+    services.stateProofAvailable and services.matchesWork(token) and
+    (services.workPhase in {WorkSessionPhase.Complete, WorkSessionPhase.ReportReady,
+        WorkSessionPhase.Failed} or
+      signedWorkPhase(services.workPhase)).} =
   ## The caller must retire every returned source-bearing alias before admitting any subsequent shared-graph CPU job.
   services.workOutcome
 

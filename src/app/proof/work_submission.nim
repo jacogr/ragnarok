@@ -1,14 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Closed two-stage work-submission CPU jobs retain original complete-state provenance under the shared graph lease.
+## Closed work-submission and guarantee-exchange CPU jobs retain original provenance under the shared graph lease.
 ## All aliases, including completed authorization and refinement, remain untouched until exact collection or joined stop.
 import ../../jamnp-s/work_submission
 import ../../jamnp-s/work_duty
 import ../../jamnp-s/work_report
-import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire]
+import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../../jamnp-s/work_recovery
 import ../../chain/[provider, genesis]
+import ../../codec/bounded
 from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime
 from ../../state/computed/guarantee import ComputedGuaranteeTranscript
 from ../../codec/work/report import ErasureShards
@@ -27,7 +28,8 @@ type
     Uninitialized, Authorized, Refined, InvalidSource, AuthorizationFailure, BodyFailure,
       RefinementFailure, DutyFailure, Reported, ReportFailure, ImportPlanningFailure,
         RecoveryUpdated, RecoveryFailure, RecoveryCompletionFailure, Contributed,
-          EligibilityFailure, SigningFailure, SharingFailure
+          EligibilityFailure, SigningFailure, SharingFailure, ExchangePrepared,
+            ExchangePreparationFailure, PeerAccepted, PeerResponseFailure, GuaranteeCollected, GuaranteeCollectionFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -53,6 +55,16 @@ type
     of RecoveryCompletionFailure: recoveryCompletionReason: WorkRecoveryResult[VerifiedImportInputs]
     of ImportPlanningFailure: planningReason: WorkSubmissionResult[WorkImportPlan]
     of SharingFailure: sharingReason: WorkSharingResult[SignedWorkContribution]
+    of ExchangePrepared:
+      preparedRequest: SharedWorkRequest
+      preparedRound: WorkGuaranteeRound
+      preparedTargets: array[2, WorkShareTarget]
+      preparedCount: int
+    of ExchangePreparationFailure: exchangeReason: WorkSharingResult[SharedWorkRequest]
+    of PeerAccepted: acceptedRound: WorkGuaranteeRound
+    of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
+    of GuaranteeCollected: collected: CollectedWorkGuarantee
+    of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
     of Contributed: contribution: SignedWorkContribution
     of EligibilityFailure: eligibilityReason: WorkEligibilityResult[EligibleWorkGuarantee]
     of SigningFailure: signingReason: WorkSignerResult[SignedWorkContribution]
@@ -83,6 +95,11 @@ type
     sharingRequest: SharedWorkRequest
     sharingPeer: StateEdKey
     sharingLimits: WorkSharingLimits
+    contribution: SignedWorkContribution
+    round: WorkGuaranteeRound
+    target: WorkShareTarget
+    response: array[96, byte]
+    exchangeBytes: ByteLimit
     recovery: WorkRecovery
     recoveryVersion: uint64
     validator: StateValidatorIndex
@@ -106,6 +123,40 @@ func value*(outcome: WorkJobAdmission): WorkSubmissionJob {.requires: outcome.st
 func kind*(outcome: WorkJobResult): WorkJobResultKind =
   ## Scalar observations retain no canonical graph alias.
   outcome.status
+func exchangeRequest*(outcome: WorkJobResult): SharedWorkRequest {.requires: outcome.status ==
+    WorkJobResultKind.ExchangePrepared.} =
+  ## Extract only independent raw prepared bytes, after exact worker collection and before admitting another graph borrower.
+  outcome.preparedRequest
+func exchangeRound*(outcome: WorkJobResult): WorkGuaranteeRound {.requires: outcome.status in {
+    WorkJobResultKind.ExchangePrepared, WorkJobResultKind.PeerAccepted}.} =
+  ## Private credential ownership remains frozen through every subsequent worker lease.
+  if outcome.status == WorkJobResultKind.ExchangePrepared: outcome.preparedRound else: outcome.acceptedRound
+func exchangeTargets*(outcome: WorkJobResult): array[2,
+    WorkShareTarget] {.requires: outcome.status == WorkJobResultKind.ExchangePrepared.} =
+  ## Fixed source-bound target copies remain safe for native control without canonical graph access.
+  outcome.preparedTargets
+func exchangeTargetCount*(outcome: WorkJobResult): int {.requires: outcome.status ==
+    WorkJobResultKind.ExchangePrepared.} =
+  ## Only the selected prefix contains actual remote targets; null or local cohort positions are excluded.
+  outcome.preparedCount
+func exchangePreparationError*(outcome: WorkJobResult): WorkSharingResult[
+    SharedWorkRequest] {.requires: outcome.status ==
+    WorkJobResultKind.ExchangePreparationFailure.} =
+  ## Preserve the genuine outgoing bundle preparation refusal without a prepared prefix.
+  outcome.exchangeReason
+func peerResponseError*(outcome: WorkJobResult): WorkGuaranteeResult[
+    WorkGuaranteeRound] {.requires: outcome.status == WorkJobResultKind.PeerResponseFailure.} =
+  ## Rejected signatures preserve their precise reason and never replace the previous accepted round.
+  outcome.peerReason
+func collectedGuarantee*(outcome: WorkJobResult): CollectedWorkGuarantee {.requires: outcome.status ==
+    WorkJobResultKind.GuaranteeCollected.} =
+  ## Two/three genuine credentials produced this owner; no fresh block-admission or distribution promise is implied.
+  outcome.collected
+func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
+    CollectedWorkGuarantee] {.requires: outcome.status ==
+    WorkJobResultKind.GuaranteeCollectionFailure.} =
+  ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
+  outcome.collectionReason
 func context*(outcome: WorkJobResult): AuthorizedWorkContext {.requires: outcome.status ==
     WorkJobResultKind.Authorized.} =
   ## Retain the original authorization context only while the host owns the shared graph lease.
@@ -341,6 +392,59 @@ proc captureWorkContribution*(context: AuthorizedWorkContext,
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     run: contribute, context: context, transcript: transcript, signingView: view,
     signingIdentity: local, signingTime: now, signer: signer, signingLimits: limits)))
+proc prepareExchange(data: WorkJobData): WorkJobResult =
+  ## Bundle copying/encoding and sealed target discovery execute only on the exclusive managed CPU lease.
+  let prepared = prepareWorkSharing(data.contribution, data.exchangeBytes)
+  if prepared.error != WorkSharingError.None:
+    return WorkJobResult(status: WorkJobResultKind.ExchangePreparationFailure,
+        exchangeReason: prepared)
+  let initial = beginWorkGuarantee(data.contribution)
+  if initial.error != WorkGuaranteeError.None: return WorkJobResult(
+      status: WorkJobResultKind.InvalidSource)
+  var targets = default(array[2, WorkShareTarget])
+  var count = 0
+  for position in 0..<3:
+    # GP-null offenders and the original local position cannot become outgoing request targets.
+    let selected = sharingTarget(data.contribution, position)
+    if selected.error == WorkGuaranteeError.InvalidTarget: continue
+    if selected.error != WorkGuaranteeError.None or count >= targets.len:
+      return WorkJobResult(status: WorkJobResultKind.InvalidSource)
+    targets[count] = selected.value
+    inc count
+  WorkJobResult(status: WorkJobResultKind.ExchangePrepared, preparedRequest: prepared.value,
+    preparedRound: initial.value, preparedTargets: targets, preparedCount: count)
+proc captureWorkExchange*(contribution: SignedWorkContribution,
+    maximum: ByteLimit): WorkJobAdmission =
+  ## Capture only a genuine local signature; every source alias stays frozen until exact collection or joined stop.
+  if contribution.contributionInfo.error != WorkSignerError.None:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: prepareExchange, contribution: contribution, exchangeBytes: maximum)))
+proc acceptResponse(data: WorkJobData): WorkJobResult =
+  ## Actual transport identity and detached fixed bytes cannot substitute for the round's original sealed target.
+  let accepted = addWorkResponse(data.round, data.target, data.sharingPeer, data.response)
+  if accepted.error != WorkGuaranteeError.None:
+    return WorkJobResult(status: WorkJobResultKind.PeerResponseFailure, peerReason: accepted)
+  WorkJobResult(status: WorkJobResultKind.PeerAccepted, acceptedRound: accepted.value)
+proc captureWorkResponse*(round: WorkGuaranteeRound, target: WorkShareTarget,
+    peer: StateEdKey, response: array[96, byte]): WorkJobAdmission =
+  ## No native handle or raw request/plan parent enters signature verification; only the private round graph and fixed copies are retained.
+  if round.credentialCount == 0 or not target.valid:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: acceptResponse, round: round, target: target, sharingPeer: peer, response: response)))
+proc collectGuarantee(data: WorkJobData): WorkJobResult =
+  ## Sorting, structural preflight and final canonical encoding share the exact round's managed lease.
+  let collected = collectWorkGuarantee(data.round, data.exchangeBytes)
+  if collected.error != WorkGuaranteeError.None:
+    return WorkJobResult(status: WorkJobResultKind.GuaranteeCollectionFailure,
+        collectionReason: collected)
+  WorkJobResult(status: WorkJobResultKind.GuaranteeCollected, collected: collected.value)
+proc captureWorkGuarantee*(round: WorkGuaranteeRound, maximum: ByteLimit): WorkJobAdmission =
+  ## Capture an existing genuine round, allowing the worker to return precise threshold/output-budget refusals.
+  if round.credentialCount == 0: return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    run: collectGuarantee, round: round, exchangeBytes: maximum)))
 proc receiveSharing(data: WorkJobData): WorkJobResult =
   ## The whole received bundle, actual sender/local facts, current view and private key remain on one managed lease.
   let received = receiveSharedWork(data.sharingRequest, data.signingView, data.signingIdentity,

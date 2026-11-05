@@ -1,0 +1,310 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# @@Verification={"arc": "jamnp_managed_work_exchange_arc_release"}
+
+## Actual managed preparation/peer verification/collection preserves original sessions and independent native bytes through Done, cancellation and joined shutdown.
+import std/[assertions, envvars, syncio, monotimes, times]
+import ../../../src/app/[services, options, startup]
+import ../../../src/app/proof/[worker, work_submission as jobs]
+import ../../../src/jamnp-s/[work_signer, work_eligibility, work_guarantee, work_sharing,
+  sharing_wire, work_stream, availability_read, availability_merkle, read_stream]
+import ../../../src/codec/[bounded, guarantees, assurances]
+import ../../../src/codec/state/safrole
+import ../../../src/codec/work/package
+import ../../../src/chain/[provider, genesis]
+import ../../support/[jamnp_guarantee_fixture, jamnp_managed_work_context, jamnp_work_fixture,
+  jamnp_work_report_fixture, pvm_input_refinement, arc_evidence]
+proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
+  ## Yield while observing only synchronized worker phase or independent raw bytes.
+proc policy(raw: WorkFixture): WorkSharingLimits =
+  ## Resource budgets remain explicit and cannot replace consensus parameters obtained from the real canonical source.
+  WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
+    submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
+        eligibility: guaranteeLimits())
+proc session(services: var Services, fixture: GuaranteeFixture, raw: WorkFixture,
+    header: UntrustedWorkHeader): WorkSessionToken {.raises.} =
+  ## The existing real TLS header feeds actual Services authorization, refinement, report computation and private-key signing.
+  let token = services.reportSession(fixture, raw, header)
+  let admitted = services.beginWorkContribution(token, fixture.local, StateTime(20),
+      guaranteeLimits())
+  assert admitted.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.Contributed
+  token
+proc peerFailure(services: Services, token: WorkSessionToken, reason: WorkGuaranteeError) =
+  ## All extracted failure aliases retire inside this helper before any next worker admission.
+  let outcome = services.workExchangeOutcome(token)
+  assert outcome.kind == WorkJobResultKind.PeerResponseFailure
+  assert outcome.peerResponseError.error == reason
+proc verifyPayload(bytes: seq[byte], expectedCount: int) =
+  ## Exact standalone GP decoding independently verifies slot, canonical order and committed threshold.
+  let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
+      maxBytes: ByteLimit(20000))
+  let parsed = decodeGuarantee(bytes, config)
+  assert parsed.error == GuaranteeError.None and parsed.value.consumed == bytes.len
+  let value = parsed.value.value
+  assert uint32(value.slot) == 20 and value.credentialCount == expectedCount
+  assert uint16(value.credentials[0].validator) == 1
+  assert uint16(value.credentials[1].validator) == 2
+  if expectedCount == 3: assert uint16(value.credentials[2].validator) == 5
+proc prepared(services: var Services, token: WorkSessionToken) =
+  ## Done reserves the exact source lease until matching primary collection commits the independently prepared caches.
+  let admitted = services.beginWorkExchange(token, ByteLimit(20000))
+  assert admitted.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert not services.stateProofAvailable
+  assert services.collectWorkSubmission(default(WorkSessionToken)) == WorkSessionPhase.Empty
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
+  let info = services.workExchangeInfo(token)
+  assert info.targets == 2 and info.credentials == 1
+proc accept(services: var Services, token: WorkSessionToken, position: int,
+    identity: StateEdKey, response: array[96, byte]) =
+  ## Detached byte/target caches remain usable during queued/running/Done verification without touching its private round graph.
+  let admitted = services.beginWorkPeerResponse(token, position, identity, response)
+  assert admitted.error == StateProofAdmissionError.None
+  let deadline = getMonoTime()+initDuration(seconds = 20)
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < deadline
+    assert services.workSharingRequest(token).sharingInfo.value.bundleBytes > 0
+    assert services.workShareTarget(token, position).valid
+    discard pauseMicros(100)
+  assert not services.stateProofAvailable
+  assert services.workSharingRequest(token).sharingInfo.value.bundleBytes > 0
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
+proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
+  ## Private Services signing ownership never comes from an external signer alias; only actual certificate/key paths configure it.
+  let raw = workFixture()
+  let current = fixture.view.bestBlock.value
+  let parent = fixture.view.parentOf(current.blockHash)
+  assert parent.error == GenesisError.None
+  writeFile("managed-exchange-chain.json", workChainText(parent.value))
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain",
+      "managed-exchange-chain.json"], settings)
+  var services = default(Services)
+  defer: services.close()
+  assert services.start(settings, "managed exchange")
+  assert services.publishFinalized(services.chainView.bestBlock.value.blockHash) ==
+      ViewFinalizeError.None
+  let configured = services.configureWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv(
+      "RAGNAROK_TEST_KEY"), fixture.local)
+  assert configured.error == WorkSigningSetupError.None
+  let header = services.networkHeader(fixture, raw, getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))
+  let token = session(services, fixture, raw, header)
+  let small = services.beginWorkExchange(token, ByteLimit(1))
+  assert small.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.Contributed
+  block:
+    # A byte-limit refusal preserves original signing authority without creating any prepared prefix.
+    let rejected = services.workExchangeOutcome(token)
+    assert rejected.kind == WorkJobResultKind.ExchangePreparationFailure
+    assert rejected.exchangePreparationError.error == WorkSharingError.LimitExceeded
+  prepared(services, token)
+  let request = services.workSharingRequest(token)
+  let keyB = b.signerIdentity.value
+  let keyC = c.signerIdentity.value
+  let peerView = genesisView(parent)
+  let receivedB = receiveSharedWork(request, peerView, keyB, fixture.local, StateTime(20), b,
+      policy(raw))
+  let receivedC = receiveSharedWork(request, peerView, keyC, fixture.local, StateTime(20), c,
+      policy(raw))
+  assert receivedB.error == WorkSharingError.None and receivedC.error == WorkSharingError.None
+  let responseB = receivedB.value.sharingResponse.value
+  let responseC = receivedC.value.sharingResponse.value
+  let incoming = services.beginWorkSharing(request, fixture.local, keyB, StateTime(20), policy(raw))
+  assert incoming.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
+  assert not services.stateProofAvailable and services.workExchangeInfo(token).credentials == 1
+  assert services.workSharingRequest(token).sharingInfo.value.bundleBytes > 0
+  let shared = services.collectWorkSharing(incoming.value)
+  assert shared.kind == WorkSharingCompletionKind.Completed
+  assert services.workSessionPhase(token) == WorkSessionPhase.AwaitingContributions
+  let premature = services.beginWorkGuaranteeCollection(token, ByteLimit(20000))
+  assert premature.error == StateProofAdmissionError.QueryFailure
+  let absent = services.beginWorkPeerResponse(token, 2, keyB, responseB)
+  assert absent.error == StateProofAdmissionError.QueryFailure
+  var altered = responseB
+  altered[0] = altered[0] xor 1
+  accept(services, token, 0, keyB, altered)
+  peerFailure(services, token, WorkGuaranteeError.WrongReport)
+  assert services.workExchangeInfo(token).credentials == 1
+  accept(services, token, 0, keyB, responseB)
+  assert services.workExchangeInfo(token).credentials == 2
+  accept(services, token, 0, keyB, responseB)
+  peerFailure(services, token, WorkGuaranteeError.Duplicate)
+  accept(services, token, 1, keyB, responseC)
+  peerFailure(services, token, WorkGuaranteeError.InvalidPeer)
+  assert services.workExchangeInfo(token).credentials == 2
+  let tiny = services.beginWorkGuaranteeCollection(token, ByteLimit(1))
+  assert tiny.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
+  block:
+    # A late codec/byte refusal cannot discard either previously verified credential.
+    let rejected = services.workExchangeOutcome(token)
+    assert rejected.kind == WorkJobResultKind.GuaranteeCollectionFailure
+    assert rejected.guaranteeCollectionError.error == WorkGuaranteeError.CodecFailure
+  accept(services, token, 1, keyC, responseC)
+  assert services.workExchangeInfo(token).credentials == 3
+  let collected = services.beginWorkGuaranteeCollection(token, ByteLimit(20000))
+  assert collected.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.workExchangeInfo(token).guaranteeBytes == 0
+  assert services.collectWorkSubmission(token) == WorkSessionPhase.Guaranteed
+  let bytes = services.workGuaranteePayload(token)
+  verifyPayload(bytes, 3)
+  var copy = bytes
+  copy[0] = copy[0] xor 1
+  assert services.workGuaranteePayload(token) == bytes
+  let readLimits = AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(
+      64000000),
+    hashBytes: ByteLimit(16000000), hashes: ElementLimit(10000)), wireBytes: ByteLimit(16000000))
+  assert services.configureAvailabilityReads(readLimits)
+  let info = services.workSubmissionReportInfo(token)
+  let bundleRead = decodeReadRequest(ReadKind.Bundle, info.header.erasureRoot.bytes).value
+  let reading = services.beginNetworkRead(bundleRead)
+  assert reading.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.workGuaranteePayload(token) == bytes # The raw cache has no reference to the foreign reader's graph.
+  let reply = services.collectStateProof(reading.value)
+  assert reply.kind == ProofWorkerCompletionKind.ReadCompleted and reply.readValue.error == ReadError.None
+  assert reply.readValue.value.bytes == frame(request.bundleMessage)
+  assert services.retireWorkSubmission(token)
+  assert services.workExchangeInfo(token).credentials == 0
+  for stage in 0..<3:
+    # Each new phase can be cancelled after Done without installing its prepared/accepted/encoded result.
+    let cancelled = session(services, fixture, raw, header)
+    if stage == 0:
+      assert services.beginWorkExchange(cancelled, ByteLimit(20000)).error ==
+          StateProofAdmissionError.None
+    else:
+      prepared(services, cancelled)
+      if stage == 1:
+        assert services.beginWorkPeerResponse(cancelled, 0, keyB, responseB).error ==
+            StateProofAdmissionError.None
+      else:
+        accept(services, cancelled, 0, keyB, responseB)
+        assert services.beginWorkGuaranteeCollection(cancelled, ByteLimit(20000)).error ==
+            StateProofAdmissionError.None
+    services.waitDone()
+    assert services.retireWorkSubmission(cancelled)
+    assert not services.stateProofAvailable
+    assert services.collectWorkSubmission(cancelled) == WorkSessionPhase.Retired
+    assert services.reapWorkSubmission()
+    assert services.workExchangeInfo(cancelled).credentials == 0
+  let foreign = session(services, fixture, raw, header)
+  prepared(services, foreign)
+  let foreignRead = services.beginNetworkRead(bundleRead)
+  assert foreignRead.error == StateProofAdmissionError.None
+  services.waitDone()
+  assert services.retireWorkSubmission(foreign)
+  assert not services.reapWorkSubmission()
+  assert services.collectStateProof(foreignRead.value).kind ==
+      ProofWorkerCompletionKind.ReadCompleted
+  assert services.reapWorkSubmission()
+  let closing = session(services, fixture, raw, header)
+  prepared(services, closing)
+  assert services.beginWorkPeerResponse(closing, 0, keyB, responseB).error ==
+      StateProofAdmissionError.None
+  services.close() # Joined shutdown owns all private round/input aliases before any enclosing fixture owner retires.
+  assert services.workSessionPhase(closing) == WorkSessionPhase.Empty
+  assert services.workExchangeInfo(closing).credentials == 0
+proc run(worker: var StateProofWorker, input: var WorkSubmissionJob,
+    cancelDone = false): WorkJobResult =
+  ## Only synchronized scalar polling occurs while any prepared/round/signer alias belongs to the fixed-address CPU.
+  let admitted = worker.submit(input)
+  assert admitted.error == ProofWorkerError.None and not input.valid
+  let deadline = getMonoTime()+initDuration(seconds = 20)
+  while worker.phase != ProofWorkerPhase.Done:
+    assert getMonoTime() < deadline
+    discard pauseMicros(100)
+  assert worker.collect(default(ProofWorkerTicket)).kind == ProofWorkerCompletionKind.Uninitialized
+  var extra = default(WorkSubmissionJob)
+  assert worker.submit(extra).error == ProofWorkerError.Busy
+  if cancelDone: assert worker.cancel(admitted.value)
+  let completed = worker.collect(admitted.value)
+  if cancelDone:
+    assert completed.kind == ProofWorkerCompletionKind.Cancelled
+    return default(WorkJobResult)
+  assert completed.kind == ProofWorkerCompletionKind.WorkSubmitted
+  completed.workSubmissionValue
+proc cycle(worker: var StateProofWorker, local: SignedWorkContribution, targetB,
+    targetC: WorkShareTarget, keyB, keyC: StateEdKey, responseB, responseC: array[96, byte], mode: int) =
+  ## Real managed factories release successful, rejected, threshold-failed and Done-cancelled owners in every terminal path.
+  var round = default(WorkGuaranteeRound)
+  block:
+    var input = captureWorkExchange(local, ByteLimit(20000)).value
+    let completed = run(worker, input, cancelDone = mode == 1)
+    if mode == 1: return
+    assert completed.kind == WorkJobResultKind.ExchangePrepared
+    round = completed.exchangeRound
+  block:
+    var input = captureWorkResponse(round, targetB, keyB, responseB).value
+    let completed = run(worker, input, cancelDone = mode == 2)
+    if mode != 2:
+      assert completed.kind == WorkJobResultKind.PeerAccepted
+      round = completed.exchangeRound
+  if mode == 2:
+    var input = captureWorkGuarantee(round, ByteLimit(20000)).value
+    let completed = run(worker, input)
+    assert completed.kind == WorkJobResultKind.GuaranteeCollectionFailure
+    assert completed.guaranteeCollectionError.error == WorkGuaranteeError.InsufficientCredentials
+    return
+  block:
+    var bad = responseC
+    bad[32] = bad[32] xor 1
+    var input = captureWorkResponse(round, targetC, keyC, bad).value
+    let completed = run(worker, input)
+    assert completed.kind == WorkJobResultKind.PeerResponseFailure
+  block:
+    var input = captureWorkResponse(round, targetC, keyC, responseC).value
+    let completed = run(worker, input)
+    assert completed.kind == WorkJobResultKind.PeerAccepted
+    round = completed.exchangeRound
+  block:
+    var input = captureWorkGuarantee(round, ByteLimit(20000)).value
+    let completed = run(worker, input)
+    assert completed.kind == WorkJobResultKind.GuaranteeCollected
+proc main() {.raises.} =
+  ## Real independent fixture keys and sources remain untouched through every exact worker lease and joined close.
+  let a = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")).value
+  let b = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B")).value
+  var diagnostic = ""
+  assert ensureIdentity("managed-exchange-c", diagnostic)
+  let c = loadWorkSigner("managed-exchange-c/cert.pem", "managed-exchange-c/key.pem").value
+  let keyB = b.signerIdentity.value
+  let keyC = c.signerIdentity.value
+  let fixture = guaranteeFixture(a.signerIdentity.value, keyB, keyC)
+  managed(fixture, b, c)
+  let qualified = fixture.qualify(guaranteeLimits()).value
+  let local = a.signWorkContribution(qualified).value
+  let request = prepareWorkSharing(local, ByteLimit(20000)).value
+  let raw = workFixture()
+  let responseB = receiveSharedWork(request, fixture.view, keyB, fixture.local, StateTime(21), b,
+      policy(raw)).value.sharingResponse.value
+  let responseC = receiveSharedWork(request, fixture.view, keyC, fixture.local, StateTime(21), c,
+      policy(raw)).value.sharingResponse.value
+  let targetB = sharingTarget(local, 1).value
+  let targetC = sharingTarget(local, 2).value
+  assert captureWorkExchange(default(SignedWorkContribution), ByteLimit(20000)).error ==
+      WorkJobError.InvalidInput
+  assert captureWorkGuarantee(default(WorkGuaranteeRound), ByteLimit(20000)).error ==
+      WorkJobError.InvalidInput
+  var worker = default(StateProofWorker)
+  defer: worker.close()
+  assert worker.start()
+  for mode in 0..<3: cycle(worker, local, targetB, targetC, keyB, keyC, responseB, responseC, mode)
+  let before = getOccupiedMem()
+  for iteration in 0..<1000:
+    cycle(worker, local, targetB, targetC, keyB, keyC, responseB, responseC, iteration mod 3)
+  let after = getOccupiedMem()
+  assert before == after
+  recordArcRelease("jamnp_managed_work_exchange", 1000, before, after)
+  echo "JAMNP-S managed work exchange passed"
+  echo "ARC_RELEASE cycles=1000 unchanged"
+try:
+  main()
+except:
+  quit 2 # Fixture/setup exceptions cannot replace actual managed credential collection and lease-lifetime verdicts.

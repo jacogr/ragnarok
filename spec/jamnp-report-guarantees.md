@@ -328,3 +328,36 @@ CE135 receiving/distribution are still required for the complete guarantee featu
 Final native-client verification passes formatting, inventory and the production build. Actual ARC
 lowering rejects duplicating NodeService with the added client buffers; the checked probe retains
 the exact expected unavailable-dup diagnostic. All native callback owners retire before their buffers.
+
+
+## Managed outgoing exchange
+
+Closed worker factories prepare the exact request/targets/initial round, verify an actual peer's
+fixed response, and collect the final canonical guarantee. No caller closure or native handle
+crosses the CPU boundary. Services retains its original signed outcome separately from exchange
+progress; rejected peers and output budgets preserve every accepted credential. Prepared raw
+bytes and fixed targets are cached independently from the worker-owned round graph, so native
+I/O can continue while verification borrows canonical state. Complete payload bytes are detached
+from the collected guarantee graph before transport access. Both aggregate hooks and joined
+teardown/reaping cover the new owners. Actor grace, CE135 and startup integration remain required.
+
+
+The native managed-exchange suite starts from a real TLS CE146 header and drives actual Services
+authorization/refinement/report/signing, exact exchange preparation, independently computed peer
+responses, recoverable hash/identity/duplicate/budget refusals and final three-credential payload
+collection. An incoming sharing job preserves the waiting primary round. Independent raw caches
+remain readable through the leased graph, and CE147 returns the original exact bundle after
+collection. Tests cancel each new phase after Done, retain a retired round through an unrelated
+reader, and join an active verifier on close. One thousand real worker cycles cover complete
+exchange, signature refusal, insufficient credentials and Done cancellation, retaining336192 bytes
+before and after.
+
+Existing managed signing, receiving, application proof-worker, managed submission and ordinary
+dispatcher suites pass. Signing/submission/receiving retain175744,40816 and215808 bytes across1000
+cycles respectively, unchanged before/after. The genuine TLS/Services test setup is shared between
+signing and exchange suites. Actual Services ARC lowering still rejects duplication with the new
+round/result/raw owners. Linux-target closed-job semantics pass; no native Linux CI is claimed.
+Runtime grace, both CE135 directions and strict optional startup remain unfinished.
+
+Final managed-exchange verification also passes formatting, inventory and the production build.
+All required worker/source owners remain private until exact collection or joined shutdown.
