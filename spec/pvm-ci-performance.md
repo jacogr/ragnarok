@@ -62,7 +62,13 @@ Each process emits thirteen validated calls. Sample zero is the cold call; the
 first three calls are excluded from the ten-call reused median. Forward and reverse
 engine orders remain separate. CPU and wall statistics remain separate, with raw
 samples retained. Constructor cost is outside public call clocks and reported
-separately. Our public prepared call includes fresh invocation memory, callbacks,
+separately. Every engine's execution clocks nest wall timing inside process-CPU
+timing: CPU start, wall start, execute, wall stop, CPU stop. Wall execution time
+therefore excludes the process-CPU clock reads; CPU execution time includes the
+wall-clock reads. No estimated timer overhead is subtracted. Very short calls may
+still be dominated by timer overhead, so their CPU and wall ratios need separate
+interpretation. Constructor and reference-lifecycle observations retain their own
+explicit scopes. Our public prepared call includes fresh invocation memory, callbacks,
 immutable publication and lease return. The reference call clock excludes its
 invocation restore. One-time reference instance construction/destruction and
 per-call restore CPU/wall clocks are retained separately for every workload family.
