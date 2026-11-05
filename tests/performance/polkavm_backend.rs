@@ -52,6 +52,139 @@ pub fn process_cpu() -> u128 {
     read(libc::CLOCK_PROCESS_CPUTIME_ID)
 }
 
+/// The existing canonical protocol retains code; historical commands keep their original lifecycle.
+pub fn retained_protocol() -> bool {
+    std::env::var("RAGNAROK_PVM_PERFORMANCE").as_deref() == Ok("1")
+}
+
+/// One pending restore is published only after the caller validates the complete execution result.
+struct ReferenceRestore {
+    sample: usize,
+    before: usize,
+    after: usize,
+    cpu: u128,
+    wall: u128,
+}
+
+/// One public interpreter instance retains lowered code while each call restores independent input.
+pub struct RetainedInterpreter {
+    instance: RawInstance,
+    label: String,
+    samples: usize,
+    completed: usize,
+    last_after: usize,
+    pending: Option<ReferenceRestore>,
+}
+
+impl RetainedInterpreter {
+    /// Construction is measured once outside all calls; the actual interpreter cache must start empty.
+    pub fn new(module: &Module, label: &str, samples: usize) -> Self {
+        assert!(retained_protocol());
+        assert!(samples == 1 || samples == 13);
+        let wall = std::time::Instant::now();
+        let cpu = process_cpu();
+        let instance = module.instantiate().unwrap();
+        let cpu = process_cpu() - cpu;
+        let wall = wall.elapsed().as_nanos();
+        let cache = instance
+            .interpreter_cache_size()
+            .expect("retained reference requires the actual interpreter");
+        assert_eq!(cache, 0, "new reference instance must have an empty cache");
+        // Small lifecycle phases may honestly measure zero at the host clock's resolution.
+        println!("REFERENCE_INSTANCE,1,{label},{cpu},{wall},{cache}");
+        Self {
+            instance,
+            label: label.to_owned(),
+            samples,
+            completed: 0,
+            last_after: cache,
+            pending: None,
+        }
+    }
+
+    /// Reset complete invocation memory and ABI through public APIs without discarding lowered code.
+    pub fn restore(
+        &mut self,
+        sample: usize,
+        restore: impl FnOnce(&mut RawInstance),
+    ) -> &mut RawInstance {
+        assert_eq!(
+            sample, self.completed,
+            "reference samples must be consecutive"
+        );
+        assert!(sample < self.samples && self.pending.is_none());
+        let before = self.instance.interpreter_cache_size().unwrap();
+        assert_eq!(before, self.last_after, "reference cache continuity");
+        let wall = std::time::Instant::now();
+        let cpu = process_cpu();
+        self.instance.reset_memory().unwrap();
+        restore(&mut self.instance);
+        let cpu = process_cpu() - cpu;
+        let wall = wall.elapsed().as_nanos();
+        // Observe only after memory, permissions, all registers, gas and PC have been restored.
+        let after = self.instance.interpreter_cache_size().unwrap();
+        assert_eq!(
+            before, after,
+            "invocation restore must retain interpreter code"
+        );
+        self.pending = Some(ReferenceRestore {
+            sample,
+            before,
+            after,
+            cpu,
+            wall,
+        });
+        &mut self.instance
+    }
+
+    /// Emit continuity and restore scopes only after the producer's complete independent oracle passes.
+    pub fn complete_sample(&mut self, sample: usize) {
+        let restored = self
+            .pending
+            .take()
+            .expect("sample must restore before execution");
+        assert_eq!(sample, restored.sample);
+        assert_eq!(sample, self.completed);
+        let after = self.instance.interpreter_cache_size().unwrap();
+        assert!(
+            after > 0,
+            "reference execution must populate its interpreter cache"
+        );
+        assert!(
+            after >= restored.after,
+            "retained interpreter cache must not shrink"
+        );
+        println!(
+            "REFERENCE_RESTORE,1,{},{sample},{},{}",
+            self.label, restored.cpu, restored.wall
+        );
+        println!(
+            "REFERENCE_CACHE,1,{},{sample},{},{},{}",
+            self.label, restored.before, restored.after, after
+        );
+        self.last_after = after;
+        self.completed += 1;
+    }
+
+    /// Dispose the single retained instance once, separately from every call and restoration interval.
+    pub fn finish(self) {
+        assert_eq!(
+            self.completed, self.samples,
+            "incomplete retained reference case"
+        );
+        assert!(self.pending.is_none());
+        let Self {
+            instance, label, ..
+        } = self;
+        let wall = std::time::Instant::now();
+        let cpu = process_cpu();
+        drop(instance);
+        let cpu = process_cpu() - cpu;
+        let wall = wall.elapsed().as_nanos();
+        println!("REFERENCE_INSTANCE_DROP,1,{label},{cpu},{wall}");
+    }
+}
+
 /// Bind requested/actual selection to positive compiled code or an interpreted module.
 pub fn module_receipt(label: &str, actual: BackendKind, module: &Module, preparation: u128) {
     if !explicit() {

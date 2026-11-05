@@ -263,6 +263,7 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
         for arch in ARCHITECTURES:
             publish_report(reports[arch], folder/arch)
         result = dict(schema='pvm-performance-latest-v1', status='passed', repository=repo,
+            measurement_schema=SCHEMA, code_lifetime=arm['code_lifetime'],
             revision=selected['head_sha'], run_id=selected['id'], run_attempt=selected['run_attempt'],
             selection='newest-master-push' if run_id is None and attempt is None else 'explicit-history',
             event=selected['event'], ref='refs/heads/'+selected['head_branch'],

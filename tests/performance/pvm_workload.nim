@@ -181,8 +181,9 @@ for row in 0..<11:
   for sample in 0..<13:
     # Three warmups precede ten recorded samples; source owners are immutable across every run.
     var context = HostContext(calls: 0)
-    let start = getMonoTime().ticks
     let cpuStart = if modern: cpuNanoseconds() else: 0'i64
+    # Match reference execution scopes: wall timing excludes both process-CPU clock reads.
+    let start = getMonoTime().ticks
     let evaluated = if modern:
       # Both public paths include their fresh invocation memory and immutable publication.
       if kind == 2:
@@ -192,8 +193,8 @@ for row in 0..<11:
     else:
       runBenchmark(source, context, kind, ExecutionStepLimit(perLoop*iterations+1),
         HostCallLimit(2*iterations), GasCycleLimit(cycles), plannedMode, plan, memo)
-    let cpuElapsed = if modern: cpuNanoseconds()-cpuStart else: 0'i64
     let elapsed = getMonoTime().ticks - start
+    let cpuElapsed = if modern: cpuNanoseconds()-cpuStart else: 0'i64
     # Complete result validation happens after the clock stops; failed outcomes never emit a sample.
     assert evaluated.error == StepError.None and evaluated.value.exit == StepExit.Halt
     let final = machineInfo(evaluated.value.machine).value
@@ -232,7 +233,7 @@ for row in 0..<11:
       assert cpuElapsed > 0, "pvm synthetic execution CPU below clock resolution"
       echo "SYNTHETIC_SAMPLE,1,", row, ",", sample, ",", cpuElapsed, ",", elapsed
     else:
-      # Historical consumers retain precisely their original wall duration and framing.
+      # Historical consumers retain their wall-only sample framing.
       echo "sample\t", row, "\t", sample, "\t", elapsed, "\t", prepareNs
   if memoMode:
     # A complete final occupancy witness distinguishes a warmed reusable memo from per-call dynamic pricing.
