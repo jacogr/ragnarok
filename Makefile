@@ -596,6 +596,19 @@ check-devnet-authoring: build
 check-pvm-native: toolchain check-inventory
 	$(PYTHON) tools/pvm_native_ci.py
 
+# One maintained current-source performance path; qualification is mandatory before any samples.
+PVM_PERF_SCOPE ?= all
+.PHONY: bench-pvm-performance pvm-perf-latest
+bench-pvm-performance: export RAGNAROK_PVM_PERF_SCOPE = $(value PVM_PERF_SCOPE)
+bench-pvm-performance: toolchain sources rust-tools check-pvm-native
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/pvm_ci_performance.py --scope "$${RAGNAROK_PVM_PERF_SCOPE}"
+
+# Download and validate the newest master-push measurement, without rebuilding or sampling guests.
+pvm-perf-latest:
+	$(PYTHON) tools/pvm_performance_latest.py
+
 # Three-engine exact-master comparison; setup remains reproducible from a clean Linux checkout.
 .PHONY: bench-pvm-interpreter
 bench-pvm-interpreter: toolchain sources rust-tools

@@ -106,11 +106,13 @@ def run():
             profile='checked release ARC/Clang LTO; pinned upstream Rust release LTO/codegen-units1/debug; JamV1 Sync/Full/L2Hit')
         save()
         native_folder=ROOT/'build/pvm-benchmark';native_folder.mkdir(exist_ok=True)
-        build,binary=NativeChecks(native_folder).build(compiler,ROOT/'tests/performance/pvm_workload.nim','native')
+        build,binary=NativeChecks(native_folder).build(compiler,ROOT/'tests/performance/pvm_workload.nim','native',
+            cflags=('-I'+str(ROOT/'tests/performance'),))
         build_output=build.pop('output','');report['checks'].append(build);save()
         if build['exit_code']!=0 or 'Error:' in build_output or 'FAILURE' in build_output:
             raise RuntimeError('Native benchmark build failed: '+build['log'])
-        memo_build,memo_binary=NativeChecks(native_folder).build(compiler,ROOT/'tests/performance/pvm_workload.nim','native-memo',defines=('pvmBenchmarkMemo',))
+        memo_build,memo_binary=NativeChecks(native_folder).build(compiler,ROOT/'tests/performance/pvm_workload.nim','native-memo',defines=('pvmBenchmarkMemo',),
+            cflags=('-I'+str(ROOT/'tests/performance'),))
         memo_output=memo_build.pop('output','');report['checks'].append(memo_build);save()
         if memo_build['exit_code']!=0 or 'Error:' in memo_output or 'FAILURE' in memo_output:
             raise RuntimeError('Native memo benchmark build failed: '+memo_build['log'])

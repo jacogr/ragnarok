@@ -8,6 +8,9 @@ import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
 import ../../src/pvm/step
 
+proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
+  ## Reuse the checked OS process clock; legacy observations keep their wall-only protocol.
+
 type HostContext = object ## Plain host progress is included in both embeddings' execution time.
   calls: uint64
 
@@ -52,11 +55,21 @@ template runBenchmark(source: Machine, context: var HostContext, kind: uint64,
 if getEnv("RAGNAROK_PVM_BENCH_ASSERT_PROBE") == "1":
   assert false, "pvm synthetic native assertion control"
 
+let requestedProtocol = getEnv("RAGNAROK_PVM_PERFORMANCE")
+assert requestedProtocol in ["", "0", "1"]
+let modern = requestedProtocol == "1"
+let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
+var selectedBackend = DefaultPvmBackend
+if modern:
+  # One production image selects only the requested public owner policy at runtime.
+  assert requestedBackend in ["interpreted", "jit"]
+  assert parsePvmBackend(requestedBackend, selectedBackend)
 let pricing = getEnv("RAGNAROK_PVM_PRICING")
 when defined(pvmBenchmarkMemo):
-  assert pricing == "memo", "pvm benchmark memo mode mismatch" # A separate driver instantiation avoids changing legacy host-loop code generation.
+  assert not modern and pricing == "memo", "pvm benchmark memo mode mismatch" # A separate driver instantiation avoids changing legacy host-loop code generation.
 else:
-  assert pricing in ["", "dynamic", "planned"], "pvm benchmark legacy mode mismatch" # Reject accidental engine relabeling before any sample.
+  assert (if modern: pricing == "prepared" else: pricing in ["", "dynamic", "planned"]),
+    "pvm benchmark legacy mode mismatch" # Reject accidental engine relabeling before any sample.
 let plannedMode = pricing == "planned"
 const memoMode = defined(pvmBenchmarkMemo)
 var data = ""
@@ -117,6 +130,24 @@ for row in 0..<11:
   let source = captureMachine(program, memory, MachineInfo(pc: CodeAddress(0),
     gas: MachineGas(iterations * (price+secondPrice) + haltPrice + 7), blockCharged: false,
         registers: registers)).value
+  let originalCpu = machineInfo(source).value
+  let originalLayout = memoryLayout(memory).value
+  var prepared = default(PreparedProgram)
+  if modern:
+    # A cold public owner admits source facts once; the first invocation retains all lazy work.
+    let wallStart = getMonoTime().ticks
+    let cpuStart = cpuNanoseconds()
+    let created = newPreparedProgram(program, defaultPreparedLimits(GasCycleLimit(cycles)), selectedBackend)
+    let cpuElapsed = cpuNanoseconds()-cpuStart
+    let wallElapsed = getMonoTime().ticks-wallStart
+    assert created.error == PreparationError.None
+    prepared = created.value
+    let cold = preparedInfo(prepared).value
+    assert cold.streamNodes == 0 and cold.nativeFragments == 0 and cold.nativeCalls == 0
+    assert cold.nativeOperations == 0 and cold.memoryReuses == 0
+    assert cpuElapsed > 0, "pvm synthetic constructor CPU below clock resolution"
+    assert wallElapsed > 0
+    echo "SYNTHETIC_PREPARE,1,", row, ",", cpuElapsed, ",", wallElapsed
   var plan = default(GasPlan)
   var memo = default(GasMemo)
   if plannedMode:
@@ -151,16 +182,27 @@ for row in 0..<11:
     # Three warmups precede ten recorded samples; source owners are immutable across every run.
     var context = HostContext(calls: 0)
     let start = getMonoTime().ticks
-    let evaluated = runBenchmark(source, context, kind, ExecutionStepLimit(perLoop*iterations+1),
-      HostCallLimit(2*iterations), GasCycleLimit(cycles), plannedMode, plan, memo)
+    let cpuStart = if modern: cpuNanoseconds() else: 0'i64
+    let evaluated = if modern:
+      # Both public paths include their fresh invocation memory and immutable publication.
+      if kind == 2:
+        executeWithHost(source, context, respond, ExecutionStepLimit(perLoop*iterations+1),
+          HostCallLimit(2*iterations), prepared)
+      else: execute(source, ExecutionStepLimit(perLoop*iterations+1), prepared)
+    else:
+      runBenchmark(source, context, kind, ExecutionStepLimit(perLoop*iterations+1),
+        HostCallLimit(2*iterations), GasCycleLimit(cycles), plannedMode, plan, memo)
+    let cpuElapsed = if modern: cpuNanoseconds()-cpuStart else: 0'i64
     let elapsed = getMonoTime().ticks - start
     # Complete result validation happens after the clock stops; failed outcomes never emit a sample.
     assert evaluated.error == StepError.None and evaluated.value.exit == StepExit.Halt
     let final = machineInfo(evaluated.value.machine).value
     assert uint64(final.gas) == 7 and uint64(final.pc) == 0 and final.blockCharged
+    assert uint64(final.gasDeficit) == 0
     assert context.calls == (if kind == 2: 2 * iterations else: 0'u64)
     for i in 0..<13:
-      assert uint64(final.registers[i]) == word(data, at + 169 + i * 8, 8)
+      assert uint64(final.registers[i]) == word(data, at + 169 + i * 8, 8),
+        "pvm synthetic terminal register mismatch"
       assert uint64(machineInfo(source).value.registers[i]) == uint64(registers[i])
     for page in 0..<images.len:
       # Full byte checks retain output observability and catch extra writes beyond the measured scalar.
@@ -181,10 +223,30 @@ for row in 0..<11:
         assert load(memoryOf(source).value, hole, AccessWidth(1)).error == MachineError.Fault
         assert load(memoryOf(evaluated.value.machine).value, hole, AccessWidth(1)).error ==
             MachineError.Fault
+    assert machineInfo(source).value == originalCpu
+    assert memoryLayout(memoryOf(evaluated.value.machine).value).value == originalLayout
+    assert memoryLayout(memoryOf(source).value).value == originalLayout
     assert elapsed > 0
-    echo "sample\t", row, "\t", sample, "\t", elapsed, "\t", prepareNs
+    if modern:
+      # Emit genuine CPU and wall deltas only after all independent state/source checks pass.
+      assert cpuElapsed > 0, "pvm synthetic execution CPU below clock resolution"
+      echo "SYNTHETIC_SAMPLE,1,", row, ",", sample, ",", cpuElapsed, ",", elapsed
+    else:
+      # Historical consumers retain precisely their original wall duration and framing.
+      echo "sample\t", row, "\t", sample, "\t", elapsed, "\t", prepareNs
   if memoMode:
     # A complete final occupancy witness distinguishes a warmed reusable memo from per-call dynamic pricing.
     echo "gas-memo-end\t", row, "\t", gasMemoInfo(memo).value.pricedBlocks
+  if modern:
+    # Idle public diagnostics report actual completed work, including honest interpreted fallback.
+    let policy = preparedInfo(prepared).value
+    assert policy.backend == selectedBackend
+    let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
+    echo "SYNTHETIC_NATIVE,1,", row, ",", policy.nativeFragments, ",", policy.nativeCalls, ",",
+      policy.nativeOperations, ",", policy.nativeCodeBytes, ",", policy.nativeCompilationNs
+    echo "SYNTHETIC_POLICY,1,", row, ",", requestedBackend, ",", int(policy.jitBuilt), ",",
+      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
+      policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
 
 assert cursor == data.len
+if modern: echo "SYNTHETIC_OK,1,", requestedBackend

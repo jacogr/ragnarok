@@ -441,29 +441,24 @@ runs, leaving labeled heavy CI alone. Formatting checks exactly the same whole s
 full CI and never edits source files.
 
 
-## Native PVM comparison runners
+## Native PVM performance runners
 
-`Perf / PVM Comparison` runs independently on native Linux x86-64 (`ubuntu-26.04`) and
-Linux ARM64 (`ubuntu-26.04-arm`). It retains the existing master, explicit Perf/Full and
-manual comparison triggers; ordinary PR updates still run the lightweight Smoke check.
-The Unit matrix is unchanged.
+The single **Perf / PVM** path uses native Linux ARM64 and x86-64 matrix members and
+`make bench-pvm-performance`. Make provisions pinned sources/tools and runs the matching
+`check-pvm-native` gate once before the comparison. The runner consumes that exact-source,
+compiler-bound native receipt; a foreign or failed qualification cannot authorize timings.
+Ordinary PR updates retain Smoke only; master, Perf/Full and focused manual PVM requests use
+this same comparison path. The Unit matrix and Storage panels are unchanged.
 
-Each comparison first runs `make check-pvm-native`: the maintained executable-storage,
-whole-state, opcode, host/region and exclusive-owner gates. ARM64 requires actual native
-publication and execution, plus forced-refusal controls. Linux x86-64 qualifies the checked
-interpreter and unavailable ARM64 fallback; it does not claim an x86 JIT. Process uname,
-declared Actions architecture and the existing pinned Nimony archive must agree before
-qualification. Failure leaves incomplete evidence and fails the job.
+The canonical inventory covers synthetic micros, all maintained sieve/guest sizes and DOOM
+init/tick at explicit warmup 1,320. Current prepared interpreted/JIT policies share production
+native build flags and a current source image, selected at runtime. PolkaVM interpreted is the
+only reference denominator. No default previous-revision/core/replay builds are required.
+The [performance contract](../../spec/pvm-ci-performance.md) defines complete coverage, actual
+native-policy receipts, clock scopes, lifecycle separation and failure-safe report publication.
 
-Linux x86-64 uses `make bench-pvm-interpreter`; ARM64 uses the maintained
-`make bench-pvm-arm64-applications` cohort. Both retain pinned PolkaVM inputs, complete-state
-checks, both process orders and distinct constructor/cold/reused records. The ARM64 cohort
-includes public JIT-on/off calls, retained-core diagnostics, Pinky, sieve (100k/10m),
-minimal, fill and DOOM initialization/gameplay. Its DOOM reference evidence separates raw
-calls from restore/call/teardown lifecycle costs. Optional x86 prepared-baseline input
-continues to apply only to that driver; the ARM64 driver defaults to the current head as
-its same-source control. No cross-architecture or cross-CPU timing ratio is calculated.
-
-Architecture-specific artifacts retain source/compiler/input identities, native counters,
-logs and summaries on failure as well as success. Native timing results are evidence for
-that runner only; existing Docker ARM64 correctness receipts are not native timing results.
+Artifacts carry source/compiler/binary/input, host/CPU, run/attempt and sample identities.
+The supported `make pvm-perf-latest` resolver downloads and validates the newest master result
+on both architectures without building or executing a benchmark. It does not conceal a newer
+pending or failed cohort behind old successful reports. Emulated correctness evidence and
+historical wall-only synthetic timings cannot supply native CPU comparison cells.

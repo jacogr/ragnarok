@@ -75,20 +75,6 @@ class NimonyCISafeguards(unittest.TestCase):
         self.assertFalse(any(target in command for job in ci['jobs'].values()
                              for command in commands(job)))
 
-    def test_arm_check_runs_native_gates_without_performance_collection(self):
-        """Native-only ARM dispatch keeps correctness/refusal gates and excludes performance work."""
-        text = (ROOT/'.github/workflows/ci.yml').read_text()
-        context = event_context('workflow_dispatch', suite='jit-arm-check')
-        self.assertEqual({row['group'] for row in selected_families(text, 'pvm-comparison', context)},
-                         {'arm64'})
-        targets = {target for target in scheduled_targets(text, context)
-                   if not target.startswith('summary-')}
-        self.assertEqual(targets, {'check-pvm-native'})
-        section = family_section(text, 'pvm-comparison', 'arm64', context=context)
-        # These exact consumer paths retain native/refusal evidence; labels and YAML layout do not matter.
-        from workflow_fixtures import artifact_paths
-        self.assertTrue({'build/tests/pvm-native/region-refusal',
-                         'build/tests/pvm-native/region-refusal-forced'} <= set(artifact_paths(section)))
 
     def test_requested_workloads_and_lightweight_pr_updates(self):
         """Requests select real workloads; ordinary updates and unrelated labels cannot start heavy work."""
@@ -96,15 +82,16 @@ class NimonyCISafeguards(unittest.TestCase):
         required = {'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards',
                     'check-unit', 'check-failures', 'check-e2e', 'check-mcp-interop',
                     'check-pvm-reference', 'check-telemetry-interop-ci', 'package-binary',
-                    'check-docker', 'bench-pvm', 'bench-pvm-doom', 'bench-storage', 'bench-storage-growth',
+                    'check-docker', 'bench-pvm-performance', 'bench-storage', 'bench-storage-growth',
                     'bench-storage-memory-ceilings'}
         from collections import Counter
         full_commands = scheduled_targets(text, event_context())
         full = set(full_commands)
         # These unsharded workloads must not be duplicated by a CI regrouping.
         counts = Counter(full_commands)
-        for target in required-{'check-unit', 'check-failures', 'check-e2e', 'package-binary'}:
+        for target in required-{'check-unit', 'check-failures', 'check-e2e', 'package-binary', 'bench-pvm-performance'}:
             self.assertEqual(counts[target], 1, target)
+        self.assertEqual(counts['bench-pvm-performance'], 2) # Exactly one comparison per native architecture.
         self.assertTrue(required <= full, required-full)
         for event in (event_context('workflow_dispatch', suite='full'),
                       event_context('pull_request', 'labeled', 'ci:full')):
@@ -128,7 +115,7 @@ class NimonyCISafeguards(unittest.TestCase):
             'unit': {'check-smoke', 'check-python', 'check-models', 'check-modules', 'check-guards', 'check-unit'},
             'docker': {'check-docker'}, 'e2e': {'check-e2e', 'check-mcp-interop'},
             'interop': {'check-pvm-reference', 'check-telemetry-interop-ci'},
-            'perf': {'bench-pvm', 'bench-pvm-doom', 'bench-storage', 'bench-storage-growth', 'bench-storage-memory-ceilings'},
+            'perf': {'bench-pvm-performance', 'bench-storage', 'bench-storage-growth', 'bench-storage-memory-ceilings'},
         }
         for scope, wanted in focused.items():
             for event in (event_context('workflow_dispatch', suite=scope),
@@ -137,26 +124,11 @@ class NimonyCISafeguards(unittest.TestCase):
                     selected = set(scheduled_targets(text, event))
                     self.assertEqual(selected & required, wanted)
         # Standalone performance requests must not expand into the other expensive panels.
-        for suite, target in (('bench-pvm', 'bench-pvm'), ('bench-doom', 'bench-pvm-doom'),
+        for suite, target in (('bench-pvm', 'bench-pvm-performance'), ('bench-doom', 'bench-pvm-performance'),
                               ('bench-storage', 'bench-storage'), ('bench-storage-growth', 'bench-storage-growth')):
             selected = set(scheduled_targets(text, event_context('workflow_dispatch', suite=suite)))
-            self.assertEqual(selected & {'bench-pvm', 'bench-pvm-doom', 'bench-storage', 'bench-storage-growth'}, {target})
+            self.assertEqual(selected & {'bench-pvm-performance', 'bench-storage', 'bench-storage-growth'}, {target})
 
-    def test_manual_native_architecture_and_profiler_selection(self):
-        """Native qualification targets the requested architecture; replay/calibration cannot collect unrelated profiles."""
-        text = (ROOT/'.github/workflows/ci.yml').read_text()
-        for suite, group, required, forbidden in (
-                ('jit-x86', 'x86_64', {'check-pvm-x86-jit', 'profile-pvm-x86-jit'}, {'bench-pvm-arm64-applications'}),
-                ('jit-x86-replay', 'x86_64', {'check-pvm-x86-jit'}, {'profile-pvm-x86-jit', 'bench-pvm-arm64-applications'}),
-                ('jit-arm-profile', 'arm64', {'check-pvm-native', 'profile-pvm-arm64-linux'}, {'bench-pvm-x86-applications'}),
-                ('jit-arm-replay', 'arm64', {'check-pvm-native', 'bench-pvm-arm64-applications'}, {'profile-pvm-arm64-linux'}),
-                ('jit-arm-calibrate', 'arm64', {'calibrate-pvm-arm64-linux'}, {'check-pvm-native', 'bench-pvm-arm64-applications'})):
-            with self.subTest(suite=suite):
-                event = event_context('workflow_dispatch', suite=suite)
-                self.assertEqual({row['group'] for row in selected_families(text, 'pvm-comparison', event)}, {group})
-                selected = set(scheduled_targets(text, event))
-                self.assertTrue(required <= selected)
-                self.assertFalse(forbidden & selected)
 
     def test_cancellation_isolation_and_closed_prs(self):
         """Approval/PR updates cannot cancel heavy runs; closed PR labels cannot schedule or cancel master."""

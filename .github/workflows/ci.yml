@@ -17,7 +17,7 @@ name: CI
       suite:
         description: Verification scope
         type: choice
-        options: [smoke, tooling, jit-x86, jit-x86-replay, jit-arm-check, jit-arm-profile, jit-arm-calibrate, jit-arm-replay, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
+        options: [smoke, tooling, unit, e2e, build, docker, interop, perf, ref-pvm, fuzz, fuzz-pvm, bench-pvm, bench-doom, pvm-backends, bench-storage, bench-storage-growth, full]
         default: full
         required: true
       contract_measure_bundles:
@@ -25,15 +25,11 @@ name: CI
         type: boolean
         default: false
         required: false
-      pvm_prepared_baseline:
-        description: Optional full commit SHA for a paired prior prepared interpreter
-        type: string
-        default: ""
-        required: false
-      pvm_interpreter_pair:
-        description: Compare the explicit interpreted policy with the supplied baseline in the PVM application cohort
-        type: boolean
-        default: false
+      pvm_architecture:
+        description: Native architecture for focused bench-pvm/bench-doom requests
+        type: choice
+        options: [all, arm64, x86_64]
+        default: all
         required: false
 
       pvm_doom_calls:
@@ -538,92 +534,21 @@ jobs:
             build/polkavm-build.log
             build/ci/*.log
 
-  # Perf group: named workloads report their own results.
+  # Storage retains its existing performance panels; PVM has one native architecture path below.
   perf:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-storage' || inputs.suite == 'bench-storage-growth' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
     name: Perf / ${{ matrix.family.name }}
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON(inputs.suite == 'bench-pvm' && '[{"name":"PVM","group":"bench-pvm"}]' || inputs.suite == 'bench-doom' && '[{"name":"PVM","group":"bench-doom"}]' || inputs.suite == 'bench-storage' && '[{"name":"Storage","group":"bench-storage"}]' || inputs.suite == 'bench-storage-growth' && '[{"name":"Storage","group":"bench-storage-growth"}]' || '[{"name":"PVM","group":"bench-pvm-all"},{"name":"Storage","group":"bench-storage"}]') }}
+        family: ${{ fromJSON(inputs.suite == 'bench-storage-growth' && '[{"name":"Storage","group":"bench-storage-growth"}]' || '[{"name":"Storage","group":"bench-storage"}]') }}
     runs-on: *ubuntu-x86-version
     steps:
       - *checkout
       - *python
       - name: Validate verification inventory
         run: *inventory-run
-      - name: Measure validated PVM workloads
-        if: ${{ (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
-        run: make bench-pvm
-      - name: Measure validated real sieve
-        if: ${{ (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
-        run: make bench-pvm-sieve
-      - name: Measure validated minimal, memory-fill and Pinky guests
-        if: ${{ (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
-        run: make bench-pvm-guests
-      - name: Show speed comparison table
-        if: ${{ always() && (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
-        run: make summary-pvm-benchmark SUMMARY_OUTPUT="$GITHUB_STEP_SUMMARY"
-      - name: Show real-guest speed comparison tables
-        if: ${{ always() && (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
-        run: |
-          for report in build/tests/pvm-sieve/summary.md build/tests/pvm-guests/summary.md; do
-            # Missing reports follow a failed/skipped runner; never substitute old successful evidence.
-            if test -f "$report"; then
-              cat "$report" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-      - name: Retain raw benchmark evidence
-        if: ${{ always() && (matrix.family.group == 'bench-pvm' || matrix.family.group == 'bench-pvm-all') }}
-        uses: *upload-artifact
-        with:
-          name: bench-pvm-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-benchmark/*.log
-            build/tests/pvm-benchmark/results.json
-            build/tests/pvm-benchmark/samples.csv
-            build/tests/pvm-benchmark/summary.md
-            build/tests/pvm-sieve/*.log
-            build/tests/pvm-sieve/results.json
-            build/tests/pvm-sieve/samples.csv
-            build/tests/pvm-sieve/summary.md
-            build/tests/pvm-guests/results.json
-            build/tests/pvm-guests/samples.csv
-            build/tests/pvm-guests/summary.md
-            build/tests/pvm-guests/*/*.log
-            build/tests/pvm-guests/*/results.json
-            build/tests/pvm-guests/*/samples.csv
-            build/tests/pvm-guests/*/summary.md
-            build/pvm-benchmark/native-build.log
-            build/ci/*.log
-      - name: Install DOOM asset decompressor
-        if: ${{ !cancelled() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
-      - name: Compare complete DOOM calls with PolkaVM interpreted
-        if: ${{ !cancelled() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
-        run: make bench-pvm-doom
-      - name: Show DOOM initialization and gameplay CPU comparison
-        if: ${{ always() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
-        run: |
-          if test -f build/tests/pvm-doom/summary.md; then
-            cat build/tests/pvm-doom/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain validated DOOM samples and source identities
-        if: ${{ always() && (matrix.family.group == 'bench-doom' || matrix.family.group == 'bench-pvm-all') }}
-        uses: *upload-artifact
-        with:
-          name: bench-doom-${{ github.run_attempt }}
-          retention-days: 30
-          if-no-files-found: ignore
-          path: |
-            build/tests/pvm-doom/*.log
-            build/tests/pvm-doom/*.json
-            build/tests/pvm-doom/summary.md
       - name: Compare validated memory and durable storage workloads
         if: ${{ matrix.family.group == 'bench-storage' }}
         run: make bench-storage
@@ -711,112 +636,56 @@ jobs:
             build/tests/storage-growth-benchmark/growth/io/calls.csv
             build/ci/*.log
 
-  # Regular Perf includes the exact-master public/core/lifecycle comparison on one runner.
+  # Every merge measures the same complete current-source PVM cohort on both native CPUs.
+  # Focused manual requests reuse this runner/report protocol, without diagnostic benchmark paths.
   pvm-comparison:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-check' || inputs.suite == 'jit-arm-profile' || inputs.suite == 'jit-arm-calibrate' || inputs.suite == 'jit-arm-replay' || inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
-    name: Perf / PVM Comparison (${{ matrix.family.name }})
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'perf' || inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:perf' || github.event.label.name == 'ci:full')) }}
+    name: Perf / PVM (${{ matrix.family.name }})
     timeout-minutes: *ci-job-timeout
     strategy:
       fail-fast: false
       matrix:
-        family: ${{ fromJSON((inputs.suite == 'jit-arm-check' || inputs.suite == 'jit-arm-profile' || inputs.suite == 'jit-arm-calibrate' || inputs.suite == 'jit-arm-replay') && '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"}]' || (inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay') && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
+        family: ${{ fromJSON((inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom') && inputs.pvm_architecture == 'arm64' && '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"}]' || (inputs.suite == 'bench-pvm' || inputs.suite == 'bench-doom') && inputs.pvm_architecture == 'x86_64' && '[{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]' || '[{"name":"Linux ARM64","group":"arm64","os":"ubuntu-26.04-arm"},{"name":"Linux x86-64","group":"x86_64","os":"ubuntu-26.04"}]') }}
     runs-on: ${{ matrix.family.os }}
     env:
       PVM_CI_SYSTEM: Linux
       PVM_CI_ARCH: ${{ matrix.family.group }}
-      PVM_COMPARE_PREPARED_BASE: ${{ inputs.pvm_prepared_baseline }}
-      PVM_INTERPRETER_PAIR: ${{ inputs.pvm_interpreter_pair && '1' || '0' }}
-      PVM_JIT_PROCESS_REPLAYS: ${{ (inputs.suite == 'jit-x86-replay' || inputs.suite == 'jit-arm-replay') && '1' || '0' }}
+      PVM_PERF_SCOPE: ${{ inputs.suite == 'bench-doom' && 'doom' || 'all' }}
     steps:
       - *checkout
       - *python
-      - name: Resolve current master and optional prepared baseline
-        run: |
-          git fetch --no-tags origin master:refs/remotes/origin/master
-          python3 - <<'PYBASE'
-          import os,re,subprocess
-          baseline=os.environ.get('PVM_COMPARE_PREPARED_BASE','')
-          if os.environ.get('PVM_INTERPRETER_PAIR')=='1' and not baseline:
-              raise ValueError('Paired interpreter comparison requires an exact baseline SHA')
-          if baseline:
-              if re.fullmatch(r'[0-9a-f]{40}',baseline) is None:
-                  raise ValueError('Prepared baseline must be a full lowercase commit SHA')
-              subprocess.run(['git','fetch','--no-tags','origin',baseline],check=True)
-          PYBASE
-      - name: Install DOOM asset decompressor
+      - name: Install pinned asset decompression prerequisite
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends zstd
-      - name: Install scoped native profiler
-        if: ${{ inputs.suite == 'jit-x86' || inputs.suite == 'jit-arm-profile' || inputs.suite == 'jit-arm-calibrate' || inputs.suite == 'jit-arm-replay' }}
-        run: sudo apt-get install --yes --no-install-recommends valgrind binutils
-      - name: Qualify opt-in Linux x86-64 JIT
-        if: ${{ inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay' }}
-        run: make check-pvm-x86-jit
-      - name: Compare opt-in x86 JIT and checked interpreters
-        if: ${{ inputs.suite == 'jit-x86' || inputs.suite == 'jit-x86-replay' }}
-        run: make bench-pvm-x86-applications
-      - name: Profile current x86 invocation boundaries
-        if: ${{ inputs.suite == 'jit-x86' }}
-        run: make profile-pvm-x86-jit
-      - name: Qualify PVM on the native Linux architecture
-        if: ${{ inputs.suite != 'jit-x86' && inputs.suite != 'jit-x86-replay' && inputs.suite != 'jit-arm-calibrate' }}
-        run: make check-pvm-native
-      - name: Compare public x86 JIT and checked interpreters
-        if: ${{ matrix.family.group == 'x86_64' && inputs.suite != 'jit-x86' && inputs.suite != 'jit-x86-replay' && inputs.suite != 'jit-arm-calibrate' }}
-        run: make bench-pvm-x86-applications
-      - name: Compare public ARM64 JIT and checked interpreters
-        if: ${{ matrix.family.group == 'arm64' && inputs.suite != 'jit-arm-calibrate' && inputs.suite != 'jit-arm-check' }}
-        env:
-          PVM_JIT_BASELINE: ${{ inputs.pvm_prepared_baseline }}
-        run: make bench-pvm-arm64-applications
-      - name: Calibrate ARM collection without guest rebuilds
-        if: ${{ inputs.suite == 'jit-arm-calibrate' }}
-        run: make calibrate-pvm-arm64-linux
-      - name: Profile paired ARM invocation boundaries
-        if: ${{ inputs.suite == 'jit-arm-profile' }}
-        run: make profile-pvm-arm64-linux
-      - name: Show complete comparison
+      - name: Qualify and compare current PVM backends
+        run: make bench-pvm-performance
+      - name: Show complete current-source comparison
         if: always()
         run: |
-          for summary in build/tests/pvm-x86-jit/summary.md build/tests/pvm-x86-applications/summary.md build/tests/pvm-interpreter-linux/summary.md build/tests/pvm-arm64-applications/summary.md; do
-            if test -f "$summary"; then
-              cat "$summary" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-      - name: Retain exact-source timing and refusal evidence
+          if test -f build/tests/pvm-performance/summary.md; then
+            cat build/tests/pvm-performance/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'PVM comparison did not complete; inspect the native qualification and build logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain source-bound PVM measurements and failure evidence
         if: always()
         uses: *upload-artifact
         with:
-          name: pvm-comparison-${{ matrix.family.group }}-${{ github.run_attempt }}
+          name: pvm-performance-${{ matrix.family.group }}-${{ github.run_attempt }}
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: error
           path: |
-            build/tests/pvm-x86-applications/*.json
-            build/tests/pvm-x86-applications/*.log
-            build/tests/pvm-x86-applications/summary.md
-            build/tests/pvm-x86-profiles/*
-            build/tests/pvm-arm64-profiles/*
-            build/tests/pvm-x86-jit/*.json
-            build/tests/pvm-x86-jit/*.log
-            build/tests/pvm-x86-jit/summary.md
-            build/tests/pvm-interpreter-linux/*.json
-            build/tests/pvm-interpreter-linux/*.log
-            build/tests/pvm-interpreter-linux/summary.md
+            build/tests/pvm-performance/*.json
+            build/tests/pvm-performance/*.csv
+            build/tests/pvm-performance/*.md
+            build/tests/pvm-performance/**/*.log
             build/tests/pvm-native/*.json
             build/tests/pvm-native/*.log
-            build/tests/pvm-native/region-refusal
-            build/tests/pvm-native/region-refusal-forced
             build/tests/native/selected/pvm_memory_reuse.log
             build/tests/native/compiler-*/evidence/pvm_memory_reuse.json
-            build/tests/pvm-arm64-applications/*.json
-            build/tests/pvm-arm64-applications/*.log
-            build/tests/pvm-arm64-applications/summary.md
-            build/tests/pvm-doom/*.json
-            build/tests/pvm-doom/*.log
             build/ci/*.log
 
-  # Fuzz group: named workloads report their own results.
   pvm-fuzz:
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'fuzz' || inputs.suite == 'fuzz-pvm' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.label.name == 'ci:fuzz' || github.event.label.name == 'ci:full')) }}
     name: Fuzz / ${{ matrix.family.name }}

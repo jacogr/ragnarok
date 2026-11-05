@@ -100,37 +100,31 @@ newer master runs supersede older ones.
 For standalone branch verification, use **Actions → CI → Run workflow**, select the branch and
 choose `smoke`, `unit`, `e2e`, `build`, `docker`, `interop`, `perf`, `ref-pvm`, `bench-pvm`, `bench-doom`, `bench-storage`, `bench-storage-growth` or `full`
 (the default). `interop` runs all Interop jobs; `perf` runs all Perf jobs. The existing
-`ref-pvm`, `bench-pvm` and `bench-doom` selections run their individual workloads.
-**Perf / PVM** also runs automatically on master pushes. Its validated interpreted
-[PVM speed comparison](../spec/pvm-benchmark-comparison.md) appears in the Actions
-run summary with raw artifacts, so no manual dispatch is needed after a merge. The same job also
-runs the frozen real-guest comparisons: sieve at 1k, 10k, 100k and 10 million; minimal
-indirect calls; memory fill; and one initialized Pinky NES frame. Each
-compares Ragnarök dynamic/complete-plan/lazy-memo execution with PolkaVM interpreted on
-the same runner. Tables include median ratios, CPU variability, wall medians and scoped
-pricing/first-execution costs; common module loading is excluded. No compiled backend or
-additional VM is measured. Guest JSON/CSV, summaries and diagnostic logs are retained
-with the synthetic workload evidence; fixture binaries and build caches are excluded.
-See [the real-guest contract](../spec/pvm-sieve-benchmark.md). CLI equivalent:
+`ref-pvm`, `bench-pvm` and `bench-doom` selections run their declared scopes.
+**Perf / PVM** runs automatically after master merges on native Linux ARM64 and x86-64.
+One current-source runner compares our public prepared interpreter and JIT with pinned PolkaVM
+interpreted across all maintained synthetic micros, sieve sizes, minimal, memory fill, Pinky,
+and separate DOOM initialization/gameplay. DOOM uses the canonical frame after 1,320 ticks;
+its fixture identity is distinct from historical warmup-zero results.
 
-```sh
-gh workflow run ci.yml --ref <branch> -f suite=full
-```
+The Actions summaries retain raw CPU/wall medians and interpreter/reference and JIT/reference
+ratios, separately for both process orders. Constructors, cold calls, reused calls and reference
+DOOM lifecycle costs retain their scopes. Every sample validates complete state/output and
+source immutability; per-case native counters expose genuine JIT work or explicit checked fallback.
+Missing or foreign evidence fails the job. Ratios are informational, with no noisy speed threshold.
+See the [monitoring contract](../spec/pvm-ci-performance.md) for inventory and scope details.
 
-**Perf / PVM** also runs the DOOM steps serially on the same runner for master/full/Perf requests. It validates pinned initialization
-and gameplay states after 1,320 ticks, including the known rendered frame and ordered audio/video
-output, then reports Ragnarök versus PolkaVM interpreted CPU medians and ratios for both process
-orders. Every process checks three warmups plus ten reused calls; first cold calls and input/source
-identities remain in JSON. Call CPU includes in-memory callbacks and excludes preparation, input
-reset and final reference validation. Ratios are informational, while correctness, sample and identity
-failures fail the job. A standalone `bench-doom` request selects only the DOOM steps; `bench-pvm` retains the other PVM workloads.
-Both suites retain their own controls, source/runner provenance, raw artifacts and summaries.
-**Perf / PVM Comparison** remains a separate job.
+Use `make pvm-perf-latest` to download and validate both reports from the newest master-push CI
+run, with exact revision/architecture/coverage identities. It reports pending or failed newest
+data rather than silently returning an older green result. No toolchain or benchmark runs during
+retrieval. JSON, CSV, summaries and logs remain available as architecture-specific Actions
+artifacts for 30 days.
 
-The regular jobs replace the old PVM Instructions, PVM Prepared, PVM Revisions, DOOM Attribution
-and DOOM Revisions CI entries. Their historical Make diagnostics are retained, subject to their
-existing Linux/profiler/timing admission rules. No automatic instruction baseline or noisy timing
-regression threshold is implied. See [the monitoring contract](../spec/pvm-ci-performance.md).
+A manual `bench-pvm` workflow request runs the same complete PVM path without Storage or unrelated
+CI groups; `bench-doom` selects only DOOM. Both default to ARM64 and x86-64. Their optional
+`pvm_architecture` input selects one CPU for focused qualification. Ordinary `perf`/`full` and
+master requests always include both. Historical profile/replay/calibration and pricing/revision
+commands remain explicit Make diagnostics; they are not alternate CI performance paths.
 
 Use the PR labels when PR-associated checks are needed. Manual branch dispatch is separate
 verification and may not satisfy required PR checks. If branch protection is introduced, require
