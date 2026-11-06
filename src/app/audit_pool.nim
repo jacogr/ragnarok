@@ -7,7 +7,7 @@ import ../codec/bounded
 
 type AuditIntentPool* = object ## Mutable ownership stays inside the stable host controller; immutable checked children contain no canonical graph.
   capacity: int
-  maximum, occupied: uint64
+  maximum, occupied, minimumEpoch: uint64
   records: seq[CheckedAuditAnnouncement]
 func len*(pool: AuditIntentPool): int =
   ## Count original declarations independently of their at-most-ten selected available cores.
@@ -39,6 +39,20 @@ proc repeated(batch: CheckedAuditBatch, ordinal: int): bool =
   for previous in 0..<ordinal:
     if same(batch.announcementAt(previous).value, record): return true
   false
+proc expireBefore*(pool: var AuditIntentPool, minimumEpoch: uint64) =
+  ## Preserve live ordering and release the exact reserved charge of retired declarations.
+  if minimumEpoch <= pool.minimumEpoch: return
+  pool.minimumEpoch = minimumEpoch
+  var kept = 0
+  for ordinal in 0..<pool.records.len:
+    # Only the proof's original block epoch determines retained intent eligibility.
+    let info = pool.records[ordinal].announcementContext.value.contextInfo.value
+    if info.epoch >= minimumEpoch:
+      if kept != ordinal: pool.records[kept] = move(pool.records[ordinal])
+      inc kept
+    else:
+      pool.occupied -= info.retainedBytes+1024
+  pool.records.setLen(kept)
 proc remember*(pool: var AuditIntentPool, batch: CheckedAuditBatch): bool =
   ## Validate all entry/byte additions before mutating storage; no accepted prefix survives a late refusal.
   if pool.capacity == 0 or not batch.valid: return false
@@ -46,8 +60,10 @@ proc remember*(pool: var AuditIntentPool, batch: CheckedAuditBatch): bool =
   var bytes = 0'u64
   for ordinal in 0..<batch.len:
     let record = batch.announcementAt(ordinal).value
+    let info = record.announcementContext.value.contextInfo.value
+    if info.epoch < pool.minimumEpoch: return false
     if pool.contains(record) or batch.repeated(ordinal): continue # Retain an existing declaration exactly once.
-    let charge = record.announcementContext.value.contextInfo.value.retainedBytes+1024
+    let charge = info.retainedBytes+1024
     if additions >= pool.capacity-pool.records.len or charge > pool.maximum-pool.occupied-bytes:
       return false
     inc additions
@@ -68,3 +84,4 @@ proc clear*(pool: var AuditIntentPool) =
   pool.capacity = 0
   pool.maximum = 0
   pool.occupied = 0
+  pool.minimumEpoch = 0

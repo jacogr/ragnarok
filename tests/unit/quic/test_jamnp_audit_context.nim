@@ -23,7 +23,8 @@ import "../../../src/state/block/admission"
 import ../../../src/crypto/primitives
 import ../../support/[jamnp_audit_evaluation, jamnp_audit_faults, jamnp_audit_signing,
     jamnp_audit_acquisition, assurance_signer_context]
-import ../../support/[jamnp_audit_context, arc_evidence, current_application_context, jamnp_audit_validation]
+import ../../support/[jamnp_audit_context, arc_evidence, current_application_context,
+    jamnp_audit_validation, jamnp_topology_fixture]
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
   let selected = captureAuditContext(fixture.view, fixture.blockHash, auditLimits())
@@ -182,6 +183,23 @@ proc waitServices(owner: var Services) =
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded managed audit planning"
+proc finalizedRetentionChecks() {.raises.} =
+  ## A selected high-slot checkpoint gives no expiry authority until local finality is explicitly installed.
+  let snapshot = topologyCaptured([topologyRecords(2, 9), topologyRecords(3, 9),
+      topologyRecords(4, 9)], atSlot = 37)
+  assert snapshot.error == GenesisError.None
+  var path = "audit-retention-services-" & $processId() & ".json"
+  writeFile(path, currentApplicationText(snapshot.value))
+  defer: discard posix.unlink(path.toCString())
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path], settings)
+  var owner = default(Services)
+  defer: owner.close()
+  assert owner.start(settings, "audit retention from installed finality")
+  assert owner.expireFinalizedAudits(0) == 0, "best-head epoch cannot expire any original duties"
+  assert owner.publishFinalized(snapshot.value.blockHash) == ViewFinalizeError.None
+  assert owner.expireFinalizedAudits(0) == 2, "epoch three keeps its previous epoch eligible"
+  assert owner.expireFinalizedAudits(2) == 2, "repeated finalized epoch is idempotent"
 proc managed(fixture: AuditContextFixture) {.raises.} =
   ## A genuine trusted complete header-only seed qualifies neither a body nor an audit; exact managed failure and foreign Done ownership still retire correctly.
   var file = "audit-context-services-" & $processId() & ".json"
@@ -479,6 +497,7 @@ proc main() {.raises.} =
   intrinsicEmptyFaultChecks()
   auditSigningChecks(fixture)
   managed(fixture)
+  finalizedRetentionChecks()
   fetchChecks(fixture)
   auditAcquisitionChecks(fixture)
   declaredAuditChecks(fixture)

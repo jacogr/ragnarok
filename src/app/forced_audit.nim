@@ -65,6 +65,33 @@ proc `=destroy`*(owner: ForcedAudits) =
   `=destroy`(owner.plan)
   `=destroy`(owner.publication)
 
+func canExpire*(owner: ForcedAudits): bool =
+  ## A leased or scheduled report still depends on its original registry and queue positions.
+  owner.phase == Phase.Idle
+proc expireBefore*(owner: var ForcedAudits, streams: var NodeService, floor: uint64,
+    declarations, pending: array[256, bool]) {.requires: owner.canExpire.} =
+  ## Move progress in the same stable order as the underlying detached duty queues.
+  var kept = 0
+  for row in 0..<pending.len:
+    # Negative retries follow the original live pending ordinal.
+    if pending[row]:
+      owner.completed[kept] = owner.completed[row]
+      owner.retry[kept] = owner.retry[row]
+      inc kept
+  for row in kept..<pending.len:
+    # Reused storage starts without completion or cooldown from a retired record.
+    owner.completed[row] = false
+    owner.retry[row] = default(MonoTime)
+  kept = 0
+  for row in 0..<declarations.len:
+    # Completed CE144 reports retain their next report cursor.
+    if declarations[row]:
+      owner.declaredProgress[kept] = owner.declaredProgress[row]
+      inc kept
+  for row in kept..<declarations.len: owner.declaredProgress[row] = default(DeclaredProgress)
+  owner.cursor = 0
+  owner.declarationCursor = 0
+  owner.gossip.expireBefore(streams, floor)
 func configured*(owner: ForcedAudits): bool =
   ## Local declarations require an enabled evaluation and publication pipeline.
   owner.policy.ready

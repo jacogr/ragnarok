@@ -2578,6 +2578,17 @@ proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
   services.assuranceWorkInput = default(WorkSubmissionJob)
   AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
       workerReason: admitted.error)
+proc expireFinalizedAudits*(services: var Services, previous: uint64): uint64 =
+  ## Verdicts may still use the prior-state epoch or one earlier. Only installed finality advances this floor.
+  if not services.stateProofAvailable or services.audits.occupied: return previous
+  let finalized = services.canonical.chainView.finalizedBlock
+  if finalized.error != GenesisError.None: return previous
+  let slots = finalized.value.chainParameters.get(epochPeriod)
+  if slots == 0: return previous
+  let epoch = finalized.value.slot div slots
+  if epoch <= 1 or epoch-1 <= previous: return previous
+  let floor = epoch-1
+  if services.audits.expireBefore(floor): floor else: previous
 func auditRetentionConfigured*(services: Services): bool =
   ## Host-only optional activation observation follows no full-state or worker-leased aliases.
   services.audits.configured

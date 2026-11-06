@@ -186,6 +186,11 @@ func active*(state: ManagedAuditState): bool =
 func matches*(state: ManagedAuditState, ticket: ProofWorkerTicket): bool =
   ## Equality of private ticket namespace and generation cannot authorize a default idle selector.
   state.occupied and state.ticket == ticket
+proc expireBefore*(state: var ManagedAuditState, floor: uint64): bool =
+  ## Retire only after exact collection has released every managed result and source borrow.
+  if state.occupied: return false
+  state.registry.expireBefore(floor)
+  true
 proc configure*(state: var ManagedAuditState, limits: AuditRegistryLimits): bool =
   ## Services first establishes idle complete-state readiness.
   if state.occupied: return false

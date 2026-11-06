@@ -122,6 +122,30 @@ func configured*(owner: JudgmentDispatcher): bool =
   ## Optional receipt must be configured before enabling automatic participation.
   owner.policy.ready
 
+func canExpire*(owner: JudgmentDispatcher): bool =
+  ## No held receipt may have reserved ledger or raw-reply capacity.
+  not owner.held
+proc expireBefore*(owner: var JudgmentDispatcher, floor: uint64): array[256, bool] {.requires:
+    owner.canExpire.} =
+  ## Compact only after whole receipt retirement and report the old positions of surviving duties.
+  result = default(array[256, bool])
+  owner.store.expireBefore(floor)
+  var kept = 0
+  for row in 0..<owner.pending.len:
+    # Preserve original negative duty identity and ordering for controller progress.
+    let epoch = uint64(uint32(owner.pending[row].judgment.judgmentRecord.epoch))
+    if epoch >= floor:
+      result[row] = true
+      if kept != row: owner.pending[kept] = move(owner.pending[row])
+      inc kept
+  owner.pending.setLen(kept)
+  kept = 0
+  for row in 0..<owner.reports.len:
+    # A hash shared with a live epoch keeps its exact reply.
+    if owner.store.containsReport(owner.reports[row].request.payload):
+      if kept != row: owner.reports[kept] = move(owner.reports[row])
+      inc kept
+  owner.reports.setLen(kept)
 proc rememberPublication*(owner: var JudgmentDispatcher, publication: AuditPublication): bool =
   ## Commit a genuine local signature and its detached serving reply together.
   if not owner.policy.ready or owner.held or not publication.valid: return false

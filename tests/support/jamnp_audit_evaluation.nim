@@ -232,6 +232,16 @@ proc registryChecks*(fixture: AuditContextFixture) =
   policy.contextBytes = ByteLimit(1)
   assert limited.configure(policy)
   assert limited.retain(captured).error == AuditRegistryError.LimitExceeded and limited.len == 0, "full context and evaluation-slot credit precedes retention"
+  let epoch = captured.originContext.value.contextInfo.value.epoch
+  registry.expireBefore(epoch)
+  assert registry.origin(id).error == AuditRegistryError.None,
+      "origins in the oldest eligible epoch retain their exact selectors"
+  registry.expireBefore(epoch+1)
+  assert registry.len == 0 and registry.evaluationInfo(id, 0).error == AuditRegistryError.InvalidId,
+      "retirement releases the origin and completed evaluation"
+  registry.expireBefore(epoch)
+  assert registry.retain(captured).error == AuditRegistryError.Expired,
+      "a lower cutoff cannot reopen retired work"
   registry.clear()
   assert registry.configure(registryLimits())
   let renewed = registry.retain(captured).value

@@ -56,3 +56,11 @@ proc judgmentStoreChecks*(fixture: AuditContextFixture) =
   assert not store.judgmentAt(0).value.judgmentRecord.valid and store.judgmentAt(
       1).value.judgmentRecord.valid
   assert store.judgmentAt(3).error == JudgmentStoreError.InvalidIndex
+  let epoch = uint64(uint32(negative.epoch))
+  store.expireBefore(epoch)
+  assert store.len == 3 and store.conflicted(0), "oldest eligible epoch keeps both sides"
+  store.expireBefore(epoch+1)
+  assert store.len == 0 and not store.canAppendClaims(claims), "stale claims fail preflight"
+  store.expireBefore(epoch)
+  assert store.append([a, b]).error == JudgmentStoreError.Expired and store.len == 0,
+      "qualified replay cannot reopen an expired epoch"

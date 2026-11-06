@@ -45,7 +45,7 @@ type
     dial: DialTicket
     dialIdentity: StateEdKey
     started: MonoTime
-    attempted, acknowledged: uint64
+    attempted, acknowledged, minimumEpoch: uint64
 func judgmentGossipPolicy*(message: AuditLimits, entries: range[1..256], bytes: ByteLimit,
     requestsPerRecord: range[1..12288] = 12288, dialsPerRecord: range[0..12288] = 3072,
     attempts: range[1..4] = 4, timeoutMs: range[1..120000] = 1000,
@@ -118,6 +118,7 @@ proc offer*(owner: var JudgmentGossip, record: QualifiedJudgment,
   if not owner.policy.ready or not record.valid or not plan.valid: return false
   let info = plan.participationInfo.value
   let raw = record.judgmentRecord
+  if uint64(uint32(raw.epoch)) < owner.minimumEpoch: return false
   if info.epoch != uint64(uint32(raw.epoch)) or array[32, byte](info.report) != array[32, byte](
       raw.report): return false
   if info.localValidators == 0: return true # The receiver retains author evidence but is not an original auditor responsible for this epoch's forwarding.
@@ -304,6 +305,25 @@ proc poll*(owner: var JudgmentGossip, streams: var NodeService, clock: MonoTime)
     inc owner.rows[row].peers[peer].attempts
     owner.startPeer(streams, clock)
     return
+proc expireBefore*(owner: var JudgmentGossip, streams: var NodeService, floor: uint64) =
+  ## Exact cancellation releases only a retired record's owned stream and temporary connection.
+  if floor <= owner.minimumEpoch: return
+  owner.minimumEpoch = floor
+  if not owner.policy.ready: return
+  for row in 0..<owner.policy.entries:
+    # Fixed rows preserve active/acknowledged delivery state for all surviving records.
+    if not owner.rows[row].used or uint64(uint32(owner.rows[row].record.judgmentRecord.epoch)) >= floor:
+      continue
+    if owner.active and owner.row == row:
+      if owner.requested: discard streams.cancelRequest(owner.request)
+      if owner.dialing: discard streams.cancelPeerConnection(owner.dial)
+      owner.active = false
+      owner.requested = false
+      owner.dialing = false
+      owner.request = default(NodeRequestTicket)
+      owner.dial = default(DialTicket)
+    owner.bytes -= owner.rows[row].reservation
+    owner.rows[row] = default(GossipRow)
 proc close*(owner: var JudgmentGossip, streams: var NodeService) =
   ## Native NodeService owns callback buffers independently; exact cancellation precedes dropping only this scheduler's detached records and tokens.
   if owner.requested: discard streams.cancelRequest(owner.request)
@@ -320,3 +340,4 @@ proc close*(owner: var JudgmentGossip, streams: var NodeService) =
   owner.policy = default(JudgmentGossipPolicy)
   owner.bytes = 0
   owner.cursor = 0
+  owner.minimumEpoch = 0
