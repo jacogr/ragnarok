@@ -560,3 +560,19 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
     for octet in array[32, byte](judgment.report): transcript.add(octet)
     assert verify(EdPublicKey(array[32, byte](local)),
         EdSignature(array[64, byte](judgment.signature)), transcript)
+  client.close()
+  let capture = services.beginAuditOriginCapture(fixture.blockHash, auditLimits(),
+      auditOriginLimits(), forDeclaration = true).value
+  let captureDeadline = getMonoTime()+initDuration(seconds = 10)
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < captureDeadline
+  let pin = services.collectAudit(capture).originId
+  let borrowed = services.beginAuditFetchPlanning(pin, 0, fetchLimits()).value
+  services.retireInitialAudit(pin)
+  assert services.stateProofActive(borrowed), "node shutdown cannot cancel a foreign exact lease"
+  let releaseDeadline = getMonoTime()+initDuration(seconds = 10)
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < releaseDeadline
+  assert services.collectAudit(borrowed).kind == ManagedAuditKind.FetchPlanned
+  assert services.beginAuditFetchPlanning(pin, 0, fetchLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "an abandoned declaration releases its map after foreign collection"

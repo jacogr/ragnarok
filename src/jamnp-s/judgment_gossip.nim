@@ -8,7 +8,6 @@ import ../codec/[bounded, disputes]
 import ../codec/state/safrole
 
 const MaxJudgmentDeliveries = 3072 ## Three maximum1023-position recipient cohorts fit with fixed accounting slack.
-const MaxJudgmentGossipRows = 256 ## Explicit local policy can choose a smaller accountable-record ceiling.
 type
   JudgmentDeliveryMode* {.pure.} = enum ## Relays preserve the original signature; produced judgments additionally reach all presently known succeeding author sets.
     Relayed, Produced
@@ -36,7 +35,7 @@ type
     requests, dials, reservation, refresh: uint64
   JudgmentGossip* = object ## Stable noncopyable owner holds exact cancellation authority for one physical delivery at a time.
     policy: JudgmentGossipPolicy
-    rows: array[MaxJudgmentGossipRows, GossipRow]
+    rows: seq[GossipRow]
     bytes: uint64
     cursor: int
     active, requested, dialing, closing, finishing: bool
@@ -46,14 +45,14 @@ type
     dialIdentity: StateEdKey
     started: MonoTime
     attempted, acknowledged, minimumEpoch: uint64
-func judgmentGossipPolicy*(message: AuditLimits, entries: range[1..256], bytes: ByteLimit,
+func judgmentGossipPolicy*(message: AuditLimits, entries: range[1..32768], bytes: ByteLimit,
     requestsPerRecord: range[1..12288] = 12288, dialsPerRecord: range[0..12288] = 3072,
     attempts: range[1..4] = 4, timeoutMs: range[1..120000] = 1000,
     retryMs: range[1..120000] = 1000): JudgmentGossipPolicy =
   ## At most four attempts per identity/plan and finite lifetime row quotas bound network work even across repeated genuine topology refreshes.
   if not message.valid or uint64(message.bytes) < 306 or sizeof(Delivery) > 512:
     return default(JudgmentGossipPolicy)
-  if uint64(bytes) == 0 or uint64(bytes) > 512'u64*1024*1024:
+  if uint64(bytes) == 0 or uint64(bytes) > 64'u64*1024*1024*1024:
     return default(JudgmentGossipPolicy)
   JudgmentGossipPolicy(ready: true, message: message, entries: entries, bytes: bytes,
     requests: uint64(requestsPerRecord), dials: uint64(dialsPerRecord), attempts: attempts,
@@ -101,6 +100,7 @@ proc configure*(owner: var JudgmentGossip, policy: JudgmentGossipPolicy): bool =
   ## Configuration cannot erase retained acknowledgments or replace a live scheduler.
   if owner.policy.ready or not policy.ready or owner.active: return false
   owner.policy = policy
+  owner.rows = newSeq[GossipRow](policy.entries)
   true
 func sameKey(a, b: StateEdKey): bool =
   ## Physical identity deduplication never changes original validator ordinals in the immutable participation plan.
@@ -122,7 +122,7 @@ proc offer*(owner: var JudgmentGossip, record: QualifiedJudgment,
   let reservation = info.retainedBytes+65536+uint64(MaxJudgmentDeliveries)*(uint64(sizeof(Delivery))+64)
   var available = -1
   for index in 0..<owner.policy.entries:
-    # At most256 fixed original identities are compared; no unbounded report/map lookup occurs on the foreground actor.
+    # At most the configured number of original identities are compared; no unbounded report/map lookup occurs on the foreground actor.
     if owner.rows[index].used and sameRecord(owner.rows[index].record, record):
       let sameSource = array[32, byte](owner.rows[index].plan.participationInfo.value.source) ==
           array[32, byte](info.source)
@@ -332,7 +332,7 @@ proc close*(owner: var JudgmentGossip, streams: var NodeService) =
   owner.request = default(NodeRequestTicket)
   owner.dial = default(DialTicket)
   owner.dialIdentity = default(StateEdKey)
-  owner.rows = default(array[MaxJudgmentGossipRows, GossipRow])
+  owner.rows = @[]
   owner.policy = default(JudgmentGossipPolicy)
   owner.bytes = 0
   owner.cursor = 0

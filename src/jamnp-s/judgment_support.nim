@@ -19,9 +19,9 @@ type
     readBytes*, workspaceBytes*, retainedBytes*, hashBytes*: ByteLimit
     hashes*: ElementLimit
   JudgmentSupportInfo* = object ## Fixed source identifiers name the actual reporting context; none identifies a fabricated audited/availability block.
-    sourceHash*: genesis.BlockHash
-    sourceRoot*: trie.StateRoot
-    sourceTime*: StateTime
+    sourceHash*, membershipHash*: genesis.BlockHash
+    sourceRoot*, membershipRoot*: trie.StateRoot
+    sourceTime*, membershipTime*: StateTime
     sourceEpoch*, auditEpoch*: uint64
     report*: DisputeHash
     auditorHash*: AuditorRosterHash
@@ -152,7 +152,8 @@ proc matchesSource*(support: VerifiedJudgmentSupport, source: BlockSnapshotResul
     data.parameters.sameParameterProfile(actual.chainParameters)
 proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
     claim: SignedJudgmentClaim, report: OwnedReport, limits: JudgmentSupportLimits,
-    control: AssuranceScanControl = default(AssuranceScanControl)): JudgmentSupportResult[
+    control: AssuranceScanControl = default(AssuranceScanControl),
+    membership = default(genesis.BlockHash)): JudgmentSupportResult[
         VerifiedJudgmentSupport] =
   ## The selected block is a genuine retained canonical reporting context; no caller clock or key table is accepted. A refusal for this context makes no statement about other historical contexts or report truth.
   if not limits.valid: return JudgmentSupportResult[VerifiedJudgmentSupport](
@@ -162,13 +163,15 @@ proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
   if control.stopped: return JudgmentSupportResult[VerifiedJudgmentSupport](
       status: JudgmentSupportError.Cancelled)
   let facts = claim.claimInfo
-  let receipt = view.blockAt(facts.sourceHead)
+  let alternate = array[32, byte](membership) != default(array[32, byte])
+  let receipt = view.blockAt(if alternate: membership else: facts.sourceHead)
   let source = view.blockAt(sourceHash)
   if receipt.error != GenesisError.None or source.error != GenesisError.None:
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.UnknownSource)
-  if array[32, byte](receipt.value.stateRoot) != array[32, byte](facts.sourceRoot) or
-      receipt.value.slot != uint64(uint32(facts.sourceTime)):
+  let sameRoot = array[32, byte](receipt.value.stateRoot) == array[32, byte](facts.sourceRoot)
+  let sameSlot = receipt.value.slot == uint64(uint32(facts.sourceTime))
+  if not alternate and not (sameRoot and sameSlot):
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.SourceMismatch)
   let parameters = source.value.chainParameters
@@ -238,8 +241,8 @@ proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
         status: JudgmentSupportError.InvalidSource)
   let auditors = decodedAuditors.value.value
   let selected = auditors.validatorAt(StateValidatorIndex(uint64(uint16(facts.validator))))
-  if selected.error != StateComponentError.None or auditors.validatorCount.value !=
-      facts.population:
+  if selected.error != StateComponentError.None or
+      (not alternate and auditors.validatorCount.value != facts.population):
     return JudgmentSupportResult[VerifiedJudgmentSupport](
         status: JudgmentSupportError.SourceMismatch)
   if array[32, byte](selected.value.ed25519) != array[32, byte](facts.auditor.ed25519):
@@ -321,7 +324,8 @@ proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
       parameters: parameters, auditors: auditors, current: active.value.value,
       previous: previous.value.value,
       info: JudgmentSupportInfo(sourceHash: source.value.blockHash,
-        sourceRoot: source.value.stateRoot,
+        membershipHash: receipt.value.blockHash, membershipRoot: receipt.value.stateRoot,
+        membershipTime: StateTime(uint32(receipt.value.slot)), sourceRoot: source.value.stateRoot,
         sourceTime: clock.value.value, sourceEpoch: source.value.slot div epochSlots,
         auditEpoch: originalEpoch, report: record.report, auditorHash: AuditorRosterHash(array[32,
             byte](auditorHash.value)), retainedBytes: retained,

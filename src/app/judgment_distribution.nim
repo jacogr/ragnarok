@@ -17,7 +17,7 @@ type
     claims: JudgmentClaimLimits
     receipt: JudgmentReceiptLimits
     verification: ReadVerificationLimits
-    store: JudgmentStoreLimits
+    store, local: JudgmentStoreLimits
     bytes: ByteLimit
     timeout, attempts: int
   ReceiptPhase {.pure.} = enum ## Every waiting phase retains one original bounded claim; CPU and native acquisition never create independent unmanaged workers.
@@ -44,17 +44,22 @@ type
     received: uint64
 func judgmentReceiptPolicy*(claims: JudgmentClaimLimits, receipt: JudgmentReceiptLimits,
     verification: ReadVerificationLimits, store: JudgmentStoreLimits, bytes: ByteLimit,
-    timeoutMs: range[1..120000] = 30000, sourceAttempts: range[1..64] = 4): JudgmentReceiptPolicy =
+    timeoutMs: range[1..120000] = 30000, sourceAttempts: range[1..64] = 4,
+    local = default(JudgmentStoreLimits)): JudgmentReceiptPolicy =
   ## Reserve worst-case persistent and transient wire storage up front; every per-message source retry remains under the same native deadline and finite attempt budget.
-  if not claims.valid or not receipt.valid or not store.valid: return default(JudgmentReceiptPolicy)
+  if not claims.valid or not receipt.valid or not store.valid or uint64(store.records) > 256 or
+      uint64(store.bytes) > 1024'u64*1024: return default(JudgmentReceiptPolicy)
+  let localLimits = if uint64(local.records) == 0 and uint64(local.bytes) == 0: store else: local
+  if not localLimits.valid: return default(JudgmentReceiptPolicy)
   let wire = uint64(verification.wireBytes)
   if wire < 4 or wire > uint64(MaxReadReplyBytes): return default(JudgmentReceiptPolicy)
-  if uint64(bytes) == 0 or uint64(bytes) > 64'u64*1024*1024: return default(JudgmentReceiptPolicy)
-  let rows = 2*uint64(store.records)+3*uint64(claims.message.records)
-  if rows*wire+2*uint64(store.bytes)+uint64(claims.retainedBytes)+65536 > uint64(bytes):
+  if uint64(bytes) == 0 or uint64(bytes) > 64'u64*1024*1024*1024: return default(JudgmentReceiptPolicy)
+  let rows = uint64(store.records)+uint64(localLimits.records)+3*uint64(claims.message.records)
+  if rows*wire+uint64(store.bytes)+uint64(localLimits.bytes)+uint64(claims.retainedBytes)+65536 >
+      uint64(bytes):
     return default(JudgmentReceiptPolicy)
   JudgmentReceiptPolicy(ready: true, claims: claims, receipt: receipt, verification: verification,
-    store: store, bytes: bytes, timeout: timeoutMs, attempts: sourceAttempts)
+    store: store, local: localLimits, bytes: bytes, timeout: timeoutMs, attempts: sourceAttempts)
 func valid*(policy: JudgmentReceiptPolicy): bool =
   ## Omission cannot enable native CE145 or retain any judgment.
   policy.ready
@@ -173,7 +178,7 @@ proc rememberPublication*(owner: var JudgmentDispatcher, publication: AuditPubli
   for old in owner.localReports:
     if old.matches(reply.request): known = true
   if not known and uint64(owner.localReports.len) >= uint64(
-      owner.policy.store.records): return false
+      owner.policy.local.records): return false
   if owner.localStore.append([qualified.value]).error != JudgmentStoreError.None: return false
   if not known: owner.localReports.add(reply)
   true
@@ -184,7 +189,7 @@ proc configure*(owner: var JudgmentDispatcher, streams: var NodeService,
   if owner.policy.ready or not policy.ready or owner.held or owner.active or
       not streams.isValidator: return false
   if not owner.store.configure(policy.store): return false
-  if not owner.localStore.configure(policy.store) or not streams.enableJudgmentStreams():
+  if not owner.localStore.configure(policy.local) or not streams.enableJudgmentStreams():
     owner.store.clear()
     owner.localStore.clear()
     return false
@@ -236,6 +241,7 @@ proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
     let selected = services.judgmentSource(claim)
     if selected.error != JudgmentSourceError.None: return false
     owner.inputs[owner.ordinal].source = selected.value
+    owner.inputs[owner.ordinal].membership = selected.membershipSource
     owner.sourceSlots[owner.ordinal] = selected.sourceSlot
     var hash: seq[byte] = @[]
     for octet in array[32, byte](claim.judgmentRecord.report): hash.add(octet)
@@ -334,7 +340,7 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
             ordinal], owner.sourceSlots[ordinal])
         if next.error == JudgmentSourceError.None:
           owner.inputs[ordinal].source = next.value
-          owner.sourceSlots[ordinal] = next.sourceSlot
+          owner.inputs[ordinal].membership = next.membershipSource
           owner.phase = ReceiptPhase.ReceiptReady
           return
     let retained = owner.retainWhole(completed)

@@ -25,6 +25,19 @@ Support retries exclude failed hashes and continue toward older eligible sources
 selected head advances. Inbound receipts and locally owed publications reserve separate
 judgment and report-serving capacity.
 
+The receipt policy accepts an independent local ledger limit. The initial declaration,
+local route refresh, and native gossip policies have separate configurable row ceilings.
+Size them for the number of duties and judgments retained across the active epochs.
+A full-profile validator can retain more than 256 locally owed judgments without widening
+the inbound receipt ceiling. Local refresh has its own byte budget and can retain a
+publication even if the relayed refresh quota is full.
+
+A negative receipt may try a separately retained branch after a reporting context fails.
+Even when the same key occupies the auditor position on both branches, each alternate
+must establish that key in its own original-epoch roster and qualify the supporting
+guarantee and execution origin in the same trusted branch. The resulting private origin
+binds the actual membership hash and root used for support.
+
 A signed negative claim alone does not qualify its supporting guarantee or certify report
 invalidity. Unknown reports require full-hash-bound CE136 acquisition, actual two/three original
 credential role/signature qualification and a genuine complete execution source. Never fabricate

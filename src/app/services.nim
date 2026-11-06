@@ -2397,6 +2397,7 @@ proc collectSharedStateProof(services: var Services,
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # A stale/foreign/early ticket never resumes another lease.
+    if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
 
 proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): ProofWorkerCompletion =
   ## Managed audit capabilities stay private even if a caller knows their host control ticket.
@@ -2408,7 +2409,8 @@ proc collectAudit*(services: var Services, ticket: ProofWorkerTicket): ManagedAu
   if not services.audits.matches(ticket): return default(ManagedAuditCompletion)
   if services.audits.active:
     discard services.collectSharedStateProof(ticket)
-  services.audits.collect(ticket)
+  result = services.audits.collect(ticket)
+  if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
 
 func error*(outcome: AssuranceStorageStart): AssuranceStorageStartError =
   ## Read the selected startup refusal before accessing its ticket or child reason.
@@ -2600,10 +2602,18 @@ proc releaseDisputedAudit*(services: var Services, id: AuditOriginId): bool =
   services.stateProofAvailable and services.audits.releaseDispute(id)
 proc releaseInitialAudit*(services: var Services, id: AuditOriginId): bool =
   ## Release one completed declaration pin between graph leases.
-  services.stateProofAvailable and services.audits.releaseDeclaration(id)
+  if not services.stateProofAvailable: return false
+  services.audits.drainAbandonedDeclarations()
+  services.audits.releaseDeclaration(id)
+proc retireInitialAudit*(services: var Services, id: AuditOriginId) =
+  ## A closing node hands off exactly its pin even when another controller owns the graph lease.
+  if not id.valid: return
+  services.audits.abandonDeclaration(id)
+  if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
 proc expireFinalizedAudits*(services: var Services, previous: uint64): uint64 =
   ## Verdicts may still use the prior-state epoch or one earlier. Only installed finality advances this floor.
   if not services.stateProofAvailable or services.audits.occupied: return previous
+  services.audits.drainAbandonedDeclarations()
   let finalized = services.canonical.chainView.finalizedBlock
   if finalized.error != GenesisError.None: return previous
   let slots = finalized.value.chainParameters.get(epochPeriod)
@@ -2656,6 +2666,7 @@ proc retainAuditOrigin*(services: var Services, origin: AuditBlockOrigin): Audit
   ## Backfill an already authenticated whole origin only against independently retained canonical/checkpoint trust.
   if not services.stateProofAvailable or services.audits.occupied or not origin.valid:
     return auditRegistryFailure[AuditOriginId](AuditRegistryError.InvalidSource)
+  services.audits.drainAbandonedDeclarations()
   services.audits.retain(origin, services.auditSource(origin.originInfo.value.blockHash).blockAt(
       origin.originInfo.value.blockHash))
 proc admitManagedAudit(services: var Services): AuditPlanningStart {.raises.} =
@@ -2709,6 +2720,7 @@ proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHa
       status: StateProofAdmissionError.Busy)
   if not services.audits.configured: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  services.audits.drainAbandonedDeclarations()
   let staged = services.stageManagedAuditOrigin(blockHash, context, limits)
   if staged != WorkJobError.None: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
@@ -2933,8 +2945,24 @@ proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
   ## Metadata-only selection observes actual canonical history solely while the shared graph gate is idle; Busy/default contains no guessed source.
   if not services.stateProofAvailable: return default(JudgmentSourceResult)
   let selected = services.canonical.chainView
-  let source = judgmentAuthorityView(selected, services.auditBranches.liveViews(selected), claim)
-  selectJudgmentSource(source, claim, excluded, maximumSlot)
+  let alternatives = services.auditBranches.liveViews(selected)
+  let source = judgmentAuthorityView(selected, alternatives, claim)
+  if source.bestBlock.error != GenesisError.None: return default(JudgmentSourceResult)
+  let primary = selectJudgmentSource(source, claim, excluded, maximumSlot)
+  if excluded.len == 0 and primary.error == JudgmentSourceError.None: return primary
+  let primaryHead = source.bestBlock.value.blockHash
+  let selectedHead = selected.bestBlock
+  if selectedHead.error == GenesisError.None and array[32, byte](selectedHead.value.blockHash) !=
+      array[32, byte](primaryHead):
+    let alternate = alternateJudgmentSource(selected, claim, excluded)
+    if alternate.error == JudgmentSourceError.None: return alternate
+  for branch in alternatives:
+    let head = branch.bestBlock
+    if head.error != GenesisError.None or array[32, byte](head.value.blockHash) ==
+        array[32, byte](primaryHead): continue
+    let alternate = alternateJudgmentSource(branch, claim, excluded)
+    if alternate.error == JudgmentSourceError.None: return alternate
+  primary
 proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the fixed worker borrows its immutable input graph.
@@ -2951,6 +2979,7 @@ proc beginJudgmentReceipt*(services: var Services, claims: SignedJudgmentBatch,
       status: StateProofAdmissionError.Busy)
   if not services.audits.configured: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  services.audits.drainAbandonedDeclarations()
   let staged = services.stageJudgmentReceipt(claims, inputs, limits)
   if staged != WorkJobError.None: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
@@ -4089,6 +4118,7 @@ proc collectPreparation*(services: var Services, ticket: PreparationTicket): Pre
     services.preparing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Stale/early collection cannot release another active lease.
+    if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
 
 proc planCollectedSupplied*(services: Services, receipt: PreparationCompletion,
     limits: CollectedSuppliedLimits): CollectedSuppliedPlanResult[CollectedSuppliedPlan] {.requires:

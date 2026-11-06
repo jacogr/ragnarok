@@ -79,12 +79,19 @@ proc configure*(registry: var AuditOriginRegistry, limits: AuditRegistryLimits):
   registry.limits = limits
   registry.next = 0
   true
+func owns(registry: AuditOriginRegistry, id: AuditOriginId): bool =
+  ## A namespace check reads no retained map or evaluation.
+  id.valid and registry.identity == id.owner
 proc find(registry: AuditOriginRegistry, id: AuditOriginId): int =
   ## Private exact identity matching never accepts another registry's serial1 or a previous cleared lifetime.
-  if not id.valid or registry.identity != id.owner: return -1
+  if not registry.owns(id): return -1
   for ordinal in 0..<registry.rows.len:
     if registry.rows[ordinal].id.serial == id.serial: return ordinal
   -1
+proc hasDeclaration*(registry: AuditOriginRegistry, id: AuditOriginId): bool =
+  ## Read only the host selector and scalar pin count. No worker accesses the registry itself.
+  let index = registry.find(id)
+  index >= 0 and registry.rows[index].declarations > 0
 proc uncharge(registry: var AuditOriginRegistry, ordinal: int) =
   ## Release exactly the original row reservation before its owner retires.
   let row = registry.rows[ordinal]
@@ -110,11 +117,12 @@ proc releaseDispute*(registry: var AuditOriginRegistry, id: AuditOriginId): bool
   if index < 0 or not registry.rows[index].dispute.valid: return false
   registry.remove(index)
   true
-proc releaseDeclaration*(registry: var AuditOriginRegistry, id: AuditOriginId): bool =
+proc releaseDeclaration*(registry: var AuditOriginRegistry, id: AuditOriginId,
+    count = 1'u16): bool =
   ## Each completed declaration releases its pin. Explicit retention still lasts until epoch expiry.
   let index = registry.find(id)
-  if index < 0 or registry.rows[index].declarations == 0: return false
-  dec registry.rows[index].declarations
+  if index < 0 or count == 0 or registry.rows[index].declarations < count: return false
+  registry.rows[index].declarations -= count
   if registry.rows[index].declarations == 0 and not registry.rows[index].explicitPin:
     registry.remove(index)
   true

@@ -16,7 +16,7 @@ type
     proof: AuditProofLimits
     origin: AuditOriginLimits
     ready: bool
-    attempts, timeout, retry: int
+    attempts, timeout, retry, maxDeclarations: int
   InitialAuditDeclaration* = object ## Fixed retained obligations survive network attempts and later information.
     record*: AuditAnnouncement
     selected*: InitialAuditSelection
@@ -39,12 +39,12 @@ type
 
 func initialAuditPolicy*(context: AuditContextLimits, proof: AuditProofLimits,
     origin: AuditOriginLimits, attempts: range[1..4] = 2, timeoutMs: range[1..120000] = 1000,
-    retryMs: range[1..120000] = 250): InitialAuditPolicy =
+    retryMs: range[1..120000] = 250, declarations: range[1..32768] = 256): InitialAuditPolicy =
   ## Defaults carry no authority. Reserve signing and verification before worker admission.
   if not context.valid or not origin.valid or not proof.valid or uint64(proof.proofs) < 2:
     return default(InitialAuditPolicy)
   InitialAuditPolicy(ready: true, context: context, proof: proof, origin: origin,
-      attempts: attempts, timeout: timeoutMs, retry: retryMs)
+      attempts: attempts, timeout: timeoutMs, retry: retryMs, maxDeclarations: declarations)
 proc `=copy`*(destination: var InitialAudits, source: InitialAudits) {.error.}
   ## An exact worker and its dependent transport owner cannot be copied.
 proc `=dup`*(source: InitialAudits): InitialAudits {.error.}
@@ -99,10 +99,10 @@ proc advanceBlock(owner: var InitialAudits) =
 func canExpire*(owner: InitialAudits): bool =
   ## Keep published and in-flight delivery stable until native fan-out retires.
   not owner.working and not owner.broadcast.sending
-proc expireBefore*(owner: var InitialAudits, floor: uint64): array[256, bool] {.requires:
+proc expireBefore*(owner: var InitialAudits, floor: uint64): seq[bool] {.requires:
     owner.canExpire.} =
   ## Return the exact old positions of survivors so execution retry state compacts with them.
-  result = default(array[256, bool])
+  result = newSeq[bool](owner.declarations.len)
   owner.minimumEpoch = floor
   if owner.prepared.selected.count > 0 and owner.prepared.epoch < floor:
     owner.prepared = default(ProducedInitialAudit)
@@ -150,7 +150,7 @@ proc submit*(owner: var InitialAudits, services: var Services, streams: NodeServ
     clock: MonoTime): bool {.raises.} =
   ## The node arbitrates this optional work alongside incoming proof jobs.
   if not owner.policy.ready or owner.working or owner.broadcast.sending or
-      owner.declarations.len >= 256 or clock < owner.retry:
+      owner.declarations.len >= owner.policy.maxDeclarations or clock < owner.retry:
     return false
   if not streams.isValidator or not services.stateProofAvailable or not services.hasTicketSigner:
     return false
@@ -238,10 +238,16 @@ proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeSe
     owner.retry = clock+initDuration(milliseconds = owner.policy.retry)
 proc close*(owner: var InitialAudits, services: var Services, streams: var NodeService) =
   ## Only the matching worker ticket grants permission to join a borrowed native source.
-  if owner.working and services.cancelStateProof(owner.ticket): services.stopStateProofs()
+  if owner.working:
+    if services.cancelStateProof(owner.ticket): services.stopStateProofs()
+    elif owner.pinning:
+      let completed = services.collectAudit(owner.ticket)
+      if completed.kind == ManagedAuditKind.OriginRetained:
+        services.retireInitialAudit(completed.originId)
   owner.working = false
   owner.ticket = default(ProofWorkerTicket)
   owner.broadcast.close(streams)
+  for entry in owner.declarations: services.retireInitialAudit(entry.origin)
   owner.declarations = @[]
   owner.prepared = default(ProducedInitialAudit)
   owner.pinning = false

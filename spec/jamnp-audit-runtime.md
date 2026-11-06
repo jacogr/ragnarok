@@ -28,7 +28,9 @@ complete it. Every native and shared-worker token remains exact through cancella
 
 A completed initial declaration releases its private execution pin once every selected report's
 judgment is retained and ready for delivery. Other declarations and explicit host pins retain
-their original source. The detached announcement remains available for duplicate suppression.
+their original source. The detached announcement remains available for duplicate suppression. A closing
+node returns any remaining declaration pins to Services. A foreign worker keeps its exact
+lease and Services releases the abandoned pins after graph access resumes.
 
 ## Deferred later tranches
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private full audit state belongs to Services. Controllers receive opaque host selectors and detached completion metadata; every source-bearing operation requires the shared graph gate.
+import std/assertions
 import ./audit_branches
 import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation, audit_recovery,
     work_signer, availability_proof, audit_fetch, judgment_receipt, audit_participation, audit_publication]
@@ -53,8 +54,12 @@ type
     else: discard # No private source or caller-selected validity bit.
   AuditOperation {.pure.} = enum
     Idle, Origin, DeclarationOrigin, Evaluation, Signing, Fetch, Shard, JudgmentReceipt, Participation
+  AbandonedDeclaration = object ## One host-only aggregate for an exact registered origin.
+    id: AuditOriginId
+    count: uint16
   ManagedAuditState* = object ## No native owner or backpointer: registry pins form an acyclic graph and retire only after all Services borrowers join.
     registry: AuditOriginRegistry
+    abandoned: seq[AbandonedDeclaration]
     operation: AuditOperation
     ticket: ProofWorkerTicket
     selected: AuditOriginId
@@ -193,6 +198,22 @@ proc releaseDispute*(state: var ManagedAuditState, id: AuditOriginId): bool =
 proc releaseDeclaration*(state: var ManagedAuditState, id: AuditOriginId): bool =
   ## No managed worker or unconsumed completion may still refer to the source.
   not state.occupied and state.registry.releaseDeclaration(id)
+proc abandonDeclaration*(state: var ManagedAuditState, id: AuditOriginId) =
+  ## Only selectors of this registry can enter the host-only queue during a foreign graph lease.
+  if not state.registry.hasDeclaration(id): return
+  for index in 0..<state.abandoned.len:
+    if state.abandoned[index].id != id: continue
+    if state.abandoned[index].count < high(uint16): inc state.abandoned[index].count
+    return
+  # No graph mutation can allocate a new source while abandoned pins cannot be drained.
+  assert state.abandoned.len < 64
+  state.abandoned.add(AbandonedDeclaration(id: id, count: 1))
+proc drainAbandonedDeclarations*(state: var ManagedAuditState) =
+  ## The owning Services gate must be idle before inspecting or reclaiming any private origin.
+  if state.occupied: return
+  for item in state.abandoned:
+    discard state.registry.releaseDeclaration(item.id, item.count)
+  state.abandoned.setLen(0)
 proc expireBefore*(state: var ManagedAuditState, floor: uint64): bool =
   ## Retire only after exact collection has released every managed result and source borrow.
   if state.occupied: return false
@@ -426,4 +447,5 @@ proc stop*(state: var ManagedAuditState) =
 proc clear*(state: var ManagedAuditState) =
   ## All worker families, disk IO and callbacks must have joined before retained full-state aliases retire.
   state.stop()
+  state.abandoned.setLen(0)
   state.registry.clear()

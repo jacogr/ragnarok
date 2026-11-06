@@ -417,12 +417,12 @@ proc matchesTrustedDispute*(origin: AuditDisputeOrigin, view: ChainView): bool =
   if data == nil or view.fuzzOnly: return false
   let role = view.blockAt(data.info.supportHash)
   if not data.support.matchesSource(role): return false
-  let claim = data.support.supportClaim.value.claimInfo
-  let receipt = view.blockAt(claim.sourceHead)
+  let membership = data.support.supportInfo.value
+  let receipt = view.blockAt(membership.membershipHash)
   if receipt.error != GenesisError.None or array[32, byte](receipt.value.stateRoot) != array[32,
-      byte](claim.sourceRoot):
+      byte](membership.membershipRoot):
     return false
-  if receipt.value.slot != uint64(uint32(claim.sourceTime)) or
+  if receipt.value.slot != uint64(uint32(membership.membershipTime)) or
       not data.parameters.sameParameterProfile(receipt.value.chainParameters):
     return false
   let execution = view.blockAt(data.info.executionHash)
@@ -445,14 +445,14 @@ proc captureAuditDisputeOrigin*(view: ChainView, support: VerifiedJudgmentSuppor
   let role = view.blockAt(facts.sourceHash)
   if not support.matchesSource(role):
     return AuditOriginResult[AuditDisputeOrigin](status: AuditOriginError.InvalidSource)
-  let claim = support.supportClaim.value.claimInfo
-  let receipt = view.blockAt(claim.sourceHead)
+  let membership = support.supportInfo.value
+  let receipt = view.blockAt(membership.membershipHash)
   let parameters = support.supportParameters.value
   if receipt.error != GenesisError.None or array[32, byte](receipt.value.stateRoot) != array[32,
-      byte](claim.sourceRoot):
+      byte](membership.membershipRoot):
     return AuditOriginResult[AuditDisputeOrigin](status: AuditOriginError.InvalidSource)
-  if receipt.value.slot != uint64(uint32(claim.sourceTime)) or not parameters.sameParameterProfile(
-      receipt.value.chainParameters):
+  if receipt.value.slot != uint64(uint32(membership.membershipTime)) or
+      not parameters.sameParameterProfile(receipt.value.chainParameters):
     return AuditOriginResult[AuditDisputeOrigin](status: AuditOriginError.InvalidSource)
   let report = support.supportCertificate.value.supportedGuarantee.value.report.ownedReportInfo.value
   let lookup = uint64(uint32(report.header.lookupSlot))
@@ -511,7 +511,7 @@ proc captureAuditDisputeOrigin*(view: ChainView, support: VerifiedJudgmentSuppor
       info: AuditDisputeOriginInfo(supportHash: facts.sourceHash, supportRoot: facts.sourceRoot,
         executionHash: execution.value.blockHash, executionRoot: execution.value.stateRoot,
         executionTime: clock.value.value, reportHash: WorkReportHash(array[32, byte](facts.report)),
-        epoch: facts.auditEpoch, auditorHash: facts.auditorHash, receiptHash: claim.sourceHead,
-            receiptRoot: claim.sourceRoot, entries: counts.entries, nodes: counts.nodes,
-                valueBytes: bytes,
+        epoch: facts.auditEpoch, auditorHash: facts.auditorHash,
+            receiptHash: membership.membershipHash, receiptRoot: membership.membershipRoot,
+                entries: counts.entries, nodes: counts.nodes, valueBytes: bytes,
         retainedBytes: facts.retainedBytes))))

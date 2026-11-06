@@ -9,7 +9,7 @@ from ../codec/state/safrole import StateEdKey
 
 type
   JudgmentSourceInput* = object ## Raw report bytes and an explicitly selected actual retained reporting context grant no guarantee or execution authority.
-    source*: genesis.BlockHash
+    source*, membership*: genesis.BlockHash
     report*: OwnedReport
   JudgmentReceiptLimits* = object ## Whole-message aggregate child work is reserved before the first support signature or state scan.
     support*: JudgmentSupportLimits
@@ -159,9 +159,22 @@ proc prepareJudgmentReceipt*(view: ChainView, claims: SignedJudgmentBatch,
         status: JudgmentReceiptError.Cancelled)
     let claim = claims.claimAt(ordinal).value
     if not claim.judgmentRecord.valid:
-      let authority = judgmentAuthorityView(view, alternatives, claim)
+      let membership = inputs[ordinal].membership
+      var authority = default(ChainView)
+      if array[32, byte](membership) == default(array[32, byte]):
+        authority = judgmentAuthorityView(view, alternatives, claim)
+      elif view.bestBlock.error == GenesisError.None and
+          array[32, byte](view.bestBlock.value.blockHash) == array[32, byte](membership):
+        authority = view
+      else:
+        for branch in alternatives:
+          let head = branch.bestBlock
+          if head.error == GenesisError.None and
+              array[32, byte](head.value.blockHash) == array[32, byte](membership):
+            authority = branch
+            break
       let support = qualifyJudgmentSupportAt(authority, inputs[ordinal].source, claim, inputs[
-          ordinal].report, limits.support, control)
+          ordinal].report, limits.support, control, membership)
       if support.error == JudgmentSupportError.Cancelled:
         return JudgmentReceiptResult[PreparedJudgmentBatch](status: JudgmentReceiptError.Cancelled)
       if support.error != JudgmentSupportError.None:

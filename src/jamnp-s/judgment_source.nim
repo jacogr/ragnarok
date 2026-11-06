@@ -12,7 +12,7 @@ type
   JudgmentSourceResult* = object ## A default/refusal contains no usable selected identity.
     case status: JudgmentSourceError
     of None:
-      selected: genesis.BlockHash
+      selected, membership: genesis.BlockHash
       slot: uint64
     else: discard                # No guessed source survives a history or profile refusal.
 func error*(outcome: JudgmentSourceResult): JudgmentSourceError =
@@ -26,6 +26,10 @@ func sourceSlot*(outcome: JudgmentSourceResult): uint64 {.requires:
     outcome.status == JudgmentSourceError.None.} =
   ## Retries continue below the original candidate even when a newer head arrives.
   outcome.slot
+func membershipSource*(outcome: JudgmentSourceResult): genesis.BlockHash {.requires:
+    outcome.status == JudgmentSourceError.None.} =
+  ## A zero value means the claim's original verified membership is used.
+  outcome.membership
 proc eligible(candidate: BlockSnapshotResult, parameters: Parameters,
     guaranteeSlot, rotation: uint64): bool =
   ## Actual current/previous rotation is the maintained guarantee planner's window; availability's five-slot timeout is unrelated.
@@ -38,18 +42,14 @@ func containsSource(excluded: openArray[genesis.BlockHash], hash: genesis.BlockH
   for previous in excluded:
     if array[32, byte](previous) == array[32, byte](hash): return true
   false
-proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
-    excluded: openArray[genesis.BlockHash] = [], maximumSlot = high(uint64)): JudgmentSourceResult =
-  ## Inspect at most64 retained fixed metadata rows plus actual separate finality, trying newest known contexts at or after the raw slot. Failure makes no claim about report truth or unsupported unknown history.
-  if excluded.len > 64: return JudgmentSourceResult(
-      status: JudgmentSourceError.LimitExceeded)
+proc selectJudgmentSourceIn(view: ChainView, claim: SignedJudgmentClaim,
+    receipt: BlockSnapshotResult, membership: genesis.BlockHash,
+    excluded: openArray[genesis.BlockHash], maximumSlot: uint64): JudgmentSourceResult =
+  if excluded.len > 64 or view.retainedCount > 64:
+    return JudgmentSourceResult(status: JudgmentSourceError.LimitExceeded)
   if not claim.valid or claim.judgmentRecord.valid:
     return JudgmentSourceResult(status: JudgmentSourceError.InvalidClaim)
-  if view.fuzzOnly: return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
-  if view.retainedCount > 64: return JudgmentSourceResult(status: JudgmentSourceError.LimitExceeded)
-  let receipt = view.blockAt(claim.claimInfo.sourceHead)
-  if receipt.error != GenesisError.None or array[32, byte](receipt.value.stateRoot) != array[32,
-      byte](claim.claimInfo.sourceRoot):
+  if view.fuzzOnly or receipt.error != GenesisError.None:
     return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
   let parameters = receipt.value.chainParameters
   let rotation = parameters.get(rotationPeriod)
@@ -67,10 +67,35 @@ proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
     if eligible(candidate, parameters, slot, rotation) and candidate.value.slot <= maximumSlot and
         not excluded.containsSource(candidate.value.blockHash):
       return JudgmentSourceResult(status: JudgmentSourceError.None,
-          selected: candidate.value.blockHash, slot: candidate.value.slot)
+          selected: candidate.value.blockHash, membership: membership, slot: candidate.value.slot)
   if not finalSeen and eligible(finalized, parameters, slot, rotation) and
       finalized.value.slot <= maximumSlot and
       not excluded.containsSource(finalized.value.blockHash):
     return JudgmentSourceResult(status: JudgmentSourceError.None,
-        selected: finalized.value.blockHash, slot: finalized.value.slot)
+        selected: finalized.value.blockHash, membership: membership, slot: finalized.value.slot)
   JudgmentSourceResult(status: JudgmentSourceError.HistoryUnavailable)
+proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
+    excluded: openArray[genesis.BlockHash] = [], maximumSlot = high(uint64)): JudgmentSourceResult =
+  ## Follow the verified membership and retain the descending retry ceiling across head changes.
+  if not claim.valid or claim.judgmentRecord.valid:
+    return JudgmentSourceResult(status: JudgmentSourceError.InvalidClaim)
+  let receipt = view.blockAt(claim.claimInfo.sourceHead)
+  if receipt.error != GenesisError.None or array[32, byte](receipt.value.stateRoot) !=
+      array[32, byte](claim.claimInfo.sourceRoot):
+    return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
+  selectJudgmentSourceIn(view, claim, receipt, default(genesis.BlockHash), excluded, maximumSlot)
+proc alternateJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
+    excluded: openArray[genesis.BlockHash]): JudgmentSourceResult =
+  ## A retained alternative names a candidate only. The worker must prove the exact same auditor key at the original position.
+  if not claim.valid or claim.judgmentRecord.valid:
+    return JudgmentSourceResult(status: JudgmentSourceError.InvalidClaim)
+  let receipt = view.bestBlock
+  if receipt.error != GenesisError.None:
+    return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
+  let period = receipt.value.chainParameters.get(epochPeriod)
+  if period == 0: return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
+  let current = receipt.value.slot div period
+  let original = uint64(uint32(claim.claimInfo.epoch))
+  if original > current or current-original > 1:
+    return JudgmentSourceResult(status: JudgmentSourceError.HistoryUnavailable)
+  selectJudgmentSourceIn(view, claim, receipt, receipt.value.blockHash, excluded, high(uint64))

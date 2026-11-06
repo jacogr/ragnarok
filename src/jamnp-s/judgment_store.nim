@@ -5,6 +5,8 @@
 import ./[judgment_receipt, judgment_claim, audits]
 import ../codec/[bounded, disputes]
 
+const MaxLocalJudgments* = 32768
+
 type
   JudgmentStoreLimits* = object ## Optional explicit finite row and byte credit governs retained accountable records.
     records*: ElementLimit
@@ -29,8 +31,8 @@ func value*[T](outcome: JudgmentStoreResult[T]): T {.requires: outcome.status ==
   outcome.completed
 func valid*(limits: JudgmentStoreLimits): bool =
   ## A small fixed row ceiling bounds duplicate/conflict planning independently of byte accounting.
-  uint64(limits.records) in 1'u64..256'u64 and
-    uint64(limits.bytes) in 1'u64..1024'u64*1024
+  uint64(limits.records) in 1'u64..uint64(MaxLocalJudgments) and
+    uint64(limits.bytes) in 1'u64..64'u64*1024*1024
 func len*(store: JudgmentStore): int =
   ## Occupancy remains safe during unrelated canonical/private-source leases.
   store.rows.len
@@ -44,7 +46,7 @@ proc configure*(store: var JudgmentStore, limits: JudgmentStoreLimits): bool =
   store.limits = limits
   true
 func fitsCount(store: JudgmentStore, count: uint64): bool =
-  ## Closed callers prove count<=272 from the bounded256-row ledger and at most16 new message records.
+  ## The explicit ledger and at most sixteen new rows bound this calculation.
   count <= uint64(store.limits.records) and
     4096+count*(uint64(sizeof(QualifiedJudgment))+64) <= uint64(store.limits.bytes)
 proc expireBefore*(store: var JudgmentStore, minimumEpoch: uint64) =
@@ -85,7 +87,7 @@ proc append*(store: var JudgmentStore, batch: openArray[QualifiedJudgment]): Jud
   if batch.len > 16: return JudgmentStoreResult[int](status: JudgmentStoreError.LimitExceeded)
   var additions: seq[QualifiedJudgment] = @[]
   for record in batch:
-    # At most sixteen records compare against at most 256 retained rows; invalid late records leave the ledger unchanged.
+    # At most sixteen records compare against the configured retained rows; invalid late records leave the ledger unchanged.
     if not record.valid: return JudgmentStoreResult[int](status: JudgmentStoreError.InvalidRecord)
     let incoming = record.judgmentRecord
     if uint64(uint32(incoming.epoch)) < store.minimumEpoch:
@@ -99,7 +101,7 @@ proc append*(store: var JudgmentStore, batch: openArray[QualifiedJudgment]): Jud
       if sameJudgmentKey(record, prior) and incoming.valid == existing.valid: duplicate = true
     if not duplicate: additions.add(record)
   let count = uint64(store.rows.len+additions.len)
-  # Validated fixed rows and 256-row policy prove these additions/products cannot wrap.
+  # Validated fixed rows and explicit row policy prove these additions/products cannot wrap.
   if not store.fitsCount(count):
     return JudgmentStoreResult[int](status: JudgmentStoreError.LimitExceeded)
   for record in additions:
