@@ -3,6 +3,8 @@
 
 ## Private immutable local signer ownership matches the configured TLS identity; no raw seed or arbitrary-message signing API escapes.
 import ./identity
+import ./[audit_evaluation, audit_origin, audit_context, audits]
+import ../codec/disputes
 import ./availability_proof
 import ./[assurance_possession, assurance_store, assurance_record, assurance_duty]
 import ../chain/genesis
@@ -293,3 +295,81 @@ proc signStoredAssurance*(signer: WorkSigner, owner: var AssuranceStore,
   AssuranceSigningResult[SignedAssurance](status: AssuranceSigningError.None,
     completed: SignedAssurance(data: SignedAssuranceData(info: info,
       signature: AssuranceSignature(bytes: array[64, byte](signed.value)))))
+
+
+type
+  SignedAuditJudgment* = object ## Source-free private construction records a real signature and fixed original facts; no full state, evaluation or key alias leaves the worker.
+    ready: bool
+    record: AuditJudgment
+    info: AuditEvaluationInfo
+  AuditSigningError* {.pure.} = enum ## No failure or cancellation exposes a signed prefix or an evaluation/key alias.
+    Uninitialized, None, InvalidSigner, InvalidEvaluation, InvalidValidator, IdentityMismatch,
+    Cancelled, CryptoFailure
+  AuditSigningResult*[T] = object ## Genuine primitive failure retains only its selected cause.
+    case status: AuditSigningError
+    of None: completed: T
+    of CryptoFailure: cryptoReason: CryptoError
+    else: discard                 # A reason alone cannot publish a judgment.
+func error*[T](outcome: AuditSigningResult[T]): AuditSigningError =
+  ## Select the actual reason before extracting completed public output.
+  outcome.status
+func value*[T](outcome: AuditSigningResult[T]): T {.requires: outcome.status ==
+    AuditSigningError.None.} =
+  ## Return source-free signed ownership only after complete private signing.
+  outcome.completed
+func cryptoError*[T](outcome: AuditSigningResult[T]): CryptoError {.requires: outcome.status ==
+    AuditSigningError.CryptoFailure.} =
+  ## A failed maintained signing call has no signature or secret payload.
+  outcome.cryptoReason
+func valid*(judgment: SignedAuditJudgment): bool =
+  ## Default records never represent an actual signed judgment.
+  judgment.ready
+func signedAuditInfo*(judgment: SignedAuditJudgment): AuditEvaluationInfo {.requires: judgment.ready.} =
+  ## Detached facts identify the actual completed original evaluation without granting execution or raw signing authority.
+  judgment.info
+func judgmentRecord*(judgment: SignedAuditJudgment): AuditJudgment {.requires: judgment.ready.} =
+  ## Copy one fixed complete CE145 record; caller edits cannot change this private signed owner.
+  judgment.record
+proc signAuditJudgment*(signer: WorkSigner, evaluation: AuditEvaluation,
+    validator: StateValidatorIndex, control: AssuranceScanControl = default(
+        AssuranceScanControl)): AuditSigningResult[SignedAuditJudgment] =
+  ## Services selects its retained private evaluation before lending the key. Original prior-C8 ordinal/key and pinned GP domain bind the actual validity and whole report hash; no arbitrary message or caller boolean is accepted.
+  let data = signer.data
+  if data == nil: return AuditSigningResult[SignedAuditJudgment](
+      status: AuditSigningError.InvalidSigner)
+  if not evaluation.valid: return AuditSigningResult[SignedAuditJudgment](
+      status: AuditSigningError.InvalidEvaluation)
+  if control.stopped: return AuditSigningResult[SignedAuditJudgment](
+      status: AuditSigningError.Cancelled)
+  let origin = evaluation.evaluationOrigin.value
+  let context = origin.originContext.value
+  let facts = context.contextInfo.value
+  if uint64(validator) >= uint64(facts.auditors):
+    return AuditSigningResult[SignedAuditJudgment](status: AuditSigningError.InvalidValidator)
+  let member = context.auditorAt(int(uint64(validator))).value
+  if array[32, byte](member.ed25519) != array[32, byte](data.identity):
+    return AuditSigningResult[SignedAuditJudgment](status: AuditSigningError.IdentityMismatch)
+  let info = evaluation.evaluationInfo.value
+  let domain = if info.positive: "jam_valid" else: "jam_invalid"
+  var message = default(array[43, byte])
+  for ordinal in 0..<domain.len: message[ordinal] = byte(domain[ordinal])
+  for ordinal in 0..<32: message[domain.len+ordinal] = array[32, byte](info.reportHash)[ordinal]
+  if control.stopped: return AuditSigningResult[SignedAuditJudgment](
+      status: AuditSigningError.Cancelled)
+  let signed = data.seed.sign(message.toOpenArray(0, domain.len+31))
+  if signed.error != CryptoError.None: return AuditSigningResult[SignedAuditJudgment](
+      status: AuditSigningError.CryptoFailure, cryptoReason: signed.error)
+  if control.stopped: return AuditSigningResult[SignedAuditJudgment](
+      status: AuditSigningError.Cancelled)
+  var record = AuditJudgment(epoch: DisputeEpoch(info.epoch), validator: JudgeIndex(uint16(uint64(
+      validator))),
+    valid: info.positive, report: DisputeHash(array[32, byte](info.reportHash)),
+    signature: DisputeSignature(array[64, byte](signed.value)), slot: GuaranteeSlot(0),
+    credentialCount: 0, credentials: default(array[3, GuaranteeCredential]))
+  if not info.positive:
+    let guarantee = origin.originGuarantee.value
+    record.slot = guarantee.slot
+    record.credentialCount = guarantee.credentialCount
+    record.credentials = guarantee.credentials
+  AuditSigningResult[SignedAuditJudgment](status: AuditSigningError.None,
+    completed: SignedAuditJudgment(ready: true, record: record, info: info))

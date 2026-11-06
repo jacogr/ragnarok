@@ -3,9 +3,10 @@
 Target JAMNP-S `aa0e2b8498c0b1bc1725af2903704d701c6577ab`, CE144/145 and auditor
 CE147-to-138 recovery, with Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`.
 This review unit implements genuine canonical audit context, initial-proof authentication,
-whole-batch managed receipt and bounded intent retention through ordinary application polling.
-Judgment authentication/gossip, private evaluation/signing, local announcement production and
-foreground policy activation remain part of the continuous full-implementation goal.
+whole-batch managed receipt and bounded intent retention through ordinary application polling,
+plus complete private report evaluation and source-bound judgment signing. Judgment
+authentication/gossip, local announcement production and foreground policy activation remain
+part of the continuous full-implementation goal.
 It follows the durable assurance workflow in PR #1983. No dependency pin changes are implied.
 
 Audit requirements must come from a genuinely retained complete block and its full predecessor,
@@ -204,3 +205,49 @@ ARC/Clang ThinLTO. Lowering rejected duplication of both Services and the audit 
 the expected diagnostics. The existing node-service suite passed with unchanged 40,144-byte
 1,000-cycle ARC observations. All 583 production modules plus the application entry point passed
 semantic checks; canonical formatting and verification inventory passed.
+
+
+## Authenticated CE138 recovery and private signing
+
+The fallback boundary accepts only independently verified original-coordinate CE138 transfers
+matching every availability field of the genuine private report. Exactly R distinct shards are
+required, with whole padded input, recovered output, detached copies and arithmetic work reserved
+before reconstruction. Raw CE147 bytes, repeated shards, foreign roots and metadata cannot produce
+this evidence. Authenticated nonzero reconstructed padding is a protocol encoding fault, distinct
+from local quotas or cancellation. Completed evidence remains bound to its exact private origin;
+only the evaluator may translate authenticated faults into a judgment capability.
+
+
+The authenticated recovery boundary now connects to closed managed recovery/evaluation jobs.
+Nine-shard fixtures use the pinned greatest-divisor geometry's four original shards, including
+nonconsecutive parity coordinates; fewer or repeated points cannot grant evidence. Every checked
+packet must match all six signed availability fields, independently of the Merkle verifier's root
+and coordinate checks. Default packets, different metadata, damaged wire, local memory/arithmetic
+limits and cancellation expose no authenticated prefix.
+
+Two independently authored dishonest-report cases pass real guarantees, current block admission,
+actual five-of-six availability votes and whole current-state publication. One retains a genuine
+bundle root while lying about its package identity; the other commits to a consistently encoded
+full shard set with nonzero declared padding. Ordinary CE138 proof verification and threshold
+reconstruction authenticate those faults. Direct unproved mismatch still grants no negative
+capability, while exact authenticated evidence creates a negative evaluation. The padding case
+exposes no successful raw-bundle prefix. These are raw dishonest reports signed before admission,
+not retagged computed-success owners or fabricated pending assignments.
+
+An independently optional private signer loads a bounded real key/certificate pair and matches
+its actual transport identity. Only a completed private registry slot can reach the managed signer;
+public validity flags, caller messages and externally supplied evaluation owners are not accepted.
+The source's actual prior-C8 ordinal/key is checked independently. Pinned GP signing uses exact
+ASCII `jam_valid` or `jam_invalid` followed by the full report hash; unmerged epoch-domain changes
+are not adopted. Negative records retain the exact original guarantee slot and two/three qualified
+credentials; positive records contain no guarantee. The completed signed owner contains only fixed
+public record/fact values, without private key or canonical-state aliases.
+
+Native tests passed direct and recovered positives, both genuinely admitted dishonest cases,
+real PEM/certificate imports and independent Ed25519 verification of positive/negative domains and
+whole report identities, exact CE145 wire layouts, private managed selection, failed reconstruction,
+foreign/generic control rejection, cancellation at Done and joined cleanup. The mixed 1,000-cycle
+ARC observation now includes authenticated parity recovery and remained at 308,208 occupied bytes
+before and after. All 584 production modules and the entry point passed semantic checking;
+canonical formatting passed for 2,469 Nim files and Rust. Network acquisition retries, CE145 receipt/
+gossip and local audit scheduling are still required for the full runtime goal.

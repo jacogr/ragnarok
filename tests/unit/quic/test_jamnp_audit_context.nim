@@ -8,7 +8,8 @@ import ../../../src/app/[services, options, audit_state]
 import ../../../src/app/proof/[worker, work_submission]
 import ../../../src/rpc/server
 import ../../../src/jamnp-s/assurance_store
-import ../../../src/jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation, audit_registry]
+import ../../../src/jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation,
+    audit_registry, work_signer]
 import ../../../src/chain/[genesis, provider, parameters]
 from ../../../src/state/store import sameStateSnapshot
 from ../../../src/codec/state/trie import TrieNodeLimit
@@ -17,7 +18,7 @@ import ../../../src/codec/state/[safrole, layout]
 import "../../../src/state/block/transition"
 import "../../../src/state/block/admission"
 import ../../../src/crypto/primitives
-import ../../support/jamnp_audit_evaluation
+import ../../support/[jamnp_audit_evaluation, jamnp_audit_faults, jamnp_audit_signing, assurance_signer_context]
 import ../../support/[jamnp_audit_context, arc_evidence, current_application_context, jamnp_audit_validation]
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
@@ -224,6 +225,12 @@ proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
     discard posix.unlink(file.toCString())
   var settings = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", file], settings)
+  var keyFile = "managed-audit-key-" & $processId() & ".pem"
+  var certificateFile = "managed-audit-certificate-" & $processId() & ".pem"
+  assuranceSignerFiles(keyFile, certificateFile, 12)
+  defer:
+    discard posix.unlink(keyFile.toCString())
+    discard posix.unlink(certificateFile.toCString())
   var owner = default(Services)
   defer:
     owner.close()
@@ -233,12 +240,23 @@ proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
   assert owner.configureAudits(registryLimits()) and not owner.configureAudits(registryLimits()), "explicit bounded once-only retention"
   assert owner.retainAuditOrigin(default(AuditBlockOrigin)).error ==
       AuditRegistryError.InvalidSource, "default source supplies no backfill authority"
+  assert not owner.auditSigningConfigured, "retention activates no private signer"
+  let identity = origin.originContext.value.auditorAt(1).value.ed25519
+  let mismatched = owner.configureAuditSigner(certificateFile, keyFile, default(StateEdKey))
+  assert mismatched.error == WorkSigningSetupError.InvalidIdentity and
+      not owner.auditSigningConfigured, "configured private signer must match actual transport identity"
+  assert owner.configureAuditSigner(certificateFile, keyFile, identity).error ==
+      WorkSigningSetupError.None
+  assert owner.configureAuditSigner(certificateFile, keyFile, identity).error ==
+      WorkSigningSetupError.Busy, "live private signer cannot be replaced silently"
   let id = owner.retainAuditOrigin(origin).value
   assert owner.retainAuditOrigin(origin).value == id, "actual trusted block binds authentic whole origin idempotently"
   assert owner.beginAuditEvaluation(default(AuditOriginId), 0, wire, evaluationLimits()).error ==
       StateProofAdmissionError.QueryFailure, "fabricated selector cannot choose complete state"
   assert owner.beginAuditEvaluation(id, 2, wire, evaluationLimits()).error ==
       StateProofAdmissionError.QueryFailure, "original report ordinal remains bounded"
+  assert owner.beginAuditSigning(id, 0, StateValidatorIndex(1)).error ==
+      StateProofAdmissionError.QueryFailure, "origin registration and public facts cannot authorize private signing"
   let started = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits())
   assert started.error == StateProofAdmissionError.None and owner.rpc.chainPaused, "genuine registered execution owns the exact canonical lease"
   assert owner.collectAudit(default(ProofWorkerTicket)).kind == ManagedAuditKind.Uninitialized, "foreign control cannot collect or expose a private capability"
@@ -252,6 +270,22 @@ proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
       completed.evaluationId == id and completed.evaluationOrdinal == 0, "actual whole execution becomes detached metadata after private registry retention"
   assert owner.stateProofAvailable and not owner.rpc.chainPaused, "exact private collection restores ordinary canonical access"
   assert owner.collectAudit(started.value).kind == ManagedAuditKind.Uninitialized, "stale completion cannot be collected twice"
+  let signing = owner.beginAuditSigning(id, 0, StateValidatorIndex(1)).value
+  owner.waitServices()
+  assert owner.collectStateProof(signing).kind == ProofWorkerCompletionKind.Uninitialized, "generic collection cannot steal managed signing control"
+  let signed = owner.collectAudit(signing)
+  assert signed.kind == ManagedAuditKind.JudgmentSigned and signed.signingId == id and
+      signed.signingOrdinal == 0, "exact private registered evaluation authorizes one source-free completed signature"
+  verifySignedAudit(signed.signedJudgment, origin.reportAt(0).value, true)
+  let cancelSigning = owner.beginAuditSigning(id, 0, StateValidatorIndex(1)).value
+  owner.waitServices()
+  assert owner.cancelStateProof(cancelSigning)
+  assert owner.collectAudit(cancelSigning).kind == ManagedAuditKind.Cancelled, "cancelled Done signing publishes no signed result"
+  let wrongSigner = owner.beginAuditSigning(id, 0, StateValidatorIndex(0)).value
+  owner.waitServices()
+  let wrong = owner.collectAudit(wrongSigner)
+  assert wrong.kind == ManagedAuditKind.SigningFailure and wrong.signingError.error ==
+      AuditSigningError.IdentityMismatch, "private key matches the original auditor ordinal independently of a host selector"
   let cancelled = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).value
   owner.waitServices()
   assert owner.cancelStateProof(cancelled), "cancel exact completed execution before collection"
@@ -369,6 +403,9 @@ proc main() {.raises.} =
   originChecks(fixture)
   evaluationChecks(fixture)
   registryChecks(fixture)
+  recoveryChecks(fixture)
+  authenticatedFaultChecks()
+  auditSigningChecks(fixture)
   managed(fixture)
   managedEvaluation(fixture)
   let insufficient = auditContextFixture(6)
@@ -388,9 +425,12 @@ proc main() {.raises.} =
   nativeEvaluation(worker, fixture, 2)
   nativeEvaluation(worker, fixture, 3)
   cycle(fixture)
+  recoveryCycle(fixture)
   let before = getOccupiedMem()
   for iteration in 0..<1000:
-    if iteration mod 32 == 0:
+    if iteration mod 64 == 0:
+      recoveryCycle(fixture) # Proven original-coordinate parity recovery and full evaluation share the ARC witness.
+    elif iteration mod 32 == 0:
       nativeEvaluation(worker, fixture, iteration div 32) # Whole-source capture and actual private evaluation cancellation participate in the ARC observation.
     elif iteration mod 16 == 0:
       evaluationCycle(fixture) # Actual whole-report recomputation participates in mixed context/native/origin ARC release.

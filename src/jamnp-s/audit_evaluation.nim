@@ -4,6 +4,7 @@
 ## Direct bundle evaluation grants a positive audit capability only after actual authorization, refinement, availability reconstruction and complete canonical report equality. Failed direct candidates grant no negative capability and may require authenticated CE138 recovery.
 import ./[audit_origin, audit_context, work_report]
 from ./assurance_store import AssuranceScanControl, stopped
+import ./audit_recovery
 import ../chain/[genesis, parameters, reports]
 import ../codec/[bounded, owned, report_owned]
 import ../codec/work/[package as work_package, report as work_report_codec, digest as work_digest]
@@ -31,7 +32,7 @@ type
   AuditEvaluation* = object ## No caller-supplied validity bit, report bytes or detached digest can construct this capability.
     data: nil EvaluationData
   AuditEvaluationError* {.pure.} = enum ## Failed direct candidates contain diagnostics only, never negative judgments or successful earlier execution prefixes.
-    Uninitialized, None, InvalidPolicy, InvalidOrigin, LimitExceeded, Cancelled,
+    Uninitialized, None, InvalidPolicy, InvalidOrigin, InvalidRecovery, LimitExceeded, Cancelled,
     BundleFailure, ExecutionFailure, ReportFailure, EncodingFailure, Mismatch
   AuditEvaluationResult*[T] = object ## Every selected child is a genuine failed operation; only whole equality contains a completed capability.
     case status: AuditEvaluationError
@@ -130,6 +131,17 @@ func needsRecovery*(outcome: AuditEvaluationResult[AuditEvaluation]): bool =
     outcome.reportReason.error == WorkReportError.ReportFailure and
         outcome.reportReason.reportError == ComputedReportError.InvalidReport
   else: false # Default, cancellation, impossible source and local computation/copy refusals produce no negative evidence or spurious network retry.
+proc completedEvaluation(origin: AuditReportOrigin, positive: bool): AuditEvaluationResult[
+    AuditEvaluation] =
+  ## Private construction follows actual equality or exact authenticated reconstruction evidence, never a caller-selected validity flag.
+  let source = origin.originInfo.value
+  let context = origin.originContext.value.contextInfo.value
+  let report = origin.originReport.value.ownedReportInfo.value
+  AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.None,
+    completed: AuditEvaluation(data: EvaluationData(source: origin,
+      info: AuditEvaluationInfo(blockHash: source.blockHash,
+        reportHash: origin.originReportHash.value, epoch: context.epoch,
+        core: report.core, positive: positive))))
 proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
     limits: AuditEvaluationLimits, control: AssuranceScanControl = default(
         AssuranceScanControl)): AuditEvaluationResult[AuditEvaluation] =
@@ -187,10 +199,26 @@ proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
     return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.Mismatch)
   if control.stopped: return AuditEvaluationResult[AuditEvaluation](
       status: AuditEvaluationError.Cancelled)
-  let source = origin.originInfo.value
-  let context = origin.originContext.value.contextInfo.value
-  AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.None,
-    completed: AuditEvaluation(data: EvaluationData(source: origin,
-      info: AuditEvaluationInfo(blockHash: source.blockHash,
-        reportHash: origin.originReportHash.value,
-        epoch: context.epoch, core: described.core, positive: true))))
+  completedEvaluation(origin, true)
+
+proc evaluateRecoveredAudit*(origin: AuditReportOrigin, evidence: AuditRecoveryEvidence,
+    limits: AuditEvaluationLimits, control: AssuranceScanControl = default(
+        AssuranceScanControl)): AuditEvaluationResult[AuditEvaluation] =
+  ## Only actual original-root recovery can turn a protocol-invalid bundle/computation into a negative capability. Resource, history, backend and cancellation refusals remain unavailable.
+  if not limits.valid: return AuditEvaluationResult[AuditEvaluation](
+      status: AuditEvaluationError.InvalidPolicy)
+  if not origin.valid: return AuditEvaluationResult[AuditEvaluation](
+      status: AuditEvaluationError.InvalidOrigin)
+  if not evidence.matchesOrigin(origin): return AuditEvaluationResult[AuditEvaluation](
+      status: AuditEvaluationError.InvalidRecovery)
+  if control.stopped: return AuditEvaluationResult[AuditEvaluation](
+      status: AuditEvaluationError.Cancelled)
+  if evidence.invalidPadding: return completedEvaluation(origin, false)
+  let wire = evidence.recoveredBundle
+  if wire.error != AuditRecoveryError.None: return AuditEvaluationResult[AuditEvaluation](
+      status: AuditEvaluationError.InvalidRecovery)
+  let evaluated = evaluateDirectAudit(origin, wire.value, limits, control)
+  if control.stopped: return AuditEvaluationResult[AuditEvaluation](
+      status: AuditEvaluationError.Cancelled)
+  if evaluated.needsRecovery: return completedEvaluation(origin, false)
+  evaluated

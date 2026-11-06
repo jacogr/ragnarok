@@ -4,6 +4,9 @@
 ## Actual available reports and their original computed bundles reproduce through private complete-state origins; damaged direct bytes and local resource/cancellation failures never become negative evidence.
 import std/[assertions, syncio]
 import ../../src/jamnp-s/[audit_origin, audit_context, audit_evaluation, audit_registry, work_report]
+import ../../src/jamnp-s/[audit_recovery, availability_proof, availability_merkle]
+import ../../src/state/erasure/words
+import ../../src/codec/work/report
 import ../../src/jamnp-s/assurance_store
 import ../../src/state/[audit_bundle, input_refinement]
 import ../../src/codec/[bounded, header]
@@ -153,3 +156,115 @@ proc registryChecks*(fixture: AuditContextFixture) =
   registry.clear()
   other.clear()
   limited.clear() # All complete-map/evaluation aliases retire only while no native borrower exists.
+
+
+proc recoveryLimits*(): AuditRecoveryLimits =
+  ## Finite independent arithmetic and whole-copy credit cover this genuine small four-original-shard fixture.
+  AuditRecoveryLimits(bytes: ByteLimit(16000000), products: FieldProductLimit(10000000))
+proc proofLimits(): AvailabilityMerkleLimits =
+  ## Full packet verification happens independently before threshold reconstruction.
+  AvailabilityMerkleLimits(bytes: ByteLimit(1000000), hashes: ElementLimit(10000),
+      hashBytes: ByteLimit(1000000))
+proc originalShards(fixture: AuditContextFixture, target: AuditReportOrigin): seq[
+    PreparedAvailabilityTransfer] =
+  ## Source selection follows the full original canonical report identity rather than trusting an ordinal or a detached root alone.
+  let expected = array[32, byte](target.originReportHash.value)
+  for bundle in fixture.bundles:
+    if array[32, byte](bundle.reportHash) == expected: return bundle.auditShards
+  assert false, "genuine original availability source missing"
+  return @[]
+proc verifiedPacket(packet: PreparedAvailabilityTransfer): VerifiedAvailabilityTransfer =
+  ## The maintained CE138 verifier binds original coordinate/root and every exact message extent before returning a private checked handle.
+  let verified = verifyAvailabilityTransfer(packet.specifier, packet.request,
+    packet.bundleShard, packet.segmentShards, packet.justification, proofLimits())
+  assert verified.error == AvailabilityTransferError.None, "actual original CE138 Merkle authentication"
+  verified.value
+proc recoveryChecks*(fixture: AuditContextFixture) =
+  ## Original and nonconsecutive parity coordinates recover genuine bytes, while foreign metadata, duplicate points, bad proofs, local quotas and cancellation expose no evidence prefix.
+  let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
+  for ordinal in 0..<origin.originInfo.value.reports:
+    let target = origin.reportAt(ordinal).value
+    let source = fixture.originalShards(target)
+    assert source.len == 9, "genuine original availability population"
+    for selection in [[0, 1, 2, 3], [8, 2, 4, 6], [6, 4, 8, 2]]:
+      var packets: seq[VerifiedAvailabilityTransfer] = @[]
+      for index in selection: packets.add(verifiedPacket(source[index]))
+      let recovered = recoverAuditBundle(target, packets, recoveryLimits())
+      if recovered.error != AuditRecoveryError.None:
+        echo "audit recovery refusal ", recovered.error, " report ", ordinal, " first shard ",
+            selection[0]
+        if recovered.error == AuditRecoveryError.ReconstructionFailure:
+          echo "audit arithmetic refusal ", recovered.reconstructionError
+      assert recovered.error == AuditRecoveryError.None, "actual authenticated threshold recovery"
+      let evidence = recovered.value
+      assert evidence.valid and evidence.matchesOrigin(target) and not evidence.invalidPadding, "complete exact private target binding"
+      assert evidence.recoveredBundle.value == fixture.originalWire(target), "systematic and parity recovery reproduce every original bundle byte"
+      let evaluated = evaluateRecoveredAudit(target, evidence, evaluationLimits())
+      assert evaluated.error == AuditEvaluationError.None and
+          evaluated.value.evaluationInfo.value.positive, "genuine recovered inputs reproduce the complete original report"
+      let other = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
+          auditOriginLimits()).value.reportAt(ordinal).value
+      assert evaluateRecoveredAudit(other, evidence, evaluationLimits()).error ==
+          AuditEvaluationError.InvalidRecovery, "equal public roots cannot retag authenticated recovery to another private target"
+      var limited = evaluationLimits()
+      limited.bundle.workspaceBytes = ByteLimit(1)
+      let unavailable = evaluateRecoveredAudit(target, evidence, limited)
+      assert unavailable.error == AuditEvaluationError.BundleFailure and
+          not unavailable.needsRecovery, "authenticated bytes do not turn local execution quotas into a negative capability"
+      let stoppedEvaluation = evaluateRecoveredAudit(target, evidence, evaluationLimits(),
+          assuranceScanControl(stopNow, nil))
+      assert stoppedEvaluation.error == AuditEvaluationError.Cancelled, "cancelled actual recovered evidence grants no judgment"
+      let duplicate = @[packets[0], packets[0], packets[2], packets[3]]
+      assert recoverAuditBundle(target, duplicate, recoveryLimits()).error ==
+          AuditRecoveryError.DuplicateShard, "repeated original coordinates grant no threshold"
+      let short = @[packets[0], packets[1], packets[2]]
+      assert recoverAuditBundle(target, short, recoveryLimits()).error ==
+          AuditRecoveryError.InvalidCount, "fewer than R distinct shards grant no recovered prefix"
+      var policy = recoveryLimits()
+      policy.bytes = ByteLimit(1)
+      assert recoverAuditBundle(target, packets, policy).error == AuditRecoveryError.LimitExceeded, "whole input/output/scratch reservation precedes shard copies"
+      if selection[0] == 8:
+        policy = recoveryLimits()
+        policy.products = FieldProductLimit(1)
+        let refused = recoverAuditBundle(target, packets, policy)
+        assert refused.error == AuditRecoveryError.ReconstructionFailure and
+            refused.reconstructionError == ErasureWordError.LimitExceeded, "local arithmetic work ceiling is unavailable recovery, never encoding evidence"
+      let cancelled = recoverAuditBundle(target, packets, recoveryLimits(), assuranceScanControl(
+          stopNow, nil))
+      assert cancelled.error == AuditRecoveryError.Cancelled, "trusted cancellation yields no accepted shard prefix"
+    let packet = source[0]
+    var metadata = packet.specifier
+    metadata.packageHash.bytes[0] = metadata.packageHash.bytes[0] xor 1
+    let foreign = verifyAvailabilityTransfer(metadata, packet.request, packet.bundleShard,
+      packet.segmentShards, packet.justification, proofLimits())
+    assert foreign.error == AvailabilityTransferError.None, "CE138 proof authenticates root/shard; original report metadata must be selected independently"
+    let mismatched = @[foreign.value, verifiedPacket(source[1]), verifiedPacket(source[2]),
+        verifiedPacket(source[3])]
+    assert recoverAuditBundle(target, mismatched, recoveryLimits()).error ==
+        AuditRecoveryError.InvalidPacket, "all original report availability fields bind recovery, not only a root"
+    var damaged = packet.bundleShard
+    damaged[0] = damaged[0] xor 1
+    let invalid = verifyAvailabilityTransfer(packet.specifier, packet.request, damaged,
+      packet.segmentShards, packet.justification, proofLimits())
+    assert invalid.error != AvailabilityTransferError.None, "corrupt original CE138 bytes cannot construct a checked packet"
+    let defaults = @[default(VerifiedAvailabilityTransfer), verifiedPacket(source[1]),
+        verifiedPacket(source[2]), verifiedPacket(source[3])]
+    assert recoverAuditBundle(target, defaults, recoveryLimits()).error ==
+        AuditRecoveryError.InvalidPacket, "default packet cannot replace a proof"
+    let absent = evaluateRecoveredAudit(target, default(AuditRecoveryEvidence), evaluationLimits())
+    assert absent.error == AuditEvaluationError.InvalidRecovery, "unproved direct bytes grant no recovery authority"
+  let empty = default(AuditRecoveryEvidence)
+  assert not empty.valid, "no default authentication capability"
+
+proc recoveryCycle*(fixture: AuditContextFixture) =
+  ## Authentication, parity arithmetic, temporary copies and full recovered evaluation retire before the ARC observation.
+  let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
+  let target = origin.reportAt(0).value
+  let source = fixture.originalShards(target)
+  let packets = @[verifiedPacket(source[8]), verifiedPacket(source[2]), verifiedPacket(source[4]),
+      verifiedPacket(source[6])]
+  let recovered = recoverAuditBundle(target, packets, recoveryLimits())
+  assert recovered.error == AuditRecoveryError.None
+  let evaluated = evaluateRecoveredAudit(target, recovered.value, evaluationLimits())
+  assert evaluated.error == AuditEvaluationError.None and
+      evaluated.value.evaluationInfo.value.positive

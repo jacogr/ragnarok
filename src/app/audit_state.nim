@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private full audit state belongs to Services. Controllers receive opaque host selectors and detached completion metadata; every source-bearing operation requires the shared graph gate.
-import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation]
+import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation, audit_recovery,
+    work_signer, availability_proof]
+from ../codec/state/safrole import StateValidatorIndex
 import ../chain/[genesis, provider]
 import ./proof/[worker, work_submission]
 
 type
   ManagedAuditKind* {.pure.} = enum ## No failed or cancelled completion carries a successful origin or execution prefix.
     Uninitialized, OriginRetained, Evaluated, Cancelled, OriginFailure, EvaluationFailure,
-    RegistryFailure, InvalidResult
+    RegistryFailure, RecoveryFailure, JudgmentSigned, SigningFailure, InvalidResult
   ManagedAuditCompletion* = object ## Fixed metadata and genuine failed children survive unrelated leases without borrowing full canonical state.
     case status: ManagedAuditKind
     of OriginRetained:
@@ -19,12 +21,18 @@ type
       evaluationId: AuditOriginId
       evaluationOrdinal: int
       evaluationFacts: AuditEvaluationInfo
+    of JudgmentSigned:
+      signedId: AuditOriginId
+      signedOrdinal: int
+      signedValue: SignedAuditJudgment
+    of RecoveryFailure: recoveryReason: AuditRecoveryResult[AuditRecoveryEvidence]
+    of SigningFailure: signingReason: AuditSigningResult[SignedAuditJudgment]
     of OriginFailure: originReason: AuditOriginResult[AuditBlockOrigin]
     of EvaluationFailure: evaluationReason: AuditEvaluationResult[AuditEvaluation]
     of RegistryFailure: registryReason: AuditRegistryError
     else: discard # No private source or caller-selected validity bit.
   AuditOperation {.pure.} = enum
-    Idle, Origin, Evaluation
+    Idle, Origin, Evaluation, Signing
   ManagedAuditState* = object ## No native owner or backpointer: registry pins form an acyclic graph and retire only after all Services borrowers join.
     registry: AuditOriginRegistry
     operation: AuditOperation
@@ -68,6 +76,26 @@ func registryError*(outcome: ManagedAuditCompletion): AuditRegistryError {.requi
     ManagedAuditKind.RegistryFailure.} =
   ## Preserve the actual retention refusal without exposing a completed prefix.
   outcome.registryReason
+func signedJudgment*(outcome: ManagedAuditCompletion): SignedAuditJudgment {.requires: outcome.status ==
+    ManagedAuditKind.JudgmentSigned.} =
+  ## Complete output is source-free and cannot expose its original private evaluation or key.
+  outcome.signedValue
+func signingId*(outcome: ManagedAuditCompletion): AuditOriginId {.requires: outcome.status ==
+    ManagedAuditKind.JudgmentSigned.} =
+  ## Preserve exact host-only operation correlation without source aliases.
+  outcome.signedId
+func signingOrdinal*(outcome: ManagedAuditCompletion): int {.requires: outcome.status ==
+    ManagedAuditKind.JudgmentSigned.} =
+  ## Keep the selected original report ordinal for outgoing publication accounting.
+  outcome.signedOrdinal
+func signingError*(outcome: ManagedAuditCompletion): AuditSigningResult[
+    SignedAuditJudgment] {.requires: outcome.status == ManagedAuditKind.SigningFailure.} =
+  ## A genuine failed signing operation has no reusable signature prefix.
+  outcome.signingReason
+func recoveryError*(outcome: ManagedAuditCompletion): AuditRecoveryResult[
+    AuditRecoveryEvidence] {.requires: outcome.status == ManagedAuditKind.RecoveryFailure.} =
+  ## Local/packet/arithmetic refusal exposes no authenticated prefix.
+  outcome.recoveryReason
 func configured*(state: ManagedAuditState): bool =
   ## Host-only optional activation flag grants no state alias or completed evaluation.
   state.registry.configured
@@ -99,6 +127,23 @@ proc stageEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
   let target = found.value.reportAt(ordinal)
   if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
   captureAuditEvaluationJob(target.value, wire, limits)
+proc stageRecoveryEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
+    packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
+    evaluation: AuditEvaluationLimits): WorkJobAdmission =
+  ## Only private registry lookup may select the full origin; checked packet provenance cannot substitute another original target.
+  if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
+  let found = state.registry.origin(id)
+  if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
+  let target = found.value.reportAt(ordinal)
+  if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
+  captureAuditRecoveryEvaluationJob(target.value, packets, recovery, evaluation)
+proc stageSigning*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
+    signer: WorkSigner, validator: StateValidatorIndex): WorkJobAdmission =
+  ## No public evaluation metadata or externally supplied capability reaches the private key: select only Services' retained completed slot.
+  if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
+  let found = state.registry.evaluation(id, ordinal)
+  if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
+  captureAuditSigningJob(signer, found.value, validator)
 proc admitOrigin*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
   ## Call only after successful native admission; no source graph is accessed here.
   state.operation = AuditOperation.Origin
@@ -110,6 +155,11 @@ proc admitEvaluation*(state: var ManagedAuditState, ticket: ProofWorkerTicket,
   state.ticket = ticket
   state.selected = id
   state.ordinal = ordinal
+proc admitSigning*(state: var ManagedAuditState, ticket: ProofWorkerTicket,
+    id: AuditOriginId, ordinal: int) =
+  ## Only host namespace/scalar state changes after the worker takes its immutable source/key lease.
+  state.admitEvaluation(ticket, id, ordinal)
+  state.operation = AuditOperation.Signing
 proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
     source: ChainView) =
   ## Exact native collection has ended the borrow, but Services keeps RPC paused until all private results are bound and cached.
@@ -135,7 +185,10 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
           state.completion = ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
             registryReason: retained.error)
     of AuditOperation.Evaluation:
-      if work.kind == WorkJobResultKind.AuditEvaluationFailure:
+      if work.kind == WorkJobResultKind.AuditRecoveryFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.RecoveryFailure,
+            recoveryReason: work.auditRecoveryError)
+      elif work.kind == WorkJobResultKind.AuditEvaluationFailure:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.EvaluationFailure,
           evaluationReason: work.auditEvaluationError)
       elif work.kind == WorkJobResultKind.AuditEvaluated:
@@ -148,6 +201,13 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
         else:
           state.completion = ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
             registryReason: remembered.error)
+    of AuditOperation.Signing:
+      if work.kind == WorkJobResultKind.AuditSigningFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.SigningFailure,
+            signingReason: work.auditSigningError)
+      elif work.kind == WorkJobResultKind.AuditSigned:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.JudgmentSigned,
+          signedId: state.selected, signedOrdinal: state.ordinal, signedValue: work.signedAudit)
     of AuditOperation.Idle: discard
   state.operation = AuditOperation.Idle
   state.selected = default(AuditOriginId)

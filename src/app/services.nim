@@ -72,7 +72,7 @@ import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_
 import ../jamnp-s/assurance_distribution
 import ../jamnp-s/assurance_fetch
 import ../jamnp-s/assurance_schedule
-import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, audit_evaluation]
+import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, audit_evaluation, audit_recovery]
 import ./audit_state
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
@@ -457,6 +457,9 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   assuranceSigner: WorkSigner
   assuranceSignerReady: bool
   assuranceSignerIdentity: StateEdKey
+  auditSigner: WorkSigner
+  auditSignerReady: bool
+  auditSignerIdentity: StateEdKey
   audits: ManagedAuditState
   assuranceWorkInput: WorkSubmissionJob
   assuranceSigningInput: AssuranceSigningJob
@@ -577,6 +580,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.assuranceStorageInput)
   `=wasMoved`(services.assuranceAcquisitionInput)
   `=wasMoved`(services.assuranceSigner)
+  `=wasMoved`(services.auditSigner)
   `=wasMoved`(services.audits)
   `=wasMoved`(services.assuranceWorkInput)
   `=wasMoved`(services.assuranceSigningInput)
@@ -668,6 +672,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.assuranceStorageInput)
   `=destroy`(services.assuranceAcquisitionInput)
   `=destroy`(services.assuranceSigner)
+  `=destroy`(services.auditSigner)
   `=destroy`(services.audits)
   `=destroy`(services.assuranceWorkInput)
   `=destroy`(services.assuranceSigningInput)
@@ -1014,6 +1019,9 @@ proc close*(services: var Services) =
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical, signer or listener alias.
   services.audits.clear() # Every proof, preparation, disk and checkpoint borrower has joined.
+  services.auditSigner = default(WorkSigner)
+  services.auditSignerReady = false
+  services.auditSignerIdentity = default(StateEdKey)
   services.sharedContribution = default(SignedWorkContribution)
   services.guarantorStore.clear() # Joined shutdown retires every retained serving alias before dropping the cache.
   services.distributionIdentity = nil
@@ -2630,6 +2638,68 @@ proc beginAuditEvaluation*(services: var Services, id: AuditOriginId, ordinal: i
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitEvaluation(result.value,
       id, ordinal)
+proc stageManagedAuditRecovery(services: var Services, id: AuditOriginId, ordinal: int,
+    packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
+    evaluation: AuditEvaluationLimits): WorkJobError =
+  ## Retire private source selection wrappers before native publication.
+  let captured = services.audits.stageRecoveryEvaluation(id, ordinal, packets, recovery, evaluation)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditRecoveryEvaluation*(services: var Services, id: AuditOriginId, ordinal: int,
+    packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
+    evaluation: AuditEvaluationLimits): AuditPlanningStart {.raises.} =
+  ## Whole authenticated threshold recovery and genuine original evaluation share the ordinary exact canonical/RPC worker lease.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.audits.configured: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageManagedAuditRecovery(id, ordinal, packets, recovery, evaluation)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitEvaluation(result.value,
+      id, ordinal)
+proc configureAuditSigner*(services: var Services, certificate, privateKey: string,
+    transportIdentity: StateEdKey): WorkSigningSetupResult =
+  ## Explicit full-state setup imports one private signer, independently from builder/assurer activation, and matches the real bound TLS identity.
+  if not services.started: return WorkSigningSetupResult(status: WorkSigningSetupError.Closed)
+  if not services.stateProofAvailable or services.auditSignerReady: return WorkSigningSetupResult(
+      status: WorkSigningSetupError.Busy)
+  if not services.audits.configured: return WorkSigningSetupResult(
+      status: WorkSigningSetupError.InvalidStorage)
+  let loaded = loadWorkSigner(certificate, privateKey)
+  if loaded.error != WorkSignerError.None: return WorkSigningSetupResult(
+      status: WorkSigningSetupError.SignerFailure, reason: loaded)
+  let identity = loaded.value.signerIdentity.value
+  if array[32, byte](identity) != array[32, byte](transportIdentity): return WorkSigningSetupResult(
+      status: WorkSigningSetupError.InvalidIdentity)
+  services.auditSigner = loaded.value
+  services.auditSignerIdentity = identity
+  services.auditSignerReady = true
+  WorkSigningSetupResult(status: WorkSigningSetupError.None)
+func auditSigningConfigured*(services: Services): bool =
+  ## Cached scalar observation never touches the private key while a native lease runs.
+  services.started and services.auditSignerReady
+proc stageManagedAuditSigning(services: var Services, id: AuditOriginId, ordinal: int,
+    validator: StateValidatorIndex): WorkJobError =
+  ## Only the private completed registry slot and configured immutable key enter the fixed signing runner.
+  let captured = services.audits.stageSigning(id, ordinal, services.auditSigner, validator)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditSigning*(services: var Services, id: AuditOriginId, ordinal: int,
+    validator: StateValidatorIndex): AuditPlanningStart {.raises.} =
+  ## A caller selects an original target/ordinal, never a purported validity bit, message or external evaluation capability.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.auditSignerReady: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageManagedAuditSigning(id, ordinal, validator)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitSigning(result.value, id, ordinal)
 proc stageAuditPlanning(services: var Services, blockHash: genesis.BlockHash,
     limits: AuditContextLimits): WorkJobError =
   ## Retire all temporary actual-view aliases before native submission can use the captured full history.

@@ -10,7 +10,7 @@ import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire,
 import ../../jamnp-s/assurance_distribution
 import ../../jamnp-s/assurance_fetch
 import ../../jamnp-s/assurance_schedule
-import ../../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation]
+import ../../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation, audit_recovery]
 from ../../jamnp-s/assurance_store import AssuranceScanControl
 import ../../jamnp-s/work_recovery
 import ../../jamnp-s/availability_proof
@@ -43,7 +43,8 @@ type
     AssuranceQualified, AssuranceFailure, AssurancePlanned, AssurancePlanningFailure,
     AssuranceScheduled, AssuranceScheduleFailure, AuditPlanned, AuditPlanningFailure,
       AuditAnnouncementsQualified, AuditAnnouncementFailure, AuditOriginPrepared,
-    AuditOriginPreparationFailure, AuditEvaluated, AuditEvaluationFailure
+    AuditOriginPreparationFailure, AuditEvaluated, AuditEvaluationFailure, AuditRecoveryFailure,
+    AuditSigned, AuditSigningFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -81,6 +82,9 @@ type
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
     of AuditOriginPrepared: auditOrigin: AuditBlockOrigin
     of AuditOriginPreparationFailure: auditOriginReason: AuditOriginResult[AuditBlockOrigin]
+    of AuditRecoveryFailure: auditRecoveryReason: AuditRecoveryResult[AuditRecoveryEvidence]
+    of AuditSigned: auditSigned: SignedAuditJudgment
+    of AuditSigningFailure: auditSigningReason: AuditSigningResult[SignedAuditJudgment]
     of AuditEvaluated: auditEvaluation: AuditEvaluation
     of AuditEvaluationFailure: auditEvaluationReason: AuditEvaluationResult[AuditEvaluation]
     of AuditAnnouncementsQualified: auditBatch: CheckedAuditBatch
@@ -126,6 +130,10 @@ type
     auditOriginLimits: AuditOriginLimits
     auditTarget: AuditReportOrigin
     auditEvaluationLimits: AuditEvaluationLimits
+    auditPackets: seq[VerifiedAvailabilityTransfer]
+    auditRecoveryLimits: AuditRecoveryLimits
+    auditEvaluation: AuditEvaluation
+    auditValidator: StateValidatorIndex
     source: WorkSource
     context: AuthorizedWorkContext
     refined: InputRefinement
@@ -227,6 +235,18 @@ func auditOriginPreparationError*(outcome: WorkJobResult): AuditOriginResult[
     WorkJobResultKind.AuditOriginPreparationFailure.} =
   ## Failed whole-origin preparation contains no retained state or partially qualified report target.
   outcome.auditOriginReason
+func signedAudit*(outcome: WorkJobResult): SignedAuditJudgment {.requires: outcome.status ==
+    WorkJobResultKind.AuditSigned.} =
+  ## Completed source-free signed ownership retains no private key or evaluation graph.
+  outcome.auditSigned
+func auditSigningError*(outcome: WorkJobResult): AuditSigningResult[
+    SignedAuditJudgment] {.requires: outcome.status == WorkJobResultKind.AuditSigningFailure.} =
+  ## Preserve only the actual failed signing alternative.
+  outcome.auditSigningReason
+func auditRecoveryError*(outcome: WorkJobResult): AuditRecoveryResult[
+    AuditRecoveryEvidence] {.requires: outcome.status == WorkJobResultKind.AuditRecoveryFailure.} =
+  ## Reconstruction refusal carries no successfully authenticated prefix.
+  outcome.auditRecoveryReason
 func evaluatedAudit*(outcome: WorkJobResult): AuditEvaluation {.requires: outcome.status ==
     WorkJobResultKind.AuditEvaluated.} =
   ## Only actual complete report reproduction exposes its private source-bound evaluation capability.
@@ -720,6 +740,51 @@ proc captureAuditEvaluationJob*(origin: AuditReportOrigin, wire: openArray[byte]
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: evaluateAudit, auditTarget: origin, auditWire: captured,
     auditEvaluationLimits: limits)))
+proc recoverEvaluateAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Complete original-coordinate authentication/recovery before private reproduction can create a negative capability.
+  let recovered = recoverAuditBundle(data.auditTarget, data.auditPackets, data.auditRecoveryLimits, control)
+  if recovered.error != AuditRecoveryError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditRecoveryFailure,
+        auditRecoveryReason: recovered)
+  let evaluated = evaluateRecoveredAudit(data.auditTarget, recovered.value,
+      data.auditEvaluationLimits, control)
+  if evaluated.error != AuditEvaluationError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditEvaluationFailure,
+        auditEvaluationReason: evaluated)
+  WorkJobResult(status: WorkJobResultKind.AuditEvaluated, auditEvaluation: evaluated.value)
+proc captureAuditRecoveryEvaluationJob*(origin: AuditReportOrigin,
+    packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
+    evaluation: AuditEvaluationLimits): WorkJobAdmission =
+  ## Original checked packets retain immutable root/coordinate provenance; all aliases freeze through exact collection. Whole descriptor/payload ceilings precede copying.
+  if not origin.valid or not recovery.valid or not evaluation.valid or packets.len == 0 or
+      packets.len > 342:
+    return workJobFailure(WorkJobError.InvalidInput)
+  var bytes = 0'u64
+  for packet in packets:
+    if not packet.valid: return workJobFailure(WorkJobError.InvalidInput)
+    let size = packet.payloadBytes
+    if size > uint64(recovery.bytes)-bytes: return workJobFailure(WorkJobError.LimitExceeded)
+    bytes += size
+  var retained = newSeq[VerifiedAvailabilityTransfer](packets.len)
+  for ordinal in 0..<packets.len: retained[ordinal] = packets[ordinal]
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: recoverEvaluateAudit, auditTarget: origin, auditPackets: retained,
+    auditRecoveryLimits: recovery, auditEvaluationLimits: evaluation)))
+proc signAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## The only input validity is a genuine private completed evaluation, selected by Services under its canonical graph gate.
+  let signed = signAuditJudgment(data.signer, data.auditEvaluation, data.auditValidator, control)
+  if signed.error != AuditSigningError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditSigningFailure, auditSigningReason: signed)
+  WorkJobResult(status: WorkJobResultKind.AuditSigned, auditSigned: signed.value)
+proc captureAuditSigningJob*(signer: WorkSigner, evaluation: AuditEvaluation,
+    validator: StateValidatorIndex): WorkJobAdmission =
+  ## Capture never accepts raw message bytes, caller validity or replacement report/state tables.
+  if signer.signerIdentity.error != WorkSignerError.None or not evaluation.valid:
+    return workJobFailure(WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: signAudit, signer: signer, auditEvaluation: evaluation,
+    auditValidator: validator)))
+
 proc planAssuranceSchedule(data: WorkJobData): WorkJobResult =
   ## All complete-source and C4/C8/C9 copying executes under the existing exclusive native lease.
   let planned = captureAssuranceSchedule(data.assuranceSource, data.assurancePeer,

@@ -5,7 +5,7 @@
 import ./audit_context
 from ./assurance_store import AssuranceScanControl, stopped
 import ../chain/[genesis, provider, parameters, reports]
-import ../codec/[bounded, owned, report_owned, header]
+import ../codec/[bounded, owned, report_owned, header, guarantees]
 import ../codec/state/trie as state_trie
 import ../state/store
 
@@ -111,6 +111,14 @@ proc originReport*(origin: AuditReportOrigin): AuditOriginResult[OwnedReport] =
   if selected.error != AuditContextError.None:
     return AuditOriginResult[OwnedReport](status: AuditOriginError.InvalidSource)
   AuditOriginResult[OwnedReport](status: AuditOriginError.None, completed: selected.value.report)
+proc originGuarantee*(origin: AuditReportOrigin): AuditOriginResult[Guarantee] =
+  ## Negative judgments carry the exact originally admitted slot and distinct qualified credentials, never a caller replacement certificate.
+  let data = origin.source.data
+  if data == nil: return AuditOriginResult[Guarantee](status: AuditOriginError.Uninitialized)
+  let selected = data.context.auditGuarantee(origin.ordinal)
+  if selected.error != AuditContextError.None: return AuditOriginResult[Guarantee](
+      status: AuditOriginError.InvalidSource)
+  AuditOriginResult[Guarantee](status: AuditOriginError.None, completed: selected.value)
 proc originReportHash*(origin: AuditReportOrigin): AuditOriginResult[WorkReportHash] =
   ## Cached canonical identity belongs to the original available report and exact parent state.
   let data = origin.source.data
