@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private full audit state belongs to Services. Controllers receive opaque host selectors and detached completion metadata; every source-bearing operation requires the shared graph gate.
+import ./audit_branches
 import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation, audit_recovery,
     work_signer, availability_proof, audit_fetch, judgment_receipt, audit_participation, audit_publication]
 from ../codec/state/safrole import StateValidatorIndex, StateEdKey
@@ -307,7 +308,7 @@ proc admitShard*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
   state.ticket = ticket
   state.operation = AuditOperation.Shard
 proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
-    source: ChainView) =
+    source: ChainView, branches = default(AuditBranches)) =
   ## Exact native collection has ended the borrow, but Services keeps RPC paused until all private results are bound and cached.
   if not state.active or completed.kind == ProofWorkerCompletionKind.Uninitialized: return
   state.completion = ManagedAuditCompletion(status: ManagedAuditKind.InvalidResult)
@@ -336,7 +337,10 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
       elif work.kind == WorkJobResultKind.AuditOriginPrepared:
         let origin = work.preparedAuditOrigin
         let info = origin.originInfo.value
-        let retained = state.retain(origin, source.blockAt(info.blockHash))
+        let selected = source.blockAt(info.blockHash)
+        let trusted = if selected.error == GenesisError.None: selected
+          else: branches.parentView(source, info.blockHash).blockAt(info.blockHash)
+        let retained = state.retain(origin, trusted)
         if retained.error == AuditRegistryError.None:
           state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginRetained,
             originId: retained.value, originFacts: info)

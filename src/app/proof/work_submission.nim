@@ -162,6 +162,7 @@ type
     auditDiscoverOrdinal: bool
     auditProofLimits: AuditProofLimits
     auditView: ChainView
+    auditAlternatives: seq[ChainView]
     auditHash: genesis.BlockHash
     auditLimits: AuditContextLimits
     auditWire: seq[byte]
@@ -787,13 +788,14 @@ proc captureAuditPlanning*(source: ChainView, blockHash: genesis.BlockHash,
     cancellable: planAuditContext, auditView: source, auditHash: blockHash, auditLimits: limits)))
 proc qualifyIncomingAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## All body admission, actual prior-role lookup and batch crypto execute behind the managed graph lease.
-  let checked = qualifyAuditAnnouncements(data.auditView, data.auditWire, data.auditReceiptLimits, control)
+  let checked = qualifyAuditAnnouncements(data.auditView, data.auditWire, data.auditReceiptLimits,
+      control, data.auditAlternatives)
   if checked.error != AuditReceiptError.None:
     return WorkJobResult(status: WorkJobResultKind.AuditAnnouncementFailure,
         auditReceiptReason: checked)
   WorkJobResult(status: WorkJobResultKind.AuditAnnouncementsQualified, auditBatch: checked.value)
 proc captureAuditAnnouncements*(source: ChainView, wire: openArray[byte],
-    limits: AuditReceiptLimits): WorkJobAdmission =
+    limits: AuditReceiptLimits, alternatives: sink seq[ChainView] = @[]): WorkJobAdmission =
   ## Capture only finite detached bytes and the actual immutable chain; callers cannot enqueue a verifier or an invented context.
   if source.fuzzOnly or source.bestBlock.error != GenesisError.None or not limits.valid:
     return WorkJobAdmission(status: WorkJobError.InvalidInput)
@@ -803,7 +805,7 @@ proc captureAuditAnnouncements*(source: ChainView, wire: openArray[byte],
   for index in 0..<wire.len: captured[index] = wire[index] # No caller buffer alias crosses native submission.
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: qualifyIncomingAudit, auditView: source, auditWire: captured,
-    auditReceiptLimits: limits)))
+    auditReceiptLimits: limits, auditAlternatives: alternatives)))
 func producedInitialAudit*(outcome: WorkJobResult): ProducedInitialAudit {.requires:
     outcome.status == WorkJobResultKind.InitialAuditProduced.} =
   ## Only complete production exposes detached signed bytes and selected cores.

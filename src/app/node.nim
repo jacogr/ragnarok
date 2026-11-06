@@ -25,6 +25,9 @@ import ../jamnp-s/work_signer
 import ../quic/address
 import ../jamnp-s/work_recovery
 import ./proof/worker
+import ./[audit_branches, candidate, chain, preparation_worker]
+import "./current/block/input" as current_block_input
+import ../codec/[block_codec, header]
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
     report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission,
     ticket_packet, ticket_validation, ticket_pool, ticket_forwarding, ticket_origin]
@@ -56,6 +59,26 @@ type
   SourceStamp = object ## Fixed local source facts survive exclusive worker access without ARC aliases.
     head, finalized: array[32, byte]
     now: StateTime
+  AuditBranchIngressPolicy* = object ## The operator bounds CE128 bytes, full-block preparation and independent branch retention.
+    ready: bool
+    verification: ReadVerificationLimits
+    input: CurrentBlockInputLimits
+    candidate: CurrentCandidateLimits
+    storage: AuditBranchLimits
+  BranchAttempt = object ## A bounded cooldown prevents one untrusted leaf from monopolizing the worker.
+    hash: genesis.BlockHash
+    retry: MonoTime
+  BranchIngress = object ## Stable native preparation input and exact checked/worker control stay on the node.
+    policy: AuditBranchIngressPolicy
+    request: CheckedRequestTicket
+    ticket: PreparationTicket
+    input: CurrentBlockInput
+    id: CurrentBlockInputId
+    checking, preparing: bool
+    reply: CheckedReadReply
+    remaining, peer, cursor: int
+    parent: genesis.BlockHash
+    attempts: array[32, BranchAttempt]
   ApplicationNode* = object ## Noncopyable host/native ownership borrows one stable Services address through explicit close.
     opened, pending, cancelled, epochHeld: bool
     services: nil ptr Services
@@ -83,7 +106,8 @@ type
     exchange: WorkExchangeDispatcher
     audits: AuditDispatcher
     initialAudits: InitialAudits
-    preferInitialAudits: bool
+    branchIngress: BranchIngress
+    preferInitialAudits, preferBranchIngress: bool
     auditRetentionFloor: uint64
     forcedAudits: ForcedAudits
     preferForcedAudits: bool
@@ -137,6 +161,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.auditAcquirer)
   `=wasMoved`(owner.forcedAudits)
   `=wasMoved`(owner.initialAudits)
+  `=wasMoved`(owner.branchIngress)
   `=wasMoved`(owner.judgments)
   `=wasMoved`(owner.audits)
   `=wasMoved`(owner.assurances)
@@ -176,6 +201,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.auditAcquirer)
   `=destroy`(owner.forcedAudits)
   `=destroy`(owner.initialAudits)
+  `=destroy`(owner.branchIngress)
   `=destroy`(owner.judgments)
   `=destroy`(owner.audits)
   `=destroy`(owner.assurances)
@@ -308,6 +334,25 @@ proc configureAuditReceipt*(owner: var ApplicationNode, policy: AuditReceiptPoli
   ## A real bounded managed verifier and retained intent pool must exist before native CE144 selection is enabled.
   if not owner.opened: return false
   owner.audits.configure(owner.streams, policy)
+func auditBranchIngressPolicy*(verification: ReadVerificationLimits,
+    input: CurrentBlockInputLimits, candidate: CurrentCandidateLimits,
+    storage: AuditBranchLimits): AuditBranchIngressPolicy =
+  ## One bounded CE128 reply is retained at a time. The full transition still applies its own exact limits.
+  if not storage.valid or uint64(verification.blocks) notin 1'u64..64'u64 or
+      uint64(verification.wireBytes) notin 5'u64..uint64(MaxReadReplyBytes) or
+      uint64(input.blockBytes) == 0 or input.discoverAncestors:
+    return default(AuditBranchIngressPolicy)
+  AuditBranchIngressPolicy(ready: true, verification: verification, input: input,
+      candidate: candidate, storage: storage)
+proc configureAuditBranchIngress*(owner: var ApplicationNode,
+    policy: AuditBranchIngressPolicy): bool =
+  ## Keep this independent retention feature opt-in and bound to the opened Services lifetime.
+  let services = owner.services
+  if not owner.opened or services == nil or not policy.ready or owner.branchIngress.policy.ready:
+    return false
+  if not services[].configureAuditBranches(policy.storage): return false
+  owner.branchIngress.policy = policy
+  true
 proc configureInitialAudits*(owner: var ApplicationNode, policy: InitialAuditPolicy): bool =
   ## Enable automatic production only on an open validator with managed CE144 receipt.
   let services = owner.services
@@ -610,6 +655,121 @@ proc takeChecked*(owner: var ApplicationNode, ticket: CheckedRequestTicket): Che
     return CheckedRequestCompletion(status: CheckedCompletionKind.Pending)
   result = move(owner.checkedOutcome)
   owner.clearChecked()
+proc stageBranchInput(ingress: var BranchIngress, services: Services,
+    blockOwner: OwnedBlock, now: StateTime): bool =
+  ## Detach one exact GP body, with independently retained older headers in descending order.
+  let component = blockOwner.blockHeader.value
+  let fields = readHeader(component).value.owner.headerInfo.value.unsigned
+  if uint32(fields.slot) > uint32(now): return false
+  let parent = genesis.BlockHash(array[32, byte](fields.parent))
+  let source = services.auditBranchParent(parent)
+  if source.error != ApplicationChainError.None: return false
+  let view = source.value.chainView
+  var ancestors: seq[OwnedHeader] = @[]
+  let retained = view.validationHeaderCount
+  for index in 1..<retained:
+    # The exact parent itself is already bound by CurrentBlockInput.
+    ancestors.add(view.validationHeaderAt(ValidationHeaderIndex(retained-1-index)).header)
+  let size = blockOwner.blockInfo.value.consumed
+  if uint64(size) > uint64(ingress.policy.input.blockBytes): return false
+  var wire = newSeq[byte](size)
+  if blockOwner.encodeOwnedBlock(wire).error != FrameError.None: return false
+  let started = services.beginAuditBranchInput(ingress.input, parent, ByteLimit(uint64(size)),
+      ancestors, ingress.policy.input, ingress.policy.candidate)
+  if started.error != CurrentBlockInputError.None: return false
+  ingress.id = started.value
+  if ingress.input.append(ingress.id, wire, true) != CurrentBlockInputError.None:
+    discard ingress.input.cancel(ingress.id)
+    return false
+  ingress.parent = parent
+  true
+proc pollBranchIngress(owner: var ApplicationNode, services: var Services) =
+  ## Collect exact native ownership before retaining a certificate or advancing the detached batch.
+  if not owner.branchIngress.policy.ready: return
+  if owner.branchIngress.preparing:
+    let done = services.collectPreparation(owner.branchIngress.ticket)
+    if done.kind == PreparationCompletionKind.Uninitialized and services.preparationActive: return
+    owner.branchIngress.preparing = false
+    discard owner.branchIngress.input.cancel(owner.branchIngress.id)
+    if done.kind != PreparationCompletionKind.CurrentCompleted or
+        done.currentValue.error != CurrentBlockInputError.None:
+      owner.branchIngress.remaining = 0
+    else:
+      let accepted = services.retainAuditBranch(done.currentValue.value)
+      if accepted notin [AuditBranchError.None, AuditBranchError.Duplicate]:
+        owner.branchIngress.remaining = 0
+    if owner.branchIngress.remaining == 0:
+      owner.branchIngress.reply = default(CheckedReadReply)
+  if owner.branchIngress.checking:
+    var ticket = owner.branchIngress.request
+    let completed = owner.takeChecked(ticket)
+    if completed.kind == CheckedCompletionKind.Pending: return
+    owner.branchIngress.checking = false
+    if completed.kind == CheckedCompletionKind.Completed and
+        completed.value.error == ReadVerificationError.None:
+      owner.branchIngress.reply = completed.value.value
+      owner.branchIngress.remaining = owner.branchIngress.reply.blockCount
+proc submitBranchIngress(owner: var ApplicationNode, services: var Services,
+    clock: MonoTime, now: StateTime): bool {.raises.} =
+  ## Schedule one native transition or one bounded CE128 retrieval per arbitration turn.
+  if not owner.branchIngress.policy.ready or owner.branchIngress.checking or
+      owner.branchIngress.preparing or not services.preparationAvailable:
+    return false
+  if owner.branchIngress.remaining > 0:
+    let index = owner.branchIngress.remaining-1
+    dec owner.branchIngress.remaining
+    let hash = owner.branchIngress.reply.hashAt(index)
+    if services.knownAuditBlock(hash): return false
+    if not owner.branchIngress.stageBranchInput(services, owner.branchIngress.reply.blockAt(index), now):
+      owner.branchIngress.remaining = 0
+      owner.branchIngress.reply = default(CheckedReadReply)
+      return false
+    let started = services.beginAuditBranchPreparation(owner.branchIngress.input,
+        owner.branchIngress.id, owner.branchIngress.parent)
+    if started.error != PreparationError.None:
+      discard owner.branchIngress.input.cancel(owner.branchIngress.id)
+      owner.branchIngress.remaining = 0
+      owner.branchIngress.reply = default(CheckedReadReply)
+      return false
+    owner.branchIngress.ticket = started.value
+    owner.branchIngress.preparing = true
+    return true
+  owner.branchIngress.reply = default(CheckedReadReply)
+  if owner.checkedPhase != CheckedRequestPhase.Idle: return false
+  let count = owner.streams.peerCount
+  if count == 0: return false
+  let ordinal = owner.branchIngress.peer mod count
+  owner.branchIngress.peer = (ordinal+1) mod count
+  let peer = owner.streams.peerAt(ordinal)
+  if peer.error != NodeError.None: return false
+  let claims = owner.streams.source(peer.value)
+  if claims.error != NodeError.None: return false
+  for leaf in claims.value.claims.leaves:
+    # Peer leaves nominate downloads only. Hash linkage and the complete STF run before retention.
+    if uint32(leaf.slot) > uint32(now): continue
+    let hash = genesis.BlockHash(array[32, byte](leaf.hash))
+    var cooling = false
+    for attempt in owner.branchIngress.attempts:
+      if attempt.retry > clock and array[32, byte](attempt.hash) == array[32, byte](hash):
+        cooling = true
+        break
+    if cooling or services.knownAuditBlock(hash): continue
+    var payload = default(array[37, byte])
+    for index in 0..<32: payload[index] = array[32, byte](hash)[index]
+    payload[32] = 1 # Descending inclusive, with a bounded number of older candidate ancestors.
+    payload[33] = byte(uint64(owner.branchIngress.policy.verification.blocks))
+    let request = decodeReadRequest(ReadKind.Blocks, payload).value
+    var limits = owner.branchIngress.policy.verification
+    let started = owner.requestChecked(peer.value, request, limits)
+    if started.error != NodeError.None: return false
+    let row = owner.branchIngress.cursor
+    owner.branchIngress.attempts[row] = BranchAttempt(hash: hash,
+        retry: clock+initDuration(seconds = 5))
+    owner.branchIngress.cursor = (row+1) mod owner.branchIngress.attempts.len
+    owner.branchIngress.request = started.value
+    owner.branchIngress.checking = true
+    return true
+  false
 proc receiveChecked(owner: var ApplicationNode, clock: MonoTime) =
   ## Bound detached waiting time even while an unrelated Services job holds the graph gate.
   if owner.checkedPhase in [CheckedRequestPhase.Receiving, CheckedRequestPhase.Waiting,
@@ -717,6 +877,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferForcedAudits = true
   owner.preferAudits = true
   owner.preferInitialAudits = true
+  owner.preferBranchIngress = true
   owner.auditRetentionFloor = 0
   owner.preferAuditAcquirer = true
   owner.preferAssurances = true
@@ -785,6 +946,9 @@ proc close*(owner: var ApplicationNode) =
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil:
+    if owner.branchIngress.preparing and services[].cancelPreparation(owner.branchIngress.ticket):
+      services[].stopPreparation()
+    discard owner.branchIngress.input.cancel(owner.branchIngress.id)
     owner.forcedAudits.close(services[], owner.streams)
     owner.initialAudits.close(services[], owner.streams)
     owner.judgments.close(services[], owner.streams)
@@ -797,6 +961,16 @@ proc close*(owner: var ApplicationNode) =
     owner.exchange.close(services[], owner.streams)
     owner.work.close(services[], owner.streams)
     owner.preimages.close(services[], owner.streams)
+  owner.branchIngress.policy = default(AuditBranchIngressPolicy)
+  owner.branchIngress.checking = false
+  owner.branchIngress.preparing = false
+  owner.branchIngress.request = default(CheckedRequestTicket)
+  owner.branchIngress.ticket = default(PreparationTicket)
+  owner.branchIngress.reply = default(CheckedReadReply)
+  owner.branchIngress.remaining = 0
+  owner.branchIngress.peer = 0
+  owner.branchIngress.cursor = 0
+  owner.branchIngress.attempts = default(array[32, BranchAttempt])
   owner.gossip.close(owner.streams)
   owner.forwarding.close(owner.streams)
   owner.origins.close(owner.streams)
@@ -1042,6 +1216,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     discard owner.gossip.offer(owner.streams, acquired.value) # Fresh state/possession checks remain required before transmission.
   owner.receiveChecked(clock)
   owner.collectChecked()
+  owner.pollBranchIngress(services[])
   if not services[].stateProofAvailable: owner.serveDetached()
   if owner.producing:
     let phase = services[].stateProofPhase
@@ -1121,6 +1296,10 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.preferJudgments = false
     return true
   owner.preferJudgments = true # Whole receipt shares fair bounded foreground turns with other managed CPU consumers.
+  if owner.preferBranchIngress and owner.submitBranchIngress(services[], clock, now):
+    owner.preferBranchIngress = false
+    return true
+  owner.preferBranchIngress = true
   if owner.preferInitialAudits and owner.initialAudits.submit(services[], owner.streams, clock):
     owner.preferInitialAudits = false
     return true

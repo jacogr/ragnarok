@@ -1,6 +1,9 @@
 {
   "defines": [],
   "directory": "quic",
+  "fixtures": [
+    "state_report"
+  ],
   "includes": [
     "bandersnatch",
     "crypto",

@@ -3,7 +3,7 @@
 
 ## Optional initial declarations traverse retained selected history under the shared proof-worker lease.
 import std/[monotimes, times]
-import ./[services, audit_announcement_send, audit_state]
+import ./[services, audit_announcement_send, audit_state, audit_branches]
 import ./proof/[worker, work_submission]
 import ../jamnp-s/[node, audits, audit_context, audit_validation, audit_origin, audit_registry]
 import ../chain/[genesis, provider]
@@ -28,6 +28,8 @@ type
     broadcast: AuditAnnouncementSend
     ticket: ProofWorkerTicket
     working, pinning: bool
+    side, preferSide: bool
+    sideAfter, sideSerial: uint64
     prepared: ProducedInitialAudit
     afterSlot, slot, minimumEpoch: uint64
     blockHash: genesis.BlockHash
@@ -83,7 +85,10 @@ func declarationAt*(owner: InitialAudits, index: int): InitialAuditDeclaration {
   owner.declarations[index]
 proc advanceBlock(owner: var InitialAudits) =
   ## All original local positions on this block have been visited.
-  owner.afterSlot = owner.slot
+  if owner.side:
+    owner.sideAfter = owner.sideSerial
+    owner.side = false
+  else: owner.afterSlot = owner.slot
   owner.ordinal = 0
 func canExpire*(owner: InitialAudits): bool =
   ## Keep published and in-flight delivery stable until native fan-out retires.
@@ -104,7 +109,7 @@ proc expireBefore*(owner: var InitialAudits, floor: uint64): array[256, bool] {.
       if kept != row: owner.declarations[kept] = move(owner.declarations[row])
       inc kept
   owner.declarations.setLen(kept)
-proc selectNext(owner: var InitialAudits, services: Services): bool =
+proc selectCanonical(owner: var InitialAudits, services: Services): bool =
   ## Select the next retained block by ascending slot without borrowing a graph across admission.
   let view = services.chainView
   var low = 0
@@ -122,6 +127,19 @@ proc selectNext(owner: var InitialAudits, services: Services): bool =
     owner.blockHash = next.blockHash
     owner.ordinal = 0
   true
+proc selectNext(owner: var InitialAudits, services: Services): bool =
+  ## Alternate selected and side work, while retaining a started block's original ordinal cursor.
+  if owner.side: return true
+  if owner.ordinal > 0: return owner.selectCanonical(services)
+  let candidate = services.nextAuditBranch(owner.sideAfter)
+  if candidate.serial != 0 and (owner.preferSide or not owner.selectCanonical(services)):
+    owner.side = true
+    owner.preferSide = false
+    owner.sideSerial = candidate.serial
+    owner.blockHash = candidate.hash
+    return true
+  owner.preferSide = true
+  owner.selectCanonical(services)
 proc submit*(owner: var InitialAudits, services: var Services, streams: NodeService,
     clock: MonoTime): bool {.raises.} =
   ## The node arbitrates this optional work alongside incoming proof jobs.
@@ -137,11 +155,23 @@ proc submit*(owner: var InitialAudits, services: var Services, streams: NodeServ
     else:
       services.beginInitialAudit(owner.blockHash, streams.localIdentity,
           JudgeIndex(owner.ordinal), owner.policy.context, owner.policy.proof, discover = true)
-  if started.error != StateProofAdmissionError.None: return false
+  if started.error != StateProofAdmissionError.None:
+    if owner.side and started.error == StateProofAdmissionError.QueryFailure:
+      # The registered branch may have lost its independently finalized ancestor.
+      owner.prepared = default(ProducedInitialAudit)
+      owner.advanceBlock()
+    return false
   owner.working = true
   owner.pinning = pinning
   owner.ticket = started.value
   true
+func alreadyDeclared(owner: InitialAudits, record: AuditAnnouncement): bool =
+  ## An independently retained side child may later become selected without creating a second declaration.
+  for declaration in owner.declarations:
+    let old = declaration.record
+    if array[32, byte](old.header) == array[32, byte](record.header) and
+        uint16(old.validator) == uint16(record.validator): return true
+  false
 proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeService,
     clock: MonoTime) =
   ## Retain declared intent before sending so a completed or failed native attempt cannot erase it.
@@ -187,7 +217,8 @@ proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeSe
     let produced = outcome.producedInitialAudit
     owner.ordinal = uint16(produced.announcement.validator)+1
     if produced.epoch < owner.minimumEpoch: owner.advanceBlock()
-    elif produced.selected.count > 0: owner.prepared = produced
+    elif produced.selected.count > 0 and not owner.alreadyDeclared(produced.announcement):
+      owner.prepared = produced
   of WorkJobResultKind.InitialAuditNoDuty:
     owner.advanceBlock()
   of WorkJobResultKind.InitialAuditSourceFailure:
@@ -209,6 +240,10 @@ proc close*(owner: var InitialAudits, services: var Services, streams: var NodeS
   owner.pinning = false
   owner.policy = default(InitialAuditPolicy)
   owner.afterSlot = 0
+  owner.side = false
+  owner.preferSide = false
+  owner.sideAfter = 0
+  owner.sideSerial = 0
   owner.minimumEpoch = 0
   owner.slot = 0
   owner.ordinal = 0
