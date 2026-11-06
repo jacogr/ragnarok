@@ -10,7 +10,8 @@ import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire,
 import ../../jamnp-s/assurance_distribution
 import ../../jamnp-s/assurance_fetch
 import ../../jamnp-s/assurance_schedule
-import ../../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation, audit_recovery, audit_fetch]
+import ../../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation, audit_recovery,
+    audit_fetch, judgment_claim, judgment_receipt, audit_participation, audit_publication]
 from ../../jamnp-s/assurance_store import AssuranceScanControl, stopped
 import ../../jamnp-s/work_recovery
 import ../../jamnp-s/availability_proof
@@ -45,7 +46,9 @@ type
       AuditAnnouncementsQualified, AuditAnnouncementFailure, AuditOriginPrepared,
     AuditOriginPreparationFailure, AuditEvaluated, AuditEvaluationFailure, AuditRecoveryFailure,
     AuditSigned, AuditSigningFailure, AuditFetchPlanned, AuditFetchPlanningFailure,
-    AuditShardVerified, AuditShardVerificationFailure
+    AuditShardVerified, AuditShardVerificationFailure, JudgmentClaimsVerified, JudgmentClaimFailure,
+      JudgmentReceiptPrepared, JudgmentReceiptFailure, AuditParticipationPlanned,
+        AuditParticipationFailure, AuditPublicationPrepared, AuditPublicationFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -84,6 +87,14 @@ type
     of AuditOriginPrepared: auditOrigin: AuditBlockOrigin
     of AuditOriginPreparationFailure: auditOriginReason: AuditOriginResult[AuditBlockOrigin]
     of AuditRecoveryFailure: auditRecoveryReason: AuditRecoveryResult[AuditRecoveryEvidence]
+    of AuditPublicationPrepared: auditPublication: AuditPublication
+    of AuditPublicationFailure: auditPublicationReason: AuditPublicationResult[AuditPublication]
+    of AuditParticipationPlanned: auditParticipation: AuditParticipationPlan
+    of AuditParticipationFailure: auditParticipationReason: AuditParticipationResult[AuditParticipationPlan]
+    of JudgmentReceiptPrepared: judgmentReceipt: PreparedJudgmentBatch
+    of JudgmentReceiptFailure: judgmentReceiptReason: JudgmentReceiptResult[PreparedJudgmentBatch]
+    of JudgmentClaimsVerified: judgmentClaims: SignedJudgmentBatch
+    of JudgmentClaimFailure: judgmentClaimReason: JudgmentClaimResult[SignedJudgmentBatch]
     of AuditShardVerified: auditShard: VerifiedAvailabilityTransfer
     of AuditShardVerificationFailure: auditShardReason: AuditFetchResult[VerifiedAvailabilityTransfer]
     of AuditFetchPlanned: auditFetch: AuditFetchPlan
@@ -137,6 +148,14 @@ type
     auditFetchPlan: AuditFetchPlan
     auditFetchOrdinal: int
     auditFetchTransferLimits: AvailabilityMerkleLimits
+    judgmentClaimLimits: JudgmentClaimLimits
+    judgmentClaims: SignedJudgmentBatch
+    judgmentInputs: seq[JudgmentSourceInput]
+    judgmentReceiptLimits: JudgmentReceiptLimits
+    auditPublicationLimits: AuditPublicationLimits
+    auditParticipationLimits: AuditParticipationLimits
+    auditParticipationCurrent: BlockSnapshotResult
+    auditParticipationIdentity: StateEdKey
     auditFetchLimits: AuditFetchLimits
     auditEvaluationLimits: AuditEvaluationLimits
     auditPackets: seq[VerifiedAvailabilityTransfer]
@@ -235,6 +254,40 @@ func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
     WorkJobResultKind.GuaranteeCollectionFailure.} =
   ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
   outcome.collectionReason
+func preparedAuditPublication*(outcome: WorkJobResult): AuditPublication {.requires: outcome.status ==
+    WorkJobResultKind.AuditPublicationPrepared.} =
+  ## Only complete original-key signing and independent serving bytes leave the private worker.
+  outcome.auditPublication
+func auditPublicationError*(outcome: WorkJobResult): AuditPublicationResult[
+    AuditPublication] {.requires: outcome.status == WorkJobResultKind.AuditPublicationFailure.} =
+  ## A genuine failed local publication contains no signature or raw report prefix.
+  outcome.auditPublicationReason
+func plannedAuditParticipation*(outcome: WorkJobResult): AuditParticipationPlan {.requires: outcome.status ==
+    WorkJobResultKind.AuditParticipationPlanned.} =
+  ## Source-free original roles and recipients retain no canonical map or signer alias.
+  outcome.auditParticipation
+func auditParticipationError*(outcome: WorkJobResult): AuditParticipationResult[
+    AuditParticipationPlan] {.requires: outcome.status ==
+    WorkJobResultKind.AuditParticipationFailure.} =
+  ## Preserve actual missing/policy/cancellation metadata refusal without a recipient prefix.
+  outcome.auditParticipationReason
+func preparedJudgmentReceipt*(outcome: WorkJobResult): PreparedJudgmentBatch {.requires: outcome.status ==
+    WorkJobResultKind.JudgmentReceiptPrepared.} =
+  ## This source-bearing result belongs exclusively to the exact private managed audit collector.
+  outcome.judgmentReceipt
+func judgmentReceiptError*(outcome: WorkJobResult): JudgmentReceiptResult[
+    PreparedJudgmentBatch] {.requires: outcome.status ==
+    WorkJobResultKind.JudgmentReceiptFailure.} =
+  ## Preserve only the genuine whole-receipt failure, with no successful prefix.
+  outcome.judgmentReceiptReason
+func verifiedJudgmentClaims*(outcome: WorkJobResult): SignedJudgmentBatch {.requires: outcome.status ==
+    WorkJobResultKind.JudgmentClaimsVerified.} =
+  ## Whole original-key claims are source-free, while negative inline guarantees still require private report/role qualification.
+  outcome.judgmentClaims
+func judgmentClaimError*(outcome: WorkJobResult): JudgmentClaimResult[
+    SignedJudgmentBatch] {.requires: outcome.status == WorkJobResultKind.JudgmentClaimFailure.} =
+  ## Preserve actual whole-batch policy, epoch, signature and source refusal without any accepted prefix.
+  outcome.judgmentClaimReason
 func verifiedAuditShard*(outcome: WorkJobResult): VerifiedAvailabilityTransfer {.requires: outcome.status ==
     WorkJobResultKind.AuditShardVerified.} =
   ## This source-free proof owner still requires exact private target binding and threshold reconstruction before judgment evaluation.
@@ -745,6 +798,66 @@ proc captureAuditOriginJob*(source: ChainView, blockHash: genesis.BlockHash,
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: prepareAuditOrigin, auditView: source, auditHash: blockHash, auditLimits: context,
     auditOriginLimits: limits)))
+proc checkJudgmentClaims(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## The fixed worker alone reads actual original-epoch rosters and verifies the complete CE145 message.
+  let checked = verifyJudgmentClaims(data.auditView, data.auditWire, data.judgmentClaimLimits, control)
+  if checked.error != JudgmentClaimError.None:
+    return WorkJobResult(status: WorkJobResultKind.JudgmentClaimFailure,
+        judgmentClaimReason: checked)
+  WorkJobResult(status: WorkJobResultKind.JudgmentClaimsVerified, judgmentClaims: checked.value)
+proc captureJudgmentClaimJob*(view: ChainView, wire: openArray[byte],
+    limits: JudgmentClaimLimits): WorkJobAdmission =
+  ## Whole bounded raw bytes are detached before publication; no caller key table, signature-valid bit or callback becomes a verification runner.
+  if not limits.valid or view.fuzzOnly or view.bestBlock.error != GenesisError.None:
+    return workJobFailure(WorkJobError.InvalidInput)
+  if uint64(wire.len) > uint64(limits.message.bytes): return workJobFailure(
+      WorkJobError.LimitExceeded)
+  var captured = newSeq[byte](wire.len)
+  for ordinal in 0..<wire.len: captured[ordinal] = wire[ordinal]
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: checkJudgmentClaims, auditView: view, auditWire: move(captured),
+        judgmentClaimLimits: limits)))
+proc planAuditParticipation(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Original auditor and known successor extraction execute under the same fixed private full-source lease.
+  let plan = captureAuditParticipation(data.auditTarget, data.auditParticipationCurrent,
+    data.auditParticipationIdentity, data.auditParticipationLimits, control)
+  if plan.error != AuditParticipationError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditParticipationFailure,
+        auditParticipationReason: plan)
+  WorkJobResult(status: WorkJobResultKind.AuditParticipationPlanned, auditParticipation: plan.value)
+proc captureAuditParticipationJob*(origin: AuditReportOrigin, current: BlockSnapshotResult,
+    identity: StateEdKey, limits: AuditParticipationLimits): WorkJobAdmission =
+  ## Capture genuine private target/current snapshot ownership only; no caller-provided local index, key table or callback supplies duty authority.
+  if not origin.valid or current.error != GenesisError.None or not limits.valid:
+    return workJobFailure(WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: planAuditParticipation, auditTarget: origin, auditParticipationCurrent: current,
+    auditParticipationIdentity: identity, auditParticipationLimits: limits)))
+proc prepareIncomingJudgment(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Original negative guarantees, historical lookup sources and whole-map accounting execute only on the fixed CPU worker.
+  let prepared = prepareJudgmentReceipt(data.auditView, data.judgmentClaims, data.judgmentInputs,
+      data.judgmentReceiptLimits, control)
+  if prepared.error != JudgmentReceiptError.None:
+    return WorkJobResult(status: WorkJobResultKind.JudgmentReceiptFailure,
+        judgmentReceiptReason: prepared)
+  WorkJobResult(status: WorkJobResultKind.JudgmentReceiptPrepared, judgmentReceipt: prepared.value)
+proc captureJudgmentReceiptJob*(view: ChainView, claims: SignedJudgmentBatch,
+    inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobAdmission =
+  ## Every report/claim/source alias stays frozen until exact collection or joined stop. Raw report objects provide no inclusion or validity authority.
+  if view.fuzzOnly or not claims.valid or not limits.valid or claims.len > 16 or inputs.len != claims.len:
+    return workJobFailure(WorkJobError.InvalidInput)
+  var captured = newSeq[JudgmentSourceInput](inputs.len)
+  for ordinal in 0..<inputs.len:
+    # Only negative records retain reports; reject oversized complete report input before capturing any source-bearing job.
+    if not claims.claimAt(ordinal).value.judgmentRecord.valid:
+      let info = inputs[ordinal].report.ownedReportInfo
+      if info.error != OwnershipError.None: return workJobFailure(WorkJobError.InvalidInput)
+      if uint64(info.value.consumed) > uint64(limits.support.support.wire.maxBytes):
+        return workJobFailure(WorkJobError.LimitExceeded)
+      captured[ordinal] = inputs[ordinal]
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: prepareIncomingJudgment, auditView: view, judgmentClaims: claims,
+    judgmentInputs: move(captured), judgmentReceiptLimits: limits)))
 proc verifyAuditShard(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## Exact expected source-free metadata and coordinates feed the maintained Merkle verifier on the CPU worker.
   if control.stopped: return WorkJobResult(status: WorkJobResultKind.InvalidSource)
@@ -830,6 +943,24 @@ proc captureAuditRecoveryEvaluationJob*(origin: AuditReportOrigin,
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: recoverEvaluateAudit, auditTarget: origin, auditPackets: retained,
     auditRecoveryLimits: recovery, auditEvaluationLimits: evaluation)))
+proc prepareAuditPublication(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Whole output admission, exact report encoding and original-key signing execute under one private source/key lease.
+  let prepared = prepareAuditPublication(data.signer, data.auditEvaluation,
+    data.auditValidator, data.auditPublicationLimits, control)
+  if prepared.error != AuditPublicationError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditPublicationFailure,
+        auditPublicationReason: prepared)
+  WorkJobResult(status: WorkJobResultKind.AuditPublicationPrepared,
+      auditPublication: prepared.value)
+proc captureAuditPublicationJob*(signer: WorkSigner, evaluation: AuditEvaluation,
+    validator: StateValidatorIndex, limits: AuditPublicationLimits): WorkJobAdmission =
+  ## Callers cannot provide a purported judgment, report replacement, completed-validity bit or arbitrary signing message.
+  if not evaluation.valid or not limits.valid or signer.signerIdentity.error !=
+      WorkSignerError.None:
+    return workJobFailure(WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: prepareAuditPublication, signer: signer, auditEvaluation: evaluation,
+    auditValidator: validator, auditPublicationLimits: limits)))
 proc signAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## The only input validity is a genuine private completed evaluation, selected by Services under its canonical graph gate.
   let signed = signAuditJudgment(data.signer, data.auditEvaluation, data.auditValidator, control)

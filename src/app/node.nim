@@ -11,6 +11,9 @@ import ./work_exchange
 import ./work_distribution
 import ./assurance_distribution
 import ./audit_distribution
+import ./[judgment_distribution, forced_audit]
+import ../jamnp-s/judgment_receipt
+import ./audit_state
 import ../jamnp-s/audit_validation
 import ./assurance_broadcast
 import ./audit_acquisition
@@ -79,6 +82,10 @@ type
     work: WorkDispatcher
     exchange: WorkExchangeDispatcher
     audits: AuditDispatcher
+    forcedAudits: ForcedAudits
+    preferForcedAudits: bool
+    judgments: JudgmentDispatcher
+    preferJudgments: bool
     preferAudits: bool
     auditAcquirer: AuditAcquisition
     preferAuditAcquirer: bool
@@ -125,6 +132,8 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.work)
   `=wasMoved`(owner.exchange)
   `=wasMoved`(owner.auditAcquirer)
+  `=wasMoved`(owner.forcedAudits)
+  `=wasMoved`(owner.judgments)
   `=wasMoved`(owner.audits)
   `=wasMoved`(owner.assurances)
   `=wasMoved`(owner.acquisition)
@@ -161,6 +170,8 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.work)
   `=destroy`(owner.exchange)
   `=destroy`(owner.auditAcquirer)
+  `=destroy`(owner.forcedAudits)
+  `=destroy`(owner.judgments)
   `=destroy`(owner.audits)
   `=destroy`(owner.assurances)
   `=destroy`(owner.acquisition)
@@ -244,6 +255,7 @@ proc beginAuditAcquisition*(owner: var ApplicationNode, policy: AuditAcquisition
     id: AuditOriginId, ordinal: int, clock: MonoTime): bool =
   ## Explicit optional foreground work uses a private Services selector; no caller report/state or validity bit enters this controller.
   if not owner.opened: return false
+  if owner.forcedAudits.ownsAcquisition: return false
   owner.auditAcquirer.begin(policy, id, ordinal, clock)
 func auditAcquisitionBusy*(owner: ApplicationNode): bool =
   ## Native retirement remains observable after an evaluation completes; re-admission waits for every exact control to drain.
@@ -259,6 +271,34 @@ proc cancelAuditAcquisition*(owner: var ApplicationNode) =
   ## Exact cancellation never interrupts an unrelated foreign worker lease.
   let services = owner.services
   if services != nil: owner.auditAcquirer.cancel(services[], owner.streams)
+proc configureForcedAudits*(owner: var ApplicationNode, policy: ForcedAuditPolicy): bool =
+  ## Enable automatic original-key participation after receipt and signer setup.
+  let services = owner.services
+  if not owner.opened or services == nil: return false
+  owner.forcedAudits.configure(services[], owner.streams, owner.judgments, policy)
+
+proc configureJudgmentReceipt*(owner: var ApplicationNode, policy: JudgmentReceiptPolicy): bool =
+  ## Explicit full-state private retention must precede native judgment activation; omission never enables CE145.
+  let services = owner.services
+  if not owner.opened or services == nil or not services[].stateProofAvailable or not services[].auditRetentionConfigured: return false
+  owner.judgments.configure(owner.streams, policy)
+func receivedJudgments*(owner: ApplicationNode): uint64 =
+  ## Count whole acknowledged qualified uploads independently of their record count.
+  owner.judgments.received
+func pendingForcedAudits*(owner: ApplicationNode): int =
+  ## Negative receipt can require auditing a previously unseen report without a CE144 declaration.
+  owner.judgments.pendingCount
+proc pendingForcedAudit*(owner: ApplicationNode, ordinal: int): RetainedJudgment {.requires: ordinal >=
+    0 and ordinal < owner.judgments.pendingCount.} =
+  ## Source-free original record and private host selector expose neither execution state nor report truth.
+  owner.judgments.pendingAt(ordinal)
+func retainedJudgmentCount*(owner: ApplicationNode): int =
+  ## Fixed ledger occupancy includes independently qualified conflicting original signed claims.
+  owner.judgments.judgmentCount
+proc retainedJudgmentAt*(owner: ApplicationNode, ordinal: int): QualifiedJudgment {.requires: ordinal >=
+    0 and ordinal < owner.judgments.judgmentCount.} =
+  ## Return one immutable original signed record after whole receipt succeeded.
+  owner.judgments.judgmentAt(ordinal)
 proc configureAuditReceipt*(owner: var ApplicationNode, policy: AuditReceiptPolicy): bool =
   ## A real bounded managed verifier and retained intent pool must exist before native CE144 selection is enabled.
   if not owner.opened: return false
@@ -654,6 +694,8 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferWork = true
   owner.preferExchange = true
   owner.preferDistribution = true
+  owner.preferJudgments = true
+  owner.preferForcedAudits = true
   owner.preferAudits = true
   owner.preferAuditAcquirer = true
   owner.preferAssurances = true
@@ -722,6 +764,8 @@ proc close*(owner: var ApplicationNode) =
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil:
+    owner.forcedAudits.close(services[], owner.streams)
+    owner.judgments.close(services[], owner.streams)
     owner.auditAcquirer.close(services[], owner.streams)
     owner.audits.close(services[], owner.streams)
     owner.assurances.close(services[], owner.streams)
@@ -748,6 +792,12 @@ proc serveCached(owner: var ApplicationNode, task: NodeReadTask): bool =
   ## A hit needs no canonical graph or worker, but still requires the native ticket's exact method/hash binding.
   case task.request.kind
   of ReadKind.Report:
+    let retained = owner.judgments.findReport(task.request)
+    if retained.error == ReadError.None:
+      if owner.streams.respond(task.ticket, retained.value) != ReadError.None:
+        discard owner.streams.reject(task.ticket)
+      owner.preferChecked = true
+      return true
     let found = owner.reports.find(task.request)
     if found.error != ReportCacheError.None: return false
     if owner.streams.respond(task.ticket, found.value) != ReadError.None:
@@ -762,9 +812,10 @@ proc serveCached(owner: var ApplicationNode, task: NodeReadTask): bool =
   true
 proc serveDetached(owner: var ApplicationNode) =
   ## Inspect one cached kind per turn; alternate when both are populated and preserve original miss deadlines.
-  if owner.reports.len == 0 and owner.preimages.cachedCount == 0: return
-  let preimage = owner.preimages.cachedCount > 0 and (owner.reports.len == 0 or
-      owner.preferPreimage)
+  let hasReports = owner.reports.len > 0 or owner.judgments.retainedReportCount > 0
+  let hasPreimages = owner.preimages.cachedCount > 0
+  if not hasReports and not hasPreimages: return
+  let preimage = hasPreimages and (not hasReports or owner.preferPreimage)
   owner.preferPreimage = not preimage
   let selected = if preimage: ReadKind.Preimage else: ReadKind.Report
   let task = owner.streams.takeRead(selected)
@@ -936,7 +987,9 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.preimages.poll(services[], owner.streams, clock)
   owner.work.poll(services[], owner.streams, clock, now)
   owner.exchange.poll(services[], owner.streams, clock)
+  owner.judgments.poll(services[], owner.streams, owner.reports, clock)
   owner.auditAcquirer.poll(services[], owner.streams, clock)
+  owner.forcedAudits.poll(services[], owner.streams, owner.judgments, owner.auditAcquirer, clock)
   owner.audits.poll(services[], owner.streams, clock)
   owner.assurances.poll(services[], owner.streams, clock)
   owner.acquisition.poll(services[], owner.streams, clock)
@@ -1027,6 +1080,15 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.preferAuditAcquirer = false
     return true
   owner.preferAuditAcquirer = true # An active audit cannot monopolize the shared CPU pool.
+  if owner.preferForcedAudits and owner.forcedAudits.submit(services[], owner.streams,
+      owner.judgments, owner.auditAcquirer, clock):
+    owner.preferForcedAudits = false
+    return true
+  owner.preferForcedAudits = true
+  if owner.preferJudgments and owner.judgments.submit(services[], owner.streams, owner.reports, clock):
+    owner.preferJudgments = false
+    return true
+  owner.preferJudgments = true # Whole receipt shares fair bounded foreground turns with other managed CPU consumers.
   if owner.preferAudits and owner.audits.submit(services[], owner.streams, clock):
     owner.preferAudits = false
     return true
@@ -1053,13 +1115,14 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     return true
   if owner.preferChecked and owner.submitChecked(): return true
   let request = owner.streams.takeReadExcept({ReadKind.Guarantee, ReadKind.Assurance,
-      ReadKind.AuditAnnouncement})
+      ReadKind.AuditAnnouncement, ReadKind.Judgment})
   if request.error != NodeError.None:
     if assuranceClock and owner.broadcaster.submit(services[], owner.streams, clock,
         assuranceNow): return true
     if assuranceClock and owner.acquisition.submit(services[], owner.streams, clock,
         assuranceNow): return true
     if owner.auditAcquirer.submit(services[], owner.streams, clock): return true
+    if owner.judgments.submit(services[], owner.streams, owner.reports, clock): return true
     if owner.audits.submit(services[], owner.streams, clock): return true
     if owner.assurances.submit(services[], owner.streams, clock): return true
     if owner.distribution.submit(services[], owner.streams, clock, now): return true

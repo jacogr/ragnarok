@@ -342,11 +342,10 @@ proc signAuditJudgment*(signer: WorkSigner, evaluation: AuditEvaluation,
   if control.stopped: return AuditSigningResult[SignedAuditJudgment](
       status: AuditSigningError.Cancelled)
   let origin = evaluation.evaluationOrigin.value
-  let context = origin.originContext.value
-  let facts = context.contextInfo.value
-  if uint64(validator) >= uint64(facts.auditors):
+  let auditors = origin.auditorCount.value
+  if uint64(validator) >= uint64(auditors):
     return AuditSigningResult[SignedAuditJudgment](status: AuditSigningError.InvalidValidator)
-  let member = context.auditorAt(int(uint64(validator))).value
+  let member = origin.auditorAt(int(uint64(validator))).value
   if array[32, byte](member.ed25519) != array[32, byte](data.identity):
     return AuditSigningResult[SignedAuditJudgment](status: AuditSigningError.IdentityMismatch)
   let info = evaluation.evaluationInfo.value

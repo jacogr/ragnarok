@@ -21,7 +21,7 @@ type
     report*: WorkReportLimits
     comparisonBytes*: ByteLimit
   AuditEvaluationInfo* = object ## Copied result metadata cannot construct or replace the private completed execution capability.
-    blockHash*: genesis.BlockHash
+    blockReference: AuditBlockReference
     reportHash*: WorkReportHash
     epoch*: uint64
     core*: CoreIndex
@@ -33,6 +33,7 @@ type
     data: nil EvaluationData
   AuditEvaluationError* {.pure.} = enum ## Failed direct candidates contain diagnostics only, never negative judgments or successful earlier execution prefixes.
     Uninitialized, None, InvalidPolicy, InvalidOrigin, InvalidRecovery, LimitExceeded, Cancelled,
+      HistoryUnavailable,
     BundleFailure, ExecutionFailure, ReportFailure, EncodingFailure, Mismatch
   AuditEvaluationResult*[T] = object ## Genuine failures have no judgment prefix. Completed capabilities require canonical equality or authenticated report/reconstruction faults.
     case status: AuditEvaluationError
@@ -65,6 +66,12 @@ func encodingError*[T](outcome: AuditEvaluationResult[
     T]): OwnershipError {.requires: outcome.status == AuditEvaluationError.EncodingFailure.} =
   ## Failure to serialize the original retained canonical report grants no comparison success.
   outcome.encodingReason
+func hasAuditedBlock*(info: AuditEvaluationInfo): bool =
+  ## Standalone disputed reports have no invented availability block; original available-report metadata retains its actual block.
+  info.blockReference.present
+func blockHash*(info: AuditEvaluationInfo): genesis.BlockHash {.requires: info.blockReference.present.} =
+  ## Existing available-report consumers must establish presence before reading the exact copied block identity.
+  info.blockReference.value
 func valid*(limits: AuditEvaluationLimits): bool =
   ## Cover every possible package prefix within the permitted whole wire so a parser limit is distinguishable from a local prefix-byte refusal; all new copies stay finite.
   limits.bundle.valid and uint64(limits.bundle.package.maxBytes) >= uint64(limits.bundle.bytes) and
@@ -134,13 +141,11 @@ func needsRecovery*(outcome: AuditEvaluationResult[AuditEvaluation]): bool =
 proc completedEvaluation(origin: AuditReportOrigin, positive: bool): AuditEvaluationResult[
     AuditEvaluation] =
   ## Private construction follows actual equality or exact authenticated reconstruction evidence, never a caller-selected validity flag.
-  let source = origin.originInfo.value
-  let context = origin.originContext.value.contextInfo.value
   let report = origin.originReport.value.ownedReportInfo.value
   AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.None,
     completed: AuditEvaluation(data: EvaluationData(source: origin,
-      info: AuditEvaluationInfo(blockHash: source.blockHash,
-        reportHash: origin.originReportHash.value, epoch: context.epoch,
+      info: AuditEvaluationInfo(blockReference: origin.auditedBlock,
+        reportHash: origin.originReportHash.value, epoch: origin.auditEpoch.value,
         core: report.core, positive: positive))))
 proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
     limits: AuditEvaluationLimits, control: AssuranceScanControl = default(
@@ -159,6 +164,15 @@ proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
   # Every work package has a nonempty canonical prefix. A genuinely authenticated report claiming zero bytes is invalid independently of any remote candidate or shard proof.
   if uint32(described.header.bundleLength) == 0:
     return completedEvaluation(origin, false)
+  let clock = origin.executionTime
+  if clock.error != AuditOriginError.None:
+    return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.InvalidOrigin)
+  let profile = origin.originParameters.value
+  let lookupTime = uint64(uint32(described.header.lookupSlot))
+  let now = uint64(uint32(clock.value))
+  if lookupTime > now or now-lookupTime > uint64(profile.expungePeriod):
+    return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.HistoryUnavailable)
+  # GP historical lookup is defined only inside this retained snapshot's D-wide time domain; missing old code outside it cannot become a negative judgment.
   if uint64(described.consumed) > uint64(limits.comparisonBytes):
     return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.LimitExceeded)
   let parameters = origin.originParameters.value

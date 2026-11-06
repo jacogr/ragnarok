@@ -16,7 +16,7 @@ type
     Uninitialized, None, InvalidPolicy, InvalidOrigin, InvalidIndex, LimitExceeded,
     UnavailableRoster, GeometryFailure, InvalidPacket, TransferFailure
   AuditFetchInfo* = object ## Fixed observations identify the original report independently of native peers or later canonical heads.
-    blockHash*: genesis.BlockHash
+    blockReference: AuditBlockReference
     reportHash*: WorkReportHash
     specifier*: AvailabilitySpecifier
     guarantors*, assurers*, threshold*: int
@@ -48,6 +48,12 @@ func transferError*[T](outcome: AuditFetchResult[T]): AvailabilityTransferResult
     VerifiedAvailabilityTransfer] {.requires: outcome.status == AuditFetchError.TransferFailure.} =
   ## Preserve the actual original-coordinate proof refusal, without replacing a backend failure with a report judgment.
   outcome.transferReason
+func hasAuditedBlock*(info: AuditFetchInfo): bool =
+  ## A disputed-only fetch plan carries no fabricated availability-block identity.
+  info.blockReference.present
+func blockHash*(info: AuditFetchInfo): genesis.BlockHash {.requires: info.blockReference.present.} =
+  ## Genuine available-report plans preserve their original guarded copied block identity.
+  info.blockReference.value
 func valid*(limits: AuditFetchLimits): bool =
   ## Default caps never activate retrieval; the wire bound includes the largest legal original bundle and framing.
   uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 4'u64*1024*1024 and
@@ -101,8 +107,6 @@ proc captureAuditFetch*(origin: AuditReportOrigin, limits: AuditFetchLimits): Au
       status: AuditFetchError.InvalidPolicy)
   if not origin.valid: return AuditFetchResult[AuditFetchPlan](
       status: AuditFetchError.InvalidOrigin)
-  let context = origin.originContext.value
-  let info = context.contextInfo.value
   let guarantee = origin.originGuarantee.value
   let report = guarantee.report.ownedReportInfo.value
   let header = report.header
@@ -110,44 +114,43 @@ proc captureAuditFetch*(origin: AuditReportOrigin, limits: AuditFetchLimits): Au
   if geometry.error != ErasureLayoutError.None:
     return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.GeometryFailure)
   let population = uint64(uint16(header.erasureShards))
-  if uint64(info.auditors) != population:
-    return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.UnavailableRoster)
+  var rows = 0'u64
+  for roster in 0..<origin.routingRosterCount:
+    # Every known candidate epoch is queried separately when compatible; matching N never selects or fabricates an actual assurance epoch.
+    if uint64(origin.routingPopulation(roster).value) == population: rows += population
+  if rows == 0: return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.UnavailableRoster)
   if guarantee.credentialCount < 2 or guarantee.credentialCount > 3 or sizeof(AuditFetchTarget) > 512:
     return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.InvalidOrigin)
-  let reservation = 4096'u64+(population+3)*(uint64(sizeof(AuditFetchTarget))+64)
+  let reservation = 4096'u64+(rows+3)*(uint64(sizeof(AuditFetchTarget))+64)
   if reservation > uint64(limits.bytes):
     return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.LimitExceeded)
   if uint64(uint32(header.bundleLength))+4 > uint64(limits.replyBytes) or
       geometry.value.bundleChunkBytes+4096 > uint64(limits.replyBytes):
     return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.LimitExceeded)
-  var reportOrdinal = -1
-  for ordinal in 0..<info.reports:
-    # Actual private target identity determines the dense report ordinal, never a caller-replacement report hash.
-    if array[32, byte](context.auditReportHash(ordinal).value) == array[32, byte](
-        origin.originReportHash.value): reportOrdinal = ordinal
-  if reportOrdinal < 0:
-    return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.InvalidOrigin)
   var guarantors: seq[AuditFetchTarget] = @[]
   for ordinal in 0..<guarantee.credentialCount:
     # The guarantee slot selects its independently authenticated original C8/C9 credential roster.
-    let selected = context.auditGuarantor(reportOrdinal, ordinal)
-    if selected.error != AuditContextError.None:
+    let selected = origin.originGuarantor(ordinal)
+    if selected.error != AuditOriginError.None:
       return AuditFetchResult[AuditFetchPlan](status: AuditFetchError.UnavailableRoster)
     let validator = selected.value
     guarantors.add(AuditFetchTarget(validator: StateValidatorIndex(uint64(uint16(
       guarantee.credentials[ordinal].validator))), identity: validator.ed25519,
       endpoint: validatorEndpoint(array[128, byte](validator.metadata))))
-  var assurers = newSeq[AuditFetchTarget](int(population))
-  for ordinal in 0..<assurers.len:
-    # B's actual assurance signer roster is its prior C8. Keep every ordinal, including unavailable/null endpoints, so later rows cannot shift the NP cR+v coordinate.
-    let validator = context.auditorAt(ordinal).value
-    let shard = (uint64(report.core)*geometry.value.originalShards+uint64(ordinal)) mod population
-    assurers[ordinal] = AuditFetchTarget(validator: StateValidatorIndex(uint64(ordinal)),
-      identity: validator.ed25519, endpoint: validatorEndpoint(array[128, byte](
-          validator.metadata)),
-      shard: ErasureShardIndex(shard))
+  var assurers: seq[AuditFetchTarget] = @[]
+  for roster in 0..<origin.routingRosterCount:
+    # Available reports retain actual prior-C8 assurership. Unseen reports query all compatible authenticated candidate rosters; proof roots and original coordinates, never a guessed epoch, authenticate recovered bytes.
+    if uint64(origin.routingPopulation(roster).value) != population: continue
+    for ordinal in 0..<int(population):
+      # Keep null/repeated positions and original coordinate arithmetic even when several candidate rosters have the same population.
+      let validator = origin.routingValidator(roster, ordinal).value
+      let shard = (uint64(report.core)*geometry.value.originalShards+uint64(ordinal)) mod population
+      assurers.add(AuditFetchTarget(validator: StateValidatorIndex(uint64(ordinal)),
+        identity: validator.ed25519, endpoint: validatorEndpoint(array[128, byte](
+            validator.metadata)),
+        shard: ErasureShardIndex(shard)))
   AuditFetchResult[AuditFetchPlan](status: AuditFetchError.None, completed: AuditFetchPlan(
-    data: FetchData(info: AuditFetchInfo(blockHash: info.blockHash,
+    data: FetchData(info: AuditFetchInfo(blockReference: origin.auditedBlock,
       reportHash: origin.originReportHash.value,
       specifier: AvailabilitySpecifier(packageHash: header.packageHash,
         bundleLength: header.bundleLength, erasureRoot: header.erasureRoot,

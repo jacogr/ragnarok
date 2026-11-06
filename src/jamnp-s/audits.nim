@@ -157,6 +157,10 @@ proc decodeAnnouncements*(input: openArray[byte], limits: AuditLimits): AuditRes
   AuditResult[AnnouncementBatch](status: AuditError.None,
       completed: AnnouncementBatch(data: AnnouncementData(records: records)))
 
+proc inspectJudgments*(input: openArray[byte], limits: AuditLimits): AuditResult[int] =
+  ## Allocation-free complete-message structural inspection lets a receiver reserve every retained claim before decoding or signature verification.
+  scan(input, limits, true)
+
 proc decodeJudgments*(input: openArray[byte], limits: AuditLimits): AuditResult[JudgmentBatch] =
   ## Capture a CE145 batch, preserving different epochs and auditors without imposing batch-wide equality.
   let checked = scan(input, limits, true)

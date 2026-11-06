@@ -14,7 +14,7 @@ type
     Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Guarantee = 135,
         Report = 136, Availability = 137, Audit = 138, SegmentShards = 139,
             ProvenSegmentShards = 140, Assurance = 141, PreimageAnnouncement = 142, Preimage = 143,
-                AuditAnnouncement = 144, Bundle = 147, Segments = 148
+                AuditAnnouncement = 144, Judgment = 145, Bundle = 147, Segments = 148
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -66,12 +66,14 @@ func batch*(kind: ReadKind): bool =
   kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments]
 func variable*(kind: ReadKind): bool =
   ## Opaque guaranteed reports share bounded variable storage with grouped requests, without borrowing the grouped-request grammar.
-  kind.batch or kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement]
+  kind.batch or kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
+      ReadKind.Judgment]
 func maximumRequestBytes(kind: ReadKind): int =
   ## CE135 has an independent local hard ceiling; grouped requests retain their exact existing grammar ceiling.
   if kind == ReadKind.Assurance: 139 # Anchor, largest fixed profile bitfield and Ed25519 signature.
   elif kind == ReadKind.Guarantee: MaxReadReplyBytes
   elif kind == ReadKind.AuditAnnouncement: 16*133 # Whole batches have at most sixteen fixed initial/later records.
+  elif kind == ReadKind.Judgment: 16*306 # Each maximum negative record has three inline credentials.
   else: kind.segmentKind.maximumPayload
 func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
   ## Only declared batch selectors enter the matching protocol grammar.
@@ -82,8 +84,8 @@ func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
 func requestLength(kind: ReadKind): int =
   ## Pinned fixed payload extents exclude selector and E4 header.
   case kind
-  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement, ReadKind.SegmentShards,
-      ReadKind.ProvenSegmentShards, ReadKind.Segments: -1
+  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement, ReadKind.Judgment,
+      ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments: -1
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
   of ReadKind.Report, ReadKind.Preimage, ReadKind.Bundle: 32
@@ -97,7 +99,8 @@ proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
     result[index] = if request.selector.variable: request.variable[index] else: request.payload[index]
 proc decodeReadRequest*(kind: ReadKind, payload: openArray[byte]): ReadResult[ReadRequest] =
   ## Validate exact extents before retaining transport facts; method-specific semantics stay in services.
-  if kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement]:
+  if kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
+      ReadKind.Judgment]:
     if kind == ReadKind.Assurance and payload.len < 97: return readFailure[ReadRequest](
         ReadError.InvalidRequest)
     if kind == ReadKind.Guarantee and payload.len == 0: return readFailure[ReadRequest](
@@ -152,6 +155,16 @@ func sameRequest(left, right: ReadRequest): bool =
   ## Full fixed-array equality prevents foreign/stale work from targeting a different request.
   left.ready and right.ready and left.selector == right.selector and left.length == right.length and
       left.payload == right.payload and left.variable == right.variable
+func request*(reply: ReadReply): ReadRequest =
+  ## A frozen reply retains its original request binding; defaults return an invalid request, never an initialized success.
+  reply.request
+func matches*(reply: ReadReply, request: ReadRequest): bool =
+  ## All exact method and payload facts must match before a retained detached reply can serve another physical stream.
+  sameRequest(reply.request, request)
+proc forRequest*(reply: ReadReply, request: ReadRequest): ReadResult[ReadReply] =
+  ## Reuse only an already frozen complete reply under its exact admitted binding; no caller bytes construct a successful prefix.
+  if not reply.matches(request): return readFailure[ReadReply](ReadError.InvalidRequest)
+  ReadResult[ReadReply](status: ReadError.None, completed: reply)
 func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## CE142 acknowledges with FIN alone; ordinary content replies use one message and CE129 uses two.
   if request.selector == ReadKind.ProvenSegmentShards: request.items+1
@@ -159,7 +172,8 @@ func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   elif request.selector == ReadKind.Availability: 3
   elif request.selector in [ReadKind.State, ReadKind.Audit]: 2
   elif request.selector in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
-      ReadKind.PreimageAnnouncement, ReadKind.TicketProxy, ReadKind.TicketDistribution]: 0
+      ReadKind.Judgment, ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
+          ReadKind.TicketDistribution]: 0
   else: 1
 func maximumReplyBytes*(request: ReadRequest): int {.requires: request.valid.} =
   ## Large original bundles and all-row distributions have their own hard ceiling; existing reads retain their prior bound.
