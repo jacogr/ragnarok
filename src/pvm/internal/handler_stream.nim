@@ -15,6 +15,20 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
 when defined(pvmX86Jit):
   import ./x86_jit
 
+when NativeCheckedReadEnabled:
+  const ReadProbeSlots = 4 ## Fixed call-local candidate capacity.
+  type
+    ReadProbeCandidate = object ## Exact sealed terminal and its invocation-local evidence.
+      pc, header, terminal, sourceFacts: uint32
+      operations: int
+      eligible: uint64
+      resolved: bool
+    ReadProbeState = object ## Scalar-only state carried across validated memory replacements.
+      candidates: array[ReadProbeSlots, ReadProbeCandidate]
+      count, inspected: int
+      epoch, segmentBudget: uint64
+      observing: bool
+
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
   FlatNodeLimit* = distinct uint64 ## Ceiling on emitted header/operation nodes in one exclusive frame.
@@ -134,6 +148,10 @@ type
       x86PreviousValid: bool
       when defined(pvmX86CheckedStoreReceipt):
         x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
+    when NativeCheckedReadEnabled:
+      readContext: NativeReadContext
+      readContextReady: bool
+      readProbe: ReadProbeState
     nativeSession*: NativeSession # Prepared identity only; never passed to the compiler thread.
     nativeOriginal: nil FlatHandler
     nativeEntry: uint32
@@ -210,7 +228,9 @@ when defined(pvmX86Jit):
     ## Record one positive backedge or settle bounded source candidates at a safe call boundary.
 
 proc flatConsiderNative(f: var FlatFrame, origin: uint32)
-  ## Classify one common bounded candidate without generating any native bytes.
+when NativeCheckedReadEnabled:
+  proc discoverReadProbe(f: var FlatFrame, header, pc: uint32)
+    ## Classify one bounded candidate without generating any native bytes.
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -1302,6 +1322,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
+  var begins = true
   while pc < extent.value:
     if uint64(owner.facts.len) >= uint64(limits.facts):
       return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
@@ -1309,15 +1330,14 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
     if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
         status: FlatError.InvalidProgram)
     let item = decoded.value
-    let begins = basicBlockStart(source, item.address)
-    if begins.error != ProgramError.None: return FlatResult[FlatPlan](
-        status: FlatError.InvalidProgram)
-    if begins.value:
+    # This sequential walk already knows whether the preceding instruction ended a block.
+    if begins:
       priceIndex = uint32(owner.pricePcs.len)
       owner.pricePcs.add(item.address)
     let fact = flatFact(decoded, priceIndex)
     owner.factAt[int(pc)] = owner.facts.len
     owner.facts.add(fact)
+    begins = fact.ending
     pc = uint64(fact.next)
   var count = 0'u32
   var nodes = 0'u32
@@ -1548,6 +1568,12 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     if fact.ending: break
     inc index
   flatConsiderNative(f, origin)
+  when NativeCheckedReadEnabled:
+    # Only a newly emitted canonical-looking noop block can reach bounded discovery.
+    if f.readProbe.observing and f.plan.facts[start].opcode == 2 and
+        f.plan.facts[start].sourceCount in 4'u32..NativeReadFactLimit and
+        f.plan.facts[index].opcode == 1:
+      discoverReadProbe(f, origin, pc)
   origin
 
 proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
@@ -1662,9 +1688,18 @@ proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
   f.info.blockCharged = false
   f.reservation = loop.header or flatReservationHeaderFlag
 
+when NativeCheckedReadEnabled:
+  proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo)
+
 proc installNative(f: var FlatFrame) =
-  ## Only the caller mutates its exclusively held stream; append-only coordinates are revalidated.
-  if not nativeSpanReady(f.nativeSession) or f.pricingKind != 0 or f.nativeOriginal != nil: return
+  ## Only the caller mutates its exclusively held stream; each image uses its own certificate.
+  if f.pricingKind != 0 or f.nativeOriginal != nil: return
+  when NativeCheckedReadEnabled:
+    let read = nativeReadInfo(f.nativeSession)
+    if read.epoch != 0:
+      installFlatReadBody(f, read)
+      return
+  if not nativeSpanReady(f.nativeSession): return
   let span = nativeSpanInfo(f.nativeSession)
   let candidate = nativeLoopInfo(f.nativeSession)
   if candidate.kind == NativeKind.ClosedRegisterLoop:
@@ -1942,6 +1977,9 @@ func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
   true
 
 include ./handler_trace_source
+when NativeCheckedReadEnabled:
+  include ./handler_read_body
+  include ./read_admission_probe
 
 when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
   func flatSourceIntervalProof*(f: FlatFrame, pc, maxSpan: uint32,
@@ -4998,6 +5036,10 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
 
 proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   ## Both callers fully validate a fresh same-plan frame before moving the code-only cache and policies.
+  when NativeCheckedReadEnabled:
+    # The prior segment always restores its terminal handlers before any host transition.
+    assert not f.readProbe.observing
+    replacement.readProbe = f.readProbe
   replacement.preparationFailure = f.preparationFailure
   replacement.preparationUsed = f.preparationUsed
   replacement.pricingPlan = f.pricingPlan
