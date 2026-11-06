@@ -389,7 +389,9 @@ CI artifact globs even when compiler setup never starts. Provisioned and non-APT
 path. The workflow uses one shared 60-minute limit for every job.
 
 E2E builds opt into the same serial, source-epoch/native-ABI/profile-isolated compiler cache,
-retaining ThinLTO, runtime checks and separate production feature defines. Current-sequence,
+retaining ThinLTO, runtime checks and separate production feature defines. Full peer builds
+share a ten-minute command deadline because cold compilation can exceed three minutes. Driver
+builds and live workloads retain their existing deadlines. Current-sequence,
 preimage, guarantee and rotation workloads share one freshly compiled responder; each still
 launches independent processes and state, checks fixture hashes and publishes its own required
 verdict. A failed shared build blocks every dependent workload from running stale binaries.

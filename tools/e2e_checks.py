@@ -14,6 +14,9 @@ from e2e_plan import E2EPlan
 
 PLAN = E2EPlan()
 
+# Cold Release builds link the full JAMNP-S stack with ThinLTO in every peer profile.
+PEER_BUILD_TIMEOUT = 600
+
 
 # Preserve this task and its original checks in dependency order.
 @PLAN.setup
@@ -24,9 +27,9 @@ def prepare_peer(context):
     report = context.report
     crypto_library = context.crypto
     quic_library = context.quic
-    # The cold Release peer includes the full JAMNP-S stack and can exceed the small driver build deadline.
     compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok', crypto_library,
-                             native_libraries=(context.bs,), quic_library=quic_library, timeout=600)
+                             native_libraries=(context.bs,), quic_library=quic_library,
+                             timeout=PEER_BUILD_TIMEOUT)
     report['quic_peer_build'] = compiled
     context.peer = compiled, binary
 
@@ -255,7 +258,7 @@ def prepare_current_download_peer(context):
     """Build the shipped integration/offload profile for the current executable workload."""
     context.current_download_peer = context.checks.build(context.compiler, ROOT/'src/ragnarok.nim',
         'ragnarok-current-download', context.crypto, native_libraries=(context.bs,),
-        quic_library=context.quic, defines=('integration', 'offload'))
+        quic_library=context.quic, defines=('integration', 'offload'), timeout=PEER_BUILD_TIMEOUT)
 
 
 @PLAN.workload(group='current', requires=('prepare_current_download_peer',))
@@ -556,7 +559,8 @@ def prepare_integrated_peer(context):
     crypto_library = context.crypto
     quic_library = context.quic
     compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok-integration', crypto_library,
-                             native_libraries=(context.bs,), quic_library=quic_library, defines=('integration',))
+                             native_libraries=(context.bs,), quic_library=quic_library,
+                             defines=('integration',), timeout=PEER_BUILD_TIMEOUT)
     context.integrated = compiled, binary
 
 
@@ -738,7 +742,8 @@ def prepare_offload_peer(context):
     from test_quic_offload import corpus as offload_fixture
     offload_wire, offload_metadata = offload_fixture(BUILD/'offload')
     compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok-offload', crypto_library,
-                             native_libraries=(bs_library,), quic_library=quic_library, defines=('offload',))
+                             native_libraries=(bs_library,), quic_library=quic_library,
+                             defines=('offload',), timeout=PEER_BUILD_TIMEOUT)
     report['quic_offload_build'] = compiled
     context.offload = compiled, binary
     context.offload_wire, context.offload_metadata = offload_wire, offload_metadata
