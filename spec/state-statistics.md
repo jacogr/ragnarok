@@ -105,6 +105,9 @@ Native supplementary tests protect retained scope, copied counter/gas/key record
 resized epochs, owner/index/result guards and private storage. Two negative compiler probes
 reject gas-as-validator-counter and service-ordinal-as-core; one rejects access to owner storage.
 
+The [compact statistics preview qualification](vector-statistics-preview.md) checks
+the original validator counter bytes in all eight regenerated Tiny and Full binaries.
+
 At vector revision `d3c089c9a1d5352ad353626d7a2db8589f137b2a`, the four
 `stf/statistics/{tiny,full}/{stats_with_some_extrinsic-1,stats_epoch_change_with_set_resize-1}.json`
 blobs provide **eight partial validator-pair observations**, including a current 6/previous 1023
