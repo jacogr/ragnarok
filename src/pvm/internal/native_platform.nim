@@ -161,20 +161,27 @@ when NativeCheckedReadEnabled:
     image.ready and image.kind == NativeKind.CheckedReadBody
 
   proc lowerNativeReadBody*(body: NativeReadBody): NativeImage =
-    ## Lower the copied certificate and publish it through the selected ARM64 arena.
+    ## Publish one checked read leaf through the selected arena and preserve the shared image tag.
     result = default(NativeImage)
     if not nativePlatformSupported() or not body.complete: return
-    var words = armCheckedReadInstructions(body)
-    let count = words.len
-    if count == 0 or count > NativeImageByteLimit div 4: return
+    when defined(pvmX86Jit):
+      # The x86 arena accepts a byte stream and its byte count.
+      var encoded = x86CheckedReadInstructions(body)
+      const unitBytes = 1
+    else:
+      # The ARM64 arena retains its original word stream and word count.
+      var encoded = armCheckedReadInstructions(body)
+      const unitBytes = 4
+    let count = encoded.len
+    if count == 0 or count > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()
     if handle == nil: return
-    let offset = arenaPublish(handle, addr words[0], uint32(count))
+    let offset = arenaPublish(handle, addr encoded[0], uint32(count))
     if offset < 0:
       arenaRelease(handle)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(count)*4,
-      kindValue: NativeKind.CheckedReadBody)
+    result = NativeImage(handle: handle, offset: uint32(offset),
+      bytesValue: uint64(count)*uint64(unitBytes), kindValue: NativeKind.CheckedReadBody)
 
   proc enterNativeReadBody*(image: NativeImage, registers: var RegisterFile,
       context: var NativeReadContext): bool =
