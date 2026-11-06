@@ -110,6 +110,8 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   if certGiven != keyGiven: refuse("Supply --net-cert and --net-key together, or omit both to generate a persistent identity")
   var recipe: seq[string] = @[]
   case topic
+  of "node":
+    recipe = @["--net-port", "--net-cert", "--net-key", "--node-finalized", "--net-timeout-ms"]
   of "server", "client":
     recipe = @["--net-port", "--net-cert", "--net-key", "--net-peer-key", "--net-alpn",
         "--net-timeout-ms", "--net-mode"]
@@ -141,9 +143,9 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
     elif flag == "--net-peer-key" and topic != "server":
       refuse("Missing required option for " & topic & ": " & flag)
     elif flag == "--net-remote-port": value = $(DefaultNetworkPort+1)
-    elif flag == "--net-timeout-ms" and topic == "server":
+    elif flag == "--net-timeout-ms" and topic in ["server", "node"]:
       let modes = fields[optionIndex("--net-mode")]
-      let listening = modes.len == 0 or modes[0] == DefaultServerMode
+      let listening = topic == "node" or modes.len == 0 or modes[0] == DefaultServerMode
       value = $(if listening: DefaultServerTimeoutMs else: DefaultTimeoutMs)
     elif OptionSpecs[found].fallback != OptionDefault.Required:
       value = OptionSpecs[found].defaultValue(topic) # One default supplies both help and normalized execution.
@@ -156,9 +158,15 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
       let modes = fields[optionIndex("--net-mode")]
       let maximum = if topic == "server" and modes.len > 0 and modes[0] == "offload":
           MaxOffloadTimeoutMs else: MaxPeerTimeoutMs
-      let listening = topic == "server" and (modes.len == 0 or modes[0] == DefaultServerMode)
+      let listening = topic == "node" or (topic == "server" and (modes.len == 0 or modes[0] ==
+          DefaultServerMode))
       if not boundedNumber(value, (if listening: 0'u64 else: 1'u64), uint64(maximum)):
-        refuse(flag & " must be in 1.." & $maximum)
+        refuse(flag & " must be in " & (if listening: "0" else: "1") & ".." & $maximum)
+    of "--node-finalized":
+      if value.len != 64: refuse("--node-finalized requires exactly 64 lowercase hex digits")
+      for character in value:
+        if character notin {'0'..'9', 'a'..'f'}:
+          refuse("--node-finalized requires exactly 64 lowercase hex digits")
     of "--net-mode":
       if value == DefaultServerMode and topic != "server": refuse("--net-mode listen is only available for server")
     of "--devnet-index":

@@ -39,6 +39,8 @@ int rq_stream_peer(rq_transport *, void *, rq_peer_ref *);
 int rq_peer_live(rq_transport *, const rq_peer_ref *);
 int rq_open_peer(rq_transport *, const rq_peer_ref *);
 int rq_close_peer(rq_transport *, const rq_peer_ref *);
+/* Cancel delayed opens only; existing streams and their contexts remain live. */
+int rq_cancel_peer_opens(rq_transport *, const rq_peer_ref *);
 
 
 /* Install before packets arrive; teardown alone does not generate a peer-close observation. */

@@ -568,6 +568,9 @@ proc nativePeerLive(engine: nil pointer, peer: ptr NativePeerRef): cint {.
 proc nativeOpenPeer(engine: nil pointer, peer: ptr NativePeerRef): cint {.
     importc: "rq_open_peer", header: BridgeHeader, cdecl, raises: [].}
   ## Request a stream only on an exact currently live peer.
+proc nativeCancelPeerOpens(engine: nil pointer, peer: ptr NativePeerRef): cint {.
+    importc: "rq_cancel_peer_opens", header: BridgeHeader, cdecl, raises: [].}
+  ## Cancel only delayed opens on this exact live authenticated generation.
 proc nativeClosePeer(engine: nil pointer, peer: ptr NativePeerRef): cint {.
     importc: "rq_close_peer", header: BridgeHeader, cdecl, raises: [].}
   ## Request closure without claiming that final retirement has already occurred.
@@ -591,6 +594,10 @@ proc openPeerStream*(owner: var Transport, peer: PeerHandle): bool =
   ## Report an accepted bounded caller request; new-stream callbacks deliver the actual stream later.
   var raw = peer.native
   nativeOpenPeer(owner.engine, addr raw) == 1
+proc cancelPeerStreamOpens*(owner: var Transport, peer: PeerHandle): bool =
+  ## The caller owns all pending opens for this peer; existing streams remain untouched.
+  var raw = peer.native
+  nativeCancelPeerOpens(owner.engine, addr raw) == 1
 proc disconnectPeer*(owner: var Transport, peer: PeerHandle): bool =
   ## Ownership remains until a real close event; copied old references cannot close replacements.
   var raw = peer.native

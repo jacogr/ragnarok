@@ -6,12 +6,14 @@
   ],
   "includes": [
     "crypto",
-    "bandersnatch"
+    "bandersnatch",
+    "quic"
   ],
   "libraries": [
     "bandersnatch_observer",
     "bandersnatch",
-    "observer"
+    "observer",
+    "quic"
   ],
   "observers": [
     "verify",

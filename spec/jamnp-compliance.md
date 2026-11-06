@@ -91,3 +91,23 @@ installation, outbound synchronization and the other protocol families remain in
 actual Services worker leases and trusted local canonical/RPC finality publication. Real TLS
 checks cover cancellation, owned joined shutdown and foreign-lease preservation. Ordinary
 executable activation and outbound requests remain incomplete.
+
+[Outbound canonical reads](jamnp-outbound-reads.md) adds bounded CE128/129/143 request/reply
+framing on existing authenticated connections, including public pending-open cancellation and
+application lease isolation. Returned bytes remain untrusted; response semantic/proof validation,
+canonical adoption and ordinary executable activation remain incomplete.
+
+[Canonical read response validation](jamnp-read-validation.md) adds query-bound block structure,
+trusted-root state range authentication and full preimage hashes through Services worker admission.
+Real TLS state replies exercise verification and lease cleanup. Block execution/consensus,
+canonical adoption, ordinary executable activation and the remaining protocol families remain open.
+
+[Managed checked outbound requests](jamnp-checked-requests.md) connects native acquisition,
+bounded detached waiting and trusted-source Services verification under one application ticket.
+Cancellation, worker fairness, deadlines and exact foreign-lease isolation have real TLS coverage.
+Ordinary executable activation, GP execution/adoption and the remaining protocol families remain open.
+
+[Executable authenticated node](jamnp-node-command.md) activates the managed actor through
+`ragnarok node`, with explicit trusted local finality, configured-genesis ALPN and pinned GP clock.
+Real TLS state service and deadline/SIGTERM cleanup cover the foreground owner. Autonomous
+synchronization/GP adoption and the remaining protocol runtime families remain open.
