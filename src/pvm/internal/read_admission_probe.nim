@@ -91,9 +91,10 @@ when declared(FlatFrame):
         bestScore = score
     if best < 0: return
     let winner = f.readProbe.candidates[best]
-    let body = buildFlatReadBody(f, winner.pc, f.readProbe.epoch)
+    var body = buildFlatReadBody(f, winner.pc, f.readProbe.epoch)
     if not body.complete or body.len != winner.operations: return
     let info = body.info
     if info.header != winner.header or info.terminal != winner.terminal: return
     if f.handlers[int(winner.terminal)] != flatCachedJump[1]: return
+    discard extendFlatReadBody(f, body)
     nominateNativeRead(f.nativeSession, body)
