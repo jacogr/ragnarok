@@ -6,8 +6,7 @@ import std/[assertions, envvars, syncio]
 import ../../src/pvm/[machine, program]
 import ../../src/pvm/internal/[native_ir, native_platform, native_read_body, x86_jit]
 
-static:
-  assert NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof)
+assert NativeCheckedReadEnabled and defined(pvmX86Jit) and defined(pvmX86ResidentProof)
 
 proc readBody(extraWrites: range[0..4]): NativeReadBody =
   ## Add decoded writes before the final guarded load to reach six or seven dirty slots.
@@ -16,20 +15,22 @@ proc readBody(extraWrites: range[0..4]): NativeReadBody =
   let extra = [[149'u8, 0x33, 1], [51'u8, 6, 0x26], [51'u8, 7, 0x37], [51'u8, 8, 0x48]]
   for index in 0..<extraWrites:
     starts.add(code.len)
-    code.add(extra[index])
+    for value in extra[index]: code.add(value)
   starts.add(code.len)
-  code.add([130'u8, 0x54])
+  code.add(130'u8)
+  code.add(0x54'u8)
   let terminalPc = code.len
-  code.add([1'u8, 0])
+  code.add(1'u8)
+  code.add(0'u8)
   var wire = @[0'u8, 0, byte(code.len)]
-  wire.add(code)
+  for value in code: wire.add(value)
   var bitmask = newSeq[byte]((code.len+7) div 8)
   bitmask[0] = 1 # The folded leading noop is itself an instruction start.
   for pc in starts:
     bitmask[pc div 8] = bitmask[pc div 8] or (1'u8 shl (pc mod 8))
   for pc in terminalPc..<code.len:
     bitmask[pc div 8] = bitmask[pc div 8] or (1'u8 shl (pc mod 8))
-  wire.add(bitmask)
+  for value in bitmask: wire.add(value)
   let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
   assert decoded.error == ProgramError.None
   let owner = decoded.value

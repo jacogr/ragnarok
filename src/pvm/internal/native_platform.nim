@@ -160,10 +160,15 @@ when NativeCheckedReadEnabled:
     ## The installed ABI tag is meaningful only for a published image.
     image.ready and image.kind == NativeKind.CheckedReadBody
 
-  proc publishReadBody[T](encoded: var seq[T]): NativeImage =
+  when defined(pvmX86Jit):
+    type NativeReadEncoding = byte
+  else:
+    type NativeReadEncoding = uint32
+
+  proc publishReadBody(encoded: var seq[NativeReadEncoding]): NativeImage =
     ## x86 publishes bytes and ARM64 publishes words through the same owning arena path.
     result = default(NativeImage)
-    const unitBytes = sizeof(T)
+    const unitBytes = sizeof(NativeReadEncoding)
     let count = encoded.len
     if count == 0 or count > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()

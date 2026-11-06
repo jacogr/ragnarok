@@ -715,7 +715,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       for index in 0..<body.len:
         let op = body.operation(index)
         let slot = if nativeReadOpcode(op.opcode): op.slots.aIndex else: op.slots.destinationIndex
-        result = result or (1'u32 shl slot)
+        result = result or (1'u32 shl int(slot))
 
     proc readBodyBase(code: var X86Block, access: X86CanonicalAccess, slot: range[0..12]) =
       put(code, [0x8b'u8, 0x57, byte(slot*8)]) # MOV EDX,[RDI+slot*8].
@@ -726,7 +726,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         liveIns, written: uint32
 
       proc readBodyLiveIn(access: var X86CheckedReadAccess, slot: range[0..12]) =
-        let bit = 1'u32 shl slot
+        let bit = 1'u32 shl int(slot)
         if access.bank.registers[slot] != 0 and (access.written and bit) == 0:
           access.liveIns = access.liveIns or bit
 
@@ -738,7 +738,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc writeAccess(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
         assert access.bank.registers[slot] != 0 # Unmapped lanes are read-only throughout this leaf.
         writeAccess(code, access.bank, slot)
-        access.written = access.written or (1'u32 shl slot)
+        access.written = access.written or (1'u32 shl int(slot))
 
       proc readBodyBase(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
         readBodyLiveIn(access, slot)
@@ -750,8 +750,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           if hardware >= 8: put(code, [0x41'u8]) # REX.B selects R12–R15D when required.
           put(code, [0x8b'u8, byte(0xd0 or (hardware and 7))]) # MOV EDX,resident32.
 
-    template emitCheckedReadOperations(code, fixes, labels: untyped, body: NativeReadBody,
-        access: untyped) =
+    template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
+        labels: var array[1+4*int(NativeReadFactLimit), int], body: NativeReadBody, access: untyped) =
       ## Preserve one guard and load emitter for the stack and resident access policies.
       var nextLabel = 1
       const refusal = 0'u8
@@ -891,7 +891,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         emitCheckedReadResidentEntry(entry, access)
         if entry.bytes.len + code.bytes.len > NativeImageByteLimit: return @[]
         # A prepended prologue shifts each branch and its target equally.
-        entry.bytes.add(sealCheckedRead(code, fixes, labels))
+        put(entry, sealCheckedRead(code, fixes, labels))
         takeX86Instructions(entry)
 
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
