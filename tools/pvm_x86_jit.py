@@ -38,13 +38,16 @@ def qualify(checks, compiler, rows=None):
         ('all-opcodes', 'tests/unit/codec/test_pvm_stream_all_opcodes.nim', False),
         ('checked-store-native', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', False),
         ('checked-store-refused', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', True),
+        ('checked-read-tiny', 'tests/unit/codec/test_pvm_checked_read_tiny.nim', False),
+        ('checked-read-arbitration', 'tests/unit/codec/test_pvm_checked_read_arbitration.nim', False),
         ('regions-host', 'tests/unit/codec/test_pvm_stream_regions_and_host.nim', False),
         ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
         ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
         flags = ['pvmX86Jit', *(['pvmX86JitRefuse'] if refused else []),
                  *(['pvmX86RegionRefusalNativeRequired'] if name == 'region-refusal-native' else []),
                  *(['pvmX86RegionRefusalForcedRequired'] if name == 'region-refusal-forced' else []),
-                 *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else [])]
+                 *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else []),
+                 *(['pvmSharedAsyncWitness'] if name == 'checked-read-arbitration' else [])]
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])
@@ -70,6 +73,8 @@ def qualify(checks, compiler, rows=None):
                     raise ValueError('incomplete x86 region-refusal witness: '+marker)
         if name.startswith('checked-store-') and 'X86_CHECKED_STORE_ACTIVE\n' not in run['output']:
             raise ValueError('native-plan checked store loop did not activate')
+        if name.startswith('checked-read-') and run['output'] != (ROOT/source).with_suffix('.output').read_text():
+            raise ValueError('incomplete x86 checked-read witness: '+name)
         if name.startswith('x86-'):
             # Source cohorts stay checked; raw backend cohorts retain real native/refusal execution.
             expected = (
@@ -140,6 +145,7 @@ def run():
         compiler, _ = installed()
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tests/performance').glob('pvm_*jit*')),
+                 *sorted((ROOT/'tests/unit/codec').glob('test_pvm_checked_read_*')),
                  ROOT/'tests/unit/state/test_pvm_x86_region_refusal.nim',
                  ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'spec/toolchain.json', compiler]
         identities = {p:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
@@ -157,7 +163,7 @@ def run():
         save()
         lines = ['Linux x86-64 JIT qualification: '+report['status'], '',
             'Checked release/ARC/Clang ThinLTO; same interpreter gas, memory and source-attempt checks.',
-            'Arithmetic-only opt-in prototype; production x86 default and ARM64 engine remain unchanged.',
+            'Native x86-64 controls cover registers, control flow, memory and checked-read bodies.',
             'No performance claim; every native gate has an independent state/refusal witness.', '']
         lines += ['- '+row['name'] for row in report['qualification']]
         if report.get('error'): lines += ['', 'Failure: '+report['error']]

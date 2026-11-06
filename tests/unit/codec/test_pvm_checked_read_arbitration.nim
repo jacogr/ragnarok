@@ -16,10 +16,11 @@ const
   EndGas = GasStart-3*LoopTrips-43*ReadTrips-22
   Quota = ExecutionStepLimit(300000)
   # PC0 and PC3 ADD_IMM_32, PC6 BRANCH_LT_U to PC0, then PC12 begins the read block.
-  # PC12..19 UNLIKELY, U8, S32, U64, FALLTHROUGH. PC20 increments R6, PC23 loops to PC12.
+  # PC12..19 UNLIKELY, U8, S32, U64, FALLTHROUGH. U64 uses its own base in R8.
+  # PC20 increments R6 and PC23 loops to PC12.
   # PC29 JUMP_IND R0,0 halts. Offset nine in the wire is exactly the prefix branch opcode.
   Wire = [0'u8, 0, 31, 131, 0x77, 3, 131, 0xaa, 1, 172, 0xba, 0xfa, 0xff, 0xff, 0xff,
-    2, 124, 0x53, 129, 0x52, 130, 0x54, 1, 131, 0x66, 1, 172, 0x96, 0xf5, 0xff, 0xff, 0xff,
+    2, 124, 0x53, 129, 0x52, 130, 0x84, 1, 131, 0x66, 1, 172, 0x96, 0xf5, 0xff, 0xff, 0xff,
     50, 0, 0x49, 0xb0, 0x9a, 0x20]
 
 proc noHost(called: var bool, stop: StepOutcome): HostResponse {.raises: [].} =
@@ -56,6 +57,59 @@ proc verifyOutcome(done: StepResult, source: Machine, original: PageImage) =
     assert actualPage.error == MachineError.None and actualPage.value.access == original.access
     assert actualPage.value.bytes == original.bytes
 
+when defined(pvmX86Jit):
+  proc verifyReadyReadFallback(code: Program, prepared, checked: PreparedProgram,
+      initial: MachineInfo, pages: openArray[PageImage], expectedExit: StepExit) =
+    ## Keep the first two reads valid and force the third outside the native extent table.
+    var input = initial
+    input.registers[8] = RegisterValue(0x22000)
+    let memory = captureMemory(pages, PageLimit(2))
+    assert memory.error == MachineError.None
+    let captured = captureMachine(code, memory.value, input)
+    assert captured.error == MachineError.None
+    var called = false
+    let before = preparedInfo(prepared).value
+    assert before.nativeFragments == 1
+    let baseline = executeWithHost(captured.value, called, noHost, Quota, HostCallLimit(0), checked)
+    let fallback = executeWithHost(captured.value, called, noHost, Quota, HostCallLimit(0),
+      prepared)
+    assert not called and baseline.error == StepError.None and fallback.error == StepError.None
+    let wanted = baseline.value
+    let actual = fallback.value
+    assert wanted.exit == expectedExit and actual.exit == expectedExit
+    assert actual.backend == PvmBackend.Interpreted
+    let expectedCpu = machineInfo(wanted.machine).value
+    let actualCpu = machineInfo(actual.machine).value
+    assert uint64(actualCpu.pc) == uint64(expectedCpu.pc)
+    assert uint64(actualCpu.gas) == uint64(expectedCpu.gas)
+    assert uint64(actualCpu.gasDeficit) == uint64(expectedCpu.gasDeficit)
+    assert actualCpu.blockCharged == expectedCpu.blockCharged
+    for slot in 0..<13:
+      # The checked replay owns the earlier read results and all remaining guest state.
+      assert uint64(actualCpu.registers[slot]) == uint64(expectedCpu.registers[slot])
+    assert uint64(actualCpu.registers[2]) == 0x76543210 and uint64(actualCpu.registers[3]) == 0x10
+    if actual.exit == StepExit.Fault and wanted.exit == StepExit.Fault:
+      # Both permission faults keep the final destination and identify the exact read and page.
+      assert uint32(actual.faultPage) == 0x22000 and uint32(wanted.faultPage) == 0x22000
+      assert uint64(actualCpu.pc) == 17
+      assert uint64(actualCpu.registers[4]) == uint64(initial.registers[4])
+    else:
+      # Checked replay can complete the read from the extra, noncontiguous readable extent.
+      assert uint64(actualCpu.registers[4]) == 0x1200000000000078'u64
+    for snapshot in [memory.value, memoryOf(wanted.machine).value, memoryOf(actual.machine).value]:
+      # Compare the complete mapping, including retained inaccessible bytes and permissions.
+      let indices = pageIndices(snapshot)
+      assert indices.error == MachineError.None and indices.value.len == pages.len
+      for i, original in pages:
+        assert uint32(indices.value[i]) == uint32(original.index)
+        let page = pageImage(snapshot, original.index)
+        assert page.error == MachineError.None
+        assert page.value.access == original.access and page.value.bytes == original.bytes
+    let after = preparedInfo(prepared).value
+    assert after.nativeFragments == before.nativeFragments
+    assert after.nativeCalls == before.nativeCalls
+    assert after.nativeOperations == before.nativeOperations
+
 for closed in [true, false]:
   # Only the prefix branch kind changes. BRANCH_NE_U remains equivalent over the fixed monotone counter.
   var wire = Wire
@@ -67,6 +121,7 @@ for closed in [true, false]:
   var registers = default(RegisterFile)
   registers[0] = RegisterValue(0xffff0000)
   registers[5] = RegisterValue(0x20000)
+  registers[8] = RegisterValue(0x20000)
   registers[9] = RegisterValue(ReadTrips)
   registers[11] = RegisterValue(LoopTrips)
   var page = PageImage(index: PageIndex(32), access: PageAccess.ReadOnly)
@@ -161,6 +216,24 @@ for closed in [true, false]:
       let committed = if budget == 4096: 585'u64 else: 0'u64
       assert boundary.nativeCalls == beforeFloor.nativeCalls+committed
       assert boundary.nativeOperations == beforeFloor.nativeOperations+3*committed
+    when defined(pvmX86Jit):
+      # Page 34 is unmapped, then inaccessible, then readable but outside the three native extents.
+      let initial = machineInfo(source).value
+      verifyReadyReadFallback(code, prepared, checked.value, initial, [page], StepExit.Fault)
+      var late = PageImage(index: PageIndex(34), access: PageAccess.Inaccessible)
+      late.bytes[0] = 0x78
+      late.bytes[7] = 0x12
+      verifyReadyReadFallback(code, prepared, checked.value, initial, [page, late], StepExit.Fault)
+      late.access = PageAccess.ReadOnly
+      verifyReadyReadFallback(code, prepared, checked.value, initial, [page, late], StepExit.Halt)
+      let beforeRecovery = preparedInfo(prepared).value
+      let recovered = executeWithHost(source, called, noHost, Quota, HostCallLimit(0), prepared)
+      verifyOutcome(recovered, source, page)
+      assert not called and recovered.value.backend == PvmBackend.Jit
+      let recoveredInfo = preparedInfo(prepared).value
+      assert recoveredInfo.nativeFragments == beforeRecovery.nativeFragments
+      assert recoveredInfo.nativeCalls == beforeRecovery.nativeCalls+ReadTrips
+      assert recoveredInfo.nativeOperations == beforeRecovery.nativeOperations+3*ReadTrips
   let after = runtimeInfo(runtime)
   assert after.submitted == 1 and after.completed == 1 and after.completions == 0
   prepared = default(PreparedProgram)

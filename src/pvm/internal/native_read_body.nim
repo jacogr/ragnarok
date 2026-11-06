@@ -6,9 +6,11 @@ import std/assertions
 import ./[jit_rules, native_ir]
 
 const
-  NativeCheckedReadEnabled* = defined(pvmArm64Jit) and not defined(pvmX86Jit) and
-    defined(arm64) and (defined(linux) or defined(macosx))
-    ## Checked read admission requires the supported ARM64 lowerer.
+  NativeCheckedReadEnabled* =
+    (defined(pvmX86Jit) and defined(amd64) and defined(linux)) or
+    (defined(pvmArm64Jit) and not defined(pvmX86Jit) and
+      defined(arm64) and (defined(linux) or defined(macosx)))
+    ## Checked read admission requires a supported native lowerer.
   NativeReadSuccess* = 1'u32        ## Every staged register write committed.
   NativeReadRefusal* = high(uint32) ## No guest write occurred.
   NativeReadFactLimit* = 32'u32     ## Includes the folded leading noop and checked terminal.
