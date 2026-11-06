@@ -14,7 +14,7 @@ proc configure(operation, skip, failures, reason: cint): cint {.importc: "storag
     header: "observer.h".}
   ## The C controller rejects invalid operations and negative fault counts without changing SDK state.
 proc ioCalls*(operation: cint): uint64 {.importc: "storage_io_calls", cdecl, header: "observer.h".}
-  ## Count actual calls reaching the selected test observer.
+  ## Observe actual calls only after IO quiesces; the explicit atomic read-gate receipt supports concurrent control.
 proc pendingIo*(): cint {.importc: "storage_io_remaining", cdecl, header: "observer.h".}
   ## Require configured faults to be consumed, rather than treating an unexercised case as success.
 proc limitWrites*(limit: csize_t) {.importc: "storage_io_write_limit", cdecl, header: "observer.h".}
@@ -48,6 +48,12 @@ proc reusedDescriptorOpen*(): cint {.importc: "storage_io_reused_open", cdecl,
 proc limitReads*(limit: csize_t) {.importc: "storage_io_read_limit", cdecl, header: "observer.h".}
   ## Cap genuine native read progress; zero restores unrestricted calls and actual EOF.
 
+proc holdReads*(skip: cint): cint {.importc: "storage_io_hold_read", cdecl, header: "observer.h".}
+  ## Arm only while IO is quiescent; one IO thread pauses after the selected real forwarded calls.
+proc readsHeld*(): cint {.importc: "storage_io_read_held", cdecl, header: "observer.h".}
+  ## Atomic receipt is safe to poll while the IO thread holds its live worker/archive lease.
+proc releaseReads*() {.importc: "storage_io_release_read", cdecl, header: "observer.h".}
+  ## Idempotently release from the controlling thread before joining, including every failure path.
 proc shrinkOnRead*(descriptor: cint, extent: int64): cint {.importc: "storage_io_shrink_on_read",
     cdecl, header: "observer.h".}
   ## Borrow one test-owned writable regular inode of at most64 KiB for an exact post-stat truncation.

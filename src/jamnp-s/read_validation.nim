@@ -406,7 +406,7 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
   of ReadKind.Report: checkReport(request, wire, source)
   of ReadKind.State: checkState(request, wire, source, limits)
   of ReadKind.Preimage: checkPreimage(request, wire)
-  of ReadKind.Guarantee, ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
+  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
       ReadKind.TicketDistribution:
     if wire.len != 0: ReadVerificationResult[CheckedReadReply](
         status: ReadVerificationError.InvalidFormat)

@@ -55,6 +55,12 @@ import ./proof/[query as proof_query, worker as proof_worker, network_read]
 import ./proof/read_validation as verification_job
 import ./proof/ticket_verification as ticket_job
 import ./proof/ticket_production
+import ./proof/assurance_storage
+import ./proof/assurance_acquisition
+import ./proof/assurance_signing
+import ../jamnp-s/assurance_possession
+from ../codec/assurances import AssuranceBits
+import ../jamnp-s/[assurance_store, assurance_record]
 import ./proof/work_submission as work_jobs
 import ../jamnp-s/work_submission
 import ../jamnp-s/work_recovery
@@ -63,8 +69,11 @@ import ../jamnp-s/work_stream
 import ../jamnp-s/work_report
 import ../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire, work_guarantee]
 import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_distribution]
+import ../jamnp-s/assurance_distribution
+import ../jamnp-s/assurance_fetch
+import ../jamnp-s/assurance_schedule
 from ../codec/owned import OwnershipError
-from ../codec/work/report import ErasureRoot
+from ../codec/work/report import ErasureRoot, CoreIndex
 from ../state/availability/specifier import AvailabilityCommitment
 import ../jamnp-s/availability_proof
 from ../state/erasure/words import ErasureShardIndex
@@ -118,6 +127,37 @@ import ../mcp/protocol as mcp_protocol
 type
   StateProofAdmissionError* {.pure.} = enum ## Admission grants a ticket only after capture and native submission succeed.
     Uninitialized, None, Closed, Busy, QueryFailure, WorkerFailure
+  AssuranceStorageStartError* {.pure.} = enum ## Namespace startup has its own closed capture/worker alternatives and never grants possession or signing authority.
+    Uninitialized, None, Closed, Unavailable, Busy, IdentityFailure, CaptureFailure, WorkerFailure
+  AssuranceStorageStart* = object ## Only admitted full-state storage work exposes the exact shared-worker collection ticket.
+    case status: AssuranceStorageStartError
+    of None: ticket: ProofWorkerTicket
+    of IdentityFailure: identityReason: NetworkIdentityError
+    of CaptureFailure: captureReason: AssuranceStorageJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # No failed/default alternative retains a path, job or native owner.
+  AssuranceAcquisitionStart* = object ## Accepted acquisition alone grants the exact shared-worker ticket; failure contains no selected-state or input alias.
+    case status: AssuranceStorageStartError
+    of None: ticket: ProofWorkerTicket
+    of CaptureFailure: captureReason: AssuranceAcquisitionError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Closed, unavailable and busy starts cannot access the namespace or canonical graph.
+  AssuranceWorkStart* = object ## Closed assurance planning or receipt owns only an exact shared-worker ticket; failed admission retains no source.
+    case status: StateProofAdmissionError
+    of None: ticket: ProofWorkerTicket
+    of QueryFailure: captureReason: WorkJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Default/closed/busy starts contain no accepted job.
+  AssuranceSigningStart* = object ## Only accepted native signing exposes a ticket; the caller provides a selection, never a purported possession proof or raw message.
+    case status: AssuranceStorageStartError
+    of None: ticket: ProofWorkerTicket
+    of CaptureFailure: captureReason: AssuranceSigningJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Failed/default capture cannot expose a private key, source or signing lease.
+  AssuranceStorageInfo* = object ## Host-owned cached accounting remains readable while a mutable namespace lease runs elsewhere.
+    opened*, faulted*: bool
+    records*, bytes*: uint64
+    chain*: AssuranceChainId
   ReadVerificationStart* = object ## Bounded fresh verification shares the existing exact Services worker lease.
     case status: StateProofAdmissionError
     of None: ticket: ProofWorkerTicket
@@ -399,6 +439,22 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   nativeRuntime: NativeRuntime      # Explicit application-wide compiler lifecycle, never per-code thread creation.
   executionContext: ServiceExecutionContext # Full-state lifetime; bounded baseline/scratch is allowed, but no live CPU/host/result/chain state.
   proofWorker: StateProofWorker
+  assuranceStore: AssuranceStore
+  assuranceStorageInput: AssuranceStorageJob
+  assuranceStorageChain: AssuranceChainId
+  assuranceAcquisitionInput: AssuranceAcquisitionJob
+  assuranceAcquisitionActive: bool
+  assuranceReadActive, assuranceReadsEnabled: bool
+  assuranceReadLimits: AssuranceReadLimits
+  assuranceSigner: WorkSigner
+  assuranceSignerReady: bool
+  assuranceSignerIdentity: StateEdKey
+  assuranceWorkInput: WorkSubmissionJob
+  assuranceSigningInput: AssuranceSigningJob
+  assuranceSigningActive: bool
+  lastAssurance: SignedAssurance
+  assuranceStorageActive: bool
+  assuranceInfo: AssuranceStorageInfo
   proofInput: ProofQuery
   networkReadInput: NetworkReadJob
   verificationInput: ReadVerificationJob
@@ -508,6 +564,13 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   ## Only closed aggregates may relocate; native workers and callback borrows require the original stable parent address.
   `=wasMoved`(services.light)
   `=wasMoved`(services.proofWorker)
+  `=wasMoved`(services.assuranceStore)
+  `=wasMoved`(services.assuranceStorageInput)
+  `=wasMoved`(services.assuranceAcquisitionInput)
+  `=wasMoved`(services.assuranceSigner)
+  `=wasMoved`(services.assuranceWorkInput)
+  `=wasMoved`(services.assuranceSigningInput)
+  `=wasMoved`(services.lastAssurance)
   `=wasMoved`(services.proofInput)
   `=wasMoved`(services.networkReadInput)
   `=wasMoved`(services.verificationInput)
@@ -592,6 +655,13 @@ proc `=destroy`*(services: Services) =
   ## Retire partially configured owners and the shared snapshot even without explicit shutdown.
   `=destroy`(services.light)
   `=destroy`(services.proofWorker) # Explicit joined close precedes every selected-state alias retirement.
+  `=destroy`(services.assuranceStorageInput)
+  `=destroy`(services.assuranceAcquisitionInput)
+  `=destroy`(services.assuranceSigner)
+  `=destroy`(services.assuranceWorkInput)
+  `=destroy`(services.assuranceSigningInput)
+  `=destroy`(services.lastAssurance)
+  `=destroy`(services.assuranceStore) # Its native borrower has joined and its single-writer gate is explicitly closed.
   `=destroy`(services.proofInput)
   `=destroy`(services.networkReadInput)
   `=destroy`(services.verificationInput)
@@ -818,12 +888,44 @@ func diskPreparationOutcome*(services: Services): DiskChainResult[
   ## Failed host staging keeps its own typed context refusal; default means no such failure was recorded.
   services.diskStageOutcome
 
+proc refreshAssuranceStorage(services: var Services) =
+  ## Only exact collection or joined stop may copy scalar namespace state after its exclusive mutable borrow retires.
+  if services.assuranceStore.opened:
+    services.assuranceInfo = AssuranceStorageInfo(opened: true,
+      faulted: services.assuranceStore.faulted, chain: services.assuranceStorageChain,
+      records: services.assuranceStore.len, bytes: services.assuranceStore.byteLength)
+  else:
+    # Closed admission carries no remembered namespace identity or capacity facts.
+    services.assuranceInfo = default(AssuranceStorageInfo)
+
 proc stopStateProofs*(services: var Services) =
   ## Join before dropping the captured selection or releasing this proof job's exact RPC token.
   if services.light.active:
     services.light.stopProofs()
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
+  services.assuranceWorkInput = default(WorkSubmissionJob)
+  services.assuranceSigningInput = default(AssuranceSigningJob)
+  if services.assuranceSigningActive:
+    # Joined cancellation may have renewed data but must not leave a publishable signature from this stopped turn.
+    services.refreshAssuranceStorage()
+    services.assuranceSigningActive = false
+    services.lastAssurance = default(SignedAssurance)
+  services.assuranceAcquisitionInput = default(AssuranceAcquisitionJob)
+  if services.assuranceAcquisitionActive:
+    # A cancelled completed publication remains stored; only joined observation can refresh accounting or its fault gate.
+    services.refreshAssuranceStorage()
+    services.assuranceAcquisitionActive = false
+  if services.assuranceReadActive:
+    # A cancelled read may already have detected corrupt durable data; join precedes cached fault observation.
+    services.refreshAssuranceStorage()
+    services.assuranceReadActive = false
+  services.assuranceStorageInput = default(AssuranceStorageJob)
+  if services.assuranceStorageActive:
+    # Joined startup may already have opened the namespace; cancellation cannot roll that side effect back on the worker.
+    discard services.assuranceStore.close()
+    services.assuranceInfo = default(AssuranceStorageInfo)
+    services.assuranceStorageActive = false
   services.distributionInput = default(WorkSubmissionJob)
   services.distributionTicket = default(ProofWorkerTicket)
   services.distributionActive = false # Joined stop revokes this namespace before its worker can reopen.
@@ -890,6 +992,8 @@ proc close*(services: var Services) =
     log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping service workers and listeners")
   services.light.close() # Distinct light workers join before the borrowed RPC owner or partial evidence retires.
   services.stopStateProofs() # Join selected-state access before any canonical/RPC owner retires.
+  discard services.assuranceStore.close() # No namespace descriptor or owner address retires before its borrower joins.
+  services.assuranceInfo = default(AssuranceStorageInfo)
   services.ticketSigner = default(TicketSigner) # Last private-key ownership retires only after every secret-borrowing job joins.
   services.ticketSignerReady = false
   services.ticketSignerVersion = 0
@@ -906,6 +1010,10 @@ proc close*(services: var Services) =
   services.distributionActive = false
   services.sharingIdentity = nil
   services.sharingGeneration = 0
+  services.assuranceSigner = default(WorkSigner)
+  services.assuranceSignerReady = false
+  services.assuranceSignerIdentity = default(StateEdKey)
+  services.lastAssurance = default(SignedAssurance)
   services.workSigner = default(WorkSigner)
   services.workSignerReady = false
   services.workSignerIdentity = default(StateEdKey)
@@ -925,6 +1033,8 @@ proc close*(services: var Services) =
   services.workIdentity = nil
   services.workTicket = default(ProofWorkerTicket)
   services.availabilityStore.clear()
+  services.assuranceReadsEnabled = false
+  services.assuranceReadLimits = default(AssuranceReadLimits)
   services.availabilityEnabled = false
   services.availabilityLimits = default(AvailabilityReadLimits)
   services.workGeneration = 0
@@ -1957,6 +2067,14 @@ func availabilityReadsMatch*(services: Services, limits: AvailabilityReadLimits)
     uint64(services.availabilityLimits.computation.hashes) == uint64(limits.computation.hashes) and
     uint64(services.availabilityLimits.computation.hashBytes) == uint64(
         limits.computation.hashBytes)
+proc configureAssuranceReads*(services: var Services, limits: AssuranceReadLimits): bool =
+  ## Explicit durable audit serving requires an installed healthy full-state namespace, and opens no archive or key itself.
+  if not services.started or services.light.active or not services.stateProofAvailable or
+      services.assuranceReadsEnabled or not limits.valid: return false
+  if not services.assuranceInfo.opened or services.assuranceInfo.faulted: return false
+  services.assuranceReadLimits = limits
+  services.assuranceReadsEnabled = true
+  true
 proc configureAvailabilityReads*(services: var Services, limits: AvailabilityReadLimits): bool =
   ## Explicit one-time policy activation never rebinds a live worker's source or resource contract.
   if not services.started or not services.stateProofAvailable or services.availabilityEnabled or
@@ -1978,7 +2096,13 @@ proc rememberAvailability*(services: var Services,
   if not services.stateProofAvailable: return AvailabilityStoreError.Busy
   services.availabilityStore.remember(transfer)
 proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadError =
-  ## Exact root/shard selection touches the private cache only before the worker lease is acquired.
+  ## Durable lookup stays on the worker; legacy memory-cache sources are selected only while the host owns the idle lease.
+  if services.assuranceReadsEnabled:
+    # Durable selection performs no foreground filesystem IO; all lookup, proof and synchronization work stays in the closed job.
+    let captured = captureAssuranceRead(services.assuranceStore, request,
+        services.assuranceReadLimits)
+    if captured.error == ReadError.None: services.networkReadInput = captured.value
+    return captured.error
   if not services.availabilityEnabled: return ReadError.Unavailable
   let payload = request.payload
   var selected = AvailabilityRequest(kind: AvailabilityTransferKind.Audit,
@@ -2050,6 +2174,12 @@ proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadEr
   reason
 proc stageSegmentShardBatch(services: var Services, request: ReadRequest): ReadError =
   ## The complete bounded private cache snapshot is frozen before admission; no caller-owned transfer alias enters this job.
+  if services.assuranceReadsEnabled and uint64(services.assuranceReadLimits.batchSources) > 0:
+    # A separately selected durable batch policy captures no payload graphs or filesystem data on the foreground thread.
+    let captured = captureAssuranceRead(services.assuranceStore, request,
+        services.assuranceReadLimits)
+    if captured.error == ReadError.None: services.networkReadInput = captured.value
+    return captured.error
   if not services.availabilityEnabled or not services.availabilityStore.configured: return ReadError.Unavailable
   let captured = captureSegmentShardBatch(services.availabilityStore.snapshot, request,
       services.availabilityLimits)
@@ -2083,6 +2213,10 @@ proc beginNetworkRead*(services: var Services, request: ReadRequest): NetworkRea
   let admitted = services.proofWorker.submit(services.networkReadInput)
   if admitted.error == ProofWorkerError.None:
     services.proofing = true # Disconnect/cancel must not clear this flag before matching Done collection or join.
+    let batch = request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards] and
+      uint64(services.assuranceReadLimits.batchSources) > 0
+    services.assuranceReadActive = services.assuranceReadsEnabled and (request.kind ==
+        ReadKind.Audit or batch)
     return NetworkReadStart(status: StateProofAdmissionError.None, ticket: admitted.value)
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
@@ -2171,6 +2305,10 @@ proc stateProofPhase*(services: var Services): ProofWorkerPhase =
   ## Synchronized scalar polling never observes or copies selected-state ARC owners.
   if services.light.active: services.light.proofPhase() else: services.proofWorker.phase
 
+proc stateProofActive*(services: var Services, ticket: ProofWorkerTicket): bool =
+  ## Closed full-state managed jobs retain an exact generation through Done; foreign tickets and joined shutdown cannot revive it.
+  services.proofing and not services.light.active and services.proofWorker.active(ticket)
+
 proc cancelStateProof*(services: var Services, ticket: ProofWorkerTicket): bool =
   ## Cancellation requests discard without releasing graph access or bounded capacity.
   if services.light.active: services.light.cancelQuery(ticket) else: services.proofWorker.cancel(ticket)
@@ -2181,9 +2319,352 @@ proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): Proo
       ticket) # Only actual matching Done collection ends its own request lease.
   result = services.proofWorker.collect(ticket)
   if result.kind != ProofWorkerCompletionKind.Uninitialized:
+    services.assuranceWorkInput = default(
+        WorkSubmissionJob) # Matching collection retires the canonical receipt borrow before RPC resumes.
+    if services.assuranceSigningActive:
+      # Only this Services lifetime's actual uncancelled completed signature becomes publishable; cancellation still refreshes real retained promises/faults.
+      services.refreshAssuranceStorage()
+      services.lastAssurance = default(SignedAssurance)
+      if result.kind == ProofWorkerCompletionKind.AssuranceSigned:
+        let signed = result.assuranceSigningValue
+        if signed.error == AssuranceSigningError.None: services.lastAssurance = signed.value
+      services.assuranceSigningInput = default(AssuranceSigningJob)
+      services.assuranceSigningActive = false
+    if services.assuranceAcquisitionActive:
+      # Cancellation may hide a completed durable write; refresh actual counters/fault status without claiming a possession bit.
+      services.refreshAssuranceStorage()
+      services.assuranceAcquisitionInput = default(AssuranceAcquisitionJob)
+      services.assuranceAcquisitionActive = false
+    if services.assuranceReadActive:
+      # Exact collection ends the namespace borrow before observing real restore faults, including cancelled Done reads.
+      services.refreshAssuranceStorage()
+      services.assuranceReadActive = false
+    if services.assuranceStorageActive:
+      # Exact collection ends mutation before touching any native-owner fields; a cancelled Done result still needs explicit close.
+      if result.kind == ProofWorkerCompletionKind.AssuranceCompleted and
+          result.assuranceStorageValue.error == AssuranceStoreError.None:
+        services.refreshAssuranceStorage()
+      else:
+        discard services.assuranceStore.close()
+        services.assuranceInfo = default(AssuranceStorageInfo)
+      services.assuranceStorageInput = default(AssuranceStorageJob)
+      services.assuranceStorageActive = false
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # A stale/foreign/early ticket never resumes another lease.
+
+func error*(outcome: AssuranceStorageStart): AssuranceStorageStartError =
+  ## Read the selected startup refusal before accessing its ticket or child reason.
+  outcome.status
+func value*(outcome: AssuranceStorageStart): ProofWorkerTicket {.requires: outcome.status ==
+    AssuranceStorageStartError.None.} =
+  ## Only successful native admission grants collection or cancellation authority.
+  outcome.ticket
+func identityError*(outcome: AssuranceStorageStart): NetworkIdentityError {.requires: outcome.status ==
+    AssuranceStorageStartError.IdentityFailure.} =
+  ## Preserve actual configured-genesis identity refusal; a best head or caller-selected chain cannot replace the original network.
+  outcome.identityReason
+func captureError*(outcome: AssuranceStorageStart): AssuranceStorageJobError {.requires: outcome.status ==
+    AssuranceStorageStartError.CaptureFailure.} =
+  ## Preserve bounded path/policy capture failure without opening a namespace.
+  outcome.captureReason
+func workerError*(outcome: AssuranceStorageStart): ProofWorkerError {.requires: outcome.status ==
+    AssuranceStorageStartError.WorkerFailure.} =
+  ## Worker refusal leaves no live namespace job or canonical/RPC exclusion.
+  outcome.workerReason
+func assuranceStorageInfo*(services: Services): AssuranceStorageInfo =
+  ## Poll only host-owned cached accounting; the actual namespace can be mutating on the native thread.
+  services.assuranceInfo
+proc stageAssuranceStorage(services: var Services, folder: string, chain: AssuranceChainId,
+    limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageJobError =
+  ## Retire the capture wrapper and its private path aliases before a native thread can execute the staged job.
+  let captured = captureAssuranceStorage(services.assuranceStore, folder, chain, limits, mode)
+  if captured.error == AssuranceStorageJobError.None:
+    services.assuranceStorageInput = captured.value
+    services.assuranceStorageChain = chain
+  captured.error
+proc beginAssuranceStorage*(services: var Services, folder: string,
+    limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageStart {.raises.} =
+  ## Explicit full-state startup uses the same single CPU/I/O capacity and exact RPC lease; no foreground callback scans files.
+  if not services.started: return AssuranceStorageStart(status: AssuranceStorageStartError.Closed)
+  if services.light.active: return AssuranceStorageStart(
+      status: AssuranceStorageStartError.Unavailable)
+  if not services.stateProofAvailable or services.assuranceInfo.opened:
+    return AssuranceStorageStart(status: AssuranceStorageStartError.Busy)
+  discard services.proofWorker.start()
+  let identity = readNetworkIdentity(services.chainText)
+  if identity.error != NetworkIdentityError.None:
+    return AssuranceStorageStart(status: AssuranceStorageStartError.IdentityFailure,
+        identityReason: identity.error)
+  let chain = AssuranceChainId(array[32, byte](identity.value.genesisHash))
+  let captured = services.stageAssuranceStorage(folder, chain, limits, mode)
+  if captured != AssuranceStorageJobError.None:
+    return AssuranceStorageStart(status: AssuranceStorageStartError.CaptureFailure,
+        captureReason: captured)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.assuranceStorageInput = default(AssuranceStorageJob)
+    return AssuranceStorageStart(status: AssuranceStorageStartError.Busy)
+  let admitted = services.proofWorker.submit(services.assuranceStorageInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    services.assuranceStorageActive = true
+    return AssuranceStorageStart(status: AssuranceStorageStartError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.assuranceStorageInput = default(AssuranceStorageJob)
+  AssuranceStorageStart(status: AssuranceStorageStartError.WorkerFailure,
+      workerReason: admitted.error)
+
+func error*(outcome: AssuranceAcquisitionStart): AssuranceStorageStartError =
+  ## Read startup/lease refusal before extracting its guarded ticket or child reason.
+  outcome.status
+func value*(outcome: AssuranceAcquisitionStart): ProofWorkerTicket {.requires: outcome.status ==
+    AssuranceStorageStartError.None.} =
+  ## Exact admitted acquisition alone can be collected or cancelled.
+  outcome.ticket
+func captureError*(outcome: AssuranceAcquisitionStart): AssuranceAcquisitionError {.requires: outcome.status ==
+    AssuranceStorageStartError.CaptureFailure.} =
+  ## Keep the actual bounded input/source/namespace capture refusal.
+  outcome.captureReason
+func workerError*(outcome: AssuranceAcquisitionStart): ProofWorkerError {.requires: outcome.status ==
+    AssuranceStorageStartError.WorkerFailure.} =
+  ## A failed native submission retains no canonical/RPC exclusion or source owner.
+  outcome.workerReason
+proc stageAssuranceAcquisition(services: var Services, local: StateEdKey, core: CoreIndex,
+    ordinal: int, wire: openArray[byte], now: AssuranceTime,
+    limits: AssuranceAcquisitionLimits, existingOnly: bool): AssuranceAcquisitionError =
+  ## All temporary best-head/capture aliases retire before submission; the peer supplies no canonical source, descriptor or shard coordinate.
+  let captured = if existingOnly:
+    captureAssuranceProbe(services.assuranceStore, services.canonical.chainView.bestBlock,
+      services.assuranceInfo.chain, local, core, ordinal, now, limits)
+  else:
+    captureAssuranceAcquisition(services.assuranceStore, services.canonical.chainView.bestBlock,
+      services.assuranceInfo.chain, local, core, ordinal, wire, now, limits)
+  if captured.error == AssuranceAcquisitionError.None:
+    services.assuranceAcquisitionInput = captured.value
+  captured.error
+proc beginAcquisition(services: var Services, local: StateEdKey, core: CoreIndex,
+    ordinal: int, wire: openArray[byte], now: AssuranceTime,
+    limits: AssuranceAcquisitionLimits, existingOnly: bool): AssuranceAcquisitionStart {.raises.} =
+  ## Optional full-state acquisition binds current canonical assignments and the installed chain namespace under one reusable worker/RPC lease.
+  if not services.started: return AssuranceAcquisitionStart(
+      status: AssuranceStorageStartError.Closed)
+  if services.light.active or not services.assuranceInfo.opened or services.assuranceInfo.faulted:
+    return AssuranceAcquisitionStart(status: AssuranceStorageStartError.Unavailable)
+  if not services.stateProofAvailable: return AssuranceAcquisitionStart(
+      status: AssuranceStorageStartError.Busy)
+  discard services.proofWorker.start()
+  let reason = services.stageAssuranceAcquisition(local, core, ordinal, wire, now, limits, existingOnly)
+  if reason != AssuranceAcquisitionError.None:
+    return AssuranceAcquisitionStart(status: AssuranceStorageStartError.CaptureFailure,
+        captureReason: reason)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.assuranceAcquisitionInput = default(AssuranceAcquisitionJob)
+    return AssuranceAcquisitionStart(status: AssuranceStorageStartError.Busy)
+  let admitted = services.proofWorker.submit(services.assuranceAcquisitionInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    services.assuranceAcquisitionActive = true
+    return AssuranceAcquisitionStart(status: AssuranceStorageStartError.None,
+        ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.assuranceAcquisitionInput = default(AssuranceAcquisitionJob)
+  AssuranceAcquisitionStart(status: AssuranceStorageStartError.WorkerFailure,
+      workerReason: admitted.error)
+
+proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core: CoreIndex,
+    ordinal: int, wire: openArray[byte], now: AssuranceTime,
+    limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
+  ## Detached actual CE137 bytes enter only fresh canonical verification and real durable publication under the shared lease.
+  services.beginAcquisition(local, core, ordinal, wire, now, limits, false)
+proc beginAssuranceProbe*(services: var Services, local: StateEdKey, core: CoreIndex,
+    ordinal: int, now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
+  ## Full stored verification and actual restore synchronization return fixed observations only; absence never claims possession or opens a namespace implicitly.
+  services.beginAcquisition(local, core, ordinal, [], now, limits, true)
+
+func error*(outcome: AssuranceWorkStart): StateProofAdmissionError =
+  ## Read admission before selecting an exact ticket or real capture/native failure.
+  outcome.status
+func value*(outcome: AssuranceWorkStart): ProofWorkerTicket {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Foreign/stale tickets cannot collect or cancel this receipt's lease.
+  outcome.ticket
+func captureError*(outcome: AssuranceWorkStart): WorkJobError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Failed closed capture never retains a canonical alias.
+  outcome.captureReason
+func workerError*(outcome: AssuranceWorkStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## Native slot refusal remains distinct from raw request admission.
+  outcome.workerReason
+proc stageAssuranceDistribution(services: var Services, request: ReadRequest,
+    peer: StateEdKey, limits: AssuranceDistributionLimits): WorkJobError =
+  ## Source and capture wrapper aliases retire before shared-worker publication.
+  let captured = captureAssuranceDistribution(request, services.canonical.chainView.bestBlock, peer, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.assuranceWorkInput = captured.value
+  WorkJobError.None
+proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
+  ## Staging activations have retired every temporary alias before this exact canonical/RPC admission publishes the private job.
+  discard services.proofWorker.start()
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.assuranceWorkInput = default(WorkSubmissionJob)
+    return AssuranceWorkStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.assuranceWorkInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    return AssuranceWorkStart(status: StateProofAdmissionError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.assuranceWorkInput = default(WorkSubmissionJob)
+  AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
+      workerReason: admitted.error)
+proc stageAssurancePlanning(services: var Services, local: StateEdKey,
+    limits: AssuranceFetchLimits): WorkJobError =
+  ## The actual selected complete source is captured independently of peers and retired temporary view wrappers.
+  let captured = captureAssurancePlanning(services.canonical.chainView.bestBlock, local, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.assuranceWorkInput = captured.value
+  WorkJobError.None
+proc beginAssurancePlanning*(services: var Services, local: StateEdKey,
+    limits: AssuranceFetchLimits): AssuranceWorkStart {.raises.} =
+  ## Planning requires full-state exclusion but neither a namespace nor a private signing key.
+  if not services.started: return AssuranceWorkStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAssurancePlanning(local, limits)
+  if staged != WorkJobError.None: return AssuranceWorkStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitAssuranceWork()
+proc assurancePlanningCurrent*(services: Services, plan: AssuranceFetchPlan): bool =
+  ## Host comparison touches the actual best source only after every foreign lease has retired.
+  services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
+proc stageAssuranceSchedule(services: var Services, local: StateEdKey,
+    window: AssuranceWindow, limits: AssuranceScheduleLimits): WorkJobError =
+  ## The actual best complete source is captured while idle; temporary snapshot/wrapper aliases retire before native publication.
+  let captured = captureAssuranceScheduleJob(services.canonical.chainView.bestBlock,
+    local, window, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.assuranceWorkInput = captured.value
+  WorkJobError.None
+proc beginAssuranceSchedule*(services: var Services, local: StateEdKey,
+    window: AssuranceWindow, limits: AssuranceScheduleLimits): AssuranceWorkStart {.raises.} =
+  ## Timed author planning uses the same exact canonical/RPC lease and requires no archive or private signer.
+  if not services.started: return AssuranceWorkStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAssuranceSchedule(local, window, limits)
+  if staged != WorkJobError.None: return AssuranceWorkStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitAssuranceWork()
+proc assuranceScheduleCurrent*(services: Services, plan: AssuranceSchedule): bool =
+  ## Compare the full selected source only after foreign and owned native leases have retired.
+  services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
+proc beginAssuranceDistribution*(services: var Services, request: ReadRequest,
+    peer: StateEdKey, limits: AssuranceDistributionLimits): AssuranceWorkStart {.raises.} =
+  ## Receipt requires full-state canonical/RPC exclusion but neither local shard storage nor a private signer.
+  if not services.started: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AssuranceWorkStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAssuranceDistribution(request, peer, limits)
+  if staged != WorkJobError.None: return AssuranceWorkStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitAssuranceWork()
+proc assuranceDistributionCurrent*(services: Services, checked: CheckedAssurance): bool =
+  ## Fresh actual head and complete root are checked only while no foreign canonical lease exists.
+  services.stateProofAvailable and checked.matches(services.canonical.chainView.bestBlock)
+
+func error*(outcome: AssuranceSigningStart): AssuranceStorageStartError =
+  ## Inspect native admission before extracting its exact ticket or capture/worker refusal.
+  outcome.status
+func value*(outcome: AssuranceSigningStart): ProofWorkerTicket {.requires: outcome.status ==
+    AssuranceStorageStartError.None.} =
+  ## Only full source/key/namespace admission grants signing collection or cancellation authority.
+  outcome.ticket
+func captureError*(outcome: AssuranceSigningStart): AssuranceSigningJobError {.requires: outcome.status ==
+    AssuranceStorageStartError.CaptureFailure.} =
+  ## Preserve actual source/key/storage/policy capture refusal.
+  outcome.captureReason
+func workerError*(outcome: AssuranceSigningStart): ProofWorkerError {.requires: outcome.status ==
+    AssuranceStorageStartError.WorkerFailure.} =
+  ## Failed native submission retains no secret/source aliases or canonical exclusion.
+  outcome.workerReason
+proc configureAssuranceSigner*(services: var Services, certificate, privateKey: string,
+    transportIdentity: StateEdKey): WorkSigningSetupResult =
+  ## Explicit full-state setup imports the private key only once and compares its certificate-derived identity with the actual bound TLS identity.
+  if not services.started: return WorkSigningSetupResult(status: WorkSigningSetupError.Closed)
+  if not services.stateProofAvailable or services.assuranceSignerReady:
+    return WorkSigningSetupResult(status: WorkSigningSetupError.Busy)
+  if not services.assuranceInfo.opened or services.assuranceInfo.faulted:
+    return WorkSigningSetupResult(status: WorkSigningSetupError.InvalidStorage)
+  let loaded = loadWorkSigner(certificate, privateKey)
+  if loaded.error != WorkSignerError.None:
+    return WorkSigningSetupResult(status: WorkSigningSetupError.SignerFailure, reason: loaded)
+  let identity = loaded.value.signerIdentity.value
+  if array[32, byte](identity) != array[32, byte](transportIdentity):
+    return WorkSigningSetupResult(status: WorkSigningSetupError.InvalidIdentity)
+  services.assuranceSigner = loaded.value
+  services.assuranceSignerIdentity = identity
+  services.assuranceSignerReady = true
+  WorkSigningSetupResult(status: WorkSigningSetupError.None)
+func assuranceSigningConfigured*(services: Services): bool =
+  ## Cached scalar observation never touches a private-key ARC owner while a job holds its lease.
+  services.started and services.assuranceSignerReady
+func assuranceSigningMatches*(services: Services, identity: StateEdKey): bool =
+  ## Cached scalar identity checks do not inspect a private signer while another job owns it.
+  services.started and services.assuranceSignerReady and
+    array[32, byte](services.assuranceSignerIdentity) == array[32, byte](identity)
+proc stageAssuranceSigning(services: var Services, requested: AssuranceBits,
+    now: AssuranceTime, limits: AssurancePossessionLimits): AssuranceSigningJobError =
+  ## Retire every temporary canonical/signer/capture alias before native submission can access the private key.
+  let captured = captureAssuranceSigning(services.assuranceStore,
+    services.canonical.chainView.bestBlock,
+    services.assuranceSigner, services.assuranceInfo.chain, requested, now, limits)
+  if captured.error == AssuranceSigningJobError.None: services.assuranceSigningInput = captured.value
+  captured.error
+proc beginAssuranceSigning*(services: var Services, requested: AssuranceBits,
+    now: AssuranceTime, limits: AssurancePossessionLimits): AssuranceSigningStart {.raises.} =
+  ## One managed source/key/archive lease performs fresh all-local verification, actual durable renewal and the one private signature.
+  if not services.started: return AssuranceSigningStart(status: AssuranceStorageStartError.Closed)
+  if services.light.active or not services.assuranceSignerReady or
+      not services.assuranceInfo.opened or services.assuranceInfo.faulted:
+    return AssuranceSigningStart(status: AssuranceStorageStartError.Unavailable)
+  if not services.stateProofAvailable: return AssuranceSigningStart(
+      status: AssuranceStorageStartError.Busy)
+  discard services.proofWorker.start()
+  let reason = services.stageAssuranceSigning(requested, now, limits)
+  if reason != AssuranceSigningJobError.None:
+    return AssuranceSigningStart(status: AssuranceStorageStartError.CaptureFailure,
+        captureReason: reason)
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.assuranceSigningInput = default(AssuranceSigningJob)
+    return AssuranceSigningStart(status: AssuranceStorageStartError.Busy)
+  services.lastAssurance = default(SignedAssurance)
+  let admitted = services.proofWorker.submit(services.assuranceSigningInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    services.assuranceSigningActive = true
+    return AssuranceSigningStart(status: AssuranceStorageStartError.None, ticket: admitted.value)
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.assuranceSigningInput = default(AssuranceSigningJob)
+  AssuranceSigningStart(status: AssuranceStorageStartError.WorkerFailure,
+      workerReason: admitted.error)
+proc currentAssuranceBytes*(services: Services, assurance: SignedAssurance,
+    maximum: ByteLimit): AssuranceSigningResult[seq[byte]] =
+  ## Only the latest signature collected by this live Services instance may publish against its still-current complete source and healthy installed namespace.
+  if not services.stateProofAvailable or not services.assuranceSignerReady or
+      not services.assuranceInfo.opened or services.assuranceInfo.faulted:
+    return assuranceSigningFailure[seq[byte]](AssuranceSigningError.StaleSource)
+  if not sameAssurance(services.lastAssurance, assurance):
+    return assuranceSigningFailure[seq[byte]](AssuranceSigningError.StaleSource)
+  assurance.assuranceBytes(services.canonical.chainView.bestBlock, maximum)
 
 func error*(outcome: WorkSubmissionStart): StateProofAdmissionError =
   ## Failed starts never expose a session token.

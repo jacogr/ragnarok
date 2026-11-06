@@ -113,9 +113,15 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
   of "node":
     recipe = @["--net-port", "--net-cert", "--net-key", "--node-finalized", "--net-timeout-ms"]
     let workPolicy = fields[optionIndex("--node-work-policy")].len > 0
-    if fields[optionIndex("--node-validator-seed")].len > 0 or workPolicy:
-      recipe.add("--node-validator-seed") # The optional policy uses a fixed eighth canonical position; an omitted seed stays empty.
-    if workPolicy: recipe.add("--node-work-policy")
+    let assurance = fields[optionIndex("--node-assurance-policy")].len > 0
+    let archive = fields[optionIndex("--node-assurance-store")].len > 0
+    if assurance != archive: refuse("Supply --node-assurance-policy and --node-assurance-store together")
+    if fields[optionIndex("--node-validator-seed")].len > 0 or workPolicy or assurance:
+      recipe.add("--node-validator-seed") # Optional positions stay fixed; absence never supplies a filename.
+    if workPolicy or assurance: recipe.add("--node-work-policy")
+    if assurance:
+      recipe.add("--node-assurance-policy")
+      recipe.add("--node-assurance-store")
   of "server", "client":
     recipe = @["--net-port", "--net-cert", "--net-key", "--net-peer-key", "--net-alpn",
         "--net-timeout-ms", "--net-mode"]
@@ -142,8 +148,8 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
     var value = ""
     if fields[found].len > 0:
       value = fields[found][0]
-    elif flag == "--node-validator-seed":
-      value = "" # A policy-only node has no seed path; the help catalog's display word "none" is not a filename.
+    elif flag in ["--node-validator-seed", "--node-work-policy"]:
+      value = "" # Absent optional filenames remain empty; the help catalog's display word "none" is never opened.
     elif flag == "--net-cert": value = directory / "network" / "cert.pem"
     elif flag == "--net-key": value = directory / "network" / "key.pem"
     elif flag == "--net-peer-key" and topic != "server":
@@ -168,10 +174,11 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
           DefaultServerMode))
       if not boundedNumber(value, (if listening: 0'u64 else: 1'u64), uint64(maximum)):
         refuse(flag & " must be in " & (if listening: "0" else: "1") & ".." & $maximum)
-    of "--node-validator-seed", "--node-work-policy":
-      let emptySeed = flag == "--node-validator-seed" and fields[found].len == 0
-      if not emptySeed:
-        # Only an implicitly absent seed has an empty internal position; explicit file options remain strictly bounded.
+    of "--node-validator-seed", "--node-work-policy", "--node-assurance-policy", "--node-assurance-store":
+      let emptyOptional = flag in ["--node-validator-seed", "--node-work-policy"] and fields[
+          found].len == 0
+      if not emptyOptional:
+        # Only implicitly absent optional filenames have empty internal positions; explicit file options remain strictly bounded.
         if value.len == 0 or value.len > 4096 or value.find(char(0)) >= 0:
           refuse(flag & " requires a nonempty bounded file path")
     of "--node-finalized":

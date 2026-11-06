@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original and retained guarantor CE137/147 sources produce detached exact-framed replies for managed CPU dispatch.
+import std/algorithm
 import ./[availability_proof, availability_merkle, guarantor_segments, read_stream, segment_request]
 import ../codec/natural
 import "../state/export/commitment" as export_commitment
@@ -166,36 +167,72 @@ proc serveAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: Read
   appendMessage(wire, proof)
   captureReadReply(request, wire)
 
-func batchSource(sources: openArray[VerifiedAvailabilityTransfer], item: SegmentSelection): int =
-  ## Early returns select one exact root/shard without carrying a mutable sentinel through nested loop exits.
-  for index in 0..<sources.len:
-    if not sources[index].valid: continue
-    let key = sources[index].request
-    if key.kind == AvailabilityTransferKind.Distribution and key.root.bytes == item.root and uint64(
-        key.shard) == uint64(item.shard):
-      return index
+func compareLocationKey(left, right: SegmentSelection): int =
+  ## Fixed lexicographic root/shard keys permit bounded sort and binary search without accessing payload graphs.
+  for index in 0..<32:
+    if left.root[index] < right.root[index]: return -1
+    if left.root[index] > right.root[index]: return 1
+  if left.shard < right.shard: return -1
+  if left.shard > right.shard: return 1
+  0
+func compareLocations(left, right: SegmentSelection): int =
+  ## Original source position breaks ties so duplicate verified coordinates preserve the former first-source behavior.
+  let compared = compareLocationKey(left, right)
+  if compared != 0: return compared
+  if left.index < right.index: return -1
+  if left.index > right.index: return 1
+  0
+func batchSource(locations: openArray[SegmentSelection], item: SegmentSelection): int =
+  ## Lower-bound lookup is logarithmic in the bounded source count and never reorders requested reply items.
+  var first = 0
+  var last = locations.len
+  while first < last:
+    let middle = first+(last-first) div 2
+    if compareLocationKey(locations[middle], item) < 0: first = middle+1
+    else: last = middle
+  if first < locations.len and compareLocationKey(locations[first], item) == 0:
+    return int(locations[first].index)
   -1
 proc serveSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer], request: ReadRequest,
     limits: AvailabilityReadLimits): ReadResult[ReadReply] =
   ## One managed turn precharges the entire ordered batch and indexes each selected verified distribution once.
   if not request.valid or request.kind notin [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards]:
     return readFailure[ReadReply](ReadError.InvalidRequest)
-  if not limits.valid or sources.len > 64: return readFailure[ReadReply](ReadError.LimitExceeded)
+  if not limits.valid or sources.len > request.kind.segmentKind.maximumItems: return readFailure[
+      ReadReply](ReadError.LimitExceeded)
   let maximum = min(uint64(limits.wireBytes), uint64(request.maximumReplyBytes))
-  let base = maximum*3+uint64(request.payloadLength)*2+uint64(request.itemCount)*64
+  let metadata = uint64(sources.len)*128
+  let base = maximum*3+uint64(request.payloadLength)*2+uint64(request.itemCount)*128+metadata
+  if sizeof(SegmentSelection)*2+sizeof(bool)+sizeof(StoredSegmentProofs)+sizeof(StoredSegmentWork) > 128:
+    return readFailure[ReadReply](ReadError.LimitExceeded)
+  if sizeof(SegmentSelection)*2+sizeof(int)+sizeof(seq[byte]) > 128:
+    return readFailure[ReadReply](ReadError.LimitExceeded)
   if base > uint64(limits.computation.bytes): return readFailure[ReadReply](ReadError.LimitExceeded)
   let parsed = segmentSelections(request.kind.segmentKind, request.payload)
   if parsed.error != SegmentRequestError.None: return readFailure[ReadReply](
       ReadError.InvalidRequest)
   let selected = parsed.value
   var sourceRows = newSeq[int](selected.len)
-  var needed = default(array[64, bool])
-  var trees = default(array[64, StoredSegmentProofs])
-  var work = default(array[64, StoredSegmentWork])
+  var needed = newSeq[bool](sources.len)
+  var trees = newSeq[StoredSegmentProofs](sources.len)
+  var work = newSeq[StoredSegmentWork](sources.len)
+  var locations = newSeq[SegmentSelection](sources.len)
+  var used = 0
+  for index in 0..<sources.len:
+    # Default or non-distribution capabilities cannot create a searchable source, while original positions remain stable through gaps.
+    if not sources[index].valid: continue
+    let key = sources[index].request
+    if key.kind != AvailabilityTransferKind.Distribution: continue
+    if uint64(key.shard) >= 1023: return readFailure[ReadReply](ReadError.InvalidRequest)
+    locations[used] = SegmentSelection(root: key.root.bytes, shard: uint16(uint64(key.shard)),
+      index: uint16(index))
+    inc used
+  locations.setLen(used)
+  locations.sort(compareLocations)
   var dataBytes, proofBytes, hashBytes, hashes, bytes = 0'u64
   for ordinal, item in selected:
     # No bytes/hash work are extracted until all roots, coordinates, output extents and aggregate resources pass.
-    let found = batchSource(sources, item)
+    let found = batchSource(locations, item)
     if found < 0: return readFailure[ReadReply](ReadError.Unavailable)
     let specifier = sources[found].specifier
     let count = uint64(uint16(specifier.segmentCount))

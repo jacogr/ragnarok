@@ -1,7 +1,8 @@
 /* Copyright (c) 2026 Ragnarök contributors
  * SPDX-License-Identifier: MIT OR Apache-2.0 */
 
-/* Single-threaded test-only injected OS refusals retain real IO on every uninjected operation.
+/* Test-only OS refusal configuration is changed only while IO is quiescent.
+ * One atomic read gate permits a controlling thread to witness and release a real IO boundary.
  * This object is compiled without redirect.h; it never changes production or SDK implementation. */
 #include "observer.h"
 #include <errno.h>
@@ -19,6 +20,47 @@
 static int selected, skipped, remaining, reason;
 static uint64_t calls[STORAGE_IO_LAST+1];
 static size_t write_limit, read_limit;
+/* Only this gate's atomic handoff is accessed concurrently; one IO thread owns its countdown. */
+static int read_gate_armed, read_gate_entered, read_gate_released = 1, read_gate_skip;
+int storage_io_hold_read(int skip) {
+    /* Arming never replaces a still armed or held gate; all ordinary observer configuration is idle. */
+    if (skip < 0 || skip > 4096 || __atomic_load_n(&read_gate_armed, __ATOMIC_ACQUIRE) ||
+        (__atomic_load_n(&read_gate_entered, __ATOMIC_ACQUIRE) &&
+         !__atomic_load_n(&read_gate_released, __ATOMIC_ACQUIRE))) {
+        return -1;
+    }
+    read_gate_skip = skip;
+    __atomic_store_n(&read_gate_entered, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&read_gate_released, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&read_gate_armed, 1, __ATOMIC_RELEASE);
+    return 0;
+}
+int storage_io_read_held(void) {
+    /* Unlike diagnostic counters, this explicit receipt is safe to poll during the real read. */
+    return __atomic_load_n(&read_gate_entered, __ATOMIC_ACQUIRE);
+}
+void storage_io_release_read(void) {
+    /* Idempotent release also permits failure cleanup before the IO thread reaches its gate. */
+    __atomic_store_n(&read_gate_released, 1, __ATOMIC_RELEASE);
+}
+static void hold_read(void) {
+    /* Unarmed calls have no wait; only the one IO thread advances a quiescently installed countdown. */
+    if (!__atomic_load_n(&read_gate_armed, __ATOMIC_ACQUIRE)) {
+        return;
+    }
+    if (read_gate_skip > 0) {
+        read_gate_skip--;
+        return;
+    }
+    __atomic_store_n(&read_gate_armed, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&read_gate_entered, 1, __ATOMIC_RELEASE);
+    while (!__atomic_load_n(&read_gate_released, __ATOMIC_ACQUIRE)) {
+        /* Yield without holding application or worker locks until the controller cancels and releases. */
+        struct timespec delay = {0, 1000000};
+        (void)nanosleep(&delay, NULL);
+    }
+}
+
 static int reuse_close, reused_descriptor = -1;
 static int zero_skip, zero_remaining;
 /* A single-threaded fixture retains ownership; the controller checks identity before its one write. */
@@ -271,6 +313,11 @@ void storage_io_crash_abort(void) {
 }
 
 void storage_io_reset(void) {
+    /* Reset is quiescent; leave release true so cleanup cannot strand a future read at an old gate. */
+    storage_io_release_read();
+    __atomic_store_n(&read_gate_armed, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&read_gate_entered, 0, __ATOMIC_RELEASE);
+    read_gate_skip = 0;
     /* Reset every configured fault/short-write cap before unrelated fixture or runner IO. */
     /* The controller owns only its explicitly created replacement, never an application descriptor. */
     if (reused_descriptor >= 0) {
@@ -403,6 +450,7 @@ ssize_t storage_io_read(int descriptor, void *buffer, size_t count) {
         /* A rejected read must not modify caller bytes or fabricate progress. */
         return -1;
     }
+    hold_read(); /* Only an uninjected call may reach the explicitly armed test gate. */
     if (growth_pending) {
         /* The reader has completed its stat; extend only the exact separately owned fixture inode. */
         struct stat metadata;

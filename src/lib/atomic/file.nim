@@ -30,6 +30,10 @@ proc openDescriptor(path: cstring, flags: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The SDK supplies open's actual variadic ABI; non-creation opens use its two mandatory arguments.
 
+proc readDescriptor(descriptor: cint, buffer: pointer, length: csize_t): int {.importc: "read",
+    cdecl, header: "<unistd.h>", sideEffect.}
+  ## Native Linux/macOS ssize_t matches the host integer width; the public SDK declaration preserves its ABI and permits explicit test-call redirection instead of an unobservable assembler alias.
+
 proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
   ## Open nonblocking, require a regular persistence file and read at most the ceiling plus one detection byte.
   if path.len == 0 or path.len > high(int) - 16:
@@ -52,7 +56,7 @@ proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
   while true:
     let remaining = maximum - uint64(bytes.len)
     let requested = int(min(remaining, 4095'u64)) + 1
-    let count = posix.read(descriptor, addr buffer[0], requested)
+    let count = readDescriptor(descriptor, addr buffer[0], csize_t(requested))
     if count < 0:
       return BoundedFileResult(status: AtomicFileError.IoFailure) # A native error cannot be interpreted as EOF or a successful prefix.
     if count == 0: break # Only actual regular-file EOF authorizes complete bytes.
@@ -97,7 +101,7 @@ proc readFileInto*(path: string, output: var openArray[byte]): BoundedReadCountR
   while true:
     if used == output.len: return BoundedReadCountResult(status: AtomicFileError.LimitExceeded)
     let remaining = output.len-used
-    let amount = posix.read(descriptor, addr output[used], min(remaining, 4096))
+    let amount = readDescriptor(descriptor, addr output[used], csize_t(min(remaining, 4096)))
     if amount < 0: return BoundedReadCountResult(status: AtomicFileError.IoFailure)
     if amount == 0: break # Only actual EOF may expose the complete caller-owned span.
     if amount > remaining: return BoundedReadCountResult(status: AtomicFileError.IoFailure)

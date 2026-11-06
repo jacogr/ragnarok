@@ -22,6 +22,11 @@ int storage_io_remaining(void);
 void storage_io_write_limit(size_t limit);
 /* Cap actual read progress without fabricating bytes or EOF. */
 void storage_io_read_limit(size_t limit);
+/* Arm one read gate while IO is quiescent; skip is bounded to4096 uninjected read attempts. */
+int storage_io_hold_read(int skip);
+/* Atomic receipt/release may be used by the controlling thread while one IO thread is held. */
+int storage_io_read_held(void);
+void storage_io_release_read(void);
 /* Borrow an owned writable regular descriptor until reset or one read; grow at most64 KiB after stat. */
 int storage_io_grow_on_read(int descriptor, int64_t extent);
 /* Require the real read-boundary growth to execute before accepting its fixture. */
