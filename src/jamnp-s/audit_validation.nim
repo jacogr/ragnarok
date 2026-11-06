@@ -32,11 +32,12 @@ type
     selected: array[10, CoreIndex]
   AuditValidationError* {.pure.} = enum ## Unsupported source interpretations and real cryptographic failures contain no accepted selected-core prefix.
     Uninitialized, None, InvalidPolicy, InvalidSource, InvalidClaim, InvalidAuditor,
-    UnsupportedTranche, InvalidIndex, LimitExceeded, ProofFailure, HashFailure
+    UnsupportedTranche, InvalidIndex, LimitExceeded, ProofFailure, SigningFailure, HashFailure
   AuditValidationResult*[T] = object ## Genuine selected primitive failures remain distinct from local input and resource refusals.
     case status: AuditValidationError
     of None: completed: T
     of ProofFailure: proofReason: BsResult[BsOutput]
+    of SigningFailure: signingReason: BsError
     of HashFailure: hashReason: CryptoError
     else: discard # No failed/default alternative contains an accepted context or selected obligations.
 func error*[T](outcome: AuditValidationResult[T]): AuditValidationError =
@@ -50,13 +51,17 @@ func proofError*[T](outcome: AuditValidationResult[T]): BsResult[
     BsOutput] {.requires: outcome.status == AuditValidationError.ProofFailure.} =
   ## Preserve the actual malformed/invalid/backend proof result without a successful VRF prefix.
   outcome.proofReason
+func signingError*[T](outcome: AuditValidationResult[T]): BsError {.requires: outcome.status ==
+    AuditValidationError.SigningFailure.} =
+  ## Return the original key or signing failure.
+  outcome.signingReason
 func hashError*[T](outcome: AuditValidationResult[T]): CryptoError {.requires: outcome.status ==
     AuditValidationError.HashFailure.} =
   ## A failed maintained hash remains its exact primitive reason.
   outcome.hashReason
 func refused[T](reason: AuditValidationError): AuditValidationResult[T] {.requires: reason notin [
     AuditValidationError.None, AuditValidationError.ProofFailure,
-    AuditValidationError.HashFailure].} =
+    AuditValidationError.SigningFailure, AuditValidationError.HashFailure].} =
   ## Ordinary refusals cannot manufacture accepted or unrelated child payloads.
   AuditValidationResult[T](status: reason)
 func valid*(limits: AuditProofLimits): bool =
@@ -92,6 +97,17 @@ proc selectedCore*(claim: CheckedAuditAnnouncement, ordinal: int): AuditValidati
 func selectionWork(cores: uint64): uint64 =
   ## Ten initial draws need at most two complete eight-word entropy groups, independently of the validator population.
   if cores < 10: (cores+7) div 8 else: 2'u64
+func selectionFits(cores: uint64, limits: AuditProofLimits): bool =
+  ## Reserve complete hash groups, their input bytes and the transient shuffle buffer.
+  let hashes = selectionWork(cores)
+  hashes <= uint64(limits.hashes) and hashes*36 <= uint64(limits.hashBytes) and
+    uint64(limits.bytes) >= 4096
+func initialTranscript(entropy: array[32, byte]): array[41, byte] =
+  ## Signing and verification use the same domain and the verified header VRF output.
+  result = default(array[41, byte])
+  const domain = "jam_audit"
+  for index, octet in domain: result[index] = byte(octet)
+  for index in 0..<32: result[domain.len+index] = entropy[index]
 proc initialAuditSelection*(cores: CoreCount, entropy: BsOutput,
     limits: AuditProofLimits): AuditValidationResult[InitialAuditSelection] =
   ## GP Fisher-Yates uses BLAKE2b(output || E4(group)) and LE32 draws; returned public metadata grants no proof authenticity.
@@ -99,9 +115,7 @@ proc initialAuditSelection*(cores: CoreCount, entropy: BsOutput,
   let count = uint64(cores)
   if count == 0 or count > 341: return refused[InitialAuditSelection](
       AuditValidationError.InvalidSource)
-  let hashes = selectionWork(count)
-  if hashes > uint64(limits.hashes) or hashes*36 > uint64(limits.hashBytes) or uint64(
-      limits.bytes) < 4096:
+  if not selectionFits(count, limits):
     return refused[InitialAuditSelection](AuditValidationError.LimitExceeded)
   var remaining = default(array[341, uint16])
   for index in 0..<int(count):
@@ -129,6 +143,17 @@ proc initialAuditSelection*(cores: CoreCount, entropy: BsOutput,
     remaining[position] = remaining[int(count)-ordinal-1]
   AuditValidationResult[InitialAuditSelection](status: AuditValidationError.None,
       completed: selected)
+proc initialAuditor(context: AuditContext, ordinal: JudgeIndex): AuditValidationResult[BsPublicKey] =
+  ## Resolve the active key at the claimed original prior-roster position.
+  let source = context.contextInfo.value
+  if uint64(uint16(ordinal)) >= uint64(source.auditors):
+    return refused[BsPublicKey](AuditValidationError.InvalidAuditor)
+  let member = context.auditorAt(int(uint16(ordinal))).value
+  if array[32, byte](member.ed25519) == array[32, byte](nullValidator().ed25519) or
+      array[32, byte](member.ed25519) == default(array[32, byte]):
+    return refused[BsPublicKey](AuditValidationError.InvalidAuditor)
+  AuditValidationResult[BsPublicKey](status: AuditValidationError.None,
+    completed: BsPublicKey(array[32, byte](member.bandersnatch)))
 proc qualifyInitialAudit*(context: AuditContext, claim: AuditAnnouncement,
     limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] =
   ## Canonical source, original prior C8 member and exact initial transcript are checked before any obligation is returned.
@@ -142,23 +167,13 @@ proc qualifyInitialAudit*(context: AuditContext, claim: AuditAnnouncement,
     return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidClaim)
   if claim.intent != AuditIntent.Initial:
     return refused[CheckedAuditAnnouncement](AuditValidationError.UnsupportedTranche) # The later-tranche source discrepancy requires an explicit normative decision; no format guessing occurs.
-  if uint64(uint16(claim.validator)) >= uint64(source.auditors):
-    return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidAuditor)
-  let member = context.auditorAt(int(uint16(claim.validator))).value
-  if array[32, byte](member.ed25519) == array[32, byte](nullValidator().ed25519) or
-      array[32, byte](member.ed25519) == default(array[32, byte]):
-    return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidAuditor)
-  let hashes = selectionWork(cores)
-  if hashes > uint64(limits.hashes) or hashes*36 > uint64(limits.hashBytes) or uint64(
-      limits.bytes) < 4096:
+  let auditor = initialAuditor(context, claim.validator)
+  if auditor.error != AuditValidationError.None:
+    return refused[CheckedAuditAnnouncement](auditor.error)
+  if not selectionFits(cores, limits):
     return refused[CheckedAuditAnnouncement](AuditValidationError.LimitExceeded)
-  var transcript = newSeq[byte](41)
-  const domain = "jam_audit"
-  for index, octet in domain: transcript[index] = byte(
-      octet) # GP token notation does not include the dollar sign as a byte.
-  for index in 0..<32: transcript[domain.len+index] = source.entropy[index]
-  let checked = verify(BsPublicKey(array[32, byte](member.bandersnatch)), BsSignature(array[96,
-      byte](claim.proof)), transcript, [])
+  let checked = verify(auditor.value, BsSignature(array[96, byte](claim.proof)),
+      initialTranscript(source.entropy), [])
   if checked.error != BsError.None:
     return AuditValidationResult[CheckedAuditAnnouncement](
         status: AuditValidationError.ProofFailure, proofReason: checked)
@@ -184,3 +199,30 @@ proc qualifyInitialAudit*(context: AuditContext, claim: AuditAnnouncement,
     completed: CheckedAuditAnnouncement(ready: true, context: context, claim: claim,
       info: AuditAnnouncementInfo(blockHash: source.blockHash, epoch: source.epoch,
         validator: claim.validator, tranche: 0, selected: count), selected: selected))
+proc produceInitialAudit*(context: AuditContext, ordinal: JudgeIndex, key: BsKey,
+    limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] =
+  ## Bind the local Thin proof to a validated block and the matching original roster position.
+  if not limits.valid: return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidPolicy)
+  if not context.valid: return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidSource)
+  let source = context.contextInfo.value
+  let cores = uint64(source.cores)
+  if cores == 0 or cores > 341 or source.auditors < 3 or source.auditors > 1023:
+    return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidSource)
+  let auditor = initialAuditor(context, ordinal)
+  if auditor.error != AuditValidationError.None:
+    return refused[CheckedAuditAnnouncement](auditor.error)
+  if uint64(limits.proofs) < 2 or not selectionFits(cores, limits):
+    return refused[CheckedAuditAnnouncement](AuditValidationError.LimitExceeded)
+  let local = key.publicKey
+  if local.error != BsError.None:
+    return AuditValidationResult[CheckedAuditAnnouncement](
+        status: AuditValidationError.SigningFailure, signingReason: local.error)
+  if array[32, byte](local.value) != array[32, byte](auditor.value):
+    return refused[CheckedAuditAnnouncement](AuditValidationError.InvalidAuditor)
+  let signed = sign(key, initialTranscript(source.entropy), [])
+  if signed.error != BsError.None:
+    return AuditValidationResult[CheckedAuditAnnouncement](
+        status: AuditValidationError.SigningFailure, signingReason: signed.error)
+  qualifyInitialAudit(context, AuditAnnouncement(header: AuditHeaderHash(
+    array[32, byte](source.blockHash)), validator: ordinal, intent: AuditIntent.Initial,
+    proof: AuditProof(array[96, byte](signed.value))), limits)

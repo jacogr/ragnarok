@@ -76,6 +76,8 @@ import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, a
     audit_recovery, audit_fetch, judgment_claim, judgment_receipt, judgment_source,
     audit_participation, audit_publication]
 import ./audit_state
+from ../jamnp-s/audit_validation import AuditProofLimits
+from ../codec/disputes import JudgeIndex
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
 from ../state/availability/specifier import AvailabilityCommitment
@@ -2604,6 +2606,28 @@ proc admitManagedAudit(services: var Services): AuditPlanningStart {.raises.} =
   of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
   of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
       status: StateProofAdmissionError.Uninitialized)
+proc stageInitialAudit(services: var Services, blockHash: genesis.BlockHash, identity: StateEdKey,
+    ordinal: JudgeIndex, context: AuditContextLimits, proof: AuditProofLimits,
+        discover: bool): WorkJobError =
+  ## Retire source and private signer staging aliases before publishing the exact worker lease.
+  let captured = captureInitialAuditJob(services.canonical.chainView, blockHash, context, proof,
+      services.ticketSigner, identity, ordinal, discover)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginInitialAudit*(services: var Services, blockHash: genesis.BlockHash, identity: StateEdKey,
+    ordinal: JudgeIndex, context: AuditContextLimits,
+        proof: AuditProofLimits, discover = false): AuditPlanningStart {.raises.} =
+  ## Optional local signing uses the shared state worker and returns detached CE144 output.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if services.light.active or not services.ticketSignerReady:
+    return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageInitialAudit(blockHash, identity, ordinal, context, proof, discover)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitManagedAudit()
 proc stageManagedAuditOrigin(services: var Services, blockHash: genesis.BlockHash,
     context: AuditContextLimits, limits: AuditOriginLimits): WorkJobError =
   ## Temporary view wrappers retire before native admission publishes its source borrow.

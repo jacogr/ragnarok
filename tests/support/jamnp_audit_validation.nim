@@ -72,6 +72,23 @@ proc auditValidationChecks*(context: AuditContext, source: ChainView,
   for octet in info.entropy: transcript.add(octet) # Literal ASCII jam_audit followed by the actual verified header output, no prefix/dollar/terminator.
   let signed = sign(key, transcript, [])
   assert signed.error == BsError.None, "real original Thin audit signature"
+  let ordinal = JudgeIndex(uint16(index))
+  assert produceInitialAudit(context, ordinal, key, proofLimits()).error ==
+      AuditValidationError.LimitExceeded, "production reserves signing and verification"
+  var productionLimits = proofLimits()
+  productionLimits.proofs = ElementLimit(2)
+  let produced = produceInitialAudit(context, ordinal, key, productionLimits)
+  assert produced.error == AuditValidationError.None, "local key produces a qualified CE144 claim"
+  let producedProof = produced.value.announcementRecord.value.proof
+  let independentlyVerified = verify(public, BsSignature(array[96, byte](producedProof)),
+      transcript, [])
+  assert independentlyVerified.error == BsError.None, "production signs the independent pinned transcript"
+  assert produced.value.announcementInfo.value.selected == info.reports,
+      "production retains all available reports selected in the small core domain"
+  scalar[0] = 2
+  let wrong = importScalar(scalar).value
+  assert produceInitialAudit(context, ordinal, wrong, productionLimits).error ==
+      AuditValidationError.InvalidAuditor, "a foreign private key cannot claim the original ordinal"
   var wire: seq[byte] = @[]
   for octet in array[32, byte](info.blockHash): wire.add(octet)
   wire.add(byte(index and 255))

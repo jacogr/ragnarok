@@ -27,7 +27,7 @@ import ../../src/codec/state/[safrole as state_safrole, layout as state_layout, 
     availability as state_availability, authorization as state_authorization,
     disputes as state_disputes, privileges as state_privileges, statistics as state_statistics,
     accounts as state_accounts]
-import ../../src/crypto/primitives
+import ../../src/crypto/[primitives, validator_keys]
 import ../../src/bandersnatch/bandersnatch
 import ./[pvm_computed_transition, report_admission_context, pvm_input_refinement,
   pvm_computed_lookup, pvm_computed_recent, pvm_computed_report, pvm_export_erasure,
@@ -150,6 +150,10 @@ proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 655
       let originalRecord = records[index-6]
       records[index] = originalRecord
       records[index].ed25519 = StateEdKey(array[32, byte](publicKey(key).value))
+    if withChain:
+      # Give the last non-author a separately derived JIP-5 key before committing and sealing the parent.
+      let auditKey = deriveBandersnatchKey(default(array[32, byte])).value
+      records[8].bandersnatch = StateBsKey(array[32, byte](auditKey.publicKey.value))
     if repeatReporter:
       # Distinct current credential indices1/2 can legitimately refer to one real signing key.
       let identity = records[1].ed25519

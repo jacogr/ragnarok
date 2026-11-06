@@ -57,6 +57,9 @@ proc `=destroy`*(owner: AuditDispatcher) =
   `=destroy`(owner.ticket)
   `=destroy`(owner.request)
   `=destroy`(owner.proof)
+func configured*(owner: AuditDispatcher): bool =
+  ## Outgoing initial declarations share the explicitly enabled validator selector.
+  owner.policy.ready
 func received*(owner: AuditDispatcher): uint64 =
   ## Count whole authenticated uploads for which the native route accepted the bare acknowledgment FIN.
   owner.received

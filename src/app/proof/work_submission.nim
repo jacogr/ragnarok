@@ -10,6 +10,10 @@ import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire,
 import ../../jamnp-s/assurance_distribution
 import ../../jamnp-s/assurance_fetch
 import ../../jamnp-s/assurance_schedule
+import ../../jamnp-s/[audits, audit_validation, endpoints]
+from ../../codec/assurances import ValidatorCount
+import ./ticket_production
+from ../../codec/disputes import JudgeIndex
 import ../../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation, audit_recovery,
     audit_fetch, judgment_claim, judgment_receipt, audit_participation, audit_publication]
 from ../../jamnp-s/assurance_store import AssuranceScanControl, stopped
@@ -19,7 +23,7 @@ import ../../jamnp-s/[work_distribution, read_stream, read_validation]
 import ../../codec/[report_owned, owned]
 import ../../chain/[provider, genesis]
 import ../../codec/bounded
-from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime
+from ../../codec/state/safrole import StateValidatorIndex, StateEdKey, StateTime, nullValidator
 from ../../state/computed/guarantee import ComputedGuaranteeTranscript
 from ../../codec/work/report import ErasureShards
 import ../../state/[store, input_refinement, authorized_refinement]
@@ -48,7 +52,9 @@ type
     AuditSigned, AuditSigningFailure, AuditFetchPlanned, AuditFetchPlanningFailure,
     AuditShardVerified, AuditShardVerificationFailure, JudgmentClaimsVerified, JudgmentClaimFailure,
       JudgmentReceiptPrepared, JudgmentReceiptFailure, AuditParticipationPlanned,
-        AuditParticipationFailure, AuditPublicationPrepared, AuditPublicationFailure
+        AuditParticipationFailure, AuditPublicationPrepared, AuditPublicationFailure,
+    InitialAuditProduced, InitialAuditSourceFailure, InitialAuditSigningFailure,
+    InitialAuditEncodingFailure, InitialAuditNoDuty
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -67,6 +73,15 @@ type
     recovery: WorkRecovery
   AuthorizedWorkContext* = object ## Only a successful private CPU capability can construct a usable context.
     data: nil WorkContextData
+  InitialAuditRecipient* = object ## One physical original auditor and its optional advertised endpoint.
+    identity*: StateEdKey
+    endpoint*: EndpointResult
+  ProducedInitialAudit* = object ## Detached wire record and exact selected cores survive collection without retaining chain ownership.
+    announcement*: AuditAnnouncement
+    selected*: InitialAuditSelection
+    reportOrdinals*: array[10, int]
+    request*: ReadRequest
+    recipients*: seq[InitialAuditRecipient]
   WorkJobResult* = object ## Failed/default results expose no input, grant, partial refinement or unrelated child.
     case status: WorkJobResultKind
     of RecoveryUpdated: recovered: WorkRecovery
@@ -84,6 +99,9 @@ type
     of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
     of GuaranteeCollected: collected: CollectedWorkGuarantee
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
+    of InitialAuditProduced: initialAudit: ProducedInitialAudit
+    of InitialAuditSourceFailure: initialAuditSourceReason: AuditContextError
+    of InitialAuditSigningFailure: initialAuditSigningReason: AuditValidationError
     of AuditOriginPrepared: auditOrigin: AuditBlockOrigin
     of AuditOriginPreparationFailure: auditOriginReason: AuditOriginResult[AuditBlockOrigin]
     of AuditRecoveryFailure: auditRecoveryReason: AuditRecoveryResult[AuditRecoveryEvidence]
@@ -138,6 +156,10 @@ type
   WorkJobData = ref object ## Detached bounded bytes accompany immutable selected-state owners; no stream pointer crosses the CPU boundary.
     run: nil WorkRunner
     cancellable: nil CancellableWorkRunner
+    auditBandersnatch: TicketSigner
+    auditInitialOrdinal: JudgeIndex
+    auditDiscoverOrdinal: bool
+    auditProofLimits: AuditProofLimits
     auditView: ChainView
     auditHash: genesis.BlockHash
     auditLimits: AuditContextLimits
@@ -781,6 +803,126 @@ proc captureAuditAnnouncements*(source: ChainView, wire: openArray[byte],
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: qualifyIncomingAudit, auditView: source, auditWire: captured,
     auditReceiptLimits: limits)))
+func producedInitialAudit*(outcome: WorkJobResult): ProducedInitialAudit {.requires:
+    outcome.status == WorkJobResultKind.InitialAuditProduced.} =
+  ## Only complete production exposes detached signed bytes and selected cores.
+  outcome.initialAudit
+func initialAuditSourceError*(outcome: WorkJobResult): AuditContextError {.requires:
+    outcome.status == WorkJobResultKind.InitialAuditSourceFailure.} =
+  ## Preserve the source refusal independently of signing.
+  outcome.initialAuditSourceReason
+func initialAuditSigningError*(outcome: WorkJobResult): AuditValidationError {.requires:
+    outcome.status == WorkJobResultKind.InitialAuditSigningFailure.} =
+  ## Preserve validation and signing refusal without retaining the source context.
+  outcome.initialAuditSigningReason
+proc initialRecipients(context: AuditContext, identity: StateEdKey,
+    control: AssuranceScanControl): seq[InitialAuditRecipient] =
+  ## Each original active identity receives the declaration once per physical connection.
+  let local = array[32, byte](identity)
+  let excluded = array[32, byte](nullValidator().ed25519)
+  let empty = default(array[32, byte])
+  result = @[]
+  for ordinal in 0..<context.contextInfo.value.auditors:
+    # Repeated keys still have distinct signing ordinals but share physical delivery.
+    if control.stopped: return @[]
+    let member = context.auditorAt(ordinal).value
+    let key = array[32, byte](member.ed25519)
+    if key == local or key == excluded or key == empty: continue
+    let endpoint = validatorEndpoint(array[128, byte](member.metadata))
+    var duplicate = false
+    for index in 0..<result.len:
+      # Prefer the first advertised endpoint when duplicate positions carry different metadata.
+      if array[32, byte](result[index].identity) == key:
+        if result[index].endpoint.error != EndpointError.None and endpoint.error ==
+            EndpointError.None:
+          result[index].endpoint = endpoint
+        duplicate = true
+        break
+    if not duplicate: result.add(InitialAuditRecipient(identity: member.ed25519,
+        endpoint: endpoint))
+proc nextInitialOrdinal(data: WorkJobData, source: AuditContext,
+    control: AssuranceScanControl): int =
+  ## Scan original positions without compressing duplicates or assuming the current topology index.
+  let local = array[32, byte](data.auditParticipationIdentity)
+  let key = data.auditBandersnatch.signingPublic
+  if local == default(array[32, byte]) or local == array[32, byte](nullValidator().ed25519):
+    return -1
+  for ordinal in int(uint16(data.auditInitialOrdinal))..<source.contextInfo.value.auditors:
+    # TLS and JIP-5 signing ownership must match at the same original position.
+    if control.stopped: return -1
+    let member = source.auditorAt(ordinal).value
+    if array[32, byte](member.ed25519) == local and array[32, byte](member.bandersnatch) == key:
+      return ordinal
+  -1
+proc runInitialAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Resolve the original roster inside the lease and require the local identity at the signed ordinal.
+  let source = captureAuditContext(data.auditView, data.auditHash, data.auditLimits, control)
+  if source.error != AuditContextError.None:
+    return WorkJobResult(status: WorkJobResultKind.InitialAuditSourceFailure,
+        initialAuditSourceReason: source.error)
+  var ordinal = data.auditInitialOrdinal
+  if data.auditDiscoverOrdinal:
+    if source.value.contextInfo.value.reports == 0:
+      return WorkJobResult(status: WorkJobResultKind.InitialAuditNoDuty)
+    let next = nextInitialOrdinal(data, source.value, control)
+    if control.stopped: return WorkJobResult(status: WorkJobResultKind.InitialAuditSourceFailure,
+        initialAuditSourceReason: AuditContextError.Cancelled)
+    if next < 0: return WorkJobResult(status: WorkJobResultKind.InitialAuditNoDuty)
+    ordinal = JudgeIndex(uint16(next))
+  let member = source.value.auditorAt(int(uint16(ordinal)))
+  if member.error != AuditContextError.None or
+      array[32, byte](member.value.ed25519) != array[32, byte](data.auditParticipationIdentity):
+    return WorkJobResult(status: WorkJobResultKind.InitialAuditSigningFailure,
+        initialAuditSigningReason: AuditValidationError.InvalidAuditor)
+  if control.stopped: return WorkJobResult(status: WorkJobResultKind.InitialAuditSourceFailure,
+      initialAuditSourceReason: AuditContextError.Cancelled)
+  let signed = produceAuditAnnouncement(data.auditBandersnatch, source.value,
+      ordinal, data.auditProofLimits)
+  if signed.error != AuditValidationError.None:
+    return WorkJobResult(status: WorkJobResultKind.InitialAuditSigningFailure,
+        initialAuditSigningReason: signed.error)
+  var selected = InitialAuditSelection(count: signed.value.announcementInfo.value.selected)
+  for ordinal in 0..<selected.count:
+    selected.cores[ordinal] = signed.value.selectedCore(ordinal).value
+  let announcement = signed.value.announcementRecord.value
+  var output = ProducedInitialAudit(announcement: announcement, selected: selected)
+  if selected.count > 0:
+    # A declaration exists on the wire only when it selects one or more newly available reports.
+    let facts = source.value.contextInfo.value
+    var found = 0
+    for ordinal in 0..<facts.reports:
+      # The checked selection preserves dense source report order after filtering the shuffled cores.
+      if found == selected.count: break
+      if uint64(source.value.availableCore(ordinal).value) == uint64(selected.cores[found]):
+        output.reportOrdinals[found] = ordinal
+        inc found
+    if found != selected.count:
+      return WorkJobResult(status: WorkJobResultKind.InitialAuditEncodingFailure)
+    let limits = AuditLimits(validators: ValidatorCount(uint64(facts.auditors)),
+        cores: facts.maximumCores, bytes: ByteLimit(131), records: ElementLimit(1))
+    let wire = encodeAnnouncements([announcement], limits)
+    if wire.error != AuditError.None:
+      return WorkJobResult(status: WorkJobResultKind.InitialAuditEncodingFailure)
+    let request = decodeReadRequest(ReadKind.AuditAnnouncement, wire.value)
+    if request.error != ReadError.None:
+      return WorkJobResult(status: WorkJobResultKind.InitialAuditEncodingFailure)
+    output.request = request.value
+    output.recipients = initialRecipients(source.value, data.auditParticipationIdentity, control)
+    if control.stopped:
+      return WorkJobResult(status: WorkJobResultKind.InitialAuditSourceFailure,
+          initialAuditSourceReason: AuditContextError.Cancelled)
+  WorkJobResult(status: WorkJobResultKind.InitialAuditProduced, initialAudit: move(output))
+proc captureInitialAuditJob*(source: ChainView, blockHash: genesis.BlockHash,
+    context: AuditContextLimits, proof: AuditProofLimits, signer: TicketSigner,
+    identity: StateEdKey, ordinal: JudgeIndex, discover = false): WorkJobAdmission =
+  ## Only a private installed signer and bounded chain context can enter production.
+  if source.fuzzOnly or source.bestBlock.error != GenesisError.None or not context.valid or
+      not proof.valid or uint64(proof.proofs) < 2 or not signer.valid:
+    return workJobFailure(WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: runInitialAudit, auditView: source, auditHash: blockHash, auditLimits: context,
+    auditProofLimits: proof, auditBandersnatch: signer, auditInitialOrdinal: ordinal,
+    auditParticipationIdentity: identity, auditDiscoverOrdinal: discover)))
 proc prepareAuditOrigin(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## Whole body/prefix validation and complete-map retention accounting execute only behind the shared source lease.
   let prepared = captureAuditOrigin(data.auditView, data.auditHash, data.auditLimits,

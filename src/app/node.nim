@@ -10,7 +10,7 @@ import ./work_dispatch
 import ./work_exchange
 import ./work_distribution
 import ./assurance_distribution
-import ./audit_distribution
+import ./[audit_distribution, initial_audit]
 import ./[judgment_distribution, forced_audit]
 import ../jamnp-s/judgment_receipt
 import ./audit_state
@@ -82,6 +82,8 @@ type
     work: WorkDispatcher
     exchange: WorkExchangeDispatcher
     audits: AuditDispatcher
+    initialAudits: InitialAudits
+    preferInitialAudits: bool
     forcedAudits: ForcedAudits
     preferForcedAudits: bool
     judgments: JudgmentDispatcher
@@ -133,6 +135,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.exchange)
   `=wasMoved`(owner.auditAcquirer)
   `=wasMoved`(owner.forcedAudits)
+  `=wasMoved`(owner.initialAudits)
   `=wasMoved`(owner.judgments)
   `=wasMoved`(owner.audits)
   `=wasMoved`(owner.assurances)
@@ -171,6 +174,7 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.exchange)
   `=destroy`(owner.auditAcquirer)
   `=destroy`(owner.forcedAudits)
+  `=destroy`(owner.initialAudits)
   `=destroy`(owner.judgments)
   `=destroy`(owner.audits)
   `=destroy`(owner.assurances)
@@ -303,6 +307,20 @@ proc configureAuditReceipt*(owner: var ApplicationNode, policy: AuditReceiptPoli
   ## A real bounded managed verifier and retained intent pool must exist before native CE144 selection is enabled.
   if not owner.opened: return false
   owner.audits.configure(owner.streams, policy)
+proc configureInitialAudits*(owner: var ApplicationNode, policy: InitialAuditPolicy): bool =
+  ## Enable automatic production only on an open validator with managed CE144 receipt.
+  let services = owner.services
+  if not owner.opened or services == nil or not owner.audits.configured or
+      not owner.forcedAudits.configured: return false
+  owner.initialAudits.configure(services[], owner.streams, policy)
+func initialAuditDeclarationCount*(owner: ApplicationNode): int =
+  ## Count retained local obligations separately from incoming declarations.
+  owner.initialAudits.declarationCount
+func initialAuditDeclaration*(owner: ApplicationNode,
+    index: int): InitialAuditDeclaration {.requires:
+    index >= 0 and index < owner.initialAudits.declarationCount.} =
+  ## Return a detached copy of the signed local declaration and its selected cores.
+  owner.initialAudits.declarationAt(index)
 func receivedAuditAnnouncements*(owner: ApplicationNode): uint64 =
   ## Count wholly authenticated uploads acknowledged through their original live native ticket.
   owner.audits.received
@@ -697,6 +715,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferJudgments = true
   owner.preferForcedAudits = true
   owner.preferAudits = true
+  owner.preferInitialAudits = true
   owner.preferAuditAcquirer = true
   owner.preferAssurances = true
   owner.preferPreimage = false
@@ -765,6 +784,7 @@ proc close*(owner: var ApplicationNode) =
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
   if services != nil:
     owner.forcedAudits.close(services[], owner.streams)
+    owner.initialAudits.close(services[], owner.streams)
     owner.judgments.close(services[], owner.streams)
     owner.auditAcquirer.close(services[], owner.streams)
     owner.audits.close(services[], owner.streams)
@@ -990,6 +1010,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.judgments.poll(services[], owner.streams, owner.reports, clock)
   owner.auditAcquirer.poll(services[], owner.streams, clock)
   owner.forcedAudits.poll(services[], owner.streams, owner.judgments, owner.auditAcquirer, clock)
+  owner.initialAudits.poll(services[], owner.streams, clock)
   owner.audits.poll(services[], owner.streams, clock)
   owner.assurances.poll(services[], owner.streams, clock)
   owner.acquisition.poll(services[], owner.streams, clock)
@@ -1081,7 +1102,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     return true
   owner.preferAuditAcquirer = true # An active audit cannot monopolize the shared CPU pool.
   if owner.preferForcedAudits and owner.forcedAudits.submit(services[], owner.streams,
-      owner.judgments, owner.auditAcquirer, clock):
+      owner.judgments, owner.auditAcquirer, owner.initialAudits, clock):
     owner.preferForcedAudits = false
     return true
   owner.preferForcedAudits = true
@@ -1089,6 +1110,10 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     owner.preferJudgments = false
     return true
   owner.preferJudgments = true # Whole receipt shares fair bounded foreground turns with other managed CPU consumers.
+  if owner.preferInitialAudits and owner.initialAudits.submit(services[], owner.streams, clock):
+    owner.preferInitialAudits = false
+    return true
+  owner.preferInitialAudits = true
   if owner.preferAudits and owner.audits.submit(services[], owner.streams, clock):
     owner.preferAudits = false
     return true

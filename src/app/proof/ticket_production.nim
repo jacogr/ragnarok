@@ -5,6 +5,8 @@
 ## Source/signing aliases share the existing exact exclusive Services lease and retire before collection or joined teardown.
 import std/assertions
 import ../../jamnp-s/ticket_validation
+import ../../jamnp-s/[audit_context, audit_validation]
+from ../../codec/disputes import JudgeIndex
 import ../../codec/tickets
 import ../../codec/state/safrole
 import ../../codec/header
@@ -16,10 +18,14 @@ type
       connectivityEpoch: uint32, attempt: TicketAttempt): NetworkTicketResult[
           CheckedNetworkTicket] {.nimcall, raises: [].}
     ## The private factory binds only genuine registered-key RingVRF production.
+  Announce = proc(context: pointer, source: AuditContext, ordinal: JudgeIndex,
+      limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] {.nimcall.}
+    ## The private factory binds the same registered JIP-5 key to initial CE144 production.
   Release = proc(context: pointer) {.nimcall, raises: [].} ## Last-owner release destroys the opaque private key before standard deallocation.
   SignerData = object ## Opaque resource storage uses private closed callbacks, not private runtime hooks or caller-supplied capabilities.
     context: nil pointer
     produce: nil Produce
+    announce: nil Announce
     release: nil Release
     publicBytes: array[32, byte]
   SignerState = ref SignerData ## Acyclic immutable shared lifetime; no mutable public key owner escapes.
@@ -55,6 +61,7 @@ proc `=wasMoved`(data: var SignerData) {.nodestroy.} =
   ## Moved private resource storage cannot release the transferred allocation.
   data.context = nil
   data.produce = nil
+  data.announce = nil
   data.release = nil
 proc `=destroy`(data: SignerData) =
   ## Last ARC owner invokes exactly the factory-bound release callback.
@@ -93,6 +100,20 @@ proc produce(context: pointer, source: TicketSource, local: StateEdKey, now: Sta
   ## A stable private allocation borrows its opaque key only for this exact CPU activation.
   let owner = cast[ptr PrivateSigner](context)
   produceNetworkTicket(source, owner[].key, local, now, connectivityEpoch, attempt)
+proc announce(context: pointer, source: AuditContext, ordinal: JudgeIndex,
+    limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] =
+  ## The opaque key is borrowed for the exact proof-worker activation.
+  let owner = cast[ptr PrivateSigner](context)
+  produceInitialAudit(source, ordinal, owner[].key, limits)
+proc produceAuditAnnouncement*(signer: TicketSigner, source: AuditContext, ordinal: JudgeIndex,
+    limits: AuditProofLimits): AuditValidationResult[CheckedAuditAnnouncement] =
+  ## The closed signing operation accepts only source-bound initial audit inputs.
+  let data = signer.data
+  if data == nil: return default(AuditValidationResult[CheckedAuditAnnouncement])
+  let produce = data.announce
+  let context = data.context
+  if produce == nil or context == nil: return default(AuditValidationResult[CheckedAuditAnnouncement])
+  produce(context, source, ordinal, limits)
 proc captureTicketSigner*(masterSeed: openArray[byte]): TicketSignerResult =
   ## Derive JIP-5 signing ownership; the caller retains/clears its borrowed master input and no seed bytes are retained here.
   let captured = deriveBandersnatchKey(masterSeed)
@@ -105,8 +126,8 @@ proc captureTicketSigner*(masterSeed: openArray[byte]): TicketSignerResult =
   if raw == nil: return TicketSignerResult(status: TicketSignerError.Exhausted)
   let private = cast[ptr PrivateSigner](raw)
   private[].key = captured.value
-  let state = SignerState(context: raw, produce: produce, release: releaseSigner,
-      publicBytes: array[32, byte](public.value))
+  let state = SignerState(context: raw, produce: produce, announce: announce,
+      release: releaseSigner, publicBytes: array[32, byte](public.value))
   TicketSignerResult(status: TicketSignerError.None, completed: TicketSigner(data: state))
 func error*(outcome: TicketProductionAdmission): NetworkTicketError =
   ## Failed/default capture exposes no executable input.
