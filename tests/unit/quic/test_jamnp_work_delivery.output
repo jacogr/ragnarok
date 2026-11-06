@@ -1,0 +1,4 @@
+metadata Deliver passed
+metadata ReceiverHeld passed
+metadata BusyAfterAck passed
+JAMNP-S verified metadata delivery and owned dial cleanup passed

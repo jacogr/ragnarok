@@ -71,11 +71,8 @@ proc configure*(route: var ReadClientRoute, request: ReadRequest,
   let minimum = request.minimumReplyBytes
   if uint64(maximum) < minimum or uint64(maximum) > uint64(
       request.maximumReplyBytes): return ReadError.LimitExceeded
-  let payload = request.payload
-  route = ReadClientRoute(configured: true, failure: ReadError.None, request: request,
-    maximum: uint64(maximum), output: @[byte(request.kind)])
-  for index in 0..<4: route.output.add(byte((uint32(payload.len) shr (8*index)) and 255))
-  for octet in payload: route.output.add(octet)
+  route = ReadClientRoute(configured: true, failure: ReadError.None,
+    request: detachedReadRequest(request), maximum: uint64(maximum), output: request.requestBytes)
   ReadError.None
 proc bindStream*(route: var ReadClientRoute, stream: NativeStream): ReadError =
   ## Only the authenticated parent supplies a locally initiated bidirectional stream for this reserved intent.
@@ -158,8 +155,8 @@ proc event*(route: var ReadClientRoute, stream: NativeStream, kind: cint,
     if route.offset < route.output.len:
       let amount = streamWrite(stream, addr route.output[route.offset], csize_t(min(4096,
           route.output.len-route.offset)))
-      if amount == -2: return
-      if amount <= 0 or amount > int64(route.output.len-route.offset):
+      if amount == -2 or amount == 0: return # Public LSQUIC zero-progress writes are ordinary backpressure.
+      if amount < 0 or amount > int64(route.output.len-route.offset):
         route.refuse(ReadError.InvalidStream)
         return
       route.offset += int(amount)

@@ -14,6 +14,7 @@ import ../../codec/[header, report_owned]
 import ../ancestor_context
 import ../fuzz/[ancestry as fuzz_ancestry, protocol as fuzz_protocol]
 import ./policy as report_policy
+import ../../codec/work/package as work_package
 import ../guarantee_credentials
 
 type
@@ -89,6 +90,27 @@ proc anchoredRecent*(owner: AnchoredReports): ReportAnchorResult[RecentAnchoredR
         status: ReportAnchorError.Uninitialized) # No disconnected reports.
   ReportAnchorResult[RecentAnchoredReports](status: ReportAnchorError.None, completed: data.recent)
 
+proc inspectRefinementAnchor*(context: RefinementContext, history: HistorySnapshot,
+    slot: StateTime, lookupAge: LookupAge): ReportAnchorError =
+  ## Reason-only shared GP tuple/age inspection grants neither report admission nor work-signing authority.
+  let info = history.historyInfo
+  if info.error != HistoryError.None: return ReportAnchorError.InvalidHistory
+  var found = false
+  for index in 0..<info.value.blocks:
+    # Every anchor field must match one record; fields from different historical blocks cannot be combined.
+    let record = history.historyBlockAt(HistoryBlockIndex(index)).value
+    if context.anchor.bytes == array[32, byte](record.header) and
+        context.stateRoot.bytes == array[32, byte](record.state) and
+        context.accumulationRoot.bytes == array[32, byte](record.superPeak) and
+        uint32(context.anchorSlot) == uint32(record.slot):
+      found = true
+      break
+  if not found: return ReportAnchorError.InvalidRecentAnchor
+  let current = uint64(uint32(slot))
+  if current > uint64(lookupAge) and uint64(uint32(context.lookupSlot)) < current-uint64(lookupAge):
+    return ReportAnchorError.LookupTooOld
+  ReportAnchorError.None
+
 proc checkRecentReportAnchors*(policy: PolicyCheckedReports, correctedHistory: openArray[byte],
     slot: StateTime, config: ReportAnchorConfig): ReportAnchorResult[RecentAnchoredReports] =
   ## Caller supplies the actual beta-dagger after parent-state-root correction, not the appended posterior history.
@@ -111,52 +133,65 @@ proc checkRecentReportAnchors*(policy: PolicyCheckedReports, correctedHistory: o
     return ReportAnchorResult[RecentAnchoredReports](
         status: ReportAnchorError.InvalidHistory) # No suffix fallback.
   let history = decoded.value.snapshot
-  let count = historyInfo(history).value.blocks
-  # Match all fields on one record, not fields scattered over different historical entries.
   for i in 0..<credentials.value.verifiedGuaranteeCount.value:
+    # The work-package and on-chain report paths use the same reason-only tuple and age rules.
     let report = ownedReportInfo(credentials.value.verifiedGuaranteeAt(i).value.report).value.header
-    var found = false
-    # The history codec already bounds this traversal to at most eight records.
-    for j in 0..<count:
-      let record = historyBlockAt(history, HistoryBlockIndex(j)).value
-      if report.anchor.bytes == array[32, byte](record.header) and
-          report.stateRoot.bytes == array[32, byte](record.state) and
-          report.accumulationRoot.bytes == array[32, byte](record.superPeak) and
-          uint32(report.anchorSlot) == uint32(record.slot):
-        found = true # One complete tuple establishes the recent anchor.
-        break
-    if not found:
-      return ReportAnchorResult[RecentAnchoredReports](
-          status: ReportAnchorError.InvalidRecentAnchor) # No hash-only acceptance.
-    let current = uint64(uint32(slot))
-    if current > uint64(config.lookupAge) and
-        uint64(uint32(report.lookupSlot)) < current-uint64(config.lookupAge):
-      return ReportAnchorResult[RecentAnchoredReports](
-          status: ReportAnchorError.LookupTooOld) # Inclusive lower bound, safe near genesis.
+    let context = RefinementContext(anchor: report.anchor, anchorSlot: report.anchorSlot,
+      stateRoot: report.stateRoot, accumulationRoot: report.accumulationRoot,
+      lookupAnchor: report.lookupAnchor, lookupSlot: report.lookupSlot,
+      lookupStateRoot: report.lookupStateRoot)
+    let inspected = inspectRefinementAnchor(context, history, slot, config.lookupAge)
+    if inspected != ReportAnchorError.None:
+      return ReportAnchorResult[RecentAnchoredReports](status: inspected)
   ReportAnchorResult[RecentAnchoredReports](status: ReportAnchorError.None,
     completed: RecentAnchoredReports(data: RecentData(policy: policy, history: history, slot: slot)))
 
-proc checkReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeader,
-    older: openArray[OwnedHeader], config: AncestorConfig): ReportAnchorResult[AnchoredReports] =
-  ## Parent is trusted chain context; older headers are supplied newest-first and must link all the way to it.
-  ## Both lookup header and its newer child must be in this retained ancestor sequence, never the candidate header.
+func ancestorRefusal[T](reason: AncestorContextError): ReportAnchorResult[T] {.requires: reason !=
+    AncestorContextError.None.} =
+  ## Preserve the genuine shared verifier failure while translating into the report-stage error domain.
+  let selected = case reason
+    of AncestorContextError.LimitExceeded: ReportAnchorError.LimitExceeded
+    of AncestorContextError.BrokenAncestry: ReportAnchorError.BrokenAncestry
+    of AncestorContextError.BackendFailure: ReportAnchorError.BackendFailure
+    else: ReportAnchorError.InvalidHeader # Other child refusals expose no authenticated header context.
+  ReportAnchorResult[T](status: selected)
+proc captureReportAncestorContext*(candidate, parent: OwnedHeader,
+    older: openArray[OwnedHeader], config: AncestorConfig): ReportAnchorResult[AncestorContext] =
+  ## The actual admitted candidate belongs to GP ancestors and can prove the parent's posterior root.
+  let maximum = uint64(config.headers)
+  if maximum < 2 or uint64(older.len) > maximum-2 or older.len > high(int)-2:
+    return ReportAnchorResult[AncestorContext](status: ReportAnchorError.LimitExceeded)
+  let count = older.len+2
+  if count > high(int) div sizeof(OwnedHeader):
+    return ReportAnchorResult[AncestorContext](status: ReportAnchorError.LimitExceeded)
+  var bytes = 0'u64
+  for index in 0..<count:
+    # Preflight every sealed extent before allocating the parent-plus-older descriptor index.
+    let source = if index == 0: candidate elif index == 1: parent else: older[index-2]
+    let info = source.headerInfo
+    if info.error != HeaderError.None:
+      return ReportAnchorResult[AncestorContext](status: ReportAnchorError.InvalidHeader)
+    let size = uint64(info.value.consumed)
+    if size > uint64(config.header.maxBytes) or size > uint64(config.maxBytes)-bytes:
+      return ReportAnchorResult[AncestorContext](status: ReportAnchorError.LimitExceeded)
+    bytes += size # Each successful comparison maintains bytes<=maxBytes before the next subtraction.
+  var suffix = newSeq[OwnedHeader](count-1)
+  suffix[0] = parent
+  for index in 0..<older.len: suffix[index+1] = older[
+      index] # Parent-inclusive count preflight bounds every write.
+  let captured = captureAncestorContext(candidate, suffix, AncestorContextLimits(
+    header: config.header, headers: config.headers, maxBytes: config.maxBytes))
+  if captured.error != AncestorContextError.None: return ancestorRefusal[AncestorContext](captured.error)
+  ReportAnchorResult[AncestorContext](status: ReportAnchorError.None, completed: captured.value)
+proc checkReportLookupAnchors*(recent: RecentAnchoredReports,
+    context: AncestorContext): ReportAnchorResult[AnchoredReports] =
+  ## A trusted linked subset suffices for existential proofs; the actual candidate may be its newest member.
   let data = recent.data
   if data == nil:
-    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidRecent) # A default cannot bypass the first stage.
-  let captured = captureAncestorContext(parent, older, AncestorContextLimits(
-    header: config.header, headers: config.headers, maxBytes: config.maxBytes))
-  case captured.error
-  of AncestorContextError.None: discard # Only a full capture may be retained by the final report certificate.
-  of AncestorContextError.LimitExceeded:
-    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.LimitExceeded)
-  of AncestorContextError.BrokenAncestry:
-    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.BrokenAncestry)
-  of AncestorContextError.BackendFailure:
-    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.BackendFailure)
-  else:
+    return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidRecent)
+  if not context.valid:
     return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidHeader)
-  let context = captured.value
-  if uint32(context.headerAt(0).value.headerInfo.value.unsigned.slot) >= uint32(data.slot):
+  if uint32(context.headerAt(0).value.headerInfo.value.unsigned.slot) > uint32(data.slot):
     return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.InvalidSlot)
   let credentials = data.policy.policyCredentials.value
   # Every report needs the lookup hash, its own slot and the child-committed posterior root together.
@@ -170,6 +205,16 @@ proc checkReportLookupAnchors*(recent: RecentAnchoredReports, parent: OwnedHeade
       return ReportAnchorResult[AnchoredReports](status: ReportAnchorError.MissingLookupAnchor)
   ReportAnchorResult[AnchoredReports](status: ReportAnchorError.None,
     completed: AnchoredReports(data: AnchorData(recent: recent, context: context)))
+
+proc checkReportLookupAnchors*(recent: RecentAnchoredReports, newest: OwnedHeader,
+    older: openArray[OwnedHeader], config: AncestorConfig): ReportAnchorResult[AnchoredReports] =
+  ## Preserve trusted ancestor-only proofs while allowing the real candidate and its parent-inclusive suffix.
+  if recent.data == nil: return ReportAnchorResult[AnchoredReports](
+      status: ReportAnchorError.InvalidRecent)
+  let captured = captureAncestorContext(newest, older, AncestorContextLimits(
+    header: config.header, headers: config.headers, maxBytes: config.maxBytes))
+  if captured.error != AncestorContextError.None: return ancestorRefusal[AnchoredReports](captured.error)
+  checkReportLookupAnchors(recent, captured.value)
 
 proc missingLookups*(demand: ReportLookupDemand): ReportAnchorResult[int] =
   ## Default discovery cannot masquerade as a complete zero-report proof.
@@ -207,7 +252,7 @@ proc planReportLookupDemand*(recent: RecentAnchoredReports,
     return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.InvalidRecent)
   if not context.valid:
     return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.InvalidHeader)
-  if uint32(context.headerAt(0).value.headerInfo.value.unsigned.slot) >= uint32(data.slot):
+  if uint32(context.headerAt(0).value.headerInfo.value.unsigned.slot) > uint32(data.slot):
     return ReportAnchorResult[ReportLookupDemand](status: ReportAnchorError.InvalidSlot)
   let oldest = uint32(context.headerAt(context.len - 1).value.headerInfo.value.unsigned.slot)
   let credentials = data.policy.policyCredentials.value

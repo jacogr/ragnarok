@@ -10,6 +10,7 @@ import ../../../src/jamnp-s/[node, connections, work_submission, work_stream, re
 import ../../../src/jamnp-s/work_duty
 import ../../../src/codec/[bounded]
 import ../../../src/codec/work/package as work_package
+from ../../../src/codec/work/digest import Gas
 import ../../../src/codec/state/safrole
 import ../../../src/chain/[genesis, provider]
 import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_probe,
@@ -18,7 +19,7 @@ import ../../support/[jamnp_work_fixture, jamnp_topology_fixture, jamnp_node_pro
 type
   Variant {.pure.} = enum Success, Package, Empty, CorruptProof, WithheldFin, Suffix, CancelDone,
     ForeignDone, Oversized, Observer, GlobalQuota, OverGas, Disabled, Truncated, ShortBody,
-      HugeProof, WrongCore, UncertainEpoch
+      HugeProof, WrongCore, UncertainEpoch, LargePackage, LargeBundle
   Detached = object ## Completed source-free transcripts survive all native/Services lifetimes for independent ownership checks.
     header: UntrustedWorkHeader
     body: UntrustedWorkBody
@@ -36,8 +37,8 @@ proc frame(payload: openArray[byte]): seq[byte] =
   for octet in payload: result.add(octet)
 proc wire(f: WorkFixture, variant: Variant): seq[byte] =
   ## Independently authored selectors and separate payloads exercise header/body boundaries over actual TLS.
-  result = @[if variant == Variant.Package: 133'u8 else: 146'u8]
-  if variant == Variant.Package:
+  result = @[if variant in [Variant.Package, Variant.LargePackage]: 133'u8 else: 146'u8]
+  if variant in [Variant.Package, Variant.LargePackage]:
     var first = @[0'u8, 0]
     for octet in f.package: first.add(octet)
     for octet in frame(first): result.add(octet)
@@ -50,7 +51,7 @@ proc wire(f: WorkFixture, variant: Variant): seq[byte] =
     for octet in [6'u8, 0, 0, 0, 97, 98]: result.add(octet)
     return # The committed six-byte extrinsic message terminates after only two payload bytes.
   for octet in frame(f.extrinsics): result.add(octet)
-  if variant != Variant.Package:
+  if variant notin [Variant.Package, Variant.LargePackage]:
     for octet in frame(f.segments): result.add(octet)
     if variant == Variant.HugeProof:
       for octet in [255'u8, 255, 255, 255]: result.add(octet)
@@ -103,6 +104,16 @@ proc live(variant: Variant): Detached {.raises.} =
   ## Actual Services owns grants/refinement; the native owner and simulated dispatcher retain only opaque tokens and raw transcripts.
   result = default(Detached)
   var fixture = workFixture(external = variant != Variant.Empty)
+  if variant in [Variant.LargePackage, Variant.LargeBundle]:
+    # Valid large package framing is checked independently from guest authorization and body acceptance.
+    let package = WorkPackage(items: @[WorkItem(refineGas: Gas(1), accumulateGas: Gas(1),
+      payload: newSeq[byte](262144))])
+    var encoded = newSeq[byte](270000)
+    let written = encodeWorkPackage(package, fullPackageConfig(ByteLimit(MaxBundleBytes)), encoded)
+    assert written.error == PackageError.None
+    encoded.setLen(written.value)
+    fixture.package = encoded
+    fixture.first = @[0'u8, 0, 0]
   if variant == Variant.OverGas:
     # Patch only the authored first item's E8 refinement-gas field; the package and authorizer commitments remain otherwise unchanged.
     let selected = fixture.input.package.workItemAt(0).value
@@ -163,8 +174,21 @@ proc live(variant: Variant): Detached {.raises.} =
       assert not probe.flows[short].receivedFin
     return
   let task = waitHeader(server, probe)
+  if variant in [Variant.LargePackage, Variant.LargeBundle]:
+    # Actual TLS selectors133 and146 both preserve the entire legal package beyond the previous200KiB ceiling.
+    let header = task.header
+    let kind = if variant == Variant.LargePackage: WorkSubmissionKind.Package else: WorkSubmissionKind.Bundle
+    let decoded = decodeWorkSubmission(kind, header.firstMessage, header.packageMessage,
+      fullPackageConfig(ByteLimit(MaxBundleBytes)))
+    assert decoded.error == WorkSubmissionError.None
+    assert decoded.value.submissionInfo.value.packageBytes == fixture.package.len
+    assert fixture.package.len > 204800
+    assert server.rejectWork(task.ticket)
+    settleReset(server, probe, flow)
+    return
   let ticket = task.ticket
-  let headerBytes = if variant == Variant.Package: uint64(4+2+fixture.package.len)
+  let headerBytes = if variant in [Variant.Package, Variant.LargePackage]: uint64(
+      4+2+fixture.package.len)
     else: uint64(8+fixture.first.len+fixture.package.len)
   pump(server, probe, 30)
   assert server.workInputBytes(ticket) == headerBytes, "no body prefix may be consumed while authorization is paused"
@@ -310,7 +334,7 @@ proc live(variant: Variant): Detached {.raises.} =
     assert services.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted
     assert services.reapWorkSubmission()
     return
-  let completed = if variant == Variant.Package:
+  let completed = if variant in [Variant.Package, Variant.LargePackage]:
     services.beginWorkPackage(token, body.extrinsics, [@[inputProof(0)], @[inputProof(1)]], [
         inputPair(1)])
   else: services.beginWorkBundle(token, body.extrinsics, body.segments, body.proofs)

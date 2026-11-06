@@ -83,7 +83,7 @@ import ../../src/lib/json/writer as json_writer
 import std/strutils
 import ./jamnp_topology_fixture
 proc workSnapshot*(f: WorkFixture, local = default(StateEdKey), remote = default(
-    StateEdKey), neighbour = false): BlockSnapshot =
+    StateEdKey), neighbour = false, third = default(StateEdKey)): BlockSnapshot =
   ## Merge actual code and commitments with explicit canonical roster/time context; no consensus certificate is invented.
   var current = topologyRecords(0, 6)
   if array[32, byte](local) != default(array[32, byte]):
@@ -92,6 +92,8 @@ proc workSnapshot*(f: WorkFixture, local = default(StateEdKey), remote = default
   if array[32, byte](remote) != default(array[32, byte]):
     let position = if neighbour: 0 else: 2
     current[position].ed25519 = remote # The real peer is either a grid neighbour awaiting UP0 or an independent validator read peer.
+  if array[32, byte](third) != default(array[32, byte]):
+    current[5].ed25519 = third # The third original position on core0 at slots20..23 has its own actual identity.
   let base = topologyCaptured([topologyRecords(0, 6), current, topologyRecords(1, 6)],
     cores = 2, atSlot = 20).value
   var state = forkStateStore(f.input.state).value

@@ -12,6 +12,11 @@ proc main() {.raises.} =
   var route = default(ReadClientRoute)
   assert route.configure(default(ReadRequest)) == ReadError.InvalidRequest
   assert route.take().error == ReadError.Unavailable
+  assert decodeReadRequest(ReadKind.Guarantee, []).error == ReadError.InvalidRequest
+  let guarantee = @[1'u8, 2, 3]
+  exchangeClient(ReadKind.Guarantee, guarantee, @[], holdFin = true, maximum = ByteLimit(0), budget = 0)
+  exchangeClient(ReadKind.Guarantee, guarantee, @[0'u8], maximum = ByteLimit(0),
+      failure = ReadError.InvalidRequest)
   let blockPayload = newSeq[byte](37)
   let blockRequest = decodeReadRequest(ReadKind.Blocks, blockPayload).value
   assert route.configure(blockRequest, ByteLimit(3)) == ReadError.LimitExceeded

@@ -12,7 +12,7 @@ import ../../codec/[block_codec, header, bounded, guarantees, assurances]
 import ../../codec/state/[safrole as state_safrole, disputes as state_disputes,
     history as state_history, layout as state_layout, availability as state_availability]
 import ../fuzz/ancestry as fuzz_ancestry
-import ../[ancestor_context, store]
+import ../store
 import "../block/transition" as block_transition
 import "../block/admission" as block_admission
 import ../guarantee_credentials
@@ -270,8 +270,12 @@ proc completeBlockReports*(prepared: PreparedReportAdmission,
   let data = prepared.data
   if data == nil: return ReportAdmissionResult[AdmittedReports](
       status: ReportAdmissionError.InvalidTransition)
-  completeAnchoredReports(prepared, checkReportLookupAnchors(data.recent,
-    data.staged.value.admitted.admittedParent, older, data.config.ancestors))
+  let context = captureReportAncestorContext(data.staged.value.admitted.admittedHeader,
+    data.staged.value.admitted.admittedParent, older, data.config.ancestors)
+  if context.error != ReportAnchorError.None:
+    return ReportAdmissionResult[AdmittedReports](status: ReportAdmissionError.AnchorFailure,
+      anchorReason: context.error)
+  completeAnchoredReports(prepared, checkReportLookupAnchors(data.recent, context.value))
 
 proc completeFuzzBlockReports*(prepared: PreparedReportAdmission,
     context: FuzzAncestry): ReportAdmissionResult[AdmittedReports] =
@@ -323,7 +327,7 @@ proc planBlockReports*(staged: BlockTransitionResult, older: openArray[OwnedHead
 
 proc planPreparedReportLookupDemand*(prepared: PreparedReportAdmission,
     older: openArray[OwnedHeader]): ReportAdmissionResult[ReportLookupDemand] =
-  ## Bind discovery to the actual admitted parent and original policy; callers supply only an older suffix.
+  ## Bind discovery to the actual admitted candidate/parent and original policy; callers supply only an older suffix.
   let data = prepared.data
   if data == nil:
     return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.InvalidTransition)
@@ -337,19 +341,11 @@ proc planPreparedReportLookupDemand*(prepared: PreparedReportAdmission,
   if assignments.error != ReportAssignmentError.None:
     return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.AssignmentFailure,
       assignmentReason: assignments.error) # Occupied post-assurance cores cannot be repaired by fetching older headers.
-  let limits = data.config.ancestors
-  let context = captureAncestorContext(data.staged.value.admitted.admittedParent, older,
-    AncestorContextLimits(header: limits.header, headers: limits.headers,
-        maxBytes: limits.maxBytes))
-  if context.error != AncestorContextError.None:
-    var reason = ReportAnchorError.InvalidHeader
-    case context.error
-    of AncestorContextError.LimitExceeded: reason = ReportAnchorError.LimitExceeded # Preserve independent resource refusals.
-    of AncestorContextError.BrokenAncestry: reason = ReportAnchorError.BrokenAncestry # A supplied gap is never repaired by remote extension.
-    of AncestorContextError.BackendFailure: reason = ReportAnchorError.BackendFailure # No fabricated digest or fallback.
-    else: discard # Invalid/default header alternatives carry no context.
+  let context = captureReportAncestorContext(data.staged.value.admitted.admittedHeader,
+    data.staged.value.admitted.admittedParent, older, data.config.ancestors)
+  if context.error != ReportAnchorError.None:
     return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.AnchorFailure,
-        anchorReason: reason)
+      anchorReason: context.error)
   let demand = planReportLookupDemand(data.recent, context.value)
   if demand.error != ReportAnchorError.None:
     return ReportAdmissionResult[ReportLookupDemand](status: ReportAdmissionError.AnchorFailure,

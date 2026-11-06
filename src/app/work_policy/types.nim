@@ -7,6 +7,9 @@ import ../../state/input_refinement
 from ../../codec/bounded import ByteLimit, ElementLimit
 
 type
+  WorkPolicyError* {.pure.} = enum ## Only complete None success carries activation policy; every failure has a bounded field diagnostic.
+    Uninitialized, None, FileFailure, LimitExceeded, WrongVersion, InvalidLine,
+    InvalidNumber, InvalidBackend, DuplicateField, MissingField, UnknownField, InvalidPolicy
   WorkAcquisitionPolicy* = object ## Explicit local network ceilings are independent from source-bearing execution policy.
     ready: bool
     attempts: int

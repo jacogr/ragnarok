@@ -6,6 +6,7 @@ import std/assertions
 import ./[work_submission, read_stream]
 import ../quic/transport
 import ../codec/bounded
+from ../codec/work/package import MaxBundleBytes
 
 type
   HeaderBytes = ref object ## Complete immutable copied header messages outlive the native stream without retaining its pointer.
@@ -130,7 +131,7 @@ proc permitBody*(route: var WorkRoute, info: WorkSubmissionInfo): ReadError =
   if not route.configured or route.failed or not route.headerTaken or route.permitted or
       route.index != route.headerCount or route.stream == NativeStream(
           nil): return ReadError.InvalidStream
-  if info.kind != route.kind or info.packageBytes < 1 or info.packageBytes > 204800 or
+  if info.kind != route.kind or info.packageBytes < 1 or info.packageBytes > MaxBundleBytes or
       info.extrinsicBytes < 0 or info.extrinsicBytes > 13904950 or
       info.importCount < 0 or info.importCount > 3072: return ReadError.InvalidRequest
   if info.segmentBytes != info.importCount*4104: return ReadError.InvalidRequest
@@ -150,9 +151,10 @@ proc lengthAllowed(route: WorkRoute, length: uint64): bool =
   ## Validate the complete E4 extent before allocation or native-int narrowing.
   if route.index < route.headerCount:
     if route.index == 0:
-      let maximum = if route.kind == WorkSubmissionKind.Package: 204802'u64 else: 515'u64
+      let maximum = if route.kind == WorkSubmissionKind.Package: uint64(
+          MaxBundleBytes+2) else: 515'u64
       return length >= 3 and length <= maximum
-    return length > 0 and length <= 204800
+    return length > 0 and length <= uint64(MaxBundleBytes)
   if not route.permitted: return false
   let body = route.index-route.headerCount
   if body == 0: return length == uint64(route.info.extrinsicBytes)

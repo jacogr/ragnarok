@@ -2,7 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Derive report and guarantee transcript only through genuine original refinement, bundle and availability provenance.
+import ./work_submission
 import ../codec/bounded
+import ../chain/parameters
+import ../state/authorization/invocation
+import ../state/store
+import ../state/report/identity
+import ../state/authorized_refinement
 from ../codec/work/report import ErasureShards
 import ../state/[input_refinement, auditable_bundle, bundle_erasure]
 import ../state/erasure/layout
@@ -65,6 +71,20 @@ func transcriptError*(outcome: WorkReportResult): ComputedGuaranteeError {.requi
     WorkReportError.TranscriptFailure.} =
   ## Preserve actual hashing/resource failures without a signature or partial message.
   outcome.transcriptReason
+proc workReportMatches*(transcript: ComputedGuaranteeTranscript, header: WorkSubmissionHeader,
+    executionState: StateStoreSnapshot, parameters: Parameters): bool =
+  ## Follow the private computed report's actual execution chain before comparing original package/core/map identity.
+  ## A caller-supplied detached report, equal-byte header or replacement map cannot borrow execution provenance.
+  let computed = transcript.computedGuaranteeReport
+  if computed.error != ComputedGuaranteeError.None: return false
+  let available = computed.value.computedReportSource.value
+  let bundle = available.availabilitySource.value.exportErasureSource.value
+  let executed = bundle.bundleErasureSource.value.layoutSource.value.bundleSource.value
+  let identity = executed.inputRefinementIdentity.value
+  let authorization = identity.identitySource.value.authorizedSource.value
+  header.submissionMatchesAuthorization(authorization, executionState) and
+    authorization.authorizationParameters.value.sameParameterProfile(parameters)
+
 proc prepareWorkReport*(source: InputRefinement, shards: ErasureShards,
     limits: WorkReportLimits): WorkReportResult =
   ## Call under the managed graph lease; every intermediate owner retires before complete success or selected failure escapes.

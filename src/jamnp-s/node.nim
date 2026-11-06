@@ -7,6 +7,7 @@ import std/[assertions, monotimes, times]
 import ./[connections, admission, announcements, announcement_stream, read_stream, read_client, streams]
 import ./network
 import ./work_stream
+import ./[sharing_wire, sharing_stream, sharing_client]
 import ./work_submission
 import ../chain/[provider, genesis]
 import ../codec/[bounded, header, assurances]
@@ -29,6 +30,10 @@ type
     peer: NodePeer
     serial: uint64
     index: int
+  NodeSharingRequestTicket* = object ## Exact outbound sharing reservation remains bound to this authenticated peer generation.
+    peer: NodePeer
+    serial: uint64
+    index: int
   NodeReadTask* = object ## A copied fixed request can cross a host/worker boundary without canonical state.
     ticket: NodeReadTicket
     request: ReadRequest
@@ -39,13 +44,20 @@ type
   NodeWorkTask* = object ## Complete raw small headers cross only the host boundary before actual authorization.
     ticket: NodeWorkTicket
     header: UntrustedWorkHeader
+  NodeSharingTicket* = object ## Exact incoming CE134 incarnation is distinct from builder/read claims.
+    index: int
+    serial: uint64
+    peer: NodePeer
+  NodeSharingTask* = object ## Authenticated sender facts accompany source-free untrusted complete wire bytes only.
+    ticket: NodeSharingTicket
+    request: SharedWorkRequest
   NodeClaims* = object ## Detached authenticated source identity plus untrusted peer claims, never adoption authority.
     ready: bool
     peer: NodePeer
     stream: NativeStreamId
     claims: PeerAnnouncements
   FrameKind {.pure.} = enum ## Closing retains its original class and buffers until actual native retirement.
-    Empty, Selecting, Read, Persistent, Client, Work
+    Empty, Selecting, Read, Persistent, Client, Work, Sharing, SharingClient
   Frame = object ## Fixed global slots remain stable through all native stream callbacks.
     handle: NativeStream
     peer: NodePeer
@@ -57,6 +69,8 @@ type
     serial, inputBytes, outputBytes, replyBytes, sentVersion: uint64
     read: ReadRoute
     work: WorkRoute
+    sharing: SharingRoute
+    sharingClient: SharingClientRoute
     client: ReadClientRoute
     announcement: AnnouncementRoute
   Peer = object ## Connection-lifetime watermark forbids rollback to a delayed lower UP0 ID.
@@ -70,7 +84,7 @@ type
     limits: AnnouncementLimits
     body: seq[byte]
   NodeService* = object ## Explicit noncopyable aggregate owns one connection actor and fixed protocol slots.
-    opened, stopping, workEnabled: bool
+    opened, stopping, workEnabled, sharingEnabled, distributionEnabled: bool
     failure: NodeError
     callbacks, sweep, processCursor, peerCursor, broadcastCursor, readCursor: int
     serial, version, inputUsed, handshakeUsed, outputUsed, replyUsed, clientUsed: uint64
@@ -101,6 +115,8 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   owner.opened = false
   owner.stopping = false
   owner.workEnabled = false
+  owner.sharingEnabled = false
+  owner.distributionEnabled = false
   owner.failure = NodeError.Uninitialized
   owner.callbacks = 0
   owner.sweep = 0
@@ -148,6 +164,15 @@ func header*(task: NodeWorkTask): UntrustedWorkHeader =
 func sourcePeer*(ticket: NodeWorkTicket): NodePeer =
   ## Preserve authenticated peer generation independently of the frame's later retirement.
   ticket.peer
+func ticket*(task: NodeSharingTask): NodeSharingTicket =
+  ## Host control remains bound to the exact peer and physical generation.
+  task.ticket
+func request*(task: NodeSharingTask): SharedWorkRequest =
+  ## Complete immutable raw bytes confer no core assignment or signature authority.
+  task.request
+func peerIdentity*(task: NodeSharingTask): StateEdKey =
+  ## The native parent's authenticated key is independent from all packet-supplied fields.
+  task.ticket.peer.identity
 func valid*(source: NodeClaims): bool =
   ## Default source snapshots carry no authenticated source identity.
   source.ready
@@ -192,19 +217,30 @@ func reads(owner: NodeService): int =
   ## Global read slots are independent of each peer's selector and persistent reservations.
   result = 0
   for index in 0..<owner.frames.len:
-    if owner.frames[index].kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work]: inc result
+    if owner.frames[index].kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work,
+        FrameKind.Sharing, FrameKind.SharingClient]: inc result
+func ephemerals(owner: NodeService, peer: NodePeer): int =
+  ## Closing/queued directions retain the same two-per-peer budget across every ephemeral method family.
+  owner.frameCount(peer, FrameKind.Read)+owner.frameCount(peer, FrameKind.Client) +
+    owner.frameCount(peer, FrameKind.Work)+owner.frameCount(peer, FrameKind.Sharing) +
+    owner.frameCount(peer, FrameKind.SharingClient)
+func sharingClients(owner: NodeService): int =
+  ## Two outgoing requests are independent of two incoming large-work reservations, preventing mutual sharing deadlock.
+  result = 0
+  for frame in owner.frames:
+    if frame.kind == FrameKind.SharingClient: inc result
 func works(owner: NodeService): int =
   ## Two physical work routes bound partial headers and large bodies even during pending native resets.
   result = 0
   for frame in owner.frames:
-    if frame.kind == FrameKind.Work: inc result
+    if frame.kind in [FrameKind.Work, FrameKind.Sharing]: inc result
 func localStream(peer: NodePeer, number: NativeStreamId): bool =
   ## IETF bit zero names client/server initiation independently of the connection's local direction.
   ((uint64(number) and 1) == 0) == peer.initiated
 proc releaseFrame(owner: var NodeService, index: int) =
   ## Final native retirement revokes tickets and refunds exactly the owned frame's byte charges.
   let frame = addr owner.frames[index]
-  if frame.kind == FrameKind.Client:
+  if frame.kind in [FrameKind.Client, FrameKind.SharingClient]:
     assert frame.inputBytes <= owner.clientUsed
     owner.clientUsed -= frame.inputBytes
   elif frame.inputHandshake:
@@ -222,7 +258,7 @@ proc closeFrame(owner: var NodeService, index: int) =
   let frame = addr owner.frames[index]
   if frame.kind == FrameKind.Empty or frame.closing: return
   frame.closing = true
-  if frame.kind == FrameKind.Client and frame.handle == NativeStream(nil):
+  if frame.kind in [FrameKind.Client, FrameKind.SharingClient] and frame.handle == NativeStream(nil):
     let peerPosition = owner.peerIndex(frame.peer)
     if peerPosition >= 0 and owner.peers[peerPosition].readQueued and owner.peers[
         peerPosition].readIndex == index:
@@ -246,6 +282,18 @@ proc accountClient(owner: var NodeService, index: int) =
   assert bytes <= ClientBudget-owner.clientUsed
   owner.clientUsed += bytes
   frame.inputBytes = bytes
+proc accountSharingClient(owner: var NodeService, index: int) =
+  ## Fixed responses use shared client-input credit, independently from incoming bundle reservations.
+  let frame = addr owner.frames[index]
+  let bytes = uint64(frame.sharingClient.bufferedBytes)
+  let written = frame.sharingClient.writtenBytes
+  if bytes > frame.inputBytes or written > frame.offset: frame.activity = owner.now
+  frame.offset = written
+  assert frame.inputBytes <= owner.clientUsed
+  owner.clientUsed -= frame.inputBytes
+  assert bytes <= ClientBudget-owner.clientUsed
+  owner.clientUsed += bytes
+  frame.inputBytes = bytes
 proc accountWork(owner: var NodeService, index: int) =
   ## Every copied E4/payload byte shares the existing input budget through actual native close.
   let frame = addr owner.frames[index]
@@ -256,6 +304,18 @@ proc accountWork(owner: var NodeService, index: int) =
   assert bytes <= InputBudget-owner.inputUsed
   owner.inputUsed += bytes
   frame.inputBytes = bytes
+proc accountSharing(owner: var NodeService, index: int) =
+  ## Full-bundle credit remains reserved until native close; output progress refreshes only scalar activity.
+  let frame = addr owner.frames[index]
+  let bytes = frame.sharing.receivedBytes
+  let written = frame.sharing.writtenBytes
+  if bytes > frame.inputBytes or written > frame.offset: frame.activity = owner.now
+  assert frame.inputBytes <= owner.inputUsed
+  owner.inputUsed -= frame.inputBytes
+  assert bytes <= InputBudget-owner.inputUsed
+  owner.inputUsed += bytes
+  frame.inputBytes = bytes
+  frame.offset = written
 proc accountRead(owner: var NodeService, index: int) =
   ## Heap-backed batch requests retain their physical input charge until the actual native close.
   let frame = addr owner.frames[index]
@@ -332,8 +392,8 @@ proc admissible(user: pointer, peer: NodePeer, stream: NativeStream): bool {.rai
   if localStream(peer, number):
     if owner.peers[position].readQueued:
       let index = owner.peers[position].readIndex
-      return index >= 0 and index < owner.frames.len and owner.frames[index].kind ==
-          FrameKind.Client and owner.frames[index].peer == peer
+      return index >= 0 and index < owner.frames.len and owner.frames[index].kind in
+          [FrameKind.Client, FrameKind.SharingClient] and owner.frames[index].peer == peer
     return peer.initiated and owner.peers[position].queued and owner.node.announcements(peer) and
         owner[].frameCount(peer, FrameKind.Persistent) < 2
   owner[].frameCount(peer, FrameKind.Selecting) ==
@@ -361,8 +421,9 @@ proc peerEvent(user: pointer, peer: NodePeer, event: NodePeerEvent) {.raises: []
     if position >= 0: owner.peers[position] = default(Peer)
     for index in 0..<owner.frames.len:
       if owner.frames[index].kind != FrameKind.Empty and owner.frames[index].peer == peer:
-        if owner.frames[index].kind == FrameKind.Client and owner.frames[index].handle ==
-            NativeStream(nil):
+        let client = owner.frames[index].kind in [FrameKind.Client, FrameKind.SharingClient]
+        let retired = owner.frames[index].handle == NativeStream(nil)
+        if client and retired:
           owner[].releaseFrame(index) # Queued/complete retired client slots receive no later application callback for this closed generation.
         else:
           owner.frames[index].closing = true # Physical native retirement remains responsible for active stream storage.
@@ -381,7 +442,9 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       let frame = addr owner.frames[index]
       frame.handle = stream
       frame.number = stream.streamId
-      if frame.client.bindStream(stream) != ReadError.None: owner[].closeFrame(index)
+      let bound = if frame.kind == FrameKind.SharingClient: frame.sharingClient.bindSharingClient(stream)
+        else: frame.client.bindStream(stream)
+      if bound != ReadError.None: owner[].closeFrame(index)
       return # Exactly one serialized local intent matches this native open, including delayed library fulfillment.
     for index in 0..<owner.frames.len:
       if owner.frames[index].kind == FrameKind.Empty:
@@ -408,15 +471,22 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       frame.handle = NativeStream(nil)
       if frame.client.ready and not frame.closing and owner.node.active(
           peer): return # Complete bytes outlive native retirement until host collection.
+    elif frame.kind == FrameKind.SharingClient:
+      frame.sharingClient.event(stream, event, ByteLimit(0))
+      frame.handle = NativeStream(nil)
+      if frame.sharingClient.ready and not frame.closing and owner.node.active(peer): return
     elif frame.kind == FrameKind.Read: frame.read.event(stream, event)
     elif frame.kind == FrameKind.Work: frame.work.event(stream, event, ByteLimit(0))
+    elif frame.kind == FrameKind.Sharing: frame.sharing.event(stream, event, ByteLimit(0))
     elif frame.kind == FrameKind.Persistent: discard frame.announcement.event(stream, event)
     owner[].releaseFrame(position)
     return
   if event == 4:
     if frame.kind == FrameKind.Client: frame.client.event(stream, event)
+    elif frame.kind == FrameKind.SharingClient: frame.sharingClient.event(stream, event, ByteLimit(0))
     elif frame.kind == FrameKind.Read: frame.read.event(stream, event)
     elif frame.kind == FrameKind.Work: frame.work.event(stream, event, ByteLimit(0))
+    elif frame.kind == FrameKind.Sharing: frame.sharing.event(stream, event, ByteLimit(0))
     elif frame.kind == FrameKind.Persistent: discard frame.announcement.event(stream, event)
     let alreadyClosing = frame.closing
     frame.closing = true
@@ -439,18 +509,20 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8, 142'u8,
-        143'u8, 147'u8, 148'u8]:
+    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 135'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8,
+        142'u8, 143'u8, 147'u8, 148'u8]:
+      if kind == 135'u8:
+        let validators = owner.node.isValidator and owner.node.isValidator(peer)
+        if not owner.distributionEnabled or not validators:
+          owner[].closeFrame(position)
+          return # Only an explicitly installed managed guarantee consumer may buffer these validator uploads.
       if kind == 142'u8 and not owner.node.isValidator:
         owner[].closeFrame(position)
         return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
       if kind in [131'u8, 132'u8] and (not owner.node.isValidator or not owner.node.isValidator(peer)):
         owner[].closeFrame(position)
         return # Ticket protocols require both authenticated validator roles before any proof work or larger fixed input is admitted.
-      let inboundReads = owner[].frameCount(peer, FrameKind.Read)
-      let outboundReads = owner[].frameCount(peer, FrameKind.Client)
-      if owner[].reads >= MaxNodeReads or inboundReads+outboundReads+owner[].frameCount(peer,
-          FrameKind.Work) >= 2:
+      if owner[].reads >= MaxNodeReads or owner[].ephemerals(peer) >= 2:
         owner[].closeFrame(position)
         return
       if owner.inputUsed >= InputBudget:
@@ -461,15 +533,28 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
         return
       frame.kind = FrameKind.Read
       owner[].accountRead(position)
+    elif kind == 134'u8:
+      # Only explicitly configured actual validators buffer sharing; same-core duty remains a managed state check.
+      let sharing = owner[].frameCount(peer, FrameKind.Sharing)
+      if not owner.sharingEnabled or not owner.node.isValidator or not owner.node.isValidator(peer):
+        owner[].closeFrame(position)
+        return
+      if sharing >= 1 or owner[].ephemerals(peer) >= 2 or owner[].works >= 2 or owner[].reads >=
+          MaxNodeReads or owner.inputUsed >= InputBudget:
+        owner[].closeFrame(position)
+        return # Closing routes retain both global and per-peer physical reservations.
+      if frame.sharing.bindSharingStream(stream) != ReadError.None:
+        owner[].closeFrame(position)
+        return
+      frame.kind = FrameKind.Sharing
     elif kind in [133'u8, 146'u8]:
       # Builder uploads target authenticated validators; core duty and actual authorization remain host-side checks.
-      let peerWork = owner[].frameCount(peer, FrameKind.Work)
-      let peerReads = owner[].frameCount(peer, FrameKind.Read)+owner[].frameCount(peer,
-          FrameKind.Client)
+      let peerWork = owner[].frameCount(peer, FrameKind.Work)+owner[].frameCount(peer,
+          FrameKind.Sharing)
       if not owner.workEnabled or not owner.node.isValidator:
         owner[].closeFrame(position)
         return # A dispatcher and actual validator role precede any package buffering.
-      if peerWork >= 1 or peerReads+peerWork >= 2:
+      if peerWork >= 1 or owner[].ephemerals(peer) >= 2:
         owner[].closeFrame(position)
         return # Existing read reservations share this peer's finite stream budget.
       if owner[].works >= 2 or owner[].reads >= MaxNodeReads:
@@ -485,6 +570,12 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
   of FrameKind.Client:
     frame.client.event(stream, event, ByteLimit(ClientBudget-owner.clientUsed))
     owner[].accountClient(position)
+  of FrameKind.SharingClient:
+    frame.sharingClient.event(stream, event, ByteLimit(ClientBudget-owner.clientUsed))
+    owner[].accountSharingClient(position)
+  of FrameKind.Sharing:
+    frame.sharing.event(stream, event, ByteLimit(InputBudget-owner.inputUsed))
+    owner[].accountSharing(position)
   of FrameKind.Work:
     let budget = InputBudget-owner.inputUsed
     frame.work.event(stream, event, ByteLimit(budget))
@@ -532,6 +623,8 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   ## Retire all engines/callbacks before dropping protocol buffers; host joins canonical jobs separately.
   owner.stopping = true
   owner.workEnabled = false
+  owner.sharingEnabled = false
+  owner.distributionEnabled = false
   owner.node.close()
   for index in 0..<owner.frames.len:
     assert owner.frames[index].kind == FrameKind.Empty, "every borrowed stream must receive native close"
@@ -560,6 +653,8 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   owner.local = captured.value
   owner.limits = limits
   owner.workEnabled = false
+  owner.sharingEnabled = false
+  owner.distributionEnabled = false
   owner.sweep = 0
   owner.processCursor = 0
   owner.peerCursor = 0
@@ -626,6 +721,13 @@ proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[Node
       if matches and owner.node.active(peer):
         return NodeResult[NodePeer](status: NodeError.None, completed: peer)
   NodeResult[NodePeer](status: NodeError.Unavailable)
+func peerBusy*(owner: NodeService, identity: StateEdKey): bool =
+  ## Temporary demand connections may also carry remote work; selectors and closing frames retain that peer until actual native retirement.
+  for index in 0..<owner.frames.len:
+    let frame = addr owner.frames[index]
+    if frame.kind in [FrameKind.Empty, FrameKind.Persistent]: continue
+    if array[32, byte](frame.peer.identity) == array[32, byte](identity): return true
+  false
 proc source*(owner: NodeService, peer: NodePeer): NodeResult[NodeClaims] =
   ## Capture only the greatest live UP0 incarnation's claims; they never certify a state root or finality.
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeClaims](
@@ -656,20 +758,21 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if not owner.isOpen or not owner.node.active(peer): return NodeResult[NodeRequestTicket](
       status: NodeError.Unavailable)
   if not request.valid: return NodeResult[NodeRequestTicket](status: NodeError.InvalidConfig)
-  if request.kind in [ReadKind.TicketProxy, ReadKind.TicketDistribution]:
+  if request.kind == ReadKind.Guarantee and not owner.distributionEnabled:
+    return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
+  if request.kind in [ReadKind.Guarantee, ReadKind.TicketProxy, ReadKind.TicketDistribution]:
     if not owner.node.isValidator or not owner.node.isValidator(peer):
-      return NodeResult[NodeRequestTicket](status: NodeError.InvalidSource) # Outbound ticket uploads have the same both-validator role boundary.
+      return NodeResult[NodeRequestTicket](status: NodeError.InvalidSource) # Outbound validator uploads have the same both-validator role boundary.
   let peerPosition = owner.peerIndex(peer)
   if peerPosition < 0: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
       NodeRequestTicket](status: NodeError.Unavailable)
-  let independent = request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards,
-      ReadKind.Segments]
+  let independent = request.kind in [ReadKind.Guarantee, ReadKind.SegmentShards,
+      ReadKind.ProvenSegmentShards, ReadKind.Segments]
   if not independent and owner.node.announcements(peer) and owner.source(peer).error !=
       NodeError.None:
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable) # Named import data uses independently selected roots, not UP0 chain claims.
-  if owner.reads >= MaxNodeReads or owner.frameCount(peer, FrameKind.Read)+owner.frameCount(peer,
-      FrameKind.Client)+owner.frameCount(peer, FrameKind.Work) >= 2:
+  if owner.reads >= MaxNodeReads or owner.ephemerals(peer) >= 2:
     return NodeResult[NodeRequestTicket](status: NodeError.LimitExceeded)
   if owner.serial == high(uint64): return NodeResult[NodeRequestTicket](status: NodeError.Exhausted)
   var index = -1
@@ -678,12 +781,19 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
       index = candidate
       break # Fixed global slots include queued clients before any raw native route is claimed.
   if index < 0: return NodeResult[NodeRequestTicket](status: NodeError.LimitExceeded)
+  let body = uint64(request.payloadLength)
+  if body > (OutputBudget-5) div 2: return NodeResult[NodeRequestTicket](
+      status: NodeError.LimitExceeded)
+  let reserved = 2*body+5 # Exact detached request and encoded selector/E4/output storage, before any copy.
+  if reserved > OutputBudget-owner.outputUsed: return NodeResult[NodeRequestTicket](
+      status: NodeError.LimitExceeded)
   var route = default(ReadClientRoute)
   if route.configure(request, maximum) != ReadError.None: return NodeResult[NodeRequestTicket](
       status: NodeError.InvalidConfig)
   inc owner.serial
   owner.frames[index] = Frame(kind: FrameKind.Client, peer: peer, serial: owner.serial,
-    started: owner.now, activity: owner.now, client: route)
+    started: owner.now, activity: owner.now, outputBytes: reserved, client: route)
+  owner.outputUsed += reserved
   owner.peers[peerPosition].readQueued = true
   owner.peers[peerPosition].readIndex = index
   if not owner.node.queueStream(peer):
@@ -728,7 +838,7 @@ proc preimageNeighbour*(owner: NodeService, peer: NodePeer): bool =
   ## Gossip requires both real validator roles and the accepted epoch-gated grid; ordinary UP0 eligibility is insufficient.
   owner.isOpen and owner.node.isValidator and owner.node.isValidator(peer) and
       owner.node.announcements(peer)
-proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResult[
+proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind, excluded = false): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.
   if not owner.isOpen: return NodeResult[NodeReadTask](status: NodeError.Unavailable)
@@ -737,7 +847,9 @@ proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResul
     owner.readCursor = (owner.readCursor+1) mod owner.frames.len
     if owner.frames[index].kind != FrameKind.Read or owner.frames[index].closing: continue
     if not owner.node.active(owner.frames[index].peer): continue
-    if filtered and owner.frames[index].read.selectedKind != kind: continue
+    if filtered:
+      let matches = owner.frames[index].read.selectedKind == kind
+      if matches == excluded: continue # Inclusion/exclusion select before claiming, so skipped consumers retain their original activity and deadline.
     let request = owner.frames[index].read.takeRequest()
     if request.error != ReadError.None: continue # Incomplete, already taken and reset frames cannot create duplicate jobs.
     if owner.serial == high(uint64):
@@ -758,6 +870,10 @@ proc takeRead*(owner: var NodeService, kind: ReadKind): NodeResult[
     NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Detached responders may inspect one method without taking unrelated canonical work while its graph is leased.
   owner.takeRead(true, kind)
+proc takeReadExcept*(owner: var NodeService, kind: ReadKind): NodeResult[
+    NodeReadTask] {.requires: owner.callbacks == 0.} =
+  ## A dedicated consumer cannot monopolize general admission by repeatedly returning a request that general code must defer.
+  owner.takeRead(true, kind, true)
 proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   ## Stale/foreign/closed tickets contain no native pointer and cannot target a reused slot.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -765,6 +881,134 @@ proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   owner.frames[ticket.index].kind == FrameKind.Read and not owner.frames[ticket.index].closing and
     owner.frames[ticket.index].serial == ticket.serial and owner.frames[ticket.index].peer ==
         ticket.peer and owner.node.active(ticket.peer)
+func sharingRequestCount*(owner: NodeService): int =
+  ## Count physical outgoing reservations, including queued, completed-uncollected and closing streams.
+  owner.sharingClients
+func peerIdentity*(ticket: NodeSharingRequestTicket): StateEdKey =
+  ## This exact reservation's actual TLS identity is independent from request/response bytes.
+  ticket.peer.identity
+proc sharingRequestLive*(owner: NodeService, ticket: NodeSharingRequestTicket): bool =
+  ## Foreign/default/stale generations cannot observe or retire a reused client slot.
+  if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
+      owner.frames.len: return false
+  let frame = addr owner.frames[ticket.index]
+  frame.kind == FrameKind.SharingClient and not frame.closing and frame.serial == ticket.serial and
+    frame.peer == ticket.peer and owner.node.active(ticket.peer)
+proc requestSharing*(owner: var NodeService, peer: NodePeer,
+    request: SharedWorkRequest): NodeResult[NodeSharingRequestTicket] {.requires: owner.callbacks == 0.} =
+  ## Reserve complete output before copying; incoming bundles keep their independent two-slot progress capacity.
+  if not owner.isOpen or not owner.sharingEnabled or not owner.node.active(peer):
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.Unavailable)
+  if not owner.node.isValidator or not owner.node.isValidator(peer):
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.InvalidSource)
+  let sizes = request.sharingInfo
+  if sizes.error != SharingWireError.None:
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.InvalidConfig)
+  let bytes = uint64(sizes.value.headerBytes)+uint64(sizes.value.bundleBytes)+9
+  if bytes > ReplyBudget-owner.replyUsed:
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.LimitExceeded)
+  if owner.sharingClients >= 2 or owner.reads >= MaxNodeReads:
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.LimitExceeded)
+  if owner.ephemerals(peer) >= 2 or owner.frameCount(peer, FrameKind.SharingClient) >= 1:
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.LimitExceeded)
+  let peerPosition = owner.peerIndex(peer)
+  if peerPosition < 0: return NodeResult[NodeSharingRequestTicket](status: NodeError.Unavailable)
+  if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued:
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.Unavailable)
+  if owner.serial == high(uint64): return NodeResult[NodeSharingRequestTicket](
+      status: NodeError.Exhausted)
+  var index = -1
+  for candidate in 0..<owner.frames.len:
+    if owner.frames[candidate].kind == FrameKind.Empty:
+      index = candidate
+      break # Queued requests own their actual frame and byte reservations before native fulfillment.
+  if index < 0: return NodeResult[NodeSharingRequestTicket](status: NodeError.LimitExceeded)
+  var route = default(SharingClientRoute)
+  if route.configureSharing(request) != ReadError.None:
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.InvalidConfig)
+  inc owner.serial
+  owner.replyUsed += bytes
+  owner.frames[index] = Frame(kind: FrameKind.SharingClient, peer: peer, serial: owner.serial,
+    started: owner.now, activity: owner.now, sharingClient: route, replyBytes: bytes)
+  owner.peers[peerPosition].readQueued = true
+  owner.peers[peerPosition].readIndex = index
+  if not owner.node.queueStream(peer):
+    owner.peers[peerPosition].readQueued = false
+    owner.releaseFrame(index)
+    return NodeResult[NodeSharingRequestTicket](status: NodeError.Unavailable)
+  NodeResult[NodeSharingRequestTicket](status: NodeError.None,
+    completed: NodeSharingRequestTicket(peer: peer, serial: owner.serial, index: index))
+proc takeSharingReply*(owner: var NodeService,
+    ticket: NodeSharingRequestTicket): SharingClientResult {.requires: owner.callbacks == 0.} =
+  ## Complete fixed bytes survive native close, but no result precedes exact response FIN or exact host collection.
+  if not owner.sharingRequestLive(ticket): return sharingClientFailure(ReadError.InvalidStream)
+  let reply = owner.frames[ticket.index].sharingClient.take()
+  if reply.error != ReadError.None: return reply
+  owner.accountSharingClient(ticket.index)
+  owner.frames[ticket.index].closing = true
+  if owner.frames[ticket.index].handle == NativeStream(nil): owner.releaseFrame(ticket.index)
+  reply
+proc cancelSharingRequest*(owner: var NodeService,
+    ticket: NodeSharingRequestTicket): bool {.requires: owner.callbacks == 0.} =
+  ## Public queued cancellation precedes slot reuse; active streams retain charges through physical retirement.
+  if not owner.sharingRequestLive(ticket): return false
+  owner.closeFrame(ticket.index)
+  true
+proc enableDistributionStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
+  ## Managed CE135 verification must be installed before this separately optional validator-only selector is enabled.
+  if not owner.isOpen or not owner.node.isValidator: return false
+  owner.distributionEnabled = true
+  true
+proc enableSharingStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
+  ## A real managed receiver must be installed before explicitly enabling CE134; omission always rejects it.
+  if not owner.isOpen: return false
+  owner.sharingEnabled = true
+  true
+proc takeSharingRequest*(owner: var NodeService): NodeResult[
+    NodeSharingTask] {.requires: owner.callbacks == 0.} =
+  ## Claim at most one complete exact-FIN request with actual peer identity; no native pointer escapes.
+  if not owner.isOpen: return NodeResult[NodeSharingTask](status: NodeError.Unavailable)
+  for inspected in 0..<owner.frames.len:
+    let index = owner.readCursor
+    owner.readCursor = (owner.readCursor+1) mod owner.frames.len
+    let frame = addr owner.frames[index]
+    if frame.kind != FrameKind.Sharing or frame.closing: continue
+    if not owner.node.active(frame.peer) or not frame.sharing.requestReady: continue
+    if owner.serial == high(uint64): return NodeResult[NodeSharingTask](status: NodeError.Exhausted)
+    let request = frame.sharing.takeRequest()
+    if request.error != ReadError.None:
+      owner.closeFrame(index)
+      continue # Malformed capture can never create a task prefix.
+    inc owner.serial
+    frame.serial = owner.serial
+    frame.activity = owner.now
+    return NodeResult[NodeSharingTask](status: NodeError.None,
+      completed: NodeSharingTask(ticket: NodeSharingTicket(index: index, serial: owner.serial,
+        peer: frame.peer), request: request.value))
+  NodeResult[NodeSharingTask](status: NodeError.Unavailable)
+func sharingLive*(owner: NodeService, ticket: NodeSharingTicket): bool =
+  ## A reset, retired connection or recycled native frame invalidates only its own host claim.
+  if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
+      owner.frames.len: return false
+  let frame = owner.frames[ticket.index]
+  frame.kind == FrameKind.Sharing and not frame.closing and frame.serial == ticket.serial and
+    frame.peer == ticket.peer and owner.node.active(ticket.peer) and not frame.sharing.failed
+proc respondSharing*(owner: var NodeService, ticket: NodeSharingTicket,
+    response: array[SharingResponseBytes, byte]): ReadError {.requires: owner.callbacks == 0.} =
+  ## Reserve the complete fixed reply before enabling native output; no caller supplies a source-bearing owner.
+  if not owner.sharingLive(ticket): return ReadError.InvalidStream
+  let size = uint64(SharingResponseBytes+4)
+  if size > ReplyBudget-owner.replyUsed: return ReadError.LimitExceeded
+  let reason = owner.frames[ticket.index].sharing.respond(response)
+  if reason == ReadError.None:
+    owner.frames[ticket.index].replyBytes = size
+    owner.replyUsed += size
+  reason
+proc rejectSharing*(owner: var NodeService, ticket: NodeSharingTicket): bool {.requires: owner.callbacks == 0.} =
+  ## CPU cancellation is the controller's separate exact lease; this method retires only the native stream.
+  if not owner.sharingLive(ticket): return false
+  owner.closeFrame(ticket.index)
+  true
 proc enableWorkStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Explicit host activation promises to consume work tasks; ordinary node actors reject selectors until their dispatcher is installed.
   if not owner.isOpen: return false
@@ -884,14 +1128,20 @@ proc poll*(owner: var NodeService, now: MonoTime, maximumMs: range[
     let frame = addr owner.frames[index]
     let stalledRead = now-frame.activity > initDuration(seconds = 30)
     let expiredRead = now-frame.started > initDuration(seconds = 120)
+    let client = frame.kind in [FrameKind.Client, FrameKind.SharingClient]
+    let retiredClient = client and frame.handle == NativeStream(nil)
+    let completeClient = if frame.kind == FrameKind.Client: frame.client.ready
+      elif frame.kind == FrameKind.SharingClient: frame.sharingClient.ready
+      else: false # Other protocol families have no queued client intent.
+    let queuedExpired = retiredClient and not completeClient and now-frame.started > initDuration(seconds = 5)
     if not owner.node.active(frame.peer):
       owner.closeFrame(index)
     elif frame.kind == FrameKind.Selecting and now-frame.started > initDuration(seconds = 5):
       owner.closeFrame(index)
-    elif frame.kind == FrameKind.Client and frame.handle == NativeStream(nil) and
-        not frame.client.ready and now-frame.started > initDuration(seconds = 5):
-      owner.closeFrame(index) # Public cancellation also removes a native-delayed open without orphaning its reservation.
-    elif frame.kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work] and (stalledRead or expiredRead):
+    elif queuedExpired:
+      owner.closeFrame(index) # Complete replies retain ordinary read expiry rather than escaping all deadlines.
+    elif frame.kind in [FrameKind.Read, FrameKind.Client, FrameKind.Work, FrameKind.Sharing,
+        FrameKind.SharingClient] and (stalledRead or expiredRead):
       owner.closeFrame(index) # A cancelled job still retains its host lease until Done/join.
     elif frame.kind == FrameKind.Persistent:
       if not owner.node.announcements(frame.peer) or frame.announcement.failed or

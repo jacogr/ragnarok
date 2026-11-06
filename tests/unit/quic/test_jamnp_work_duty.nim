@@ -34,7 +34,12 @@ proc state(current = 6, previous = 9, slot = 16'u32, offender = false): StateSto
       maxBytes: ByteLimit(10000))
   var active = newSeq[StateValidator](current)
   var old = newSeq[StateValidator](previous)
-  for index in 0..<active.len: active[index] = StateValidator(ed25519: key(index+1))
+  for index in 0..<active.len:
+    # Distinct complete metadata catches accidental use of the previous roster or key-only reconstruction.
+    var metadata = default(array[128, byte])
+    metadata[0] = byte(index+1)
+    metadata[127] = byte(index+111)
+    active[index] = StateValidator(ed25519: key(index+1), metadata: StateValidatorMetadata(metadata))
   for index in 0..<old.len: old[index] = StateValidator(ed25519: key(index+101))
   let firstEncoded = validatorEntry(ValidatorChapter.Active, active, roster)
   assert firstEncoded.error == StateComponentError.None, "current roster " & $current & ": " &
@@ -79,6 +84,29 @@ for index in 0..<6:
   assert array[32, byte](duty.localIdentity) == array[32, byte](key(index+1))
   assert uint32(duty.sourceTime) == 16 and uint32(duty.observedTime) == 20
   assert duty.epochDuration == 12 and duty.rotationDuration == 4
+  assert uint16(duty.validatorIndex) == uint16(index) # Credentials use the original roster position.
+  assert uint64(duty.coreCapacity) == 3 # Configured capacity is not inferred from the six-member active population.
+  assert duty.participantCount == 3
+  var ordinal = 0
+  for original in 0..<6:
+    # The independent GP permutation selects the full cohort in original roster order, not shuffled order.
+    if SixAt20[original] != expected: continue
+    let participant = duty.participantAt(ordinal)
+    assert participant.error == WorkDutyError.None
+    assert uint16(participant.value.index) == uint16(original)
+    let memberKey = array[32, byte](participant.value.validator.ed25519)
+    let expectedKey = array[32, byte](key(original+1))
+    assert memberKey == expectedKey
+    let metadata = array[128, byte](participant.value.validator.metadata)
+    assert metadata[0] == byte(original+1) and metadata[127] == byte(original+111)
+    inc ordinal
+  assert ordinal == 3
+  assert duty.participantAt(-1).error == WorkDutyError.InvalidIndex
+  assert duty.participantAt(3).error == WorkDutyError.InvalidIndex
+  var detached = duty.participantAt(0).value
+  detached.validator = nullValidator() # Mutating a copied record cannot alter a retained source-bound cohort.
+  let retainedKey = array[32, byte](duty.participantAt(0).value.validator.ed25519)
+  assert retainedKey != array[32, byte](detached.validator.ed25519)
   assert uint16(duty.shardCount) == 6 # Three configured cores do not imply nine actual validators.
   assert duty.activeAt(StateTime(20)) and duty.activeAt(StateTime(23))
   assert not duty.activeAt(StateTime(19)) and not duty.activeAt(StateTime(24))
@@ -125,6 +153,16 @@ for index in 0..<9:
   assert selected.error == WorkDutyError.None, "nine-member source duty"
   assert uint16(selected.value.shardCount) == 9
 let excluded = state(offender = true)
+let peerOfExcluded = captureWorkDuty(excluded, profile, workRecipient(key(3), StateTime(20)),
+  CoreIndex(0), cap)
+assert peerOfExcluded.error == WorkDutyError.None
+let nulledPeer = peerOfExcluded.value.participantAt(0).value
+assert uint16(nulledPeer.index) == 1
+let excludedNullKey = array[32, byte](nullValidator().ed25519)
+let excludedKey = array[32, byte](nulledPeer.validator.ed25519)
+assert excludedKey == excludedNullKey
+assert default(WorkDuty).participantCount == 0
+assert default(WorkDuty).participantAt(0).error == WorkDutyError.Uninitialized
 assert captureWorkDuty(excluded, profile, workRecipient(key(2), StateTime(20)), CoreIndex(0),
     cap).error == WorkDutyError.NotAssigned
 # Exact state-component boundaries and real child failures remain distinct from ordinary absent membership.

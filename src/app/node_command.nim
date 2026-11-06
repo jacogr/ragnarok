@@ -7,7 +7,7 @@ import std/[monotimes, times, syncio, strutils]
 import ./[options, services, node as application_node]
 import ./cli/commands
 import ./proof/ticket_production
-import ./[work_dispatch, work_policy]
+import ./[work_dispatch, work_policy, node_work_policy]
 import ../crypto/primitives
 import ../jamnp-s/[connections, node as node_streams]
 import ../chain/[provider, genesis, parameters]
@@ -111,9 +111,9 @@ proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   var port = 0'u16
   var timeout = 0'u64
   if not configuration(options, finalized, port, timeout): return NodeCommandError.InvalidConfig
-  var workPolicy = default(WorkDispatchPolicy)
+  var workPolicy = default(NodeWorkPolicy)
   if options.argumentCount == 8:
-    let loaded = loadWorkPolicy(options.argument(8), options.logWriter)
+    let loaded = loadNodeWorkPolicy(options.argument(8), options.logWriter)
     if loaded.error != WorkPolicyError.None:
       log(options.logWriter, LogTarget.Startup, LogLevel.Error,
         "Invalid node work policy: " & $loaded.error & "; field=" & loaded.fieldName)
@@ -146,7 +146,10 @@ proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   if host.open(services, config, limits, initial.value) != NodeError.None:
     return NodeCommandError.NetworkFailure
   if workPolicy.valid:
-    if not host.configureWork(workPolicy): return NodeCommandError.InvalidWorkPolicy
+    let configured = host.configureNodeWork(workPolicy, options.argument(3), options.argument(4))
+    if configured != NodeWorkSetupError.None:
+      log(options.logWriter, LogTarget.Startup, LogLevel.Error, "Node work setup refused: " & $configured)
+      return NodeCommandError.InvalidWorkPolicy
   if not services.configureTelemetry(options, options.argument(3), host.localPort,
       ipv6): return NodeCommandError.StartupFailure
   log(options.logWriter, LogTarget.Network, LogLevel.Info,

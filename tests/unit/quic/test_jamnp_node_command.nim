@@ -3,10 +3,11 @@
 
 ## The real foreground node loop serves TLS state reads and retires every child before a joined command thread returns.
 import std/[assertions, syncio, envvars, strutils, monotimes, times, rawthreads, atomics]
-import ../../../src/app/[options, node_command, work_policy, work_dispatch]
-import ../../../src/jamnp-s/[work_submission, work_duty]
+import ../../../src/app/[options, node_command, work_policy, node_work_policy, work_dispatch]
+import ../../../src/jamnp-s/[work_submission, work_duty, identity]
 import ../../../src/state/input_refinement
 import ../../../src/app/cli/help
+import ../../../src/lib/logging
 import ../../../src/chain/[genesis, parameters]
 import ../../../src/codec/[header, bounded]
 import ../../../src/codec/state/safrole
@@ -15,6 +16,7 @@ import ../../../src/quic/transport
 import ../../../src/jamnp-s/[read_stream, read_validation]
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_topology_fixture, jamnp_node_probe, jamnp_read_validation_context]
+import ../../support/jamnp_node_work_policy
 type RunContext = object ## Main retains stable immutable options until atomic completion and joined thread retirement.
   options: Options
   outcome: NodeCommandError
@@ -54,6 +56,24 @@ proc arguments(port: uint16, hash: BlockHash): seq[string] =
   @["node", "--net-port", $port, "--net-cert", getEnv("RAGNAROK_TEST_CERT"),
     "--net-key", getEnv("RAGNAROK_TEST_KEY"), "--node-finalized", hex(array[32, byte](hash)),
     "--net-timeout-ms", "0", "--with-state", "--chain", "node-command-chain.json"]
+proc captureStartup(context: nil pointer, batch: string) {.nimcall, raises: [].} =
+  ## The one logger thread exclusively owns this bounded diagnostic buffer until joined close; the test reads it only afterward.
+  let output = cast[ptr string](context)
+  if output[].len+batch.len <= 8192: output[].add(batch)
+proc startWork(options: var Options): NodeCommandError {.raises.} =
+  ## Failed real startup reports the existing bounded production diagnostic without changing successful output or borrowing across logger shutdown.
+  var text = ""
+  var logger = default(Logger)
+  assert logger.start(initLogPolicy(LogLevel.Error), captureStartup, addr text)
+  defer:
+    logger.close()
+    options.attachLogWriter(default(LogWriter))
+  options.attachLogWriter(logger.writer)
+  let outcome = runNodeCommand(options)
+  logger.close()
+  options.attachLogWriter(default(LogWriter))
+  assert outcome == NodeCommandError.Stopped, "work startup: " & $outcome & "; " & text
+  outcome
 proc main() {.raises.} =
   ## Independent local complete-map trust checks the response; network bytes cannot supply their own authority.
   assert nodeClock(JamCommonEraUnix-1, 6).error == NodeClockError.BeforeCommonEra
@@ -65,7 +85,11 @@ proc main() {.raises.} =
   assert uint32(nodeClock(last, 6).value) == high(uint32)
   assert nodeClock(last+6, 6).error == NodeClockError.Overflow
   assert nodeClock(high(int64), 6).error == NodeClockError.Overflow
-  let saved = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])
+  let local = certificateIdentity(getEnv("RAGNAROK_TEST_CERT"))
+  assert local.error == CertificateIdentityError.None
+  var current = topologyRecords(0, 6)
+  current[1].ed25519 = local.value # Actual public TLS identity must be a validator before signed distribution can be enabled.
+  let saved = topologyCaptured([current, topologyRecords(1, 9), topologyRecords(2, 12)])
   writeFile("node-command-chain.json", chainText(saved.value))
   let hash = saved.value.blockHash
   let trusted = captureReadSource(saved)
@@ -122,6 +146,17 @@ proc main() {.raises.} =
   writeFile("node-work.policy", encodeWorkPolicy(default(WorkSubmissionLimits), execution,
     WorkDutyLimits(chapterBytes: ByteLimit(1048576), disputeItems: ElementLimit(1023))))
   assert runNodeCommand(rejected) == NodeCommandError.Stopped
+  writeFile("node-work.policy", encodeGuarantorPolicy(guarantorSettings()))
+  let guarantorStartup = startWork(rejected)
+  assert guarantorStartup == NodeCommandError.Stopped, "v2 foreground startup: " & $guarantorStartup
+  var outsider = work
+  for index in 0..<outsider.len-1:
+    # A distinct actual TLS identity remains outside the configured roster; explicit v2 cannot bypass the CE135 validator-role gate.
+    if outsider[index] == "--net-cert": outsider[index+1] = getEnv("RAGNAROK_TEST_CERT_B")
+    elif outsider[index] == "--net-key": outsider[index+1] = getEnv("RAGNAROK_TEST_KEY_B")
+  var nonvalidator = default(Options)
+  assert parseOptions(outsider, nonvalidator)
+  assert runNodeCommand(nonvalidator) == NodeCommandError.InvalidWorkPolicy
   assert commandHelp("node").contains("--node-work-policy")
   work.add("--node-validator-seed")
   work.add("node-work.seed")
@@ -129,7 +164,8 @@ proc main() {.raises.} =
   assert parseOptions(work, rejected)
   assert rejected.argumentCount == 8 and rejected.argument(7) == "node-work.seed"
   assert rejected.argument(8) == "node-work.policy"
-  assert runNodeCommand(rejected) == NodeCommandError.Stopped
+  let combinedStartup = startWork(rejected)
+  assert combinedStartup == NodeCommandError.Stopped, "v2 plus ticket seed startup: " & $combinedStartup
   var invalidWork = finite
   invalidWork.add("--node-work-policy")
   invalidWork.add("")

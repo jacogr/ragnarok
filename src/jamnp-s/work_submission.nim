@@ -100,6 +100,29 @@ func bindingError*[T](outcome: WorkSubmissionResult[
     T]): ImportInputsError {.requires: outcome.status == WorkSubmissionError.BindingFailure.} =
   ## A complete table mismatch never exposes its earlier verified rows.
   outcome.bindingReason
+proc submissionContext*(header: WorkSubmissionHeader): WorkSubmissionResult[RefinementContext] =
+  ## Copy fixed original context facts without exposing mutable package storage or a signing capability.
+  let data = header.data
+  if data == nil: return WorkSubmissionResult[RefinementContext](
+      status: WorkSubmissionError.Uninitialized)
+  WorkSubmissionResult[RefinementContext](status: WorkSubmissionError.None,
+    completed: data.package.workPackageInfo.value.context)
+proc sameSubmissionHeader*(left, right: WorkSubmissionHeader): bool =
+  ## Exact owner identity, rather than byte equality, binds later private source capabilities to the original decoded header.
+  let data = left.data
+  data != nil and data == right.data
+proc submissionMatchesAuthorization*(header: WorkSubmissionHeader,
+    invocation: AuthorizationInvocation, state: StateStoreSnapshot): bool =
+  ## Bind execution to this original decoded package, selected core and exact complete execution map.
+  ## This predicate supplies provenance only; current inclusion policy and assignment remain separate checks.
+  let data = header.data
+  if data == nil: return false
+  let info = invocation.authorizationInfo
+  if info.error != AuthorizationInvocationError.None: return false
+  if uint64(info.value.core) != uint64(data.info.core): return false
+  let package = invocation.authorizationPackage.value
+  let source = invocation.authorizationState.value
+  data.package.sameWorkPackage(package) and sameStateSnapshot(source, state)
 proc submissionInfo*(header: WorkSubmissionHeader): WorkSubmissionResult[WorkSubmissionInfo] =
   ## Copy bounded geometry without granting authority to read a body.
   let data = header.data
@@ -150,8 +173,9 @@ proc decodeWorkSubmission*(kind: WorkSubmissionKind, first, packageMessage: open
   var package = default(OwnedWorkPackage)
   var mappings: seq[SegmentLookup] = @[]
   if kind == WorkSubmissionKind.Package:
-    # CE133 has a single small header containing core and package, with no second header message.
-    if first.len > 204802: fail(WorkSubmissionError.LimitExceeded)
+    # CE133 has one header containing core and the bounded package, with no second header message.
+    if first.len > MaxBundleBytes+2 or uint64(first.len-2) > uint64(config.maxBytes): fail(
+        WorkSubmissionError.LimitExceeded)
     if first.len == 2 or packageMessage.len != 0: fail(WorkSubmissionError.InvalidMessage)
     let decoded = decodeWorkPackage(first.toOpenArray(2, first.high), config)
     if decoded.error != PackageError.None: return WorkSubmissionResult[WorkSubmissionHeader](
@@ -165,7 +189,8 @@ proc decodeWorkSubmission*(kind: WorkSubmissionKind, first, packageMessage: open
     let decodedMappings = dictionary(first.toOpenArray(2, first.high))
     if decodedMappings.error != WorkSubmissionError.None: fail(decodedMappings.error)
     mappings = decodedMappings.value
-    if packageMessage.len > 204800: fail(WorkSubmissionError.LimitExceeded)
+    if packageMessage.len > MaxBundleBytes or uint64(packageMessage.len) > uint64(
+        config.maxBytes): fail(WorkSubmissionError.LimitExceeded)
     if packageMessage.len == 0: fail(WorkSubmissionError.InvalidMessage)
     let decoded = decodeWorkPackage(packageMessage, config)
     if decoded.error != PackageError.None: return WorkSubmissionResult[WorkSubmissionHeader](
@@ -246,7 +271,7 @@ proc authorizeWorkSubmission*(header: WorkSubmissionHeader, state: StateStoreSna
   if pools.error != AuthorizationError.None: fail(WorkSubmissionError.InvalidSource)
   if pools.value.consumed != entry.value.byteLength: fail(WorkSubmissionError.InvalidSource)
   let packageInfo = data.package.workPackageInfo.value
-  var preimage = newSeq[byte](32+packageInfo.configurationBytes) # Package is capped at 200 KiB before this bounded copy.
+  var preimage = newSeq[byte](32+packageInfo.configurationBytes) # Package and configuration extents are preflighted against protocol and local byte limits.
   let code = array[32, byte](packageInfo.codeHash)
   for index in 0..<32: preimage[index] = code[index]
   if packageInfo.configurationBytes > 0:

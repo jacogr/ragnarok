@@ -18,7 +18,8 @@ No protocol representation, signature domain or dependency pin changes in this c
 older full headers, and explicit resource/chain policy. It derives rather than accepts:
 
 - The exact guarantee extrinsic and candidate timeslot from the admitted block.
-- The complete parent map and actual full sealed parent header from its commitment binding.
+- The complete parent map and actual full sealed candidate and parent headers from the same
+  commitment binding. The candidate belongs to the GP ancestor set and can prove a parent lookup.
 - Posterior C(8)/C(9) rosters, C(6) entropy and cumulative C(5) offenders from the completed
   disputes/Safrole/assurance map. Credentials are verified again from these exact inputs.
 - Parent C(1) pools and service metadata for authorization, code and gas checks.

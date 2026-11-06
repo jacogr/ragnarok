@@ -1,8 +1,16 @@
 {
   "defines": [],
   "directory": "quic",
-  "includes": [],
-  "libraries": [],
+  "includes": [
+    "bandersnatch",
+    "crypto",
+    "quic"
+  ],
+  "libraries": [
+    "bandersnatch",
+    "crypto",
+    "quic"
+  ],
   "observers": [],
   "prepared": false
 }

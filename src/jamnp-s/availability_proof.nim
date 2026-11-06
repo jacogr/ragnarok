@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Source-bound CE137/138/140 transfer construction and exact root/coordinate-bound verification use bounded GP Merkle traces.
-## Prepared/verified outputs contain independent immutable bytes only; canonical report authority remains with the caller.
+## Prepared/verified outputs and full guarantor serving snapshots own independent immutable bytes; canonical authority stays with the caller.
 import std/assertions
 import ./availability_merkle
 export AvailabilityMerkleLimits
@@ -12,6 +12,9 @@ import ../crypto/primitives
 import ../state/availability/specifier
 import ../state/erasure/[layout, words]
 import ../state/bundle_erasure
+import ../state/auditable_bundle
+from "../state/export/commitment" import ExportSegmentIndex
+from ../pvm/host/fetch import FetchSegment
 import "../state/export/erasure" as export_erasure
 
 const MaxAvailabilityBundleBytes* = 13904950'u64 ## GP full-bundle ceiling also bounds untrusted availability geometry before native allocation.
@@ -42,6 +45,15 @@ type
     data: nil TransferData
   VerifiedAvailabilityTransfer* = object ## Only complete verification against independently selected root/coordinates constructs this handle.
     data: nil TransferData
+  GuarantorAvailabilityInfo* = object ## Fixed logical-payload/work accounting excludes allocator metadata and grants no canonical, signer or assurance authority.
+    specifier*: AvailabilitySpecifier
+    retainedBytes*, workspaceBytes*, hashes*, hashBytes*: uint64
+  GuarantorAvailabilityData = ref object ## Every retained byte is detached from original execution; this is serving data, not a durable assurance store.
+    info: GuarantorAvailabilityInfo
+    bundle: seq[byte]
+    shards: seq[PreparedAvailabilityTransfer]
+  GuarantorAvailability* = object ## Only complete source-bound capture constructs the immutable full-bundle/all-shard serving owner.
+    data: nil GuarantorAvailabilityData
   TransferShape = object ## Every extent and hash-stage budget is derived from bounded expected metadata before extraction.
     geometry: ErasureGeometry
     validators, rows, width, shard, row: int
@@ -316,6 +328,148 @@ proc prepareAvailabilityTransfer*(source: AvailabilityCommitment, request: Avail
   AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
     completed: PreparedAvailabilityTransfer(data: TransferData(specifier: described.value.specifier,
       request: request, bundle: bundle, segments: rows, proof: proof)))
+func valid*(owner: GuarantorAvailability): bool =
+  ## Defaults never stand in for a retained empty report or an accepted capacity reservation.
+  owner.data != nil
+proc guarantorInfo*(owner: GuarantorAvailability): AvailabilityTransferResult[
+    GuarantorAvailabilityInfo] =
+  ## Copy fixed aggregate facts without exporting the retained shard table.
+  let data = owner.data
+  if data == nil: return failed[GuarantorAvailabilityInfo](AvailabilityTransferError.Uninitialized)
+  AvailabilityTransferResult[GuarantorAvailabilityInfo](status: AvailabilityTransferError.None,
+    completed: data.info)
+proc guarantorBundle*(owner: GuarantorAvailability): AvailabilityTransferResult[seq[byte]] =
+  ## Return independently mutable original CE147 bytes; no execution/state alias is needed for later serving.
+  let data = owner.data
+  if data == nil: return failed[seq[byte]](AvailabilityTransferError.Uninitialized)
+  AvailabilityTransferResult[seq[byte]](status: AvailabilityTransferError.None,
+    completed: copied(data.bundle))
+proc guarantorTransfer*(owner: GuarantorAvailability,
+    shard: ErasureShardIndex): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
+  ## Full-width lookup returns only an existing immutable source-free CE137 capability; callers freeze aliases through worker retirement.
+  let data = owner.data
+  if data == nil: return failed[PreparedAvailabilityTransfer](
+      AvailabilityTransferError.Uninitialized)
+  if uint64(shard) >= uint64(data.shards.len):
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.InvalidIndex)
+  AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
+    completed: data.shards[int(uint64(shard))])
+proc guarantorSegment*(owner: GuarantorAvailability,
+    index: ExportSegmentIndex): AvailabilityTransferResult[FetchSegment] =
+  ## Join only original systematic shards for one final export; no original execution graph or parity recovery is needed.
+  let data = owner.data
+  if data == nil: return failed[FetchSegment](AvailabilityTransferError.Uninitialized)
+  let expected = data.info.specifier
+  if uint64(index) >= uint64(uint16(expected.segmentCount)):
+    return failed[FetchSegment](AvailabilityTransferError.InvalidIndex)
+  let geometry = erasureGeometry(expected.bundleLength, expected.erasureShards)
+  if geometry.error != ErasureLayoutError.None:
+    return AvailabilityTransferResult[FetchSegment](
+      status: AvailabilityTransferError.GeometryFailure,
+      geometryReason: geometry.error)
+  let info = geometry.value
+  if info.originalShards*info.segmentChunkBytes != 4104 or info.originalShards > uint64(
+      data.shards.len):
+    return failed[FetchSegment](AvailabilityTransferError.InvalidSpecifier)
+  let width = int(info.segmentChunkBytes) # Validated greatest-divisor geometry bounds width to 12..1368 and original count to 3..342.
+  let first = int(uint64(index))*width # Original export ordinal <=3071 proves this product fits native indexing.
+  var segment = default(array[4104, byte])
+  for ordinal in 0..<int(info.originalShards):
+    # The first R encoded words are systematic originals; proof-page rows follow final exports and cannot be selected by this API.
+    let transfer = data.shards[ordinal].data
+    if transfer == nil or first > transfer.segments.len:
+      return failed[FetchSegment](AvailabilityTransferError.InvalidPayload)
+    if width > transfer.segments.len-first:
+      return failed[FetchSegment](AvailabilityTransferError.InvalidPayload)
+    for position in 0..<width: segment[ordinal*width+position] = transfer.segments[first+position]
+  AvailabilityTransferResult[FetchSegment](status: AvailabilityTransferError.None,
+    completed: FetchSegment(segment))
+func validGuarantorLimits*(limits: AvailabilityMerkleLimits): bool =
+  ## Shared explicit policy validation keeps startup capacity and complete snapshot capture on the same finite domain.
+  uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 256'u64*1024*1024 and
+    uint64(limits.hashes) > 0 and uint64(limits.hashes) <= 16000000 and
+    uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 1024'u64*1024*1024
+proc retainGuarantorAvailability*(source: AvailabilityCommitment,
+    limits: AvailabilityMerkleLimits,
+    existing: openArray[GuarantorAvailability] = []): AvailabilityTransferResult[
+        GuarantorAvailability] =
+  ## Precharge the whole source-free serving snapshot before cloning or hashing; no accepted prefix escapes a refusal.
+  ## Explicit local ceilings cover every validator, unlike a per-request budget multiplied by an unchecked population.
+  let maximum = uint64(limits.bytes)
+  if existing.len > 64: return failed[GuarantorAvailability](
+      AvailabilityTransferError.LimitExceeded)
+  if not limits.validGuarantorLimits:
+    return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+  let described = source.availabilityInfo
+  if described.error != AvailabilityCommitmentError.None:
+    return AvailabilityTransferResult[GuarantorAvailability](
+      status: AvailabilityTransferError.SourceFailure, sourceReason: described.error)
+  let expected = described.value.specifier
+  let first = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+    root: expected.erasureRoot, shard: ErasureShardIndex(0))
+  let planned = shape(expected, first)
+  if planned.error != AvailabilityTransferError.None:
+    return propagated[GuarantorAvailability, TransferShape](planned)
+  let count = planned.value.validators # Validated GP geometry bounds this to 6..1023 before iteration/narrowing.
+  var info = GuarantorAvailabilityInfo(specifier: expected,
+    retainedBytes: uint64(uint32(expected.bundleLength)), workspaceBytes: 0,
+    hashes: 0, hashBytes: 0)
+  if info.retainedBytes > maximum:
+    return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+  for ordinal in 0..<count:
+    # Proof lengths depend on the actual odd-tree coordinate; sum every exact plan before any source extraction.
+    let request = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+      root: expected.erasureRoot, shard: ErasureShardIndex(uint64(ordinal)))
+    let selected = shape(expected, request)
+    if selected.error != AvailabilityTransferError.None:
+      return propagated[GuarantorAvailability, TransferShape](selected)
+    let plan = selected.value
+    let work = constructionWork(plan, AvailabilityTransferKind.Distribution)
+    let bytes = plan.geometry.bundleChunkBytes+uint64(plan.rows*plan.width)+uint64(plan.proofBytes)
+    if bytes > maximum-info.retainedBytes:
+      return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+    if work.hashes > uint64(limits.hashes)-info.hashes:
+      return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+    if work.hashBytes > uint64(limits.hashBytes)-info.hashBytes:
+      return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+    info.retainedBytes += bytes
+    info.hashes += work.hashes
+    info.hashBytes += work.hashBytes
+    info.workspaceBytes = max(info.workspaceBytes,
+      constructionBytes(plan, AvailabilityTransferKind.Distribution))
+  # Retained buffers plus a complete construction scratch budget conservatively include the current output twice.
+  if info.workspaceBytes > maximum-info.retainedBytes:
+    return failed[GuarantorAvailability](AvailabilityTransferError.LimitExceeded)
+  for owner in existing:
+    # A repeated signed root must share the already charged immutable byte owner; equal fixed metadata binds genuine computed provenance without replacing report authority.
+    let retained = owner.guarantorInfo
+    if retained.error != AvailabilityTransferError.None: continue
+    let previous = retained.value.specifier
+    if previous.erasureRoot.bytes != expected.erasureRoot.bytes: continue
+    if previous.packageHash.bytes != expected.packageHash.bytes: continue
+    if previous.segmentRoot.bytes != expected.segmentRoot.bytes: continue
+    if uint32(previous.bundleLength) != uint32(expected.bundleLength): continue
+    if uint16(previous.erasureShards) != uint16(expected.erasureShards): continue
+    if uint16(previous.segmentCount) != uint16(expected.segmentCount): continue
+    return AvailabilityTransferResult[GuarantorAvailability](status: AvailabilityTransferError.None,
+      completed: owner)
+  let original = source.availabilitySource.value.exportErasureSource.value.bundleErasureSource.value.layoutSource.value.bundleBytes
+  if original.error != AuditableBundleError.None:
+    return failed[GuarantorAvailability](AvailabilityTransferError.InvalidSpecifier)
+  if uint64(original.value.len) != uint64(uint32(expected.bundleLength)):
+    return failed[GuarantorAvailability](AvailabilityTransferError.InvalidSpecifier)
+  var shards = newSeq[PreparedAvailabilityTransfer](count)
+  for ordinal in 0..<count:
+    # Only original immutable commitments construct these independent transfers; neither a peer nor a detached root supplies bytes.
+    let request = AvailabilityRequest(kind: AvailabilityTransferKind.Distribution,
+      root: expected.erasureRoot, shard: ErasureShardIndex(uint64(ordinal)))
+    let prepared = prepareAvailabilityTransfer(source, request, limits)
+    if prepared.error != AvailabilityTransferError.None:
+      return propagated[GuarantorAvailability, PreparedAvailabilityTransfer](prepared)
+    shards[ordinal] = prepared.value
+  AvailabilityTransferResult[GuarantorAvailability](status: AvailabilityTransferError.None,
+    completed: GuarantorAvailability(data: GuarantorAvailabilityData(info: info,
+      bundle: original.value, shards: shards)))
 proc verifyAvailabilityTransfer*(expected: AvailabilitySpecifier, request: AvailabilityRequest,
     bundle, segments, proof: openArray[byte],
     limits: AvailabilityMerkleLimits): AvailabilityTransferResult[VerifiedAvailabilityTransfer] =
@@ -376,6 +530,11 @@ proc verifyAvailabilityTransfer*(expected: AvailabilitySpecifier, request: Avail
     completed: VerifiedAvailabilityTransfer(data: TransferData(specifier: expected,
       request: request,
       bundle: copied(bundle), segments: copied(segments), proof: copied(proof))))
+func payloadBytes*(value: PreparedAvailabilityTransfer): uint64 {.requires: value.data != nil.} =
+  ## Exact source-free payload size allows serving to preflight all byte copies before extracting any buffer.
+  let data = value.data
+  assert data != nil
+  uint64(data.bundle.len)+uint64(data.segments.len)+uint64(data.proof.len)
 func payloadBytes*(value: VerifiedAvailabilityTransfer): uint64 {.requires: value.data != nil.} =
   ## Copied logical retention size permits capacity admission before any byte owner is allocated.
   let data = value.data

@@ -6,7 +6,7 @@
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/work_submission
 import ../../../src/codec/[bounded, composite, assurances]
-import ../../../src/codec/work/[package as work_package, report as work_report]
+import ../../../src/codec/work/[package as work_package, report as work_report, digest]
 import ../../../src/codec/state/[authorization as state_authorization, history as state_history,
     layout as state_layout, trie as state_trie]
 import ../../../src/state/[store, input_refinement, auditable_bundle, extrinsic_inputs]
@@ -329,3 +329,30 @@ assert before == after, "work submission ARC release"
 recordArcRelease("jamnp_work_submission", 1000, before, after)
 echo "JAMNP-S work submission passed"
 echo "ARC_RELEASE cycles=1000 unchanged"
+
+proc largeHeaders() =
+  ## GP payload capacity exceeds the old200KiB upload cap; configured byte limits still apply before parsing/copying.
+  let package = WorkPackage(items: @[WorkItem(refineGas: Gas(1), accumulateGas: Gas(1),
+      payload: newSeq[byte](262144))])
+  let policy = fullPackageConfig(ByteLimit(MaxBundleBytes))
+  var bytes = newSeq[byte](270000)
+  let encoded = encodeWorkPackage(package, policy, bytes)
+  assert encoded.error == PackageError.None
+  bytes.setLen(encoded.value)
+  assert bytes.len > 204800
+  let bundle = decodeWorkSubmission(WorkSubmissionKind.Bundle, [0'u8, 0, 0], bytes, policy)
+  assert bundle.error == WorkSubmissionError.None
+  assert bundle.value.submissionInfo.value.packageBytes == bytes.len
+  var first = @[0'u8, 0]
+  for octet in bytes: first.add(octet)
+  let separate = decodeWorkSubmission(WorkSubmissionKind.Package, first, [], policy)
+  assert separate.error == WorkSubmissionError.None
+  assert separate.value.submissionInfo.value.packageBytes == bytes.len
+  var bounded = policy
+  bounded.maxBytes = ByteLimit(uint64(bytes.len-1))
+  let denied = decodeWorkSubmission(WorkSubmissionKind.Bundle, [0'u8, 0, 0], bytes, bounded)
+  assert denied.error == WorkSubmissionError.LimitExceeded
+  let oversized = decodeWorkSubmission(WorkSubmissionKind.Bundle, [0'u8, 0, 0], newSeq[byte](
+      MaxBundleBytes+1), policy)
+  assert oversized.error == WorkSubmissionError.LimitExceeded
+largeHeaders()

@@ -109,6 +109,10 @@ proc parseCert*(der: ptr byte, length: csize_t, fields: ptr CertFields): cint {.
     header: CertHeader, cdecl, raises: [].}
   ## Strict primitive DER extraction; the returned fields own their bounded bytes.
 
+proc parseIdentitySeed*(pem: ptr byte, length: csize_t,
+    seed: ptr byte): cint {.importc: "rq_identity_seed", header: CertHeader, cdecl, raises: [].}
+  ## Synchronously parse bounded unencrypted PKCS8 Ed25519; caller wipes its PEM/seed scratch and no pointer is retained.
+
 type NativeTransportOptions {.importc: "rq_transport_options", header: BridgeHeader,
     bycopy.} = object
   ## Scalar-only C startup configuration is borrowed only during synchronous factory construction.
@@ -177,7 +181,7 @@ proc streamRead*(stream: NativeStream, bytes: ptr byte,
 
 proc streamWrite*(stream: NativeStream, bytes: ptr byte,
     length: csize_t): int64 {.importc: "rq_stream_write", header: BridgeHeader, cdecl, raises: [].}
-  ## Write borrowed bytes synchronously; accepted bytes are copied into native transport storage.
+  ## Write borrowed bytes synchronously; accepted bytes are copied into native storage. Zero/-2 mean no progress; other negatives are errors.
 
 proc wantRead*(stream: NativeStream, want: cint) {.importc: "rq_stream_want_read",
     header: BridgeHeader, cdecl, raises: [].}
