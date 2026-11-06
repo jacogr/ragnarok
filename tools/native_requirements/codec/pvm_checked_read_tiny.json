@@ -1,0 +1,13 @@
+{
+  "defines": [
+    "pvmArm64CheckedRead",
+    "pvmArm64Jit"
+  ],
+  "directory": "codec",
+  "includes": [
+    "pvm_jit"
+  ],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

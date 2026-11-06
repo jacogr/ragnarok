@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-# Explicit pinned-reference calibration stays outside the regular CI job graph.
-name: PolkaVM native and interpreted calibration
+# Private one-off carrier on the existing manual workflow path.
+name: x86 checked-read direct qualification
 
 "on":
   workflow_dispatch:
@@ -11,57 +11,36 @@ permissions:
   contents: read
 
 concurrency:
-  group: polkavm-ratios-${{ github.ref }}
-  cancel-in-progress: true
-
-defaults:
-  run:
-    shell: bash
-
-env:
-  PYTHONDONTWRITEBYTECODE: "1"
-  PYTHONUNBUFFERED: "1"
-  UI_MINIFY: "1"
+  group: x86-checked-read-direct-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  polkavm-ratios:
-    name: Perf / PolkaVM native and interpreted (Linux x86-64)
+  direct:
+    if: ${{ github.ref == 'refs/heads/codex/pvm-x86-read-native-qualification-version-gate' }}
+    name: x86 checked-read leaf and direct ABI
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 12
     steps:
-      - name: Checkout
+      - name: Checkout sealed carrier
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
       - name: Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Install DOOM asset decompressor
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zstd
-      - name: Enable the pinned Linux compiler sandbox
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          sudo sysctl -w kernel.perf_event_paranoid=-1
-          sudo sysctl -w vm.unprivileged_userfaultfd=1
-      - name: Compare pinned reference backends
-        run: make bench-pvm-polkavm
-      - name: Show complete calibration
-        if: always()
-        run: |
-          if test -f build/tests/pvm-polkavm-ratios/summary.md; then
-            cat build/tests/pvm-polkavm-ratios/summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Retain source, worker-clock, complete-state and timing evidence
+      - name: Check linked ABI, emitted bytes and direct outcomes
+        env:
+          LC_ALL: C
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONUNBUFFERED: "1"
+        run: python3 .github/qualification/x86-checked-read.py
+      - name: Retain first failure or complete direct evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: pvm-polkavm-ratios-x86-64
-          path: |
-            build/tests/pvm-polkavm-ratios/*.json
-            build/tests/pvm-polkavm-ratios/*.log
-            build/tests/pvm-polkavm-ratios/*.md
-            build/tests/pvm-polkavm-ratios/*.csv
+          name: x86-checked-read-direct-${{ github.run_attempt }}
+          retention-days: 14
+          path: build/x86-checked-read-direct/evidence/
           if-no-files-found: error

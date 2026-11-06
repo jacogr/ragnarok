@@ -6,8 +6,16 @@
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
-import ./[native_ir, native_platform]
-export native_ir
+import ./[native_ir, native_platform, native_read_body]
+export native_ir, native_read_body
+
+type NativeRequest = object
+  ## One fixed copied certificate and its exact ABI share the sole worker mailbox.
+  case kind: NativeKind
+  of PurePrefix, ClosedRegisterLoop:
+    span: NativeSpan
+  of CheckedReadBody:
+    body: NativeReadBody
 
 when defined(pvmSharedAsyncWitness):
   type
@@ -18,6 +26,7 @@ when defined(pvmSharedAsyncWitness):
       slot*: int
       generation*, ticket*, epoch*: uint64
       hasImage*: bool
+      kind*: NativeKind
 
 type
   NativePhase* {.pure.} = enum ## Active work wins; otherwise Done observes parked completions, never blocks admission.
@@ -33,6 +42,7 @@ type
   JobKey = object ## Copied authority; no session, Program, frame or callback reference crosses threads.
     slot: int
     generation, ticket, epoch: uint64
+    kind: NativeKind
   Retirement = enum
     NoWork, WorkerOwned, Detached
   Registration = object ## Own one uncollected image; retain no registered prepared owner.
@@ -52,7 +62,7 @@ type
     active: int
     nextTicket: uint64
     key: JobKey
-    request: NativeSpan
+    request: NativeRequest
     submitted, completed: uint64
     when defined(pvmSharedAsyncWitness):
       paused, gateReached, gateReleased: bool
@@ -68,6 +78,9 @@ type
     generation, epoch, ticket: uint64
     state: NativeState
     span: NativeSpan
+    when NativeCheckedReadEnabled:
+      readBody: NativeReadBody # Current nomination, then the immutable accepted certificate.
+      readNominated: bool
     image: NativeImage
     invocation, allowed: bool
     provenWork, invocationWork, invocationBudget, calls, operations, publications: uint64
@@ -120,8 +133,26 @@ proc `=destroy`(runtime: var NativeRuntimeStorage) =
 
 func sameKey(left, right: JobKey): bool =
   ## Compare copied scalar authority without copying an owning registration row.
+  if left.kind != right.kind: return false
   left.slot == right.slot and left.generation == right.generation and
     left.ticket == right.ticket and left.epoch == right.epoch
+
+func requestMatches(request: NativeRequest, key: JobKey): bool =
+  ## The selected ABI and exact source epoch must agree before a request enters the worker.
+  if request.kind != key.kind or key.epoch == 0: return false
+  case request.kind
+  of NativeKind.PurePrefix, NativeKind.ClosedRegisterLoop:
+    request.span.len >= NativeMinimumOperations and request.span.epoch == key.epoch and
+      request.span.kind == request.kind
+  of NativeKind.CheckedReadBody:
+    NativeCheckedReadEnabled and request.body.complete and request.body.info.epoch == key.epoch
+
+func acceptedKind(data: NativeSessionData): NativeKind =
+  ## A nonzero ticket binds one immutable caller-side certificate until collection.
+  assert data.ticket != 0
+  when NativeCheckedReadEnabled:
+    if data.readBody.complete: return NativeKind.CheckedReadBody
+  data.span.kind
 
 func matchesRow(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
   ## Caller holds the mutex; a live job keeps this generation occupied until physical cleanup.
@@ -225,7 +256,8 @@ when defined(pvmSharedAsyncWitness):
     ## Called with the mutex held; wait releases it, and stop always bypasses a one-shot gate.
     if runtime.gate != point or runtime.stopping: return
     runtime.observation = NativeCompilerObservation(point: point, slot: key.slot,
-      generation: key.generation, ticket: key.ticket, epoch: key.epoch, hasImage: hasImage)
+      generation: key.generation, ticket: key.ticket, epoch: key.epoch, hasImage: hasImage,
+      kind: key.kind)
     runtime.gateReached = true
     broadcast(runtime.changed)
     while not runtime.gateReleased and not runtime.stopping:
@@ -251,7 +283,8 @@ proc compilerRun(raw: pointer) =
       release(runtime.lock)
       return
     let key = runtime.key
-    let span = runtime.request # One fixed POD copy; no session/Program/frame or scratch ownership.
+    let request = runtime.request # One fixed POD copy; no session/Program/frame or scratch ownership.
+    assert requestMatches(request, key)
     assert matchesRow(runtime, key), "compiler claim lost its exact row certificate"
     assert runtime.slots[key.slot].location == CompletionLocation.Queued, "compiler claim is not Queued"
     runtime.work = WorkPhase.Running
@@ -262,7 +295,15 @@ proc compilerRun(raw: pointer) =
     let skip = runtime.stopping or runtime.slots[key.slot].cancelled
     release(runtime.lock)
     var image = default(NativeImage)
-    if not skip: image = lowerNative(span)
+    if not skip:
+      case request.kind
+      of NativeKind.PurePrefix, NativeKind.ClosedRegisterLoop:
+        image = lowerNative(request.span)
+      of NativeKind.CheckedReadBody:
+        # The capability check excludes this tag from backends without a read lowerer.
+        when NativeCheckedReadEnabled:
+          image = lowerNativeReadBody(request.body)
+      assert not image.ready or image.kind == key.kind
     acquire(runtime.lock)
     when defined(pvmSharedAsyncWitness):
       compilerGate(runtime, key, NativeCompilerPoint.BeforePublish, image.ready)
@@ -463,6 +504,23 @@ proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
       loop.sourceSpan == uint32(data.span.len)+1:
     data.span.promote(loop)
 
+when NativeCheckedReadEnabled:
+  func nativeReadAdmissionEpoch*(session: NativeSession): uint64 =
+    ## Only the exclusive deferred owner may compare an unpublished read with its incumbent.
+    let data {.cursor.} = session.data
+    if data == nil or not data.invocation or data.state != NativeState.Deferred or
+        data.ticket != 0 or data.image.ready or data.invocationBudget < NativeInvocationFloor or
+        data.readBody.complete: return 0'u64
+    data.epoch
+
+  proc nominateNativeRead*(session: NativeSession, body: NativeReadBody) =
+    ## Stage this call's exact copied certificate in the same storage used for an accepted read.
+    let data {.cursor.} = session.data
+    if data == nil or not body.complete or nativeReadAdmissionEpoch(session) != body.info.epoch:
+      return
+    data.readBody = body
+    data.readNominated = true
+
 func nativeScanStart*(session: NativeSession): uint32 =
   ## One monotone classification cursor prevents rescanning structurally unsupported cached nodes each call.
   let data {.cursor.} = session.data
@@ -488,6 +546,9 @@ proc invalidateNativeStream*(session: NativeSession) =
   if anchor == nil: return
   discard retireOwner(addr anchor.storage, data.slot, data.generation, false, data.image)
   data.span = default(NativeSpan)
+  when NativeCheckedReadEnabled:
+    data.readBody = default(NativeReadBody)
+    data.readNominated = false
   data.nextScan = 0
   data.ticket = 0
   data.provenWork = 0
@@ -507,11 +568,14 @@ proc collectNative(session: NativeSession) =
   if not tryAcquire(runtime.lock): return
   defer: release(runtime.lock)
   let key = JobKey(slot: data.slot, generation: data.generation, ticket: data.ticket,
-    epoch: data.epoch)
+    epoch: data.epoch, kind: acceptedKind(data))
   if not matchesRow(runtime, key) or runtime.slots[data.slot].state != Live or
       runtime.slots[data.slot].location != CompletionLocation.Complete or
       runtime.slots[data.slot].cancelled: return
   assert not data.image.ready
+  # A wrong ready ABI leaves the image with its registration until retirement.
+  if runtime.slots[data.slot].completion.ready and
+      runtime.slots[data.slot].completion.kind != key.kind: return
   data.image = move(runtime.slots[data.slot].completion)
   data.state = if data.image.ready: NativeState.Ready else: NativeState.Unavailable
   if data.image.ready:
@@ -564,29 +628,48 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   let anchor {.cursor.} = data.runtime
   assert anchor != nil
   let runtime = addr anchor.storage
+  let selectRead = when NativeCheckedReadEnabled:
+    data.readNominated and completedWork >= NativeInvocationFloor and
+      data.span.kind != NativeKind.ClosedRegisterLoop
+  else:
+    false
+  let candidate = data.span.len >= NativeMinimumOperations or selectRead
   if tryAcquire(runtime.lock):
     if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
         runtime.slots[data.slot].state == Live and
         runtime.slots[data.slot].generation == data.generation and
         runtime.slots[data.slot].location == CompletionLocation.Empty and
-        data.state == NativeState.Deferred and data.span.len >= NativeMinimumOperations and
+        data.state == NativeState.Deferred and candidate and
         completedWork > 0 and data.provenWork >= NativeInvocationFloor and
         runtime.nextTicket < high(uint64):
       inc runtime.nextTicket
       assert not data.image.ready and not runtime.slots[data.slot].completion.ready
+      # The closed loop precedes a read, which precedes the ordinary pure draft.
+      if data.span.kind == NativeKind.ClosedRegisterLoop:
+        runtime.request = NativeRequest(kind: NativeKind.ClosedRegisterLoop, span: data.span)
+      elif selectRead:
+        when NativeCheckedReadEnabled:
+          runtime.request = NativeRequest(kind: NativeKind.CheckedReadBody, body: data.readBody)
+      else:
+        runtime.request = NativeRequest(kind: NativeKind.PurePrefix, span: data.span)
       let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
-        epoch: data.epoch)
+        epoch: data.epoch, kind: runtime.request.kind)
+      assert requestMatches(runtime.request, key)
       runtime.key = key
       runtime.slots[data.slot].key = key
       runtime.slots[data.slot].cancelled = false
       runtime.slots[data.slot].location = CompletionLocation.Queued
-      runtime.request = data.span
       runtime.work = WorkPhase.Queued
       data.ticket = key.ticket
       data.state = NativeState.Pending
       if runtime.submitted < high(uint64): inc runtime.submitted
       signal(runtime.changed)
     release(runtime.lock)
+  when NativeCheckedReadEnabled:
+    if data.readNominated:
+      # Only the accepted read ticket keeps its copied certificate.
+      if data.ticket == 0 or not selectRead: data.readBody = default(NativeReadBody)
+      data.readNominated = false
   acquire(runtime.lock)
   assert runtime.active > 0
   dec runtime.active
@@ -675,6 +758,31 @@ func nativeControlStatistics*(session: NativeSession): NativeControlStatistics =
   let data {.cursor.} = session.data
   if data == nil: return default(NativeControlStatistics)
   NativeControlStatistics(branchCalls: data.branchCalls, headerCalls: data.headerCalls)
+
+when NativeCheckedReadEnabled:
+  func nativeReadInfo*(session: NativeSession): NativeReadBodyInfo =
+    ## An installed, permitted read image exposes only its copied geometry.
+    let data {.cursor.} = session.data
+    if data == nil or not data.invocation or not data.allowed or data.state != NativeState.Ready or
+        not data.image.isReadBody:
+      return default(NativeReadBodyInfo)
+    data.readBody.info
+
+  func matchesNativeReadBody*(session: NativeSession, body: NativeReadBody): bool =
+    ## Install compares the rebuilt source certificate and every copied operand.
+    let data {.cursor.} = session.data
+    data != nil and data.readBody.sameReadBody(body)
+
+  proc runNativeReadBody*(session: NativeSession, registers: var RegisterFile,
+      context: var NativeReadContext): bool =
+    ## Only a completed image contributes native calls and original body operations.
+    let data {.cursor.} = session.data
+    assert data != nil and nativeReadInfo(session).epoch != 0
+    if not enterNativeReadBody(data.image, registers, context): return false
+    if data.calls < high(uint64): inc data.calls
+    let count = uint64(data.readBody.len)
+    if data.operations <= high(uint64)-count: data.operations += count
+    true
 
 proc nativeStatistics*(session: NativeSession): array[5, uint64] =
   ## Copy quiescent shared image/activity counters; compilation CPU is not fabricated from a process clock.

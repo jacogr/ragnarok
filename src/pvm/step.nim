@@ -713,7 +713,11 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
   while true:
     # The engine counts attempted source instructions across every host continuation.
     let segmentBudget = remaining
+    when NativeCheckedReadEnabled:
+      beginReadProbeSegment(frame, segmentBudget)
     runFlat(frame, segmentBudget)
+    when NativeCheckedReadEnabled:
+      endReadProbeSegment(frame)
     recordNativeWork(frame.nativeSession, settledNativeWork(frame, segmentBudget))
     remaining = frame.remaining
     if frame.reason != StepError.None:
@@ -797,8 +801,12 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
   if policy != StepError.None: return executionResult[Reason](StepResult(status: policy))
   frame.nativeSession = data.native
   restoreFlatStream(frame, data.stream)
+  when NativeCheckedReadEnabled:
+    beginReadProbe(frame)
   let answer = driveHostFrame[Context, Reason, Fallible](frame, owner, context, callbacks, steps,
       calls, data.limits.resources.pages)
+  when NativeCheckedReadEnabled:
+    finishReadProbe(frame, answer.error == HostExecutionError.None)
   data.stream = takeFlatStream(frame)
   data.memoryScratch = takeFlatMemoryScratch(frame, uint64(data.limits.retainedMemoryBytes))
   answer

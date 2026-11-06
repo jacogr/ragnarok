@@ -25,7 +25,8 @@ def validate_requirements(records):
         'includes': {'crypto', 'bandersnatch', 'quic', 'storage_io', 'polkavm', 'pvm_jit'},
         'observers': {'setup_new', 'setup_free', 'key_new', 'key_free', 'verify', 'commit', 'ring_verify', 'io_read', 'io_write', 'io_fsync', 'io_ftruncate', 'io_flock', 'io_unlinkat', 'io_close', 'io_renameat'},
         # Fixed heap-cap and backend profiles exercise refusal without allowing arbitrary compiler switches.
-        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
+        'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64CheckedRead',
+                    'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
                     'pvmInnerPreparedReceipt', 'pvmSharedAsyncWitness'},
@@ -76,6 +77,9 @@ def validate_requirements(records):
         if header_only != bool(jit_profiles) or len(jit_profiles) > 1:
             # One explicit backend owns the header ABI; ambiguous and missing profiles remain preflight errors.
             raise ValueError('Native JIT header requires explicit JIT profile: '+name)
+        if 'pvmArm64CheckedRead' in record['defines'] and jit_profiles != ['pvmArm64Jit']:
+            # This test profile must exercise the actual checked-read lowerer.
+            raise ValueError('Native checked read requires the ARM64 JIT profile: '+name)
         for profile in ('pvmArm64Jit', 'pvmX86Jit'):
             # Refusal instrumentation cannot accidentally activate another backend or run without its selector.
             if profile+'Refuse' in record['defines'] and profile not in jit_profiles:
