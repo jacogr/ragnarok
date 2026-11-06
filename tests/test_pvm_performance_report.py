@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import pvm_performance_report as report
-from pvm_performance_fixtures import observations, SYNTHETICS, GUESTS
+from pvm_performance_fixtures import observations, invocation_observations, SYNTHETICS, GUESTS
 
 
 class PerformanceReportTests(unittest.TestCase):
@@ -155,21 +155,27 @@ class PerformanceReportTests(unittest.TestCase):
 
     def test_raw_derived_clocks_orders_cold_and_reused_ratios(self):
         """Independent numeric expectations detect pooled orders, fake CPU and discarded-cold substitution."""
-        value = observations('doom')
-        value['forged_cached_statistics'] = {'jit_over_reference': 9999}
-        rows = report.statistics_rows(value)
-        selected = next(r for r in rows if (r['case_id'], r['phase'], r['clock'], r['order']) ==
-                        ('doom-init', 'reused', 'cpu_ns', 0))
-        self.assertEqual((selected['interpreted'], selected['jit'], selected['reference']),
-                         (207.5, 107.5, 57.5))
-        self.assertAlmostEqual(selected['jit_over_reference'], 107.5/57.5)
-        wall = next(r for r in rows if (r['case_id'], r['phase'], r['clock'], r['order']) ==
-                    ('doom-init', 'reused', 'wall_ns', 0))
-        self.assertEqual((wall['interpreted'], wall['jit'], wall['reference']), (615, 315, 165))
-        cold = next(r for r in rows if (r['case_id'], r['phase'], r['clock'], r['order']) ==
-                    ('doom-init', 'cold', 'cpu_ns', 1))
-        self.assertEqual((cold['interpreted'], cold['jit'], cold['reference']), (400, 200, 100))
-        self.assertEqual(cold['interpreted_over_reference'], 4)
+        for fixture in (observations, invocation_observations):
+            value = fixture('doom')
+            value['forged_cached_statistics'] = {'jit_over_reference': 9999, 'jit_over_interpreted': 9999}
+            rows = report.statistics_rows(value)
+            selected = next(r for r in rows if (r['case_id'], r['phase'], r['clock'], r['order']) ==
+                            ('doom-init', 'reused', 'cpu_ns', 0))
+            self.assertEqual((selected['interpreted'], selected['jit'], selected['reference']),
+                             (207.5, 107.5, 57.5))
+            self.assertAlmostEqual(selected['jit_over_reference'], 107.5/57.5)
+            wall = next(r for r in rows if (r['case_id'], r['phase'], r['clock'], r['order']) ==
+                        ('doom-init', 'reused', 'wall_ns', 0))
+            self.assertEqual((wall['interpreted'], wall['jit'], wall['reference']), (615, 315, 165))
+            cold = next(r for r in rows if (r['case_id'], r['phase'], r['clock'], r['order']) ==
+                        ('doom-init', 'cold', 'cpu_ns', 1))
+            self.assertEqual((cold['interpreted'], cold['jit'], cold['reference']), (400, 200, 100))
+            self.assertEqual(cold['interpreted_over_reference'], 4)
+            # The new ratio belongs only to the current full-invocation reader.
+            if fixture is invocation_observations:
+                self.assertAlmostEqual(selected['jit_over_interpreted'], 107.5/207.5)
+                self.assertEqual(cold['jit_over_interpreted'], 0.5)
+                self.assertAlmostEqual(wall['jit_over_interpreted'], 315/615)
 
     def cumulative_fixture(self, interpreted, jit, reference=None, order=0, clock='cpu_ns'):
         """Supply independent literal clocks for one valid micro case without native or lifecycle changes."""
