@@ -73,7 +73,8 @@ import ../jamnp-s/assurance_distribution
 import ../jamnp-s/assurance_fetch
 import ../jamnp-s/assurance_schedule
 import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, audit_evaluation,
-    audit_recovery, audit_fetch]
+    audit_recovery, audit_fetch, judgment_claim, judgment_receipt, judgment_source,
+    audit_participation, audit_publication]
 import ./audit_state
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
@@ -2575,6 +2576,9 @@ proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
   services.assuranceWorkInput = default(WorkSubmissionJob)
   AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
       workerReason: admitted.error)
+func auditRetentionConfigured*(services: Services): bool =
+  ## Host-only optional activation observation follows no full-state or worker-leased aliases.
+  services.audits.configured
 proc configureAudits*(services: var Services, limits: AuditRegistryLimits): bool =
   ## Optional full-state retention requires explicit finite limits and an idle canonical graph.
   if not services.stateProofAvailable: return false
@@ -2771,6 +2775,89 @@ proc beginAuditPlanning*(services: var Services, blockHash: genesis.BlockHash,
   of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
   of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
       status: StateProofAdmissionError.Uninitialized) # Every selected refusal preserves its actual branch; no future child may silently default.
+proc stageAuditPublication(services: var Services, id: AuditOriginId, ordinal: int,
+    validator: StateValidatorIndex, limits: AuditPublicationLimits): WorkJobError =
+  ## Input capture selects only an already completed private registry slot and the explicitly installed signer.
+  let captured = services.audits.stagePublication(id, ordinal, services.auditSigner, validator, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditPublication*(services: var Services, id: AuditOriginId, ordinal: int,
+    validator: StateValidatorIndex, limits: AuditPublicationLimits): AuditPlanningStart {.raises.} =
+  ## No raw report-validity flag or external computation result can authorize a public judgment or its serving bytes.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.auditSignerReady: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageAuditPublication(id, ordinal, validator, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitSigning(result.value, id, ordinal)
+proc stageAuditParticipation(services: var Services, id: AuditOriginId, ordinal: int,
+    identity: StateEdKey, limits: AuditParticipationLimits): WorkJobError =
+  ## Temporary actual canonical wrappers retire before native publication of the immutable private source lease.
+  let captured = services.audits.stageParticipation(id, ordinal,
+      services.canonical.chainView.bestBlock, identity, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditParticipation*(services: var Services, id: AuditOriginId, ordinal: int,
+    identity: StateEdKey, limits: AuditParticipationLimits): AuditPlanningStart {.raises.} =
+  ## Explicit full-node planning preserves every original local ordinal and only actually known successor topology.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAuditParticipation(id, ordinal, identity, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitParticipation(result.value)
+func auditSigningMatches*(services: Services, identity: StateEdKey): bool =
+  ## Cached fixed public identity checks never touch the private key while another worker borrows it.
+  services.auditSigningConfigured and array[32, byte](services.auditSignerIdentity) == array[32,
+      byte](identity)
+proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
+    attempt = 0): JudgmentSourceResult =
+  ## Metadata-only selection observes actual canonical history solely while the shared graph gate is idle; Busy/default contains no guessed source.
+  if not services.stateProofAvailable: return default(JudgmentSourceResult)
+  selectJudgmentSource(services.canonical.chainView, claim, attempt)
+proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
+    inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobError =
+  ## Temporary canonical wrappers retire before the fixed worker borrows its immutable input graph.
+  let captured = captureJudgmentReceiptJob(services.canonical.chainView, claims, inputs, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginJudgmentReceipt*(services: var Services, claims: SignedJudgmentBatch,
+    inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): AuditPlanningStart {.raises.} =
+  ## Complete negative-source preparation is optional and full-node-only; generic collection cannot steal its private origins.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.audits.configured: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageJudgmentReceipt(claims, inputs, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitJudgmentReceipt(result.value)
+proc stageJudgmentClaims(services: var Services, wire: openArray[byte],
+    limits: JudgmentClaimLimits): WorkJobError =
+  ## Temporary canonical wrappers retire before the closed worker takes its exclusive original-roster lease.
+  let captured = captureJudgmentClaimJob(services.canonical.chainView, wire, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginJudgmentClaims*(services: var Services, wire: openArray[byte],
+    limits: JudgmentClaimLimits): AuditPlanningStart {.raises.} =
+  ## Optional full-state verification pauses ordinary canonical/RPC graph access; returned claims contain only detached fixed original-membership facts.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  if services.light.active: return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
+    captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageJudgmentClaims(wire, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.admitManagedAudit()
 proc stageAuditAnnouncements(services: var Services, wire: openArray[byte],
     limits: AuditReceiptLimits): WorkJobError =
   ## Capture wrappers and copied caller bytes retire before the worker borrows actual full history.

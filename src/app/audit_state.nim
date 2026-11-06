@@ -3,8 +3,8 @@
 
 ## Private full audit state belongs to Services. Controllers receive opaque host selectors and detached completion metadata; every source-bearing operation requires the shared graph gate.
 import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation, audit_recovery,
-    work_signer, availability_proof, audit_fetch]
-from ../codec/state/safrole import StateValidatorIndex
+    work_signer, availability_proof, audit_fetch, judgment_receipt, audit_participation, audit_publication]
+from ../codec/state/safrole import StateValidatorIndex, StateEdKey
 import ../chain/[genesis, provider]
 import ./proof/[worker, work_submission]
 
@@ -12,9 +12,23 @@ type
   ManagedAuditKind* {.pure.} = enum ## No failed or cancelled completion carries a successful origin or execution prefix.
     Uninitialized, OriginRetained, Evaluated, Cancelled, OriginFailure, EvaluationFailure,
     RegistryFailure, RecoveryFailure, JudgmentSigned, SigningFailure, FetchPlanned, FetchFailure,
-      ShardVerified, ShardFailure, InvalidResult
+      ShardVerified, ShardFailure, JudgmentsRetained, JudgmentReceiptFailure, ParticipationPlanned,
+        ParticipationFailure, PublicationPrepared, PublicationFailure, InvalidResult
+  RetainedJudgment* = object ## Source-free original signed record and an optional exact private negative-report selector carry no complete map or local evaluation authority.
+    record: QualifiedJudgment
+    source: AuditOriginId
   ManagedAuditCompletion* = object ## Fixed metadata and genuine failed children survive unrelated leases without borrowing full canonical state.
     case status: ManagedAuditKind
+    of PublicationPrepared:
+      publication: AuditPublication
+      publicationId: AuditOriginId
+      publicationOrdinal: int
+    of PublicationFailure: publicationReason: AuditPublicationResult[AuditPublication]
+    of ParticipationPlanned: participation: AuditParticipationPlan
+    of ParticipationFailure: participationReason: AuditParticipationResult[AuditParticipationPlan]
+    of JudgmentsRetained:
+      judgments: seq[RetainedJudgment]
+    of JudgmentReceiptFailure: judgmentReason: JudgmentReceiptResult[PreparedJudgmentBatch]
     of OriginRetained:
       originId: AuditOriginId
       originFacts: AuditOriginInfo
@@ -37,7 +51,7 @@ type
     of RegistryFailure: registryReason: AuditRegistryError
     else: discard # No private source or caller-selected validity bit.
   AuditOperation {.pure.} = enum
-    Idle, Origin, Evaluation, Signing, Fetch, Shard
+    Idle, Origin, Evaluation, Signing, Fetch, Shard, JudgmentReceipt, Participation
   ManagedAuditState* = object ## No native owner or backpointer: registry pins form an acyclic graph and retire only after all Services borrowers join.
     registry: AuditOriginRegistry
     operation: AuditOperation
@@ -46,6 +60,49 @@ type
     ordinal: int
     ready: bool
     completion: ManagedAuditCompletion
+func preparedPublication*(outcome: ManagedAuditCompletion): AuditPublication {.requires: outcome.status ==
+    ManagedAuditKind.PublicationPrepared.} =
+  ## Public signed record and independently frozen full report have no private source/key alias.
+  outcome.publication
+func publicationId*(outcome: ManagedAuditCompletion): AuditOriginId {.requires: outcome.status ==
+    ManagedAuditKind.PublicationPrepared.} =
+  ## Exact host correlation does not lend the original complete state.
+  outcome.publicationId
+func publicationOrdinal*(outcome: ManagedAuditCompletion): int {.requires: outcome.status ==
+    ManagedAuditKind.PublicationPrepared.} =
+  ## Preserve the original privately selected report position.
+  outcome.publicationOrdinal
+func publicationError*(outcome: ManagedAuditCompletion): AuditPublicationResult[
+    AuditPublication] {.requires: outcome.status == ManagedAuditKind.PublicationFailure.} =
+  ## Failed output admission/encoding/signing never releases an accepted prefix.
+  outcome.publicationReason
+func participationPlan*(outcome: ManagedAuditCompletion): AuditParticipationPlan {.requires: outcome.status ==
+    ManagedAuditKind.ParticipationPlanned.} =
+  ## Actual source-free roles and original signing indices are safe during unrelated later leases.
+  outcome.participation
+func participationError*(outcome: ManagedAuditCompletion): AuditParticipationResult[
+    AuditParticipationPlan] {.requires: outcome.status == ManagedAuditKind.ParticipationFailure.} =
+  ## No failed plan exposes an earlier recipient or local index prefix.
+  outcome.participationReason
+func judgment*(record: RetainedJudgment): QualifiedJudgment =
+  ## The fixed qualified original record is safe to cache during unrelated source leases.
+  record.record
+func originId*(record: RetainedJudgment): AuditOriginId =
+  ## Positive records have an invalid absent selector; negative records identify only the actual privately retained source.
+  record.source
+func retainedJudgmentCount*(outcome: ManagedAuditCompletion): int {.requires: outcome.status ==
+    ManagedAuditKind.JudgmentsRetained.} =
+  ## The returned complete batch never aliases full state or key storage.
+  outcome.judgments.len
+func retainedJudgmentAt*(outcome: ManagedAuditCompletion,
+    ordinal: int): RetainedJudgment {.requires: outcome.status ==
+    ManagedAuditKind.JudgmentsRetained and ordinal >= 0 and ordinal < outcome.judgments.len.} =
+  ## Copy one original record and host selector after whole-batch qualification and retention succeeded.
+  outcome.judgments[ordinal]
+func judgmentReceiptError*(outcome: ManagedAuditCompletion): JudgmentReceiptResult[
+    PreparedJudgmentBatch] {.requires: outcome.status == ManagedAuditKind.JudgmentReceiptFailure.} =
+  ## A failed result has no prepared source or qualified judgment prefix.
+  outcome.judgmentReason
 func kind*(outcome: ManagedAuditCompletion): ManagedAuditKind =
   ## Read the tag before selecting success metadata or the actual failure.
   outcome.status
@@ -143,30 +200,36 @@ proc stageEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     wire: openArray[byte], limits: AuditEvaluationLimits): WorkJobAdmission =
   ## Select only the private registered source under the idle graph gate; public metadata cannot install a replacement capability.
   if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
-  let found = state.registry.origin(id)
-  if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
-  let target = found.value.reportAt(ordinal)
-  if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
+  let target = state.registry.target(id, ordinal)
+  if target.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
   captureAuditEvaluationJob(target.value, wire, limits)
 proc stageRecoveryEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
     evaluation: AuditEvaluationLimits): WorkJobAdmission =
   ## Only private registry lookup may select the full origin; checked packet provenance cannot substitute another original target.
   if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
-  let found = state.registry.origin(id)
-  if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
-  let target = found.value.reportAt(ordinal)
-  if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
+  let target = state.registry.target(id, ordinal)
+  if target.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
   captureAuditRecoveryEvaluationJob(target.value, packets, recovery, evaluation)
 proc stageFetch*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     limits: AuditFetchLimits): WorkJobAdmission =
   ## Controllers choose a host selector only; the private registry selects the genuine original target under the shared gate.
   if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
-  let found = state.registry.origin(id)
-  if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
-  let target = found.value.reportAt(ordinal)
-  if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
+  let target = state.registry.target(id, ordinal)
+  if target.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
   captureAuditFetchJob(target.value, limits)
+proc stageParticipation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
+    current: BlockSnapshotResult, identity: StateEdKey,
+        limits: AuditParticipationLimits): WorkJobAdmission =
+  ## Only a private registered target supplies original auditor authority; the foreground host cannot substitute a current key index or source map.
+  if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
+  let target = state.registry.target(id, ordinal)
+  if target.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
+  captureAuditParticipationJob(target.value, current, identity, limits)
+proc admitParticipation*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
+  ## Exact host correlation keeps source-bearing planning input behind the ordinary private collector.
+  state.operation = AuditOperation.Participation
+  state.ticket = ticket
 proc stageSigning*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     signer: WorkSigner, validator: StateValidatorIndex): WorkJobAdmission =
   ## No public evaluation metadata or externally supplied capability reaches the private key: select only Services' retained completed slot.
@@ -174,6 +237,45 @@ proc stageSigning*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
   let found = state.registry.evaluation(id, ordinal)
   if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
   captureAuditSigningJob(signer, found.value, validator)
+proc stagePublication*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
+    signer: WorkSigner, validator: StateValidatorIndex,
+        limits: AuditPublicationLimits): WorkJobAdmission =
+  ## Only the actual private registered completed evaluation can reach publication preparation and the signer.
+  if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
+  let selected = state.registry.evaluation(id, ordinal)
+  if selected.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
+  captureAuditPublicationJob(signer, selected.value, validator, limits)
+proc admitJudgmentReceipt*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
+  ## Exact operation correlation prevents generic completion from exposing source-bearing receipt output.
+  state.operation = AuditOperation.JudgmentReceipt
+  state.ticket = ticket
+proc retainJudgments(state: var ManagedAuditState, prepared: PreparedJudgmentBatch,
+    source: ChainView): ManagedAuditCompletion =
+  ## Independently bind every original membership/support/execution context before atomically installing any negative origin.
+  if not prepared.valid: return ManagedAuditCompletion(status: ManagedAuditKind.InvalidResult)
+  var origins: seq[AuditDisputeOrigin] = @[]
+  for ordinal in 0..<prepared.negativeCount:
+    # All actual trust checks precede registry mutation, including a late foreign source in an otherwise valid batch.
+    let origin = prepared.negativeOriginAt(ordinal).value
+    if not origin.matchesTrustedDispute(source):
+      return ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
+          registryReason: AuditRegistryError.InvalidSource)
+    origins.add(origin)
+  let retained = state.registry.retainDisputes(origins)
+  if retained.error != AuditRegistryError.None:
+    return ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
+        registryReason: retained.error)
+  var records = newSeq[RetainedJudgment](prepared.len)
+  var negative = 0
+  for ordinal in 0..<records.len:
+    # Only the complete successful atomic registry result releases source-free qualified records to the controller.
+    let record = prepared.judgmentAt(ordinal).value
+    var selected = default(AuditOriginId)
+    if not record.judgmentRecord.valid:
+      selected = retained.value[negative]
+      inc negative
+    records[ordinal] = RetainedJudgment(record: record, source: selected)
+  ManagedAuditCompletion(status: ManagedAuditKind.JudgmentsRetained, judgments: move(records))
 proc admitOrigin*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
   ## Call only after successful native admission; no source graph is accessed here.
   state.operation = AuditOperation.Origin
@@ -209,6 +311,19 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
   elif completed.kind == ProofWorkerCompletionKind.WorkSubmitted:
     let work = completed.workSubmissionValue
     case state.operation
+    of AuditOperation.Participation:
+      if work.kind == WorkJobResultKind.AuditParticipationPlanned:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.ParticipationPlanned,
+          participation: work.plannedAuditParticipation)
+      elif work.kind == WorkJobResultKind.AuditParticipationFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.ParticipationFailure,
+          participationReason: work.auditParticipationError)
+    of AuditOperation.JudgmentReceipt:
+      if work.kind == WorkJobResultKind.JudgmentReceiptFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.JudgmentReceiptFailure,
+          judgmentReason: work.judgmentReceiptError)
+      elif work.kind == WorkJobResultKind.JudgmentReceiptPrepared:
+        state.completion = state.retainJudgments(work.preparedJudgmentReceipt, source)
     of AuditOperation.Origin:
       if work.kind == WorkJobResultKind.AuditOriginPreparationFailure:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginFailure,
@@ -241,7 +356,14 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
           state.completion = ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
             registryReason: remembered.error)
     of AuditOperation.Signing:
-      if work.kind == WorkJobResultKind.AuditSigningFailure:
+      if work.kind == WorkJobResultKind.AuditPublicationPrepared:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.PublicationPrepared,
+          publication: work.preparedAuditPublication, publicationId: state.selected,
+          publicationOrdinal: state.ordinal)
+      elif work.kind == WorkJobResultKind.AuditPublicationFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.PublicationFailure,
+          publicationReason: work.auditPublicationError)
+      elif work.kind == WorkJobResultKind.AuditSigningFailure:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.SigningFailure,
             signingReason: work.auditSigningError)
       elif work.kind == WorkJobResultKind.AuditSigned:

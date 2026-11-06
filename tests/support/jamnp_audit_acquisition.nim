@@ -3,19 +3,22 @@
 
 ## Genuine nonempty available reports cross real original-identity TLS peers through direct retrieval and authenticated threshold fallback. No caller-created proof or evaluation capability substitutes actual verification.
 import std/[assertions, monotimes, times, syncio, posix/posix]
-import ../../src/app/[audit_acquisition, audit_state, services, options, node as application_node]
+import ../../src/app/[audit_acquisition, audit_state, services, options, node as application_node,
+    forced_audit, judgment_distribution]
 import ../../src/app/proof/worker
 import ../../src/jamnp-s/[audit_origin, audit_context, audit_fetch, audit_registry,
   audit_evaluation, audit_recovery, availability_proof, node, connections,
-  read_stream, endpoints]
-import ../../src/codec/[bounded, report_owned]
+  read_stream, endpoints, audits, judgment_claim, judgment_receipt, judgment_store,
+  judgment_gossip, audit_publication]
+import ../../src/codec/[bounded, report_owned, owned, disputes]
 import ../../src/codec/state/safrole
 import ../../src/state/erasure/words
 import ../../src/chain/[genesis, provider]
 import ../../src/quic/address
 import ../../src/crypto/primitives
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_topology_fixture,
-  current_application_context, assurance_signer_context]
+  current_application_context, assurance_signer_context, jamnp_judgment_support,
+  jamnp_judgment_receipt, jamnp_audit_participation, jamnp_read_validation_context]
 proc acquisitionLimits*(): AuditAcquisitionLimits =
   ## Whole round credit covers every possible original target's proof work before any peer request.
   AuditAcquisitionLimits(fetch: fetchLimits(), evaluation: evaluationLimits(),
@@ -194,3 +197,69 @@ proc auditAcquisitionChecks*(fixture: AuditContextFixture) {.raises.} =
     assert getMonoTime() < cancelled
     assert client.poll(getMonoTime()+offset, now, 0)
   assert client.auditAcquisitionPhase == AuditAcquisitionPhase.Cancelled, "cancelled worker output cannot complete or sign an audit"
+
+  # A genuine negative claim for the actual valid report now drives the ordinary node loop.
+  let guarantee = target.originGuarantee.value
+  let claim = actualNegativeClaim(fixture, guarantee).judgmentRecord
+  let message = actualClaimLimits().message
+  let uploadWire = encodeJudgments([claim], message).value
+  let upload = decodeReadRequest(ReadKind.Judgment, uploadWire).value
+  var report = newSeq[byte](guarantee.report.ownedReportInfo.value.consumed)
+  assert guarantee.report.encodeOwnedReport(report).error == OwnershipError.None
+  assert services.configureAuditSigner(certificates[^1], keys[^1], local).error ==
+      WorkSigningSetupError.None
+  var verification = readVerificationLimits(3, 9, int(context.contextInfo.value.epochSlots))
+  verification.wireBytes = ByteLimit(65536)
+  let store = JudgmentStoreLimits(records: ElementLimit(16), bytes: ByteLimit(1000000))
+  let receipt = judgmentReceiptPolicy(actualClaimLimits(), receiptLimits(), verification,
+      store, ByteLimit(8000000))
+  assert client.configureJudgmentReceipt(receipt)
+  var forcedLimits = acquisitionLimits()
+  forcedLimits.requests = ElementLimit(64)
+  forcedLimits.hashes = ElementLimit(64000)
+  forcedLimits.hashBytes = ByteLimit(64000000)
+  let gossip = judgmentGossipPolicy(message, 4, ByteLimit(8000000), dialsPerRecord = 0)
+  let publication = AuditPublicationLimits(wireBytes: ByteLimit(65536),
+      workspaceBytes: ByteLimit(1000000))
+  let forced = forcedAuditPolicy(auditAcquisitionPolicy(forcedLimits), participationLimits(),
+      publication, gossip)
+  assert client.configureForcedAudits(forced)
+  for index in 0..<identities.len:
+    assert servers[index].enableJudgmentStreams()
+  var sent = false
+  let deadline = getMonoTime()+initDuration(seconds = 10)
+  while client.retainedJudgmentCount < 2:
+    assert getMonoTime() < deadline, "negative receipt drives acquisition and original-key publication"
+    let clock = getMonoTime()+offset
+    assert client.poll(clock, now, 0)
+    for index in 0..<identities.len:
+      assert servers[index].poll(clock, 0)
+      if index == 0 and not sent:
+        let admitted = servers[index].request(servers[index].peerAt(0).value, upload, ByteLimit(0))
+        sent = admitted.error == NodeError.None
+      let incoming = servers[index].takeRead()
+      if incoming.error != NodeError.None: continue
+      let task = incoming.value
+      var response: seq[byte] = @[]
+      case task.request.kind
+      of ReadKind.Report:
+        appendMessage(response, report)
+      of ReadKind.Bundle:
+        appendMessage(response, bundle.wire)
+      of ReadKind.Judgment:
+        discard # Judgment acknowledgment is a bare FIN.
+      else:
+        assert false, "valid direct bundle requires no recovery request"
+      let framed = captureReadReply(task.request, response)
+      assert framed.error == ReadError.None
+      assert servers[index].respond(task.ticket, framed.value) == ReadError.None
+  let produced = client.retainedJudgmentAt(1).judgmentRecord
+  assert produced.valid and uint32(produced.epoch) == uint32(claim.epoch)
+  assert array[32, byte](produced.report) == array[32, byte](claim.report)
+  let member = context.auditorAt(int(uint16(produced.validator))).value
+  assert array[32, byte](member.ed25519) == array[32, byte](local)
+  var transcript: seq[byte] = @[]
+  for character in "jam_valid": transcript.add(byte(ord(character)))
+  for octet in array[32, byte](produced.report): transcript.add(octet)
+  assert verify(EdPublicKey(array[32, byte](local)),
+      EdSignature(array[64, byte](produced.signature)), transcript)

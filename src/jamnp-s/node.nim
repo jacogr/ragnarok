@@ -85,7 +85,7 @@ type
     body: seq[byte]
   NodeService* = object ## Explicit noncopyable aggregate owns one connection actor and fixed protocol slots.
     opened, stopping, workEnabled, sharingEnabled, distributionEnabled, assuranceEnabled,
-      assuranceSending, auditEnabled: bool
+      assuranceSending, auditEnabled, judgmentEnabled: bool
     failure: NodeError
     callbacks, sweep, processCursor, peerCursor, broadcastCursor, readCursor: int
     serial, version, inputUsed, handshakeUsed, outputUsed, replyUsed, clientUsed: uint64
@@ -121,6 +121,7 @@ proc `=wasMoved`*(owner: var NodeService) {.nodestroy, requires: not owner.opene
   owner.assuranceEnabled = false
   owner.assuranceSending = false
   owner.auditEnabled = false
+  owner.judgmentEnabled = false
   owner.failure = NodeError.Uninitialized
   owner.callbacks = 0
   owner.sweep = 0
@@ -514,7 +515,7 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
     elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 135'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8,
-        141'u8, 142'u8, 143'u8, 144'u8, 147'u8, 148'u8]:
+        141'u8, 142'u8, 143'u8, 144'u8, 145'u8, 147'u8, 148'u8]:
       if kind == 135'u8:
         let validators = owner.node.isValidator and owner.node.isValidator(peer)
         if not owner.distributionEnabled or not validators:
@@ -531,6 +532,10 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
         if not owner.auditEnabled or not owner.node.isValidator or not owner.node.isValidator(peer):
           owner[].closeFrame(position)
           return # Initial/later proof uploads require an explicitly installed bounded managed consumer and both authenticated validator roles.
+      if kind == 145'u8:
+        if not owner.judgmentEnabled or not owner.node.isValidator or not owner.node.isValidator(peer):
+          owner[].closeFrame(position)
+          return # CE145 needs a separately installed managed whole-batch consumer and both authenticated validator roles before payload allocation.
       if kind in [131'u8, 132'u8] and (not owner.node.isValidator or not owner.node.isValidator(peer)):
         owner[].closeFrame(position)
         return # Ticket protocols require both authenticated validator roles before any proof work or larger fixed input is admitted.
@@ -640,6 +645,7 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.assuranceEnabled = false
   owner.assuranceSending = false
   owner.auditEnabled = false
+  owner.judgmentEnabled = false
   owner.node.close()
   for index in 0..<owner.frames.len:
     assert owner.frames[index].kind == FrameKind.Empty, "every borrowed stream must receive native close"
@@ -673,6 +679,7 @@ proc open*(owner: var NodeService, config: ConnectionConfig, view: ChainView,
   owner.assuranceEnabled = false
   owner.assuranceSending = false
   owner.auditEnabled = false
+  owner.judgmentEnabled = false
   owner.sweep = 0
   owner.processCursor = 0
   owner.peerCursor = 0
@@ -778,12 +785,14 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if not request.valid: return NodeResult[NodeRequestTicket](status: NodeError.InvalidConfig)
   if request.kind == ReadKind.AuditAnnouncement and not owner.auditEnabled:
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
+  if request.kind == ReadKind.Judgment and not owner.judgmentEnabled:
+    return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if request.kind == ReadKind.Guarantee and not owner.distributionEnabled:
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if request.kind == ReadKind.Assurance and not (owner.assuranceEnabled or owner.assuranceSending):
     return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if request.kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
-      ReadKind.TicketProxy, ReadKind.TicketDistribution]:
+      ReadKind.Judgment, ReadKind.TicketProxy, ReadKind.TicketDistribution]:
     if not owner.node.isValidator or not owner.node.isValidator(peer):
       return NodeResult[NodeRequestTicket](status: NodeError.InvalidSource) # Outbound validator uploads have the same both-validator role boundary.
   let peerPosition = owner.peerIndex(peer)
@@ -791,7 +800,9 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
       NodeRequestTicket](status: NodeError.Unavailable)
   let independent = request.kind in [ReadKind.Guarantee, ReadKind.Assurance,
-      ReadKind.AuditAnnouncement, ReadKind.Audit, ReadKind.Bundle, ReadKind.SegmentShards,
+      ReadKind.AuditAnnouncement, ReadKind.Judgment, ReadKind.Report, ReadKind.Audit,
+      ReadKind.Bundle,
+      ReadKind.SegmentShards,
 
 ReadKind.ProvenSegmentShards, ReadKind.Segments]
   if not independent and owner.node.announcements(peer) and owner.source(peer).error !=
@@ -982,6 +993,11 @@ proc cancelSharingRequest*(owner: var NodeService,
   ## Public queued cancellation precedes slot reuse; active streams retain charges through physical retirement.
   if not owner.sharingRequestLive(ticket): return false
   owner.closeFrame(ticket.index)
+  true
+proc enableJudgmentStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
+  ## Omission rejects CE145 before payload allocation; the host installs bounded signature, guarantee and retention consumers before activation.
+  if not owner.isOpen or not owner.node.isValidator: return false
+  owner.judgmentEnabled = true
   true
 proc enableAuditStreams*(owner: var NodeService): bool {.requires: owner.callbacks == 0.} =
   ## Omission rejects CE144 before payload allocation; the host installs bounded managed receipt before activating this selector.

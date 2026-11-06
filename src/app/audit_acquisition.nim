@@ -55,7 +55,7 @@ func auditAcquisitionPolicy*(limits: AuditAcquisitionLimits): AuditAcquisitionPo
     return default(AuditAcquisitionPolicy)
   if uint64(limits.hashes) == 0 or uint64(limits.hashBytes) == 0:
     return default(AuditAcquisitionPolicy)
-  if uint64(limits.requests) == 0 or uint64(limits.requests) > 1026:
+  if uint64(limits.requests) == 0 or uint64(limits.requests) > 3072:
     return default(AuditAcquisitionPolicy)
   if limits.timeoutMs < 1 or limits.timeoutMs > 120000 or limits.peerTimeoutMs < 1 or
       limits.peerTimeoutMs > limits.timeoutMs:

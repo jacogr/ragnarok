@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded CE128/129/136/143 content checks and exact CE142 bare-FIN acknowledgments.
+## Bounded canonical content checks and exact bare-FIN upload acknowledgments; protocol-specific publication verification stays in its managed consumer.
 ## Checked blocks remain structural/query-bound inputs for GP admission; partial state never becomes a full map here.
 import std/assertions
 import ./read_stream
@@ -406,7 +406,7 @@ proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadS
   of ReadKind.Report: checkReport(request, wire, source)
   of ReadKind.State: checkState(request, wire, source, limits)
   of ReadKind.Preimage: checkPreimage(request, wire)
-  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
+  of ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement, ReadKind.Judgment,
       ReadKind.PreimageAnnouncement, ReadKind.TicketProxy, ReadKind.TicketDistribution:
     if wire.len != 0: ReadVerificationResult[CheckedReadReply](
         status: ReadVerificationError.InvalidFormat)

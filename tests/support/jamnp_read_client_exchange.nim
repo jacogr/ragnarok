@@ -150,6 +150,10 @@ proc exchangeClient*(kind: ReadKind, payload, response: seq[byte],
       var header = @[144'u8] # Independent literal CE144 selector and E4 extent preserve the bare-FIN upload transcript.
       for index in 0..<4: header.add(byte((uint32(payload.len) shr (8*index)) and 255))
       header
+    of ReadKind.Judgment:
+      var header = @[145'u8] # Independently frame the CE145 upload with its E4 payload length.
+      for index in 0..<4: header.add(byte((uint32(payload.len) shr (8*index)) and 255))
+      header
     of ReadKind.Assurance:
       var header = @[141'u8] # Independent literal CE141 selector, followed by its one E4-framed upload.
       for index in 0..<4: header.add(byte((uint32(payload.len) shr (8*index)) and 255))

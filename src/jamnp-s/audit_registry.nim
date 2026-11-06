@@ -24,6 +24,7 @@ type
   OriginRow = object ## Acyclic owners share one genuine complete predecessor among the block's original report targets.
     id: AuditOriginId
     origin: AuditBlockOrigin
+    dispute: AuditDisputeOrigin
     info: AuditOriginInfo
     contextBytes: uint64
     slots: seq[EvaluationSlot]
@@ -93,6 +94,7 @@ proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin): Audit
   let context = origin.originContext.value.contextInfo.value
   for ordinal in 0..<registry.rows.len:
     # Repeated genuine captures return the existing immutable source, never overwrite a differently rooted or parameterized obligation.
+    if registry.rows[ordinal].dispute.valid: continue # Disputed-only reports have no available-block identity.
     let old = registry.rows[ordinal].info
     if array[32, byte](old.blockHash) == array[32, byte](info.blockHash):
       let prior = registry.rows[ordinal].origin
@@ -116,18 +118,106 @@ proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin): Audit
     return AuditRegistryResult[AuditOriginId](status: AuditRegistryError.LimitExceeded)
   inc registry.next
   let id = AuditOriginId(owner: registry.identity, serial: registry.next)
-  registry.rows.add(OriginRow(id: id, origin: origin, info: info, contextBytes: contextBytes,
+  registry.rows.add(OriginRow(id: id, origin: origin, dispute: default(AuditDisputeOrigin),
+      info: info, contextBytes: contextBytes,
     slots: newSeq[EvaluationSlot](info.reports)))
   registry.entries += uint64(info.entries)
   registry.nodes += info.nodes
   registry.values += info.valueBytes
   registry.contexts += contextBytes
   AuditRegistryResult[AuditOriginId](status: AuditRegistryError.None, completed: id)
+proc sameDispute(left, right: AuditDisputeOrigin): bool =
+  ## Equal report names alone cannot replace the original auditor cohort or whole profile. Once independently trusted, the first genuine complete historical source remains pinned across benign receipt/support/head changes.
+  if not left.valid or not right.valid: return false
+  let a = left.disputeInfo.value
+  let b = right.disputeInfo.value
+  array[32, byte](a.reportHash) == array[32, byte](b.reportHash) and a.epoch == b.epoch and
+    array[32, byte](a.auditorHash) == array[32, byte](b.auditorHash) and
+    left.reportAt(0).value.originParameters.value.sameParameterProfile(right.reportAt(
+        0).value.originParameters.value)
+proc retainDisputes*(registry: var AuditOriginRegistry,
+    origins: openArray[AuditDisputeOrigin]): AuditRegistryResult[seq[AuditOriginId]] =
+  ## Services independently binds every origin first. Complete-message logical reservations and duplicate planning precede the first mutation; no late refusal retains an accepted prefix.
+  if not registry.configured: return auditRegistryFailure[seq[AuditOriginId]](
+      AuditRegistryError.Unconfigured)
+  if origins.len > 16: return auditRegistryFailure[seq[AuditOriginId]](
+      AuditRegistryError.LimitExceeded)
+  var planned = newSeq[int](origins.len)
+  var additions: seq[AuditDisputeOrigin] = @[]
+  var entries = registry.entries
+  var nodes = registry.nodes
+  var values = registry.values
+  var contexts = registry.contexts
+  for ordinal in 0..<origins.len:
+    # Bounded pairwise equality retains the first actual physical owner, so later evaluation and signing select that same registered target.
+    let origin = origins[ordinal]
+    if not origin.valid: return auditRegistryFailure[seq[AuditOriginId]](
+        AuditRegistryError.InvalidSource)
+    var existing = -1
+    for row in 0..<registry.rows.len:
+      if sameDispute(registry.rows[row].dispute, origin): existing = row
+    if existing >= 0:
+      planned[ordinal] = existing
+      continue
+    var repeated = -1
+    for row in 0..<additions.len:
+      if sameDispute(additions[row], origin): repeated = row
+    if repeated >= 0:
+      planned[ordinal] = registry.rows.len+repeated
+      continue
+    let info = origin.disputeInfo.value
+    if info.retainedBytes > high(uint64)-1536:
+      return auditRegistryFailure[seq[AuditOriginId]](AuditRegistryError.LimitExceeded)
+    let contextBytes = info.retainedBytes+1536
+    if uint64(registry.rows.len+additions.len) >= uint64(registry.limits.blocks) or
+        uint64(info.entries) > uint64(registry.limits.entries)-entries or
+        info.nodes > uint64(registry.limits.nodes)-nodes or
+        info.valueBytes > uint64(registry.limits.valueBytes)-values or
+        contextBytes > uint64(registry.limits.contextBytes)-contexts:
+      return auditRegistryFailure[seq[AuditOriginId]](AuditRegistryError.LimitExceeded)
+    entries += uint64(info.entries)
+    nodes += info.nodes
+    values += info.valueBytes
+    contexts += contextBytes
+    planned[ordinal] = registry.rows.len+additions.len
+    additions.add(origin)
+  if uint64(additions.len) > high(uint64)-registry.next:
+    return auditRegistryFailure[seq[AuditOriginId]](AuditRegistryError.Exhausted)
+  for origin in additions:
+    # All logical capacity and nonwrapping serials have been reserved. Installation has no protocol/resource refusal branch.
+    inc registry.next
+    let id = AuditOriginId(owner: registry.identity, serial: registry.next)
+    registry.rows.add(OriginRow(id: id, origin: default(AuditBlockOrigin), dispute: origin,
+      info: default(AuditOriginInfo), contextBytes: origin.disputeInfo.value.retainedBytes+1536,
+      slots: newSeq[EvaluationSlot](1)))
+  registry.entries = entries
+  registry.nodes = nodes
+  registry.values = values
+  registry.contexts = contexts
+  var ids = newSeq[AuditOriginId](origins.len)
+  for ordinal in 0..<ids.len:
+    # Host-only selectors contain no full-state graph and preserve input order, including duplicate rows.
+    ids[ordinal] = registry.rows[planned[ordinal]].id
+  AuditRegistryResult[seq[AuditOriginId]](status: AuditRegistryError.None, completed: move(ids))
+proc target*(registry: AuditOriginRegistry, id: AuditOriginId,
+    ordinal: int): AuditRegistryResult[AuditReportOrigin] =
+  ## One guarded selector resolves either genuine source form without constructing an availability block for a disputed-only report.
+  let found = registry.find(id)
+  if found < 0: return auditRegistryFailure[AuditReportOrigin](AuditRegistryError.InvalidId)
+  if ordinal < 0 or ordinal >= registry.rows[found].slots.len:
+    return auditRegistryFailure[AuditReportOrigin](AuditRegistryError.InvalidIndex)
+  let row = registry.rows[found]
+  let selected = if row.dispute.valid: row.dispute.reportAt(ordinal) else: row.origin.reportAt(ordinal)
+  if selected.error != AuditOriginError.None:
+    return auditRegistryFailure[AuditReportOrigin](AuditRegistryError.InvalidSource)
+  AuditRegistryResult[AuditReportOrigin](status: AuditRegistryError.None, completed: selected.value)
 proc origin*(registry: AuditOriginRegistry, id: AuditOriginId): AuditRegistryResult[
     AuditBlockOrigin] =
   ## Source-bearing lookup is used only while the owning Services graph is exclusively accessible.
   let found = registry.find(id)
   if found < 0: return AuditRegistryResult[AuditBlockOrigin](status: AuditRegistryError.InvalidId)
+  if registry.rows[found].dispute.valid:
+    return auditRegistryFailure[AuditBlockOrigin](AuditRegistryError.InvalidSource)
   AuditRegistryResult[AuditBlockOrigin](status: AuditRegistryError.None, completed: registry.rows[found].origin)
 proc rememberEvaluation*(registry: var AuditOriginRegistry, id: AuditOriginId, ordinal: int,
     evaluation: AuditEvaluation): AuditRegistryResult[bool] =
@@ -136,7 +226,7 @@ proc rememberEvaluation*(registry: var AuditOriginRegistry, id: AuditOriginId, o
   if found < 0: return AuditRegistryResult[bool](status: AuditRegistryError.InvalidId)
   if ordinal < 0 or ordinal >= registry.rows[found].slots.len:
     return AuditRegistryResult[bool](status: AuditRegistryError.InvalidIndex)
-  let target = registry.rows[found].origin.reportAt(ordinal).value
+  let target = registry.target(id, ordinal).value
   if not evaluation.valid or not evaluation.matchesOrigin(target):
     return AuditRegistryResult[bool](status: AuditRegistryError.SourceConflict)
   let info = evaluation.evaluationInfo.value
