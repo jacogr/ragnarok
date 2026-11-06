@@ -3,6 +3,7 @@
 ## Private copied read-body IR and invocation-only extent ABI for both native lowerers.
 
 import std/assertions
+import ../program
 import ./[jit_rules, native_ir]
 
 const
@@ -30,6 +31,9 @@ type
     first, length: uint64
     data: nil pointer
   NativeReadContext* = array[3, NativeReadRegion] ## Current stack, writable and read-only extents.
+  NativeReadWindow* = object ## One base and a compile-time hull; no invocation pointer is retained.
+    base*: range[0..12]
+    first*, length*: uint32
 
 func initNativeReadBody*(header, terminal, first, last: uint32,
     epoch: uint64): NativeReadBody =
@@ -91,6 +95,43 @@ func sameReadBody*(a, b: NativeReadBody): bool =
     if left.opcode != right.opcode or left.slots != right.slots or
         left.immediate != right.immediate: return false
   true
+
+func nativeReadWindow*(body: NativeReadBody, maximum: uint32): NativeReadWindow =
+  ## Choose the most reused base that is unchanged through the entire copied operation stream.
+  ## Offsets stay unsigned so the lowerer can form the same wrapping 32-bit window start.
+  result = default(NativeReadWindow)
+  if not body.complete: return
+  var first = default(array[13, uint32])
+  var ending = default(array[13, uint64])
+  var reads = default(array[13, int])
+  var writes = 0'u16
+  for index in 0..<body.len:
+    # Every load writes A, including a load whose destination aliases its own base.
+    let op = body.operation(index)
+    if nativeReadOpcode(op.opcode):
+      writes = writes or (1'u16 shl int(op.slots.aIndex))
+      let base = op.slots.bIndex
+      let opcode = int(op.opcode)
+      assert opcode >= 124 and opcode <= 130
+      let width = indirectMemoryAccess(range[120..130](opcode)).width
+      let offset = uint32(op.immediate and 0xffffffff'u64)
+      let past = uint64(offset)+uint64(width)
+      if reads[base] == 0 or offset < first[base]: first[base] = offset
+      if past > ending[base]: ending[base] = past
+      inc reads[base]
+    else:
+      # A scalar destination invalidates the base even when it appears after an eligible read.
+      writes = writes or (1'u16 shl int(op.slots.destinationIndex))
+  var best = 1
+  for slot in 0..12:
+    # Count ties keep the lowest guest slot. No candidate changes the admitted certificate.
+    if reads[slot] > best and (writes and (1'u16 shl slot)) == 0:
+      assert ending[slot] > uint64(first[slot])
+      let length = ending[slot]-uint64(first[slot])
+      if length <= uint64(maximum):
+        best = reads[slot]
+        result = NativeReadWindow(base: range[0..12](slot), first: first[slot],
+          length: uint32(length))
 
 proc initNativeReadRegion*(first: uint64, bytes: openArray[byte]): NativeReadRegion =
   ## Borrow a readable contiguous allocation until the synchronous call returns.

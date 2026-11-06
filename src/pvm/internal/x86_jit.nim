@@ -702,6 +702,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
     cycleWord(code, 0)
 
   when defined(pvmX86Jit) and NativeCheckedReadEnabled:
+    const X86ReadRefusalLabel = 0'u8
+      ## One exit drops the staged register file after any failed complete-extent check.
+    type X86ReadLabels = array[1+4*int(NativeReadFactLimit), int]
+      ## One refusal label and at most four labels per guarded access.
+
     proc readBodyReturn(code: var X86Block, status: uint32) =
       ## Both exits restore the same SysV stack frame and define the complete scalar return.
       put(code, [0xb8'u8]) # MOV EAX,status returns success or refusal and clears the upper word.
@@ -709,15 +714,45 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(code, [0x48'u8, 0x83, 0xc4, 0x68]) # ADD RSP,104 releases the private register stage.
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
+    proc emitCheckedReadAddress(code: var X86Block, fixes: var seq[X86CycleFixup],
+        labels: var X86ReadLabels, nextLabel: var int, baseSlot: range[0..12],
+        displacement: uint32, width: byte) =
+      ## Leave RCX and RAX as the pointer and offset after checking a whole clipped extent.
+      assert width in 1'u8..127'u8 # SUB RCX,imm8 sign-extends its positive width.
+      put(code, [0x8b'u8, 0x57, byte(int(baseSlot)*8)]) # MOV EDX,[RDI+base*8].
+      put(code, [0x81'u8, 0xc2]) # ADD EDX,imm32 wraps modulo 2^32.
+      cycleWord(code, displacement)
+      # One accept label and three skip labels per load fit the fact-bounded table.
+      let accepted = uint8(nextLabel)
+      inc nextLabel
+      for region in 0..<3:
+        # A short extent or unsigned out-of-range offset skips its pointer entirely.
+        let nextRegion = uint8(nextLabel)
+        inc nextLabel
+        let base = byte(region*24) # first/length/data occupy three consecutive 64-bit fields.
+        put(code, [0x49'u8, 0x8b, 0x4a, base+8]) # MOV RCX,[R10+extent.length].
+        put(code, [0x48'u8, 0x83, 0xe9, width]) # SUB RCX,width gives the final legal offset.
+        cycleEdge(code, fixes, 0x82, nextRegion) # JB rel32 on length underflow.
+        put(code, [0x48'u8, 0x89, 0xd0]) # MOV RAX,RDX copies the zero-extended address.
+        put(code, [0x49'u8, 0x2b, 0x42, base]) # SUB RAX,[R10+extent.first].
+        put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX rejects a wrapped below-base offset too.
+        cycleEdge(code, fixes, 0x87, nextRegion) # JA rel32 when the complete load cannot fit.
+        put(code, [0x49'u8, 0x8b, 0x4a, base+16]) # MOV RCX,[R10+extent.data].
+        cycleEdge(code, fixes, 0, accepted) # JMP rel32 with the proved pointer and offset.
+        labels[int(nextRegion)] = code.bytes.len
+      cycleEdge(code, fixes, 0, X86ReadRefusalLabel) # JMP rel32 when all three extents miss.
+      labels[int(accepted)] = code.bytes.len
+
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
       ## Stage the certified body on the stack, then commit only its written slots.
       assert body.complete and sizeof(RegisterFile) == 104
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
-      var labels = default(array[1+4*int(NativeReadFactLimit), int])
+      var labels = default(X86ReadLabels)
       var nextLabel = 1
       var dirty = 0'u16
-      const refusal = 0'u8
+      let window = nativeReadWindow(body, 127)
+      var windowReady = false
 
       # No calls or callee-saved registers. R10/R11 retain the two SysV borrows.
       put(code, [0x48'u8, 0x83, 0xec, 0x68]) # SUB RSP,104 reserves the 13-slot stage.
@@ -741,34 +776,33 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           let opcode = int(op.opcode)
           assert opcode >= 124 and opcode <= 130 # Prove the local width-table conversion.
           let width = byte(indirectMemoryAccess(range[120..130](opcode)).width)
-          put(code, [0x8b'u8, 0x57, byte(int(op.slots.bIndex)*8)]) # MOV EDX,[RDI+base*8].
-          put(code, [0x81'u8, 0xc2]) # ADD EDX,imm32 wraps modulo 2^32.
-          cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
-          # One accept label and three skip labels per load fit the fact-bounded table.
-          let accepted = uint8(nextLabel)
-          inc nextLabel
-          for region in 0..<3:
-            # A short extent or unsigned out-of-range offset skips its pointer entirely.
-            let nextRegion = uint8(nextLabel)
-            inc nextLabel
-            let base = byte(region*24) # first/length/data occupy three consecutive 64-bit fields.
-            put(code, [0x49'u8, 0x8b, 0x4a, base+8]) # MOV RCX,[R10+extent.length].
-            put(code, [0x48'u8, 0x83, 0xe9, width]) # SUB RCX,width gives the final legal offset.
-            cycleEdge(code, fixes, 0x82, nextRegion) # JB rel32 on length underflow.
-            put(code, [0x48'u8, 0x89, 0xd0]) # MOV RAX,RDX copies the zero-extended address.
-            put(code, [0x49'u8, 0x2b, 0x42, base]) # SUB RAX,[R10+extent.first].
-            put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX rejects a wrapped below-base offset too.
-            cycleEdge(code, fixes, 0x87, nextRegion) # JA rel32 when the complete load cannot fit.
-            put(code, [0x49'u8, 0x8b, 0x4a, base+16]) # MOV RCX,[R10+extent.data].
-            cycleEdge(code, fixes, 0, accepted) # JMP rel32 with the proved pointer and offset.
-            labels[int(nextRegion)] = code.bytes.len
-          cycleEdge(code, fixes, 0, refusal) # JMP rel32 when all three extents miss.
-          labels[int(accepted)] = code.bytes.len
-          case op.opcode
-          of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
-          of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
-          of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
-          else: assert false # The common certificate admits only the three explicit load forms.
+          let displacement = uint32(op.immediate and 0xffffffff'u64)
+          if window.length != 0 and op.slots.bIndex == window.base:
+            if not windowReady:
+              # One clipped extent must contain the whole hull. A split extent uses checked replay.
+              emitCheckedReadAddress(code, fixes, labels, nextLabel, window.base,
+                window.first, byte(window.length))
+              put(code, [0x4c'u8, 0x8d, 0x0c, 0x01]) # LEA R9,[RCX+RAX] saves the checked start.
+              windowReady = true
+            # The clipped hull cannot wrap again. R9 survives scalar operations and other guards.
+            assert displacement >= window.first
+            let offset = displacement-window.first
+            assert uint64(offset)+uint64(width) <= uint64(window.length) and offset <= 127
+            let relative = byte(offset)
+            case op.opcode
+            of 124: put(code, [0x41'u8, 0x0f, 0xb6, 0x41, relative]) # MOVZX EAX,byte [R9+disp8].
+            of 129: put(code, [0x49'u8, 0x63, 0x41, relative]) # MOVSXD RAX,dword [R9+disp8].
+            of 130: put(code, [0x49'u8, 0x8b, 0x41, relative]) # MOV RAX,qword [R9+disp8].
+            else: assert false # The common certificate admits only the three explicit load forms.
+          else:
+            # A changing base or independent load keeps the original per-load extent search.
+            emitCheckedReadAddress(code, fixes, labels, nextLabel, op.slots.bIndex,
+              displacement, width)
+            case op.opcode
+            of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
+            of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
+            of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
+            else: assert false # The common certificate admits only the three explicit load forms.
           writeAccess(code, X86CanonicalAccess(), op.slots.aIndex) # MOV [RDI+destination*8],RAX.
           dirty = dirty or (1'u16 shl int(op.slots.aIndex))
 
@@ -780,7 +814,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       readBodyReturn(code, NativeReadSuccess)
 
       # Every guard miss jumps here before caller-visible stores and discards all staged work.
-      labels[int(refusal)] = code.bytes.len
+      labels[int(X86ReadRefusalLabel)] = code.bytes.len
       readBodyReturn(code, NativeReadRefusal)
       if code.bytes.len > NativeImageByteLimit: return @[]
       for fix in fixes:
