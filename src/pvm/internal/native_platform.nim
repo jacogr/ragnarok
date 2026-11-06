@@ -5,6 +5,7 @@
 import std/assertions
 import ../machine
 import ./[native_ir, native_control]
+import ./native_read_body
 when defined(pvmX86Jit):
   import ./x86_jit
 elif defined(pvmArm64Jit):
@@ -153,3 +154,33 @@ proc enterNativeLoop*(image: NativeImage, registers: var RegisterFile,
     arenaRegion(image.handle, image.offset, addr registers[0], addr context)
   else:
     abortNativeReceipt()
+
+when NativeCheckedReadEnabled:
+  func isReadBody*(image: NativeImage): bool =
+    ## The installed ABI tag is meaningful only for a published image.
+    image.ready and image.kind == NativeKind.CheckedReadBody
+
+  proc lowerNativeReadBody*(body: NativeReadBody): NativeImage =
+    ## Lower the copied certificate and publish it through the selected ARM64 arena.
+    result = default(NativeImage)
+    if not nativePlatformSupported() or not body.complete: return
+    var words = armCheckedReadInstructions(body)
+    let count = words.len
+    if count == 0 or count > NativeImageByteLimit div 4: return
+    let handle = createNativeArena()
+    if handle == nil: return
+    let offset = arenaPublish(handle, addr words[0], uint32(count))
+    if offset < 0:
+      arenaRelease(handle)
+      return
+    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(count)*4,
+      kindValue: NativeKind.CheckedReadBody)
+
+  proc enterNativeReadBody*(image: NativeImage, registers: var RegisterFile,
+      context: var NativeReadContext): bool =
+    ## A complete read body publishes registers once. A refused entry preserves the entire file.
+    if not isReadBody(image): return false
+    assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
+    let status = arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+    if status != NativeReadSuccess and status != NativeReadRefusal: abortNativeReceipt()
+    status == NativeReadSuccess
