@@ -160,18 +160,10 @@ when NativeCheckedReadEnabled:
     ## The installed ABI tag is meaningful only for a published image.
     image.ready and image.kind == NativeKind.CheckedReadBody
 
-  proc lowerNativeReadBody*(body: NativeReadBody): NativeImage =
-    ## Publish one checked read leaf through the selected arena and preserve the shared image tag.
+  proc publishReadBody[T](encoded: var seq[T]): NativeImage =
+    ## x86 publishes bytes and ARM64 publishes words through the same owning arena path.
     result = default(NativeImage)
-    if not nativePlatformSupported() or not body.complete: return
-    when defined(pvmX86Jit):
-      # The x86 arena accepts a byte stream and its byte count.
-      var encoded = x86CheckedReadInstructions(body)
-      const unitBytes = 1
-    else:
-      # The ARM64 arena retains its original word stream and word count.
-      var encoded = armCheckedReadInstructions(body)
-      const unitBytes = 4
+    const unitBytes = sizeof(T)
     let count = encoded.len
     if count == 0 or count > NativeImageByteLimit div unitBytes: return
     let handle = createNativeArena()
@@ -182,6 +174,37 @@ when NativeCheckedReadEnabled:
       return
     result = NativeImage(handle: handle, offset: uint32(offset),
       bytesValue: uint64(count)*uint64(unitBytes), kindValue: NativeKind.CheckedReadBody)
+
+  proc lowerNativeReadBody*(body: NativeReadBody): NativeImage =
+    ## Publish one checked read leaf through the selected arena and preserve the shared image tag.
+    if not nativePlatformSupported() or not body.complete: return default(NativeImage)
+    when defined(pvmX86Jit):
+      var encoded = x86CheckedReadInstructions(body)
+    else:
+      var encoded = armCheckedReadInstructions(body)
+    publishReadBody(encoded)
+
+  when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+    proc checkedReadAbiNative(handle: nil pointer, offset: uint32,
+        registers, context: pointer): uint64 {.cdecl, importc: "pvm_x86_checked_read_abi_proof",
+        header: "x86_resident_access_proof.h".}
+
+    proc lowerNativeReadBodyStackProof*(body: NativeReadBody): NativeImage =
+      ## Keep a published stack-policy image as the resident leaf's reference.
+      if not nativePlatformSupported() or not body.complete: return default(NativeImage)
+      var encoded = x86CheckedReadStackInstructions(body)
+      publishReadBody(encoded)
+
+    proc enterNativeReadBodyAbiProof*(image: NativeImage, registers: var RegisterFile,
+        context: var NativeReadContext): bool =
+      ## Check all six saved hardware registers around the actual two-borrow ABI.
+      assert isReadBody(image)
+      assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
+      let tagged = checkedReadAbiNative(image.handle, image.offset, addr registers[0], addr context)
+      assert tagged shr 32 == 1
+      let status = uint32(tagged and 0xffffffff'u64)
+      assert status == NativeReadSuccess or status == NativeReadRefusal
+      status == NativeReadSuccess
 
   proc enterNativeReadBody*(image: NativeImage, registers: var RegisterFile,
       context: var NativeReadContext): bool =
