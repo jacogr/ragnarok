@@ -1,0 +1,44 @@
+--- a/include/lsquic.h
++++ b/include/lsquic.h
+@@ -1830,6 +1830,14 @@
+ int lsquic_stream_shutdown(lsquic_stream_t *s, int how);
+ 
+ int lsquic_stream_close(lsquic_stream_t *s);
++
++/**
++ * Abandon this stream with RESET_STREAM and stop reading its peer direction.
++ * Must be called before the application shuts down the write direction.
++ * Returns 0 on success, -1 with errno EBADF/EPIPE if reset can no longer be sent.
++ * The existing on_close callback retains responsibility for context retirement.
++ */
++int lsquic_stream_reset(lsquic_stream_t *s, uint64_t error_code);
+ 
+ /**
+  * Return true if peer has not ACKed all data written to the stream.  This
+--- a/src/liblsquic/lsquic_stream.c
++++ b/src/liblsquic/lsquic_stream.c
+@@ -4335,6 +4335,24 @@
+     }
+     else if (do_close)
+         stream_shutdown_read(stream);
++}
++
++
++int
++lsquic_stream_reset (lsquic_stream_t *stream, uint64_t error_code)
++{
++    if (lsquic_stream_is_closed(stream))
++    {
++        errno = EBADF;
++        return -1;
++    }
++    if (stream->stream_flags & (STREAM_FIN_SENT | STREAM_U_WRITE_DONE))
++    {
++        errno = EPIPE;
++        return -1;
++    }
++    lsquic_stream_maybe_reset(stream, error_code, 1);
++    return 0;
+ }
+ 
+ 

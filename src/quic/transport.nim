@@ -3,7 +3,7 @@
 
 ## Maintained LSQUIC adapter. One bounded POSIX dispatcher services nonblocking UDP and
 ## deadlines. Native callbacks borrow this stack owner synchronously; no futures, callback
-## closures or dependency patches are used.
+## closures are used; protocol policy remains in Nim and native inputs follow the recorded build pins.
 ##
 ## Exposes certificate observations, transport/stream lifecycle operations, polling, peer
 ## metrics and handshake observations over the C bridge.
@@ -109,15 +109,16 @@ proc parseCert*(der: ptr byte, length: csize_t, fields: ptr CertFields): cint {.
     header: CertHeader, cdecl, raises: [].}
   ## Strict primitive DER extraction; the returned fields own their bounded bytes.
 
-proc transportNew(soak, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
-    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): nil pointer {.importc: "rq_transport_new",
-        header: BridgeHeader, cdecl, raises: [].}
-  ## Construct the shared native engine/TLS owner; strings are borrowed only during this call.
-
-proc transportNew6(profile, server: cint, port: uint16, cert, key, alpn: cstring, user: pointer,
-    verify: VerifyCallback, send: SendCallback, stream: StreamCallback): nil pointer {.importc: "rq_transport_new_ipv6_profile",
-        header: BridgeHeader, cdecl, raises: [].}
-  ## Retain an IPv6 engine across reconnects; the native caller still owns UDP readiness and TLS identity policy.
+type NativeTransportOptions {.importc: "rq_transport_options", header: BridgeHeader,
+    bycopy.} = object
+  ## Scalar-only C startup configuration is borrowed only during synchronous factory construction.
+  profile, server, ipv6, multi: cint
+  idle_seconds, keepalive: cuint
+proc transportNew(options: ptr NativeTransportOptions, port: uint16, cert, key, alpn: cstring,
+    user: pointer, verify: VerifyCallback, send: SendCallback,
+        stream: StreamCallback): nil pointer {.
+    importc: "rq_transport_new_config", header: BridgeHeader, cdecl, raises: [].}
+  ## Copy family/multi/timing policy into settings before the native engine can observe any packets.
 
 proc nativeServerAlpns(engine: nil pointer, bytes: ptr byte,
     length: csize_t): cint {.importc: "rq_server_alpns", header: BridgeHeader, cdecl, raises: [].}
@@ -274,11 +275,13 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
     cert, key, alpn: string, user: pointer, verify: VerifyCallback, stream: StreamCallback,
         multi = false, ipv6 = false, dispatcher: nil Dispatcher = nil,
             profile = RetainedPeer, acceptedAlpns: seq[string] = @[],
-            localAddress = default(NetworkAddress), incomingPeers = IncomingPeerSlots): bool =
+            localAddress = default(NetworkAddress), incomingPeers = IncomingPeerSlots,
+            idleSeconds: range[0..600] = 0, keepalive = false): bool =
   ## Create one nonblocking endpoint using only the pinned native library and standard Nim facilities.
   # Refuse to overwrite live resources; a fully retired stack owner can start another endpoint.
   if owner.engine != nil or owner.socket.isOpen or owner.selector != nil: return false
   if incomingPeers < 1 or incomingPeers > MaxIncomingPeers: return false
+  if idleSeconds == 0 and keepalive: return false # Default profiles cannot accept a partial timing override.
   if multi and not server: return false # Multiple accepted peers are a server-only ownership policy.
   if not server and incomingPeers != IncomingPeerSlots: return false # Client engines retain their original single-peer policy.
   var protocols: seq[byte] = @[]
@@ -316,13 +319,12 @@ proc openTransport*(owner: var Transport, server, soak: bool, port: uint16,
   let certPointer = certText.toCString()
   let keyPointer = keyText.toCString()
   let alpnPointer = alpnText.toCString()
-  # IPv6 mesh owners retain single-peer engines; legacy IPv4/service modes keep their original limits.
-  if family:
-    owner.engine = transportNew6(cint(profile), cint(server), actualPort, certPointer,
-        keyPointer, alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
-  else:
-    owner.engine = transportNew((if multi: 2.cint else: cint(soak)), cint(server), actualPort,
-        certPointer, keyPointer, alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
+  # Defaults retain proof profiles; explicit node timing/family/multi policy is fixed before engine construction.
+  let selectedProfile = if family: cint(profile) else: (if multi: 2.cint else: cint(soak))
+  var nativeOptions = NativeTransportOptions(profile: selectedProfile, server: cint(server),
+    ipv6: cint(family), multi: cint(multi), idle_seconds: cuint(idleSeconds), keepalive: cuint(keepalive))
+  owner.engine = transportNew(addr nativeOptions, actualPort, certPointer, keyPointer,
+    alpnPointer, addr owner, verifyForward, sendPacket, streamForward)
   # Failed TLS/native setup must release the already-bound I/O resources as well.
   if owner.engine == nil:
     closeTransport(owner)

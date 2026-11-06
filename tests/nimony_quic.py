@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-"""Prepare the unchanged pinned LSQUIC/TLS library and ignored fixture identities for Nimony.
+"""Prepare pinned LSQUIC/TLS with the recorded public reset API patch and ignored fixture identities.
 
 Exposes prepare for the verification harness.
 """
@@ -14,4 +14,4 @@ def prepare():
     library = build_native(dependencies(False))
     fixture_folder = BUILD/'nimony-fixtures'
     fixtures(fixture_folder)
-    return library, fixture_folder, dict(pins=PINS, patches=[], build_log='build/quic/build.log')
+    return library, fixture_folder, dict(pins=PINS, patches=PINS['patches'], build_log='build/quic/build.log')

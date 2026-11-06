@@ -95,7 +95,7 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
     fixture.exchanges[position].done = true
     fixture.completedPeer = peer
     inc fixture.completed
-proc roster(left, right: StateEdKey, leftPort, rightPort: uint16,
+proc connectionRoster*(left, right: StateEdKey, leftPort, rightPort: uint16,
     address: NetworkAddress, removeRight = false): array[3, seq[StateValidator]] =
   ## Every alias has exact metadata; absent remote membership becomes the pinned null validator.
   result = [newSeq[StateValidator](6), newSeq[StateValidator](9), newSeq[StateValidator](12)]
@@ -125,7 +125,7 @@ proc held(fixture: Fixture): bool =
     if exchange.stream != default(NativeStream) and exchange.local and exchange.peer ==
         fixture.peer: return true
   false
-proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false) =
+proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false, idle = false) =
   ## Both sides become fallback-eligible at once, deterministically exercising concurrent cross-dials.
   let leftIdentity = certificateIdentity(getEnv("RAGNAROK_TEST_CERT"))
   let rightIdentity = certificateIdentity(getEnv("RAGNAROK_TEST_CERT_B"))
@@ -135,7 +135,7 @@ proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false) =
   let right = rightIdentity.value
   var address = default(NetworkAddress)
   assert parseNetworkAddress((if ipv6: "::1" else: "127.0.0.1"), address)
-  let seed = topologyCaptured(roster(left, right, 0, 0, address))
+  let seed = topologyCaptured(connectionRoster(left, right, 0, 0, address))
   assert seed.error == GenesisError.None
   var first, second = default(Fixture)
   first.stopOnReady = stopReady
@@ -154,7 +154,8 @@ proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false) =
       ConnectionError.None
   assert second.node.open(secondConfig, seed, topologyLimits(), streamEvent, peerEvent,
       addr second) == ConnectionError.None
-  let advertised = topologyCaptured(roster(left, right, first.node.localPort, second.node.localPort,
+  let advertised = topologyCaptured(connectionRoster(left, right, first.node.localPort,
+    second.node.localPort,
     address), atSlot = 8, parent = seed)
   let view = advanceView(genesisView(seed), advertised)
   assert view.error == ViewAdvanceError.None
@@ -204,10 +205,23 @@ proc connectionPair*(ipv6: bool, stopReady = false, holdOpened = false) =
     assert not held(first) and not held(second), "no borrowed stream survives engine retirement"
     assert first.retired == 1 and second.retired == 1, "live peers retire after their engines"
     return # Both user callback contexts remain alive through all final closes.
+  if idle:
+    let originalFirst = first.peer
+    let originalSecond = second.peer
+    first.retry = false
+    second.retry = false
+    let idleDeadline = getMonoTime()+initDuration(seconds = 7)
+    while getMonoTime() < idleDeadline:
+      let clock = getMonoTime()+initDuration(seconds = 6)
+      step(first, clock)
+      step(second, clock)
+      assert first.peer == originalFirst and second.peer == originalSecond
+      assert first.node.active(originalFirst) and second.node.active(originalSecond), "idle node pair must not inherit the two-second crash experiment"
   let oldFirst = first.peer
   let oldSecond = second.peer
   assert first.node.announcements(oldFirst) and second.node.announcements(oldSecond)
-  let next = topologyCaptured(roster(left, right, first.node.localPort, second.node.localPort,
+  let next = topologyCaptured(connectionRoster(left, right, first.node.localPort,
+    second.node.localPort,
     address, removeRight = true), atSlot = 12, parent = advertised)
   let later = advanceView(view.value, next)
   assert later.error == ViewAdvanceError.None

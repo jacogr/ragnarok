@@ -45,6 +45,15 @@ int rq_close_peer(rq_transport *, const rq_peer_ref *);
 int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Copy a server connection capacity before network processing/observer registration; failure is atomic. */
 int rq_set_peer_capacity(rq_transport *, unsigned maximum, int multiple);
+/* Generic startup options are copied before engine construction. Zero idle preserves the selected legacy profile. Explicit idle1..600 selects
+ * keepalive0/1; pinned IETF LSQUIC schedules enabled probes at half the negotiated idle timeout. */
+typedef struct rq_transport_options {
+    int profile, server, ipv6, multi;
+    unsigned idle_seconds, keepalive;
+} rq_transport_options;
+rq_transport *rq_transport_new_config(const rq_transport_options *, uint16_t local_port,
+ const char *certificate, const char *key, const char *alpn, void *user,
+ rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);
 /* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);

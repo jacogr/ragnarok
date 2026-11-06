@@ -411,24 +411,39 @@ proc installPreparedAccumulation*(server: var Server, state: var StateStore, vie
   server.chain = view
   server.queueBestUpdates(server.chain.bestBlock) # Subscriber refusal cannot roll back the already installed current head.
 
-proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
-  ## Record caller-certified finality between ticks on the same dispatcher thread, without inferring it.
-  ## Requires a known retained chain block; failures leave the view intact. No finality proof is verified.
-  ## A new finalized head emits only finalized subscription events; repeats are silent and best is unchanged.
-  if not server.opened or server.lease != nil:
-    return ViewFinalizeError.Uninitialized # Closed listeners cannot receive state publications.
-  let update = server.chain.finalizeView(hash)
-  if update.error != ViewFinalizeError.None:
-    return update.error # Preserve the entire view on a rejected selection.
-  let previous = server.chain.finalizedBlock
-  if previous.error == GenesisError.None:
-    if array[32, byte](previous.value.blockHash) == array[32, byte](hash):
-      return ViewFinalizeError.None # Idempotent publication must not duplicate notifications.
-  server.chain = update.value
+proc queueFinalizedUpdates(server: var Server) =
+  ## All canonical/RPC owners already hold the selected finality before subscriber queue work.
   for slot in mitems(server.connections):
     if slot.opened and slot.upgraded and not slot.closing:
       if not slot.session.queueChainUpdates(server.chain.finalizedBlock, finalized = true):
         slot.close() # Finality still advances; only the slow consumer is disconnected.
+
+proc publishFinalized*(server: var Server, hash: BlockHash): ViewFinalizeError =
+  ## Record caller-certified finality without verifying consensus; repeated selections remain silent.
+  if not server.opened or server.lease != nil: return ViewFinalizeError.Uninitialized
+  let update = server.chain.finalizeView(hash)
+  if update.error != ViewFinalizeError.None: return update.error
+  let previous = server.chain.finalizedBlock
+  if previous.error == GenesisError.None:
+    if array[32, byte](previous.value.blockHash) == array[32, byte](hash):
+      return ViewFinalizeError.None # Idempotent publication never duplicates subscription events.
+  server.chain = update.value
+  server.queueFinalizedUpdates()
+  ViewFinalizeError.None
+
+proc publishFinalized*(server: var Server, view: var ChainView,
+    hash: BlockHash): ViewFinalizeError =
+  ## Join only identical complete histories/finality; failures preserve both owners and pending events.
+  if not server.opened or server.lease != nil: return ViewFinalizeError.Uninitialized
+  if not sameChainView(server.chain, view): return ViewFinalizeError.StaleView
+  let update = view.finalizeView(hash)
+  if update.error != ViewFinalizeError.None: return update.error
+  let previous = view.finalizedBlock
+  let repeated = previous.error == GenesisError.None and
+    array[32, byte](previous.value.blockHash) == array[32, byte](hash)
+  view = update.value
+  server.chain = view # Both assignments precede subscriber serialization or disconnection work.
+  if not repeated: server.queueFinalizedUpdates()
   ViewFinalizeError.None
 
 proc reject(slot: var Connection, code: int, now: int64) =

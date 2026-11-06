@@ -17,7 +17,10 @@ callbacks retire. Teardown precedes destruction of borrowed application owners.
 
 [`build_quic.py`](../../tools/build_quic.py) validates pinned upstream sources and builds
 `libquic_proof` under `build/quic/`, using the maintained public headers. Make owns preparation;
-no upstream source patches or separate C implementation of JAM protocol logic are added here.
+the vendor inputs remain pristine. An explicitly approved, hash-bound public stream-reset API
+patch is applied only to a build-directory LSQUIC copy. The bridge imports the patched public
+header, with no private LSQUIC entry points. See [the feature contract](../../spec/jamnp-block-service.md)
+for upstream checks, provenance and rejection tests. JAM protocol logic remains in Nim.
 
 The [networking guide](../../docs/networking.md) records transport setup, certificate fixtures,
 feature profiles and verification. [Application download contracts](../../spec/application-download-stream.md)

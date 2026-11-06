@@ -34,6 +34,19 @@ func handle*(route: AnnouncementRoute): NativeStream =
   ## Parent callback routing compares the borrowed handle only during its native lifetime.
   route.stream
 
+func writtenBytes*(route: AnnouncementRoute): int =
+  ## Scalar native-accepted progress is distinct from owned-buffer accounting.
+  route.offset
+proc messageReady*(route: AnnouncementRoute): bool =
+  ## Host parsing is scheduled only for a complete live detached message.
+  route.stream != NativeStream(nil) and not route.failed and route.reader.ready
+func pendingInputBytes*(route: AnnouncementRoute): int =
+  ## Parent accounts live body storage across all persistent peers, including incomplete messages.
+  route.reader.bufferedBytes
+func pendingOutputBytes*(route: AnnouncementRoute): int =
+  ## Charge the whole owned output until its final prefix is accepted and the route drops storage.
+  route.output.len
+
 func failed*(route: AnnouncementRoute): bool =
   ## A failed stream cannot silently retain an eligible target until transport teardown.
   route.failed
@@ -73,7 +86,8 @@ proc bindStream*(route: var AnnouncementRoute, stream: NativeStream, initiator: 
   route = AnnouncementRoute(stream: stream, limits: limits, output: framed(encoded.value,
       initiator),
     kindNeeded: not initiator)
-  let configured = route.reader.configure(limits.bytes)
+  let handshakeMaximum = ByteLimit(min(uint64(limits.bytes), 45'u64+36'u64*uint64(limits.leaves)))
+  let configured = route.reader.configure(handshakeMaximum)
   if configured != AnnouncementError.None: return configured
   wantRead(stream, 1)
   wantWrite(stream, 1)
@@ -102,6 +116,7 @@ proc acceptKind*(route: var AnnouncementRoute, kind: byte): AnnouncementError =
 
 proc acceptMessage(route: var AnnouncementRoute): bool =
   ## Commit one whole decoded message atomically; invalid claims retain no partial target set.
+  let wasHandshake = not route.known
   let message = route.reader.message
   if message.error != AnnouncementError.None: return false
   if not route.known:
@@ -129,16 +144,20 @@ proc acceptMessage(route: var AnnouncementRoute): bool =
     route.remote.leaves = leaves
   if route.remote.sequence == high(uint64): return false
   inc route.remote.sequence
-  route.reader.consume() == AnnouncementError.None
+  if route.reader.consume() != AnnouncementError.None: return false
+  if wasHandshake: return route.reader.setMaximum(route.limits.bytes) == AnnouncementError.None
+  true # Only an authenticated-size handshake can switch to the larger announcement ceiling.
 
-proc event*(route: var AnnouncementRoute, stream: NativeStream, event: cint): bool =
+proc event*(route: var AnnouncementRoute, stream: NativeStream, event: cint,
+    inputBudget = ByteLimit(high(uint64))): bool =
   ## Handle at most one bounded read/write chunk or one complete message per native event.
   if stream == NativeStream(nil) or stream != route.stream: return false
   if route.failed and event notin [3.cint, 4.cint]: return true
   case event
   of 1:
     var buffer = default(array[4096, byte])
-    let maximum = if route.kindNeeded: 1 else: min(buffer.len, route.reader.remaining)
+    let available = int(min(uint64(buffer.len), uint64(inputBudget)))
+    let maximum = if route.kindNeeded: 1 else: min(available, route.reader.remaining)
     if maximum <= 0:
       route.refuse()
       return true

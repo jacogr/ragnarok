@@ -148,7 +148,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       readDone(stream)
       wantRead(stream, 0)
       if server.mode == PrematureClose:
-        streamAbort(stream) # Closing without an E4 message is a truncated response, not a valid empty sequence.
+        streamFin(stream) # A clean FIN without an E4 header witnesses truncated framing.
       elif server.mode == Gated:
         server.responsePaused = true # Independent RPC/process observers explicitly release this response outside native callbacks.
       else:
@@ -176,7 +176,9 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   of 3:
     server.stream = NativeStream(nil) # Last callback ends all native borrows before stack teardown.
   of 4:
-    server.reset = true # Directional reset retires application writes without fabricating FIN.
+    if not server.reset:
+      server.reset = true
+      streamAbort(stream) # Retire the remaining direction once so this responder can accept the next stream.
   else:
     assert false, "undefined native server event" # Undefined ABI events are never silently accepted.
 
@@ -438,6 +440,11 @@ proc unsolicited*(servers: var DownloadResponders): bool =
     if not servers.second.transport.pollTransport(
         0): return false # Flush real frames without polling the client catalog.
   true
+
+proc streamRetired*(servers: DownloadResponders, second: bool): bool =
+  ## The next serial fixture request must follow the responder's actual close callback.
+  if second: servers.second.stream == NativeStream(nil)
+  else: servers.first.stream == NativeStream(nil)
 
 func resetObserved*(servers: DownloadResponders): bool =
   ## Observe only an actual native directional-reset callback on the independent responder.
