@@ -1302,6 +1302,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
+  var begins = true
   while pc < extent.value:
     if uint64(owner.facts.len) >= uint64(limits.facts):
       return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
@@ -1309,15 +1310,14 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
     if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
         status: FlatError.InvalidProgram)
     let item = decoded.value
-    let begins = basicBlockStart(source, item.address)
-    if begins.error != ProgramError.None: return FlatResult[FlatPlan](
-        status: FlatError.InvalidProgram)
-    if begins.value:
+    # This sequential walk already knows whether the preceding instruction ended a block.
+    if begins:
       priceIndex = uint32(owner.pricePcs.len)
       owner.pricePcs.add(item.address)
     let fact = flatFact(decoded, priceIndex)
     owner.factAt[int(pc)] = owner.facts.len
     owner.facts.add(fact)
+    begins = fact.ending
     pc = uint64(fact.next)
   var count = 0'u32
   var nodes = 0'u32
