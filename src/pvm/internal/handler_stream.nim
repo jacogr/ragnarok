@@ -887,6 +887,7 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
       # Shifts 0/8/16/24 extract one low word; base+1..3 cannot equal the opcode 171 bound.
       # Wrapped or other loop coordinates retain the original != predicate and bytewise order.
       break
+    let nextBase = base+4
     let address = (base+store.x) and 0xffffffff'u64
     if address < 65536 or address > uint64(high(uint32))-4:
       # Match the existing conservative four-byte fast-store extent; ambiguous/faulting spans stay scalar.
@@ -911,15 +912,13 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
     f.reservation = off or flatReservationHeaderFlag
     f.info.gas = MachineGas(uint64(f.info.gas)-charged)
     f.info.registers[prefix.slots.destinationIndex] = RegisterValue(word shr 24)
-    f.info.registers[store.slots.bIndex] = RegisterValue(base+4)
+    f.info.registers[store.slots.bIndex] = RegisterValue(nextBase)
     f.info.registers[prefix.slots.bIndex] = RegisterValue(shift+32)
     when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
       inc f.x86CheckedWordGroups
-    var destination = flatStop
-    flatBranchSelect(f, branch, 171, destination)
-    if destination != off:
-      # The fourth genuine branch may leave; its exact cached destination and paid reset still apply.
-      return destination
+    # The sealed true arm loops and the bound's distinct slot is unchanged by the batch.
+    f.info.blockCharged = false
+    if nextBase == bound: return branch.y
   # Every declined batch starts the untouched original checked loop, including its partial/fault behavior.
   flatChargedStoreLoop(f, off)
 
