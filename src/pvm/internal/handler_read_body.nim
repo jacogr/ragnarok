@@ -45,6 +45,12 @@ when declared(FlatFrame):
       inc node
     if body.complete: result = body
 
+  proc prepareFlatReadContext(f: var FlatFrame) {.noinline.} =
+    ## Fresh frame allocations own these bytes. A replacement frame starts without descriptors.
+    f.readContext = [initNativeReadRegion(f.stackBase, f.stack),
+      initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+    f.readContextReady = true
+
   proc flatNativeReadBody(f: var FlatFrame, off: uint32): uint32 =
     ## Require the exact complete reservation. Refusal replays the original paid body.
     let original = f.nativeOriginal
@@ -55,10 +61,7 @@ when declared(FlatFrame):
         f.reservation != (read.header or flatReservationHeaderFlag):
       return original(f, off)
     if not f.readContextReady:
-      # Fresh frame allocations own these bytes. A replacement frame starts without descriptors.
-      f.readContext = [initNativeReadRegion(f.stackBase, f.stack),
-        initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
-      f.readContextReady = true
+      prepareFlatReadContext(f)
     if not runNativeReadBody(f.nativeSession, f.info.registers, f.readContext):
       return original(f, off)
     read.terminal
