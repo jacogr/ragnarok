@@ -4,7 +4,7 @@
 // @@PvmReference={"input":"pvm-control.bin","suite":"pvm_conditional_control_reference"}
 use polkavm::{
     BackendKind, CacheModel, CostModelKind, GasMeteringKind, InterruptKind, Module, ModuleConfig,
-    ProgramBlob, ProgramCounter, ProgramParts, Reg, SetCacheSizeLimitArgs,
+    ProgramBlob, ProgramCounter, ProgramParts, RawInstance, Reg, SetCacheSizeLimitArgs,
 };
 use polkavm_common::program::{interpreter_calculate_cache_size, InstructionSetKind};
 fn word(data: &[u8], at: usize, width: usize) -> u64 {
@@ -78,13 +78,8 @@ fn main() {
     println!("PolkaVM control-flow cross-check passed: {count}");
 }
 
-fn run_lazy_jam_case(
-    instance: &mut polkavm::RawInstance,
-    start: u32,
-    taken: bool,
-    full_price: bool,
-) {
-    // These raw bytes and expected results follow the independent PVMCTL01 branch witness.
+// Restore the branch inputs before each independent entry, including any suspended cache check.
+fn prepare_lazy_jam_case(instance: &mut RawInstance, start: u32, taken: bool) {
     for index in 0..13 {
         let value = match index {
             0 => 0xffff0000,
@@ -103,6 +98,16 @@ fn run_lazy_jam_case(
     }
     instance.set_gas(100);
     instance.set_next_program_counter(ProgramCounter(start));
+}
+
+// Compare the traced or untraced entry to the independent PVMCTL01 branch witness.
+fn check_lazy_jam_case(
+    instance: &mut RawInstance,
+    start: u32,
+    taken: bool,
+    traced: bool,
+    expected_gas: i64,
+) {
     let mut steps = Vec::new();
     let mut finished = false;
     for _ in 0..6 {
@@ -135,25 +140,18 @@ fn run_lazy_jam_case(
             [0xffff0000, 3, 2, 0, 0, 0, 0, 7, 21, 0, 0, 0, 0],
         )
     };
-    let expected_gas = if full_price {
-        if start == 12 {
-            78
-        } else {
-            58
-        }
-    } else if start == 12 {
-        98
+    if traced {
+        assert_eq!(
+            steps,
+            expected_steps
+                .iter()
+                .copied()
+                .map(ProgramCounter)
+                .collect::<Vec<_>>()
+        );
     } else {
-        96
-    };
-    assert_eq!(
-        steps,
-        expected_steps
-            .iter()
-            .copied()
-            .map(ProgramCounter)
-            .collect::<Vec<_>>()
-    );
+        assert!(steps.is_empty());
+    }
     assert_eq!(instance.program_counter(), None);
     for (index, expected) in expected_regs.into_iter().enumerate() {
         assert_eq!(
@@ -165,6 +163,36 @@ fn run_lazy_jam_case(
     assert_eq!(instance.gas(), expected_gas);
 }
 
+// Require each rejected cache operation to preserve the pending execution and resident handlers.
+fn check_cache_policy_rejection(
+    instance: &mut RawInstance,
+    cap: SetCacheSizeLimitArgs,
+    traced: bool,
+) {
+    prepare_lazy_jam_case(instance, 12, true);
+    let state = |instance: &RawInstance| {
+        (
+            instance.gas(),
+            instance.program_counter(),
+            instance.next_program_counter(),
+            instance.interpreter_cache_size(),
+        )
+    };
+    let before = state(instance);
+    assert!(before.3.unwrap() > 0);
+    assert!(instance
+        .set_interpreter_cache_size_limit(Some(cap))
+        .is_err());
+    assert_eq!(state(instance), before);
+    if !traced {
+        // Untraced Sync isolates the metering restriction on both cache operations.
+        assert!(instance.reset_interpreter_cache().is_err());
+        assert_eq!(state(instance), before);
+    }
+    check_lazy_jam_case(instance, 12, true, traced, 98);
+}
+
+// Check lazy compilation, cache policy and both independent gas profiles for the same wire.
 fn check_lazy_jam_branch() {
     // PC 0 loads A7; PC 3 compares A0 with two. The two exits write distinct A1 values.
     // The exact bridge uses naive Sync fuel; the extra GP Full/L2Hit control prices
@@ -185,7 +213,8 @@ fn check_lazy_jam_branch() {
     let mut instance = module.instantiate().unwrap();
     let mut sizes = Vec::new();
     for taken in [false, true, true, false] {
-        run_lazy_jam_case(&mut instance, 0, taken, false);
+        prepare_lazy_jam_case(&mut instance, 0, taken);
+        check_lazy_jam_case(&mut instance, 0, taken, true, 96);
         sizes.push(instance.interpreter_cache_size());
     }
     let [Some(first), Some(second), Some(third), Some(fourth)] = sizes.as_slice() else {
@@ -198,24 +227,45 @@ fn check_lazy_jam_branch() {
     assert_eq!(third, second);
     assert_eq!(fourth, third);
 
-    // An outside entry after one arm fills the cache must obey the same hard byte limit.
-    let limit = first
-        .checked_add(interpreter_calculate_cache_size(1))
-        .unwrap();
-    assert!(
-        limit < *second,
-        "the limit must exclude the second compiled arm"
-    );
-    let mut bounded = module.instantiate().unwrap();
-    bounded
-        .set_interpreter_cache_size_limit(Some(SetCacheSizeLimitArgs {
-            max_block_size: 0,
-            max_cache_size_bytes: limit,
-        }))
-        .unwrap();
+    // Each block has two instructions. Seven handler entries allow four before eviction,
+    // enough for the branch and first arm but too few for both arms.
+    let cap = SetCacheSizeLimitArgs {
+        max_block_size: 2,
+        max_cache_size_bytes: interpreter_calculate_cache_size(7),
+    };
+    check_cache_policy_rejection(&mut instance, cap, true);
+
+    profile.set_step_tracing(false);
+    let sync_module = Module::from_blob(&engine, &profile, blob.clone()).unwrap();
+    let mut sync = sync_module.instantiate().unwrap();
+    prepare_lazy_jam_case(&mut sync, 0, false);
+    check_lazy_jam_case(&mut sync, 0, false, false, 96);
+    check_cache_policy_rejection(&mut sync, cap, false);
+
+    // Compare two untraced, unmetered instances over the same finite program.
+    profile.set_gas_metering(None);
+    let cache_module = Module::from_blob(&engine, &profile, blob.clone()).unwrap();
+    let mut uncapped = cache_module.instantiate().unwrap();
+    let mut bounded = cache_module.instantiate().unwrap();
+    bounded.set_interpreter_cache_size_limit(Some(cap)).unwrap();
+    let cache_size = |instance: &RawInstance| instance.interpreter_cache_size().unwrap();
+    let mut warm_size = 0;
     for (start, taken) in [(0, false), (12, true), (0, true), (0, false)] {
-        run_lazy_jam_case(&mut bounded, start, taken, false);
-        assert!(bounded.interpreter_cache_size().unwrap() <= limit);
+        for instance in [&mut uncapped, &mut bounded] {
+            prepare_lazy_jam_case(instance, start, taken);
+            check_lazy_jam_case(instance, start, taken, false, 100);
+        }
+        assert!(cache_size(&bounded) <= cap.max_cache_size_bytes);
+        if start == 12 {
+            // Entering the other arm from outside must evict handlers only in the capped instance.
+            assert!(cache_size(&bounded) < warm_size);
+            assert!(cache_size(&uncapped) > warm_size);
+        } else if warm_size == 0 {
+            // Start both instances with the same live handlers before exercising outside entry.
+            warm_size = cache_size(&bounded);
+            assert!(warm_size > 0);
+            assert_eq!(cache_size(&uncapped), warm_size);
+        }
     }
 
     // Independently check the same decoded branches against the paper's block
@@ -229,6 +279,9 @@ fn check_lazy_jam_branch() {
     let paper_module = Module::from_blob(&engine, &paper, blob).unwrap();
     let mut paper_instance = paper_module.instantiate().unwrap();
     for taken in [false, true] {
-        run_lazy_jam_case(&mut paper_instance, 0, taken, true);
+        prepare_lazy_jam_case(&mut paper_instance, 0, taken);
+        check_lazy_jam_case(&mut paper_instance, 0, taken, true, 58);
     }
+    prepare_lazy_jam_case(&mut paper_instance, 12, true);
+    check_lazy_jam_case(&mut paper_instance, 12, true, true, 78);
 }
