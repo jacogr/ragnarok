@@ -11,13 +11,13 @@ const
     (defined(pvmArm64Jit) and not defined(pvmX86Jit) and
       defined(arm64) and (defined(linux) or defined(macosx)))
     ## Checked read admission requires a supported native lowerer.
-  NativeReadSuccess* = 1'u32        ## Every staged register write committed.
-  NativeReadRefusal* = high(uint32) ## No guest write occurred.
-  NativeReadFactLimit* = 32'u32     ## Includes the folded leading noop and checked terminal.
+  NativeReadSuccess* = 1'u32          ## Every staged register write committed.
+  NativeReadRefusal* = high(uint32)   ## No guest write occurred.
+  NativeReadFactLimit* = 32'u32       ## Includes the folded leading noop and checked terminal.
   NativeReadContinuationSpan* = 4'u32 ## Three scalar operations and one checked terminal.
   NativeReadLoadLimit = 8
   NativeReadLow = 65536'u64
-  NativeReadEnd = 0xffffffff'u64    ## Exclusive conservative bound shared with checked fast loads.
+  NativeReadEnd = 0xffffffff'u64      ## Exclusive conservative bound shared with checked fast loads.
 
 type
   NativeReadBodyInfo* = object ## Geometry only. The caller must bind it to an actual checked stream.

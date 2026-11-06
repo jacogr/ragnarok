@@ -1,11 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Same-owner loop/read arbitration with one shape invalidated in the paired case.
+## Same-owner loop/read arbitration and checked successor reservation boundaries.
 import std/[assertions, syncio]
 import ../../../src/pvm/[machine, program, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/[native_pipeline, native_platform]
+when NativeCheckedReadEnabled:
+  import ../../../src/pvm/internal/handler_stream
 
 const
   LoopTrips = 1400'u64
@@ -238,4 +240,146 @@ for closed in [true, false]:
   assert after.submitted == 1 and after.completed == 1 and after.completions == 0
   prepared = default(PreparedProgram)
   assert runtimeInfo(runtime).registered == 0 and close(runtime)
+when NativeCheckedReadEnabled:
+  proc verifyContinuationSegment(frame: var FlatFrame, plan: FlatPlan, page: PageImage,
+      cpu: MachineInfo, attempts, commits: uint64, reason: StepError, exit: StepExit,
+      pc: uint32) =
+    ## Compare one segment under the retained native lease with a fresh checked-only frame.
+    var checked = newFlatFrame(plan, [page], cpu)
+    runFlat(checked, attempts)
+    let before = nativeStatistics(frame.nativeSession)
+    resetFlatFrame(frame, cpu)
+    runFlat(frame, attempts)
+    assert frame.reason == reason and frame.reason == checked.reason, "continuation step reason"
+    assert frame.exit == exit and frame.exit == checked.exit, "continuation exit"
+    assert frame.remaining == checked.remaining, "continuation attempts"
+    assert uint32(frame.faultPage) == uint32(checked.faultPage), "continuation fault page"
+    let actual = frame.info
+    let expected = checked.info
+    assert uint64(actual.pc) == uint64(pc) and uint64(actual.pc) == uint64(expected.pc),
+      "continuation PC"
+    assert uint64(actual.gas) == uint64(expected.gas) and
+      uint64(actual.gasDeficit) == uint64(expected.gasDeficit), "continuation gas"
+    assert actual.blockCharged == expected.blockCharged, "continuation paid reservation"
+    for slot in 0..<actual.registers.len:
+      assert uint64(actual.registers[slot]) == uint64(expected.registers[slot]),
+        "continuation registers"
+    let memory = flatMemorySnapshot(frame)
+    let current = pageImage(memory, page.index)
+    assert current.error == MachineError.None and current.value.access == page.access and
+      current.value.bytes == page.bytes, "continuation page contents and permissions"
+    let after = nativeStatistics(frame.nativeSession)
+    assert after[0] == before[0] and after[3] == before[3], "one retained continuation image"
+    assert after[1] == before[1]+commits and after[2] == before[2]+6*commits,
+      "three read ops and three successor ops per combined commit"
+
+  block continuation:
+    # A has a folded noop and three reads, with the wide read last at PC7. B at PC11
+    # has three scalar operations and the checked fallthrough at PC20 to the loop counter.
+    # PC29 jumps directly to B, and the loop counter starts at one for the short segments.
+    const
+      ReadFacts = 5'u64
+      SuccessorFacts = 4'u64
+      SuccessorPc = 11'u32
+      CounterPc = 21'u32
+      TrainBudget = ReadTrips*(ReadFacts+SuccessorFacts+2)+1
+      ContinuationWire = [0'u8, 0, 31, 2, 124, 0x41, 0, 129, 0x42, 0, 130, 0x53, 1, 1,
+        51, 6, 8, 200, 0x16, 7, 149, 0x77, 1, 1, 149, 0x88, 0xff, 82, 8, 0xe8, 50, 0,
+        40, 0xee, 0x93, 0x4c, 0x32, 0x29]
+    let decoded = decodeProgram(ContinuationWire, CodeAddress(0), ProgramByteLimit(64),
+      JumpCountLimit(0))
+    assert decoded.error == ProgramError.None, "decode continuation fixture"
+    let code = decoded.value
+    let cycles = GasCycleLimit(1000)
+    var prepared = prepareFlatPlan(code, cycles, defaultFlatLimits(), false)
+    assert prepared.error == FlatError.None, "prepare continuation fixture"
+    let plan = takeValue(prepared)
+    let readPrice = blockGas(code, CodeAddress(0), cycles)
+    let successorPrice = blockGas(code, CodeAddress(uint64(SuccessorPc)), cycles)
+    assert readPrice.error == GasError.None and successorPrice.error == GasError.None and
+      uint64(successorPrice.value) > 0, "price both ordinary headers"
+    let exactGas = uint64(readPrice.value)+uint64(successorPrice.value)
+    var cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(GasStart),
+      registers: default(RegisterFile))
+    cpu.registers[0] = RegisterValue(0xffff0000)
+    cpu.registers[3] = RegisterValue(0x12345678)
+    cpu.registers[4] = RegisterValue(0x20000)
+    cpu.registers[5] = RegisterValue(0x20000)
+    cpu.registers[8] = RegisterValue(1)
+    var page = PageImage(index: PageIndex(32), access: PageAccess.ReadOnly)
+    page.bytes[0] = 0x91
+    page.bytes[8] = 0x12
+    let runtime = newNativeRuntime()
+    try:
+      assert start(runtime), "start continuation compiler"
+    except:
+      assert false, "continuation compiler failed to start"
+    let session = newNativeSession(runtime)
+
+    # Train through the production probe with enough visits after its initial work floor.
+    var trainingCpu = cpu
+    trainingCpu.registers[8] = RegisterValue(ReadTrips)
+    var training = newFlatFrame(plan, [page], trainingCpu)
+    training.nativeSession = session
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+    beginNativeInvocation(session, TrainBudget)
+    beginReadProbe(training, TrainBudget)
+    runFlat(training, TrainBudget)
+    assert training.reason == StepError.None and training.exit == StepExit.Halt and
+      training.remaining == 0, "train the complete A and B shapes"
+    endReadProbeSegment(training)
+    recordNativeWork(session, settledNativeWork(training, TrainBudget))
+    finishReadProbe(training, true)
+    var stream = takeFlatStream(training)
+    finishNativeInvocation(session, observedNativeWork(session))
+    assert runtimeInfo(runtime).submitted == 1, "request one continuation image"
+    let parked = waitNativeCompilerGate(runtime)
+    assert parked.hasImage and parked.kind == NativeKind.CheckedReadBody,
+      "worker must publish the checked read kind"
+    releaseNativeCompilerGate(runtime)
+
+    # Segment budgets may be shorter than the invocation lease after a checked host boundary.
+    var frame = newFlatFrame(plan, [page], cpu)
+    frame.nativeSession = session
+    beginNativeInvocation(session, TrainBudget)
+    restoreFlatStream(frame, stream)
+    assert nativeReadInfo(session).epoch != 0 and nativeReadContinuation(session).terminal != 0,
+      "collect an extended read certificate"
+    assert nativeStatistics(session)[0] == 1, "one collected continuation image"
+    var fault = cpu
+    fault.registers[5] = RegisterValue(0x22000)
+    verifyContinuationSegment(frame, plan, page, fault, ReadFacts+SuccessorFacts, 0,
+      StepError.None, StepExit.Fault, 7)
+    assert uint32(frame.faultPage) == 0x22000, "late read faults on the unmapped page"
+
+    # The four partial boundaries replay checked. The complete reservation reaches the next header.
+    for remaining in 0'u64..SuccessorFacts:
+      let nextPc = if remaining < SuccessorFacts: SuccessorPc+3*uint32(remaining) else: CounterPc
+      let commits = if remaining == SuccessorFacts: 1'u64 else: 0'u64
+      verifyContinuationSegment(frame, plan, page, cpu, ReadFacts+remaining, commits,
+        StepError.StepLimitExceeded, StepExit.Continued, nextPc)
+    verifyContinuationSegment(frame, plan, page, fault, ReadFacts+SuccessorFacts, 0,
+      StepError.None, StepExit.Fault, 7)
+
+    # Zero successor attempts stop before pricing. Positive partial quota still checks gas first.
+    var priced = cpu
+    priced.gas = MachineGas(exactGas-1)
+    verifyContinuationSegment(frame, plan, page, priced, ReadFacts, 0,
+      StepError.StepLimitExceeded, StepExit.Continued, SuccessorPc)
+    verifyContinuationSegment(frame, plan, page, priced, ReadFacts+2, 0,
+      StepError.None, StepExit.OutOfGas, SuccessorPc)
+    priced.gas = MachineGas(exactGas)
+    verifyContinuationSegment(frame, plan, page, priced, ReadFacts+SuccessorFacts+1, 1,
+      StepError.None, StepExit.OutOfGas, CounterPc)
+    assert uint64(frame.info.gas) == 0, "charge the complete successor exactly once"
+
+    # Starting at B or reaching it through the independent jump keeps the checked route.
+    for entry in [SuccessorPc, 29'u32]:
+      var alternate = cpu
+      alternate.pc = CodeAddress(uint64(entry))
+      verifyContinuationSegment(frame, plan, page, alternate, 32, 0,
+        StepError.None, StepExit.Halt, 0)
+    finishNativeInvocation(session, 0)
+    assert close(runtime), "close the continuation compiler after the invocation"
+
 echo "PVM read arbitration and quota passed"
