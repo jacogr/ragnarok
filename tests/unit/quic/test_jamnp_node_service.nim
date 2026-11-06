@@ -44,6 +44,13 @@ proc pump(service: var NodeService, probe: var NodeProbe, milliseconds: int) =
   while getMonoTime() < until:
     assert service.poll(getMonoTime(), 0)
     probe.poll()
+template awaitEvent(service, probe, condition, description: untyped) =
+  ## Advance both real endpoints until the expected state transition or a bounded failure.
+  block:
+    let until = getMonoTime()+initDuration(seconds = 3)
+    while not condition:
+      assert getMonoTime() < until, description
+      pump(service, probe, 1)
 proc handshake(view: ChainView): seq[byte] =
   ## Literal E4 and empty leaf count are independent of the production announcement encoder.
   result = @[0'u8, 37, 0, 0, 0]
@@ -72,36 +79,34 @@ proc transcript(view: ChainView) {.raises.} =
   let deadline = getMonoTime()+initDuration(seconds = 3)
   while not probe.authenticated and getMonoTime() < deadline: pump(service, probe, 1)
   assert probe.authenticated, "client TLS authentication"
-  pump(service, probe, 20)
-  assert service.peerCount == 1, "node peer admission"
+  awaitEvent(service, probe, service.peerCount == 1, "node peer admission")
   let peer = service.peerAt(0).value
   let original = probe.issue(hello, persistent = true)
-  pump(service, probe, 30)
-  assert service.source(peer).error == NodeError.None, "usable UP0 handshake"
   var expectedHello: seq[byte] = @[]
   for index in 1..<hello.len: expectedHello.add(hello[index])
-  assert probe.bytes(original) == expectedHello, "literal UP0 handshake reply"
+  awaitEvent(service, probe, service.source(peer).error == NodeError.None and
+    probe.bytes(original) == expectedHello, "literal UP0 handshake reply")
   assert not probe.flows[original].receivedFin
   let delayed = probe.issue(hello, persistent = true, enabled = false)
-  pump(service, probe, 10)
+  awaitEvent(service, probe, probe.flows[delayed].opened, "open delayed UP0")
   let newer = probe.issue(hello, persistent = true)
-  pump(service, probe, 30)
-  assert uint64(service.source(peer).value.stream) == uint64(probe.flows[newer].number)
-  assert probe.flows[original].reset, "higher UP0 resets old source"
+  awaitEvent(service, probe, service.source(peer).error == NodeError.None and
+    uint64(service.source(peer).value.stream) == uint64(probe.flows[newer].number) and
+    probe.flows[original].reset, "higher UP0 replaces and resets the old source")
   probe.enable(delayed)
-  pump(service, probe, 30)
-  assert probe.flows[delayed].reset, "delayed lower UP0 is refused"
+  awaitEvent(service, probe, probe.flows[delayed].reset, "delayed lower UP0 is refused")
   assert uint64(service.source(peer).value.stream) == uint64(probe.flows[newer].number)
   let heldA = probe.issue(@[128'u8], persistent = true)
   pump(service, probe, 20)
   let heldB = probe.issue(@[128'u8], persistent = true)
   pump(service, probe, 20)
   let refused = probe.issue(request)
-  pump(service, probe, 30)
-  assert probe.flows[refused].reset and service.takeRead().error == NodeError.Unavailable
+  awaitEvent(service, probe, probe.flows[refused].reset, "saturated read is reset")
+  assert service.takeRead().error == NodeError.Unavailable, "refused read never enters the queue"
   let reserved = probe.issue(hello, persistent = true)
-  pump(service, probe, 30)
-  assert uint64(service.source(peer).value.stream) == uint64(probe.flows[reserved].number)
+  awaitEvent(service, probe, service.source(peer).error == NodeError.None and
+    uint64(service.source(peer).value.stream) == uint64(probe.flows[reserved].number),
+    "reserved UP0 survives read saturation")
   probe.abort(heldA)
   probe.abort(heldB)
   pump(service, probe, 30)
@@ -109,8 +114,10 @@ proc transcript(view: ChainView) {.raises.} =
   pump(service, probe, 30)
   assert service.takeRead().error == NodeError.Unavailable # Complete payload still grants no job before FIN.
   probe.enable(reading, finish = true)
-  pump(service, probe, 30)
-  let task = service.takeRead()
+  var task = service.takeRead()
+  awaitEvent(service, probe, (block:
+    if task.error != NodeError.None: task = service.takeRead()
+    task.error == NodeError.None), "request FIN admits read")
   assert task.error == NodeError.None and service.readLive(task.value.ticket), "complete FIN admits one live read"
   assert cpu.start()
   var job = captureNetworkRead(view, task.value.request).value
@@ -121,28 +128,27 @@ proc transcript(view: ChainView) {.raises.} =
   assert completed.kind == ProofWorkerCompletionKind.ReadCompleted
   assert completed.readValue.error == ReadError.None, "canonical worker read success"
   assert service.respond(task.value.ticket, completed.readValue.value) == ReadError.None
-  pump(service, probe, 30)
-  assert probe.flows[reading].receivedFin and not probe.flows[reading].reset
+  awaitEvent(service, probe, probe.flows[reading].receivedFin, "block response reaches FIN")
+  assert not probe.flows[reading].reset, "successful reply is not reset"
   assert probe.bytes(reading) == @[0'u8, 0, 0, 0]
-  pump(service, probe, 20)
-  assert not service.readLive(task.value.ticket)
+  awaitEvent(service, probe, not service.readLive(task.value.ticket), "answered read retires")
   let cancelled = probe.issue(request)
-  pump(service, probe, 30)
-  let stale = service.takeRead()
-  assert stale.error == NodeError.None
+  var stale = service.takeRead()
+  awaitEvent(service, probe, (block:
+    if stale.error != NodeError.None: stale = service.takeRead()
+    stale.error == NodeError.None), "cancellable read is admitted")
   job = captureNetworkRead(view, stale.value.request).value
   let second = cpu.submit(job)
   assert second.error == ProofWorkerError.None
   while cpu.phase != ProofWorkerPhase.Done: pump(service, probe, 1)
   probe.abort(cancelled)
-  pump(service, probe, 30)
-  assert not service.readLive(stale.value.ticket)
+  awaitEvent(service, probe, not service.readLive(stale.value.ticket), "cancelled read retires")
   assert cpu.cancel(second.value) # Done retains the worker lease until cancellation is collected.
   assert cpu.collect(second.value).kind == ProofWorkerCompletionKind.Cancelled
   assert service.respond(stale.value.ticket, completed.readValue.value) == ReadError.InvalidStream
   let unsupported = probe.issue(@[255'u8])
-  pump(service, probe, 30)
-  assert probe.flows[unsupported].reset and service.peerCount == 1
+  awaitEvent(service, probe, probe.flows[unsupported].reset, "unsupported selector is reset")
+  assert service.peerCount == 1, "unsupported selector leaves the connection live"
   assert service.source(peer).error == NodeError.None, "usable UP0 handshake"
   let fast = probe.issue(request)
   pump(service, probe, 20)
@@ -154,8 +160,7 @@ proc transcript(view: ChainView) {.raises.} =
   discard probe.issue(missingPreimage)
   pump(service, probe, 20)
   assert service.respond(firstQueued.value.ticket, completed.readValue.value) == ReadError.None, "finish first queued reply"
-  pump(service, probe, 30)
-  assert probe.flows[fast].receivedFin, "first queued reply reaches FIN"
+  awaitEvent(service, probe, probe.flows[fast].receivedFin, "first queued reply reaches FIN")
   discard probe.issue(request)
   pump(service, probe, 30)
   let waiting = service.takeRead()
@@ -167,18 +172,17 @@ proc transcript(view: ChainView) {.raises.} =
   assert service.reject(retried.value.ticket)
   pump(service, probe, 30)
   let withheld = probe.issue(hello, persistent = true, enabled = false)
-  pump(service, probe, 10)
+  awaitEvent(service, probe, probe.flows[withheld].opened, "open withheld UP0")
   let malformed = probe.issue(@[0'u8, 0, 0, 16, 0], persistent = true)
-  pump(service, probe, 30)
-  assert probe.flows[malformed].reset # A one-MiB claimed handshake is rejected from its prefix alone.
+  awaitEvent(service, probe, probe.flows[malformed].reset, "oversized UP0 prefix is rejected")
   assert service.source(peer).error == NodeError.Unavailable
   probe.enable(withheld)
-  pump(service, probe, 30)
-  assert probe.flows[withheld].reset
+  awaitEvent(service, probe, probe.flows[withheld].reset, "withheld lower UP0 is rejected")
   assert service.source(peer).error == NodeError.Unavailable # A failed highest ID must never revive a lower source.
   let recovered = probe.issue(hello, persistent = true)
-  pump(service, probe, 30)
-  assert uint64(service.source(peer).value.stream) == uint64(probe.flows[recovered].number)
+  awaitEvent(service, probe, service.source(peer).error == NodeError.None and
+    uint64(service.source(peer).value.stream) == uint64(probe.flows[recovered].number),
+    "fresh UP0 recovers the source")
 proc replyToOne(receiver: var NodeService, view: ChainView): int =
   ## Component host work executes outside native callbacks; Services worker exclusion has its own integration suite.
   let incoming = receiver.takeRead()
