@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent RPC and TLS processes observe confirmed current adoption before a later gated refusal.
+import ../../support/chain_alpn
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
@@ -119,7 +120,7 @@ proc check(context: CurrentChainFixture, managed: bool) {.raises.} =
   let responses = @[context.currentResponseFrame, @[0'u8, 0, 0, 0]]
   var servers = default(DownloadResponders)
   assert servers.openSequenceResponders(requests, responses,
-    @[Gated, Gated])
+    @[Gated, Gated], alpn = fixtureChainAlpn(ChainPath))
   let port = servers.port(true)
   let responder = posix.fork()
   assert int(responder) >= 0

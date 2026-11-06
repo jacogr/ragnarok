@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent real RPC and TLS processes observe two consecutive current adoptions before a later gated refusal.
+import ../../support/chain_alpn
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
@@ -117,7 +118,7 @@ proc check(context: CurrentConsecutiveFixture, disk, managed: bool) {.raises.} =
       context.children[1]), @[0'u8, 0, 0, 0]]
   var servers = default(DownloadResponders)
   assert servers.openSequenceResponders(requests, responses,
-    @[Gated, Healthy, Gated])
+    @[Gated, Healthy, Gated], alpn = fixtureChainAlpn(ChainPath))
   let port = servers.port(true)
   let responder = posix.fork()
   assert int(responder) >= 0
