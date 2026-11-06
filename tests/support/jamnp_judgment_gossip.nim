@@ -152,4 +152,9 @@ proc judgmentGossipChecks*(fixture: AuditContextFixture) {.raises.} =
     assert recipient.poll(clock, 0)
     gossip.poll(relay, clock)
   assert gossip.attempted == 1 and gossip.acknowledged == 1
+  let epoch = uint64(uint32(record.judgmentRecord.epoch))
+  gossip.expireBefore(relay, epoch+1)
+  assert not gossip.sending and gossip.acknowledged == 1
+  assert not gossip.offer(record, plan, JudgmentDeliveryMode.Relayed),
+      "expired delivery cannot be replayed after its row is reclaimed"
   initialAnnouncementCheck(relay, recipient, context)

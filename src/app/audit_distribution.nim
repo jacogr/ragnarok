@@ -57,6 +57,9 @@ proc `=destroy`*(owner: AuditDispatcher) =
   `=destroy`(owner.ticket)
   `=destroy`(owner.request)
   `=destroy`(owner.proof)
+proc expireBefore*(owner: var AuditDispatcher, floor: uint64) =
+  ## Checked receipt storage retains no private graph or native request alias.
+  owner.pool.expireBefore(floor)
 func configured*(owner: AuditDispatcher): bool =
   ## Outgoing initial declarations share the explicitly enabled validator selector.
   owner.policy.ready

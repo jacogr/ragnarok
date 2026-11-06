@@ -78,6 +78,7 @@ type
     endpoint*: EndpointResult
   ProducedInitialAudit* = object ## Detached wire record and exact selected cores survive collection without retaining chain ownership.
     announcement*: AuditAnnouncement
+    epoch*: uint64
     selected*: InitialAuditSelection
     reportOrdinals*: array[10, int]
     request*: ReadRequest
@@ -885,7 +886,8 @@ proc runInitialAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobR
   for ordinal in 0..<selected.count:
     selected.cores[ordinal] = signed.value.selectedCore(ordinal).value
   let announcement = signed.value.announcementRecord.value
-  var output = ProducedInitialAudit(announcement: announcement, selected: selected)
+  var output = ProducedInitialAudit(announcement: announcement, selected: selected,
+      epoch: source.value.contextInfo.value.epoch)
   if selected.count > 0:
     # A declaration exists on the wire only when it selects one or more newly available reports.
     let facts = source.value.contextInfo.value

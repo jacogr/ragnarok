@@ -22,13 +22,14 @@ type
     selected*: InitialAuditSelection
     reportOrdinals*: array[10, int]
     origin*: AuditOriginId
+    epoch*: uint64
   InitialAudits* = object ## One exact worker ticket and bounded detached declaration and delivery storage.
     policy: InitialAuditPolicy
     broadcast: AuditAnnouncementSend
     ticket: ProofWorkerTicket
     working, pinning: bool
     prepared: ProducedInitialAudit
-    afterSlot, slot: uint64
+    afterSlot, slot, minimumEpoch: uint64
     blockHash: genesis.BlockHash
     ordinal: uint16
     retry: MonoTime
@@ -84,6 +85,25 @@ proc advanceBlock(owner: var InitialAudits) =
   ## All original local positions on this block have been visited.
   owner.afterSlot = owner.slot
   owner.ordinal = 0
+func canExpire*(owner: InitialAudits): bool =
+  ## Keep published and in-flight delivery stable until native fan-out retires.
+  not owner.working and not owner.broadcast.sending
+proc expireBefore*(owner: var InitialAudits, floor: uint64): array[256, bool] {.requires:
+    owner.canExpire.} =
+  ## Return the exact old positions of survivors so execution retry state compacts with them.
+  result = default(array[256, bool])
+  owner.minimumEpoch = floor
+  if owner.prepared.selected.count > 0 and owner.prepared.epoch < floor:
+    owner.prepared = default(ProducedInitialAudit)
+    owner.advanceBlock()
+  var kept = 0
+  for row in 0..<owner.declarations.len:
+    # A survivor keeps its origin ID and exact original signing/report positions.
+    if owner.declarations[row].epoch >= floor:
+      result[row] = true
+      if kept != row: owner.declarations[kept] = move(owner.declarations[row])
+      inc kept
+  owner.declarations.setLen(kept)
 proc selectNext(owner: var InitialAudits, services: Services): bool =
   ## Select the next retained block by ascending slot without borrowing a graph across admission.
   let view = services.chainView
@@ -142,7 +162,7 @@ proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeSe
       owner.prepared = default(ProducedInitialAudit)
       owner.declarations.add(InitialAuditDeclaration(record: produced.announcement,
           selected: produced.selected, reportOrdinals: produced.reportOrdinals,
-          origin: retained.originId))
+          origin: retained.originId, epoch: produced.epoch))
       discard owner.broadcast.begin(produced, owner.policy.attempts, owner.policy.timeout,
           owner.policy.retry)
     elif retained.kind == ManagedAuditKind.OriginFailure and
@@ -166,7 +186,8 @@ proc poll*(owner: var InitialAudits, services: var Services, streams: var NodeSe
   of WorkJobResultKind.InitialAuditProduced:
     let produced = outcome.producedInitialAudit
     owner.ordinal = uint16(produced.announcement.validator)+1
-    if produced.selected.count > 0: owner.prepared = produced
+    if produced.epoch < owner.minimumEpoch: owner.advanceBlock()
+    elif produced.selected.count > 0: owner.prepared = produced
   of WorkJobResultKind.InitialAuditNoDuty:
     owner.advanceBlock()
   of WorkJobResultKind.InitialAuditSourceFailure:
@@ -188,6 +209,7 @@ proc close*(owner: var InitialAudits, services: var Services, streams: var NodeS
   owner.pinning = false
   owner.policy = default(InitialAuditPolicy)
   owner.afterSlot = 0
+  owner.minimumEpoch = 0
   owner.slot = 0
   owner.ordinal = 0
   owner.retry = default(MonoTime)

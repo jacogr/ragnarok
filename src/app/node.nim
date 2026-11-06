@@ -84,6 +84,7 @@ type
     audits: AuditDispatcher
     initialAudits: InitialAudits
     preferInitialAudits: bool
+    auditRetentionFloor: uint64
     forcedAudits: ForcedAudits
     preferForcedAudits: bool
     judgments: JudgmentDispatcher
@@ -716,6 +717,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferForcedAudits = true
   owner.preferAudits = true
   owner.preferInitialAudits = true
+  owner.auditRetentionFloor = 0
   owner.preferAuditAcquirer = true
   owner.preferAssurances = true
   owner.preferPreimage = false
@@ -1011,6 +1013,15 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.auditAcquirer.poll(services[], owner.streams, clock)
   owner.forcedAudits.poll(services[], owner.streams, owner.judgments, owner.auditAcquirer, clock)
   owner.initialAudits.poll(services[], owner.streams, clock)
+  if owner.initialAudits.canExpire and owner.forcedAudits.canExpire and owner.judgments.canExpire:
+    # Advance all affected ownership together between exact worker admissions.
+    let floor = services[].expireFinalizedAudits(owner.auditRetentionFloor)
+    if floor > owner.auditRetentionFloor:
+      let declarations = owner.initialAudits.expireBefore(floor)
+      let pending = owner.judgments.expireBefore(floor)
+      owner.forcedAudits.expireBefore(owner.streams, floor, declarations, pending)
+      owner.audits.expireBefore(floor)
+      owner.auditRetentionFloor = floor
   owner.audits.poll(services[], owner.streams, clock)
   owner.assurances.poll(services[], owner.streams, clock)
   owner.acquisition.poll(services[], owner.streams, clock)

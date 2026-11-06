@@ -175,6 +175,12 @@ proc auditValidationChecks*(context: AuditContext, source: ChainView,
   assert differentBatch.error == AuditReceiptError.None, "same actual Bandersnatch key at another original ordinal has its own proof namespace"
   assert not pool.remember(differentBatch.value) and pool.len == 1 and pool.occupiedBytes ==
       occupied, "full pool refuses whole additional batch without changing existing intent"
+  pool.expireBefore(info.epoch)
+  assert pool.len == 1 and pool.occupiedBytes == occupied
+  pool.expireBefore(info.epoch+1)
+  assert pool.len == 0 and pool.occupiedBytes == 0, "retired declaration releases its context charge"
+  pool.expireBefore(info.epoch)
+  assert not pool.remember(complete.value), "the old qualified batch cannot reopen a retired epoch"
   pool.clear()
   assert pool.configure(1, ByteLimit(17000000)), "closed storage starts a fresh incarnation"
   assert not pool.remember(differentBatch.value) and pool.len == 0 and pool.occupiedBytes == 0, "late entry preflight cannot insert an earlier valid prefix"

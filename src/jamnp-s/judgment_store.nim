@@ -13,8 +13,9 @@ type
     enabled: bool
     limits: JudgmentStoreLimits
     rows: seq[QualifiedJudgment]
+    minimumEpoch: uint64
   JudgmentStoreError* {.pure.} = enum ## No refused batch publishes an accepted prefix.
-    Uninitialized, None, Unconfigured, InvalidPolicy, InvalidRecord, InvalidIndex, LimitExceeded
+    Uninitialized, None, Unconfigured, InvalidPolicy, InvalidRecord, InvalidIndex, LimitExceeded, Expired
   JudgmentStoreResult*[T] = object ## Defaults and failures carry only their reason.
     case status: JudgmentStoreError
     of None: completed: T
@@ -51,6 +52,17 @@ func fitsCount(store: JudgmentStore, count: uint64): bool =
   ## Closed callers prove count<=272 from the bounded256-row ledger and at most16 new message records.
   count <= uint64(store.limits.records) and
     4096+count*(uint64(sizeof(QualifiedJudgment))+64) <= uint64(store.limits.bytes)
+proc expireBefore*(store: var JudgmentStore, minimumEpoch: uint64) =
+  ## Release old accountable records and keep the floor even if no rows survived.
+  if minimumEpoch <= store.minimumEpoch: return
+  store.minimumEpoch = minimumEpoch
+  var kept = 0
+  for ordinal in 0..<store.rows.len:
+    # The original signed epoch applies equally to both sides of a conflict.
+    if uint64(uint32(store.rows[ordinal].judgmentRecord.epoch)) >= minimumEpoch:
+      if kept != ordinal: store.rows[kept] = move(store.rows[ordinal])
+      inc kept
+  store.rows.setLen(kept)
 proc canAppendClaims*(store: JudgmentStore, claims: SignedJudgmentBatch): bool =
   ## Preflight only: unsupported negative signatures can reserve capacity but cannot insert a qualified record or private source. The single host actor keeps this ledger unchanged through receipt.
   if not store.enabled or not claims.valid or claims.len > 16: return false
@@ -58,6 +70,7 @@ proc canAppendClaims*(store: JudgmentStore, claims: SignedJudgmentBatch): bool =
   for ordinal in 0..<claims.len:
     # Reserve exactly the duplicate/conflict identities later used by qualified insertion before any expensive report acquisition or private origin installation.
     let incoming = claims.claimAt(ordinal).value.judgmentRecord
+    if uint64(uint32(incoming.epoch)) < store.minimumEpoch: return false
     var duplicate = false
     for prior in store.rows:
       let existing = prior.judgmentRecord
@@ -75,6 +88,8 @@ proc append*(store: var JudgmentStore, batch: openArray[QualifiedJudgment]): Jud
     # At most sixteen records compare against at most 256 retained rows; invalid late records leave the ledger unchanged.
     if not record.valid: return JudgmentStoreResult[int](status: JudgmentStoreError.InvalidRecord)
     let incoming = record.judgmentRecord
+    if uint64(uint32(incoming.epoch)) < store.minimumEpoch:
+      return JudgmentStoreResult[int](status: JudgmentStoreError.Expired)
     var duplicate = false
     for prior in store.rows:
       let existing = prior.judgmentRecord
@@ -91,6 +106,12 @@ proc append*(store: var JudgmentStore, batch: openArray[QualifiedJudgment]): Jud
     # No protocol/resource refusal remains after whole-batch reservation.
     store.rows.add(record)
   JudgmentStoreResult[int](status: JudgmentStoreError.None, completed: additions.len)
+proc containsReport*(store: JudgmentStore, hash: openArray[byte]): bool =
+  ## Keep exact CE136 bytes while any eligible record still names their full report hash.
+  if hash.len != 32: return false
+  for row in store.rows:
+    if hash == array[32, byte](row.judgmentRecord.report): return true
+  false
 proc judgmentAt*(store: JudgmentStore, ordinal: int): JudgmentStoreResult[QualifiedJudgment] =
   ## Copied fixed records remain valid after unrelated sources retire; no mutable backing sequence escapes.
   if not store.enabled: return JudgmentStoreResult[QualifiedJudgment](
@@ -111,3 +132,4 @@ proc clear*(store: var JudgmentStore) =
   store.rows = @[]
   store.enabled = false
   store.limits = default(JudgmentStoreLimits)
+  store.minimumEpoch = 0
