@@ -88,6 +88,10 @@ proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   assert historicalRetry[0] == ids[0] and registry.len == 1, "a different genuine reporting/execution root cannot consume another row for the same report and original auditor cohort"
   assert registry.target(ids[0], 0).value.sameAuditOrigin(firstOrigin.reportAt(0).value)
   assert not registry.target(ids[0], 0).value.sameAuditOrigin(earlier.reportAt(0).value), "deduplication preserves the first actual physical execution owner"
+  assert registry.releaseDispute(ids[0]) and registry.len == 0
+  assert registry.target(ids[0], 0).error == AuditRegistryError.InvalidId
+  let restored = registry.retainDisputes([firstOrigin]).value[0]
+  assert restored != ids[0] and registry.len == 1, "release recovers bounded capacity without recycling IDs"
   var bad = b.judgmentRecord
   var signature = array[64, byte](bad.credentials[bad.credentialCount-1].signature)
   signature[0] = signature[0] xor 1

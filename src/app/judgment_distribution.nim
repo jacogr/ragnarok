@@ -224,6 +224,18 @@ proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
     return true
   owner.phase = ReceiptPhase.ReceiptReady
   true
+proc releaseUnused(owner: JudgmentDispatcher, services: var Services,
+    completed: ManagedAuditCompletion) =
+  ## Duplicate or rejected receipt outcomes must not strand a newly pinned private origin.
+  if completed.kind != ManagedAuditKind.JudgmentsRetained: return
+  for ordinal in 0..<completed.retainedJudgmentCount:
+    # Positive records have no private origin. A negative source stays live while a pending relay references it.
+    let id = completed.retainedJudgmentAt(ordinal).originId
+    if not id.valid: continue
+    var used = false
+    for row in owner.pending:
+      if row.originId == id: used = true
+    if not used: discard services.releaseDisputedAudit(id)
 proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletion): bool =
   ## Whole ledger and distinct report/obligation capacity is proven before mutation; an unacknowledged transport retry cannot erase qualified evidence.
   if completed.kind != ManagedAuditKind.JudgmentsRetained or completed.retainedJudgmentCount !=
@@ -293,6 +305,7 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
     owner.active = false
     owner.proof = default(ProofWorkerTicket)
     if expired or not live or owner.cancelled or completed.kind == ManagedAuditKind.Cancelled:
+      owner.releaseUnused(services, completed)
       owner.reject(streams)
       return
     if completed.kind == ManagedAuditKind.JudgmentReceiptFailure and
@@ -306,7 +319,9 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
           owner.inputs[ordinal].source = next.value
           owner.phase = ReceiptPhase.ReceiptReady
           return
-    if not owner.retainWhole(completed):
+    let retained = owner.retainWhole(completed)
+    owner.releaseUnused(services, completed)
+    if not retained:
       owner.reject(streams)
       return
     let acknowledgment = captureReadReply(owner.request, [])

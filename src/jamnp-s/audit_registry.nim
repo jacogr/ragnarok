@@ -83,6 +83,29 @@ proc find(registry: AuditOriginRegistry, id: AuditOriginId): int =
   for ordinal in 0..<registry.rows.len:
     if registry.rows[ordinal].id.serial == id.serial: return ordinal
   -1
+proc uncharge(registry: var AuditOriginRegistry, ordinal: int) =
+  ## Release exactly the original row reservation before its owner retires.
+  let row = registry.rows[ordinal]
+  if row.dispute.valid:
+    let info = row.dispute.disputeInfo.value
+    registry.entries -= uint64(info.entries)
+    registry.nodes -= info.nodes
+    registry.values -= info.valueBytes
+  else:
+    registry.entries -= uint64(row.info.entries)
+    registry.nodes -= row.info.nodes
+    registry.values -= row.info.valueBytes
+  registry.contexts -= row.contextBytes
+proc releaseDispute*(registry: var AuditOriginRegistry, id: AuditOriginId): bool =
+  ## Only a disputed-only source may retire independently of the epoch's declared block duties.
+  let index = registry.find(id)
+  if index < 0 or not registry.rows[index].dispute.valid: return false
+  registry.uncharge(index)
+  for ordinal in index..<registry.rows.len-1:
+    # Existing exact selectors continue resolving after stable compaction.
+    registry.rows[ordinal] = move(registry.rows[ordinal+1])
+  registry.rows.setLen(registry.rows.len-1)
+  true
 proc expireBefore*(registry: var AuditOriginRegistry, minimumEpoch: uint64) =
   ## Retire previous obligations only under the owning graph gate and never reopen a retired epoch.
   if minimumEpoch <= registry.minimumEpoch: return
@@ -94,17 +117,7 @@ proc expireBefore*(registry: var AuditOriginRegistry, minimumEpoch: uint64) =
       if kept != ordinal: registry.rows[kept] = move(registry.rows[ordinal])
       inc kept
     else:
-      if registry.rows[ordinal].dispute.valid:
-        let info = registry.rows[ordinal].dispute.disputeInfo.value
-        registry.entries -= uint64(info.entries)
-        registry.nodes -= info.nodes
-        registry.values -= info.valueBytes
-      else:
-        let info = registry.rows[ordinal].info
-        registry.entries -= uint64(info.entries)
-        registry.nodes -= info.nodes
-        registry.values -= info.valueBytes
-      registry.contexts -= registry.rows[ordinal].contextBytes
+      registry.uncharge(ordinal)
   registry.rows.setLen(kept)
 proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin): AuditRegistryResult[
     AuditOriginId] =

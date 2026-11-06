@@ -289,6 +289,12 @@ proc auditAcquisitionChecks*(fixture: AuditContextFixture) {.raises.} =
   for octet in array[32, byte](produced.report): transcript.add(octet)
   assert verify(EdPublicKey(array[32, byte](local)),
       EdSignature(array[64, byte](produced.signature)), transcript)
+  let retired = client.pendingForcedAudit(0).originId
+  assert retired.valid
+  assert client.poll(getMonoTime()+offset, now, 0)
+  let next = services.beginAuditFetchPlanning(retired, 0, fetchLimits())
+  assert next.error == StateProofAdmissionError.QueryFailure,
+      "the completed disputed origin releases its execution map in the same epoch"
 
 proc initializeAuditDisk(view: ChainView, database: string) =
   ## Restore real retained maps and body through the same startup path as a deployed disk-backed node.

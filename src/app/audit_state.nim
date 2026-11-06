@@ -187,6 +187,9 @@ func active*(state: ManagedAuditState): bool =
 func matches*(state: ManagedAuditState, ticket: ProofWorkerTicket): bool =
   ## Equality of private ticket namespace and generation cannot authorize a default idle selector.
   state.occupied and state.ticket == ticket
+proc releaseDispute*(state: var ManagedAuditState, id: AuditOriginId): bool =
+  ## No active or unconsumed managed completion can refer to the released row.
+  not state.occupied and state.registry.releaseDispute(id)
 proc expireBefore*(state: var ManagedAuditState, floor: uint64): bool =
   ## Retire only after exact collection has released every managed result and source borrow.
   if state.occupied: return false

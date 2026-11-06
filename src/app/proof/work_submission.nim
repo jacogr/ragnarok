@@ -177,6 +177,7 @@ type
     judgmentInputs: seq[JudgmentSourceInput]
     judgmentReceiptLimits: JudgmentReceiptLimits
     auditPublicationLimits: AuditPublicationLimits
+    auditRoutingBasis: AuditRoutingBasis
     auditParticipationLimits: AuditParticipationLimits
     auditParticipationCurrent: BlockSnapshotResult
     auditParticipationIdentity: StateEdKey
@@ -979,6 +980,24 @@ proc captureAuditParticipationJob*(origin: AuditReportOrigin, current: BlockSnap
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: planAuditParticipation, auditTarget: origin, auditParticipationCurrent: current,
     auditParticipationIdentity: identity, auditParticipationLimits: limits)))
+proc runAuditRoutingRefresh(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Execute the shared topology planner with worker-owned detached original metadata.
+  let plan = refreshAuditParticipation(data.auditRoutingBasis, data.auditParticipationCurrent,
+      data.auditParticipationLimits, control)
+  if plan.error != AuditParticipationError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditParticipationFailure,
+        auditParticipationReason: plan)
+  WorkJobResult(status: WorkJobResultKind.AuditParticipationPlanned, auditParticipation: plan.value)
+proc captureAuditRoutingRefresh*(basis: AuditRoutingBasis, current: BlockSnapshotResult,
+    limits: AuditParticipationLimits): WorkJobAdmission =
+  ## Capture an independent public roster copy so foreground delivery may continue during the lease.
+  if not basis.valid or current.error != GenesisError.None or not limits.valid:
+    return workJobFailure(WorkJobError.InvalidInput)
+  let copied = basis.detached(limits.workspaceBytes)
+  if not copied.valid: return workJobFailure(WorkJobError.LimitExceeded)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: runAuditRoutingRefresh, auditRoutingBasis: copied,
+    auditParticipationCurrent: current, auditParticipationLimits: limits)))
 proc prepareIncomingJudgment(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## Original negative guarantees, historical lookup sources and whole-map accounting execute only on the fixed CPU worker.
   let prepared = prepareJudgmentReceipt(data.auditView, data.judgmentClaims, data.judgmentInputs,

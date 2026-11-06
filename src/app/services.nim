@@ -2595,6 +2595,9 @@ proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
   services.assuranceWorkInput = default(WorkSubmissionJob)
   AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
       workerReason: admitted.error)
+proc releaseDisputedAudit*(services: var Services, id: AuditOriginId): bool =
+  ## Reclaim a retired exact disputed map only while the complete graph is idle.
+  services.stateProofAvailable and services.audits.releaseDispute(id)
 proc expireFinalizedAudits*(services: var Services, previous: uint64): uint64 =
   ## Verdicts may still use the prior-state epoch or one earlier. Only installed finality advances this floor.
   if not services.stateProofAvailable or services.audits.occupied: return previous
@@ -2896,6 +2899,23 @@ proc beginAuditParticipation*(services: var Services, id: AuditOriginId, ordinal
   if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
       status: StateProofAdmissionError.Busy)
   let staged = services.stageAuditParticipation(id, ordinal, identity, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitParticipation(result.value)
+proc stageAuditRoutingRefresh(services: var Services, basis: AuditRoutingBasis,
+    limits: AuditParticipationLimits): WorkJobError =
+  ## All selected-state wrappers retire before native submission.
+  let captured = captureAuditRoutingRefresh(basis, services.canonical.chainView.bestBlock, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditRoutingRefresh*(services: var Services, basis: AuditRoutingBasis,
+    limits: AuditParticipationLimits): AuditPlanningStart {.raises.} =
+  ## Refresh uses the exact ordinary participation collector without retaining an execution origin.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+      status: StateProofAdmissionError.Busy)
+  let staged = services.stageAuditRoutingRefresh(basis, limits)
   if staged != WorkJobError.None: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
