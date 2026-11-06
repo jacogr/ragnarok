@@ -1,44 +1,45 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Included private ISA-only register accessors; no source, window, ledger or admission semantics.
+const X86ResidentHardware = [3'u8, 5, 12, 13, 14, 15] # RBX,RBP,R12..R15 are SysV preserved.
+
+type X86ResidentAccess* = object
+  ## Zero selects the canonical array; other bytes encode one of six saved hardware GPRs plus one.
+  registers: array[13, uint8]
+
+func x86ResidentAccess*(mask: uint32): X86ResidentAccess =
+  ## Ascending guest lanes map deterministically; invalid masks never produce partial machine code.
+  assert (mask and not 0x1fff'u32) == 0
+  result = default(X86ResidentAccess)
+  var count = 0
+  for slot in 0..<13:
+    if (mask and (1'u32 shl slot)) != 0:
+      assert count < X86ResidentHardware.len
+      result.registers[slot] = X86ResidentHardware[count]+1
+      inc count
+
+proc readAccess(fragment: var X86Block, access: X86ResidentAccess,
+    slot: range[0..12], right: bool) =
+  ## RAX/RCX scratch consume current resident values; unmapped lanes keep original array loads.
+  let encoded = access.registers[int(slot)]
+  if encoded == 0:
+    readSlot(fragment, slot, right)
+  else:
+    let hardware = encoded-1
+    put(fragment, [byte(0x48 or (if hardware >= 8: 1 else: 0)), 0x8b,
+      byte(0xc0 or (if right: 8 else: 0) or int(hardware and 7))]) # MOV RAX/RCX,resident64.
+
+proc writeAccess(fragment: var X86Block, access: X86ResidentAccess, slot: range[0..12]) =
+  ## Only the destination changes after old aliased operands have been consumed into scratch.
+  let encoded = access.registers[int(slot)]
+  if encoded == 0:
+    put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slot)*8)]) # MOV [RDI+slot*8],RAX.
+  else:
+    let hardware = encoded-1
+    put(fragment, [byte(0x48 or (if hardware >= 8: 1 else: 0)), 0x89,
+      byte(0xc0 or int(hardware and 7))]) # MOV resident64,RAX.
+
 when defined(pvmX86ResidentProof):
-  type X86ResidentAccess* = object
-    ## Zero selects the canonical array; other bytes encode one of six saved hardware GPRs plus one.
-    registers: array[13, uint8]
-
-  func x86ResidentAccess*(mask: uint32): X86ResidentAccess =
-    ## Ascending guest lanes map deterministically; invalid masks never produce partial machine code.
-    assert (mask and not 0x1fff'u32) == 0
-    result = default(X86ResidentAccess)
-    const hardware = [3'u8, 5, 12, 13, 14, 15] # RBX,RBP,R12..R15 are SysV preserved.
-    var count = 0
-    for slot in 0..<13:
-      if (mask and (1'u32 shl slot)) != 0:
-        assert count < hardware.len
-        result.registers[slot] = hardware[count]+1
-        inc count
-
-  proc readAccess(fragment: var X86Block, access: X86ResidentAccess,
-      slot: range[0..12], right: bool) =
-    ## RAX/RCX scratch consume current resident values; unmapped lanes keep original array loads.
-    let encoded = access.registers[int(slot)]
-    if encoded == 0:
-      readSlot(fragment, slot, right)
-    else:
-      let hardware = encoded-1
-      put(fragment, [byte(0x48 or (if hardware >= 8: 1 else: 0)), 0x8b,
-        byte(0xc0 or (if right: 8 else: 0) or int(hardware and 7))])
-
-  proc writeAccess(fragment: var X86Block, access: X86ResidentAccess, slot: range[0..12]) =
-    ## Only the destination changes after old aliased operands have been consumed into scratch.
-    let encoded = access.registers[int(slot)]
-    if encoded == 0:
-      put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slot)*8)])
-    else:
-      let hardware = encoded-1
-      put(fragment, [byte(0x48 or (if hardware >= 8: 1 else: 0)), 0x89,
-        byte(0xc0 or int(hardware and 7))])
-
   proc beginX86Resident*(fragment: var X86Block, access: X86ResidentAccess) =
     ## Save all six SysV GPRs. Entry RSP%16=8; 48 saved plus40 context bytes align it to16.
     assert fragment.bytes.len == 0

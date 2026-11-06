@@ -40,6 +40,7 @@ def qualify(checks, compiler, rows=None):
         ('checked-store-refused', 'tests/unit/codec/test_pvm_stream_checked_store_loop.nim', True),
         ('checked-read-tiny', 'tests/unit/codec/test_pvm_checked_read_tiny.nim', False),
         ('checked-read-arbitration', 'tests/unit/codec/test_pvm_checked_read_arbitration.nim', False),
+        ('checked-read-resident-abi', 'tests/unit/state/test_pvm_x86_resident_access.nim', False),
         ('regions-host', 'tests/unit/codec/test_pvm_stream_regions_and_host.nim', False),
         ('policy', 'tests/unit/state/test_pvm_runtime_policy.nim', False),
         ('policy-refused', 'tests/unit/state/test_pvm_runtime_policy.nim', True)):
@@ -47,7 +48,8 @@ def qualify(checks, compiler, rows=None):
                  *(['pvmX86RegionRefusalNativeRequired'] if name == 'region-refusal-native' else []),
                  *(['pvmX86RegionRefusalForcedRequired'] if name == 'region-refusal-forced' else []),
                  *(['pvmX86CheckedStoreReceipt'] if name.startswith('checked-store-') else []),
-                 *(['pvmSharedAsyncWitness'] if name == 'checked-read-arbitration' else [])]
+                 *(['pvmSharedAsyncWitness'] if name == 'checked-read-arbitration' else []),
+                 *(['pvmX86ResidentProof'] if name == 'checked-read-resident-abi' else [])]
         build, binary = checks.build(compiler, ROOT/source, name, defines=flags,
                                      cflags=['-I'+str(ROOT/'native/pvm_jit')])
         if build['exit_code']: raise RuntimeError(build['output'][-3000:])
@@ -146,6 +148,7 @@ def run():
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tests/performance').glob('pvm_*jit*')),
                  *sorted((ROOT/'tests/unit/codec').glob('test_pvm_checked_read_*')),
+                 *sorted((ROOT/'tests/unit/state').glob('test_pvm_x86_resident_access.*')),
                  ROOT/'tests/unit/state/test_pvm_x86_region_refusal.nim',
                  ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'spec/toolchain.json', compiler]
         identities = {p:hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
