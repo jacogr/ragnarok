@@ -6,7 +6,7 @@ import std/[assertions, monotimes, times, syncio, posix/posix]
 import ../../src/app/[services, options, audit_state]
 import ../../src/app/proof/worker
 import ../../src/jamnp-s/[judgment_claim, judgment_support, judgment_receipt, audit_origin,
-  audit_registry, audit_evaluation, audit_context, audits, work_signer]
+  audit_registry, audit_evaluation, audit_context, audits, work_signer, judgment_store, judgment_source]
 import ../../src/jamnp-s/[audit_participation, audit_publication, availability_proof,
     availability_merkle, read_stream]
 import ../../src/state/availability/specifier
@@ -14,8 +14,12 @@ import ../../src/jamnp-s/assurance_store
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, disputes, guarantees, report_owned]
 import ../../src/codec/state/safrole
+import ../../src/codec/[header, owned]
+import ../../src/codec/state/layout
+import ../../src/state/store
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_guarantee_support,
   jamnp_judgment_support, jamnp_audit_participation, current_application_context, assurance_signer_context]
+import ./jamnp_judgment_claim
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Temporary checkpoint names are private to the native runner process.
 proc receiptLimits*(): JudgmentReceiptLimits =
@@ -36,12 +40,119 @@ proc claimBatch(view: ChainView, records: openArray[AuditJudgment]): SignedJudgm
 proc stopReceipt(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Execution-only cancellation publishes neither a qualified record nor a private origin.
   true
+proc fullEpochLedgerChecks(view: ChainView) =
+  ## A single genuine judgment per slot in the full profile exceeds the former local ceiling.
+  var ledger = default(JudgmentStore)
+  assert ledger.configure(JudgmentStoreLimits(records: ElementLimit(600), bytes: ByteLimit(1000000)))
+  for group in 0..<38:
+    let offset = group*16
+    var records: seq[AuditJudgment] = @[]
+    var inputs: seq[JudgmentSourceInput] = @[]
+    for index in offset..<min(offset+16, 600):
+      let ordinal = index div 256
+      records.add(rawClaim(1, uint16(ordinal), byte(21+ordinal), hashMarker = byte(index mod 256)))
+      inputs.add(default(JudgmentSourceInput))
+    let claims = verifyJudgmentClaims(view, claimWire(records), claimLimits()).value
+    let batch = prepareJudgmentReceipt(view, claims, inputs, receiptLimits()).value
+    var qualified: seq[QualifiedJudgment] = @[]
+    for index in 0..<batch.len: qualified.add(batch.judgmentAt(index).value)
+    assert ledger.append(qualified).value == records.len
+  assert ledger.len == 600
+  ledger.expireBefore(2)
+  assert ledger.len == 0
+proc sameKeyBranchSupport(fixture: AuditContextFixture, claim: SignedJudgmentClaim,
+    report: OwnedReport) =
+  ## Selected membership has the correct signing key but lacks the guaranteed reporting context.
+  let tip = fixture.view.bestBlock.value
+  var state = forkStateStore(tip.stateSnapshot).value
+  let entropyKey = chapterKey(StateChapter(6))
+  let removed = state.apply([StateWrite(kind: StateWriteKind.Delete, key: entropyKey)])
+  assert removed.error == StateStoreError.None
+  var headerWire = newSeq[byte](tip.header.headerInfo.value.consumed)
+  assert tip.header.encodeOwnedHeader(headerWire).error == HeaderError.None
+  headerWire[64] = headerWire[64] xor 1
+  let selected = genesisView(captureBlockSnapshot(headerWire, state.snapshot.value,
+      tip.chainParameters))
+  let primary = claimBatch(selected, [claim.judgmentRecord])
+  let signed = primary.claimAt(0).value
+  let original = selectJudgmentSource(selected, signed).value
+  let refused = prepareJudgmentReceipt(selected, primary,
+      [JudgmentSourceInput(source: original, report: report)], receiptLimits())
+  assert refused.error == JudgmentReceiptError.SupportFailure
+  let alternative = alternateJudgmentSource(fixture.view, signed, [JudgmentSourceAttempt(
+      source: original)])
+  assert alternative.error == JudgmentSourceError.None
+  let input = JudgmentSourceInput(source: fixture.prior.bestBlock.value.blockHash,
+      membership: alternative.membershipSource, report: report)
+  let checked = prepareJudgmentReceipt(selected, primary, [input], receiptLimits(),
+      alternatives = [fixture.view])
+  assert checked.error == JudgmentReceiptError.None, "a valid side reporting context can certify the same signed claim"
+  let origin = checked.value.negativeOriginAt(0).value
+  assert origin.matchesTrustedDispute(fixture.view) and not origin.matchesTrustedDispute(selected)
+  let earlier = claimBatch(fixture.view, [claim.judgmentRecord]).claimAt(0).value
+  let newest = selectJudgmentSourceAcross(fixture.view, [selected], earlier, [], high(uint64)).value
+  let firstFailure = JudgmentSourceAttempt(source: newest)
+  let alternate = selectJudgmentSourceAcross(fixture.view, [selected], earlier, [firstFailure],
+      high(uint64))
+  assert alternate.error == JudgmentSourceError.None and
+      array[32, byte](alternate.membershipSource) == array[32, byte](
+          selected.bestBlock.value.blockHash)
+  let secondFailure = JudgmentSourceAttempt(source: alternate.value,
+      membership: alternate.membershipSource)
+  let fallback = selectJudgmentSourceAcross(fixture.view, [selected], earlier,
+      [firstFailure, secondFailure], high(uint64))
+  assert fallback.error == JudgmentSourceError.None
+  assert array[32, byte](fallback.value) == array[32, byte](
+      fixture.prior.bestBlock.value.blockHash),
+      "the alternate cannot consume the retry reserved for another live history"
+
+proc retryOriginLimit(fixture: AuditContextFixture, claim: SignedJudgmentClaim,
+    report: OwnedReport) =
+  ## The same original guarantee can verify in both contexts while only one map fits.
+  let prior = fixture.prior.bestBlock.value
+  var state = forkStateStore(prior.stateSnapshot).value
+  let extraKey = chapterKey(StateChapter(254))
+  let expanded = state.apply([StateWrite(kind: StateWriteKind.Put, key: extraKey, value: @[1'u8])])
+  assert expanded.error == StateStoreError.None
+  var headerWire = newSeq[byte](prior.header.headerInfo.value.consumed)
+  assert prior.header.encodeOwnedHeader(headerWire).error == HeaderError.None
+  headerWire[64] = headerWire[64] xor 1
+  let checkpoint = captureBlockSnapshot(headerWire, state.snapshot.value, prior.chainParameters)
+  let primary = genesisView(checkpoint)
+  let claims = claimBatch(primary, [claim.judgmentRecord])
+  var limits = receiptLimits()
+  limits.origin.entries = ElementLimit(uint64(prior.stateSnapshot.commitment.entries))
+  let input = JudgmentSourceInput(source: checkpoint.value.blockHash, report: report)
+  let failed = prepareJudgmentReceipt(primary, claims, [input], limits)
+  assert failed.error == JudgmentReceiptError.OriginFailure
+  assert failed.originError.error == AuditOriginError.LimitExceeded and failed.failedOrdinal == 0
+  let alternative = JudgmentSourceInput(source: prior.blockHash,
+      membership: fixture.view.bestBlock.value.blockHash, report: report)
+  assert prepareJudgmentReceipt(primary, claims, [alternative], limits,
+      alternatives = [fixture.view]).error == JudgmentReceiptError.None
 proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Duplicate sources retain their first exact owner; late invalid support, source, aggregate quota and native Done cancellation expose no successful prefix.
+  let selectedRoster = claimView(repeated = true)
+  let side = claimView()
+  fullEpochLedgerChecks(side)
+  let wire = claimWire([rawClaim(1, 1, 21), rawClaim(1, 1, 22)])
+  let mixed = verifyJudgmentClaims(selectedRoster, wire, claimLimits(), alternatives = [side]).value
+  let empty = default(JudgmentSourceInput)
+  assert prepareJudgmentReceipt(selectedRoster, mixed, [empty, empty], receiptLimits()).error ==
+      JudgmentReceiptError.InvalidSource
+  let receipt = prepareJudgmentReceipt(selectedRoster, mixed, [empty, empty], receiptLimits(),
+      alternatives = [side]).value
+  var ledger = default(JudgmentStore)
+  assert ledger.configure(JudgmentStoreLimits(records: ElementLimit(2), bytes: ByteLimit(16000)))
+  assert ledger.canAppendClaims(mixed)
+  assert ledger.append([receipt.judgmentAt(0).value, receipt.judgmentAt(1).value]).value == 2,
+      "different authenticated keys at the same ordinal must not collapse across rosters"
   let source = supportFixture(fixture)
   let first = unseenGuarantee(source)
   let second = unseenGuarantee(source, mutation = 2)
   let a = actualNegativeClaim(fixture, first)
+  sameKeyBranchSupport(fixture, a, first.report)
+  retryOriginLimit(fixture, a, first.report)
   let b = actualNegativeClaim(fixture, second)
   let inputs = [JudgmentSourceInput(source: fixture.blockHash, report: first.report),
     JudgmentSourceInput(source: fixture.blockHash, report: second.report)]
@@ -88,6 +199,10 @@ proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   assert historicalRetry[0] == ids[0] and registry.len == 1, "a different genuine reporting/execution root cannot consume another row for the same report and original auditor cohort"
   assert registry.target(ids[0], 0).value.sameAuditOrigin(firstOrigin.reportAt(0).value)
   assert not registry.target(ids[0], 0).value.sameAuditOrigin(earlier.reportAt(0).value), "deduplication preserves the first actual physical execution owner"
+  assert registry.releaseDispute(ids[0]) and registry.len == 0
+  assert registry.target(ids[0], 0).error == AuditRegistryError.InvalidId
+  let restored = registry.retainDisputes([firstOrigin]).value[0]
+  assert restored != ids[0] and registry.len == 1, "release recovers bounded capacity without recycling IDs"
   var bad = b.judgmentRecord
   var signature = array[64, byte](bad.credentials[bad.credentialCount-1].signature)
   signature[0] = signature[0] xor 1

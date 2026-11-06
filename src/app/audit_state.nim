@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private full audit state belongs to Services. Controllers receive opaque host selectors and detached completion metadata; every source-bearing operation requires the shared graph gate.
+import std/assertions
 import ./audit_branches
 import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation, audit_recovery,
     work_signer, availability_proof, audit_fetch, judgment_receipt, audit_participation, audit_publication]
@@ -52,9 +53,13 @@ type
     of RegistryFailure: registryReason: AuditRegistryError
     else: discard # No private source or caller-selected validity bit.
   AuditOperation {.pure.} = enum
-    Idle, Origin, Evaluation, Signing, Fetch, Shard, JudgmentReceipt, Participation
+    Idle, Origin, DeclarationOrigin, Evaluation, Signing, Fetch, Shard, JudgmentReceipt, Participation
+  AbandonedDeclaration = object ## One host-only aggregate for an exact registered origin.
+    id: AuditOriginId
+    count: uint16
   ManagedAuditState* = object ## No native owner or backpointer: registry pins form an acyclic graph and retire only after all Services borrowers join.
     registry: AuditOriginRegistry
+    abandoned: seq[AbandonedDeclaration]
     operation: AuditOperation
     ticket: ProofWorkerTicket
     selected: AuditOriginId
@@ -187,6 +192,28 @@ func active*(state: ManagedAuditState): bool =
 func matches*(state: ManagedAuditState, ticket: ProofWorkerTicket): bool =
   ## Equality of private ticket namespace and generation cannot authorize a default idle selector.
   state.occupied and state.ticket == ticket
+proc releaseDispute*(state: var ManagedAuditState, id: AuditOriginId): bool =
+  ## No active or unconsumed managed completion can refer to the released row.
+  not state.occupied and state.registry.releaseDispute(id)
+proc releaseDeclaration*(state: var ManagedAuditState, id: AuditOriginId): bool =
+  ## No managed worker or unconsumed completion may still refer to the source.
+  not state.occupied and state.registry.releaseDeclaration(id)
+proc abandonDeclaration*(state: var ManagedAuditState, id: AuditOriginId) =
+  ## Only selectors of this registry can enter the host-only queue during a foreign graph lease.
+  if not state.registry.hasDeclaration(id): return
+  for index in 0..<state.abandoned.len:
+    if state.abandoned[index].id != id: continue
+    if state.abandoned[index].count < high(uint16): inc state.abandoned[index].count
+    return
+  # No graph mutation can allocate a new source while abandoned pins cannot be drained.
+  assert state.abandoned.len < 64
+  state.abandoned.add(AbandonedDeclaration(id: id, count: 1))
+proc drainAbandonedDeclarations*(state: var ManagedAuditState) =
+  ## The owning Services gate must be idle before inspecting or reclaiming any private origin.
+  if state.occupied: return
+  for item in state.abandoned:
+    discard state.registry.releaseDeclaration(item.id, item.count)
+  state.abandoned.setLen(0)
 proc expireBefore*(state: var ManagedAuditState, floor: uint64): bool =
   ## Retire only after exact collection has released every managed result and source borrow.
   if state.occupied: return false
@@ -197,11 +224,11 @@ proc configure*(state: var ManagedAuditState, limits: AuditRegistryLimits): bool
   if state.occupied: return false
   state.registry.configure(limits)
 proc retain*(state: var ManagedAuditState, origin: AuditBlockOrigin,
-    trusted: BlockSnapshotResult): AuditRegistryResult[AuditOriginId] =
+    trusted: BlockSnapshotResult, forDeclaration = false): AuditRegistryResult[AuditOriginId] =
   ## The trusted block must be selected independently from Services canonical history, never supplied by a controller.
   if not origin.matchesTrustedBlock(trusted): return auditRegistryFailure[AuditOriginId](
       AuditRegistryError.InvalidSource)
-  state.registry.retain(origin)
+  state.registry.retain(origin, forDeclaration)
 proc stageEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     wire: openArray[byte], limits: AuditEvaluationLimits): WorkJobAdmission =
   ## Select only the private registered source under the idle graph gate; public metadata cannot install a replacement capability.
@@ -256,14 +283,20 @@ proc admitJudgmentReceipt*(state: var ManagedAuditState, ticket: ProofWorkerTick
   state.operation = AuditOperation.JudgmentReceipt
   state.ticket = ticket
 proc retainJudgments(state: var ManagedAuditState, prepared: PreparedJudgmentBatch,
-    source: ChainView): ManagedAuditCompletion =
+    source: ChainView, branches: AuditBranches): ManagedAuditCompletion =
   ## Independently bind every original membership/support/execution context before atomically installing any negative origin.
   if not prepared.valid: return ManagedAuditCompletion(status: ManagedAuditKind.InvalidResult)
   var origins: seq[AuditDisputeOrigin] = @[]
   for ordinal in 0..<prepared.negativeCount:
     # All actual trust checks precede registry mutation, including a late foreign source in an otherwise valid batch.
     let origin = prepared.negativeOriginAt(ordinal).value
-    if not origin.matchesTrustedDispute(source):
+    var trusted = origin.matchesTrustedDispute(source)
+    if not trusted:
+      for branch in branches.liveViews(source):
+        if origin.matchesTrustedDispute(branch):
+          trusted = true
+          break
+    if not trusted:
       return ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
           registryReason: AuditRegistryError.InvalidSource)
     origins.add(origin)
@@ -282,9 +315,9 @@ proc retainJudgments(state: var ManagedAuditState, prepared: PreparedJudgmentBat
       inc negative
     records[ordinal] = RetainedJudgment(record: record, source: selected)
   ManagedAuditCompletion(status: ManagedAuditKind.JudgmentsRetained, judgments: move(records))
-proc admitOrigin*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
+proc admitOrigin*(state: var ManagedAuditState, ticket: ProofWorkerTicket, forDeclaration: bool) =
   ## Call only after successful native admission; no source graph is accessed here.
-  state.operation = AuditOperation.Origin
+  state.operation = if forDeclaration: AuditOperation.DeclarationOrigin else: AuditOperation.Origin
   state.ticket = ticket
 proc admitEvaluation*(state: var ManagedAuditState, ticket: ProofWorkerTicket,
     id: AuditOriginId, ordinal: int) =
@@ -329,8 +362,8 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.JudgmentReceiptFailure,
           judgmentReason: work.judgmentReceiptError)
       elif work.kind == WorkJobResultKind.JudgmentReceiptPrepared:
-        state.completion = state.retainJudgments(work.preparedJudgmentReceipt, source)
-    of AuditOperation.Origin:
+        state.completion = state.retainJudgments(work.preparedJudgmentReceipt, source, branches)
+    of AuditOperation.Origin, AuditOperation.DeclarationOrigin:
       if work.kind == WorkJobResultKind.AuditOriginPreparationFailure:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginFailure,
           originReason: work.auditOriginPreparationError)
@@ -340,7 +373,8 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
         let selected = source.blockAt(info.blockHash)
         let trusted = if selected.error == GenesisError.None: selected
           else: branches.parentView(source, info.blockHash).blockAt(info.blockHash)
-        let retained = state.retain(origin, trusted)
+        let retained = state.retain(origin, trusted, state.operation ==
+            AuditOperation.DeclarationOrigin)
         if retained.error == AuditRegistryError.None:
           state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginRetained,
             originId: retained.value, originFacts: info)
@@ -413,4 +447,5 @@ proc stop*(state: var ManagedAuditState) =
 proc clear*(state: var ManagedAuditState) =
   ## All worker families, disk IO and callbacks must have joined before retained full-state aliases retire.
   state.stop()
+  state.abandoned.setLen(0)
   state.registry.clear()

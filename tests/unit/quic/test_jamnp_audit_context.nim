@@ -12,7 +12,7 @@ from ../../../src/codec/disputes import JudgeIndex
 import ../../../src/rpc/server
 import ../../../src/jamnp-s/assurance_store
 import ../../../src/jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation,
-    audit_registry, work_signer, audit_fetch]
+    audit_registry, work_signer, audit_fetch, audit_participation]
 import ../../../src/chain/[genesis, provider, parameters]
 from ../../../src/state/store import sameStateSnapshot
 from ../../../src/codec/state/trie import TrieNodeLimit
@@ -26,6 +26,7 @@ import ../../support/[jamnp_audit_evaluation, jamnp_audit_faults, jamnp_audit_si
 import ../../support/[jamnp_audit_context, arc_evidence, current_application_context,
     jamnp_audit_validation, jamnp_topology_fixture]
 import ../../support/jamnp_audit_branch_network
+import ../../support/jamnp_audit_participation
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
   let selected = captureAuditContext(fixture.view, fixture.blockHash, auditLimits())
@@ -212,6 +213,13 @@ proc finalizedRetentionChecks() {.raises.} =
   assert owner.publishFinalized(snapshot.value.blockHash) == ViewFinalizeError.None
   assert owner.expireFinalizedAudits(0) == 2, "epoch three keeps its previous epoch eligible"
   assert owner.expireFinalizedAudits(2) == 2, "repeated finalized epoch is idempotent"
+proc detachedRouting(fixture: AuditContextFixture): AuditRoutingBasis =
+  ## Capture a genuine original routing basis whose execution origin goes out of scope.
+  let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
+      auditOriginLimits()).value.reportAt(0).value
+  let member = origin.auditorAt(1).value.ed25519
+  captureAuditParticipation(origin, fixture.view.bestBlock, member,
+      participationLimits()).value.routingBasis
 proc managed(fixture: AuditContextFixture) {.raises.} =
   ## A genuine trusted complete header-only seed qualifies neither a body nor an audit; exact managed failure and foreign Done ownership still retire correctly.
   var file = "audit-context-services-" & $processId() & ".json"
@@ -223,6 +231,18 @@ proc managed(fixture: AuditContextFixture) {.raises.} =
   defer: owner.close()
   assert owner.start(settings, "native audit context"), "independently decoded genuine complete seed"
   let target = owner.chainView.bestBlock.value.blockHash
+  let routing = detachedRouting(fixture)
+  assert routing.valid and not owner.auditRetentionConfigured
+  assert not routing.detached(ByteLimit(1)).valid, "copy budget precedes detached roster allocation"
+  let refresh = owner.beginAuditRoutingRefresh(routing, participationLimits())
+  assert refresh.error == StateProofAdmissionError.None
+  owner.waitServices()
+  let routed = owner.collectAudit(refresh.value)
+  assert routed.kind == ManagedAuditKind.ParticipationPlanned
+  let facts = routed.participationPlan.participationInfo.value
+  assert facts.localValidators == 1 and array[32, byte](facts.source) == array[32, byte](target),
+      "detached refresh keeps original role while selecting the current trusted topology"
+
   assert owner.beginAuditPlanning(target, default(AuditContextLimits)).error ==
       StateProofAdmissionError.QueryFailure,
     "invalid policy acquires no canonical lease"
@@ -515,6 +535,7 @@ proc main() {.raises.} =
   fetchChecks(fixture)
   auditAcquisitionChecks(fixture)
   declaredAuditChecks(fixture)
+  historicalJudgmentTlsChecks()
   managedEvaluation(fixture)
   let insufficient = auditContextFixture(6)
   let none = captureAuditContext(insufficient.view, insufficient.blockHash, auditLimits())

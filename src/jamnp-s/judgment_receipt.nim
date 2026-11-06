@@ -5,10 +5,11 @@
 import ./[judgment_claim, judgment_support, audit_origin, assurance_store, audits, work_signer]
 import ../chain/[genesis, provider]
 import ../codec/[bounded, report_owned]
+from ../codec/state/safrole import StateEdKey
 
 type
   JudgmentSourceInput* = object ## Raw report bytes and an explicitly selected actual retained reporting context grant no guarantee or execution authority.
-    source*: genesis.BlockHash
+    source*, membership*: genesis.BlockHash
     report*: OwnedReport
   JudgmentReceiptLimits* = object ## Whole-message aggregate child work is reserved before the first support signature or state scan.
     support*: JudgmentSupportLimits
@@ -18,6 +19,7 @@ type
   QualifiedJudgment* = object ## Fixed original signed claims become publishable only after required support and genuine private source qualification; this is not local report truth.
     ready: bool
     record: AuditJudgment
+    auditor: StateEdKey
   PreparedData = ref object ## Acyclic source-bearing output never escapes Services' exact collector; source-free records do not alias its complete maps.
     records: seq[QualifiedJudgment]
     origins: seq[AuditDisputeOrigin]
@@ -32,7 +34,9 @@ type
     of SupportFailure:
       supportReason: JudgmentSupportResult[VerifiedJudgmentSupport]
       supportOrdinal: int
-    of OriginFailure: originReason: AuditOriginResult[AuditDisputeOrigin]
+    of OriginFailure:
+      originReason: AuditOriginResult[AuditDisputeOrigin]
+      originOrdinal: int
     else: discard # Ordinary refusals expose no unrelated child or successful prefix.
 func error*[T](outcome: JudgmentReceiptResult[T]): JudgmentReceiptError =
   ## Inspect the selected reason before extracting complete ownership.
@@ -45,10 +49,16 @@ func supportError*[T](outcome: JudgmentReceiptResult[T]): JudgmentSupportResult[
     VerifiedJudgmentSupport] {.requires: outcome.status == JudgmentReceiptError.SupportFailure.} =
   ## Preserve actual original guarantor qualification failure without inventing a successful subset.
   outcome.supportReason
-func failedOrdinal*[T](outcome: JudgmentReceiptResult[T]): int {.requires: outcome.status ==
-    JudgmentReceiptError.SupportFailure.} =
-  ## A fixed failed position permits bounded actual-history retries without releasing a qualified prefix.
-  outcome.supportOrdinal
+func failedOrdinal*[T](outcome: JudgmentReceiptResult[T]): int =
+  ## Only context-dependent refusals permit retry with another retained source.
+  case outcome.status
+  of JudgmentReceiptError.SupportFailure: outcome.supportOrdinal
+  of JudgmentReceiptError.OriginFailure:
+    if outcome.originReason.error in [AuditOriginError.HistoryUnavailable,
+        AuditOriginError.LimitExceeded]:
+      outcome.originOrdinal
+    else: -1
+  else: -1
 func originError*[T](outcome: JudgmentReceiptResult[T]): AuditOriginResult[
     AuditDisputeOrigin] {.requires: outcome.status == JudgmentReceiptError.OriginFailure.} =
   ## Missing historical execution and full-map retention remain typed unavailable-source failures.
@@ -67,12 +77,23 @@ func valid*(record: QualifiedJudgment): bool =
 func judgmentRecord*(record: QualifiedJudgment): AuditJudgment {.requires: record.ready.} =
   ## Original signer, epoch, validity and inline support remain fixed; forwarding does not re-sign them.
   record.record
+func judgmentAuditor*(record: QualifiedJudgment): StateEdKey {.requires: record.ready.} =
+  ## Identify the independently authenticated original signer across admitted branch rosters.
+  record.auditor
+func sameJudgmentKey*(left, right: AuditJudgment, leftAuditor, rightAuditor: StateEdKey): bool =
+  uint32(left.epoch) == uint32(right.epoch) and uint16(left.validator) == uint16(
+      right.validator) and
+    array[32, byte](left.report) == array[32, byte](right.report) and
+    array[32, byte](leftAuditor) == array[32, byte](rightAuditor)
+func sameJudgmentKey*(left, right: QualifiedJudgment): bool =
+  left.valid and right.valid and sameJudgmentKey(left.record, right.record, left.auditor, right.auditor)
 proc qualifyLocalJudgment*(signed: SignedAuditJudgment): JudgmentReceiptResult[QualifiedJudgment] =
   ## Only an actual completed private evaluation and original-key signature constructs SignedAuditJudgment; no caller validity bit becomes a publishable local judgment.
   if not signed.valid: return JudgmentReceiptResult[QualifiedJudgment](
       status: JudgmentReceiptError.InvalidSource)
   JudgmentReceiptResult[QualifiedJudgment](status: JudgmentReceiptError.None,
-    completed: QualifiedJudgment(ready: true, record: signed.judgmentRecord))
+    completed: QualifiedJudgment(ready: true, record: signed.judgmentRecord,
+        auditor: signed.judgmentAuditor))
 func valid*(batch: PreparedJudgmentBatch): bool =
   ## Default output is not an initialized empty successful receipt.
   batch.data != nil
@@ -108,12 +129,14 @@ proc negativeOriginAt*(batch: PreparedJudgmentBatch, ordinal: int): JudgmentRece
       completed: data.origins[ordinal])
 proc prepareJudgmentReceipt*(view: ChainView, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits,
-    control: AssuranceScanControl = default(AssuranceScanControl)): JudgmentReceiptResult[
+    control: AssuranceScanControl = default(AssuranceScanControl),
+    alternatives: openArray[ChainView] = []): JudgmentReceiptResult[
         PreparedJudgmentBatch] =
   ## Every negative requires an actual full-hash-bound report and original support; no partial result survives a late signature, source, quota or cancellation refusal.
   if not limits.valid: return JudgmentReceiptResult[PreparedJudgmentBatch](
       status: JudgmentReceiptError.InvalidPolicy)
-  if view.fuzzOnly or not claims.valid or claims.len > 16 or inputs.len != claims.len:
+  if view.fuzzOnly or not claims.valid or claims.len > 16 or inputs.len != claims.len or
+      alternatives.len > 64:
     return JudgmentReceiptResult[PreparedJudgmentBatch](status: JudgmentReceiptError.InvalidSource)
   if control.stopped: return JudgmentReceiptResult[PreparedJudgmentBatch](
       status: JudgmentReceiptError.Cancelled)
@@ -121,10 +144,7 @@ proc prepareJudgmentReceipt*(view: ChainView, claims: SignedJudgmentBatch,
   for ordinal in 0..<claims.len:
     # Every original membership root must exist in this actual Services chain, including positive claims that have no report/support lookup.
     let claim = claims.claimAt(ordinal).value
-    let facts = claim.claimInfo
-    let receipt = view.blockAt(facts.sourceHead)
-    if receipt.error != GenesisError.None or array[32, byte](receipt.value.stateRoot) != array[32,
-        byte](facts.sourceRoot) or receipt.value.slot != uint64(uint32(facts.sourceTime)):
+    if judgmentAuthorityView(view, alternatives, claim).bestBlock.error != GenesisError.None:
       return JudgmentReceiptResult[PreparedJudgmentBatch](
           status: JudgmentReceiptError.InvalidSource)
     if not claim.judgmentRecord.valid: inc negatives
@@ -147,22 +167,38 @@ proc prepareJudgmentReceipt*(view: ChainView, claims: SignedJudgmentBatch,
         status: JudgmentReceiptError.Cancelled)
     let claim = claims.claimAt(ordinal).value
     if not claim.judgmentRecord.valid:
-      let support = qualifyJudgmentSupportAt(view, inputs[ordinal].source, claim, inputs[
-          ordinal].report, limits.support, control)
+      let membership = inputs[ordinal].membership
+      var authority = default(ChainView)
+      if array[32, byte](membership) == default(array[32, byte]):
+        authority = judgmentAuthorityView(view, alternatives, claim)
+      elif view.bestBlock.error == GenesisError.None and
+          array[32, byte](view.bestBlock.value.blockHash) == array[32, byte](membership):
+        authority = view
+      else:
+        for branch in alternatives:
+          let head = branch.bestBlock
+          if head.error == GenesisError.None and
+              array[32, byte](head.value.blockHash) == array[32, byte](membership):
+            authority = branch
+            break
+      let support = qualifyJudgmentSupportAt(authority, inputs[ordinal].source, claim, inputs[
+          ordinal].report, limits.support, control, membership)
       if support.error == JudgmentSupportError.Cancelled:
         return JudgmentReceiptResult[PreparedJudgmentBatch](status: JudgmentReceiptError.Cancelled)
       if support.error != JudgmentSupportError.None:
         return JudgmentReceiptResult[PreparedJudgmentBatch](
             status: JudgmentReceiptError.SupportFailure, supportReason: support,
             supportOrdinal: ordinal)
-      let origin = captureAuditDisputeOrigin(view, support.value, limits.origin, control)
+      let origin = captureAuditDisputeOrigin(authority, support.value, limits.origin, control)
       if origin.error == AuditOriginError.Cancelled:
         return JudgmentReceiptResult[PreparedJudgmentBatch](status: JudgmentReceiptError.Cancelled)
       if origin.error != AuditOriginError.None:
         return JudgmentReceiptResult[PreparedJudgmentBatch](
-            status: JudgmentReceiptError.OriginFailure, originReason: origin)
+            status: JudgmentReceiptError.OriginFailure, originReason: origin,
+            originOrdinal: ordinal)
       origins.add(origin.value)
-    records[ordinal] = QualifiedJudgment(ready: true, record: claim.judgmentRecord)
+    records[ordinal] = QualifiedJudgment(ready: true, record: claim.judgmentRecord,
+        auditor: claim.claimInfo.auditor.ed25519)
   if control.stopped: return JudgmentReceiptResult[PreparedJudgmentBatch](
       status: JudgmentReceiptError.Cancelled)
   JudgmentReceiptResult[PreparedJudgmentBatch](status: JudgmentReceiptError.None,

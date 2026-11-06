@@ -14,6 +14,33 @@ roster, but is not added to the signed domain. Unmerged epoch-domain proposal #5
 Current/previous roster populations remain independent, including null and repeated positions.
 Missing historical epochs remain unavailable, never mapped to the current key at the same index.
 
+Managed receipt checks the selected head and can use a still-anchored side view or retained
+historical membership source for the original epoch. The whole message shares one read and
+signature budget. The exact authenticated source hash and root accompany each claim through
+guarantor verification and execution-origin admission. Independently installed finality retires
+membership older than its previous epoch. Distinct authenticated keys at the same epoch and
+ordinal remain separate ledger entries.
+
+Support retries exclude failed reporting and membership pairs and continue toward older
+eligible primary sources even when the selected head advances. Primary and alternate retries
+have independent per-message credits under the same receipt deadline. A reporting context
+that lacks a usable execution origin or exceeds its origin reservation can also be retried.
+Inbound receipts and locally owed publications reserve separate judgment and report-serving
+capacity.
+
+The receipt policy accepts an independent local ledger limit. The initial declaration,
+local route refresh, and native gossip policies have separate configurable row ceilings.
+Size them for the number of duties and judgments retained across the active epochs.
+A full-profile validator can retain more than 256 locally owed judgments without widening
+the inbound receipt ceiling. Local refresh has its own byte budget and can retain a
+publication even if the relayed refresh quota is full.
+
+A negative receipt may try a separately retained branch after a reporting context fails.
+Even when the same key occupies the auditor position on both branches, each alternate
+must establish that key in its own original-epoch roster and qualify the supporting
+guarantee and execution origin in the same trusted branch. The resulting private origin
+binds the actual membership hash and root used for support.
+
 A signed negative claim alone does not qualify its supporting guarantee or certify report
 invalidity. Unknown reports require full-hash-bound CE136 acquisition, actual two/three original
 credential role/signature qualification and a genuine complete execution source. Never fabricate
@@ -93,5 +120,7 @@ authenticated recovery, publication cancellation, and a complete ordinary-node f
 that reproduces a valid report after a negative receipt. The judgment suite also checks stable
 occupied memory over 1000 cycles.
 
-Follow-up work covers successor refresh and retirement, automatic CE144 production and
-scheduling across valid forks, and the later-tranche normative source decision.
+The node refreshes successor routes from detached original roster data and retires completed
+disputed execution origins. It also schedules initial CE144 duties from selected and admitted
+side branches. Later-tranche scheduling and the associated available-block retention policy are
+deferred under the [CE144 source decision](jamnp-audit-runtime.md#deferred-later-tranches).

@@ -7,6 +7,7 @@ import ./[services, audit_state, audit_acquisition, judgment_distribution, initi
 from ../codec/state/safrole import StateValidatorIndex
 import ./proof/worker
 import ../chain/genesis
+import ../codec/bounded
 import ../jamnp-s/[node, audit_registry, audit_participation, audit_publication,
     judgment_gossip, judgment_receipt]
 
@@ -17,6 +18,8 @@ type
     participation: AuditParticipationLimits
     publication: AuditPublicationLimits
     gossip: JudgmentGossipPolicy
+    maxLocalRoutes: int
+    localRouteBytes: ByteLimit
   Phase {.pure.} = enum
     Idle, Planning, Acquire, Acquiring, Sign, Signing, Publish, Refreshing
   DeclaredProgress = object ## One declaration's next report and retry deadline.
@@ -24,12 +27,12 @@ type
     retry: MonoTime
   RefreshRecord = object ## Detached signed evidence and a private origin selector allow a later topology-only job.
     record: QualifiedJudgment
-    source: AuditOriginId
-    ordinal: int
+    basis: AuditRoutingBasis
     mode: JudgmentDeliveryMode
     awaiting: bool
     head: genesis.BlockHash
     retry: MonoTime
+    charge: uint64
   ForcedAudits* = object
     policy: ForcedAuditPolicy
     gossip: JudgmentGossip
@@ -37,53 +40,71 @@ type
     cursor, row, validator, reportOrdinal: int
     declared, preferDeclared: bool
     declaration, declarationCursor: int
-    declaredProgress: array[256, DeclaredProgress]
+    declaredProgress: seq[DeclaredProgress]
     originalValidator: StateValidatorIndex
     publishDeadline: MonoTime
-    source: AuditOriginId
+    source, releasable: AuditOriginId
     proof: ProofWorkerTicket
     plan: AuditParticipationPlan
     publication: AuditPublication
     completed: array[256, bool]
     retry: array[256, MonoTime]
     refresh: seq[RefreshRecord]
-    refreshCursor, refreshing: int
+    refreshCursor, refreshing, localRoutes, relayedRoutes: int
+    localRouteBytes: uint64
     preferRefresh: bool
 
 func forcedAuditPolicy*(acquisition: AuditAcquisitionPolicy,
     participation: AuditParticipationLimits,
 
-publication: AuditPublicationLimits, gossip: JudgmentGossipPolicy): ForcedAuditPolicy =
+publication: AuditPublicationLimits, gossip: JudgmentGossipPolicy,
+    localRoutes: range[1..32768] = 256, localRouteBytes = ByteLimit(
+        128*1024*1024)): ForcedAuditPolicy =
   ## Validate each policy before enabling automatic work.
-  if not acquisition.valid or not participation.valid or not publication.valid or not gossip.valid:
+  if not acquisition.valid or not participation.valid or not publication.valid or
+      not gossip.valid:
+    return default(ForcedAuditPolicy)
+  if uint64(localRouteBytes) notin 1'u64..64'u64*1024*1024*1024:
     return default(ForcedAuditPolicy)
   ForcedAuditPolicy(ready: true, acquisition: acquisition, participation: participation,
-    publication: publication, gossip: gossip)
+    publication: publication, gossip: gossip, maxLocalRoutes: localRoutes,
+    localRouteBytes: localRouteBytes)
 
 proc `=copy`*(destination: var ForcedAudits, source: ForcedAudits) {.error.}
 proc `=dup`*(source: ForcedAudits): ForcedAudits {.error.}
 proc `=wasMoved`*(owner: var ForcedAudits) {.nodestroy, requires: owner.phase == Phase.Idle.} =
   `=wasMoved`(owner.gossip)
   `=wasMoved`(owner.source)
+  `=wasMoved`(owner.releasable)
   `=wasMoved`(owner.proof)
   `=wasMoved`(owner.plan)
   `=wasMoved`(owner.publication)
   `=wasMoved`(owner.refresh)
+  `=wasMoved`(owner.declaredProgress)
 proc requireIdle(owner: ForcedAudits) {.requires: owner.phase == Phase.Idle.} = discard
 proc `=destroy`*(owner: ForcedAudits) =
   requireIdle(owner)
   `=destroy`(owner.gossip)
   `=destroy`(owner.source)
+  `=destroy`(owner.releasable)
   `=destroy`(owner.proof)
   `=destroy`(owner.plan)
   `=destroy`(owner.publication)
   `=destroy`(owner.refresh)
+  `=destroy`(owner.declaredProgress)
 
 func canExpire*(owner: ForcedAudits): bool =
   ## A leased or scheduled report still depends on its original registry and queue positions.
   owner.phase == Phase.Idle
+proc releaseDeclaredOrigins*(owner: ForcedAudits, services: var Services,
+    initial: var InitialAudits) =
+  ## Release only fully published declarations after the graph lease has retired.
+  if not owner.canExpire or not services.stateProofAvailable: return
+  for row in 0..<min(initial.readyDeclarationCount, owner.declaredProgress.len):
+    if owner.declaredProgress[row].selected >= initial.declarationAt(row).selected.count:
+      initial.releaseDeclarationOrigin(services, row)
 proc expireBefore*(owner: var ForcedAudits, streams: var NodeService, floor: uint64,
-    declarations, pending: array[256, bool]) {.requires: owner.canExpire.} =
+    declarations: openArray[bool], pending: array[256, bool]) {.requires: owner.canExpire.} =
   ## Move progress in the same stable order as the underlying detached duty queues.
   var kept = 0
   for row in 0..<pending.len:
@@ -97,18 +118,26 @@ proc expireBefore*(owner: var ForcedAudits, streams: var NodeService, floor: uin
     owner.completed[row] = false
     owner.retry[row] = default(MonoTime)
   kept = 0
+  owner.declaredProgress.setLen(declarations.len)
   for row in 0..<declarations.len:
     # Completed CE144 reports retain their next report cursor.
     if declarations[row]:
       owner.declaredProgress[kept] = owner.declaredProgress[row]
       inc kept
-  for row in kept..<declarations.len: owner.declaredProgress[row] = default(DeclaredProgress)
+  owner.declaredProgress.setLen(kept)
   owner.cursor = 0
   owner.declarationCursor = 0
   kept = 0
+  owner.localRoutes = 0
+  owner.relayedRoutes = 0
+  owner.localRouteBytes = 0
   for row in 0..<owner.refresh.len:
     # Expired original cohorts can never be routed by a later successor plan.
     if uint64(uint32(owner.refresh[row].record.judgmentRecord.epoch)) >= floor:
+      if owner.refresh[row].mode == JudgmentDeliveryMode.Produced:
+        inc owner.localRoutes
+        owner.localRouteBytes += owner.refresh[row].charge
+      else: inc owner.relayedRoutes
       if kept != row: owner.refresh[kept] = move(owner.refresh[row])
       inc kept
   owner.refresh.setLen(kept)
@@ -147,6 +176,7 @@ proc finish(owner: var ForcedAudits, clock: MonoTime, complete: bool) =
     else: owner.declaredProgress[owner.declaration].retry = clock+initDuration(seconds = 1)
   else:
     owner.completed[owner.row] = complete
+    if complete: owner.releasable = owner.source
     owner.retry[owner.row] = clock+initDuration(seconds = 1)
   owner.clear()
 
@@ -154,23 +184,38 @@ proc rememberRoute(owner: var ForcedAudits, record: QualifiedJudgment,
     mode: JudgmentDeliveryMode, awaiting: bool): bool =
   ## Keep even an empty initial route so actual later successor rosters can receive the original signature.
   let raw = record.judgmentRecord
-  let head = owner.plan.participationInfo.value.source
+  let info = owner.plan.participationInfo.value
+  let head = info.source
+  let charge = info.retainedBytes+1024
   for index in 0..<owner.refresh.len:
     # Opposite judgments remain distinct accountable records.
-    let old = owner.refresh[index].record.judgmentRecord
-    if uint32(old.epoch) != uint32(raw.epoch) or uint16(old.validator) != uint16(raw.validator) or
-        old.valid != raw.valid or array[32, byte](old.report) != array[32, byte](
-            raw.report): continue
+    let old = owner.refresh[index].record
+    if not sameJudgmentKey(old, record) or old.judgmentRecord.valid != raw.valid: continue
     if owner.refresh[index].mode == JudgmentDeliveryMode.Produced and mode ==
         JudgmentDeliveryMode.Relayed:
       return true
+    if owner.refresh[index].mode != mode:
+      if owner.localRoutes >= owner.policy.maxLocalRoutes or
+          charge > uint64(owner.policy.localRouteBytes)-owner.localRouteBytes: return false
+      inc owner.localRoutes
+      dec owner.relayedRoutes
+      owner.localRouteBytes += charge
+      owner.refresh[index].charge = charge
+      owner.refresh[index].basis = owner.plan.routingBasis
     owner.refresh[index].mode = mode
     owner.refresh[index].head = head
     owner.refresh[index].awaiting = awaiting
     return true
-  if owner.refresh.len >= 256: return false
-  owner.refresh.add(RefreshRecord(record: record, source: owner.source,
-      ordinal: owner.reportOrdinal, mode: mode, head: head, awaiting: awaiting))
+  if mode == JudgmentDeliveryMode.Produced:
+    if owner.localRoutes >= owner.policy.maxLocalRoutes or
+        charge > uint64(owner.policy.localRouteBytes)-owner.localRouteBytes: return false
+    inc owner.localRoutes
+    owner.localRouteBytes += charge
+  else:
+    if owner.relayedRoutes >= 256: return false
+    inc owner.relayedRoutes
+  owner.refresh.add(RefreshRecord(record: record, basis: owner.plan.routingBasis,
+      mode: mode, head: head, awaiting: awaiting, charge: charge))
   true
 proc pollRefresh(owner: var ForcedAudits, services: var Services, clock: MonoTime) =
   ## Refresh uses the exact original obligation and does not acquire, evaluate or sign again.
@@ -185,22 +230,22 @@ proc pollRefresh(owner: var ForcedAudits, services: var Services, clock: MonoTim
         owner.refresh[row].awaiting = false
   owner.refresh[owner.refreshing].retry = clock+initDuration(seconds = 1)
   owner.clear()
-proc startRefresh(owner: var ForcedAudits, services: var Services, streams: NodeService,
+proc startRefresh(owner: var ForcedAudits, services: var Services,
     clock: MonoTime): bool {.raises.} =
   ## Rotate through retained records whose checked topology stamp predates the trusted selected head.
   let count = owner.refresh.len
   if count == 0: return false
   let head = array[32, byte](services.auditRoutingHead)
   owner.refreshCursor = owner.refreshCursor mod count
-  for turn in 0..<count:
+  for turn in 0..<min(count, 64):
     # A single failed topology capture does not prevent refreshing other obligations.
     let row = owner.refreshCursor
     owner.refreshCursor = (row+1) mod count
     if clock < owner.refresh[row].retry or
         (not owner.refresh[row].awaiting and array[32, byte](owner.refresh[row].head) == head):
       continue
-    let started = services.beginAuditParticipation(owner.refresh[row].source,
-        owner.refresh[row].ordinal, streams.localIdentity, owner.policy.participation)
+    let started = services.beginAuditRoutingRefresh(owner.refresh[row].basis,
+        owner.policy.participation)
     if started.error == StateProofAdmissionError.Busy: return false
     if started.error != StateProofAdmissionError.None:
       owner.refresh[row].retry = clock+initDuration(seconds = 1)
@@ -210,10 +255,38 @@ proc startRefresh(owner: var ForcedAudits, services: var Services, streams: Node
     owner.phase = Phase.Refreshing
     return true
   false
+proc releaseCompleted(owner: var ForcedAudits, services: var Services,
+    receipt: JudgmentDispatcher) =
+  ## Wait until every relay sharing this exact source has settled and all graph leases have ended.
+  if not owner.releasable.valid or not services.stateProofAvailable: return
+  let source = owner.releasable
+  owner.releasable = default(AuditOriginId)
+  for row in 0..<receipt.pendingCount:
+    # Any unfinished row can still need the private origin for its first plan.
+    if not owner.completed[row] and receipt.pendingAt(row).originId == source: return
+  discard services.releaseDisputedAudit(source)
+proc alreadyJudged(owner: ForcedAudits, plan: AuditParticipationPlan): bool =
+  ## A later negative signature can reuse completed local judgments for each actual original position.
+  let info = plan.participationInfo.value
+  for index in 0..<info.localValidators:
+    # Only locally produced original signatures count, never another auditor's relay or a bare receipt.
+    let validator = uint16(uint64(plan.localValidatorAt(index).value))
+    var found = false
+    for retained in owner.refresh:
+      let record = retained.record.judgmentRecord
+      let sameEpoch = uint64(uint32(record.epoch)) == info.epoch
+      let sameOrdinal = uint16(record.validator) == validator
+      let sameReport = array[32, byte](record.report) == array[32, byte](info.report)
+      if retained.mode == JudgmentDeliveryMode.Produced and sameEpoch and sameOrdinal and sameReport:
+        found = true
+        break
+    if not found: return false
+  true
 proc poll*(owner: var ForcedAudits, services: var Services, streams: var NodeService,
     receipt: var JudgmentDispatcher, acquisition: AuditAcquisition, clock: MonoTime) =
   ## Collect the exact managed worker generation before advancing the obligation.
   if not owner.policy.ready: return
+  owner.releaseCompleted(services, receipt)
   owner.gossip.poll(streams, clock)
   case owner.phase
   of Phase.Refreshing: owner.pollRefresh(services, clock)
@@ -233,6 +306,9 @@ proc poll*(owner: var ForcedAudits, services: var Services, streams: var NodeSer
         let queued = owner.gossip.offer(record, owner.plan, JudgmentDeliveryMode.Relayed)
         if not owner.rememberRoute(record, JudgmentDeliveryMode.Relayed, not queued):
           owner.finish(clock, false)
+          return
+        if owner.alreadyJudged(owner.plan):
+          owner.finish(clock, true)
           return
         for row in 0..<receipt.pendingCount:
           # A distinct signed claim still relays, but a completed exact private origin needs no second execution.
@@ -277,6 +353,7 @@ proc startDeclared(owner: var ForcedAudits, services: var Services, streams: Nod
   ## A published declaration selects only its original core-derived report and signing position.
   let count = initial.readyDeclarationCount
   if count == 0: return false
+  if owner.declaredProgress.len < count: owner.declaredProgress.setLen(count)
   owner.declarationCursor = owner.declarationCursor mod count
   for turn in 0..<count:
     # A missing report cannot prevent another declared duty from advancing.
@@ -307,11 +384,12 @@ proc submit*(owner: var ForcedAudits, services: var Services, streams: NodeServi
         clock: MonoTime): bool {.raises.} =
   ## Admit one operation per foreground arbitration turn.
   if not owner.policy.ready or not services.stateProofAvailable: return false
+  owner.releaseCompleted(services, receipt)
   case owner.phase
   of Phase.Idle:
     let refreshFirst = owner.preferRefresh
     owner.preferRefresh = not refreshFirst
-    if refreshFirst and owner.startRefresh(services, streams, clock): return true
+    if refreshFirst and owner.startRefresh(services, clock): return true
     let declaredFirst = owner.preferDeclared
     owner.preferDeclared = not declaredFirst
     if declaredFirst and owner.startDeclared(services, streams, initial, clock): return true
@@ -333,7 +411,7 @@ proc submit*(owner: var ForcedAudits, services: var Services, streams: NodeServi
       owner.phase = Phase.Planning
       return true
     if not declaredFirst and owner.startDeclared(services, streams, initial, clock): return true
-    if not refreshFirst: return owner.startRefresh(services, streams, clock)
+    if not refreshFirst: return owner.startRefresh(services, clock)
   of Phase.Acquire:
     if acquisition.begin(owner.policy.acquisition, owner.source, owner.reportOrdinal, clock):
       owner.phase = Phase.Acquiring
@@ -365,9 +443,13 @@ proc close*(owner: var ForcedAudits, services: var Services, streams: var NodeSe
   owner.retry = default(array[256, MonoTime])
   owner.declaration = 0
   owner.declarationCursor = 0
-  owner.declaredProgress = default(array[256, DeclaredProgress])
+  owner.declaredProgress = @[]
   owner.preferDeclared = false
+  owner.releasable = default(AuditOriginId)
   owner.refresh = @[]
+  owner.localRoutes = 0
+  owner.relayedRoutes = 0
+  owner.localRouteBytes = 0
   owner.refreshCursor = 0
   owner.refreshing = 0
   owner.preferRefresh = false

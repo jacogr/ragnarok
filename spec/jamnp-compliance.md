@@ -54,8 +54,8 @@ production path exists; it does not assert all normative behavior has been verif
 | CE141 assurances | No runtime route | Anchor/bitfield/signature, validator-role authentication, epoch-sensitive recipient sets and slot timing |
 | CE142 preimage announcement | No runtime route | Service/hash/length, on-chain request lookup, CE143 followup, possession-based grid gossip and connection lifetime |
 | CE143 preimage request | `canonical_read.nim` canonical service-state lookup, full-hash refusal and real TLS transcript | CE142 reception/cache and possession gossip remain; ordinary routing and full-hash checked acquisition are implemented |
-| CE144 audit announcement | Actual retained-block context, authenticated initial proofs, bounded atomic batches and intent pool, optional managed application/TLS receipt; [contract](jamnp-audit-runtime.md) | Local production/broadcast and later-tranche selection remain; current NP later intent requires the pending GP #552 source decision. Negative-judgment-triggered audits must not announce |
-| CE145 judgments | `audits.nim` structural batch codec; no runtime handler | Batched epoch/validator/validity/report/signature, inline invalid guarantee before hash/signature,2/3 distinct guarantors, authenticated judgment gossip, report retrieval and audit triggers |
+| CE144 audit announcement | Initial proof production, original-auditor broadcast, bounded receipt and scheduling against selected and admitted side branches. [Contract](jamnp-audit-runtime.md) | Later tranches are deferred until the signing and scheduling rules are reconciled |
+| CE145 judgments | Authenticated receipt, CE136 support retrieval, forced audits, original-ordinal signing, grid relay, successor refresh and epoch retirement. [Contract](jamnp-judgment-runtime.md) | Later-tranche scheduling remains deferred with CE144 |
 
 ## Planned review units and acceptance
 

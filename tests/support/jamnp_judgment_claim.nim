@@ -34,6 +34,14 @@ proc claimView*(repeated = false, nulled = false, atSlot = 13'u32): ChainView =
   let source = topologyCaptured([previous, current, next], atSlot = atSlot)
   assert source.error == GenesisError.None
   genesisView(source)
+proc successorParent*(view: ChainView): BlockSnapshotResult =
+  ## The epoch-two topology already names the known successors.
+  topologyCaptured([claimRoster(21, 6), claimRoster(41, 6), claimRoster(51, 6)],
+      atSlot = 24, parent = view.bestBlock)
+proc successorSnapshot*(view: ChainView): BlockSnapshotResult =
+  ## Explicitly link a later role fixture to the exact retained epoch-one authority.
+  topologyCaptured([claimRoster(41, 6), claimRoster(51, 6), claimRoster(61, 6)],
+      atSlot = 36, parent = view.bestBlock)
 proc rawClaim*(epoch: uint32, validator: uint16, marker: byte, positive = true,
     hashMarker = 71'u8): AuditJudgment =
   ## Malicious or honest network records can be signed independently of evaluation; only the actual signature claim is certified by this test.
@@ -128,6 +136,34 @@ proc judgmentClaimChecks*() =
     uint16(repeated.value.claimAt(1).value.claimInfo.validator) == 1, "identical keys retain each original positional namespace"
   assert verifyJudgmentClaims(claimView(nulled = true), aliases, claimLimits()).error ==
       JudgmentClaimError.InvalidAuditor
+  let selected = claimView(repeated = true)
+  let branchWire = claimWire([rawClaim(1, 1, 21), rawClaim(1, 1, 22, hashMarker = 72)])
+  assert verifyJudgmentClaims(selected, branchWire, claimLimits()).error ==
+      JudgmentClaimError.InvalidSignature
+  let alternate = verifyJudgmentClaims(selected, branchWire, claimLimits(), alternatives = [view])
+  assert alternate.error == JudgmentClaimError.None
+  let first = alternate.value.claimAt(0).value
+  let second = alternate.value.claimAt(1).value
+  assert array[32, byte](first.claimInfo.sourceRoot) != array[32, byte](second.claimInfo.sourceRoot)
+  assert judgmentAuthorityView(selected, [], second).bestBlock.error != GenesisError.None
+  assert judgmentAuthorityView(selected, [view], second).bestBlock.error == GenesisError.None
+  limited = claimLimits()
+  limited.signatures = ElementLimit(2)
+  assert verifyJudgmentClaims(selected, branchWire, limited, alternatives = [view]).error ==
+      JudgmentClaimError.LimitExceeded, "alternate signatures draw on the same whole-message budget"
+  let later = successorSnapshot(view)
+  let advanced = view.advanceView(later).value
+  let historical = claimWire([current])
+  assert verifyJudgmentClaims(advanced, historical, claimLimits()).error ==
+      JudgmentClaimError.UnknownEpoch
+  let successor = verifyJudgmentClaims(advanced, historical, claimLimits(), history = true)
+  assert successor.error == JudgmentClaimError.None
+  assert uint32(successor.value.claimAt(0).value.claimInfo.sourceTime) == 13
+  let finalized = advanced.finalizeView(later.value.blockHash).value
+  assert verifyJudgmentClaims(finalized, historical, claimLimits(), history = true).error ==
+      JudgmentClaimError.UnknownEpoch, "independent finality retires the older authority"
+
+
 proc judgmentClaimCycle*(view: ChainView, wire: seq[byte]) =
   ## Whole checked batches and their fixed records release without retaining canonical state between iterations.
   let checked = verifyJudgmentClaims(view, wire, claimLimits())

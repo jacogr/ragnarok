@@ -302,6 +302,7 @@ type
     ready: bool
     record: AuditJudgment
     info: AuditEvaluationInfo
+    auditor: StateEdKey
   AuditSigningError* {.pure.} = enum ## No failure or cancellation exposes a signed prefix or an evaluation/key alias.
     Uninitialized, None, InvalidSigner, InvalidEvaluation, InvalidValidator, IdentityMismatch,
     Cancelled, CryptoFailure
@@ -330,6 +331,9 @@ func signedAuditInfo*(judgment: SignedAuditJudgment): AuditEvaluationInfo {.requ
 func judgmentRecord*(judgment: SignedAuditJudgment): AuditJudgment {.requires: judgment.ready.} =
   ## Copy one fixed complete CE145 record; caller edits cannot change this private signed owner.
   judgment.record
+func judgmentAuditor*(judgment: SignedAuditJudgment): StateEdKey {.requires: judgment.ready.} =
+  ## Exact original key identity is retained independently of its epoch and ordinal.
+  judgment.auditor
 proc signAuditJudgment*(signer: WorkSigner, evaluation: AuditEvaluation,
     validator: StateValidatorIndex, control: AssuranceScanControl = default(
         AssuranceScanControl)): AuditSigningResult[SignedAuditJudgment] =
@@ -371,4 +375,5 @@ proc signAuditJudgment*(signer: WorkSigner, evaluation: AuditEvaluation,
     record.credentialCount = guarantee.credentialCount
     record.credentials = guarantee.credentials
   AuditSigningResult[SignedAuditJudgment](status: AuditSigningError.None,
-    completed: SignedAuditJudgment(ready: true, record: record, info: info))
+    completed: SignedAuditJudgment(ready: true, record: record, info: info,
+        auditor: member.ed25519))

@@ -22,8 +22,20 @@ type
     report*: WorkReportHash
     epoch*, currentEpoch*, retainedBytes*: uint64
     localValidators*, neighbours*, successors*: int
+  RoutingMember = object ## Original position owns only public identity and projected connection metadata.
+    identity: StateEdKey
+    endpoint: EndpointResult
+  RoutingData = ref object ## Original roster provenance has no report, execution map or key owner.
+    parameters: Parameters
+    report: WorkReportHash
+    epoch: uint64
+    local: StateEdKey
+    members: seq[RoutingMember]
+  AuditRoutingBasis* = object ## Only actual private origin capture creates refresh authority.
+    data: nil RoutingData
   PlanData = ref object ## Only immutable fixed copied metadata survives; complete source maps, validator snapshots and private keys retire before publication.
     info: AuditParticipationInfo
+    basis: AuditRoutingBasis
     local: seq[StateValidatorIndex]
     neighbours, successors: seq[AuditParticipant]
   AuditParticipationPlan* = object ## Default output grants no role, routing or local signing ordinal.
@@ -102,26 +114,41 @@ func nonzero(key: StateEdKey): bool =
   for octet in array[32, byte](key):
     if octet != 0: return true
   false
-proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapshotResult,
-    local: StateEdKey, limits: AuditParticipationLimits,
+func valid*(basis: AuditRoutingBasis): bool =
+  ## Defaults grant no original roster authority.
+  basis.data != nil
+proc routingBasis*(plan: AuditParticipationPlan): AuditRoutingBasis =
+  ## Return the immutable public routing input without exposing a mutable roster.
+  let data = plan.data
+  if data == nil: return default(AuditRoutingBasis)
+  data.basis
+proc detached*(basis: AuditRoutingBasis, bytes: ByteLimit): AuditRoutingBasis =
+  ## A worker-owned copy never borrows the foreground gossip row's ARC graph.
+  let data = basis.data
+  if data == nil or uint64(data.members.len)*uint64(sizeof(RoutingMember)) > uint64(bytes):
+    return default(AuditRoutingBasis)
+  var members = newSeq[RoutingMember](data.members.len)
+  for index in 0..<members.len: members[index] = data.members[index]
+  AuditRoutingBasis(data: RoutingData(parameters: data.parameters, report: data.report,
+      epoch: data.epoch, local: data.local, members: move(members)))
+proc refreshAuditParticipation*(basis: AuditRoutingBasis, current: BlockSnapshotResult,
+    limits: AuditParticipationLimits,
     control: AssuranceScanControl = default(AssuranceScanControl)): AuditParticipationResult[
         AuditParticipationPlan] =
-  ## Run only on the fixed managed worker with source aliases frozen; whole original-grid and current-topology extraction never mutates canonical state or confers report truth.
+  ## Recompute routing from exact original public metadata and trusted current topology.
   if not limits.valid: return AuditParticipationResult[AuditParticipationPlan](
       status: AuditParticipationError.InvalidPolicy)
-  if not origin.valid or current.error != GenesisError.None or not nonzero(local):
+  let original = basis.data
+  if original == nil or current.error != GenesisError.None:
     return AuditParticipationResult[AuditParticipationPlan](
         status: AuditParticipationError.InvalidSource)
   if control.stopped: return AuditParticipationResult[AuditParticipationPlan](
       status: AuditParticipationError.Cancelled)
-  let parameters = origin.originParameters.value
-  if not parameters.sameParameterProfile(current.value.chainParameters):
+  if not original.parameters.sameParameterProfile(current.value.chainParameters):
     return AuditParticipationResult[AuditParticipationPlan](
         status: AuditParticipationError.InvalidSource)
-  let count = origin.auditorCount.value
-  if count < 6 or count > 1023 or sizeof(AuditParticipant) > 512:
-    return AuditParticipationResult[AuditParticipationPlan](
-        status: AuditParticipationError.InvalidSource)
+  let count = original.members.len
+  let local = original.local
   let state = current.value.stateSnapshot
   var reads = 0'u64
   for chapter in [4, 8, 9, 11]:
@@ -135,7 +162,8 @@ proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapsho
       return AuditParticipationResult[AuditParticipationPlan](
           status: AuditParticipationError.LimitExceeded)
     reads += length
-  let retained = 65536'u64+uint64(count)*16+3'u64*1023*(uint64(sizeof(AuditParticipant))+64)
+  let retained = 65536'u64+uint64(count)*uint64(sizeof(RoutingMember)+16)+3'u64*1023*(uint64(sizeof(
+      AuditParticipant))+64)
   if retained > uint64(limits.outputBytes) or 8*reads+retained+262144 > uint64(
       limits.workspaceBytes):
     return AuditParticipationResult[AuditParticipationPlan](
@@ -154,7 +182,7 @@ proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapsho
     return AuditParticipationResult[AuditParticipationPlan](
         status: AuditParticipationError.TopologyFailure, topologyReason: topology.error)
   let projection = topology.value
-  let epoch = origin.auditEpoch.value
+  let epoch = original.epoch
   let currentEpoch = uint64(projection.slot) div uint64(projection.epochSlots)
   var width = 1
   while (width+1)*(width+1) <= count:
@@ -166,7 +194,7 @@ proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapsho
     # All aliases retain original signing positions while row/column masks bound later grid selection to linear work.
     if control.stopped: return AuditParticipationResult[AuditParticipationPlan](
         status: AuditParticipationError.Cancelled)
-    if sameKey(origin.auditorAt(ordinal).value.ed25519, local):
+    if sameKey(original.members[ordinal].identity, local):
       validators.add(StateValidatorIndex(uint64(ordinal)))
       positions[ordinal] = true
       rows[ordinal div width] = true
@@ -188,18 +216,18 @@ proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapsho
   var neighbours, successors: seq[AuditParticipant] = @[]
   for ordinal in 0..<count:
     # Recipients remain original auditors. Additional actual projected memberships can establish NP grid adjacency, never replace original duty/signing authority.
-    let record = origin.auditorAt(ordinal).value
+    let record = original.members[ordinal]
     if control.stopped: return AuditParticipationResult[AuditParticipationPlan](
         status: AuditParticipationError.Cancelled)
-    if not nonzero(record.ed25519) or sameKey(record.ed25519, local): continue
+    if not nonzero(record.identity) or sameKey(record.identity, local): continue
     var adjacent = rows[ordinal div width] or columns[ordinal mod width] or crossPositions[ordinal]
-    if not adjacent: adjacent = projection.neighbours(local, record.ed25519)
+    if not adjacent: adjacent = projection.neighbours(local, record.identity)
     for candidate in crossCandidates:
       # Every roster is bounded to1023 positions; the identity-union comparison product is finite before any native request is admitted.
-      if sameKey(candidate, record.ed25519): adjacent = true
+      if sameKey(candidate, record.identity): adjacent = true
     if adjacent:
       neighbours.add(AuditParticipant(epoch: epoch, validator: StateValidatorIndex(uint64(ordinal)),
-        identity: record.ed25519, endpoint: validatorEndpoint(array[128, byte](record.metadata))))
+        identity: record.identity, endpoint: record.endpoint))
   for relative in low(ValidatorEpoch)..high(ValidatorEpoch):
     # Only actual current/previous or C4 pending projection is known. Future E+2 targets are refreshed when genuine later state reveals them; C7 is never guessed.
     if relative == ValidatorEpoch.Previous and currentEpoch == 0: continue
@@ -220,7 +248,38 @@ proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapsho
   AuditParticipationResult[AuditParticipationPlan](status: AuditParticipationError.None,
     completed: AuditParticipationPlan(data: PlanData(info: AuditParticipationInfo(
       source: current.value.blockHash,
-      report: origin.originReportHash.value, epoch: epoch, currentEpoch: currentEpoch,
+      report: original.report, epoch: epoch, currentEpoch: currentEpoch,
       retainedBytes: retained, localValidators: validators.len, neighbours: neighbours.len,
       successors: successors.len),
-      local: move(validators), neighbours: move(neighbours), successors: move(successors))))
+      basis: basis, local: move(validators), neighbours: move(neighbours), successors: move(successors))))
+
+proc captureAuditParticipation*(origin: AuditReportOrigin, current: BlockSnapshotResult,
+    local: StateEdKey, limits: AuditParticipationLimits,
+    control: AssuranceScanControl = default(AssuranceScanControl)): AuditParticipationResult[
+        AuditParticipationPlan] =
+  ## Detach the authenticated original roster once, then use the same planner as later refreshes.
+  if not limits.valid: return AuditParticipationResult[AuditParticipationPlan](
+      status: AuditParticipationError.InvalidPolicy)
+  if not origin.valid or current.error != GenesisError.None or not nonzero(local):
+    return AuditParticipationResult[AuditParticipationPlan](
+        status: AuditParticipationError.InvalidSource)
+  let count = origin.auditorCount.value
+  if count notin 6..1023 or sizeof(AuditParticipant) > 512:
+    return AuditParticipationResult[AuditParticipationPlan](
+        status: AuditParticipationError.InvalidSource)
+  let bytes = uint64(count)*uint64(sizeof(RoutingMember))
+  if bytes > uint64(limits.outputBytes) or bytes > uint64(limits.workspaceBytes):
+    return AuditParticipationResult[AuditParticipationPlan](
+        status: AuditParticipationError.LimitExceeded)
+  var members = newSeq[RoutingMember](count)
+  for ordinal in 0..<count:
+    # Original positions remain intact even if an identity is null or repeated.
+    if control.stopped: return AuditParticipationResult[AuditParticipationPlan](
+        status: AuditParticipationError.Cancelled)
+    let validator = origin.auditorAt(ordinal).value
+    members[ordinal] = RoutingMember(identity: validator.ed25519,
+        endpoint: validatorEndpoint(array[128, byte](validator.metadata)))
+  let basis = AuditRoutingBasis(data: RoutingData(parameters: origin.originParameters.value,
+      report: origin.originReportHash.value, epoch: origin.auditEpoch.value, local: local,
+      members: move(members)))
+  refreshAuditParticipation(basis, current, limits, control)

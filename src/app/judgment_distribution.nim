@@ -9,6 +9,7 @@ import ./proof/[worker, work_submission]
 import ../jamnp-s/[node, connections, read_stream, read_validation, report_cache,
   judgment_claim, judgment_receipt, judgment_source, judgment_store, audit_registry, audits]
 import ../codec/[bounded, disputes]
+import ../chain/genesis
 
 type
   JudgmentReceiptPolicy* = object ## Whole-message work, detached ledger/report storage and exact native deadline are explicit; defaults activate nothing.
@@ -16,16 +17,19 @@ type
     claims: JudgmentClaimLimits
     receipt: JudgmentReceiptLimits
     verification: ReadVerificationLimits
-    store: JudgmentStoreLimits
+    store, local: JudgmentStoreLimits
     bytes: ByteLimit
     timeout, attempts: int
   ReceiptPhase {.pure.} = enum ## Every waiting phase retains one original bounded claim; CPU and native acquisition never create independent unmanaged workers.
     Empty, ClaimsReady, Claims, LocalReady, Local, Remote, VerifyReady, Verify, ReceiptReady, Receipt
+  FailedJudgmentSource = object ## Fixed selector pair and its exact batch position.
+    ordinal: int
+    attempt: JudgmentSourceAttempt
   JudgmentDispatcher* = object ## Stable noncopyable exact-token owner retains detached storage; report input aliases remain untouched through the private receipt lease.
     policy: JudgmentReceiptPolicy
-    store: JudgmentStore
+    store, localStore: JudgmentStore
     pending: seq[RetainedJudgment]
-    reports: seq[ReadReply]
+    reports, localReports: seq[ReadReply]
     held, active, cancelled, requested: bool
     phase: ReceiptPhase
     ticket: NodeReadTicket
@@ -36,23 +40,29 @@ type
     claims: SignedJudgmentBatch
     inputs: seq[JudgmentSourceInput]
     replies: seq[ReadReply]
-    attempts: seq[int]
+    failedSources: seq[FailedJudgmentSource]
+    sourceSlots: seq[uint64]
     wire: seq[byte]
-    ordinal, retries: int
+    ordinal, primaryRetries, alternateRetries: int
     received: uint64
 func judgmentReceiptPolicy*(claims: JudgmentClaimLimits, receipt: JudgmentReceiptLimits,
     verification: ReadVerificationLimits, store: JudgmentStoreLimits, bytes: ByteLimit,
-    timeoutMs: range[1..120000] = 30000, sourceAttempts: range[1..64] = 4): JudgmentReceiptPolicy =
+    timeoutMs: range[1..120000] = 30000, sourceAttempts: range[1..64] = 4,
+    local = default(JudgmentStoreLimits)): JudgmentReceiptPolicy =
   ## Reserve worst-case persistent and transient wire storage up front; every per-message source retry remains under the same native deadline and finite attempt budget.
-  if not claims.valid or not receipt.valid or not store.valid: return default(JudgmentReceiptPolicy)
+  if not claims.valid or not receipt.valid or not store.valid or uint64(store.records) > 256 or
+      uint64(store.bytes) > 1024'u64*1024: return default(JudgmentReceiptPolicy)
+  let localLimits = if uint64(local.records) == 0 and uint64(local.bytes) == 0: store else: local
+  if not localLimits.valid: return default(JudgmentReceiptPolicy)
   let wire = uint64(verification.wireBytes)
   if wire < 4 or wire > uint64(MaxReadReplyBytes): return default(JudgmentReceiptPolicy)
-  if uint64(bytes) == 0 or uint64(bytes) > 64'u64*1024*1024: return default(JudgmentReceiptPolicy)
-  let rows = uint64(store.records)+3*uint64(claims.message.records)
-  if rows*wire+uint64(store.bytes)+uint64(claims.retainedBytes)+65536 > uint64(bytes):
+  if uint64(bytes) == 0 or uint64(bytes) > 64'u64*1024*1024*1024: return default(JudgmentReceiptPolicy)
+  let rows = uint64(store.records)+uint64(localLimits.records)+3*uint64(claims.message.records)
+  if rows*wire+uint64(store.bytes)+uint64(localLimits.bytes)+uint64(claims.retainedBytes)+65536 >
+      uint64(bytes):
     return default(JudgmentReceiptPolicy)
   JudgmentReceiptPolicy(ready: true, claims: claims, receipt: receipt, verification: verification,
-    store: store, bytes: bytes, timeout: timeoutMs, attempts: sourceAttempts)
+    store: store, local: localLimits, bytes: bytes, timeout: timeoutMs, attempts: sourceAttempts)
 func valid*(policy: JudgmentReceiptPolicy): bool =
   ## Omission cannot enable native CE145 or retain any judgment.
   policy.ready
@@ -69,8 +79,10 @@ proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owne
   ## Delegate every owned child only after all physical borrowers have retired.
   `=wasMoved`(owner.policy)
   `=wasMoved`(owner.store)
+  `=wasMoved`(owner.localStore)
   `=wasMoved`(owner.pending)
   `=wasMoved`(owner.reports)
+  `=wasMoved`(owner.localReports)
   `=wasMoved`(owner.ticket)
   `=wasMoved`(owner.request)
   `=wasMoved`(owner.query)
@@ -79,15 +91,18 @@ proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owne
   `=wasMoved`(owner.claims)
   `=wasMoved`(owner.inputs)
   `=wasMoved`(owner.replies)
-  `=wasMoved`(owner.attempts)
+  `=wasMoved`(owner.failedSources)
+  `=wasMoved`(owner.sourceSlots)
   `=wasMoved`(owner.wire)
 proc `=destroy`*(owner: JudgmentDispatcher) =
   ## Explicit foreground close joins this owner's exact lease before report/source aliases retire.
   requireClosed(owner)
   `=destroy`(owner.policy)
   `=destroy`(owner.store)
+  `=destroy`(owner.localStore)
   `=destroy`(owner.pending)
   `=destroy`(owner.reports)
+  `=destroy`(owner.localReports)
   `=destroy`(owner.ticket)
   `=destroy`(owner.request)
   `=destroy`(owner.query)
@@ -96,7 +111,8 @@ proc `=destroy`*(owner: JudgmentDispatcher) =
   `=destroy`(owner.claims)
   `=destroy`(owner.inputs)
   `=destroy`(owner.replies)
-  `=destroy`(owner.attempts)
+  `=destroy`(owner.failedSources)
+  `=destroy`(owner.sourceSlots)
   `=destroy`(owner.wire)
 func received*(owner: JudgmentDispatcher): uint64 =
   ## Count complete native acknowledgments after full qualification and retention.
@@ -110,14 +126,15 @@ proc pendingAt*(owner: JudgmentDispatcher, ordinal: int): RetainedJudgment {.req
   owner.pending[ordinal]
 func retainedReportCount*(owner: JudgmentDispatcher): int =
   ## Detached immutable raw serving rows can remain available while private report inputs are leased elsewhere.
-  owner.reports.len
+  owner.reports.len+owner.localReports.len
 func judgmentCount*(owner: JudgmentDispatcher): int =
   ## Scalar source-free ledger occupancy is independent of private worker phases.
-  owner.store.len
+  owner.store.len+owner.localStore.len
 proc judgmentAt*(owner: JudgmentDispatcher, ordinal: int): QualifiedJudgment {.requires: ordinal >=
-    0 and ordinal < owner.store.len.} =
+    0 and ordinal < owner.judgmentCount.} =
   ## Preserve both original opposite signed claims rather than replacing either side of an accountable conflict.
-  owner.store.judgmentAt(ordinal).value
+  if ordinal < owner.store.len: owner.store.judgmentAt(ordinal).value
+  else: owner.localStore.judgmentAt(ordinal-owner.store.len).value
 func configured*(owner: JudgmentDispatcher): bool =
   ## Optional receipt must be configured before enabling automatic participation.
   owner.policy.ready
@@ -130,6 +147,7 @@ proc expireBefore*(owner: var JudgmentDispatcher, floor: uint64): array[256, boo
   ## Compact only after whole receipt retirement and report the old positions of surviving duties.
   result = default(array[256, bool])
   owner.store.expireBefore(floor)
+  owner.localStore.expireBefore(floor)
   var kept = 0
   for row in 0..<owner.pending.len:
     # Preserve original negative duty identity and ordering for controller progress.
@@ -146,19 +164,26 @@ proc expireBefore*(owner: var JudgmentDispatcher, floor: uint64): array[256, boo
       if kept != row: owner.reports[kept] = move(owner.reports[row])
       inc kept
   owner.reports.setLen(kept)
+  kept = 0
+  for row in 0..<owner.localReports.len:
+    if owner.localStore.containsReport(owner.localReports[row].request.payload):
+      if kept != row: owner.localReports[kept] = move(owner.localReports[row])
+      inc kept
+  owner.localReports.setLen(kept)
 proc rememberPublication*(owner: var JudgmentDispatcher, publication: AuditPublication): bool =
   ## Commit a genuine local signature and its detached serving reply together.
-  if not owner.policy.ready or owner.held or not publication.valid: return false
+  if not owner.policy.ready or not publication.valid: return false
   let qualified = qualifyLocalJudgment(publication.signedJudgment)
   if qualified.error != JudgmentReceiptError.None: return false
   let reply = publication.reportReply
   if uint64(reply.byteLength) > uint64(owner.policy.verification.wireBytes): return false
   var known = false
-  for old in owner.reports:
+  for old in owner.localReports:
     if old.matches(reply.request): known = true
-  if not known and uint64(owner.reports.len) >= uint64(owner.policy.store.records): return false
-  if owner.store.append([qualified.value]).error != JudgmentStoreError.None: return false
-  if not known: owner.reports.add(reply)
+  if not known and uint64(owner.localReports.len) >= uint64(
+      owner.policy.local.records): return false
+  if owner.localStore.append([qualified.value]).error != JudgmentStoreError.None: return false
+  if not known: owner.localReports.add(reply)
   true
 
 proc configure*(owner: var JudgmentDispatcher, streams: var NodeService,
@@ -167,8 +192,9 @@ proc configure*(owner: var JudgmentDispatcher, streams: var NodeService,
   if owner.policy.ready or not policy.ready or owner.held or owner.active or
       not streams.isValidator: return false
   if not owner.store.configure(policy.store): return false
-  if not streams.enableJudgmentStreams():
+  if not owner.localStore.configure(policy.local) or not streams.enableJudgmentStreams():
     owner.store.clear()
+    owner.localStore.clear()
     return false
   owner.policy = policy
   owner.received = 0
@@ -188,10 +214,12 @@ proc clearClaim(owner: var JudgmentDispatcher) =
   owner.claims = default(SignedJudgmentBatch)
   owner.inputs = @[]
   owner.replies = @[]
-  owner.attempts = @[]
+  owner.failedSources = @[]
+  owner.sourceSlots = @[]
   owner.wire = @[]
   owner.ordinal = 0
-  owner.retries = 0
+  owner.primaryRetries = 0
+  owner.alternateRetries = 0
 proc reject(owner: var JudgmentDispatcher, streams: var NodeService) =
   ## Reject only this exact request and outgoing child; complete detached earlier obligations remain intact.
   if owner.requested: discard streams.cancelRequest(owner.network)
@@ -201,6 +229,8 @@ proc findReport*(owner: JudgmentDispatcher, request: ReadRequest): ReadResult[Re
   ## Serving copies share only detached raw framing, never the OwnedReport input graph frozen on the private worker.
   if not request.valid or request.kind != ReadKind.Report: return readFailure[ReadReply](
       ReadError.Unavailable)
+  for report in owner.localReports:
+    if report.matches(request): return report.forRequest(request)
   for report in owner.reports:
     # Each retained reply was hash-verified under this exact full report request before whole negative receipt succeeded.
     if report.matches(request): return report.forRequest(request)
@@ -215,6 +245,8 @@ proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
     let selected = services.judgmentSource(claim)
     if selected.error != JudgmentSourceError.None: return false
     owner.inputs[owner.ordinal].source = selected.value
+    owner.inputs[owner.ordinal].membership = selected.membershipSource
+    owner.sourceSlots[owner.ordinal] = selected.sourceSlot
     var hash: seq[byte] = @[]
     for octet in array[32, byte](claim.judgmentRecord.report): hash.add(octet)
     let query = decodeReadRequest(ReadKind.Report, hash)
@@ -224,6 +256,18 @@ proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
     return true
   owner.phase = ReceiptPhase.ReceiptReady
   true
+proc releaseUnused(owner: JudgmentDispatcher, services: var Services,
+    completed: ManagedAuditCompletion) =
+  ## Duplicate or rejected receipt outcomes must not strand a newly pinned private origin.
+  if completed.kind != ManagedAuditKind.JudgmentsRetained: return
+  for ordinal in 0..<completed.retainedJudgmentCount:
+    # Positive records have no private origin. A negative source stays live while a pending relay references it.
+    let id = completed.retainedJudgmentAt(ordinal).originId
+    if not id.valid: continue
+    var used = false
+    for row in owner.pending:
+      if row.originId == id: used = true
+    if not used: discard services.releaseDisputedAudit(id)
 proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletion): bool =
   ## Whole ledger and distinct report/obligation capacity is proven before mutation; an unacknowledged transport retry cannot erase qualified evidence.
   if completed.kind != ManagedAuditKind.JudgmentsRetained or completed.retainedJudgmentCount !=
@@ -239,15 +283,9 @@ proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletio
     if record.judgmentRecord.valid: continue
     var duplicate = false
     for old in owner.pending:
-      let a = old.judgment.judgmentRecord
-      let b = record.judgmentRecord
-      if uint32(a.epoch) == uint32(b.epoch) and uint16(a.validator) == uint16(b.validator) and
-          array[32, byte](a.report) == array[32, byte](b.report): duplicate = true
+      if sameJudgmentKey(old.judgment, record): duplicate = true
     for old in pending:
-      let a = old.judgment.judgmentRecord
-      let b = record.judgmentRecord
-      if uint32(a.epoch) == uint32(b.epoch) and uint16(a.validator) == uint16(b.validator) and
-          array[32, byte](a.report) == array[32, byte](b.report): duplicate = true
+      if sameJudgmentKey(old.judgment, record): duplicate = true
     if not duplicate: pending.add(retained)
     var known = false
     for old in owner.reports:
@@ -293,20 +331,38 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
     owner.active = false
     owner.proof = default(ProofWorkerTicket)
     if expired or not live or owner.cancelled or completed.kind == ManagedAuditKind.Cancelled:
+      owner.releaseUnused(services, completed)
       owner.reject(streams)
       return
-    if completed.kind == ManagedAuditKind.JudgmentReceiptFailure and
-        completed.judgmentReceiptError.error == JudgmentReceiptError.SupportFailure:
+    if completed.kind == ManagedAuditKind.JudgmentReceiptFailure:
       let ordinal = completed.judgmentReceiptError.failedOrdinal
-      if ordinal >= 0 and ordinal < owner.inputs.len and owner.retries < owner.policy.attempts-1:
-        inc owner.attempts[ordinal]
-        inc owner.retries
-        let next = services.judgmentSource(owner.claims.claimAt(ordinal).value, owner.attempts[ordinal])
+      let primaryCredit = owner.primaryRetries < owner.policy.attempts-1
+      let alternateCredit = owner.alternateRetries < owner.policy.attempts-1
+      if ordinal >= 0 and ordinal < owner.inputs.len and (primaryCredit or alternateCredit) and
+          owner.failedSources.len < 128:
+        let failed = owner.inputs[ordinal]
+        # At most 126 retried attempts can precede this failure in one message.
+        owner.failedSources.add(FailedJudgmentSource(ordinal: ordinal,
+            attempt: JudgmentSourceAttempt(source: failed.source, membership: failed.membership)))
+        var excluded = default(array[128, JudgmentSourceAttempt])
+        var count = 0
+        for source in owner.failedSources:
+          if source.ordinal == ordinal:
+            excluded[count] = source.attempt
+            inc count
+        let next = services.judgmentSource(owner.claims.claimAt(ordinal).value,
+            excluded.toOpenArray(0, count-1), owner.sourceSlots[ordinal], primaryCredit, alternateCredit)
         if next.error == JudgmentSourceError.None:
+          let membership = next.membershipSource
+          if array[32, byte](membership) == default(array[32, byte]): inc owner.primaryRetries
+          else: inc owner.alternateRetries
           owner.inputs[ordinal].source = next.value
+          owner.inputs[ordinal].membership = membership
           owner.phase = ReceiptPhase.ReceiptReady
           return
-    if not owner.retainWhole(completed):
+    let retained = owner.retainWhole(completed)
+    owner.releaseUnused(services, completed)
+    if not retained:
       owner.reject(streams)
       return
     let acknowledgment = captureReadReply(owner.request, [])
@@ -336,7 +392,7 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       return
     owner.inputs = newSeq[JudgmentSourceInput](owner.claims.len)
     owner.replies = newSeq[ReadReply](owner.claims.len)
-    owner.attempts = newSeq[int](owner.claims.len)
+    owner.sourceSlots = newSeq[uint64](owner.claims.len)
     owner.ordinal = 0
     if not owner.nextReport(services): owner.reject(streams)
   of ReceiptPhase.Local:
@@ -445,6 +501,8 @@ proc close*(owner: var JudgmentDispatcher, services: var Services, streams: var 
   if owner.held: discard streams.reject(owner.ticket)
   owner.clearClaim()
   owner.store.clear()
+  owner.localStore.clear()
   owner.pending = @[]
   owner.reports = @[]
+  owner.localReports = @[]
   owner.policy = default(JudgmentReceiptPolicy)
