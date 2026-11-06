@@ -402,8 +402,8 @@ def statistics_rows(report):
                         values[role] = samples[0][clock] if phase == 'cold' else statistics.median(
                             sample[clock] for sample in samples[3:13])
                     result.append(dict(case_id=case['case_id'], order=order, clock=clock,
-                        phase=phase, **values, interpreted_over_reference=
-                        values['interpreted']/values['reference'],
+                        phase=phase, **values, jit_over_interpreted=values['jit']/values['interpreted'],
+                        interpreted_over_reference=values['interpreted']/values['reference'],
                         jit_over_reference=values['jit']/values['reference']))
     return result
 
@@ -457,17 +457,19 @@ def render_summary(report):
              'Primary process CPU includes all in-process threads; wall is elapsed time. '
              'Fixture IO and independent state/event oracle scans are outside each call.',
              'Thirteen raw calls; reused statistics use samples3–12, without native-readiness filtering. '
-             'Each process order is separate. Ratios compare only this native runner.', '']
+             'Each process order is separate. Ratios compare only this native runner. '
+             'JIT / Interpreted above 1.0× means JIT took longer.', '']
     for phase in ('cold', 'reused'):
         lines += [phase.capitalize()+' public call', '',
-                  '| Case | Order | Clock | Interpreted ms | JIT ms | Reference ms | I/ref | J/ref |',
-                  '|---|---:|---|---:|---:|---:|---:|---:|']
+                  '| Case | Order | Clock | Interpreted ms | JIT ms | Reference ms | JIT / Interpreted | I/ref | J/ref |',
+                  '|---|---:|---|---:|---:|---:|---:|---:|---:|']
         for observation in observations:
             if observation['phase'] == phase:
                 values = [observation[role] for role in ROLES]
                 lines.append('| '+observation['case_id']+' | '+str(observation['order'])+' | '+
                     observation['clock'][:-3]+' | '+' | '.join(f'{v/1e6:.6f}' for v in values)+
-                    f' | {observation["interpreted_over_reference"]:.6f} | '+
+                    f' | {observation["jit_over_interpreted"]:.6f} | '+
+                    f'{observation["interpreted_over_reference"]:.6f} | '+
                     f'{observation["jit_over_reference"]:.6f} |')
         lines.append('')
     lines += ['Sum of thirteen full-call windows (samples0–12)', '',
