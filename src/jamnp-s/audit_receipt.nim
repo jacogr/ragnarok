@@ -74,11 +74,12 @@ proc announcementAt*(batch: CheckedAuditBatch, ordinal: int): AuditReceiptResult
       completed: data.records[ordinal])
 proc qualifyAuditAnnouncements*(source: ChainView, wire: openArray[byte],
     limits: AuditReceiptLimits, control: AssuranceScanControl = default(
-        AssuranceScanControl)): AuditReceiptResult[CheckedAuditBatch] =
+        AssuranceScanControl), alternatives: openArray[ChainView] = []): AuditReceiptResult[
+            CheckedAuditBatch] =
   ## Decode the entire message and reserve all possible retained outputs and crypto before executing any record; cancellation discards the entire private batch.
   if not limits.valid: return AuditReceiptResult[CheckedAuditBatch](
       status: AuditReceiptError.InvalidPolicy)
-  if source.fuzzOnly or source.bestBlock.error != GenesisError.None:
+  if source.fuzzOnly or source.bestBlock.error != GenesisError.None or alternatives.len > 64:
     return AuditReceiptResult[CheckedAuditBatch](status: AuditReceiptError.InvalidSource)
   if control.stopped: return AuditReceiptResult[CheckedAuditBatch](
       status: AuditReceiptError.Cancelled)
@@ -100,8 +101,17 @@ proc qualifyAuditAnnouncements*(source: ChainView, wire: openArray[byte],
     if control.stopped: return AuditReceiptResult[CheckedAuditBatch](
         status: AuditReceiptError.Cancelled)
     let claim = decoded.value.announcementAt(ordinal).value
-    let context = captureAuditContext(source, genesis.BlockHash(array[32, byte](claim.header)),
-        limits.context, control)
+    let hash = genesis.BlockHash(array[32, byte](claim.header))
+    var authority = source
+    if source.blockAt(hash).error != GenesisError.None:
+      for candidate in alternatives:
+        # Only a privately retained, fully prepared branch head grants alternate authority.
+        let head = candidate.bestBlock
+        if head.error == GenesisError.None and array[32, byte](head.value.blockHash) == array[32,
+            byte](hash):
+          authority = candidate
+          break
+    let context = captureAuditContext(authority, hash, limits.context, control)
     if context.error == AuditContextError.Cancelled:
       return AuditReceiptResult[CheckedAuditBatch](status: AuditReceiptError.Cancelled)
     if context.error != AuditContextError.None:

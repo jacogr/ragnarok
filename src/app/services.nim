@@ -75,7 +75,7 @@ import ../jamnp-s/assurance_schedule
 import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, audit_evaluation,
     audit_recovery, audit_fetch, judgment_claim, judgment_receipt, judgment_source,
     audit_participation, audit_publication]
-import ./audit_state
+import ./[audit_state, audit_branches]
 from ../jamnp-s/audit_validation import AuditProofLimits
 from ../codec/disputes import JudgeIndex
 from ../codec/owned import OwnershipError
@@ -465,6 +465,8 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   auditSignerReady: bool
   auditSignerIdentity: StateEdKey
   audits: ManagedAuditState
+  auditBranches: AuditBranches
+  auditPreparationChain: ApplicationChain
   assuranceWorkInput: WorkSubmissionJob
   assuranceSigningInput: AssuranceSigningJob
   assuranceSigningActive: bool
@@ -586,6 +588,8 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.assuranceSigner)
   `=wasMoved`(services.auditSigner)
   `=wasMoved`(services.audits)
+  `=wasMoved`(services.auditBranches)
+  `=wasMoved`(services.auditPreparationChain)
   `=wasMoved`(services.assuranceWorkInput)
   `=wasMoved`(services.assuranceSigningInput)
   `=wasMoved`(services.lastAssurance)
@@ -678,6 +682,8 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.assuranceSigner)
   `=destroy`(services.auditSigner)
   `=destroy`(services.audits)
+  `=destroy`(services.auditBranches)
+  `=destroy`(services.auditPreparationChain)
   `=destroy`(services.assuranceWorkInput)
   `=destroy`(services.assuranceSigningInput)
   `=destroy`(services.lastAssurance)
@@ -990,6 +996,7 @@ proc stopPreparation*(services: var Services) =
   if services.light.active: return # Distinct light actor owns its own CPU/IO lease and joins.
   if services.proofing or services.publishing: return # A proof/disk borrower owns the same RPC lease until its own joined retirement.
   services.worker.close()
+  services.auditPreparationChain = default(ApplicationChain)
   services.preparing = false
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
@@ -1022,6 +1029,7 @@ proc close*(services: var Services) =
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical, signer or listener alias.
+  services.auditBranches.clear()
   services.audits.clear() # Every proof, preparation, disk and checkpoint borrower has joined.
   services.auditSigner = default(WorkSigner)
   services.auditSignerReady = false
@@ -1618,8 +1626,10 @@ proc stateProofAvailable*(services: Services): bool
 proc publishFinalized*(services: var Services, hash: BlockHash): ViewFinalizeError =
   ## Trusted local consensus/checkpoint input only: no proof is verified or authority inferred from peer claims.
   if not services.stateProofAvailable: return ViewFinalizeError.Uninitialized
-  if services.chainRpc: services.canonical.publishFinalized(services.rpc, hash)
-  else: services.canonical.publishFinalized(hash) # Disabled RPC never supplies a second, divergent history.
+  result = if services.chainRpc: services.canonical.publishFinalized(services.rpc, hash)
+    else: services.canonical.publishFinalized(hash)
+  if result == ViewFinalizeError.None:
+    services.auditBranches.retire(services.canonical.chainView)
 
 proc describeHead*(services: Services): string =
   ## Busy workers exclude every graph read; diagnostics cannot extend an RPC/canonical lease.
@@ -2338,6 +2348,12 @@ proc cancelStateProof*(services: var Services, ticket: ProofWorkerTicket): bool 
   ## Cancellation requests discard without releasing graph access or bounded capacity.
   if services.light.active: services.light.cancelQuery(ticket) else: services.proofWorker.cancel(ticket)
 
+proc auditSource(services: Services, hash: genesis.BlockHash): ChainView =
+  ## Prefer independently installed selected history, otherwise use the exact registered branch.
+  let selected = services.canonical.chainView
+  if selected.blockAt(hash).error == GenesisError.None: return selected
+  let branch = services.auditBranches.parentView(selected, hash)
+  if branch.bestBlock.error == GenesisError.None: branch else: selected
 proc collectSharedStateProof(services: var Services,
     ticket: ProofWorkerTicket): ProofWorkerCompletion =
   ## Only matching Done collection retires the query and reopens canonical/RPC access together.
@@ -2376,7 +2392,8 @@ proc collectSharedStateProof(services: var Services,
       services.assuranceStorageInput = default(AssuranceStorageJob)
       services.assuranceStorageActive = false
     if services.audits.active:
-      services.audits.finish(result, services.canonical.chainView) # Private capability retention precedes reopening RPC.
+      services.audits.finish(result, services.canonical.chainView,
+          services.auditBranches) # Private capability retention precedes reopening RPC.
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # A stale/foreign/early ticket never resumes another lease.
@@ -2596,12 +2613,44 @@ proc configureAudits*(services: var Services, limits: AuditRegistryLimits): bool
   ## Optional full-state retention requires explicit finite limits and an idle canonical graph.
   if not services.stateProofAvailable: return false
   services.audits.configure(limits)
+proc configureAuditBranches*(services: var Services, limits: AuditBranchLimits): bool =
+  ## Explicit storage policy reserves bounded full-state side-branch ownership.
+  if not services.stateProofAvailable: return false
+  services.auditBranches.configure(limits)
+proc auditBranchParent*(services: Services, parent: genesis.BlockHash): ApplicationChainResult[
+    ApplicationChain] =
+  ## Full candidate preparation borrows only an independently retained exact parent view.
+  if not services.stateProofAvailable: return initApplicationChain(default(ChainView))
+  initApplicationChain(services.auditBranches.parentView(services.canonical.chainView, parent))
+proc beginAuditBranchInput*(services: Services, input: var CurrentBlockInput,
+    parent: genesis.BlockHash, extent: ByteLimit, ancestors: openArray[OwnedHeader],
+    resources: CurrentBlockInputLimits, policies: CurrentCandidateLimits): CurrentBlockInputAdmission =
+  ## Bound the received bytes to an independently retained exact parent and ordinary full-block policy.
+  let branch = services.auditBranchParent(parent)
+  if branch.error != ApplicationChainError.None:
+    return default(CurrentBlockInputAdmission)
+  input.begin(branch.value, extent, ancestors, resources, policies)
+proc retainAuditBranch*(services: var Services, prepared: PreparedCurrentChainUpdate): AuditBranchError =
+  ## A validated side child never installs selected state or changes RPC/finality.
+  if not services.stateProofAvailable or services.audits.occupied: return AuditBranchError.Uninitialized
+  services.auditBranches.retain(services.canonical.chainView, prepared)
+proc knownAuditBlock*(services: Services, hash: genesis.BlockHash): bool =
+  ## A leaf already present on either independently retained history needs no network request.
+  if not services.stateProofAvailable: return false
+  services.canonical.chainView.blockAt(hash).error == GenesisError.None or
+    services.auditBranches.at(hash).bestBlock.error == GenesisError.None
+func auditBranchCount*(services: Services): int =
+  ## Stable side-branch ordinal space is separate from selected slot order.
+  services.auditBranches.len
+func nextAuditBranch*(services: Services, after: uint64): AuditBranchCandidate =
+  ## Return a detached scheduling identity that is independent of row compaction.
+  services.auditBranches.nextAfter(after)
 proc retainAuditOrigin*(services: var Services, origin: AuditBlockOrigin): AuditRegistryResult[
     AuditOriginId] =
   ## Backfill an already authenticated whole origin only against independently retained canonical/checkpoint trust.
   if not services.stateProofAvailable or services.audits.occupied or not origin.valid:
     return auditRegistryFailure[AuditOriginId](AuditRegistryError.InvalidSource)
-  services.audits.retain(origin, services.canonical.chainView.blockAt(
+  services.audits.retain(origin, services.auditSource(origin.originInfo.value.blockHash).blockAt(
       origin.originInfo.value.blockHash))
 proc admitManagedAudit(services: var Services): AuditPlanningStart {.raises.} =
   ## Reuse exactly the ordinary fixed worker and canonical/RPC lease without translating unrelated failure alternatives.
@@ -2621,7 +2670,7 @@ proc stageInitialAudit(services: var Services, blockHash: genesis.BlockHash, ide
     ordinal: JudgeIndex, context: AuditContextLimits, proof: AuditProofLimits,
         discover: bool): WorkJobError =
   ## Retire source and private signer staging aliases before publishing the exact worker lease.
-  let captured = captureInitialAuditJob(services.canonical.chainView, blockHash, context, proof,
+  let captured = captureInitialAuditJob(services.auditSource(blockHash), blockHash, context, proof,
       services.ticketSigner, identity, ordinal, discover)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
@@ -2642,7 +2691,7 @@ proc beginInitialAudit*(services: var Services, blockHash: genesis.BlockHash, id
 proc stageManagedAuditOrigin(services: var Services, blockHash: genesis.BlockHash,
     context: AuditContextLimits, limits: AuditOriginLimits): WorkJobError =
   ## Temporary view wrappers retire before native admission publishes its source borrow.
-  let captured = captureAuditOriginJob(services.canonical.chainView, blockHash, context, limits)
+  let captured = captureAuditOriginJob(services.auditSource(blockHash), blockHash, context, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
 proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHash,
@@ -2896,7 +2945,9 @@ proc beginJudgmentClaims*(services: var Services, wire: openArray[byte],
 proc stageAuditAnnouncements(services: var Services, wire: openArray[byte],
     limits: AuditReceiptLimits): WorkJobError =
   ## Capture wrappers and copied caller bytes retire before the worker borrows actual full history.
-  let captured = captureAuditAnnouncements(services.canonical.chainView, wire, limits)
+  let selected = services.canonical.chainView
+  let captured = captureAuditAnnouncements(selected, wire, limits,
+      services.auditBranches.liveViews(selected))
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
 proc beginAuditAnnouncements*(services: var Services, wire: openArray[byte],
@@ -3966,6 +4017,29 @@ proc beginPreparation*(services: var Services, input: var CurrentBlockInput,
     services.rpcLease = nil # Refused submission grants no lease or current authority.
   admitted
 
+proc stageAuditPreparation(services: var Services, parent: genesis.BlockHash): bool =
+  ## Retire temporary wrappers before the native job borrows the stable Services field.
+  let branch = services.auditBranchParent(parent)
+  if branch.error != ApplicationChainError.None: return false
+  services.auditPreparationChain = branch.value
+  true
+proc beginAuditBranchPreparation*(services: var Services, input: var CurrentBlockInput,
+    id: CurrentBlockInputId, parent: genesis.BlockHash): PreparationAdmission {.raises.} =
+  ## Use the ordinary current STF worker, retaining the original branch exclusively through exact collection.
+  if not services.preparationAvailable or not services.stageAuditPreparation(parent):
+    return default(PreparationAdmission)
+  discard services.worker.start()
+  services.rpcLease = services.rpc.pauseChain()
+  let admitted = services.worker.submit(input, id, services.auditPreparationChain,
+      residency = addr services.executionContext)
+  if admitted.error == PreparationError.None:
+    services.preparing = true
+  else:
+    services.auditPreparationChain = default(ApplicationChain)
+    discard services.rpc.resumeChain(services.rpcLease)
+    services.rpcLease = nil
+  admitted
+
 proc preparationPhase*(services: var Services): PreparationPhase =
   ## Poll only the worker's synchronized scalar lifecycle state.
   services.worker.phase
@@ -3978,6 +4052,7 @@ proc collectPreparation*(services: var Services, ticket: PreparationTicket): Pre
   ## Move/drop completion only after execution temporaries retire, then restore canonical and RPC access together.
   result = services.worker.collect(ticket)
   if result.kind != PreparationCompletionKind.Uninitialized:
+    services.auditPreparationChain = default(ApplicationChain)
     services.preparing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # Stale/early collection cannot release another active lease.

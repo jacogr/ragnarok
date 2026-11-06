@@ -145,6 +145,11 @@ proc forkStateStore*(source: StateStoreSnapshot): StateStoreResult[StateStore] =
   StateStoreResult[StateStore](status: StateStoreError.None,
     completed: StateStore(head: data, limits: data.limits))
 
+func retainedValueLimit*(snapshot: StateStoreSnapshot): uint64 =
+  ## Return a conservative inherited whole-map value reservation without traversing entries.
+  let data = snapshot.data
+  if data == nil: 0'u64 else: uint64(data.limits.trie.totalValueBytes)
+
 proc commitment*(snapshot: StateStoreSnapshot): StateTrieCommitment {.requires: snapshot.data != nil.} =
   ## Return copied root/count metadata, never a mutable reference into the retained map.
   let data = snapshot.data

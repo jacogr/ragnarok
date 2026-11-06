@@ -25,6 +25,7 @@ import ../../support/[jamnp_audit_evaluation, jamnp_audit_faults, jamnp_audit_si
     jamnp_audit_acquisition, assurance_signer_context]
 import ../../support/[jamnp_audit_context, arc_evidence, current_application_context,
     jamnp_audit_validation, jamnp_topology_fixture]
+import ../../support/jamnp_audit_branch_network
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
   let selected = captureAuditContext(fixture.view, fixture.blockHash, auditLimits())
@@ -93,6 +94,17 @@ proc checked(fixture: AuditContextFixture) =
       AuditContextError.LimitExceeded,
     "copied chapters alone cannot fund whole-map descriptors and fixed transition scratch"
 
+proc branchPrefixChecks(fixture: AuditContextFixture) =
+  ## A trusted prefix reuses exact original owners and excludes later selected state.
+  let parent = fixture.prior.bestBlock.value
+  let prefix = fixture.view.retainedPrefix(parent.blockHash)
+  assert prefix.error == ViewAdvanceError.None and sameChainView(prefix.value, fixture.prior)
+  assert sameStateSnapshot(prefix.value.bestBlock.value.stateSnapshot, parent.stateSnapshot)
+  assert prefix.value.blockAt(fixture.blockHash).error == GenesisError.Unavailable
+  let finalized = fixture.view.finalizeView(fixture.blockHash).value
+  assert finalized.retainedPrefix(parent.blockHash).error == ViewAdvanceError.NotChild
+  assert fixture.view.retainedPrefix(default(genesis.BlockHash)).error ==
+      ViewAdvanceError.InvalidSnapshot, "no independently retained parent"
 proc hostileBody(fixture: AuditContextFixture) =
   ## A structurally retained same-header/same-map body is not authenticated merely because its byte framing succeeds.
   let context = captureAuditContext(fixture.view, fixture.blockHash, auditLimits()).value
@@ -485,6 +497,8 @@ proc main() {.raises.} =
   ## One genuine positive source and repeated execution preserve source identity and release transient context graphs.
   let fixture = auditContextFixture()
   checked(fixture)
+  branchPrefixChecks(fixture)
+  branchNetworkChecks()
   let announcements = auditValidationChecks(captureAuditContext(fixture.view, fixture.blockHash,
       auditLimits()).value, fixture.view, auditLimits())
   hostileBody(fixture)

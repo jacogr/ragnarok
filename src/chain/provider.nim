@@ -275,6 +275,34 @@ func retainedBlockAt*(view: ChainView, index: RetainedBlockIndex): BlockSnapshot
   if int(index) < 0 or int(index) >= view.snapshot.len: return unavailableGenesis()
   view.snapshot[int(index)]
 
+proc retainedPrefix*(view: ChainView, hash: BlockHash): ViewAdvanceResult =
+  ## Build an independent branch input from existing exact retained snapshots at or after local finality.
+  if view.fuzzOnly:
+    return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+  var last = -1
+  for index in 0..<view.snapshot.len:
+    # A finalized owner outside the rolling window cannot supply a reconstructible retained prefix.
+    if array[32, byte](view.snapshot[index].value.blockHash) == array[32, byte](hash):
+      last = index
+      break
+  if last < 0: return ViewAdvanceResult(status: ViewAdvanceError.InvalidSnapshot)
+  let slot = view.snapshot[last].value.slot
+  if view.finalized.error == GenesisError.None and slot < view.finalized.value.slot:
+    return ViewAdvanceResult(status: ViewAdvanceError.NotChild)
+  var saved = newSeq[BlockSnapshotResult](last+1)
+  for index in 0..last:
+    # The branch borrows the trusted physical snapshot owners and discards later selected state.
+    saved[index] = view.snapshot[index]
+  var validation: seq[ValidationHeaderContext] = @[]
+  if saved.len < ValidationHeaderCapacity:
+    # Keep older header-only anchors when the selected cache still overlaps the retained prefix.
+    for entry in view.validation:
+      if uint64(entry.slot) < saved[0].value.slot: validation.add(entry)
+  let first = max(0, saved.len-ValidationHeaderCapacity)
+  for index in first..<saved.len:
+    validation.add(headerContext(saved[index].value))
+  ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: view.capacity,
+      validation: validation, snapshot: saved, finalized: view.finalized))
 proc restoreLocalChainView*(history: openArray[BlockSnapshotResult],
     finalized = unavailableGenesis(), limit = ElementLimit(MaxRetainedBlocks)): ViewAdvanceResult =
   ## Restore a previously validated local bounded history; this is not a consensus or import verifier.
