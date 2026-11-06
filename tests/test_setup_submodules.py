@@ -16,6 +16,7 @@ import unittest
 from unittest.mock import patch
 
 import setup_submodules
+from pvm_guest_provenance import historical_blob
 
 
 # Real Git repositories exercise promisor behavior without mocks standing in for object availability.
@@ -72,6 +73,29 @@ class PinnedBlobSetupTests(unittest.TestCase):
         with patch.object(setup_submodules.subprocess, 'run', side_effect=self.no_fetch):
             setup_submodules.prefetch_blobs(self.clone, self.revision, ['second', 'first'])
             setup_submodules.prefetch_blobs(self.clone, self.revision, [])
+
+    def test_polkavm_history_stays_separate_and_verification_is_offline(self):
+        """Fetch a distinct shallow history, then read only its selected blob without moving HEAD."""
+        (self.remote/'first').write_text('historical lock bytes\n')
+        self.git('-C', str(self.remote), 'add', 'first')
+        self.git('-C', str(self.remote), '-c', 'user.name=Fixture', '-c',
+                 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
+                 'commit', '-qm', 'guest generation')
+        historical = self.git('-C', str(self.remote), 'rev-parse', 'HEAD').strip()
+        with patch.object(setup_submodules.subprocess, 'run', side_effect=self.no_fetch):
+            with self.assertRaisesRegex(ValueError, 'Missing historical guest blob'):
+                historical_blob(self.clone, historical, 'first')
+
+        setup_submodules.prefetch_polkavm_history(self.clone, historical, ['first'])
+        self.assertEqual(self.git('-C', str(self.clone), 'rev-parse', 'HEAD').strip(), self.revision)
+        self.assertFalse((self.clone/'first').exists())
+        self.assertTrue(self.blob_status('unused').endswith(' missing'))
+        with patch.object(setup_submodules.subprocess, 'run', side_effect=self.no_fetch):
+            setup_submodules.prefetch_polkavm_history(self.clone, historical, ['first'])
+            self.assertEqual(historical_blob(self.clone, historical, 'first'), b'historical lock bytes\n')
+            with self.assertRaisesRegex(ValueError, 'Missing historical guest blob'):
+                historical_blob(self.clone, historical, 'unused')
+        self.assertTrue(self.blob_status('unused').endswith(' missing'))
 
     # A stale/misspelled pinned path fails before a partial fetch can hide the missing source.
     def test_missing_blob_rejected(self):

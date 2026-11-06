@@ -16,7 +16,7 @@ import subprocess
 import tomllib
 from native_checks import NativeChecks,ROOT
 from native_dependencies import require_submodule
-from native_fixture_contracts import load_fixture_contracts
+from pvm_guest_provenance import HISTORICAL_LOCKS, frozen_guest, historical_blob
 from pvm_benchmark import cpu_model
 from pvm_sieve_report import ENGINES,limits_for_guest,parse_process_output,summarize
 from setup_nimony import installed
@@ -33,51 +33,44 @@ def digest(path):
 
 
 def verify_fixture(folder=ROOT/'tests/fixtures',upstream=None,guest='sieve'):
-    """Check every declared member, guest provenance and already-pinned host dependencies."""
-    limits_for_guest(guest)
-    _,target,files=load_fixture_contracts(folder)[{'sieve':'pvm_sieve','pinky':'pvm_pinky'}.get(guest,'pvm_guests')]
-    for path,expected in files:
-        # A directory fixture must pass every member, including its licenses and provenance.
-        if digest(path)!=expected:raise ValueError('Changed sieve fixture: '+str(path))
-    provenance=json.loads((target/('provenance.json' if guest=='sieve' else guest+'.provenance.json')).read_text())
-    pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
-    # Frozen guest generation and the currently executing host runtime have distinct exact identities.
-    if provenance['schema']!=1 or provenance['polkavm_commit']!=pins.get('guest_artifact_commit'):
-        raise ValueError('Sieve provenance pin mismatch')
-    for name,key in ((('sieve' if guest=='sieve' else guest)+'.polkavm','artifact_sha256'),(('checked_entry' if guest=='sieve' else guest+'.checked_entry')+'.rs.inc','checked_entry_sha256'),
-                     ('guest-Cargo.lock','guest_lock_sha256')):
-        if digest(target/name)!=provenance[key]:raise ValueError('Sieve provenance digest mismatch')
-    if guest!='sieve':
-        # Even offline fixture-only checks bind family identity and every declared build input.
-        if provenance.get('guest')!=guest:raise ValueError('Guest provenance family mismatch')
-        for name,expected in provenance['build_inputs'].items():
-            if digest(target/name)!=expected:raise ValueError('Changed guest build manifest')
+    """Verify frozen generation and active runtime dependencies against their separate pins."""
+    pins = json.loads((ROOT/'spec/polkavm-pins.json').read_text())
+    revision = pins.get('guest_artifact_commit')
+    target, provenance = frozen_guest(folder, guest, revision)
     if upstream is not None:
-        # Public reference source and every registry package stay at their pristine existing pins.
-        for sources in (pins['source_sha256'],provenance['upstream_sources']):
-            for name,expected in sources.items():
-                # Validate both contracts independently; one cannot overwrite the other's source commitment.
-                if digest(upstream/name)!=expected:raise ValueError('Changed upstream source: '+name)
-        if guest!='sieve':
-            # Adapted source prefixes and normalized manifests are declared, never silently patched.
-            if provenance.get('guest')!=guest:raise ValueError('Guest provenance family mismatch')
-            prefix=provenance.get('upstream_prefix')
-            if prefix:
-                raw=(upstream/prefix['path']).read_bytes()[:prefix['bytes']]
-                if hashlib.sha256(raw).hexdigest()!=prefix['sha256']:raise ValueError('Changed guest source prefix')
-            for name,expected in provenance['build_inputs'].items():
-                if digest(target/name)!=expected:raise ValueError('Changed guest build manifest')
-            known_guest={tuple(p.get(k) for k in ('name','version','source','checksum'))
-                for lock in (upstream/'Cargo.lock',upstream/'guest-programs/Cargo.lock')
-                for p in tomllib.loads(lock.read_text())['package']}
-            for package in tomllib.loads((target/'guest-Cargo.lock').read_text())['package']:
-                if tuple(package.get(k) for k in ('name','version','source','checksum')) not in known_guest:
-                    raise ValueError('Unpinned guest dependency: '+package['name'])
-        fields=('name','version','source','checksum')
-        known={tuple(p.get(k) for k in fields) for p in tomllib.loads((upstream/'Cargo.lock').read_text())['package']}
+        # The live interpreter and benchmark lock remain tied to the active runtime checkout.
+        for name, expected in pins['source_sha256'].items():
+            if digest(upstream/name) != expected:
+                raise ValueError('Changed upstream source: '+name)
+        fields = ('name', 'version', 'source', 'checksum')
+        known = {tuple(p.get(key) for key in fields)
+                 for p in tomllib.loads((upstream/'Cargo.lock').read_text())['package']}
         for package in tomllib.loads((CRATE/'Cargo.lock').read_text())['package']:
-            if package['name']!='ragnarok-pvm-benchmark' and tuple(package.get(k) for k in fields) not in known:
+            if package['name'] != 'ragnarok-pvm-benchmark' and tuple(package.get(key) for key in fields) not in known:
                 raise ValueError('Unpinned benchmark dependency: '+package['name'])
+
+        # Reuse the exact historical bytes for source, prefix and normalized guest lock checks.
+        sources = provenance['upstream_sources']
+        prefix = provenance.get('upstream_prefix')
+        names = set(sources).union(HISTORICAL_LOCKS)
+        if prefix:
+            names.add(prefix['path'])
+        blobs = {name: historical_blob(upstream, revision, name) for name in sorted(names)}
+        for name, expected in sources.items():
+            if hashlib.sha256(blobs[name]).hexdigest() != expected:
+                raise ValueError('Changed historical guest source: '+name)
+        if prefix:
+            raw = blobs[prefix['path']][:prefix['bytes']]
+            if hashlib.sha256(raw).hexdigest() != prefix['sha256']:
+                raise ValueError('Changed guest source prefix')
+        if guest != 'sieve':
+            # Adapted guest packages must be present in the historical upstream closures.
+            known_guest = {tuple(p.get(key) for key in fields)
+                           for name in HISTORICAL_LOCKS
+                           for p in tomllib.loads(blobs[name].decode())['package']}
+            for package in tomllib.loads((target/'guest-Cargo.lock').read_text())['package']:
+                if tuple(package.get(key) for key in fields) not in known_guest:
+                    raise ValueError('Unpinned guest dependency: '+package['name'])
     return provenance
 
 
