@@ -1,13 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded fixed-request CE128/129/136/143 framing. Parent owns native retirement and deadlines;
+## Bounded fixed-request CE128/129/136/142/143 framing. Parent owns native retirement and deadlines;
 ## callbacks retain bytes only, and the host resolves canonical requests outside engine calls.
 import ../quic/transport
 
 type
-  ReadKind* {.pure.} = enum ## Only fixed-request canonical retrieval methods share this route.
-    Blocks = 128, State = 129, Report = 136, Preimage = 143
+  ReadKind* {.pure.} = enum ## Fixed-request content retrieval and bare-FIN announcements share bounded framing.
+    Blocks = 128, State = 129, Report = 136, PreimageAnnouncement = 142, Preimage = 143
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -15,9 +15,12 @@ type
     selector: ReadKind
     payload: array[98, byte]
     length: int
+  ReadEffect* {.pure.} = enum ## Local backend planning hints never travel on the wire or establish a state certificate.
+    None, FetchPreimage
   ReadReply* = object ## Frozen framed bytes are bound to all originating request facts.
     request: ReadRequest
     wire: seq[byte]
+    effect: ReadEffect
   ReadResult*[T] = object ## Private success tags gate all extraction.
     case status: ReadError
     of None: completed: T
@@ -52,6 +55,7 @@ func requestLength(kind: ReadKind): int =
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
   of ReadKind.Report, ReadKind.Preimage: 32
+  of ReadKind.PreimageAnnouncement: 40
 proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
   ## Copy only complete admitted payload bytes; no mutable fixed backing array escapes.
   result = newSeq[byte](request.length)
@@ -67,11 +71,25 @@ func sameRequest(left, right: ReadRequest): bool =
   ## Full fixed-array equality prevents foreign/stale work from targeting a different request.
   left.ready and right.ready and left.selector == right.selector and left.length == right.length and
       left.payload == right.payload
-proc captureReadReply*(request: ReadRequest, wire: openArray[byte]): ReadResult[ReadReply] =
+func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
+  ## CE142 acknowledges with FIN alone; ordinary content replies use one message and CE129 uses two.
+  if request.selector == ReadKind.State: 2
+  elif request.selector == ReadKind.PreimageAnnouncement: 0
+  else: 1
+func minimumReplyBytes*(request: ReadRequest): uint64 {.requires: request.valid.} =
+  ## Framing minima include only actual E4 messages, never a fabricated acknowledgment prefix.
+  uint64(request.replyMessageCount*4)
+func effect*(reply: ReadReply): ReadEffect =
+  ## Only the host's own canonical worker output supplies this non-wire planning hint.
+  reply.effect
+proc captureReadReply*(request: ReadRequest, wire: openArray[byte],
+    effect = ReadEffect.None): ReadResult[ReadReply] =
   ## Freeze only an exact bounded sequence of E4 messages; this grants no state/consensus authority.
   if not request.ready: return ReadResult[ReadReply](status: ReadError.InvalidRequest)
   if wire.len > MaxReadReplyBytes: return ReadResult[ReadReply](status: ReadError.LimitExceeded)
-  let count = if request.selector == ReadKind.State: 2 else: 1
+  if effect != ReadEffect.None and request.selector != ReadKind.PreimageAnnouncement:
+    return ReadResult[ReadReply](status: ReadError.InvalidRequest)
+  let count = request.replyMessageCount
   var cursor = 0
   for message in 0..<count:
     if wire.len-cursor < 4: return ReadResult[ReadReply](status: ReadError.InvalidRequest)
@@ -84,7 +102,8 @@ proc captureReadReply*(request: ReadRequest, wire: openArray[byte]): ReadResult[
   if cursor != wire.len: return ReadResult[ReadReply](status: ReadError.InvalidRequest)
   var copied = newSeq[byte](wire.len)
   for index in 0..<wire.len: copied[index] = wire[index]
-  ReadResult[ReadReply](status: ReadError.None, completed: ReadReply(request: request, wire: copied))
+  ReadResult[ReadReply](status: ReadError.None, completed: ReadReply(request: request, wire: copied,
+      effect: effect))
 func byteLength*(reply: ReadReply): int =
   ## Inspect frozen wire extent before admitting a host-side output copy against aggregate credit.
   reply.wire.len
