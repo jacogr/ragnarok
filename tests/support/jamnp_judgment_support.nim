@@ -25,22 +25,23 @@ proc actualSupportLimits*(): JudgmentSupportLimits =
     readBytes: ByteLimit(4000000), workspaceBytes: ByteLimit(64000000), retainedBytes: ByteLimit(
         4000000),
     hashBytes: ByteLimit(8000000), hashes: ElementLimit(4096))
-proc actualNegativeClaim*(fixture: AuditContextFixture, guarantee: Guarantee): SignedJudgmentClaim =
+proc actualNegativeClaim*(fixture: AuditContextFixture, guarantee: Guarantee,
+    auditor = 1): SignedJudgmentClaim =
   ## A real original auditor signs the hash of separately certified raw work, while supporting credentials stay outside the GP judgment signature domain.
   let source = supportFixture(fixture)
   let supported = verifyGuaranteeSupport(guarantee, source.plan, supportLimits()).value
   let hash = supported.supportInfo.value.report
   var raw = default(array[32, byte])
-  raw[0] = 12
+  raw[0] = byte(11+auditor)
   let seed = importSeed(raw).value
   let context = captureAuditContext(fixture.view, fixture.blockHash, auditLimits()).value
   assert array[32, byte](seed.publicKey.value) == array[32, byte](context.auditorAt(
-      1).value.ed25519)
+      auditor).value.ed25519)
   var message: seq[byte] = @[]
   for character in "jam_invalid": message.add(byte(ord(character)))
   for octet in array[32, byte](hash): message.add(octet)
   let record = AuditJudgment(epoch: DisputeEpoch(context.contextInfo.value.epoch),
-    validator: JudgeIndex(1), valid: false, report: hash,
+    validator: JudgeIndex(uint16(auditor)), valid: false, report: hash,
     signature: DisputeSignature(array[64, byte](sign(seed, message).value)),
     slot: guarantee.slot, credentialCount: guarantee.credentialCount,
         credentials: guarantee.credentials)

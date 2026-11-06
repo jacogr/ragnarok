@@ -154,6 +154,12 @@ proc judgmentTlsChecks*(fixture: AuditContextFixture) {.raises.} =
   discard exchange(receiver, sender, peer, [b, bad], [first, second], [a.report, b.report], now, false)
   assert receiver.receivedJudgments == 2 and receiver.retainedJudgmentCount == 2 and
       receiver.pendingForcedAudits == 1, "late original support failure publishes no judgment or forced-audit prefix"
+  let secondAuditor = actualNegativeClaim(fixture, first, auditor = 2).judgmentRecord
+  assert exchange(receiver, sender, peer, [secondAuditor], [first, second],
+      [a.report, b.report], now, true) == 0
+  assert receiver.retainedJudgmentCount == 3 and receiver.pendingForcedAudits == 2
+  assert receiver.pendingForcedAudit(0).originId == receiver.pendingForcedAudit(1).originId,
+      "distinct original signatures share one exact private evaluation origin"
   var hash: seq[byte] = @[]
   for octet in array[32, byte](a.report): hash.add(octet)
   let query = decodeReadRequest(ReadKind.Report, hash).value
