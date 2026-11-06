@@ -4,7 +4,7 @@
 
 import std/assertions
 import ../machine
-import ./native_ir
+import ./[native_ir, native_control]
 when defined(pvmX86Jit):
   import ./x86_jit
 elif defined(pvmArm64Jit):
@@ -22,6 +22,9 @@ when defined(pvmX86Jit):
   proc arenaCall(handle: nil pointer, offset: uint32, registers: pointer): cint {.cdecl,
       importc: "pvm_x86_arena_call", header: "x86_memory.h".}
     ## Register-only invocation ABI returns a checked completion status.
+  proc arenaRegion(handle: nil pointer, offset: uint32, registers, context: pointer): uint32 {.
+      cdecl, importc: "pvm_x86_arena_region", header: "x86_memory.h".}
+    ## Two transient borrows and a returned stream coordinate.
 elif defined(pvmArm64Jit):
   proc arenaCreate(): nil pointer {.cdecl, importc: "pvm_arm64_arena_create",
       header: "arm64_memory.h".}
@@ -35,11 +38,18 @@ elif defined(pvmArm64Jit):
   proc arenaCall(handle: nil pointer, offset: uint32, registers: pointer): cint {.cdecl,
       importc: "pvm_arm64_arena_call", header: "arm64_memory.h".}
     ## Register-only invocation ABI returns a checked completion status.
+  proc arenaRegion(handle: nil pointer, offset: uint32, registers, context: pointer): uint32 {.
+      cdecl, importc: "pvm_arm64_arena_region", header: "arm64_memory.h".}
+    ## Two transient borrows and a returned stream coordinate.
 
-type NativeImage* = object ## Exclusive published pure image. The complete owning value moves between threads.
+proc abortNativeReceipt*() {.cdecl, importc: "abort", header: "<stdlib.h>", noreturn.}
+  ## Internal ABI/receipt failure cannot unwind into guest replay or publish a partial snapshot.
+
+type NativeImage* = object ## Exclusive published image with its exact call ABI.
   handle: nil pointer
   offset: uint32
   bytesValue: uint64
+  kindValue: NativeKind
 
 proc `=copy`*(destination: var NativeImage, source: NativeImage) {.error.}
   ## Executable authority cannot be duplicated by copying its POD handle.
@@ -50,6 +60,7 @@ proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
   image.handle = nil
   image.offset = 0
   image.bytesValue = 0
+  image.kindValue = NativeKind.PurePrefix
 proc `=destroy`*(image: NativeImage) =
   ## Default, failed and moved-from images own no executable storage.
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
@@ -81,26 +92,39 @@ func codeBytes*(image: NativeImage): uint64 =
   ## Copied occupancy; one platform arena also reserves its maintained one-MiB backing allocation.
   image.bytesValue
 
+func kind*(image: NativeImage): NativeKind =
+  ## The image tag must match the owner certificate before calling the selected ABI.
+  image.kindValue
+
 proc lowerNative*(span: NativeSpan): NativeImage =
   ## Called ONLY by the compiler worker: private emission, mapping and coherency finish before return.
   result = default(NativeImage)
   if not nativePlatformSupported() or span.len == 0: return
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
+    let loop = span.loopInfo
     when defined(pvmX86Jit):
-      var body = default(X86Block)
-      for index in 0..<span.len:
-        let op = span.operation(index)
-        emitX86Operation(body, op.opcode, op.slots, op.immediate)
-      var image = takeX86Instructions(body)
-      image.add(0xc3'u8) # RET: pop caller's return RIP; pure leaf uses only SysV caller-saved registers.
+      var image: seq[byte] = @[]
+      if loop.kind == NativeKind.ClosedRegisterLoop:
+        image = encodeX86Loop(span, loopControl(loop))
+      else:
+        var body = default(X86Block)
+        for index in 0..<span.len:
+          let op = span.operation(index)
+          emitX86Operation(body, op.opcode, op.slots, op.immediate)
+        image = takeX86Instructions(body)
+        image.add(0xc3'u8) # RET: pop caller's return RIP; pure leaf uses SysV caller-saved registers.
       let count = image.len
     else:
-      var body = default(ArmBlock)
-      for index in 0..<span.len:
-        let op = span.operation(index)
-        emitArmOperation(body, op.opcode, op.slots, op.immediate)
-      var image = armInstructions(body)
-      image.add(0xd65f03c0'u32) # RET X30: return through caller's link register; no stack frame or saved registers.
+      var image: seq[uint32] = @[]
+      if loop.kind == NativeKind.ClosedRegisterLoop:
+        image = encodeArmLoop(span, loopControl(loop))
+      else:
+        var body = default(ArmBlock)
+        for index in 0..<span.len:
+          let op = span.operation(index)
+          emitArmOperation(body, op.opcode, op.slots, op.immediate)
+        image = armInstructions(body)
+        image.add(0xd65f03c0'u32) # RET X30: return via link register without a stack frame.
       if image.len > NativeImageByteLimit div 4: return # Prove multiplication before computing byte extent.
       let count = image.len*4
     # Both adapters report into the same common complete-image byte ceiling.
@@ -111,10 +135,21 @@ proc lowerNative*(span: NativeSpan): NativeImage =
     if offset < 0:
       arenaRelease(handle)
       return
-    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(count))
+    result = NativeImage(handle: handle, offset: uint32(offset), bytesValue: uint64(count),
+      kindValue: loop.kind)
 
 proc enterNative*(image: NativeImage, registers: var RegisterFile) =
   ## Borrow only the current register file; a pure image must complete, and is never replayed after effects.
-  assert image.handle != nil
+  assert image.handle != nil and image.kind == NativeKind.PurePrefix
   when defined(pvmX86Jit) or defined(pvmArm64Jit):
     assert arenaCall(image.handle, image.offset, addr registers[0]) == 1
+
+proc enterNativeLoop*(image: NativeImage, registers: var RegisterFile,
+    context: var NativeLoopContext): uint32 =
+  ## The region wrapper borrows two buffers for this call only.
+  assert sizeof(RegisterFile) == 104 and sizeof(NativeLoopContext) == 24
+  if image.handle == nil or image.kind != NativeKind.ClosedRegisterLoop: abortNativeReceipt()
+  when defined(pvmX86Jit) or defined(pvmArm64Jit):
+    arenaRegion(image.handle, image.offset, addr registers[0], addr context)
+  else:
+    abortNativeReceipt()

@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Bounded copied pure-register IR shared by every native lowerer. No invocation state is retained.
+## Bounded copied register IR shared by every native lowerer. No invocation state is retained.
 
 import std/assertions
 import ../program
@@ -15,6 +15,19 @@ const
   NativeInvocationFloor* = 4096'u64 ## Initial shared coarse policy; deliberately not a measured break-even.
 
 type
+  NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
+    PurePrefix, ClosedRegisterLoop
+  NativeLoopRightKind* {.pure.} = enum ## Right operand of the certified unsigned comparison.
+    Register, Immediate
+  NativeLoopInfo* = object  ## Copied source certificate for one resolved whole block.
+    header*, exitHeader*: uint32
+    sourceSpan*: uint32     ## Zero identifies an unpromoted pure prefix.
+    price*: uint64
+    slots*: RegisterSlots   ## Original unsigned branch operands.
+    rightKind*: NativeLoopRightKind
+    rightImmediate*: uint64 ## Exact checked sign extension for an immediate comparison.
+  NativeLoopContext* = object ## Fresh two-borrow entry context: gas, quota and visits at 0/8/16.
+    gas*, remaining*, visits*: uint64
   NativeOperation* = object ## Copied validated semantics; register coordinates are not register values.
     opcode*: byte
     slots*: RegisterSlots
@@ -28,6 +41,24 @@ type
     length: int
     entryValue, pastValue, firstValue, lastValue: uint32
     epochValue: uint64
+    loopValue: NativeLoopInfo
+
+func kind*(loop: NativeLoopInfo): NativeKind =
+  ## Only a complete source certificate selects the region ABI.
+  if loop.sourceSpan == 0: NativeKind.PurePrefix else: NativeKind.ClosedRegisterLoop
+
+func loopInfo*(span: NativeSpan): NativeLoopInfo {.inline.} =
+  ## Copy only the closed loop certificate, with an empty value for a pure prefix.
+  span.loopValue
+
+func kind*(span: NativeSpan): NativeKind {.inline.} =
+  ## Read the exact candidate kind without copying its call certificate.
+  span.loopValue.kind
+
+proc promote*(span: var NativeSpan, loop: NativeLoopInfo) =
+  ## The session owns promotion authority and has validated the checked source certificate.
+  assert span.loopValue.sourceSpan == 0 and loop.sourceSpan != 0
+  span.loopValue = loop
 
 func initNativeSpan*(entry, first: uint32, epoch: uint64): NativeSpan =
   ## Start an unpublished candidate at an existing checked node and original source fact.
