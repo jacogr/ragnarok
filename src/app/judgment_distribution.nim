@@ -40,8 +40,7 @@ type
     claims: SignedJudgmentBatch
     inputs: seq[JudgmentSourceInput]
     replies: seq[ReadReply]
-    failedSources: array[128, FailedJudgmentSource]
-    failedCount: int
+    failedSources: seq[FailedJudgmentSource]
     sourceSlots: seq[uint64]
     wire: seq[byte]
     ordinal, primaryRetries, alternateRetries: int
@@ -213,7 +212,7 @@ proc clearClaim(owner: var JudgmentDispatcher) =
   owner.claims = default(SignedJudgmentBatch)
   owner.inputs = @[]
   owner.replies = @[]
-  owner.failedCount = 0
+  owner.failedSources = @[]
   owner.sourceSlots = @[]
   owner.wire = @[]
   owner.ordinal = 0
@@ -337,17 +336,17 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       let ordinal = completed.judgmentReceiptError.failedOrdinal
       let primaryCredit = owner.primaryRetries < owner.policy.attempts-1
       let alternateCredit = owner.alternateRetries < owner.policy.attempts-1
-      if ordinal >= 0 and ordinal < owner.inputs.len and (primaryCredit or alternateCredit):
+      if ordinal >= 0 and ordinal < owner.inputs.len and (primaryCredit or alternateCredit) and
+          owner.failedSources.len < 128:
         let failed = owner.inputs[ordinal]
         # At most 126 retried attempts can precede this failure in one message.
-        owner.failedSources[owner.failedCount] = FailedJudgmentSource(ordinal: ordinal,
-            attempt: JudgmentSourceAttempt(source: failed.source, membership: failed.membership))
-        inc owner.failedCount
+        owner.failedSources.add(FailedJudgmentSource(ordinal: ordinal,
+            attempt: JudgmentSourceAttempt(source: failed.source, membership: failed.membership)))
         var excluded = default(array[128, JudgmentSourceAttempt])
         var count = 0
-        for index in 0..<owner.failedCount:
-          if owner.failedSources[index].ordinal == ordinal:
-            excluded[count] = owner.failedSources[index].attempt
+        for source in owner.failedSources:
+          if source.ordinal == ordinal:
+            excluded[count] = source.attempt
             inc count
         let next = services.judgmentSource(owner.claims.claimAt(ordinal).value,
             excluded.toOpenArray(0, count-1), owner.sourceSlots[ordinal], primaryCredit, alternateCredit)
