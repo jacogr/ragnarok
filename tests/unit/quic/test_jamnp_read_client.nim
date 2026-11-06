@@ -16,6 +16,15 @@ proc main() {.raises.} =
   let blockRequest = decodeReadRequest(ReadKind.Blocks, blockPayload).value
   assert route.configure(blockRequest, ByteLimit(3)) == ReadError.LimitExceeded
   assert route.bindStream(NativeStream(nil)) == ReadError.InvalidStream
+  let largeRequest = decodeReadRequest(ReadKind.Bundle, newSeq[byte](32)).value
+  var largeRoute = default(ReadClientRoute)
+  assert largeRoute.configure(largeRequest, ByteLimit(16*1024*1024)) == ReadError.None
+  assert route.configure(blockRequest, ByteLimit(16*1024*1024)) == ReadError.LimitExceeded
+  let shardPayload = newSeq[byte](34)
+  let threeFrames = @[0'u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  exchangeClient(ReadKind.Availability, shardPayload, threeFrames, holdFin = true)
+  exchangeClient(ReadKind.Audit, shardPayload, @[0'u8, 0, 0, 0, 0, 0, 0, 0], holdFin = true)
+  exchangeClient(ReadKind.Bundle, newSeq[byte](32), @[3'u8, 0, 0, 0, 4, 5, 6], holdFin = true)
   exchangeClient(ReadKind.Blocks, blockPayload, @[0'u8, 0, 0, 0], holdFin = true,
     maximum = ByteLimit(4), budget = 4)
   exchangeClient(ReadKind.Preimage, newSeq[byte](32), @[3'u8, 0, 0, 0, 1, 2, 3])

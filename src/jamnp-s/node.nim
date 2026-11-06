@@ -429,7 +429,7 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 142'u8, 143'u8]:
+    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 142'u8, 143'u8, 147'u8]:
       if kind == 142'u8 and not owner.node.isValidator:
         owner[].closeFrame(position)
         return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
