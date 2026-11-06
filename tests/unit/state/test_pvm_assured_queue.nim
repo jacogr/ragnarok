@@ -103,9 +103,9 @@ short = config
 short.queue.queues.epochSlots = EpochSlots(24)
 expect(prepareAssuredQueue(source, short), AssuredQueueError.ProfileMismatch)
 short = config
-short.admission.ancestors.headers = ElementLimit(3)
+short.admission.ancestors.headers = ElementLimit(4)
 expect(prepareAssuredQueue(source, short), AssuredQueueError.None)
-short.admission.ancestors.headers = ElementLimit(2)
+short.admission.ancestors.headers = ElementLimit(3)
 expect(prepareAssuredQueue(source, short), AssuredQueueError.LimitExceeded)
 short = config
 short.admission.credentials.assignments.roster.cores = CoreCount(2)
