@@ -183,6 +183,22 @@ when NativeCheckedReadEnabled:
     result = NativeImage(handle: handle, offset: uint32(offset),
       bytesValue: uint64(count)*uint64(unitBytes), kindValue: NativeKind.CheckedReadBody)
 
+  when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+    proc checkedReadAbiNative(handle: nil pointer, offset: uint32,
+        registers, context: pointer): uint64 {.cdecl, importc: "pvm_x86_checked_read_abi_proof",
+        header: "x86_resident_access_proof.h".}
+
+    proc enterNativeReadBodyAbiProof*(image: NativeImage, registers: var RegisterFile,
+        context: var NativeReadContext): bool {.noinline.} =
+      ## Check all six saved hardware registers around the actual two-borrow ABI.
+      assert isReadBody(image)
+      assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72
+      let tagged = checkedReadAbiNative(image.handle, image.offset, addr registers[0], addr context)
+      assert tagged shr 32 == 1
+      let status = uint32(tagged and 0xffffffff'u64)
+      assert status == NativeReadSuccess or status == NativeReadRefusal
+      status == NativeReadSuccess
+
   proc enterNativeReadBody*(image: NativeImage, registers: var RegisterFile,
       context: var NativeReadContext): bool =
     ## A complete read body publishes registers once. A refused entry preserves the entire file.

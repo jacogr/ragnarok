@@ -216,7 +216,7 @@ proc writeAccess(fragment: var X86Block, access: X86CanonicalAccess, slot: range
   ## RAX is committed after every operation exactly as before accessor parameterization.
   put(fragment, [0x48'u8, 0x89, 0x47, byte(int(slot)*8)])
 
-when defined(pvmX86ResidentProof):
+when (defined(pvmX86Jit) and NativeCheckedReadEnabled) or defined(pvmX86ResidentProof):
   include ./x86_resident_access
 
 template emitX86OperationAccess(fragment: var X86Block, access: untyped, opcode: byte,
@@ -709,39 +709,61 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(code, [0x48'u8, 0x83, 0xc4, 0x68]) # ADD RSP,104 releases the private register stage.
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
-    proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
-      ## Stage the certified body on the stack, then commit only its written slots.
-      assert body.complete and sizeof(RegisterFile) == 104
-      var code = default(X86Block)
-      var fixes: seq[X86CycleFixup] = @[]
-      var labels = default(array[1+4*int(NativeReadFactLimit), int])
-      var nextLabel = 1
-      var dirty = 0'u16
-      const refusal = 0'u8
-
-      # No calls or callee-saved registers. R10/R11 retain the two SysV borrows.
-      put(code, [0x48'u8, 0x83, 0xec, 0x68]) # SUB RSP,104 reserves the 13-slot stage.
-      put(code, [0x49'u8, 0x89, 0xf2]) # MOV R10,RSI saves the extent table.
-      put(code, [0x49'u8, 0x89, 0xfb]) # MOV R11,RDI saves the original register file.
-      put(code, [0x48'u8, 0x89, 0xfe]) # MOV RSI,RDI sets the copy source.
-      put(code, [0x48'u8, 0x89, 0xe7]) # MOV RDI,RSP sets the copy destination.
-      put(code, [0xb9'u8]) # MOV ECX,13 selects the complete register file.
-      cycleWord(code, 13)
-      put(code, [0xf3'u8, 0x48, 0xa5]) # REP MOVSQ copies forward with SysV's clear direction flag.
-      put(code, [0x48'u8, 0x89, 0xe7]) # MOV RDI,RSP points canonical emission at the stage.
-
+    func readBodyDirty(body: NativeReadBody): uint32 =
+      ## Select only the destinations the existing checked-read certificate can write.
+      result = 0
       for index in 0..<body.len:
-        # Scalar operations use only RAX/RCX/RDX/R8 and the staged RDI array.
+        let op = body.operation(index)
+        let slot = if nativeReadOpcode(op.opcode): op.slots.aIndex else: op.slots.destinationIndex
+        result = result or (1'u32 shl int(slot))
+
+    proc readBodyBase(code: var X86Block, access: X86CanonicalAccess, slot: range[0..12]) =
+      put(code, [0x8b'u8, 0x57, byte(slot*8)]) # MOV EDX,[RDI+slot*8].
+
+    type X86CheckedReadAccess = object
+      bank: X86ResidentAccess
+      liveIns, written: uint32
+
+    proc readBodyLiveIn(access: var X86CheckedReadAccess, slot: range[0..12]) =
+      let bit = 1'u32 shl int(slot)
+      if access.bank.registers[slot] != 0 and (access.written and bit) == 0:
+        access.liveIns = access.liveIns or bit
+
+    proc readAccess(code: var X86Block, access: var X86CheckedReadAccess,
+        slot: range[0..12], right: bool) =
+      readBodyLiveIn(access, slot)
+      readAccess(code, access.bank, slot, right)
+
+    proc writeAccess(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
+      assert access.bank.registers[slot] != 0 # Unmapped lanes are read-only throughout this leaf.
+      writeAccess(code, access.bank, slot)
+      access.written = access.written or (1'u32 shl int(slot))
+
+    proc readBodyBase(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
+      readBodyLiveIn(access, slot)
+      let encoded = access.bank.registers[slot]
+      if encoded == 0:
+        readBodyBase(code, X86CanonicalAccess(), slot)
+      else:
+        let hardware = encoded-1
+        if hardware >= 8: put(code, [0x41'u8]) # REX.B selects R12–R15D when required.
+        put(code, [0x8b'u8, byte(0xd0 or (hardware and 7))]) # MOV EDX,resident32.
+
+    template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
+        labels: var array[1+4*int(NativeReadFactLimit), int], body: NativeReadBody, access: untyped) =
+      ## Preserve one guard and load emitter for the stack and resident access policies.
+      var nextLabel = 1
+      const refusal = 0'u8
+      for index in 0..<body.len:
         let op = body.operation(index)
         if not nativeReadOpcode(op.opcode):
-          emitX86Operation(code, op.opcode, op.slots, op.immediate)
-          dirty = dirty or (1'u16 shl int(op.slots.destinationIndex))
+          emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
         else:
-          # Address formation uses the old staged base even when the destination aliases it.
+          # Address formation consumes the old base even when the load replaces that lane.
           let opcode = int(op.opcode)
           assert opcode >= 124 and opcode <= 130 # Prove the local width-table conversion.
           let width = byte(indirectMemoryAccess(range[120..130](opcode)).width)
-          put(code, [0x8b'u8, 0x57, byte(int(op.slots.bIndex)*8)]) # MOV EDX,[RDI+base*8].
+          readBodyBase(code, access, op.slots.bIndex)
           put(code, [0x81'u8, 0xc2]) # ADD EDX,imm32 wraps modulo 2^32.
           cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
           # One accept label and three skip labels per load fit the fact-bounded table.
@@ -769,19 +791,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
           of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
           else: assert false # The common certificate admits only the three explicit load forms.
-          writeAccess(code, X86CanonicalAccess(), op.slots.aIndex) # MOV [RDI+destination*8],RAX.
-          dirty = dirty or (1'u16 shl int(op.slots.aIndex))
+          writeAccess(code, access, op.slots.aIndex)
 
-      for slot in 0..12:
-        # Only the success epilogue can publish guest registers after all guards pass.
-        if (dirty and (1'u16 shl slot)) != 0:
-          readSlot(code, slot, false) # MOV RAX,[RDI+slot*8] reads the final staged value.
-          put(code, [0x49'u8, 0x89, 0x43, byte(slot*8)]) # MOV [R11+slot*8],RAX commits one slot.
-      readBodyReturn(code, NativeReadSuccess)
-
-      # Every guard miss jumps here before caller-visible stores and discards all staged work.
-      labels[int(refusal)] = code.bytes.len
-      readBodyReturn(code, NativeReadRefusal)
+    proc sealCheckedRead(code: var X86Block, fixes: seq[X86CycleFixup],
+        labels: array[1+4*int(NativeReadFactLimit), int]): seq[byte] =
       if code.bytes.len > NativeImageByteLimit: return @[]
       for fix in fixes:
         # All targets are forward and fit rel32 under the image byte ceiling.
@@ -791,6 +804,98 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         for shift in 0..<4:
           code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
       takeX86Instructions(code)
+
+    proc checkedReadStackInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
+      ## Stage the certified body on the stack, then commit only its written slots.
+      assert body.complete and sizeof(RegisterFile) == 104
+      var code = default(X86Block)
+      var fixes: seq[X86CycleFixup] = @[]
+      var labels = default(array[1+4*int(NativeReadFactLimit), int])
+      let access = X86CanonicalAccess()
+
+      # No calls or callee-saved registers. R10/R11 retain the two SysV borrows.
+      put(code, [0x48'u8, 0x83, 0xec, 0x68]) # SUB RSP,104 reserves the 13-slot stage.
+      put(code, [0x49'u8, 0x89, 0xf2]) # MOV R10,RSI saves the extent table.
+      put(code, [0x49'u8, 0x89, 0xfb]) # MOV R11,RDI saves the original register file.
+      put(code, [0x48'u8, 0x89, 0xfe]) # MOV RSI,RDI sets the copy source.
+      put(code, [0x48'u8, 0x89, 0xe7]) # MOV RDI,RSP sets the copy destination.
+      put(code, [0xb9'u8]) # MOV ECX,13 selects the complete register file.
+      cycleWord(code, 13)
+      put(code, [0xf3'u8, 0x48, 0xa5]) # REP MOVSQ copies forward with SysV's clear direction flag.
+      put(code, [0x48'u8, 0x89, 0xe7]) # MOV RDI,RSP points canonical emission at the stage.
+
+      emitCheckedReadOperations(code, fixes, labels, body, access)
+
+      for slot in 0..12:
+        # Only the success epilogue can publish guest registers after all guards pass.
+        if (dirty and (1'u32 shl slot)) != 0:
+          readSlot(code, slot, false) # MOV RAX,[RDI+slot*8] reads the final staged value.
+          put(code, [0x49'u8, 0x89, 0x43, byte(slot*8)]) # MOV [R11+slot*8],RAX commits one slot.
+      readBodyReturn(code, NativeReadSuccess)
+
+      # Every guard miss jumps here before caller-visible stores and discards all staged work.
+      labels[0] = code.bytes.len
+      readBodyReturn(code, NativeReadRefusal)
+      sealCheckedRead(code, fixes, labels)
+
+    proc emitCheckedReadResidentEntry(code: var X86Block, access: X86CheckedReadAccess) =
+      ## Save exactly the selected hardware lanes and initialize mapped reads before first write.
+      for slot in 0..12:
+        let encoded = access.bank.registers[slot]
+        if encoded != 0:
+          let hardware = encoded-1
+          if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the PUSH register.
+          put(code, [byte(0x50 or (hardware and 7))]) # PUSH resident64.
+          if (access.liveIns and (1'u32 shl slot)) != 0:
+            put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x8b,
+              byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV resident64,[RDI+slot*8].
+      put(code, [0x49'u8, 0x89, 0xf2]) # MOV R10,RSI saves the extent table.
+
+    proc emitCheckedReadResidentReturn(code: var X86Block, access: X86CheckedReadAccess,
+        status: uint32) =
+      put(code, [0xb8'u8]) # MOV EAX,status defines the full scalar result.
+      cycleWord(code, status)
+      for index in 0..12:
+        let encoded = access.bank.registers[12-index]
+        if encoded != 0:
+          let hardware = encoded-1
+          if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the POP register.
+          put(code, [byte(0x58 or (hardware and 7))]) # POP resident64.
+      put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
+
+    proc checkedReadResidentInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
+      var access = X86CheckedReadAccess(bank: x86ResidentAccess(dirty), liveIns: 0, written: 0)
+      var code = default(X86Block)
+      var fixes: seq[X86CycleFixup] = @[]
+      var labels = default(array[1+4*int(NativeReadFactLimit), int])
+      emitCheckedReadOperations(code, fixes, labels, body, access)
+      assert access.written == dirty
+      for slot in 0..12:
+        let encoded = access.bank.registers[slot]
+        if encoded != 0:
+          let hardware = encoded-1
+          put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x89,
+            byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV [RDI+slot*8],resident64.
+      emitCheckedReadResidentReturn(code, access, NativeReadSuccess)
+      labels[0] = code.bytes.len # Late refusal skips every guest-file store.
+      emitCheckedReadResidentReturn(code, access, NativeReadRefusal)
+
+      var entry = default(X86Block)
+      emitCheckedReadResidentEntry(entry, access)
+      if entry.bytes.len + code.bytes.len > NativeImageByteLimit: return @[]
+      # A prepended prologue shifts each branch and its target equally.
+      put(entry, sealCheckedRead(code, fixes, labels))
+      takeX86Instructions(entry)
+
+    proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
+      assert body.complete and sizeof(RegisterFile) == 104
+      let dirty = readBodyDirty(body)
+      var count = 0
+      for slot in 0..12:
+        if (dirty and (1'u32 shl slot)) != 0: inc count
+      if count <= X86ResidentHardware.len:
+        return checkedReadResidentInstructions(body, dirty)
+      checkedReadStackInstructions(body, dirty)
 
   proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
       price: uint64, span: byte, guard: uint8) =
