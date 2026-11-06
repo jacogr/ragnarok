@@ -4,17 +4,20 @@
 
 ## Actual published available reports, header entropy and original prior-role credentials define audit context; absent bodies and assignment disappearance cannot substitute authority.
 import std/[assertions, syncio, monotimes, times, posix/posix]
-import ../../../src/app/[services, options]
+import ../../../src/app/[services, options, audit_state]
 import ../../../src/app/proof/[worker, work_submission]
 import ../../../src/rpc/server
 import ../../../src/jamnp-s/assurance_store
-import ../../../src/jamnp-s/[audit_context, audit_receipt]
-import ../../../src/chain/[genesis, provider]
+import ../../../src/jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation, audit_registry]
+import ../../../src/chain/[genesis, provider, parameters]
+from ../../../src/state/store import sameStateSnapshot
+from ../../../src/codec/state/trie import TrieNodeLimit
 import ../../../src/codec/[bounded, owned, report_owned, block_codec]
 import ../../../src/codec/state/[safrole, layout]
 import "../../../src/state/block/transition"
 import "../../../src/state/block/admission"
 import ../../../src/crypto/primitives
+import ../../support/jamnp_audit_evaluation
 import ../../support/[jamnp_audit_context, arc_evidence, current_application_context, jamnp_audit_validation]
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
@@ -78,6 +81,12 @@ proc checked(fixture: AuditContextFixture) =
   assert captureAuditContext(fixture.view, fixture.blockHash, limited).error ==
       AuditContextError.LimitExceeded,
     "source-free output capacity is explicit"
+  limited = auditLimits()
+  limited.workspaceBytes = ByteLimit(1000000)
+  assert captureAuditContext(fixture.view, fixture.blockHash, limited).error ==
+      AuditContextError.LimitExceeded,
+    "copied chapters alone cannot fund whole-map descriptors and fixed transition scratch"
+
 proc hostileBody(fixture: AuditContextFixture) =
   ## A structurally retained same-header/same-map body is not authenticated merely because its byte framing succeeds.
   let context = captureAuditContext(fixture.view, fixture.blockHash, auditLimits()).value
@@ -114,6 +123,50 @@ proc cancellation(fixture: AuditContextFixture) =
   assert completed.kind == WorkJobResultKind.AuditPlanningFailure and
       completed.auditPlanningError.error == AuditContextError.Cancelled,
     "a queued input never stores a caller-supplied cancellation callback"
+proc originCycle(fixture: AuditContextFixture) =
+  ## Actual complete predecessor ownership survives only through immutable origin/report capabilities and retires with the last target alias.
+  let captured = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
+      auditOriginLimits())
+  assert captured.error == AuditOriginError.None, "genuine bounded execution origin: " &
+      $captured.error
+  let origin = captured.value
+  let info = origin.originInfo.value
+  let parent = fixture.prior.bestBlock.value
+  assert info.reports == 2 and info.entries == parent.stateSnapshot.commitment.entries and
+      info.valueBytes > 0, "original complete state and available report population"
+  assert array[32, byte](info.parentHash) == array[32, byte](parent.blockHash) and
+    array[32, byte](info.parentRoot) == array[32, byte](parent.stateRoot), "exact actual predecessor identities"
+  let target = origin.reportAt(0).value
+  assert target.valid and sameStateSnapshot(target.originState.value, parent.stateSnapshot), "full-state source is the original immutable owner"
+  assert target.originParameters.value.sameParameterProfile(parent.chainParameters), "whole original execution parameter profile"
+  assert uint64(target.originReport.value.ownedReportInfo.value.core) == 0, "original selected guarantee report cannot be replaced"
+  assert array[32, byte](target.originReportHash.value) == array[32, byte](
+      origin.originContext.value.auditReportHash(0).value), "report identity remains bound to its block and state"
+  assert origin.reportAt(-1).error == AuditOriginError.InvalidIndex and origin.reportAt(2).error ==
+      AuditOriginError.InvalidIndex, "origin target ordinals are checked before access"
+proc originChecks(fixture: AuditContextFixture) =
+  ## Independent entry/node/value ceilings and cancellation cannot expose a partially retained execution source.
+  originCycle(fixture)
+  var limited = auditOriginLimits()
+  limited.entries = ElementLimit(1)
+  assert captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), limited).error ==
+      AuditOriginError.LimitExceeded, "all unrelated full-map entries count toward retention"
+  limited = auditOriginLimits()
+  limited.nodes = TrieNodeLimit(1)
+  assert captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), limited).error ==
+      AuditOriginError.LimitExceeded, "whole original state topology is bounded"
+  limited = auditOriginLimits()
+  limited.valueBytes = ByteLimit(1)
+  assert captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), limited).error ==
+      AuditOriginError.LimitExceeded, "whole logical value accounting cannot return a pinned prefix"
+  let missing = captureAuditOrigin(fixture.prior, fixture.blockHash, auditLimits(),
+      auditOriginLimits())
+  assert missing.error == AuditOriginError.ContextFailure and missing.contextError.error ==
+      AuditContextError.UnknownBlock, "genuine original context failure is preserved"
+  assert captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits(),
+      assuranceScanControl(stopNow, nil)).error == AuditOriginError.Cancelled, "execution-only cancellation grants no retained state"
+  assert not default(AuditBlockOrigin).valid and default(AuditReportOrigin).originState.error ==
+      AuditOriginError.Uninitialized, "default origin and target cannot supply a full-state source"
 proc waitDone(worker: var StateProofWorker) =
   ## Observe synchronized scalar state while immutable view/source aliases belong to the fixed native thread.
   let deadline = getMonoTime()+initDuration(seconds = 10)
@@ -161,6 +214,77 @@ proc managed(fixture: AuditContextFixture) {.raises.} =
   assert owner.stateProofAvailable and not owner.assuranceStorageInfo.opened and
       not owner.assuranceSigningConfigured,
     "planning imports neither an archive nor a private signer"
+proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
+  ## A separately decoded trusted checkpoint can retain genuine authenticated archive material; only exact private evaluation crosses the managed native lease.
+  let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
+  let wire = fixture.originalWire(origin.reportAt(0).value)
+  var file = "audit-evaluation-services-" & $processId() & ".json"
+  writeFile(file, currentApplicationText(fixture.view.bestBlock.value))
+  defer:
+    discard posix.unlink(file.toCString())
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", file], settings)
+  var owner = default(Services)
+  defer:
+    owner.close()
+  assert owner.start(settings, "native audit evaluation"), "independently trusted current checkpoint"
+  assert owner.beginAuditEvaluation(default(AuditOriginId), 0, wire, evaluationLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "optional audit registry stays disabled by default"
+  assert owner.configureAudits(registryLimits()) and not owner.configureAudits(registryLimits()), "explicit bounded once-only retention"
+  assert owner.retainAuditOrigin(default(AuditBlockOrigin)).error ==
+      AuditRegistryError.InvalidSource, "default source supplies no backfill authority"
+  let id = owner.retainAuditOrigin(origin).value
+  assert owner.retainAuditOrigin(origin).value == id, "actual trusted block binds authentic whole origin idempotently"
+  assert owner.beginAuditEvaluation(default(AuditOriginId), 0, wire, evaluationLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "fabricated selector cannot choose complete state"
+  assert owner.beginAuditEvaluation(id, 2, wire, evaluationLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "original report ordinal remains bounded"
+  let started = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits())
+  assert started.error == StateProofAdmissionError.None and owner.rpc.chainPaused, "genuine registered execution owns the exact canonical lease"
+  assert owner.collectAudit(default(ProofWorkerTicket)).kind == ManagedAuditKind.Uninitialized, "foreign control cannot collect or expose a private capability"
+  owner.waitServices()
+  assert owner.collectStateProof(started.value).kind == ProofWorkerCompletionKind.Uninitialized and
+      owner.stateProofActive(started.value), "generic collection cannot leak a private evaluation graph even at Done"
+  assert owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).error ==
+      StateProofAdmissionError.Busy, "Done retains full exclusion until exact collection"
+  let completed = owner.collectAudit(started.value)
+  assert completed.kind == ManagedAuditKind.Evaluated and completed.evaluationInfo.positive and
+      completed.evaluationId == id and completed.evaluationOrdinal == 0, "actual whole execution becomes detached metadata after private registry retention"
+  assert owner.stateProofAvailable and not owner.rpc.chainPaused, "exact private collection restores ordinary canonical access"
+  assert owner.collectAudit(started.value).kind == ManagedAuditKind.Uninitialized, "stale completion cannot be collected twice"
+  let cancelled = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).value
+  owner.waitServices()
+  assert owner.cancelStateProof(cancelled), "cancel exact completed execution before collection"
+  assert owner.collectAudit(cancelled).kind == ManagedAuditKind.Cancelled, "cancelled Done cannot publish completed evaluation metadata"
+  var damaged = wire
+  damaged[0] = damaged[0] xor 1
+  let bad = owner.beginAuditEvaluation(id, 0, damaged, evaluationLimits()).value
+  owner.waitServices()
+  let refused = owner.collectAudit(bad)
+  assert refused.kind == ManagedAuditKind.EvaluationFailure and
+      refused.evaluationError.needsRecovery, "unproved corrupt direct data yields recovery requirement, never a negative capability"
+  let missingBody = owner.beginAuditOriginCapture(fixture.blockHash, auditLimits(),
+      auditOriginLimits()).value
+  owner.waitServices()
+  let unavailable = owner.collectAudit(missingBody)
+  assert unavailable.kind == ManagedAuditKind.OriginFailure and
+      unavailable.originError.contextError.error == AuditContextError.MissingBody, "trusted checkpoint alone cannot manufacture the original body or predecessor"
+  let stopped = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).value
+  owner.waitServices()
+  owner.stopStateProofs()
+  assert owner.collectAudit(stopped).kind == ManagedAuditKind.Uninitialized and
+      owner.stateProofAvailable, "joined stop revokes pending controls before another worker can borrow retained pins"
+  let repeated = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).value
+  owner.waitServices()
+  assert owner.collectAudit(repeated).kind == ManagedAuditKind.Evaluated, "joined proof restart preserves full retained obligations"
+  let closing = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).value
+  owner.waitServices()
+  owner.close()
+  assert owner.collectAudit(closing).kind == ManagedAuditKind.Uninitialized, "joined whole shutdown retires controls before full pins"
+  assert owner.start(settings, "new audit lifetime") and owner.configureAudits(registryLimits()), "new lifetime gets a fresh bounded namespace"
+  assert owner.beginAuditEvaluation(id, 0, wire, evaluationLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "old lifetime selector cannot select a new origin"
+
 proc native(worker: var StateProofWorker, fixture: AuditContextFixture, index: int) {.raises.} =
   ## Exact native collection and Done cancellation use the same genuinely published body and original source as synchronous qualification.
   var job = captureAuditPlanning(fixture.view, fixture.blockHash, auditLimits()).value
@@ -195,6 +319,40 @@ proc receiptNative(worker: var StateProofWorker, fixture: AuditContextFixture, w
       let value = completed.workSubmissionValue
       assert value.kind == WorkJobResultKind.AuditAnnouncementsQualified and
           value.qualifiedAuditAnnouncements.len == 2, "real shared-worker batch qualification"
+proc nativeEvaluation(worker: var StateProofWorker, fixture: AuditContextFixture,
+    iteration: int) {.raises.} =
+  ## Both private origin capture and full report comparison use real moved closed jobs; exact Done cancellation hides their entire source-bearing result.
+  var preparation = captureAuditOriginJob(fixture.view, fixture.blockHash, auditLimits(),
+      auditOriginLimits()).value
+  let pendingOrigin = worker.submit(preparation)
+  assert pendingOrigin.error == ProofWorkerError.None and not preparation.valid, "closed origin job moves actual history ownership"
+  worker.waitDone()
+  if iteration mod 3 == 0: assert worker.cancel(pendingOrigin.value), "exact completed full-origin cancellation"
+  let originCompletion = worker.collect(pendingOrigin.value)
+  if iteration mod 3 == 0:
+    assert originCompletion.kind == ProofWorkerCompletionKind.Cancelled, "cancelled source capture cannot expose a retained full map"
+    return
+  assert originCompletion.kind == ProofWorkerCompletionKind.WorkSubmitted, "actual full-origin native completion"
+  let prepared = originCompletion.workSubmissionValue
+  assert prepared.kind == WorkJobResultKind.AuditOriginPrepared, "actual source-bearing origin prepared on the worker"
+  let origin = prepared.preparedAuditOrigin
+  let target = origin.reportAt(0).value
+  var job = captureAuditEvaluationJob(target, fixture.originalWire(target), evaluationLimits()).value
+  let pending = worker.submit(job)
+  assert pending.error == ProofWorkerError.None and not job.valid, "closed evaluation moves its original full-state source"
+  worker.waitDone()
+  if iteration mod 2 == 0: assert worker.cancel(pending.value), "exact completed private evaluation cancellation"
+  let completed = worker.collect(pending.value)
+  if iteration mod 2 == 0:
+    assert completed.kind == ProofWorkerCompletionKind.Cancelled, "Done cancellation grants no positive or negative evaluation capability"
+  else:
+    assert completed.kind == ProofWorkerCompletionKind.WorkSubmitted, "actual whole-report native completion"
+    let checked = completed.workSubmissionValue
+    if checked.kind == WorkJobResultKind.AuditEvaluationFailure: echo "native evaluation: ",
+        checked.auditEvaluationError.error
+    assert checked.kind == WorkJobResultKind.AuditEvaluated and
+        checked.evaluatedAudit.matchesOrigin(target) and
+        checked.evaluatedAudit.evaluationInfo.value.positive, "only whole original report equality grants the private native capability"
 proc cycle(fixture: AuditContextFixture) =
   ## Complete private consensus forks, decoders and detached outputs retire before the next observation.
   let selected = captureAuditContext(fixture.view, fixture.blockHash, auditLimits())
@@ -208,20 +366,37 @@ proc main() {.raises.} =
       auditLimits()).value, fixture.view, auditLimits())
   hostileBody(fixture)
   cancellation(fixture)
+  originChecks(fixture)
+  evaluationChecks(fixture)
+  registryChecks(fixture)
   managed(fixture)
+  managedEvaluation(fixture)
   let insufficient = auditContextFixture(6)
   let none = captureAuditContext(insufficient.view, insufficient.blockHash, auditLimits())
   assert none.error == AuditContextError.None and none.value.contextInfo.value.reports == 0,
     "six of nine genuine votes do not manufacture newly available audit obligations"
+  let noOrigin = captureAuditOrigin(insufficient.view, insufficient.blockHash, auditLimits(),
+      auditOriginLimits())
+  assert noOrigin.error == AuditOriginError.NoReports, "no new availability requires no retained execution origin"
   var worker = default(StateProofWorker)
   assert worker.start(), "stable reusable audit worker"
-  defer: worker.close()
+  defer:
+    worker.close() # Joined shutdown precedes retirement of every borrowed source and fixture.
   native(worker, fixture, 1)
   receiptNative(worker, fixture, announcements)
+  nativeEvaluation(worker, fixture, 1)
+  nativeEvaluation(worker, fixture, 2)
+  nativeEvaluation(worker, fixture, 3)
   cycle(fixture)
   let before = getOccupiedMem()
   for iteration in 0..<1000:
-    if iteration mod 2 == 0:
+    if iteration mod 32 == 0:
+      nativeEvaluation(worker, fixture, iteration div 32) # Whole-source capture and actual private evaluation cancellation participate in the ARC observation.
+    elif iteration mod 16 == 0:
+      evaluationCycle(fixture) # Actual whole-report recomputation participates in mixed context/native/origin ARC release.
+    elif iteration mod 8 == 0:
+      originCycle(fixture) # Full-state pins, target aliases and refused paths release under the same repeated ARC observation.
+    elif iteration mod 2 == 0:
       cycle(fixture) # Re-run actual signature/body/availability qualification rather than copying a cached accepted plan.
     elif iteration mod 4 == 1:
       receiptNative(worker, fixture, announcements) # Native whole-batch success and Done cancellation participate in the repeated ARC witness.

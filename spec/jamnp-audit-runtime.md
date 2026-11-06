@@ -125,3 +125,82 @@ Receipt policy construction also validates the entire wire schema and requires i
 original-validator ceilings to agree with the context-capture policy. Missing or contradictory
 wire profiles cannot enable the native selector. Focused native refusal cases and both checked
 ThinLTO matrices passed after this final configuration hardening.
+
+## Authenticated bundle input boundary under implementation
+
+The private evaluator needs a decoder for GP `makebundle`, since the existing auditable-bundle
+module only assembles bytes from completed execution. The new input boundary checks the declared
+length and canonical package hash, splits manifest-sized raw extrinsics and fixed 4,104-byte
+imported leaves, and authenticates each root-first Merkle path and the complete lookup dictionary
+through maintained package/extrinsic/import constructors. All section extents and whole repeated
+hash work are reserved before crypto or raw-table copies. Empty and repeated occurrences retain
+their original positions; each permitted path has one canonical count byte in 0..12.
+
+This boundary grants verified input commitments only. It does not certify the original erasure
+root, historical state or report reproduction, and cannot create a negative-judgment capability.
+Direct CE147 candidates that fail it still require CE138 reconstruction before malformed data can
+be evidence about the report. Local policy/resource/backend refusals remain unavailable evaluation.
+Independent ordinary and mixed-shape wire fixtures cover authentication, malformed boundaries,
+wrong package/preimage/leaf commitments, path counts, padding, whole-work reservations, backend
+refusal and ARC release. Their native qualification is recorded below.
+
+Private prefix execution also reserves complete sorted-map descriptor tables for retained staged
+snapshots and merge scratch. These include unrelated service entries, so chapter-byte budgets
+alone cannot bound them. Eight descriptor tables and fixed changed-key/trie scratch are charged
+before any private fork or chapter copy, using subtraction/division checks before multiplication.
+The genuine context fixture also refuses a workspace that only covers copied chapter payloads.
+
+The bundle decoder's native ordinary, mixed-shape and empty-table cases passed. Whole crypto
+counts matched independent expectations (9 and 14 calls); actual authorization and refinement
+re-execution from decoded inputs reproduced the original traces, complete item digests and bundle
+bytes. Its 1,000-cycle assembly/decoding ARC observation retained 442,608 bytes before and after.
+
+## Private execution origins under implementation
+
+Source-free announcement contexts cannot supply a PVM execution map. A separate opaque private
+block origin therefore pins the actual complete predecessor snapshot and its full parameter
+profile after genuine context qualification. All reports from that block share this immutable
+source; guarded target lookup binds the original report ordinal/hash and prevents replacement.
+Independent logical entry, trie-node and total-value ceilings cover the whole map, including
+unrelated service entries. Length-only scans avoid copying payloads and preserve execution-only
+cancellation. Blocks with no newly available reports create no retained execution origin.
+
+These origins are source-bearing worker objects: every alias remains frozen through exact
+collection or joined cancellation. The Gray Paper computation definition says report evaluation
+is deterministic using historical lookup within eight epochs of a recently finalized block;
+retaining the actual complete predecessor preserves that lookup source while later heads change.
+This is distinct from substituting a partial light map or caller-selected code table. Complete original report reproduction and bounded managed registration are implemented below;
+private judgment signing and authenticated recovery remain required.
+
+
+The direct evaluator reuses the actual original full predecessor, core, parameter profile and
+availability geometry. It performs maintained authorization, refinement and report construction,
+then compares every canonical report byte, including gas, exports, erasure commitments and context.
+Only complete equality creates an opaque positive capability bound to the exact original private
+target. Copied metadata or a separately captured equal-root origin cannot retag that capability.
+Malformed or mismatching unproved CE147 data requests recovery; missing code/history, local limits,
+cancellation and backend failure grant no negative judgment.
+
+Services owns an explicitly configured bounded registry with independent aggregate full-map and
+source-free context ceilings. Authentic origins may backfill independently trusted canonical
+checkpoints, but the actual child header/root, predecessor commitment and entire parameter profile
+must match Services' own selected history. A trusted header alone cannot construct an origin.
+Duplicate captures preserve the original private source. Host-only namespace/serial selectors
+reject foreign or stale lifetimes; evaluation installation requires exact private target identity.
+
+Closed origin/evaluation jobs reuse the single existing fixed-address proof worker and canonical/RPC
+lease. Services retains completed capabilities before reopening RPC, returning only detached facts
+to controllers. Generic collection cannot expose managed private audit results. Early/foreign/stale
+collection, cancellation at Done, proof restart and whole shutdown preserve exact ownership. Proof
+stop revokes pending controls; full pins retire only after proof, preparation, checkpoint and disk
+borrowers have joined. No optional registry or worker activation follows from defaults.
+
+Native direct reproduction, private registry and managed Services lifecycle checks passed, including
+both original reports and 1,000 mixed capture/evaluation/cancellation cycles with 290,160 occupied
+bytes before and after. These are local macOS checks; Linux qualification is not implied.
+
+The updated audit/native Services matrix and ordinary two-node TLS suite also passed checked
+ARC/Clang ThinLTO. Lowering rejected duplication of both Services and the audit dispatcher with
+the expected diagnostics. The existing node-service suite passed with unchanged 40,144-byte
+1,000-cycle ARC observations. All 583 production modules plus the application entry point passed
+semantic checks; canonical formatting and verification inventory passed.

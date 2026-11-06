@@ -83,6 +83,10 @@ type
     query: ProofQuery
     outcome: ProofQueryResult[ProofResponse]
 
+func `==`*(left, right: ProofWorkerTicket): bool =
+  ## Compare host-only namespace and generation; equal default tickets still authorize no worker operation.
+  left.owner == right.owner and left.generation == right.generation
+
 proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Moving a live worker would invalidate the address borrowed by its native thread.

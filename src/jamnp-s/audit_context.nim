@@ -222,11 +222,17 @@ proc captureAuditContext*(source: ChainView, blockHash: genesis.BlockHash,
     if bytes > uint64(limits.chapterBytes) or bytes > uint64(limits.readBytes)-read:
       return refused[AuditContext](AuditContextError.LimitExceeded)
     read += bytes
-  if sizeof(StateValidator) > 512 or sizeof(AvailabilityAssignment) > 512:
+  if sizeof(StateValidator) > 512 or sizeof(AvailabilityAssignment) > 512 or sizeof(StateEntry) > 256:
     return refused[AuditContext](AuditContextError.InvalidPolicy)
   let output = 4096'u64+read*8+1023'u64*512+uint64(limits.reports)*512
-  let workspace = bodyBytes*8+read*8+output
+  let workspace = bodyBytes*8+read*8+output+4'u64*1024*1024
   if output > uint64(limits.outputBytes) or workspace > uint64(limits.workspaceBytes):
+    return refused[AuditContext](AuditContextError.LimitExceeded)
+  let entries = state.commitment.entries
+  if entries < 0: return refused[AuditContext](AuditContextError.InvalidSource)
+  # The coordinator publishes disputes, Safrole and availability on private stores. Their retained snapshots and merge scratch can copy the complete sorted-map descriptor table, including unrelated service entries. Reserve eight tables plus fixed changed-key/trie scratch above before any fork or chapter copy; division proves multiplication/addition without wrapping.
+  let descriptorWidth = uint64(sizeof(StateEntry))*8
+  if uint64(entries) > (uint64(limits.workspaceBytes)-workspace) div descriptorWidth:
     return refused[AuditContext](AuditContextError.LimitExceeded)
   let rosterPolicy = ValidatorStateConfig(cores: CoreCount(cores), validators: ElementLimit(1023),
       maxBytes: limits.chapterBytes)

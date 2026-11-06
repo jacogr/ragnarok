@@ -10,7 +10,7 @@ import ../../jamnp-s/[work_signer, work_eligibility, work_sharing, sharing_wire,
 import ../../jamnp-s/assurance_distribution
 import ../../jamnp-s/assurance_fetch
 import ../../jamnp-s/assurance_schedule
-import ../../jamnp-s/[audit_context, audit_receipt]
+import ../../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation]
 from ../../jamnp-s/assurance_store import AssuranceScanControl
 import ../../jamnp-s/work_recovery
 import ../../jamnp-s/availability_proof
@@ -42,7 +42,8 @@ type
     DistributionEncodingFailure, DistributionCacheFailure, DistributionOutputLimit,
     AssuranceQualified, AssuranceFailure, AssurancePlanned, AssurancePlanningFailure,
     AssuranceScheduled, AssuranceScheduleFailure, AuditPlanned, AuditPlanningFailure,
-      AuditAnnouncementsQualified, AuditAnnouncementFailure
+      AuditAnnouncementsQualified, AuditAnnouncementFailure, AuditOriginPrepared,
+    AuditOriginPreparationFailure, AuditEvaluated, AuditEvaluationFailure
   WorkSource = ref object ## Immutable acyclic provenance retains the exact original complete map, package header and policy.
     header: WorkSubmissionHeader
     state: StateStoreSnapshot
@@ -78,6 +79,10 @@ type
     of PeerResponseFailure: peerReason: WorkGuaranteeResult[WorkGuaranteeRound]
     of GuaranteeCollected: collected: CollectedWorkGuarantee
     of GuaranteeCollectionFailure: collectionReason: WorkGuaranteeResult[CollectedWorkGuarantee]
+    of AuditOriginPrepared: auditOrigin: AuditBlockOrigin
+    of AuditOriginPreparationFailure: auditOriginReason: AuditOriginResult[AuditBlockOrigin]
+    of AuditEvaluated: auditEvaluation: AuditEvaluation
+    of AuditEvaluationFailure: auditEvaluationReason: AuditEvaluationResult[AuditEvaluation]
     of AuditAnnouncementsQualified: auditBatch: CheckedAuditBatch
     of AuditAnnouncementFailure: auditReceiptReason: AuditReceiptResult[CheckedAuditBatch]
     of AuditPlanned: auditContext: AuditContext
@@ -118,6 +123,9 @@ type
     auditLimits: AuditContextLimits
     auditWire: seq[byte]
     auditReceiptLimits: AuditReceiptLimits
+    auditOriginLimits: AuditOriginLimits
+    auditTarget: AuditReportOrigin
+    auditEvaluationLimits: AuditEvaluationLimits
     source: WorkSource
     context: AuthorizedWorkContext
     refined: InputRefinement
@@ -162,6 +170,10 @@ type
     case status: WorkJobError
     of None: completed: WorkSubmissionJob
     else: discard            # No captured prefix escapes refusal.
+func workJobFailure*(reason: WorkJobError): WorkJobAdmission {.requires: reason !=
+    WorkJobError.None.} =
+  ## Closed boundary composition can preserve a real capture refusal without constructing an executable runner.
+  WorkJobAdmission(status: reason)
 func error*(outcome: WorkJobAdmission): WorkJobError =
   ## Inspect local capture status before selecting a job.
   outcome.status
@@ -206,6 +218,23 @@ func guaranteeCollectionError*(outcome: WorkJobResult): WorkGuaranteeResult[
     WorkJobResultKind.GuaranteeCollectionFailure.} =
   ## Preserve actual threshold/byte/codec refusal without a completed guarantee.
   outcome.collectionReason
+func preparedAuditOrigin*(outcome: WorkJobResult): AuditBlockOrigin {.requires: outcome.status ==
+    WorkJobResultKind.AuditOriginPrepared.} =
+  ## Full source-bearing origin aliases remain frozen whenever this result or a later registered target is borrowed by native work.
+  outcome.auditOrigin
+func auditOriginPreparationError*(outcome: WorkJobResult): AuditOriginResult[
+    AuditBlockOrigin] {.requires: outcome.status ==
+    WorkJobResultKind.AuditOriginPreparationFailure.} =
+  ## Failed whole-origin preparation contains no retained state or partially qualified report target.
+  outcome.auditOriginReason
+func evaluatedAudit*(outcome: WorkJobResult): AuditEvaluation {.requires: outcome.status ==
+    WorkJobResultKind.AuditEvaluated.} =
+  ## Only actual complete report reproduction exposes its private source-bound evaluation capability.
+  outcome.auditEvaluation
+func auditEvaluationError*(outcome: WorkJobResult): AuditEvaluationResult[
+    AuditEvaluation] {.requires: outcome.status == WorkJobResultKind.AuditEvaluationFailure.} =
+  ## Direct malformed input and local resource/backend failures retain genuine reasons, never a negative judgment.
+  outcome.auditEvaluationReason
 func qualifiedAuditAnnouncements*(outcome: WorkJobResult): CheckedAuditBatch {.requires: outcome.status ==
     WorkJobResultKind.AuditAnnouncementsQualified.} =
   ## Only a wholly qualified batch contains source-free authenticated obligations.
@@ -653,6 +682,44 @@ proc captureAuditAnnouncements*(source: ChainView, wire: openArray[byte],
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: qualifyIncomingAudit, auditView: source, auditWire: captured,
     auditReceiptLimits: limits)))
+proc prepareAuditOrigin(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Whole body/prefix validation and complete-map retention accounting execute only behind the shared source lease.
+  let prepared = captureAuditOrigin(data.auditView, data.auditHash, data.auditLimits,
+      data.auditOriginLimits, control)
+  if prepared.error != AuditOriginError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditOriginPreparationFailure,
+        auditOriginReason: prepared)
+  WorkJobResult(status: WorkJobResultKind.AuditOriginPrepared, auditOrigin: prepared.value)
+proc captureAuditOriginJob*(source: ChainView, blockHash: genesis.BlockHash,
+    context: AuditContextLimits, limits: AuditOriginLimits): WorkJobAdmission =
+  ## Capturing actual complete history performs no crypto, state scan or caller callback; the fixed private runner owns every later source traversal.
+  if source.fuzzOnly or source.bestBlock.error != GenesisError.None or not context.valid or
+      not limits.valid:
+    return WorkJobAdmission(status: WorkJobError.InvalidInput)
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: prepareAuditOrigin, auditView: source, auditHash: blockHash, auditLimits: context,
+    auditOriginLimits: limits)))
+proc evaluateAudit(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
+  ## Actual authorization/refinement/availability comparison runs only on the closed reusable worker; caller booleans or detached digest replacements are never accepted.
+  let evaluated = evaluateDirectAudit(data.auditTarget, data.auditWire, data.auditEvaluationLimits, control)
+  if evaluated.error != AuditEvaluationError.None:
+    return WorkJobResult(status: WorkJobResultKind.AuditEvaluationFailure,
+        auditEvaluationReason: evaluated)
+  WorkJobResult(status: WorkJobResultKind.AuditEvaluated, auditEvaluation: evaluated.value)
+proc captureAuditEvaluationJob*(origin: AuditReportOrigin, wire: openArray[byte],
+    limits: AuditEvaluationLimits): WorkJobAdmission =
+  ## Only an immutable qualified original target and finite detached wire cross the CPU boundary; execution-only cancellation is never stored in the job.
+  if not origin.valid or not limits.valid: return WorkJobAdmission(
+      status: WorkJobError.InvalidInput)
+  if uint64(wire.len) > uint64(limits.bundle.bytes) or uint64(wire.len) > uint64(
+      limits.report.bundleBytes):
+    return WorkJobAdmission(status: WorkJobError.LimitExceeded)
+  var captured = newSeq[byte](wire.len)
+  for ordinal in 0..<wire.len: captured[ordinal] = wire[
+      ordinal] # Native callbacks and caller mutations cannot change a queued candidate.
+  WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
+    cancellable: evaluateAudit, auditTarget: origin, auditWire: captured,
+    auditEvaluationLimits: limits)))
 proc planAssuranceSchedule(data: WorkJobData): WorkJobResult =
   ## All complete-source and C4/C8/C9 copying executes under the existing exclusive native lease.
   let planned = captureAssuranceSchedule(data.assuranceSource, data.assurancePeer,
