@@ -62,38 +62,48 @@ class QuicPatchedSource(unittest.TestCase):
     """Approved staging must preserve vendor sources and refuse drift before publication."""
 
     def fixture(self, root):
-        """An independent two-file patch also preserves nested library sources and excludes Git metadata."""
+        """Two independent patches also preserves nested library sources and excludes Git metadata."""
         source = root/'vendor/lsquic'
-        original = {'include/lsquic.h': 'old header\n', 'src/liblsquic/lsquic_stream.c': 'old implementation\n'}
-        entry = dict(path='native/quic/patches/lsquic-public-stream-reset.patch', before={}, after={})
-        contents = []
-        for name, before in original.items():
-            # Exact tiny inputs test application semantics without duplicating production C text.
-            path = source/name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(before)
-            after = before.replace('old', 'new')
-            entry['before'][name] = hashlib.sha256(before.encode()).hexdigest()
-            entry['after'][name] = hashlib.sha256(after.encode()).hexdigest()
-            contents.extend(difflib.unified_diff(before.splitlines(True), after.splitlines(True),
-                                                fromfile='a/'+name, tofile='b/'+name))
-        patch_file = root/entry['path']
-        patch_file.parent.mkdir(parents=True)
-        patch_file.write_text(''.join(contents))
-        entry['sha256'] = hashlib.sha256(patch_file.read_bytes()).hexdigest()
+        original = {'include/lsquic.h': 'old header\n', 'src/liblsquic/lsquic_stream.c': 'old implementation\n',
+                    'src/liblsquic/lsquic_full_conn_ietf.c': 'old path validation\n'}
+        paths = (
+            ('native/quic/patches/lsquic-public-stream-reset.patch',
+             ('include/lsquic.h', 'src/liblsquic/lsquic_stream.c')),
+            (build_quic.PATH_NONCE_PATCH, ('src/liblsquic/lsquic_full_conn_ietf.c',)),
+        )
+        entries = []
+        for patch_path, files in paths:
+            entry = dict(path=patch_path, source='lsquic', commit='fixture', before={}, after={})
+            contents = []
+            for name in files:
+                # Tiny independent inputs exercise application without duplicating production C text.
+                before = original[name]
+                path = source/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(before)
+                after = before.replace('old', 'new')
+                entry['before'][name] = hashlib.sha256(before.encode()).hexdigest()
+                entry['after'][name] = hashlib.sha256(after.encode()).hexdigest()
+                contents.extend(difflib.unified_diff(before.splitlines(True), after.splitlines(True),
+                                                    fromfile='a/'+name, tofile='b/'+name))
+            patch_file = root/patch_path
+            patch_file.parent.mkdir(parents=True, exist_ok=True)
+            patch_file.write_text(''.join(contents))
+            entry['sha256'] = hashlib.sha256(patch_file.read_bytes()).hexdigest()
+            entries.append(entry)
         (source/'.git').write_text('vendor checkout metadata\n')
         nested = source/'src/lshpack/dependency.c'
         nested.parent.mkdir(parents=True)
         nested.write_text('pinned child source\n')
-        return source, entry, original
+        return source, entries, original
 
     def test_pristine_copy_and_repeated_preparation(self):
         """Patch only a build copy, preserve nested inputs, and discard edits to a prior generated copy."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            source, entry, original = self.fixture(root)
+            source, entries, original = self.fixture(root)
             with patch.object(build_quic, 'ROOT', root):
-                staged = build_quic.stage_lsquic(source, entry)
+                staged = build_quic.stage_lsquic(source, entries, 'fixture')
                 self.assertFalse((staged/'.git').exists())
                 self.assertEqual((staged/'src/lshpack/dependency.c').read_text(), 'pinned child source\n')
                 for name, text in original.items():
@@ -101,7 +111,7 @@ class QuicPatchedSource(unittest.TestCase):
                     self.assertEqual((staged/name).read_text(), text.replace('old', 'new'))
                 (staged/'include/lsquic.h').write_text('locally modified generated source\n')
                 (staged/'unexpected.c').write_text('stale input\n')
-                self.assertEqual(build_quic.stage_lsquic(source, entry), staged)
+                self.assertEqual(build_quic.stage_lsquic(source, entries, 'fixture'), staged)
                 self.assertEqual((staged/'include/lsquic.h').read_text(), 'new header\n')
                 self.assertFalse((staged/'unexpected.c').exists())
 
@@ -109,16 +119,34 @@ class QuicPatchedSource(unittest.TestCase):
         """Digest mismatches fail closed while retaining the last completed staging tree."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            source, entry, _ = self.fixture(root)
+            source, entries, _ = self.fixture(root)
             with patch.object(build_quic, 'ROOT', root):
-                staged = build_quic.stage_lsquic(source, entry)
+                staged = build_quic.stage_lsquic(source, entries, 'fixture')
                 for field in ('sha256', 'before', 'after'):
                     # Distinguish a modified patch, upstream drift and unexpected patch output.
-                    bad = copy.deepcopy(entry)
+                    bad = copy.deepcopy(entries)
                     if field == 'sha256':
-                        bad[field] = '0'*64
+                        bad[0][field] = '0'*64
                     else:
-                        bad[field]['include/lsquic.h'] = '0'*64
+                        bad[0][field]['include/lsquic.h'] = '0'*64
                     with self.assertRaisesRegex(ValueError, 'mismatch'):
-                        build_quic.stage_lsquic(source, bad)
+                        build_quic.stage_lsquic(source, bad, 'fixture')
                     self.assertEqual((staged/'include/lsquic.h').read_text(), 'new header\n')
+
+
+class QuicPatchConfiguration(unittest.TestCase):
+    """A source or ordered patch change selects a separate native cache."""
+
+    def test_cache_distinguishes_pin_and_patch_transitions(self):
+        """The same build root can safely add, drop, and reorder configured patches."""
+        source = {'lsquic': {'commit': 'first'}}
+        changed = {'lsquic': {'commit': 'second'}}
+        nonce = {'path': 'nonce.patch', 'sha256': 'nonce'}
+        reset = {'path': 'reset.patch', 'sha256': 'reset'}
+        directory = build_quic.lsquic_build_directory
+        combined = directory({'sources': source, 'patches': [reset, nonce]})
+        nonce_only = directory({'sources': source, 'patches': [nonce]})
+        self.assertNotEqual(combined, nonce_only)
+        self.assertNotEqual(combined, directory({'sources': source, 'patches': [nonce, reset]}))
+        self.assertNotEqual(combined, directory({'sources': changed, 'patches': [reset, nonce]}))
+        self.assertEqual(combined, directory({'patches': [reset, nonce], 'sources': source}))

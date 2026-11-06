@@ -190,6 +190,17 @@ def closed_before_request(languages, folder, *, binaries=None, directory=None):
             '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '60000', '--net-mode', 'idle'], stdout=output, stderr=subprocess.STDOUT)
         # Idle mode deliberately opens no streams, so only connection retirement can settle this failure.
         watch(processes, logs, {'client': lambda text: 'AUTH_OK' in text.splitlines()}, peaks, thread_limits=limits)
+        # Survive beyond the two-second idle limit without application streams while the
+        # peer is live. Loss of the same peer must still retire the connection below.
+        started = time.monotonic()
+        try:
+            processes['client'].wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            raise AssertionError(logs['client'].read_text())
+        quiet_seconds = time.monotonic() - started
+        assert processes['server'].poll() is None, logs['server'].read_text()
         processes['server'].kill(); assert processes['server'].wait(timeout=5) == -9
         started = time.monotonic()
         assert processes['client'].wait(timeout=5) == 2, logs['client'].read_text()
@@ -197,7 +208,8 @@ def closed_before_request(languages, folder, *, binaries=None, directory=None):
         assert 'AUTH_OK' in text.splitlines() and 'CONNECTION_CLOSED' in text.splitlines(), text
         assert 'EXCHANGE_OK' not in text, text # Retained handshake history cannot fabricate application success.
         return {'server': languages[0], 'client': languages[1], 'application_streams': 0,
-                'closed_seconds': time.monotonic() - started, 'peaks': peaks}
+                'quiet_seconds': quiet_seconds, 'closed_seconds': time.monotonic() - started,
+                'peaks': peaks}
     finally:
         retire(list(processes.values()), handles) # Reap only this regression's peers after success or failure.
 
