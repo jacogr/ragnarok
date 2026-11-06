@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Same-source forced interpretation, native policy, warm reuse/hosts and cross-policy cache refusal.
+## Unbound interpreted/requested-Jit policies preserve checked host results, warm reuse and source-policy refusal.
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas
@@ -9,10 +9,9 @@ import ../../../src/pvm/internal/handler_stream
 
 type Context = object ## Callbacks only observe copied snapshots and retain no invocation addresses.
   calls: int
-  forced: bool
 
 proc source(): Machine =
-  ## Literal arithmetic spans on both sides of a host call contain genuine supported native fragments.
+  ## Literal supported arithmetic surrounds a host call; both prepared policies remain unbound and checked.
   let parts = [@[51'u8, 7, 5], @[51'u8, 8, 3], @[200'u8, 0x87, 9], @[200'u8, 0x87, 10], @[10'u8, 2],
       @[51'u8, 8, 4], @[200'u8, 0x87, 9], @[200'u8, 0x87, 10], @[200'u8, 0x87, 11], @[50'u8, 0]]
   var code: seq[byte] = @[]
@@ -34,15 +33,9 @@ proc source(): Machine =
       MachineInfo(pc: CodeAddress(0), gas: MachineGas(high(uint64)), registers: registers)).value
 
 proc respond(context: var Context, suspension: StepOutcome): HostResponse {.raises: [].} =
-  ## A host resume cannot activate native handlers in a forced-interpreted prepared owner.
+  ## Neither prepared owner has a runtime, so each host snapshot reports actual checked execution.
   inc context.calls
-  if context.forced: assert suspension.backend == PvmBackend.Interpreted
-  else:
-    when (defined(arm64) and not defined(pvmX86Jit) and not defined(pvmArm64JitRefuse)) or (defined(
-        amd64) and defined(linux) and defined(pvmX86Jit) and not defined(pvmX86JitRefuse)):
-      assert suspension.backend == PvmBackend.Jit
-    else:
-      assert suspension.backend == PvmBackend.Interpreted
+  assert suspension.backend == PvmBackend.Interpreted, "unbound host callback stays interpreted"
   let info = machineInfo(suspension.machine).value
   HostResponse(action: HostAction.Continue, gas: info.gas, registers: info.registers,
     memory: memoryOf(suspension.machine).value)
@@ -57,7 +50,7 @@ assert preparedInfo(accelerated).value.backend == PvmBackend.Jit, "policy: prepa
 let automatic = newPreparedProgram(code, limits).value
 assert preparedInfo(automatic).value.backend == DefaultPvmBackend, "policy: preparedInfo(automatic).value.backend == DefaultPvmBackend"
 for invocation in 0..<3:
-  var plain = Context(forced: true)
+  var plain = default(Context)
   var native = default(Context)
   let left = executeWithHost(original, plain, respond, ExecutionStepLimit(10), HostCallLimit(1), forced)
   let right = executeWithHost(original, native, respond, ExecutionStepLimit(10), HostCallLimit(1), accelerated)
@@ -73,22 +66,14 @@ for invocation in 0..<3:
   let info = preparedInfo(forced).value
   assert info.nativeFragments == 0 and info.nativeCalls == 0 and info.nativeOperations == 0, "policy: info.nativeFragments == 0 and info.nativeCalls == 0 and info.nativeOperations == 0"
   assert left.value.backend == PvmBackend.Interpreted, "policy: left.value.backend == PvmBackend.Interpreted"
-  when (defined(arm64) and not defined(pvmX86Jit) and not defined(pvmArm64JitRefuse)) or (defined(
-      amd64) and defined(linux) and defined(pvmX86Jit) and not defined(pvmX86JitRefuse)):
-    assert right.value.backend == PvmBackend.Jit
-  else:
-    assert right.value.backend == PvmBackend.Interpreted
+  # No explicit runtime was supplied, so neither requested policy may hide synchronous compilation.
+  assert right.value.backend == PvmBackend.Interpreted
 
 let nativeInfo = preparedInfo(accelerated).value
-when (defined(arm64) and not defined(pvmX86Jit) and not defined(pvmArm64JitRefuse)) or (defined(
-    amd64) and defined(linux) and defined(pvmX86Jit) and not defined(pvmX86JitRefuse)):
-  assert nativeInfo.jitBuilt and nativeInfo.jitPlatformSupported, "policy: nativeInfo.jitBuilt and nativeInfo.jitPlatformSupported"
-  assert nativeInfo.nativeFragments > 0 and nativeInfo.nativeCalls > 0 and
-      nativeInfo.nativeOperations > 0, "policy: nativeInfo.nativeFragments > 0 and nativeInfo.nativeCalls > 0 and nativeInfo.nativeOperations > 0"
-else:
-  assert nativeInfo.nativeCalls == 0 and nativeInfo.nativeOperations == 0, "policy: nativeInfo.nativeCalls == 0 and nativeInfo.nativeOperations == 0"
+assert nativeInfo.nativeFragments == 0 and nativeInfo.nativeCalls == 0 and
+    nativeInfo.nativeOperations == 0
 
-# Exact immutable plan identities reject both transfer directions, even when only one side has emitted native code.
+# Exact immutable plan identities reject both transfer directions, even when their requested native permissions differ.
 for allowNative in [false, true]:
   var admitted = prepareFlatPlan(code, GasCycleLimit(1000), defaultFlatLimits(), allowNative)
   var other = prepareFlatPlan(code, GasCycleLimit(1000), defaultFlatLimits(), not allowNative)

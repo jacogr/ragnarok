@@ -3,6 +3,7 @@
 
 ## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
 import std/[assertions, syncio, monotimes, envvars]
+import ./pvm_invocation_scope
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
 import ../../src/pvm/step as reference
@@ -22,9 +23,11 @@ proc selectedGuest(value: string): GuestKind =
     GuestKind.Sieve
 
 when defined(pvmProfileRequests):
-  proc profileBegin() {.cdecl, importc: "pvm_profile_begin", header: "pvm_profile_scope.h".}
+  proc profileBegin() {.cdecl, importc: "pvm_profile_begin",
+      header: "pvm_profile_scope.h".}
     ## Begin explicit diagnostic collection without borrowing guest state.
-  proc profileEnd() {.cdecl, importc: "pvm_profile_end", header: "pvm_profile_scope.h".}
+  proc profileEnd() {.cdecl, importc: "pvm_profile_end",
+      header: "pvm_profile_scope.h".}
     ## Stop and dump one complete invocation before independent caller validation.
 
 proc runPreparedKernel(source: Machine, prepared: reference.PreparedProgram): reference.StepResult {.noinline.} =
@@ -37,7 +40,8 @@ proc runPreparedKernel(source: Machine, prepared: reference.PreparedProgram): re
     # Ordinary timing images preserve the existing wrapper without any collection markers.
     reference.execute(source, reference.ExecutionStepLimit(1000000000), prepared)
 
-proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
+proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds",
+    header: "pvm_sieve_clock.h".}
   ## Record CPU time alongside the elapsed metric also emitted by the reference harness.
 
 proc word(data: string, at, width: int): uint64 =
@@ -68,26 +72,29 @@ proc count(guest: GuestKind, limit: uint64): uint64 =
     assert false
     0'u64
 
-proc checkMemory(memory: Memory, indices: seq[PageIndex], access: seq[PageAccess], expected: string,
-    offset: int): void =
+proc checkMemory(memory: Memory, indices: seq[PageIndex], access: seq[
+    PageAccess], expected: string, offset: int): void =
   ## Compare every initialized/mapped byte; a matching prime count alone is insufficient.
   assert expected.len == offset + indices.len * 4096
   for page in 0..<indices.len:
     let image = pageImage(memory, indices[page]).value
     assert image.access == access[page]
-    for i in 0..<4096: assert image.bytes[i] == byte(expected[offset + page * 4096 + i])
+    for i in 0..<4096: assert image.bytes[i] == byte(expected[offset + page *
+        4096 + i])
 
-proc check(machine: Machine, indices: seq[PageIndex], access: seq[PageAccess], expected: string,
-    limit: uint64, guest: GuestKind) =
+proc check(machine: Machine, cpu: MachineInfo, indices: seq[PageIndex], access: seq[PageAccess],
+    expected: string, limit: uint64, guest: GuestKind) =
   ## Validate terminal CPU state, exact gas, all registers and all mapped memory outside timing.
-  let cpu = machineInfo(machine).value
   assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
-  assert uint64(cpu.gas) == word(expected, 8, 8)
+  assert uint64(cpu.gas) == word(expected, 8, 8), "pvm sieve native terminal gas mismatch"
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16 + i * 8, 8)
   assert uint64(cpu.registers[7]) == count(guest, limit)
   checkMemory(memoryOf(machine).value, indices, access, expected, 120)
 
 let guest = selectedGuest(getEnv("RAGNAROK_PVM_GUEST"))
+let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
+if fullInvocation: fullInvocationHeader()
+
 if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
   assert false, "pvm sieve native assertion control"
 var data = ""
@@ -104,46 +111,19 @@ let entry = word(data, 12, 4)
 let limit = word(data, 16, 4)
 discard count(guest, limit) # Reject a foreign family/size before an expensive execution or policy allocation.
 let pageCount = int(word(data, 20, 4))
-assert wireSize > 0 and wireSize <= 4 * 1024 * 1024 and pageCount > 0 and pageCount <= 4096
+assert wireSize > 0 and wireSize <= 4 * 1024 * 1024 and pageCount > 0 and
+    pageCount <= 4096
 assert data.len == 136 + wireSize + pageCount * 4101
 var info = MachineInfo(pc: CodeAddress(entry), gas: MachineGas(word(data, 24, 8)),
   registers: default(RegisterFile), blockCharged: false)
 for i in 0..<13: info.registers[i] = RegisterValue(word(data, 32 + i * 8, 8))
-var wire = newSeq[byte](wireSize)
-for i in 0..<wireSize: wire[i] = byte(data[136 + i])
-let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4 * 1024 * 1024),
-  JumpCountLimit(1024 * 1024))
-assert decoded.error == ProgramError.None, "sieve program decoding"
-let owner = decoded.value
-var images: seq[PageImage] = @[]
-var indices: seq[PageIndex] = @[]
-var access: seq[PageAccess] = @[]
-var cursor = 136 + wireSize
-var originalBytes = ""
-for page in 0..<pageCount:
-  let index = PageIndex(uint32(word(data, cursor, 4)))
-  let permission = byte(data[cursor + 4])
-  assert permission in [1'u8, 2'u8]
-  var image = PageImage(index: index,
-    access: (if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite),
-    bytes: default(array[4096, byte]))
-  for i in 0..<4096:
-    image.bytes[i] = byte(data[cursor + 5 + i])
-    originalBytes.add(data[cursor + 5 + i])
-  images.add(image)
-  indices.add(index)
-  access.add(image.access)
-  cursor += 4101
-let captured = captureMemory(images, PageLimit(uint32(pageCount)))
-assert captured.error == MachineError.None
-let memory = captured.value
-let source = captureMachine(owner, memory, info).value
 let pricing = getEnv("RAGNAROK_PVM_PRICING")
 assert pricing in ["", "dynamic", "planned", "memo", "prepared"]
 let preparedMode = pricing == "prepared"
 # Resolve the optional comparison policy before any constructor or execution clock.
 let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
 assert requestedBackend in ["", "jit", "interpreted"]
+if fullInvocation: assert requestedBackend in ["jit", "interpreted"]
 when declared(DefaultPvmBackend):
   var selectedBackend = reference.DefaultPvmBackend
   if requestedBackend.len > 0:
@@ -157,6 +137,50 @@ let memoMode = pricing == "memo"
 if guest != GuestKind.Sieve:
   # Additional families require a protocol witness before policy metadata or samples.
   echo "GUEST,", getEnv("RAGNAROK_PVM_GUEST")
+let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
+assert requestedSamples in ["1", "4", "13"]
+# Four calls support an isolated post-three-warmup counter dump; ordinary timings retain thirteen.
+let samples = if requestedSamples == "1": 1 elif requestedSamples ==
+    "4": 4 else: 13
+# Independent source oracles use frozen input bytes, without constructing any code or memory owner.
+var indices: seq[PageIndex] = @[]
+var access: seq[PageAccess] = @[]
+var originalBytes = ""
+for page in 0..<pageCount:
+  let at = 136 + wireSize + page*4101
+  let permission = byte(data[at + 4])
+  assert permission in [1'u8, 2'u8]
+  indices.add(PageIndex(uint32(word(data, at, 4))))
+  access.add(if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite)
+  originalBytes.add(data[at+5..<at+4101])
+let coldCall = if fullInvocation: beginInvocation() else: default(
+    InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
+    ) else: default(InvocationRuntime)
+var wire = newSeq[byte](wireSize)
+for i in 0..<wireSize: wire[i] = byte(data[136 + i])
+let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4 *
+    1024 * 1024),
+  JumpCountLimit(1024 * 1024))
+assert decoded.error == ProgramError.None, "sieve program decoding"
+let owner = decoded.value
+var images: seq[PageImage] = @[]
+var cursor = 136 + wireSize
+for page in 0..<pageCount:
+  let index = PageIndex(uint32(word(data, cursor, 4)))
+  let permission = byte(data[cursor + 4])
+  assert permission in [1'u8, 2'u8]
+  var image = PageImage(index: index,
+    access: (if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite),
+    bytes: default(array[4096, byte]))
+  for i in 0..<4096:
+    image.bytes[i] = byte(data[cursor + 5 + i])
+  images.add(image)
+  cursor += 4101
+let captured = captureMemory(images, PageLimit(uint32(pageCount)))
+assert captured.error == MachineError.None
+let memory = captured.value
+let source = captureMachine(owner, memory, info).value
 var plan = default(GasPlan)
 var memo = default(GasMemo)
 if plannedMode:
@@ -176,16 +200,20 @@ if memoMode:
   # Initialization allocates only bounded empty facts; sample zero retains the actual first-cold pricing work.
   let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
-  let created = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(8*1024*1024),
-      cycles: GasCycleLimit(1000000)))
+  let created = newGasMemo(owner, GasMemoLimits(bytes: GasMemoByteLimit(
+      8*1024*1024), cycles: GasCycleLimit(1000000)))
   let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
   let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
   assert created.error == GasMemoError.None
   memo = created.value
   let info = gasMemoInfo(memo).value
   assert info.pricedBlocks == 0
-  echo "GAS_MEMO,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",", info.payloadBytes,
-      ",", uint64(info.cycleLimit)
+  echo "GAS_MEMO,", prepareCpuNs, ",", prepareWallNs, ",", info.codeBytes, ",",
+      info.payloadBytes, ",", uint64(info.cycleLimit)
+var preparationCpuNs = 0'i64
+var preparationWallNs = 0'i64
+var preparationCodeBytes = 0'u64
+var preparationInstructions = 0'u64
 var prepared = default(reference.PreparedProgram)
 if preparedMode:
   # Construction admits decoded facts; sample zero includes lazy executable-node and price preparation.
@@ -193,50 +221,68 @@ if preparedMode:
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
   let created = when declared(DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
-    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)), selectedBackend)
+    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(
+        GasCycleLimit(1000000)), selectedBackend, invocationRuntime)
   else:
     # Historical source snapshots preserve their original public API and engine policy.
-    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(GasCycleLimit(1000000)))
+    reference.newPreparedProgram(owner, reference.defaultPreparedLimits(
+        GasCycleLimit(1000000)))
   let prepareCpuNs = if clocked: cpuNanoseconds()-prepareCpu else: 0'i64
   let prepareWallNs = if clocked: getMonoTime().ticks-prepareWall else: 0'i64
   assert created.error == reference.PreparationError.None
   prepared = created.value
   let observed = reference.preparedInfo(prepared).value
   assert observed.streamNodes == 0
-  echo "PREPARED_PROGRAM,", prepareCpuNs, ",", prepareWallNs, ",", observed.codeBytes, ",",
-      observed.decodedInstructions
+  # Retain raw scalar observations only; full-mode report formatting occurs after sample0 stops.
+  preparationCpuNs = prepareCpuNs
+  preparationWallNs = prepareWallNs
+  preparationCodeBytes = observed.codeBytes
+  preparationInstructions = observed.decodedInstructions
+  if not fullInvocation:
+    echo "PREPARED_PROGRAM,", prepareCpuNs, ",", prepareWallNs, ",", observed.codeBytes,
+      ",", observed.decodedInstructions
 let engine = if preparedMode: "ragnarok_prepared" elif memoMode: "ragnarok_memo" elif plannedMode: "ragnarok_planned" else: "ragnarok"
-let requestedSamples = getEnv("RAGNAROK_PVM_SIEVE_SAMPLES")
-assert requestedSamples in ["1", "4", "13"]
-# Four calls support an isolated post-three-warmup counter dump; ordinary timings retain thirteen.
-let samples = if requestedSamples == "1": 1 elif requestedSamples == "4": 4 else: 13
 for sample in 0..<samples:
   # Program/memory/ABI setup is outside execution timing in both interpreters.
-  let cpuStart = if clocked: cpuNanoseconds() else: 0'i64
-  # Match reference execution scopes: wall timing excludes both process-CPU clock reads.
-  let wallStart = if clocked: getMonoTime().ticks else: 0'i64
+  let residentCall = if fullInvocation and sample != 0: beginInvocation() else: default(InvocationClock)
+  let cpuStart = if fullInvocation: (if sample ==
+      0: coldCall.cpu else: residentCall.cpu)
+    elif clocked: cpuNanoseconds() else: 0'i64
+  let wallStart = if fullInvocation: (if sample ==
+      0: coldCall.wall else: residentCall.wall)
+    elif clocked: getMonoTime().ticks else: 0'i64
   let done = if preparedMode: runPreparedKernel(source, prepared)
-    elif memoMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), memo)
-    elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(1000000000), plan)
-    else: reference.execute(source, reference.ExecutionStepLimit(1000000000), GasCycleLimit(1000000))
+    elif memoMode: reference.execute(source, reference.ExecutionStepLimit(
+        1000000000), memo)
+    elif plannedMode: reference.execute(source, reference.ExecutionStepLimit(
+        1000000000), plan)
+    else: reference.execute(source, reference.ExecutionStepLimit(1000000000),
+        GasCycleLimit(1000000))
+  assert done.error == reference.StepError.None, "current sieve execution"
+  let finalCpu = machineInfo(done.value.machine).value
   let elapsed = if clocked: getMonoTime().ticks - wallStart else: 0'i64
   let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
-  assert done.error == reference.StepError.None, "current sieve execution"
+  if sample == 0:
+    if fullInvocation:
+      echo "PREPARED_PROGRAM,", preparationCpuNs, ",", preparationWallNs, ",",
+        preparationCodeBytes, ",", preparationInstructions
   assert done.value.exit == reference.StepExit.Halt
-  check(done.value.machine, indices, access, expected, limit, guest)
+  check(done.value.machine, finalCpu, indices, access, expected, limit, guest)
   echo "SIEVE,", engine, ",", limit, ",", sample, ",", elapsed, ",", cpuElapsed
   if preparedMode:
     # Cache occupancy and preparation progress remain explicit for cold and reused executions.
     let observed = reference.preparedInfo(prepared).value
-    assert observed.streamNodes*28 <= uint64(observed.limits.resources.nodes)*28 and
-        observed.streamNodes > 0
-    echo "PREPARED_CACHE,", sample, ",", observed.streamNodes, ",", observed.preparationUnits, ",",
-        uint64(observed.limits.resources.nodes), ",", uint64(observed.limits.resources.preparation)
+    assert observed.streamNodes > 0
+    assert observed.streamNodes <= uint64(observed.limits.resources.nodes)
+    echo "PREPARED_CACHE,", sample, ",", observed.streamNodes, ",",
+        observed.preparationUnits, ",", uint64(observed.limits.resources.nodes),
+            ",", uint64(observed.limits.resources.preparation)
   checkMemory(memory, indices, access, originalBytes, 0)
   let original = machineInfo(source).value
   assert uint64(original.pc) == entry and uint64(original.gas) == uint64(info.gas)
   assert not original.blockCharged
-  for i in 0..<13: assert uint64(original.registers[i]) == uint64(info.registers[i])
+  for i in 0..<13: assert uint64(original.registers[i]) == uint64(
+      info.registers[i])
 
 if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
@@ -248,22 +294,38 @@ when declared(DefaultPvmBackend):
     assert preparedMode
     let policy = reference.preparedInfo(prepared).value
     assert policy.backend == selectedBackend
+    if fullInvocation: reportNativeCompilation("guest-process",
+        policy.nativeCompilationMeasured, policy.nativeCompilationNs)
     let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
     echo "PVM_POLICY,1,", requestedBackend, ",", int(policy.jitBuilt), ",",
-      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
-      policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
+      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled),
+          ",", actual, ",",
+      policy.nativeFragments, ",", policy.nativeCalls, ",",
+          policy.nativeOperations
 
 when defined(pvmArmMacroReceipt):
   # Application qualification observes actual resident publication and completed macro calls.
   let macroStats = reference.preparedArmMacroStatistics(prepared).value
   let resident = reference.preparedArmMacroResidentActive(prepared).value
-  echo "ARM_MACRO_APPLICATION,", getEnv("RAGNAROK_PVM_GUEST"), ",", int(resident),
+  echo "ARM_MACRO_APPLICATION,", getEnv("RAGNAROK_PVM_GUEST"), ",", int(
+      resident),
     ",", macroStats[0], ",", macroStats[1], ",", macroStats[5], ",", macroStats[6]
 
 
 when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.
   assert preparedMode
-  let native = reference.preparedArmStatistics(prepared).value
-  echo "ARM_OWNER,", getEnv("RAGNAROK_PVM_GUEST"), ",", native[0], ",", native[1], ",",
-    native[2], ",", native[3], ",", native[4], ",", native[5], ",", native[6]
+  if fullInvocation:
+    reportInvocationOwner(prepared, getEnv("RAGNAROK_PVM_GUEST"))
+  else:
+    let native = reference.preparedArmStatistics(prepared).value
+    echo "ARM_OWNER,", getEnv("RAGNAROK_PVM_GUEST"), ",", native[0], ",", native[
+        1], ",",
+      native[2], ",", native[3], ",", native[4], ",", native[5], ",", native[6]
+
+if fullInvocation:
+  prepared = default(reference.PreparedProgram)
+  if requestedBackend == "jit":
+    closeInvocationRuntime(invocationRuntime, "guest-process", coldCall)
+  else:
+    finishInterpretedOwner("guest-process", coldCall)

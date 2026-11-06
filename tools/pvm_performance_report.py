@@ -6,6 +6,7 @@ Every accepted cell retains thirteen actual CPU/wall samples, its immutable proc
 truthful runtime policy. Rendering recomputes statistics; it never launches tools or guest code.
 """
 import copy
+from functools import wraps
 import csv
 import io
 import json
@@ -17,9 +18,12 @@ import tempfile
 
 from pvm_benchmark_report import NAMES
 from pvm_sieve_report import limits_for_guest
-from pvm_reference_lifetime import CODE_LIFETIME, validate_instance
+from pvm_reference_lifetime import CODE_LIFETIME, validate_invocation_instance
+from pvm_invocation_scope import measurement_identity, validate_scope_observations
+import pvm_performance_history_v1 as history_v1
+import pvm_performance_history_v2 as history_v2
 
-SCHEMA = 'pvm-performance-v2'
+SCHEMA = 'pvm-performance-v3'
 ROLES = ('interpreted', 'jit', 'reference')
 ORDERS = (ROLES, ROLES[::-1])
 ARCHITECTURES = ('arm64', 'x86_64')
@@ -27,8 +31,33 @@ NATIVE_KEYS = ('fragments', 'calls', 'operations')
 OPTIONAL_NATIVE_KEYS = ('code_bytes', 'compilation_ns', 'branches', 'headers')
 
 
+def historical_reader(schema):
+    """Return a frozen historical reader; unsupported schemas never become the current cohort."""
+    readers = {history_v1.SCHEMA: history_v1, history_v2.SCHEMA: history_v2}
+    if schema not in readers:
+        raise ValueError('Unknown PVM performance schema')
+    return readers[schema]
+
+
+def schema_reader(function):
+    """Keep rendering/export of explicit historical data separate from canonical v3 validation."""
+    @wraps(function)
+    def read(report, *args, **kwargs):
+        if isinstance(report, dict) and report.get('schema') != SCHEMA:
+            return getattr(historical_reader(report.get('schema')), function.__name__)(report, *args, **kwargs)
+        return function(report, *args, **kwargs)
+    return read
+
+
+def validate_current_report(report):
+    """Require the full-call cohort at producer/latest boundaries, even though history remains readable."""
+    if not isinstance(report, dict) or report.get('schema') != SCHEMA:
+        raise ValueError('Historical execution-only data is not full-invocation evidence')
+    return validate_report(report)
+
+
 def case_inventory(scope='all'):
-    """Return fresh canonical case records, including only justified per-cell native requirements."""
+    """Return fresh current workload records without a native-readiness or operation-count floor."""
     if scope not in ('all', 'micro', 'doom'):
         raise ValueError('Unknown PVM performance scope')
     rows = []
@@ -38,13 +67,13 @@ def case_inventory(scope='all'):
                  for name in NAMES]
         for guest in ('sieve', 'minimal', 'memset', 'pinky'):
             for limit in limits_for_guest(guest):
-                required = list(ARCHITECTURES) if (guest, limit) == ('sieve', 10000000) else []
+                required = []
                 rows.append(dict(case_id=f'{guest}-{limit}', case=guest, limit=limit,
                                  family='guest', native_required=required))
     if scope != 'micro':
-        # Both canonical DOOM phases and the long sieve must demonstrate actual completed native work.
+        # Readiness is observed without waits or a native-operation floor, including incomplete coverage.
         rows += [dict(case_id='doom-'+phase, case=phase, limit=0, family='doom',
-                      native_required=list(ARCHITECTURES)) for phase in ('init', 'tick')]
+                      native_required=[]) for phase in ('init', 'tick')]
     return rows
 
 
@@ -166,13 +195,13 @@ def _command(record, files, positive=True):
     return command[0]
 
 
-def _policy(parsed, role, required):
+def _policy(parsed, role):
     """Validate actual policy and per-cell eligibility without demanding native work from every micro."""
     native, policy = parsed.get('native'), parsed.get('policy')
     if role == 'reference':
         if native is not None or policy is not None:
             raise ValueError('Reference cannot carry independent native/policy counters')
-        reference = parsed['execution'].get('reference')
+        reference = parsed['invocation'].get('reference')
         if reference is not None:
             reference = _mapping(reference, 'reference backend receipt')
             if (reference.get('requested') != 'interpreter' or reference.get('actual') !=
@@ -199,6 +228,8 @@ def _policy(parsed, role, required):
             policy.get('actual') != actual or not policy['jit_built'] or
             not policy['platform_supported'] or policy['fallback_enabled'] != (role == 'jit')):
         raise ValueError('Requested/actual native policy disagreement')
+    if native.get('code_bytes', 0) and not native['fragments']:
+        raise ValueError('Native code occupancy requires a collected image')
     if ((native['operations'] and not native['calls']) or
             (native['calls'] and not native['fragments']) or
             (role == 'interpreted' and any(native.values()))):
@@ -206,13 +237,15 @@ def _policy(parsed, role, required):
     if (native.get('branches', 0) > native['calls'] or native.get('headers', 0) > native['calls'] or
             ('branches' in native and 'headers' in native and native['headers'] > native['branches'])):
         raise ValueError('Impossible native control counters')
-    if role == 'jit' and required and not native['operations']:
-        raise ValueError('Required native cell fell back to checked interpretation')
 
 
 def _execution(execution, reference_label=None):
     """Validate all call clocks and independently retained reference-instance evidence."""
-    execution = _mapping(execution, 'execution samples')
+    execution = _mapping(execution, 'full-invocation samples')
+    if execution.get('measurement') != measurement_identity():
+        raise ValueError('Foreign invocation boundary/output/input/clock')
+    if set(execution)-{'samples', 'measurement', 'reference_instance', 'reference'}:
+        raise ValueError('Component clocks cannot masquerade as primary invocation data')
     samples = execution.get('samples')
     if not isinstance(samples, list) or len(samples) != 13:
         raise ValueError('Incomplete thirteen-sample process')
@@ -222,21 +255,15 @@ def _execution(execution, reference_label=None):
             raise ValueError('Unordered sample identity')
         for clock in ('cpu_ns', 'wall_ns'):
             _integer(sample.get(clock), clock, 1, (1 << 63)-1)
-    for key in ('preparation_ns', 'preparation_wall_ns'):
-        if key in execution:
-            values = execution[key]
-            if not isinstance(values, list) or not values:
-                raise ValueError('Invalid constructor clock')
-            for value in values:
-                _integer(value, key, 1, (1 << 63)-1)
     if 'lifecycle' in execution:
         raise ValueError('Fresh-instance lifecycle cannot enter a retained-code cohort')
     if reference_label is not None:
-        validate_instance(execution.get('reference_instance'), reference_label)
+        validate_invocation_instance(execution.get('reference_instance'), reference_label)
     elif 'reference_instance' in execution:
         raise ValueError('Independent engine cannot supply reference-instance evidence')
 
 
+@schema_reader
 def validate_report(report):
     """Return a complete passed report unchanged, or reject its source/coverage/sample evidence."""
     report = _mapping(report, 'performance report')
@@ -245,6 +272,8 @@ def validate_report(report):
     inventory = case_inventory(report.get('scope'))
     cases = {row['case_id']: row for row in inventory}
     identity = _identity(report)
+    if identity.get('measurement') != measurement_identity():
+        raise ValueError('Missing full-invocation cohort identity')
     files = identity['files']
     expected = {(case, role, order) for case in cases for role in ROLES for order in (0, 1)}
     seen, images, role_orders = set(), {}, {}
@@ -267,8 +296,35 @@ def validate_report(report):
         if key[1] == 'reference':
             label = ('synthetic-'+str(NAMES.index(case['case_id'])) if case['family'] == 'synthetic'
                      else case['case_id'])
-        _execution(parsed.get('execution'), label)
-        _policy(parsed, key[1], report['architecture'] in case['native_required'])
+        _execution(parsed.get('invocation'), label)
+        if 'execution' in parsed:
+            raise ValueError('Execution-only samples cannot coexist with the full-call cohort')
+        diagnostics = _mapping(parsed.get('diagnostics'), 'full-call diagnostics')
+        if parsed.get('native') is not None and 'compilation_ns' in parsed['native']:
+            raise ValueError('Native accounting is not an available compilation clock')
+        for clock in ('preparation_ns', 'preparation_wall_ns'):
+            if clock in diagnostics:
+                if not isinstance(diagnostics[clock], list) or not diagnostics[clock]:
+                    raise ValueError('Invalid optional constructor diagnostic')
+                for value in diagnostics[clock]:
+                    _integer(value, clock, 0, (1 << 63)-1)
+
+        observed = validate_scope_observations(diagnostics.get('scope_observations'), key[1])
+        if 'native_compilation_accounting_raw_ns' in diagnostics:
+            raw = _integer(diagnostics['native_compilation_accounting_raw_ns'],
+                           'native compilation accounting', 0, (1 << 63)-1)
+            compilation = observed.get('native_compilation', {})
+            if (key[1] == 'reference' or len(compilation) != 1 or
+                    raw != next(iter(compilation.values()))['accounting_raw_ns']):
+                raise ValueError('Contradictory native compilation accounting')
+
+        for clock in ('cpu_ns', 'wall_ns'):
+            # Owner windows include driver/oracle work and cannot be shorter than their actual calls.
+            if max(value[clock] for value in observed['owner_window'].values()) < sum(
+                    sample[clock] for sample in parsed['invocation']['samples']):
+                raise ValueError('Owner diagnostic does not encompass its full calls')
+
+        _policy(parsed, key[1])
         binary = _command(row.get('run'), files)
         image_key = (case['family'], 'reference' if key[1] == 'reference' else 'production')
         if image_key in images and images[image_key] != binary:
@@ -331,6 +387,7 @@ def _rows(report):
     return {(r['case_id'], r['role'], r['order']): r['parsed'] for r in report['runs']}
 
 
+@schema_reader
 def statistics_rows(report):
     """Expose raw-derived order/clock/phase observations for renderers and numeric consumers."""
     validate_report(report)
@@ -341,7 +398,7 @@ def statistics_rows(report):
                 for clock in ('cpu_ns', 'wall_ns'):
                     values = {}
                     for role in ROLES:
-                        samples = rows[case['case_id'], role, order]['execution']['samples']
+                        samples = rows[case['case_id'], role, order]['invocation']['samples']
                         values[role] = samples[0][clock] if phase == 'cold' else statistics.median(
                             sample[clock] for sample in samples[3:13])
                     result.append(dict(case_id=case['case_id'], order=order, clock=clock,
@@ -351,6 +408,7 @@ def statistics_rows(report):
     return result
 
 
+@schema_reader
 def cumulative_rows(report):
     """Sum every public-call prefix exactly; observed crossovers make no future reuse prediction."""
     validate_report(report)
@@ -362,7 +420,7 @@ def cumulative_rows(report):
                 totals, prefixes = dict.fromkeys(ROLES, 0), []
                 for sample in range(13):
                     for role in ROLES:
-                        totals[role] += rows[case['case_id'], role, order]['execution'][
+                        totals[role] += rows[case['case_id'], role, order]['invocation'][
                             'samples'][sample][clock]
                     prefixes.append(dict(call_count=sample+1, **totals,
                         jit_minus_interpreted_ns=totals['jit']-totals['interpreted'],
@@ -385,17 +443,21 @@ def cumulative_rows(report):
     return result
 
 
+@schema_reader
 def render_summary(report):
     """Render call windows, cumulative costs and observed crossovers with separate constructor scope."""
     validate_report(report)
     rows = _rows(report)
     observations = statistics_rows(report)
-    lines = ['# PVM performance ('+report['architecture']+')', '',
-             'Source `'+report['revision']+'`; scope '+report['scope']+'.',
-             'Cohort '+CODE_LIFETIME+': one prepared owner / reference instance per case, '
-             'invocation state restored between calls. Historical fresh-reference results are a different cohort.',
-             'Thirteen validated calls per process. Cold is sample0; reused is the median of3–12.',
-             'CPU and wall milliseconds, each process order separate. Ratios compare only this native runner.', '']
+    lines = ['# PVM full-invocation performance ('+report['architecture']+')', '',
+             'Source `'+report['revision']+'`; cohort full-invocation-v1 / '+CODE_LIFETIME+'.',
+             'Cold sample0 encloses code admission, runtime startup, restoration, execution and output publication. '
+             'Resident samples1–12 include restoration and output collection/publication. '
+             'Final RAM is consumed before reuse; no artificial reference RAM freeze is added.',
+             'Primary process CPU includes all in-process threads; wall is elapsed time. '
+             'Fixture IO and independent state/event oracle scans are outside each call.',
+             'Thirteen raw calls; reused statistics use samples3–12, without native-readiness filtering. '
+             'Each process order is separate. Ratios compare only this native runner.', '']
     for phase in ('cold', 'reused'):
         lines += [phase.capitalize()+' public call', '',
                   '| Case | Order | Clock | Interpreted ms | JIT ms | Reference ms | I/ref | J/ref |',
@@ -408,7 +470,8 @@ def render_summary(report):
                     f' | {observation["interpreted_over_reference"]:.6f} | '+
                     f'{observation["jit_over_reference"]:.6f} |')
         lines.append('')
-    lines += ['All thirteen public calls (samples0–12, including delayed costs)', '',
+    lines += ['Sum of thirteen full-call windows (samples0–12)', '',
+              'This sums actual enclosing windows, not owner-lifetime CPU/wall: asynchronous work can run between calls. '
               'Break-even counts are calls, including the cold call; reuses are calls minus one. '
               'JIT <= interpreted is break-even. A first crossing can reverse. '
               'Holding through call13 describes only this observed window, without a future prediction.', '',
@@ -429,91 +492,46 @@ def render_summary(report):
             ('not observed' if holds is None else 'yes' if holds else 'no')+' | '+
             (str(through) if through is not None else 'not observed')+' |')
     lines.append('')
-    lines += ['Actual JIT policy and cumulative owner work (positive operations do not imply all work is native)', '',
-              '| Case | Order | Actual | Checked-only fallback | Fragments | Calls | Operations | Code bytes | Compilation CPU ns | Branches | Headers |',
-              '|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|']
+    lines += ['Actual JIT policy and owner work', '',
+              'Readiness and native coverage are observations. Checked fallback and zero native operations '
+              'remain valid; no wait, rehearsal, minimum count or sample filtering is introduced. '
+              'Native compilation accounting fields are not worker/process clocks.', '',
+              '| Case | Order | Actual | Fragments | Calls | Operations | Code bytes |',
+              '|---|---:|---|---:|---:|---:|---:|']
     for case in case_inventory(report['scope']):
         for order in (0, 1):
             parsed = rows[case['case_id'], 'jit', order]
             native, policy = parsed['native'], parsed['policy']
             lines.append(f'| {case["case_id"]} | {order} | {policy["actual"]} | '+
-                         ('yes' if policy['actual'] == 'interpreted' else 'no')+' | '+
-                         ' | '.join(str(native.get(key, 'unavailable')) for key in
-                                    NATIVE_KEYS+OPTIONAL_NATIVE_KEYS)+' |')
-    lines += ['', 'Constructor observations (outside public call; unavailable fields stay absent)', '',
-              '| Case | Role | Order | Clock | Component | ms |', '|---|---|---:|---|---:|---:|']
-    for row in report['runs']:
-        for key, clock in (('preparation_ns', 'cpu'), ('preparation_wall_ns', 'wall')):
-            for index, value in enumerate(row['parsed']['execution'].get(key, [])):
-                lines.append(f'| {row["case_id"]} | {row["role"]} | {row["order"]} | '+
-                             f'{clock} | {index} | {value/1e6:.6f} |')
-    lines += ['', 'Reference retained-instance construction and destruction (once per case/process)', '',
-              'Zero subsidiary clock deltas are observed ticks, not evidence of zero work. '
-              'Module construction remains in its separately observed constructor scope.', '',
-              '| Case | Order | Component | CPU ms | Wall ms |', '|---|---:|---|---:|---:|']
-    for row in report['runs']:
-        if row['role'] == 'reference':
-            instance = row['parsed']['execution']['reference_instance']
-            for component in ('constructor', 'teardown'):
-                lines.append(f'| {row["case_id"]} | {row["order"]} | {component} | '+
-                    ' | '.join(f'{instance[component+"_"+clock+"_ns"]/1e6:.6f}'
-                               for clock in ('cpu', 'wall'))+' |')
-    lines += ['', 'Reference restoration and calls (one-time scopes shown separately)', '',
-              'Columns are independently reduced observations; medians need not add. '
-              'Restore includes its input preflight and read-only-page checks. Full input/final-state/event '
-              'oracles are outside these clocks. The sum covers measured restore + call only, '
-              'not immutable publication or whole-process time.', '',
-              '| Case | Order | Window | Clock | Restore ms | Call ms | Restore + call ms |',
-              '|---|---:|---|---|---:|---:|---:|']
-    for row in report['runs']:
-        if row['role'] != 'reference':
-            continue
-        execution = row['parsed']['execution']
-        for clock in ('cpu', 'wall'):
-            restore = [s['restore_'+clock+'_ns'] for s in execution['reference_instance']['samples']]
-            calls = [s[clock+'_ns'] for s in execution['samples']]
-            combined = [r+c for r, c in zip(restore, calls)]
-            for window in ('cold', 'reused', 'all13'):
-                values = [(v[0] if window == 'cold' else statistics.median(v[3:]) if
-                           window == 'reused' else sum(v)) for v in (restore, calls, combined)]
-                lines.append(f'| {row["case_id"]} | {row["order"]} | {window} | {clock} | '+
-                             ' | '.join(f'{v/1e6:.6f}' for v in values)+' |')
-    lines += ['', 'Reference interpreter-cache retention (public byte observations)', '',
-              '| Case | Order | Initial | After call1 | After call13 |', '|---|---:|---:|---:|---:|']
-    for row in report['runs']:
-        if row['role'] == 'reference':
-            instance = row['parsed']['execution']['reference_instance']
-            lines.append(f'| {row["case_id"]} | {row["order"]} | '+
-                ' | '.join(str(v) for v in (instance['initial_cache_bytes'],
-                    instance['samples'][0]['after_run_bytes'],
-                    instance['samples'][-1]['after_run_bytes']))+' |')
+                ' | '.join(str(native.get(key, 0)) for key in ('fragments', 'calls', 'operations', 'code_bytes'))+' |')
+    lines += ['', 'Optional constructor/runtime/lifecycle diagnostics remain in the raw report. '
+              'They are not added to or subtracted from the primary enclosing clocks. '
+              'Unavailable subsidiary clocks remain absent.', '']
     return '\n'.join(lines)+'\n'
 
 
+@schema_reader
 def render_samples_csv(report):
     """Retain actual calls and restoration/cache receipts without spreading one-time work over samples."""
     validate_report(report)
     output = io.StringIO(newline='')
     writer = csv.writer(output, lineterminator='\n')
-    writer.writerow(('revision', 'architecture', 'scope', 'case_id', 'role', 'order', 'sample',
-                     'cold', 'reused', 'cpu_ns', 'wall_ns',
-                     'reference_restore_cpu_ns', 'reference_restore_wall_ns',
-                     'reference_restore_plus_call_cpu_ns', 'reference_restore_plus_call_wall_ns',
-                     'reference_cache_before_reset_bytes', 'reference_cache_after_reset_bytes',
-                     'reference_cache_after_run_bytes'))
+    writer.writerow(('revision', 'architecture', 'scope', 'measurement_boundary', 'output_contract',
+                     'cpu_clock', 'case_id', 'role', 'order', 'sample', 'cold', 'reused',
+                     'cpu_ns', 'wall_ns', 'reference_cache_before_reset_bytes',
+                     'reference_cache_after_reset_bytes', 'reference_cache_after_run_bytes'))
     for row in report['runs']:
-        execution = row['parsed']['execution']
-        for sample in execution['samples']:
+        invocation = row['parsed']['invocation']
+        for sample in invocation['samples']:
             index = sample['sample']
-            instance = (execution['reference_instance']['samples'][index]
+            instance = (invocation['reference_instance']['samples'][index]
                         if row['role'] == 'reference' else None)
-            extra = (instance['restore_cpu_ns'], instance['restore_wall_ns'],
-                instance['restore_cpu_ns']+sample['cpu_ns'],
-                instance['restore_wall_ns']+sample['wall_ns'], instance['before_reset_bytes'],
-                instance['after_reset_bytes'], instance['after_run_bytes']) if instance else ('',)*7
+            extra = tuple(instance[key] for key in ('before_reset_bytes', 'after_reset_bytes',
+                'after_run_bytes')) if instance else ('',)*3
             writer.writerow((report['revision'], report['architecture'], report['scope'],
-                row['case_id'], row['role'], row['order'], index, int(index == 0),
-                int(index >= 3), sample['cpu_ns'], sample['wall_ns'], *extra))
+                'full-invocation-v1', 'consume-before-reuse-v1', 'process-cpu', row['case_id'],
+                row['role'], row['order'], index, int(index == 0), int(index >= 3),
+                sample['cpu_ns'], sample['wall_ns'], *extra))
     return output.getvalue()
 
 

@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Default x86 wide admission from a literal seven-block source, with checked fallback and owner moves.
+## Unbound checked seven-block histories and source seals; explicit legacy parent refusal stays separate.
 import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
@@ -12,8 +12,6 @@ when not defined(pvmX86Jit):
   assert false, "the default x86 suite needs pvmX86Jit"
 when not defined(pvmX86WideParentRefusalWitness):
   assert false, "the default x86 suite needs its isolated parent-refusal control"
-
-const Native = defined(linux) and defined(amd64) and not defined(pvmX86JitRefuse)
 
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Encode only the program container; the instruction and branch bytes below are independent literals.
@@ -67,7 +65,7 @@ proc source(decoyCopies = 0, branchUsesGuardRegister = false): Program =
   decoded.value
 
 proc prepared(program: Program, native: bool): FlatPlan =
-  ## Both plans own the same immutable source but select independent native policies.
+  ## Both plans own the same immutable source with distinct permissions, without a bound session.
   var outcome = prepareFlatPlan(program, GasCycleLimit(100000),
     defaultFlatLimits(), allowNative = native)
   assert outcome.error == FlatError.None
@@ -85,7 +83,7 @@ proc infoAt(gas = 100000'u64): MachineInfo =
   result.registers[10] = RegisterValue(999999)
 
 proc pages(): array[2, PageImage] =
-  ## RO reads and RW stores exercise separate clipped native descriptors and dirty publication.
+  ## Literal RO/RW pages retain permissions, distinct contents and complete checked memory comparisons.
   result = default(array[2, PageImage])
   result[0] = PageImage(index: PageIndex(148), access: PageAccess.ReadOnly)
   result[1] = PageImage(index: PageIndex(149), access: PageAccess.ReadWrite)
@@ -110,25 +108,29 @@ proc equalOutcome(actual, checked: FlatFrame) =
     if a.error == MachineError.None:
       assert a.value.access == b.value.access and a.value.bytes == b.value.bytes
 
+proc checkUnbound(frame: FlatFrame) =
+  ## Ordinary frames have no shared session or old JIT; semantic comparisons prove the guest result.
+  assert flatX86Statistics(frame) == default(array[5, uint64]), "unbound frame has no native image or entry"
+  assert flatX86WideStatistics(frame) == default(array[2, uint64]), "wide native feature remains unported"
+  assert flatX86MemoryCycleStatistics(frame) == default(array[2, uint64]), "no dormant child execution"
+  assert flatX86WidePendingCountWitness(frame) == 0, "no legacy pending admission without an old JIT"
+
 let sourceProgram = source()
 let nativePlan = prepared(sourceProgram, true)
 let checkedPlan = prepared(sourceProgram, false)
 let initialPages = pages()
 var native = newFlatFrame(nativePlan, initialPages, infoAt())
 
-# Source-only warmup must cause default admission without an explicit install or diagnostic PC.
+# Repeated unbound calls preserve full checked results without default eager native admission.
 runFlat(native, 20000)
 replaceFlatMemory(native, initialPages, infoAt())
 var checked = newFlatFrame(checkedPlan, initialPages, infoAt())
 runFlat(native, 20000)
 runFlat(checked, 20000)
 equalOutcome(native, checked)
-when Native:
-  assert flatX86WideStatistics(native)[0] > 0
-else:
-  assert flatX86WideStatistics(native)[0] == 0
+checkUnbound(native)
 
-# An admitted branch may jump straight to the guard, bypassing read, child,
+# A direct branch may jump straight to the guard, bypassing read, child,
 # and outside. One entry exits rare immediately; the other takes a guard
 # backedge first. Compare the paid state and entire memory with checked execution.
 for start in [319'u64, 318'u64]:
@@ -138,16 +140,14 @@ for start in [319'u64, 318'u64]:
   directBranch.registers[8] = RegisterValue(start)
   replaceFlatMemory(native, initialPages, directBranch)
   var checkedDirectBranch = newFlatFrame(checkedPlan, initialPages, directBranch)
-  let beforeDirectBranch = flatX86WideStatistics(native)[0]
   runFlat(native, 20)
   runFlat(checkedDirectBranch, 20)
   equalOutcome(native, checkedDirectBranch)
-  when Native:
-    assert flatX86WideStatistics(native)[0] > beforeDirectBranch
+  checkUnbound(native)
 
-# A direct guard entry bypasses the wide branch worker but keeps the same
+# A direct guard entry bypasses the source branch but keeps the same
 # source result. A quota boundary on the branch backedge also preserves the
-# exact charged header when native execution returns to the checked stream.
+# exact charged header through checked reentry.
 var directGuard = infoAt()
 directGuard.pc = CodeAddress(0)
 directGuard.registers[2] = RegisterValue(0)
@@ -163,12 +163,10 @@ boundedBranch.registers[2] = RegisterValue(0)
 boundedBranch.registers[8] = RegisterValue(318)
 replaceFlatMemory(native, initialPages, boundedBranch)
 var checkedBoundedBranch = newFlatFrame(checkedPlan, initialPages, boundedBranch)
-let beforeBoundedBranch = flatX86WideStatistics(native)[0]
 runFlat(native, 4)
 runFlat(checkedBoundedBranch, 4)
 equalOutcome(native, checkedBoundedBranch)
-when Native:
-  assert flatX86WideStatistics(native)[0] > beforeBoundedBranch
+checkUnbound(native)
 
 # A regular entry can also reach the direct guard arm through data: zero RO
 # words make the read/child path clear R2 before the next outer branch.
@@ -177,12 +175,10 @@ zeroReadPages[0].bytes[1452] = 0
 zeroReadPages[0].bytes[1460] = 0
 replaceFlatMemory(native, zeroReadPages, infoAt())
 var checkedZeroRead = newFlatFrame(checkedPlan, zeroReadPages, infoAt())
-let beforeZeroRead = flatX86WideStatistics(native)[0]
 runFlat(native, 20000)
 runFlat(checkedZeroRead, 20000)
 equalOutcome(native, checkedZeroRead)
-when Native:
-  assert flatX86WideStatistics(native)[0] > beforeZeroRead
+checkUnbound(native)
 
 # In this admitted source variant the guard increments the register tested by
 # the outer branch. One direct guard visit switches the next branch to read;
@@ -197,8 +193,7 @@ var aliasFrame = newFlatFrame(aliasPlan, initialPages, aliasWarm)
 runFlat(aliasFrame, 20000)
 replaceFlatMemory(aliasFrame, initialPages, aliasWarm)
 runFlat(aliasFrame, 20000)
-when Native:
-  assert flatX86WideStatistics(aliasFrame)[0] > 0
+checkUnbound(aliasFrame)
 var readRefusal = infoAt()
 readRefusal.pc = CodeAddress(12)
 readRefusal.registers[0] = RegisterValue(0)
@@ -206,15 +201,14 @@ readRefusal.registers[8] = RegisterValue(0)
 let noReadPage = @[initialPages[1]]
 replaceFlatMemory(aliasFrame, noReadPage, readRefusal)
 var checkedReadRefusal = newFlatFrame(aliasCheckedPlan, noReadPage, readRefusal)
-let beforeReadRefusal = flatX86WideStatistics(aliasFrame)[0]
 runFlat(aliasFrame, 100)
 runFlat(checkedReadRefusal, 100)
 equalOutcome(aliasFrame, checkedReadRefusal)
 assert aliasFrame.exit == StepExit.Fault
-when Native:
-  assert flatX86WideStatistics(aliasFrame)[0] > beforeReadRefusal
+checkUnbound(aliasFrame)
 
-# A parent publication refusal after child code publication keeps both checked handlers active.
+# Explicit LEGACY control: the existing hook creates an old JIT; this is not common worker refusal.
+# Keep the full checked outcome and no child/parent execution checks; zero calls alone do not establish refusal.
 let refusalPlan = prepared(sourceProgram, true)
 var refused = newFlatFrame(refusalPlan, initialPages, infoAt())
 flatX86RefuseWideParentOnceWitness(refused)
@@ -228,7 +222,7 @@ assert flatX86WideStatistics(refused)[0] == 0 and
   flatX86MemoryCycleStatistics(refused)[0] == 0
 
 # A tail backedge can be cached while the outer guard's other arm remains unprepared.
-# Moving that pending source with its stream must allow admission after later genuine target caching.
+# Moving the checked source with its stream preserves zero legacy pending entries and later source proof.
 let pendingPlan = prepared(sourceProgram, true)
 var fromPrefix = infoAt()
 fromPrefix.pc = CodeAddress(31)
@@ -239,28 +233,24 @@ var pendingShape = default(X86WideCycleCandidate)
 assert pending.reason == StepError.StepLimitExceeded and
   flatX86SealMemoryCycle(pending, 31, narrowShape) and
   not flatX86SealWideCycle(pending, 31, pendingShape)
-assert flatX86WidePendingCountWitness(pending) == 1
+assert flatX86WidePendingCountWitness(pending) == 0
 var pendingStream = takeFlatStream(pending)
 var later = newFlatFrame(pendingPlan, initialPages, infoAt())
 restoreFlatStream(later, pendingStream)
-assert flatX86WidePendingCountWitness(later) == 1
+assert flatX86WidePendingCountWitness(later) == 0
 var laterChecked = newFlatFrame(checkedPlan, initialPages, infoAt())
 runFlat(later, 20000)
 runFlat(laterChecked, 20000)
 equalOutcome(later, laterChecked)
-when Native:
-  # Publication changes the checked dirty handler, so a cold seal is no longer applicable.
-  assert flatX86WidePendingCountWitness(later) == 0
-else:
-  assert flatX86SealWideCycle(later, 31, pendingShape)
+# No publication patches these handlers; later source preparation now genuinely completes the wide proof.
+checkUnbound(later)
+assert flatX86SealWideCycle(later, 31, pendingShape)
 replaceFlatMemory(later, initialPages, infoAt())
 var laterCheckedAgain = newFlatFrame(checkedPlan, initialPages, infoAt())
-let beforeLater = flatX86WideStatistics(later)[0]
 runFlat(later, 20000)
 runFlat(laterCheckedAgain, 20000)
 equalOutcome(later, laterCheckedAgain)
-when Native:
-  assert flatX86WideStatistics(later)[0] > beforeLater
+checkUnbound(later)
 
 when defined(pvmX86MemoryCycleSealWitness):
   block staleSourceTarget:
@@ -288,8 +278,8 @@ when defined(pvmX86MemoryCycleSealWitness):
       not flatX86CompleteTargetWitness(frame, uint32(suffix[0])), "overlapping suffix cannot authorize stale target"
     assert flatX86CompleteTargetWitness(frame, header), "original complete source remains valid"
 
-# More than the pending-table capacity of distinct source backedges must not starve
-# a later eligible graph. Each copied narrow loop lacks the complete outer wide edge.
+# Retain every distinct decoy source/backedge and late source outcome without an old pending table.
+# Each copied narrow loop still lacks the complete outer wide edge, as its source proof must show.
 let crowdedProgram = source(17)
 let crowdedPlan = prepared(crowdedProgram, true)
 let crowdedCheckedPlan = prepared(crowdedProgram, false)
@@ -307,12 +297,12 @@ for copy in 0..<17:
   var decoyWide = default(X86WideCycleCandidate)
   assert flatX86SealMemoryCycle(crowded, pc, decoyNarrow) and
     not flatX86SealWideCycle(crowded, pc, decoyWide)
-  assert flatX86WidePendingCountWitness(crowded) == uint32(min(copy+1, 16))
+  assert flatX86WidePendingCountWitness(crowded) == 0
 replaceFlatMemory(crowded, initialPages, fromPrefix)
 runFlat(crowded, 30)
 assert flatX86SealMemoryCycle(crowded, 31, narrowShape) and
   not flatX86SealWideCycle(crowded, 31, pendingShape)
-assert flatX86WidePendingCountWitness(crowded) == 16
+assert flatX86WidePendingCountWitness(crowded) == 0
 replaceFlatMemory(crowded, initialPages, infoAt())
 var checkedCrowded = newFlatFrame(crowdedCheckedPlan, initialPages, infoAt())
 runFlat(crowded, 20000)
@@ -320,13 +310,10 @@ runFlat(checkedCrowded, 20000)
 equalOutcome(crowded, checkedCrowded)
 replaceFlatMemory(crowded, initialPages, infoAt())
 var checkedCrowdedAgain = newFlatFrame(crowdedCheckedPlan, initialPages, infoAt())
-let beforeCrowded = flatX86WideStatistics(crowded)[0]
 runFlat(crowded, 20000)
 runFlat(checkedCrowdedAgain, 20000)
 equalOutcome(crowded, checkedCrowdedAgain)
-when Native:
-  # Rejecting a full pending table leaves this late source without wide calls.
-  assert flatX86WideStatistics(crowded)[0] > beforeCrowded
+checkUnbound(crowded)
 
 # Replacing all memory capabilities preserves source-bound code and exact checked fallback.
 for quota in [0'u64, 1, 2, 3, 4, 5, 8, 20, 1000]:
@@ -337,12 +324,10 @@ for quota in [0'u64, 1, 2, 3, 4, 5, 8, 20, 1000]:
   equalOutcome(native, expected)
 replaceFlatMemory(native, initialPages, infoAt())
 var checkedAfterQuota = newFlatFrame(checkedPlan, initialPages, infoAt())
-let beforeQuotaReuse = flatX86WideStatistics(native)[0]
 runFlat(native, 20000)
 runFlat(checkedAfterQuota, 20000)
 equalOutcome(native, checkedAfterQuota)
-when Native:
-  assert flatX86WideStatistics(native)[0] > beforeQuotaReuse
+checkUnbound(native)
 
 # Out-of-gas reentry uses the original charge worker at the exact paid boundary.
 for gas in [0'u64, 1, 10, 100]:
@@ -354,14 +339,12 @@ for gas in [0'u64, 1, 10, 100]:
   equalOutcome(native, expected)
 replaceFlatMemory(native, initialPages, infoAt())
 var checkedAfterGas = newFlatFrame(checkedPlan, initialPages, infoAt())
-let beforeGasReuse = flatX86WideStatistics(native)[0]
 runFlat(native, 20000)
 runFlat(checkedAfterGas, 20000)
 equalOutcome(native, checkedAfterGas)
-when Native:
-  assert flatX86WideStatistics(native)[0] > beforeGasReuse
+checkUnbound(native)
 
-# A missing RO read page refuses native memory borrowing and retains the canonical fault.
+# A missing RO read page retains the canonical checked fault; native memory borrowing is unported.
 let missingRead = @[initialPages[1]]
 replaceFlatMemory(native, missingRead, infoAt())
 var checkedFault = newFlatFrame(checkedPlan, missingRead, infoAt())
@@ -371,12 +354,10 @@ equalOutcome(native, checkedFault)
 assert native.exit == StepExit.Fault
 replaceFlatMemory(native, initialPages, infoAt())
 var checkedAfterFault = newFlatFrame(checkedPlan, initialPages, infoAt())
-let beforeFaultReuse = flatX86WideStatistics(native)[0]
 runFlat(native, 20000)
 runFlat(checkedAfterFault, 20000)
 equalOutcome(native, checkedAfterFault)
-when Native:
-  assert flatX86WideStatistics(native)[0] > beforeFaultReuse
+checkUnbound(native)
 
 # The exact plan may lease its active stream after a fault recovery; a different plan cannot take it.
 var stream = takeFlatStream(native)
@@ -387,11 +368,9 @@ assert foreign.reason == StepError.InvalidPreparedProgram
 var restored = newFlatFrame(nativePlan, initialPages, infoAt())
 restoreFlatStream(restored, stream)
 var checkedRestored = newFlatFrame(checkedPlan, initialPages, infoAt())
-let beforeRestore = flatX86WideStatistics(restored)[0]
 runFlat(restored, 20000)
 runFlat(checkedRestored, 20000)
 equalOutcome(restored, checkedRestored)
-when Native:
-  assert flatX86WideStatistics(restored)[0] > beforeRestore
+checkUnbound(restored)
 
 echo "X86_WIDE_DEFAULT_OK"

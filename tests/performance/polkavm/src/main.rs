@@ -26,6 +26,8 @@ fn main() {
     if measurement::clock_control() {
         return;
     }
+    measurement::invocation_scope_header();
+    let full = measurement::full_invocation();
     let args: Vec<String> = std::env::args().collect();
     if args
         .get(1)
@@ -81,6 +83,10 @@ fn main() {
         assert!(length >= 4 && length <= 128 && length <= data.len() - cursor);
         let wire = &data[cursor..cursor + length];
         cursor += length;
+        let owner_window = full.then(measurement::OwnerWindow::start);
+        // One cold bracket begins before Engine/blob/module/instance admission.
+        let mut cold_cpu = full.then(measurement::CpuTimer::start_process);
+        let mut cold_wall = full.then(Instant::now);
         let preparation = Instant::now();
         let preparation_cpu = measurement::process_cpu();
         let mut config = Config::default();
@@ -116,42 +122,26 @@ fn main() {
             // Historical wall-only observations retain their existing stop after the oracle checks.
             None
         };
-        assert_eq!(
-            module.calculate_gas_cost_for(ProgramCounter(0)),
-            Some(price as i64)
-        );
-        assert_eq!(
-            module.calculate_gas_cost_for(ProgramCounter(halt)),
-            Some(halt_price as i64)
-        );
-        if kind == 5 {
-            assert_eq!(
-                module.calculate_gas_cost_for(ProgramCounter(address)),
-                Some(second_price as i64)
-            );
-        }
         let prepare_ns = preparation.elapsed().as_nanos();
         let label = format!("synthetic-{row}");
-        measurement::module_receipt(
-            &label,
-            engine.backend(),
-            &module,
-            measurement::process_cpu() - preparation_cpu,
-        );
-        if modern {
-            // Bind actual engine/module identity and both real constructor clocks before sample zero.
-            let (prepare_cpu_ns, prepare_wall_ns) = modern_preparation.unwrap();
-            let machine_code_bytes = module.machine_code().map_or(0, |code| code.len());
-            assert_eq!(engine.backend(), BackendKind::Interpreter);
-            assert_eq!(machine_code_bytes, 0);
-            assert!(prepare_cpu_ns > 0 && prepare_wall_ns > 0);
-            println!("SYNTHETIC_PREPARE,1,{row},{prepare_cpu_ns},{prepare_wall_ns}");
-            println!("SYNTHETIC_REFERENCE,1,{row},interpreter,interpreter,{machine_code_bytes}");
-        }
         // Canonical samples share one real code cache; historical commands keep fresh instances.
         let mut retained =
             modern.then(|| measurement::RetainedInterpreter::new(&module, &label, 13));
         for sample in 0..13 {
+            let process_clock = full.then(|| {
+                if sample == 0 {
+                    cold_cpu.take().unwrap()
+                } else {
+                    measurement::CpuTimer::start_process()
+                }
+            });
+            let full_wall = full.then(|| {
+                if sample == 0 {
+                    cold_wall.take().unwrap()
+                } else {
+                    Instant::now()
+                }
+            });
             let mut legacy_instance = if modern {
                 None
             } else {
@@ -198,8 +188,8 @@ fn main() {
                 instance
             };
             let mut calls = 0_u64;
-            let cpu = measurement::CpuTimer::start(instance);
-            let start = Instant::now();
+            let cpu = process_clock.unwrap_or_else(|| measurement::CpuTimer::start(instance));
+            let start = full_wall.unwrap_or_else(Instant::now);
             loop {
                 // Host dispatch/replies are part of embedding execution; validation stays outside timing.
                 match instance.run().unwrap() {
@@ -217,14 +207,55 @@ fn main() {
                     other => panic!("benchmark row {row}: unexpected {other:?}"),
                 }
             }
+            // Materialize the normal scalar result; memory remains a public borrow until next reuse.
+            let output_gas = instance.gas();
+            let output_registers: [u64; 13] =
+                std::array::from_fn(|i| instance.reg(Reg::from_raw(i as u32).unwrap()));
             let elapsed = start.elapsed().as_nanos();
             let cpu = cpu.finish();
+            if sample == 0 {
+                assert_eq!(
+                    module.calculate_gas_cost_for(ProgramCounter(0)),
+                    Some(price as i64)
+                );
+                assert_eq!(
+                    module.calculate_gas_cost_for(ProgramCounter(halt)),
+                    Some(halt_price as i64)
+                );
+                if kind == 5 {
+                    assert_eq!(
+                        module.calculate_gas_cost_for(ProgramCounter(address)),
+                        Some(second_price as i64)
+                    );
+                }
+                measurement::module_receipt(
+                    &label,
+                    engine.backend(),
+                    &module,
+                    measurement::process_cpu() - preparation_cpu,
+                );
+                if modern {
+                    // Bind actual engine/module identity and both real constructor clocks before sample zero.
+                    let (prepare_cpu_ns, prepare_wall_ns) = modern_preparation.unwrap();
+                    let machine_code_bytes = module.machine_code().map_or(0, |code| code.len());
+                    assert_eq!(engine.backend(), BackendKind::Interpreter);
+                    assert_eq!(machine_code_bytes, 0);
+                    if !full {
+                        assert!(prepare_cpu_ns > 0 && prepare_wall_ns > 0);
+                    }
+                    println!("SYNTHETIC_PREPARE,1,{row},{prepare_cpu_ns},{prepare_wall_ns}");
+                    println!(
+                        "SYNTHETIC_REFERENCE,1,{row},interpreter,interpreter,{machine_code_bytes}"
+                    );
+                }
+            }
+
             // Every warmup and measured execution must validate before a timing record is accepted.
-            assert_eq!(instance.gas(), 7);
+            assert_eq!(output_gas, 7);
             assert_eq!(calls, if kind == 2 { 2 * iterations } else { 0 });
             for i in 0..13 {
                 assert_eq!(
-                    instance.reg(Reg::from_raw(i as u32).unwrap()),
+                    output_registers[i],
                     word(h, 169 + i * 8, 8),
                     "pvm synthetic terminal register mismatch"
                 );
@@ -247,6 +278,7 @@ fn main() {
                     assert!(instance.read_memory(0x12000 + pair * 16384, 4096).is_err());
                 }
             }
+            cpu.report_full_timing_failure(&label, sample, elapsed);
             assert!(elapsed > 0);
             cpu.receipt(&label, sample);
             if modern {
@@ -263,6 +295,11 @@ fn main() {
         if let Some(retained) = retained {
             // One final instance teardown is separate from all execution/restore sample scopes.
             retained.finish();
+            if let Some(owner) = owner_window {
+                drop(module);
+                drop(engine);
+                owner.finish(&format!("synthetic-{row}"));
+            }
         }
     }
     assert_eq!(cursor, data.len());

@@ -47,7 +47,7 @@ fn read(clock: libc::clockid_t) -> u128 {
         .unwrap()
 }
 
-/// Module compilation occurs in the parent; instance/restore work is reported separately.
+/// Read genuine process CPU; canonical primary windows include every in-process thread.
 pub fn process_cpu() -> u128 {
     read(libc::CLOCK_PROCESS_CPUTIME_ID)
 }
@@ -62,8 +62,20 @@ struct ReferenceRestore {
     sample: usize,
     before: usize,
     after: usize,
-    cpu: u128,
-    wall: u128,
+    cpu: Option<u128>,
+    wall: Option<u128>,
+}
+
+/// The one current canonical producer measures complete requests, with process CPU as primary.
+pub fn full_invocation() -> bool {
+    std::env::var("RAGNAROK_PVM_PERFORMANCE").as_deref() == Ok("1")
+}
+
+/// Scope is explicit; historical readers never infer it from a filename or a new schema label.
+pub fn invocation_scope_header() {
+    if full_invocation() {
+        println!("PVM_MEASURE_SCOPE,1,full-invocation-v1,consume-before-reuse-v1,process-cpu");
+    }
 }
 
 /// One public interpreter instance retains lowered code while each call restores independent input.
@@ -74,6 +86,7 @@ pub struct RetainedInterpreter {
     completed: usize,
     last_after: usize,
     pending: Option<ReferenceRestore>,
+    full_invocation: bool,
 }
 
 impl RetainedInterpreter {
@@ -81,17 +94,24 @@ impl RetainedInterpreter {
     pub fn new(module: &Module, label: &str, samples: usize) -> Self {
         assert!(retained_protocol());
         assert!(samples == 1 || samples == 13);
-        let wall = std::time::Instant::now();
-        let cpu = process_cpu();
+        let full = full_invocation();
+        let wall = (!full).then(std::time::Instant::now);
+        let cpu = if full { None } else { Some(process_cpu()) };
         let instance = module.instantiate().unwrap();
-        let cpu = process_cpu() - cpu;
-        let wall = wall.elapsed().as_nanos();
+        let cpu = cpu.map(|start| process_cpu() - start);
+        let wall = wall.map(|start| start.elapsed().as_nanos());
         let cache = instance
             .interpreter_cache_size()
             .expect("retained reference requires the actual interpreter");
         assert_eq!(cache, 0, "new reference instance must have an empty cache");
         // Small lifecycle phases may honestly measure zero at the host clock's resolution.
-        println!("REFERENCE_INSTANCE,1,{label},{cpu},{wall},{cache}");
+        if !full {
+            println!(
+                "REFERENCE_INSTANCE,1,{label},{},{},{cache}",
+                cpu.unwrap(),
+                wall.unwrap()
+            );
+        }
         Self {
             instance,
             label: label.to_owned(),
@@ -99,6 +119,7 @@ impl RetainedInterpreter {
             completed: 0,
             last_after: cache,
             pending: None,
+            full_invocation: full,
         }
     }
 
@@ -115,12 +136,16 @@ impl RetainedInterpreter {
         assert!(sample < self.samples && self.pending.is_none());
         let before = self.instance.interpreter_cache_size().unwrap();
         assert_eq!(before, self.last_after, "reference cache continuity");
-        let wall = std::time::Instant::now();
-        let cpu = process_cpu();
+        let wall = (!self.full_invocation).then(std::time::Instant::now);
+        let cpu = if self.full_invocation {
+            None
+        } else {
+            Some(process_cpu())
+        };
         self.instance.reset_memory().unwrap();
         restore(&mut self.instance);
-        let cpu = process_cpu() - cpu;
-        let wall = wall.elapsed().as_nanos();
+        let cpu = cpu.map(|start| process_cpu() - start);
+        let wall = wall.map(|start| start.elapsed().as_nanos());
         // Observe only after memory, permissions, all registers, gas and PC have been restored.
         let after = self.instance.interpreter_cache_size().unwrap();
         assert_eq!(
@@ -154,14 +179,26 @@ impl RetainedInterpreter {
             after >= restored.after,
             "retained interpreter cache must not shrink"
         );
-        println!(
-            "REFERENCE_RESTORE,1,{},{sample},{},{}",
-            self.label, restored.cpu, restored.wall
-        );
-        println!(
-            "REFERENCE_CACHE,1,{},{sample},{},{},{}",
-            self.label, restored.before, restored.after, after
-        );
+        if self.full_invocation {
+            if sample == 0 {
+                println!("REFERENCE_INSTANCE,2,{},0", self.label);
+            }
+            println!(
+                "REFERENCE_CACHE,2,{},{sample},{},{},{}",
+                self.label, restored.before, restored.after, after
+            );
+        } else {
+            println!(
+                "REFERENCE_RESTORE,1,{},{sample},{},{}",
+                self.label,
+                restored.cpu.unwrap(),
+                restored.wall.unwrap()
+            );
+            println!(
+                "REFERENCE_CACHE,1,{},{sample},{},{},{}",
+                self.label, restored.before, restored.after, after
+            );
+        }
         self.last_after = after;
         self.completed += 1;
     }
@@ -174,8 +211,16 @@ impl RetainedInterpreter {
         );
         assert!(self.pending.is_none());
         let Self {
-            instance, label, ..
+            instance,
+            label,
+            full_invocation,
+            ..
         } = self;
+        if full_invocation {
+            drop(instance);
+            println!("REFERENCE_INSTANCE_DROP,2,{label}");
+            return;
+        }
         let wall = std::time::Instant::now();
         let cpu = process_cpu();
         drop(instance);
@@ -187,7 +232,7 @@ impl RetainedInterpreter {
 
 /// Bind requested/actual selection to positive compiled code or an interpreted module.
 pub fn module_receipt(label: &str, actual: BackendKind, module: &Module, preparation: u128) {
-    if !explicit() {
+    if !explicit() || full_invocation() {
         return;
     }
     assert_eq!(selected(actual), actual);
@@ -334,6 +379,18 @@ impl CpuTimer {
         }
     }
 
+    /// Enclose cold construction without creating a dummy instance; include every process thread.
+    pub fn start_process() -> Self {
+        let parent = CpuCounter::Process;
+        let parent_start = parent.read();
+        Self {
+            parent,
+            worker: None,
+            parent_start,
+            worker_start: 0,
+        }
+    }
+
     /// Linux compiled execution must expose its actual worker; interpretation has none.
     pub fn start(instance: &RawInstance) -> Self {
         // Legacy Compiler CLI reports wall time only; CPU calibration is an explicit protocol.
@@ -369,6 +426,15 @@ impl CpuTimer {
 }
 
 impl CpuSample {
+    /// Preserve failed full primary observations after the caller's complete state/output checks.
+    pub fn report_full_timing_failure(&self, label: &str, sample: usize, wall: u128) {
+        if (self.total == 0 || wall == 0) && full_invocation() {
+            eprintln!(
+                "PVM_TIMING_FAILURE,1,full-invocation-v1,reference,{label},{sample},{},{wall}",
+                self.total
+            );
+        }
+    }
     fn validate(&self) {
         assert!(self.total > 0);
         assert!(
@@ -401,6 +467,28 @@ pub fn clock_control() -> bool {
         Err(_) => return false,
         Ok(mode) => mode,
     };
+    if mode == "process-threaded" {
+        // Exercise the canonical process clock with real work on a different thread and no VM.
+        let cpu = CpuTimer::start_process();
+        let wall = std::time::Instant::now();
+        std::thread::spawn(|| {
+            let start = process_cpu();
+            let mut work = 1_u64;
+            while process_cpu() - start < 20_000_000 {
+                for _ in 0..10000 {
+                    work = std::hint::black_box(work.wrapping_mul(3).wrapping_add(1));
+                }
+            }
+            std::hint::black_box(work);
+        })
+        .join()
+        .unwrap();
+        let wall = wall.elapsed().as_nanos();
+        let cpu = cpu.finish();
+        assert!(cpu.total >= 20_000_000 && !cpu.worker_clock);
+        println!("PROCESS_CLOCK_CONTROL,1,process-cpu,{},{}", cpu.total, wall);
+        return true;
+    }
     if mode == "threaded" {
         #[cfg(target_os = "linux")]
         {
@@ -482,4 +570,23 @@ pub fn clock_control() -> bool {
         measured.parent, measured.worker, measured.total, own_cpu
     );
     true
+}
+
+/// A real outer owner window includes oracle/driver time and is never substituted for a call.
+pub struct OwnerWindow {
+    cpu: u128,
+    wall: std::time::Instant,
+}
+impl OwnerWindow {
+    pub fn start() -> Self {
+        Self {
+            cpu: process_cpu(),
+            wall: std::time::Instant::now(),
+        }
+    }
+    pub fn finish(self, label: &str) {
+        let cpu = process_cpu() - self.cpu;
+        let wall = self.wall.elapsed().as_nanos();
+        println!("PVM_OWNER_WINDOW,1,{label},{cpu},{wall},includes-driver-oracles");
+    }
 }

@@ -11,6 +11,8 @@ import platform
 import subprocess
 import sys
 from native_checks import NativeChecks, ROOT
+from native_requirements import NATIVE_REQUIREMENTS
+from native_tests import unit_environment, unit_source
 from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
 from pvm_jit_platform import native_defines
@@ -66,16 +68,98 @@ def host_identity():
                 toolchain_platform=selected['platform'], archive=selected['download'])
 
 
-def qualify_policy(checks):
-    """Run maintained memory-lease and owner-policy suites before starting comparison clocks."""
+def qualify_policy(checks, shared_refusal=False):
+    """Keep memory leases and unbound owner policy; the selected shared gate owns real refusal."""
     rows = []
-    for suite in ('pvm_memory_reuse', 'pvm_runtime_policy', 'pvm_runtime_policy_refused'):
+    suites = ('pvm_memory_reuse', 'pvm_runtime_policy')
+    if not shared_refusal:
+        # Unsupported hosts retain the registered fallback check; a real selected refusal replaces it.
+        suites += ('pvm_runtime_policy_refused',)
+    for suite in suites:
         checked = checks.command([sys.executable, ROOT/'tools/native_tests.py', '--suite', suite],
                                  suite, timeout=900)
         rows.append(dict(suite=suite, run=checked))
         if checked['exit_code']:
             raise RuntimeError('PVM memory/policy qualification failed: '+checked['log'])
     return rows
+
+
+def shared_source_paths():
+    """Bind both registered common mains, helper, exact goldens and their source-owned profiles."""
+    paths = [ROOT/'tests/support/pvm_shared_async.nim']
+    for directory, suite in (('codec', 'pvm_shared_async_arm'),
+                             ('codec', 'pvm_shared_async_x86'),
+                             ('state', 'pvm_runtime_policy_refused')):
+        source = ROOT/'tests/unit'/directory/('test_'+suite+'.nim')
+        paths.extend((source, source.with_suffix('.output'),
+                      ROOT/'tools/native_requirements'/directory/(suite+'.json')))
+    return paths
+
+
+def qualify_shared(checks, compiler, host):
+    """Require matching common native lifecycle/publication and real nil-allocation refusal."""
+    production = native_defines(host['system'], host['machine'])
+    if not production:
+        # This explicit unsupported fallback cannot satisfy the canonical native performance gate.
+        return dict(status='unavailable', production_defines=[], controls=[])
+    if production not in (['pvmArm64Jit'], ['pvmX86Jit']):
+        raise ValueError('Unsupported shared native qualification profile')
+    isa = production[0]
+    suite = 'pvm_shared_async_arm' if isa == 'pvmArm64Jit' else 'pvm_shared_async_x86'
+    positive = NATIVE_REQUIREMENTS[suite]
+    refused = NATIVE_REQUIREMENTS['pvm_runtime_policy_refused']
+    positive_flags, refused_flags = positive['defines'], refused['defines']
+    if (len(positive_flags) != len(set(positive_flags)) or
+            set(positive_flags) != {isa, 'pvmSharedAsyncWitness'} or
+            len(refused_flags) != len(set(refused_flags)) or
+            set(refused_flags) != {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'}):
+        raise ValueError('Shared native witness/refusal registration changed')
+    identities = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in shared_source_paths()}
+    rows = []
+    for name, profile, defines in ((suite, positive, positive['defines']),
+            ('pvm_runtime_policy_refused', refused, [isa, isa+'Refuse', 'pvmSharedAsyncWitness'])):
+        # The one existing refusal main runs the selected ISA, rather than ARM fallback on x86.
+        if profile['libraries'] or profile['observers'] or profile['prepared']:
+            raise ValueError('Shared native qualification unexpectedly needs external preparation')
+        source = unit_source(name)
+        built, binary = checks.build(compiler, source, 'shared-'+name,
+            defines=defines, cflags=['-I'+str(ROOT/'native'/path) for path in profile['includes']])
+        if built['exit_code']:
+            raise RuntimeError('Shared native qualification build failed: '+built['log'])
+        directory = checks.folder/('shared-'+name+'-evidence')
+        directory.mkdir(parents=True, exist_ok=True)
+        kind = 'positive' if name == suite else 'refused'
+        evidence = directory/('pvm_shared_'+kind+'_'+architecture(host['machine'])+'.json')
+        evidence.unlink(missing_ok=True)
+        environment = unit_environment(compiler, name)
+        environment['RAGNAROK_TEST_EVIDENCE'] = str(directory)
+        observed = checks.command([binary], 'shared-'+name+'-run',
+            environment=environment, timeout=30)
+        if (observed['exit_code'] or observed['output'] != source.with_suffix('.output').read_text()):
+            raise RuntimeError('Shared native qualification output failed: '+observed['log'])
+        # The same generic golden can come from unsupported fallback; only a fresh real-branch proof qualifies.
+        proof = json.loads(evidence.read_text())
+        counters = ('submitted', 'completed', 'fragments', 'calls', 'operations', 'no_retry_checks')
+        if (set(proof) != {'schema', 'kind', 'isa', *counters} or type(proof['schema']) is not int
+                or proof['schema'] != 1 or proof['kind'] != kind
+                or proof['isa'] != architecture(host['machine'])
+                or any(type(proof[key]) is not int or not 0 <= proof[key] < 1 << 64 for key in counters)
+                or proof['submitted'] != 1 or proof['completed'] != 1
+                or (kind == 'positive' and (any(proof[key] == 0 for key in ('fragments', 'calls', 'operations'))
+                    or proof['no_retry_checks'] != 0))
+                or (kind == 'refused' and (any(proof[key] != 0 for key in ('fragments', 'calls', 'operations'))
+                    or proof['no_retry_checks'] != 3))):
+            raise ValueError('Missing real shared native '+kind+' evidence')
+        if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != digest
+               for path, digest in identities.items()):
+            raise ValueError('Shared native qualification source changed')
+        rows.append(dict(suite=name, production_defines=production,
+            registered_defines=profile['defines'], qualification_defines=defines,
+            build=built, run=observed, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
+            evidence=str(evidence), evidence_sha256=hashlib.sha256(evidence.read_bytes()).hexdigest(),
+            native_evidence=proof))
+    return dict(status='passed', production_defines=production, sources=identities, controls=rows)
 
 
 def qualify_host(checks, compiler, host):
@@ -119,13 +203,18 @@ def run():
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
+        paths += shared_source_paths()
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
         native = bool(native_defines(report['host']['system'], report['host']['machine']))
         report['coverage'] = report['host']['architecture']+' native and forced refusal' if native else 'checked interpreter fallback'
         report['qualification'] = qualify_host(NativeChecks(BUILD), compiler, report['host'])
-        report['policy_qualification'] = qualify_policy(NativeChecks(BUILD))
+        report['shared_qualification'] = qualify_shared(NativeChecks(BUILD), compiler, report['host'])
+        if native and report['shared_qualification']['status'] != 'passed':
+            raise RuntimeError('Missing matching shared native qualification')
+        report['policy_qualification'] = qualify_policy(NativeChecks(BUILD),
+            shared_refusal=report['shared_qualification']['status'] == 'passed')
         report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],
             native_jit_available=native, native_build_defines=native_defines(report['host']['system'], report['host']['machine']),
             jit_unavailable_actual='interpreted')

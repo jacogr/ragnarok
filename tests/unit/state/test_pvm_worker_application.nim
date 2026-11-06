@@ -42,9 +42,8 @@ proc refinementWitness(selected: PvmBackend) =
   assert warm.prepared.backend == selected
   if selected == PvmBackend.Interpreted:
     assert warm.prepared.nativeFragments == 0 and warm.prepared.nativeOperations == 0
-  when defined(arm64) and (defined(linux) or defined(macosx)):
-    if selected == PvmBackend.Jit:
-      assert warm.prepared.nativeOperations > cold.prepared.nativeOperations
+  # A worker without an explicit runtime never compiles synchronously to satisfy a native counter.
+  assert warm.prepared.nativeOperations == 0
   policy.cycles = GasCycleLimit(999)
   let changedPolicy = runRefinementInvocation(second, [], refinementInputs(), ExportOffset(0),
       policy, worker)
@@ -95,9 +94,8 @@ proc accumulationWitness(selected: PvmBackend) =
   if selected == PvmBackend.Interpreted:
     assert current.value.backend == PvmBackend.Interpreted
     assert warm.prepared.nativeOperations == 0
-  when defined(arm64) and (defined(linux) or defined(macosx)):
-    if selected == PvmBackend.Jit:
-      assert current.value.backend == PvmBackend.Jit and warm.prepared.nativeOperations > 0
+  # Requested Jit remains a checked-capable policy; this small unbound caller reports its actual engine.
+  assert current.value.backend == PvmBackend.Interpreted and warm.prepared.nativeOperations == 0
   assert current.value.machine.machineInfo.value.registers ==
       original.value.machine.machineInfo.value.registers
   # Independent pinned-table simulation prices this block101; Omega_G costs48, leaving9851.
@@ -112,8 +110,8 @@ proc accumulationWitness(selected: PvmBackend) =
   assert uint64(actual.gas) == 9851 and uint64(actual.gasDeficit) == 0
   assert uint64(actual.pc) == 0 and actual.blockCharged
 
-proc nativeMemoryWitness(selected: PvmBackend) =
-  ## A native indirect read plus four pure suffix operations must use each invocation's own RAM descriptor.
+proc checkedMemoryWitness(selected: PvmBackend) =
+  ## The unported indirect-memory shape remains checked and must still use each invocation's own RAM.
   let worker = newExecutionWorker()
   let code = @[registerImmediate(11, 196608), @[124'u8, 185], @[51'u8, 3, 7],
       @[51'u8, 4, 8], @[51'u8, 5, 9], @[51'u8, 6, 10], @[10'u8, 0], @[50'u8, 0]]
@@ -147,15 +145,13 @@ proc nativeMemoryWitness(selected: PvmBackend) =
   let observed = workerInfo(worker).value
   assert observed.preparations == 1 and observed.hits == 1
   if selected == PvmBackend.Interpreted: assert observed.prepared.nativeOperations == 0
-  when defined(arm64) and (defined(linux) or defined(macosx)):
-    if selected == PvmBackend.Jit:
-      # Four pure operations alone can account for only8;10 proves the indirect read ran natively in both calls.
-      assert observed.prepared.nativeOperations >= 10
+  # Positive asynchronous pure execution is qualified separately with a real runtime/worker barrier.
+  assert observed.prepared.nativeOperations == 0 and current.value.backend == PvmBackend.Interpreted
 
 refinementWitness(PvmBackend.Interpreted)
 refinementWitness(PvmBackend.Jit)
 accumulationWitness(PvmBackend.Interpreted)
 accumulationWitness(PvmBackend.Jit)
-nativeMemoryWitness(PvmBackend.Interpreted)
-nativeMemoryWitness(PvmBackend.Jit)
+checkedMemoryWitness(PvmBackend.Interpreted)
+checkedMemoryWitness(PvmBackend.Jit)
 echo "PVM worker application passed"

@@ -183,13 +183,6 @@ proc nativeStats(frame: FlatFrame): array[5, uint64] =
   elif defined(pvmArm64Jit): flatArmStatistics(frame)
   else: default(array[5, uint64])
 
-when defined(pvmX86Jit):
-  const nativeExpected = not defined(pvmX86JitRefuse)
-elif defined(pvmArm64Jit):
-  const nativeExpected = not defined(pvmArm64JitRefuse)
-else:
-  const nativeExpected = false
-
 let prefix = owner([@[10'u8], @[51'u8, 1, 7], @[51'u8, 2, 11], @[51'u8, 3, 13],
   @[51'u8, 4, 17], @[10'u8], @[0'u8]])
 let initialPrefix = MachineInfo(gas: MachineGas(1000000))
@@ -201,7 +194,8 @@ for repeat in 0..<3:
   require(prefixFrame.reason == StepError.None and prefixFrame.exit == StepExit.Host, "prefix-first-host")
   let prepared = nativeStats(prefixFrame)
   require(prepared[2] == before[2], "native-work-not-before-host")
-  if nativeExpected: require(prepared[0] > 0 and prepared[3] > 0, "actual-native-publication")
+  # Tiny unbound calls cannot publish eagerly or accumulate eligibility across repeats or host resumes.
+  require(prepared[0] == 0 and prepared[3] == 0, "short-unbound-prefix-has-no-native-image")
   let gas = prefixFrame.info.gas
   resume(prefixFrame, 1)
   runFlat(prefixFrame, 6)
@@ -210,7 +204,7 @@ for repeat in 0..<3:
   for index, value in [7'u64, 11, 13, 17]:
     require(uint64(prefixFrame.info.registers[index+1]) == value, "literal-prefix-registers")
   let executed = nativeStats(prefixFrame)
-  require(executed[2] == before[2]+(if nativeExpected: 4'u64 else: 0'u64), "actual-native-execution")
+  require(executed[2] == before[2], "short-unbound-prefix-stays-checked")
   require(executed[0] == prepared[0] and executed[3] == prepared[3], "native-cache-not-grown-on-resume")
   require(prefixFrame.info.gas == gas and prefixFrame.remaining == 1, "prefix-paid-budget")
   resume(prefixFrame, 2)
@@ -238,7 +232,7 @@ for pc in [2'u64, 0xffffffff'u64]:
   require(prefixFrame.reason == StepError.InvalidMachine and uint64(prefixFrame.info.pc) == pc,
     "invalid-paid-source-pc")
   resources(prefixFrame, 7, 8, 14)
-echo "PASS cached native prefix / partial fallback / actual counters / paid source-PC guards"
+echo "PASS checked prefix / partial stops / no eager native / paid source-PC guards"
 
 let branching = owner([@[10'u8], @[81'u8, 1, 4], @[0'u8], @[50'u8, 0]])
 var branchRegisters = default(RegisterFile)

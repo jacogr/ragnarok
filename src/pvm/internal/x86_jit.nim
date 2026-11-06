@@ -181,6 +181,10 @@ proc newX86Jit*(): X86Jit =
   ## Creation retains no executable allocation until a qualifying source span is actually published.
   X86Jit(arena: X86Arena(handle: nil), entries: @[], unavailable: false)
 
+proc takeX86Instructions*(fragment: var X86Block): seq[byte] =
+  ## Transfer only machine bytes to the shared worker; no legacy admission/publication rule is invoked.
+  move(fragment.bytes)
+
 func supportedX86Opcode*(opcode: byte): bool {.inline.} =
   ## Baseline x86-64 instructions implement these non-exiting scalar operations without optional CPU extensions.
   supportedScalarOpcode(opcode)

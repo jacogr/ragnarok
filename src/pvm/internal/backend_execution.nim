@@ -282,10 +282,11 @@ when declared(ExecutionCursor):
     else: StepError.InvalidPreparedProgram
 
   proc newPreparedProgram*(source: Program, limits: PreparedLimits,
-      selected: PvmBackend): PreparationResult[PreparedProgram] =
+      selected: PvmBackend, nativeRuntime: NativeRuntime = default(
+          NativeRuntime)): PreparationResult[PreparedProgram] =
     ## Engine choice is immutable and bound to this source/cache identity before any invocation.
     if selected in [PvmBackend.Interpreted, PvmBackend.Jit]:
-      return prepareIndependent(source, limits, selected)
+      return prepareIndependent(source, limits, selected, nativeRuntime)
     when defined(polkavmRuntime):
       if not isJamProgram(source): return PreparationResult[PreparedProgram](
           status: PreparationError.BackendProgramUnsupported)

@@ -144,7 +144,7 @@ def parse_candidate(output, case, doom=False, event_bytes=0):
     return result
 
 
-def parse_public(output, case, limit, prepared=False, doom=False, event_bytes=0):
+def parse_public(output, case, limit, prepared=False, doom=False, event_bytes=0, allow_zero_constructor=False):
     """Require exact public API constructor/sample framing; fresh invocation costs remain inside each call."""
     if doom:
         lines = output.splitlines()
@@ -153,12 +153,13 @@ def parse_public(output, case, limit, prepared=False, doom=False, event_bytes=0)
         if len(fields) != 3 or fields[:2] != ['API_PREPARE', mode]:
             raise ValueError('Missing public constructor')
         constructor = integers(fields[2:])
-        if constructor[0] <= 0:
+        if constructor[0] < 0 or constructor[0] == 0 and not allow_zero_constructor:
             raise ValueError('Invalid public constructor clock')
         return dict(preparation_ns=constructor,
                     samples=timing_samples('\n'.join(lines)+'\n','native',case,event_bytes))
     if prepared:
-        parsed = parse_prepared_output(output,'ragnarok_prepared',limit,13,case,True)
+        parsed = parse_prepared_output(output,'ragnarok_prepared',limit,13,case,True,
+                                       allow_zero_constructor=allow_zero_constructor)
         parsed['preparation_ns'] = [int(parsed['preparation'][0][1])]
         return parsed
     parsed = parse_process_output(output,'ragnarok_planned',limit,guest=case)

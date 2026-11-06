@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Native x86 scalar/alias equivalence, every source prefix and honest OS-refusal witnesses.
+## Checked scalar/source histories plus direct legacy x86 literal/region/context and refusal controls.
 import std/[assertions, syncio]
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
@@ -69,10 +69,10 @@ for opcode in 0..255:
           registers: original))
       runFlat(frame, 100)
       assert frame.reason == StepError.None and frame.exit == StepExit.Panic
-      assert frame.info.registers == expected, "x86 scalar lowering differs from portable evaluator"
+      assert frame.info.registers == expected, "checked scalar source differs from portable evaluator"
       let stats = flatX86Statistics(frame)
-      when defined(pvmX86JitRefuse): assert stats[0] == 0 and stats[1] == 0 and stats[2] == 0
-      else: assert stats[0] == 1 and stats[1] == 1 and stats[2] == 4
+      # The bare short frame is checked; direct raw arithmetic below retains actual native positives.
+      assert stats == default(array[5, uint64]), "unbound scalar frame does not publish eagerly"
       inc literalCases
 stdout.writeLine("X86_REGISTER_CASES," & $literalCases)
 
@@ -331,9 +331,8 @@ restoreFlatStream(second, stream)
 runFlat(second, 10)
 assert uint64(second.info.registers[0]) == 904
 let retained = flatX86Statistics(second)
-when defined(pvmX86JitRefuse): assert retained[0] == 0 and retained[1] == 0 and retained[2] == 0
-else: assert retained[0] == 1 and retained[1] == 2 and retained[2] == 8
-stdout.writeLine("X86_CACHE_REUSE_OK")
+assert retained == default(array[5, uint64]), "exact-plan checked stream reuse creates no native image"
+stdout.writeLine("X86_CHECKED_STREAM_REUSE_OK")
 
 
 var branchLiteralCases = 0
@@ -399,14 +398,12 @@ warmInfo.registers[1] = RegisterValue(32)
 var branchFrame = newFlatFrame(branchPlan, [], warmInfo)
 var interpretedFrame = newFlatFrame(interpretedPlan, [], warmInfo)
 for visit in 0..<2:
-  # Warming the same exact owner must resolve both destinations and execute the compiled whole-block path.
+  # Repeated checked source resolves both destinations without creating native whole-block code.
   resetFlatFrame(branchFrame, warmInfo)
   runFlat(branchFrame, 1000)
   assert branchFrame.reason == StepError.None and branchFrame.exit == StepExit.Panic
-when defined(pvmX86JitRefuse): assert flatX86ControlStatistics(branchFrame) == default(array[2, uint64])
-else:
-  let control = flatX86ControlStatistics(branchFrame)
-  assert control[0] > 0 and control[1] > 0
+assert flatX86ControlStatistics(branchFrame) == default(array[2, uint64]),
+    "unbound branch source retains checked control"
 var branchPrefixCases = 0
 for initial in [0'u64, 5, 31]:
   for paid in [false, true]:
@@ -481,15 +478,12 @@ for paired in [false, true]:
   var nativeFrame = newFlatFrame(nativePlan, [], warmInfo)
   var checkedFrame = newFlatFrame(checkedPlan, [], warmInfo)
   for visit in 0..<3:
-    # Reused source caches must discover and execute a real closed loop before boundary cases can count as native evidence.
+    # All boundary cases retain the same checked source loop; direct region kernels follow separately.
     resetFlatFrame(nativeFrame, warmInfo)
     runFlat(nativeFrame, 1000)
     assert nativeFrame.reason == StepError.None and nativeFrame.exit == StepExit.Panic
-  when defined(pvmX86JitRefuse):
-    assert flatX86RegionStatistics(nativeFrame) == default(array[2, uint64])
-  else:
-    let connected = flatX86RegionStatistics(nativeFrame)
-    assert connected[0] > 0 and connected[1] > connected[0]
+  assert flatX86RegionStatistics(nativeFrame) == default(array[2, uint64]),
+      "connected frame feature remains unported; raw region kernels are separate"
   for initial in [0'u64, 5, 31]:
     for paid in [false, true]:
       for gas in [0'u64, 1, 2, 3, 4, 5, 63, 64, 65, high(uint64)]:

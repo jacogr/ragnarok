@@ -6,6 +6,7 @@ use polkavm::{
     ModuleConfig, ProgramBlob, ProgramCounter, ProgramParts, RawInstance, Reg,
 };
 use polkavm_common::program::{ISA_JamV1, InstructionSetKind};
+use polkavm_common::utils::ArcBytes;
 use std::{fs, path::Path};
 #[path = "../../polkavm_backend.rs"]
 mod measurement;
@@ -54,6 +55,7 @@ impl Events {
 // One validated JamV1 blob fixes import identities, code, data and both public entry points.
 struct Guest {
     module: Module,
+    source_bytes: ArcBytes,
     wire: Vec<u8>,
     hosts: [u32; 5],
     entries: [ProgramCounter; 2],
@@ -63,9 +65,15 @@ struct Guest {
 impl Guest {
     // Force the interpreter and the same checked memory/cost model as the native embedding.
     fn load(path: &Path) -> Self {
-        let raw = fs::read(path).unwrap();
-        let parts = ProgramParts::from_bytes(raw.clone().into()).unwrap();
-        let blob = ProgramBlob::parse(raw.into()).unwrap();
+        let mut guest = Self::from_bytes(fs::read(path).unwrap());
+        guest.prepare_oracles();
+        guest
+    }
+
+    // Cold canonical admission receives already-read bytes, never performs fixture IO.
+    fn from_bytes(raw: Vec<u8>) -> Self {
+        let source_bytes: ArcBytes = raw.into();
+        let blob = ProgramBlob::parse(source_bytes.clone()).unwrap();
         assert_eq!(blob.isa(), InstructionSetKind::JamV1);
         blob.validate_code_with_isa(ISA_JamV1).unwrap();
         let hosts = HOSTS.map(|name| {
@@ -98,7 +106,22 @@ impl Guest {
             &module,
             measurement::process_cpu() - cpu,
         );
-        let map = module.memory_map();
+        Self {
+            module,
+            source_bytes,
+            wire: Vec::new(),
+            hosts,
+            entries,
+            pages: Vec::new(),
+            capture_events: true,
+        }
+    }
+    // Independent fixture/code/map oracles are prepared externally, never during cold admission.
+    fn prepare_oracles(&mut self) {
+        assert!(self.wire.is_empty() && self.pages.is_empty());
+        let parts = ProgramParts::from_bytes(self.source_bytes.clone()).unwrap();
+        self.wire = parts.code_and_jump_table.to_vec();
+        let map = self.module.memory_map();
         let mut pages = Vec::new();
         for (range, access) in [
             (map.ro_data_range(), 1),
@@ -113,14 +136,7 @@ impl Guest {
         pages.sort();
         assert!(!pages.is_empty() && pages.len() <= 8192);
         assert!(pages.windows(2).all(|x| x[0].0 < x[1].0));
-        Self {
-            module,
-            wire: parts.code_and_jump_table.to_vec(),
-            hosts,
-            entries,
-            pages,
-            capture_events: true,
-        }
+        self.pages = pages;
     }
     // Reset one external call's complete ABI without changing retained guest memory.
     fn reset(&self, instance: &mut RawInstance, phase: usize) {
@@ -241,6 +257,108 @@ impl Guest {
 }
 
 // Prepare once; measured/profiled execution reads those immutable input and expected records.
+// One canonical adapter encloses cold admission or resident reset through owned host outputs.
+fn full_run(
+    raw: Vec<u8>,
+    rom: Vec<u8>,
+    input: Vec<u8>,
+    expected: Vec<u8>,
+    expected_events: Vec<u8>,
+    phase: usize,
+    phase_name: &str,
+) {
+    let owner = measurement::OwnerWindow::start();
+    {
+        let mut cold_cpu = Some(measurement::CpuTimer::start_process());
+        let mut cold_wall = Some(std::time::Instant::now());
+        let mut guest = Guest::from_bytes(raw);
+        assert!(input.len() >= 152 && &input[..8] == b"PVMDOM01");
+        let wire_len = usize::try_from(word(&input, 8, 4)).unwrap();
+        let page_count = usize::try_from(word(&input, 16, 4)).unwrap();
+        assert!(wire_len <= 4 * 1024 * 1024 && page_count > 0 && page_count <= 8192);
+        assert_eq!(input.len(), 152 + wire_len + page_count * 4101);
+        assert_eq!(word(&input, 12, 4), u64::from(guest.entries[phase].0));
+        let registers: [u64; 13] = std::array::from_fn(|index| word(&input, 48 + index * 8, 8));
+        let gas = i64::try_from(word(&input, 40, 8)).unwrap();
+        let label = format!("doom-{phase_name}");
+        let mut retained = measurement::RetainedInterpreter::new(&guest.module, &label, 13);
+        for sample in 0..13 {
+            let cpu = if sample == 0 {
+                cold_cpu.take().unwrap()
+            } else {
+                measurement::CpuTimer::start_process()
+            };
+            let wall = if sample == 0 {
+                cold_wall.take().unwrap()
+            } else {
+                std::time::Instant::now()
+            };
+            let instance = retained.restore(sample, |instance| {
+                for (index, value) in registers.iter().enumerate() {
+                    instance.set_reg(Reg::from_raw(index as u32).unwrap(), *value);
+                }
+                instance.set_next_program_counter(guest.entries[phase]);
+                instance.set_gas(gas);
+                // Deliver the declared RW input directly; module-map enumeration is an external oracle.
+                for record in input[152 + wire_len..].chunks_exact(4101) {
+                    let address = u32::try_from(word(record, 0, 4))
+                        .unwrap()
+                        .checked_mul(4096)
+                        .unwrap();
+                    let access = record[4];
+                    assert!(access == 1 || access == 2);
+                    if access == 2 {
+                        instance.write_memory(address, &record[5..]).unwrap();
+                    }
+                }
+            });
+            let events = guest.run(instance, &rom);
+            let output_gas = instance.gas();
+            // Event payloads already belong to events. Final RAM is a public borrow until the next reset.
+            let wall_ns = wall.elapsed().as_nanos();
+            let cpu = cpu.finish();
+            assert!(output_gas >= 0);
+            if sample == 0 {
+                guest.prepare_oracles();
+                assert_eq!(page_count, guest.pages.len());
+                assert_eq!(wire_len, guest.wire.len());
+                // Independent code/import/RO compatibility oracles stay outside the primary clock.
+                assert_eq!(guest.wire, input[152..152 + wire_len]);
+                for (index, id) in guest.hosts.iter().enumerate() {
+                    assert_eq!(u64::from(*id), word(&input, 20 + index * 4, 4));
+                }
+                let mut cursor = 152 + wire_len;
+                for &(address, access) in &guest.pages {
+                    assert_eq!(word(&input, cursor, 4), u64::from(address / 4096));
+                    assert_eq!(input[cursor + 4], access);
+                    if access == 1 {
+                        assert!(
+                            instance.read_memory(address, 4096).unwrap()
+                                == input[cursor + 5..cursor + 4101]
+                        );
+                    }
+                    cursor += 4101;
+                }
+            }
+            assert!(
+                guest.expected(instance) == expected,
+                "DOOM terminal state mismatch"
+            );
+            assert!(events.encode() == expected_events, "DOOM event mismatch");
+            cpu.report_full_timing_failure(&label, sample, wall_ns);
+            retained.complete_sample(sample);
+            cpu.receipt(&label, sample);
+            println!(
+                "DOOM_SAMPLE,reference,{phase_name},{sample},{},{wall_ns}",
+                cpu.total
+            );
+        }
+        retained.finish();
+    }
+    owner.finish("doom-process");
+    println!("DOOM_OK,reference,{phase_name},{}", expected_events.len());
+}
+
 fn main() {
     if measurement::clock_control() {
         return;
@@ -265,6 +383,24 @@ fn main() {
     assert!(args[1] == "prepare" || args[1] == "run");
     if std::env::var("RAGNAROK_PVM_DOOM_ASSERT").as_deref() == Ok("1") {
         panic!("doom reference assertion control");
+    }
+    measurement::invocation_scope_header();
+    if measurement::full_invocation() && args[1] == "run" {
+        // Fixture files are read before the real request boundary; there is no untimed code owner.
+        let folder = Path::new(&args[4]);
+        let phase = match args[5].as_str() {
+            "init" => 0,
+            "tick" => 1,
+            _ => panic!("unknown DOOM phase"),
+        };
+        let raw = fs::read(&args[2]).unwrap();
+        let rom = fs::read(&args[3]).unwrap();
+        assert_eq!(rom.len(), 4196020);
+        let input = fs::read(folder.join(format!("{}.input", args[5]))).unwrap();
+        let expected = fs::read(folder.join(format!("{}.expected", args[5]))).unwrap();
+        let events = fs::read(folder.join(format!("{}.events", args[5]))).unwrap();
+        full_run(raw, rom, input, expected, events, phase, &args[5]);
+        return;
     }
     let mut guest = Guest::load(Path::new(&args[2]));
     let rom = fs::read(&args[3]).unwrap();

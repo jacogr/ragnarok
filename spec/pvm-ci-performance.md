@@ -48,73 +48,114 @@ by the measured candidate.
 
 ## Measurement and reporting
 
-The `pvm-performance-v2` cohort binds `code_lifetime=retained-code-v1`. Each case
-retains one prepared owner on our side and one actual PolkaVM interpreter instance
-on the reference side. Invocation memory, all thirteen registers, gas, PC and host
-progress are reset for every call. Public `reset_memory` preserves the reference's
-lowered-code cache; no private hooks or interpreter-cache reset are used.
-The former v1 reference created a fresh instance for every sample. Those historical
-ratios are a different lifecycle cohort, not evidence of a source-code speedup when
-compared with v2. Latest retrieval accepts only the current schema and never mixes
-the two cohorts or silently substitutes an older result.
+The current `pvm-performance-v3` cohort binds `full-invocation-v1`,
+`code_lifetime=retained-code-v1`, `program-state-host-inputs-v1`,
+`consume-before-reuse-v1` and the real process CPU clock. Each process begins with
+`PVM_MEASURE_SCOPE,1,full-invocation-v1,consume-before-reuse-v1,process-cpu`.
+A scope receipt is required by the canonical producer parser; older clock records
+cannot qualify merely by changing a report's schema or labels.
 
-Each process emits thirteen validated calls. Sample zero is the cold call; the
-first three calls are excluded from the ten-call reused median. Forward and reverse
-engine orders remain separate. CPU and wall statistics remain separate, with raw
-samples retained. Constructor cost is outside public call clocks and reported
-separately. Every engine's execution clocks nest wall timing inside process-CPU
-timing: CPU start, wall start, execute, wall stop, CPU stop. Wall execution time
-therefore excludes the process-CPU clock reads; CPU execution time includes the
-wall-clock reads. No estimated timer overhead is subtracted. Very short calls may
-still be dominated by timer overhead, so their CPU and wall ratios need separate
-interpretation. Constructor and reference-lifecycle observations retain their own
-explicit scopes. Our public prepared call includes fresh invocation memory, callbacks,
-immutable publication and lease return. The reference call clock excludes its
-invocation restore. One-time reference instance construction/destruction and
-per-call restore CPU/wall clocks are retained separately for every workload family.
-The reference still does not publish immutable memory snapshots inside its call;
-retained code aligns code lifetime, not all embedding capabilities or timing scopes.
-These are explicitly scoped call comparisons, not complete application startup or
-an additive decomposition of nested clocks.
+The cold request starts from already-read program bytes, declared CPU/RAM and
+host inputs. Its actual encompassing CPU/wall clock starts before code-specific
+decode, Program/Module validation, memory capture, prepared-owner and instance
+creation. No decoded Program, Module, prepared owner, RawInstance or dummy clock
+instance is created before that boundary. Resident requests may reuse the actual
+admitted code owner and immutable baseline. Their encompassing clocks start before
+invocation-specific RAM/CPU restoration, host progress reset and collector setup.
+All normal dispatch, host input delivery, owned event-payload capture and final
+public output publication occur before either enclosing clock stops.
 
-Cumulative observations sum public-call samples zero through twelve, including
-samples one/two and delayed work. Every call prefix retains integer CPU and wall
-totals separately by engine and process order. The all-thirteen-call table shows
-totals and ratios, the first observed JIT/interpreted break-even call count, whether
-that crossing holds through call thirteen, and any later crossing that does hold
-through the observed window. Break-even includes equality; reuse count is call
-count minus one. A missing crossing remains unobserved. These observations neither
-establish steady state nor predict a future crossover. Constructor and reference
-lifecycle scopes remain separate; cumulative totals use the existing call clocks.
+Both engines expose the final outcome, CPU state and public final-memory owner/view
+until the consumer finishes before the next reset. Ragnarok's normal immutable
+publication is included. PolkaVM's ordinary public instance view is consumed without
+an artificial full-RAM freeze or copy. Complete independent state/page/event scans,
+comparison and serialization occur after the clock. Fixture/container IO, fixture
+creation and independent oracle preparation are external to the request. Pinky's
+initialized frame and DOOM's state after 1,320 fixture ticks are frozen inputs; the
+measured retained owner is never rehearsed to recreate those inputs. Reset/write
+APIs and input geometry are checked normally; the performance path does not repeat
+an independent whole-RAM pre-input scan inside the primary window. Complete final
+state and refusal controls remain mandatory.
+Ordinary guest reset reuses the module's declared immutable initial RAM, whose
+compatibility is established by the frozen-fixture producer. Initialized Pinky
+and DOOM writable snapshots override that baseline through normal write APIs.
+Ordinary guest code/jump-table bytes are compared exactly against the admitted raw
+module source after sample0, including unreachable instructions. The raw source is
+retained with an immutable shared byte handle created inside cold admission; no
+extra decode or code owner is warmed before the clock.
+Independent read-only input compatibility checks run after sample0's clock,
+while read-only state is still unchanged, before accepting any observation.
 
-Every reference case emits exactly one `REFERENCE_INSTANCE,1,label,cpu,wall,cache`
-and one `REFERENCE_INSTANCE_DROP,1,label,cpu,wall`, surrounding thirteen ordered
-`REFERENCE_RESTORE,1,label,sample,cpu,wall` and
-`REFERENCE_CACHE,1,label,sample,before_reset,after_reset,after_run` pairs. Initial
-cache size must be zero. Each later entry must equal the preceding completed cache;
-the complete memory/ABI restore must preserve that size, and execution must leave
-a positive, nonshrinking cache. Per-sample receipts follow the corresponding complete
-state/event checks before acceptance. Constructor receipts validate the new empty
-cache before any call; destruction follows the complete case. Missing, recreated, warmed-outside-call or
-reset caches cannot qualify as a retained instance. Subsidiary constructor/restore/
-destruction clocks may legitimately report zero observed ticks at clock resolution;
-no floor is applied, and execution CPU/wall clocks remain strictly positive.
+The standalone production JIT process demand-starts one application-owned compiler
+runtime inside its first cold request, then supplies it to its code owners. The
+forced-interpreted process uses the default/no runtime, creates no compiler thread
+or synchronization owner, and emits `PVM_RUNTIME_NONE` with reason interpreted-policy
+and its code-owner count. It observes a genuine prepared-owner retirement window,
+without fabricated runtime startup/close clocks or dependency on runtime availability.
+The JIT request retains demand-startup cost even when its actual outcome is checked
+fallback. This preserves the real startup difference in JIT/interpreted comparisons. The
+synthetic process shares that one runtime across all eleven owners. Each selected
+guest/DOOM process currently has one code owner. This is an adapter choice, not a
+worker-per-Program API contract. An application may supply its genuinely existing
+runtime; moving guest-specific work before the cold clock is not permitted.
+Runtime creation/startup is included where it actually happens. Closing/joining is
+observed separately after the final output is consumed. `PVM_RUNTIME_OWNER` records
+actual ownership/creation/count; `PVM_RUNTIME_CLOSE` records genuine CPU/wall deltas.
+`PVM_OWNER_WINDOW` is an additional actual process CPU/wall observation explicitly
+labelled `includes-driver-oracles`, through teardown/close. It includes inter-call
+work, assertions and output-driver overhead, and is never presented as PVM-only
+CPU, added to primary clocks, or compared as an equivalent owner granularity.
+Reference instance and module teardown occurs before its owner-window observation.
+Native compiler clock availability is explicit in `PVM_NATIVE_COMPILATION`; an
+unmeasured accounting zero never becomes worker CPU or a measured zero duration.
+Any duplicated raw compilation accounting is type-checked and must equal its scope
+receipt. Full guest/DOOM owner receipts read their first five counters from the same
+common preparedInfo API as runtime policy, rather than legacy ARM caches. Current
+shared pure-only images have zero guest-branch/header counts. Positive owned code
+bytes require a collected image; cumulative collected/native-work counts may stay
+positive after current owned bytes return to zero.
 
-CSV rows retain actual per-call restoration clocks and cache sizes. Restore includes
-its preflight and read-only-page comparisons; the separate complete input/final-state/
-event oracles remain outside these clocks. Explicitly named restore-plus-call sums
-exclude those complete oracles and one-time construction/destruction; they are not
-whole-process timings. One final instance destruction is
-never duplicated into thirteen per-call teardown observations. Unobserved module
-constructor clocks remain absent rather than becoming zero.
 
-Tables show both current interpreter / PolkaVM interpreted and current JIT /
-PolkaVM interpreted ratios, with lower values meaning less time. Requested policy,
-actual completed native work, availability and counters accompany each workload.
-A JIT request which executes no native operations is an explicit interpreted
-fallback cell. Eligibility-based native coverage requirements cannot be satisfied
-by unrelated workloads. Source/backend/clock/sample/coverage failures fail the job;
-there is no noisy universal speed threshold or cross-architecture timing ratio.
+Each process emits thirteen raw validated calls. Sample0 is the cold call;
+samples1–12 are resident. Reused statistics use exactly samples3–12, independently
+for CPU/wall and both unchanged process orders. No sample is filtered for native
+readiness, no hidden warmup/wait is introduced and no minimum native work or
+profitability threshold is imposed by Perf. Incomplete shared async coverage and
+checked fallback remain valid observations. Requested policy, availability and
+actual counters must agree; native capability correctness is qualified separately.
+The first invocation is interpreted and pending work never waits for the compiler.
+
+Primary CPU is process CPU including all in-process threads. Worker/thread and
+lifecycle observations remain diagnostics; none is added to or subtracted from
+primary CPU. Sum/prefix tables use the thirteen actual enclosing windows, including
+samples1/2 and delayed costs. They are not owner-lifetime totals: an async worker can
+run between windows. The first observed JIT/interpreted break-even call includes
+equality, may reverse, and predicts no future crossover. Reuse count is call count
+minus one; an absent crossing remains unobserved. Demand startup may itself cost
+more than interpretation; these scopes establish no speed or near-parity claim.
+
+Reference receipts are clock-free version2:
+`REFERENCE_INSTANCE,2,label,0`, thirteen ordered
+`REFERENCE_CACHE,2,label,sample,before_reset,after_reset,after_run`, and
+`REFERENCE_INSTANCE_DROP,2,label`. There is one actual interpreter instance per
+case, initially empty, whose lowered-code cache survives every public reset. Cache
+sizes must remain continuous and nonshrinking, and become positive after execution.
+Unavailable constructor/restore/drop clocks remain absent. Optional genuine nested
+constructor clocks stay in diagnostics and are not separately charged to the
+already-enclosing cold call. These optional nested clocks may genuinely resolve to
+zero; full-mode parsing/reporting preserves nonnegative raw values without floors,
+retiming or retries. Primary enclosing clocks remain strictly positive. Historical
+execution-only readers retain their original constructor positivity requirements. CSV retains every primary raw call and cache receipt.
+
+Historical v1 fresh-reference and v2 retained-reference execution-only JSON, labels,
+clock meanings and readers remain available through frozen schema readers. In
+particular v2 constructor/restore/call/drop values and its explicitly named additive
+restore-plus-call diagnostics retain their original meaning. They are not rewritten
+as full invocations or compared as a source-only speedup. Explicit run/attempt
+retrieval may render that history with an execution-only provenance label derived from schema; optional historical
+identity.measurement extras cannot promote them to full-call evidence. Default
+latest retrieval accepts v3 only: a newest v1/v2 artifact is unavailable for current
+full-invocation monitoring and never causes fallback to an older green run.
 
 The canonical JSON validates the exact configured workload/engine/order/sample
 matrix, actual native policy, source and host identities before success. Summary
@@ -145,3 +186,28 @@ inventory, clock/policy/ratio validation, failure-safe publication, reference
 selection and latest-report retrieval. Native Linux CI on both architectures is the
 qualification for actual timing. A sub-resolution local CPU sample is a measurement
 failure, not a value to floor, discard or relabel as wall time.
+
+## Current qualification boundary
+
+The shared runtime and this canonical measurement path form one coherent source review unit.
+Scoped local Darwin ARM checks passed the supported bound common normal/refusal gates, production
+Services lifecycle, the full normal legacy witness, four retained rejection/refusal witness
+variants, both region receipt profiles and seven affected unit/golden profiles. These retain real
+raw native controls and complete checked histories; they are correctness evidence for those paths.
+Nine other mandatory legacy/ownership/arena/policy controls have no matching local qualification
+claim and remain required by canonical CI. Actual Linux x86 execution and the final two-job Linux
+ARM64/x86-64 comparison on coherent published source are pending.
+
+The common runtime currently admits its implemented pure spans. Connected, memory, resident, wide
+and macro features remain unported and their public frame cohorts execute checked. Requested JIT
+policy never substitutes for observed native calls or operations. The separately bound native gate
+must prove actual supported publication/execution and eligible worker refusal; full-invocation
+measurements retain genuine checked fallback without silently inflating work or waiting for it.
+
+The first local pilot on an earlier runtime source stopped at a primary process-CPU window below
+clock resolution. Its partial output and failed outcome remain historical failed evidence, not a
+current accepted cohort. No local benchmark retry, clock floor, sample discard or wall-time
+substitution repairs it. Failure diagnostics retain the actual enclosing CPU/wall observations and
+case context, while refusal controls preserve their independent gas sentinel. Actual canonical
+Linux runs must report incomplete or zero-primary-clock cohorts as failures. No current v3 timing,
+warmed JIT improvement or complete native feature coverage is claimed by these local checks.

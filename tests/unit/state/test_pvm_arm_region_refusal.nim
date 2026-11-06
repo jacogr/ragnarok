@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-## Candidate-local ARM rejection must preserve unrelated native coverage and exact immutable caller state.
+## Checked frame histories and direct legacy ARM rejection/capacity controls retain their distinct contracts.
 import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
@@ -104,7 +104,7 @@ proc runSmall(frame: var FlatFrame) =
     verify(frame, expected, 987, false)
 
 proc order(smallFirst, largeFirst: bool): bool =
-  ## Fresh-small, rejected-then-small and small-then-rejected owners have the same independent endpoints.
+  ## Unbound frames preserve fresh-small and both large/small orders; raw native controls are separate.
   let program = owner()
   let plan = newFlatPlan(program, GasCycleLimit(1000000))
   var frame = newFlatFrame(plan, [image()], MachineInfo(gas: MachineGas(InitialGas)))
@@ -118,7 +118,7 @@ proc order(smallFirst, largeFirst: bool): bool =
     expected.registers[0] = RegisterValue(80)
     expected.registers[2] = RegisterValue(80)
     for visit in 0..<2:
-      # Forty source rounds exhaust the existing eight complete discovery visits at each rejected header.
+      # Repeated large checked prefixes preserve exact endpoints; raw probe exhaustion is checked below.
       resetFlatFrame(frame, input)
       runFlat(frame, 20*LargeRound)
       verify(frame, expected, 0, true)
@@ -128,7 +128,7 @@ proc order(smallFirst, largeFirst: bool): bool =
     verify(frame, expected, 0, true)
     let after = flatArmStatistics(frame)
     require(after[0] == stable[0] and after[3] == stable[3] and after[4] == stable[4],
-      "exhausted-candidate-probes-stable")
+      "checked-frame-occupancy-stable")
   let before = flatArmRegionStatistics(frame)[0]
   runSmall(frame)
   let after = flatArmRegionStatistics(frame)
@@ -136,15 +136,12 @@ proc order(smallFirst, largeFirst: bool): bool =
   require(prior.error == MachineError.None, "retained-snapshot-owner")
   let pages = prior.value
   require(pages.len == 1 and pages[0].bytes == image().bytes, "later-work-preserves-retained-snapshot")
-  when Native:
-    require(flatArmStatistics(frame)[1] > 0, "ordinary-native-positive")
-    result = after[0] > before and after[1] > after[0]
-  else:
-    require(after == default(array[2, uint64]) and flatArmStatistics(frame)[1] == 0,
-      "real-unavailable-or-forced-refusal")
-    result = true
+  # Bare frames have no common session; connected-native admission remains unported on every host.
+  require(after == default(array[2, uint64]) and flatArmStatistics(frame) ==
+      default(array[5, uint64]), "unbound-frame-stays-checked")
+  result = true
   when defined(pvmArm64JitRefusalReceipt):
-    echo "ARM_REGION_REFUSAL_NATIVE,", int(smallFirst), ",", int(largeFirst), ",", before,
+    echo "ARM_REGION_REFUSAL_FRAME,", int(smallFirst), ",", int(largeFirst), ",", before,
       ",", after[0], ",", after[1], ",", flatArmStatistics(frame)[1]
   echo "ARM_REGION_REFUSAL_CASE,", smallFirst, ",", largeFirst, ",", result
 
@@ -240,7 +237,7 @@ proc controls(): bool =
 
 let local = controls()
 let fresh = order(false, false)
-require(fresh, "fresh-owner-native-positive")
+require(fresh, "fresh-unbound-checked-owner")
 let rejectedFirst = order(false, true)
 let eligibleFirst = order(true, true)
 require(local and rejectedFirst and eligibleFirst, "candidate-local-availability")

@@ -15,7 +15,7 @@ import re
 import subprocess
 import tempfile
 
-from pvm_performance_report import (ARCHITECTURES, SCHEMA, _atomic_text,
+from pvm_performance_report import (ARCHITECTURES, SCHEMA, _atomic_text, validate_current_report,
                                     publish_report, render_summary, validate_report)
 
 
@@ -183,7 +183,7 @@ def _jobs(repo, run, reports, gh):
     return selected
 
 
-def _read_report(folder):
+def _read_report(folder, allow_history=False):
     """Read only one bounded canonical report; never execute downloaded commands or binaries."""
     candidates = list(folder.rglob('results.json'))
     matches = []
@@ -193,11 +193,12 @@ def _read_report(folder):
         if path.stat().st_size > 32*1024*1024:
             raise ValueError('Unbounded artifact report')
         value = _json(path.read_text())
-        if isinstance(value, dict) and value.get('schema') == SCHEMA:
+        if (isinstance(value, dict) and (value.get('schema') == SCHEMA or
+                allow_history and value.get('schema') in ('pvm-performance-v1', 'pvm-performance-v2'))):
             matches.append(value)
     if len(matches) != 1:
-        raise ValueError('Artifact lacks one exact canonical performance report')
-    return validate_report(matches[0])
+        raise ValueError('Artifact lacks one exact canonical full-invocation performance report')
+    return validate_report(matches[0]) if allow_history else validate_current_report(matches[0])
 
 
 def _retire(folder):
@@ -241,7 +242,7 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
                 destination.mkdir()
                 gh(['run', 'download', str(selected['id']), '--repo', repo, '--name',
                     artifacts[arch]['name'], '--dir', str(destination)])
-                report = _read_report(destination)
+                report = _read_report(destination, allow_history=run_id is not None or attempt is not None)
                 ci = report['identity']['ci']
                 if (report['architecture'] != arch or report['scope'] != 'all' or
                         report['revision'] != selected['head_sha'] or
@@ -256,14 +257,21 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
         jobs = _jobs(repo, selected, reports, gh)
         # Architectures may have different compiler/native binaries, never different source/reference/golden cohorts.
         arm, x86 = (reports[arch]['identity'] for arch in ARCHITECTURES)
-        if (arm['reference_revision'] != x86['reference_revision'] or
+        if (reports['arm64']['schema'] != reports['x86_64']['schema'] or
+                (reports['arm64']['schema'] == SCHEMA and arm['measurement'] != x86['measurement']) or
+                (reports['arm64']['schema'] != 'pvm-performance-v1' and
+                 arm.get('code_lifetime') != x86.get('code_lifetime')) or
+                arm['reference_revision'] != x86['reference_revision'] or
                 arm['doom']['golden_rgba_sha256'] != x86['doom']['golden_rgba_sha256']):
             raise ValueError('Cross-architecture reference/golden identity disagreement')
         summaries = [render_summary(reports[arch]) for arch in ARCHITECTURES]
         for arch in ARCHITECTURES:
             publish_report(reports[arch], folder/arch)
         result = dict(schema='pvm-performance-latest-v1', status='passed', repository=repo,
-            measurement_schema=SCHEMA, code_lifetime=arm['code_lifetime'],
+            measurement_schema=reports['arm64']['schema'],
+            code_lifetime=arm.get('code_lifetime'),
+            measurement=(arm['measurement'] if reports['arm64']['schema'] == SCHEMA else
+                         dict(boundary='historical-execution-only')),
             revision=selected['head_sha'], run_id=selected['id'], run_attempt=selected['run_attempt'],
             selection='newest-master-push' if run_id is None and attempt is None else 'explicit-history',
             event=selected['event'], ref='refs/heads/'+selected['head_branch'],
@@ -272,7 +280,11 @@ def retrieve(repo='jacogr/ragnarok', folder='build/tests/pvm-performance-latest'
             jobs=jobs, architectures=list(ARCHITECTURES),
             artifacts={arch: artifacts[arch]['name'] for arch in ARCHITECTURES},
             artifact_ids={arch: artifacts[arch]['id'] for arch in ARCHITECTURES})
-        provenance = ('PVM measurements: passed. Source '+selected['head_sha']+', run '+
+        if reports['arm64']['schema'] == 'pvm-performance-v1':
+            result.pop('code_lifetime')
+        provenance = (('PVM full-invocation measurements: passed. Source ' if
+                       reports['arm64']['schema'] == SCHEMA else
+                       'Historical execution-only PVM measurements: passed. Source ')+selected['head_sha']+', run '+
                       str(selected['id'])+'. Selected workflow attempt '+str(selected['run_attempt'])+
                       ': '+selected['status']+'/'+selected['conclusion']+'.\n\n')
         for arch in ARCHITECTURES:

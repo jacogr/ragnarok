@@ -15,9 +15,9 @@ type
   ExecutionWorker* = object ## Copyable identity for one exclusive synchronous worker; never share it across threads.
     data: nil WorkerData
 
-proc newExecutionWorker*(): ExecutionWorker =
+proc newExecutionWorker*(nativeRuntime: NativeRuntime = default(NativeRuntime)): ExecutionWorker =
   ## Allocate one empty bounded worker slot; retiring its last handle releases code and executable cache storage.
-  ExecutionWorker(data: WorkerData(prepared: newPreparedProgramCache()))
+  ExecutionWorker(data: WorkerData(prepared: newPreparedProgramCache(nativeRuntime)))
 
 func initialized*(worker: ExecutionWorker): bool =
   ## A default worker selects ordinary one-shot behavior; explicit creation enables retained code lifetimes.
