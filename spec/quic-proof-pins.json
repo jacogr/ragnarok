@@ -32,7 +32,20 @@
       "path": "vendor/lsquic/src/lshpack"
     }
   },
-  "patches": [],
+  "patches": [
+    {
+      "source": "lsquic",
+      "commit": "0c9c66903b70ac25852d70d54672005aafb1a446",
+      "path": "native/quic/patches/lsquic-path-response-nonce.patch",
+      "sha256": "692511dcb6bad6640f848880cc8527a80cb8662efdd950d3c2fd546a31b3b11f",
+      "before": {
+        "src/liblsquic/lsquic_full_conn_ietf.c": "38991a721daabb5ae0763ab5bf60c05b8edc38c0f8633f3bcf309505b2b123a5"
+      },
+      "after": {
+        "src/liblsquic/lsquic_full_conn_ietf.c": "6a8b27adc627156f4e24613e96a7deca7ebfd74864a5e37a1a36ea5bc2ffdfb8"
+      }
+    }
+  ],
   "nim_adapter": "src/quic/transport.nim",
   "shared_bridge": "native/quic/transport_bridge.c"
 }

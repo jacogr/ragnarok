@@ -12,12 +12,17 @@ it whenever its effective interval is nonzero, including the existing client
 default and the recovery profiles' one-second probes. The server default with
 a zero interval stays disabled. Idle timeouts are unchanged.
 
-The pristine-source build on master needs no LSQUIC patch. The separate JAMNP-S
-stream-reset patch applies cleanly to the candidate and remains necessary for
-that stack's public reset adapter. The candidate does not provide its public
-`lsquic_stream_reset` symbol. A successful patch dry run is source compatibility
-evidence. Linked reset qualification belongs to the integration of the two
-branches.
+The approved build patch records the MTU size of each stored PATH_CHALLENGE
+nonce. A response to a smaller challenge validates reachability and leaves a
+different outstanding MTU-sized probe and its retry alarm pending. The
+regression returns the smaller nonce, then the padded nonce, then the smaller
+nonce again. The unpatched candidate fails the first MTU assertion.
+
+The manifest binds the patch digest and the input and output source digests
+to the candidate revision. The build stages a fresh copy under
+`build/native/lsquic-source` and verifies both patches there when integrating
+with the JAMNP-S stream-reset layer. The reset API remains supplied by that
+layer.
 
 ## Qualification
 
@@ -37,7 +42,26 @@ and digest service, mesh and peer-death recovery, admission, teardown soak,
 and bounded proof offload. The fork's Debug `path` and `conn_close_ietf`
 tests passed.
 
-The candidate was tested against master `7048e169190aa6b378d0f713712892f10722f12a`
+The original upgrade qualification used master `7048e169190aa6b378d0f713712892f10722f12a`
 using Apple Clang 21.0.0. Build and test receipts are under the isolated
 worktree's `build/lsquic-upgrade/` and `build/tests/e2e/`. Linux CI
 qualification remains pending.
+
+The build-patched Release bridge and the three build-tool tests passed on
+macOS ARM64. The patched Debug `path`, `ping_alarm`, and `conn_close_ietf`
+tests passed. The `path` test failed on the unpatched candidate with the new
+regression enabled and passed with the nonce fix.
+
+With the nonce-patched Release bridge, the idle regression survived 3.00
+seconds with zero application streams and retired 1.31 seconds after peer
+death. This run reused the earlier application binary linked to the rebuilt
+bridge.
+
+The combined qualification used JAMNP-S stack tip
+`2f92c5bb26a21364b62c96363752896d5cdc87b5` in a separate worktree. It staged
+both patches with hashes calculated against the new LSQUIC pin. The stack's
+unchanged reset patch linked its public API into the Release bridge.
+`application_download_loop` passed, including actual peer observation of a
+reset on an unsolicited stream while a download worker held its lease.
+ARC occupied memory held at 157,568 bytes across 1,000 cycles. The combined
+Debug `path`, `ping_alarm`, and `conn_close_ietf` tests passed too.
