@@ -91,13 +91,10 @@ def prefetch_blobs(path, revision, names):
             objects[name.decode()] = oid
     if objects.keys() != names:
         raise ValueError(f'Missing pinned blobs: {sorted(names - objects.keys())}')
-    # Query local availability without triggering lazy fetches; complete/warm clones require no network.
-    identities = sorted(set(objects.values()))
-    status = subprocess.check_output(
-        ['git', '-C', str(path), 'cat-file', '--batch-check'],
-        input='\n'.join(identities)+'\n', text=True,
-        env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'})
-    missing = [line.split()[0] for line in status.splitlines() if line.endswith(' missing')]
+    # Enumerate local IDs because Git 2.43 can abort a named lookup for an absent promisor object.
+    local_ids = git('cat-file', '--batch-all-objects', '--unordered',
+                    '--batch-check=%(objectname)', cwd=path, output=True)
+    missing = sorted(set(objects.values()).difference(local_ids.splitlines()))
     if missing:
         # Explicit blob wants retain the pinned commit, sparse checkout and all existing refs unchanged.
         subprocess.run(['git', '-C', str(path), '-c', 'fetch.negotiationAlgorithm=noop',
