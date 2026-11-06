@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent TLS requests and complete durable-map witness for the actual executable's remote ancestry command.
+import ../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
 import ../../src/app/[options, services, chain, candidate]
@@ -112,7 +114,7 @@ proc main() {.raises.} =
     seed.close()
     before = readFile("sequence-state.db") # Failed acquisition must preserve an already existing durable journal byte-for-byte.
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, behaviors)
+  assert servers.openSequenceResponders(requests, responses, behaviors, alpn = fixtureChainAlpn("sequence-chain.json"))
   writeFile("sequence-ready", $servers.port(true))
   let started = getMonoTime()
   while not fileExists("sequence-stop"):

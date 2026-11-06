@@ -217,7 +217,7 @@ def run_case(binary, certificates, folder, name):
     log = folder/'peer.log'
     command = [str(binary), 'server', '--net-port', str(free_port(socket.SOCK_DGRAM)),
                '--net-cert', str(certificates/'a.cert.pem'), '--net-key', str(certificates/'a.key.pem'),
-               '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '30000',
+               '--net-peer-key', '-', '--net-timeout-ms', '30000',
                '--net-mode', 'service', '--with-mcp', '--mcp-port', str(port)]
     expected = None
     if name != 'unconfigured':

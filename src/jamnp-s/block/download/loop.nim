@@ -4,6 +4,8 @@
 ## One-child dispatcher drives native I/O, private preparation and actual deferred adoption separately.
 ## Keep this owner and its exclusively borrowed Services stable until explicit close retires callbacks.
 
+import ../../network
+
 import ./[peers as block_download_peers, session as block_download_session,
     stream as block_download_stream]
 import ../../../app/[services, handoff, chain, candidate]
@@ -184,7 +186,9 @@ proc nextChild*(dispatcher: var BlockDownloadLoop, ancestors: openArray[OwnedHea
   DownloadLoopError.None
 
 proc openPeer*(dispatcher: var BlockDownloadLoop, id: DownloadPeerId, expected: DownloadPeerKey,
-    port: uint16, certificate, key, alpn: string): DownloadPeerError =
+    port: uint16, certificate, key, alpn: string,
+    localAddress = default(NetworkAddress), remoteAddress = default(
+        NetworkAddress)): DownloadPeerError =
   ## Startup explicitly maps only scheduled identities to endpoints, without changing budgets or peer weight.
   if dispatcher.status != DownloadLoopStage.Waiting or dispatcher.current != nil:
     return DownloadPeerError.Busy # Register all endpoints before starting attempts; no moving live callback owners.
@@ -192,7 +196,7 @@ proc openPeer*(dispatcher: var BlockDownloadLoop, id: DownloadPeerId, expected: 
   for peer in dispatcher.peers:
     if peer == id: known = true # At most sixteen checked identities are scanned.
   if not known: return DownloadPeerError.InvalidPeer
-  dispatcher.catalog.openPeer(id, expected, port, certificate, key, alpn)
+  dispatcher.catalog.openPeer(id, expected, port, certificate, key, alpn, localAddress, remoteAddress)
 
 proc finish(dispatcher: var BlockDownloadLoop, outcome: DownloadAttemptOutcome,
     now: DownloadLoopTick): DownloadLoopError =

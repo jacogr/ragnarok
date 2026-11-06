@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit current command policies and independent forked TLS responders preserve exact requests, scalar progress and joined cleanup.
+import ./chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
 import ../../src/app/current/download/[command as current_download_command,
@@ -78,7 +80,7 @@ proc exchangeCurrentDownloads*(context: CurrentChainFixture, responses: seq[seq[
     requests.add(currentExpectedRequest(array[32, byte](
         digest.value))) # Independent full sealed-header hash identifies the actually installed successor.
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, modes, fallback)
+  assert servers.openSequenceResponders(requests, responses, modes, fallback, fixtureChainAlpn(chainPath))
   let port = servers.port(true)
   let firstPort = servers.port(false)
   let child = posix.fork()

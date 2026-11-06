@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent RPC and TLS processes observe each real canonical adoption while a later response remains explicitly gated.
+import ../../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix
 import ../../../src/app/download/[command as download_command, policy as download_policy]
@@ -92,7 +94,8 @@ proc main() {.raises.} =
     responses.add(if index == 3: @[0'u8, 0, 0, 0] else: responseFrame(context.children[index]))
   var servers = default(DownloadResponders)
   assert servers.openSequenceResponders(requests, responses,
-    @[Gated, DownloadTransferMode.Healthy, DownloadTransferMode.Healthy, Gated])
+    @[Gated, DownloadTransferMode.Healthy, DownloadTransferMode.Healthy, Gated],
+    alpn = fixtureChainAlpn(ChainPath))
   let port = servers.port(true)
   let responder = posix.fork()
   assert int(responder) >= 0

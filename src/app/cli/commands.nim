@@ -194,6 +194,10 @@ proc normalizeCommand*(arguments: seq[string], normalized: var seq[string],
       if values.len > 0:
         output.add(flag)
         output.add(values[0])
+  # Preserve address controls separately from the stable private command recipe.
+  for flag in ["--net-bind", "--net-peer-address", "--net-alpn"]:
+    for value in fields[optionIndex(flag)]:
+      service.add(flag); service.add(value)
   let state = fields[optionIndex("--with-state")].len > 0
   let telemetry = fields[optionIndex("--with-telemetry")].len > 0
   if (state or telemetry) and fields[optionIndex("--chain")].len == 0:

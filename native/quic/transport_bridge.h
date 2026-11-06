@@ -12,7 +12,7 @@
 typedef struct rq_transport rq_transport;
 typedef int (*rq_verify_cb)(void *, const uint8_t *, size_t);
 typedef void (*rq_stream_cb)(void *, void *, int);
-typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, uint16_t);
+typedef int (*rq_send_cb)(void *, const uint8_t *, size_t, const uint8_t *, uint16_t);
 /* Optional TLS/admission observations borrow address/DER only during the callback, before engine teardown ends. */
 enum { RQ_HANDSHAKE_SLOTS = 64, RQ_HANDSHAKE_STARTED = 0, RQ_HANDSHAKE_SUCCEEDED = 1,
        RQ_HANDSHAKE_FAILED = 2, RQ_HANDSHAKE_DROPPED = 3, RQ_ADMISSION_REFUSED = 4 };
@@ -29,6 +29,14 @@ int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
 /* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);
+/* Install a copied bounded TLS ALPN wire vector on a server before any network processing.
+ * The native caller supplies all protocol policy; this bridge validates only TLS vector framing. */
+int rq_server_alpns(rq_transport *, const uint8_t *, size_t);
+/* Full addresses use sixteen network-order bytes; IPv4 uses its mapped form. All borrows
+ * are synchronous. Binding is startup-only; legacy port-only APIs remain loopback wrappers. */
+int rq_bind_address(rq_transport *, const uint8_t *address);
+int rq_connect_address(rq_transport *, const uint8_t *address, uint16_t remote_port);
+int rq_packet_in_address(rq_transport *, const uint8_t *, size_t, const uint8_t *source, uint16_t remote_port);
 /* Initiate one loopback connection; server receives through packet_in instead. */
 int rq_connect(rq_transport *, uint16_t remote_port);
 /* Queue graceful single-connection close before stopping UDP readiness. */

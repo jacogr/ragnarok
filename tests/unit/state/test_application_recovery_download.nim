@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real pinned TLS acquisition executes/adopts a signed child only after independently trusted checkpoint startup succeeds.
+import ../../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -60,7 +62,7 @@ proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExec
   var stopFile = StopPath
   discard posix.unlink(stopFile.toCString())
   var servers = default(DownloadResponders)
-  assert servers.openResponders(expected, frame)
+  assert servers.openResponders(expected, frame, alpn = fixtureChainAlpn(ChainPath))
   let port = servers.port(true)
   let child = posix.fork()
   assert int(child) >= 0
@@ -115,6 +117,8 @@ proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExec
     var owner = default(Services)
     defer: owner.close()
     assert owner.start(selected, "resume durable downloaded child")
+    assert owner.networkProtocol(selected) == fixtureChainAlpn(
+        ChainPath) # Restored head cannot replace configured genesis.
     assert owner.chainView.retainedCount == 2
     let childHash = owner.chainView.bestBlock.value.blockHash
     assert array[32, byte](owner.chainView.parentOf(childHash).value.blockHash) ==

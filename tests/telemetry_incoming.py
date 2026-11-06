@@ -16,6 +16,7 @@ import time
 from telemetry_checks import EventCapture, frame, listener, stop
 from test_quic_resilience import watch
 from test_quic import THREAD_BASELINES
+from fixture_alpn import fixture_alpn
 
 
 # Own one IPv4 relay and joined worker; hold bounded server replies until the caller opens the gate.
@@ -89,7 +90,7 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
         output = owners.enter_context((folder/'server.log').open('wb'))
         pin = str(certificates/'b.pub') if rejected else '-'
         server = subprocess.Popen([str(binary), 'server', '--net-port', str(port), '--net-cert', str(certificates/'a.cert.pem'),
-            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', pin, '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '60000', '--net-mode', 'service',
+            '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', pin, '--net-alpn', fixture_alpn(chain), '--net-timeout-ms', '60000', '--net-mode', 'service',
             '--chain', str(chain), '--with-telemetry', '--telemetry-endpoint', f'127.0.0.1:{collector.getsockname()[1]}'],
             stdout=output, stderr=subprocess.STDOUT,
             env={**os.environ, 'RAGNAROK_SERVICE_STOP': str(shutdown)})
@@ -111,7 +112,7 @@ def incoming_reconnect(binary, certificates, chain, folder, rejected=False):
                 output = owners.enter_context(log.open('wb'))
                 client = subprocess.Popen([str(binary), 'client', '--net-port', str(relay_port),
                     '--net-cert', str(certificates/f'{identity}.cert.pem'), '--net-key', str(certificates/f'{identity}.key.pem'),
-                    '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/245becfe', '--net-timeout-ms', '30000', '--net-mode', 'mixed'],
+                    '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', fixture_alpn(chain), '--net-timeout-ms', '30000', '--net-mode', 'mixed'],
                     stdout=output, stderr=subprocess.STDOUT)
                 owners.callback(stop, client)
                 attempt_id, attempt = capture.lifecycle(21)

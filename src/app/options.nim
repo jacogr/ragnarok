@@ -9,6 +9,8 @@ import ../lib/logging
 
 import std/[strutils, assertions]
 import ../codec/bounded
+import ../quic/address
+export address
 import ../storage/history/index as history_index
 
 import ./cli/[catalog as cli_catalog, commands as cli_commands, defaults as cli_defaults]
@@ -18,6 +20,9 @@ type Options* = object ## Validated service controls; command handlers validate 
   parsed, telemetry, rpc, mcp, ui, state, recover, localAncestors, management,
     updateLogicalSource: bool
   positional: seq[string]
+  networkName: string
+  networkLocal: NetworkAddress
+  networkRemotes: seq[NetworkAddress]
   ancestorFiles: seq[string]
   downloadCount, remoteAncestors, discoverAncestors: int
   syncSourceAge, syncReconnect: uint64
@@ -42,6 +47,20 @@ type Options* = object ## Validated service controls; command handlers validate 
   rpcNumber, mcpNumber, uiNumber: uint16
   writeCount: ElementLimit
   writeBytes, recoveryBytes: ByteLimit
+
+func networkAlpnOverride*(options: Options): string =
+  ## Only an explicit named override may replace automatic genesis-derived protocol selection.
+  if options.parsed: options.networkName else: ""
+
+func networkBind*(options: Options): NetworkAddress =
+  ## Failed/default parsing cannot expose a partially selected native bind.
+  if options.parsed: options.networkLocal else: default(NetworkAddress)
+
+func networkPeer*(options: Options, index = 0): NetworkAddress =
+  ## Peer positions follow the primary identity then repeated --net-peer declarations.
+  if options.parsed and index >= 0 and index < options.networkRemotes.len:
+    return options.networkRemotes[index]
+  default(NetworkAddress)
 
 func retentionSpecified*(options: Options): bool =
   ## Only an explicit full-state startup request can override a persisted history policy.
@@ -324,6 +343,17 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
         return false
       diagnostic = "Invalid value for " & name & ": " & spec.description
       case name
+      of "--net-alpn":
+        if value.len > 255: return false
+        candidate.networkName = value # JAM protocol validation belongs to the selected genesis boundary.
+      of "--net-bind", "--net-peer-address":
+        var address = default(NetworkAddress)
+        if not parseNetworkAddress(value, address): return false
+        if name == "--net-bind": candidate.networkLocal = address
+        else:
+          if address.unspecified or candidate.networkRemotes.len >=
+              cli_defaults.MaxDownloadPeers: return false
+          candidate.networkRemotes.add(address) # Bounded fixed copies retain no native parser storage.
       of "--pvm-code", "--pvm-entry":
         if value.len > 4096: return false
         for character in value:
@@ -529,8 +559,11 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   if candidate.telemetry and (candidate.endpoint.len == 0 or candidate.chain.len == 0):
     diagnostic = "--with-telemetry requires --telemetry-endpoint HOST:PORT and --chain FILE"
     return false
+  let networkCommand = candidate.positional.len > 0 and candidate.positional[0] in ["server",
+      "client", "mesh"]
   if candidate.chain.len > 0 and not (candidate.telemetry or candidate.rpc or
-      candidate.ui or candidate.state or candidate.mcp): return false
+      candidate.ui or candidate.state or candidate.mcp or
+      networkCommand): return false # A stateless JAM endpoint still needs its configured genesis domain.
   if candidate.ui and candidate.uiNumber == candidate.rpcNumber:
     diagnostic = "--ui-port and --rpc-port must differ when --with-ui is enabled"
     return false
@@ -607,6 +640,22 @@ proc parseCanonicalOptions*(arguments: seq[string], options: var Options,
   elif "--pvm-entry" in seen or "--pvm-gas" in seen or "--pvm-steps" in seen:
     diagnostic = "Standalone PVM options require --pvm-code FILE"
     return false
+  if candidate.networkLocal.valid or candidate.networkRemotes.len > 0:
+    if candidate.positional.len == 0: return false
+    let command = candidate.positional[0]
+    if command notin ["server", "client", "mesh", "download", "download-current", "sync-current"]:
+      return false # Address controls never silently configure an unrelated service.
+    if candidate.networkRemotes.len > 0:
+      if command == "server": return false
+      var count = 1
+      if command in ["download", "download-current", "sync-current"]:
+        if candidate.positional.len < 8 or (candidate.positional.len-8) mod 2 != 0: return false
+        count = 1 + (candidate.positional.len-8) div 2
+      if candidate.networkRemotes.len != count: return false
+      let family = candidate.networkRemotes[0].ipv6
+      if candidate.networkLocal.valid and candidate.networkLocal.ipv6 != family: return false
+      for address in candidate.networkRemotes:
+        if address.ipv6 != family: return false # One configured bind family must serve every scheduled destination.
   candidate.parsed = true
   options = candidate # Only a complete validated configuration replaces the cleared output.
   true

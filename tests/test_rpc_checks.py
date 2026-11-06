@@ -80,7 +80,7 @@ class RpcChainOwnership(unittest.TestCase):
         """Run the actual launcher boundary and mutate its selected chain without touching caller bytes."""
         with temporary_folder() as folder:
             supplied = folder/'supplied.json'
-            original = b'{"id":"caller-owned"}\n'
+            original = b'{"id":"caller-owned","genesis_header":"00"}\n'
             supplied.write_bytes(original)
             with patch.object(rpc_checks.subprocess, 'Popen') as spawn:
                 spawn.return_value.poll.return_value = None
@@ -113,12 +113,19 @@ class RpcInvalidStartup(unittest.TestCase):
                 attempted.append(json.loads(chain.read_text()) if chain.exists() else None)
                 if len(attempted) == 1:
                     self.assertEqual(attempted[0], {}, 'Incomplete startup input must be written explicitly')
-                return CompletedProcess(arguments, 2, b'', b'Invalid RPC listener or --chain parameters')
+                selected = attempted[-1]
+                # Header-less parameters cannot identify JAM transport; malformed pairs retain RPC diagnostics.
+                failure = (b'Invalid JAM protocol or unavailable configured genesis'
+                           if selected and 'protocol_parameters' in selected and 'genesis_header' not in selected
+                           and 'genesis_state' not in selected else b'Invalid RPC listener or --chain parameters')
+                return CompletedProcess(arguments, 2, b'', failure)
             with patch.object(rpc_checks, 'run', return_value={'passed': True}) as live:
                 with patch.object(rpc_checks.subprocess, 'run', side_effect=startup):
                     result = rpc_checks.parameter_checks(Path('/fixture/ragnarok'),
                                                          folder/'certificates', folder/'peer')
             self.assertTrue(result['passed'])
             self.assertEqual(live.call_count, 3)
-            self.assertEqual(len(attempted), 5)
+            self.assertEqual(len(attempted), 6)
+            self.assertIn("protocol_parameters", attempted[-2])
+            self.assertNotIn("genesis_header", attempted[-2])
             self.assertIsNone(attempted[-1])

@@ -23,3 +23,7 @@ state and explicit publication; [RPC](../rpc/README.md) exposes these observatio
 
 The [RPC contract](../../spec/rpc.md) describes query semantics, retention, publication boundaries
 and verification. Configuration supplies data; missing state remains an explicit query refusal.
+
+[`network_identity.nim`](network_identity.nim) extracts bounded operator fetch bytes and the
+configured genesis-header hash for JAM ALPN and telemetry. It grants no state or consensus
+authority and never retains a genesis map.

@@ -4,6 +4,8 @@
 ## Fixed-address outgoing transport catalog pins authenticated peers before routing scheduled downloads.
 ## Callers keep borrowed sessions stable and explicitly close this owner before destruction.
 
+import ../../../network
+
 import ../../../[announcements, announcement_stream]
 import ../../../../quic/transport
 import ../../../protocol
@@ -239,12 +241,14 @@ proc publishAnnouncement*(catalog: var CurrentDownloadPeers, owner: OwnedHeader,
 
 proc openPeer*(catalog: var CurrentDownloadPeers; id: DownloadPeerId;
     expected: CurrentDownloadPeerKey; port: uint16;
-    certificate, key, alpn: string): CurrentDownloadPeerError =
+    certificate, key, alpn: string,
+    localAddress = default(NetworkAddress), remoteAddress = default(
+        NetworkAddress)): CurrentDownloadPeerError =
   ## Allocate one outgoing endpoint only after bounded identity, duplicate and endpoint preflight.
   if not catalog.configured: return CurrentDownloadPeerError.Uninitialized
   if catalog.draining: return CurrentDownloadPeerError.Busy # Reopening cannot race unfinished native connection retirement.
   if uint64(id) == 0: return CurrentDownloadPeerError.InvalidPeer # Zero cannot become a scheduler identity.
-  if port == 0: return CurrentDownloadPeerError.InvalidEndpoint # This API names an explicit existing loopback listener.
+  if port == 0 or not validDial(localAddress, remoteAddress): return CurrentDownloadPeerError.InvalidEndpoint # A complete configured target must be dialable before native allocation.
   var selected = -1
   for index in 0..<catalog.limit:
     let slot = addr catalog.slots[index]
@@ -276,10 +280,10 @@ proc openPeer*(catalog: var CurrentDownloadPeers; id: DownloadPeerId;
   slot.lastError = CurrentDownloadPeerError.None
   let context = cast[pointer](slot) # Copy the callback address before the mutable Transport initialization borrow.
   if not slot.transport.openTransport(false, false, 0, certificate, key, alpn,
-      context, verify, streamEvent):
+      context, verify, streamEvent, localAddress = dialBinding(localAddress, remoteAddress)):
     return CurrentDownloadPeerError.TransportFailure # Transport.open already retires partial socket/engine setup.
   slot.registered = true
-  if not slot.transport.connectTransport(port):
+  if not slot.transport.connectTransport(dialTarget(remoteAddress, port, dialFamily(localAddress))):
     slot.transport.closeTransport()
     slot.registered = false
     return CurrentDownloadPeerError.TransportFailure # Refused dial setup must not retain a native endpoint.

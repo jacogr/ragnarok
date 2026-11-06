@@ -6,7 +6,7 @@
 
 import std/[times, monotimes]
 import ./[wire, client]
-import ../quic/transport
+import ../quic/[transport, address]
 export wire, client
 
 proc eventTimestamp(): Timestamp =
@@ -22,21 +22,16 @@ proc observe*(client: var Client, peers: uint32) =
   if not client.enabled(): return # Default runs do not even query telemetry clocks.
   client.tick(getMonoTime().ticks div 1_000_000, eventTimestamp(), peers)
 
-proc startDial*(client: var Client, identity: openArray[byte], port: uint16, ipv6: bool): EventId =
-  ## The bounded proof dialer knows its pinned public identity and exact loopback destination before dialing.
-  if not client.enabled() or identity.len != 32: return EventId(
-      0) # No instrumentation for disabled/invalid peers.
+proc startDial*(client: var Client, identity: openArray[byte], target: NetworkEndpoint): EventId =
+  ## Copy the actual configured remote tuple before dialing; address data grants no peer authority.
+  if not client.enabled() or identity.len != 32 or not target.valid: return EventId(0)
   var key = default(array[32, byte])
-  for i in 0..<32: key[i] = identity[i] # Copy caller storage; no peer owner is retained.
-  var address = default(array[16, byte])
-  if ipv6:
-    address[15] = 1 # The actual IPv6 proof transport dials ::1.
-  else:
-    address[10] = 255 # IPv4 destinations use their JIP-3 mapped IPv6 representation.
-    address[11] = 255
-    address[12] = 127
-    address[15] = 1
-  client.dialing(getMonoTime().ticks div 1_000_000, eventTimestamp(), key, address, port)
+  for i in 0..<32: key[i] = identity[i] # No mutable peer storage escapes into the exporter.
+  client.dialing(getMonoTime().ticks div 1_000_000, eventTimestamp(), key, target.address.bytes, target.port)
+
+proc startDial*(client: var Client, identity: openArray[byte], port: uint16, ipv6: bool): EventId =
+  ## Legacy isolated proof callers retain their explicit loopback observation.
+  client.startDial(identity, networkEndpoint(loopbackAddress(ipv6), port))
 
 proc finishDial*(client: var Client, attempt: EventId, authenticated: bool) =
   ## Settle an outgoing attempt exactly once; callers use native authentication evidence, not application success.

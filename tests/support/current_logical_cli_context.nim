@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit logical startup policies, independent identity files and forked authenticated responders exercise the production command.
+import ./chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
 import ./[parent_profile_context, parent_globals_context, supplied_logical_context,
@@ -54,7 +56,8 @@ proc logicalCommandExchange*(chainPath, policyPath, sourcePath, logicalPolicyPat
   var servers = default(DownloadResponders)
   var modes = newSeq[DownloadTransferMode](requests.len)
   for i in 0..<modes.len: modes[i] = Healthy
-  assert servers.openSequenceResponders(requests, responses, modes), "logical TLS responders opened"
+  assert servers.openSequenceResponders(requests, responses, modes, alpn = fixtureChainAlpn(
+      chainPath)), "logical TLS responders opened"
   let port = servers.port(true)
   let stopPath = "logical-cli-stop"
   let countPath = "logical-cli-count"

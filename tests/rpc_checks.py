@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from fixture_alpn import fixture_alpn
 
 # Browser work is nested inside the live peer session; reserve its full deadline in that session.
 RPC_SERVICE_SECONDS = 30
@@ -99,6 +100,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
         supplied = chain.read_bytes()
         chain = Path(tempfile.mkdtemp(prefix='rpc-chain-', dir=folder))/'chain.json'
         chain.write_bytes(supplied)
+    network_alpn = fixture_alpn(chain)
     stop = folder/'stop'
     stop.unlink(missing_ok=True)
     with socket.socket() as reservation:
@@ -126,7 +128,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
     # The normal RPC budget starts after the optional browser allowance; success still stops immediately.
     service_seconds = RPC_SERVICE_SECONDS + (BROWSER_TIMEOUT_SECONDS if browser else 0)
     command = [str(binary), 'server', '--net-port', str(peer_port), '--net-cert', str(certificates/'a.cert.pem'),
-               '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', str(service_seconds*1000), '--net-mode', 'service',
+               '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', network_alpn, '--net-timeout-ms', str(service_seconds*1000), '--net-mode', 'service',
                '--with-rpc', '--rpc-port', str(rpc_port)]
     if ui:
         command.remove('--with-rpc') # Prove UI alone enables the separate RPC listener.
@@ -450,7 +452,7 @@ def run(binary, certificates, folder, chain=None, telemetry=False, service_queri
                     for identity in ('b', 'c', 'd'):
                         clients.append(subprocess.Popen([str(binary), 'client', '--net-port', str(peer_port),
                                        '--net-cert', str(certificates/f'{identity}.cert.pem'), '--net-key', str(certificates/f'{identity}.key.pem'),
-                                       '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '5000', '--net-mode', 'mixed'],
+                                       '--net-peer-key', str(certificates/'a.pub'), '--net-alpn', network_alpn, '--net-timeout-ms', '5000', '--net-mode', 'mixed'],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE))
                     for client in clients:
                         stdout, stderr = client.communicate(timeout=8)
@@ -575,7 +577,8 @@ def check_service_queries(connection, expected):
 def parameter_checks(binary, certificates, folder):
     folder.mkdir(parents=True, exist_ok=True)
     chain = folder/'chain.json'
-    chain.write_text((Path(__file__).parent/'fixtures/rpc-parameters.json').read_text())
+    # A live JAM listener needs complete genesis; the same parameters are covered with this seed.
+    chain.write_text((Path(__file__).parent/'fixtures/rpc-genesis.json').read_text())
     result = run(binary, certificates, folder/'configured', chain)
     # The independent synthetic genesis supports queries and shared telemetry startup.
     combined = json.loads((Path(__file__).parent/'fixtures/rpc-genesis.json').read_text())
@@ -592,7 +595,7 @@ def parameter_checks(binary, certificates, folder):
     # Construct the incomplete input explicitly; live retention tests preserve their caller's files.
     chain.write_text('{}')
     arguments = [str(binary), 'server', '--net-port', '19899', '--net-cert', str(certificates/'a.cert.pem'),
-                 '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-alpn', 'jamnp-s/1/00000000', '--net-timeout-ms', '100', '--net-mode', 'valid',
+                 '--net-key', str(certificates/'a.key.pem'), '--net-peer-key', '-', '--net-timeout-ms', '100', '--net-mode', 'valid',
                  '--with-rpc', '--rpc-port', str(rpc_port), '--chain', str(chain)]
     failed = subprocess.run(arguments, capture_output=True, timeout=5)
     assert failed.returncode != 0 and b'Invalid RPC listener or --chain parameters' in failed.stderr
@@ -602,6 +605,9 @@ def parameter_checks(binary, certificates, folder):
         chain.write_text(json.dumps(malformed))
         rejected = subprocess.run(arguments, capture_output=True, timeout=5)
         assert rejected.returncode != 0 and b'Invalid RPC listener or --chain parameters' in rejected.stderr
+    chain.write_text((Path(__file__).parent/'fixtures/rpc-parameters.json').read_text())
+    unavailable = subprocess.run(arguments, capture_output=True, timeout=5)
+    assert unavailable.returncode != 0 and b'Invalid JAM protocol or unavailable configured genesis' in unavailable.stderr
     chain.unlink()
     missing = subprocess.run(arguments, capture_output=True, timeout=5)
     assert missing.returncode != 0 and b'Invalid RPC listener or --chain parameters' in missing.stderr

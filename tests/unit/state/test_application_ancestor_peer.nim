@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual pinned identities, wrong-key refusal, native-close readiness and timeout/cancellation never modify state.
+import ../../../src/quic/address
 import std/[assertions, syncio, envvars]
 import "../../../src/jamnp-s/ancestor/peer" as ancestor_peer
 import "../../../src/jamnp-s/ancestor/stream" as ancestor_stream
@@ -23,7 +24,8 @@ proc open(peer: var AncestorPeer, request: AncestorRequest, key: AncestorPeerKey
     port: uint16): AncestorPeerError =
   ## Explicit fixture certificate paths select the unchanged production TLS policy.
   peer.open(request, ByteLimit(100000), key, port, getEnv("RAGNAROK_TEST_CERT"),
-    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", limits(), AncestorTick(100))
+    getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", limits(), AncestorTick(100),
+    remoteAddress = ipv4Address([127'u8, 0, 0, 1]))
 proc scenario(request: AncestorRequest, body: seq[byte], key: AncestorPeerKey,
     config: FrameConfig, mode: DownloadTransferMode, wrong = false) =
   ## Independent responders authenticate different identities and observe whether any request reached the selected listener.

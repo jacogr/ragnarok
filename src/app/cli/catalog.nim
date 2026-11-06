@@ -98,6 +98,14 @@ const
       fallback: OptionDefault.None, commands: "", repeatable: false),
 
     # Network and TLS options. Keep additions in this group.
+    OptionSpec(name: "--net-bind", value: "IP", group: OptionGroup.Network,
+      description: "Numeric local IP; omitted isolated proof commands bind loopback.",
+      fallback: OptionDefault.None, commands: "server|client|mesh|download|download-current|sync-current",
+      repeatable: false),
+    OptionSpec(name: "--net-peer-address", value: "IP", group: OptionGroup.Network,
+      description: "Numeric remote IP; repeat in primary/additional peer order, once per configured peer.",
+      fallback: OptionDefault.None, commands: "client|mesh|download|download-current|sync-current",
+      repeatable: true),
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Peer port (1..65535).", fallback: OptionDefault.NetworkPort,
       commands: "server|client|download|download-current|sync-current",
@@ -129,7 +137,7 @@ const
       commands: "mesh",
       repeatable: false),
     OptionSpec(name: "--net-alpn", value: "NAME", group: OptionGroup.Network,
-      description: "JAM network protocol name; override the isolated development domain for a real network.",
+      description: "Derived from selected genesis; an explicit name must match its chain. No chain selects the isolated development domain.",
       fallback: OptionDefault.Alpn, commands: "server|client|mesh|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--net-timeout-ms", value: "MILLISECONDS", group: OptionGroup.Network,

@@ -8,6 +8,9 @@ adoption remain explicit Nim decisions.
 
 | Modules | Responsibility |
 | --- | --- |
+| [`network.nim`](network.nim) | Explicit numeric bind/target selection with isolated proof defaults |
+| [`endpoints.nim`](endpoints.nim) | Fixed IPv6/little-endian-port projections from validator metadata |
+| [`alpn.nim`](alpn.nim), [`chain_alpn.nim`](chain_alpn.nim) | Configured-genesis domains, exact identifiers and base/builder negotiation |
 | [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |
 | [`messages.nim`](messages.nim), [`audits.nim`](audits.nim) | Bounded generic E4 messages and upgraded CE144/145 structural batch codecs |
 | [`protocol.nim`](protocol.nim) | Pinned JAMNP-S peer identity, names and CE framing checks |

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent TLS requests and complete durable-map checks qualify the actual current command executable.
+import ../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import ../../src/app/current/download/policy as current_download_policy
 import ../../src/app/services
@@ -52,7 +54,7 @@ proc main() {.raises.} =
       responses.add(context.currentResponseFrame)
     modes.add(if mode == "timeout": NoFin else: DownloadTransferMode.Healthy)
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, modes)
+  assert servers.openSequenceResponders(requests, responses, modes, alpn = fixtureChainAlpn("current-chain.json"))
   writeFile("current-ready", $servers.port(true))
   let started = getMonoTime()
   while not fileExists("current-stop"):

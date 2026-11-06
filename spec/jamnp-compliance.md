@@ -4,10 +4,9 @@
 
 The implementation target is the complete JAMNP-S `simple.md` at
 [`aa0e2b8498c0b1bc1725af2903704d701c6577ab`](https://github.com/zdave-parity/jam-np/tree/aa0e2b8498c0b1bc1725af2903704d701c6577ab),
-qualified by the separate networking-pin PR #1834. This layout change starts from master
-`9619c397`; it does not change any dependency pin. Until #1834 lands, master still records
-`439c45aad135dc654b3de6f56d7d694fd02b7aa8`. New audit behavior must use the upgraded schemas,
-not the legacy forms. The pinned Gray Paper supplies the embedded JAM structures, signing
+qualified by networking-pin PR #1834 and recorded by the current vendor gitlink.
+The current audit implementation starts from master `51a43ab9`; these feature layers do not
+change dependency pins. Audit behavior uses the upgraded schemas, not the legacy forms. The pinned Gray Paper supplies the embedded JAM structures, signing
 domains, audit selection and state authentication; JAMNP-S supplies transport behavior.
 
 The maintainer requested full compatibility, including the missing audit streams. This record
@@ -32,8 +31,8 @@ production path exists; it does not assert all normative behavior has been verif
 | Pinned section | Existing implementation | Required completion evidence |
 | --- | --- | --- |
 | Encryption, alternative name | `protocol.nim` validates Ed25519 certificate observations and the literal key-derived SAN; transport supplies mutual TLS | Live incoming/outgoing rejection matrix, exact single SAN, optional discovered peer and pinned outgoing identities |
-| ALPN | Configured protocol identifier passed to transport | Exact genesis/version identifier; accept `/builder` and base on incoming connections; CE133 admission independent of negotiated builder suffix |
-| Required connectivity | Development mesh and preferred/fallback dialing in `session.nim` | Previous/current/next validator union, metadata IPv6/LE port, duplicate arbitration, bounded builder slots and live epoch changes |
+| ALPN | `alpn.nim` validates identifiers; ordinary commands bind to captured configured genesis and acceptors negotiate both base and `/builder`, with real TLS coverage | CE133 admission and builder capacity independent of suffix |
+| Required connectivity | Complete addressed UDP/QUIC tuples, explicit ordinary-command peer routes and fixed validator metadata projection; development mesh and preferred/fallback dialing in `session.nim` | Previous/current/next validator union, duplicate arbitration, bounded builder slots and live epoch changes |
 | Epoch transitions | No general validator-set lifecycle | Finalized first block plus elapsed-slot threshold; preserve old connectivity until both conditions hold |
 | UP/CE lifecycle | Per-stream bounded owners, cancellation and retirement; actual-ID UP admission and same-connection greatest-ID replacement | General CE transcripts/dispatch, both FINs before success, rejection/cancellation mapping across all kinds |
 | E4 messages | Shared bounded `messages.nim` codec, CE143 frame inspector, UP0 incremental reader, CE128 receivers | Shared bounded multi-message parsing with exact message extents and protocol-specific transcript/FIN rules |
