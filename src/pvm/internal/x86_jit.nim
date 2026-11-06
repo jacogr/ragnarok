@@ -473,6 +473,11 @@ proc x86LoopEdge(fragment: var X86Block, fixes: var seq[X86LoopFixup],
 proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
   ## Lower the shared actions with canonical scalar loads/stores and SysV caller-saved lanes.
   let loop = span.loopInfo
+  let immediateWord = uint32(loop.rightImmediate and 0xffffffff'u64)
+  if loop.rightKind == NativeLoopRightKind.Immediate and
+      cast[uint64](int64(cast[int32](immediateWord))) != loop.rightImmediate:
+    # CMP RAX,imm32 can represent exactly the sign-extended checked operand.
+    return @[]
   var fragment = default(X86Block)
   var labels = default(array[LoopLabel, int])
   var fixes: seq[X86LoopFixup] = @[]
@@ -497,8 +502,12 @@ proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
       put(fragment, [0x49'u8, 0xff, 0xc3]) # INC R11: one completed original body and branch.
     of BranchGuestAboveEqual:
       readSlot(fragment, loop.slots.aIndex, false) # MOV RAX,[RDI+left*8].
-      readSlot(fragment, loop.slots.bIndex, true) # MOV RCX,[RDI+right*8].
-      put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX: compare original unsigned operands.
+      if loop.rightKind == NativeLoopRightKind.Immediate:
+        put(fragment, [0x48'u8, 0x3d]) # CMP RAX,imm32: REX.W sign-extends the immediate to 64 bits.
+        regionWord(fragment, immediateWord) # Little-endian imm32, verified above against the certificate.
+      else:
+        readSlot(fragment, loop.slots.bIndex, true) # MOV RCX,[RDI+right*8].
+        put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX: compare original unsigned operands.
       x86LoopEdge(fragment, fixes, action.target, [0x0f'u8, 0x83]) # JAE rel32.
     of BranchLaneBelow, DebitLane:
       let lane = if action.lane == Gas: 1'u8 else: 2'u8

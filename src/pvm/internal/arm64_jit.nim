@@ -430,7 +430,8 @@ proc encodeArmLoop*(span: NativeSpan, control: LoopControl): seq[uint32] =
     let op = span.operation(index)
     emitArmOperation(body, op.opcode, op.slots, op.immediate)
   let left = armRead(body, loop.slots.aIndex)
-  let right = armRead(body, loop.slots.bIndex)
+  let right = if loop.rightKind == NativeLoopRightKind.Immediate: 1'u32
+    else: armRead(body, loop.slots.bIndex)
   var labels = default(array[LoopLabel, int])
   var fixes: seq[ArmLoopFixup] = @[]
   result = @[]
@@ -458,7 +459,10 @@ proc encodeArmLoop*(span: NativeSpan, control: LoopControl): seq[uint32] =
     of CountVisit:
       result.add(0x5ef18610'u32) # ADD D16,D16,D17: integer visits += 1.
     of BranchGuestAboveEqual:
-      # CMP Xleft,Xright: both guest slots are mapped to slot+4.
+      if loop.rightKind == NativeLoopRightKind.Immediate:
+        # MOVZ/MOVN X1,imm16 plus MOVK halfwords defines the exact uint64 comparison operand.
+        armCompactImmediate(result, 1, loop.rightImmediate)
+      # CMP Xleft,Xright: guest slots use slot+4, and the immediate uses X1.
       result.add(0xeb00001f'u32 or (right shl 16) or (left shl 5))
       armLoopEdge(result, fixes, action.target, 0x54000002'u32) # B.HS to the action label.
     of BranchLaneBelow, DebitLane:

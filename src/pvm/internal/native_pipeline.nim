@@ -658,8 +658,10 @@ proc runNativeLoop*(session: NativeSession, registers: var RegisterFile,
   if loop.kind != NativeKind.ClosedRegisterLoop or
       remaining > high(uint64)-uint64(loop.sourceSpan): abortNativeReceipt()
   result = enterNativeLoop(data.image, registers, context)
-  if not validLoopReceipt(loop, result, gas, remaining, context,
-      uint64(registers[loop.slots.aIndex]), uint64(registers[loop.slots.bIndex])):
+  let left = uint64(registers[loop.slots.aIndex])
+  let right = if loop.rightKind == NativeLoopRightKind.Immediate: loop.rightImmediate
+    else: uint64(registers[loop.slots.bIndex])
+  if not validLoopReceipt(loop, result, gas, remaining, context, left, right):
     abortNativeReceipt()
   # Exact quota accounting plus the checked first reservation bound visits*sourceSpan.
   let operations = context.visits*uint64(loop.sourceSpan)

@@ -525,6 +525,104 @@ when defined(pvmSharedAsyncWitness):
     assert runtime.close(), "readyReservations: compiler shutdown"
 
 
+  proc immediateLoopOwner(immediate: array[4, byte]): Program =
+    ## The canonical arithmetic wire has ADDs at PC0/3, opcode 83 at PC6 and halt at PC16.
+    let wire = @[0'u8, 0, 18, 131, 0x77, 3, 131, 0xaa, 1, 83, 0x4a,
+      immediate[0], immediate[1], immediate[2], immediate[3], 0xfa, 0xff, 0xff, 0xff,
+      50, 0, 0x49, 0, 1]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(128), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    decoded.value
+
+  proc checkImmediateResult(answer: StepResult, expected: MachineInfo, exit: StepExit,
+      backend: PvmBackend) =
+    ## Check the entire CPU record and the canonical empty memory layout.
+    assert answer.error == StepError.None, "opcode 83: local error " & $answer.error
+    assert answer.value.exit == exit and answer.value.backend == backend, "opcode 83: exit/backend"
+    assert machineInfo(answer.value.machine).value == expected, "opcode 83: complete CPU result"
+    assert memoryLayout(memoryOf(answer.value.machine).value).value.len == 0, "opcode 83: memory"
+
+  proc readyImmediate(input: Machine, limit: ExecutionStepLimit, expected: MachineInfo,
+      exit: StepExit, operations: uint64, checked, native: PreparedProgram) =
+    ## The same source snapshot must agree with the checked path and the independent literal.
+    let initial = machineInfo(input).value
+    checkImmediateResult(execute(input, limit, checked), expected, exit, PvmBackend.Interpreted)
+    let before = preparedInfo(native).value
+    checkImmediateResult(execute(input, limit, native), expected, exit, PvmBackend.Jit)
+    let after = preparedInfo(native).value
+    assert after.nativeFragments == 1 and after.nativeCalls-before.nativeCalls == 1
+    assert after.nativeOperations-before.nativeOperations == operations
+    assert after.nativeBranchCalls-before.nativeBranchCalls == 1 and
+      after.nativeHeaderCalls-before.nativeHeaderCalls == 1
+    assert machineInfo(input).value == initial, "opcode 83: immutable input CPU"
+
+  proc immediateLoops() =
+    ## Qualify the unchanged arithmetic-10000 fixture and a separate signed-word boundary.
+    if not nativePlatformSupported(): return
+    let empty = captureMemory([], PageLimit(0))
+    assert empty.error == MachineError.None
+    for highBit in [false, true]:
+      # These literal low words are 10000 and 0x80000800. Only the second fixture changes the wire.
+      let owner = if highBit: immediateLoopOwner([0'u8, 8, 0, 0x80])
+        else: immediateLoopOwner([0x10'u8, 0x27, 0, 0])
+      let limits = defaultPreparedLimits(GasCycleLimit(25))
+      let checked = newPreparedProgram(owner, limits, PvmBackend.Interpreted)
+      assert checked.error == PreparationError.None
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      pauseNativeCompiler(runtime, true)
+      let native = newPreparedProgram(owner, limits, PvmBackend.Jit, runtime)
+      assert native.error == PreparationError.None
+      var cpu = MachineInfo(pc: CodeAddress(0), gas: MachineGas(220029))
+      for index in 0..<13:
+        # Match the independent arithmetic fixture, including its unused register canaries.
+        cpu.registers[index] = RegisterValue(0x1111111111111111'u64*uint64(index))
+      cpu.registers[0] = RegisterValue(0xffff0000'u64)
+      cpu.registers[7] = RegisterValue(0)
+      cpu.registers[8] = RegisterValue(0)
+      cpu.registers[9] = RegisterValue(0x1234567800000000'u64)
+      cpu.registers[10] = RegisterValue(0)
+      if highBit:
+        # Train the same high-bit owner with 2048 real visits to its sign-extended threshold.
+        cpu.gas = MachineGas(45085)
+        cpu.registers[10] = RegisterValue(0xffffffff80000000'u64)
+      let source = captureMachine(owner, empty.value, cpu)
+      assert source.error == MachineError.None
+      let budget = if highBit: ExecutionStepLimit(6145) else: ExecutionStepLimit(30001)
+      var expected = cpu
+      expected.gas = MachineGas(7)
+      expected.blockCharged = true
+      expected.registers[7] = RegisterValue(if highBit: 6144'u64 else: 30000'u64)
+      expected.registers[10] = RegisterValue(if highBit: 0xffffffff80000800'u64 else: 10000'u64)
+      checkImmediateResult(execute(source.value, budget, native.value), expected, StepExit.Halt,
+        PvmBackend.Interpreted)
+      assert runtime.runtimeInfo.submitted == 1
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime)
+      if highBit:
+        # Equality after two visits requires the right operand's full checked sign extension.
+        cpu.gas = MachineGas(73)
+        cpu.registers[10] = RegisterValue(0xffffffff800007fe'u64)
+        let near = captureMachine(owner, empty.value, cpu)
+        assert near.error == MachineError.None
+        expected.registers[7] = RegisterValue(6)
+        readyImmediate(near.value, ExecutionStepLimit(4096), expected, StepExit.Halt, 6,
+          checked.value, native.value)
+        # A wrapped zero remains unsigned-below the negative immediate's uint64 bit pattern.
+        cpu.gas = MachineGas(44)
+        cpu.registers[10] = RegisterValue(high(uint64))
+        let wrapped = captureMachine(owner, empty.value, cpu)
+        assert wrapped.error == MachineError.None
+        expected.gas = MachineGas(0)
+        expected.blockCharged = false
+        expected.registers[10] = RegisterValue(1)
+        readyImmediate(wrapped.value, ExecutionStepLimit(4096), expected, StepExit.OutOfGas, 6,
+          checked.value, native.value)
+      else:
+        readyImmediate(source.value, budget, expected, StepExit.Halt, 30000, checked.value,
+          native.value)
+      assert runtime.close()
+
   proc foldedLoopOwner(): Program =
     ## PC3 UNLIKELY folds out of the stream between the ADDs. PC7 branches unsigned to PC0.
     let wire = @[0'u8, 0, 15, 131, 0x77, 3, 2, 131, 0xaa, 1, 172, 0xba,
@@ -1077,6 +1175,8 @@ proc runSharedAsync*() =
     cancelledFinalDrop()
     diagnosticPhase("readyReservations")
     readyReservations()
+    diagnosticPhase("immediateLoops")
+    immediateLoops()
     diagnosticPhase("purePrefixControl")
     purePrefixControl()
     diagnosticPhase("doneFinalDrop")

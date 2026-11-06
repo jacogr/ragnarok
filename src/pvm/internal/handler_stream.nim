@@ -1595,11 +1595,19 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
   let header = span.entry-1
   let first = f.plan.facts[int(span.first)]
   let terminal = f.plan.facts[int(span.last)+1]
+  let rightKind = case terminal.opcode
+    of 83: NativeLoopRightKind.Immediate
+    of 172: NativeLoopRightKind.Register
+    else: return
+  let branchHandler: FlatHandler = if rightKind == NativeLoopRightKind.Immediate:
+    flatBranch[83]
+  else:
+    flatBranch[172]
   let sourceSpan = uint32(span.len)+1
   if not flatNativeHeader(f, header, first.pc) or f.sites[int(header)] != span.first or
       f.arguments[int(header)].y != sourceSpan or first.sourceCount != sourceSpan or
-      f.sites[int(span.past)] != span.last+1 or terminal.opcode != 172 or not terminal.ending or
-      terminal.priceIndex != first.priceIndex or f.handlers[int(span.past)] != flatBranch[172]:
+      f.sites[int(span.past)] != span.last+1 or not terminal.ending or
+      terminal.priceIndex != first.priceIndex or f.handlers[int(span.past)] != branchHandler:
     return
   let branch = f.arguments[int(span.past)]
   let exitHeader = branch.y
@@ -1619,8 +1627,14 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
         args.x != fact.args.x or args.slots != fact.args.slots or
         not matchesNativeOperation(f.nativeSession, index, fact.opcode, fact.args.slots,
           fact.args.x): return
+  # The cached low word has been checked against the original branch fact.
+  let immediate = if rightKind == NativeLoopRightKind.Immediate:
+    flatSext32(uint32(branch.x and 0xffffffff'u64))
+  else:
+    0'u64
   result = NativeLoopInfo(header: header, exitHeader: exitHeader, sourceSpan: sourceSpan,
-    price: f.arguments[int(header)].x, slots: branch.slots)
+    price: f.arguments[int(header)].x, slots: branch.slots, rightKind: rightKind,
+    rightImmediate: immediate)
 
 proc flatPromoteNativeLoop(f: var FlatFrame) =
   ## Reconsider the same deferred prefix only after the checked segment has resolved its branch.
@@ -1657,7 +1671,8 @@ proc installNative(f: var FlatFrame) =
     let loop = flatLoopCertificate(f, span)
     if loop.sourceSpan != candidate.sourceSpan or loop.header != candidate.header or
         loop.exitHeader != candidate.exitHeader or loop.price != candidate.price or
-        loop.slots != candidate.slots:
+        loop.slots != candidate.slots or loop.rightKind != candidate.rightKind or
+        loop.rightImmediate != candidate.rightImmediate:
       invalidateNativeStream(f.nativeSession)
       return
     f.nativeOriginal = f.handlers[int(span.entry)]

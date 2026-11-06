@@ -17,11 +17,15 @@ const
 type
   NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
     PurePrefix, ClosedRegisterLoop
-  NativeLoopInfo* = object ## Copied source certificate for one resolved whole block.
+  NativeLoopRightKind* {.pure.} = enum ## Right operand of the certified unsigned comparison.
+    Register, Immediate
+  NativeLoopInfo* = object  ## Copied source certificate for one resolved whole block.
     header*, exitHeader*: uint32
-    sourceSpan*: uint32    ## Zero identifies an unpromoted pure prefix.
+    sourceSpan*: uint32     ## Zero identifies an unpromoted pure prefix.
     price*: uint64
-    slots*: RegisterSlots  ## Original unsigned branch operands.
+    slots*: RegisterSlots   ## Original unsigned branch operands.
+    rightKind*: NativeLoopRightKind
+    rightImmediate*: uint64 ## Exact checked sign extension for an immediate comparison.
   NativeLoopContext* = object ## Fresh two-borrow entry context: gas, quota and visits at 0/8/16.
     gas*, remaining*, visits*: uint64
   NativeOperation* = object ## Copied validated semantics; register coordinates are not register values.
