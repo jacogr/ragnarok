@@ -441,7 +441,7 @@ proc unsolicited*(servers: var DownloadResponders): bool =
         0): return false # Flush real frames without polling the client catalog.
   true
 
-func streamRetired*(servers: DownloadResponders, second: bool): bool =
+proc streamRetired*(servers: DownloadResponders, second: bool): bool =
   ## The next serial fixture request must follow the responder's actual close callback.
   if second: servers.second.stream == NativeStream(nil)
   else: servers.first.stream == NativeStream(nil)
