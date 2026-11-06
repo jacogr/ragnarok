@@ -14,6 +14,7 @@ const
   NativeReadSuccess* = 1'u32        ## Every staged register write committed.
   NativeReadRefusal* = high(uint32) ## No guest write occurred.
   NativeReadFactLimit* = 32'u32     ## Includes the folded leading noop and checked terminal.
+  NativeReadContinuationSpan* = 4'u32 ## Three scalar operations and one checked terminal.
   NativeReadLoadLimit = 8
   NativeReadLow = 65536'u64
   NativeReadEnd = 0xffffffff'u64    ## Exclusive conservative bound shared with checked fast loads.
@@ -22,10 +23,14 @@ type
   NativeReadBodyInfo* = object ## Geometry only. The caller must bind it to an actual checked stream.
     header*, terminal*, first*, last*: uint32
     epoch*: uint64
+  NativeReadContinuation* = object ## Optional adjacent header. A zero terminal means absent.
+    header*, terminal*: uint32
+    price*: uint64
   NativeReadBody* = object ## The bounded copied request contains no invocation borrow.
     geometry: NativeReadBodyInfo
     operations: array[NativeReadFactLimit.int-2, NativeOperation]
     count, reads: int
+    continuation: NativeReadContinuation
   NativeReadRegion* = object ## One clipped private allocation. Empty records have no usable pointer.
     first, length: uint64
     data: nil pointer
@@ -64,16 +69,39 @@ proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
   true
 
 func complete*(body: NativeReadBody): bool =
-  ## The complete body occupies all original physical slots before the checked terminator.
+  ## Each certified block occupies all its original body slots before its checked terminal.
   let info = body.geometry
-  info.epoch != 0 and body.reads >= 2 and body.count == int(info.terminal-info.header-1)
+  if info.epoch == 0 or body.reads < 2: return false
+  let extra = if body.continuation.terminal == 0: 0 else: NativeReadContinuationSpan.int-1
+  body.count == int(info.terminal-info.header-1)+extra
+
+proc addNativeReadContinuation*(body: var NativeReadBody, continuation: NativeReadContinuation,
+    operations: array[NativeReadContinuationSpan.int-1, NativeOperation]): bool =
+  ## Append one complete pure body within the original copied request bounds.
+  let info = body.geometry
+  if not body.complete or body.continuation.terminal != 0 or
+      info.last-info.first+1+NativeReadContinuationSpan > NativeReadFactLimit or
+      continuation.header >= continuation.terminal or continuation.terminal >= NativeEntryLimit or
+      continuation.terminal-continuation.header != NativeReadContinuationSpan or
+      body.count+operations.len > body.operations.len: return false
+  for operation in operations:
+    if not supportedScalarOpcode(operation.opcode): return false
+  for operation in operations:
+    body.operations[body.count] = operation
+    inc body.count
+  body.continuation = continuation
+  true
 
 func info*(body: NativeReadBody): NativeReadBodyInfo =
   ## Copy the certificate without exposing the request's mutable storage.
   body.geometry
 
+func continuationInfo*(body: NativeReadBody): NativeReadContinuation {.inline.} =
+  ## Copy the optional second certificate only for callers that use it.
+  body.continuation
+
 func len*(body: NativeReadBody): int =
-  ## Number of physical body operations, excluding the folded noop and checked terminal.
+  ## Number of physical body operations, excluding the folded noop and checked terminals.
   body.count
 
 func operation*(body: NativeReadBody, index: int): NativeOperation {.requires:
@@ -83,7 +111,8 @@ func operation*(body: NativeReadBody, index: int): NativeOperation {.requires:
 
 func sameReadBody*(a, b: NativeReadBody): bool =
   ## Compare the exact geometry and the admitted prefix, with no pointer identity in the request.
-  if not a.complete or not b.complete or a.geometry != b.geometry or a.count != b.count:
+  if not a.complete or not b.complete or a.geometry != b.geometry or a.count != b.count or
+      a.continuation != b.continuation:
     return false
   for index in 0..<a.count:
     let left = a.operations[index]

@@ -777,6 +777,12 @@ when NativeCheckedReadEnabled:
       return default(NativeReadBodyInfo)
     data.readBody.info
 
+  func nativeReadContinuation*(session: NativeSession): NativeReadContinuation {.inline.} =
+    ## The caller has already verified the ready read image through nativeReadInfo.
+    let data {.cursor.} = session.data
+    assert data != nil
+    data.readBody.continuationInfo
+
   func matchesNativeReadBody*(session: NativeSession, body: NativeReadBody): bool =
     ## Install compares the rebuilt source certificate and every copied operand.
     let data {.cursor.} = session.data
