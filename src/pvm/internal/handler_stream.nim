@@ -75,7 +75,8 @@ type
   FlatPlan* = ref object ## One immutable source/fact owner; executable stream mutation belongs only to a frame.
     source: Program
     facts: seq[FlatFact]
-    factAt: seq[int]
+    # A marked PC stores its fact ordinal plus one; other PCs keep zero.
+    factAt: seq[uint32]
     pricePcs: seq[CodeAddress]
     cycles: GasCycleLimit
     jumps: seq[FlatTarget]
@@ -1324,9 +1325,8 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   # The admission count occupies existing alignment padding on the supported 64-bit targets.
   when sizeof(pointer) == 8: assert sizeof(FlatFact) == 48
   var owner = FlatPlan(source: source, limits: limits, facts: newSeqOfCap[FlatFact](factCapacity),
-    factAt: newSeq[int](int(extent.value)), pricePcs: @[], cycles: cycles, jumps: @[],
+    factAt: newSeq[uint32](int(extent.value)), pricePcs: @[], cycles: cycles, jumps: @[],
     allowNative: allowNative, singleStep: false)
-  for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
   var begins = true
@@ -1342,7 +1342,8 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
       priceIndex = uint32(owner.pricePcs.len)
       owner.pricePcs.add(item.address)
     let fact = flatFact(decoded, priceIndex)
-    owner.factAt[int(pc)] = owner.facts.len
+    # The admission check bounds this positive ordinal by the 4,194,304-fact ceiling.
+    owner.factAt[int(pc)] = uint32(owner.facts.len + 1)
     owner.facts.add(fact)
     begins = fact.ending
     pc = uint64(fact.next)
@@ -1470,8 +1471,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     if packed != 0:
       let value = packed-1
       if (value and 0x80000000'u32) != 0: return value and 0x7fffffff'u32
-  let start = f.plan.factAt[int(pc)]
-  if start < 0: return flatStop
+  let packedStart = f.plan.factAt[int(pc)]
+  if packedStart == 0: return flatStop
+  let start = int(packedStart - 1)
   # Stable offset links forbid eviction inside execution. Refuse a whole suffix before its first allocation/map write.
   let ceiling = uint64(f.plan.limits.nodes)
   let occupied = uint64(f.handlers.len)
@@ -1484,8 +1486,9 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
     return flatStop
   # Node folding does not erase preparation cost: reserve both the emitted suffix span and its whole containing price span.
   let pricePc = f.plan.pricePcs[int(f.plan.facts[start].priceIndex)]
-  let priceFact = f.plan.factAt[int(uint64(pricePc))]
-  assert priceFact >= 0
+  let packedPrice = f.plan.factAt[int(uint64(pricePc))]
+  assert packedPrice != 0
+  let priceFact = int(packedPrice - 1)
   let neededWork = uint64(f.plan.facts[start].sourceCount)+uint64(f.plan.facts[
       priceFact].sourceCount)
   let workLimit = uint64(f.plan.limits.preparation)
@@ -4838,7 +4841,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
         offset = target and 0x7fffffff'u32
       else:
         # The original admitted body has every source operation already; neither emission nor pricing is needed.
-        let start = f.plan.factAt[int(pc)]
+        let start = int(f.plan.factAt[int(pc)]) - 1
         offset = flatResumePaid(f, target, start)
   if offset == flatStop:
     # Unpaid, missing and invalid entries retain their existing admission, pricing and refusal order.
@@ -5099,8 +5102,9 @@ proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: Machin
   assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
   let pc = uint64(f.info.pc)
   assert pc < uint64(f.plan.factAt.len)
-  let at = f.plan.factAt[int(pc)]
-  assert at >= 0
+  let packed = f.plan.factAt[int(pc)]
+  assert packed != 0
+  let at = int(packed - 1)
   var info = f.info
   info.pc = CodeAddress(f.plan.facts[at].next)
   info.gas = gas
@@ -5138,8 +5142,9 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
     return oracle.StepError.InvalidHostSuspension
   let pc = uint64(f.info.pc)
   if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
-  let fact = f.plan.factAt[int(pc)]
-  if fact < 0: return oracle.StepError.InvalidHostSuspension
+  let packed = f.plan.factAt[int(pc)]
+  if packed == 0: return oracle.StepError.InvalidHostSuspension
+  let fact = int(packed - 1)
   # Reject oversized host mappings before extracting changed pages or allocating replacement storage.
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
