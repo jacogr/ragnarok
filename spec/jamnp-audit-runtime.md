@@ -262,3 +262,46 @@ Genuinely signed/admitted/assured/currently published zero-length cases and mana
 signing witnesses passed native checked ARC and Clang ThinLTO. The mixed 1,000-cycle observation
 remained at 308,208 bytes before and after. Linux qualification runs on an isolated frozen snapshot;
 its verdict is recorded separately from these macOS results.
+
+## Original-identity acquisition integration
+
+Pinned JAMNP-S `aa0e2b8498c0b1bc1725af2903704d701c6577ab`, CE147/CE138 and
+Shard assignment, define direct guarantor retrieval followed by proven reconstruction. Detached
+routing plans are captured only from genuine private retained origins on the managed worker.
+Original guarantee slots select C8/C9 credential keys independently from the audited block's prior-C8
+assurance signer roster. Every original assurer ordinal is retained; core/shard coordinates use
+`(cR+v) mod N` with the maintained greatest-divisor recovery threshold. No endpoint or compressed row
+can substitute a coordinate. A source with incompatible assurer/report populations remains unavailable
+for this planner rather than guessing a historical routing table or losing its retained obligation.
+
+Explicit acquisition policy admits one original report at a time. Whole retained packet, raw reply,
+proof hashing and reconstruction reservations precede the first request. The initial private empty
+candidate probe handles intrinsic authenticated metadata faults; ordinary nonzero reports proceed to
+direct retrieval. Full canonical reproduction may accept a direct candidate; malformed or mismatching
+unproved content falls back to CE138. Exact two-message shard extents are scanned before the managed
+Merkle verifier creates a packet. Only R distinct original-coordinate verified owners reach private
+Services reconstruction/evaluation. Exhausted peers, timeouts, quotas, history/backend failures and
+cancelled Done output never create a negative judgment. The optional ordinary application node drives
+this controller through existing native polling and fair fixed-worker arbitration; omission starts
+no acquisition.
+
+The ordinary application node passed real multi-peer TLS retrieval of genuinely available nonempty
+reports, including direct success, CE147's maximum 16MiB cap followed by CE138's independent 8MiB
+ceiling, corrupted direct content and threshold recovery, one damaged shard proof, one exact native
+request timeout, and cancellation. Both failed-peer cases requested a fifth original coordinate to
+obtain four independently proven shards, then reproduced the original report. The 1,000-cycle audit
+ARC observation remained at 308,208 bytes before and after. Audit and current-block/application-node
+suites passed checked ARC/Clang ThinLTO, including exact duplication rejection of AuditAcquisition,
+Services and ApplicationNode. All 586 production modules and the entry point passed semantic checks;
+formatting and inventory passed. These new integration results are local macOS results. The earlier
+Linux/amd64 frozen snapshot through intrinsic zero-length handling passed its regular audit suite;
+its ThinLTO compile exceeded the 1,200-second emulation budget and produced no optimized runtime
+verdict. A current integration Linux snapshot is qualified separately.
+
+A focused four-variable retirement model checks deferred advancement after an owned peer times out.
+The base explores four states; removing the pending-advance assignment yields a four-state repeat
+of the exhausted target, and the next-target witness is reachable. Serial/four-worker model runs
+agree. This is a design control, not a claim of a reproduced shipped defect; native active-peer/dial
+admission, payload verification, slot reuse and worker scheduling remain outside this small model.
+The native scenarios additionally exercise genuine direct, reconstructed, damaged-shard and exact
+request-timeout paths, with results recorded after execution.

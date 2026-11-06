@@ -791,7 +791,7 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
       NodeRequestTicket](status: NodeError.Unavailable)
   let independent = request.kind in [ReadKind.Guarantee, ReadKind.Assurance,
-      ReadKind.AuditAnnouncement, ReadKind.SegmentShards,
+      ReadKind.AuditAnnouncement, ReadKind.Audit, ReadKind.Bundle, ReadKind.SegmentShards,
 
 ReadKind.ProvenSegmentShards, ReadKind.Segments]
   if not independent and owner.node.announcements(peer) and owner.source(peer).error !=

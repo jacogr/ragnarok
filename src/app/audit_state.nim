@@ -3,7 +3,7 @@
 
 ## Private full audit state belongs to Services. Controllers receive opaque host selectors and detached completion metadata; every source-bearing operation requires the shared graph gate.
 import ../jamnp-s/[audit_registry, audit_origin, audit_context, audit_evaluation, audit_recovery,
-    work_signer, availability_proof]
+    work_signer, availability_proof, audit_fetch]
 from ../codec/state/safrole import StateValidatorIndex
 import ../chain/[genesis, provider]
 import ./proof/[worker, work_submission]
@@ -11,7 +11,8 @@ import ./proof/[worker, work_submission]
 type
   ManagedAuditKind* {.pure.} = enum ## No failed or cancelled completion carries a successful origin or execution prefix.
     Uninitialized, OriginRetained, Evaluated, Cancelled, OriginFailure, EvaluationFailure,
-    RegistryFailure, RecoveryFailure, JudgmentSigned, SigningFailure, InvalidResult
+    RegistryFailure, RecoveryFailure, JudgmentSigned, SigningFailure, FetchPlanned, FetchFailure,
+      ShardVerified, ShardFailure, InvalidResult
   ManagedAuditCompletion* = object ## Fixed metadata and genuine failed children survive unrelated leases without borrowing full canonical state.
     case status: ManagedAuditKind
     of OriginRetained:
@@ -25,6 +26,10 @@ type
       signedId: AuditOriginId
       signedOrdinal: int
       signedValue: SignedAuditJudgment
+    of ShardVerified: shardValue: VerifiedAvailabilityTransfer
+    of ShardFailure: shardReason: AuditFetchResult[VerifiedAvailabilityTransfer]
+    of FetchPlanned: fetchValue: AuditFetchPlan
+    of FetchFailure: fetchReason: AuditFetchResult[AuditFetchPlan]
     of RecoveryFailure: recoveryReason: AuditRecoveryResult[AuditRecoveryEvidence]
     of SigningFailure: signingReason: AuditSigningResult[SignedAuditJudgment]
     of OriginFailure: originReason: AuditOriginResult[AuditBlockOrigin]
@@ -32,7 +37,7 @@ type
     of RegistryFailure: registryReason: AuditRegistryError
     else: discard # No private source or caller-selected validity bit.
   AuditOperation {.pure.} = enum
-    Idle, Origin, Evaluation, Signing
+    Idle, Origin, Evaluation, Signing, Fetch, Shard
   ManagedAuditState* = object ## No native owner or backpointer: registry pins form an acyclic graph and retire only after all Services borrowers join.
     registry: AuditOriginRegistry
     operation: AuditOperation
@@ -44,6 +49,22 @@ type
 func kind*(outcome: ManagedAuditCompletion): ManagedAuditKind =
   ## Read the tag before selecting success metadata or the actual failure.
   outcome.status
+func verifiedShard*(outcome: ManagedAuditCompletion): VerifiedAvailabilityTransfer {.requires: outcome.status ==
+    ManagedAuditKind.ShardVerified.} =
+  ## Complete original-coordinate proof ownership carries no private source or negative judgment capability.
+  outcome.shardValue
+func shardError*(outcome: ManagedAuditCompletion): AuditFetchResult[
+    VerifiedAvailabilityTransfer] {.requires: outcome.status == ManagedAuditKind.ShardFailure.} =
+  ## Preserve the actual failed transcript/proof result after exclusive collection.
+  outcome.shardReason
+func fetchPlan*(outcome: ManagedAuditCompletion): AuditFetchPlan {.requires: outcome.status ==
+    ManagedAuditKind.FetchPlanned.} =
+  ## Detached target records retain no aliases to the registry's original complete state or report.
+  outcome.fetchValue
+func fetchError*(outcome: ManagedAuditCompletion): AuditFetchResult[
+    AuditFetchPlan] {.requires: outcome.status == ManagedAuditKind.FetchFailure.} =
+  ## Missing routing facts never turn into a negative evaluation.
+  outcome.fetchReason
 func originId*(outcome: ManagedAuditCompletion): AuditOriginId {.requires: outcome.status ==
     ManagedAuditKind.OriginRetained.} =
   ## Host-only namespace never enters worker source graphs.
@@ -137,6 +158,15 @@ proc stageRecoveryEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordin
   let target = found.value.reportAt(ordinal)
   if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
   captureAuditRecoveryEvaluationJob(target.value, packets, recovery, evaluation)
+proc stageFetch*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
+    limits: AuditFetchLimits): WorkJobAdmission =
+  ## Controllers choose a host selector only; the private registry selects the genuine original target under the shared gate.
+  if state.occupied: return workJobFailure(WorkJobError.InvalidInput)
+  let found = state.registry.origin(id)
+  if found.error != AuditRegistryError.None: return workJobFailure(WorkJobError.InvalidInput)
+  let target = found.value.reportAt(ordinal)
+  if target.error != AuditOriginError.None: return workJobFailure(WorkJobError.InvalidInput)
+  captureAuditFetchJob(target.value, limits)
 proc stageSigning*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     signer: WorkSigner, validator: StateValidatorIndex): WorkJobAdmission =
   ## No public evaluation metadata or externally supplied capability reaches the private key: select only Services' retained completed slot.
@@ -160,6 +190,15 @@ proc admitSigning*(state: var ManagedAuditState, ticket: ProofWorkerTicket,
   ## Only host namespace/scalar state changes after the worker takes its immutable source/key lease.
   state.admitEvaluation(ticket, id, ordinal)
   state.operation = AuditOperation.Signing
+proc admitFetch*(state: var ManagedAuditState, ticket: ProofWorkerTicket,
+    id: AuditOriginId, ordinal: int) =
+  ## Host-only correlation changes without reading a leased original graph.
+  state.admitEvaluation(ticket, id, ordinal)
+  state.operation = AuditOperation.Fetch
+proc admitShard*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
+  ## A source-free verification still uses the exact private collector and fixed shared worker gate.
+  state.ticket = ticket
+  state.operation = AuditOperation.Shard
 proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
     source: ChainView) =
   ## Exact native collection has ended the borrow, but Services keeps RPC paused until all private results are bound and cached.
@@ -208,6 +247,20 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
       elif work.kind == WorkJobResultKind.AuditSigned:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.JudgmentSigned,
           signedId: state.selected, signedOrdinal: state.ordinal, signedValue: work.signedAudit)
+    of AuditOperation.Shard:
+      if work.kind == WorkJobResultKind.AuditShardVerified:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.ShardVerified,
+          shardValue: work.verifiedAuditShard)
+      elif work.kind == WorkJobResultKind.AuditShardVerificationFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.ShardFailure,
+          shardReason: work.auditShardVerificationError)
+    of AuditOperation.Fetch:
+      if work.kind == WorkJobResultKind.AuditFetchPlanned:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.FetchPlanned,
+          fetchValue: work.plannedAuditFetch)
+      elif work.kind == WorkJobResultKind.AuditFetchPlanningFailure:
+        state.completion = ManagedAuditCompletion(status: ManagedAuditKind.FetchFailure,
+          fetchReason: work.auditFetchPlanningError)
     of AuditOperation.Idle: discard
   state.operation = AuditOperation.Idle
   state.selected = default(AuditOriginId)

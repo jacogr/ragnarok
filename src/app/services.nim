@@ -72,7 +72,8 @@ import ../jamnp-s/[availability_read, availability_store, guarantor_store, work_
 import ../jamnp-s/assurance_distribution
 import ../jamnp-s/assurance_fetch
 import ../jamnp-s/assurance_schedule
-import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, audit_evaluation, audit_recovery]
+import ../jamnp-s/[audit_context, audit_receipt, audit_origin, audit_registry, audit_evaluation,
+    audit_recovery, audit_fetch]
 import ./audit_state
 from ../codec/owned import OwnershipError
 from ../codec/work/report import ErasureRoot, CoreIndex
@@ -2638,6 +2639,47 @@ proc beginAuditEvaluation*(services: var Services, id: AuditOriginId, ordinal: i
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitEvaluation(result.value,
       id, ordinal)
+proc stageManagedAuditShard(services: var Services, plan: AuditFetchPlan, ordinal: int,
+    wire: openArray[byte], limits: AvailabilityMerkleLimits): WorkJobError =
+  ## Retire bounded capture temporaries before native submission; this job borrows only immutable detached routing.
+  let captured = captureAuditShardVerificationJob(plan, ordinal, wire, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditShardVerification*(services: var Services, plan: AuditFetchPlan, ordinal: int,
+    wire: openArray[byte], limits: AvailabilityMerkleLimits): AuditPlanningStart {.raises.} =
+  ## Whole transcript proof checks run outside native callbacks through the exact managed worker lease.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied:
+    return AuditPlanningStart(status: StateProofAdmissionError.Busy)
+  if not services.audits.configured:
+    return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
+      captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageManagedAuditShard(plan, ordinal, wire, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None: services.audits.admitShard(result.value)
+proc stageManagedAuditFetch(services: var Services, id: AuditOriginId, ordinal: int,
+    limits: AuditFetchLimits): WorkJobError =
+  ## Temporary private lookup wrappers retire before source ownership crosses to the fixed worker.
+  let captured = services.audits.stageFetch(id, ordinal, limits)
+  if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
+  captured.error
+proc beginAuditFetchPlanning*(services: var Services, id: AuditOriginId, ordinal: int,
+    limits: AuditFetchLimits): AuditPlanningStart {.raises.} =
+  ## Optional retrieval planning exposes only deep detached routes, never a private registry source.
+  if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
+  if not services.stateProofAvailable or services.audits.occupied:
+    return AuditPlanningStart(status: StateProofAdmissionError.Busy)
+  if not services.audits.configured:
+    return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
+      captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageManagedAuditFetch(id, ordinal, limits)
+  if staged != WorkJobError.None: return AuditPlanningStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  result = services.admitManagedAudit()
+  if result.error == StateProofAdmissionError.None:
+    services.audits.admitFetch(result.value, id, ordinal)
 proc stageManagedAuditRecovery(services: var Services, id: AuditOriginId, ordinal: int,
     packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
     evaluation: AuditEvaluationLimits): WorkJobError =

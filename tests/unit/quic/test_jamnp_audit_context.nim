@@ -9,7 +9,7 @@ import ../../../src/app/proof/[worker, work_submission]
 import ../../../src/rpc/server
 import ../../../src/jamnp-s/assurance_store
 import ../../../src/jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation,
-    audit_registry, work_signer]
+    audit_registry, work_signer, audit_fetch]
 import ../../../src/chain/[genesis, provider, parameters]
 from ../../../src/state/store import sameStateSnapshot
 from ../../../src/codec/state/trie import TrieNodeLimit
@@ -18,7 +18,8 @@ import ../../../src/codec/state/[safrole, layout]
 import "../../../src/state/block/transition"
 import "../../../src/state/block/admission"
 import ../../../src/crypto/primitives
-import ../../support/[jamnp_audit_evaluation, jamnp_audit_faults, jamnp_audit_signing, assurance_signer_context]
+import ../../support/[jamnp_audit_evaluation, jamnp_audit_faults, jamnp_audit_signing,
+    jamnp_audit_acquisition, assurance_signer_context]
 import ../../support/[jamnp_audit_context, arc_evidence, current_application_context, jamnp_audit_validation]
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
@@ -257,6 +258,16 @@ proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
       StateProofAdmissionError.QueryFailure, "original report ordinal remains bounded"
   assert owner.beginAuditSigning(id, 0, StateValidatorIndex(1)).error ==
       StateProofAdmissionError.QueryFailure, "origin registration and public facts cannot authorize private signing"
+  let cancelledFetch = owner.beginAuditFetchPlanning(id, 0, fetchLimits()).value
+  owner.waitServices()
+  assert owner.cancelStateProof(cancelledFetch)
+  assert owner.collectAudit(cancelledFetch).kind == ManagedAuditKind.Cancelled, "cancelled Done exposes no routing prefix"
+  let fetching = owner.beginAuditFetchPlanning(id, 0, fetchLimits()).value
+  owner.waitServices()
+  assert owner.collectStateProof(fetching).kind == ProofWorkerCompletionKind.Uninitialized
+  let routes = owner.collectAudit(fetching)
+  assert routes.kind == ManagedAuditKind.FetchPlanned and
+      routes.fetchPlan.fetchInfo.value.threshold == 4, "private Services lookup publishes only detached original routes"
   let started = owner.beginAuditEvaluation(id, 0, wire, evaluationLimits())
   assert started.error == StateProofAdmissionError.None and owner.rpc.chainPaused, "genuine registered execution owns the exact canonical lease"
   assert owner.collectAudit(default(ProofWorkerTicket)).kind == ManagedAuditKind.Uninitialized, "foreign control cannot collect or expose a private capability"
@@ -408,6 +419,8 @@ proc main() {.raises.} =
   intrinsicEmptyFaultChecks()
   auditSigningChecks(fixture)
   managed(fixture)
+  fetchChecks(fixture)
+  auditAcquisitionChecks(fixture)
   managedEvaluation(fixture)
   let insufficient = auditContextFixture(6)
   let none = captureAuditContext(insufficient.view, insufficient.blockHash, auditLimits())

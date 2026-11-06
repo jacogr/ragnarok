@@ -3,7 +3,8 @@
 
 ## Actual available reports and their original computed bundles reproduce through private complete-state origins; damaged direct bytes and local resource/cancellation failures never become negative evidence.
 import std/[assertions, syncio]
-import ../../src/jamnp-s/[audit_origin, audit_context, audit_evaluation, audit_registry, work_report]
+import ../../src/jamnp-s/[audit_origin, audit_context, audit_evaluation, audit_registry,
+    work_report, audit_fetch, read_stream]
 import ../../src/jamnp-s/[audit_recovery, availability_proof, availability_merkle]
 import ../../src/state/erasure/words
 import ../../src/codec/work/report
@@ -36,6 +37,86 @@ proc diagnose(outcome: AuditEvaluationResult[AuditEvaluation]) =
   of AuditEvaluationError.ExecutionFailure: echo "execution: ", outcome.executionError.error
   of AuditEvaluationError.ReportFailure: echo "report: ", outcome.reportError.error
   else: discard # The top-level type already explains resource, source, cancellation or canonical mismatch.
+proc fetchLimits*(): AuditFetchLimits =
+  ## Test-owned routing and reply caps independently cover the genuine nine-validator original reports.
+  AuditFetchLimits(bytes: ByteLimit(1000000), replyBytes: ByteLimit(1000000))
+proc framedAuditTransfer(packet: PreparedAvailabilityTransfer): seq[byte] =
+  ## Independently frame the genuine original bundle shard and Merkle path with exact E4 lengths.
+  result = @[]
+  for bytes in [packet.bundleShard, packet.justification]:
+    for index in 0..<4: result.add(byte((uint32(bytes.len) shr (index*8)) and 255))
+    for octet in bytes: result.add(octet)
+proc fetchChecks*(fixture: AuditContextFixture) =
+  ## Real original credentials and literal cR+v vectors distinguish roster positions from both dense report order and shard indices.
+  let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
+  let context = origin.originContext.value
+  assert not default(AuditFetchPlan).valid
+  assert captureAuditFetch(default(AuditReportOrigin), fetchLimits()).error ==
+      AuditFetchError.InvalidOrigin
+  for report in 0..<2:
+    # Two genuine reports occupy cores zero and one; with N=9 the pinned greatest-divisor recovery threshold is four.
+    let target = origin.reportAt(report).value
+    let outcome = captureAuditFetch(target, fetchLimits())
+    assert outcome.error == AuditFetchError.None, "actual source-derived detached routing"
+    let plan = outcome.value
+    let info = plan.fetchInfo.value
+    assert info.assurers == 9 and info.threshold == 4
+    assert info.guarantors == target.originGuarantee.value.credentialCount
+    for ordinal in 0..<info.guarantors:
+      # Original guarantee ordinals select their own exact historical key, independently of relay identity.
+      let expected = context.auditGuarantor(report, ordinal).value
+      let actual = plan.targetAt(false, ordinal).value
+      assert array[32, byte](actual.identity) == array[32, byte](expected.ed25519)
+      let request = plan.requestAt(false, ordinal).value
+      assert request.kind == ReadKind.Bundle and request.payload.len == 32
+      assert request.payload == @(info.specifier.erasureRoot.bytes)
+    let expected = if report == 0: [0, 1, 2, 3, 4, 5, 6, 7, 8] else: [4, 5, 6, 7, 8, 0, 1, 2, 3]
+    for ordinal in 0..<9:
+      # Every original position is retained even when its metadata has no dialable endpoint.
+      let actual = plan.targetAt(true, ordinal).value
+      assert uint64(actual.validator) == uint64(ordinal)
+      assert uint64(actual.shard) == uint64(expected[ordinal]), "independent original shard permutation"
+      assert array[32, byte](actual.identity) == array[32, byte](context.auditorAt(
+          ordinal).value.ed25519)
+      let request = plan.requestAt(true, ordinal).value
+      let bytes = request.payload
+      assert request.kind == ReadKind.Audit and bytes.len == 34
+      assert int(bytes[32])+int(bytes[33])*256 == expected[ordinal]
+    let firstShard = int(uint64(plan.targetAt(true, 0).value.shard))
+    # Select by the actual signed report hash rather than assuming the computation batch matches available-core order.
+    var selected = default(PreparedAvailabilityTransfer)
+    for original in fixture.bundles:
+      if array[32, byte](original.reportHash) == array[32, byte](target.originReportHash.value):
+        selected = original.auditShards[firstShard]
+    assert selected.valid
+    let wire = framedAuditTransfer(selected)
+    let proofLimits = AvailabilityMerkleLimits(bytes: ByteLimit(1000000),
+      hashes: ElementLimit(1000), hashBytes: ByteLimit(1000000))
+    let verified = verifyAuditFetchShard(plan, 0, wire, proofLimits)
+    assert verified.error == AuditFetchError.None and uint64(verified.value.request.shard) ==
+        uint64(firstShard)
+    assert verifyAuditFetchShard(plan, 1, wire, proofLimits).error ==
+        AuditFetchError.TransferFailure, "valid evidence at another original coordinate cannot substitute this target"
+    var trailing = wire
+    trailing.add(0)
+    assert verifyAuditFetchShard(plan, 0, trailing, proofLimits).error ==
+        AuditFetchError.InvalidPacket
+    var truncated = wire
+    truncated.setLen(truncated.len-1)
+    assert verifyAuditFetchShard(plan, 0, truncated, proofLimits).error ==
+        AuditFetchError.InvalidPacket
+    var oversized = wire
+    for index in 0..<4: oversized[index] = 255
+    assert verifyAuditFetchShard(plan, 0, oversized, proofLimits).error ==
+        AuditFetchError.InvalidPacket
+    assert plan.targetAt(true, -1).error == AuditFetchError.InvalidIndex
+    assert plan.requestAt(true, 9).error == AuditFetchError.InvalidIndex
+    var limited = fetchLimits()
+    limited.bytes = ByteLimit(1)
+    assert captureAuditFetch(target, limited).error == AuditFetchError.LimitExceeded
+    limited = fetchLimits()
+    limited.replyBytes = ByteLimit(8)
+    assert captureAuditFetch(target, limited).error == AuditFetchError.LimitExceeded
 proc evaluationCycle*(fixture: AuditContextFixture) =
   ## Real authorization/refinement and all availability/report fields must equal the originally guaranteed report before an opaque positive capability exists.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
