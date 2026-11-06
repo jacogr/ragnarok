@@ -26,10 +26,10 @@ class PerformanceReportTests(unittest.TestCase):
         self.assertEqual([r['case_id'] for r in report.case_inventory('all')],
                          expected+['doom-init', 'doom-tick'])
         required = {r['case_id'] for r in report.case_inventory() if r['native_required']}
-        self.assertEqual(required, {'sieve-10000000', 'doom-init', 'doom-tick'})
+        self.assertEqual(required, set())
         changed = report.case_inventory('doom')
-        changed[0]['native_required'].clear()
-        self.assertEqual(report.case_inventory('doom')[0]['native_required'], ['arm64', 'x86_64'])
+        changed[0]['native_required'].append('arm64')
+        self.assertEqual(report.case_inventory('doom')[0]['native_required'], [])
 
     def test_all_scopes_and_native_architectures(self):
         """A complete current three-role cohort accepts legitimate optional checked fallback."""

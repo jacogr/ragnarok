@@ -73,11 +73,15 @@ class InertChecks:
                           'doom event payload mismatch' if name.endswith('-events') else
                           'doom terminal gas mismatch')
         else:
-            diagnostic = 'sieve terminal state mismatch'
+            diagnostic = ('sieve terminal state mismatch' if engine == 'reference' else
+                          'pvm sieve native terminal gas mismatch')
         output = 'Assertion Failure: '+diagnostic if failure else 'inert positive protocol'
         if failure and self.unrelated_crash:
             output = 'Segmentation fault'
         return dict(command=args, exit_code=1 if failure else 0, log=name+'.log', output=output)
+
+
+from pvm_performance_fixtures import scope_observations
 
 
 class InertRunner(performance.PerformanceRunner):
@@ -110,7 +114,8 @@ class InertRunner(performance.PerformanceRunner):
                 GITHUB_REF='refs/heads/master', GITHUB_SHA='a'*40, GITHUB_REPOSITORY='example/pvm',
                 GITHUB_JOB='pvm-comparison', PVM_CI_JOB_NAME='Perf / PVM (Linux x86_64)'),
             reference_revision='b'*40, toolchain={}, native_build_defines=['pvmX86Jit'],
-            code_lifetime='retained-code-v1')
+            code_lifetime='retained-code-v1', measurement=dict(boundary='full-invocation-v1',
+                output='consume-before-reuse-v1', cpu_clock='process-cpu', input='program-state-host-inputs-v1'))
 
     def prepare_micro(self):
         """Create independent small placeholders at every canonical input path."""
@@ -171,14 +176,24 @@ class InertRunner(performance.PerformanceRunner):
             if role == 'reference':
                 label = ('synthetic-'+str(SYNTHETICS.index(item['case_id']))
                          if item['family'] == 'synthetic' else item['case_id'])
-                execution['reference_instance'] = retained_instance(label)
+                old = retained_instance(label)
+                execution['reference_instance'] = dict(version=2, label=label, instances=1,
+                    initial_cache_bytes=0, samples=[{key: value for key, value in sample.items()
+                    if key not in ('restore_cpu_ns', 'restore_wall_ns')} for sample in old['samples']])
             native = policy = None
             if role != 'reference':
                 native = dict(fragments=1 if role == 'jit' else 0,
                               calls=13 if role == 'jit' else 0, operations=26 if role == 'jit' else 0)
                 policy = dict(version=1, requested=role, actual=role, jit_built=True,
                     platform_supported=True, fallback_enabled=role == 'jit', **native)
-            values[item['case_id']] = dict(execution=execution, native=native, policy=policy)
+            diagnostics = {key: execution.pop(key) for key in ('preparation_ns', 'preparation_wall_ns')}
+            family = item['family']
+            diagnostic_label = ('synthetic-'+str(SYNTHETICS.index(item['case_id'])) if family == 'synthetic'
+                else item['case_id'] if role == 'reference' else family+'-process')
+            diagnostics['scope_observations'] = scope_observations(role, family, diagnostic_label)
+            execution['measurement'] = dict(boundary='full-invocation-v1', output='consume-before-reuse-v1',
+                cpu_clock='process-cpu', input='program-state-host-inputs-v1')
+            values[item['case_id']] = dict(invocation=execution, diagnostics=diagnostics, native=native, policy=policy)
         return values
 
 
@@ -200,7 +215,7 @@ class PerformanceOrchestrationTests(unittest.TestCase):
         actual = [(row['case_id'], row['role'], row['order']) for row in report['runs']]
         self.assertEqual(len(actual), len(expected))
         self.assertEqual(set(actual), expected)
-        self.assertTrue(all(len(row['parsed']['execution']['samples']) == 13 for row in report['runs']))
+        self.assertTrue(all(len(row['parsed']['invocation']['samples']) == 13 for row in report['runs']))
         report['status'] = 'passed'
         (folder/'results.json').write_text(json.dumps(report))
         (folder/'summary.md').write_text('accepted complete matrix')
@@ -214,6 +229,40 @@ class PerformanceOrchestrationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'passed')
         self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'passed')
         self.assertIn('CPU', (self.folder/'summary.md').read_text())
+
+    def test_interpreted_lifecycle_is_absent_in_real_publication(self):
+        """The orchestration/report seam publishes no compiler-start/close evidence for interpreted."""
+        report = InertRunner(self.folder, scope='doom').execute()
+        for row in report['runs']:
+            observed = row['parsed']['diagnostics']['scope_observations']
+            if row['role'] == 'interpreted':
+                self.assertIn('runtime_none', observed)
+                self.assertNotIn('runtime_owner', observed)
+                self.assertNotIn('runtime_close', observed)
+            elif row['role'] == 'jit':
+                self.assertIn('runtime_owner', observed)
+                self.assertIn('runtime_close', observed)
+                self.assertNotIn('runtime_none', observed)
+
+    def test_unused_interpreted_runtime_refuses_publication(self):
+        """A role-correct timing matrix cannot conceal an unused compiler runtime on interpreted."""
+        runner = InertRunner(self.folder, scope='doom')
+        original = runner.parse
+        def unused_runtime(output, case, role):
+            parsed = original(output, case, role)
+            if role == 'interpreted':
+                for value in parsed.values():
+                    observed = value['diagnostics']['scope_observations']
+                    observed.pop('runtime_none')
+                    observed['runtime_owner'] = {'doom-process': dict(ownership='application-process',
+                        creation='demand-started', code_owners=1)}
+                    observed['runtime_close'] = {'doom-process': dict(cpu_ns=3, wall_ns=7)}
+            return parsed
+        runner.parse = unused_runtime
+        with self.assertRaisesRegex(ValueError, 'Interpreted policy'):
+            runner.execute()
+        self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'failed')
+        self.assertFalse((self.folder/'samples.csv').exists())
 
     def test_complete_inventory_runtime_policy_pair_and_both_orders(self):
         """Every maintained case has both current policies and interpreted reference in both orders."""
@@ -286,6 +335,32 @@ class PerformanceOrchestrationTests(unittest.TestCase):
         self.assertEqual(env['RAGNAROK_PVM_BACKEND'], 'interpreted')
         self.assertNotIn('RAGNAROK_PVM_REFERENCE_BACKEND', env)
         self.assertNotIn('PVM_JIT_PROCESS_REPLAYS', env)
+
+    def test_guest_state_refusal_requires_specific_gas_oracle(self):
+        """A captured timing failure or generic assertion cannot impersonate a gas-state refusal."""
+        unrelated = (
+            '[Assertion Failure] pvm synthetic execution CPU below clock resolution\n',
+            '[Assertion Failure] unrelated setup error\n',
+            'panicked: sieve terminal state mismatch\n',
+        )
+        intended = '[Assertion Failure] pvm sieve native terminal gas mismatch\n'
+        for role in ('interpreted', 'jit'):
+            with self.subTest(role=role):
+                for output in unrelated:
+                    self.assertFalse(performance.intended_refusal(
+                        dict(exit_code=1, output=output), 'guest', role, 'state'))
+                self.assertTrue(performance.intended_refusal(
+                    dict(exit_code=1, output=intended), 'guest', role, 'state'))
+                self.assertFalse(performance.intended_refusal(
+                    dict(exit_code=0, output=intended), 'guest', role, 'state'))
+                self.assertFalse(performance.intended_refusal(
+                    dict(exit_code=1, output='pvm sieve native terminal gas mismatch\n'),
+                    'guest', role, 'state'))
+        # Reference attribution retains its own real terminal-state panic, never the native sentinel.
+        self.assertTrue(performance.intended_refusal(dict(exit_code=1,
+            output='panicked: sieve terminal state mismatch\n'), 'guest', 'reference', 'state'))
+        self.assertFalse(performance.intended_refusal(
+            dict(exit_code=1, output=intended), 'guest', 'reference', 'state'))
 
     def test_unrelated_assertion_does_not_replace_the_requested_refusal(self):
         """A genuine assertion in fixture admission is not the requested backend/state/event control."""

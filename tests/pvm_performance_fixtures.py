@@ -103,3 +103,60 @@ def observations(scope='all', architecture='arm64', run_id='100', attempt='1'):
                     run=dict(command=[binary], log=f'logs/{case_id}-{role}-{kind}.log',
                              exit_code=0 if kind == 'positive' else 1)))
     return copy.deepcopy(report)
+
+
+def invocation_observations(scope='all', architecture='arm64', run_id='100', attempt='1'):
+    """Independent full-call observations keep historical fixtures byte-for-byte meaningful."""
+    report = observations(scope, architecture, run_id, attempt)
+    report['schema'] = 'pvm-performance-v3'
+    measurement = dict(boundary='full-invocation-v1', output='consume-before-reuse-v1',
+                       cpu_clock='process-cpu', input='program-state-host-inputs-v1')
+    report['identity']['measurement'] = copy.deepcopy(measurement)
+    for row in report['runs']:
+        parsed = row['parsed']
+        invocation = parsed.pop('execution')
+        parsed['diagnostics'] = {key: invocation.pop(key) for key in
+                                 ('preparation_ns', 'preparation_wall_ns')}
+        invocation['measurement'] = copy.deepcopy(measurement)
+        if row['role'] == 'reference':
+            old = invocation['reference_instance']
+            invocation['reference_instance'] = dict(version=2, label=old['label'], instances=1,
+                initial_cache_bytes=0, samples=[dict(sample=sample['sample'],
+                    before_reset_bytes=sample['before_reset_bytes'],
+                    after_reset_bytes=sample['after_reset_bytes'],
+                    after_run_bytes=sample['after_run_bytes']) for sample in old['samples']])
+        family = 'synthetic' if row['case_id'] in SYNTHETICS else 'doom' if row['case_id'].startswith('doom-') else 'guest'
+        label = ('synthetic-'+str(SYNTHETICS.index(row['case_id'])) if family == 'synthetic'
+                 else row['case_id'] if row['role'] == 'reference' else family+'-process')
+        raw = parsed['native'].pop('compilation_ns', 0) if parsed['native'] is not None else 0
+        parsed['diagnostics']['scope_observations'] = scope_observations(row['role'], family, label, raw)
+        parsed['invocation'] = invocation
+    return report
+
+
+def invocation_lifetime_wire(label):
+    """Literal full-call receipts contain cache continuity, never invented subsidiary clocks."""
+    lines = [f'REFERENCE_INSTANCE,2,{label},0']
+    for i in range(13):
+        before = 0 if i == 0 else 64+8*(i-1)
+        lines.append(f'REFERENCE_CACHE,2,{label},{i},{before},{before},{64+8*i}')
+    return '\n'.join([*lines, f'REFERENCE_INSTANCE_DROP,2,{label}'])+'\n'
+
+
+def scope_observations(role, family, label, compilation_raw=0):
+    """Literal simulated lifecycle clocks are independent from production parsing/reduction."""
+    owner_label = label if role == 'reference' else family+'-process'
+    result = dict(owner_window={owner_label: dict(cpu_ns=1000000000, wall_ns=2000000000,
+                                                includes_driver_oracles=True)})
+    if role != 'reference':
+        result['native_compilation'] = {label: dict(measured=compilation_raw > 0,
+            accounting_raw_ns=compilation_raw,
+            clock='supplementary-process-cpu' if compilation_raw else 'unavailable')}
+        if role == 'jit':
+            result.update(runtime_owner={owner_label: dict(ownership='application-process',
+                creation='demand-started', code_owners=11 if family == 'synthetic' else 1)},
+                runtime_close={owner_label: dict(cpu_ns=3, wall_ns=7)})
+        else:
+            result['runtime_none'] = {owner_label: dict(reason='interpreted-policy',
+                code_owners=11 if family == 'synthetic' else 1)}
+    return result

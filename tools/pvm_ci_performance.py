@@ -30,7 +30,8 @@ from pvm_jit_platform import native_defines
 from pvm_native_ci import host_identity
 from pvm_performance_report import SCHEMA, case_inventory, publish_report
 from pvm_performance_synthetic import parse_synthetic
-from pvm_reference_lifetime import CODE_LIFETIME, reference_instances
+from pvm_invocation_scope import invocation_scope, scope_diagnostics, full_parsed, measurement_identity
+from pvm_reference_lifetime import CODE_LIFETIME, reference_instances, invocation_reference_instances
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-performance'
@@ -76,9 +77,10 @@ def intended_refusal(row, family, role, kind):
         if role != 'reference':
             diagnostic = 'doom event payload mismatch' if kind == 'events' else 'doom terminal gas mismatch'
         return diagnostic in output
-    # The legacy checked Nim guest oracle has no custom gas message. Its valid positive and
-    # otherwise identical copied expected-gas mutation isolate that assertion; Rust names it.
-    return role != 'reference' or 'sieve terminal state mismatch' in output
+    # The gas oracle must name itself; a clock/setup assertion cannot supply a state refusal.
+    diagnostic = ('sieve terminal state mismatch' if role == 'reference' else
+                  'pvm sieve native terminal gas mismatch')
+    return diagnostic in output
 
 
 def normalize_execution(parsed, doom=False):
@@ -100,21 +102,26 @@ def normalize_execution(parsed, doom=False):
     return parsed
 
 
-def parse_application(output, role, case, limit, event_bytes=0):
+def parse_application(output, role, case, limit, event_bytes=0, require_full=False):
     """Bind retained-reference receipts and the canonical constructor wall clock to strict call grammars."""
+    output, full = invocation_scope(output, require_full)
+    observed = None
+    if full:
+        output, observed = scope_diagnostics(output, role)
     doom = case in ('init', 'tick')
     instance = None
     if role == 'reference':
         # Validate retained-code evidence before the maintained strict family call parser sees its grammar.
         label = 'doom-'+case if doom else f'{case}-{limit}'
-        output, instances = reference_instances(output, [label])
+        parser = invocation_reference_instances if full else reference_instances
+        output, instances = parser(output, [label])
         instance = instances[label]
     wall = None
     if doom and role != 'reference':
         lines = output.splitlines()
         fields = lines.pop(1).split(',') if len(lines) > 1 else []
         if (len(fields) != 3 or fields[:2] != ['API_PREPARE_WALL', 'prepared']
-                or re.fullmatch(r'[1-9][0-9]*', fields[2]) is None
+                or re.fullmatch(r'0|[1-9][0-9]*' if full else r'[1-9][0-9]*', fields[2]) is None
                 or int(fields[2]) >= 1 << 63):
             raise ValueError('Missing or invalid DOOM constructor wall clock')
         wall = int(fields[2])
@@ -125,12 +132,13 @@ def parse_application(output, role, case, limit, event_bytes=0):
                       native=None, policy=None)
     else:
         parsed = parse_run(output, 'interpreter' if role == 'interpreted' else role, case, limit,
-                           event_bytes, 'matched-owner-policy-v2')
+                           event_bytes, 'matched-owner-policy-v2', allow_zero_constructor=full)
     if instance is not None:
         parsed['execution']['reference_instance'] = instance
     if wall is not None:
         parsed['execution']['preparation_wall_ns'] = [wall]
-    return normalize_execution(parsed, doom)
+    parsed = normalize_execution(parsed, doom)
+    return full_parsed(parsed, observed, "doom-process" if doom else "guest-process") if full else parsed
 
 
 class PreparationChecks:
@@ -238,6 +246,7 @@ class PerformanceRunner:
                 'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY',
                 'GITHUB_JOB', 'PVM_CI_JOB_NAME')},
             doom_warmup_ticks=DOOM_WARMUP, native_build_defines=defines, code_lifetime=CODE_LIFETIME,
+            measurement=measurement_identity(),
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             build_environment={key: os.environ[key] for key in
                 ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CFLAGS', 'LDFLAGS') if key in os.environ})
@@ -411,7 +420,7 @@ class PerformanceRunner:
             args = ([self.references['micro'], '--sieve', fixture, data.parent, limit, 13]
                     if role == 'reference' else [self.images[family]])
         else:
-            # Reference retained-instance/restore scopes stay separate; public calls retain publication.
+            # Full reference and public brackets include restoration and normal output publication.
             controlled = self.doom_folder/(name+'.expected')
             env.update(RAGNAROK_PVM_DOOM_PRICING='prepared', RAGNAROK_PVM_DOOM_PREPARATION='1',
                 RAGNAROK_PVM_DOOM_TIMING='1', RAGNAROK_PVM_DOOM_ASSERT='0',
@@ -425,10 +434,11 @@ class PerformanceRunner:
     def parse(self, output, case, role):
         """Validate complete process framing before accepting even a single duration or policy cell."""
         if case['family'] == 'synthetic':
-            return parse_synthetic(output, role)
+            return parse_synthetic(output, role, require_full=True)
         event_bytes = ((self.doom_folder/(case['case']+'.events')).stat().st_size
                        if case['family'] == 'doom' else 0)
-        return {case['case_id']: parse_application(output, role, case['case'], case['limit'], event_bytes)}
+        return {case['case_id']: parse_application(output, role, case['case'], case['limit'],
+                                                  event_bytes, require_full=True)}
 
     def controls(self, case, role):
         """A valid full process precedes assertion/state/event refusals using isolated copied expectations."""

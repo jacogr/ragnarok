@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from pvm_performance_latest import retrieve, _json
-from pvm_performance_fixtures import observations, REVISION
+from pvm_performance_fixtures import invocation_observations as observations, REVISION
 
 
 class InertGitHub:

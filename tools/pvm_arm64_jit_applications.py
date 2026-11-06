@@ -66,7 +66,8 @@ def resident_application_receipt(output):
     return clean, dict(calls=calls,children=children,reads=reads,refusals=refusals)
 
 
-def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-v1'):
+def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-v1',
+              allow_zero_constructor=False):
     """Use identical native-owner framing for both compared public JIT roles and strict lifecycle parsers."""
     if protocol not in ('matched-owner-v1', 'matched-owner-policy-v2'):
         raise ValueError('Unknown application comparison protocol')
@@ -91,7 +92,8 @@ def parse_run(output, role, case, limit, event_bytes=0, protocol='matched-owner-
             native = parse_core(output,case,True,True)
             parsed = native['execution']; counters = dict(**native['native'],**native['control'])
     else:
-        parsed = parse_public(output,case,limit,prepared=True,doom=doom,event_bytes=event_bytes)
+        parsed = parse_public(output,case,limit,prepared=True,doom=doom,event_bytes=event_bytes,
+                              allow_zero_constructor=allow_zero_constructor)
     return dict(execution=parsed,native=counters,policy=policy)
 
 

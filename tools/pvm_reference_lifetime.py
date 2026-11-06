@@ -95,3 +95,70 @@ def reference_instances(output, labels, count=13):
     if position != len(records):
         raise ValueError('Foreign retained reference receipts')
     return '\n'.join(calls)+'\n', result
+
+
+def validate_invocation_instance(value, label, count=13):
+    """Validate clock-free cache continuity receipts inside actual full-call boundaries."""
+    keys = {'version', 'label', 'instances', 'initial_cache_bytes', 'samples'}
+    sample_keys = {'sample', 'before_reset_bytes', 'after_reset_bytes', 'after_run_bytes'}
+    if (not isinstance(value, dict) or set(value) != keys or value.get('label') != label or
+            type(value.get('version')) is not int or value['version'] != 2 or
+            type(value.get('instances')) is not int or value['instances'] != 1):
+        raise ValueError('Invalid full-invocation reference instance')
+    if _integer(value['initial_cache_bytes']) != 0:
+        raise ValueError('Full-invocation reference instance did not start cold')
+    if not isinstance(value['samples'], list) or len(value['samples']) != count:
+        raise ValueError('Incomplete full-invocation reference samples')
+    previous = 0
+    for index, sample in enumerate(value['samples']):
+        if not isinstance(sample, dict) or set(sample) != sample_keys:
+            raise ValueError('Unexpected full-invocation subsidiary clock or cache receipt')
+        for number in sample.values():
+            _integer(number)
+        if (sample['sample'] != index or sample['before_reset_bytes'] != previous or
+                sample['after_reset_bytes'] != previous or sample['after_run_bytes'] < previous or
+                sample['after_run_bytes'] == 0):
+            raise ValueError('Full-invocation reference cache discontinuity')
+        previous = sample['after_run_bytes']
+    return value
+
+
+def invocation_reference_instances(output, labels, count=13):
+    """Strip version2 receipts without manufacturing unavailable constructor/restore/drop clocks."""
+    if (not isinstance(output, str) or not labels or len(set(labels)) != len(labels) or
+            any(not isinstance(label, str) or re.fullmatch('[a-z0-9-]{1,64}', label) is None
+                for label in labels)):
+        raise ValueError('Invalid full-invocation reference process labels')
+    calls, records = [], []
+    for line in output.splitlines():
+        if line.startswith(('REFERENCE_INSTANCE', 'REFERENCE_RESTORE', 'REFERENCE_CACHE')):
+            records.append(line.split(','))
+        else:
+            calls.append(line)
+    position = 0
+
+    def record(kind, label, fields):
+        nonlocal position
+        row = records[position] if position < len(records) else []
+        position += 1
+        if len(row) != fields or row[:3] != [kind, '2', label]:
+            raise ValueError('Missing or foreign full-invocation '+kind)
+        if any(re.fullmatch('0|[1-9][0-9]*', number) is None for number in row[3:]):
+            raise ValueError('Malformed full-invocation reference integer')
+        return [_integer(int(number)) for number in row[3:]]
+
+    result = {}
+    for label in labels:
+        initial, = record('REFERENCE_INSTANCE', label, 4)
+        value = dict(version=2, label=label, instances=1, initial_cache_bytes=initial, samples=[])
+        for index in range(count):
+            sample, before, restored, after = record('REFERENCE_CACHE', label, 7)
+            if sample != index:
+                raise ValueError('Unordered full-invocation reference sample')
+            value['samples'].append(dict(sample=index, before_reset_bytes=before,
+                after_reset_bytes=restored, after_run_bytes=after))
+        record('REFERENCE_INSTANCE_DROP', label, 3)
+        result[label] = validate_invocation_instance(value, label, count)
+    if position != len(records):
+        raise ValueError('Foreign full-invocation reference receipts')
+    return '\n'.join(calls)+'\n', result

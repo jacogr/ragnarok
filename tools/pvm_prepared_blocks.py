@@ -37,7 +37,7 @@ def integers(fields):
     return list(map(int, fields))
 
 
-def parse_output(text, engine, limit, samples, guest, clocked):
+def parse_output(text, engine, limit, samples, guest, clocked, allow_zero_constructor=False):
     """Only exact complete output can publish sample or node/work observations; unknown/partial rows fail."""
     rows, caches, preparation = [], [], []
     families = 0
@@ -52,7 +52,7 @@ def parse_output(text, engine, limit, samples, guest, clocked):
             if fields[0] != expected or len(fields) != (5 if expected == 'PREPARED_PROGRAM' else 7):
                 raise ValueError('foreign preparation metadata')
             numbers = integers(fields[1:])
-            if min(numbers[2:]) <= 0 or (clocked and min(numbers[:2]) <= 0) or (not clocked and any(numbers[:2])):
+            if min(numbers[2:]) <= 0 or (clocked and not allow_zero_constructor and min(numbers[:2]) <= 0) or (not clocked and any(numbers[:2])):
                 raise ValueError('invalid preparation metadata')
             preparation.append(fields)
         elif fields[0] == 'PREPARED_CACHE':

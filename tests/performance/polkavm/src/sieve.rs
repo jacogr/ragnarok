@@ -5,6 +5,7 @@ use polkavm::{
     BackendKind, CacheModel, Config, CostModelKind, Engine, GasMeteringKind, InterruptKind, Module,
     ModuleConfig, ProgramBlob, ProgramParts, RawInstance, Reg,
 };
+use polkavm_common::utils::ArcBytes;
 use std::{fs, path::Path, time::Instant};
 
 const GAS: i64 = 1_000_000_000_000;
@@ -166,6 +167,136 @@ fn snapshot(instance: &mut RawInstance, pages: &[(u32, u8)], guest: Guest, limit
     result
 }
 
+// Check complete fixture code/jump-table bytes independently, after the primary clock.
+fn input_code_matches(source: ArcBytes, frozen_wire: &[u8]) -> bool {
+    ProgramParts::from_bytes(source)
+        .unwrap()
+        .code_and_jump_table
+        .as_ref()
+        == frozen_wire
+}
+
+// Canonical requests retain code, consume output before reuse, and use the frozen declared input.
+fn full_command(
+    raw: Vec<u8>,
+    input: Vec<u8>,
+    reference: Vec<u8>,
+    guest: Guest,
+    limit: u32,
+    samples: usize,
+) {
+    let owner = crate::measurement::OwnerWindow::start();
+    {
+        let mut cold_cpu = Some(crate::measurement::CpuTimer::start_process());
+        let mut cold_wall = Some(Instant::now());
+        let source_bytes: ArcBytes = raw.into();
+        let blob = ProgramBlob::parse(source_bytes.clone()).unwrap();
+        let entry = blob
+            .exports()
+            .find(|export| export == "run_checked")
+            .unwrap()
+            .program_counter();
+        let module = module(blob);
+        let mut oracle_pages = None;
+        assert!(input.len() >= 136 && &input[..8] == b"PVMSIV01");
+        let word = |at: usize, width: usize| -> u64 {
+            let mut value = 0;
+            for offset in 0..width {
+                value |= u64::from(input[at + offset]) << (offset * 8);
+            }
+            value
+        };
+        let wire_len = usize::try_from(word(8, 4)).unwrap();
+        assert_eq!(word(12, 4), u64::from(entry.0));
+        assert_eq!(word(16, 4), u64::from(limit));
+        let page_count = usize::try_from(word(20, 4)).unwrap();
+        assert!(page_count > 0 && page_count <= 4096);
+        assert_eq!(input.len(), 136 + wire_len + page_count * 4101);
+        let registers: [u64; 13] = std::array::from_fn(|index| word(32 + index * 8, 8));
+        let gas = i64::try_from(word(24, 8)).unwrap();
+        let label = format!("{}-{limit}", guest.name());
+        let mut retained = crate::measurement::RetainedInterpreter::new(&module, &label, samples);
+        for sample in 0..samples {
+            let cpu = if sample == 0 {
+                cold_cpu.take().unwrap()
+            } else {
+                crate::measurement::CpuTimer::start_process()
+            };
+            let wall = if sample == 0 {
+                cold_wall.take().unwrap()
+            } else {
+                Instant::now()
+            };
+            let instance = retained.restore(sample, |instance| {
+                for (index, value) in registers.iter().enumerate() {
+                    instance.set_reg(Reg::from_raw(index as u32).unwrap(), *value);
+                }
+                instance.set_gas(gas);
+                instance.set_next_program_counter(entry);
+                // Ordinary module reset already restores its RO/RW/zero state. Only the initialized
+                // Pinky snapshot overrides that state; no extra whole-RAM copy is imposed on other guests.
+                if guest == Guest::Pinky {
+                    for record in input[136 + wire_len..].chunks_exact(4101) {
+                        let address = u32::from_le_bytes(record[..4].try_into().unwrap())
+                            .checked_mul(4096)
+                            .unwrap();
+                        let permission = record[4];
+                        assert!(permission == 1 || permission == 2);
+                        if permission == 2 {
+                            instance.write_memory(address, &record[5..]).unwrap();
+                        }
+                    }
+                }
+            });
+            let result = instance.run().unwrap();
+            // The public instance is the final memory view until its next reset; no artificial freeze.
+            let output_gas = instance.gas();
+            let elapsed = wall.elapsed().as_nanos();
+            let cpu = cpu.finish();
+            assert_eq!(result, InterruptKind::Finished);
+            assert!(output_gas >= 0);
+            // Complete module-map enumeration is independent oracle preparation after the response.
+            let mapped = oracle_pages.get_or_insert_with(|| pages(&module));
+            if sample == 0 {
+                assert_eq!(page_count, mapped.len());
+                assert!(
+                    input_code_matches(source_bytes.clone(), &input[136..136 + wire_len]),
+                    "guest program wire mismatch"
+                );
+                // RO cannot change during execution: check input compatibility outside the clock.
+                let mut cursor = 136 + wire_len;
+                for &(address, permission) in mapped.iter() {
+                    assert_eq!(word(cursor, 4), u64::from(address / 4096));
+                    assert_eq!(input[cursor + 4], permission);
+                    if permission == 1 {
+                        assert!(
+                            instance.read_memory(address, 4096).unwrap()
+                                == input[cursor + 5..cursor + 4101]
+                        );
+                    }
+                    cursor += 4101;
+                }
+            }
+            assert!(
+                snapshot(instance, mapped, guest, limit) == reference,
+                "sieve terminal state mismatch"
+            );
+            if sample == 0 && guest != Guest::Sieve {
+                println!("GUEST,{}", guest.name());
+            }
+            cpu.report_full_timing_failure(&label, sample, elapsed);
+            retained.complete_sample(sample);
+            cpu.receipt(&label, sample);
+            println!(
+                "SIEVE,polkavm_interpreter,{limit},{sample},{elapsed},{}",
+                cpu.total
+            );
+        }
+        retained.finish();
+    }
+    owner.finish("guest-process");
+}
+
 // Bounded explicit commands separate reference preparation from immutable measured inputs/results.
 pub fn command(args: &[String]) {
     assert_eq!(args.len(), 5);
@@ -183,6 +314,13 @@ pub fn command(args: &[String]) {
     }
     let raw = fs::read(artifact).unwrap();
     assert!(!raw.is_empty() && raw.len() <= 4 * 1024 * 1024);
+    if crate::measurement::full_invocation() && !preparing {
+        // Files/fixture creation are external; all code-specific engine work starts in full_command.
+        let input = fs::read(output.join(format!("input-{limit}.bin"))).unwrap();
+        let reference = fs::read(output.join(format!("expected-{limit}.bin"))).unwrap();
+        full_command(raw, input, reference, guest, limit, samples);
+        return;
+    }
     let parts = ProgramParts::from_bytes(raw.clone().into()).unwrap();
     let blob = ProgramBlob::parse(raw.into()).unwrap();
     let entry = blob
@@ -313,6 +451,7 @@ pub fn command(args: &[String]) {
         let cpu_elapsed = cpu.total;
         assert_eq!(result, InterruptKind::Finished);
         // Equality still covers every byte; a mismatch retains a bounded diagnostic instead of the arrays.
+
         assert!(
             snapshot(instance, &mapped, guest, limit) == reference,
             "sieve terminal state mismatch"
@@ -330,5 +469,39 @@ pub fn command(args: &[String]) {
     if let Some(retained) = retained {
         // No per-call instance teardown is charged to a resident-code case.
         retained.finish();
+    }
+}
+
+#[cfg(test)]
+mod code_identity_tests {
+    use super::*;
+    use polkavm_common::program::{asm, Instruction, InstructionSetKind};
+    use polkavm_common::writer::ProgramBlobBuilder;
+
+    fn encoded(dead_immediate: i32) -> ArcBytes {
+        let mut builder = ProgramBlobBuilder::new(InstructionSetKind::JamV1);
+        builder.set_code(
+            &[
+                Instruction::trap, // trap (no operands): entry terminates before the following block.
+                asm::load_imm(Reg::A0, dead_immediate), // li a0, dead_immediate: unreachable after trap.
+            ],
+            &[],
+        );
+        builder.into_vec().unwrap().into()
+    }
+
+    #[test]
+    fn fixture_wire_binds_even_unreachable_code() {
+        let admitted = encoded(7);
+        let same = ProgramParts::from_bytes(admitted.clone())
+            .unwrap()
+            .code_and_jump_table;
+        let altered = ProgramParts::from_bytes(encoded(8))
+            .unwrap()
+            .code_and_jump_table;
+        assert_eq!(same.len(), altered.len());
+        assert!(input_code_matches(admitted.clone(), same.as_ref()));
+        // Both entry paths trap with identical observable effects; their complete program bytes differ.
+        assert!(!input_code_matches(admitted, altered.as_ref()));
     }
 }

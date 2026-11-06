@@ -3,11 +3,13 @@
 
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
 import std/[assertions, syncio, envvars, monotimes]
+import ./pvm_invocation_scope
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan]
 import ../../src/pvm/step
 
-proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
+proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds",
+    header: "pvm_sieve_clock.h".}
   ## Reuse the checked OS process clock only for explicitly enabled CI timing runs.
 
 type
@@ -66,7 +68,8 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
     else:
       assert kind == 4
     assert length <= 1048576
-    let read = readBytes(memory, MemoryAddress(address), MemoryLength(length), MemoryByteLimit(1048576))
+    let read = readBytes(memory, MemoryAddress(address), MemoryLength(length),
+        MemoryByteLimit(1048576))
     assert read.error == MachineError.None
     assert context.outputBytes <= 4*1024*1024-5-int(length)
     context.events.add(OutputEvent(kind: byte(kind), payload: read.value))
@@ -74,17 +77,22 @@ proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.
     if kind == 4:
       # The guest's console ABI returns the number of successfully consumed bytes.
       registers[7] = RegisterValue(length)
-  HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
+  HostResponse(action: HostAction.Continue, gas: cpu.gas,
+      gasDeficit: GasDeficit(0),
     registers: registers, memory: memory)
 
-proc runDoom(source: Machine, context: var HostContext, plan: GasPlan): StepResult {.noinline.} =
+proc runDoom(source: Machine, context: var HostContext,
+    plan: GasPlan): StepResult {.noinline.} =
   ## Give calibrated collection one stable boundary around the real host loop and in-memory callbacks.
-  executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), plan)
+  executeWithHost(source, context, respond, ExecutionStepLimit(1000000000),
+      HostCallLimit(4096), plan)
 
 when defined(pvmProfileRequests):
-  proc profileBegin() {.cdecl, importc: "pvm_profile_begin", header: "pvm_profile_scope.h".}
+  proc profileBegin() {.cdecl, importc: "pvm_profile_begin",
+      header: "pvm_profile_scope.h".}
     ## Begin explicit diagnostic collection without borrowing guest state.
-  proc profileEnd() {.cdecl, importc: "pvm_profile_end", header: "pvm_profile_scope.h".}
+  proc profileEnd() {.cdecl, importc: "pvm_profile_end",
+      header: "pvm_profile_scope.h".}
     ## Stop and dump one complete invocation before independent caller validation.
 
 proc runPreparedDoom(source: Machine, context: var HostContext,
@@ -92,12 +100,16 @@ proc runPreparedDoom(source: Machine, context: var HostContext,
   ## Reuse only source facts and executable nodes; every public call still owns private invocation memory.
   when defined(pvmProfileRequests):
     profileBegin()
-    result = executeWithHost(source, context, respond, ExecutionStepLimit(1000000000),
-        HostCallLimit(4096), prepared)
+    result = executeWithHost(source, context, respond, ExecutionStepLimit(
+        1000000000), HostCallLimit(4096), prepared)
     profileEnd()
   else:
     # Ordinary timing images preserve the existing wrapper without any collection markers.
-    executeWithHost(source, context, respond, ExecutionStepLimit(1000000000), HostCallLimit(4096), prepared)
+    executeWithHost(source, context, respond, ExecutionStepLimit(1000000000),
+        HostCallLimit(4096), prepared)
+
+let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
+if fullInvocation: fullInvocationHeader()
 
 if getEnv("RAGNAROK_PVM_DOOM_ASSERT") == "1":
   # Refusal controls prove assertions remain present in this optimized driver.
@@ -125,8 +137,30 @@ let pages = int(word(data, 16, 4))
 assert wireSize > 0 and wireSize <= 4*1024*1024 and pages > 0 and pages <= 8192
 assert data.len == 152+wireSize+pages*4101 and expected.len == 120+pages*4096
 assert rom.len == 4196020 and events.len <= 4*1024*1024
-var context = HostContext(rom: newSeq[byte](rom.len), events: @[], outputBytes: 0, hosts: default(
-    array[5, uint64]))
+let pricing = getEnv("RAGNAROK_PVM_DOOM_PRICING")
+assert pricing in ["", "planned", "prepared"]
+let preparedMode = pricing == "prepared"
+# Resolve the optional comparison policy before any constructor or execution clock.
+let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
+assert requestedBackend in ["", "jit", "interpreted"]
+if fullInvocation: assert requestedBackend in ["jit", "interpreted"]
+when declared(DefaultPvmBackend):
+  var selectedBackend = DefaultPvmBackend
+  if requestedBackend.len > 0:
+    assert parsePvmBackend(requestedBackend, selectedBackend)
+else:
+  # Archived runtimes retain their original constructor and cannot honor current policy overrides.
+  assert requestedBackend.len == 0
+let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
+assert requestedPreparation in ["", "0", "1"]
+let performance = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
+
+let coldCall = if fullInvocation: beginInvocation() else: default(
+    InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
+    ) else: default(InvocationRuntime)
+var context = HostContext(rom: newSeq[byte](rom.len), events: @[],
+    outputBytes: 0, hosts: default(array[5, uint64]))
 for i in 0..<rom.len:
   # Copy host-owned immutable input once, outside every collected execution.
   context.rom[i] = byte(rom[i])
@@ -142,8 +176,8 @@ for i in 0..<13: info.registers[i] = RegisterValue(word(data, 48+i*8, 8))
 assert uint64(info.registers[0]) == 0xffff0000'u64
 var wire = newSeq[byte](wireSize)
 for i in 0..<wireSize: wire[i] = byte(data[152+i])
-let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4*1024*1024),
-    JumpCountLimit(1048576))
+let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(
+    4*1024*1024), JumpCountLimit(1048576))
 assert decoded.error == ProgramError.None
 let owner = decoded.value
 var images: seq[PageImage] = @[]
@@ -160,31 +194,16 @@ for page in 0..<pages:
 let captured = captureMemory(images, PageLimit(8192))
 assert captured.error == MachineError.None
 let source = captureMachine(owner, captured.value, info).value
-let pricing = getEnv("RAGNAROK_PVM_DOOM_PRICING")
-assert pricing in ["", "planned", "prepared"]
-let preparedMode = pricing == "prepared"
-# Resolve the optional comparison policy before any constructor or execution clock.
-let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
-assert requestedBackend in ["", "jit", "interpreted"]
-when declared(DefaultPvmBackend):
-  var selectedBackend = DefaultPvmBackend
-  if requestedBackend.len > 0:
-    assert parsePvmBackend(requestedBackend, selectedBackend)
-else:
-  # Archived runtimes retain their original constructor and cannot honor current policy overrides.
-  assert requestedBackend.len == 0
-let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
-assert requestedPreparation in ["", "0", "1"]
-let performance = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
 let prepareWallStart = if requestedPreparation == "1": getMonoTime().ticks else: 0'i64
 let prepareStart = if requestedPreparation == "1": cpuNanoseconds() else: 0'i64
 var plan = default(GasPlan)
 var prepared = default(PreparedProgram)
 if preparedMode:
-  # The explicit reusable owner is admitted outside calls; sample zero retains its cold stream preparation.
+  # Canonical owner admission is nested inside the enclosing cold call; stream work stays lazy.
   let created = when declared(DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
-    newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)), selectedBackend)
+    newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)),
+        selectedBackend, invocationRuntime)
   else:
     # Historical source snapshots preserve their original public API and engine policy.
     newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)))
@@ -196,37 +215,43 @@ else:
     bytes: GasPlanByteLimit(64*1024*1024), cycles: GasCycleLimit(1000000)))
   assert created.error == GasPlanError.None
   plan = created.value
+var preparationCpuElapsed = 0'i64
+var preparationWallElapsed = 0'i64
 if requestedPreparation == "1":
-  # Only the explicit lifecycle comparison accepts this constructor record; ordinary reports stay unchanged.
-  let prepareCpuElapsed = cpuNanoseconds()-prepareStart
-  let prepareWallElapsed = getMonoTime().ticks-prepareWallStart
-  echo "API_PREPARE,", (if preparedMode: "prepared" else: "planned"), ",", prepareCpuElapsed
-  if performance:
-    # The canonical protocol retains a genuine constructor wall clock beside its existing CPU clock.
-    echo "API_PREPARE_WALL,prepared,", prepareWallElapsed
+  preparationCpuElapsed = cpuNanoseconds()-prepareStart
+  preparationWallElapsed = getMonoTime().ticks-prepareWallStart
 let requestedTiming = getEnv("RAGNAROK_PVM_DOOM_TIMING")
 assert requestedTiming in ["", "0", "1"]
 let timing = requestedTiming == "1"
 let samples = if timing: 13 else: 1
 for sample in 0..<samples:
   # Fresh host output and invocation-local execution state preserve equal sample starts.
+  let residentCall = if fullInvocation and sample != 0: beginInvocation() else: default(InvocationClock)
+  let cpuStart = if fullInvocation: (if sample ==
+      0: coldCall.cpu else: residentCall.cpu)
+    elif timing: cpuNanoseconds() else: 0'i64
+  let wallStart = if fullInvocation: (if sample ==
+      0: coldCall.wall else: residentCall.wall)
+    elif timing: getMonoTime().ticks else: 0'i64
   context.events = @[]
   context.outputBytes = 0
-  let cpuStart = if timing: cpuNanoseconds() else: 0'i64
-  let wallStart = if timing: getMonoTime().ticks else: 0'i64
-  let done = if preparedMode: runPreparedDoom(source, context, prepared) else: runDoom(source,
-      context, plan)
-  let wallElapsed = if timing: getMonoTime().ticks-wallStart else: 0'i64
-  let cpuElapsed = if timing: cpuNanoseconds()-cpuStart else: 0'i64
+  let done = if preparedMode: runPreparedDoom(source, context,
+      prepared) else: runDoom(source, context, plan)
   assert done.error == StepError.None and done.value.exit == StepExit.Halt
   let cpu = machineInfo(done.value.machine).value
+  let wallElapsed = if timing: getMonoTime().ticks-wallStart else: 0'i64
+  let cpuElapsed = if timing: cpuNanoseconds()-cpuStart else: 0'i64
+  if sample == 0 and requestedPreparation == "1":
+    echo "API_PREPARE,", (if preparedMode: "prepared" else: "planned"), ",", preparationCpuElapsed
+    if performance: echo "API_PREPARE_WALL,prepared,", preparationWallElapsed
   assert uint64(cpu.pc) == 0 and cpu.blockCharged and uint64(cpu.gasDeficit) == 0
   assert uint64(cpu.gas) == word(expected, 8, 8), "doom terminal gas mismatch"
   for i in 0..<13: assert uint64(cpu.registers[i]) == word(expected, 16+i*8, 8)
   let finalMemory = memoryOf(done.value.machine).value
   let finalIndices = pageIndices(finalMemory)
   let sourceIndices = pageIndices(captured.value)
-  assert finalIndices.error == MachineError.None and sourceIndices.error == MachineError.None
+  assert finalIndices.error == MachineError.None and sourceIndices.error ==
+      MachineError.None
   assert finalIndices.value.len == pages and sourceIndices.value.len == pages
   for page in 0..<pages:
     # Complete final-state comparison and source immutability validation stay outside collection.
@@ -240,8 +265,10 @@ for sample in 0..<samples:
       assert finalPage.bytes[i] == byte(expected[120+page*4096+i])
       assert original.bytes[i] == images[page].bytes[i]
   let originalCpu = machineInfo(source).value
-  assert uint64(originalCpu.pc) == uint64(info.pc) and not originalCpu.blockCharged
-  assert uint64(originalCpu.gas) == uint64(info.gas) and uint64(originalCpu.gasDeficit) == 0
+  assert uint64(originalCpu.pc) == uint64(info.pc) and
+      not originalCpu.blockCharged
+  assert uint64(originalCpu.gas) == uint64(info.gas) and uint64(
+      originalCpu.gasDeficit) == 0
   for i in 0..<13:
     # Reused calls cannot inherit a preceding invocation's registers through the immutable source.
     assert uint64(originalCpu.registers[i]) == uint64(info.registers[i])
@@ -264,6 +291,10 @@ for sample in 0..<samples:
   assert cursor == events.len
   if timing:
     # A sample is emitted only after complete CPU/memory/output validation succeeds.
+    if fullInvocation and (cpuElapsed <= 0 or wallElapsed <= 0):
+      # Do not discard the actual primary deltas when the unchanged clock assertion fails.
+      echo "PVM_TIMING_FAILURE,1,full-invocation-v1,native,doom-", phase, ",", sample,
+        ",", cpuElapsed, ",", wallElapsed
     assert cpuElapsed > 0 and wallElapsed > 0
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
@@ -274,10 +305,14 @@ when declared(DefaultPvmBackend):
     assert preparedMode
     let policy = preparedInfo(prepared).value
     assert policy.backend == selectedBackend
+    if fullInvocation: reportNativeCompilation("doom-process",
+        policy.nativeCompilationMeasured, policy.nativeCompilationNs)
     let actual = if policy.nativeOperations > 0: "jit" else: "interpreted"
     echo "PVM_POLICY,1,", requestedBackend, ",", int(policy.jitBuilt), ",",
-      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled), ",", actual, ",",
-      policy.nativeFragments, ",", policy.nativeCalls, ",", policy.nativeOperations
+      int(policy.jitPlatformSupported), ",", int(policy.checkedFallbackEnabled),
+          ",", actual, ",",
+      policy.nativeFragments, ",", policy.nativeCalls, ",",
+          policy.nativeOperations
 
 when defined(pvmArmMacroReceipt):
   # Application qualification observes actual resident publication and completed macro calls.
@@ -289,6 +324,16 @@ when defined(pvmArmMacroReceipt):
 
 when defined(pvmArm64JitOwnerReceipt):
   # Genuine host callbacks and immutable publication finish before copied cache diagnostics are emitted.
-  let native = preparedArmStatistics(prepared).value
-  echo "ARM_OWNER,", phase, ",", native[0], ",", native[1], ",", native[2], ",",
-    native[3], ",", native[4], ",", native[5], ",", native[6]
+  if fullInvocation:
+    reportInvocationOwner(prepared, phase)
+  else:
+    let native = preparedArmStatistics(prepared).value
+    echo "ARM_OWNER,", phase, ",", native[0], ",", native[1], ",", native[2], ",",
+      native[3], ",", native[4], ",", native[5], ",", native[6]
+
+if fullInvocation:
+  prepared = default(PreparedProgram)
+  if requestedBackend == "jit":
+    closeInvocationRuntime(invocationRuntime, "doom-process", coldCall)
+  else:
+    finishInterpretedOwner("doom-process", coldCall)
