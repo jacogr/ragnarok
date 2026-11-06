@@ -77,8 +77,8 @@ class SpecificationTests(unittest.TestCase):
         self.assertEqual(entry['protocol_version'], '0.8.0')
         self.assertNotIn('tag', entry)
         self.assertEqual(entry['release_status'], 'unreleased')
-        self.assertEqual(entry['commit'], 'c84f9aa79de298aaefb9b60818c67a9416f66c8f')
-        # These immutable vectors predate the new assurance/C13 formats; keep their last qualified source identity.
+        self.assertEqual(entry['commit'], 'a49f241a791f559d1502dc1b0b5328372995e375')
+        # Keep the dataset-level codec provenance; targeted previews qualify selected components separately.
         self.assertEqual(entry['graypaper_commit'], '3861aed15d7d016a3a416e14e61fc67dddf6daec')
         self.assertNotEqual(entry['graypaper_commit'], PINS['graypaper']['commit'])
         # Hash every consumed fixture and the upstream changelog, not merely the JSON representation.

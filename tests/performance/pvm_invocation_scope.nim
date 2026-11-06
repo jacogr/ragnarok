@@ -4,6 +4,7 @@
 ## One encompassing process-CPU/wall boundary shared by every canonical PVM workload.
 import std/[assertions, monotimes, syncio]
 import ../../src/pvm/step
+import ../support/pvm_owner_record
 
 proc processCpu(): int64 {.importc: "pvm_sieve_cpu_nanoseconds",
     header: "pvm_sieve_clock.h".}
@@ -66,7 +67,5 @@ proc reportNativeCompilation*(label: string, measured: bool, rawNs: uint64) =
   echo "PVM_NATIVE_COMPILATION,1,", label, ",", int(measured), ",", rawNs
 
 proc reportInvocationOwner*(prepared: PreparedProgram, label: string) =
-  ## Full mode observes the common async owner; its current pure-only images contain no guest branches/headers.
-  let native = preparedInfo(prepared).value
-  echo "ARM_OWNER,", label, ",", native.nativeFragments, ",", native.nativeCalls, ",",
-    native.nativeOperations, ",", native.nativeCodeBytes, ",", native.nativeCompilationNs, ",0,0"
+  ## Full invocation output observes the owner after guest execution and timing.
+  echo invocationOwnerRecord(preparedInfo(prepared).value, label)

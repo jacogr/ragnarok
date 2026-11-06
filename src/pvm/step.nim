@@ -318,6 +318,7 @@ type
     backend*: PvmBackend
     nativeFragments*: uint64                ## Cumulative successful physical publications, including replacements.
     nativeCalls*, nativeOperations*: uint64 ## Cumulative activity across invocations of this owner.
+    nativeBranchCalls*, nativeHeaderCalls*: uint64 ## Physical calls with a branch or native backedge.
     nativeCompilationMeasured*: bool ## False means the supplementary process-based compilation duration is unavailable.
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
@@ -388,6 +389,9 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   when defined(pvmArm64Jit) or defined(pvmX86Jit):
     let observed = nativeStatistics(data.native)
     for index in 0..<5: native[index] = observed[index]
+    let control = nativeControlStatistics(data.native)
+    native[5] = control.branchCalls
+    native[6] = control.headerCalls
     built = true
     when defined(pvmX86Jit):
       when defined(amd64) and defined(linux): supported = true
@@ -398,6 +402,7 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
         limits: data.limits, backend: data.selected, nativeFragments: native[0],
             nativeCalls: native[1],
         nativeOperations: native[2], nativeCodeBytes: native[3], nativeCompilationNs: native[4],
+        nativeBranchCalls: native[5], nativeHeaderCalls: native[6],
         jitBuilt: built, jitPlatformSupported: supported,
         checkedFallbackEnabled: data.selected == PvmBackend.Jit,
     memoryReuses: data.memoryReuses, retainedMemoryPayloadBytes: flatMemoryScratchPayload(

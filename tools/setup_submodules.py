@@ -10,6 +10,7 @@ including focused vector/conformance checkouts and batched provisioning of consu
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -90,19 +91,51 @@ def prefetch_blobs(path, revision, names):
             objects[name.decode()] = oid
     if objects.keys() != names:
         raise ValueError(f'Missing pinned blobs: {sorted(names - objects.keys())}')
-    # Query local availability without triggering lazy fetches; complete/warm clones require no network.
-    identities = sorted(set(objects.values()))
-    status = subprocess.check_output(
-        ['git', '-C', str(path), 'cat-file', '--batch-check'],
-        input='\n'.join(identities)+'\n', text=True,
-        env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'})
-    missing = [line.split()[0] for line in status.splitlines() if line.endswith(' missing')]
+    # Enumerate local IDs because Git 2.43 can abort a named lookup for an absent promisor object.
+    local_ids = git('cat-file', '--batch-all-objects', '--unordered',
+                    '--batch-check=%(objectname)', cwd=path, output=True)
+    missing = sorted(set(objects.values()).difference(local_ids.splitlines()))
     if missing:
         # Explicit blob wants retain the pinned commit, sparse checkout and all existing refs unchanged.
         subprocess.run(['git', '-C', str(path), '-c', 'fetch.negotiationAlgorithm=noop',
                         'fetch', 'origin', '--no-tags', '--no-write-fetch-head',
                         '--recurse-submodules=no', '--filter=blob:none', '--stdin'],
                        input='\n'.join(missing)+'\n', text=True, check=True)
+
+
+def prefetch_polkavm_history(path, revision, names):
+    """Keep the pinned historical commit and selected blobs beside the active checkout."""
+    if not isinstance(revision, str) or re.fullmatch(r'[0-9a-f]{40}', revision) is None:
+        raise ValueError('Invalid PolkaVM guest generation revision')
+    ref = 'refs/ragnarok/polkavm/guest-artifact/'+revision
+    # Detect missing history without lazy fetch; only this setup path may provision it.
+    check = subprocess.run(['git', '-C', str(path), 'cat-file', '-e', revision+'^{commit}'],
+                           env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'}, capture_output=True)
+    if check.returncode:
+        git('fetch', '--depth=1', '--filter=blob:none', '--no-tags', '--no-recurse-submodules',
+            '--no-write-fetch-head', 'origin', revision+':'+ref, cwd=path)
+    else:
+        # A locally available object can be retained without contacting the remote.
+        git('update-ref', ref, revision, cwd=path)
+    prefetch_blobs(path, revision, names)
+
+
+def initialize_polkavm_history(path, active):
+    """Provision only historical blob names owned by validated frozen guest descriptors."""
+    from native_dependencies import require_submodule
+    from pvm_guest_provenance import GUESTS, HISTORICAL_LOCKS, frozen_guest
+
+    pins = json.loads((ROOT/'spec/polkavm-pins.json').read_text())
+    assert pins['commit'] == active and require_submodule(pins) == path
+    revision = pins['guest_artifact_commit']
+    names = set(HISTORICAL_LOCKS)
+    for guest in GUESTS:
+        _, provenance = frozen_guest(ROOT/'tests/fixtures', guest, revision)
+        names.update(provenance['upstream_sources'])
+        if prefix := provenance.get('upstream_prefix'):
+            names.add(prefix['path'])
+    prefetch_polkavm_history(path, revision, names)
+    assert git('rev-parse', 'HEAD', cwd=path, output=True) == active
 
 
 # Distinguish real source edits from a clean nested checkout left at its previous recorded pin.
@@ -166,7 +199,9 @@ def main(arguments=None):
         git('submodule','update','--init',*recursive,'--checkout','--depth=1',
             '--filter=blob:none','--',relative)
         assert git('rev-parse','HEAD',cwd=path,output=True)==revision, f'Wrong checkout: {relative}'
-        if relative=='vendor/jamtestvectors' and arguments.prefetch_blobs:
+        if relative=='vendor/polkavm':
+            initialize_polkavm_history(path, revision)
+        elif relative=='vendor/jamtestvectors' and arguments.prefetch_blobs:
             # Only Python provenance consumes the complete pinned blob set; native jobs keep focused setup.
             vectors = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
             assert vectors['path'] == relative and vectors['commit'] == revision, 'Vector pin/gitlink mismatch'

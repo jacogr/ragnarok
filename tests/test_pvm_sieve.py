@@ -7,11 +7,13 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import tomllib
 import unittest
 from harness_fixtures import make_plan
 from unittest.mock import patch
 from dependencies import ROOT
 import pvm_sieve_benchmark as benchmark
+from pvm_guest_provenance import HISTORICAL_LOCKS, historical_blob
 from pvm_sieve_report import ENGINES,LIMITS,limits_for_guest,parse_output,parse_process_output,summarize
 
 
@@ -70,6 +72,26 @@ class SieveBenchmarkTests(unittest.TestCase):
                 # The correct original guest hash cannot overwrite a contradictory current source pin.
                 with self.assertRaisesRegex(ValueError,'Changed upstream source'):
                     benchmark.verify_fixture(ROOT/'tests/fixtures',ROOT/'vendor/polkavm')
+
+    def test_distinct_generation_locks_and_active_benchmark_tuple(self):
+        """Generation lock bytes can differ while the benchmark still needs the active closure."""
+        pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text())
+        upstream=ROOT/'vendor/polkavm'
+        for name in HISTORICAL_LOCKS:
+            historical=historical_blob(upstream,pins['guest_artifact_commit'],name)
+            self.assertNotEqual(historical,(upstream/name).read_bytes())
+        benchmark.verify_fixture(upstream=upstream,guest='memset')
+
+        with tempfile.TemporaryDirectory() as temporary:
+            crate=Path(temporary)
+            lock=(benchmark.CRATE/'Cargo.lock').read_text()
+            version=next(p['version'] for p in tomllib.loads(lock)['package'] if p['name']=='polkavm')
+            active=f'name = "polkavm"\nversion = "{version}"'
+            self.assertIn(active,lock)
+            (crate/'Cargo.lock').write_text(lock.replace(active,'name = "polkavm"\nversion = "0.0.0"',1))
+            with patch.object(benchmark,'CRATE',crate):
+                with self.assertRaisesRegex(ValueError,'Unpinned benchmark dependency: polkavm'):
+                    benchmark.verify_fixture(upstream=upstream,guest='memset')
 
     def test_changed_and_missing_fixture_members(self):
         """Every declared member, including attribution and lock metadata, is mandatory."""

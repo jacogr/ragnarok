@@ -123,6 +123,20 @@ def suite(binary, query=query, failure_probe=None):
         assert len(proof)==784 and len(octets(v['ring_pks_com']))==144
         assert query(binary,'R',8,octets(v['ring_pks']))==v['ring_pks_com']
         assert query(binary,'W',8,octets(v['ring_pks_com']),proof,octets(v['alpha']),octets(v['ad']))==v['beta'][:64]
+    # The backend release's eight-member fixtures use domain 2048. The existing
+    # Full capacity selects that domain, while the Draft 35 fixtures above use 512.
+    release_path = (ROOT / PINS['sources']['ark-vrf-jam']['path'] /
+                    'data/vectors/bandersnatch_sha-512_ell2_ring.json')
+    release_rings = json.loads(release_path.read_bytes())
+    assert len(release_rings) == 7
+    for v in release_rings:
+        members, root = octets(v['ring_pks']), octets(v['ring_pks_com'])
+        proof, alpha, ad = ring_proof(v), octets(v['alpha']), octets(v['ad'])
+        assert len(members) == 8 * 32 and len(root) == 144 and len(proof) == 784
+        assert query(binary, 'R', 1023, members) == root.hex()
+        assert query(binary, 'W', 1023, root, proof, alpha, ad) == v['beta'][:64]
+        rejected(query(binary, 'W', 8, root, proof, alpha, ad))
+
     official = 0
     # The advanced pin restores positive independently published JAM tickets and exact outputs.
     for profile in ('tiny', 'full'):
@@ -162,7 +176,7 @@ def suite(binary, query=query, failure_probe=None):
     for n in (0,1,31,33):
         rejected(query(binary,'P',bytes(n)))
         rejected(query(binary,'V',bytes(n),bytes(96),b'',b''))
-    return {'thin_vectors':len(thin),'ring_vectors':len(rings),'official_jam_tickets':official,'historical_profile':historical,
+    return {'thin_vectors':len(thin),'ring_vectors':len(rings),'backend_domain_2048_vectors':len(release_rings),'official_jam_tickets':official,'historical_profile':historical,
             'ownership':'passed','native_threads':4,'rounds_per_thread':32,'checked_failure':'passed'}
 
 

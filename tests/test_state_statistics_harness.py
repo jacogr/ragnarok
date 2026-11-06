@@ -5,12 +5,18 @@
 
 Exposes StatisticsHarness for unittest discovery; test methods exercise the stated contracts.
 """
+from collections import Counter
 import unittest
-from state_statistics_oracle import wire,decode,encode,example,DEFAULT,MAX
+from state_statistics_oracle import wire,decode,encode,example,DEFAULT,MAX,preview_validator_wires
 
 
 # Exact byte literals verify each schema family before native corpus execution.
 class StatisticsHarness(unittest.TestCase):
+    def test_preview_binary_populations(self):
+        """Both phases of all eight binaries qualify, including the full roster resize."""
+        profiles = Counter(config[:3] for _, config, _ in preview_validator_wires())
+        self.assertEqual(profiles, {(2, 6, 6): 8, (341, 1023, 1023): 7, (341, 6, 1023): 1})
+
     # Two canonical validator counts, natural tuples and uncounted zero cores precede an empty dictionary.
     def test_zero(self):
         source=([(0,)*6]*6,[(0,)*6]*6,[(0,)*8]*2,[])

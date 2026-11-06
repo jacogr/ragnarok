@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "ark-vrf"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "ark-bls12-381",
  "ark-ec",

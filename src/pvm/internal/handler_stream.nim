@@ -1567,10 +1567,119 @@ proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
   runNativeSpan(f.nativeSession, f.info.registers)
   span.past
 
+func flatNativeHeader(f: FlatFrame, header, pc: uint32): bool =
+  ## Accept only a materialized, ordinary, original block header at this exact source PC.
+  if header >= NativeEntryLimit or uint64(header) >= uint64(f.handlers.len) or
+      uint64(header) >= uint64(f.sites.len) or uint64(pc) >= uint64(f.compiledForPc.len):
+    return false
+  if f.handlers[int(header)] != flatCharge or
+      f.compiledForPc[int(pc)] != (header or flatReservationHeaderFlag)+1: return false
+  let ordinal = f.sites[int(header)]
+  if uint64(ordinal) >= uint64(f.plan.facts.len): return false
+  let fact = f.plan.facts[int(ordinal)]
+  fact.pc == pc and uint64(fact.priceIndex) < uint64(f.plan.pricePcs.len) and
+    uint64(f.plan.pricePcs[int(fact.priceIndex)]) == uint64(pc)
+
+proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
+  ## Check the one selected prefix against resolved source, without admitting or pricing another node.
+  result = default(NativeLoopInfo)
+  if f.plan == nil or f.plan.singleStep or f.pricingKind != 0 or
+      f.preparationFailure != FlatError.None or span.epoch != nativeEpoch(f.nativeSession):
+    return
+  if span.len < NativeMinimumOperations or span.len >= NativeSpanOperations or span.entry == 0 or
+      span.past >= NativeEntryLimit or span.past <= span.entry or
+      span.past-span.entry != uint32(span.len) or span.last < span.first or
+      span.last-span.first != uint32(span.len-1) or
+      uint64(span.last)+1 >= uint64(f.plan.facts.len) or int(span.past) >= f.handlers.len or
+      int(span.past) >= f.arguments.len or int(span.past) >= f.sites.len: return
+  let header = span.entry-1
+  let first = f.plan.facts[int(span.first)]
+  let terminal = f.plan.facts[int(span.last)+1]
+  let rightKind = case terminal.opcode
+    of 83: NativeLoopRightKind.Immediate
+    of 172: NativeLoopRightKind.Register
+    else: return
+  let branchHandler: FlatHandler = if rightKind == NativeLoopRightKind.Immediate:
+    flatBranch[83]
+  else:
+    flatBranch[172]
+  let sourceSpan = uint32(span.len)+1
+  if not flatNativeHeader(f, header, first.pc) or f.sites[int(header)] != span.first or
+      f.arguments[int(header)].y != sourceSpan or first.sourceCount != sourceSpan or
+      f.sites[int(span.past)] != span.last+1 or not terminal.ending or
+      terminal.priceIndex != first.priceIndex or f.handlers[int(span.past)] != branchHandler:
+    return
+  let branch = f.arguments[int(span.past)]
+  let exitHeader = branch.y
+  if uint32(branch.x shr 32) != header or uint32(terminal.args.x shr 32) != first.pc or
+      branch.slots != terminal.args.slots or (branch.x and 0xffffffff'u64) !=
+        (terminal.args.x and 0xffffffff'u64) or
+      (exitHeader >= header and exitHeader <= span.past) or
+      not flatNativeHeader(f, exitHeader, terminal.args.y): return
+  for index in 0..<span.len:
+    # Each original scalar fact has exactly one body node, with no folded or crossing instruction.
+    let ordinal = span.first+uint32(index)
+    let node = int(span.entry)+index
+    let fact = f.plan.facts[int(ordinal)]
+    let args = f.arguments[node]
+    if f.sites[node] != ordinal or fact.ending or not fact.fallthrough or
+        fact.priceIndex != first.priceIndex or fact.next != f.plan.facts[int(ordinal)+1].pc or
+        args.x != fact.args.x or args.slots != fact.args.slots or
+        not matchesNativeOperation(f.nativeSession, index, fact.opcode, fact.args.slots,
+          fact.args.x): return
+  # The cached low word has been checked against the original branch fact.
+  let immediate = if rightKind == NativeLoopRightKind.Immediate:
+    flatSext32(uint32(branch.x and 0xffffffff'u64))
+  else:
+    0'u64
+  result = NativeLoopInfo(header: header, exitHeader: exitHeader, sourceSpan: sourceSpan,
+    price: f.arguments[int(header)].x, slots: branch.slots, rightKind: rightKind,
+    rightImmediate: immediate)
+
+proc flatPromoteNativeLoop(f: var FlatFrame) =
+  ## Reconsider the same deferred prefix only after the checked segment has resolved its branch.
+  if not nativePromotionOpen(f.nativeSession): return
+  let loop = flatLoopCertificate(f, nativeSpanInfo(f.nativeSession))
+  if loop.kind == NativeKind.ClosedRegisterLoop: promoteNativeLoop(f.nativeSession, loop)
+
+proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
+  ## The installed certificate is stable. Only an exact complete reservation authorizes first entry.
+  let original = f.nativeOriginal
+  assert original != nil
+  let loop = nativeLoopInfo(f.nativeSession)
+  if not nativeSpanReady(f.nativeSession) or loop.kind != NativeKind.ClosedRegisterLoop or
+      nativeEpoch(f.nativeSession) != f.nativeInstalledEpoch or f.pricingKind != 0 or
+      f.barrier != flatStop or
+      not f.info.blockCharged or off != f.nativeEntry or off != loop.header+1 or
+      f.reservation != (loop.header or flatReservationHeaderFlag) or
+      f.handlers[int(loop.header)] != flatCharge or f.arguments[int(loop.header)].x != loop.price or
+      f.arguments[int(loop.header)].y != loop.sourceSpan: return original(f, off)
+  var context = NativeLoopContext(gas: uint64(f.info.gas), remaining: f.remaining, visits: 0)
+  result = runNativeLoop(f.nativeSession, f.info.registers, context)
+  # The checked successor sees an unstarted block, including on a failed native next-visit guard.
+  f.info.gas = MachineGas(context.gas)
+  f.remaining = context.remaining
+  f.info.blockCharged = false
+  f.reservation = loop.header or flatReservationHeaderFlag
+
 proc installNative(f: var FlatFrame) =
   ## Only the caller mutates its exclusively held stream; append-only coordinates are revalidated.
-  if not nativeSpanReady(f.nativeSession) or f.pricingKind != 0: return
+  if not nativeSpanReady(f.nativeSession) or f.pricingKind != 0 or f.nativeOriginal != nil: return
   let span = nativeSpanInfo(f.nativeSession)
+  let candidate = nativeLoopInfo(f.nativeSession)
+  if candidate.kind == NativeKind.ClosedRegisterLoop:
+    let loop = flatLoopCertificate(f, span)
+    if loop.sourceSpan != candidate.sourceSpan or loop.header != candidate.header or
+        loop.exitHeader != candidate.exitHeader or loop.price != candidate.price or
+        loop.slots != candidate.slots or loop.rightKind != candidate.rightKind or
+        loop.rightImmediate != candidate.rightImmediate:
+      invalidateNativeStream(f.nativeSession)
+      return
+    f.nativeOriginal = f.handlers[int(span.entry)]
+    f.nativeEntry = span.entry
+    f.nativeInstalledEpoch = span.epoch
+    f.handlers[int(span.entry)] = flatNativeLoop
+    return
   if span.epoch != nativeEpoch(f.nativeSession) or int(span.entry) >= f.handlers.len or
       int(span.past) >= f.handlers.len or span.past <= span.entry: return
   if f.sites[int(span.entry)] != span.first or f.sites[int(span.past)-1] != span.last: return
@@ -4722,6 +4831,7 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # A restored partial barrier or final cached jump can make a pending graph admissible.
     flatX86ColdWideAdmission(f, flatStop)
+  flatPromoteNativeLoop(f)
 
 proc runFlatSingle*(f: var FlatFrame) =
   ## Reuse the ordinary charge and opcode workers with one source fact and scalar successor endpoints.
