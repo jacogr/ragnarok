@@ -93,5 +93,7 @@ authenticated recovery, publication cancellation, and a complete ordinary-node f
 that reproduces a valid report after a negative receipt. The judgment suite also checks stable
 occupied memory over 1000 cycles.
 
-Follow-up work covers successor refresh and retirement, automatic CE144 production and
-scheduling across valid forks, and the later-tranche normative source decision.
+The node refreshes successor routes from detached original roster data and retires completed
+disputed execution origins. It also schedules initial CE144 duties from selected and admitted
+side branches. Later-tranche scheduling and the associated available-block retention policy are
+deferred under the [CE144 source decision](jamnp-audit-runtime.md#deferred-later-tranches).

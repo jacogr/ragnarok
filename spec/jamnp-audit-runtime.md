@@ -26,7 +26,7 @@ reproduction from authenticated package/extrinsic/import evidence. Conflicting o
 cannot silently overwrite obligations, and announcing an obligation commits the local actor to
 complete it. Every native and shared-worker token remains exact through cancellation, Done and join.
 
-## Normative later-tranche source decision
+## Deferred later tranches
 
 The two pinned revisions are also upstream's latest revisions as checked on November 5, 2026.
 JAMNP-S CE144's later announcement is a header hash, validator ordinal, later-intent/core and one
@@ -38,10 +38,14 @@ The networking definitions correspond to the unmerged
 [Gray Paper proposal #552](https://github.com/gavofyork/graypaper/pull/552), observed head
 `4e97e65921bad29edaa45bbf5fd00a62b99061be`. The proposal removes the tranche from the signed
 input, derives a fixed report tranche from the VRF and changes tranche progression and audited-report
-rules. It cannot be silently substituted for the pinned Gray Paper. The maintainer has been asked
-whether to accept this scheme as a documented audit exception; the decision is pending. Initial
-proofs, canonical context and independent judgment/recovery work can proceed without that choice.
-No later-tranche implementation or source upgrade is claimed by this record.
+rules. The maintainer deferred later tranches for this stack on November 6, 2026. CE144 produces and
+accepts initial announcements. Receipt rejects later intents as unsupported. CE145 still handles
+audits triggered by negative judgments without a CE144 declaration.
+
+Revisit once the Gray Paper and JAMNP-S agree on the signed bytes, tranche derivation and no-show
+progression, or the project selects an explicit interoperability profile. Qualify the resumed work
+with independent transcript vectors, peer round trips, no-show scheduling, and availability of the
+original execution context for newly scheduled duties.
 
 ## Completion evidence required
 
@@ -120,7 +124,7 @@ Final qualification of this initial-receipt review unit:
 
 This unit does not claim later-tranche support, locally produced audit obligations, complete
 judgment or bundle-evaluation behavior, or audited-block/finality authority. The normative
-later-tranche decision above remains pending; source and dependency pins remain unchanged.
+later-tranche work is deferred as described above; source and dependency pins remain unchanged.
 
 Receipt policy construction also validates the entire wire schema and requires its core and
 original-validator ceilings to agree with the context-capture policy. Missing or contradictory
