@@ -9,6 +9,13 @@ proc processCpu(): int64 {.importc: "pvm_sieve_cpu_nanoseconds",
     header: "pvm_sieve_clock.h".}
   ## Include all in-process threads; no component clock or worker time is subtracted.
 
+proc copyInvocationInput*(output: var openArray[byte], input {.byref.}: string,
+    offset: int) =
+  ## Copy a checked fixture span into disjoint caller-owned staging within the invocation.
+  assert output.len > 0 and offset >= 0 and offset <= input.len and
+      output.len <= input.len - offset
+  copyMem(addr output[0], readRawData(input, offset), output.len)
+
 type
   InvocationRuntime* = NativeRuntime
   InvocationClock* = object
