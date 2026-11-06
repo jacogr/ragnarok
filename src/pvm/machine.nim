@@ -71,6 +71,12 @@ type
     limit: PageLimit
   Memory* = object ## A default handle is invalid; captureMemory([], ...) creates valid empty memory.
     data: nil MemoryData
+  ResidentReplacementBatch* = object ## Internal frame publication owns completed replacements only.
+    source: Memory
+    status: MachineError
+    lastSlot: int
+    slots: seq[int]
+    changed: seq[PageData]
   ScalarMemoryWriter* = ref object ## Mutable scalar-write identity; copied handles share progress, while snapshotMemory publishes immutable epochs.
     base: Memory
     pages: seq[PageData]
@@ -607,6 +613,67 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     changed.add(pageFromReplacement(data.pages[cursor], replacements[index]))
     inc cursor
   var directory = replacedDirectory(data.pages, slots, changed)
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+
+proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
+  ## Bind one unpublished prepared-frame observation to its immutable source owner.
+  ResidentReplacementBatch(source: source, lastSlot: -1, slots: @[], changed: @[],
+    status: (if source.data == nil: MachineError.InvalidOwner else: MachineError.None))
+
+proc residentReplacementChunk(previous: PageChunk, bytes: openArray[byte], first: int,
+    changed: bool): PageChunk =
+  ## Retain equal immutable chunks or copy one complete changed chunk from the checked span.
+  if not changed: return previous
+  result = PageChunk(bytes: default(array[512, byte]))
+  copyMem(addr result.bytes[0], unsafeAddr bytes[first], 512)
+
+proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlot,
+    expected: PageDescription, bytes: openArray[byte]): MachineError =
+  ## Read a checked resident span synchronously; no pointer is stored in the batch.
+  if batch.status != MachineError.None: return batch.status
+  let data {.cursor.} = batch.source.data
+  assert data != nil
+  if uint64(slot) >= uint64(data.pages.len) or bytes.len != 4096:
+    batch.status = MachineError.InvalidRange
+    return batch.status
+  let at = int(uint32(slot))
+  if at <= batch.lastSlot:
+    batch.status = MachineError.UnsortedPages
+    return batch.status
+  let previous {.cursor.} = data.pages[at]
+  if previous.index != expected.index or previous.access != expected.access or
+      previous.access != PageAccess.ReadWrite:
+    batch.status = MachineError.InvalidRange
+    return batch.status
+  # The matched extent and eight fixed offsets prove every compared and copied span.
+  var differences = 0'u8
+  for chunk in 0..<8:
+    if cmpMem(unsafeAddr previous.chunks[chunk].bytes[0], unsafeAddr bytes[chunk*512], 512) != 0:
+      differences = differences or (1'u8 shl chunk)
+  if differences != 0:
+    let changed = PageData(index: previous.index, access: previous.access, chunks: [
+      residentReplacementChunk(previous.chunks[0], bytes, 0, (differences and 1) != 0),
+      residentReplacementChunk(previous.chunks[1], bytes, 512, (differences and 2) != 0),
+      residentReplacementChunk(previous.chunks[2], bytes, 1024, (differences and 4) != 0),
+      residentReplacementChunk(previous.chunks[3], bytes, 1536, (differences and 8) != 0),
+      residentReplacementChunk(previous.chunks[4], bytes, 2048, (differences and 16) != 0),
+      residentReplacementChunk(previous.chunks[5], bytes, 2560, (differences and 32) != 0),
+      residentReplacementChunk(previous.chunks[6], bytes, 3072, (differences and 64) != 0),
+      residentReplacementChunk(previous.chunks[7], bytes, 3584, (differences and 128) != 0)])
+    batch.slots.add(at)
+    batch.changed.add(changed)
+  batch.lastSlot = at
+  MachineError.None
+
+proc finishResidentReplacements*(batch: ResidentReplacementBatch): MachineResult[Memory] =
+  ## Publish one complete replacement directory after the whole batch succeeds.
+  if batch.status != MachineError.None: return MachineResult[Memory](status: batch.status)
+  if batch.changed.len == 0:
+    return MachineResult[Memory](status: MachineError.None, completed: batch.source)
+  let data {.cursor.} = batch.source.data
+  assert data != nil
+  var directory = replacedDirectory(data.pages, batch.slots, batch.changed)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 

@@ -4912,18 +4912,12 @@ proc runFlatSingle*(f: var FlatFrame) =
     offset = handler(f, offset)
 
 proc flatCollectResidentPage(f: FlatFrame, page: int, resident: openArray[byte],
-    changes: var seq[PageImage]) =
-  ## The checked source owner is compared before one changed private page becomes an immutable image.
-  let description = f.sourcePages[page]
-  let match = matchesMemoryPageBytes(f.sourceMemory, MemoryPageSlot(uint32(page)),
-    description, resident)
-  assert match.error == MachineError.None
-  if match.value: return
-  var image = PageImage(index: description.index, access: description.access)
-  copyMem(addr image.bytes[0], unsafeAddr resident[0], 4096)
-  changes.add(image)
+    batch: var ResidentReplacementBatch) =
+  ## Stage one complete page against the exact immutable owner and ordered slot.
+  let staged = stageResidentPage(batch, MemoryPageSlot(uint32(page)), f.sourcePages[page], resident)
+  assert staged == MachineError.None
 
-proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
+proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatch) =
   ## Writing original bytes back still publishes no replacement or mutable source alias.
   let description = f.sourcePages[page]
   if description.access != PageAccess.ReadWrite:
@@ -4934,25 +4928,25 @@ proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    flatCollectResidentPage(f, page, f.stack.toOpenArray(offset, offset+4095), changes)
+    flatCollectResidentPage(f, page, f.stack.toOpenArray(offset, offset+4095), batch)
     return
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    flatCollectResidentPage(f, page, f.rw.toOpenArray(offset, offset+4095), changes)
+    flatCollectResidentPage(f, page, f.rw.toOpenArray(offset, offset+4095), batch)
     return
   for slot in 0..<f.extra.len:
     let region {.cursor.} = f.extra[slot]
     if region.access == PageAccess.ReadWrite and address >= region.first and
         address-region.first+4096 <= uint64(region.bytes.len):
       let offset = int(address-region.first)
-      flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), changes)
+      flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), batch)
       return
   # Preserve the old checked observer fallback if a future region representation needs it.
   var original = PageImage(index: description.index, access: description.access)
   flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
   var image = original
   for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
-  if image.bytes != original.bytes: changes.add(image)
+  flatCollectResidentPage(f, page, image.bytes, batch)
 
 proc flatPublishMemory(f: FlatFrame): Memory =
   ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
@@ -4960,7 +4954,7 @@ proc flatPublishMemory(f: FlatFrame): Memory =
   if f.dirtyIndices.len == 0:
     # An untouched epoch has exactly its existing immutable bytes, permissions and local ceiling.
     return
-  var changes: seq[PageImage] = @[]
+  var batch = beginResidentReplacements(f.sourceMemory)
   if f.dirtyIndices.len < f.sourcePages.len div 8:
     # Sparse writes sort only their copied ordinals; publication never mutates the epoch's membership.
     var indices = newSeq[uint32](f.dirtyIndices.len)
@@ -4976,18 +4970,17 @@ proc flatPublishMemory(f: FlatFrame): Memory =
         if uint32(f.sourcePages[middle].index) < index: low = middle+1
         else: high = middle
       assert low < f.sourcePages.len and uint32(f.sourcePages[low].index) == index
-      flatCollectPage(f, low, changes)
+      flatCollectPage(f, low, batch)
       start = low+1
   else:
     # Dense writes retain the original linear walk instead of sorting nearly the entire mapping.
     for page in 0..<f.sourcePages.len:
       if flatDirty(f, f.sourcePages[page].index):
-        flatCollectPage(f, page, changes)
-  if changes.len > 0:
-    # The checked batch shares untouched owners and clones the root vector exactly once for this observation.
-    let updated = withReplacedPages(f.sourceMemory, changes)
-    assert updated.error == MachineError.None
-    result = updated.value
+        flatCollectPage(f, page, batch)
+  # Share untouched blocks and publish only after all resident pages have been accepted.
+  let updated = finishResidentReplacements(batch)
+  assert updated.error == MachineError.None
+  result = updated.value
 
 proc flatMemorySnapshot*(f: FlatFrame): Memory =
   ## A complete independently owned observation; no mutable resident buffer alias escapes.
