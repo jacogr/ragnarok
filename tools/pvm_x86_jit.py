@@ -13,6 +13,42 @@ from pvm_guest_compare import unchanged
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-x86-jit'
+CHECKED_READ_WINDOW_WITNESS = Path('tests/performance/pvm_checked_read_body_witness.nim')
+
+
+def qualify_checked_read_window(checks, compiler):
+    """Bind the unchanged golden and window byte receipt before entering the linked oracle."""
+    name = 'checked-read-window-oracle'
+    build, binary = checks.build(compiler, ROOT/CHECKED_READ_WINDOW_WITNESS, name,
+        defines=['pvmX86Jit'], cflags=['-I'+str(ROOT/'native/pvm_jit')])
+    if build['exit_code']: raise RuntimeError(build['output'][-3000:])
+    binary_sha256 = hashlib.sha256(binary.read_bytes()).hexdigest()
+    variable = 'RAGNAROK_PVM_CHECKED_READ_BODY_DUMP'
+    environment = {key:value for key,value in os.environ.items() if key != variable}
+    dumps = []
+    for mode, label, count, expected in (
+        ('1', 'no-window', 509, '6f3ac88b10342f2d11cda040aec4f7555d3c8e15f67442303f19aff078f396d2'),
+        ('window', 'window', 525, None),
+    ):
+        # Retain exact bytes as hex in the existing artifact even when a dump fails its gate.
+        result = subprocess.run([str(binary)], cwd=ROOT, capture_output=True, timeout=45,
+            env={**environment, variable:mode})
+        digest = hashlib.sha256(result.stdout).hexdigest()
+        receipt = dict(mode=mode, command=[str(binary)], exit_code=result.returncode,
+            binary_sha256=binary_sha256, bytes=len(result.stdout), sha256=digest,
+            hex=result.stdout[:4096].hex(), stderr=result.stderr[:4096].decode(errors='replace'))
+        (checks.folder/(name+'-'+label+'.json')).write_text(json.dumps(receipt, indent=2)+'\n')
+        if (result.returncode or result.stderr or len(result.stdout) != count
+                or (expected is not None and digest != expected)):
+            raise ValueError('unexpected x86 checked-read dump: '+label)
+        dumps.append(receipt)
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256:
+        raise ValueError('x86 checked-read witness changed before entry')
+    run = checks.command([binary], name+'-run', environment=environment, timeout=45)
+    if (run['exit_code'] or run['output'] != 'PVM_CHECKED_READ_BODY_OK\nPVM_CHECKED_READ_WINDOW_OK\n'
+            or hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256):
+        raise ValueError('incomplete x86 checked-read native and refusal oracle')
+    return dict(name=name, build=build, dumps=dumps, run=run, binary_sha256=binary_sha256)
 
 
 def qualify(checks, compiler, rows=None):
@@ -26,6 +62,7 @@ def qualify(checks, compiler, rows=None):
     if tested['exit_code'] or tested['output'] != 'X86_EXECUTABLE_MEMORY_OK,1000\n':
         raise ValueError('x86 executable-memory control failed')
     rows.append(dict(name='memory', build=compiled, run=tested))
+    rows.append(qualify_checked_read_window(checks, compiler))
     for name, source, refused in (
         ('x86-native', 'tests/performance/pvm_x86_jit_witness.nim', False),
         ('x86-refused', 'tests/performance/pvm_x86_jit_witness.nim', True),
@@ -145,6 +182,7 @@ def run():
         compiler, _ = installed()
         paths = [*sorted((ROOT/'src').rglob('*.nim')), *sorted((ROOT/'native/pvm_jit').glob('*')),
                  *sorted((ROOT/'tests/performance').glob('pvm_*jit*')),
+                 ROOT/CHECKED_READ_WINDOW_WITNESS,
                  *sorted((ROOT/'tests/unit/codec').glob('test_pvm_checked_read_*')),
                  ROOT/'tests/unit/state/test_pvm_x86_region_refusal.nim',
                  ROOT/'tools/pvm_x86_jit.py', ROOT/'tools/native_checks.py', ROOT/'spec/toolchain.json', compiler]

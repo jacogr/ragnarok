@@ -16,7 +16,7 @@ from native_tests import unit_environment, unit_source
 from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
 from pvm_jit_platform import native_defines
-from pvm_x86_jit import qualify as qualify_x86
+from pvm_x86_jit import CHECKED_READ_WINDOW_WITNESS, qualify as qualify_x86
 from setup_nimony import host_pins, installed
 
 BUILD = ROOT/'build/tests/pvm-native'
@@ -188,6 +188,7 @@ def run():
                  *sorted((ROOT/'tests/performance').glob('pvm_arm64_jit*')),
                  ROOT/'tests/support/pvm_arm_macro_backend.nim',
                  *sorted((ROOT/'tests/performance').glob('pvm_x86_jit*')),
+                 ROOT/CHECKED_READ_WINDOW_WITNESS,
                  ROOT/'tests/support/arc_evidence.nim',
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',

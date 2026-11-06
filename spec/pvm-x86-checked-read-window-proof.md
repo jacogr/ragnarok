@@ -23,15 +23,21 @@ and x86 Ready-owner arbitration. Native link and execution are pending.
 
 ## Resume qualification
 
-- Compile the direct witness with the pinned compiler and production Linux x86-64 selector.
-  Use `RAGNAROK_PVM_CHECKED_READ_BODY_DUMP=1` to compare the no-window leaf with the independent
+Use the existing `ci.yml` entry with `suite=bench-doom` and `pvm_architecture=x86_64` after the
+exact branch and qualification scope are reviewed. Its native qualification runs before DOOM
+sampling. Compare the branch's checked-read base with the settled integration before dispatch.
+
+- The x86 qualifier compiles the direct witness with the pinned compiler and production
+  Linux x86-64 selector. It uses `RAGNAROK_PVM_CHECKED_READ_BODY_DUMP=1` to check the independent
   509-byte golden from carrier `c43b7ad1a9e83ab9f6ba779117b8251d091f9be6`. Its SHA-256 is
-  `6f3ac88b10342f2d11cda040aec4f7555d3c8e15f67442303f19aff078f396d2`. Use the value
-  `window` to dump the mixed-width fixture before any arena publication.
+  `6f3ac88b10342f2d11cda040aec4f7555d3c8e15f67442303f19aff078f396d2`. The value
+  `window` dumps the 525-byte mixed-width fixture. Both receipts precede native entry and
+  retain the exact bytes and linked binary digest.
   [Independent golden source](https://github.com/jacogr/ragnarok/blob/c43b7ad1a9e83ab9f6ba779117b8251d091f9be6/.github/qualification/x86-checked-read-golden.s)
 - Run the normal witness for wrapped address formation, the exact clipped edge, the
   one-byte-short refusal, split-readable memory, and a late independent guard miss followed
   by recovery. Verify all registers and memory in the direct and interpreter oracles.
-- Verify the hot DOOM leaf, then compare baseline and candidate on the same CPU with equal
-  inputs and outputs. Check native calls, operations, image size and fallback coverage before
-  interpreting cold init, cold tick or reused tick ratios.
+- Check the recorded hot DOOM image size and compare baseline and candidate on a matching
+  runner CPU model with equal input, output, compiler, reference and measurement identities.
+  Separate cold init, cold tick and reused tick by process order. Compare native calls and
+  operations before interpreting ratios. A coverage change is a separate result from timing.
