@@ -201,11 +201,16 @@ def decode(data,config):
 
 
 # Verify exact promised Git objects at the existing vector pin before consuming any upstream data.
-def blob(path):
+def blob_bytes(path):
     pins=json.loads((ROOT/'spec/pins.json').read_text())['vectors']
     raw=subprocess.check_output(['git','-C',str(ROOT/pins['path']),'show',pins['commit']+':'+path])
     assert hashlib.sha256(raw).hexdigest()==pins['git_blobs'][path]
-    return json.loads(raw)
+    return raw
+
+
+def blob(path):
+    """Read a pinned JSON observation."""
+    return json.loads(blob_bytes(path))
 
 
 # STF statistics JSON has only validator arrays; zero cores/empty services are explicit authored completion.
@@ -223,6 +228,50 @@ def published_validators():
                 cores=2 if chain=='tiny' else 341
                 result.append(((*arrays,[(0,)*8]*cores,[]),(cores,len(arrays[0]),len(arrays[1]),MAX,MAX)))
     return result
+
+
+def preview_validator_wires():
+    """Extract both statistics prefixes from each pinned preview binary."""
+    fields = ('blocks', 'tickets', 'pre_images', 'pre_images_size', 'guarantees', 'assurances')
+    keys = ('bandersnatch', 'ed25519', 'bls', 'metadata')
+    cases = ('epoch_change_with_set_resize', 'with_empty_extrinsic',
+             'with_epoch_change', 'with_some_extrinsic')
+    # The STF has a variable input followed by pre-state, null output, and post-state.
+    for chain, cores in (('tiny', 2), ('full', 341)):
+        for case in cases:
+            path = f'stf/statistics/{chain}/stats_{case}-1'
+            data = blob_bytes(path + '.bin')
+            document = blob(path + '.json')
+            assert document['output'] is None
+            end = len(data)
+            # Work from the end and verify the slot and validator bytes at each boundary.
+            for phase in ('post_state', 'pre_state'):
+                state = document[phase]
+                current, previous = (
+                    [tuple(row[field] for field in fields) for row in state[key]]
+                    for key in ('vals_curr_stats', 'vals_last_stats')
+                )
+                suffix = state['slot'].to_bytes(4, 'little') + natural(len(state['curr_validators']))
+                suffix += b''.join(bytes.fromhex(row[key][2:])
+                                   for row in state['curr_validators'] for key in keys)
+                source = current, previous, [(0,) * 8] * cores, []
+                expected = wire(source)
+                # The STF omits core and service statistics; append only this explicit completion.
+                completion = bytes(cores * 8 + 1)
+                assert expected.endswith(completion)
+                prefix_end = end - len(suffix)
+                start = prefix_end - (len(expected) - len(completion))
+                assert 6 <= start <= prefix_end and data[prefix_end:end] == suffix, (path, phase)
+                binary = data[start:prefix_end] + completion
+                assert binary == expected, (path, phase)
+                config = cores, len(current), len(previous), MAX, MAX
+                assert parse(binary, config) == (source, len(binary)), (path, phase)
+                yield source, config, binary
+                end = start
+            # Verify the fixed input header at the leading boundary; the extrinsic is out of scope.
+            header = document['input']
+            assert data[:6] == (header['slot'].to_bytes(4, 'little') +
+                                header['author_index'].to_bytes(2, 'little'))
 
 
 # Exact raw trace keyvals retain the migrated E4 service-key schema.
@@ -364,6 +413,9 @@ def requests():
     # Published validator fields are unchanged; only absent component families receive explicit authored completion.
     for source,config in published_validators():
         enc(source,config);dec(wire(source),config)
+    # Decode the exact preview bytes and independently encode the companion JSON values.
+    for source, config, binary in preview_validator_wires():
+        dec(binary, config);enc(source, config)
     # Exact raw traces now decode and reconstruct completely with migrated E4 keys; gas policy stays gated.
     for source,data,consumed in published_wires():
         dec(data)
