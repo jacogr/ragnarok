@@ -74,7 +74,7 @@ type
     ticket: PreparationTicket
     input: CurrentBlockInput
     id: CurrentBlockInputId
-    checking, preparing: bool
+    checking, preparing, anchored: bool
     reply: CheckedReadReply
     remaining, peer, cursor: int
     parent: genesis.BlockHash
@@ -709,12 +709,23 @@ proc pollBranchIngress(owner: var ApplicationNode, services: var Services) =
         completed.value.error == ReadVerificationError.None:
       owner.branchIngress.reply = completed.value.value
       owner.branchIngress.remaining = owner.branchIngress.reply.blockCount
+      owner.branchIngress.anchored = false
 proc submitBranchIngress(owner: var ApplicationNode, services: var Services,
     clock: MonoTime, now: StateTime): bool {.raises.} =
   ## Schedule one native transition or one bounded CE128 retrieval per arbitration turn.
   if not owner.branchIngress.policy.ready or owner.branchIngress.checking or
       owner.branchIngress.preparing or not services.preparationAvailable:
     return false
+  if owner.branchIngress.remaining > 0 and not owner.branchIngress.anchored:
+    # The verified descending reply may extend below the independently retained parent.
+    # Start with its newest locally known block and ignore the older suffix.
+    for index in 0..<owner.branchIngress.remaining:
+      let hash = owner.branchIngress.reply.hashAt(index)
+      if services.knownAuditBlock(hash) and
+          services.auditBranchParent(hash).error == ApplicationChainError.None:
+        owner.branchIngress.remaining = index
+        break
+    owner.branchIngress.anchored = true
   if owner.branchIngress.remaining > 0:
     let index = owner.branchIngress.remaining-1
     dec owner.branchIngress.remaining
@@ -964,6 +975,7 @@ proc close*(owner: var ApplicationNode) =
   owner.branchIngress.policy = default(AuditBranchIngressPolicy)
   owner.branchIngress.checking = false
   owner.branchIngress.preparing = false
+  owner.branchIngress.anchored = false
   owner.branchIngress.request = default(CheckedRequestTicket)
   owner.branchIngress.ticket = default(PreparationTicket)
   owner.branchIngress.reply = default(CheckedReadReply)
@@ -1187,6 +1199,7 @@ proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.auditAcquirer.poll(services[], owner.streams, clock)
   owner.forcedAudits.poll(services[], owner.streams, owner.judgments, owner.auditAcquirer, clock)
   owner.initialAudits.poll(services[], owner.streams, clock)
+  owner.forcedAudits.releaseDeclaredOrigins(services[], owner.initialAudits)
   if owner.initialAudits.canExpire and owner.forcedAudits.canExpire and owner.judgments.canExpire:
     # Advance all affected ownership together between exact worker admissions.
     let floor = services[].expireFinalizedAudits(owner.auditRetentionFloor)

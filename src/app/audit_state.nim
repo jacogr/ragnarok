@@ -52,7 +52,7 @@ type
     of RegistryFailure: registryReason: AuditRegistryError
     else: discard # No private source or caller-selected validity bit.
   AuditOperation {.pure.} = enum
-    Idle, Origin, Evaluation, Signing, Fetch, Shard, JudgmentReceipt, Participation
+    Idle, Origin, DeclarationOrigin, Evaluation, Signing, Fetch, Shard, JudgmentReceipt, Participation
   ManagedAuditState* = object ## No native owner or backpointer: registry pins form an acyclic graph and retire only after all Services borrowers join.
     registry: AuditOriginRegistry
     operation: AuditOperation
@@ -190,6 +190,9 @@ func matches*(state: ManagedAuditState, ticket: ProofWorkerTicket): bool =
 proc releaseDispute*(state: var ManagedAuditState, id: AuditOriginId): bool =
   ## No active or unconsumed managed completion can refer to the released row.
   not state.occupied and state.registry.releaseDispute(id)
+proc releaseDeclaration*(state: var ManagedAuditState, id: AuditOriginId): bool =
+  ## No managed worker or unconsumed completion may still refer to the source.
+  not state.occupied and state.registry.releaseDeclaration(id)
 proc expireBefore*(state: var ManagedAuditState, floor: uint64): bool =
   ## Retire only after exact collection has released every managed result and source borrow.
   if state.occupied: return false
@@ -200,11 +203,11 @@ proc configure*(state: var ManagedAuditState, limits: AuditRegistryLimits): bool
   if state.occupied: return false
   state.registry.configure(limits)
 proc retain*(state: var ManagedAuditState, origin: AuditBlockOrigin,
-    trusted: BlockSnapshotResult): AuditRegistryResult[AuditOriginId] =
+    trusted: BlockSnapshotResult, forDeclaration = false): AuditRegistryResult[AuditOriginId] =
   ## The trusted block must be selected independently from Services canonical history, never supplied by a controller.
   if not origin.matchesTrustedBlock(trusted): return auditRegistryFailure[AuditOriginId](
       AuditRegistryError.InvalidSource)
-  state.registry.retain(origin)
+  state.registry.retain(origin, forDeclaration)
 proc stageEvaluation*(state: ManagedAuditState, id: AuditOriginId, ordinal: int,
     wire: openArray[byte], limits: AuditEvaluationLimits): WorkJobAdmission =
   ## Select only the private registered source under the idle graph gate; public metadata cannot install a replacement capability.
@@ -285,9 +288,9 @@ proc retainJudgments(state: var ManagedAuditState, prepared: PreparedJudgmentBat
       inc negative
     records[ordinal] = RetainedJudgment(record: record, source: selected)
   ManagedAuditCompletion(status: ManagedAuditKind.JudgmentsRetained, judgments: move(records))
-proc admitOrigin*(state: var ManagedAuditState, ticket: ProofWorkerTicket) =
+proc admitOrigin*(state: var ManagedAuditState, ticket: ProofWorkerTicket, forDeclaration: bool) =
   ## Call only after successful native admission; no source graph is accessed here.
-  state.operation = AuditOperation.Origin
+  state.operation = if forDeclaration: AuditOperation.DeclarationOrigin else: AuditOperation.Origin
   state.ticket = ticket
 proc admitEvaluation*(state: var ManagedAuditState, ticket: ProofWorkerTicket,
     id: AuditOriginId, ordinal: int) =
@@ -333,7 +336,7 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
           judgmentReason: work.judgmentReceiptError)
       elif work.kind == WorkJobResultKind.JudgmentReceiptPrepared:
         state.completion = state.retainJudgments(work.preparedJudgmentReceipt, source)
-    of AuditOperation.Origin:
+    of AuditOperation.Origin, AuditOperation.DeclarationOrigin:
       if work.kind == WorkJobResultKind.AuditOriginPreparationFailure:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginFailure,
           originReason: work.auditOriginPreparationError)
@@ -343,7 +346,8 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
         let selected = source.blockAt(info.blockHash)
         let trusted = if selected.error == GenesisError.None: selected
           else: branches.parentView(source, info.blockHash).blockAt(info.blockHash)
-        let retained = state.retain(origin, trusted)
+        let retained = state.retain(origin, trusted, state.operation ==
+            AuditOperation.DeclarationOrigin)
         if retained.error == AuditRegistryError.None:
           state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginRetained,
             originId: retained.value, originFacts: info)

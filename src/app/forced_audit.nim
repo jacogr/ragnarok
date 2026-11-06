@@ -83,6 +83,13 @@ proc `=destroy`*(owner: ForcedAudits) =
 func canExpire*(owner: ForcedAudits): bool =
   ## A leased or scheduled report still depends on its original registry and queue positions.
   owner.phase == Phase.Idle
+proc releaseDeclaredOrigins*(owner: ForcedAudits, services: var Services,
+    initial: var InitialAudits) =
+  ## Release only fully published declarations after the graph lease has retired.
+  if not owner.canExpire or not services.stateProofAvailable: return
+  for row in 0..<initial.readyDeclarationCount:
+    if owner.declaredProgress[row].selected >= initial.declarationAt(row).selected.count:
+      initial.releaseDeclarationOrigin(services, row)
 proc expireBefore*(owner: var ForcedAudits, streams: var NodeService, floor: uint64,
     declarations, pending: array[256, bool]) {.requires: owner.canExpire.} =
   ## Move progress in the same stable order as the underlying detached duty queues.

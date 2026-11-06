@@ -83,6 +83,12 @@ func declarationAt*(owner: InitialAudits, index: int): InitialAuditDeclaration {
     index >= 0 and index < owner.declarations.len.} =
   ## Return a fixed detached copy without exposing mutable queue storage.
   owner.declarations[index]
+proc releaseDeclarationOrigin*(owner: var InitialAudits, services: var Services,
+    index: int) {.requires: index >= 0 and index < owner.declarations.len.} =
+  ## Keep the exact announcement for deduplication after releasing its execution state.
+  let origin = owner.declarations[index].origin
+  if origin.valid and services.releaseInitialAudit(origin):
+    owner.declarations[index].origin = default(AuditOriginId)
 proc advanceBlock(owner: var InitialAudits) =
   ## All original local positions on this block have been visited.
   if owner.side:
@@ -151,7 +157,8 @@ proc submit*(owner: var InitialAudits, services: var Services, streams: NodeServ
   let pinning = owner.prepared.selected.count > 0
   if not pinning and not owner.selectNext(services): return false
   let started = if pinning:
-      services.beginAuditOriginCapture(owner.blockHash, owner.policy.context, owner.policy.origin)
+      services.beginAuditOriginCapture(owner.blockHash, owner.policy.context, owner.policy.origin,
+          forDeclaration = true)
     else:
       services.beginInitialAudit(owner.blockHash, streams.localIdentity,
           JudgeIndex(owner.ordinal), owner.policy.context, owner.policy.proof, discover = true)

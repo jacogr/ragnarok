@@ -204,6 +204,22 @@ proc registryChecks*(fixture: AuditContextFixture) =
   let duplicate = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
       auditOriginLimits()).value
   assert registry.retain(duplicate).value == id and registry.len == 1, "repeated equivalent captures retain the original source instead of replacing it"
+  var oneRow = registryLimits()
+  oneRow.blocks = ElementLimit(1)
+  var declarations = default(AuditOriginRegistry)
+  assert declarations.configure(oneRow)
+  let firstDuty = declarations.retain(captured, forDeclaration = true).value
+  assert declarations.retain(duplicate, forDeclaration = true).value == firstDuty
+  assert declarations.releaseDeclaration(firstDuty) and declarations.len == 1,
+      "one completed duty must preserve the pending duty's origin"
+  assert declarations.releaseDeclaration(firstDuty) and declarations.len == 0,
+      "the final duty frees the entire reservation in the same epoch"
+  assert declarations.origin(firstDuty).error == AuditRegistryError.InvalidId
+  let reused = declarations.retain(captured, forDeclaration = true).value
+  assert reused != firstDuty and declarations.retain(duplicate).value == reused
+  assert declarations.releaseDeclaration(reused) and declarations.len == 1,
+      "explicit retention must survive the last declaration's release"
+  assert not declarations.releaseDeclaration(reused)
   let target = registry.origin(id).value.reportAt(0).value
   assert registry.evaluationInfo(id, 0).error == AuditRegistryError.NotEvaluated, "registration alone grants no private judgment capability"
   let evaluated = evaluateDirectAudit(target, fixture.originalWire(target), evaluationLimits()).value

@@ -27,6 +27,8 @@ type
     dispute: AuditDisputeOrigin
     info: AuditOriginInfo
     contextBytes, epoch: uint64
+    declarations: uint16
+    explicitPin: bool
     slots: seq[EvaluationSlot]
   AuditOriginRegistry* = object ## Not a concurrent container: all source-bearing getters, mutation and destruction require the owning Services graph lease to be idle or joined.
     identity: nil RegistryIdentity
@@ -96,15 +98,25 @@ proc uncharge(registry: var AuditOriginRegistry, ordinal: int) =
     registry.nodes -= row.info.nodes
     registry.values -= row.info.valueBytes
   registry.contexts -= row.contextBytes
-proc releaseDispute*(registry: var AuditOriginRegistry, id: AuditOriginId): bool =
-  ## Only a disputed-only source may retire independently of the epoch's declared block duties.
-  let index = registry.find(id)
-  if index < 0 or not registry.rows[index].dispute.valid: return false
+proc remove(registry: var AuditOriginRegistry, index: int) =
   registry.uncharge(index)
   for ordinal in index..<registry.rows.len-1:
     # Existing exact selectors continue resolving after stable compaction.
     registry.rows[ordinal] = move(registry.rows[ordinal+1])
   registry.rows.setLen(registry.rows.len-1)
+proc releaseDispute*(registry: var AuditOriginRegistry, id: AuditOriginId): bool =
+  ## Disputed origins have a separate receipt lifetime.
+  let index = registry.find(id)
+  if index < 0 or not registry.rows[index].dispute.valid: return false
+  registry.remove(index)
+  true
+proc releaseDeclaration*(registry: var AuditOriginRegistry, id: AuditOriginId): bool =
+  ## Each completed declaration releases its pin. Explicit retention still lasts until epoch expiry.
+  let index = registry.find(id)
+  if index < 0 or registry.rows[index].declarations == 0: return false
+  dec registry.rows[index].declarations
+  if registry.rows[index].declarations == 0 and not registry.rows[index].explicitPin:
+    registry.remove(index)
   true
 proc expireBefore*(registry: var AuditOriginRegistry, minimumEpoch: uint64) =
   ## Retire previous obligations only under the owning graph gate and never reopen a retired epoch.
@@ -119,7 +131,8 @@ proc expireBefore*(registry: var AuditOriginRegistry, minimumEpoch: uint64) =
     else:
       registry.uncharge(ordinal)
   registry.rows.setLen(kept)
-proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin): AuditRegistryResult[
+proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin,
+    forDeclaration = false): AuditRegistryResult[
     AuditOriginId] =
   ## Services first checks independent canonical/checkpoint trust. Whole additional logical metrics and report slots are reserved before this registry mutates.
   if not registry.configured: return AuditRegistryResult[AuditOriginId](
@@ -142,6 +155,12 @@ proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin): Audit
           facts.bodyDigest != context.bodyDigest or
               not prior.originParameters.value.sameParameterProfile(origin.originParameters.value):
         return AuditRegistryResult[AuditOriginId](status: AuditRegistryError.SourceConflict)
+      if forDeclaration:
+        if registry.rows[ordinal].declarations == high(uint16):
+          return auditRegistryFailure[AuditOriginId](AuditRegistryError.LimitExceeded)
+        inc registry.rows[ordinal].declarations
+      else:
+        registry.rows[ordinal].explicitPin = true
       return AuditRegistryResult[AuditOriginId](status: AuditRegistryError.None,
           completed: registry.rows[ordinal].id)
   if registry.next == high(uint64): return AuditRegistryResult[AuditOriginId](
@@ -158,6 +177,7 @@ proc retain*(registry: var AuditOriginRegistry, origin: AuditBlockOrigin): Audit
   let id = AuditOriginId(owner: registry.identity, serial: registry.next)
   registry.rows.add(OriginRow(id: id, origin: origin, dispute: default(AuditDisputeOrigin),
       info: info, contextBytes: contextBytes, epoch: context.epoch,
+    declarations: uint16(forDeclaration), explicitPin: not forDeclaration,
     slots: newSeq[EvaluationSlot](info.reports)))
   registry.entries += uint64(info.entries)
   registry.nodes += info.nodes
@@ -229,7 +249,7 @@ proc retainDisputes*(registry: var AuditOriginRegistry,
     let id = AuditOriginId(owner: registry.identity, serial: registry.next)
     registry.rows.add(OriginRow(id: id, origin: default(AuditBlockOrigin), dispute: origin,
       info: default(AuditOriginInfo), contextBytes: origin.disputeInfo.value.retainedBytes+1536,
-      epoch: origin.disputeInfo.value.epoch,
+      epoch: origin.disputeInfo.value.epoch, declarations: 0, explicitPin: false,
       slots: newSeq[EvaluationSlot](1)))
   registry.entries = entries
   registry.nodes = nodes

@@ -2598,6 +2598,9 @@ proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
 proc releaseDisputedAudit*(services: var Services, id: AuditOriginId): bool =
   ## Reclaim a retired exact disputed map only while the complete graph is idle.
   services.stateProofAvailable and services.audits.releaseDispute(id)
+proc releaseInitialAudit*(services: var Services, id: AuditOriginId): bool =
+  ## Release one completed declaration pin between graph leases.
+  services.stateProofAvailable and services.audits.releaseDeclaration(id)
 proc expireFinalizedAudits*(services: var Services, previous: uint64): uint64 =
   ## Verdicts may still use the prior-state epoch or one earlier. Only installed finality advances this floor.
   if not services.stateProofAvailable or services.audits.occupied: return previous
@@ -2698,7 +2701,8 @@ proc stageManagedAuditOrigin(services: var Services, blockHash: genesis.BlockHas
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
 proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHash,
-    context: AuditContextLimits, limits: AuditOriginLimits): AuditPlanningStart {.raises.} =
+    context: AuditContextLimits, limits: AuditOriginLimits,
+        forDeclaration = false): AuditPlanningStart {.raises.} =
   ## Only actual canonical history can feed managed full-origin capture, with one unconsumed completion at most.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
   if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
@@ -2709,7 +2713,7 @@ proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHa
   if staged != WorkJobError.None: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
-  if result.error == StateProofAdmissionError.None: services.audits.admitOrigin(result.value)
+  if result.error == StateProofAdmissionError.None: services.audits.admitOrigin(result.value, forDeclaration)
 proc stageManagedAuditEvaluation(services: var Services, id: AuditOriginId, ordinal: int,
     wire: openArray[byte], limits: AuditEvaluationLimits): WorkJobError =
   ## Only the privately registered original target enters the fixed evaluator; caller wire is copied within finite policy.
@@ -2925,10 +2929,10 @@ func auditSigningMatches*(services: Services, identity: StateEdKey): bool =
   services.auditSigningConfigured and array[32, byte](services.auditSignerIdentity) == array[32,
       byte](identity)
 proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
-    attempt = 0): JudgmentSourceResult =
+    excluded: openArray[genesis.BlockHash] = []): JudgmentSourceResult =
   ## Metadata-only selection observes actual canonical history solely while the shared graph gate is idle; Busy/default contains no guessed source.
   if not services.stateProofAvailable: return default(JudgmentSourceResult)
-  selectJudgmentSource(services.canonical.chainView, claim, attempt)
+  selectJudgmentSource(services.canonical.chainView, claim, excluded)
 proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the fixed worker borrows its immutable input graph.

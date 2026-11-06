@@ -386,8 +386,33 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   var verification = readVerificationLimits(3, 9, 12)
   verification.wireBytes = ByteLimit(65536)
   let receipt = judgmentReceiptPolicy(actualClaimLimits(), receiptLimits(), verification,
-      JudgmentStoreLimits(records: ElementLimit(16), bytes: ByteLimit(1000000)), ByteLimit(8000000))
+      JudgmentStoreLimits(records: ElementLimit(2), bytes: ByteLimit(1000000)), ByteLimit(8000000))
   assert client.configureJudgmentReceipt(receipt)
+  var remoteSeed = default(array[32, byte])
+  remoteSeed[0] = byte(context.auditorAt(0).value.ed25519.keyMarker)
+  let remoteKey = importSeed(remoteSeed).value
+  var unsolicited = default(array[2, AuditJudgment])
+  for index in 0..<unsolicited.len:
+    var hash = default(array[32, byte])
+    hash[0] = byte(index+1)
+    var transcript: seq[byte] = @[]
+    for octet in "jam_valid": transcript.add(byte(octet))
+    for octet in hash: transcript.add(octet)
+    unsolicited[index] = AuditJudgment(epoch: DisputeEpoch(context.contextInfo.value.epoch),
+        validator: JudgeIndex(0), valid: true, report: DisputeHash(hash),
+        signature: DisputeSignature(array[64, byte](sign(remoteKey, transcript).value)))
+  let flood = decodeReadRequest(ReadKind.Judgment, encodeJudgments(unsolicited,
+      message).value).value
+  let floodTicket = peers[0].request(peers[0].peerAt(0).value, flood, ByteLimit(0)).value
+  let received = getMonoTime()+initDuration(seconds = 10)
+  while true:
+    let clock = getMonoTime()
+    assert clock < received and client.poll(clock, now, 0)
+    assert peers[0].poll(clock, 0)
+    let acknowledged = peers[0].takeReply(floodTicket)
+    if acknowledged.error == ReadError.None: break
+    assert acknowledged.error == ReadError.Unavailable
+  assert client.retainedJudgmentCount == 2
   let gossip = judgmentGossipPolicy(message, 4, ByteLimit(8000000), dialsPerRecord = 0)
   let publication = AuditPublicationLimits(wireBytes: ByteLimit(65536),
       workspaceBytes: ByteLimit(1000000))
@@ -401,7 +426,7 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   var announced = default(array[8, bool])
   var fetched = 0
   let deadline = getMonoTime()+initDuration(seconds = 15)
-  while client.retainedJudgmentCount < 2:
+  while client.retainedJudgmentCount < 4:
     # Transport peers return only genuine bundle bytes addressed by the original erasure commitment.
     let clock = getMonoTime()
     assert clock < deadline, "declaration produces two managed judgments"
@@ -441,9 +466,11 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
       assert peers[ordinal].respond(task.ticket, captureReadReply(task.request, wire).value) ==
           ReadError.None
   assert client.initialAuditDeclarationCount == 1 and fetched == 2
+  assert not client.initialAuditDeclaration(0).origin.valid,
+      "a completed declaration keeps its announcement and releases its execution pin"
   for ordinal in 0..<2:
     # Independent original Ed25519 transcripts verify both report judgments at the declared position.
-    let judgment = client.retainedJudgmentAt(ordinal).judgmentRecord
+    let judgment = client.retainedJudgmentAt(ordinal+2).judgmentRecord
     assert judgment.valid and uint16(judgment.validator) == 8
     assert array[32, byte](judgment.report) == array[32, byte](context.auditReportHash(ordinal).value)
     var transcript: seq[byte] = @[]

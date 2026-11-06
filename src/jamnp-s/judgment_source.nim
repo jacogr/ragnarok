@@ -28,10 +28,14 @@ proc eligible(candidate: BlockSnapshotResult, parameters: Parameters,
   let sourceRotation = candidate.value.slot div rotation
   let guaranteeRotation = guaranteeSlot div rotation
   sourceRotation >= guaranteeRotation and sourceRotation-guaranteeRotation <= 1
+func containsSource(excluded: openArray[genesis.BlockHash], hash: genesis.BlockHash): bool =
+  for previous in excluded:
+    if array[32, byte](previous) == array[32, byte](hash): return true
+  false
 proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
-    attempt = 0): JudgmentSourceResult =
+    excluded: openArray[genesis.BlockHash] = []): JudgmentSourceResult =
   ## Inspect at most64 retained fixed metadata rows plus actual separate finality, trying newest known contexts at or after the raw slot. Failure makes no claim about report truth or unsupported unknown history.
-  if attempt < 0 or attempt > 64: return JudgmentSourceResult(
+  if excluded.len > 64: return JudgmentSourceResult(
       status: JudgmentSourceError.LimitExceeded)
   if not claim.valid or claim.judgmentRecord.valid:
     return JudgmentSourceResult(status: JudgmentSourceError.InvalidClaim)
@@ -45,7 +49,6 @@ proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
   let rotation = parameters.get(rotationPeriod)
   if rotation == 0: return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
   let slot = uint64(uint32(claim.judgmentRecord.slot))
-  var seen = 0
   let finalized = view.finalizedBlock
   var finalSeen = false
   for offset in 0..<view.retainedCount:
@@ -55,11 +58,12 @@ proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
     if finalized.error == GenesisError.None and candidate.error == GenesisError.None:
       if array[32, byte](finalized.value.blockHash) == array[32, byte](
           candidate.value.blockHash): finalSeen = true
-    if eligible(candidate, parameters, slot, rotation):
-      if seen == attempt: return JudgmentSourceResult(status: JudgmentSourceError.None,
+    if eligible(candidate, parameters, slot, rotation) and
+        not excluded.containsSource(candidate.value.blockHash):
+      return JudgmentSourceResult(status: JudgmentSourceError.None,
           selected: candidate.value.blockHash)
-      inc seen
-  if not finalSeen and eligible(finalized, parameters, slot, rotation) and seen == attempt:
+  if not finalSeen and eligible(finalized, parameters, slot, rotation) and
+      not excluded.containsSource(finalized.value.blockHash):
     return JudgmentSourceResult(status: JudgmentSourceError.None,
         selected: finalized.value.blockHash)
   JudgmentSourceResult(status: JudgmentSourceError.HistoryUnavailable)
