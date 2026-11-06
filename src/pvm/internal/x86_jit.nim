@@ -750,7 +750,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         put(code, [0x8b'u8, byte(0xd0 or (hardware and 7))]) # MOV EDX,resident32.
 
     template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
-        labels: var array[1+4*int(NativeReadFactLimit), int], body: NativeReadBody, access: untyped) =
+        labels: var array[1+4*int(NativeReadFactLimit), int], body: NativeReadBody,
+            access: untyped) =
       ## Preserve one guard and load emitter for the stack and resident access policies.
       var nextLabel = 1
       const refusal = 0'u8
