@@ -17,6 +17,7 @@ import statistics
 import tempfile
 
 from pvm_benchmark_report import NAMES
+from pvm_jit_platform import RESIDENT_PROOF, comparison_defines
 from pvm_sieve_report import limits_for_guest
 from pvm_reference_lifetime import CODE_LIFETIME, validate_invocation_instance
 from pvm_invocation_scope import measurement_identity, validate_scope_observations
@@ -168,8 +169,8 @@ def _identity(report):
     _digest(qualification.get('sha256'), 'qualification hash')
     _digest(identity.get('reference_revision'), 'reference revision', 40)
     _mapping(identity.get('toolchain'), 'pinned toolchain')
-    expected_define = 'pvmArm64Jit' if arch == 'arm64' else 'pvmX86Jit'
-    if identity.get('native_build_defines') != [expected_define]:
+    expected_defines = comparison_defines(host['system'], host['machine'], report['scope'], ci)
+    if identity.get('native_build_defines') != expected_defines:
         raise ValueError('Wrong native production build profile')
     if report['scope'] != 'micro':
         doom = _mapping(identity.get('doom'), 'canonical DOOM identity')
@@ -353,6 +354,12 @@ def validate_report(report):
         record = _mapping(build.get('run'), 'production build result')
         if type(record.get('exit_code')) is not int or record['exit_code'] != 0:
             raise ValueError('Failed production build')
+        if RESIDENT_PROOF in identity['native_build_defines']:
+            command = record.get('command')
+            if (not isinstance(command, list) or any(not isinstance(arg, str) for arg in command)
+                    or [arg for arg in command if arg.startswith('-d:')] !=
+                    ['-d:release', *('-d:'+flag for flag in build['defines'])]):
+                raise ValueError('Resident production command/profile disagreement')
     covered = set()
     controls = report.get('controls')
     if not isinstance(controls, list):

@@ -123,6 +123,7 @@ if dump != "":
     of "resident": x86CheckedReadInstructions(readBody(0))
     of "six": x86CheckedReadInstructions(readBody(3))
     of "seven": x86CheckedReadInstructions(readBody(4))
+    of "seven-stack": x86CheckedReadStackInstructions(readBody(4))
     else: default(seq[byte])
   assert encoded.len in 1..NativeImageByteLimit
   var bytes = newString(encoded.len)

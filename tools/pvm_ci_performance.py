@@ -26,7 +26,7 @@ from pvm_doom_attribution import (CRATE as DOOM_CRATE, TARGET as DOOM_TARGET,
                                   event_hashes, tga_rgba, timing_samples)
 from pvm_guest_compare import unchanged
 from pvm_guest_inputs import prepare_inputs
-from pvm_jit_platform import native_defines
+from pvm_jit_platform import RESIDENT_PROOF, comparison_defines
 from pvm_native_ci import host_identity
 from pvm_performance_report import SCHEMA, case_inventory, publish_report
 from pvm_performance_synthetic import parse_synthetic
@@ -227,12 +227,21 @@ class PerformanceRunner:
         compiler, _ = installed()
         receipt_path = ROOT/'build/tests/pvm-native/results.json'
         receipt = json.loads(receipt_path.read_text())
-        defines = native_defines(host['system'], host['machine'])
+        ci = {key: os.environ.get(key) for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
+            'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY',
+            'GITHUB_JOB', 'PVM_CI_JOB_NAME')}
+        defines = comparison_defines(host['system'], host['machine'], self.scope, ci)
         if (receipt.get('status') != 'passed' or receipt.get('revision') != revision
                 or receipt.get('host') != host or not defines
                 or receipt.get('compiler_sha256') != digest(compiler)
                 or receipt.get('policies', {}).get('native_build_defines') != defines):
             raise ValueError('Missing matching passed native PVM qualification')
+        if RESIDENT_PROOF in defines:
+            rows = [row for row in receipt.get('qualification', [])
+                    if row.get('name') == 'checked-read-resident-oracle']
+            if (len(rows) != 1 or rows[0].get('defines') != defines
+                    or rows[0].get('status') != 'passed'):
+                raise ValueError('Missing exact checked-read resident oracle')
         source_seals = {ROOT/path: value for path, value in receipt.get('sources', {}).items()}
         if not source_seals:
             raise ValueError('Native qualification has no source identities')
@@ -242,9 +251,7 @@ class PerformanceRunner:
         self.report['identity'].update(host=host, native_qualification=dict(
             path=str(receipt_path.relative_to(ROOT)), sha256=digest(receipt_path), revision=revision),
             compiler=dict(sha256=digest(compiler), identity=(compiler.parent.parent/'NIGHTLY.txt').read_text()),
-            ci={key: os.environ.get(key) for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
-                'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY',
-                'GITHUB_JOB', 'PVM_CI_JOB_NAME')},
+            ci=ci,
             doom_warmup_ticks=DOOM_WARMUP, native_build_defines=defines, code_lifetime=CODE_LIFETIME,
             measurement=measurement_identity(),
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),

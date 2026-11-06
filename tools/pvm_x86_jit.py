@@ -10,9 +10,66 @@ import subprocess
 
 from native_checks import NativeChecks, ROOT
 from pvm_guest_compare import unchanged
+from pvm_jit_platform import RESIDENT_PROOF
+from pvm_x86_resident_audit import audit_link
 from setup_nimony import installed
 
 BUILD = ROOT/'build/tests/pvm-x86-jit'
+
+
+def qualify_checked_read_resident(checks, compiler, defines):
+    """Require the exact linked sentinel, leaf bytes and transaction before DOOM."""
+    if defines != ['pvmX86Jit', RESIDENT_PROOF]:
+        raise ValueError('Wrong checked-read resident oracle profile')
+    name = 'checked-read-resident-oracle'
+    source = ROOT/'tests/performance/pvm_checked_read_resident_witness.nim'
+    build, binary = checks.build(compiler, source, name, defines=defines,
+                                 cflags=['-I'+str(ROOT/'native/pvm_jit')])
+    if build['exit_code'] or 'Error:' in build['output'] or 'FAILURE' in build['output']:
+        raise RuntimeError('Resident witness build failed: '+build['log'])
+    command = build['command']
+    if ([arg for arg in command if arg.startswith('-d:')] !=
+            ['-d:release', *('-d:'+flag for flag in defines)]
+            or not {'--boundchecks:on', '--passC:-flto=thin', '--passL:-flto=thin'} <= set(command)):
+        raise ValueError('Resident witness build command differs from its checked profile')
+    binary_sha256 = hashlib.sha256(binary.read_bytes()).hexdigest()
+    abi = audit_link(checks, binary, name)
+
+    env = dict(os.environ)
+    variable = 'RAGNAROK_PVM_CHECKED_READ_RESIDENT_DUMP'
+    env.pop(variable, None)
+    receipts, images = {}, {}
+    for mode in ('stack', 'resident', 'six', 'seven', 'seven-stack'):
+        dump = subprocess.run([str(binary)], cwd=ROOT, capture_output=True, timeout=30,
+                              env={**env, variable:mode})
+        digest = hashlib.sha256(dump.stdout).hexdigest()
+        receipt = dict(mode=mode, bytes=len(dump.stdout), sha256=digest,
+                       binary_sha256=binary_sha256, hex=dump.stdout.hex(),
+                       exit_code=dump.returncode, stderr=dump.stderr.decode(errors='replace'))
+        (checks.folder/(name+'-'+mode+'.json')).write_text(json.dumps(receipt, indent=2)+'\n')
+        if dump.returncode or dump.stderr or not 0 < len(dump.stdout) <= 4096:
+            raise ValueError('Resident witness dump failed: '+mode)
+        receipts[mode], images[mode] = receipt, dump.stdout
+
+    if (len(images['stack']) != 509 or receipts['stack']['sha256'] !=
+            '6f3ac88b10342f2d11cda040aec4f7555d3c8e15f67442303f19aff078f396d2'):
+        raise ValueError('Resident witness original stack golden mismatch')
+    if (len(images['resident']) != 474 or receipts['resident']['sha256'] !=
+            '2f16ca51b7ff9998cd74bffded51edd7c92458d0e0fd95e811e299413a1534b0'):
+        raise ValueError('Resident witness modeled leaf mismatch')
+    if not images['six'].startswith(bytes.fromhex('53 48 8b 5f 08 55 41 54 4c 8b 67 18 '
+                                                  '41 55 41 56 41 57 49 89 f2')):
+        raise ValueError('Resident witness six-lane entry mismatch')
+    if images['seven'] != images['seven-stack']:
+        raise ValueError('Resident witness seven-dirty fallback mismatch')
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256:
+        raise ValueError('Resident witness binary changed before entry')
+    run = checks.command([binary], name+'-run', environment=env, timeout=30)
+    if (run['exit_code'] or run['output'] != 'PVM_CHECKED_READ_RESIDENT_OK\n'
+            or hashlib.sha256(binary.read_bytes()).hexdigest() != binary_sha256):
+        raise ValueError('Resident witness transaction failed: '+run['log'])
+    return dict(name=name, status='passed', defines=defines, binary_sha256=binary_sha256,
+                abi=abi, dumps=receipts, build=build, run=run)
 
 
 def qualify(checks, compiler, rows=None):

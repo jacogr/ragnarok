@@ -17,3 +17,18 @@ def native_defines(system=None, machine=None):
     if system in ('Linux', 'Darwin') and machine in ('arm64', 'aarch64'):
         return ['pvmArm64Jit']
     return []
+
+
+RESIDENT_PROOF = 'pvmX86ResidentProof'
+RESIDENT_PROOF_REF = 'refs/heads/codex/pvm-x86-checked-read-resident-proof'
+
+
+def comparison_defines(system, machine, scope, ci):
+    """Select the disposable resident profile only in its exact DOOM dispatch job."""
+    defines = native_defines(system, machine)
+    if (defines == ['pvmX86Jit'] and scope == 'doom'
+            and ci.get('GITHUB_JOB') == 'pvm-comparison'
+            and ci.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+            and ci.get('GITHUB_REF') == RESIDENT_PROOF_REF):
+        return [*defines, RESIDENT_PROOF]
+    return defines

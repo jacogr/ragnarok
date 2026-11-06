@@ -29,7 +29,7 @@ before first write and uses R15. The seven-dirty fixture compares its selected
 bytes to the original stack emitter.
 
 The witness can dump raw bytes with `RAGNAROK_PVM_CHECKED_READ_RESIDENT_DUMP` set
-to `stack`, `resident`, `six` or `seven`. The stack fixture should match the
+to `stack`, `resident`, `six`, `seven` or `seven-stack`. The stack fixture should match the
 independently qualified 509-byte reference with SHA-256
 `6f3ac88b10342f2d11cda040aec4f7555d3c8e15f67442303f19aff078f396d2`.
 A static relocation of that golden predicts a 474-byte resident fixture with
@@ -45,3 +45,13 @@ stage and host-save memory accesses go from 87 to 22 per successful leaf.
 The 22 include seven borrowed-file reads, five publication stores and all ten
 host save and restore accesses. The estimated 1,259-byte image retains the
 original seven checked loads. These counts give no CPU estimate.
+
+## Disposable CI wiring
+
+The existing Linux x86-64 DOOM dispatch on this checkpoint branch is the sole
+opt-in. Its native receipt and canonical executable both carry the resident
+selector. The linked oracle verifies the two argument borrows and all six
+sentinels across the actual indirect call before entering the witnessed leaves.
+It requires the reference and resident digests and compares both seven-dirty
+dumps in full. The standard build and ordinary comparison profiles retain
+their prior selectors. The wiring is local to this experiment branch.

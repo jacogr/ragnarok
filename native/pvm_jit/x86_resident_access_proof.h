@@ -8,7 +8,7 @@
 
 #if PVM_X86_JIT_HOST
 /* Keep all six SysV hardware sentinels live across the selected actual entry signature. */
-static __attribute__((noinline)) uint64_t pvm_x86_resident_abi_entry(void *code,
+static inline __attribute__((always_inline)) uint64_t pvm_x86_resident_abi_entry(void *code,
         void *registers, void *context, void *dirty, void *out) {
     register uint64_t saved_bx __asm__("rbx") = UINT64_C(0x0123456789abcdef);
     register uint64_t saved_bp __asm__("rbp") = UINT64_C(0x123456789abcdef0);
@@ -29,13 +29,23 @@ static __attribute__((noinline)) uint64_t pvm_x86_resident_abi_entry(void *code,
     }
     __asm__ volatile("" : "+r"(saved_bx), "+r"(saved_bp), "+r"(saved12),
         "+r"(saved13), "+r"(saved14), "+r"(saved15));
-    if (saved_bx != UINT64_C(0x0123456789abcdef) || saved_bp != UINT64_C(0x123456789abcdef0) ||
-            saved12 != UINT64_C(0x23456789abcdef01) || saved13 != UINT64_C(0x3456789abcdef012) ||
-            saved14 != UINT64_C(0x456789abcdef0123) || saved15 != UINT64_C(0x56789abcdef01234)) {
-        fputs("X86_RESIDENT_ABI_CLOBBER\n", stderr);
-        abort();
-    }
+    /* Keep each live-register check distinct in the linked ABI witness. */
+    if (saved_bx != UINT64_C(0x0123456789abcdef)) goto clobber;
+    __asm__ volatile("" ::: "memory");
+    if (saved_bp != UINT64_C(0x123456789abcdef0)) goto clobber;
+    __asm__ volatile("" ::: "memory");
+    if (saved12 != UINT64_C(0x23456789abcdef01)) goto clobber;
+    __asm__ volatile("" ::: "memory");
+    if (saved13 != UINT64_C(0x3456789abcdef012)) goto clobber;
+    __asm__ volatile("" ::: "memory");
+    if (saved14 != UINT64_C(0x456789abcdef0123)) goto clobber;
+    __asm__ volatile("" ::: "memory");
+    if (saved15 != UINT64_C(0x56789abcdef01234)) goto clobber;
     return (UINT64_C(1) << 32) | next;
+
+clobber:
+    fputs("X86_RESIDENT_ABI_CLOBBER\n", stderr);
+    abort();
 }
 #endif
 
@@ -61,7 +71,7 @@ static inline uint64_t pvm_x86_resident_access_proof(void *handle,
 #endif
 }
 /* Checked reads have the same two borrows as pvm_x86_arena_region, including on refusal. */
-static inline uint64_t pvm_x86_checked_read_abi_proof(void *handle, uint32_t offset,
+static __attribute__((noinline, unused)) uint64_t pvm_x86_checked_read_abi_proof(void *handle, uint32_t offset,
         void *registers, void *context) {
 #if PVM_X86_JIT_HOST
     pvm_x86_arena *owner = handle;

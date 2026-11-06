@@ -196,7 +196,7 @@ when NativeCheckedReadEnabled:
       publishReadBody(encoded)
 
     proc enterNativeReadBodyAbiProof*(image: NativeImage, registers: var RegisterFile,
-        context: var NativeReadContext): bool =
+        context: var NativeReadContext): bool {.noinline.} =
       ## Check all six saved hardware registers around the actual two-borrow ABI.
       assert isReadBody(image)
       assert sizeof(NativeReadRegion) == 24 and sizeof(NativeReadContext) == 72

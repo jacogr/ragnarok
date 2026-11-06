@@ -15,8 +15,8 @@ from native_requirements import NATIVE_REQUIREMENTS
 from native_tests import unit_environment, unit_source
 from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
-from pvm_jit_platform import native_defines
-from pvm_x86_jit import qualify as qualify_x86
+from pvm_jit_platform import RESIDENT_PROOF, comparison_defines, native_defines
+from pvm_x86_jit import qualify as qualify_x86, qualify_checked_read_resident
 from setup_nimony import host_pins, installed
 
 BUILD = ROOT/'build/tests/pvm-native'
@@ -204,20 +204,30 @@ def run():
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
+        scope = os.environ.get('PVM_PERF_SCOPE') if os.environ.get('GITHUB_ACTIONS') == 'true' else None
+        defines = comparison_defines(report['host']['system'], report['host']['machine'],
+                                     scope, os.environ)
+        if RESIDENT_PROOF in defines:
+            paths.extend((ROOT/'tools/pvm_x86_resident_audit.py',
+                          ROOT/'tests/performance/pvm_checked_read_resident_witness.nim'))
         paths += shared_source_paths()
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
-        native = bool(native_defines(report['host']['system'], report['host']['machine']))
+        native = bool(defines)
         report['coverage'] = report['host']['architecture']+' native and forced refusal' if native else 'checked interpreter fallback'
-        report['qualification'] = qualify_host(NativeChecks(BUILD), compiler, report['host'])
+        checks = NativeChecks(BUILD)
+        report['qualification'] = []
+        if RESIDENT_PROOF in defines:
+            report['qualification'].append(qualify_checked_read_resident(checks, compiler, defines))
+        report['qualification'].extend(qualify_host(checks, compiler, report['host']))
         report['shared_qualification'] = qualify_shared(NativeChecks(BUILD), compiler, report['host'])
         if native and report['shared_qualification']['status'] != 'passed':
             raise RuntimeError('Missing matching shared native qualification')
         report['policy_qualification'] = qualify_policy(NativeChecks(BUILD),
             shared_refusal=report['shared_qualification']['status'] == 'passed')
         report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],
-            native_jit_available=native, native_build_defines=native_defines(report['host']['system'], report['host']['machine']),
+            native_jit_available=native, native_build_defines=defines,
             jit_unavailable_actual='interpreted')
         report['status'] = 'passed'
     except BaseException as error:
