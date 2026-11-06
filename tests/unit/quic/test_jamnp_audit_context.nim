@@ -5,7 +5,10 @@
 ## Actual published available reports, header entropy and original prior-role credentials define audit context; absent bodies and assignment disappearance cannot substitute authority.
 import std/[assertions, syncio, monotimes, times, posix/posix]
 import ../../../src/app/[services, options, audit_state]
-import ../../../src/app/proof/[worker, work_submission]
+import ../../../src/app/proof/[worker, work_submission, ticket_production]
+import ../../../src/jamnp-s/[audit_validation, audits, read_stream]
+from ../../../src/codec/assurances import ValidatorCount, CoreCount
+from ../../../src/codec/disputes import JudgeIndex
 import ../../../src/rpc/server
 import ../../../src/jamnp-s/assurance_store
 import ../../../src/jamnp-s/[audit_context, audit_receipt, audit_origin, audit_evaluation,
@@ -216,6 +219,10 @@ proc managed(fixture: AuditContextFixture) {.raises.} =
   assert owner.stateProofAvailable and not owner.assuranceStorageInfo.opened and
       not owner.assuranceSigningConfigured,
     "planning imports neither an archive nor a private signer"
+func initialProofLimits(): AuditProofLimits =
+  ## The production worker reserves a sign, a verification and both possible shuffle groups.
+  AuditProofLimits(proofs: ElementLimit(2), hashes: ElementLimit(2),
+      bytes: ByteLimit(4096), hashBytes: ByteLimit(72))
 proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
   ## A separately decoded trusted checkpoint can retain genuine authenticated archive material; only exact private evaluation crosses the managed native lease.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
@@ -243,6 +250,24 @@ proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
       AuditRegistryError.InvalidSource, "default source supplies no backfill authority"
   assert not owner.auditSigningConfigured, "retention activates no private signer"
   let identity = origin.originContext.value.auditorAt(1).value.ed25519
+  let noSigner = owner.beginInitialAudit(fixture.blockHash, identity, JudgeIndex(1),
+      auditLimits(), initialProofLimits())
+  assert noSigner.error == StateProofAdmissionError.QueryFailure,
+      "initial announcement requires explicit Bandersnatch signer configuration"
+  assert owner.configureTicketSignerSeed(default(array[32, byte])).error == TicketSignerError.None
+  let production = owner.beginInitialAudit(fixture.blockHash, identity, JudgeIndex(1),
+      auditLimits(), initialProofLimits())
+  assert production.error == StateProofAdmissionError.None and owner.rpc.chainPaused,
+      "initial announcement holds the canonical lease"
+  owner.waitServices()
+  assert owner.collectStateProof(default(ProofWorkerTicket)).kind ==
+      ProofWorkerCompletionKind.Uninitialized and owner.rpc.chainPaused,
+      "foreign collection cannot release the production lease"
+  let missingAnnouncement = owner.collectStateProof(production.value).workSubmissionValue
+  assert missingAnnouncement.kind == WorkJobResultKind.InitialAuditSourceFailure and
+      missingAnnouncement.initialAuditSourceError == AuditContextError.MissingBody and
+          not owner.rpc.chainPaused,
+      "a checkpoint cannot produce an announcement without the authenticated body"
   let mismatched = owner.configureAuditSigner(certificateFile, keyFile, default(StateEdKey))
   assert mismatched.error == WorkSigningSetupError.InvalidIdentity and
       not owner.auditSigningConfigured, "configured private signer must match actual transport identity"
@@ -347,6 +372,41 @@ proc native(worker: var StateProofWorker, fixture: AuditContextFixture, index: i
     assert planned.kind == WorkJobResultKind.AuditPlanned and
         planned.plannedAuditContext.contextInfo.value.reports == 2,
       "actual available reports survive only uncancelled exact collection"
+proc initialNative(worker: var StateProofWorker, fixture: AuditContextFixture) {.raises.} =
+  ## An installed JIP-5 signer and genuine source cannot sign for a different original TLS identity.
+  var job = captureInitialAuditJob(fixture.view, fixture.blockHash, auditLimits(),
+      initialProofLimits(), captureTicketSigner(default(array[32, byte])).value,
+      default(StateEdKey), JudgeIndex(1)).value
+  let ticket = worker.submit(job).value
+  worker.waitDone()
+  let completed = worker.collect(ticket).workSubmissionValue
+  assert completed.kind == WorkJobResultKind.InitialAuditSigningFailure and
+      completed.initialAuditSigningError == AuditValidationError.InvalidAuditor,
+      "an ordinal whose original Ed25519 identity differs cannot reach private signing"
+  let context = captureAuditContext(fixture.view, fixture.blockHash, auditLimits()).value
+  let local = context.auditorAt(8).value.ed25519
+  var discovered = captureInitialAuditJob(fixture.view, fixture.blockHash, auditLimits(),
+      initialProofLimits(), captureTicketSigner(default(array[32, byte])).value,
+      local, JudgeIndex(0), discover = true).value
+  let signing = worker.submit(discovered).value
+  worker.waitDone()
+  let signed = worker.collect(signing).workSubmissionValue
+  assert signed.kind == WorkJobResultKind.InitialAuditProduced
+  let declaration = signed.producedInitialAudit
+  assert uint16(declaration.announcement.validator) == 8 and declaration.selected.count == 2
+  assert declaration.reportOrdinals[0] == 0 and declaration.reportOrdinals[1] == 1
+  assert declaration.recipients.len == 8, "all other original physical auditors"
+  for destination in declaration.recipients:
+    # Compare the complete identity so the local original validator cannot be its own destination.
+    assert array[32, byte](destination.identity) != array[32, byte](local)
+  assert declaration.request.kind == ReadKind.AuditAnnouncement
+  let wire = decodeAnnouncements(declaration.request.payload, AuditLimits(
+      validators: ValidatorCount(9), cores: CoreCount(3), bytes: ByteLimit(131),
+      records: ElementLimit(1))).value
+  let verified = qualifyInitialAudit(context, wire.announcementAt(0).value, initialProofLimits())
+  assert verified.error == AuditValidationError.None and
+      uint16(verified.value.announcementInfo.value.validator) == 8,
+      "the maintained receiver accepts the complete signed worker output"
 proc receiptNative(worker: var StateProofWorker, fixture: AuditContextFixture, wire: seq[
     byte]) {.raises.} =
   ## The real joined worker moves bounded bytes and discards all successful records on exact Done cancellation.
@@ -421,6 +481,7 @@ proc main() {.raises.} =
   managed(fixture)
   fetchChecks(fixture)
   auditAcquisitionChecks(fixture)
+  declaredAuditChecks(fixture)
   managedEvaluation(fixture)
   let insufficient = auditContextFixture(6)
   let none = captureAuditContext(insufficient.view, insufficient.blockHash, auditLimits())
@@ -434,6 +495,7 @@ proc main() {.raises.} =
   defer:
     worker.close() # Joined shutdown precedes retirement of every borrowed source and fixture.
   native(worker, fixture, 1)
+  initialNative(worker, fixture)
   receiptNative(worker, fixture, announcements)
   nativeEvaluation(worker, fixture, 1)
   nativeEvaluation(worker, fixture, 2)

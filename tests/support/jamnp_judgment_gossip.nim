@@ -8,9 +8,52 @@ import ../../src/jamnp-s/[judgment_gossip, judgment_claim, judgment_receipt, aud
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, disputes]
 import ../../src/crypto/primitives
+import ../../src/bandersnatch/bandersnatch
+import ../../src/app/audit_announcement_send
+import ../../src/app/proof/work_submission
+import ../../src/jamnp-s/audit_validation
 import ../../src/quic/address
 import ./[jamnp_audit_context, jamnp_guarantee_support, jamnp_judgment_support,
   jamnp_judgment_receipt, jamnp_audit_participation, jamnp_topology_fixture, assurance_signer_context]
+proc initialAnnouncementCheck(relay, recipient: var NodeService, context: AuditContext) =
+  ## A real original-key proof crosses a CE144 stream and completes only with the bare FIN.
+  assert relay.enableAuditStreams() and recipient.enableAuditStreams()
+  var scalar = default(array[32, byte])
+  scalar[0] = 1
+  let key = importScalar(scalar).value
+  let ordinal = JudgeIndex(2)
+  let proofLimits = AuditProofLimits(proofs: ElementLimit(2), hashes: ElementLimit(2),
+      bytes: ByteLimit(4096), hashBytes: ByteLimit(72))
+  let produced = produceInitialAudit(context, ordinal, key, proofLimits).value
+  let announcement = produced.announcementRecord.value
+  let message = actualClaimLimits().message
+  let wire = encodeAnnouncements([announcement], message).value
+  let request = decodeReadRequest(ReadKind.AuditAnnouncement, wire).value
+  let target = InitialAuditRecipient(identity: context.auditorAt(1).value.ed25519)
+  var sender = default(AuditAnnouncementSend)
+  defer: sender.close(relay)
+  assert not sender.begin(default(ProducedInitialAudit), 1, 1000, 1)
+  assert sender.begin(ProducedInitialAudit(announcement: announcement, request: request,
+      selected: InitialAuditSelection(count: produced.announcementInfo.value.selected),
+      recipients: @[target]), 1, 1000, 1)
+  var received = 0
+  let deadline = getMonoTime()+initDuration(seconds = 10)
+  while sender.sending:
+    # The two native peers drive separate callbacks and only the exact received request receives FIN.
+    let clock = getMonoTime()
+    assert clock < deadline
+    assert relay.poll(clock, 0)
+    assert recipient.poll(clock, 0)
+    sender.poll(relay, clock)
+    let incoming = recipient.takeRead(ReadKind.AuditAnnouncement)
+    if incoming.error == NodeError.None:
+      let task = incoming.value
+      assert task.request.payload == wire, "native delivery preserves the complete original declaration"
+      assert array[32, byte](task.ticket.sourcePeer.identity) == array[32, byte](
+          relay.localIdentity)
+      assert recipient.respond(task.ticket, captureReadReply(task.request, []).value) == ReadError.None
+      inc received
+  assert received == 1 and sender.acknowledged == 1
 proc judgmentGossipChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Genuine standalone qualification precedes native relay by a different actual TLS key, and duplicate offers preserve the real receiver's completed acknowledgment.
   let guarantee = unseenGuarantee(supportFixture(fixture))
@@ -109,3 +152,4 @@ proc judgmentGossipChecks*(fixture: AuditContextFixture) {.raises.} =
     assert recipient.poll(clock, 0)
     gossip.poll(relay, clock)
   assert gossip.attempted == 1 and gossip.acknowledged == 1
+  initialAnnouncementCheck(relay, recipient, context)

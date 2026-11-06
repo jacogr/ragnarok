@@ -3,7 +3,8 @@
 
 ## Foreground controller for qualified negative-report obligations.
 import std/[monotimes, times]
-import ./[services, audit_state, audit_acquisition, judgment_distribution]
+import ./[services, audit_state, audit_acquisition, judgment_distribution, initial_audit]
+from ../codec/state/safrole import StateValidatorIndex
 import ./proof/worker
 import ../jamnp-s/[node, audit_registry, audit_participation, audit_publication,
     judgment_gossip, judgment_receipt]
@@ -17,11 +18,19 @@ type
     gossip: JudgmentGossipPolicy
   Phase {.pure.} = enum
     Idle, Planning, Acquire, Acquiring, Sign, Signing, Publish
+  DeclaredProgress = object ## One declaration's next report and retry deadline.
+    selected: int
+    retry: MonoTime
   ForcedAudits* = object
     policy: ForcedAuditPolicy
     gossip: JudgmentGossip
     phase: Phase
-    cursor, row, validator: int
+    cursor, row, validator, reportOrdinal: int
+    declared, preferDeclared: bool
+    declaration, declarationCursor: int
+    declaredProgress: array[256, DeclaredProgress]
+    originalValidator: StateValidatorIndex
+    publishDeadline: MonoTime
     source: AuditOriginId
     proof: ProofWorkerTicket
     plan: AuditParticipationPlan
@@ -56,6 +65,10 @@ proc `=destroy`*(owner: ForcedAudits) =
   `=destroy`(owner.plan)
   `=destroy`(owner.publication)
 
+func configured*(owner: ForcedAudits): bool =
+  ## Local declarations require an enabled evaluation and publication pipeline.
+  owner.policy.ready
+
 func ownsAcquisition*(owner: ForcedAudits): bool =
   owner.phase == Phase.Acquiring
 
@@ -71,6 +84,8 @@ proc configure*(owner: var ForcedAudits, services: Services, streams: NodeServic
 
 proc clear(owner: var ForcedAudits) =
   owner.phase = Phase.Idle
+  owner.declared = false
+  owner.reportOrdinal = 0
   owner.source = default(AuditOriginId)
   owner.proof = default(ProofWorkerTicket)
   owner.plan = default(AuditParticipationPlan)
@@ -78,8 +93,12 @@ proc clear(owner: var ForcedAudits) =
 
 proc finish(owner: var ForcedAudits, clock: MonoTime, complete: bool) =
   ## Keep unavailable work eligible after a bounded delay.
-  owner.completed[owner.row] = complete
-  owner.retry[owner.row] = clock+initDuration(seconds = 1)
+  if owner.declared:
+    if complete: inc owner.declaredProgress[owner.declaration].selected
+    else: owner.declaredProgress[owner.declaration].retry = clock+initDuration(seconds = 1)
+  else:
+    owner.completed[owner.row] = complete
+    owner.retry[owner.row] = clock+initDuration(seconds = 1)
   owner.clear()
 
 proc poll*(owner: var ForcedAudits, services: var Services, streams: var NodeService,
@@ -99,16 +118,18 @@ proc poll*(owner: var ForcedAudits, services: var Services, streams: var NodeSer
       if owner.plan.participationInfo.value.localValidators == 0:
         owner.finish(clock, true)
         return
-      let record = receipt.pendingAt(owner.row).judgment
-      if not owner.gossip.offer(record, owner.plan, JudgmentDeliveryMode.Relayed):
-        owner.finish(clock, false)
-        return
+      if not owner.declared:
+        let record = receipt.pendingAt(owner.row).judgment
+        if not owner.gossip.offer(record, owner.plan, JudgmentDeliveryMode.Relayed):
+          owner.finish(clock, false)
+          return
       owner.phase = Phase.Acquire
     elif owner.phase == Phase.Signing and outcome.kind == ManagedAuditKind.PublicationPrepared:
-      if outcome.publicationId != owner.source or outcome.publicationOrdinal != 0:
+      if outcome.publicationId != owner.source or outcome.publicationOrdinal != owner.reportOrdinal:
         owner.finish(clock, false)
         return
       owner.publication = outcome.preparedPublication
+      owner.publishDeadline = clock+initDuration(seconds = 1)
       owner.phase = Phase.Publish
     else:
       owner.finish(clock, false)
@@ -120,27 +141,62 @@ proc poll*(owner: var ForcedAudits, services: var Services, streams: var NodeSer
     else:
       owner.finish(clock, false)
   of Phase.Publish:
+    if clock >= owner.publishDeadline:
+      owner.finish(clock, false)
+      return
     if not receipt.rememberPublication(owner.publication): return
     let record = qualifyLocalJudgment(owner.publication.signedJudgment).value
     if not owner.gossip.offer(record, owner.plan, JudgmentDeliveryMode.Produced): return
     owner.publication = default(AuditPublication)
     inc owner.validator
-    if owner.validator == owner.plan.participationInfo.value.localValidators:
+    if owner.declared or owner.validator == owner.plan.participationInfo.value.localValidators:
       owner.finish(clock, true)
     else:
       owner.phase = Phase.Sign
   else: discard
 
+proc startDeclared(owner: var ForcedAudits, services: var Services, streams: NodeService,
+    initial: InitialAudits, clock: MonoTime): bool {.raises.} =
+  ## A published declaration selects only its original core-derived report and signing position.
+  let count = initial.readyDeclarationCount
+  if count == 0: return false
+  owner.declarationCursor = owner.declarationCursor mod count
+  for turn in 0..<count:
+    # A missing report cannot prevent another declared duty from advancing.
+    let row = owner.declarationCursor
+    owner.declarationCursor = (row+1) mod count
+    let entry = initial.declarationAt(row)
+    let progress = owner.declaredProgress[row]
+    if clock < progress.retry or progress.selected >= entry.selected.count: continue
+    let ordinal = entry.reportOrdinals[progress.selected]
+    let started = services.beginAuditParticipation(entry.origin, ordinal,
+        streams.localIdentity, owner.policy.participation)
+    if started.error == StateProofAdmissionError.Busy: return false
+    if started.error != StateProofAdmissionError.None:
+      owner.declaredProgress[row].retry = clock+initDuration(seconds = 1)
+      return false
+    owner.source = entry.origin
+    owner.declared = true
+    owner.declaration = row
+    owner.reportOrdinal = ordinal
+    owner.originalValidator = StateValidatorIndex(uint64(uint16(entry.record.validator)))
+    owner.proof = started.value
+    owner.phase = Phase.Planning
+    return true
+  false
+
 proc submit*(owner: var ForcedAudits, services: var Services, streams: NodeService,
-    receipt: JudgmentDispatcher, acquisition: var AuditAcquisition,
+    receipt: JudgmentDispatcher, acquisition: var AuditAcquisition, initial: InitialAudits,
         clock: MonoTime): bool {.raises.} =
   ## Admit one operation per foreground arbitration turn.
   if not owner.policy.ready or not services.stateProofAvailable: return false
   case owner.phase
   of Phase.Idle:
+    let declaredFirst = owner.preferDeclared
+    owner.preferDeclared = not declaredFirst
+    if declaredFirst and owner.startDeclared(services, streams, initial, clock): return true
     let count = receipt.pendingCount
-    if count == 0: return false
-    owner.cursor = owner.cursor mod count
+    if count > 0: owner.cursor = owner.cursor mod count
     for turn in 0..<count:
       let row = owner.cursor
       owner.cursor = (row+1) mod count
@@ -156,13 +212,16 @@ proc submit*(owner: var ForcedAudits, services: var Services, streams: NodeServi
       owner.proof = started.value
       owner.phase = Phase.Planning
       return true
+    if not declaredFirst: return owner.startDeclared(services, streams, initial, clock)
   of Phase.Acquire:
-    if acquisition.begin(owner.policy.acquisition, owner.source, 0, clock):
+    if acquisition.begin(owner.policy.acquisition, owner.source, owner.reportOrdinal, clock):
       owner.phase = Phase.Acquiring
       return true
   of Phase.Sign:
-    let index = owner.plan.localValidatorAt(owner.validator).value
-    let started = services.beginAuditPublication(owner.source, 0, index, owner.policy.publication)
+    let index = if owner.declared: owner.originalValidator
+      else: owner.plan.localValidatorAt(owner.validator).value
+    let started = services.beginAuditPublication(owner.source, owner.reportOrdinal, index,
+        owner.policy.publication)
     if started.error == StateProofAdmissionError.Busy: return false
     if started.error != StateProofAdmissionError.None:
       owner.finish(clock, false)
@@ -183,3 +242,7 @@ proc close*(owner: var ForcedAudits, services: var Services, streams: var NodeSe
   owner.cursor = 0
   owner.completed = default(array[256, bool])
   owner.retry = default(array[256, MonoTime])
+  owner.declaration = 0
+  owner.declarationCursor = 0
+  owner.declaredProgress = default(array[256, DeclaredProgress])
+  owner.preferDeclared = false
