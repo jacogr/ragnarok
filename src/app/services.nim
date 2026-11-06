@@ -9,7 +9,8 @@
 import ../state/accumulation/residency
 import ../codec/composite
 import ../codec/work/digest
-from ../pvm/step import PvmBackend, PreparationResult, PreparedCacheInfo
+from ../pvm/step import PvmBackend, PreparationResult, PreparedCacheInfo, NativeRuntime,
+    newNativeRuntime, start, close
 import ../lib/logging
 
 import std/[syncio, strutils, base64, assertions, monotimes, times]
@@ -165,6 +166,7 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   adoption: AccumulationHandoff
   currentAdoption: CurrentAccumulationHandoff
   worker: PreparationWorker
+  nativeRuntime: NativeRuntime      # Explicit application-wide compiler lifecycle, never per-code thread creation.
   executionContext: ServiceExecutionContext # Full-state lifetime; bounded baseline/scratch is allowed, but no live CPU/host/result/chain state.
   proofWorker: StateProofWorker
   proofInput: ProofQuery
@@ -244,6 +246,7 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.checkpointExport)
   `=wasMoved`(services.worker)
   `=wasMoved`(services.executionContext)
+  `=wasMoved`(services.nativeRuntime)
   `=wasMoved`(services.rpcLease)
   `=wasMoved`(services.mcp)
   `=wasMoved`(services.mcpInfo)
@@ -287,6 +290,7 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.checkpointExport) # Explicit close joins the detached I/O child before aggregate destruction.
   `=destroy`(services.worker) # Explicit close must join before any shared chain alias retires.
   `=destroy`(services.executionContext) # Joined preparation ends every cross-thread context borrow first.
+  `=destroy`(services.nativeRuntime) # Explicit close has joined compiler; closed anchors can outlive client retirement.
   `=destroy`(services.rpcLease)
   `=destroy`(services.mcp)
   `=destroy`(services.mcpInfo)
@@ -508,6 +512,8 @@ proc close*(services: var Services) =
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
   services.executionContext = default(ServiceExecutionContext) # Full Services close retires code; stopPreparation alone preserves it.
+  assert services.nativeRuntime.close() # No active invocation survives joined preparation/context retirement.
+  services.nativeRuntime = default(NativeRuntime)
   if services.mcp.enabled: log(services.historyLog, LogTarget.Startup, LogLevel.Info, "Stopping MCP listener")
   services.mcp.close()
   services.mcpInfo = default(ClientInfo)
@@ -872,6 +878,14 @@ proc startServices(services: var Services, options: Options, role: string,
     services.close() # A refused management listener rolls back every previously started service.
     return false
   services.historyLog = options.logWriter
+  if withState and options.pvmBackend == PvmBackend.Jit:
+    services.nativeRuntime = newNativeRuntime()
+    try:
+      discard services.nativeRuntime.start() # Unsupported hosts keep checked execution with no compiler thread.
+      services.executionContext.bindNativeRuntime(services.nativeRuntime)
+    except:
+      services.close()
+      raise
   services.started = true
   services.rpcStarted = options.rpcPort != 0
   services.uiStarted = options.uiPort != 0

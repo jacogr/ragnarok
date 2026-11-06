@@ -11,7 +11,11 @@ export backend
 when defined(polkavmRuntime):
   import std/algorithm
   import ./internal/polkavm
-import ./internal/[handler_stream, execution_types]
+import ./internal/[handler_stream, execution_types, native_pipeline]
+export NativeRuntime, newNativeRuntime, NativePhase, NativeState, NativeRuntimeInfo
+export start, close, runtimeInfo
+when defined(pvmSharedAsyncWitness):
+  export pauseNativeCompiler, waitNativeCompiler
 export execution_types
 
 type
@@ -292,6 +296,7 @@ type
     limits: PreparedLimits
     busy: bool
     selected: PvmBackend
+    native: NativeSession # Shared asynchronous pipeline; no active graph is borrowed by its compiler.
     prices: GasMemo      # Source-bound lazy prices share the same exclusive invocation lease.
     when defined(polkavmRuntime):
       foreign: ForeignOwner
@@ -299,7 +304,8 @@ type
     data: nil PreparedData
   PreparedCacheData = ref object ## One explicitly owned worker slot retains at most one successful prepared identity.
     owner: PreparedProgram
-    preparations, hits: uint64 # Copied cumulative worker diagnostics never affect guest admission or results.
+    nativeRuntime: NativeRuntime # Closed lifetime anchor, never a raw runtime registration.
+    preparations, hits: uint64   # Copied cumulative worker diagnostics never affect guest admission or results.
   PreparedProgramCache* = object ## Reference identity permits synchronous worker sharing; concurrent use remains forbidden.
     data: nil PreparedCacheData
   PreparedCacheInfo* = object ## Bounded occupancy plus actual cache activity, distinct from timing or allocator counts.
@@ -312,6 +318,7 @@ type
     backend*: PvmBackend
     nativeFragments*: uint64                ## Cumulative successful physical publications, including replacements.
     nativeCalls*, nativeOperations*: uint64 ## Cumulative activity across invocations of this owner.
+    nativeCompilationMeasured*: bool ## False means the supplementary process-based compilation duration is unavailable.
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
     memoryReuses*, retainedMemoryPayloadBytes*: uint64 # Idle payload admission and cumulative actual buffer reuse.
@@ -341,12 +348,13 @@ func value*[T](r: PreparationResult[T]): T {.inline, requires: r.status == Prepa
   r.completed
 
 proc prepareIndependent(source: Program, limits: PreparedLimits,
-    selected: PvmBackend): PreparationResult[PreparedProgram] =
+    selected: PvmBackend, nativeRuntime: NativeRuntime = default(NativeRuntime)): PreparationResult[
+        PreparedProgram] =
   ## Admit immutable source facts once; each invocation borrows the retained lazy stream exclusively.
   if codeLength(source).error != ProgramError.None:
     return PreparationResult[PreparedProgram](status: PreparationError.InvalidProgram)
-  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = selected ==
-      PvmBackend.Jit)
+  var admitted = prepareFlatPlan(source, limits.cycles, limits.resources, allowNative = false)
+  # Requested JIT begins with the exact checked layout; all old eager ISA governance is bypassed.
   if admitted.error != FlatError.None:
     return PreparationResult[PreparedProgram](status: (if admitted.error ==
         FlatError.InvalidProgram:
@@ -355,11 +363,13 @@ proc prepareIndependent(source: Program, limits: PreparedLimits,
   var stream = default(FlatStream)
   PreparationResult[PreparedProgram](status: PreparationError.None, completed: PreparedProgram(
     data: PreparedData(source: source, plan: plan, stream: move(stream), limits: limits,
-        busy: false, selected: selected, memoryScratch: nil, memoryReuses: 0)))
+        busy: false, selected: selected, memoryScratch: nil, memoryReuses: 0,
+        native: (if selected == PvmBackend.Jit: newNativeSession(nativeRuntime) else: default(
+            NativeSession)))))
 
 proc newPreparedProgram*(source: Program, limits: PreparedLimits): PreparationResult[
     PreparedProgram] =
-  ## The independent default uses native fragments where supported and retains the checked interpreter fallback.
+  ## Default checked-capable JIT has no hidden compiler service; explicit runtime-bound overload enables async code.
   prepareIndependent(source, limits, DefaultPvmBackend)
 
 func programOf*(prepared: PreparedProgram): PreparationResult[Program] =
@@ -376,7 +386,8 @@ proc preparedInfo*(prepared: PreparedProgram): PreparationResult[PreparedInfo] =
   var native = default(array[7, uint64])
   var built, supported = false
   when defined(pvmArm64Jit) or defined(pvmX86Jit):
-    native = streamNativeStatistics(data.stream)
+    let observed = nativeStatistics(data.native)
+    for index in 0..<5: native[index] = observed[index]
     built = true
     when defined(pvmX86Jit):
       when defined(amd64) and defined(linux): supported = true
@@ -433,10 +444,8 @@ proc sourceInfo(source: Machine, cpu: var MachineInfo, owner: var Program,
   StepError.None
 
 proc nativeOperations(frame: FlatFrame): uint64 =
-  ## Copied counters are read only at publication/preparation boundaries, never in the guest hot loop.
-  when defined(pvmX86Jit): flatX86Statistics(frame)[2]
-  elif defined(pvmArm64Jit): flatArmStatistics(frame)[2]
-  else: 0
+  ## One common activity source certifies actual execution on either lowerer, never requested policy alone.
+  nativeStatistics(frame.nativeSession)[2]
 
 func actualIndependentBackend(usedNative: bool): PvmBackend =
   ## Completed native work identifies JIT execution; checked-only work remains interpreted.
@@ -513,9 +522,11 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
   if reusedMemory: inc data.memoryReuses
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return StepResult(status: policy)
+  frame.nativeSession = data.native
   restoreFlatStream(frame, data.stream)
   let nativeBaseline = nativeOperations(frame)
   runFlat(frame, uint64(limit))
+  recordNativeWork(data.native, settledNativeWork(frame, uint64(limit)))
   let answer = if single and frame.reason == StepError.None and frame.exit == StepExit.OutOfGas:
     StepResult(status: StepError.None, completed: StepOutcome(engine: PvmBackend.Interpreted,
         kind: StepExit.OutOfGas, machine: source))
@@ -534,7 +545,10 @@ proc executeSelected(source: Machine, limit: ExecutionStepLimit, prepared: Prepa
   if data == nil: return StepResult(status: StepError.InvalidPreparedProgram)
   if data.busy: return StepResult(status: StepError.PreparedProgramBusy)
   data.busy = true
+  beginNativeInvocation(data.native, uint64(limit))
   let answer = runPreparedFrame(source, prepared, limit, plan, memo, single)
+  finishNativeInvocation(data.native, (if answer.error == StepError.None:
+    observedNativeWork(data.native) else: 0'u64))
   data.busy = false
   answer
 
@@ -693,7 +707,9 @@ proc driveHostFrame[Context; Reason: enum; Fallible: static[bool]](
   let nativeBaseline = nativeOperations(frame)
   while true:
     # The engine counts attempted source instructions across every host continuation.
-    runFlat(frame, remaining)
+    let segmentBudget = remaining
+    runFlat(frame, segmentBudget)
+    recordNativeWork(frame.nativeSession, settledNativeWork(frame, segmentBudget))
     remaining = frame.remaining
     if frame.reason != StepError.None:
       return executionResult[Reason](StepResult(status: frame.reason))
@@ -774,6 +790,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
   if reusedMemory: inc data.memoryReuses
   let policy = selectFlatPrices(frame, plan, memo)
   if policy != StepError.None: return executionResult[Reason](StepResult(status: policy))
+  frame.nativeSession = data.native
   restoreFlatStream(frame, data.stream)
   let answer = driveHostFrame[Context, Reason, Fallible](frame, owner, context, callbacks, steps,
       calls, data.limits.resources.pages)
@@ -792,8 +809,11 @@ proc hostSelected[Context; Reason: enum; Fallible: static[bool]](source: Machine
       status: StepError.InvalidPreparedProgram))
   if data.busy: return executionResult[Reason](StepResult(status: StepError.PreparedProgramBusy))
   data.busy = true
+  beginNativeInvocation(data.native, uint64(steps))
   let answer = runPreparedHost[Context, Reason, Fallible](source, prepared, context, callbacks,
       steps, calls, plan, memo)
+  finishNativeInvocation(data.native, (if answer.error == HostExecutionError.None:
+    observedNativeWork(data.native) else: 0'u64))
   data.busy = false
   answer
 
@@ -943,9 +963,10 @@ proc executeWithHost*[Context](source: Machine, context: var Context,
       prepared.error))
   executeWithHost(source, context, handler, steps, calls, prepared.value)
 
-proc newPreparedProgramCache*(): PreparedProgramCache =
+proc newPreparedProgramCache*(nativeRuntime: NativeRuntime = default(
+    NativeRuntime)): PreparedProgramCache =
   ## Create one empty slot; no source, native mapping or invocation state is allocated until successful admission.
-  PreparedProgramCache(data: PreparedCacheData())
+  PreparedProgramCache(data: PreparedCacheData(nativeRuntime: nativeRuntime))
 
 proc preparedCacheInfo*(cache: PreparedProgramCache): PreparationResult[PreparedCacheInfo] =
   ## Copy bounded occupancy/activity without exposing a cached handle or fabricating zero work from a busy owner.
@@ -983,7 +1004,7 @@ proc cachedPreparedProgram*(cache: PreparedProgramCache, source: Program, limits
       return PreparationResult[PreparedProgram](status: PreparationError.None,
           completed: slot.owner)
   inc slot.preparations
-  let admitted = newPreparedProgram(source, limits, selected)
+  let admitted = newPreparedProgram(source, limits, selected, slot.nativeRuntime)
   if admitted.error == PreparationError.None:
     slot.owner = admitted.value # Retire the prior code/idle-byte owner; independently retained machine snapshots stay valid.
   admitted
@@ -1013,3 +1034,10 @@ proc backendAvailability*(selected: PvmBackend): StepError =
   let prepared = newPreparedProgram(source.value, defaultPreparedLimits(), selected)
   if prepared.error != PreparationError.None: return preparationFailure(prepared.error)
   StepError.None
+
+proc preparedNativeState*(prepared: PreparedProgram): PreparationResult[NativeState] =
+  ## Copy the shared session lifecycle only while no public invocation owns its frame/cache.
+  let data = prepared.data
+  if data == nil: return PreparationResult[NativeState](status: PreparationError.InvalidProgram)
+  if data.busy: return PreparationResult[NativeState](status: PreparationError.Busy)
+  PreparationResult[NativeState](status: PreparationError.None, completed: nativeState(data.native))

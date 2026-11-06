@@ -78,46 +78,48 @@ class Arm64JitReportTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse(transcript()+f'ARM_JIT,sieve,1,13,26,36,{value}\n', 'sieve', True)
 
-    def test_dirty_loop_requires_active_owner_and_resident_blocks(self):
-        """Neither checked fallback nor incomplete owner receipts can claim the native loop gain."""
+    def test_dirty_loop_requires_checked_owner_cohort_without_native_activity(self):
+        """Full checked owners remain mandatory; fabricated native activity cannot qualify."""
         boundaries = 'ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
         owner = 'ARM_DIRTY_LOOP_OWNER,1\n'
-        active = 'ARM_DIRTY_LOOP,3,25,1\n'
+        active = 'ARM_DIRTY_LOOP,0,0,0\n'
         word_owner = 'ARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n'
-        groups = 'ARM_WORD_GROUPS,5\n'
+        groups = 'ARM_WORD_GROUPS,0\n'
         native = boundaries+owner+word_owner+groups+active
         refused = boundaries+owner+word_owner+'ARM_WORD_GROUPS,0\n'
-        self.assertEqual(dirty_loop_witness(native, 'native'),
-                         {'calls': 3, 'blocks': 25, 'declines': 1})
+        self.assertIsNone(dirty_loop_witness(native, 'native'))
         self.assertIsNone(dirty_loop_witness(refused, 'refused'))
         self.assertIsNone(dirty_loop_witness(boundaries, 'interpreted'))
         for output, mode in ((native.replace(owner, ''), 'native'),
-                             (native.replace(active, 'ARM_DIRTY_LOOP,3,3,1\n'), 'native'),
+                             (native.replace(active, 'ARM_DIRTY_LOOP,3,25,1\n'), 'native'),
                              (refused+active, 'refused'),
                              (refused, 'interpreted'),
                              (native+owner, 'native'),
+                             (native.replace(owner, 'ARM_DIRTY_LOOP_OWNER\n'), 'native'),
+                             (native+'ARM_WORD_GROUPS\n', 'native'),
+                             (boundaries+'ARM_WORD_OWNER,0\n', 'interpreted'),
                              (native.replace('840', '839'), 'native')):
             with self.subTest(output=output[-45:], mode=mode), self.assertRaises(ValueError):
                 dirty_loop_witness(output, mode)
 
     def test_word_loop_receipts_are_mode_specific(self):
-        """A missing store, duplicated group count or refused native path cannot qualify."""
+        """Missing owner/source cohorts, duplicated counters and fabricated groups cannot qualify."""
         base = ('ARM_DIRTY_LOOP_CONTROL_CASES,840\nARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n'
-                'ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\nARM_DIRTY_LOOP,3,25,1\n'
-                'ARM_WORD_GROUPS,5\n')
+                'ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\nARM_DIRTY_LOOP,0,0,0\n'
+                'ARM_WORD_GROUPS,0\n')
         for marker in ('ARM_WORD_OWNER,1\n', 'ARM_WORD_CONTROL_CASES,698\n',
                        'ARM_WORD_ALIAS_CASES,110\n'):
             for output in (base.replace(marker, ''), base+marker):
                 with self.subTest(marker=marker), self.assertRaises(ValueError):
                     dirty_loop_witness(output, 'native')
-        for output in (base.replace('ARM_WORD_GROUPS,5\n', ''),
-                       base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,0\n'),
-                       base+'ARM_WORD_GROUPS,5\n',
-                       base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,-1\n')):
+        for output in (base.replace('ARM_WORD_GROUPS,0\n', ''),
+                       base.replace('ARM_WORD_GROUPS,0\n', 'ARM_WORD_GROUPS,5\n'),
+                       base+'ARM_WORD_GROUPS,0\n',
+                       base.replace('ARM_WORD_GROUPS,0\n', 'ARM_WORD_GROUPS,-1\n')):
             with self.subTest(output=output[-55:]), self.assertRaises(ValueError):
                 dirty_loop_witness(output, 'native')
         with self.assertRaises(ValueError):
-            dirty_loop_witness(base.replace('ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,1\n'),
+            dirty_loop_witness(base.replace('ARM_WORD_GROUPS,0\n', 'ARM_WORD_GROUPS,1\n'),
                                'refused')
 
     def test_missing_samples_and_nonadditive_lifecycle(self):
@@ -160,8 +162,8 @@ class Arm64DirectBranchReceiptTests(unittest.TestCase):
 
 class ArmMacroReceiptTests(unittest.TestCase):
     expected = {
-        'native': (31, 13524, 1, 162, 1, 1, 620),
-        'resident-refused': (31, 13524, 1, 162, 0, 1, 206),
+        'native': (31, 13524, 0, 162, 0, 0, 0),
+        'resident-refused': (31, 13524, 0, 162, 0, 0, 0),
         'native-refused': (3, 13524, 0, 0, 0, 0, 0),
         'macro-refused': (3, 13524, 0, 162, 0, 0, 0),
         'interpreted': (0, 0, 0, 0, 0, 0, 0),
@@ -206,30 +208,29 @@ class ArmMacroReceiptTests(unittest.TestCase):
                             macro_witness_receipts(output, mode)
 
     def test_counts_cannot_cross_backend_policies(self):
-        """The resident-only fallback must not borrow normal or append-refused evidence."""
+        """Raw backend/cohort policies differ where observable; inactive frame receipts need no invented discriminator."""
         for expected_mode in self.expected:
             for wrong_mode in self.expected:
                 if wrong_mode == expected_mode:
                     continue
                 with self.subTest(expected=expected_mode, actual=wrong_mode):
-                    with self.assertRaises(ValueError):
-                        macro_witness_receipts(self.fixture(wrong_mode), expected_mode)
+                    output = self.fixture(wrong_mode)
+                    if output == self.fixture(expected_mode):
+                        # Raw source assertions still enforce each build flag; identical frame data is valid.
+                        self.assertEqual(macro_witness_receipts(output, expected_mode),
+                                         macro_witness_receipts(output, wrong_mode))
+                    else:
+                        with self.assertRaises(ValueError):
+                            macro_witness_receipts(output, expected_mode)
         with self.assertRaises(ValueError):
             macro_witness_receipts(self.fixture('native'), 'unknown')
 
-    def test_image_words_prove_bounded_publication_not_exact_length(self):
-        """Active images admit either endpoint; inactive modes require zero and reject bad numerals."""
-        for mode in ('native', 'resident-refused'):
-            for words in (1, 1024):
-                with self.subTest(mode=mode, words=words):
-                    self.assertEqual(macro_witness_receipts(self.fixture(mode, words), mode)[
-                        'ARM_MACRO_IMAGE_WORDS'], words)
-            for words in (0, 1025, 'not-decimal'):
-                with self.subTest(mode=mode, words=words), self.assertRaisesRegex(
-                        ValueError, 'ARM macro witness: ARM_MACRO_IMAGE_WORDS'):
-                    macro_witness_receipts(self.fixture(mode, words), mode)
-        for mode in ('native-refused', 'macro-refused', 'interpreted'):
-            for words in (1, 1025, 'not-decimal'):
+    def test_unbound_image_words_reject_fabricated_publication(self):
+        """Raw macro kernels retain bounded images; an unbound frame must never claim one."""
+        for mode in self.expected:
+            self.assertEqual(macro_witness_receipts(self.fixture(mode), mode)[
+                'ARM_MACRO_IMAGE_WORDS'], 0)
+            for words in (1, 1024, 1025, 'not-decimal'):
                 with self.subTest(mode=mode, words=words), self.assertRaisesRegex(
                         ValueError, 'ARM macro witness: ARM_MACRO_IMAGE_WORDS'):
                     macro_witness_receipts(self.fixture(mode, words), mode)

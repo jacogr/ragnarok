@@ -23,6 +23,7 @@ type
     slots: array[4, ResidentSlot]
     next: int
     busy: bool
+    nativeRuntime: NativeRuntime # Safe closed anchor; compiler never reads this context.
   ServiceExecutionLease* = object ## Noncopyable scoped admission exposes operations, never a worker handle.
     owner: nil ptr ServiceExecutionContext
     index: int
@@ -37,6 +38,7 @@ proc `=wasMoved`*(context: var ServiceExecutionContext) {.nodestroy, inline,
     requires: not context.busy.} =
   ## Only an idle, unborrowed owner may relocate; Services separately requires joined preparation.
   `=wasMoved`(context.slots)
+  `=wasMoved`(context.nativeRuntime)
   for index in 0..<context.slots.len:
     # Child moves disarm owned refs without decrementing them; primitive state needs explicit reset.
     context.slots[index].service = default(ServiceIndex)
@@ -50,6 +52,7 @@ proc `=destroy`*(context: ServiceExecutionContext) =
   ## No live lease may outlast the stable context; child workers release their acyclic code storage.
   assert not context.busy
   `=destroy`(context.slots)
+  `=destroy`(context.nativeRuntime)
 
 proc `=copy`*(destination: var ServiceExecutionLease, source: ServiceExecutionLease) {.error.}
   ## Exactly one scope releases an admitted invocation.
@@ -94,6 +97,12 @@ proc residentServiceInfo*(context: ServiceExecutionContext, service: ServiceInde
       return workerInfo(context.slots[index].worker)
   workerInfo(default(ExecutionWorker)) # An absent/unprepared owner retains the existing typed refusal.
 
+proc bindNativeRuntime*(context: var ServiceExecutionContext, runtime: NativeRuntime) {.requires:
+    not context.busy.} =
+  ## Bind only an empty idle context; every worker's prepared cache captures this exact runtime anchor.
+  assert residentServices(context) == 0
+  context.nativeRuntime = runtime
+
 proc acquireServiceExecution*(context: var ServiceExecutionContext, service: ServiceIndex,
     version: CodeHash, backend: PvmBackend): ServiceExecutionLease =
   ## Caller has already rechecked account/preimage/envelope/size classification on this invocation.
@@ -119,7 +128,7 @@ proc acquireServiceExecution*(context: var ServiceExecutionContext, service: Ser
     # Retire the old worker BEFORE allocating a miss; no temporary fifth worker is retained.
     context.slots[selected] = default(ResidentSlot)
     context.slots[selected] = ResidentSlot(service: service, version: version, backend: backend,
-      worker: newExecutionWorker())
+      worker: newExecutionWorker(context.nativeRuntime))
     context.next = if selected == context.slots.high: 0 else: selected + 1
   ServiceExecutionLease(owner: addr context, index: selected)
 

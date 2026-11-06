@@ -339,22 +339,17 @@ proc posteriorOwnerReentry() =
     assert pageImage(held, original[page].index).value == original[page]
   assert withPage(resumed, PageImage(index: PageIndex(19))).error == MachineError.LimitExceeded
   when defined(pvmArm64Jit) and defined(arm64) and not defined(pvmArm64JitRefuse):
-    # The source's native read span was prepared before replacement and must use fresh readonly backing.
+    # The read uses the accepted posterior through checked handlers; shared native memory is unported.
     let native = flatArmStatistics(current)
-    assert native[0] > 0, "posterior-owner native read span prepared"
+    assert native == default(array[5, uint64]), "unbound posterior-owner read has no native image"
   runFlat(current, 6)
   registers[8] = RegisterValue(81)
   assert current.reason == StepError.None and current.exit == StepExit.Halt
   assert uint64(current.info.gas) == 900 and current.info.registers == registers
   when defined(pvmArm64Jit) and defined(arm64) and not defined(pvmArm64JitRefuse):
     let executed = flatArmStatistics(current)
-    if executed[1] != native[1]+1 or executed[2] != native[2]+5:
-      # Exact native coverage separates the memory read from an arithmetic-only checked fallback.
-      echo "OWNER_REENTRY_NATIVE,", native[0], ",", native[1], ",", native[2], ",",
-        executed[0], ",", executed[1], ",", executed[2]
-    assert executed[0] == native[0], "posterior-owner code survives replacement"
-    assert executed[1] == native[1]+1, "posterior-owner native read span invoked"
-    assert executed[2] == native[2]+5, "posterior-owner native memory operation included"
+    # Full literal read/CPU/gas and retained-owner checks above prove semantics, with no native substitute.
+    assert executed == native, "posterior-owner checked read does not publish or enter native code"
 
 posteriorOwnerReentry()
 

@@ -9,6 +9,7 @@ import ../[program, machine]
 import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
+import ./native_pipeline
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   import ./[arm64_jit, jit_rules]
 when defined(pvmX86Jit):
@@ -105,7 +106,7 @@ type
     ro, rw, stack: seq[byte]
     extra: seq[FlatRegion]
     remaining*: uint64
-    reservation: uint32     # Raw source end, or a high-bit-tagged stable header resolved only on attempted exit.
+    reservation: uint32 # Raw source end, or a high-bit-tagged stable header resolved only on attempted exit.
     stoppedAt: uint32
     attemptedExit: bool
     barrier: uint32
@@ -116,28 +117,32 @@ type
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64] # One bounded 128 KiB bitmap covers all 32-bit guest pages.
+    dirtyPages: seq[uint64]       # One bounded 128 KiB bitmap covers all 32-bit guest pages.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
-    pricingPlan: GasPlan    # Optional source-bound immutable prices, selected only during cold emission.
-    pricingMemo: GasMemo    # Optional caller-owned bounded price memo, never CPU or paid gas.
+    pricingPlan: GasPlan          # Optional source-bound immutable prices, selected only during cold emission.
+    pricingMemo: GasMemo          # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       armOriginal: seq[nil FlatHandler] # Original entries restore exact checked fallback on partial source reservations.
       armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
     when defined(pvmX86Jit):
       x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
-      x86Jit: nil X86Jit    # Exclusive code-only owner; never contains an invocation address.
+      x86Jit: nil X86Jit          # Exclusive code-only owner; never contains an invocation address.
       x86WideAdmission: FlatX86WideAdmission # Source PCs and retry counts persist with the exact code owner.
       x86PreviousHeader, x86PreviousNext: uint32 # Observed invocation-local edges discover only closed pure loops.
       x86PreviousValid: bool
       when defined(pvmX86CheckedStoreReceipt):
         x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
-    pricingKind: byte       # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
+    nativeSession*: NativeSession # Prepared identity only; never passed to the compiler thread.
+    nativeOriginal: nil FlatHandler
+    nativeEntry: uint32
+    nativeInstalledEpoch: uint64
+    pricingKind: byte             # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
     when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       armPreviousHeader, armPreviousNext: uint32 # Invocation-local observed pure-block edges, never retained in source caches.
       armPreviousValid: bool
-      armMemory: ArmReadContext # Raw three triplets precede clipped reads; never retained by FlatStream.
+      armMemory: ArmReadContext   # Raw three triplets precede clipped reads; never retained by FlatStream.
       when defined(pvmArmMacroStateTrace):
         armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
 
@@ -203,6 +208,9 @@ when defined(pvmX86Jit):
     ## Cold source emission alone can replace complete pure spans with native entries.
   proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32)
     ## Record one positive backedge or settle bounded source candidates at a safe call boundary.
+
+proc flatConsiderNative(f: var FlatFrame, origin: uint32)
+  ## Classify one common bounded candidate without generating any native bytes.
 
 proc flatResolve(f: var FlatFrame, pc: uint32): uint32
   ## Cold lazy stream emission is forward-declared for target patching.
@@ -1539,11 +1547,85 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       if selected != nil: flatEmit(f, selected, fact.args, uint32(index))
     if fact.ending: break
     inc index
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    flatArmPrepare(f, origin)
-  when defined(pvmX86Jit):
-    flatX86Prepare(f, origin)
+  flatConsiderNative(f, origin)
   origin
+
+proc flatNativePure(f: var FlatFrame, off: uint32): uint32 =
+  ## One shared control bridge: full paid original prefix first, fresh registers only, no native replay.
+  let original = f.nativeOriginal
+  assert original != nil and off == f.nativeEntry
+  let span = nativeSpanInfo(f.nativeSession)
+  if not nativeSpanReady(f.nativeSession) or f.pricingKind != 0 or
+      f.barrier != flatStop or not f.info.blockCharged or
+      span.epoch != f.nativeInstalledEpoch:
+    return original(f, off)
+  var reservedEnd = f.reservation
+  if (reservedEnd and flatReservationHeaderFlag) != 0:
+    let header = reservedEnd and not flatReservationHeaderFlag
+    reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
+  if reservedEnd <= span.last: return original(f, off)
+  runNativeSpan(f.nativeSession, f.info.registers)
+  span.past
+
+proc installNative(f: var FlatFrame) =
+  ## Only the caller mutates its exclusively held stream; append-only coordinates are revalidated.
+  if not nativeSpanReady(f.nativeSession) or f.pricingKind != 0: return
+  let span = nativeSpanInfo(f.nativeSession)
+  if span.epoch != nativeEpoch(f.nativeSession) or int(span.entry) >= f.handlers.len or
+      int(span.past) >= f.handlers.len or span.past <= span.entry: return
+  if f.sites[int(span.entry)] != span.first or f.sites[int(span.past)-1] != span.last: return
+  if f.nativeOriginal == nil:
+    if int(span.last) >= f.plan.facts.len: return
+    var operation = 0
+    for ordinal in span.first..span.last:
+      let fact = f.plan.facts[int(ordinal)]
+      # Folded noops remain original attempts but emit no register operation.
+      if fact.opcode == 2: continue
+      if fact.ending or not fact.fallthrough or not matchesNativeOperation(f.nativeSession,
+          operation, fact.opcode, fact.args.slots, fact.args.x):
+        invalidateNativeStream(f.nativeSession)
+        return
+      inc operation
+    if operation != span.len:
+      invalidateNativeStream(f.nativeSession)
+      return
+    f.nativeOriginal = f.handlers[int(span.entry)]
+    f.nativeEntry = span.entry
+    f.nativeInstalledEpoch = span.epoch
+    f.handlers[int(span.entry)] = flatNativePure
+
+proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
+  ## Shared structural classification precedes any native cache/byte allocation and all ISA decisions.
+  let epoch = nativeEpoch(f.nativeSession)
+  if epoch == 0 or f.pricingKind != 0 or nativeSpanInfo(f.nativeSession).len != 0: return
+  var index = max(origin, nativeScanStart(f.nativeSession))
+  while int(index) < f.handlers.len and index < NativeEntryLimit:
+    # Synthetic charge headers duplicate the next source site and never belong to a pure body.
+    if int(index)+1 < f.sites.len and f.sites[int(index)] == f.sites[int(index)+1]:
+      inc index
+      continue
+    var span = initNativeSpan(index, f.sites[int(index)], epoch)
+    var at = index
+    while int(at) < f.handlers.len and span.len < NativeSpanOperations:
+      if int(at)+1 < f.sites.len and f.sites[int(at)] == f.sites[int(at)+1]: break
+      let fact = f.plan.facts[int(f.sites[int(at)])]
+      if fact.ending or not fact.fallthrough or
+          not span.add(fact.opcode, fact.args.slots, fact.args.x, f.sites[int(at)], at+1): break
+      inc at
+    if span.len >= NativeMinimumOperations and int(span.past) < f.handlers.len:
+      considerNativeSpan(f.nativeSession, span)
+      return
+    index = if at > index: at else: index+1
+  completeNativeScan(f.nativeSession, index)
+
+proc settledNativeWork*(f: FlatFrame, supplied: uint64): uint64 =
+  ## Initial conservative allowlist: normal checked halt/host excludes its attempted terminal instruction.
+  ## Local errors, faults/panics/OOG and mixed native receipts contribute no speculative completion credit.
+  if f.reason != oracle.StepError.None or f.exit notin {oracle.StepExit.Halt,
+      oracle.StepExit.Host} or (not f.attemptedExit) or f.remaining > supplied: return 0
+  let attempted = supplied-f.remaining
+  if attempted == 0: return 0
+  attempted-1
 
 proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
     output: var openArray[byte]) =
@@ -4814,6 +4896,10 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.arguments = move(f.arguments)
   replacement.sites = move(f.sites)
   replacement.compiledForPc = move(f.compiledForPc)
+  replacement.nativeSession = move(f.nativeSession)
+  replacement.nativeOriginal = f.nativeOriginal
+  replacement.nativeEntry = f.nativeEntry
+  replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # A same-plan memory replacement preserves code-only capabilities together with their native handlers.
     replacement.armOriginal = move(f.armOriginal)
@@ -4955,6 +5041,9 @@ type FlatStream* = object
   arguments: seq[FlatArgs]
   sites, compiledForPc: seq[uint32]
   sourcePlan: nil FlatPlan # Exact source, emission and default-cycle owner for every build.
+  nativeOriginal: nil FlatHandler
+  nativeEntry: uint32
+  nativeInstalledEpoch: uint64
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
@@ -4978,7 +5067,8 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
   result = FlatStream(handlers: move(f.handlers), arguments: move(f.arguments), sites: move(f.sites),
     compiledForPc: move(f.compiledForPc), sourcePlan: f.plan, pricingKind: f.pricingKind,
     failure: f.preparationFailure,
-    preparation: f.preparationUsed)
+    preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
+    nativeInstalledEpoch: f.nativeInstalledEpoch)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
     result.armOriginal = move(f.armOriginal)
@@ -4997,6 +5087,7 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   if f.pricingKind != 0 or stream.pricingKind != 0:
     # A sealed charge/error or native header belongs to its original pricing policy. Reemit under the
     # newly selected policy rather than borrowing an unproven price or retaining another policy owner.
+    invalidateNativeStream(f.nativeSession)
     stream = default(FlatStream)
     return
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
@@ -5013,6 +5104,11 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.compiledForPc = move(stream.compiledForPc)
   if stream.failure != FlatError.Uninitialized: f.preparationFailure = stream.failure
   f.preparationUsed = stream.preparation
+  f.nativeOriginal = stream.nativeOriginal
+  f.nativeEntry = stream.nativeEntry
+  f.nativeInstalledEpoch = stream.nativeInstalledEpoch
+  flatConsiderNative(f, 0) # Reconsider prior cached code after transient registration capacity becomes available.
+  installNative(f)
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =

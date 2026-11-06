@@ -3,6 +3,7 @@
 """Refuse mismatched CI hosts and missing native execution before accepting PVM qualification."""
 from contextlib import ExitStack
 from pathlib import Path
+import json
 import os
 import sys
 import tempfile
@@ -98,22 +99,242 @@ class PolicyQualificationTests(unittest.TestCase):
             ci.qualify_policy(checks)
 
 
+class SharedQualificationTests(unittest.TestCase):
+    """Prove matching common positive/refusal execution is mandatory with inert native tools."""
+
+    def setUp(self):
+        """Own tiny source/golden/profile inputs; no compiler or product process is launched."""
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.profiles = {}
+        self.sources = {}
+        for directory, suite, defines, golden in (
+            ('codec', 'pvm_shared_async_arm', ['pvmArm64Jit', 'pvmSharedAsyncWitness'],
+             'PVM shared async passed\n'),
+            ('codec', 'pvm_shared_async_x86', ['pvmX86Jit', 'pvmSharedAsyncWitness'],
+             'PVM shared async passed\n'),
+            ('state', 'pvm_runtime_policy_refused',
+             ['pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'],
+             'PASS runtime PVM policy\nPVM shared async refusal controls passed\n')):
+            source = self.root/'tests/unit'/directory/('test_'+suite+'.nim')
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text('inert main '+suite)
+            source.with_suffix('.output').write_text(golden)
+            self.sources[suite] = source
+            profile = dict(defines=defines, includes=['pvm_jit'], libraries=[], observers=[],
+                           prepared=False, directory=directory)
+            self.profiles[suite] = profile
+            path = self.root/'tools/native_requirements'/directory/(suite+'.json')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(profile))
+        helper = self.root/'tests/support/pvm_shared_async.nim'
+        helper.parent.mkdir(parents=True)
+        helper.write_text('inert shared witness')
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.stack.enter_context(patch.object(ci, 'ROOT', self.root))
+        self.stack.enter_context(patch.object(ci, 'NATIVE_REQUIREMENTS', self.profiles))
+        self.stack.enter_context(patch.object(ci, 'unit_source', side_effect=self.sources.__getitem__))
+        self.stack.enter_context(patch.object(ci, 'unit_environment', return_value={}))
+
+    def tools(self, fault=None):
+        """Model build/run outcomes from selected mains and exact goldens, preserving failed gates."""
+        checks = Mock()
+        checks.folder = self.root/'checks'
+        builds = []
+        binaries = {}
+
+        def build(compiler, source, name, **options):
+            """Return an inert file; a failed build cannot reach a target command."""
+            builds.append(dict(source=source, defines=options['defines']))
+            binary = self.root/name
+            binary.write_bytes(b'inert image')
+            binaries[str(binary)] = source
+            return dict(exit_code=1 if fault == 'build' else 0, log=name+'.log'), binary
+
+        def command(arguments, name, **options):
+            """Only the known complete positive or refusal transcript can count as an actual pass."""
+            source = binaries[str(arguments[0])]
+            output = source.with_suffix('.output').read_text()
+            if fault == 'fallback' and 'refused' in name:
+                output = 'PASS runtime PVM policy\n'
+            elif fault == 'extra':
+                output += 'extra output\n'
+            elif fault == 'tamper':
+                (self.root/'tests/support/pvm_shared_async.nim').write_text('changed source')
+            refused = 'refused' in name
+            evidence = dict(schema=1, kind='refused' if refused else 'positive',
+                isa='x86_64' if 'pvmX86Jit' in builds[-1]['defines'] else 'arm64',
+                submitted=1, completed=1, fragments=0 if refused else 1,
+                calls=0 if refused else 3, operations=0 if refused else 12288,
+                no_retry_checks=3 if refused else 0)
+            if fault == 'wrong-kind':
+                evidence['kind'] = 'refused' if not refused else 'positive'
+            elif fault == 'wrong-isa':
+                evidence['isa'] = 'foreign'
+            elif fault == 'zero-native':
+                evidence['calls'] = 0
+            elif fault == 'no-publication':
+                evidence['fragments'] = 0
+            elif fault == 'no-worker':
+                evidence['submitted'] = evidence['completed'] = 0
+            elif fault == 'boolean-counter':
+                evidence['completed'] = True
+            elif fault == 'no-refusal-proof' and refused:
+                evidence['no_retry_checks'] = 0
+            if fault != 'missing-proof':
+                actual_kind = 'refused' if refused else 'positive'
+                actual_isa = 'x86_64' if 'pvmX86Jit' in builds[-1]['defines'] else 'arm64'
+                path = Path(options['environment']['RAGNAROK_TEST_EVIDENCE'])/(
+                    'pvm_shared_'+actual_kind+'_'+actual_isa+'.json')
+                path.write_text(json.dumps(evidence))
+            return dict(exit_code=1 if fault == 'run' else 0, log=name+'.log', output=output)
+
+        checks.build.side_effect = build
+        checks.command.side_effect = command
+        return checks, builds
+
+    def test_matching_common_positive_and_real_refusal_on_both_isas(self):
+        """x86 must compile its own refusal flags instead of the ARM-only fallback registration."""
+        for machine, isa, normal in (('aarch64', 'pvmArm64Jit', 'pvm_shared_async_arm'),
+                                    ('x86_64', 'pvmX86Jit', 'pvm_shared_async_x86')):
+            with self.subTest(machine=machine):
+                # Equivalent declaration order must still reach the matching real-behavior gate.
+                self.profiles[normal]['defines'].reverse()
+                self.profiles['pvm_runtime_policy_refused']['defines'].reverse()
+                checks, builds = self.tools()
+                result = ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine=machine))
+                self.assertEqual(result['status'], 'passed')
+                self.assertEqual([b['source'] for b in builds],
+                    [self.sources[normal], self.sources['pvm_runtime_policy_refused']])
+                self.assertEqual([set(b['defines']) for b in builds],
+                    [{isa, 'pvmSharedAsyncWitness'}, {isa, isa+'Refuse', 'pvmSharedAsyncWitness'}])
+                self.assertEqual(result['production_defines'], [isa])
+                self.assertEqual(set(result['controls'][1]['registered_defines']),
+                    {'pvmArm64Jit', 'pvmArm64JitRefuse', 'pvmSharedAsyncWitness'})
+                self.assertEqual(checks.command.call_count, 2)
+                self.assertEqual(len(result['sources']), 10)
+
+    def test_failed_build_run_fallback_or_golden_cannot_pass(self):
+        """A fallback-only second line omission or unrelated output is not native nil-refusal proof."""
+        for fault in ('build', 'run', 'fallback', 'extra'):
+            with self.subTest(fault=fault):
+                checks, _ = self.tools(fault)
+                with self.assertRaises(RuntimeError):
+                    ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+                self.assertLessEqual(checks.command.call_count, 2)
+                if fault == 'build':
+                    checks.command.assert_not_called()
+
+    def test_golden_without_real_supported_evidence_never_qualifies(self):
+        """A stale proof or unsupported exact-golden pass cannot replace actual native behavior."""
+        for fault in ('missing-proof', 'wrong-kind', 'wrong-isa', 'zero-native',
+                      'boolean-counter', 'no-refusal-proof', 'no-publication', 'no-worker'):
+            with self.subTest(fault=fault):
+                checks, _ = self.tools(fault)
+                directory = checks.folder/'shared-pvm_shared_async_x86-evidence'
+                directory.mkdir(parents=True, exist_ok=True)
+                # Clearing before execution must defeat a previous valid native receipt as well.
+                stale = directory/'pvm_shared_positive_x86_64.json'
+                stale.write_text(json.dumps(dict(schema=1, kind='positive', isa='x86_64',
+                    submitted=1, completed=1, fragments=1, calls=3, operations=12288,
+                    no_retry_checks=0)))
+                with self.assertRaises((OSError, ValueError)):
+                    ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+
+    def test_source_mutation_or_foreign_witness_profile_refuses(self):
+        """The source-bound receipt cannot survive changed inputs or a mismatched positive ISA."""
+        self.profiles['pvm_shared_async_x86']['defines'] = ['pvmArm64Jit', 'pvmSharedAsyncWitness']
+        checks, _ = self.tools()
+        with self.assertRaisesRegex(ValueError, 'registration'):
+            ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+        checks.build.assert_not_called()
+        self.profiles['pvm_shared_async_x86']['defines'] = [
+            'pvmX86Jit', 'pvmSharedAsyncWitness', 'pvmSharedAsyncWitness']
+        with self.assertRaisesRegex(ValueError, 'registration'):
+            ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+        checks.build.assert_not_called()
+        self.profiles['pvm_shared_async_x86']['defines'] = ['pvmX86Jit', 'pvmSharedAsyncWitness']
+        checks, _ = self.tools('tamper')
+        with self.assertRaisesRegex(ValueError, 'source changed'):
+            ci.qualify_shared(checks, 'compiler', dict(system='Linux', machine='x86_64'))
+
+    def test_unavailable_host_does_not_claim_common_native_pass(self):
+        """Unsupported hosts preserve truthful fallback without starting a common native target."""
+        checks, _ = self.tools()
+        result = ci.qualify_shared(checks, 'compiler', dict(system='Darwin', machine='x86_64'))
+        self.assertEqual(result['status'], 'unavailable')
+        checks.build.assert_not_called()
+        checks.command.assert_not_called()
+
+    def test_common_failure_prevents_overall_green_receipt(self):
+        """Even green legacy gates cannot publish native CI success when common proof fails."""
+        compiler = self.root/'tool/bin/nimony'
+        compiler.parent.mkdir(parents=True)
+        compiler.write_bytes(b'inert compiler')
+        (compiler.parent.parent/'NIGHTLY.txt').write_text('inert pinned identity')
+        with patch.object(ci, 'BUILD', self.root/'results'), \
+                patch.object(ci, 'host_identity', return_value=dict(system='Linux',
+                    machine='x86_64', architecture='x86_64')), \
+                patch.object(ci, 'installed', return_value=(compiler, None)), \
+                patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
+                patch.object(ci, 'qualify_host', return_value=['legacy passed']), \
+                patch.object(ci, 'qualify_shared', side_effect=RuntimeError('common failed')), \
+                patch.object(ci, 'qualify_policy') as policies:
+            with self.assertRaisesRegex(RuntimeError, 'common failed'):
+                ci.run()
+            result = json.loads((self.root/'results/results.json').read_text())
+            self.assertEqual(result['status'], 'incomplete')
+            self.assertIn('common failed', result['error'])
+            self.assertIn('tests/support/pvm_shared_async.nim', result['sources'])
+            policies.assert_not_called()
+
+    def test_unavailable_common_receipt_cannot_green_a_supported_host(self):
+        """An unsupported common result is not a native pass, even when legacy checks are green."""
+        compiler = self.root/'tool/bin/nimony'
+        compiler.parent.mkdir(parents=True)
+        compiler.write_bytes(b'inert compiler')
+        (compiler.parent.parent/'NIGHTLY.txt').write_text('inert pinned identity')
+        with patch.object(ci, 'BUILD', self.root/'results'), \
+                patch.object(ci, 'host_identity', return_value=dict(system='Linux',
+                    machine='x86_64', architecture='x86_64')), \
+                patch.object(ci, 'installed', return_value=(compiler, None)), \
+                patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
+                patch.object(ci, 'qualify_host', return_value=['legacy passed']), \
+                patch.object(ci, 'qualify_shared', return_value=dict(status='unavailable')), \
+                patch.object(ci, 'qualify_policy') as policies:
+            with self.assertRaisesRegex(RuntimeError, 'matching shared'):
+                ci.run()
+            self.assertEqual(json.loads((self.root/'results/results.json').read_text())['status'],
+                             'incomplete')
+            policies.assert_not_called()
+
+    def test_selected_shared_refusal_replaces_duplicate_fallback_check(self):
+        """The real refused main already keeps the unbound checks; unsupported hosts retain fallback."""
+        checks = Mock()
+        checks.command.return_value = dict(exit_code=0, log='policy.log')
+        rows = ci.qualify_policy(checks, shared_refusal=True)
+        self.assertEqual([row['suite'] for row in rows], ['pvm_memory_reuse', 'pvm_runtime_policy'])
+
+
 class QualificationTests(unittest.TestCase):
     def witness_receipt(self, native, *, refused=False, macro_refused=False,
                         resident_refused=False,
                         region='ARM_SELF_REGION_CASES,1920\n'):
-        """Model mandatory controls, with positive native counters only in the supported profile."""
+        """Model raw native mode controls separately from unbound checked frame cohorts."""
         counts = (64896, 507, 24843) if native else (0, 0, 0)
         assert not (native and refused)
         assert not macro_refused or native
         assert not resident_refused or native
         assert not (macro_refused and resident_refused)
-        macro_active = native and not macro_refused
-        macro_resident = macro_active and not resident_refused
-        macro_backend = 31 if macro_active else 3 if native or refused else 0
+        backend_active = native and not macro_refused
+        macro_active = False
+        macro_resident = False
+        macro_backend = 31 if backend_active else 3 if native or refused else 0
         macro_frame = 13524 if native or refused else 0
-        image_words = 620 if macro_resident else 206 if resident_refused else 0
-        return ('TRANSFER_STATS,1,2\n' if native else 'TRANSFER_STATS,0,0\n') + (
+        image_words = 0
+        return 'TRANSFER_STATS,0,0\n' + (
             f'ARM_SHIFT_PAIR_LITERAL_CASES,{counts[0]}\n'
             f'ARM_SHIFT_PAIR_DECLINE_CASES,{counts[1]}\n'
             f'ARM_LOAD_WIDTH_LITERAL_CASES,{counts[2]}\n'
@@ -127,8 +348,8 @@ class QualificationTests(unittest.TestCase):
             'ARM_PREFIX_READ_FRAME_CASES,662\n'
             'ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES,177\n'
             'ARM_PREFIX_READ_CHARGE_BOUNDARY_CASES,106\n'
-            f'ARM_PREFIX_READ_NATIVE_ACTIVATIONS,{2 if native else 0}\n'
-            f'ARM_PREFIX_READ_NATIVE_REFUSALS,{4 if native else 0}\n'
+            'ARM_PREFIX_READ_NATIVE_ACTIVATIONS,0\n'
+            'ARM_PREFIX_READ_NATIVE_REFUSALS,0\n'
             f'ARM_PREFIX_READ_LITERAL_ROLLBACKS,{4 if native else 0}\n'
             'ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES,1\n'
             f'ARM_PREFIX_READ_NEAR_CAP_LITERAL,{1 if native else 0}\n'
@@ -146,12 +367,12 @@ class QualificationTests(unittest.TestCase):
             f'ARM_MACRO_RESIDENT,{int(macro_resident)}\n'
             f'ARM_MACRO_ROLLBACK_ALIAS,{int(macro_active)}\n'
             f'ARM_MACRO_IMAGE_WORDS,{image_words}\n' +
-            ('ARM_CLIPPED_FRAME_BOUNDARY,4,1,4,1,0,1,4,1,0\n' if native else '') +
+            ('ARM_CLIPPED_FRAME_BOUNDARY,4,0,0,0,0,0,0,0,0\n' if native or refused else '') +
             'ARM_CHECKED_STORE_SECOND_EXIT_CASES,360\n' + region +
             'ARM_DIRTY_LOOP_CONTROL_CASES,840\n'
             'ARM_DIRTY_LOOP_ALIAS_REFUSAL,1\n' +
             ('ARM_DIRTY_LOOP_OWNER,1\nARM_WORD_OWNER,1\nARM_WORD_CONTROL_CASES,698\nARM_WORD_ALIAS_CASES,110\n' if native or refused else '') +
-            ('ARM_WORD_GROUPS,5\nARM_DIRTY_LOOP,2,16,1\n' if native else
+            ('ARM_WORD_GROUPS,0\nARM_DIRTY_LOOP,0,0,0\n' if native else
              'ARM_WORD_GROUPS,0\n' if refused else '') +
             ('ARM_REGION_SCALAR_MATCH_CASES,111\n'
              'CLIPPED_ISA_SPAN_WORDS,36,31\n'
@@ -199,9 +420,9 @@ class QualificationTests(unittest.TestCase):
                     output=(resident_refused_receipt if resident_refused_receipt is not None
                             else resident_refused)
                 elif name.startswith('region-refusal'):
-                    positive=native and name=='region-refusal-run'
-                    output=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+(','+'0,1,2,1' if positive else ',0,0,0,0')+'\n'
-                                   for order in ('0,0','0,1','1,1'))
+                    output='ARM_REGION_LOCAL_SHAPES,true\n'+''.join(
+                        'ARM_REGION_REFUSAL_FRAME,'+order+',0,0,0,0\n'
+                        for order in ('0,0','0,1','1,1'))
                     if name=='region-refusal-run' and region_receipt is not None:
                         output=region_receipt
                 elif '-move-run' in name:
@@ -236,8 +457,7 @@ class QualificationTests(unittest.TestCase):
             rows,builds=self.check(native)
             self.assertEqual(len(rows),14 if native else 11)
             witness_index=2 if native else 1  # Native qualification first exercises legacy ABI refusal.
-            self.assertEqual(rows[witness_index]['dirty_loop'],
-                             dict(calls=2, blocks=16, declines=1) if native else None)
+            self.assertIsNone(rows[witness_index]['dirty_loop'])
             self.assertIsNone(rows[witness_index+1]['dirty_loop'])
             witness=next(flags for name,flags in builds if name=='witness')
             self.assertEqual(witness,['pvmArm64Jit','pvmArmMacroReceipt',
@@ -291,24 +511,22 @@ class QualificationTests(unittest.TestCase):
                     self.check_macro_mode(mode,complete+marker+',1\n')
 
     def test_clipped_frame_boundary_receipt_is_mode_specific(self):
-        """The real frame gate rejects absent, partial, repeated, and false native evidence."""
+        """All compiled ARM frame cohorts remain complete and reject fabricated native entries."""
         marker='ARM_CLIPPED_FRAME_BOUNDARY,'
-        for mode in ('native','macro-refused','resident-refused'):
+        for mode in ('native','macro-refused','resident-refused','native-refused'):
             complete=self.macro_mode_receipt(mode)
             line,=[row+'\n' for row in complete.splitlines() if row.startswith(marker)]
             for replacement,reason in (('', 'frame-owned clipped-boundary'),
-                                       (marker+'4,1,4,1,0,1,4,1\n', 'frame-owned clipped-boundary'),
+                                       (marker+'4,0,0,0,0,0,0,0\n', 'frame-owned clipped-boundary'),
                                        (line+line, 'frame-owned clipped-boundary'),
-                                       (marker+'4,1,4,1,0,1,no,1,0\n', 'Malformed frame-owned'),
-                                       (marker+'4,0,4,1,0,1,4,1,0\n', 'Clipped frame admitted')):
+                                       (marker+'4,0,0,0,0,0,no,0,0\n', 'Malformed frame-owned'),
+                                       (marker+'4,1,0,0,0,0,0,0,0\n', 'Unbound clipped frame')):
                 with self.subTest(mode=mode,replacement=replacement), self.assertRaisesRegex(
                         ValueError,reason):
                     self.check_macro_mode(mode,complete.replace(line,replacement,1))
-        for mode in ('native-refused','interpreted'):
-            with self.subTest(mode=mode), self.assertRaisesRegex(
-                    ValueError,'Refused or interpreted frame claimed native'):
-                self.check_macro_mode(mode,self.macro_mode_receipt(mode)+
-                    marker+'4,1,4,1,0,1,4,1,0\n')
+        with self.assertRaisesRegex(ValueError,'Refused or interpreted frame claimed native'):
+            self.check_macro_mode('interpreted',self.macro_mode_receipt('interpreted')+
+                marker+'4,0,0,0,0,0,0,0,0\n')
 
     def test_macro_controls_are_required_through_full_qualification(self):
         """Each mode keeps all unrelated gates valid while one macro proof is damaged."""
@@ -356,53 +574,55 @@ class QualificationTests(unittest.TestCase):
                     new, = [line+'\n' for line in donor.splitlines()
                             if line.startswith(marker+',')]
                     changed = changed.replace(old, new, 1)
-                with self.subTest(expected=expected, actual=actual), self.assertRaisesRegex(
-                        ValueError, 'ARM macro witness:'):
-                    self.check_macro_mode(expected, changed)
+                with self.subTest(expected=expected, actual=actual):
+                    if changed == original:
+                        # Raw build/source controls distinguish policy where receipts actually differ.
+                        self.check_macro_mode(expected, changed)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'ARM macro witness:'):
+                            self.check_macro_mode(expected, changed)
 
-    def test_macro_image_bounds_reach_full_qualification(self):
-        """Active 1..1024 words and inactive zero are policy bounds, not fixed image lengths."""
+    def test_unbound_macro_image_claims_rejected_full_qualification(self):
+        """Real raw bounded images do not permit a bare frame to claim native publication."""
         modes = ('native', 'resident-refused', 'native-refused', 'macro-refused', 'interpreted')
         for mode in modes:
             original = self.macro_mode_receipt(mode)
+            self.check_macro_mode(mode, original)
             line, = [row+'\n' for row in original.splitlines()
                      if row.startswith('ARM_MACRO_IMAGE_WORDS,')]
-            if mode in ('native', 'resident-refused'):
-                for words in (1, 1024):
-                    with self.subTest(mode=mode, valid=words):
-                        self.check_macro_mode(mode, original.replace(
-                            line, f'ARM_MACRO_IMAGE_WORDS,{words}\n', 1))
-                invalid = (0, 1025, 'not-decimal')
-            else:
-                invalid = (1, 1025, 'not-decimal')
-            for words in invalid:
+            for words in (1, 1024, 1025, 'not-decimal'):
                 with self.subTest(mode=mode, invalid=words), self.assertRaisesRegex(
                         ValueError, 'ARM macro witness: ARM_MACRO_IMAGE_WORDS'):
                     self.check_macro_mode(mode, original.replace(
                         line, f'ARM_MACRO_IMAGE_WORDS,{words}\n', 1))
 
-    def test_candidate_local_native_receipts_are_mandatory(self):
-        """Missing, checked-only or reordered ownership cases cannot count as actual ARM coverage."""
-        zero=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+',0,0,0,0\n'
+    def test_candidate_local_checked_receipts_are_mandatory(self):
+        """Full checked ownership orders and preceding raw shape controls remain mandatory."""
+        shapes='ARM_REGION_LOCAL_SHAPES,true\n'
+        zero=''.join('ARM_REGION_REFUSAL_FRAME,'+order+',0,0,0,0\n'
                      for order in ('0,0','0,1','1,1'))
-        reordered=''.join('ARM_REGION_REFUSAL_NATIVE,'+order+',0,1,2,1\n'
+        reordered=''.join('ARM_REGION_REFUSAL_FRAME,'+order+',0,0,0,0\n'
                           for order in ('1,1','0,1','0,0'))
-        for raw in ('', zero, reordered, zero+zero):
-            with self.subTest(receipt=raw), self.assertRaisesRegex(ValueError,'candidate-local'):
+        self.check(True,region_receipt=shapes+zero)
+        for raw,reason in (('', 'candidate-local'), (shapes+reordered, 'candidate-local'),
+                           (shapes+zero+zero, 'candidate-local'),
+                           (shapes+zero.replace('0,0,0,0\n','0,1,2,1\n'), 'claimed native'),
+                           (zero, 'direct ARM')):
+            with self.subTest(receipt=raw), self.assertRaisesRegex(ValueError,reason):
                 self.check(True,region_receipt=raw)
 
-    def test_no_native_execution_and_compiler_failure(self):
-        """Zero, missing or duplicate native counters and failed compilation never qualify the runner."""
-        for receipt in ('','TRANSFER_STATS,0,0\n','TRANSFER_STATS,1,2\nTRANSFER_STATS,1,2\n'):
-            with self.subTest(receipt=receipt),self.assertRaisesRegex(ValueError,'publication/execution'):
-                complete = self.witness_receipt(True).replace('TRANSFER_STATS,1,2\n',receipt)
+    def test_fabricated_frame_execution_and_compiler_failure(self):
+        """Missing/duplicate/fabricated frame transfer counters and failed compilation cannot qualify."""
+        for receipt in ('','TRANSFER_STATS,1,2\n','TRANSFER_STATS,0,0\nTRANSFER_STATS,0,0\n'):
+            with self.subTest(receipt=receipt),self.assertRaisesRegex(ValueError,'frame transfer'):
+                complete = self.witness_receipt(True).replace('TRANSFER_STATS,0,0\n',receipt)
                 self.check(True,complete)
         with self.assertRaisesRegex(RuntimeError,'compiler failure'):
             self.check(True,build_error=True)
 
 
     def test_complete_single_block_receipt_is_required(self):
-        """A valid native transfer cannot disguise absent, incomplete or repeated new region coverage."""
+        """A valid checked transfer cannot disguise absent, incomplete or repeated source coverage."""
         for marker in ('', 'ARM_SELF_REGION_CASES,1919\n',
                        'ARM_SELF_REGION_CASES,1920\nARM_SELF_REGION_CASES,1920\n'):
             with self.subTest(marker=marker),self.assertRaisesRegex(ValueError,'one-block'):
@@ -422,12 +642,12 @@ class QualificationTests(unittest.TestCase):
             ('ARM_RESIDENT_MEMORY_CYCLE_FRAME_CASES',12328,'resident memory-cycle frame'),
             ('ARM_RESIDENT_MEMORY_CYCLE_BACKEND_CASES',47,'resident memory-cycle backend'),
             ('ARM_CHECKED_STORE_SECOND_EXIT_CASES',360,'checked-store exit'),
-            ('ARM_DIRTY_LOOP_CONTROL_CASES',840,'dirty-loop boundary'),
-            ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'dirty-loop boundary'),
-            ('ARM_DIRTY_LOOP_OWNER',1,'dirty-loop owner'),
-            ('ARM_WORD_OWNER',1,'word-loop owner'),
-            ('ARM_WORD_CONTROL_CASES',698,'word-loop boundary'),
-            ('ARM_WORD_ALIAS_CASES',110,'word-loop alias'),
+            ('ARM_DIRTY_LOOP_CONTROL_CASES',840,'ARM_DIRTY_LOOP_CONTROL_CASES'),
+            ('ARM_DIRTY_LOOP_ALIAS_REFUSAL',1,'ARM_DIRTY_LOOP_ALIAS_REFUSAL'),
+            ('ARM_DIRTY_LOOP_OWNER',1,'ARM_DIRTY_LOOP_OWNER'),
+            ('ARM_WORD_OWNER',1,'ARM_WORD_OWNER'),
+            ('ARM_WORD_CONTROL_CASES',698,'ARM_WORD_CONTROL_CASES'),
+            ('ARM_WORD_ALIAS_CASES',110,'ARM_WORD_ALIAS_CASES'),
             ('ARM_REGION_SCALAR_MATCH_CASES',111,'scalar region-charge'),
             ('ARM_DIRECT_BRANCH_LITERAL_CASES',1640,'direct-read witness'),
             ('ARM_DIRECT_BRANCH_CONTROL_CASES',122,'direct-read witness'),
@@ -501,8 +721,8 @@ class QualificationTests(unittest.TestCase):
                 ('ARM_PREFIX_READ_FRAME_CASES', 662, 'frame'),
                 ('ARM_PREFIX_READ_SOURCE_BOUNDARY_CASES', 177, 'source boundary'),
                 ('ARM_PREFIX_READ_CHARGE_BOUNDARY_CASES', 106, 'charge boundary'),
-                ('ARM_PREFIX_READ_NATIVE_ACTIVATIONS', 2 if native else 0, 'activation'),
-                ('ARM_PREFIX_READ_NATIVE_REFUSALS', 4 if native else 0, 'refusal'),
+                ('ARM_PREFIX_READ_NATIVE_ACTIVATIONS', 0, 'checked frame activation absence'),
+                ('ARM_PREFIX_READ_NATIVE_REFUSALS', 0, 'checked frame refusal absence'),
                 ('ARM_PREFIX_READ_LITERAL_ROLLBACKS', 4 if native else 0, 'literal rollback'),
                 ('ARM_PREFIX_READ_OVERSIZE_FALLBACK_CASES', 1, 'oversize fallback'),
                 ('ARM_PREFIX_READ_NEAR_CAP_LITERAL', 1 if native else 0, 'near capacity'))
@@ -533,35 +753,35 @@ class QualificationTests(unittest.TestCase):
                         self.check(False, receipt=damaged)
 
     def test_dirty_loop_receipts_are_mode_specific(self):
-        """The active loop, owner and refusal receipts must match the declared native mode."""
+        """Complete checked owners stay mandatory; invented dirty-loop activity is rejected."""
         complete = self.witness_receipt(True)
-        loop = 'ARM_DIRTY_LOOP,2,16,1\n'
+        loop = 'ARM_DIRTY_LOOP,0,0,0\n'
         for replacement, reason in (
             ('', 'call/block/decline'),
-            ('ARM_DIRTY_LOOP,2,2,1\n', 'resident execution'),
-            ('ARM_DIRTY_LOOP,2,16,0\n', 'resident execution'),
+            ('ARM_DIRTY_LOOP,2,2,1\n', 'claimed native dirty-loop'),
+            ('ARM_DIRTY_LOOP,2,16,0\n', 'claimed native dirty-loop'),
             (loop + loop, 'call/block/decline'),
         ):
             with self.subTest(replacement=replacement), self.assertRaisesRegex(ValueError, reason):
                 self.check(True, complete.replace(loop, replacement))
         refused = self.witness_receipt(False, refused=True)
-        with self.assertRaisesRegex(ValueError, 'dirty-loop owner'):
+        with self.assertRaisesRegex(ValueError, 'ARM_DIRTY_LOOP_OWNER'):
             self.check(True, refused_receipt=refused.replace('ARM_DIRTY_LOOP_OWNER,1\n', ''))
         with self.assertRaisesRegex(ValueError, 'entered dirty-loop code'):
             self.check(True, refused_receipt=refused + loop)
-        with self.assertRaisesRegex(ValueError, 'dirty-loop owner'):
+        with self.assertRaisesRegex(ValueError, 'ARM_DIRTY_LOOP_OWNER'):
             self.check(False, receipt=self.witness_receipt(False) + 'ARM_DIRTY_LOOP_OWNER,1\n')
 
     def test_native_word_group_and_refusal_receipts(self):
-        """A missing grouped store or a refused native group must fail qualification."""
+        """Missing group receipts and fabricated native groups must fail qualification."""
         complete = self.witness_receipt(True)
-        group = 'ARM_WORD_GROUPS,5\n'
-        for replacement in ('', 'ARM_WORD_GROUPS,0\n', 'ARM_WORD_GROUPS,5\nARM_WORD_GROUPS,5\n'):
+        group = 'ARM_WORD_GROUPS,0\n'
+        for replacement in ('', 'ARM_WORD_GROUPS,5\n', 'ARM_WORD_GROUPS,0\nARM_WORD_GROUPS,0\n'):
             with self.subTest(replacement=replacement), self.assertRaisesRegex(ValueError,'word-group'):
                 self.check(True,complete.replace(group,replacement))
         refused = self.witness_receipt(False, refused=True)
         with self.assertRaisesRegex(ValueError,'word-group'):
-            self.check(True,refused_receipt=refused.replace('ARM_WORD_GROUPS,0\n',group))
+            self.check(True,refused_receipt=refused.replace('ARM_WORD_GROUPS,0\n','ARM_WORD_GROUPS,5\n'))
 
 
 if __name__=='__main__':

@@ -1,7 +1,8 @@
 {
   "defines": [
     "pvmArm64Jit",
-    "pvmArm64JitRefuse"
+    "pvmArm64JitRefuse",
+    "pvmSharedAsyncWitness"
   ],
   "directory": "state",
   "includes": [

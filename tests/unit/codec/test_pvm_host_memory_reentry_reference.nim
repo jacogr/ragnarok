@@ -158,26 +158,11 @@ proc runFallible(source: Machine, context: var HostContext, mode: PricingMode,
   checked.value
 
 proc checkNativeProgress(owner: PreparedProgram, before: PreparedInfo, progressed: bool) =
-  ## Eligible complete loops must execute real native calls; checked refusals may not manufacture them.
+  ## This unbound host/memory caller stays checked; no legacy native bypass preserves obsolete coverage.
   let after = preparedInfo(owner).value
-  when defined(pvmArm64Jit) or defined(pvmX86Jit):
-    when defined(pvmArm64JitRefuse) or defined(pvmX86JitRefuse):
-      # A real storage-refusal build preserves the same literal state trace through checked fallback.
-      assert after.nativeCalls == before.nativeCalls and after.nativeOperations ==
-          before.nativeOperations
-    else:
-      if progressed and after.jitPlatformSupported:
-        # The loop's admitted add/branch prefix is eligible on both maintained native backends.
-        assert after.nativeCalls > before.nativeCalls and after.nativeOperations >
-            before.nativeOperations,
-          "independent prepared native execution trace"
-      else:
-        # Initial unpaid gas refusal executes no instruction, including when the owner is already warm.
-        assert after.nativeCalls == before.nativeCalls and after.nativeOperations ==
-            before.nativeOperations
-  else:
-    # The ordinary registered suite intentionally qualifies the checked fallback without a native claim.
-    assert after.nativeCalls == 0 and after.nativeOperations == 0
+  assert after.nativeCalls == before.nativeCalls and after.nativeOperations ==
+      before.nativeOperations
+  assert after.nativeCalls == 0 and after.nativeOperations == 0
 
 proc admitEligibleTail(program: Program, memory: Memory, registers: RegisterFile, initial,
     address, iterations, price, haltPrice: uint64, owner: PreparedProgram) =
