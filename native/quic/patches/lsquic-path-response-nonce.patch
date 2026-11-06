@@ -1,0 +1,124 @@
+--- a/src/liblsquic/lsquic_full_conn_ietf.c
++++ b/src/liblsquic/lsquic_full_conn_ietf.c
+@@ -329,14 +329,13 @@
+         COP_GOT_NONPROB = 1 << 2,
+         /* Spin bit is enabled on this path. */
+         COP_SPIN_BIT    = 1 << 3,
+-        /* Sent an MTU-sized path challenge */
+-        COP_ALLOW_MTU_PADDING = 1 << 4,
+         /* Verified that the path MTU is at least 1200 bytes */
+         COP_VALIDATED_MTU = 1 << 5,
+         /* This path is retired */
+         COP_RETIRED = 1 << 6,
+     }                           cop_flags;
+     unsigned char               cop_n_chals;
++    unsigned char               cop_padded_chals; /* Bit per stored nonce */
+     unsigned char               cop_cce_idx;
+     unsigned char               cop_spin_bit;
+     struct dplpmtud_state       cop_dplpmtud;
+@@ -1557,7 +1556,7 @@
+         conn->ifc_send_flags |= SF_SEND_NEW_TOKEN;
+ 
+     conn->ifc_paths[0].cop_path = imc->imc_path;
+-    conn->ifc_paths[0].cop_flags = COP_VALIDATED|COP_INITIALIZED|COP_ALLOW_MTU_PADDING;
++    conn->ifc_paths[0].cop_flags = COP_VALIDATED|COP_INITIALIZED;
+     conn->ifc_used_paths = 1 << 0;
+     maybe_enable_spin(conn, &conn->ifc_paths[0]);
+     if (imc->imc_flags & IMC_ADDR_VALIDATED)
+@@ -4613,6 +4612,7 @@
+         /* path failure? it is non-fatal, keep trying */
+         memmove(&copath->cop_path_chals[0], &copath->cop_path_chals[1],
+             sizeof(copath->cop_path_chals) - sizeof(copath->cop_path_chals[0]));
++        copath->cop_padded_chals >>= 1;
+         copath->cop_n_chals = sizeof(copath->cop_path_chals)
+                                         / sizeof(copath->cop_path_chals[0]) - 1;
+     }
+@@ -4652,7 +4652,7 @@
+     packet_out->po_regen_sz += w;
+     conn->ifc_send_flags &= ~(SF_SEND_PATH_CHAL << path_id);
+     if (maybe_pad_packet(conn, packet_out))
+-        copath->cop_flags |= COP_ALLOW_MTU_PADDING;
++        copath->cop_padded_chals |= 1u << (copath->cop_n_chals - 1);
+     lsquic_alarmset_set(&conn->ifc_alset, AL_PATH_CHAL + path_id,
+                 now + (INITIAL_CHAL_TIMEOUT << (copath->cop_n_chals - 1)));
+ }
+@@ -5220,17 +5220,16 @@
+     return 0;
+ 
+   found:
+-    if (path->cop_flags & COP_ALLOW_MTU_PADDING)
++    path->cop_flags |= COP_VALIDATED;
++    if (path->cop_padded_chals & (1u << i))
+     {
+-        path->cop_flags |= (COP_VALIDATED | COP_VALIDATED_MTU);
++        path->cop_flags |= COP_VALIDATED_MTU;
+         conn->ifc_send_flags &= ~(SF_SEND_PATH_CHAL << path_id);
+         lsquic_alarmset_unset(&conn->ifc_alset, AL_PATH_CHAL + path_id);
+     }
+-    else
+-    {
+-        path->cop_flags |= (COP_VALIDATED | COP_ALLOW_MTU_PADDING);
++    else if (!(path->cop_flags & COP_VALIDATED_MTU) && !path->cop_padded_chals)
+         conn->ifc_send_flags |= (SF_SEND_PATH_CHAL << path_id);
+-    }
++    /* A different outstanding padded probe keeps its existing retry alarm. */
+     switch ((path_id != conn->ifc_cur_path_id) |
+                         (!!(path->cop_flags & COP_GOT_NONPROB) << 1))
+     {
+@@ -10384,9 +10383,47 @@
+                 assert(!!(packet_out->po_frame_types & QUIC_FTBIT_PADDING)
+                                                             == (expected >= 1200));
+                 if (is_challenge)
+-                    assert(!!(conn.ifc_paths[1].cop_flags & COP_ALLOW_MTU_PADDING)
++                    assert(!!(conn.ifc_paths[1].cop_padded_chals & 1)
+                                                             == (expected >= 1200));
+             }
++}
++
++
++static void
++test_path_response_nonce (void)
++{
++    struct ietf_full_conn conn;
++    struct lsquic_packet_in packet_in;
++    struct conn_path *path;
++    unsigned char response[9];
++    unsigned i, index;
++    int len;
++    const unsigned order[] = { 0, 1, 0 };
++
++    memset(&conn, 0, sizeof(conn));
++    memset(&packet_in, 0, sizeof(packet_in));
++    conn.ifc_conn.cn_pf = select_pf_by_ver(LSQVER_I001);
++    conn.ifc_used_paths = 1;
++    path = &conn.ifc_paths[0];
++    path->cop_path_chals[0] = 1;  /* Unpadded challenge sent first. */
++    path->cop_path_chals[1] = 2;  /* MTU-sized retry sent later. */
++    path->cop_n_chals = 2;
++    path->cop_padded_chals = 1u << 1;
++    lsquic_alarmset_set(&conn.ifc_alset, AL_PATH_CHAL, INITIAL_CHAL_TIMEOUT);
++
++    for (i = 0; i < sizeof(order) / sizeof(order[0]); ++i)
++    {
++        index = order[i];
++        len = conn.ifc_conn.cn_pf->pf_gen_path_resp_frame(response,
++                                    sizeof(response), path->cop_path_chals[index]);
++        assert(len == sizeof(response));
++        assert(len == process_path_response_frame(&conn, &packet_in,
++                                                        response, len));
++        assert(path->cop_flags & COP_VALIDATED);
++        assert(!!(path->cop_flags & COP_VALIDATED_MTU) == (i != 0));
++        assert(!!lsquic_alarmset_is_set(&conn.ifc_alset, AL_PATH_CHAL) == (i == 0));
++        assert(!(conn.ifc_send_flags & SF_SEND_PATH_CHAL));
++    }
+ }
+ 
+ 
+@@ -10505,6 +10542,7 @@
+     unsigned path_id, i;
+ 
+     test_path_response_padding();
++    test_path_response_nonce();
+     test_path_received_bytes();
+     test_path_sent_bytes();
+     test_pending_path_after_switch();

@@ -498,6 +498,7 @@ rq_transport *rq_transport_new_config(const rq_transport_options *options, uint1
         t->settings.es_ping_period = options->keepalive; /* Pinned IETF LSQUIC treats nonzero as enable, then uses half negotiated idle. */
     }
     t->settings.es_versions = 1u << LSQVER_I001; t->settings.es_support_srej = 0;
+    t->settings.es_ping_without_streams = t->settings.es_ping_period != 0;
     t->api.ea_settings = &t->settings; t->api.ea_stream_if = &callbacks; t->api.ea_stream_if_ctx = t;
     t->api.ea_packets_out = packets_out; t->api.ea_packets_out_ctx = t; t->api.ea_get_ssl_ctx = get_tls;
     t->engine = lsquic_engine_new(server ? LSENG_SERVER : 0, &t->api);

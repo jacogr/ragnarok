@@ -13,7 +13,7 @@
   "sources": {
     "lsquic": {
       "repository": "iftech/lsquic",
-      "commit": "fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52",
+      "commit": "0c9c66903b70ac25852d70d54672005aafb1a446",
       "path": "vendor/lsquic"
     },
     "boringssl": {
@@ -35,16 +35,28 @@
   "patches": [
     {
       "source": "lsquic",
-      "commit": "fd0d75c6584eb4c20dfa8b4b865bfe3daf5a2e52",
+      "commit": "0c9c66903b70ac25852d70d54672005aafb1a446",
       "path": "native/quic/patches/lsquic-public-stream-reset.patch",
       "sha256": "adb9af0086ca4dcfa1193dc52ad6ef1d175a7d6665638960c44b2f89b9275b93",
       "before": {
-        "include/lsquic.h": "c1c5b1d012fe634035d406c1feb822ad5511a3beba180ec79f14b2714cf22095",
-        "src/liblsquic/lsquic_stream.c": "458b40281efbe551f305c894c579cb1ff9568179f10ee1f6ba3116fccdd61ef9"
+        "include/lsquic.h": "38a355fc34378546b3eccadbf29b1e219db178bf53710b476147465bf334eeb3",
+        "src/liblsquic/lsquic_stream.c": "046e6292c8c769bdcc7a08d5c4591231754012c8947031af0f6379c5af8cb6f7"
       },
       "after": {
-        "include/lsquic.h": "213e298ad75430f37db44eff7088a48bceca8ed1f02d422bb5191eba15f088cb",
-        "src/liblsquic/lsquic_stream.c": "d9fcb9f4ac0b7f8237536ecdb7507303e0214d80c151c066b18b340644f913fc"
+        "include/lsquic.h": "a7eb3a3ecb8b7e1eefe2289dce7e32f69f6350c521f51e12fc19ef5dd4272194",
+        "src/liblsquic/lsquic_stream.c": "af696b8340f69cceed8c537b1071919f09150b73afcf5691654bbbdaa0a2ca05"
+      }
+    },
+    {
+      "source": "lsquic",
+      "commit": "0c9c66903b70ac25852d70d54672005aafb1a446",
+      "path": "native/quic/patches/lsquic-path-response-nonce.patch",
+      "sha256": "692511dcb6bad6640f848880cc8527a80cb8662efdd950d3c2fd546a31b3b11f",
+      "before": {
+        "src/liblsquic/lsquic_full_conn_ietf.c": "38991a721daabb5ae0763ab5bf60c05b8edc38c0f8633f3bcf309505b2b123a5"
+      },
+      "after": {
+        "src/liblsquic/lsquic_full_conn_ietf.c": "6a8b27adc627156f4e24613e96a7deca7ebfd74864a5e37a1a36ea5bc2ffdfb8"
       }
     }
   ],
