@@ -3,14 +3,16 @@
 The adopted Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` cites
 **Draft 35**. The [qualification matrix](bandersnatch-thin-qualification.md)
 resolves its suite, transcripts, encodings and exact references. Production uses
-pristine ark-vrf 0.6.1 `cf1dbbb260ec3e7ea88eac68148f05d5cbd587ac`, its
+pristine ark-vrf 0.6.2 `439242a5bf3a142e720cb907fb39d134f1d09192`, its
 `bandersnatch` **v1** suite, and specification Draft 35
 `122f52fb63c6e8eb887aa7416f869aba5075519b`. Draft 35 identifies vector generator
 0.5.3 `9ec593e98b69395e97680330e75b5235b48121f4`. The chosen newer implementation
 retains that executable profile while improving canonical decoding and API safety;
 it was selected against vectors, not its version number.
 The [0.6.1 security qualification](ark-vrf-security-upgrade.md) records the later
-ring-batch verifier fix and the unchanged individual-proof ABI/profile.
+ring-batch verifier fix and the unchanged individual-proof ABI/profile. The
+[0.6.2 qualification](ark-vrf-062-qualification.md) covers the next safety update
+and both ring fixture domains.
 
 ## Maintained ABI and policy
 

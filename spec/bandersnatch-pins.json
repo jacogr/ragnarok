@@ -9,10 +9,10 @@
   "sources": {
     "ark-vrf-jam": {
       "repository": "davxy/ark-vrf",
-      "commit": "cf1dbbb260ec3e7ea88eac68148f05d5cbd587ac",
-      "tree_sha256": "cf0966e16a6d271737755fc2eae353f93160d6e0dcd66202a30f506fc92fdcc9",
+      "commit": "439242a5bf3a142e720cb907fb39d134f1d09192",
+      "tree_sha256": "66671f7a4a2ede74f7a9911ce9761845b5384622b65c99c37eecfa9a7108c894",
       "path": "vendor/ark-vrf",
-      "tag": "v0.6.1"
+      "tag": "v0.6.2"
     },
     "spec-jam": {
       "repository": "davxy/bandersnatch-vrf-spec",
@@ -36,14 +36,15 @@
     "vendor/bandersnatch-vrf-spec/assets/vectors/bandersnatch_sha-512_ell2_thin.json": "76b2d4d670770b6854d3d4ed4fb64dfd485f0fbf249038ae9578a8d723e20815",
     "vectors/historical/bandersnatch/jam-tiny.json": "c3fabff27a65058209a67b7875ff6b27031b68aabab299e09d8e20fe24da39c3",
     "vectors/historical/bandersnatch/jam-full.json": "a2b0a01e1bd2c61f7c84126f175e62cfe1007aca8cb8e0e767834cdef419a102",
-    "vectors/historical/bandersnatch/jam-padding.json": "76dacb18d0ca8befff369e5c3e649e23030d09132d574f4ed0ce26daddd429c2"
+    "vectors/historical/bandersnatch/jam-padding.json": "76dacb18d0ca8befff369e5c3e649e23030d09132d574f4ed0ce26daddd429c2",
+    "vendor/ark-vrf/data/vectors/bandersnatch_sha-512_ell2_ring.json": "feeca28951730f958dfa603450ae6b1b3900df4c4da13a6a851c3ba9f4cf5a56"
   },
   "srs": {
     "path": "assets/srs/zcash-srs-2-11-uncompressed.bin",
     "sha256": "1d7d27e4f5f3c6190989bea58803180d3e19f725a57069392a405ac78b233c7d",
     "provenance": "Specification public SRS derived from the Zcash Powers of Tau ceremony; 6145 G1 and 2 G2 points; no insecure seed-generated setup."
   },
-  "cargo_lock_sha256": "56c77a8c3ab198f840358cbf600cd08f1a4d8f46795990b8de678932c99f4082",
+  "cargo_lock_sha256": "1e7c6fcb16eb08ee44bbeffdf9d770c774ece33f1f23215ea0add368e46fd940",
   "official_jam": {
     "repository": "jam-conformance/jam-test-vectors",
     "commit": "a49f241a791f559d1502dc1b0b5328372995e375",
@@ -73,7 +74,7 @@
     "reference_tag": "draft-35",
     "reference_commit": "122f52fb63c6e8eb887aa7416f869aba5075519b",
     "reference_challenge_bytes": 16,
-    "reference_implementation_version": "0.6.1",
+    "reference_implementation_version": "0.6.2",
     "vector_generator_version": "0.5.3",
     "vector_generator_commit": "9ec593e98b69395e97680330e75b5235b48121f4",
     "reason": "Draft35 Thin v1 passes independent complete mathematical vectors, native Thin/ring/current JAM vectors, authored contextual/Safrole consumers and canonical/domain refusals. Literal RFC padding equivalence and published complete signed-trace parity are separately not claimed.",

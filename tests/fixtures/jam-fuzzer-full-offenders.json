@@ -4,7 +4,7 @@
   "transitions": 8,
   "accepted": 3,
   "refused": 5,
-  "full_guests_sha256": "7e0af01c9833caf4133bd167e4441f9cdbf9d94f1fe75345fbda1cc3403b0cea",
+  "full_guests_sha256": "813996ca1f051a98f0399462da0552504b370b0a27e0c777707025bb52083efa",
   "successor_roots": [
     [
       "9b9b78e715df3393b76b43944a8cb131d24dcf695e8dc85228c51a136a82242b",

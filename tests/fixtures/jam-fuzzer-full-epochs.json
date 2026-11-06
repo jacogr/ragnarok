@@ -23,8 +23,8 @@
       1201
     ]
   ],
-  "full_guests_sha256": "7e0af01c9833caf4133bd167e4441f9cdbf9d94f1fe75345fbda1cc3403b0cea",
-  "ring_input_sha256": "272120ffa25943f56a6601bfc6fd4bbf68347851d0b21eb24939ae4a4b05330c",
+  "full_guests_sha256": "813996ca1f051a98f0399462da0552504b370b0a27e0c777707025bb52083efa",
+  "ring_input_sha256": "b9b319adda0e98c1189843a5c2dfd8825b5678e26e50b3109b261cbe450ab693",
   "successor_roots": [
     [
       "475840316164917dae0fcd52cb68712d69eb01121be389685c63318bcf4287a3",
