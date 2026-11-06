@@ -43,6 +43,7 @@ type
     codeOffset, codeLength, maskOffset, jumpOffset, jumpWidth: int
     jumps: uint64
     profile: DecodeProfile
+    instructionCountValue: uint32 ## Validated starts from the same bounded deblob walk.
   Program* = object ## Copyable ARC handle; no API exports its backing bytes or mutable storage.
     data: nil ProgramData
   OperandShape* {.pure.} = enum ## Each shape follows one operand equation in the pinned instruction tables.
@@ -256,6 +257,7 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   # The empty program cannot satisfy v_inst at any entry point.
   if codeLength == 0: return ProgramResult[Program](status: ProgramError.InvalidProgram)
   var pc = 0
+  var validatedInstructions = 0'u32
   # Iterative v_blob avoids recursion proportional to untrusted program length.
   while pc < codeLength:
     # Every traversed instruction must begin at a set mask bit and have an opcode in U.
@@ -270,6 +272,8 @@ proc decode(input: openArray[byte], entry: CodeAddress,
       # GP-PVM-004: JAM modules require a final terminator with no fallthrough successor.
       if profile == DecodeProfile.Jam and opcode notin {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}:
         return ProgramResult[Program](status: ProgramError.InvalidProgram)
+    # Each validated instruction advances at least one byte within the 32 MiB code bound.
+    inc validatedInstructions
     pc += step
   # Validate entry without narrowing it until the code extent proves the conversion safe.
   if uint64(entry) >= codeSize:
@@ -283,7 +287,8 @@ proc decode(input: openArray[byte], entry: CodeAddress,
   ProgramResult[Program](status: ProgramError.None, completed: Program(data: ProgramData(
     bytes: owned, codeOffset: codeOffset, codeLength: codeLength, maskOffset: maskOffset,
     jumpOffset: jumpOffset, jumpWidth: width,
-    jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps), profile: profile)))
+    jumps: (if profile == DecodeProfile.Jam and width == 0: 0'u64 else: jumps), profile: profile,
+    instructionCountValue: validatedInstructions)))
 
 proc decodeProgram*(input: openArray[byte], entry: CodeAddress,
     byteLimit: ProgramByteLimit, jumpLimit: JumpCountLimit): ProgramResult[Program] =
@@ -326,6 +331,11 @@ proc codeLength*(program: Program): ProgramResult[uint64] =
   # A default handle has no validated storage to inspect.
   if program.data == nil: return ProgramResult[uint64](status: ProgramError.InvalidOwner)
   ProgramResult[uint64](status: ProgramError.None, completed: uint64(program.data.codeLength))
+
+proc instructionCount*(program: Program): ProgramResult[uint32] =
+  ## Return the validated instruction count without rescanning or exposing program storage.
+  if program.data == nil: return ProgramResult[uint32](status: ProgramError.InvalidOwner)
+  ProgramResult[uint32](status: ProgramError.None, completed: program.data.instructionCountValue)
 
 proc jumpTarget*(program: Program, index: JumpIndex): ProgramResult[CodeAddress] =
   ## Read a table entry by ordinal, including implicit zero values in a zero-width table.

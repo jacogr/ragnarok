@@ -1313,12 +1313,19 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
     return FlatResult[FlatPlan](status: FlatError.InvalidProgram)
   if extent.value > uint64(limits.codeBytes): return FlatResult[FlatPlan](
       status: FlatError.CodeLimitExceeded)
+  let instructions = instructionCount(source)
+  if instructions.error != ProgramError.None: return FlatResult[FlatPlan](
+      status: FlatError.InvalidProgram)
+  # Reserve only admitted counts. Over-limit input still follows the existing refusal loop.
+  let factCapacity = if uint64(instructions.value) <= uint64(limits.facts):
+      int(instructions.value)
+    else: 0
   assert sizeof(FlatArgs) == 16
   # The admission count occupies existing alignment padding on the supported 64-bit targets.
   when sizeof(pointer) == 8: assert sizeof(FlatFact) == 48
-  var owner = FlatPlan(source: source, limits: limits, facts: @[], factAt: newSeq[int](int(
-      extent.value)), pricePcs: @[
-    ], cycles: cycles, jumps: @[], allowNative: allowNative, singleStep: false)
+  var owner = FlatPlan(source: source, limits: limits, facts: newSeqOfCap[FlatFact](factCapacity),
+    factAt: newSeq[int](int(extent.value)), pricePcs: @[], cycles: cycles, jumps: @[],
+    allowNative: allowNative, singleStep: false)
   for i in 0..<owner.factAt.len: owner.factAt[i] = -1
   var pc = 0'u64
   var priceIndex = 0'u32
