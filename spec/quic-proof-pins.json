@@ -36,6 +36,20 @@
     {
       "source": "lsquic",
       "commit": "0c9c66903b70ac25852d70d54672005aafb1a446",
+      "path": "native/quic/patches/lsquic-public-stream-reset.patch",
+      "sha256": "adb9af0086ca4dcfa1193dc52ad6ef1d175a7d6665638960c44b2f89b9275b93",
+      "before": {
+        "include/lsquic.h": "38a355fc34378546b3eccadbf29b1e219db178bf53710b476147465bf334eeb3",
+        "src/liblsquic/lsquic_stream.c": "046e6292c8c769bdcc7a08d5c4591231754012c8947031af0f6379c5af8cb6f7"
+      },
+      "after": {
+        "include/lsquic.h": "a7eb3a3ecb8b7e1eefe2289dce7e32f69f6350c521f51e12fc19ef5dd4272194",
+        "src/liblsquic/lsquic_stream.c": "af696b8340f69cceed8c537b1071919f09150b73afcf5691654bbbdaa0a2ca05"
+      }
+    },
+    {
+      "source": "lsquic",
+      "commit": "0c9c66903b70ac25852d70d54672005aafb1a446",
       "path": "native/quic/patches/lsquic-path-response-nonce.patch",
       "sha256": "692511dcb6bad6640f848880cc8527a80cb8662efdd950d3c2fd546a31b3b11f",
       "before": {

@@ -11,6 +11,12 @@ bounded development entry points with supported child admission, execution and p
 Continuous full-state catch-up and bounded Tiny participation share explicit readiness evidence.
 Complete production validation, consensus and validator lifecycles remain open.
 
+`app/node_command.nim` activates the managed authenticated node actor through the explicit
+`node` command. Full-state Services and an operator-selected retained finalized hash supply its
+local authority; configured-genesis ALPN and the GP Common Era clock supply network identity
+and epoch timing. The foreground loop retires native callbacks and exact worker leases before
+Services and restores signal handlers after joined cleanup.
+
 `app/cli/defaults.nim` owns typed defaults and bounds. `cli/catalog.nim` owns option metadata; `cli/commands.nim` validates named
 process inputs and normalizes them for bounded handlers. `cli/help.nim` renders the same catalog.
 `app/startup.nim` provisions an owned persistent transport identity and selected parent directories

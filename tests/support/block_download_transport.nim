@@ -148,7 +148,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       readDone(stream)
       wantRead(stream, 0)
       if server.mode == PrematureClose:
-        streamAbort(stream) # Closing without an E4 message is a truncated response, not a valid empty sequence.
+        streamFin(stream) # A clean FIN without an E4 header witnesses truncated framing.
       elif server.mode == Gated:
         server.responsePaused = true # Independent RPC/process observers explicitly release this response outside native callbacks.
       else:
@@ -176,7 +176,9 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   of 3:
     server.stream = NativeStream(nil) # Last callback ends all native borrows before stack teardown.
   of 4:
-    server.reset = true # Directional reset retires application writes without fabricating FIN.
+    if not server.reset:
+      server.reset = true
+      streamAbort(stream) # Retire the remaining direction once so this responder can accept the next stream.
   else:
     assert false, "undefined native server event" # Undefined ABI events are never silently accepted.
 
@@ -366,7 +368,7 @@ proc close*(servers: var DownloadResponders) =
   servers.first.transport.closeTransport()
   servers.second.transport.closeTransport()
 proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
-    response: seq[byte], mode = Healthy, emptyFirst = false): bool =
+    response: seq[byte], mode = Healthy, emptyFirst = false, alpn = "jamnp-s/1/00000000"): bool =
   ## Start independent a/b identities; optional empty first reply witnesses retry before a genuine child.
   servers.first.expected = expected
   servers.second.expected = expected
@@ -377,20 +379,21 @@ proc openResponders*(servers: var DownloadResponders, expected: array[42, byte],
   servers.first.mode = mode
   servers.second.mode = mode
   if not servers.first.transport.openTransport(true, false, 0,
-      getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000",
+      getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"), alpn,
       addr servers.first, verify, serverEvent): return false # Partial startup retains no listener.
   if not servers.second.transport.openTransport(true, false, 0,
-      getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"), "jamnp-s/1/00000000",
+      getEnv("RAGNAROK_TEST_CERT_B"), getEnv("RAGNAROK_TEST_KEY_B"), alpn,
       addr servers.second, verify, serverEvent):
     servers.close()
     return false # Failed second startup must close the already opened first listener.
   true
 proc openSequenceResponders*(servers: var DownloadResponders, expected: seq[array[42, byte]],
-    responses: seq[seq[byte]], modes: seq[DownloadTransferMode], emptyFirst = false): bool =
+    responses: seq[seq[byte]], modes: seq[DownloadTransferMode], emptyFirst = false,
+        alpn = "jamnp-s/1/00000000"): bool =
   ## Each independent listener validates the exact request series and emits only its authored per-request bytes.
   if expected.len == 0 or expected.len > 64 or responses.len != expected.len or modes.len != expected.len:
     return false # Prove all callback indexing before creating any listener.
-  if not servers.openResponders(expected[0], responses[0], modes[0], emptyFirst): return false
+  if not servers.openResponders(expected[0], responses[0], modes[0], emptyFirst, alpn): return false
   servers.first.expectedSeries = expected
   servers.second.expectedSeries = expected
   servers.first.modeSeries = modes
@@ -437,6 +440,11 @@ proc unsolicited*(servers: var DownloadResponders): bool =
     if not servers.second.transport.pollTransport(
         0): return false # Flush real frames without polling the client catalog.
   true
+
+proc streamRetired*(servers: DownloadResponders, second: bool): bool =
+  ## The next serial fixture request must follow the responder's actual close callback.
+  if second: servers.second.stream == NativeStream(nil)
+  else: servers.first.stream == NativeStream(nil)
 
 func resetObserved*(servers: DownloadResponders): bool =
   ## Observe only an actual native directional-reset callback on the independent responder.

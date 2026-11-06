@@ -25,10 +25,39 @@ proc parsed(input: seq[string]): Options =
   assert parseOptions(input, result, diagnostic), diagnostic
   assert diagnostic.len == 0, "CLI invariant: diagnostic.len == 0"
 
+# Complete numeric routes survive normalization; repeated remote IPs pair with fixed peer order.
+let routed = parsed(@["download-current", "--download-policy", "policy", "--with-state", "--chain",
+  "chain", "--net-peer-key", "primary", "--net-peer",
+  "4001:secondary",
+  "--net-bind", "0.0.0.0", "--net-peer-address", "192.0.2.1", "--net-peer-address", "192.0.2.2"])
+assert $routed.networkBind == "0.0.0.0"
+assert $routed.networkPeer(0) == "192.0.2.1" and $routed.networkPeer(1) == "192.0.2.2"
+assert not routed.networkPeer(2).valid
+let routedMesh = parsed(@["mesh", "--net-peer-key", "remote", "--net-local-key", "local",
+  "--net-gate", "gate", "--net-peer-address", "2001:db8::1"])
+assert routedMesh.networkPeer.ipv6 and not routedMesh.networkBind.valid
+for input in [
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "example.org"],
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "0.0.0.0"],
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "::"],
+  @["client", "--net-peer-key", "remote", "--net-bind", "::", "--net-peer-address", "192.0.2.1"],
+  @["client", "--net-peer-key", "remote", "--net-peer-address", "::1", "--net-peer-address", "::2"],
+  @["server", "--net-peer-address", "::1"],
+  @["download", "--download-policy", "policy", "--with-state", "--chain", "chain", "--net-peer-key",
+      "primary", "--net-peer", "4001:secondary", "--net-peer-address", "::1"],
+  @["download", "--download-policy", "policy", "--with-state", "--chain", "chain", "--net-peer-key",
+      "primary", "--net-peer", "4001:secondary", "--net-peer-address",
+
+"::1", "--net-peer-address", "127.0.0.1"]]:
+  var refused = routed
+  assert not parseOptions(input, refused) # Invalid family/count/literal inputs clear all earlier routing choices.
+  assert not refused.valid and not refused.networkBind.valid and not refused.networkPeer.valid
+
 let bareServer = parsed(@["server"])
 assert bareServer.argument(2) == "34100" and bareServer.argument(3).endsWith("data/network/cert.pem")
 assert bareServer.argument(4).endsWith("data/network/key.pem") and bareServer.argument(5) == "-"
 assert bareServer.argument(6) == DefaultDevelopmentAlpn
+assert bareServer.networkAlpnOverride.len == 0
 assert bareServer.argument(7) == "0" and bareServer.argument(8) == "listen"
 let diskDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "--state-storage", "disk"])
 assert diskDefault.chainPath == DefaultChainFile and diskDefault.stateDatabase == "custom/full/state.db"
@@ -37,9 +66,17 @@ let lightDefault = parsed(@["server", "--data-dir", "custom", "--with-state", "-
 assert lightDefault.pagedStorage and lightDefault.stateDatabase == "custom/light/paged"
 let managedDefault = parsed(@["server", "--with-state", "--state-storage", "disk", "--state-layout", "managed"])
 assert managedDefault.stateDatabase == "./data/full/managed"
+# Ordinary node help and normalized execution share the foreground timeout default.
+let nodeInput = @["node", "--with-state", "--node-finalized",
+  "0000000000000000000000000000000000000000000000000000000000000000"]
+let nodeOptions = parsed(nodeInput)
+assert nodeOptions.argument(6) == "0"
+assert "default: 0" in commandHelp("node")
+assert "--node-finalized" in commandHelp("node")
 assert "default: 34100" in commandHelp("server")
 assert "--data-dir DIR" in commandHelp("server")
 let named = parsed(peer())
+assert named.networkAlpnOverride == "network"
 assert named.argumentCount == 8, "CLI invariant: named.argumentCount == 8"
 assert named.argument(2) == "4000" and named.argument(3) == "node.pem", "CLI invariant: named.argument(2) == \"4000\" and named.argument(3) == \"node.pem\""
 assert named.argument(7) == "10000" and named.argument(8) == "valid", "CLI invariant: named.argument(7) == \"10000\" and named.argument(8) == \"valid\""
@@ -88,7 +125,7 @@ normalized(@["mesh", "--net-remote-port", "4001", "--net-local-port", "4000", "-
   "--net-key", "key",
   "--net-peer-key", "remote", "--net-local-key", "local", "--net-alpn", "network", "--net-gate",
   "ready"],
-  @["mesh", "4000", "4001", "cert", "key", "local", "remote", "network", "ready"])
+  @["mesh", "4000", "4001", "cert", "key", "local", "remote", "network", "ready", "--net-alpn", "network"])
 normalized(@["check-traces", "--trace-file", "first.bin", "--trace-policy", "policy",
   "--trace-genesis", "genesis",
   "--trace-file", "second.bin", "--with-state", "--chain", "chain"],

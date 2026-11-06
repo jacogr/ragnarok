@@ -3,6 +3,8 @@
 
 ## One pinned outgoing ancestor request owns its native endpoint, receiver and callback binding.
 ## Nonblocking host ticks authenticate, transfer and retire the stream before exposing producer decoding.
+import ../network
+
 import std/assertions
 import ../../quic/transport
 import ../protocol
@@ -125,10 +127,12 @@ proc close*(peer: var AncestorPeer) =
 
 proc open*(peer: var AncestorPeer, request: AncestorRequest, maxBytes: ByteLimit,
     expected: AncestorPeerKey, port: uint16, certificate, key, alpn: string,
-    limits: AncestorStreamLimits, now: AncestorTick): AncestorPeerError =
+    limits: AncestorStreamLimits, now: AncestorTick,
+    localAddress = default(NetworkAddress), remoteAddress = default(
+        NetworkAddress)): AncestorPeerError =
   ## Validate all static input before allocating an endpoint; no background thread or implicit peer discovery exists.
   if peer.opened: return AncestorPeerError.Busy
-  if port == 0: return AncestorPeerError.InvalidEndpoint
+  if port == 0 or not validDial(localAddress, remoteAddress): return AncestorPeerError.InvalidEndpoint
   if not request.valid: return AncestorPeerError.InvalidRequest
   if uint64(limits.readBytes) == 0 or uint64(limits.readBytes) > 4096 or
       uint64(limits.writeBytes) == 0 or uint64(limits.writeBytes) > 42 or uint64(limits.timeout) == 0 or
@@ -150,11 +154,11 @@ proc open*(peer: var AncestorPeer, request: AncestorRequest, maxBytes: ByteLimit
   peer.opened = true
   let context = cast[pointer](addr peer) # Stable outer owner, never a temporary/copy of a nested field.
   let opened = peer.transport.openTransport(false, false, 0, certificate, key, alpn,
-    context, verify, streamEvent)
+    context, verify, streamEvent, localAddress = dialBinding(localAddress, remoteAddress))
   if not opened:
     peer.close()
     return AncestorPeerError.TransportFailure # Partial endpoint setup retains no callback borrow.
-  if not peer.transport.connectTransport(port):
+  if not peer.transport.connectTransport(dialTarget(remoteAddress, port, dialFamily(localAddress))):
     peer.close()
     return AncestorPeerError.TransportFailure # A failed dial releases its complete native endpoint and raw buffer.
   AncestorPeerError.None

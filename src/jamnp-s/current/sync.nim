@@ -4,6 +4,8 @@
 ## Continuous full-state catch-up over persistent authenticated discovery and ordinary current
 ## admission. Targets are hints; only installed canonical children advance the local observation.
 
+import ../network
+
 import "./block/download/loop" as current_block_download_loop
 import "./block/download/peers" as current_block_download_peers
 import ../[announcement_stream, announcements]
@@ -39,6 +41,7 @@ type
     present: bool
     key: CurrentDownloadPeerKey
     port: uint16
+    localAddress, remoteAddress: NetworkAddress
     certificate, privateKey, alpn: string
     dialedAt: uint64
   CurrentSync* = object ## Stable exclusive owner; close must precede Services or callback retirement.
@@ -161,16 +164,19 @@ proc configure*(sync: var CurrentSync, owner: var Services, peers: seq[DownloadP
   sync.configure(owner, peers, older, limits, now, logical, true)
 
 proc openPeer*(sync: var CurrentSync, id: DownloadPeerId, expected: CurrentDownloadPeerKey,
-    port: uint16, certificate, key, alpn: string): CurrentDownloadPeerError =
+    port: uint16, certificate, key, alpn: string,
+    localAddress = default(NetworkAddress), remoteAddress = default(
+        NetworkAddress)): CurrentDownloadPeerError =
   ## Capture one prevalidated fixed pin only after the ordinary catalog accepted its endpoint.
   var found = -1
   for index, peer in sync.peers:
     if peer == id: found = index # The configured dispatcher already rejected duplicate IDs.
   if found < 0: return CurrentDownloadPeerError.InvalidPeer
-  let opened = sync.dispatcher.openPeer(id, expected, port, certificate, key, alpn)
+  let opened = sync.dispatcher.openPeer(id, expected, port, certificate, key, alpn, localAddress, remoteAddress)
   if opened != CurrentDownloadPeerError.None: return opened
   sync.endpoints[found] = SyncEndpoint(present: true, key: expected, port: port,
-    certificate: certificate, privateKey: key, alpn: alpn, dialedAt: sync.lastTick)
+    certificate: certificate, privateKey: key, alpn: alpn, dialedAt: sync.lastTick,
+    localAddress: localAddress, remoteAddress: remoteAddress)
   CurrentDownloadPeerError.None
 
 proc observe(sync: var CurrentSync, now: uint64) =
@@ -291,7 +297,8 @@ proc tick*(sync: var CurrentSync, now: CurrentDownloadLoopTick): CurrentSyncErro
       if endpoint.present and stale and uint64(now) - endpoint.dialedAt >= sync.limits.reconnectMs:
         endpoint.dialedAt = uint64(now)
         let reopened = sync.dispatcher.reconnectPeer(peer, endpoint.key, endpoint.port,
-          endpoint.certificate, endpoint.privateKey, endpoint.alpn)
+          endpoint.certificate, endpoint.privateKey, endpoint.alpn, endpoint.localAddress,
+          endpoint.remoteAddress)
         if reopened != CurrentDownloadPeerError.None:
           discard # An unavailable endpoint remains unknown and is retried only after another bounded delay.
     sync.observe(uint64(now)) # Retired streams cannot retain readiness during a replacement handshake.

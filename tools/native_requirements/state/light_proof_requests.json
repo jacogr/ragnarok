@@ -6,11 +6,13 @@
   ],
   "includes": [
     "crypto",
-    "storage_io"
+    "storage_io",
+    "quic"
   ],
   "libraries": [
     "observer",
-    "storage_io"
+    "storage_io",
+    "quic"
   ],
   "observers": [
     "io_close",

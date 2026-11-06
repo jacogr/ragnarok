@@ -106,10 +106,10 @@ proc prepareAssuredQueue*(source: AssuredComputedReports,
   let first = batch.computedBatchSourceAt(ComputedBatchIndex(0)).value
   let lookup = first.computedEnvelopeSource.value.computedCredentialSource.value.computedGuarantorSource.value.computedRosterSource.value.computedTransitionSource.value.computedProfileSource.value
   let count = lookup.computedLookupInfo.value.headers
-  if count > high(int) div sizeof(OwnedHeader) or uint64(count) >= uint64(
-      config.admission.ancestors.headers):
+  let maximum = uint64(config.admission.ancestors.headers)
+  if count > high(int) div sizeof(OwnedHeader) or maximum < 2 or uint64(count) > maximum-2:
     return AssuredQueueResult[AssuredAccumulationQueue](
-        status: AssuredQueueError.LimitExceeded) # One extra current parent precedes all retained lookup headers; prove its count before allocation.
+        status: AssuredQueueError.LimitExceeded) # Count the admitted candidate and current parent before allocating the older suffix.
   var older = newSeq[OwnedHeader](count)
   for index in 0..<count:
     older[index] = lookup.computedLookupHeader(ComputedAncestorIndex(uint64(

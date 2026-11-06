@@ -7,8 +7,9 @@ This is not complete report admission or state publication.
 
 ## Pinned rules and context
 
-Gray Paper 0.8.0, `07f041dabd073f9018b418e9ee72e79dd2185401`,
-`text/reporting_assurance.tex`, Contextual Validity of Reports and `eq:limitlookupanchorage`:
+Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`,
+`text/header.tex` equation `eq:ancestors` and `text/reporting_assurance.tex`,
+Contextual Validity of Reports and `eq:limitlookupanchorage`:
 
 1. `checkRecentReportAnchors` consumes a completed policy certificate, exact serialized corrected
    C(3) (beta-dagger), the candidate timeslot and caller history/age policy. Each report must match
@@ -18,18 +19,22 @@ Gray Paper 0.8.0, `07f041dabd073f9018b418e9ee72e79dd2185401`,
    The configured `LookupAge` is independent of the eight-block recent-history bound. The boundary
    is inclusive. Before genesis-length history, the mathematical lower bound is zero: compare
    before subtraction so Nimony's wrapping arithmetic cannot manufacture a large cutoff.
-3. `checkReportLookupAnchors` consumes that prior certificate, the trusted parent and older full
-   headers supplied newest-first. It bounds every owner/count/aggregate byte extent before copying
+3. `checkReportLookupAnchors` consumes that prior certificate and a trusted linked header sequence
+   supplied newest-first. The ancestor set includes the actual candidate header; a trusted older
+   subset remains sufficient when it already proves every lookup. Block admission uses
+   `captureReportAncestorContext` to include its exact admitted candidate and parent before older
+   headers. It bounds every owner/count/aggregate byte extent before copying
    or hashing. It re-decodes each complete sealed header under the current profile and hashes its
    exact serialization with BLAKE2b-256. Each older header must hash to its newer child's parent
    field, with strictly increasing slots toward the tip. Skipped slots are valid; omitted linked
    headers, forks, duplicate headers, reordered chains and seal changes are not.
 4. Every lookup needs its own matching header hash **and** slot, plus a retained child whose
    prior-state field equals the lookup posterior state root. The lookup header's own prior-state
-   field cannot substitute. The trusted parent must precede the candidate, and cannot itself be a
-   lookup anchor without a retained newer ancestor child. The candidate header is not that child.
+   field cannot substitute. The actual candidate may be the newer child that proves the parent's
+   posterior root. A lookup naming the candidate itself still lacks a newer child and is refused.
+   A supplied header newer than the candidate's slot is never an ancestor witness.
 
-The caller supplies actual beta-dagger, candidate time and trusted parent from the admitted block
+The caller supplies actual beta-dagger, candidate time and trusted candidate/parent from the admitted block
 context. This module does not establish consensus ancestry, authenticate an arbitrary parent,
 perform parent-root correction, or bind independently supplied context to a block by itself. Use
 `correctHistoryParent` before this stage; do not pass newly appended posterior history. Future
@@ -76,6 +81,6 @@ Full sealed-header capture and exact hash/slot/child-state queries now live in t
 [immutable ancestor context](state-ancestor-context.md). Existing complete lookup
 validation retains its error mapping and candidate-time check. Separate successful
 missing-context plans accept only recent/age-certified reports and a validated
-parent-linked context; they grant acquisition authority, never completed admission
+candidate/parent-linked context; they grant acquisition authority, never completed admission
 or publication. Block-bound preparation and command resumption preserve the same
 original parent, report signatures and policies across bounded acquisition.

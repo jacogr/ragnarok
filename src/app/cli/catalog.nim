@@ -49,6 +49,7 @@ const
     "Conformance testing"
   ]
   CommandSpecs* = [
+    CommandSpec(name: "node", description: "Run the authenticated full-state node with explicit trusted finality."),
     CommandSpec(name: "server", description: "Run a foreground listener, or select a bounded workload."),
     CommandSpec(name: "client", description: "Run a bounded client workload."),
     CommandSpec(name: "mesh", description: "Run a retained two-way peer workload."),
@@ -98,9 +99,17 @@ const
       fallback: OptionDefault.None, commands: "", repeatable: false),
 
     # Network and TLS options. Keep additions in this group.
+    OptionSpec(name: "--net-bind", value: "IP", group: OptionGroup.Network,
+      description: "Numeric local IP; omitted isolated proof commands bind loopback.",
+      fallback: OptionDefault.None, commands: "node|server|client|mesh|download|download-current|sync-current",
+      repeatable: false),
+    OptionSpec(name: "--net-peer-address", value: "IP", group: OptionGroup.Network,
+      description: "Numeric remote IP; repeat in primary/additional peer order, once per configured peer.",
+      fallback: OptionDefault.None, commands: "client|mesh|download|download-current|sync-current",
+      repeatable: true),
     OptionSpec(name: "--net-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Peer port (1..65535).", fallback: OptionDefault.NetworkPort,
-      commands: "server|client|download|download-current|sync-current",
+      commands: "node|server|client|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--net-local-port", value: "NUMBER", group: OptionGroup.Network,
       description: "Local mesh listener port.", fallback: OptionDefault.NetworkPort,
@@ -113,12 +122,12 @@ const
     OptionSpec(name: "--net-cert", value: "FILE", group: OptionGroup.Network,
       description: "TLS certificate PEM; generated and reused with the default private key.",
       fallback: OptionDefault.Certificate,
-      commands: "server|client|mesh|download|download-current|sync-current",
+      commands: "node|server|client|mesh|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--net-key", value: "FILE", group: OptionGroup.Network,
       description: "TLS private key PEM; generated privately and reused across starts.",
       fallback: OptionDefault.PrivateKey,
-      commands: "server|client|mesh|download|download-current|sync-current",
+      commands: "node|server|client|mesh|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--net-peer-key", value: "FILE", group: OptionGroup.Network,
       description: "Pinned remote identity; required for dialers; server discovers valid identities.",
@@ -129,13 +138,28 @@ const
       commands: "mesh",
       repeatable: false),
     OptionSpec(name: "--net-alpn", value: "NAME", group: OptionGroup.Network,
-      description: "JAM network protocol name; override the isolated development domain for a real network.",
-      fallback: OptionDefault.Alpn, commands: "server|client|mesh|download|download-current|sync-current",
+      description: "Derived from selected genesis; an explicit name must match its chain. No chain selects the isolated development domain.",
+      fallback: OptionDefault.Alpn, commands: "node|server|client|mesh|download|download-current|sync-current",
       repeatable: false),
     OptionSpec(name: "--net-timeout-ms", value: "MILLISECONDS", group: OptionGroup.Network,
       description: "Listen: 0 means unlimited. " & BoundedTimeoutDescription,
-      fallback: OptionDefault.Timeout, commands: "server|client|download|download-current|sync-current",
+      fallback: OptionDefault.Timeout, commands: "node|server|client|download|download-current|sync-current",
       repeatable: false),
+    OptionSpec(name: "--node-assurance-policy", value: "FILE", group: OptionGroup.Network,
+      description: "Optional complete assurance policy; requires --node-assurance-store and stays disabled when omitted.",
+      fallback: OptionDefault.None, commands: "node", repeatable: false),
+    OptionSpec(name: "--node-assurance-store", value: "DIR", group: OptionGroup.Network,
+      description: "Independent durable assurance namespace; requires --node-assurance-policy with explicit open/create mode.",
+      fallback: OptionDefault.None, commands: "node", repeatable: false),
+    OptionSpec(name: "--node-work-policy", value: "FILE", group: OptionGroup.Network,
+      description: "Optional complete work policy: v1 unsigned bundles, v2 guarantor pipeline; disabled when omitted.",
+      fallback: OptionDefault.None, commands: "node", repeatable: false),
+    OptionSpec(name: "--node-validator-seed", value: "FILE", group: OptionGroup.Network,
+      description: "Optional exact 32-byte JIP-5 validator master seed for local Safrole tickets; disabled when omitted.",
+      fallback: OptionDefault.None, commands: "node", repeatable: false),
+    OptionSpec(name: "--node-finalized", value: "HASH", group: OptionGroup.Network,
+      description: "Operator-trusted finalized block, exactly 64 lowercase hex digits; must be retained locally.",
+      fallback: OptionDefault.Required, commands: "node", repeatable: false),
     OptionSpec(name: "--net-mode", value: "NAME", group: OptionGroup.Network,
       description: "Peer workload mode; see command notes.", fallback: OptionDefault.PeerMode,
       commands: "server|client",
@@ -429,7 +453,7 @@ proc defaultValue*(spec: OptionSpec, topic = ""): string =
   of OptionDefault.McpPort: $DefaultMcpPort
   of OptionDefault.UiPort: $DefaultUiPort
   of OptionDefault.Timeout:
-    if topic == "server": $DefaultServerTimeoutMs
+    if topic in ["node", "server"]: $DefaultServerTimeoutMs
     elif topic.len == 0: TimeoutOverview
     else: $DefaultTimeoutMs
   of OptionDefault.PeerMode:

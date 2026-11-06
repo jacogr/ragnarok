@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Single-threaded bounded POSIX readiness and loopback UDP for the maintained QUIC adapter. No
+## Single-threaded bounded POSIX readiness and addressed UDP for the maintained QUIC adapter. No
 ## pending syscall retains buffers; unregister precedes descriptor close and descriptor reuse.
 ##
 ## Exposes dispatcher and UDP endpoint ownership, descriptor registration, bounded
@@ -9,11 +9,17 @@
 
 import std/[assertions, oserrors, nativesocket, syncio]
 import std/posix/posix
+import ./address
+export address
 
 const
   SocketHeader = "<sys/socket.h>"
   AddressHeader = "<netinet/in.h>"
   PollHeader = "<poll.h>"
+  MaxDispatcherEndpoints* = 4096 ## Explicit resource ceiling, independent of any JAM validator population.
+  MaxReadyBatch* = 64 ## One dispatcher turn cannot monopolize application work with unbounded ready copies.
+
+type DispatcherCapacity* = range[1..MaxDispatcherEndpoints] ## Callers validate resource policy before construction.
 
 type
   # Header-defined IPv6 storage avoids transcribing an OS-specific sockaddr layout.
@@ -26,19 +32,20 @@ type
   # Native IPv6 bytes are copied only while the syscall's address remains on the stack.
   Address6Bytes {.importc: "struct in6_addr", header: AddressHeader, bycopy.} = object
     s6_addr: array[16, byte]
-  # poll owns no kernel registration; each call borrows this initialized fixed array synchronously.
+  # poll owns no kernel registration; each call borrows initialized fixed-capacity storage synchronously.
   PollEntry {.importc: "struct pollfd", header: PollHeader, bycopy.} = object
     fd: cint
     events, revents: cshort
   # Shared dispatcher metadata owns no socket and has no reference back to its endpoints.
   DispatcherState = object
-    descriptors: array[2, cint]
-    count: int
+    descriptors: seq[cint]
+    entries: seq[PollEntry]
+    count, cursor: int
     closed: bool
-  Dispatcher* = ref DispatcherState ## Up to two endpoints share one bounded wait; callers retire endpoints before closing it.
+  Dispatcher* = ref DispatcherState ## Explicit bounded registrations share one wait; metadata never owns socket retirement.
   UdpEndpoint* = object ## Explicit open flag makes a default endpoint harmless even though descriptor zero is valid.
     descriptor: cint
-    opened, ipv6: bool
+    opened, ipv6, loopbackOnly: bool
     portValue: uint16
     registration: nil Dispatcher
   Ready* = object ## One copied readiness event; no pointer into poll's temporary storage escapes.
@@ -70,7 +77,7 @@ proc hostPort(port: uint16): uint16 {.importc: "ntohs", header: AddressHeader.}
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: AddressHeader.}
   ## Convert ports for either loopback family.
 
-proc networkAddress(address: uint32): uint32 {.importc: "htonl", header: AddressHeader.}
+proc networkOrder(address: uint32): uint32 {.importc: "htonl", header: AddressHeader.}
   ## IPv4 address conversion remains independent of host endianness.
 
 proc poll(entries: ptr PollEntry, count: culong, timeout: cint): cint {.importc: "poll",
@@ -88,50 +95,62 @@ let
   PollHangup {.importc: "POLLHUP", header: PollHeader.}: cshort
   PollInvalid {.importc: "POLLNVAL", header: PollHeader.}: cshort
 
-proc address(ipv6: bool, port: uint16): Sockaddr_storage =
-  ## One stack-local family-sized destination; padding and IPv6 flow/scope fields start at zero.
+proc socketAddress(target: NetworkEndpoint): Sockaddr_storage =
+  ## Convert one complete tuple, preserving every IP byte and the supplied port.
   result = default(Sockaddr_storage)
-  if ipv6:
-    # ::1 is the controlled-topology IPv6 destination used by the original proof.
-    let a = cast[ptr Address6](addr result)
-    a.sin6_family = TSa_Family(ord(nativesocket.AF_INET6))
-    a.sin6_port = networkPort(port)
-    a.sin6_addr.s6_addr[15] = 1
-    when defined(macosx):
-      # BSD requires the actual family-specific sockaddr byte length.
-      a.sin6_len = uint8(sizeof(Address6))
+  let ip = target.address
+  if ip.ipv6:
+    let native = cast[ptr Address6](addr result)
+    native.sin6_family = TSa_Family(ord(nativesocket.AF_INET6))
+    native.sin6_port = networkPort(target.port)
+    let bytes = ip.bytes
+    for index in 0..<16: native.sin6_addr.s6_addr[index] = bytes[index]
+    when defined(macosx): native.sin6_len = uint8(sizeof(Address6)) # BSD records carry their own exact extent.
   else:
-    # Preserve IPv4 loopback and its network-order address exactly.
-    let a = cast[ptr Sockaddr_in](addr result)
-    a.sin_family = TSa_Family(ord(nativesocket.AF_INET))
-    a.sin_port = networkPort(port)
-    a.sin_addr.s_addr = networkAddress(0x7f000001'u32)
-    when defined(macosx):
-      # BSD sockaddr_in exposes its length through the public POSIX binding.
-      a.sin_len = uint8(sizeof(Sockaddr_in))
+    let native = cast[ptr Sockaddr_in](addr result)
+    native.sin_family = TSa_Family(ord(nativesocket.AF_INET))
+    native.sin_port = networkPort(target.port)
+    let bytes = ip.ipv4Bytes
+    var integer = 0'u32
+    for octet in bytes: integer = (integer shl 8) or uint32(octet) # Four octets bound every shift.
+    native.sin_addr.s_addr = networkOrder(integer)
+    when defined(macosx): native.sin_len = uint8(sizeof(Sockaddr_in)) # BSD IPv4 uses its family-specific length.
+
+proc socketAddress(ipv6: bool, port: uint16): Sockaddr_storage =
+  ## The legacy entry point explicitly retains its controlled loopback destination.
+  socketAddress(networkEndpoint(loopbackAddress(ipv6), port))
 
 proc addressSize(ipv6: bool): SockLen =
   ## Use the actual family-specific structure extent for every address syscall.
   SockLen(if ipv6: sizeof(Address6) else: sizeof(Sockaddr_in))
 
-proc newDispatcher*(): Dispatcher =
-  ## Construct empty dispatcher metadata; it never owns or closes registered sockets.
-  Dispatcher(descriptors: default(array[2, cint]), count: 0, closed: false)
+proc newDispatcher*(capacity: DispatcherCapacity = 2): Dispatcher =
+  ## Allocate fixed-capacity metadata once; no socket or callback owner is retained.
+  Dispatcher(descriptors: newSeq[cint](int(capacity)), entries: newSeq[PollEntry](int(capacity)),
+    count: 0, cursor: 0, closed: false)
+
+func capacity*(dispatcher: Dispatcher): int =
+  ## Closed metadata has no registration capacity; live storage never grows during dispatch.
+  dispatcher.descriptors.len
+func registrationCount*(dispatcher: Dispatcher): int =
+  ## Observe copied registration occupancy without exporting descriptor storage.
+  dispatcher.count
 
 proc close*(dispatcher: Dispatcher) =
-  ## Closing shared metadata is idempotent; subsequent waits cannot poll reused descriptors.
+  ## Retire all copied registrations before releasing polling storage; endpoints still own their sockets.
   dispatcher.closed = true
-  dispatcher.count = 0
+  dispatcher.count = 0; dispatcher.cursor = 0
+  dispatcher.descriptors = @[]; dispatcher.entries = @[]
 
 proc port*(endpoint: UdpEndpoint): uint16 =
   ## Return the copied assigned port without exporting a mutable native address.
   endpoint.portValue
 
-proc descriptor*(endpoint: UdpEndpoint): cint =
+func descriptor*(endpoint: UdpEndpoint): cint =
   ## Readiness routing compares copied descriptor identities only during the same synchronous dispatch.
   endpoint.descriptor
 
-proc isOpen*(endpoint: UdpEndpoint): bool =
+func isOpen*(endpoint: UdpEndpoint): bool =
   ## Observe whether this endpoint currently owns an OS descriptor.
   endpoint.opened
 
@@ -142,6 +161,7 @@ proc retire(dispatcher: Dispatcher, fd: cint) =
     if dispatcher.descriptors[i] == fd:
       dec dispatcher.count
       dispatcher.descriptors[i] = dispatcher.descriptors[dispatcher.count]
+      if dispatcher.cursor >= dispatcher.count: dispatcher.cursor = 0 # Rotation never indexes a retired tail.
       return
 
 proc `=copy`*(destination: var UdpEndpoint, source: UdpEndpoint) {.error: "UdpEndpoint owns one descriptor".}
@@ -155,6 +175,7 @@ proc `=wasMoved`*(endpoint: var UdpEndpoint) {.nodestroy, inline.} =
   endpoint.opened = false
   endpoint.descriptor = -1
   endpoint.ipv6 = false
+  endpoint.loopbackOnly = false
   endpoint.portValue = 0
   `=wasMoved`(endpoint.registration)
 
@@ -177,7 +198,8 @@ proc unregister*(dispatcher: Dispatcher, endpoint: var UdpEndpoint) =
 proc register*(dispatcher: Dispatcher, endpoint: var UdpEndpoint): bool =
   ## Register one live descriptor once, rejecting exhausted/closed dispatchers without changing them.
   if endpoint.registration != nil: return false # One endpoint cannot belong to two dispatchers.
-  if dispatcher.closed or not endpoint.opened or dispatcher.count == 2: return false
+  if dispatcher.closed or not endpoint.opened or dispatcher.count ==
+      dispatcher.descriptors.len: return false
   # Duplicate registration cannot consume a second slot or route an event twice.
   for i in 0..<dispatcher.count:
     if dispatcher.descriptors[i] == endpoint.descriptor: return false
@@ -196,13 +218,15 @@ proc close*(endpoint: var UdpEndpoint) =
     endpoint.opened = false
     endpoint.portValue = 0
 
-proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
+proc open*(endpoint: var UdpEndpoint, binding: NetworkEndpoint): bool =
   ## Open/bind one nonblocking UDP endpoint; every failed setup path releases the newly created descriptor.
-  if endpoint.opened: return false # Never overwrite a live resource.
+  if endpoint.opened or not binding.valid: return false # Never overwrite a live resource.
+  let ipv6 = binding.address.ipv6
   let fd = socket(cint(ord(if ipv6: nativesocket.AF_INET6 else: nativesocket.AF_INET)),
       cint(ord(nativesocket.SOCK_DGRAM)), cint(ord(nativesocket.IPPROTO_UDP)))
   if fd < 0: return false # No descriptor was acquired.
-  endpoint = UdpEndpoint(descriptor: fd, opened: true, ipv6: ipv6, portValue: 0, registration: nil)
+  endpoint = UdpEndpoint(descriptor: fd, opened: true, ipv6: ipv6, loopbackOnly: false,
+      portValue: 0, registration: nil)
   let flags = fcntl(fd, F_GETFL)
   let descriptorFlags = fcntl(fd, GetFdFlags)
   # Preserve existing flags, make I/O nonblocking and prevent descriptor inheritance across exec.
@@ -210,7 +234,7 @@ proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
       fcntl(fd, SetFdFlags, descriptorFlags or CloseExec) < 0:
     close(endpoint)
     return false
-  var local = address(ipv6, port)
+  var local = socketAddress(binding)
   var size = addressSize(ipv6)
   if bindSocket(fd, addr local, size) != 0 or socketName(fd, addr local, addr size) != 0:
     # A bind/name-query failure has exactly the same descriptor release owner.
@@ -220,30 +244,48 @@ proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
       cast[ptr Sockaddr_in](addr local).sin_port)
   true
 
-proc wait*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
-  ## Copy readiness for all registrations or fail before polling if the caller cannot hold every result.
-  if dispatcher.closed or ready.len < dispatcher.count: return -1
-  var entries = default(array[2, PollEntry])
-  # Each call rebuilds registrations; retired descriptors cannot remain queued in kernel metadata.
-  for i in 0..<dispatcher.count:
-    entries[i].fd = dispatcher.descriptors[i]
-    entries[i].events = PollRead
-  let count = poll(addr entries[0], culong(dispatcher.count), cint(clamp(maximumMs, 0, 10)))
-  if count < 0:
-    # An interrupt yields to the caller's timers; persistent poll errors fail this dispatcher iteration.
-    return if osLastError().int == EINTR.int: 0 else: -1
-  result = 0
-  for i in 0..<dispatcher.count:
-    # Return errors as explicit events rather than reading a descriptor that poll rejected.
-    if entries[i].revents != 0:
-      ready[result] = Ready(descriptor: entries[i].fd,
-          failed: (entries[i].revents and (PollError or PollHangup or PollInvalid)) != 0)
-      inc result
+proc open*(endpoint: var UdpEndpoint, ipv6: bool, port: uint16): bool =
+  ## Compatibility callers retain both loopback binding and exact source filtering.
+  result = endpoint.open(networkEndpoint(loopbackAddress(ipv6), port))
+  if result: endpoint.loopbackOnly = true
 
-proc send*(endpoint: UdpEndpoint, data: pointer, length: int, port: uint16): int =
+proc collectReady(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready],
+    budget: int): int =
+  ## Borrow preallocated poll storage synchronously and rotate ready delivery to prevent starvation.
+  if dispatcher.closed: return -1
+  if dispatcher.count == 0: return 0 # No empty sequence element is ever passed to poll.
+  if budget < 1 or budget > ready.len: return -1
+  for index in 0..<dispatcher.count:
+    dispatcher.entries[index] = PollEntry(fd: dispatcher.descriptors[index], events: PollRead,
+      revents: 0) # Every native field is initialized before the synchronous syscall.
+  let observed = poll(addr dispatcher.entries[0], culong(dispatcher.count), cint(clamp(maximumMs, 0, 10)))
+  if observed < 0:
+    return if osLastError().int == EINTR.int: 0 else: -1 # Retryable interruption yields to caller timers.
+  result = 0
+  var scanned = 0
+  while scanned < dispatcher.count and result < budget:
+    let index = dispatcher.cursor
+    dispatcher.cursor = if index+1 == dispatcher.count: 0 else: index+1
+    inc scanned # At most the bounded registration population is inspected once per turn.
+    if dispatcher.entries[index].revents != 0:
+      ready[result] = Ready(descriptor: dispatcher.entries[index].fd,
+        failed: (dispatcher.entries[index].revents and (PollError or PollHangup or PollInvalid)) != 0)
+      inc result # Descriptor failures remain explicit events, never reads from invalid descriptors.
+
+proc wait*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
+  ## Preserve the legacy all-registration output contract for standalone/pair callers.
+  if ready.len < dispatcher.count: return -1
+  collectReady(dispatcher, maximumMs, ready, ready.len)
+
+proc waitBatch*(dispatcher: Dispatcher, maximumMs: int, ready: var openArray[Ready]): int =
+  ## Copy at most64 ready events fairly; values belong only to this synchronous dispatch turn.
+  collectReady(dispatcher, maximumMs, ready, min(ready.len, MaxReadyBatch))
+
+proc send*(endpoint: UdpEndpoint, data: pointer, length: int, target: NetworkEndpoint): int =
   ## Send one complete borrowed datagram; -2 means retryable, -1 means failed/invalid input.
-  if not endpoint.opened or length < 0 or length > 2048: return -1
-  var destination = address(endpoint.ipv6, port)
+  if not endpoint.opened or not target.valid or length < 0 or length > 2048: return -1
+  if target.address.ipv6 != endpoint.ipv6: return -1 # Families never change through a port-only alias.
+  var destination = socketAddress(target)
   let sent = sendTo(endpoint.descriptor, data, csize_t(length), 0, addr destination, addressSize(endpoint.ipv6))
   if sent < 0:
     # Preserve the existing retry policy for would-block and interrupted datagram sends.
@@ -251,32 +293,50 @@ proc send*(endpoint: UdpEndpoint, data: pointer, length: int, port: uint16): int
   if sent != length: return -1 # Partial datagrams cannot count as delivered packets.
   sent
 
-proc receive*(endpoint: UdpEndpoint, buffer: var openArray[byte], sourcePort: var uint16): int =
-  ## Receive one copied datagram; -2 means retryable, -1 means error, zero includes rejected source scope.
-  sourcePort = 0
+proc send*(endpoint: UdpEndpoint, data: pointer, length: int, port: uint16): int =
+  ## Legacy proof sends retain the original exact loopback target.
+  endpoint.send(data, length, networkEndpoint(loopbackAddress(endpoint.ipv6), port))
+
+proc receive*(endpoint: UdpEndpoint, buffer: var openArray[byte],
+    remote: var NetworkEndpoint): int =
+  ## Copy the whole source tuple before retiring syscall storage; errors retain no previous source.
+  remote = default(NetworkEndpoint)
   if not endpoint.opened or buffer.len == 0: return -1
   var source = default(Sockaddr_storage)
   var size = addressSize(endpoint.ipv6)
   let count = receiveFrom(endpoint.descriptor, addr buffer[0], csize_t(buffer.len), 0, addr source, addr size)
   if count < 0:
-    # No pending read borrows this buffer after a would-block/interrupt result.
-    return if osLastError().int in [EAGAIN.int, EWOULDBLOCK.int, EINTR.int]: -2 else: -1
-  if size != addressSize(endpoint.ipv6): return 0 # Never inspect an incomplete source address.
+    return if osLastError().int in [EAGAIN.int, EWOULDBLOCK.int,
+        EINTR.int]: -2 else: -1 # Retryable OS outcomes preserve no borrow.
+  if size != addressSize(endpoint.ipv6): return 0
+  var ip = default(NetworkAddress)
+  var port = 0'u16
   if endpoint.ipv6:
-    let a = cast[ptr Address6](addr source)
-    if a.sin6_family != TSa_Family(ord(nativesocket.AF_INET6)): return 0
-    # Check all IPv6 bytes; a non-loopback address cannot be attributed to the loopback proof.
-    for i in 0..<15:
-      if a.sin6_addr.s6_addr[i] != 0: return 0
-    if a.sin6_addr.s6_addr[15] != 1: return 0
-    sourcePort = hostPort(a.sin6_port)
+    let native = cast[ptr Address6](addr source)
+    if native.sin6_family != TSa_Family(ord(nativesocket.AF_INET6)): return 0
+    var bytes = default(array[16, byte])
+    for index in 0..<16: bytes[index] = native.sin6_addr.s6_addr[
+        index] # Family/extent prove the entire fixed borrow.
+    ip = ipv6Address(bytes)
+    port = hostPort(native.sin6_port)
   else:
-    # Match the complete IPv4 loopback address before handing its port to LSQUIC.
-    let a = cast[ptr Sockaddr_in](addr source)
-    if a.sin_family != TSa_Family(ord(nativesocket.AF_INET)) or
-        a.sin_addr.s_addr != networkAddress(0x7f000001'u32): return 0
-    sourcePort = hostPort(a.sin_port)
+    let native = cast[ptr Sockaddr_in](addr source)
+    if native.sin_family != TSa_Family(ord(nativesocket.AF_INET)): return 0
+    let integer = networkOrder(native.sin_addr.s_addr) # Network/host swapping is symmetric for this fixed word.
+    var bytes = default(array[4, byte])
+    for index in 0..<4: bytes[index] = byte((integer shr (8*(3-index))) and 255)
+    ip = ipv4Address(bytes)
+    port = hostPort(native.sin_port)
+  if endpoint.loopbackOnly and not ip.loopback: return 0 # Old proof callers retain their documented receive scope.
+  remote = networkEndpoint(ip, port)
   count
+
+proc receive*(endpoint: UdpEndpoint, buffer: var openArray[byte], sourcePort: var uint16): int =
+  ## Existing callers may intentionally discard IP data only after complete source validation.
+  sourcePort = 0
+  var remote = default(NetworkEndpoint)
+  result = endpoint.receive(buffer, remote)
+  if remote.valid: sourcePort = remote.port
 
 proc retirementSelfTest*(ipv6: bool) =
   ## Replay the original idle/ready retirement matrix on both supported controlled-topology families.

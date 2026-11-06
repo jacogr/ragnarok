@@ -6,13 +6,14 @@
 import ../../codec/bounded
 import ../../codec/work/report as work_report
 import ./layout as erasure_layout
+from ../../codec/work/package import MaxBundleBytes
 
 type
   ErasureWord* = distinct uint16 ## Numeric Cantor coordinates corresponding to a little-endian E2 pair.
   ErasureShardIndex* = distinct uint64 ## Full encoded-shard ordinal, including parity positions.
   FieldProductLimit* = distinct uint64 ## Local field multiplication policy, distinct from bytes and shard counts.
   ErasureWordError* {.pure.} = enum ## Refusals expose no partial polynomial, output or work certificate.
-    Uninitialized, None, InvalidShards, InvalidLength, LimitExceeded, InvalidIndex
+    Uninitialized, None, InvalidShards, InvalidLength, LimitExceeded, InvalidIndex, InvalidPadding
   ErasureWordLimits* = object ## Exact logical buffer payload and deterministic field-product budgets.
     bytes*: ByteLimit
     products*: FieldProductLimit
@@ -136,3 +137,118 @@ proc encodeErasureWords*(input: openArray[ErasureWord], shards: ErasureShards,
     completed: ErasureWordCode(data: WordData(words: words, info: ErasureWordInfo(shards: shards,
       originalShards: uint64(original), retainedBytes: retained, workspaceBytes: workspace,
           products: products))))
+
+type
+  ErasureRecoveryInfo* = object ## Copied complete resource facts confer neither source authenticity nor proof validity.
+    length*: BundleLength
+    shards*: ErasureShards
+    originalShards*, missingShards*, retainedBytes*, workspaceBytes*, products*: uint64
+  RecoveryData = ref object ## Only detached reconstructed bytes survive; no caller chunk or index alias is retained.
+    info: ErasureRecoveryInfo
+    bytes: seq[byte]
+  RecoveredErasureChunks* = object ## Default/rejected recovery exposes no partial systematic prefix.
+    data: nil RecoveryData
+proc recoveryInfo*(recovered: RecoveredErasureChunks): ErasureWordResult[ErasureRecoveryInfo] =
+  ## Observe fixed dimensions only after complete recovery and padding validation.
+  let data = recovered.data
+  if data == nil: return ErasureWordResult[ErasureRecoveryInfo](
+      status: ErasureWordError.Uninitialized)
+  ErasureWordResult[ErasureRecoveryInfo](status: ErasureWordError.None, completed: data.info)
+proc recoveredBytes*(recovered: RecoveredErasureChunks): ErasureWordResult[seq[byte]] =
+  ## Return an independent original-length copy; retained checked padding never appears as payload.
+  let data = recovered.data
+  if data == nil: return ErasureWordResult[seq[byte]](status: ErasureWordError.Uninitialized)
+  var bytes = newSeq[byte](int(uint32(data.info.length)))
+  for index in 0..<bytes.len: bytes[index] = data.bytes[index]
+  ErasureWordResult[seq[byte]](status: ErasureWordError.None, completed: bytes)
+proc recoverErasureChunks*(input: openArray[byte], indices: openArray[ErasureShardIndex],
+    length: BundleLength, shards: ErasureShards,
+    limits: ErasureWordLimits): ErasureWordResult[RecoveredErasureChunks] =
+  ## Borrow exactly threshold indexed row-major chunks; bound complete work before allocation and reconstruct without granting authenticity.
+  template fail(reason: ErasureWordError) =
+    return ErasureWordResult[RecoveredErasureChunks](status: reason)
+  let bytes = uint64(uint32(length))
+  if bytes == 0 or bytes > uint64(MaxBundleBytes): fail(ErasureWordError.InvalidLength)
+  let described = erasureGeometry(length, shards)
+  if described.error != ErasureLayoutError.None: fail(ErasureWordError.InvalidShards)
+  let original = int(described.value.originalShards)
+  let count = int(uint16(shards))
+  let width = int(described.value.bundleChunkBytes)
+  if indices.len != original or uint64(input.len) != described.value.paddedBytes:
+    fail(ErasureWordError.InvalidLength)
+  var seen = default(array[1023, bool])
+  var missing = original
+  for index in indices:
+    # Validate before narrowing/indexing; duplicate points would select a zero denominator.
+    if uint64(index) >= uint64(count): fail(ErasureWordError.InvalidIndex)
+    let position = int(uint64(index))
+    if seen[position]: fail(ErasureWordError.InvalidIndex)
+    seen[position] = true
+    if position < original: dec missing
+  var differences = default(array[1024, bool])
+  var differenceCount = 0'u64
+  if missing > 0:
+    for row in 0..<original:
+      for preceding in 0..<row:
+        # All supplied-index XORs fit 1..1023 because the validated coordinates are distinct and below1023.
+        let difference = int(uint64(indices[row]) xor uint64(indices[preceding]))
+        if not differences[difference]:
+          differences[difference] = true
+          inc differenceCount
+  let columns = width div 2
+  let products = if missing == 0: 0'u64 else:
+    differenceCount*31+uint64(columns)*(uint64(original*(original-1) div 2)+uint64(missing*(original-1)))
+  let workspace = uint64(original*sizeof(int))+(if missing == 0: 0'u64 else: uint64(
+      original)*4+2048)
+  let retained = described.value.paddedBytes
+  if retained+workspace > uint64(limits.bytes) or products > uint64(limits.products):
+    fail(ErasureWordError.LimitExceeded)
+  var positions = newSeq[int](original)
+  for index in 0..<original: positions[index] = -1
+  for row in 0..<original:
+    if uint64(indices[row]) < uint64(original): positions[int(uint64(indices[row]))] = row
+  var coefficients, points, inverses: seq[uint16] = @[]
+  if missing > 0:
+    coefficients = newSeq[uint16](original)
+    points = newSeq[uint16](original)
+    inverses = newSeq[uint16](1024)
+    for index in 1..<1024:
+      if differences[index]: inverses[index] = inverse(changeBasis(uint16(index), CantorBasis))
+    for row in 0..<original: points[row] = changeBasis(uint16(uint64(indices[row])), CantorBasis)
+  var output = newSeq[byte](int(retained))
+  for column in 0..<columns:
+    if missing > 0:
+      for row in 0..<original:
+        let offset = row*width+column*2
+        let word = uint16(input[offset]) or (uint16(input[offset+1]) shl 8)
+        coefficients[row] = changeBasis(word, CantorBasis)
+      for order in 1..<original:
+        var row = original-1
+        while row >= order:
+          let difference = int(uint64(indices[row]) xor uint64(indices[row-order]))
+          coefficients[row] = multiply(coefficients[row] xor coefficients[row-1], inverses[difference])
+          dec row
+    for row in 0..<original:
+      let offset = row*width+column*2
+      if positions[row] >= 0:
+        let source = positions[row]*width+column*2
+        output[offset] = input[source]
+        output[offset+1] = input[source+1]
+      else:
+        # Newton evaluation uses supplied-point order; output order is always systematic coordinate order.
+        let point = changeBasis(uint16(row), CantorBasis)
+        var evaluated = coefficients[original-1]
+        var term = original-2
+        while term >= 0:
+          evaluated = multiply(evaluated, point xor points[term]) xor coefficients[term]
+          dec term
+        let word = changeBasis(evaluated, PolynomialBasis)
+        output[offset] = byte(word and 255)
+        output[offset+1] = byte(word shr 8)
+  for index in int(bytes)..<output.len:
+    if output[index] != 0: fail(ErasureWordError.InvalidPadding) # Never hide inconsistent recovered padding by merely truncating the buffer.
+  ErasureWordResult[RecoveredErasureChunks](status: ErasureWordError.None,
+    completed: RecoveredErasureChunks(data: RecoveryData(bytes: output,
+      info: ErasureRecoveryInfo(length: length, shards: shards, originalShards: uint64(original),
+        missingShards: uint64(missing), retainedBytes: retained, workspaceBytes: workspace,
+            products: products))))

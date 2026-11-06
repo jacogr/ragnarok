@@ -30,6 +30,10 @@ proc openDescriptor(path: cstring, flags: cint): cint {.importc: "open", cdecl,
     header: "<fcntl.h>".}
   ## The SDK supplies open's actual variadic ABI; non-creation opens use its two mandatory arguments.
 
+proc readDescriptor(descriptor: cint, buffer: pointer, length: csize_t): int {.importc: "read",
+    cdecl, header: "<unistd.h>", sideEffect.}
+  ## Native Linux/macOS ssize_t matches the host integer width; the public SDK declaration preserves its ABI and permits explicit test-call redirection instead of an unobservable assembler alias.
+
 proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
   ## Open nonblocking, require a regular persistence file and read at most the ceiling plus one detection byte.
   if path.len == 0 or path.len > high(int) - 16:
@@ -52,7 +56,7 @@ proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
   while true:
     let remaining = maximum - uint64(bytes.len)
     let requested = int(min(remaining, 4095'u64)) + 1
-    let count = posix.read(descriptor, addr buffer[0], requested)
+    let count = readDescriptor(descriptor, addr buffer[0], csize_t(requested))
     if count < 0:
       return BoundedFileResult(status: AtomicFileError.IoFailure) # A native error cannot be interpreted as EOF or a successful prefix.
     if count == 0: break # Only actual regular-file EOF authorizes complete bytes.
@@ -65,6 +69,47 @@ proc readBoundedFile*(path: string, limit: ByteLimit): BoundedFileResult =
   if posix.close(closing) != 0:
     return BoundedFileResult(status: AtomicFileError.IoFailure) # A reported retirement failure must not authorize returned bytes.
   BoundedFileResult(status: AtomicFileError.None, completed: bytes)
+
+type BoundedReadCountResult* = object ## Caller-owned scratch may contain partial bytes on failure; only successful EOF exposes a count.
+  case status: AtomicFileError
+  of None: completed: int
+  else: discard # A failed read never reports a successful prefix.
+func error*(outcome: BoundedReadCountResult): AtomicFileError =
+  ## Observe complete EOF or the exact bounded-read refusal.
+  outcome.status
+func value*(outcome: BoundedReadCountResult): int {.requires: outcome.status ==
+    AtomicFileError.None.} =
+  ## Extract only a complete byte count into caller-owned storage.
+  outcome.completed
+proc readFileInto*(path: string, output: var openArray[byte]): BoundedReadCountResult =
+  ## Read directly into caller scratch, avoiding unwipeable intermediate secret copies. Caller must clear scratch on every path.
+  ## Capacity is exclusive: reserve one detection byte beyond the largest accepted file; a full span is refused.
+  if output.len < 1: return BoundedReadCountResult(status: AtomicFileError.LimitExceeded)
+  if path.len == 0 or path.len > high(int)-16:
+    return BoundedReadCountResult(status: AtomicFileError.InvalidPath)
+  for character in path:
+    if character == char(0): return BoundedReadCountResult(status: AtomicFileError.InvalidPath)
+  var nativePath = path
+  var descriptor = openDescriptor(nativePath.toCString(), O_RDONLY or O_CLOEXEC or O_NONBLOCK)
+  if descriptor < 0: return BoundedReadCountResult(status: AtomicFileError.IoFailure)
+  defer:
+    if descriptor >= 0: discard posix.close(descriptor) # Every refusal still retires the exact descriptor before caller scratch may disappear.
+  var metadata = default(Stat)
+  if posix.fstat(descriptor, metadata) != 0 or not S_ISREG(metadata.st_mode):
+    return BoundedReadCountResult(status: AtomicFileError.IoFailure)
+  var used = 0
+  while true:
+    if used == output.len: return BoundedReadCountResult(status: AtomicFileError.LimitExceeded)
+    let remaining = output.len-used
+    let amount = readDescriptor(descriptor, addr output[used], csize_t(min(remaining, 4096)))
+    if amount < 0: return BoundedReadCountResult(status: AtomicFileError.IoFailure)
+    if amount == 0: break # Only actual EOF may expose the complete caller-owned span.
+    if amount > remaining: return BoundedReadCountResult(status: AtomicFileError.IoFailure)
+    used += amount # Nonnegative read count and the remaining-span comparison prove the sum remains within capacity.
+  let closing = descriptor
+  descriptor = -1
+  if posix.close(closing) != 0: return BoundedReadCountResult(status: AtomicFileError.IoFailure)
+  BoundedReadCountResult(status: AtomicFileError.None, completed: used)
 
 proc temporaryFile(path: cstring): cint {.importc: "mkstemp", cdecl, header: "<stdlib.h>".}
   ## Standard libc atomically creates a unique private 0600 file and fills the six-byte suffix.

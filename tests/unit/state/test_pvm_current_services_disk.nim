@@ -4,7 +4,7 @@
 ## Real signed current preparation crosses native durable publication, exact RPC exclusion and strict complete-map reopen.
 import std/[assertions, syncio, envvars, monotimes, times, base64, strutils]
 import std/posix/posix
-import ../../../src/app/[services, options, preparation_worker]
+import ../../../src/app/[services, options, preparation_worker, audit_branches]
 import "../../../src/app/current/block/input" as current_block_input
 import ../../../src/app/current/handoff as current_handoff
 import ../../../src/app/[candidate, handoff, chain]
@@ -26,6 +26,33 @@ proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Enable failure only after synchronized Done, when the worker no longer calls hashing primitives.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe the post-collection host installation independently of status flags.
+proc prepareAuditChild(owner: var Services, input: var CurrentBlockInput,
+    parent: genesis.BlockHash, wire: openArray[byte]): PreparedCurrentChainUpdate {.raises.} =
+  ## Real bounded intake reaches the same current STF worker through an independently retained parent.
+  let resources = CurrentBlockInputLimits(blockBytes: ByteLimit(uint64(wire.len)),
+      ancestorBytes: ByteLimit(10000), ancestors: ElementLimit(4))
+  let limits = currentCandidateLimits()
+  let unknown = owner.beginAuditBranchInput(input, default(genesis.BlockHash),
+      ByteLimit(uint64(wire.len)), [], resources, limits)
+  assert unknown.error != CurrentBlockInputError.None
+  let admitted = owner.beginAuditBranchInput(input, parent, ByteLimit(uint64(wire.len)),
+      [], resources, limits)
+  assert admitted.error == CurrentBlockInputError.None
+  assert input.append(admitted.value, wire, true) == CurrentBlockInputError.None
+  let ticket = owner.beginAuditBranchPreparation(input, admitted.value, parent)
+  assert ticket.error == PreparationError.None and owner.rpc.chainPaused
+  let deadline = getMonoTime()+initDuration(seconds = 20)
+  while owner.preparationPhase != PreparationPhase.Done:
+    # Only scalar state is observed while the worker owns the retained parent.
+    assert getMonoTime() < deadline
+    owner.tick(0)
+    yieldCurrentDiskThread()
+  assert owner.collectPreparation(default(PreparationTicket)).kind ==
+      PreparationCompletionKind.Uninitialized and owner.rpc.chainPaused
+  let finished = owner.collectPreparation(ticket.value)
+  assert finished.kind == PreparationCompletionKind.CurrentCompleted
+  assert finished.currentValue.error == CurrentBlockInputError.None and not owner.rpc.chainPaused
+  finished.currentValue.value
 proc scenario(context: CurrentChainFixture, managed, network: bool) {.raises.} =
   ## Each layout/RPC combination publishes once, acknowledges once, and strictly reopens its actual durable child.
   var path = "pvm-current-services-disk-chain"
@@ -50,9 +77,31 @@ proc scenario(context: CurrentChainFixture, managed, network: bool) {.raises.} =
   assert owner.start(options, "current durable Services")
   let parent = owner.stateSnapshot.value
   let parentHash = owner.chainView.bestBlock.value.blockHash
-  let update = prepareCurrentServicesUpdate(owner, input, wire)
+  let update = if not managed and not network:
+      prepareAuditChild(owner, input, parentHash, wire)
+    else: prepareCurrentServicesUpdate(owner, input, wire)
   assert sameStateSnapshot(parent, owner.stateSnapshot.value)
   assert array[32, byte](parentHash) == array[32, byte](owner.chainView.bestBlock.value.blockHash)
+  if not managed and not network:
+    # A fully prepared child can be retained without adopting it or changing selected state.
+    assert owner.configureAuditBranches(AuditBranchLimits(branches: ElementLimit(2),
+        bytes: ByteLimit(64000000)))
+    let parentBranch = owner.auditBranchParent(parentHash)
+    assert parentBranch.error == ApplicationChainError.None
+    assert sameStateSnapshot(parentBranch.value.stateSnapshot.value, parent)
+    assert owner.retainAuditBranch(default(PreparedCurrentChainUpdate)) ==
+        AuditBranchError.Uninitialized
+    assert owner.retainAuditBranch(update) == AuditBranchError.None
+    assert owner.retainAuditBranch(update) == AuditBranchError.Duplicate
+    let sideHash = update.currentUpdateChildContext.hash
+    let branch = owner.auditBranchParent(sideHash).value
+    let next = owner.nextAuditBranch(0)
+    assert owner.auditBranchCount == 1 and next.serial == 1 and
+        array[32, byte](next.hash) == array[32, byte](sideHash)
+    assert owner.nextAuditBranch(next.serial).serial == 0
+    assert sameStateSnapshot(branch.stateSnapshot.value, update.currentUpdateState)
+    assert owner.chainView.blockAt(sideHash).error == GenesisError.Unavailable and
+        sameStateSnapshot(owner.stateSnapshot.value, parent)
   equalCurrentDiskMap(update.currentUpdateState, context.source.currentConsensusState.value)
   var peer = -1.cint
   var pending = ""
@@ -92,6 +141,11 @@ proc scenario(context: CurrentChainFixture, managed, network: bool) {.raises.} =
   let installed = owner.takeCurrentAccumulation()
   assert installed.error == CurrentHandoffError.None
   let childHash = installed.value.blockHash
+  if not managed and not network:
+    # Once the side copy is redundant, explicitly installed finality releases its reservation.
+    assert owner.publishFinalized(childHash) == ViewFinalizeError.None
+    assert owner.auditBranchCount == 0 and owner.nextAuditBranch(0).serial == 0
+
   assert sameStateSnapshot(owner.stateSnapshot.value, update.currentUpdateState)
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
   assert owner.preparationAvailable and owner.stateProofAvailable

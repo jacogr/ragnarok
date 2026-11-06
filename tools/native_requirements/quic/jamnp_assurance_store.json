@@ -1,0 +1,17 @@
+{
+  "defines": [],
+  "directory": "quic",
+  "includes": [
+    "crypto",
+    "storage_io"
+  ],
+  "libraries": [
+    "crypto",
+    "storage_io"
+  ],
+  "observers": [
+    "io_fsync",
+    "io_read"
+  ],
+  "prepared": false
+}

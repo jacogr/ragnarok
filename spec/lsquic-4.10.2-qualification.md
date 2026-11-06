@@ -20,9 +20,8 @@ nonce again. The unpatched candidate fails the first MTU assertion.
 
 The manifest binds the patch digest and the input and output source digests
 to the candidate revision. The build stages a fresh copy under
-`build/native/lsquic-source` and verifies both patches there when integrating
-with the JAMNP-S stream-reset layer. The reset API remains supplied by that
-layer.
+`build/native/lsquic-source` and verifies both patches there. The unchanged stream-reset patch from
+master is rebound to the candidate using its input and output source digests.
 
 ## Qualification
 
@@ -72,3 +71,9 @@ nonce to nonce only and back. Symbol inspection found `lsquic_stream_reset`
 in the static archive and linked bridge only for the two-patch configuration.
 Returning to that configuration reused its cache. The four build-tool tests
 passed, including cache selection across pin and patch changes.
+
+After the JAMNP-S stack landed, the upgrade was merged with master at
+`3bf3b819fcb3549a9c9a10661ae1e936a2953962`. The resulting patch manifest,
+build driver, and native bridge inputs matched the combined qualification
+byte for byte. All six build-tool tests passed, including the landed staging
+and digest rejection tests updated to exercise both patches.

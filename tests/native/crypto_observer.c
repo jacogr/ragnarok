@@ -6,6 +6,7 @@
 
 /* Test-only observation/fault layer; production links the unmodified maintained primitive bridge. */
 #include "primitive_bridge.h"
+#include <stdatomic.h>
 
 /* The test build renames only project bridge symbols; upstream sources remain pristine. */
 void rc_real_wipe(void *, size_t);
@@ -18,8 +19,11 @@ int rc_real_ed_sign(const uint8_t *, const uint8_t *, size_t, uint8_t *);
 static void *target;
 static size_t target_length;
 static int calls, before_nonzero, after_zero, failures;
-/* Sequential fault tests count attempted Blake2b calls and may refuse after a known successful prefix. */
-static int blake_calls, blake_remaining = -1;
+/* Concurrent node/worker attempts share an atomic count; delayed fault selection remains quiescent and sequential. */
+static atomic_int blake_calls = 0;
+static int blake_remaining = -1;
+/* Sequential signature attempts are observed only after the signing worker has retired. */
+static atomic_int sign_calls = 0;
 
 /* Reset before each isolated fixture; only the wipe callback may inspect the still-live target. */
 void ro_watch(void *address, size_t length) {
@@ -34,17 +38,20 @@ int ro_after_zero(void) { return after_zero; }
 /* Fault flags apply only to the observer-linked sequential test adapter. */
 void ro_fail(int flags) {
     failures = flags;
-    blake_calls = 0;
+    atomic_store_explicit(&blake_calls, 0, memory_order_relaxed);
+    atomic_store_explicit(&sign_calls, 0, memory_order_relaxed);
     blake_remaining = -1;
 }
 /* Refuse after a bounded number of successful calls, allowing cleanup after completed child hashes to be tested. */
 void ro_blake_after(int successful) {
     failures = 0;
-    blake_calls = 0;
+    atomic_store_explicit(&blake_calls, 0, memory_order_relaxed);
     blake_remaining = successful;
 }
 /* Expose copied attempt counts to prove all preflight failures occur before cryptographic work. */
-int ro_blake_calls(void) { return blake_calls; }
+int ro_blake_calls(void) { return atomic_load_explicit(&blake_calls, memory_order_relaxed); }
+/* Fixed copied count proves no private signature is attempted before complete durability. */
+int ro_sign_calls(void) { return atomic_load_explicit(&sign_calls, memory_order_relaxed); }
 
 /* Inspect the live object before and after the real explicit cleanse, before the destructor can free it. */
 void rc_wipe(void *address, size_t length) {
@@ -70,7 +77,7 @@ void rc_wipe(void *address, size_t length) {
 }
 /* Inject a backend refusal without modifying output; successful calls use exactly the production bridge. */
 int rc_blake2b256(const uint8_t *data, size_t length, uint8_t out[32]) {
-    ++blake_calls;
+    atomic_fetch_add_explicit(&blake_calls, 1, memory_order_relaxed);
     /* Both immediate and delayed refusals leave the caller output untouched. */
     if ((failures & 1) || blake_remaining == 0) return 0;
     /* A negative counter disables delayed refusal; only a positive budget is decremented. */
@@ -87,5 +94,6 @@ int rc_ed_public(const uint8_t seed[32], uint8_t out[32]) {
 }
 /* Signing failures must not publish a zero/default signature. */
 int rc_ed_sign(const uint8_t seed[32], const uint8_t *data, size_t length, uint8_t out[64]) {
+    atomic_fetch_add_explicit(&sign_calls, 1, memory_order_relaxed);
     return failures & 8 ? 0 : rc_real_ed_sign(seed, data, length, out);
 }

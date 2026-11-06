@@ -7,7 +7,7 @@
 ## Provides a standalone Hastur test executable; assertions and expected output form its harness
 ## interface.
 
-import std/[assertions, envvars, syncio]
+import std/[assertions, envvars, syncio, monotimes, times]
 include ../../../src/quic/transport
 
 # The real transport invokes identity validation only while the stack owner remains alive.
@@ -180,12 +180,110 @@ proc admissionRefusal(cert, key: string, ipv6: bool) =
   assert counts.refusals == 1 and counts.peerCloses == 0 # Refused connections never occupy a peer slot.
 
 # Exercise native construction failure and success with the exact production I/O owner and LSQUIC engine.
+type IdleStream = object ## One open bidirectional stream confirms the handshake before transport-only idle observation.
+  handle: NativeStream
+  sent, got, failed: bool
+proc idleStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
+  ## Exchange exactly one byte each way, then leave the stream open without application traffic.
+  let flow = cast[ptr IdleStream](user)
+  case event
+  of 0:
+    flow.handle = handle
+    wantRead(handle, 1)
+    wantWrite(handle, 1)
+  of 1:
+    var octet = 0'u8
+    let count = streamRead(handle, addr octet, 1)
+    if count == -2: return
+    if count == 1 and octet == 42:
+      flow.got = true
+      wantRead(handle, 0)
+    else:
+      flow.failed = true # Idle shutdown may end a silent control; healthy keepalive must not.
+      wantRead(handle, 0)
+  of 2:
+    if flow.sent:
+      wantWrite(handle, 0)
+      return # A queued/spurious writable callback must never refresh idle with another app byte.
+    var octet = 42'u8
+    let count = streamWrite(handle, addr octet, 1)
+    if count == -2: return
+    if count != 1: flow.failed = true
+    else: flow.sent = true
+    wantWrite(handle, 0)
+    discard streamFlush(handle) # No FIN or further app writes can artificially refresh idle state.
+  of 3: flow.handle = NativeStream(nil)
+  of 4:
+    flow.failed = true
+    wantRead(handle, 0)
+    wantWrite(handle, 0)
+  else: discard # No other event changes the independently observed transcript.
+
+proc idlePolicy(cert, key: string, ipv6, keepalive: bool) =
+  ## No application stream/traffic can mask idle expiry: only configured QUIC pings keep this pair alive.
+  var server, client = default(Transport)
+  var serverFlow, clientFlow = default(IdleStream)
+  defer:
+    client.closeTransport()
+    server.closeTransport()
+  assert server.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000", addr serverFlow,
+    acceptFixture, idleStream, multi = true, ipv6 = ipv6, idleSeconds = 3, keepalive = keepalive)
+  assert client.openTransport(false, false, 0, cert, key, "jamnp-s/1/00000000", addr clientFlow,
+    acceptFixture, idleStream, ipv6 = ipv6, idleSeconds = 3, keepalive = keepalive)
+  assert client.connectTransport(server.localPort)
+  let handshakeDeadline = getMonoTime()+initDuration(seconds = 3)
+  while server.authenticatedConnections == 0 or client.authenticatedConnections == 0:
+    assert getMonoTime() < handshakeDeadline
+    assert server.pollTransport(1) and client.pollTransport(1)
+  client.openStream()
+  let streamDeadline = getMonoTime()+initDuration(seconds = 3)
+  while not (serverFlow.sent and serverFlow.got and clientFlow.sent and clientFlow.got):
+    assert getMonoTime() < streamDeadline
+    assert server.pollTransport(1) and client.pollTransport(1)
+    assert not serverFlow.failed and not clientFlow.failed
+  # Pinned LSQUIC issues up to eight connection IDs at60/minute; those real control packets
+  # refresh idle during bootstrap. Observe beyond8s bootstrap +3s idle, rather than mistaking it for keepalive.
+  let deadline = getMonoTime()+initDuration(seconds = 14)
+  while getMonoTime() < deadline:
+    assert server.pollTransport(1) and client.pollTransport(1)
+    if keepalive:
+      assert not serverFlow.failed and not clientFlow.failed
+      assert server.closedConnections == 0 and client.closedConnections == 0, "configured PING must prevent idle retirement"
+    elif server.closedConnections > 0 or client.closedConnections > 0:
+      return # Same idle policy without pings must actually expire, validating the positive control.
+  assert keepalive, "explicit silent timeout must expire without application traffic"
+
+proc windowPolicy(cert, key: string) =
+  ## Optional public receive windows refuse invalid domains atomically and accept the pinned minimum with real TLS resources.
+  var owner = default(Transport)
+  var token = 0
+  defer: owner.closeTransport()
+  for window in [1, 16383]:
+    # Each invalid half uses genuine otherwise-valid credentials; refusal cannot be attributed to missing test files.
+    assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr token, rejectFixtureIdentity, stream, streamWindow = window)
+    assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr token, rejectFixtureIdentity, stream, connectionWindow = window)
+    assert owner.engine == nil and not owner.socket.isOpen
+  assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+    addr token, rejectFixtureIdentity, stream, streamWindow = 65536, connectionWindow = 32768)
+  assert owner.engine == nil and not owner.socket.isOpen
+  assert owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+    addr token, rejectFixtureIdentity, stream, streamWindow = 16384, connectionWindow = 16384)
+  assert owner.pollTransport(0)
+  owner.closeTransport()
+
 proc main() {.raises.} =
   let args = @[getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")]
   assert args[0].len > 0 and args[1].len > 0, "missing prepared native fixtures"
   var owner = default(Transport)
   var token: byte = 0
+  assert not owner.openTransport(true, false, 0, args[0], args[1], "jamnp-s/1/00000000",
+    addr token, acceptFixture, stream, idleSeconds = 0, keepalive = true)
+  assert owner.transportStatus == -1 # Invalid timing must not acquire a socket or native owner.
   assert owner.transportStatus == -1
+  assert owner.closedConnections == 0 and owner.authenticatedConnections ==
+      0 # Default/retired metrics cannot dereference a missing engine.
   assert not owner.observePeers(peerEvent) # Failed registration on a default owner retains no callback.
   assert not owner.pollTransport(0)
   owner.closeTransport()
@@ -220,9 +318,13 @@ proc main() {.raises.} =
     incoming.closeTransport()
     assert outgoing.pollTransport(0)
     outgoing.closeTransport()
+  windowPolicy(args[0], args[1])
   for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
     saturation(args[0], args[1], ipv6)
     admissionRefusal(args[0], args[1], ipv6)
+  idlePolicy(args[0], args[1], false, false)
+  idlePolicy(args[0], args[1], false, true)
+  idlePolicy(args[0], args[1], true, true)
   echo "Nimony shared transport: 4 IPv4/IPv6 engine pairs passed"
   echo "Nimony transport: 16 IPv4/IPv6 native setup/teardown cycles passed"
 

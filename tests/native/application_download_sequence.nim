@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent real TLS responder and durable-map witness for the actual application executable.
+import ../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import ../../src/app/download/policy as download_policy
 import "../../src/jamnp-s/block/download/loop" as block_download_loop
@@ -38,7 +40,7 @@ proc main() {.raises.} =
         1: 0 else: first + index]))
     modes.add(if mode == "timeout" and index == 1: NoFin else: DownloadTransferMode.Healthy)
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, modes)
+  assert servers.openSequenceResponders(requests, responses, modes, alpn = fixtureChainAlpn("sequence-chain.json"))
   let port = servers.port(true)
   writeFile("sequence-ready", $port) # Python launches the real command only after observing a complete bounded port value.
   let started = getMonoTime()

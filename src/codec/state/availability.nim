@@ -46,6 +46,8 @@ type
   AvailabilityRead* = object ## Complete prefix decoding returns its owner and exact consumed extent together.
     snapshot*: AvailabilitySnapshot
     consumed*: int
+  AvailabilityInspection* = object ## Allocation-free complete-prefix accounting allows callers to precharge aggregate parent decodes.
+    consumed*, cores*, present*: int
   AvailabilityInfo* = object ## Fixed copied metadata describes slot and present counts, without exporting mutable arrays.
     cores*, present*: int
   ## Private synchronous descriptor never escapes as a detached span into caller memory.
@@ -165,6 +167,15 @@ proc scan(input: openArray[byte], config: AvailabilityConfig): AvailabilityResul
   layout.consumed = cursor
   AvailabilityResult[Layout](status: AvailabilityError.None, completed: layout)
 
+proc inspectAvailabilityState*(input: openArray[byte],
+    config: AvailabilityConfig): AvailabilityResult[AvailabilityInspection] =
+  ## Reuse the exact bounded parent/child scan without allocating snapshots or report owners.
+  let checked = scan(input, config)
+  if checked.error != AvailabilityError.None:
+    return AvailabilityResult[AvailabilityInspection](status: checked.error)
+  AvailabilityResult[AvailabilityInspection](status: AvailabilityError.None,
+    completed: AvailabilityInspection(consumed: checked.value.consumed,
+      cores: int(uint64(config.guarantee.cores)), present: checked.value.present))
 proc decodeAvailabilityState*(input: openArray[byte],
     config: AvailabilityConfig): AvailabilityResult[AvailabilityRead] =
   ## Decode complete fixed-core state into private immutable parent/child storage only after full preflight.

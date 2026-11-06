@@ -1,0 +1,197 @@
+# Copyright (c) 2026 Ragnarök contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+## Actual Services graph gates, worker cancellation and joined application-node shutdown over authenticated TLS.
+import std/[assertions, envvars, syncio, strutils, monotimes, times]
+import ../../../src/app/[node as application_node, services, options]
+import ../../../src/app/proof/worker
+import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, read_client,
+    read_validation, canonical_read]
+import ../../../src/chain/[genesis, parameters, provider]
+import ../../../src/codec/header
+import ../../../src/codec/state/safrole
+import ../../../src/state/[store, range_proof]
+import ../../../src/rpc/server
+import ../../../src/lib/json/writer as json_writer
+import ../../support/[jamnp_topology_fixture, jamnp_node_probe, jamnp_read_validation_context]
+proc hex(input: openArray[byte]): string =
+  ## Independent canonical chainspec encoding does not use a production configuration serializer.
+  result = ""
+  for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+proc chainText(saved: BlockSnapshot): string =
+  ## Retain the complete fixture's original opaque chapters and exact header/profile.
+  var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
+  assert encodeOwnedHeader(saved.header, wire).error == HeaderError.None
+  var entries = JsonObject()
+  for index in 0..<saved.keyCount:
+    let key = saved.keyAt(StateKeyIndex(index))
+    entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
+  $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
+    ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
+    milliseconds: int, now = StateTime(7)) {.raises.} =
+  ## Actor polling precedes ordinary Services ticks; all canonical CPU work stays outside native callbacks.
+  let deadline = getMonoTime()+initDuration(milliseconds = milliseconds)
+  while getMonoTime() < deadline:
+    assert host.poll(getMonoTime(), now, 0)
+    probe.poll()
+    services.tick(uint32(host.peerCount))
+proc main() {.raises.} =
+  ## Missing finality, real read replies, cancellation and foreign worker ownership remain independent gates.
+  let saved = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])
+  let path = "application-node-chain.json"
+  writeFile(path, chainText(saved.value))
+  var options = default(Options)
+  assert parseCanonicalOptions(@["server", "--chain", path, "--with-state"], options)
+  var services = default(Services)
+  var host = default(ApplicationNode)
+  var probe = default(NodeProbe)
+  defer:
+    probe.close()
+    host.close()
+    services.close() # Services storage and every joined worker outlive the borrowing node host.
+  assert services.start(options, "application node")
+  let protocol = services.nodeProtocol
+  let config = initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"),
+    protocol, streams = 512)
+  assert host.open(services, config, topologyLimits(), StateTime(7)) == NodeError.NoFinality
+  let selected = services.chainView.bestBlock.value
+  let hash = selected.blockHash
+  let expectedRoot = array[32, byte](selected.stateRoot)
+  let expectedKeys = selected.keyCount
+  let verificationPolicy = readVerificationLimits()
+  assert services.publishFinalized(default(BlockHash)) == ViewFinalizeError.UnknownBlock
+  assert services.publishFinalized(hash) == ViewFinalizeError.None
+  assert host.open(services, config, topologyLimits(), StateTime(7)) == NodeError.None
+  probe.open(host.localPort, protocol)
+  let deadline = getMonoTime()+initDuration(seconds = 3)
+  while not probe.authenticated and getMonoTime() < deadline: pump(host, services, probe, 1)
+  assert probe.authenticated, "real application peer authenticates configured genesis ALPN"
+  var hello = @[0'u8, 37, 0, 0, 0]
+  for octet in array[32, byte](hash): hello.add(octet)
+  hello.add(7)
+  for index in 0..<4: hello.add(0) # Slot is E4, followed by canonical zero-leaf natural.
+  let persistent = probe.issue(hello, persistent = true)
+  pump(host, services, probe, 30)
+  let peer = host.peerAt(0).value
+  assert host.source(peer).error == NodeError.None
+  var request = @[128'u8, 37, 0, 0, 0]
+  for octet in array[32, byte](hash): request.add(octet)
+  request.add(1)
+  for index in 0..<4: request.add(0)
+  let reading = probe.issue(request, persistent = true)
+  pump(host, services, probe, 30)
+  assert not services.stateProofActive and probe.bytes(reading).len == 0, "application read awaits FIN"
+  probe.enable(reading, finish = true)
+  pump(host, services, probe, 80)
+  assert probe.flows[reading].receivedFin and not probe.flows[reading].reset
+  assert probe.bytes(reading) == @[0'u8, 0, 0, 0]
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let outgoingRequest = decodeReadRequest(ReadKind.Blocks, request.toOpenArray(5,
+      request.len-1)).value
+  probe.expectRead(request, @[0'u8, 0, 0, 0])
+  let foreignDuringNetwork = services.beginNetworkRead(outgoingRequest)
+  assert foreignDuringNetwork.error == StateProofAdmissionError.None
+  let outgoing = host.request(peer, outgoingRequest)
+  assert outgoing.error == NodeError.None and host.requestLive(outgoing.value)
+  pump(host, services, probe, 80)
+  let reply = host.takeReply(outgoing.value)
+  assert reply.error == ReadError.None and reply.value.valid
+  assert reply.value.bytes == @[0'u8, 0, 0, 0] and probe.served == 1
+  assert not host.requestLive(outgoing.value)
+  assert services.stateProofActive and services.rpc.chainPaused,
+    "outbound network collection leaves a foreign canonical worker lease intact"
+  assert services.beginReadVerification(outgoingRequest, reply.value.bytes,
+      verificationPolicy).error == StateProofAdmissionError.Busy
+  let cancelledOutgoing = host.request(peer, outgoingRequest)
+  assert cancelledOutgoing.error == NodeError.None and host.cancelRequest(cancelledOutgoing.value)
+  pump(host, services, probe, 30)
+  assert probe.served == 1 and services.stateProofActive and services.rpc.chainPaused
+  assert services.collectStateProof(foreignDuringNetwork.value).kind ==
+      ProofWorkerCompletionKind.ReadCompleted
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let stateRequest = readStateRequest(hash)
+  let prepared = serveCanonicalRead(services.chainView, stateRequest)
+  assert prepared.error == ReadError.None
+  let stateWire = prepared.value.bytes
+  var stateRequestWire = @[129'u8, 98, 0, 0, 0]
+  for octet in stateRequest.payload: stateRequestWire.add(octet)
+  probe.expectRead(stateRequestWire, stateWire)
+  let acquire = host.request(peer, stateRequest)
+  assert acquire.error == NodeError.None
+  pump(host, services, probe, 80)
+  let acquired = host.takeReply(acquire.value)
+  assert acquired.error == ReadError.None and acquired.value.valid
+  let acquiredWire = acquired.value.bytes
+  let verification = services.beginReadVerification(stateRequest, acquiredWire, verificationPolicy)
+  assert verification.error == StateProofAdmissionError.None
+  assert services.stateProofActive and services.rpc.chainPaused
+  while services.stateProofPhase != ProofWorkerPhase.Done: pump(host, services, probe, 1)
+  assert services.stateProofActive and services.rpc.chainPaused, "Done verification retains the graph/RPC lease"
+  let verified = services.collectStateProof(verification.value)
+  assert verified.kind == ProofWorkerCompletionKind.ReadVerified
+  assert verified.verifiedReadValue.error == ReadVerificationError.None
+  let page = verified.verifiedReadValue.value.statePage
+  assert page.complete and page.len == expectedKeys
+  assert array[32, byte](page.root) == expectedRoot
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  var badWire: seq[byte] = @[]
+  for octet in acquiredWire: badWire.add(octet)
+  assert badWire.len > 0
+  badWire[badWire.len-1] = badWire[badWire.len-1] xor 1
+  let rejected = services.beginReadVerification(stateRequest, badWire, verificationPolicy)
+  assert rejected.error == StateProofAdmissionError.None
+  while services.stateProofPhase != ProofWorkerPhase.Done: pump(host, services, probe, 1)
+  let failed = services.collectStateProof(rejected.value)
+  assert failed.kind == ProofWorkerCompletionKind.ReadVerified
+  assert failed.verifiedReadValue.error == ReadVerificationError.StateFailure
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let discarded = services.beginReadVerification(stateRequest, acquiredWire, verificationPolicy)
+  assert discarded.error == StateProofAdmissionError.None
+  while services.stateProofPhase != ProofWorkerPhase.Done: pump(host, services, probe, 1)
+  assert services.cancelStateProof(discarded.value)
+  assert services.stateProofActive and services.rpc.chainPaused
+  assert services.collectStateProof(discarded.value).kind == ProofWorkerCompletionKind.Cancelled
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  let cancelled = probe.issue(request)
+  let start = getMonoTime()
+  while not services.stateProofActive and getMonoTime()-start < initDuration(seconds = 3):
+    assert host.poll(getMonoTime(), StateTime(7), 0)
+    probe.poll()
+  assert services.stateProofActive, "application host owns the admitted worker lease"
+  assert services.publishFinalized(hash) == ViewFinalizeError.Uninitialized, "busy finality never reads the borrowed graph"
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime()-start < initDuration(seconds = 3)
+    probe.poll() # Deliberately keep Done uncollected while the peer reset is queued.
+  probe.abort(cancelled)
+  probe.poll()
+  pump(host, services, probe, 50)
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  assert not probe.flows[cancelled].receivedFin, "cancelled application job emits no successful FIN"
+  let beforeClock = probe.bytes(persistent)
+  pump(host, services, probe, 30, StateTime(8))
+  assert probe.bytes(persistent) == beforeClock, "local clock ticks never rebroadcast the unchanged canonical header"
+  discard probe.issue(request)
+  let shutdownStart = getMonoTime()
+  while not services.stateProofActive and getMonoTime()-shutdownStart < initDuration(seconds = 3):
+    assert host.poll(getMonoTime(), StateTime(8), 0)
+    probe.poll()
+  assert services.stateProofActive, "shutdown begins with this host's actual admitted read"
+  host.close()
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  assert services.stateProofPhase == ProofWorkerPhase.Idle, "owned read is joined before canonical retirement"
+  assert host.localPort == 0 and not host.isOpen
+  assert host.open(services, config, topologyLimits(), StateTime(8)) == NodeError.None
+  let decoded = decodeReadRequest(ReadKind.Blocks, request.toOpenArray(5, request.len-1))
+  assert decoded.error == ReadError.None
+  let foreign = services.beginReadVerification(stateRequest, acquiredWire, verificationPolicy)
+  assert foreign.error == StateProofAdmissionError.None
+  host.close()
+  assert services.stateProofActive and services.rpc.chainPaused, "closing an idle host leaves a foreign worker lease intact"
+  services.stopStateProofs()
+  assert not services.stateProofActive and not services.rpc.chainPaused
+  echo "jamnp application node: managed TLS reads and exact lease shutdown passed"
+try:
+  main()
+except:
+  quit 2 # Setup failures cannot stand in for a successful production host transcript.

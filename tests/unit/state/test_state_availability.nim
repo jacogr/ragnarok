@@ -76,6 +76,12 @@ proc main() {.raises.} =
   assert inspected.error == GuaranteeError.None and inspected.value.consumed ==
       standalone.value.len
   var wire = encoded.value.value
+  let inspectedState = inspectAvailabilityState(wire, config)
+  assert inspectedState.error == AvailabilityError.None
+  assert inspectedState.value.consumed == wire.len and inspectedState.value.cores == 2 and
+      inspectedState.value.present == 1
+  assert inspectAvailabilityState(wire.toOpenArray(0, wire.high-1), config).error ==
+      AvailabilityError.Truncated
   let decoded = decodeAvailabilityState(wire, config)
   assert decoded.error == AvailabilityError.None
   var parent = decoded.value.snapshot

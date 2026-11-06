@@ -753,6 +753,11 @@ proc selected(owner: OwnedWorkItem): PackageResult[ItemLayout] {.raises: [].} =
     return PackageResult[ItemLayout](status: PackageError.InvalidIndex) # Defensive guard for private handle invariants.
   PackageResult[ItemLayout](status: PackageError.None, completed: data.layout.items[owner.index])
 
+func sameWorkPackage*(left, right: OwnedWorkPackage): bool =
+  ## Compare original immutable owner identity; independently decoded equal bytes cannot replace executed inputs.
+  let data = left.data
+  data != nil and data == right.data
+
 proc workPackageInfo*(owner: OwnedWorkPackage): PackageResult[PackageInfo] {.raises: [].} =
   ## Copy fixed package metadata; callers cannot modify retained context or sequence storage.
   # Reject uninitialized owners.

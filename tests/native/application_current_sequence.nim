@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent TLS requests and complete durable-map checks qualify the actual current command executable.
+import ../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import ../../src/app/current/download/policy as current_download_policy
 import ../../src/app/services
@@ -88,9 +90,10 @@ proc main() {.raises.} =
   let resumed = mode in ["journal-resumed", "managed-resumed", "maintenance-resumed",
       "preimages-resumed", "rotated-resumed"]
   if resumed:
-    assert servers.openSequenceResponders(@[requests[0]], @[responses[0]], @[modes[0]])
+    assert servers.openSequenceResponders(@[requests[0]], @[responses[0]], @[modes[0]],
+        alpn = fixtureChainAlpn("current-chain.json"))
   else:
-    assert servers.openSequenceResponders(requests, responses, modes)
+    assert servers.openSequenceResponders(requests, responses, modes, alpn = fixtureChainAlpn("current-chain.json"))
   writeFile("current-ready", $servers.port(true))
   var prefixRequests = 0
   let started = getMonoTime()
@@ -102,10 +105,11 @@ proc main() {.raises.} =
       servers.close()
       servers = default(DownloadResponders)
       if total == 2:
-        assert servers.openSequenceResponders(@[requests[1]], @[responses[1]], @[modes[1]])
+        assert servers.openSequenceResponders(@[requests[1]], @[responses[1]], @[modes[1]],
+            alpn = fixtureChainAlpn("current-chain.json"))
       else:
         assert servers.openSequenceResponders(@[requests[1], requests[2]], @[responses[1],
-            responses[2]], @[modes[1], modes[2]])
+            responses[2]], @[modes[1], modes[2]], alpn = fixtureChainAlpn("current-chain.json"))
       prefixRequests = 1
       writeFile("current-ready", $servers.port(true))
     assert servers.poll(), "independent current TLS progress"

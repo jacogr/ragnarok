@@ -6,6 +6,8 @@
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../../src/app/services
+import ../../../src/app/proof/[worker, work_submission]
+import ../../../src/jamnp-s/audit_context
 import ../../../src/codec/state/[accounts, service_values, layout, outputs, privileges]
 import ../../../src/crypto/primitives
 import ../../../src/pvm/step as pvm_step
@@ -20,6 +22,7 @@ import ../../../src/state/store
 import ../../../src/state/accumulation/current/[update as accumulation_current_update,
     consensus as accumulation_current_consensus]
 import ../../../src/state/report/anchors as report_anchors
+import ../../support/jamnp_audit_runtime
 import ../../support/[current_services_disk_samples, current_application_context,
   accumulation_current_chain_context, accumulation_current_candidate_context, arc_evidence,
   current_consecutive_context, accumulation_current_round_context, pvm_accumulation_program,
@@ -309,6 +312,33 @@ proc consecutiveResidency(base: OwnedReport) {.raises.} =
     assert idle.value.hits == previousHits
   assert slotOutput(priorOutputs[0])[0] == byte(uint32(captured.value.slot)+1)
   assert slotOutput(priorOutputs[1])[0] == byte(uint32(captured.value.slot)+2)
+  let auditHead = owner.chainView.bestBlock.value
+  assert auditHead.hasBlockBody, "actual full-current adoption retains its committed body for auditing"
+  let rules = currentCandidateLimits().reporting
+  let auditPolicy = AuditContextLimits(admission: rules.admission, disputes: rules.disputes,
+    safrole: rules.safrole, availability: rules.availability, bodyBytes: ByteLimit(1000000),
+    chapterBytes: ByteLimit(1000000), readBytes: ByteLimit(8000000), workspaceBytes: ByteLimit(
+        128000000),
+    outputBytes: ByteLimit(8000000), reports: ElementLimit(2), hashes: ElementLimit(4),
+        hashBytes: ByteLimit(1000000))
+  let audit = owner.beginAuditPlanning(auditHead.blockHash, auditPolicy)
+  assert audit.error == StateProofAdmissionError.None and owner.rpc.chainPaused,
+    "real current canonical history enters the managed audit worker"
+  let auditDeadline = getMonoTime()+initDuration(seconds = 10)
+  while owner.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < auditDeadline, "bounded full-current audit context"
+    yieldCurrentDiskThread() # Retained canonical/source/output aliases remain untouched until exact collection.
+  let auditCompleted = owner.collectStateProof(audit.value)
+  assert auditCompleted.kind == ProofWorkerCompletionKind.WorkSubmitted,
+    "exact managed current-body audit completion"
+  let auditResult = auditCompleted.workSubmissionValue
+  assert auditResult.kind == WorkJobResultKind.AuditPlanned,
+    "genuine full-current published history qualifies the actual audit context"
+  let auditContext = auditResult.plannedAuditContext
+  assert owner.auditContextCurrent(auditContext) and auditContext.contextInfo.value.reports == 0,
+    "no available reports in these genuine empty children means no fabricated audit obligation"
+  assert not owner.rpc.chainPaused, "successful context collection resumes canonical RPC"
+  auditReceiptRuntime(owner, options, auditContext, auditPolicy)
   owner.close()
   assert owner.residentServiceCount == 0
   assert owner.residentServiceInfo(ServiceIndex(42), metadata.codeHash, selected).error !=

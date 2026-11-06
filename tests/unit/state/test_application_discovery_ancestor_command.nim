@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Production command receives a signed two-guest child before fetching only certified missing lookup context through independent TLS processes.
+import ../../support/chain_alpn
+
 import std/[assertions, syncio, envvars, monotimes, times, os]
 import std/posix/posix
 import ../../../src/app/download/[command as download_command, policy as download_policy,
@@ -69,7 +71,7 @@ proc scenario(remote, child: seq[byte], remoteRequest, childRequest: array[42, b
     childResponse[size + 3] = childResponse[size +
         3] xor 1 # Corrupt the full seal while preserving all structural bytes.
   assert servers.openSequenceResponders(@[childRequest, remoteRequest], @[childResponse, response],
-    @[DownloadTransferMode.Healthy, mode], which == Fallback)
+    @[DownloadTransferMode.Healthy, mode], which == Fallback, fixtureChainAlpn("discovery-command-chain"))
   let firstPort = servers.port(false)
   let secondPort = servers.port(true)
   let process = posix.fork()

@@ -18,6 +18,9 @@ typedef struct rq_cert_fields {
 int rq_parse_cert(const uint8_t *der, size_t length, rq_cert_fields *out);
 /* Generate an Ed25519 PEM key and copy its raw public identity into caller-owned storage. */
 int rq_identity_key(uint8_t *pem, size_t capacity, size_t *length, uint8_t public_key[32]);
+/* Parse one bounded unencrypted PKCS8 Ed25519 PEM key; copy exactly32 seed bytes only on success.
+ * Return1 on success,0 on malformed/unsupported input,-1 on BIO allocation refusal; never prompt. */
+int rq_identity_seed(const uint8_t *pem, size_t length, uint8_t seed[32]);
 /* Self-sign a certificate with the caller-selected DNS SAN; no JAM naming policy lives in C. */
 int rq_identity_cert(const uint8_t *key, size_t length, const char *dns, int days,
                      uint8_t *pem, size_t capacity, size_t *written);

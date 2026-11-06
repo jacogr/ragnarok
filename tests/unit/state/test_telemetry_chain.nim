@@ -9,6 +9,7 @@
 
 import std/[assertions, syncio, strutils]
 import ../../../src/telemetry/[wire, chain]
+import ../../../src/chain/network_identity
 
 # Syntactic metadata fixture deliberately makes no claim of a valid executable genesis state.
 var parameters = repeat('0', 244)
@@ -22,6 +23,14 @@ let hello = registration(parsed.value)
 # Independent hashlib.blake2b(bytes([0]), digest_size=32) reference fixes the hash algorithm and extent.
 let expected = [3'u8, 23, 10, 46, 117, 151, 183, 183, 227, 216, 76, 5, 57, 29, 19, 154,
     98, 177, 87, 231, 135, 134, 216, 192, 130, 242, 157, 207, 76, 17, 19, 20]
+# The shared identity requires only configured header/fetch bytes; state initialization is independent.
+let network = readNetworkIdentity(prefix & "}")
+assert network.error == NetworkIdentityError.None and network.value.ready
+assert array[32, byte](network.value.genesisHash) == expected
+let emptyNetwork = default(NetworkIdentityResult)
+assert emptyNetwork.error == NetworkIdentityError.Uninitialized
+let absentIdentity = default(NetworkIdentity)
+assert not absentIdentity.ready
 # The digest follows E4 frame length, version and 122 parameter bytes.
 for i in 0..<32: assert hello[127 + i] == expected[i]
 assert hello[207] == 40 and hello[208] == 35 # Advertised port is little endian 9000.

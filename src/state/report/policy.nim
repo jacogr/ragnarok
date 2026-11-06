@@ -5,7 +5,7 @@
 ## code/minimum gas. This read-only stage consumes certified credentials; complete report
 ## context and C(10) publication follow later.
 ##
-## Exposes checkReportPolicy and immutable access to its certified credentials and parent
+## Exposes unsigned reason-only inspection, credential-backed checkReportPolicy and immutable access to its certified credentials and parent
 ## snapshot.
 
 import ../../codec/state/[authorization as state_authorization, accounts as state_accounts,
@@ -22,7 +22,8 @@ type
     reportGas*: ReportGasLimit
     refinementGas*: RefinementGasLimit
   ReportPolicyError* {.pure.} = enum ## Failed/default alternatives contain no checked reports, parent snapshot or partial gas totals.
-    Uninitialized, None, InvalidConfig, InvalidCredentials, InvalidState, MissingState,
+    Uninitialized, None, InvalidConfig, InvalidCredentials, InvalidReport, InvalidState,
+      MissingState,
     LimitExceeded, Unauthorized, UnknownService, WrongCodeHash, InsufficientGas, ReportGasExceeded, RefinementLoadExceeded
   ## Private acyclic owner binds the credential certificate to the exact immutable parent map used for policy.
   PolicyData = ref object
@@ -64,119 +65,129 @@ proc policyParent*(owner: PolicyCheckedReports): ReportPolicyResult[StateStoreSn
         status: ReportPolicyError.Uninitialized) # No default parent certificate.
   ReportPolicyResult[StateStoreSnapshot](status: ReportPolicyError.None, completed: data.parent)
 
-proc checkReportPolicy*(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,
-    config: ReportPolicyConfig): ReportPolicyResult[PolicyCheckedReports] =
-  ## Read parent C(1) and C(255,service) only; no pool advancement, state mutation, hashing or PVM execution occurs.
-  ## The caller supplies the actual admitted parent and matching completed credential context, authenticated externally.
-  if uint64(config.pools.cores) < 2 or uint64(config.pools.cores) > 341 or
-      uint64(config.accountBytes) < uint64(ServiceMetadataBytes):
-    return ReportPolicyResult[PolicyCheckedReports](
-        status: ReportPolicyError.InvalidConfig) # Bound domains before traversal/copy.
-  let count = credentials.verifiedGuaranteeCount
-  if count.error != GuaranteeCredentialError.None:
-    return ReportPolicyResult[PolicyCheckedReports](
-        status: ReportPolicyError.InvalidCredentials) # No raw or default batch.
-  if uint64(count.value) > uint64(config.pools.cores):
-    return ReportPolicyResult[PolicyCheckedReports](
-        status: ReportPolicyError.LimitExceeded) # Recheck a certificate made under looser policy.
+func validPolicyConfig(config: ReportPolicyConfig): bool =
+  ## All callers use the same bounded core/account domains before any source copy or report traversal.
+  uint64(config.pools.cores) >= 2 and uint64(config.pools.cores) <= 341 and
+    uint64(config.accountBytes) >= uint64(ServiceMetadataBytes)
+proc capturePolicyPools(parent: StateStoreSnapshot,
+    config: ReportPolicyConfig): ReportPolicyResult[AuthorizationSnapshot] =
+  ## Decode the exact bounded parent pool once; unsigned inspection grants no admission certificate.
   let entry = parent.lookup(chapterKey(StateChapter(1)))
   if entry.error == StateStoreError.MissingKey:
-    return ReportPolicyResult[PolicyCheckedReports](
+    return ReportPolicyResult[AuthorizationSnapshot](
         status: ReportPolicyError.MissingState) # Parent pool chapter must exist explicitly.
   if entry.error != StateStoreError.None:
-    return ReportPolicyResult[PolicyCheckedReports](
+    return ReportPolicyResult[AuthorizationSnapshot](
         status: ReportPolicyError.InvalidState) # Defaults are not complete parent maps.
   if uint64(entry.value.byteLength) > uint64(config.pools.maxBytes):
-    return ReportPolicyResult[PolicyCheckedReports](
+    return ReportPolicyResult[AuthorizationSnapshot](
         status: ReportPolicyError.LimitExceeded) # Check before copying an untrusted state value.
   let pools = decodeAuthorization(AuthorizationKind.Pools, entry.value.bytes, config.pools)
   if pools.error == AuthorizationError.LimitExceeded:
-    return ReportPolicyResult[PolicyCheckedReports](
+    return ReportPolicyResult[AuthorizationSnapshot](
         status: ReportPolicyError.LimitExceeded) # Preserve pool resource refusals.
   if pools.error != AuthorizationError.None:
-    return ReportPolicyResult[PolicyCheckedReports](
+    return ReportPolicyResult[AuthorizationSnapshot](
         status: ReportPolicyError.InvalidState) # No partially decoded pool is usable.
   if pools.value.consumed != entry.value.byteLength:
-    return ReportPolicyResult[PolicyCheckedReports](
+    return ReportPolicyResult[AuthorizationSnapshot](
         status: ReportPolicyError.InvalidState) # A chapter is an exact value, not a prefix.
-  # Every report must pass; no partial earlier batch is exposed.
-  for i in 0..<count.value:
-    let record = credentials.verifiedGuaranteeAt(i).value
-    let info = ownedReportInfo(record.report).value
-    let core = uint64(info.core)
-    if core >= uint64(config.pools.cores):
-      return ReportPolicyResult[PolicyCheckedReports](
-          status: ReportPolicyError.LimitExceeded) # No core index outside this policy.
-    let ordinal = AuthorizationCoreIndex(core)
-    let hashes = authorizerCount(pools.value.snapshot, ordinal).value
-    var authorized = false
-    # Search only this core's parent pool, preserving source order and repetitions.
-    for j in 0..<hashes:
-      let candidate = authorizerAt(pools.value.snapshot, ordinal, AuthorizationIndex(j)).value
-      if candidate.bytes == info.authorizer.bytes:
-        authorized = true # Membership ignores pool ordering and preserves repeated entries.
-        break
-    if not authorized:
-      return ReportPolicyResult[PolicyCheckedReports](
-          status: ReportPolicyError.Unauthorized) # Parent C(1), never C(2) or a posterior pool.
-    if uint64(info.authGas) > 50_000_000 or uint32(info.header.bundleLength) > 13_904_950:
-      return ReportPolicyResult[PolicyCheckedReports](
-          status: ReportPolicyError.RefinementLoadExceeded) # Independent fixed package authorization/bundle limits.
-    var refineGas = 0'u64
-    var imports = 0'u64
-    var exports = 0'u64
-    var extrinsics = 0'u64
-    var inputBytes = 0'u64
-    var total = 0'u64
-    # Reset accumulation per report and validate every service, including unsuccessful work.
-    for j in 0..<info.digestCount:
-      let digest = ownedReportDigest(record.report, j).value
-      let load = digest.refine
-      if uint64(load.gasUsed) > uint64(config.refinementGas)-refineGas or
-          uint64(load.imports) > 3072-imports or uint64(load.exports) > 3072-exports or
-          uint64(load.extrinsicCount) > 128-extrinsics:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.RefinementLoadExceeded) # Prove every aggregate before addition, including full-width counts.
-      refineGas += uint64(load.gasUsed)
-      imports += uint64(load.imports)
-      exports += uint64(load.exports)
-      extrinsics += uint64(load.extrinsicCount)
-      let footprint = uint64(load.imports)*4488 # The3072 import bound proves this product fits uint64.
-      if footprint > 13_791_360-inputBytes:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.RefinementLoadExceeded)
-      inputBytes += footprint
-      if uint64(load.extrinsicSize) > 13_791_360-inputBytes:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.RefinementLoadExceeded) # Work-report input excludes unavailable payload/configuration blobs.
-      inputBytes += uint64(load.extrinsicSize)
-      let amount = uint64(digest.accumulateGas)
-      if amount > uint64(config.reportGas)-total:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.ReportGasExceeded) # Check before adding, including full E8 overflow.
-      total += amount
-      let account = parent.lookup(chapterServiceKey(StateChapter(255), digest.service))
-      if account.error == StateStoreError.MissingKey:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.UnknownService) # No default account or guessed minimum.
-      if account.error != StateStoreError.None:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.InvalidState) # Invalid parent views cannot certify metadata.
-      if account.value.byteLength != ServiceMetadataBytes:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.InvalidState) # Exact fixed schema before allocating a byte copy.
-      let metadata = decodeServiceMetadata(account.value.bytes, config.accountBytes)
-      if metadata.error != ServiceMetadataError.None:
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.InvalidState) # Refuse invalid versions/metadata; no fallback.
-      if array[32, byte](digest.codeHash) != array[32, byte](metadata.value.metadata.codeHash):
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.WrongCodeHash) # Predicted code belongs to this exact service.
-      if amount < uint64(metadata.value.metadata.minimumAccumulationGas):
-        return ReportPolicyResult[PolicyCheckedReports](
-            status: ReportPolicyError.InsufficientGas) # Apply even to unsuccessful work outputs.
-    if exports != uint64(info.header.segmentCount):
-      return ReportPolicyResult[PolicyCheckedReports](
-          status: ReportPolicyError.RefinementLoadExceeded) # Availability must commit exactly the declared exported segments.
+  ReportPolicyResult[AuthorizationSnapshot](status: ReportPolicyError.None,
+      completed: pools.value.snapshot)
+proc inspectPolicyReport(report: OwnedReport, parent: StateStoreSnapshot,
+    pools: AuthorizationSnapshot, config: ReportPolicyConfig): ReportPolicyError =
+  ## Share every gas/service/code/pool rule between pre-signing inspection and certified report admission.
+  let described = ownedReportInfo(report)
+  if described.error != OwnershipError.None: return ReportPolicyError.InvalidReport
+  let info = described.value
+  let core = uint64(info.core)
+  if core >= uint64(config.pools.cores):
+    return ReportPolicyError.LimitExceeded # No core index outside this policy.
+  let ordinal = AuthorizationCoreIndex(core)
+  let hashes = authorizerCount(pools, ordinal).value
+  var authorized = false
+  # Search only this core's parent pool, preserving source order and repetitions.
+  for j in 0..<hashes:
+    let candidate = authorizerAt(pools, ordinal, AuthorizationIndex(j)).value
+    if candidate.bytes == info.authorizer.bytes:
+      authorized = true # Membership ignores pool ordering and preserves repeated entries.
+      break
+  if not authorized:
+    return ReportPolicyError.Unauthorized # Parent C(1), never C(2) or a posterior pool.
+  if uint64(info.authGas) > 50_000_000 or uint32(info.header.bundleLength) > 13_904_950:
+    return ReportPolicyError.RefinementLoadExceeded # Independent fixed package authorization/bundle limits.
+  var refineGas = 0'u64
+  var imports = 0'u64
+  var exports = 0'u64
+  var extrinsics = 0'u64
+  var inputBytes = 0'u64
+  var total = 0'u64
+  # Reset accumulation per report and validate every service, including unsuccessful work.
+  for j in 0..<info.digestCount:
+    let digest = ownedReportDigest(report, j).value
+    let load = digest.refine
+    if uint64(load.gasUsed) > uint64(config.refinementGas)-refineGas or
+        uint64(load.imports) > 3072-imports or uint64(load.exports) > 3072-exports or
+        uint64(load.extrinsicCount) > 128-extrinsics:
+      return ReportPolicyError.RefinementLoadExceeded # Prove every aggregate before addition, including full-width counts.
+    refineGas += uint64(load.gasUsed)
+    imports += uint64(load.imports)
+    exports += uint64(load.exports)
+    extrinsics += uint64(load.extrinsicCount)
+    let footprint = uint64(load.imports)*4488 # The3072 import bound proves this product fits uint64.
+    if footprint > 13_791_360-inputBytes:
+      return ReportPolicyError.RefinementLoadExceeded
+    inputBytes += footprint
+    if uint64(load.extrinsicSize) > 13_791_360-inputBytes:
+      return ReportPolicyError.RefinementLoadExceeded # Work-report input excludes unavailable payload/configuration blobs.
+    inputBytes += uint64(load.extrinsicSize)
+    let amount = uint64(digest.accumulateGas)
+    if amount > uint64(config.reportGas)-total:
+      return ReportPolicyError.ReportGasExceeded # Check before adding, including full E8 overflow.
+    total += amount
+    let account = parent.lookup(chapterServiceKey(StateChapter(255), digest.service))
+    if account.error == StateStoreError.MissingKey:
+      return ReportPolicyError.UnknownService # No default account or guessed minimum.
+    if account.error != StateStoreError.None:
+      return ReportPolicyError.InvalidState # Invalid parent views cannot certify metadata.
+    if account.value.byteLength != ServiceMetadataBytes:
+      return ReportPolicyError.InvalidState # Exact fixed schema before allocating a byte copy.
+    let metadata = decodeServiceMetadata(account.value.bytes, config.accountBytes)
+    if metadata.error != ServiceMetadataError.None:
+      return ReportPolicyError.InvalidState # Refuse invalid versions/metadata; no fallback.
+    if array[32, byte](digest.codeHash) != array[32, byte](metadata.value.metadata.codeHash):
+      return ReportPolicyError.WrongCodeHash # Predicted code belongs to this exact service.
+    if amount < uint64(metadata.value.metadata.minimumAccumulationGas):
+      return ReportPolicyError.InsufficientGas # Apply even to unsuccessful work outputs.
+  if exports != uint64(info.header.segmentCount):
+    return ReportPolicyError.RefinementLoadExceeded # Availability must commit exactly the declared exported segments.
+  ReportPolicyError.None
+proc inspectReportPolicy*(report: OwnedReport, parent: StateStoreSnapshot,
+    config: ReportPolicyConfig): ReportPolicyError =
+  ## Reason-only checks on one unsigned computed report cannot create credentials or a policy certificate.
+  if not validPolicyConfig(config): return ReportPolicyError.InvalidConfig
+  if ownedReportInfo(report).error != OwnershipError.None: return ReportPolicyError.InvalidReport
+  let pools = capturePolicyPools(parent, config)
+  if pools.error != ReportPolicyError.None: return pools.error
+  inspectPolicyReport(report, parent, pools.value, config)
+proc checkReportPolicy*(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,
+    config: ReportPolicyConfig): ReportPolicyResult[PolicyCheckedReports] =
+  ## Only genuine credentials can construct this certificate; all reports share one exact decoded parent pool.
+  if not validPolicyConfig(config):
+    return ReportPolicyResult[PolicyCheckedReports](status: ReportPolicyError.InvalidConfig)
+  let count = credentials.verifiedGuaranteeCount
+  if count.error != GuaranteeCredentialError.None:
+    return ReportPolicyResult[PolicyCheckedReports](status: ReportPolicyError.InvalidCredentials)
+  if uint64(count.value) > uint64(config.pools.cores):
+    return ReportPolicyResult[PolicyCheckedReports](status: ReportPolicyError.LimitExceeded)
+  let pools = capturePolicyPools(parent, config)
+  if pools.error != ReportPolicyError.None:
+    return ReportPolicyResult[PolicyCheckedReports](status: pools.error)
+  for index in 0..<count.value:
+    # A later refusal cannot expose an earlier successful prefix as a completed policy certificate.
+    let report = credentials.verifiedGuaranteeAt(index).value.report
+    let inspected = inspectPolicyReport(report, parent, pools.value, config)
+    if inspected != ReportPolicyError.None:
+      return ReportPolicyResult[PolicyCheckedReports](status: inspected)
   ReportPolicyResult[PolicyCheckedReports](status: ReportPolicyError.None,
     completed: PolicyCheckedReports(data: PolicyData(credentials: credentials, parent: parent)))

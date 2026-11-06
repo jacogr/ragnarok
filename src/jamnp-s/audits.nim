@@ -60,7 +60,7 @@ func value*[T](outcome: AuditResult[T]): T {.inline, requires: outcome.status ==
   ## Read an operation's complete validated payload only after success.
   outcome.completed
 
-proc valid(limits: AuditLimits): bool =
+func valid*(limits: AuditLimits): bool =
   ## Validate the caller's chain domains independently of attacker-controlled bytes.
   uint64(limits.validators) in 6'u64..1023'u64 and uint64(limits.validators) mod 3 == 0 and
     uint64(limits.cores) in 2'u64..341'u64 and uint64(limits.records) > 0
@@ -156,6 +156,10 @@ proc decodeAnnouncements*(input: openArray[byte], limits: AuditLimits): AuditRes
     offset = proofOffset+96
   AuditResult[AnnouncementBatch](status: AuditError.None,
       completed: AnnouncementBatch(data: AnnouncementData(records: records)))
+
+proc inspectJudgments*(input: openArray[byte], limits: AuditLimits): AuditResult[int] =
+  ## Allocation-free complete-message structural inspection lets a receiver reserve every retained claim before decoding or signature verification.
+  scan(input, limits, true)
 
 proc decodeJudgments*(input: openArray[byte], limits: AuditLimits): AuditResult[JudgmentBatch] =
   ## Capture a CE145 batch, preserving different epochs and auditors without imposing batch-wide equality.
