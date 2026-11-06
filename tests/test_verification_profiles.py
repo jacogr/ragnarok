@@ -109,7 +109,7 @@ class VerificationProfiles(unittest.TestCase):
             compiler = folder/'compiler/nimony'
             checks = NativeChecks(folder/'contracts', reuse_builds=True)
             lock = cache_directory(compiler, checks.folder, 'builds').parent/'builds.lock'
-            def failed(*args):
+            def failed(*args, **kwargs):
                 # A separately opened descriptor must be excluded during the active build.
                 with lock.open('a') as other:
                     with self.assertRaises(BlockingIOError):
@@ -140,6 +140,7 @@ class VerificationProfiles(unittest.TestCase):
                 build.assert_called_once()
                 self.assertEqual(build.call_args.args[1], ROOT/'src/ragnarok.nim')
                 self.assertEqual(build.call_args.args[2], name)
+                self.assertEqual(build.call_args.kwargs.get('timeout'), 600 if name == 'ragnarok' else None)
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.
