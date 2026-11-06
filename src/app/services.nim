@@ -55,6 +55,18 @@ import ./proof/[query as proof_query, worker as proof_worker, network_read]
 import ./proof/read_validation as verification_job
 import ./proof/ticket_verification as ticket_job
 import ./proof/ticket_production
+import ./proof/work_submission as work_jobs
+import ../jamnp-s/work_submission
+import ../jamnp-s/work_stream
+import ../jamnp-s/work_report
+from ../state/computed/report import ComputedReportInfo, computedReportInfo, value
+from ../state/computed/guarantee import computedGuaranteeReport, value
+from ../jamnp-s/work_duty import WorkRecipient, WorkDutyLimits, WorkDuty, valid, activeAt, shardCount
+from ../codec/work/package import PackageConfig
+from ../codec/work/digest import Gas
+import ../state/input_refinement
+import "../state/import/justification" as work_imports
+from ../codec/work/report import SegmentLookup
 import ../bandersnatch/bandersnatch as bs
 import ../codec/[tickets, header]
 import ../codec/state/safrole
@@ -187,6 +199,21 @@ proc captureStartupAnchor(view: ChainView): StartupBlockAnchor =
   if head.error != GenesisError.None: return default(StartupBlockAnchor)
   StartupBlockAnchor(available: true, hash: head.value.blockHash, slot: HeaderSlot(head.value.slot))
 
+type
+  WorkSessionPhase* {.pure.} = enum ## Only scalar state is observed while any canonical borrower owns the graph.
+    Empty, Authorizing, Authorized, Completing, Complete, Reporting, ReportReady, Failed, Retired
+  WorkSessionIdentity = ref object ## Host-only namespace never crosses into the CPU job or canonical state graph.
+    marker: uint8
+  WorkSessionToken* = object ## Private owner identity and nonwrapping generation reject foreign and stale session controls.
+    owner: nil WorkSessionIdentity
+    generation: uint64
+  WorkSubmissionStart* = object ## Accepted work owns an opaque session; only Services retains the exact worker ticket.
+    case status: StateProofAdmissionError
+    of None: token: WorkSessionToken
+    of QueryFailure: captureReason: WorkJobError
+    of WorkerFailure: workerReason: ProofWorkerError
+    else: discard # Refusals contain no session, graph or collection authority.
+
 type Services* = object             ## Owns listeners/exporter; fields are borrowed by synchronous peer callbacks.
   light: light_actor.LightRuntime
   rpc*: Server
@@ -211,6 +238,18 @@ type Services* = object             ## Owns listeners/exporter; fields are borro
   verificationInput: ReadVerificationJob
   ticketInput: TicketVerificationJob
   productionInput: TicketProductionJob
+  workInput: WorkSubmissionJob
+  workContext: AuthorizedWorkContext
+  workOutcome: WorkJobResult
+  workIdentity: nil WorkSessionIdentity
+  workGeneration: uint64
+  workPhase: WorkSessionPhase
+  workActive: bool
+  workTicket: ProofWorkerTicket
+  workInfo: WorkSubmissionInfo
+  workDuty: WorkDuty
+  workReportInfo: ComputedReportInfo
+  workHead: BlockHash
   ticketSigner: TicketSigner
   ticketSignerReady: bool
   ticketSignerVersion: uint64
@@ -278,6 +317,13 @@ proc `=wasMoved`*(services: var Services) {.nodestroy, inline, requires: not ser
   `=wasMoved`(services.verificationInput)
   `=wasMoved`(services.ticketInput)
   `=wasMoved`(services.productionInput)
+  `=wasMoved`(services.workInput)
+  `=wasMoved`(services.workContext)
+  `=wasMoved`(services.workDuty)
+  `=wasMoved`(services.workReportInfo)
+  `=wasMoved`(services.workOutcome)
+  `=wasMoved`(services.workIdentity)
+  `=wasMoved`(services.workTicket)
   `=wasMoved`(services.ticketSigner)
   `=wasMoved`(services.ticketSource)
   `=wasMoved`(services.ticketCaptureFailure)
@@ -330,6 +376,13 @@ proc `=destroy`*(services: Services) =
   `=destroy`(services.verificationInput)
   `=destroy`(services.ticketInput)
   `=destroy`(services.productionInput)
+  `=destroy`(services.workInput)
+  `=destroy`(services.workContext)
+  `=destroy`(services.workDuty)
+  `=destroy`(services.workReportInfo)
+  `=destroy`(services.workOutcome)
+  `=destroy`(services.workIdentity)
+  `=destroy`(services.workTicket)
   `=destroy`(services.ticketSigner)
   `=destroy`(services.ticketSource)
   `=destroy`(services.ticketCaptureFailure)
@@ -531,6 +584,11 @@ proc stopStateProofs*(services: var Services) =
     services.light.stopProofs()
     return # Full-state worker/lease fields remain unstarted in light mode.
   services.proofWorker.close()
+  if services.workActive:
+    # Joined external stop retires this session without releasing source owners borrowed by other worker families.
+    services.workActive = false
+    services.workPhase = WorkSessionPhase.Retired
+  services.workInput = default(WorkSubmissionJob)
   services.ticketInput = default(TicketVerificationJob)
   services.productionInput = default(TicketProductionJob)
   services.ticketSource = default(NetworkTicketResult[TicketSource])
@@ -584,6 +642,18 @@ proc close*(services: var Services) =
   services.stopCheckpointExport() # Repeated close preserves the fixed joined-outcome journal.
   services.stopDiskPublication() # Commit receipts survive shutdown; joined IO ends all graph borrowing.
   services.stopPreparation() # Join before releasing any canonical or listener alias.
+  services.workInput = default(WorkSubmissionJob)
+  services.workContext = default(AuthorizedWorkContext)
+  services.workOutcome = default(WorkJobResult)
+  services.workIdentity = nil
+  services.workTicket = default(ProofWorkerTicket)
+  services.workGeneration = 0
+  services.workPhase = WorkSessionPhase.Empty
+  services.workActive = false
+  services.workInfo = default(WorkSubmissionInfo)
+  services.workDuty = default(WorkDuty)
+  services.workReportInfo = default(ComputedReportInfo)
+  services.workHead = default(BlockHash)
   services.executionContext = default(ServiceExecutionContext) # Full Services close retires code; stopPreparation alone preserves it.
   assert services.nativeRuntime.close() # No active invocation survives joined preparation/context retirement.
   services.nativeRuntime = default(NativeRuntime)
@@ -1722,6 +1792,279 @@ proc collectStateProof*(services: var Services, ticket: ProofWorkerTicket): Proo
     services.proofing = false
     discard services.rpc.resumeChain(services.rpcLease)
     services.rpcLease = nil # A stale/foreign/early ticket never resumes another lease.
+
+func error*(outcome: WorkSubmissionStart): StateProofAdmissionError =
+  ## Failed starts never expose a session token.
+  outcome.status
+func value*(outcome: WorkSubmissionStart): WorkSessionToken {.requires: outcome.status ==
+    StateProofAdmissionError.None.} =
+  ## Session control remains distinct from raw CPU collection authority.
+  outcome.token
+func captureError*(outcome: WorkSubmissionStart): WorkJobError {.requires: outcome.status ==
+    StateProofAdmissionError.QueryFailure.} =
+  ## Only an actual failed staging operation carries its cause.
+  outcome.captureReason
+func workerError*(outcome: WorkSubmissionStart): ProofWorkerError {.requires: outcome.status ==
+    StateProofAdmissionError.WorkerFailure.} =
+  ## Preserve the actual bounded worker admission refusal.
+  outcome.workerReason
+func matchesWork(services: Services, token: WorkSessionToken): bool =
+  ## Host-only namespace comparisons touch no canonical or job ARC owner.
+  token.owner != nil and token.owner == services.workIdentity and token.generation != 0 and
+    token.generation == services.workGeneration and services.workPhase != WorkSessionPhase.Empty
+func workSessionPhase*(services: Services, token: WorkSessionToken): WorkSessionPhase =
+  ## Foreign, stale and default controls observe no session; Busy/Done observations remain scalar.
+  if services.matchesWork(token): services.workPhase else: WorkSessionPhase.Empty
+func workSubmissionActive*(services: Services, token: WorkSessionToken): bool =
+  ## Only this matching session can authorize joined teardown of its selected CPU turn.
+  services.matchesWork(token) and services.workActive
+proc reapWorkSubmission*(services: var Services): bool =
+  ## Deferred graph retirement never collects, cancels or joins an unrelated CPU borrower.
+  if services.workPhase != WorkSessionPhase.Retired: return false
+  if not services.stateProofAvailable or services.workActive: return false
+  services.workInput = default(WorkSubmissionJob)
+  services.workContext = default(AuthorizedWorkContext)
+  services.workOutcome = default(WorkJobResult)
+  services.workTicket = default(ProofWorkerTicket)
+  services.workInfo = default(WorkSubmissionInfo)
+  services.workDuty = default(WorkDuty)
+  services.workReportInfo = default(ComputedReportInfo)
+  services.workHead = default(BlockHash)
+  services.workPhase = WorkSessionPhase.Empty
+  true
+proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmissionStart =
+  ## All staging aliases are gone before this function takes the exact RPC/worker lease.
+  services.rpcLease = services.rpc.pauseChain()
+  if services.rpcLease == nil:
+    services.workInput = default(WorkSubmissionJob)
+    return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
+  let admitted = services.proofWorker.submit(services.workInput)
+  if admitted.error == ProofWorkerError.None:
+    services.proofing = true
+    services.workActive = true
+    services.workTicket = admitted.value
+    services.workPhase = phase
+    return WorkSubmissionStart(status: StateProofAdmissionError.None,
+      token: WorkSessionToken(owner: services.workIdentity, generation: services.workGeneration))
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  services.workInput = default(WorkSubmissionJob)
+  WorkSubmissionStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
+proc stageWorkAuthorization(services: var Services, header: WorkSubmissionHeader,
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recipient = default(WorkRecipient), dutyLimits = default(WorkDutyLimits)): WorkJobError =
+  ## Complete-state and successful capture aliases retire in this helper before CPU submission.
+  let head = services.canonical.chainView.bestBlock
+  if head.error != GenesisError.None: return WorkJobError.InvalidInput
+  let captured = captureWorkAuthorization(header, head.value.stateSnapshot,
+    head.value.chainParameters, limits, execution, recipient, dutyLimits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  services.workInfo = header.submissionInfo.value
+  services.workHead = head.value.blockHash
+  WorkJobError.None
+proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits): WorkSubmissionStart {.raises.} =
+  ## Optional explicit builder admission shares full-state capacity; partial light state never grants a work context.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if services.light.active: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  discard services.reapWorkSubmission()
+  if services.workPhase != WorkSessionPhase.Empty: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workGeneration == high(uint64): return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkAuthorization(header, limits, execution)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
+  inc services.workGeneration
+  discard services.proofWorker.start()
+  services.submitWork(WorkSessionPhase.Authorizing)
+proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recipient: WorkRecipient, dutyLimits: WorkDutyLimits): WorkJobError =
+  ## Raw transcript and decoded package aliases retire here; only private job ownership survives before CPU admission.
+  if not header.valid or not recipient.valid: return WorkJobError.InvalidInput
+  let first = header.firstMessage
+  let package = header.packageMessage
+  let head = services.canonical.chainView.bestBlock
+  if head.error != GenesisError.None: return WorkJobError.InvalidInput
+  let parameters = head.value.chainParameters
+  let config = PackageConfig(refineGas: Gas(parameters.get(maxRefineGas)),
+    accumulateGas: Gas(parameters.get(maxAccumulateGas)), maxBytes: ByteLimit(204800))
+  let decoded = decodeWorkSubmission(header.kind, first, package, config)
+  if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
+  services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits)
+proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
+    limits: WorkSubmissionLimits, execution: InputRefinementLimits,
+    recipient: WorkRecipient, dutyLimits: WorkDutyLimits): WorkSubmissionStart {.raises.} =
+  ## Native actors pass only detached raw bytes; every decoded header/canonical alias retires before the worker starts.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if services.light.active: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  discard services.reapWorkSubmission()
+  if services.workPhase != WorkSessionPhase.Empty: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workGeneration == high(uint64): return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.LimitExceeded)
+  let staged = services.stageWorkWire(header, limits, execution, recipient, dutyLimits)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  if services.workIdentity == nil: services.workIdentity = WorkSessionIdentity(marker: 1)
+  inc services.workGeneration
+  discard services.proofWorker.start()
+  services.submitWork(WorkSessionPhase.Authorizing)
+proc workSourceCurrent(services: Services): bool =
+  ## Temporary head ownership retires before the caller can submit a completion job.
+  let head = services.canonical.chainView.bestBlock
+  head.error == GenesisError.None and array[32, byte](head.value.blockHash) == array[32, byte](
+      services.workHead)
+proc workSubmissionCurrent*(services: Services, token: WorkSessionToken): bool =
+  ## A foreign lease prevents observation; otherwise compare original captured provenance with the actual canonical best head.
+  if not services.stateProofAvailable or not services.matchesWork(token): return false
+  services.workSourceCurrent
+proc stageWorkBundle(services: var Services, extrinsics, segments,
+    proofs: openArray[byte]): WorkJobError =
+  ## Every context/capture alias retires in this helper activation before native CPU admission.
+  let captured = captureWorkBundle(services.workContext, extrinsics, segments, proofs)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc stageWorkPackage(services: var Services, extrinsics: openArray[byte],
+    imports: openArray[seq[VerifiedImport]], lookup: openArray[SegmentLookup]): WorkJobError =
+  ## Original grant and independently verified availability aliases remain private until this staging activation retires.
+  let captured = captureWorkPackage(services.workContext, extrinsics, imports, lookup)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkBundle*(services: var Services, token: WorkSessionToken,
+    extrinsics, segments, proofs: openArray[byte]): WorkSubmissionStart =
+  ## A body wait holds no CPU lease; only the original authorized session can capture the next bounded CPU turn.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workPhase != WorkSessionPhase.Authorized: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.workSourceCurrent:
+    services.workPhase = WorkSessionPhase.Retired
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkBundle(extrinsics, segments, proofs)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.Completing)
+proc beginWorkPackage*(services: var Services, token: WorkSessionToken,
+    extrinsics: openArray[byte], imports: openArray[seq[VerifiedImport]],
+    lookup: openArray[SegmentLookup]): WorkSubmissionStart =
+  ## CE133 feeds separately acquired immutable availability witnesses into the same source-bound completion turn.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workPhase != WorkSessionPhase.Authorized: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.workSourceCurrent:
+    services.workPhase = WorkSessionPhase.Retired
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkPackage(extrinsics, imports, lookup)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+      status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.Completing)
+proc stageWorkReport(services: var Services, limits: WorkReportLimits): WorkJobError =
+  ## Retain only this session's original completed refinement; every temporary source alias retires before CPU submission.
+  if services.workOutcome.kind != WorkJobResultKind.Refined: return WorkJobError.InvalidInput
+  let captured = captureWorkReport(services.workOutcome.execution, services.workDuty.shardCount, limits)
+  if captured.error != WorkJobError.None: return captured.error
+  services.workInput = captured.value
+  WorkJobError.None
+proc beginWorkReport*(services: var Services, token: WorkSessionToken,
+    limits: WorkReportLimits, now: StateTime): WorkSubmissionStart =
+  ## Only the fresh original network session chooses its actual source roster count; no caller report or shard-count replacement is accepted.
+  if not services.started: return WorkSubmissionStart(status: StateProofAdmissionError.Closed)
+  if not services.matchesWork(token): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.stateProofAvailable: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if services.workPhase != WorkSessionPhase.Complete: return WorkSubmissionStart(
+      status: StateProofAdmissionError.Busy)
+  if not services.workDuty.activeAt(now): return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
+  if not services.workSourceCurrent:
+    services.workPhase = WorkSessionPhase.Retired
+    return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure,
+        captureReason: WorkJobError.InvalidInput)
+  let staged = services.stageWorkReport(limits)
+  if staged != WorkJobError.None: return WorkSubmissionStart(
+    status: StateProofAdmissionError.QueryFailure, captureReason: staged)
+  services.submitWork(WorkSessionPhase.Reporting)
+proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): WorkSessionPhase =
+  ## Exact matching Done collection installs source-bearing artifacts privately and exposes only scalar phase.
+  if not services.matchesWork(token): return WorkSessionPhase.Empty
+  if not services.workActive: return services.workPhase
+  block:
+    # Collected owners retire before this host activation returns and another CPU job may be admitted.
+    let ticket = services.workTicket
+    let completed = services.collectStateProof(ticket)
+    if completed.kind == ProofWorkerCompletionKind.Uninitialized: return services.workPhase
+    services.workActive = false
+    if services.workPhase == WorkSessionPhase.Retired or completed.kind ==
+        ProofWorkerCompletionKind.Cancelled:
+      services.workPhase = WorkSessionPhase.Retired
+      return services.workPhase
+    if completed.kind != ProofWorkerCompletionKind.WorkSubmitted:
+      services.workPhase = WorkSessionPhase.Failed
+      return services.workPhase
+    let outcome = completed.workSubmissionValue
+    case outcome.kind
+    of WorkJobResultKind.Authorized:
+      services.workContext = outcome.context
+      services.workDuty = services.workContext.duty
+      services.workPhase = WorkSessionPhase.Authorized
+    of WorkJobResultKind.Refined:
+      services.workOutcome = outcome
+      services.workPhase = WorkSessionPhase.Complete
+    of WorkJobResultKind.Reported:
+      services.workOutcome = outcome
+      services.workReportInfo = outcome.reportTranscript.computedGuaranteeReport.value.computedReportInfo.value
+      services.workPhase = WorkSessionPhase.ReportReady
+    else:
+      services.workOutcome = outcome
+      services.workPhase = WorkSessionPhase.Failed # Genuine failure details stay owned until explicit safe extraction or retirement.
+  services.workPhase
+proc retireWorkSubmission*(services: var Services, token: WorkSessionToken): bool =
+  ## Mark scalar retirement immediately; foreign Queued/Running/Done capacity and canonical ARC owners remain untouched.
+  if not services.matchesWork(token): return false
+  services.workPhase = WorkSessionPhase.Retired
+  if services.workActive:
+    let ticket = services.workTicket
+    discard services.cancelStateProof(ticket)
+  discard services.reapWorkSubmission()
+  true
+proc workSubmissionInfo*(services: Services, token: WorkSessionToken): WorkSubmissionInfo {.requires: services.matchesWork(token).} =
+  ## Detached copied reader geometry remains safe to observe while any worker owns the shared graph.
+  services.workInfo
+func workSubmissionDuty*(services: Services, token: WorkSessionToken): WorkDuty {.requires: services.matchesWork(token).} =
+  ## Fixed assignment metadata stays safe to observe while another borrower owns the canonical graph; defaults have no duty claim.
+  services.workDuty
+func workSubmissionReportInfo*(services: Services,
+    token: WorkSessionToken): ComputedReportInfo {.requires:
+    services.matchesWork(token) and services.workPhase == WorkSessionPhase.ReportReady.} =
+  ## Fixed copied report metadata is safe during foreign graph leases; source-bearing transcript access remains gated.
+  services.workReportInfo
+proc workSubmissionOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
+    services.stateProofAvailable and services.matchesWork(token) and services.workPhase in {
+        WorkSessionPhase.Complete, WorkSessionPhase.ReportReady, WorkSessionPhase.Failed}.} =
+  ## The caller must retire every returned source-bearing alias before admitting any subsequent shared-graph CPU job.
+  services.workOutcome
 
 func preparationActive*(services: Services): bool =
   ## Done and cancelled work still retain the canonical exclusion gate until collection or joined close.

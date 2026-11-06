@@ -6,6 +6,7 @@
 import std/[assertions, monotimes, times]
 import ./services
 import ./preimage_followup
+import ./work_dispatch
 import ./proof/worker
 import ../jamnp-s/[node as node_streams, connections, read_stream, read_client, read_validation,
     report_cache, preimage_cache, preimage_announcement, preimage_gossip, admission,
@@ -61,6 +62,8 @@ type
     preferChecked, preferFetch, preferPreimage: bool
     preimages: PreimageFollowups
     gossip: PreimageGossip
+    work: WorkDispatcher
+    preferWork: bool
     reports: ReportCache
     tickets: PendingTicketPool
     forwarding: TicketForwarding
@@ -92,6 +95,7 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   `=wasMoved`(owner.lastProduced)
   `=wasMoved`(owner.preimages)
   `=wasMoved`(owner.gossip)
+  `=wasMoved`(owner.work)
   `=wasMoved`(owner.checkedPeer)
   owner.opened = false
   owner.pending = false
@@ -120,10 +124,30 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.lastProduced)
   `=destroy`(owner.preimages)
   `=destroy`(owner.gossip)
+  `=destroy`(owner.work)
   `=destroy`(owner.checkedPeer)
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
+proc configureWork*(owner: var ApplicationNode, policy: WorkDispatchPolicy): bool =
+  ## Explicit activation installs bounded CPU dispatch before enabling native work selectors.
+  if not owner.opened: return false
+  owner.work.configure(owner.streams, policy)
+func workPhase*(owner: ApplicationNode): WorkDispatchPhase =
+  ## Observe detached lifecycle without borrowing the retained result.
+  owner.work.phase
+func acceptedWork*(owner: ApplicationNode): uint64 =
+  ## Successful refinement/transport acknowledgments are distinct from report inclusion.
+  owner.work.accepted
+func completedWork*(owner: ApplicationNode): WorkSessionToken {.requires: owner.work.phase ==
+    WorkDispatchPhase.Ready.} =
+  ## Downstream report processing uses the original Services session.
+  owner.work.completed
+proc releaseWork*(owner: var ApplicationNode): bool =
+  ## Explicit downstream consumption allows the next bounded submission.
+  let services = owner.services
+  if services == nil: return false
+  owner.work.release(services[])
 func ticketProductionActive*(owner: ApplicationNode): bool =
   ## Scalar observation grants no cancellation or key access.
   owner.producing
@@ -414,6 +438,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.epochHeld = false
   owner.preimages.reset()
   owner.preferFetch = false
+  owner.preferWork = true
   owner.preferPreimage = false
   owner.producing = false
   owner.productionContextReady = false
@@ -478,7 +503,9 @@ proc close*(owner: var ApplicationNode) =
   if owner.checkedPhase == CheckedRequestPhase.Verifying and services != nil:
     if services[].cancelStateProof(owner.checkedWorker):
       services[].stopStateProofs() # Joined teardown belongs only to a successfully matched checked-request ticket.
-  if services != nil: owner.preimages.close(services[], owner.streams)
+  if services != nil:
+    owner.work.close(services[], owner.streams)
+    owner.preimages.close(services[], owner.streams)
   owner.gossip.close(owner.streams)
   owner.forwarding.close(owner.streams)
   owner.origins.close(owner.streams)
@@ -680,6 +707,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.forwarding.poll(owner.streams, clock)
   owner.gossip.poll(owner.streams, clock)
   owner.preimages.poll(services[], owner.streams, clock)
+  owner.work.poll(services[], owner.streams, clock, now)
   let acquired = owner.preimages.takeAcquired()
   if acquired.error == ReadError.None and owner.preimages.has(acquired.value):
     discard owner.gossip.offer(owner.streams, acquired.value) # Fresh state/possession checks remain required before transmission.
@@ -741,6 +769,10 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   owner.dispatchOrigins(now, clock)
   owner.dispatchTickets(now, clock) # Finality/context checks precede every actual proxy transmission.
   owner.dispatchGossip(clock) # The staging activation retires all canonical aliases before CPU admission.
+  if owner.preferWork and owner.work.submit(services[], owner.streams, clock, now):
+    owner.preferWork = false
+    return true
+  owner.preferWork = true # An intervening ordinary CPU admission prevents a continuous builder backlog monopolizing the worker.
   if owner.submitProduction(now): return true # Optional production consumes at most two turns per epoch/context, then ordinary read arbitration resumes.
   if owner.preferFetch and owner.preimages.submitWaiting(services[]):
     owner.preferFetch = false
@@ -748,6 +780,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
   if owner.preferChecked and owner.submitChecked(): return true
   let request = owner.streams.takeRead()
   if request.error != NodeError.None:
+    if owner.work.submit(services[], owner.streams, clock, now): return true
     if not owner.submitChecked(): discard owner.preimages.submitWaiting(services[])
     return true
   if owner.serveCached(request.value): return true

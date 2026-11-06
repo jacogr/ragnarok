@@ -253,6 +253,26 @@ proc idlePolicy(cert, key: string, ipv6, keepalive: bool) =
       return # Same idle policy without pings must actually expire, validating the positive control.
   assert keepalive, "explicit silent timeout must expire without application traffic"
 
+proc windowPolicy(cert, key: string) =
+  ## Optional public receive windows refuse invalid domains atomically and accept the pinned minimum with real TLS resources.
+  var owner = default(Transport)
+  var token = 0
+  defer: owner.closeTransport()
+  for window in [1, 16383]:
+    # Each invalid half uses genuine otherwise-valid credentials; refusal cannot be attributed to missing test files.
+    assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr token, rejectFixtureIdentity, stream, streamWindow = window)
+    assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+      addr token, rejectFixtureIdentity, stream, connectionWindow = window)
+    assert owner.engine == nil and not owner.socket.isOpen
+  assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+    addr token, rejectFixtureIdentity, stream, streamWindow = 65536, connectionWindow = 32768)
+  assert owner.engine == nil and not owner.socket.isOpen
+  assert owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
+    addr token, rejectFixtureIdentity, stream, streamWindow = 16384, connectionWindow = 16384)
+  assert owner.pollTransport(0)
+  owner.closeTransport()
+
 proc main() {.raises.} =
   let args = @[getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")]
   assert args[0].len > 0 and args[1].len > 0, "missing prepared native fixtures"
@@ -298,6 +318,7 @@ proc main() {.raises.} =
     incoming.closeTransport()
     assert outgoing.pollTransport(0)
     outgoing.closeTransport()
+  windowPolicy(args[0], args[1])
   for ipv6 in [false, true]: # Reuse the process-wide SSL observer index across complete engine retirement.
     saturation(args[0], args[1], ipv6)
     admissionRefusal(args[0], args[1], ipv6)

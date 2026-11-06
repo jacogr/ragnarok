@@ -52,6 +52,7 @@ int rq_set_peer_capacity(rq_transport *, unsigned maximum, int multiple);
 typedef struct rq_transport_options {
     int profile, server, ipv6, multi;
     unsigned idle_seconds, keepalive;
+    unsigned stream_window, connection_window; /* Zero preserves legacy defaults; explicit windows use public LSQUIC settings. */
 } rq_transport_options;
 rq_transport *rq_transport_new_config(const rq_transport_options *, uint16_t local_port,
  const char *certificate, const char *key, const char *alpn, void *user,
