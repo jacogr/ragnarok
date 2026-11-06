@@ -50,21 +50,26 @@ func rounded(value, quantum: uint64): uint64 =
   ## Inputs are bounded by fixed-width envelope fields or the 2^24 argument bound, so rounding is safe.
   ((value + quantum - 1) div quantum) * quantum
 
-proc region(pages: var seq[PageImage], start, size: uint64, access: PageAccess,
-    input: openArray[byte], offset, length: int) =
-  ## Materialize an already-budgeted region with explicit zero padding and copied input bytes.
+proc region(pages: var seq[PageImage], first: int, start, size: uint64, access: PageAccess,
+    input: openArray[byte], offset, length: int): int =
+  ## Fill preinitialized page slots with the admitted section and return the next free slot.
+  let count = size div 4096
+  # Check both extents before narrowing the count or forming a bulk-copy address.
+  assert first >= 0 and first <= pages.len and count <= uint64(pages.len - first)
+  assert offset >= 0 and offset <= input.len and length >= 0 and length <= input.len - offset
+  assert size mod 4096 == 0 and uint64(length) <= size
   var consumed = 0
   # Regions are page-aligned, nonoverlapping and emitted in increasing address order.
-  for ordinal in 0..<int(size div 4096):
-    var page = PageImage(index: PageIndex(uint32(start div 4096) + uint32(ordinal)),
-      access: access, bytes: default(array[4096, byte]))
-    # Bytes outside the serialized extent remain explicitly zero, including complete extra heap pages.
-    for i in 0..<4096:
-      if consumed < length:
-        # Bounds were validated before allocation; no byte is read from padding or another section.
-        page.bytes[i] = input[offset + consumed]
-        inc consumed
-    pages.add(page)
+  for ordinal in 0..<int(count):
+    let slot = first + ordinal
+    pages[slot].index = PageIndex(uint32(start div 4096) + uint32(ordinal))
+    pages[slot].access = access
+    let copied = min(4096, length - consumed)
+    if copied > 0:
+      # The remainder bounds the source span. The default slot retains zero padding past it.
+      copyMem(addr pages[slot].bytes[0], unsafeAddr input[offset + consumed], copied)
+      consumed += copied
+  first + int(count)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits,
@@ -123,12 +128,15 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
       return InitializationResult(status: InitializationError.InvalidProgram)
     source = decoded.value # Replace the one retained source only after complete successful admission.
     retained = InitializationCode(source: source, bytes: limits.program, jumps: limits.jumps)
-  var pages = newSeqOfCap[PageImage](int(pageCount))
-  region(pages, 65536, roSize, PageAccess.ReadOnly, input, 11, int(readOnlyLength))
-  region(pages, 131072 + rounded(readOnlyLength, 65536), rwSize, PageAccess.ReadWrite,
+  # Initialize zero padding in the final staging slots, including untouched stack and heap bytes.
+  var pages = newSeq[PageImage](int(pageCount))
+  var next = region(pages, 0, 65536, roSize, PageAccess.ReadOnly, input, 11, int(readOnlyLength))
+  next = region(pages, next, 131072 + rounded(readOnlyLength, 65536), rwSize, PageAccess.ReadWrite,
     input, 11 + int(readOnlyLength), int(writableLength))
-  region(pages, 0xfefe0000'u64 - stackSize, stackSize, PageAccess.ReadWrite, input, 0, 0)
-  region(pages, 0xfeff0000'u64, argumentSize, PageAccess.ReadOnly, arguments, 0, arguments.len)
+  next = region(pages, next, 0xfefe0000'u64 - stackSize, stackSize, PageAccess.ReadWrite, input, 0, 0)
+  next = region(pages, next, 0xfeff0000'u64, argumentSize, PageAccess.ReadOnly, arguments, 0,
+    arguments.len)
+  assert next == pages.len
   let memory = captureMemory(pages, limits.pages)
   # These invariants were established above; a failure indicates an internal layout bug.
   assert memory.error == MachineError.None
