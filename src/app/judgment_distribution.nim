@@ -241,13 +241,13 @@ proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletio
     for old in owner.pending:
       let a = old.judgment.judgmentRecord
       let b = record.judgmentRecord
-      if uint32(a.epoch) == uint32(b.epoch) and array[32, byte](a.report) == array[32, byte](
-          b.report): duplicate = true
+      if uint32(a.epoch) == uint32(b.epoch) and uint16(a.validator) == uint16(b.validator) and
+          array[32, byte](a.report) == array[32, byte](b.report): duplicate = true
     for old in pending:
       let a = old.judgment.judgmentRecord
       let b = record.judgmentRecord
-      if uint32(a.epoch) == uint32(b.epoch) and array[32, byte](a.report) == array[32, byte](
-          b.report): duplicate = true
+      if uint32(a.epoch) == uint32(b.epoch) and uint16(a.validator) == uint16(b.validator) and
+          array[32, byte](a.report) == array[32, byte](b.report): duplicate = true
     if not duplicate: pending.add(retained)
     var known = false
     for old in owner.reports:

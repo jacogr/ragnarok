@@ -2878,6 +2878,10 @@ proc beginAuditPublication*(services: var Services, id: AuditOriginId, ordinal: 
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitSigning(result.value, id, ordinal)
+proc auditRoutingHead*(services: Services): genesis.BlockHash {.requires:
+    services.stateProofAvailable.} =
+  ## Observe only the trusted selected head that supplies current successor topology.
+  services.canonical.chainView.bestBlockContext.hash
 proc stageAuditParticipation(services: var Services, id: AuditOriginId, ordinal: int,
     identity: StateEdKey, limits: AuditParticipationLimits): WorkJobError =
   ## Temporary actual canonical wrappers retire before native publication of the immutable private source lease.
