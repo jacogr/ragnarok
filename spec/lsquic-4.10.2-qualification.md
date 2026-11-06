@@ -65,3 +65,10 @@ unchanged reset patch linked its public API into the Release bridge.
 reset on an unsolicited stream while a download worker held its lease.
 ARC occupied memory held at 157,568 bytes across 1,000 cycles. The combined
 Debug `path`, `ping_alarm`, and `conn_close_ietf` tests passed too.
+
+The LSQUIC CMake cache is keyed by the pinned sources and ordered patch
+manifest. In one macOS build root, Release builds switched from reset plus
+nonce to nonce only and back. Symbol inspection found `lsquic_stream_reset`
+in the static archive and linked bridge only for the two-patch configuration.
+Returning to that configuration reused its cache. The four build-tool tests
+passed, including cache selection across pin and patch changes.

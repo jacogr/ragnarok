@@ -53,3 +53,21 @@ class QuicCompilerConfiguration(unittest.TestCase):
                 with self.assertRaises(FileNotFoundError):
                     build_quic.compiler_options(folder)
             self.assertTrue((folder/'CMakeCache.txt').exists())
+
+
+class QuicPatchConfiguration(unittest.TestCase):
+    """A source or ordered patch change selects a separate native cache."""
+
+    def test_cache_distinguishes_pin_and_patch_transitions(self):
+        """The same build root can safely add, drop, and reorder configured patches."""
+        source = {'lsquic': {'commit': 'first'}}
+        changed = {'lsquic': {'commit': 'second'}}
+        nonce = {'path': 'nonce.patch', 'sha256': 'nonce'}
+        reset = {'path': 'reset.patch', 'sha256': 'reset'}
+        directory = build_quic.lsquic_build_directory
+        combined = directory({'sources': source, 'patches': [reset, nonce]})
+        nonce_only = directory({'sources': source, 'patches': [nonce]})
+        self.assertNotEqual(combined, nonce_only)
+        self.assertNotEqual(combined, directory({'sources': source, 'patches': [nonce, reset]}))
+        self.assertNotEqual(combined, directory({'sources': changed, 'patches': [reset, nonce]}))
+        self.assertEqual(combined, directory({'patches': [reset, nonce], 'sources': source}))
