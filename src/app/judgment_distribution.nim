@@ -91,6 +91,7 @@ proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owne
   `=wasMoved`(owner.claims)
   `=wasMoved`(owner.inputs)
   `=wasMoved`(owner.replies)
+  `=wasMoved`(owner.failedSources)
   `=wasMoved`(owner.sourceSlots)
   `=wasMoved`(owner.wire)
 proc `=destroy`*(owner: JudgmentDispatcher) =
@@ -110,6 +111,7 @@ proc `=destroy`*(owner: JudgmentDispatcher) =
   `=destroy`(owner.claims)
   `=destroy`(owner.inputs)
   `=destroy`(owner.replies)
+  `=destroy`(owner.failedSources)
   `=destroy`(owner.sourceSlots)
   `=destroy`(owner.wire)
 func received*(owner: JudgmentDispatcher): uint64 =
