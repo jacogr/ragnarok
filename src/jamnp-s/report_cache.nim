@@ -24,7 +24,7 @@ type
     age: uint64
     reply: ReadReply
   ReportCache* = object ## Default is an empty bounded value owner; no native handles, map aliases or borrowed workers exist here.
-    entries: array[MaxCachedReports, CacheEntry]
+    entries: seq[CacheEntry]
     count, bytes: int
     next: uint64
 
@@ -53,7 +53,7 @@ proc identity(request: ReadRequest): array[32, byte] {.requires: request.valid a
 proc removeOldest(cache: var ReportCache) =
   ## One bounded scan removes the least recently inserted/accessed owner before retaining the replacement.
   var oldest = -1
-  for index in 0..<MaxCachedReports:
+  for index in 0..<cache.entries.len:
     if cache.entries[index].used:
       if oldest < 0 or cache.entries[index].age < cache.entries[oldest].age: oldest = index
   assert oldest >= 0 and cache.count > 0
@@ -66,7 +66,7 @@ proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheEr
   if checked.kind != ReadKind.Report: return ReportCacheError.InvalidReport
   if cache.next == high(uint64): return ReportCacheError.Exhausted
   let hash = identity(checked.request)
-  for index in 0..<MaxCachedReports:
+  for index in 0..<cache.entries.len:
     if cache.entries[index].used and cache.entries[index].identity == hash:
       inc cache.next
       cache.entries[index].age = cache.next
@@ -85,8 +85,10 @@ proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheEr
   if frozen.error != ReadError.None: return ReportCacheError.BackendFailure
   while cache.count >= MaxCachedReports or cache.bytes > MaxReportCacheBytes-wire.len:
     cache.removeOldest() # Private invariant guarantees a nonempty victim whenever capacity/bytes need reclamation.
+  if cache.entries.len == 0:
+    cache.entries = newSeq[CacheEntry](MaxCachedReports) # Allocate bounded slots only on the first accepted report.
   var position = -1
-  for index in 0..<MaxCachedReports:
+  for index in 0..<cache.entries.len:
     if not cache.entries[index].used:
       position = index
       break
@@ -103,7 +105,7 @@ proc find*(cache: var ReportCache, request: ReadRequest): ReportCacheResult =
   if request.kind != ReadKind.Report: return ReportCacheResult(
       status: ReportCacheError.InvalidReport)
   let hash = identity(request)
-  for index in 0..<MaxCachedReports:
+  for index in 0..<cache.entries.len:
     if cache.entries[index].used and cache.entries[index].identity == hash:
       if cache.next < high(uint64):
         inc cache.next
