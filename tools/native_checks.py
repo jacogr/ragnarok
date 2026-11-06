@@ -56,7 +56,7 @@ class NativeChecks:
 
 
     # Keep ARC, Clang and checks fixed; production-like callers retain ThinLTO by default.
-    def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None, lto=None, profile_directory=None):
+    def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None, lto=None, profile_directory=None, *, timeout=180):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
                  '--boundchecks:on']
         effective_lto = self.lto if lto is None else lto
@@ -107,7 +107,7 @@ class NativeChecks:
                 print('BUILD '+name, flush=True)
             result = self.command([compiler, 'c', *flags,
                                    f'--nimcache:{cache_directory(compiler, self.folder, cache_name)}',
-                                   f'--out:{binary}', source], name+'-build',
+                                   f'--out:{binary}', source], name+'-build', timeout=timeout,
                                   **({'environment': environment} if environment is not None else {}))
             if self.reuse_builds:
                 print(f'Completed build {name} in {result["elapsed_seconds"]:.2f}s', flush=True)
