@@ -71,6 +71,7 @@ type
     image: NativeImage
     invocation, allowed: bool
     provenWork, invocationWork, invocationBudget, calls, operations, publications: uint64
+    branchCalls, headerCalls: uint64
     nextScan: uint32
     workValid: bool
   NativeSessionData = ref NativeSessionStorage
@@ -81,6 +82,8 @@ type
     registered*, active*: int
     completions*: int ## Uncollected Complete rows, including empty failed images; independent of work phase.
     submitted*, completed*: uint64
+  NativeControlStatistics* = object ## Cumulative physical calls with branch or backedge activity.
+    branchCalls*, headerCalls*: uint64
 
 proc `=copy`(destination: var Registration, source: Registration) {.error.}
 proc `=dup`(source: Registration): Registration {.error.}
@@ -443,6 +446,23 @@ proc considerNativeSpan*(session: NativeSession, span: NativeSpan) =
   if data.span.len == 0 and span.len >= NativeMinimumOperations and span.epoch == data.epoch:
     data.span = span
 
+func nativePromotionOpen*(session: NativeSession): bool =
+  ## Deferred zero-ticket storage is caller-owned. Queued and completed requests remain immutable.
+  let data {.cursor.} = session.data
+  if data == nil: return false
+  data.invocation and data.state == NativeState.Deferred and data.ticket == 0 and
+    not data.image.ready and data.span.len >= NativeMinimumOperations and
+    data.span.epoch == data.epoch and data.span.kind == NativeKind.PurePrefix
+
+proc promoteNativeLoop*(session: NativeSession, loop: NativeLoopInfo) =
+  ## The checked stream verified this certificate against the already selected prefix.
+  if not nativePromotionOpen(session): return
+  let data {.cursor.} = session.data
+  assert data != nil
+  if loop.header < NativeEntryLimit and loop.header+1 == data.span.entry and
+      loop.sourceSpan == uint32(data.span.len)+1:
+    data.span.promote(loop)
+
 func nativeScanStart*(session: NativeSession): uint32 =
   ## One monotone classification cursor prevents rescanning structurally unsupported cached nodes each call.
   let data {.cursor.} = session.data
@@ -578,13 +598,20 @@ func nativeSpanReady*(session: NativeSession): bool =
   ## Ready is separate from this invocation's conservative horizon; neither forces a losing short call.
   let data {.cursor.} = session.data
   if data == nil: return false
-  data.invocation and data.allowed and data.state == NativeState.Ready
+  data.invocation and data.allowed and data.state == NativeState.Ready and
+    data.image.kind == data.span.kind
 
 func nativeSpanInfo*(session: NativeSession): NativeSpanInfo =
   ## Native entry copies only scalar coordinates, not the fixed64-operation compiler request.
   let data {.cursor.} = session.data
   if data == nil: return default(NativeSpanInfo)
   info(data.span)
+
+func nativeLoopInfo*(session: NativeSession): NativeLoopInfo =
+  ## Copy the loop certificate separately so pure entry keeps its original small scalar view.
+  let data {.cursor.} = session.data
+  if data == nil: return default(NativeLoopInfo)
+  data.span.loopInfo
 
 func matchesNativeOperation*(session: NativeSession, index: int, opcode: byte,
     slots: RegisterSlots, immediate: uint64): bool =
@@ -601,6 +628,51 @@ proc runNativeSpan*(session: NativeSession, registers: var RegisterFile) =
   enterNative(data.image, registers)
   if data.calls < high(uint64): inc data.calls
   if data.operations <= high(uint64)-uint64(data.span.len): data.operations += uint64(data.span.len)
+
+func validLoopReceipt(loop: NativeLoopInfo, destination: uint32, gas, remaining: uint64,
+    context: NativeLoopContext, left, right: uint64): bool =
+  ## Exact quotient checks prove the subsequent products before any accounting is committed.
+  let span = uint64(loop.sourceSpan)
+  if span == 0 or context.visits == 0 or context.gas > gas or context.remaining > remaining or
+      remaining > high(uint64)-span: return false
+  let extra = context.visits-1
+  let quotaDelta = remaining-context.remaining
+  let gasDelta = gas-context.gas
+  if extra > quotaDelta div span or extra*span != quotaDelta: return false
+  if loop.price == 0:
+    if gasDelta != 0: return false
+  elif extra > gasDelta div loop.price or extra*loop.price != gasDelta:
+    return false
+  if destination == loop.exitHeader: return left >= right
+  destination == loop.header and left < right and
+    (context.remaining < span or context.gas < loop.price)
+
+proc runNativeLoop*(session: NativeSession, registers: var RegisterFile,
+    context: var NativeLoopContext): uint32 =
+  ## Only a validated receipt can return to checked dispatch or credit physical activity.
+  let data {.cursor.} = session.data
+  if data == nil or not nativeSpanReady(session): abortNativeReceipt()
+  let loop = data.span.loopInfo
+  let gas = context.gas
+  let remaining = context.remaining
+  if loop.kind != NativeKind.ClosedRegisterLoop or
+      remaining > high(uint64)-uint64(loop.sourceSpan): abortNativeReceipt()
+  result = enterNativeLoop(data.image, registers, context)
+  if not validLoopReceipt(loop, result, gas, remaining, context,
+      uint64(registers[loop.slots.aIndex]), uint64(registers[loop.slots.bIndex])):
+    abortNativeReceipt()
+  # Exact quota accounting plus the checked first reservation bound visits*sourceSpan.
+  let operations = context.visits*uint64(loop.sourceSpan)
+  if data.calls < high(uint64): inc data.calls
+  if data.branchCalls < high(uint64): inc data.branchCalls
+  if context.visits > 1 and data.headerCalls < high(uint64): inc data.headerCalls
+  if data.operations <= high(uint64)-operations: data.operations += operations
+
+func nativeControlStatistics*(session: NativeSession): NativeControlStatistics =
+  ## Copied counters for the quiescent public owner; no completion collection or waits.
+  let data {.cursor.} = session.data
+  if data == nil: return default(NativeControlStatistics)
+  NativeControlStatistics(branchCalls: data.branchCalls, headerCalls: data.headerCalls)
 
 proc nativeStatistics*(session: NativeSession): array[5, uint64] =
   ## Copy quiescent shared image/activity counters; compilation CPU is not fabricated from a process clock.

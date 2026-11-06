@@ -5,6 +5,7 @@
 import std/assertions
 import ../[program, machine]
 import ./jit_rules
+import ./[native_control, native_ir]
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -408,6 +409,102 @@ proc armInstructions*(fragment: ArmBlock): seq[uint32] =
     if (fragment.writes and (1'u32 shl int(slot))) != 0:
       result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
   for word in fragment.terminal: result.add(word)
+
+type ArmLoopFixup = object ## One symbolic branch displacement in the common control program.
+  at: int
+  target: LoopLabel
+  instruction: uint32
+
+proc armLoopEdge(words: var seq[uint32], fixes: var seq[ArmLoopFixup],
+    target: LoopLabel, instruction: uint32) =
+  ## B or B.cond placeholder has a zero instruction-relative displacement.
+  fixes.add(ArmLoopFixup(at: words.len, target: target, instruction: instruction))
+  words.add(instruction) # B imm26=0 or B.cond imm19=0; condition is already selected by the action.
+
+proc encodeArmLoop*(span: NativeSpan, control: LoopControl): seq[uint32] =
+  ## Lower shared actions using caller-saved registers and a resident guest register bank.
+  let loop = span.loopInfo
+  var body = default(ArmBlock)
+  for index in 0..<span.len:
+    # Reuse canonical scalar emission and its read-before-write tracking.
+    let op = span.operation(index)
+    emitArmOperation(body, op.opcode, op.slots, op.immediate)
+  let left = armRead(body, loop.slots.aIndex)
+  let right = armRead(body, loop.slots.bIndex)
+  var labels = default(array[LoopLabel, int])
+  var fixes: seq[ArmLoopFixup] = @[]
+  result = @[]
+  for action in control:
+    # Register assignment: X0 guest base, X17 context, X2/X3 gas/quota, D16 visits.
+    case action.kind
+    of LoadContext:
+      result.add(0xaa0103f1'u32) # MOV X17,X1: preserve incoming context across scalar scratch use.
+      result.add(0xf9400222'u32) # LDR X2,[X17,#0]: gas.
+      result.add(0xf9400623'u32) # LDR X3,[X17,#8]: remaining source attempts.
+      result.add(0x9e6703f0'u32) # FMOV D16,XZR: zero integer visit bits.
+      result.add(0xd2800021'u32) # MOVZ X1,#1: integer increment.
+      result.add(0x9e670031'u32) # FMOV D17,X1: preserve increment bits across scalar operations.
+    of LoadGuest:
+      # The final comparison also contributes original live-ins through armRead above.
+      for slot in 0..<13:
+        if (body.reads and (1'u32 shl slot)) != 0:
+          # LDR X(slot+4),[X0,#slot*8]; scaled imm12 is the original guest slot.
+          result.add(0xf9400000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+    of Label:
+      labels[action.target] = result.len
+    of ExecuteBody:
+      # Copy the canonical scalar instructions verbatim with X1 scratch and X4..X16 guest lanes.
+      for word in body.words: result.add(word)
+    of CountVisit:
+      result.add(0x5ef18610'u32) # ADD D16,D16,D17: integer visits += 1.
+    of BranchGuestAboveEqual:
+      # CMP Xleft,Xright: both guest slots are mapped to slot+4.
+      result.add(0xeb00001f'u32 or (right shl 16) or (left shl 5))
+      armLoopEdge(result, fixes, action.target, 0x54000002'u32) # B.HS to the action label.
+    of BranchLaneBelow, DebitLane:
+      let lane = if action.lane == Gas: 2'u32 else: 3'u32
+      if action.value <= 4095:
+        # The unsigned amount fits the unshifted imm12 of CMP/SUB.
+        let operand = (uint32(action.value) shl 10) or (lane shl 5)
+        if action.kind == BranchLaneBelow:
+          result.add(0xf100001f'u32 or operand) # CMP Xlane,#amount; XZR discards subtraction.
+        else:
+          result.add(0xd1000000'u32 or operand or lane) # SUB Xlane,Xlane,#amount.
+      else:
+        # MOVZ X1,lo16; MOVK X1,part16,LSL #16/#32/#48 defines the full amount.
+        armImmediate(result, 1, action.value)
+        if action.kind == BranchLaneBelow:
+          result.add(0xeb01001f'u32 or (lane shl 5)) # CMP Xlane,X1.
+        else:
+          result.add(0xcb010000'u32 or (lane shl 5) or lane) # SUB Xlane,Xlane,X1.
+      if action.kind == BranchLaneBelow:
+        armLoopEdge(result, fixes, action.target, 0x54000003'u32) # B.LO to the action label.
+    of Jump:
+      armLoopEdge(result, fixes, action.target, 0x14000000'u32) # B to the action label.
+    of SelectReturn:
+      # MOVZ X1,lo16; MOVK X1,part16,LSL #16/#32/#48 holds the return coordinate.
+      armImmediate(result, 1, action.value)
+    of StoreGuest:
+      # Commit dirty guest lanes before overwriting the X0 array base.
+      for slot in 0..<13:
+        if (body.writes and (1'u32 shl slot)) != 0:
+          # STR X(slot+4),[X0,#slot*8]; scaled imm12 is the original guest slot.
+          result.add(0xf9000000'u32 or (uint32(slot) shl 10) or uint32(slot+4))
+    of StoreContext:
+      result.add(0xf9000222'u32) # STR X2,[X17,#0]: gas.
+      result.add(0xf9000623'u32) # STR X3,[X17,#8]: quota.
+      result.add(0xfd000a30'u32) # STR D16,[X17,#16]: integer visit bits.
+    of Return:
+      result.add(0x2a0103e0'u32) # MOV W0,W1: return the selected uint32 stream coordinate.
+      result.add(0xd65f03c0'u32) # RET X30: leaf return through the caller's link register.
+  if result.len > NativeImageByteLimit div 4: return @[]
+  for fix in fixes:
+    # The complete image cap proves both signed ranges. ARM counts words from the branch itself.
+    let delta = cast[uint32](int32(labels[fix.target]-fix.at))
+    if fix.instruction == 0x14000000'u32:
+      result[fix.at] = fix.instruction or (delta and 0x03ffffff'u32) # B imm26 in bits 25:0.
+    else:
+      result[fix.at] = fix.instruction or ((delta and 0x7ffff'u32) shl 5) # B.cond imm19 in 23:5.
 
 proc newArmMixedBody*(): ArmMixedBlock =
   ## The checked header has already reserved the complete source block.

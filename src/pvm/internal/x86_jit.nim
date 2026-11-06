@@ -6,6 +6,7 @@
 import std/assertions
 import ../[program, machine]
 import ./jit_rules
+import ./[native_control, native_ir]
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.
@@ -457,6 +458,81 @@ proc regionEdge(fragment: var X86Block, fixes: var seq[X86RegionFixup], target: 
   else: put(fragment, [0x0f'u8, condition])
   fixes.add(X86RegionFixup(at: fragment.bytes.len, target: target, guard: guard))
   regionWord(fragment, 0)
+
+type X86LoopFixup = object ## One little-endian rel32 displacement in the shared action stream.
+  at: int
+  target: LoopLabel
+
+proc x86LoopEdge(fragment: var X86Block, fixes: var seq[X86LoopFixup],
+    target: LoopLabel, opcode: openArray[byte]) =
+  ## Emit the selected JMP/Jcc opcode followed by its four-byte displacement placeholder.
+  put(fragment, opcode)
+  fixes.add(X86LoopFixup(at: fragment.bytes.len, target: target))
+  regionWord(fragment, 0) # rel32=0, little-endian from immediately after the displacement.
+
+proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
+  ## Lower the shared actions with canonical scalar loads/stores and SysV caller-saved lanes.
+  let loop = span.loopInfo
+  var fragment = default(X86Block)
+  var labels = default(array[LoopLabel, int])
+  var fixes: seq[X86LoopFixup] = @[]
+  for action in control:
+    # RDI is the guest array. RSI is context, R9/R10 are gas/quota, and R11 counts visits.
+    case action.kind
+    of LoadContext:
+      put(fragment, [0x4c'u8, 0x8b, 0x0e]) # MOV R9,[RSI]: gas.
+      put(fragment, [0x4c'u8, 0x8b, 0x56, 8]) # MOV R10,[RSI+8]: remaining attempts.
+      put(fragment, [0x45'u8, 0x31, 0xdb]) # XOR R11D,R11D: zero-extend visits.
+    of LoadGuest, StoreGuest:
+      # Canonical scalar instructions already load and store their own guest operands.
+      discard
+    of Label:
+      labels[action.target] = fragment.bytes.len
+    of ExecuteBody:
+      for index in 0..<span.len:
+        # Canonical scalar emission preserves RSI/RDI and the three context lanes.
+        let op = span.operation(index)
+        emitX86Operation(fragment, op.opcode, op.slots, op.immediate)
+    of CountVisit:
+      put(fragment, [0x49'u8, 0xff, 0xc3]) # INC R11: one completed original body and branch.
+    of BranchGuestAboveEqual:
+      readSlot(fragment, loop.slots.aIndex, false) # MOV RAX,[RDI+left*8].
+      readSlot(fragment, loop.slots.bIndex, true) # MOV RCX,[RDI+right*8].
+      put(fragment, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX: compare original unsigned operands.
+      x86LoopEdge(fragment, fixes, action.target, [0x0f'u8, 0x83]) # JAE rel32.
+    of BranchLaneBelow, DebitLane:
+      let lane = if action.lane == Gas: 1'u8 else: 2'u8
+      let compare = action.kind == BranchLaneBelow
+      if action.value <= 0x7fffffff'u64:
+        # CMP/SUB R9 or R10,imm32; ModRM /7 or /5, REX.B extends the lane.
+        let field = if compare: 0xf8'u8 else: 0xe8'u8
+        put(fragment, [0x49'u8, 0x81, field or lane])
+        regionWord(fragment, uint32(action.value)) # Sign-extended immediate is nonnegative here.
+      else:
+        immediate(fragment, 0xb8, action.value) # MOV RAX,imm64: full unsigned amount.
+        # CMP/SUB R9 or R10,RAX; REX.B extends the destination lane.
+        let opcode = if compare: 0x39'u8 else: 0x29'u8
+        put(fragment, [0x49'u8, opcode, 0xc0'u8 or lane])
+      if compare:
+        x86LoopEdge(fragment, fixes, action.target, [0x0f'u8, 0x82]) # JB rel32.
+    of Jump:
+      x86LoopEdge(fragment, fixes, action.target, [0xe9'u8]) # JMP rel32.
+    of SelectReturn:
+      put(fragment, [0xb8'u8]) # MOV EAX,imm32: return the selected stream coordinate.
+      regionWord(fragment, uint32(action.value)) # Immediate holds the bounded uint32 coordinate.
+    of StoreContext:
+      put(fragment, [0x4c'u8, 0x89, 0x0e]) # MOV [RSI],R9: gas.
+      put(fragment, [0x4c'u8, 0x89, 0x56, 8]) # MOV [RSI+8],R10: quota.
+      put(fragment, [0x4c'u8, 0x89, 0x5e, 16]) # MOV [RSI+16],R11: completed visits.
+    of Return:
+      put(fragment, [0xc3'u8]) # RET: pop caller RIP with the SysV stack otherwise untouched.
+  if fragment.bytes.len > NativeImageByteLimit: return @[]
+  for fix in fixes:
+    # The image ceiling proves a signed rel32, measured from after its four-byte field.
+    let displacement = cast[uint32](int32(labels[fix.target]-(fix.at+4)))
+    for part in 0..<4:
+      fragment.bytes[fix.at+part] = byte((displacement shr (part*8)) and 255)
+  takeX86Instructions(fragment)
 
 proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: range[1..2]): bool =
   ## One observed pure loop uses caller-saved R9/R10 for gas/quota; ordinary operations still access their register array.

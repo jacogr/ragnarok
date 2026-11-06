@@ -6,6 +6,7 @@ import std/[assertions, syncio, envvars]
 import ../../src/pvm/[program, machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/[handler_stream, native_pipeline, native_platform]
+import ./pvm_owner_record
 
 proc recordNativeQualification(kind: string, runtime: NativeRuntime, info: PreparedInfo,
     noRetryChecks = 0) =
@@ -40,12 +41,13 @@ proc launch(runtime: NativeRuntime): bool =
   except:
     assert false, "native compiler thread startup failed"
 
-proc loopOwner(addend = 3'u8): Program =
+proc loopOwner(addend = 3'u8, branch = 172'u8): Program =
   ## Wire header: no jump table, zero argument width, fourteen code bytes; trailing bytes are the start mask.
   ## Guest PC0 ADD_IMM_32 R7,R7,addend (default3, alternate5); PC3 ADD_IMM_32 R10,R10,1;
-  ## PC6 BRANCH_LT_U R10,R11,PC0 (relative -6); PC12 JUMP_IND R0,0 (sentinel halt).
+  ## PC6 unsigned or signed less R10,R11,PC0 (relative -6); PC12 JUMP_IND R0,0 (sentinel halt).
   assert addend in [3'u8, 5], "literal loop uses only the documented +3/+5 fixtures"
-  let wire = @[0'u8, 0, 14, 131, 0x77, addend, 131, 0xaa, 1, 172, 0xba,
+  assert branch in [172'u8, 173], "the signed control must keep the same checked positive trip count"
+  let wire = @[0'u8, 0, 14, 131, 0x77, addend, 131, 0xaa, 1, branch, 0xba,
     0xfa, 0xff, 0xff, 0xff, 50, 0, 0x49, 0x10]
   let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
   assert decoded.error == ProgramError.None, "loopOwner.1: decoded.error == ProgramError.None"
@@ -313,9 +315,12 @@ when defined(pvmSharedAsyncWitness):
     assert done.value.backend == PvmBackend.Jit, "asyncLifecycle.12: done.value.backend == PvmBackend.Jit" &
         "; backend=" & $uint8(done.value.backend)
     assert preparedInfo(code).value.nativeFragments == 1, "asyncLifecycle.13: preparedInfo(code).value.nativeFragments == 1"
-    assert preparedInfo(code).value.nativeOperations == 4096,
-        "asyncLifecycle.14: preparedInfo(code).value.nativeOperations == 4096" & "; actual=" &
-        $preparedInfo(code).value.nativeOperations
+    let firstReady = preparedInfo(code).value
+    assert firstReady.nativeCalls == 1 and firstReady.nativeOperations == 6144,
+        "one native call must account for all 2048 original triples"
+    assert invocationOwnerRecord(firstReady, "loop") ==
+        "ARM_OWNER,loop,1,1,6144," & $firstReady.nativeCodeBytes & ",0,1,1",
+        "actual owner record must include one branch call and one backedge call"
     assert not preparedInfo(code).value.nativeCompilationMeasured, "asyncLifecycle.15: not preparedInfo(code).value.nativeCompilationMeasured"
     diagnosticPhase("asyncLifecycle: sixteen ready tiny-budget calls")
     for call in 0..<16:
@@ -380,73 +385,195 @@ when defined(pvmSharedAsyncWitness):
     assert runtime.close(), "cancelledFinalDrop.7: runtime.close()"
 
 when defined(pvmSharedAsyncWitness):
+  type
+    ReadyStop {.pure.} = enum ## Distinguish local quota exhaustion from observable exits.
+      Quota, Gas, Halt
+    ReadyCase = object ## Literal CPU and physical activity expectations for one ready invocation.
+      name: string
+      budget, bound, gas, startPc, startR7, startR10: uint64
+      pc, outGas, remaining, r7, r10, operations: uint64
+      paid, outPaid: bool
+      stop: ReadyStop
+
   proc readyReservations() =
-    ## Real ready code must respect an original partial-attempt barrier and an unpaid OOG header.
+    ## Train one real image, then compare each boundary with a separate checked stream.
     let runtime = newNativeRuntime()
     if not nativePlatformSupported(): return
-    assert launch(runtime), "readyReservations.1: launch(runtime)"
+    assert launch(runtime), "readyReservations: compiler startup"
     let owner = loopOwner()
     let source = input(owner, 2048)
+    let memory = source.memoryOf.value
+    let initial = source.machineInfo.value
+    let originalPage = memory.pageImage(PageIndex(32)).value
     let session = newNativeSession(runtime)
     var admitted = prepareFlatPlan(owner, GasCycleLimit(1000), defaultFlatLimits(),
-        allowNative = false)
+      allowNative = false)
     let plan = takeValue(admitted)
-    var created = prepareFlatMemoryFrame(plan, source.memoryOf.value, source.machineInfo.value)
+    var created = prepareFlatMemoryFrame(plan, memory, initial)
     var frame = takeValue(created)
     frame.nativeSession = session
     beginNativeInvocation(session, 6145)
     runFlat(frame, 6145)
     finishNativeInvocation(session, settledNativeWork(frame, 6145))
     var stream = takeFlatStream(frame)
-    waitNativeCompiler(runtime) # Explicit qualification barrier outside all public calls.
-    for poor in [false, true]:
-      # The partial call completes 1365 whole triples, then only R7+=3 of its final triple.
-      # Zero-gas input attempts its first charge and must execute no native instruction.
-      let selected = if poor: input(owner, 2048, 0) else: source
-      var made = prepareFlatMemoryFrame(plan, selected.memoryOf.value, selected.machineInfo.value)
+    waitNativeCompiler(runtime) # Explicit qualification barrier outside all invocations.
+
+    # Warm the checked stream independently so a paid interior PC also uses its cached body.
+    var baseline = prepareFlatMemoryFrame(plan, memory, initial)
+    var warmChecked = takeValue(baseline)
+    runFlat(warmChecked, 6145)
+    assert warmChecked.reason == StepError.None and warmChecked.exit == StepExit.Halt
+    var checkedStream = takeFlatStream(warmChecked)
+    let cases = [
+      ReadyCase(name: "partial first ADD", budget: 4096, bound: 2048, gas: 1000000, pc: 3,
+        outGas: 969948, r7: 4098, r10: 1365, operations: 4095, outPaid: true),
+      ReadyCase(name: "partial second ADD", budget: 4097, bound: 2048, gas: 1000000, pc: 6,
+        outGas: 969948, r7: 4098, r10: 1366, operations: 4095, outPaid: true),
+      ReadyCase(name: "exact next header", budget: 4098, bound: 2048, gas: 1000000,
+        outGas: 969948, r7: 4098, r10: 1366, operations: 4098),
+      ReadyCase(name: "exact exit header", budget: 6144, bound: 2048, gas: 1000000, pc: 12,
+        outGas: 954944, r7: 6144, r10: 2048, operations: 6144),
+      ReadyCase(name: "first charge refused", budget: 6145, bound: 2048, remaining: 6145,
+        stop: ReadyStop.Gas),
+      ReadyCase(name: "next charge short by one", budget: 4096, bound: 2048, gas: 30051,
+        outGas: 21, remaining: 1, r7: 4095, r10: 1365, operations: 4095, stop: ReadyStop.Gas),
+      ReadyCase(name: "next charge exact", budget: 4096, bound: 2048, gas: 30052, pc: 3,
+        r7: 4098, r10: 1365, operations: 4095, outPaid: true),
+      ReadyCase(name: "next charge plus one", budget: 4096, bound: 2048, gas: 30053, pc: 3,
+        outGas: 1, r7: 4098, r10: 1365, operations: 4095, outPaid: true),
+      ReadyCase(name: "quota before unaffordable next charge", budget: 4098, bound: 2048,
+        gas: 30052, r7: 4098, r10: 1366, operations: 4098),
+      ReadyCase(name: "paid header", budget: 4096, bound: 1, gas: 22, paid: true,
+        remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: true, stop: ReadyStop.Halt),
+      ReadyCase(name: "paid cached interior", budget: 4096, bound: 1, gas: 22, paid: true,
+        startPc: 3, startR7: 3, remaining: 4093, r7: 3, r10: 1, outPaid: true,
+        stop: ReadyStop.Halt),
+      ReadyCase(name: "zero bound still visits once", budget: 4096, gas: 1000000,
+        outGas: 999956, remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: true,
+        stop: ReadyStop.Halt),
+      ReadyCase(name: "one visit", budget: 4096, bound: 1, gas: 1000000,
+        outGas: 999956, remaining: 4092, r7: 3, r10: 1, operations: 3, outPaid: true,
+        stop: ReadyStop.Halt),
+      ReadyCase(name: "two visits", budget: 4096, bound: 2, gas: 1000000,
+        outGas: 999934, remaining: 4089, r7: 6, r10: 2, operations: 6, outPaid: true,
+        stop: ReadyStop.Halt),
+      ReadyCase(name: "sixteen visits", budget: 4096, bound: 16, gas: 1000000,
+        outGas: 999626, remaining: 4047, r7: 48, r10: 16, operations: 48, outPaid: true,
+        stop: ReadyStop.Halt),
+      ReadyCase(name: "unsigned high bound and signed word wrap", budget: 4096,
+        bound: 0x8000000000000000'u64, gas: 44, startR7: 0x7ffffffe, startR10: high(uint64),
+        remaining: 4090, r7: 0xffffffff80000004'u64, r10: 1, operations: 6,
+        stop: ReadyStop.Gas)]
+    for expected in cases:
+      # Fresh inputs vary only the fixture registers, paid state, PC and gas.
+      var cpu = initial
+      cpu.pc = CodeAddress(expected.startPc)
+      cpu.gas = MachineGas(expected.gas)
+      cpu.blockCharged = expected.paid
+      cpu.registers[7] = RegisterValue(expected.startR7)
+      cpu.registers[10] = RegisterValue(expected.startR10)
+      cpu.registers[11] = RegisterValue(expected.bound)
+      var made = prepareFlatMemoryFrame(plan, memory, cpu)
       var current = takeValue(made)
       current.nativeSession = session
-      let budget = if poor: 6145'u64 else: 4096'u64
-      let before = nativeStatistics(session)[2]
-      beginNativeInvocation(session, budget)
+      let before = nativeStatistics(session)
+      let beforeControl = nativeControlStatistics(session)
+      beginNativeInvocation(session, expected.budget)
       restoreFlatStream(current, stream)
-      runFlat(current, budget)
-      assert settledNativeWork(current, budget) == 0, "readyReservations.2: settledNativeWork(current, budget) == 0"
-      if poor:
-        assert current.reason == StepError.None and current.exit == StepExit.OutOfGas, "readyReservations.3: current.reason == StepError.None and current.exit == StepExit.OutOfGas"
-        assert uint64(current.info.gas) == 0 and uint64(current.info.gasDeficit) == 0,
-            "readyReservations.4: uint64(current.info.gas) == 0 and uint64(current.info.gasDeficit) == 0" &
-            "; gas=" & $uint64(current.info.gas) & "; deficit=" & $uint64(current.info.gasDeficit)
-        assert uint64(current.info.pc) == 0 and not current.info.blockCharged,
-            "readyReservations.5: uint64(current.info.pc) == 0 and not current.info.blockCharged" &
-            "; pc=" & $uint64(current.info.pc) & "; charged=" & $current.info.blockCharged
-        assert current.remaining == budget, "readyReservations.6: current.remaining == budget"
-        assert nativeStatistics(session)[2] == before, "readyReservations.7: nativeStatistics(session)[2] == before"
-      else:
-        assert current.reason == StepError.StepLimitExceeded and current.remaining == 0, "readyReservations.8: current.reason == StepError.StepLimitExceeded and current.remaining == 0"
-        assert uint64(current.info.pc) == 3 and current.info.blockCharged,
-            "readyReservations.9: uint64(current.info.pc) == 3 and current.info.blockCharged" &
-            "; pc=" & $uint64(current.info.pc) & "; charged=" & $current.info.blockCharged
-        # The final partial block is prepaid too:1366*22=30052 gas for4096 attempted source steps.
-        assert uint64(current.info.gas) == 969948 and uint64(current.info.gasDeficit) == 0,
-            "readyReservations.10: uint64(current.info.gas) == 969948 and uint64(current.info.gasDeficit) == 0" &
-            "; gas=" & $uint64(current.info.gas) & "; deficit=" & $uint64(current.info.gasDeficit)
-        assert nativeStatistics(session)[2]-before == 2730,
-            "readyReservations.11: nativeStatistics(session)[2]-before == 2730" &
-            "; actual delta=" & $(nativeStatistics(session)[2]-before) # Two ops in each complete triple only.
-      for index in 0..<13:
-        let expected = if not poor and index == 7: 4098'u64
-          elif not poor and index == 10: 1365'u64
-          else: uint64(selected.machineInfo.value.registers[index])
-        assert uint64(current.info.registers[index]) == expected,
-            "readyReservations.12: uint64(current.info.registers[index]) == expected" & "; index=" &
-            $index & "; actual=" & $uint64(current.info.registers[index]) & "; expected=" & $expected
-      let page = flatMemorySnapshot(current).pageImage(PageIndex(32)).value
-      for offset in 0..<4096:
-        assert page.bytes[offset] == byte((offset*17+29) and 255), "readyReservations.13: page.bytes[offset] == byte((offset*17+29) and 255)"
-      finishNativeInvocation(session, 0) # Neither attempted partial work nor OOG buys a new admission.
+      let label = "readyReservations: " & expected.name
+      assert nativeSpanReady(session), label
+      runFlat(current, expected.budget)
+
+      var madeChecked = prepareFlatMemoryFrame(plan, memory, cpu)
+      var checked = takeValue(madeChecked)
+      restoreFlatStream(checked, checkedStream)
+      runFlat(checked, expected.budget)
+      case expected.stop
+      of ReadyStop.Quota:
+        assert current.reason == StepError.StepLimitExceeded, label
+      of ReadyStop.Gas:
+        assert current.reason == StepError.None and current.exit == StepExit.OutOfGas, label
+      of ReadyStop.Halt:
+        assert current.reason == StepError.None and current.exit == StepExit.Halt, label
+      if expected.stop != ReadyStop.Halt:
+        assert settledNativeWork(current, expected.budget) == 0, label
+      assert current.reason == checked.reason and current.exit == checked.exit, label
+      assert current.remaining == expected.remaining and checked.remaining == expected.remaining,
+        label
+      for info in [current.info, checked.info]:
+        # Both paths must match every original register, the literal continuation and paid state.
+        assert uint64(info.pc) == expected.pc and uint64(info.gas) == expected.outGas and
+          uint64(info.gasDeficit) == 0 and info.blockCharged == expected.outPaid, label
+        for index in 0..<13:
+          let value = if index == 7: expected.r7
+            elif index == 10: expected.r10 else: uint64(cpu.registers[index])
+          assert uint64(info.registers[index]) == value, label & " register " & $index
+      let nativePage = flatMemorySnapshot(current).pageImage(PageIndex(32)).value
+      let checkedPage = flatMemorySnapshot(checked).pageImage(PageIndex(32)).value
+      assert nativePage.access == originalPage.access and nativePage.bytes == originalPage.bytes and
+        checkedPage.access == originalPage.access and checkedPage.bytes == originalPage.bytes, label
+      let after = nativeStatistics(session)
+      let afterControl = nativeControlStatistics(session)
+      let calls = if expected.operations == 0: 0'u64 else: 1'u64
+      let headers = if expected.operations > 3: 1'u64 else: 0'u64
+      assert after[1]-before[1] == calls and after[2]-before[2] == expected.operations, label
+      assert afterControl.branchCalls-beforeControl.branchCalls == calls and
+        afterControl.headerCalls-beforeControl.headerCalls == headers, label
+      finishNativeInvocation(session, 0)
       stream = takeFlatStream(current)
-    assert runtime.close(), "readyReservations.14: runtime.close()"
+      checkedStream = takeFlatStream(checked)
+    assert runtime.close(), "readyReservations: compiler shutdown"
+
+
+  proc foldedLoopOwner(): Program =
+    ## PC3 UNLIKELY folds out of the stream between the ADDs. PC7 branches unsigned to PC0.
+    let wire = @[0'u8, 0, 15, 131, 0x77, 3, 2, 131, 0xaa, 1, 172, 0xba,
+      0xf9, 0xff, 0xff, 0xff, 50, 0, 0x99, 0x20]
+    let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None, "foldedLoopOwner: literal program"
+    decoded.value
+
+  proc purePrefixControl() =
+    ## Refuse promotion for either a signed branch or a folded fact in an unsigned self-loop.
+    if not nativePlatformSupported(): return
+    for folded in [false, true]:
+      # Use separate real owners so the folded case cannot collect the signed fixture's image.
+      let runtime = newNativeRuntime()
+      assert launch(runtime)
+      pauseNativeCompiler(runtime, true)
+      let owner = if folded: foldedLoopOwner() else: loopOwner(branch = 173)
+      let limit = if folded: ExecutionStepLimit(8193) else: ExecutionStepLimit(6145)
+      let source = input(owner, 2048)
+      let code = prepared(owner, runtime)
+      let cold = execute(source, limit, code)
+      assert cold.error == StepError.None and cold.value.exit == StepExit.Halt
+      assert cold.value.backend == PvmBackend.Interpreted
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime)
+      let ready = execute(source, limit, code)
+      assert ready.error == StepError.None and ready.value.exit == StepExit.Halt
+      assert ready.value.backend == PvmBackend.Jit
+      if folded:
+        # The folded instruction still consumes an attempt and affects the checked block price.
+        let expected = cold.value.machine.machineInfo.value
+        let actual = ready.value.machine.machineInfo.value
+        assert uint64(actual.pc) == 0 and actual.blockCharged
+        assert uint64(actual.gas) == uint64(expected.gas) and
+          uint64(actual.gasDeficit) == uint64(expected.gasDeficit)
+        assert uint64(actual.registers[7]) == 6144 and uint64(actual.registers[10]) == 2048
+        for index in 0..<13:
+          assert uint64(actual.registers[index]) == uint64(expected.registers[index])
+        let before = cold.value.machine.memoryOf.value.pageImage(PageIndex(32)).value
+        let after = ready.value.machine.memoryOf.value.pageImage(PageIndex(32)).value
+        assert before.access == after.access and before.bytes == after.bytes
+      else:
+        verify(cold, source, 2048)
+        verify(ready, source, 2048)
+      let observed = preparedInfo(code).value
+      assert observed.nativeFragments == 1 and observed.nativeCalls == 2048 and
+        observed.nativeOperations == 4096 and observed.nativeBranchCalls == 0 and
+        observed.nativeHeaderCalls == 0, "purePrefixControl: folded=" & $folded
+      assert runtime.close()
 
   proc doneFinalDrop() =
     ## An uncollected successful image also occupies credit and must be reclaimed by final owner retirement.
@@ -611,14 +738,14 @@ when defined(pvmSharedAsyncWitness):
     verify(readyB, sourceB, 2048, 5)
     assert readyB.value.backend == PvmBackend.Jit, "retainedCompletionFairness.11"
     assert preparedInfo(codeB).value.nativeFragments == 1, "retainedCompletionFairness.12"
-    assert preparedInfo(codeB).value.nativeOperations == 4096, "retainedCompletionFairness.13"
+    assert preparedInfo(codeB).value.nativeOperations == 6144, "retainedCompletionFairness.13"
     assert runtime.runtimeInfo.completions == 1, "retainedCompletionFairness.14"
     assert preparedNativeState(codeA).value == NativeState.Pending, "retainedCompletionFairness.15"
     let readyA = execute(sourceA, ExecutionStepLimit(6145), codeA)
     verify(readyA, sourceA, 2048)
     assert readyA.value.backend == PvmBackend.Jit, "retainedCompletionFairness.16"
     assert preparedInfo(codeA).value.nativeFragments == 1, "retainedCompletionFairness.17"
-    assert preparedInfo(codeA).value.nativeOperations == 4096, "retainedCompletionFairness.18"
+    assert preparedInfo(codeA).value.nativeOperations == 6144, "retainedCompletionFairness.18"
     assert runtime.runtimeInfo.completions == 0 and runtime.runtimeInfo.phase == NativePhase.Idle, "retainedCompletionFairness.19"
     codeA = default(PreparedProgram)
     codeB = default(PreparedProgram)
@@ -678,7 +805,7 @@ when defined(pvmSharedAsyncWitness):
       verify(ready, sources[index], 2048, addends[index])
       assert ready.value.backend == PvmBackend.Jit, "parkedCompletionCapacity.14"
       assert preparedInfo(codes[index]).value.nativeFragments == 1, "parkedCompletionCapacity.15"
-      assert preparedInfo(codes[index]).value.nativeOperations == 4096, "parkedCompletionCapacity.16"
+      assert preparedInfo(codes[index]).value.nativeOperations == 6144, "parkedCompletionCapacity.16"
       codes[index] = default(PreparedProgram)
     assert runtime.runtimeInfo.registered == 0 and runtime.runtimeInfo.completions == 0, "parkedCompletionCapacity.17"
     assert runtime.close(), "parkedCompletionCapacity.18"
@@ -749,7 +876,7 @@ when defined(pvmSharedAsyncWitness):
       let ready = execute(replacementSource, ExecutionStepLimit(6145), replacementCode)
       verify(ready, replacementSource, 2048, 5)
       assert ready.value.backend == PvmBackend.Jit, "cancelledClaimAndPublication.12"
-      assert preparedInfo(replacementCode).value.nativeOperations == 4096, "cancelledClaimAndPublication.13"
+      assert preparedInfo(replacementCode).value.nativeOperations == 6144, "cancelledClaimAndPublication.13"
       assert runtime.runtimeInfo.completions == 1, "cancelledClaimAndPublication.14"
       let readyB = execute(sourceB, ExecutionStepLimit(6145), codeB)
       verify(readyB, sourceB, 2048)
@@ -827,7 +954,7 @@ when defined(pvmSharedAsyncWitness):
       let ready = execute(sourceNew, ExecutionStepLimit(6145), codeNew)
       verify(ready, sourceNew, 2048, 5)
       assert ready.value.backend == PvmBackend.Jit, "workerRetirementDrop.21"
-      assert preparedInfo(codeNew).value.nativeOperations == 4096, "workerRetirementDrop.22"
+      assert preparedInfo(codeNew).value.nativeOperations == 6144, "workerRetirementDrop.22"
       let readyB = execute(sourceB, ExecutionStepLimit(6145), codeB)
       verify(readyB, sourceB, 2048)
       assert readyB.value.backend == PvmBackend.Jit, "workerRetirementDrop.23"
@@ -898,7 +1025,7 @@ when defined(pvmSharedAsyncWitness):
       let closedC = execute(sourceC, ExecutionStepLimit(6145), codeC)
       verify(closedC, sourceC, 2048)
       assert closedC.value.backend == PvmBackend.Interpreted, "closeCompletionWindows.16"
-      assert preparedInfo(codeC).value.nativeOperations == 4096, "closeCompletionWindows.17"
+      assert preparedInfo(codeC).value.nativeOperations == 6144, "closeCompletionWindows.17"
       assert preparedInfo(codeC).value.nativeCodeBytes > 0, "closeCompletionWindows.18"
       codeC = default(PreparedProgram) # Last installed image release finally permits a fresh namespace.
       assert runtime.runtimeInfo.registered == 0 and launch(runtime), "closeCompletionWindows.19"
@@ -950,6 +1077,8 @@ proc runSharedAsync*() =
     cancelledFinalDrop()
     diagnosticPhase("readyReservations")
     readyReservations()
+    diagnosticPhase("purePrefixControl")
+    purePrefixControl()
     diagnosticPhase("doneFinalDrop")
     doneFinalDrop()
   echo "PVM shared async passed"
