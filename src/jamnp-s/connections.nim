@@ -12,6 +12,18 @@ import ../codec/state/[safrole, consensus]
 type
   ConnectionError* {.pure.} = enum ## Failed setup leaves every native owner retired.
     Uninitialized, None, InvalidConfig, InvalidIdentity, InvalidTopology, BackendFailure
+  DialError* {.pure.} = enum ## Unavailable means no engine attempt; Failed records an attempted native setup without a live lease.
+    Uninitialized, None, Unavailable, Failed
+  DialIssuer = ref object ## Immutable token identity retains no native engine or canonical graph; retained old tickets prevent identity reuse.
+    present: bool
+  DialTicket* = object ## Only the exact owning node incarnation and still-live outgoing slot generation grant cancellation authority.
+    issuer: nil DialIssuer
+    position: int
+    serial: uint64
+  DialResult* = object ## A failed setup cannot expose a connection cancellation token.
+    case status: DialError
+    of None: completed: DialTicket
+    else: discard      # No partial token on backpressure or backend failure.
   ConnectionKind {.pure.} = enum ## A native slot and outgoing engine index occupy different namespaces.
     Incoming, Outgoing
   ConnectionPhase {.pure.} = enum ## Pending replacement has physical ownership but no second policy lease.
@@ -60,12 +72,15 @@ type
     position: int
     transport: Transport
     opened, failed: bool
+    serial: uint64
     connection: ConnectionState
   NodeConnections* = object ## Explicit noncopyable ownership spans the listener, stable dialers and shared selector.
     opened, stopping, localValidator: bool
     failure: ConnectionError
     callbackDepth, timerCursor, dialCursor, openRead, openWrite, openCount: int
     maximum: int
+    dialSerial: uint64
+    dialIssuer: nil DialIssuer
     config: ConnectionConfig
     limits: SafroleStateConfig
     local: StateEdKey
@@ -99,6 +114,7 @@ proc `=dup`*(source: NodeConnections): NodeConnections {.error.}
   ## Implicit duplication is forbidden along with assignment.
 proc `=wasMoved`*(owner: var NodeConnections) {.nodestroy, requires: not owner.opened.} =
   ## Only a fully retired owner may move; all foreign callbacks have ended before fields transfer.
+  `=wasMoved`(owner.dialIssuer)
   `=wasMoved`(owner.listener)
   `=wasMoved`(owner.dispatcher)
   `=wasMoved`(owner.config)
@@ -113,12 +129,14 @@ proc `=wasMoved`*(owner: var NodeConnections) {.nodestroy, requires: not owner.o
   owner.failure = ConnectionError.Uninitialized
   owner.callbackDepth = 0; owner.timerCursor = 0; owner.dialCursor = 0
   owner.openRead = 0; owner.openWrite = 0; owner.openCount = 0; owner.maximum = 0
+  owner.dialSerial = 0
   owner.local = default(StateEdKey); owner.limits = default(SafroleStateConfig)
   owner.now = default(MonoTime); owner.user = nil
   owner.streamCallback = nil; owner.peerCallback = nil; owner.admissionCallback = nil
 proc `=destroy`*(owner: NodeConnections) =
   ## Explicit close retires C and stream callbacks before their enclosing contexts disappear.
   assert not owner.opened, "NodeConnections must close before callback storage retires"
+  `=destroy`(owner.dialIssuer)
   `=destroy`(owner.listener)
   `=destroy`(owner.dialers)
   `=destroy`(owner.dispatcher)
@@ -129,6 +147,12 @@ proc `=destroy`*(owner: NodeConnections) =
   `=destroy`(owner.routes)
   `=destroy`(owner.targets)
   `=destroy`(owner.opens)
+func error*(outcome: DialResult): DialError =
+  ## Observe why no cancellation authority was issued.
+  outcome.status
+func value*(outcome: DialResult): DialTicket {.requires: outcome.status == DialError.None.} =
+  ## Copy exact cancellation coordinates, never a native pointer.
+  outcome.completed
 func initConnectionConfig*(certificate, privateKey, protocol: string, port = 0'u16,
     binding = default(NetworkAddress), builders: GuestConnectionBudget = 20,
     others: GuestConnectionBudget = 20, streams: range[1..16384] = 4096): ConnectionConfig =
@@ -545,6 +569,13 @@ proc close*(owner: var NodeConnections) {.requires: owner.callbackDepth == 0.} =
   owner.openCount = 0
   owner.policy = default(ValidatorAdmission)
   owner.opened = false
+proc releaseClosedStorage*(owner: var NodeConnections) {.requires: not owner.opened.} =
+  ## Reclaim retired callback pools while preserving non-recycled cancellation generations across reopen.
+  let previousSerial = owner.dialSerial
+  let previousIssuer = owner.dialIssuer
+  owner = NodeConnections()
+  owner.dialSerial = previousSerial
+  owner.dialIssuer = previousIssuer
 proc stop*(owner: var NodeConnections) =
   ## Safe in application callbacks; the outer loop subsequently calls explicit close outside callbacks.
   owner.stopping = true
@@ -581,7 +612,12 @@ proc open*(owner: var NodeConnections, config: ConnectionConfig,
   let maximum = int(cores*9) # Checked profile proves1..3069 before constrained parameter conversion/allocation.
   let policy = initValidatorAdmission(selected.value, local.value, maximum, config.builders, config.others)
   if policy.error != AdmissionError.None: return ConnectionError.InvalidTopology
+  let previousSerial = owner.dialSerial
+  let previousIssuer = owner.dialIssuer
   owner = NodeConnections()
+  owner.dialIssuer = previousIssuer
+  if owner.dialIssuer == nil: owner.dialIssuer = DialIssuer(present: true)
+  owner.dialSerial = previousSerial # Reopening this stable owner must not recycle an earlier cancellation generation.
   owner.failure = ConnectionError.None
   owner.config = config
   owner.config.protocol = protocols[0] # Validators offer the base domain; acceptors also reserve builder ALPN.
@@ -596,13 +632,14 @@ proc open*(owner: var NodeConnections, config: ConnectionConfig,
   owner.admissionCallback = admissionCallback
   owner.incoming = newSeq[ConnectionState](owner.policy.capacity)
   owner.locations = newSeq[Location](owner.policy.capacity)
-  owner.dialers = newSeq[Dialer](maximum)
+  let engines = maximum+int(config.others) # Retired assurers use the existing Other quota without consuming validator engine capacity.
+  owner.dialers = newSeq[Dialer](engines)
   owner.routes = newSeq[Route](int(config.streams))
   owner.opens = newSeq[NodePeer](int(config.streams))
-  for index in 0..<maximum:
+  for index in 0..<engines:
     owner.dialers[index].owner = addr owner
     owner.dialers[index].position = index # Neither this array nor its parent moves while native callbacks exist.
-  owner.dispatcher = newDispatcher(maximum+1)
+  owner.dispatcher = newDispatcher(engines+1)
   owner.opened = true # From here every failed setup path uses the same complete retirement routine.
   let dispatcher = owner.dispatcher
   if dispatcher == nil or not owner.listener.openTransport(true, false, config.port,
@@ -622,21 +659,17 @@ proc outgoingExists(owner: NodeConnections, key: StateEdKey): bool =
   for index in 0..<owner.dialers.len:
     if owner.dialers[index].opened and same(owner.dialers[index].connection.key, key): return true
   false
-proc dial(owner: var NodeConnections, target: int): bool =
-  ## Allocate at most one finite engine for this copied endpoint candidate; no canonical alias escapes.
+proc dialEndpoint(owner: var NodeConnections, key: StateEdKey, endpoint: NetworkEndpoint): int =
+  ## Allocate at most one stable engine and never recycle its cancellation generation.
+  if owner.dialSerial == high(uint64): return -1
   var position = -1
   for index in 0..<owner.dialers.len:
     if not owner.dialers[index].opened: position = index; break
-  if position < 0: return false
-  let routes = owner.targets[target].routes.len
-  if routes == 0: return false
-  let route = owner.targets[target].route mod routes
-  let endpoint = owner.targets[target].routes[route]
-  let key = owner.targets[target].key
-  owner.targets[target].route = (route+1) mod routes # Each failed retry can try the next advertised membership route.
-  owner.targets[target].nextAttempt = owner.now+initDuration(milliseconds = RetryMs)
+  if position < 0: return -1
   let binding = dialBinding(owner.config.binding, endpoint.address)
-  if not validDial(binding, endpoint.address): return false
+  if not validDial(binding, endpoint.address): return -1
+  inc owner.dialSerial
+  owner.dialers[position].serial = owner.dialSerial
   owner.dialers[position].connection = ConnectionState(phase: ConnectionPhase.Connecting,
     key: key, logical: -1, started: owner.now)
   let dispatcher = owner.dispatcher
@@ -646,12 +679,59 @@ proc dial(owner: var NodeConnections, target: int): bool =
       localAddress = binding, idleSeconds = 30, keepalive = true, streamWindow = 65536,
           connectionWindow = 262144):
     owner.dialers[position].connection = default(ConnectionState)
-    return false # Factory cleanup leaves the stable unused slot available for another target.
+    return -1 # Factory cleanup leaves the stable unused slot available for another target.
   owner.dialers[position].opened = true
   if not owner.dialers[position].transport.connectTransport(endpoint):
     retireDialer(owner, position, false)
-    return false
+    return -1
+  position
+proc dial(owner: var NodeConnections, target: int): bool =
+  ## Automatic topology targets retain their own route rotation and retry clocks.
+  let routes = owner.targets[target].routes.len
+  if routes == 0: return false
+  let route = owner.targets[target].route mod routes
+  let endpoint = owner.targets[target].routes[route]
+  let key = owner.targets[target].key
+  owner.targets[target].route = (route+1) mod routes
+  owner.targets[target].nextAttempt = owner.now+initDuration(milliseconds = RetryMs)
+  owner.dialEndpoint(key, endpoint) >= 0
+proc dialLive*(owner: NodeConnections, ticket: DialTicket): bool =
+  ## A later topology or demand dial in the same pool slot never inherits an older token.
+  if not owner.opened or ticket.serial == 0: return false
+  if ticket.issuer != owner.dialIssuer: return false
+  if ticket.position < 0 or ticket.position >= owner.dialers.len: return false
+  owner.dialers[ticket.position].opened and owner.dialers[ticket.position].serial == ticket.serial
+proc cancelDial*(owner: var NodeConnections, ticket: DialTicket): bool {.requires: owner.callbackDepth == 0.} =
+  ## Only mark this exact demand owner; native callbacks and stream close retain storage until the ordinary poll retires it.
+  if not owner.dialLive(ticket): return false
+  markClose(owner, ConnectionKind.Outgoing, ticket.position)
   true
+proc beginDial*(owner: var NodeConnections, identity: StateEdKey,
+    endpoint: NetworkEndpoint): DialResult {.requires: owner.callbackDepth == 0.} =
+  ## Detached routing is untrusted; TLS must prove the independently pinned identity before any peer/stream authority exists.
+  let unavailable = DialResult(status: DialError.Unavailable)
+  if not owner.opened or owner.stopping or not owner.localValidator: return unavailable
+  if same(identity, owner.local): return unavailable
+  if same(identity, nullValidator().ed25519): return unavailable
+  if endpoint.port == 0 or not endpoint.address.valid: return unavailable
+  if endpoint.address.unspecified: return unavailable
+  let selected = dialAddress(endpoint)
+  let binding = dialBinding(owner.config.binding, selected.address)
+  if not validDial(binding, selected.address): return unavailable
+  if findIdentity(owner, identity) >= 0: return unavailable
+  if pending(owner, identity) or outgoingExists(owner, identity): return unavailable
+  var room = false
+  for index in 0..<owner.dialers.len:
+    # The fixed callback array never grows to satisfy a demand.
+    if not owner.dialers[index].opened:
+      room = true
+      break
+  if not room or owner.dialSerial == high(uint64): return unavailable
+  let position = owner.dialEndpoint(identity, selected)
+  if position < 0: return DialResult(status: DialError.Failed)
+  let ticket = DialTicket(issuer: owner.dialIssuer, position: position, serial: owner.dialers[
+      position].serial)
+  DialResult(status: DialError.None, completed: ticket)
 proc driveClose(owner: var NodeConnections, kind: ConnectionKind, position: int) =
   ## Request native close once; physical ownership stays until its observer or final engine retirement.
   var current = state(owner, kind, position)

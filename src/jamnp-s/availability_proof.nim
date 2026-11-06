@@ -425,3 +425,100 @@ proc prepareAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: Av
   AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
     completed: PreparedAvailabilityTransfer(data: TransferData(specifier: data.specifier,
       request: request, bundle: copied(data.bundle), proof: proof)))
+type
+  StoredSegmentData = ref object ## Private source/GP-tree pairing prevents callers substituting a different distribution for cached paths.
+    source: TransferData
+    tree: AvailabilityMerkleTree
+    bundleHash: Blake2bHash
+  StoredSegmentProofs* = object ## Defaults cannot issue authenticated segment data or proofs.
+    data: nil StoredSegmentData
+  StoredSegmentWork* = object ## Complete one-time extraction/index/hash work can be precharged across an entire batch.
+    bytes*, hashes*, hashBytes*: uint64
+proc storedSegmentWork*(source: VerifiedAvailabilityTransfer): AvailabilityTransferResult[
+    StoredSegmentWork] =
+  ## Exact metadata precedes all hash calls and indexed-tree allocation.
+  let data = source.data
+  if data == nil or data.request.kind != AvailabilityTransferKind.Distribution:
+    return failed[StoredSegmentWork](AvailabilityTransferError.InvalidPayload)
+  var request = data.request
+  request.kind = AvailabilityTransferKind.Segment
+  let planned = shape(data.specifier, request)
+  if planned.error != AvailabilityTransferError.None: return propagated[StoredSegmentWork,
+      TransferShape](planned)
+  let selected = planned.value
+  AvailabilityTransferResult[StoredSegmentWork](status: AvailabilityTransferError.None,
+    completed: StoredSegmentWork(bytes: source.payloadBytes+uint64(data.segments.len)+uint64(
+        selected.rows*2-1)*32,
+      hashes: selected.innerTree.hashes+1,
+      hashBytes: selected.innerTree.hashBytes+uint64(data.bundle.len)))
+proc prepareStoredSegmentProofs*(source: VerifiedAvailabilityTransfer,
+    limits: AvailabilityMerkleLimits): AvailabilityTransferResult[StoredSegmentProofs] =
+  ## One bundle hash and one full indexed row tree replace repeated whole-tree hashing for each requested row.
+  let work = storedSegmentWork(source)
+  if work.error != AvailabilityTransferError.None: return propagated[StoredSegmentProofs,
+      StoredSegmentWork](work)
+  if work.value.bytes > uint64(limits.bytes) or work.value.hashes > uint64(limits.hashes) or
+      work.value.hashBytes > uint64(limits.hashBytes):
+    return failed[StoredSegmentProofs](AvailabilityTransferError.LimitExceeded)
+  let data = source.data
+  assert data != nil
+  var request = data.request
+  request.kind = AvailabilityTransferKind.Segment
+  let selected = shape(data.specifier, request).value
+  let tree = prepareAvailabilityMerkleTree(data.segments, selected.width, selected.rows,
+    stageLimits(limits, selected.innerTree))
+  if tree.error != AvailabilityMerkleError.None: return merkleFailure[StoredSegmentProofs,
+      AvailabilityMerkleTree](tree)
+  let digest = blake2b256(data.bundle)
+  if digest.error != CryptoError.None: return AvailabilityTransferResult[StoredSegmentProofs](
+    status: AvailabilityTransferError.BackendFailure, cryptoReason: digest.error)
+  AvailabilityTransferResult[StoredSegmentProofs](status: AvailabilityTransferError.None,
+    completed: StoredSegmentProofs(data: StoredSegmentData(source: data, tree: tree.value,
+        bundleHash: digest.value)))
+proc storedAvailabilityRow*(source: VerifiedAvailabilityTransfer, row: ExportErasureIndex,
+    maximum: ByteLimit): AvailabilityTransferResult[seq[byte]] =
+  ## Exact row selection copies only the requested authenticated shard, without cloning every stored row.
+  let data = source.data
+  if data == nil or data.request.kind != AvailabilityTransferKind.Distribution:
+    return failed[seq[byte]](AvailabilityTransferError.InvalidPayload)
+  var request = data.request
+  request.kind = AvailabilityTransferKind.Segment
+  request.row = row
+  let planned = shape(data.specifier, request)
+  if planned.error != AvailabilityTransferError.None: return propagated[seq[byte], TransferShape](planned)
+  let selected = planned.value
+  if uint64(selected.width) > uint64(maximum): return failed[seq[byte]](
+      AvailabilityTransferError.LimitExceeded)
+  AvailabilityTransferResult[seq[byte]](status: AvailabilityTransferError.None,
+    completed: copied(data.segments.toOpenArray(selected.row*selected.width, (
+        selected.row+1)*selected.width-1)))
+proc storedAvailabilitySegment*(proofs: StoredSegmentProofs, row: ExportErasureIndex,
+    maximum: ByteLimit): AvailabilityTransferResult[PreparedAvailabilityTransfer] =
+  ## Indexed paths need no additional hashing; coordinates remain bound to the private original distribution.
+  let data = proofs.data
+  if data == nil: return failed[PreparedAvailabilityTransfer](
+      AvailabilityTransferError.InvalidPayload)
+  let source = data.source
+  var request = source.request
+  request.kind = AvailabilityTransferKind.Segment
+  request.row = row
+  let planned = shape(source.specifier, request)
+  if planned.error != AvailabilityTransferError.None: return propagated[
+      PreparedAvailabilityTransfer, TransferShape](planned)
+  let selected = planned.value
+  if uint64(selected.proofBytes+selected.width) > uint64(maximum):
+    return failed[PreparedAvailabilityTransfer](AvailabilityTransferError.LimitExceeded)
+  let trace = indexedAvailabilityTrace(data.tree, selected.row, 2, maximum)
+  if trace.error != AvailabilityMerkleError.None: return merkleFailure[PreparedAvailabilityTransfer,
+      AvailabilityTrace](trace)
+  var proof = newSeq[byte](selected.proofBytes)
+  for index in 0..<source.proof.len: proof[index] = source.proof[index]
+  proof[source.proof.len] = 0
+  for index in 0..<32: proof[source.proof.len+1+index] = array[32, byte](data.bundleHash)[index]
+  let inner = trace.value.bytes
+  for index in 0..<inner.len: proof[source.proof.len+33+index] = inner[index]
+  AvailabilityTransferResult[PreparedAvailabilityTransfer](status: AvailabilityTransferError.None,
+    completed: PreparedAvailabilityTransfer(data: TransferData(specifier: source.specifier,
+      request: request,
+      segments: copied(source.segments.toOpenArray(selected.row*selected.width, (
+          selected.row+1)*selected.width-1)), proof: proof)))

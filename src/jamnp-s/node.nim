@@ -5,6 +5,7 @@
 ## host code collects fixed read tasks and supplies frozen replies after managed CPU work.
 import std/[assertions, monotimes, times]
 import ./[connections, admission, announcements, announcement_stream, read_stream, read_client, streams]
+import ./network
 import ./work_stream
 import ./work_submission
 import ../chain/[provider, genesis]
@@ -255,6 +256,15 @@ proc accountWork(owner: var NodeService, index: int) =
   assert bytes <= InputBudget-owner.inputUsed
   owner.inputUsed += bytes
   frame.inputBytes = bytes
+proc accountRead(owner: var NodeService, index: int) =
+  ## Heap-backed batch requests retain their physical input charge until the actual native close.
+  let frame = addr owner.frames[index]
+  let bytes = frame.read.bufferedBytes
+  assert frame.inputBytes <= owner.inputUsed
+  owner.inputUsed -= frame.inputBytes
+  assert bytes <= InputBudget-owner.inputUsed
+  owner.inputUsed += bytes
+  frame.inputBytes = bytes
 proc accountAnnouncement(owner: var NodeService, index: int) =
   ## One host thread updates buffer deltas after a bounded route event/processing activation.
   let frame = addr owner.frames[index]
@@ -429,7 +439,8 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 142'u8, 143'u8, 147'u8]:
+    elif kind in [128'u8, 129'u8, 131'u8, 132'u8, 136'u8, 137'u8, 138'u8, 139'u8, 140'u8, 142'u8,
+        143'u8, 147'u8, 148'u8]:
       if kind == 142'u8 and not owner.node.isValidator:
         owner[].closeFrame(position)
         return # CE142 targets validators; a valid certificate or builder suffix cannot manufacture this role.
@@ -442,10 +453,14 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
           FrameKind.Work) >= 2:
         owner[].closeFrame(position)
         return
+      if owner.inputUsed >= InputBudget:
+        owner[].closeFrame(position)
+        return # Even the selected read's first byte needs shared input credit before binding.
       if frame.read.bindReadStream(stream, ReadKind(kind), kindConsumed = true) != ReadError.None:
         owner[].closeFrame(position)
         return
       frame.kind = FrameKind.Read
+      owner[].accountRead(position)
     elif kind in [133'u8, 146'u8]:
       # Builder uploads target authenticated validators; core duty and actual authorization remain host-side checks.
       let peerWork = owner[].frameCount(peer, FrameKind.Work)
@@ -476,7 +491,8 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
     owner[].accountWork(position)
   of FrameKind.Read:
     let before = frame.read.receivedBytes
-    frame.read.event(stream, event)
+    frame.read.event(stream, event, ByteLimit(InputBudget-owner.inputUsed+frame.inputBytes))
+    owner[].accountRead(position)
     if frame.read.receivedBytes > before or frame.read.writtenBytes >
         frame.offset: frame.activity = owner.now
     frame.offset = frame.read.writtenBytes
@@ -522,7 +538,7 @@ proc close*(owner: var NodeService) {.requires: owner.callbacks == 0.} =
   owner.frames = @[]
   owner.peers = @[]
   owner.local = default(LocalContext)
-  owner.node = default(NodeConnections)
+  owner.node.releaseClosedStorage()
   owner.opened = false
   assert owner.inputUsed == 0 and owner.handshakeUsed == 0 and owner.outputUsed == 0 and
       owner.replyUsed == 0 and owner.clientUsed == 0
@@ -590,6 +606,16 @@ proc peerAt*(owner: NodeService, ordinal: int): NodeResult[NodePeer] =
           completed: owner.peers[index].peer)
       inc found
   NodeResult[NodePeer](status: NodeError.Unavailable)
+proc beginPeerConnection*(owner: var NodeService, identity: StateEdKey,
+    endpoint: NetworkEndpoint): DialResult =
+  ## Explicit detached demand does not add membership or chain claims; native TLS pins the selected original identity.
+  owner.node.beginDial(identity, endpoint)
+proc peerConnectionLive*(owner: NodeService, ticket: DialTicket): bool =
+  ## Source-free cancellation tokens observe only their exact physical engine lifetime.
+  owner.node.dialLive(ticket)
+proc cancelPeerConnection*(owner: var NodeService, ticket: DialTicket): bool =
+  ## Temporary recovery connections retire through the ordinary bounded callback-safe poll loop.
+  owner.node.cancelDial(ticket)
 proc peerForIdentity*(owner: NodeService, identity: StateEdKey): NodeResult[NodePeer] =
   ## Find an actual live authenticated generation without requiring announcement-grid eligibility.
   if not owner.isOpen: return NodeResult[NodePeer](status: NodeError.Unavailable)
@@ -637,8 +663,11 @@ proc request*(owner: var NodeService, peer: NodePeer, request: ReadRequest,
   if peerPosition < 0: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
   if owner.peers[peerPosition].queued or owner.peers[peerPosition].readQueued: return NodeResult[
       NodeRequestTicket](status: NodeError.Unavailable)
-  if owner.node.announcements(peer) and owner.source(peer).error !=
-      NodeError.None: return NodeResult[NodeRequestTicket](status: NodeError.Unavailable)
+  let independent = request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards,
+      ReadKind.Segments]
+  if not independent and owner.node.announcements(peer) and owner.source(peer).error !=
+      NodeError.None:
+    return NodeResult[NodeRequestTicket](status: NodeError.Unavailable) # Named import data uses independently selected roots, not UP0 chain claims.
   if owner.reads >= MaxNodeReads or owner.frameCount(peer, FrameKind.Read)+owner.frameCount(peer,
       FrameKind.Client)+owner.frameCount(peer, FrameKind.Work) >= 2:
     return NodeResult[NodeRequestTicket](status: NodeError.LimitExceeded)

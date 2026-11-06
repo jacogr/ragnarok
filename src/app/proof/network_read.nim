@@ -11,12 +11,13 @@ import ../../jamnp-s/availability_proof
 
 type
   NetworkSource {.pure.} = enum ## Only module-owned capture chooses an original canonical/report/assurer source.
-    Canonical, Computed, Assured
+    Canonical, Computed, Assured, ShardBatch
   NetworkReadData = ref object ## One privately selected immutable source and copied fixed request survive worker handoff.
     view: ChainView
     request: ReadRequest
     kind: NetworkSource
     stored: VerifiedAvailabilityTransfer
+    snapshot: seq[VerifiedAvailabilityTransfer]
     source: AvailabilityCommitment
     limits: AvailabilityReadLimits
   NetworkReadJob* = object ## Default jobs contain neither a canonical source nor an admitted request.
@@ -50,19 +51,22 @@ proc captureNetworkRead*(view: ChainView, request: ReadRequest): NetworkReadAdmi
   if projected.error != ViewAdvanceError.None: return NetworkReadAdmission(
       status: ReadError.InvalidRequest)
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
-    view: projected.value, request: request))) # The optional unbounded memory-history index is not retained.
+    view: projected.value, request: detachedReadRequest(
+        request)))) # The optional unbounded memory-history index is not retained.
 proc captureAvailabilityRead*(source: AvailabilityCommitment, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## The caller retires every temporary alias before submitting the existing exclusive canonical lease.
   if not limits.valid: return NetworkReadAdmission(status: ReadError.LimitExceeded)
-  if not request.availabilityRead: return NetworkReadAdmission(status: ReadError.InvalidRequest)
+  if not request.availabilityRead and (not request.valid or request.kind !=
+      ReadKind.Segments): return NetworkReadAdmission(status: ReadError.InvalidRequest)
   let described = source.availabilityInfo
   if described.error != AvailabilityCommitmentError.None: return NetworkReadAdmission(
       status: ReadError.Unavailable)
-  if not request.matchesAvailability(described.value.specifier): return NetworkReadAdmission(
-      status: ReadError.Unavailable)
+  if request.kind != ReadKind.Segments and not request.matchesAvailability(
+      described.value.specifier): return NetworkReadAdmission(status: ReadError.Unavailable)
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
-    kind: NetworkSource.Computed, source: source, request: request, limits: limits)))
+    kind: NetworkSource.Computed, source: source, request: detachedReadRequest(request),
+        limits: limits)))
 proc captureAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## Services keeps the private cache frozen through exact collection; no external caller alias is retained by the store.
@@ -72,12 +76,28 @@ proc captureAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: Re
   if not source.valid or source.request.kind != AvailabilityTransferKind.Distribution:
     return NetworkReadAdmission(status: ReadError.Unavailable)
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
-    kind: NetworkSource.Assured, stored: source, request: request, limits: limits)))
+    kind: NetworkSource.Assured, stored: source, request: detachedReadRequest(request),
+        limits: limits)))
+proc captureSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer],
+    request: ReadRequest, limits: AvailabilityReadLimits): NetworkReadAdmission =
+  ## Only Services-owned immutable cache entries cross the lease; external/native request bytes are detached before submission.
+  if not limits.valid or sources.len > 64: return NetworkReadAdmission(
+      status: ReadError.LimitExceeded)
+  if not request.valid or request.kind notin [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards]:
+    return NetworkReadAdmission(status: ReadError.InvalidRequest)
+  var snapshot = newSeq[VerifiedAvailabilityTransfer](sources.len)
+  for index in 0..<sources.len: snapshot[index] = sources[index]
+  NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
+    kind: NetworkSource.ShardBatch, snapshot: snapshot, request: detachedReadRequest(request),
+        limits: limits)))
 proc executeNetworkRead*(job: NetworkReadJob): ReadResult[ReadReply] =
   ## Only the worker touches the admitted source graph during the exclusive lease.
   let data = job.data
   if data == nil: return readFailure[ReadReply](ReadError.InvalidRequest)
   case data.kind
-  of NetworkSource.Computed: serveAvailabilityRead(data.source, data.request, data.limits)
+  of NetworkSource.Computed:
+    if data.request.kind == ReadKind.Segments: serveOriginalSegmentBatch(data.source, data.request, data.limits)
+    else: serveAvailabilityRead(data.source, data.request, data.limits)
+  of NetworkSource.ShardBatch: serveSegmentShardBatch(data.snapshot, data.request, data.limits)
   of NetworkSource.Assured: serveAvailabilityAudit(data.stored, data.request, data.limits)
   of NetworkSource.Canonical: serveCanonicalRead(data.view, data.request)

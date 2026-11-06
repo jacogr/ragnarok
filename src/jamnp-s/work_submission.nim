@@ -44,6 +44,18 @@ type
     authorization: AuthorizationInvocation
   AuthorizedWorkSubmission* = object ## Only actual pool membership and successful guest execution can construct this handle.
     data: nil GrantData
+  ImportPlanData = ref object ## Source-bound roots remain private; only an independent request byte copy can leave the graph gate.
+    grant: GrantData
+    lookup: seq[SegmentLookup]
+    request: seq[byte]
+  WorkImportShape* = object ## Original row and occurrence cardinalities are copied before recovery allocates any manifest table.
+    items*, entries*: int
+  WorkImportEntry* = object ## Detached original occurrence facts cannot themselves construct an authorization or proof capability.
+    reference*: ImportReference
+    root*: SegmentRoot
+    item*, occurrence*: int
+  WorkImportPlan* = object ## A plan is derived only from a genuine original CE133 grant and its selected C(3) source.
+    data: nil ImportPlanData
   WorkSubmissionResult*[T] = object ## Guarded children preserve genuine stage causes, without retagging partial results.
     case status: WorkSubmissionError
     of None: completed: T
@@ -266,6 +278,155 @@ proc authorizeWorkSubmission*(header: WorkSubmissionHeader, state: StateStoreSna
   WorkSubmissionResult[AuthorizedWorkSubmission](status: WorkSubmissionError.None,
     completed: AuthorizedWorkSubmission(data: GrantData(header: data,
         authorization: authorized.value)))
+proc importRoot(reference: ImportReference, lookup: openArray[SegmentLookup]): WorkSubmissionResult[SegmentRoot] =
+  ## Resolve the original nominal reference without accepting a root chosen by the responding peer.
+  if reference.kind == ImportKind.Root:
+    return WorkSubmissionResult[SegmentRoot](status: WorkSubmissionError.None,
+        completed: reference.root)
+  for pair in lookup:
+    # The complete canonical dictionary is bounded to eight entries before this search.
+    if pair.packageHash.bytes == reference.package.bytes:
+      return WorkSubmissionResult[SegmentRoot](status: WorkSubmissionError.None,
+          completed: pair.segmentRoot)
+  WorkSubmissionResult[SegmentRoot](status: WorkSubmissionError.UnavailableMapping)
+proc prepareWorkImportPlan*(grant: AuthorizedWorkSubmission,
+    limits: WorkSubmissionLimits): WorkSubmissionResult[WorkImportPlan] =
+  ## Derive CE148 occurrence order and canonical package mappings from the exact authorized state, before any fetch.
+  template fail(reason: WorkSubmissionError) =
+    return WorkSubmissionResult[WorkImportPlan](status: reason)
+  let granted = grant.data
+  if granted == nil: fail(WorkSubmissionError.Uninitialized)
+  let header = granted.header
+  if header.info.kind != WorkSubmissionKind.Package: fail(WorkSubmissionError.InvalidMessage)
+  if uint64(header.info.importCount) > uint64(limits.imports.entries): fail(
+      WorkSubmissionError.LimitExceeded)
+  if uint64(header.info.segmentBytes) > uint64(limits.imports.witnessBytes): fail(
+      WorkSubmissionError.LimitExceeded)
+  var pairs = default(array[8, SegmentLookup])
+  var pairCount = 0
+  let described = header.package.workPackageInfo.value
+  for item in 0..<described.items:
+    # Preflight every original ordinal and unique dependency before allocating request storage or decoding history.
+    let selected = header.package.workItemAt(item).value
+    for index in 0..<selected.workItemInfo.value.imports:
+      let reference = selected.importAt(index).value
+      if uint16(reference.index) >= 3072: fail(WorkSubmissionError.InvalidMessage)
+      if reference.kind == ImportKind.Package:
+        var found = false
+        for key in 0..<pairCount:
+          if pairs[key].packageHash.bytes == reference.package.bytes: found = true
+        if not found:
+          if pairCount >= 8-described.context.prerequisiteCount: fail(
+              WorkSubmissionError.InvalidMappings)
+          pairs[pairCount].packageHash = reference.package
+          inc pairCount
+  if pairCount > 0:
+    # Decode only this grant's exact bounded recent history; direct-root-only and empty requests need no chapter three.
+    let source = granted.authorization.authorizationState.value
+    let entry = source.lookup(chapterKey(StateChapter(3)))
+    if entry.error != StateStoreError.None: fail(WorkSubmissionError.InvalidSource)
+    if uint64(entry.value.byteLength) > uint64(limits.history.maxBytes): fail(
+        WorkSubmissionError.LimitExceeded)
+    let history = decodeHistoryState(entry.value.bytes, limits.history)
+    if history.error != HistoryError.None: fail(WorkSubmissionError.InvalidSource)
+    if history.value.consumed != entry.value.byteLength: fail(WorkSubmissionError.InvalidSource)
+    let owner = history.value.snapshot
+    for key in 0..<pairCount:
+      # Multiple occurrences must agree; never guess which conflicting source commitment should authorize a fetch.
+      var found = false
+      for blockIndex in 0..<owner.historyInfo.value.blocks:
+        let blockOrdinal = HistoryBlockIndex(blockIndex)
+        for index in 0..<owner.historyBlockAt(blockOrdinal).value.packages:
+          let pair = owner.historyPackageAt(blockOrdinal, HistoryPackageIndex(index)).value
+          if pair.package.bytes == pairs[key].packageHash.bytes:
+            if found and pairs[key].segmentRoot.bytes != pair.segment.bytes: fail(
+                WorkSubmissionError.InvalidMappings)
+            pairs[key].segmentRoot = pair.segment
+            found = true
+      if not found: fail(WorkSubmissionError.UnavailableMapping)
+    for index in 1..<pairCount:
+      # Stable insertion sorting creates the canonical complete binder dictionary, independently of manifest occurrence order.
+      var position = index
+      while position > 0:
+        if not less(pairs[position].packageHash, pairs[position-1].packageHash): break
+        let previous = pairs[position-1]
+        pairs[position-1] = pairs[position]
+        pairs[position] = previous
+        dec position
+  var lookup = newSeq[SegmentLookup](pairCount)
+  for index in 0..<pairCount: lookup[index] = pairs[index]
+  var request = newSeq[byte](header.info.importCount*35)
+  var cursor = 0
+  for item in 0..<described.items:
+    # One root plus one canonical singleton E2 list per occurrence preserves repeats and complete original order.
+    let selected = header.package.workItemAt(item).value
+    for index in 0..<selected.workItemInfo.value.imports:
+      let reference = selected.importAt(index).value
+      let resolved = importRoot(reference, lookup)
+      if resolved.error != WorkSubmissionError.None: fail(resolved.error)
+      for octet in 0..<32: request[cursor+octet] = resolved.value.bytes[octet]
+      request[cursor+32] = 1
+      request[cursor+33] = byte(uint16(reference.index) and 255)
+      request[cursor+34] = byte(uint16(reference.index) shr 8)
+      cursor += 35
+  WorkSubmissionResult[WorkImportPlan](status: WorkSubmissionError.None,
+    completed: WorkImportPlan(data: ImportPlanData(grant: granted, lookup: lookup,
+        request: request)))
+proc workImportRequest*(plan: WorkImportPlan): WorkSubmissionResult[seq[byte]] =
+  ## Copy bounded raw CE148 payload bytes while the host owns graph access; the returned buffer retains no plan alias.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[seq[byte]](status: WorkSubmissionError.Uninitialized)
+  var wire = newSeq[byte](data.request.len)
+  for index in 0..<wire.len: wire[index] = data.request[index]
+  WorkSubmissionResult[seq[byte]](status: WorkSubmissionError.None, completed: wire)
+proc importPlanMatches*(plan: WorkImportPlan, grant: AuthorizedWorkSubmission): bool =
+  ## Exact grant identity prevents another authorization from substituting even byte-identical package inputs.
+  let data = plan.data
+  let granted = grant.data
+  if data == nil or granted == nil: return false
+  data.grant == granted
+proc importPlanStateMatches*(plan: WorkImportPlan, state: StateStoreSnapshot): bool =
+  ## A recovery catalog must describe the exact immutable state used by this original grant.
+  let data = plan.data
+  if data == nil: return false
+  sameStateSnapshot(data.grant.authorization.authorizationState.value, state)
+proc importPlanShape*(plan: WorkImportPlan): WorkSubmissionResult[WorkImportShape] =
+  ## Copy bounded original geometry without retaining any private package or grant alias in the result.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[WorkImportShape](
+      status: WorkSubmissionError.Uninitialized)
+  WorkSubmissionResult[WorkImportShape](status: WorkSubmissionError.None,
+    completed: WorkImportShape(
+    items: data.grant.header.package.workPackageInfo.value.items,
+    entries: data.grant.header.info.importCount))
+proc importPlanEntries*(plan: WorkImportPlan): WorkSubmissionResult[seq[WorkImportEntry]] =
+  ## Copy every bounded original occurrence and resolved root in manifest order, without exposing package storage.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[seq[WorkImportEntry]](
+      status: WorkSubmissionError.Uninitialized)
+  let header = data.grant.header
+  var entries = newSeq[WorkImportEntry](header.info.importCount)
+  var position = 0
+  for item in 0..<header.package.workPackageInfo.value.items:
+    let selected = header.package.workItemAt(item).value
+    for occurrence in 0..<selected.workItemInfo.value.imports:
+      # Only the already source-bound canonical dictionary resolves package-relative roots.
+      let reference = selected.importAt(occurrence).value
+      let resolved = importRoot(reference, data.lookup)
+      if resolved.error != WorkSubmissionError.None:
+        return WorkSubmissionResult[seq[WorkImportEntry]](status: resolved.error)
+      entries[position] = WorkImportEntry(reference: reference, root: resolved.value, item: item,
+          occurrence: occurrence)
+      inc position
+  WorkSubmissionResult[seq[WorkImportEntry]](status: WorkSubmissionError.None, completed: entries)
+proc importPlanLookup*(plan: WorkImportPlan): WorkSubmissionResult[seq[SegmentLookup]] =
+  ## Detach the complete bounded canonical dictionary, never a borrowed sequence descriptor.
+  let data = plan.data
+  if data == nil: return WorkSubmissionResult[seq[SegmentLookup]](
+      status: WorkSubmissionError.Uninitialized)
+  var lookup = newSeq[SegmentLookup](data.lookup.len)
+  for index in 0..<lookup.len: lookup[index] = data.lookup[index]
+  WorkSubmissionResult[seq[SegmentLookup]](status: WorkSubmissionError.None, completed: lookup)
 proc verifiedExtrinsics(grant: AuthorizedWorkSubmission, payload: openArray[byte],
     limits: ExtrinsicInputsLimits): WorkSubmissionResult[VerifiedExtrinsics] =
   ## Exact expected length and policy checks precede nested table allocations and hashing.
@@ -324,16 +485,16 @@ proc completePackageSubmission*(grant: AuthorizedWorkSubmission, extrinsics: ope
       status: WorkSubmissionError.BindingFailure, bindingReason: bound.error)
   WorkSubmissionResult[VerifiedImportInputs](status: WorkSubmissionError.None,
       completed: bound.value)
-proc completeBundleSubmission*(grant: AuthorizedWorkSubmission, extrinsics, segments,
-    proofs: openArray[byte], limits: WorkSubmissionLimits): WorkSubmissionResult[
-        VerifiedImportInputs] =
-  ## CE146 authenticates all three exact body messages only after real authorization; no partial table escapes.
+proc completeSegmentInputs(grant: AuthorizedWorkSubmission, extrinsics, segments,
+    proofs: openArray[byte], lookup: openArray[SegmentLookup],
+        limits: WorkSubmissionLimits): WorkSubmissionResult[VerifiedImportInputs] =
+  ## Authenticate exact original-bound segments and preflight the complete witness geometry before any hash or row allocation.
   template fail(reason: WorkSubmissionError) =
     return WorkSubmissionResult[VerifiedImportInputs](status: reason)
   let granted = grant.data
   if granted == nil: fail(WorkSubmissionError.Uninitialized)
   let data = granted.header
-  if data.info.kind != WorkSubmissionKind.Bundle: fail(WorkSubmissionError.InvalidMessage)
+  if extrinsics.len != data.info.extrinsicBytes: fail(WorkSubmissionError.InvalidMessage)
   if segments.len != data.info.segmentBytes: fail(WorkSubmissionError.InvalidMessage)
   if proofs.len > data.info.importCount*385: fail(WorkSubmissionError.LimitExceeded)
   if data.info.packageBytes+extrinsics.len+segments.len+proofs.len > 13904950:
@@ -342,6 +503,22 @@ proc completeBundleSubmission*(grant: AuthorizedWorkSubmission, extrinsics, segm
       WorkSubmissionError.LimitExceeded)
   if uint64(segments.len) > uint64(limits.imports.witnessBytes): fail(
       WorkSubmissionError.LimitExceeded)
+  var preflight = 0
+  var totalWitness = uint64(segments.len)
+  for occurrence in 0..<data.info.importCount:
+    # A malformed late path or aggregate resource excess must refuse before hashing an earlier valid prefix.
+    if preflight >= proofs.len: fail(WorkSubmissionError.InvalidMessage)
+    let size = decode(proofs.toOpenArray(preflight, proofs.high))
+    if not size.ok: fail(WorkSubmissionError.InvalidMessage)
+    if uint64(size.value) > 12: fail(WorkSubmissionError.LimitExceeded)
+    preflight += size.consumed
+    let bytes = int(uint64(size.value))*32
+    if bytes > proofs.len-preflight: fail(WorkSubmissionError.InvalidMessage)
+    if uint64(bytes) > uint64(limits.imports.witnessBytes)-totalWitness: fail(
+        WorkSubmissionError.LimitExceeded)
+    totalWitness += uint64(bytes)
+    preflight += bytes
+  if preflight != proofs.len: fail(WorkSubmissionError.InvalidMessage)
   let verified = verifiedExtrinsics(grant, extrinsics, limits.extrinsics)
   if verified.error != WorkSubmissionError.None:
     # Never manufacture a child reason for an earlier exact-length or resource refusal.
@@ -378,25 +555,60 @@ proc completeBundleSubmission*(grant: AuthorizedWorkSubmission, extrinsics, segm
       for octet in 0..<4104: leaf[octet] = segments[leafPosition+octet]
       leafPosition += 4104
       let reference = selected.importAt(index).value
-      var root = SegmentRoot()
-      case reference.kind
-      of ImportKind.Root: root = reference.root
-      of ImportKind.Package:
-        # Structural decoding proved exact dictionary coverage before the grant was created.
-        for key in 0..<data.info.mappingCount:
-          if data.lookup[key].packageHash.bytes == reference.package.bytes: root = data.lookup[
-              key].segmentRoot
-      let checked = verifyImportSegment(root, reference.index, FetchSegment(leaf), path, limits.proof)
+      let resolved = importRoot(reference, lookup)
+      if resolved.error != WorkSubmissionError.None: fail(resolved.error)
+      let checked = verifyImportSegment(resolved.value, reference.index, FetchSegment(leaf), path, limits.proof)
       if checked.error != ImportJustificationError.None: return WorkSubmissionResult[
           VerifiedImportInputs](status: WorkSubmissionError.ImportFailure,
           importReason: checked.error)
       rows[item][index] = checked.value
   if position != proofs.len: fail(WorkSubmissionError.InvalidMessage)
-  var lookup = newSeq[SegmentLookup](data.info.mappingCount)
-  for index in 0..<lookup.len: lookup[index] = data.lookup[
-      index] # Detach fixed dictionary storage for the complete-table binder.
   let bound = bindImportInputs(verified.value, rows, lookup, limits.imports)
   if bound.error != ImportInputsError.None: return WorkSubmissionResult[VerifiedImportInputs](
       status: WorkSubmissionError.BindingFailure, bindingReason: bound.error)
   WorkSubmissionResult[VerifiedImportInputs](status: WorkSubmissionError.None,
       completed: bound.value)
+
+proc completeBundleSubmission*(grant: AuthorizedWorkSubmission, extrinsics, segments,
+    proofs: openArray[byte], limits: WorkSubmissionLimits): WorkSubmissionResult[
+        VerifiedImportInputs] =
+  ## CE146 uses only its original structurally checked dictionary; no fetched plan or caller substitution is accepted.
+  let granted = grant.data
+  if granted == nil: return WorkSubmissionResult[VerifiedImportInputs](
+      status: WorkSubmissionError.Uninitialized)
+  let header = granted.header
+  if header.info.kind != WorkSubmissionKind.Bundle:
+    return WorkSubmissionResult[VerifiedImportInputs](status: WorkSubmissionError.InvalidMessage)
+  if header.info.mappingCount == 0: return completeSegmentInputs(grant, extrinsics, segments,
+      proofs, [], limits)
+  completeSegmentInputs(grant, extrinsics, segments, proofs,
+    header.lookup.toOpenArray(0, header.info.mappingCount-1), limits)
+proc framedLength(wire: openArray[byte], position: int): uint64 {.requires: position >= 0 and
+    position <= wire.len-4.} =
+  ## Read a proven four-byte little-endian outer length without narrowing untrusted values.
+  uint64(wire[position]) or (uint64(wire[position+1]) shl 8) or
+    (uint64(wire[position+2]) shl 16) or (uint64(wire[position+3]) shl 24)
+proc completeFetchedPackageSubmission*(grant: AuthorizedWorkSubmission, plan: WorkImportPlan,
+    extrinsics, reply: openArray[byte], limits: WorkSubmissionLimits): WorkSubmissionResult[
+        VerifiedImportInputs] =
+  ## Authenticate exactly two CE148 messages against the original source-bound request before binding any fetched input.
+  template fail(reason: WorkSubmissionError) =
+    return WorkSubmissionResult[VerifiedImportInputs](status: reason)
+  let granted = grant.data
+  let selected = plan.data
+  if granted == nil or selected == nil: fail(WorkSubmissionError.Uninitialized)
+  if selected.grant != granted: fail(WorkSubmissionError.InvalidSource)
+  let header = granted.header
+  if header.info.kind != WorkSubmissionKind.Package: fail(WorkSubmissionError.InvalidMessage)
+  if header.info.importCount == 0 and reply.len == 0:
+    return completeSegmentInputs(grant, extrinsics, [], [], selected.lookup, limits)
+  if reply.len < 8: fail(WorkSubmissionError.InvalidMessage)
+  if framedLength(reply, 0) != uint64(header.info.segmentBytes): fail(
+      WorkSubmissionError.InvalidMessage)
+  if header.info.segmentBytes > reply.len-8: fail(WorkSubmissionError.InvalidMessage)
+  let second = 4+header.info.segmentBytes
+  let proofBytes = framedLength(reply, second)
+  if proofBytes > uint64(header.info.importCount*385): fail(WorkSubmissionError.LimitExceeded)
+  if proofBytes != uint64(reply.len-second-4): fail(WorkSubmissionError.InvalidMessage)
+  completeSegmentInputs(grant, extrinsics, reply.toOpenArray(4, second-1),
+    reply.toOpenArray(second+4, reply.high), selected.lookup, limits)

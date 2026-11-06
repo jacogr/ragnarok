@@ -137,6 +137,23 @@ proc managed(f: WorkFixture) {.raises.} =
   assert services.collectWorkSubmission(packageToken) == WorkSessionPhase.Complete
   services.checkExecution(packageToken)
   assert services.retireWorkSubmission(packageToken)
+  # Managed CE133 fetch completion owns raw bytes only until one fused proof/refinement CPU turn finishes.
+  let fetchedToken = services.beginWorkSubmission(packageHeader, f.limits, executionLimits()).value
+  services.waitDone()
+  assert services.collectWorkSubmission(fetchedToken) == WorkSessionPhase.Authorized
+  assert services.workImportRequest(fetchedToken).value.len == 70
+  var fetchedWire: seq[byte] = @[]
+  for body in [f.segments, f.proofs]:
+    for index in 0..<4: fetchedWire.add(byte((body.len shr (index*8)) and 255))
+    for octet in body: fetchedWire.add(octet)
+  assert services.beginFetchedWorkPackage(fetchedToken, f.extrinsics, fetchedWire).error ==
+      StateProofAdmissionError.None
+  fetchedWire[4] = fetchedWire[4] xor 1 # Worker capture owns an independent immutable copy.
+  assert services.workImportRequest(fetchedToken).error == WorkSubmissionError.Uninitialized
+  services.waitDone()
+  assert services.collectWorkSubmission(fetchedToken) == WorkSessionPhase.Complete
+  services.checkExecution(fetchedToken)
+  assert services.retireWorkSubmission(fetchedToken)
   # Another Services namespace cannot collect, complete or retire this actor's session.
   var other = default(Services)
   defer: other.close()

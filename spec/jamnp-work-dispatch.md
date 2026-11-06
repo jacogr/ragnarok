@@ -1,6 +1,6 @@
-# Managed application bundle dispatch
+# Managed application builder dispatch
 
-Target: JAMNP-S `aa0e2b8498c0b1bc1725af2903704d701c6577ab` CE146, Gray Paper
+Target: JAMNP-S `aa0e2b8498c0b1bc1725af2903704d701c6577ab` CE133/146, Gray Paper
 `fad0ded4a433052397bf7234352a57fe491883f7`. Extend staged native streams and current-source
 guarantor duty through the ordinary ApplicationNode poll loop. Activation requires an explicit
 finite execution policy; default hosts do not accept work. The dispatcher owns detached wire
@@ -17,8 +17,21 @@ wrong core, corrupt proof, withheld FIN, clock rotation, deadline, reset through
 while waiting, joined close, exact stale controls and repeated release. Actual ApplicationNode
 and dispatcher copy lowering must reject duplication.
 
-This increment handles bundle dispatch. CE133 with availability acquisition, CLI policy loading,
-report construction/sharing/signatures and availability distribution remain explicit subsequent work.
+CE133 preferred acquisition requires a separately supplied `WorkAcquisitionPolicy`: at most1023
+attempts, a positive request deadline no greater than120 seconds, and a reply ceiling between8 bytes
+and16MiB. It stays disabled with only the existing work policy. Derive the complete ordered CE148
+request on the authorization CPU turn from the original package and exact selected C(3). The host
+receives independent bytes, selects current authenticated validator connections, and retains only
+raw transcripts and exact tokens while waiting. An unfinished UP0 source handshake or occupied
+native reservation is backpressure under the overall work deadline, not a failed peer attempt.
+
+Fetch cancellation, builder reset and close retire the exact outbound token without collecting a
+foreign CPU generation. Empty manifests need no remote request. Exact reply verification, original
+root/index matching, complete input binding and refinement share one managed CPU turn. Only its
+collected success with a fresh source and duty can acknowledge the builder.
+
+CE139/140 fallback, ordinary acquisition-policy startup activation, report sharing/signatures and
+availability distribution remain explicit subsequent work.
 No ACK or retained refinement is a guarantee, availability certificate or canonical adoption.
 
 ## Observed verification

@@ -27,12 +27,14 @@ type
     package*, first*, extrinsics*, segments*, proofs*: seq[byte]
     limits*: WorkSubmissionLimits
 proc workFixture*(external = true, rejected = false, wrongPool = false,
-    wrongMapping = false): WorkFixture =
+    wrongMapping = false, exported = false): WorkFixture =
   ## Commit genuine PVM code, selected C(1) authorizer and C(3) package mapping into a private original source.
   result = default(WorkFixture)
   let code = if rejected: @[refinementImmediate(7, 0), refinementImmediate(8, 0), @[0'u8]]
     else: @[refinementImmediate(8, 0), @[50'u8, 0]]
-  result.input = executionFixture(code, [fetchedGuest(4), fetchedGuest(4)], external = external)
+  let first = if exported: reportGuest([refinementImmediate(7, 65536), refinementImmediate(8, 3),
+    @[10'u8, 8], refinementImmediate(8, 0), @[50'u8, 0]], declared = 1) else: fetchedGuest(4)
+  result.input = executionFixture(code, [first, fetchedGuest(4)], external = external)
   result.input.parameters = presetParameters(ChainPreset.Tiny).value # Use the actual two-core profile for managed canonical context.
   result.limits = WorkSubmissionLimits(pools: AuthorizationConfig(cores: CoreCount(2),
     maxHashes: ElementLimit(16), maxBytes: ByteLimit(1024)), history: HistoryConfig(
@@ -80,12 +82,16 @@ import ../../src/codec/state/disputes as state_disputes
 import ../../src/lib/json/writer as json_writer
 import std/strutils
 import ./jamnp_topology_fixture
-proc workSnapshot*(f: WorkFixture, local = default(StateEdKey)): BlockSnapshot =
+proc workSnapshot*(f: WorkFixture, local = default(StateEdKey), remote = default(
+    StateEdKey), neighbour = false): BlockSnapshot =
   ## Merge actual code and commitments with explicit canonical roster/time context; no consensus certificate is invented.
   var current = topologyRecords(0, 6)
   if array[32, byte](local) != default(array[32, byte]):
     current[1].ed25519 = local # Independent zero-entropy six-member shuffle assigns this index to core0 at slot20.
 
+  if array[32, byte](remote) != default(array[32, byte]):
+    let position = if neighbour: 0 else: 2
+    current[position].ed25519 = remote # The real peer is either a grid neighbour awaiting UP0 or an independent validator read peer.
   let base = topologyCaptured([topologyRecords(0, 6), current, topologyRecords(1, 6)],
     cores = 2, atSlot = 20).value
   var state = forkStateStore(f.input.state).value

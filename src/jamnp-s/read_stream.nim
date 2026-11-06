@@ -4,13 +4,16 @@
 ## Bounded fixed-request canonical, upload and availability framing. Parent owns native retirement and deadlines;
 ## callbacks retain bytes only, and the host resolves canonical requests outside engine calls.
 import ../quic/transport
+import ./segment_request
+import ../codec/bounded
 
 const MaxReadRequestPayload* = 789 ## Largest supported fixed payload is the exact CE131/132 epoch/attempt/proof.
 
 type
   ReadKind* {.pure.} = enum ## Fixed-request content retrieval and bare-FIN announcements share bounded framing.
     Blocks = 128, State = 129, TicketProxy = 131, TicketDistribution = 132, Report = 136,
-        Availability = 137, Audit = 138, PreimageAnnouncement = 142, Preimage = 143, Bundle = 147
+        Availability = 137, Audit = 138, SegmentShards = 139, ProvenSegmentShards = 140,
+            PreimageAnnouncement = 142, Preimage = 143, Bundle = 147, Segments = 148
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -18,6 +21,8 @@ type
     selector: ReadKind
     payload: array[MaxReadRequestPayload, byte]
     length: int
+    variable: seq[byte]
+    groups, items: int
   ReadEffect* {.pure.} = enum ## Local backend planning hints never travel on the wire or establish a state certificate.
     None, FetchPreimage
   ReadReply* = object ## Frozen framed bytes are bound to all originating request facts.
@@ -36,6 +41,9 @@ type
     captured: ReadRequest
     output: seq[byte]
     pending, taken, writing, failed: bool
+    variable: seq[byte]
+    cursor: SegmentRequestCursor
+    declared: int
 const MaxReadReplyBytes* = 8*1024*1024 ## Aggregate framed reply ceiling, independent of untrusted u32 limits.
 func error*[T](outcome: ReadResult[T]): ReadError =
   ## Inspect the private discriminator.
@@ -52,9 +60,19 @@ func valid*(request: ReadRequest): bool =
 func kind*(request: ReadRequest): ReadKind {.requires: request.ready.} =
   ## Copy the exact admitted selector.
   request.selector
+func batch*(kind: ReadKind): bool =
+  ## Variable grouped retrieval has a separate finite payload ceiling and incremental grammar.
+  kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments]
+func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
+  ## Only declared batch selectors enter the matching protocol grammar.
+  case kind
+  of ReadKind.SegmentShards: SegmentRequestKind.Shards
+  of ReadKind.ProvenSegmentShards: SegmentRequestKind.ProvenShards
+  else: SegmentRequestKind.Segments # The checked precondition excludes all fixed selectors.
 func requestLength(kind: ReadKind): int =
   ## Pinned fixed payload extents exclude selector and E4 header.
   case kind
+  of ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments: -1
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
   of ReadKind.Report, ReadKind.Preimage, ReadKind.Bundle: 32
@@ -64,28 +82,60 @@ func requestLength(kind: ReadKind): int =
 proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
   ## Copy only complete admitted payload bytes; no mutable fixed backing array escapes.
   result = newSeq[byte](request.length)
-  for index in 0..<request.length: result[index] = request.payload[index]
+  for index in 0..<request.length:
+    result[index] = if request.selector.batch: request.variable[index] else: request.payload[index]
 proc decodeReadRequest*(kind: ReadKind, payload: openArray[byte]): ReadResult[ReadRequest] =
   ## Validate exact extents before retaining transport facts; method-specific semantics stay in services.
+  if kind.batch:
+    if payload.len > kind.segmentKind.maximumPayload: return readFailure[ReadRequest](
+        ReadError.LimitExceeded)
+    var cursor = initSegmentRequestCursor(kind.segmentKind)
+    for octet in payload:
+      let reason = cursor.consume(octet)
+      if reason == SegmentRequestError.LimitExceeded: return readFailure[ReadRequest](
+          ReadError.LimitExceeded)
+      if reason != SegmentRequestError.None: return readFailure[ReadRequest](
+          ReadError.InvalidRequest)
+    if not cursor.complete: return readFailure[ReadRequest](ReadError.InvalidRequest)
+    var bytes = newSeq[byte](payload.len)
+    for index in 0..<payload.len: bytes[index] = payload[index]
+    return ReadResult[ReadRequest](status: ReadError.None, completed: ReadRequest(ready: true,
+      selector: kind, length: payload.len, variable: bytes, groups: cursor.groupCount,
+      items: cursor.itemCount))
   if payload.len != requestLength(kind): return ReadResult[ReadRequest](
       status: ReadError.InvalidRequest)
   var captured = ReadRequest(ready: true, selector: kind, length: payload.len)
   for index in 0..<payload.len: captured.payload[index] = payload[index]
   ReadResult[ReadRequest](status: ReadError.None, completed: captured)
+proc detachedReadRequest*(request: ReadRequest): ReadRequest {.requires: request.valid.} =
+  ## CPU capture receives independent variable storage before submission; native callbacks may then retire their own aliases.
+  result = ReadRequest(ready: true, selector: request.selector, length: request.length,
+    payload: request.payload, groups: request.groups, items: request.items)
+  result.variable = newSeq[byte](request.variable.len)
+  for index in 0..<request.variable.len: result.variable[index] = request.variable[index]
+func payloadLength*(request: ReadRequest): int {.requires: request.valid.} =
+  ## Logical request copy admission uses scalar extent before allocating a detached payload view.
+  request.length
+func itemCount*(request: ReadRequest): int {.requires: request.valid.} =
+  ## Validated scalar counts determine exact response message arity without reparsing payloads in callbacks.
+  request.items
 func sameRequest(left, right: ReadRequest): bool =
   ## Full fixed-array equality prevents foreign/stale work from targeting a different request.
   left.ready and right.ready and left.selector == right.selector and left.length == right.length and
-      left.payload == right.payload
+      left.payload == right.payload and left.variable == right.variable
 func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## CE142 acknowledges with FIN alone; ordinary content replies use one message and CE129 uses two.
-  if request.selector == ReadKind.Availability: 3
+  if request.selector == ReadKind.ProvenSegmentShards: request.items+1
+  elif request.selector == ReadKind.Segments: 2
+  elif request.selector == ReadKind.Availability: 3
   elif request.selector in [ReadKind.State, ReadKind.Audit]: 2
   elif request.selector in [ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
       ReadKind.TicketDistribution]: 0
   else: 1
 func maximumReplyBytes*(request: ReadRequest): int {.requires: request.valid.} =
   ## Large original bundles and all-row distributions have their own hard ceiling; existing reads retain their prior bound.
-  if request.kind in [ReadKind.Availability, ReadKind.Bundle]: 16*1024*1024
+  if request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards]: 32*1024*1024
+  elif request.kind in [ReadKind.Availability, ReadKind.Bundle, ReadKind.Segments]: 16*1024*1024
   else: MaxReadReplyBytes
 func minimumReplyBytes*(request: ReadRequest): uint64 {.requires: request.valid.} =
   ## Framing minima include only actual E4 messages, never a fabricated acknowledgment prefix.
@@ -128,6 +178,10 @@ func writtenBytes*(route: ReadRoute): int =
 func receivedBytes*(route: ReadRoute): int =
   ## Fixed request progress is observable without exposing the partially filled request array.
   route.used
+func bufferedBytes*(route: ReadRoute): uint64 =
+  ## Declared heap storage is charged immediately, even when a peer withholds the body or FIN.
+  if route.selector.batch and route.used >= 5: uint64(route.declared)+5
+  else: uint64(route.used)
 func handle*(route: ReadRoute): NativeStream =
   ## Parent compares the borrowed pointer only during its native lifetime.
   route.stream
@@ -147,6 +201,7 @@ proc bindReadStream*(route: var ReadRoute, stream: NativeStream, kind: ReadKind,
   if kindConsumed:
     route.request[0] = byte(kind)
     route.used = 1 # Preserve one consistent whole-request fingerprint after external selector dispatch.
+  if kind.batch: route.cursor = initSegmentRequestCursor(kind.segmentKind)
   wantRead(stream, 1)
   ReadError.None
 proc takeRequest*(route: var ReadRoute): ReadResult[ReadRequest] =
@@ -174,7 +229,8 @@ proc respond*(route: var ReadRoute, reply: ReadReply): ReadError =
   route.writing = true
   wantWrite(route.stream, 1)
   ReadError.None
-proc event*(route: var ReadRoute, stream: NativeStream, event: cint) =
+proc event*(route: var ReadRoute, stream: NativeStream, event: cint,
+    inputBudget = ByteLimit(32*1024*1024)) =
   ## One bounded native read/write per callback; only native close releases the route slot.
   if route.stream != stream or stream == NativeStream(nil): return
   if event == 3:
@@ -190,30 +246,67 @@ proc event*(route: var ReadRoute, stream: NativeStream, event: cint) =
   if route.failed: return
   case event
   of 1:
-    var buffer = default(array[104, byte])
+    var buffer = default(array[4096, byte])
     let count = streamRead(stream, addr buffer[0], csize_t(buffer.len))
     if count == -2: return
-    let extent = requestLength(route.selector)+5
-    if count < 0 or count > int64(extent-route.used):
-      route.reject()
-      return # Extra messages/suffixes never allocate or release host work.
-    if count > 0:
-      for index in 0..<int(count): route.request[route.used+index] = buffer[index]
-      route.used += int(count)
-      return # Even exact full payloads wait for native FIN.
-    if route.used != extent or route.request[0] != byte(route.selector):
-      route.reject()
-      return # One exact fixed-size E4 message is the entire request.
-    for index in 0..<4:
-      let expected = byte((uint32(extent-5) shr (index*8)) and 255)
-      if route.request[1+index] != expected:
-        route.reject()
-        return # Larger fixed tickets require all four E4 length octets, never a truncated low-byte prefix.
-    let decoded = decodeReadRequest(route.selector, route.request.toOpenArray(5, extent-1))
-    if decoded.error != ReadError.None:
+    if count < 0 or count > int64(buffer.len):
       route.reject()
       return
-    route.captured = decoded.value
+    if count > 0:
+      for index in 0..<int(count):
+        # Validate declared storage before allocation; each byte advances only fixed scalar grammar state.
+        let octet = buffer[index]
+        if uint64(route.used) >= uint64(inputBudget):
+          route.reject()
+          return
+        if route.used < 5:
+          route.request[route.used] = octet
+          inc route.used
+          if route.used == 5:
+            if route.request[0] != byte(route.selector):
+              route.reject()
+              return
+            var length = 0'u64
+            for position in 0..<4: length = length or (uint64(route.request[position+1]) shl (8*position))
+            if route.selector.batch:
+              if length > uint64(route.selector.segmentKind.maximumPayload) or length+5 > uint64(inputBudget):
+                route.reject()
+                return
+              route.declared = int(length)
+              route.variable = newSeq[byte](route.declared)
+            else:
+              if length != uint64(requestLength(route.selector)):
+                route.reject()
+                return
+              route.declared = int(length)
+        else:
+          if route.used-5 >= route.declared:
+            route.reject()
+            return
+          if route.selector.batch:
+            route.variable[route.used-5] = octet
+            if route.cursor.consume(octet) != SegmentRequestError.None:
+              route.reject()
+              return
+          else: route.request[route.used] = octet
+          inc route.used
+      return # Even exact complete bytes wait for request FIN before host admission.
+    if route.used < 5 or route.used-5 != route.declared:
+      route.reject()
+      return
+    if route.selector.batch:
+      if not route.cursor.complete:
+        route.reject()
+        return
+      route.captured = ReadRequest(ready: true, selector: route.selector, length: route.declared,
+        variable: move(route.variable), groups: route.cursor.groupCount,
+            items: route.cursor.itemCount)
+    else:
+      let decoded = decodeReadRequest(route.selector, route.request.toOpenArray(5, route.used-1))
+      if decoded.error != ReadError.None:
+        route.reject()
+        return
+      route.captured = decoded.value
     route.pending = true
     readDone(stream)
     wantRead(stream, 0)

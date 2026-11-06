@@ -15,7 +15,7 @@ proc exportErasureLimits*(): ExportErasureLimits =
   ## Separate finite output/work caps from the original tree/hash budgets.
   ExportErasureLimits(bytes: ByteLimit(1000000), products: FieldProductLimit(20000000),
       commitment: commitmentLimits())
-proc exportBundle*(kind: int, shards = 1023'u16): BundleErasure =
+proc exportBundle*(kind: int, shards = 1023'u16, core = 0x1234'u64): BundleErasure =
   ## Select genuine successful, missing-code and panic executions; kind 65 crosses the proof-page boundary.
   let halt = @[50'u8, 0]
   let prefix = @[refinementImmediate(7, 65536), refinementImmediate(8, 3), @[10'u8, 8]]
@@ -30,7 +30,7 @@ proc exportBundle*(kind: int, shards = 1023'u16): BundleErasure =
   else: guests = @[reportGuest([halt], declared = uint64(kind),
       missing = true)] # Protocol normalization synthesizes zeros.
   let fixture = executionFixture([halt], guests, external = false)
-  let execution = executionRun(fixture).value
+  let execution = executionRun(fixture, core = core).value
   let bundle = prepareAuditableBundle(execution, ByteLimit(4096)).value
   let layout = prepareErasureLayout(bundle, ErasureShards(shards), ByteLimit(8192)).value
   prepareBundleErasure(layout, BundleErasureLimits(bytes: ByteLimit(20000),

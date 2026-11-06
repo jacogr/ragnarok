@@ -301,3 +301,112 @@ proc availabilityTraceWork*(width, count, index: int,
       selectedWidth = 32
   AvailabilityMerkleResult[AvailabilityMerkleWork](status: AvailabilityMerkleError.None,
       completed: work)
+
+type
+  MerkleTreeData = ref object ## Indexed internal hashes and private leaves permit bounded zero-hash path extraction.
+    width, count: int
+    flat: seq[byte]
+    hashes: seq[Blake2bHash]
+    root: Blake2bHash
+  AvailabilityMerkleTree* = object ## No default tree can issue a completed trace.
+    data: nil MerkleTreeData
+proc indexedNode(flat: openArray[byte], width, first, count: int,
+    budget: var HashBudget, position: int, hashes: var seq[Blake2bHash]): AvailabilityMerkleResult[NodeValue] =
+  ## GP N returns a raw singleton child; only non-singleton subtrees hash the node-prefixed concatenation.
+  if count == 1:
+    return AvailabilityMerkleResult[NodeValue](status: AvailabilityMerkleError.None,
+        completed: rawLeaf(flat, width, first))
+  let leftCount = (count+1) div 2
+  let left = indexedNode(flat, width, first, leftCount, budget, position+1, hashes)
+  if left.error != AvailabilityMerkleError.None: return left
+  let right = indexedNode(flat, width, first+leftCount, count-leftCount, budget,
+      position+2*leftCount, hashes)
+  if right.error != AvailabilityMerkleError.None: return right
+  let a = left.value
+  let b = right.value
+  var preimage = default(array[NodePreimageBytes, byte])
+  preimage[0] = byte('n')
+  preimage[1] = byte('o')
+  preimage[2] = byte('d')
+  preimage[3] = byte('e')
+  var used = 4
+  for position in 0..<a.length:
+    preimage[used] = a.bytes[position]
+    inc used
+  for position in 0..<b.length:
+    preimage[used] = b.bytes[position]
+    inc used
+  let digest = hashed(preimage.toOpenArray(0, used-1), budget)
+  if digest.error != AvailabilityMerkleError.None: return propagated[NodeValue, Blake2bHash](digest)
+  hashes[position] = digest.value
+  var completed = default(NodeValue)
+  completed.length = 32
+  let bytes = array[32, byte](digest.value)
+  for position in 0..<32: completed.bytes[position] = bytes[position]
+  AvailabilityMerkleResult[NodeValue](status: AvailabilityMerkleError.None, completed: completed)
+
+proc prepareAvailabilityMerkleTree*(flat: openArray[byte], width, count: int,
+    limits: AvailabilityMerkleLimits): AvailabilityMerkleResult[AvailabilityMerkleTree] =
+  ## Charge the whole tree once before allocation; later paths do no additional primitive calls.
+  let work = availabilityTreeWork(width, count)
+  if work.error != AvailabilityMerkleError.None: return propagated[AvailabilityMerkleTree,
+      AvailabilityMerkleWork](work)
+  if flat.len != width*count: return failed[AvailabilityMerkleTree](
+      AvailabilityMerkleError.InvalidInput)
+  let nodes = if count == 0: 0 else: count*2-1
+  if uint64(flat.len)+uint64(nodes)*32 > uint64(limits.bytes) or work.value.hashes > uint64(
+      limits.hashes) or work.value.hashBytes > uint64(limits.hashBytes):
+    return failed[AvailabilityMerkleTree](AvailabilityMerkleError.LimitExceeded)
+  var retained = newSeq[byte](flat.len)
+  for index in 0..<flat.len: retained[index] = flat[index]
+  var hashes = newSeq[Blake2bHash](nodes)
+  var budget = HashBudget(maximum: limits)
+  var root = default(Blake2bHash)
+  if count == 1:
+    let digest = hashed(flat, budget)
+    if digest.error != AvailabilityMerkleError.None: return propagated[AvailabilityMerkleTree,
+        Blake2bHash](digest)
+    root = digest.value
+  elif count > 1:
+    let built = indexedNode(flat, width, 0, count, budget, 0, hashes)
+    if built.error != AvailabilityMerkleError.None: return propagated[AvailabilityMerkleTree,
+        NodeValue](built)
+    root = hashes[0]
+  AvailabilityMerkleResult[AvailabilityMerkleTree](status: AvailabilityMerkleError.None,
+    completed: AvailabilityMerkleTree(data: MerkleTreeData(width: width, count: count,
+      flat: retained, hashes: hashes, root: root)))
+proc indexedAvailabilityTrace*(tree: AvailabilityMerkleTree, index: int, leafTag: byte,
+    maximum: ByteLimit): AvailabilityMerkleResult[AvailabilityTrace] =
+  ## Exact root-first GP sibling nodes are copied from a private indexed tree without rehashing any subtree.
+  let data = tree.data
+  if data == nil: return failed[AvailabilityTrace](AvailabilityMerkleError.InvalidInput)
+  let planned = shape(data.width, data.count, index, leafTag)
+  if planned.error != AvailabilityMerkleError.None: return propagated[AvailabilityTrace,
+      TraceShape](planned)
+  if uint64(planned.value.bytes) > uint64(maximum): return failed[AvailabilityTrace](
+      AvailabilityMerkleError.LimitExceeded)
+  var wire = newSeq[byte](planned.value.bytes)
+  var first, position = 0
+  var count = data.count
+  let path = planned.value
+  for index in 0..<path.count:
+    let step = path.steps[index]
+    # Preorder positions reserve exactly 2*leftCount-1 slots for the left subtree.
+    let leftCount = (count+1) div 2
+    let sibling = if step.left: position+2*leftCount else: position+1
+    let siblingFirst = if step.left: first+leftCount else: first
+    wire[step.offset] = step.tag
+    if step.tag == 0:
+      for octet in 0..<32: wire[step.offset+1+octet] = array[32, byte](data.hashes[sibling])[octet]
+    else:
+      for octet in 0..<data.width: wire[step.offset+1+octet] = data.flat[
+          siblingFirst*data.width+octet]
+    if step.left:
+      position += 1
+      count = leftCount
+    else:
+      position += 2*leftCount
+      first += leftCount
+      count -= leftCount
+  AvailabilityMerkleResult[AvailabilityTrace](status: AvailabilityMerkleError.None,
+    completed: AvailabilityTrace(ready: true, root: data.root, wire: wire))
