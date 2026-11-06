@@ -341,6 +341,8 @@ rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const 
     if (t->multi) { t->settings.es_init_max_streams_bidi = 8; t->settings.es_idle_timeout = 2; } /* Bounded crashed-peer retirement. */
     /* Recovery/load profiles use a two-second crash expiry and one-second liveness probes, solely for bounded experiments. */
     if (soak >= 4) { t->settings.es_idle_timeout = 2; t->settings.es_ping_period = 1; t->settings.es_init_max_streams_bidi = 8; }
+    /* Preserve the pinned fork's keepalive behavior for clients and recovery profiles. */
+    t->settings.es_ping_without_streams = t->settings.es_ping_period != 0;
     t->settings.es_versions = 1u << LSQVER_I001; t->settings.es_support_srej = 0;
     t->api.ea_settings = &t->settings; t->api.ea_stream_if = &callbacks; t->api.ea_stream_if_ctx = t;
     t->api.ea_packets_out = packets_out; t->api.ea_packets_out_ctx = t; t->api.ea_get_ssl_ctx = get_tls;
