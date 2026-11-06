@@ -158,24 +158,22 @@ let coldCall = if fullInvocation: beginInvocation() else: default(
 var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
     ) else: default(InvocationRuntime)
 var wire = newSeq[byte](wireSize)
-for i in 0..<wireSize: wire[i] = byte(data[136 + i])
+copyInvocationInput(wire, data, 136)
 let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4 *
     1024 * 1024),
   JumpCountLimit(1024 * 1024))
 assert decoded.error == ProgramError.None, "sieve program decoding"
 let owner = decoded.value
-var images: seq[PageImage] = @[]
+var images = newSeq[PageImage](pageCount)
 var cursor = 136 + wireSize
 for page in 0..<pageCount:
+  # Deliver each checked record directly into its final owned staging slot.
   let index = PageIndex(uint32(word(data, cursor, 4)))
   let permission = byte(data[cursor + 4])
   assert permission in [1'u8, 2'u8]
-  var image = PageImage(index: index,
-    access: (if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite),
-    bytes: default(array[4096, byte]))
-  for i in 0..<4096:
-    image.bytes[i] = byte(data[cursor + 5 + i])
-  images.add(image)
+  images[page].index = index
+  images[page].access = if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite
+  copyInvocationInput(images[page].bytes, data, cursor + 5)
   cursor += 4101
 let captured = captureMemory(images, PageLimit(uint32(pageCount)))
 assert captured.error == MachineError.None
