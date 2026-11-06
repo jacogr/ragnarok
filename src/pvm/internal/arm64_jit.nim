@@ -6,6 +6,7 @@ import std/assertions
 import ../[program, machine]
 import ./jit_rules
 import ./[native_control, native_ir]
+import ./native_read_body
 
 when defined(pvmArmMixedGroupReceipt):
   const armMixedStateWords = 7
@@ -953,6 +954,56 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
   assert words.len < 8192 # Sixty-four admitted source operations fit refusal displacements.
   armReadPatchGuards(words, span, leading, failure)
   result.words = move(words)
+
+when NativeCheckedReadEnabled:
+  proc emitArmCheckedRead(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
+      opcode: range[124..130]) =
+    ## Reuse the staged register bank while checking the true width of each positive extent.
+    assert nativeReadOpcode(byte(opcode))
+    let width = indirectMemoryAccess(opcode).width
+    let source = armRead(span.body, slots.bIndex)
+    let destination = armWrite(span.body, slots.aIndex)
+    if not armSmallIndirectAddress(span.body.words, source, displacement, false):
+      # The 32-bit ADD wraps even when the captured immediate used a wide encoding.
+      armCompactImmediate(span.body.words, 2, uint64(displacement))
+      span.body.words.add(0x0b020003'u32 or (source shl 5)) # ADD W3,Wsource,W2.
+    var accepted = default(array[3, int])
+    for region in 0..<3:
+      # X3 is the wrapped address. X17 keeps the borrowed context across every arithmetic operation.
+      let descriptor = uint32(region*3)
+      span.body.words.add(0xa9400a21'u32 or (descriptor shl 15)) # LDP X1,X2,[X17,#base].
+      span.body.words.add(0xf1000042'u32 or (width shl 10)) # SUBS X2,X2,#width.
+      span.body.words.add(0x540000e3'u32) # B.LO next_descriptor (extent shorter than width).
+      # A below-base subtraction wraps above every admitted 32-bit extent.
+      span.body.words.add(0xcb010061'u32) # SUB X1,X3,X1.
+      span.body.words.add(0xeb02003f'u32) # CMP X1,X2.
+      span.body.words.add(0x54000088'u32) # B.HI next_descriptor (offset exceeds the last load).
+      span.body.words.add(0xf9400222'u32 or ((descriptor+2) shl 10)) # LDR X2,[X17,#data].
+      span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
+        destination) # LDRB Wd / LDRSW Xd / LDR Xd, [X2,X1].
+      accepted[region] = span.body.words.len
+      span.body.words.add(0x14000000'u32) # B next_operation (patched below).
+    armReadRefusal(span, 0x14000000'u32, false) # B refuse (skip the commit epilogue).
+    let after = span.body.words.len
+    for index in accepted:
+      assert index >= 0 and index < after
+      span.body.words[index] = span.body.words[index] or uint32(after-index)
+
+  proc armCheckedReadInstructions*(body: NativeReadBody): seq[uint32] =
+    ## Return 1 after committing every staged slot, or UINT32_MAX with no guest writes.
+    assert body.complete
+    var span = default(ArmReadSpan)
+    for index in 0..<body.len:
+      let op = body.operation(index)
+      if nativeReadOpcode(op.opcode):
+        let opcode = int(op.opcode)
+        assert opcode >= 124 and opcode <= 130
+        emitArmCheckedRead(span, op.slots, uint32(op.immediate and 0xffffffff'u64),
+          range[124..130](opcode))
+      else:
+        emitArmReadArithmetic(span, op.opcode, op.slots, op.immediate)
+    result = armReadImage(span, NativeReadSuccess, false, false).words
+    result.add(0xd65f03c0'u32) # RET X30 completes the refusal path for direct publication.
 
 proc armMacroReadImage(span: ArmReadSpan): ArmReadImage =
   ## A multi-read resident body branches to its caller's success or rollback continuation.

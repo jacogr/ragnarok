@@ -224,3 +224,20 @@ process-CPU window was below clock resolution; its failure stays preserved witho
 discard, retiming or local benchmark retry. Actual two-architecture canonical Linux qualification
 and performance reports on the final published source remain pending. No local or semantic result
 here establishes complete CI qualification, full native feature coverage or a latency improvement.
+
+## ARM64 checked read bodies
+
+The supported ARM64 JIT profile enables checked read admission on Linux and macOS.
+The shared scheduler considers loop, then read, then pure work. In `executeWithHost`,
+discovery requires a fresh handler stream and an uncharged first checked segment.
+The probe restores the original terminal handlers before host callbacks. A successful checked
+halt can nominate a candidate after 4,096 settled instructions. Admission requires
+32,768 eligible visits and a measured source-work share of at least one eighth.
+The probe tracks four candidates and attempts at most 128 walks of up to 32 source
+facts each. A typed mailbox owns the copied request. A ready read body uses the
+current invocation's checked memory extents and falls back to the original paid
+handler when it cannot run.
+
+The local production-shaped DOOM cohort showed a 14–20% CPU reduction for reused
+ticks. Wall time was inconclusive. The earlier short-call cohort with a fresh worker
+showed regressions whose cause remains open. Canonical Linux qualification is pending.

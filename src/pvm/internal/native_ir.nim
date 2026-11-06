@@ -16,7 +16,7 @@ const
 
 type
   NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
-    PurePrefix, ClosedRegisterLoop
+    PurePrefix, ClosedRegisterLoop, CheckedReadBody
   NativeLoopRightKind* {.pure.} = enum ## Right operand of the certified unsigned comparison.
     Register, Immediate
   NativeLoopInfo* = object  ## Copied source certificate for one resolved whole block.
