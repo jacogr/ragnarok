@@ -45,6 +45,33 @@ when declared(FlatFrame):
       inc node
     if body.complete: result = body
 
+  proc extendFlatReadBody(f: FlatFrame, body: var NativeReadBody): bool =
+    ## Bind one already-cached ordinary fallthrough with three original scalar operations.
+    if not body.complete: return false
+    let info = body.info
+    if f.handlers[int(info.terminal)] != flatCachedJump[1]: return false
+    let nextPc = f.plan.facts[int(info.last)].next
+    var header = 0'u32
+    var source = default(FlatSourceInterval)
+    if not flatCompleteOriginalHeader(f, nextPc, NativeReadContinuationSpan, header, source) or
+        f.arguments[int(info.terminal)].y != header or f.handlers[int(header)] != flatCharge or
+        source.span != NativeReadContinuationSpan or source.first != info.last+1: return false
+    var walk = default(FlatSourceSummary)
+    if not flatWalkCompleteSource(f, header, source, walk) or
+        walk.operations != NativeReadContinuationSpan or
+        f.handlers[int(walk.terminal)] != flatCachedJump[1] or
+        not flatReadTerminal(f, walk.terminal, f.plan.facts[int(source.last)]): return false
+    var operations = default(array[NativeReadContinuationSpan.int-1, NativeOperation])
+    let priceIndex = f.plan.facts[int(source.first)].priceIndex
+    for index in 0..<operations.len:
+      let fact = f.plan.facts[int(source.first)+index]
+      let args = f.arguments[int(header)+1+index]
+      if fact.priceIndex != priceIndex or args.x != fact.args.x or args.y != fact.args.y or
+          args.slots != fact.args.slots: return false
+      operations[index] = NativeOperation(opcode: fact.opcode, slots: args.slots, immediate: args.x)
+    addNativeReadContinuation(body, NativeReadContinuation(header: header,
+      terminal: walk.terminal, price: source.price), operations)
+
   proc prepareFlatReadContext(f: var FlatFrame) {.noinline.} =
     ## Fresh frame allocations own these bytes. A replacement frame starts without descriptors.
     f.readContext = [initNativeReadRegion(f.stackBase, f.stack),
@@ -66,16 +93,52 @@ when declared(FlatFrame):
       return original(f, off)
     read.terminal
 
+  proc runFlatReadContinuationCold(f: var FlatFrame): bool {.noinline.} =
+    ## Publish fresh descriptors only once the combined register transaction commits.
+    var context = [initNativeReadRegion(f.stackBase, f.stack),
+      initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+    if not runNativeReadBody(f.nativeSession, f.info.registers, context): return false
+    f.readContext = context
+    f.readContextReady = true
+    true
+
+  proc flatNativeReadContinuation(f: var FlatFrame, off: uint32): uint32 =
+    ## Preflight the successor against the counters left by the first paid reservation.
+    let original = f.nativeOriginal
+    assert original != nil and off == f.nativeEntry
+    let read = nativeReadInfo(f.nativeSession)
+    if read.epoch == 0 or read.epoch != f.nativeInstalledEpoch or off != read.header+1 or
+        f.pricingKind != 0 or f.barrier != flatStop or not f.info.blockCharged or
+        f.reservation != (read.header or flatReservationHeaderFlag):
+      return original(f, off)
+    let continuation = nativeReadContinuation(f.nativeSession)
+    if f.remaining < uint64(NativeReadContinuationSpan) or uint64(f.info.gas) < continuation.price:
+      return original(f, off)
+    let committed = if f.readContextReady:
+      runNativeReadBody(f.nativeSession, f.info.registers, f.readContext)
+    else:
+      runFlatReadContinuationCold(f)
+    if not committed: return original(f, off)
+    # The first cached fallthrough clears the paid bit and the second header immediately sets it.
+    f.info.gas = MachineGas(uint64(f.info.gas)-continuation.price)
+    f.remaining-=uint64(NativeReadContinuationSpan)
+    f.reservation = continuation.header or flatReservationHeaderFlag
+    continuation.terminal
+
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo) =
     ## Rebuild the typed certificate before installing a body-only stream patch.
     assert f.nativeOriginal == nil
-    if int(info.first) >= f.plan.facts.len or
-        not matchesNativeReadBody(f.nativeSession, buildFlatReadBody(f,
-          f.plan.facts[int(info.first)].pc, info.epoch)):
+    if int(info.first) >= f.plan.facts.len:
+      invalidateNativeStream(f.nativeSession)
+      return
+    var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    let extended = nativeReadContinuation(f.nativeSession).terminal != 0
+    if (extended and not extendFlatReadBody(f, body)) or
+        not matchesNativeReadBody(f.nativeSession, body):
       invalidateNativeStream(f.nativeSession)
       return
     let entry = info.header+1
     f.nativeOriginal = f.handlers[int(entry)]
     f.nativeEntry = entry
     f.nativeInstalledEpoch = info.epoch
-    f.handlers[int(entry)] = flatNativeReadBody
+    f.handlers[int(entry)] = if extended: flatNativeReadContinuation else: flatNativeReadBody
