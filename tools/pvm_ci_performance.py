@@ -26,7 +26,7 @@ from pvm_doom_attribution import (CRATE as DOOM_CRATE, TARGET as DOOM_TARGET,
                                   event_hashes, tga_rgba, timing_samples)
 from pvm_guest_compare import unchanged
 from pvm_guest_inputs import prepare_inputs
-from pvm_jit_platform import RESIDENT_PROOF, comparison_defines
+from pvm_jit_platform import RESIDENT_PAIR_REF, RESIDENT_PROOF, comparison_defines
 from pvm_native_ci import host_identity
 from pvm_performance_report import SCHEMA, case_inventory, publish_report
 from pvm_performance_synthetic import parse_synthetic
@@ -385,7 +385,7 @@ class PerformanceRunner:
                    *sorted(self.doom_folder.glob('*')),
                    *(upstream/name for name in assets['files'])])
 
-    def build_images(self):
+    def build_images(self, label_suffix=''):
         """Build one current production image per selected family; both runtime policies use those exact bytes."""
         families = {case['family'] for case in self.cases}
         drivers = dict(synthetic='pvm_workload', guest='pvm_sieve', doom='pvm_doom')
@@ -393,7 +393,7 @@ class PerformanceRunner:
             # Diagnostic receipt exports are shared, copied only after all clocks and validation.
             defines = self.defines+([] if family == 'synthetic' else ['pvmArm64JitOwnerReceipt'])
             row, binary = self.checks.build(self.compiler,
-                ROOT/'tests/performance'/(drivers[family]+'.nim'), 'current-'+family,
+                ROOT/'tests/performance'/(drivers[family]+'.nim'), 'current-'+family+label_suffix,
                 defines=defines, cflags=['-I'+str(ROOT/'tests/performance'),
                     '-I'+str(ROOT/'native/pvm_jit')], environment=execution_environment())
             self.verify()
@@ -565,6 +565,15 @@ def main():
     parser.add_argument('--scope', choices=('all', 'micro', 'doom'), default='all')
     parser.add_argument('--revision', help='Exact immutable trigger SHA; otherwise GITHUB_SHA')
     arguments = parser.parse_args()
+    if (os.environ.get('GITHUB_REF') == RESIDENT_PAIR_REF and arguments.scope == 'doom'
+            and os.environ.get('GITHUB_ACTIONS') == 'true'
+            and os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+            and os.environ.get('GITHUB_JOB') == 'pvm-comparison'
+            and os.environ.get('PVM_CI_ARCH') == 'x86_64'
+            and os.environ.get('PVM_CI_SYSTEM') == 'Linux'):
+        from pvm_resident_pair import PairedRunner
+        PairedRunner(BUILD, arguments.scope, arguments.revision).execute()
+        return
     report = PerformanceRunner(BUILD, arguments.scope, arguments.revision).execute()
     print('PVM performance passed: '+report['architecture']+', '+str(len(case_inventory(report['scope'])))
           +' cases; CPU/wall raw samples and ratios in '+str(BUILD/'summary.md'), flush=True)

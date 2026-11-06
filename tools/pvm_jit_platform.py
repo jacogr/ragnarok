@@ -21,6 +21,7 @@ def native_defines(system=None, machine=None):
 
 RESIDENT_PROOF = 'pvmX86ResidentProof'
 RESIDENT_PROOF_REF = 'refs/heads/codex/pvm-x86-checked-read-resident-proof'
+RESIDENT_PAIR_REF = 'refs/heads/codex/pvm-x86-checked-read-resident-pair'
 
 
 def comparison_defines(system, machine, scope, ci):
@@ -29,6 +30,6 @@ def comparison_defines(system, machine, scope, ci):
     if (defines == ['pvmX86Jit'] and scope == 'doom'
             and ci.get('GITHUB_JOB') == 'pvm-comparison'
             and ci.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
-            and ci.get('GITHUB_REF') == RESIDENT_PROOF_REF):
+            and ci.get('GITHUB_REF') in (RESIDENT_PROOF_REF, RESIDENT_PAIR_REF)):
         return [*defines, RESIDENT_PROOF]
     return defines
