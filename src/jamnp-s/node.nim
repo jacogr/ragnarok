@@ -42,7 +42,7 @@ type
     number: NativeStreamId
     kind: FrameKind
     closing, inputHandshake: bool
-    started, activity, inputStarted, outputStarted: MonoTime
+    started, activity, claimActivity, inputStarted, outputStarted: MonoTime
     offset: int
     serial, inputBytes, outputBytes, replyBytes, sentVersion: uint64
     read: ReadRoute
@@ -392,7 +392,7 @@ proc streamEvent(user: pointer, peer: NodePeer, stream: NativeStream, event: cin
       return
     if kind == 0:
       if not owner[].bindPersistent(position, false): owner[].closeFrame(position)
-    elif kind in [128'u8, 129'u8, 143'u8]:
+    elif kind in [128'u8, 129'u8, 136'u8, 143'u8]:
       let inboundReads = owner[].frameCount(peer, FrameKind.Read)
       let outboundReads = owner[].frameCount(peer, FrameKind.Client)
       if owner[].reads >= MaxNodeReads or inboundReads+outboundReads >= 2:
@@ -594,7 +594,8 @@ proc cancelRequest*(owner: var NodeService, ticket: NodeRequestTicket): bool {.r
   if not owner.requestLive(ticket): return false
   owner.closeFrame(ticket.index)
   true
-proc takeRead*(owner: var NodeService): NodeResult[NodeReadTask] {.requires: owner.callbacks == 0.} =
+proc takeRead(owner: var NodeService, filtered: bool, kind: ReadKind): NodeResult[
+    NodeReadTask] {.requires: owner.callbacks == 0.} =
   ## Rotate physical slots so a reused low slot cannot overtake an older waiting request at worker admission.
   if not owner.isOpen: return NodeResult[NodeReadTask](status: NodeError.Unavailable)
   for inspected in 0..<owner.frames.len:
@@ -602,6 +603,7 @@ proc takeRead*(owner: var NodeService): NodeResult[NodeReadTask] {.requires: own
     owner.readCursor = (owner.readCursor+1) mod owner.frames.len
     if owner.frames[index].kind != FrameKind.Read or owner.frames[index].closing: continue
     if not owner.node.active(owner.frames[index].peer): continue
+    if filtered and owner.frames[index].read.selectedKind != kind: continue
     let request = owner.frames[index].read.takeRequest()
     if request.error != ReadError.None: continue # Incomplete, already taken and reset frames cannot create duplicate jobs.
     if owner.serial == high(uint64):
@@ -609,11 +611,19 @@ proc takeRead*(owner: var NodeService): NodeResult[NodeReadTask] {.requires: own
       return NodeResult[NodeReadTask](status: NodeError.Exhausted)
     inc owner.serial
     owner.frames[index].serial = owner.serial
+    owner.frames[index].claimActivity = owner.frames[index].activity
     owner.frames[index].activity = owner.now
     let ticket = NodeReadTicket(peer: owner.frames[index].peer, serial: owner.serial, index: index)
     return NodeResult[NodeReadTask](status: NodeError.None, completed: NodeReadTask(ticket: ticket,
         request: request.value))
   NodeResult[NodeReadTask](status: NodeError.Unavailable)
+proc takeRead*(owner: var NodeService): NodeResult[NodeReadTask] {.requires: owner.callbacks == 0.} =
+  ## General worker admission retains the existing rotating ready-request order.
+  owner.takeRead(false, ReadKind.Blocks)
+proc takeRead*(owner: var NodeService, kind: ReadKind): NodeResult[
+    NodeReadTask] {.requires: owner.callbacks == 0.} =
+  ## Detached responders may inspect one method without taking unrelated canonical work while its graph is leased.
+  owner.takeRead(true, kind)
 proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   ## Stale/foreign/closed tickets contain no native pointer and cannot target a reused slot.
   if not owner.isOpen or ticket.serial == 0 or ticket.index < 0 or ticket.index >=
@@ -621,6 +631,13 @@ proc readLive*(owner: NodeService, ticket: NodeReadTicket): bool =
   owner.frames[ticket.index].kind == FrameKind.Read and not owner.frames[ticket.index].closing and
     owner.frames[ticket.index].serial == ticket.serial and owner.frames[ticket.index].peer ==
         ticket.peer and owner.node.active(ticket.peer)
+proc deferRead*(owner: var NodeService, ticket: NodeReadTicket): bool {.requires: owner.callbacks == 0.} =
+  ## Revoke this exact claim immediately; restoring its prior activity prevents repeated cache misses extending inactivity.
+  if not owner.readLive(ticket): return false
+  if not owner.frames[ticket.index].read.deferRequest(): return false
+  owner.frames[ticket.index].serial = 0
+  owner.frames[ticket.index].activity = owner.frames[ticket.index].claimActivity
+  true
 proc respond*(owner: var NodeService, ticket: NodeReadTicket,
     reply: ReadReply): ReadError {.requires: owner.callbacks == 0.} =
   ## Charge bounded frozen output before copying; worker/canonical owners are already retired by the host.

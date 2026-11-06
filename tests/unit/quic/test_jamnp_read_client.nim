@@ -19,6 +19,7 @@ proc main() {.raises.} =
   exchangeClient(ReadKind.Blocks, blockPayload, @[0'u8, 0, 0, 0], holdFin = true,
     maximum = ByteLimit(4), budget = 4)
   exchangeClient(ReadKind.Preimage, newSeq[byte](32), @[3'u8, 0, 0, 0, 1, 2, 3])
+  exchangeClient(ReadKind.Report, newSeq[byte](32), @[3'u8, 0, 0, 0, 4, 5, 6], holdFin = true)
   let statePayload = newSeq[byte](98)
   let twoFrames = @[3'u8, 0, 0, 0, 7, 8, 9, 0, 0, 0, 0]
   exchangeClient(ReadKind.State, statePayload, twoFrames, holdFin = true)

@@ -38,14 +38,14 @@ production path exists; it does not assert all normative behavior has been verif
 | E4 messages | Shared bounded `messages.nim` codec, CE143 frame inspector, UP0 incremental reader, CE128 receivers | Shared bounded multi-message parsing with exact message extents and protocol-specific transcript/FIN rules |
 | Grid | No general validator gossip scheduler | Pinned grid neighbors and forwarding with duplicate suppression |
 | UP0 block announcement | `announcements.nim`, `announcement_stream.nim`, current sync and Tiny routes | Complete handshake/announcement rules, greatest-ID handling, finality/leaves validation and actual peer exchanges |
-| CE128 block request | `block_service.nim` canonical two-direction responder and real TLS reset/FIN tests; existing download clients/devnet | Ordinary Services integration, canonical read scheduling and bounded per-peer admission remain; see [contract](jamnp-block-service.md) |
-| CE129 state request | Canonical `canonical_read.nim` backend and shared native stream route with authenticated boundary/TLS tests | Ordinary Services worker scheduling and per-peer/global admission remain; see [contract](jamnp-canonical-read.md) |
+| CE128 block request | `block_service.nim` canonical two-direction responder and real TLS reset/FIN tests; existing download clients/devnet | Autonomous synchronization, GP execution/adoption and peer retry policy remain; managed routing/admission and [responder](jamnp-block-service.md) are implemented |
+| CE129 state request | Canonical `canonical_read.nim` backend and shared native stream route with authenticated boundary/TLS tests | Light-actor integration and checkpoint page installation remain; managed routing/admission and [trusted-root range validation](jamnp-read-validation.md) are implemented |
 | CE131/132 Safrole tickets | No runtime route; existing state ticket admission is separate | Target epoch, attempt/proof validation, next-set proxy selection from output tail, uncertainty rejection and timed forwarding |
 | CE133 work-package submission | No runtime handler | Core/package bound before authorization, exact extrinsic lengths, normal and builder ALPN acceptance, import recovery |
 | CE146 bundle submission | No runtime handler | Core/mappings, bounded authorized package before bulk data, extrinsics/segments/import proofs and exact transcript |
 | CE134 work-package sharing | No runtime handler | Core/shard count/mappings, acceptable anchor-window count, authorization/refinement and returned report hash/signature |
 | CE135 work-report distribution | No runtime route | Guaranteed report decoding/credentials, slot admissibility, current/next validator delivery and third-guarantor grace |
-| CE136 work-report request | No runtime handler | Exact requested report hash, authenticated report response and preferred negative-judgment sources |
+| CE136 work-report request | Canonical C10/C14 responder, shared authenticated node/worker routes and full-hash checked outbound reports; [contract](jamnp-report-retrieval.md) | Checked retrieval retention is implemented; distribution-fed caches and preferred negative-judgment sources remain |
 | Shard assignment, CE137 | No runtime route | Deterministic assignment, bundle/segment shards and erasure-root justifications; validated storage before acknowledgment |
 | CE138 audit shard request | No runtime handler | Request root/index, bundle shard plus tagged co-path, response authentication, nonvalidator requests and bounded throttling |
 | CE147 bundle request | No runtime handler | Root-bound bundle service and validation, fall back to CE138 on invalid/unavailable bundle |
@@ -53,7 +53,7 @@ production path exists; it does not assert all normative behavior has been verif
 | CE148 segment request | No runtime handler | At most3072 segments, segment/proof sequences, root-bound verification and CE139/140 fallback |
 | CE141 assurances | No runtime route | Anchor/bitfield/signature, validator-role authentication, epoch-sensitive recipient sets and slot timing |
 | CE142 preimage announcement | No runtime route | Service/hash/length, on-chain request lookup, CE143 followup, possession-based grid gossip and connection lifetime |
-| CE143 preimage request | `canonical_read.nim` canonical service-state lookup, full-hash refusal and real TLS transcript | Ordinary Services routing and CE142 reception/cache remain; development workload stays isolated |
+| CE143 preimage request | `canonical_read.nim` canonical service-state lookup, full-hash refusal and real TLS transcript | CE142 reception/cache and possession gossip remain; ordinary routing and full-hash checked acquisition are implemented |
 | CE144 audit announcement | `audits.nim` structural batch codec; no runtime handler | Batched header/validator/intent/96-byte proof, authenticated initial/later intent, derived cores/tranche, duplicate intent suppression; no announcement for negative-judgment-triggered audits |
 | CE145 judgments | `audits.nim` structural batch codec; no runtime handler | Batched epoch/validator/validity/report/signature, inline invalid guarantee before hash/signature,2/3 distinct guarantors, authenticated judgment gossip, report retrieval and audit triggers |
 
@@ -84,30 +84,40 @@ claim revocation, pending-route handling and connection isolation.
 
 [Node stream owner](jamnp-node-router.md) integrates authenticated UP0 and CE128/129/143
 responder framing, bounded per-peer reservations and managed read tickets. Its component TLS
-transcripts include production-to-production IPv4/IPv6 peers. Ordinary executable/Services
-installation, outbound synchronization and the other protocol families remain incomplete.
+transcripts include production-to-production IPv4/IPv6 peers. Services and executable activation
+are implemented by later layers below; autonomous synchronization and other protocol families remain open.
 
 [Managed application node routing](jamnp-application-router.md) binds the stream owner to
 actual Services worker leases and trusted local canonical/RPC finality publication. Real TLS
 checks cover cancellation, owned joined shutdown and foreign-lease preservation. Ordinary
-executable activation and outbound requests remain incomplete.
+executable activation and outbound requests are supplied by later layers below; GP adoption remains open.
 
 [Outbound canonical reads](jamnp-outbound-reads.md) adds bounded CE128/129/143 request/reply
 framing on existing authenticated connections, including public pending-open cancellation and
-application lease isolation. Returned bytes remain untrusted; response semantic/proof validation,
-canonical adoption and ordinary executable activation remain incomplete.
+application lease isolation. Raw returned bytes remain untrusted; later layers provide checked
+validation and executable activation. Canonical GP adoption remains open.
 
 [Canonical read response validation](jamnp-read-validation.md) adds query-bound block structure,
 trusted-root state range authentication and full preimage hashes through Services worker admission.
 Real TLS state replies exercise verification and lease cleanup. Block execution/consensus,
-canonical adoption, ordinary executable activation and the remaining protocol families remain open.
+canonical adoption and the remaining protocol families remain open; executable activation is supplied below.
 
 [Managed checked outbound requests](jamnp-checked-requests.md) connects native acquisition,
 bounded detached waiting and trusted-source Services verification under one application ticket.
 Cancellation, worker fairness, deadlines and exact foreign-lease isolation have real TLS coverage.
-Ordinary executable activation, GP execution/adoption and the remaining protocol families remain open.
+Executable activation is supplied below; GP execution/adoption and the remaining protocol families remain open.
 
 [Executable authenticated node](jamnp-node-command.md) activates the managed actor through
 `ragnarok node`, with explicit trusted local finality, configured-genesis ALPN and pinned GP clock.
 Real TLS state service and deadline/SIGTERM cleanup cover the foreground owner. Autonomous
 synchronization/GP adoption and the remaining protocol runtime families remain open.
+
+[Work-report retrieval](jamnp-report-retrieval.md) adds CE136 canonical C10/C14 response
+production and complete hash-bound report verification through the authenticated node and Services
+worker. Real TLS covers both canonical sources, reset isolation and corrupt-report refusal.
+Distribution/audit-fed caches and negative-judgment preferred-source selection remain open.
+
+[Retained checked reports](jamnp-report-cache.md) lets CE136 serve fetched, checked content
+outside canonical C10/C14, including while a foreign Services graph lease is held. Capacity/byte
+limits, deferral serial revocation, original deadlines and close/reopen ownership have real TLS
+coverage. Distribution and judgment scheduling/validation remain open.

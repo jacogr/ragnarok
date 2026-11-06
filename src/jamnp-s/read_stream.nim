@@ -1,13 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded fixed-request CE128/129/143 framing. Parent owns native retirement and deadlines;
+## Bounded fixed-request CE128/129/136/143 framing. Parent owns native retirement and deadlines;
 ## callbacks retain bytes only, and the host resolves canonical requests outside engine calls.
 import ../quic/transport
 
 type
   ReadKind* {.pure.} = enum ## Only fixed-request canonical retrieval methods share this route.
-    Blocks = 128, State = 129, Preimage = 143
+    Blocks = 128, State = 129, Report = 136, Preimage = 143
   ReadError* {.pure.} = enum ## Failures never expose a partial request/reply owner.
     Uninitialized, None, InvalidRequest, Unavailable, LimitExceeded, InvalidStream, Busy, BackendFailure
   ReadRequest* = object ## Exact bounded copied request facts survive a host/worker handoff without native pointers.
@@ -51,7 +51,7 @@ func requestLength(kind: ReadKind): int =
   case kind
   of ReadKind.Blocks: 37
   of ReadKind.State: 98
-  of ReadKind.Preimage: 32
+  of ReadKind.Report, ReadKind.Preimage: 32
 proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
   ## Copy only complete admitted payload bytes; no mutable fixed backing array escapes.
   result = newSeq[byte](request.length)
@@ -124,6 +124,15 @@ proc takeRequest*(route: var ReadRoute): ReadResult[ReadRequest] =
       status: ReadError.Unavailable)
   route.taken = true
   ReadResult[ReadRequest](status: ReadError.None, completed: route.captured)
+proc selectedKind*(route: ReadRoute): ReadKind {.requires: route.stream != NativeStream(nil).} =
+  ## A bound native route exposes its fixed selector without consuming an incomplete or already claimed request.
+  route.selector
+proc deferRequest*(route: var ReadRoute): bool =
+  ## Return a complete claim to admission; responding, reset and retired routes cannot be re-admitted.
+  if route.stream == NativeStream(nil) or route.failed or not route.pending or not route.taken:
+    return false
+  route.taken = false
+  true
 proc respond*(route: var ReadRoute, reply: ReadReply): ReadError =
   ## A reply for any different request cannot be sent through this borrowed stream.
   if route.stream == NativeStream(nil) or route.failed or not route.pending or
