@@ -260,7 +260,7 @@ class InterpretedCohortOrchestrationTests(unittest.TestCase):
         self.assertEqual([row[0] for row in commands], ['polkavm-interpreted', 'jit',
             'assertions', 'wrong-backend', 'unavailable-bridge'])
         self.assertEqual(commands[3][1][-2:], ['--pvm-backend', 'interpreted'])
-        self.assertEqual(builds, [('doom-backends', ['pvmArm64Jit', 'polkavmRuntime']),
+        self.assertEqual(builds, [('doom-backends', ['pvmArm64Jit', 'pvmSharedAsyncWitness', 'polkavmRuntime']),
                                  ('doom-no-bridge', ['pvmArm64Jit'])])
 
     def test_opt_in_uses_one_linked_image_and_clears_selector_only_in_wrong_backend_child(self):
@@ -277,7 +277,7 @@ class InterpretedCohortOrchestrationTests(unittest.TestCase):
         for name, args, env, parent in commands:
             self.assertEqual(parent, selected)
             self.assertEqual(env['PVM_DOOM_BACKENDS'], '' if name == 'wrong-backend' else selected)
-        self.assertEqual(builds[0][1], ['pvmArm64Jit', 'polkavmRuntime'])
+        self.assertEqual(builds[0][1], ['pvmArm64Jit', 'pvmSharedAsyncWitness', 'polkavmRuntime'])
         self.assertEqual(len(report['controls']), 6)
 
     def test_second_call_state_hosts_frames_and_restarted_snapshot_cannot_pass(self):

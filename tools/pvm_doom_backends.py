@@ -229,7 +229,8 @@ def run():
         pages = int.from_bytes((DOOM/'prepared/tick.input').read_bytes()[16:20], 'little')
         if not 0 < pages <= 8192:
             raise ValueError('unbounded DOOM initial snapshot')
-        flags = [*native_defines(), 'polkavmRuntime']
+        # This correctness-only adapter can synchronize one real compiler job between public calls.
+        flags = [*native_defines(), 'pvmSharedAsyncWitness', 'polkavmRuntime']
         cflags = ['-I'+str(ROOT/'native/pvm_jit'), '-I'+str(ROOT/'native/polkavm')]
         built, binary = checks.build(compiler, DRIVER, 'doom-backends', defines=flags, cflags=cflags,
                                     link_flags=[str(library), '-Wl,-rpath,'+str(library.parent)])

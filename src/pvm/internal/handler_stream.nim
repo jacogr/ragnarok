@@ -2185,8 +2185,9 @@ when defined(pvmX86Jit):
       candidate = default(X86MemoryCycleCandidate)
       # This is a source-only seal. A stopped paid frame may publish code because the worker
       # retains the original handler for every paid or partial-budget reentry.
+      # The publisher separately requires an executable owner, even when this source is valid.
       if not f.plan.allowNative or f.plan.singleStep or f.preparationFailure != FlatError.None or
-          f.pricingKind != 0 or f.barrier != flatStop or f.x86Jit == nil:
+          f.pricingKind != 0 or f.barrier != flatStop:
         return false
       var prefix = default(X86MemoryCycleHeader)
       if not flatX86CompleteSource(f, prefixPc, prefix): return false

@@ -175,13 +175,42 @@ proc appendWord(data: var string, value: uint64, width: int) =
   assert width in 1..8
   for octet in 0..<width: data.add(char((value shr (8*octet)) and 255))
 
+let qualifyNative = (defined(pvmArm64Jit) or defined(pvmX86Jit)) and
+    selected.pvmBackend == PvmBackend.Jit
+let runtime = if qualifyNative: newNativeRuntime() else: default(NativeRuntime)
+if qualifyNative:
+  # This correctness process owns one compiler runtime for its single prepared JIT source.
+  try:
+    assert start(runtime), "DOOM native compiler startup"
+  except:
+    echo "DOOM native compiler startup failed"
+    quit 2
 let made = newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)),
-    selected.pvmBackend)
+    selected.pvmBackend, runtime)
 if made.error != PreparationError.None:
   # Missing bridge/platform capability is an explicit failed process, never an omitted backend pass.
+  assert close(runtime)
   echo "DOOM_BACKEND_UNAVAILABLE,", selected.pvmBackend, ",", made.error
   quit 2
 let prepared = made.value
+when defined(pvmSharedAsyncWitness):
+  if qualifyNative:
+    # Observe the real queued job before letting its worker compile.
+    pauseNativeCompiler(runtime, true)
+    # A real initial tick submits eligible work at the end of the checked invocation.
+    let primed = executeWithHost(source, context, respond, ExecutionStepLimit(1000000000),
+        HostCallLimit(4096), prepared)
+    assert primed.error == StepError.None and primed.value.exit == StepExit.Halt
+    assert primed.value.backend == PvmBackend.Interpreted
+    let queued = runtimeInfo(runtime)
+    assert queued.submitted == 1 and queued.completed == 0,
+        "DOOM qualification requires one queued native compiler job"
+    pauseNativeCompiler(runtime, false)
+    # Synchronize outside all public calls. The oracle sequence still starts at the original snapshot.
+    waitNativeCompiler(runtime)
+    let compiler = runtimeInfo(runtime)
+    assert compiler.submitted == 1 and compiler.completed == 1,
+        "DOOM qualification requires one completed native compiler job"
 var current = source
 for call in 0..<callCount:
   # Restore the initial snapshot once; every later call starts with the previous guest memory, not a fixture reset.
@@ -242,4 +271,5 @@ for call in 0..<callCount:
   except:
     quit 2
   current = captureMachine(owner, finalMemory, info).value
+assert close(runtime) # Join the owned compiler before the process publishes success.
 stdout.writeLine("DOOM_SEQUENCE_OK," & $selected.pvmBackend & "," & $callCount)
