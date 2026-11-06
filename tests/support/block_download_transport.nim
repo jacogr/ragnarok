@@ -148,7 +148,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
       readDone(stream)
       wantRead(stream, 0)
       if server.mode == PrematureClose:
-        streamAbort(stream) # Closing without an E4 message is a truncated response, not a valid empty sequence.
+        streamFin(stream) # A clean FIN without an E4 header witnesses truncated framing.
       elif server.mode == Gated:
         server.responsePaused = true # Independent RPC/process observers explicitly release this response outside native callbacks.
       else:
