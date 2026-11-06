@@ -123,9 +123,10 @@ class VerificationProfiles(unittest.TestCase):
                 fcntl.flock(other, fcntl.LOCK_UN)
 
     def test_e2e_profiles_share_application_entry(self):
-        """Every feature profile builds the app, rather than reviving a QUIC or telemetry executable."""
+        """Every full peer profile builds the app with room for cold compilation."""
         import e2e_checks
         profiles = [(e2e_checks.prepare_peer, 'ragnarok'),
+                    (e2e_checks.prepare_current_download_peer, 'ragnarok-current-download'),
                     (e2e_checks.prepare_integrated_peer, 'ragnarok-integration'),
                     (e2e_checks.prepare_offload_peer, 'ragnarok-offload')]
         for prepare, name in profiles:
@@ -140,7 +141,8 @@ class VerificationProfiles(unittest.TestCase):
                 build.assert_called_once()
                 self.assertEqual(build.call_args.args[1], ROOT/'src/ragnarok.nim')
                 self.assertEqual(build.call_args.args[2], name)
-                self.assertEqual(build.call_args.kwargs.get('timeout'), 600 if name == 'ragnarok' else None)
+                self.assertGreater(build.call_args.kwargs['timeout'], 202)
+                self.assertLessEqual(build.call_args.kwargs['timeout'], 600)
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.
