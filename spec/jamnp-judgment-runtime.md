@@ -21,9 +21,12 @@ guarantor verification and execution-origin admission. Independently installed f
 membership older than its previous epoch. Distinct authenticated keys at the same epoch and
 ordinal remain separate ledger entries.
 
-Support retries exclude failed hashes and continue toward older eligible sources even when the
-selected head advances. Inbound receipts and locally owed publications reserve separate
-judgment and report-serving capacity.
+Support retries exclude failed reporting and membership pairs and continue toward older
+eligible primary sources even when the selected head advances. Primary and alternate retries
+have independent per-message credits under the same receipt deadline. A reporting context
+that lacks a usable execution origin or exceeds its origin reservation can also be retried.
+Inbound receipts and locally owed publications reserve separate judgment and report-serving
+capacity.
 
 The receipt policy accepts an independent local ledger limit. The initial declaration,
 local route refresh, and native gossip policies have separate configurable row ceilings.

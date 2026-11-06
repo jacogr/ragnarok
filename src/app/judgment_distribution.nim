@@ -37,10 +37,10 @@ type
     claims: SignedJudgmentBatch
     inputs: seq[JudgmentSourceInput]
     replies: seq[ReadReply]
-    failedSources: seq[seq[genesis.BlockHash]]
+    failedSources: seq[seq[JudgmentSourceAttempt]]
     sourceSlots: seq[uint64]
     wire: seq[byte]
-    ordinal, retries: int
+    ordinal, primaryRetries, alternateRetries: int
     received: uint64
 func judgmentReceiptPolicy*(claims: JudgmentClaimLimits, receipt: JudgmentReceiptLimits,
     verification: ReadVerificationLimits, store: JudgmentStoreLimits, bytes: ByteLimit,
@@ -215,7 +215,8 @@ proc clearClaim(owner: var JudgmentDispatcher) =
   owner.sourceSlots = @[]
   owner.wire = @[]
   owner.ordinal = 0
-  owner.retries = 0
+  owner.primaryRetries = 0
+  owner.alternateRetries = 0
 proc reject(owner: var JudgmentDispatcher, streams: var NodeService) =
   ## Reject only this exact request and outgoing child; complete detached earlier obligations remain intact.
   if owner.requested: discard streams.cancelRequest(owner.network)
@@ -330,17 +331,22 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       owner.releaseUnused(services, completed)
       owner.reject(streams)
       return
-    if completed.kind == ManagedAuditKind.JudgmentReceiptFailure and
-        completed.judgmentReceiptError.error == JudgmentReceiptError.SupportFailure:
+    if completed.kind == ManagedAuditKind.JudgmentReceiptFailure:
       let ordinal = completed.judgmentReceiptError.failedOrdinal
-      if ordinal >= 0 and ordinal < owner.inputs.len and owner.retries < owner.policy.attempts-1:
-        owner.failedSources[ordinal].add(owner.inputs[ordinal].source)
-        inc owner.retries
-        let next = services.judgmentSource(owner.claims.claimAt(ordinal).value, owner.failedSources[
-            ordinal], owner.sourceSlots[ordinal])
+      let primaryCredit = owner.primaryRetries < owner.policy.attempts-1
+      let alternateCredit = owner.alternateRetries < owner.policy.attempts-1
+      if ordinal >= 0 and ordinal < owner.inputs.len and (primaryCredit or alternateCredit):
+        let failed = owner.inputs[ordinal]
+        owner.failedSources[ordinal].add(JudgmentSourceAttempt(source: failed.source,
+            membership: failed.membership))
+        let next = services.judgmentSource(owner.claims.claimAt(ordinal).value,
+            owner.failedSources[ordinal], owner.sourceSlots[ordinal], primaryCredit, alternateCredit)
         if next.error == JudgmentSourceError.None:
+          let membership = next.membershipSource
+          if array[32, byte](membership) == default(array[32, byte]): inc owner.primaryRetries
+          else: inc owner.alternateRetries
           owner.inputs[ordinal].source = next.value
-          owner.inputs[ordinal].membership = next.membershipSource
+          owner.inputs[ordinal].membership = membership
           owner.phase = ReceiptPhase.ReceiptReady
           return
     let retained = owner.retainWhole(completed)
@@ -375,7 +381,7 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       return
     owner.inputs = newSeq[JudgmentSourceInput](owner.claims.len)
     owner.replies = newSeq[ReadReply](owner.claims.len)
-    owner.failedSources = newSeq[seq[genesis.BlockHash]](owner.claims.len)
+    owner.failedSources = newSeq[seq[JudgmentSourceAttempt]](owner.claims.len)
     owner.sourceSlots = newSeq[uint64](owner.claims.len)
     owner.ordinal = 0
     if not owner.nextReport(services): owner.reject(streams)

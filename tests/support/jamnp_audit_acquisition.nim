@@ -576,3 +576,15 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   assert services.collectAudit(borrowed).kind == ManagedAuditKind.FetchPlanned
   assert services.beginAuditFetchPlanning(pin, 0, fetchLimits()).error ==
       StateProofAdmissionError.QueryFailure, "an abandoned declaration releases its map after foreign collection"
+  let replacement = services.beginAuditOriginCapture(fixture.blockHash, auditLimits(),
+      auditOriginLimits(), forDeclaration = true).value
+  let joinDeadline = getMonoTime()+initDuration(seconds = 10)
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < joinDeadline
+  let replacementPin = services.collectAudit(replacement).originId
+  let pending = services.beginAuditFetchPlanning(replacementPin, 0, fetchLimits()).value
+  services.retireInitialAudit(replacementPin)
+  assert services.cancelStateProof(pending)
+  services.stopStateProofs()
+  assert services.beginAuditFetchPlanning(replacementPin, 0, fetchLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "joined cancellation must also release the abandoned map"

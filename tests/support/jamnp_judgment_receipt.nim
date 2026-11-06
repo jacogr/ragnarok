@@ -79,7 +79,8 @@ proc sameKeyBranchSupport(fixture: AuditContextFixture, claim: SignedJudgmentCla
   let refused = prepareJudgmentReceipt(selected, primary,
       [JudgmentSourceInput(source: original, report: report)], receiptLimits())
   assert refused.error == JudgmentReceiptError.SupportFailure
-  let alternative = alternateJudgmentSource(fixture.view, signed, [original])
+  let alternative = alternateJudgmentSource(fixture.view, signed, [JudgmentSourceAttempt(
+      source: original)])
   assert alternative.error == JudgmentSourceError.None
   let input = JudgmentSourceInput(source: fixture.prior.bestBlock.value.blockHash,
       membership: alternative.membershipSource, report: report)
@@ -88,6 +89,47 @@ proc sameKeyBranchSupport(fixture: AuditContextFixture, claim: SignedJudgmentCla
   assert checked.error == JudgmentReceiptError.None, "a valid side reporting context can certify the same signed claim"
   let origin = checked.value.negativeOriginAt(0).value
   assert origin.matchesTrustedDispute(fixture.view) and not origin.matchesTrustedDispute(selected)
+  let earlier = claimBatch(fixture.view, [claim.judgmentRecord]).claimAt(0).value
+  let newest = selectJudgmentSourceAcross(fixture.view, [selected], earlier, [], high(uint64)).value
+  let firstFailure = JudgmentSourceAttempt(source: newest)
+  let alternate = selectJudgmentSourceAcross(fixture.view, [selected], earlier, [firstFailure],
+      high(uint64))
+  assert alternate.error == JudgmentSourceError.None and
+      array[32, byte](alternate.membershipSource) == array[32, byte](
+          selected.bestBlock.value.blockHash)
+  let secondFailure = JudgmentSourceAttempt(source: alternate.value,
+      membership: alternate.membershipSource)
+  let fallback = selectJudgmentSourceAcross(fixture.view, [selected], earlier,
+      [firstFailure, secondFailure], high(uint64))
+  assert fallback.error == JudgmentSourceError.None
+  assert array[32, byte](fallback.value) == array[32, byte](
+      fixture.prior.bestBlock.value.blockHash),
+      "the alternate cannot consume the retry reserved for another live history"
+
+proc retryOriginLimit(fixture: AuditContextFixture, claim: SignedJudgmentClaim,
+    report: OwnedReport) =
+  ## The same original guarantee can verify in both contexts while only one map fits.
+  let prior = fixture.prior.bestBlock.value
+  var state = forkStateStore(prior.stateSnapshot).value
+  let extraKey = chapterKey(StateChapter(254))
+  let expanded = state.apply([StateWrite(kind: StateWriteKind.Put, key: extraKey, value: @[1'u8])])
+  assert expanded.error == StateStoreError.None
+  var headerWire = newSeq[byte](prior.header.headerInfo.value.consumed)
+  assert prior.header.encodeOwnedHeader(headerWire).error == HeaderError.None
+  headerWire[64] = headerWire[64] xor 1
+  let checkpoint = captureBlockSnapshot(headerWire, state.snapshot.value, prior.chainParameters)
+  let primary = genesisView(checkpoint)
+  let claims = claimBatch(primary, [claim.judgmentRecord])
+  var limits = receiptLimits()
+  limits.origin.entries = ElementLimit(uint64(prior.stateSnapshot.commitment.entries))
+  let input = JudgmentSourceInput(source: checkpoint.value.blockHash, report: report)
+  let failed = prepareJudgmentReceipt(primary, claims, [input], limits)
+  assert failed.error == JudgmentReceiptError.OriginFailure
+  assert failed.originError.error == AuditOriginError.LimitExceeded and failed.failedOrdinal == 0
+  let alternative = JudgmentSourceInput(source: prior.blockHash,
+      membership: fixture.view.bestBlock.value.blockHash, report: report)
+  assert prepareJudgmentReceipt(primary, claims, [alternative], limits,
+      alternatives = [fixture.view]).error == JudgmentReceiptError.None
 proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Duplicate sources retain their first exact owner; late invalid support, source, aggregate quota and native Done cancellation expose no successful prefix.
   let selectedRoster = claimView(repeated = true)
@@ -110,6 +152,7 @@ proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   let second = unseenGuarantee(source, mutation = 2)
   let a = actualNegativeClaim(fixture, first)
   sameKeyBranchSupport(fixture, a, first.report)
+  retryOriginLimit(fixture, a, first.report)
   let b = actualNegativeClaim(fixture, second)
   let inputs = [JudgmentSourceInput(source: fixture.blockHash, report: first.report),
     JudgmentSourceInput(source: fixture.blockHash, report: second.report)]

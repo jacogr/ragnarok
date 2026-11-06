@@ -34,7 +34,9 @@ type
     of SupportFailure:
       supportReason: JudgmentSupportResult[VerifiedJudgmentSupport]
       supportOrdinal: int
-    of OriginFailure: originReason: AuditOriginResult[AuditDisputeOrigin]
+    of OriginFailure:
+      originReason: AuditOriginResult[AuditDisputeOrigin]
+      originOrdinal: int
     else: discard # Ordinary refusals expose no unrelated child or successful prefix.
 func error*[T](outcome: JudgmentReceiptResult[T]): JudgmentReceiptError =
   ## Inspect the selected reason before extracting complete ownership.
@@ -47,10 +49,16 @@ func supportError*[T](outcome: JudgmentReceiptResult[T]): JudgmentSupportResult[
     VerifiedJudgmentSupport] {.requires: outcome.status == JudgmentReceiptError.SupportFailure.} =
   ## Preserve actual original guarantor qualification failure without inventing a successful subset.
   outcome.supportReason
-func failedOrdinal*[T](outcome: JudgmentReceiptResult[T]): int {.requires: outcome.status ==
-    JudgmentReceiptError.SupportFailure.} =
-  ## A fixed failed position permits bounded actual-history retries without releasing a qualified prefix.
-  outcome.supportOrdinal
+func failedOrdinal*[T](outcome: JudgmentReceiptResult[T]): int =
+  ## Only context-dependent refusals permit retry with another retained source.
+  case outcome.status
+  of JudgmentReceiptError.SupportFailure: outcome.supportOrdinal
+  of JudgmentReceiptError.OriginFailure:
+    if outcome.originReason.error in [AuditOriginError.HistoryUnavailable,
+        AuditOriginError.LimitExceeded]:
+      outcome.originOrdinal
+    else: -1
+  else: -1
 func originError*[T](outcome: JudgmentReceiptResult[T]): AuditOriginResult[
     AuditDisputeOrigin] {.requires: outcome.status == JudgmentReceiptError.OriginFailure.} =
   ## Missing historical execution and full-map retention remain typed unavailable-source failures.
@@ -186,7 +194,8 @@ proc prepareJudgmentReceipt*(view: ChainView, claims: SignedJudgmentBatch,
         return JudgmentReceiptResult[PreparedJudgmentBatch](status: JudgmentReceiptError.Cancelled)
       if origin.error != AuditOriginError.None:
         return JudgmentReceiptResult[PreparedJudgmentBatch](
-            status: JudgmentReceiptError.OriginFailure, originReason: origin)
+            status: JudgmentReceiptError.OriginFailure, originReason: origin,
+            originOrdinal: ordinal)
       origins.add(origin.value)
     records[ordinal] = QualifiedJudgment(ready: true, record: claim.judgmentRecord,
         auditor: claim.claimInfo.auditor.ed25519)

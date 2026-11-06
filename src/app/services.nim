@@ -924,6 +924,9 @@ proc refreshAssuranceStorage(services: var Services) =
     # Closed admission carries no remembered namespace identity or capacity facts.
     services.assuranceInfo = default(AssuranceStorageInfo)
 
+proc stateProofAvailable*(services: Services): bool
+  ## Scalar graph admission is shared by trusted finality and managed proof/read work.
+
 proc stopStateProofs*(services: var Services) =
   ## Join before dropping the captured selection or releasing this proof job's exact RPC token.
   if services.light.active:
@@ -979,6 +982,7 @@ proc stopStateProofs*(services: var Services) =
     discard services.rpc.finishStateProof(services.rpcProof, default(StateRoot), [], "State proof stopped")
     services.rpcProof = default(RpcProofDispatch)
     services.rpcProofTicket = default(ProofWorkerTicket)
+  if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
 
 func residentServiceCount*(services: Services): int {.requires:
     not (services.proofing or services.preparing or services.publishing).} =
@@ -1000,6 +1004,7 @@ proc stopPreparation*(services: var Services) =
   services.preparing = false
   discard services.rpc.resumeChain(services.rpcLease)
   services.rpcLease = nil
+  if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
 
 proc stopCheckpointExport*(services: var Services) =
   ## Join detached I/O outside callbacks and retain actual uncollected work/retirement uncertainty until explicit acknowledgement.
@@ -1619,9 +1624,6 @@ func chainView*(services: Services): ChainView {.requires: not (services.proofin
     services.preparing or services.publishing).} =
   ## Return an immutable selected-history alias; default/closed/legacy services have no canonical head.
   services.canonical.chainView
-
-proc stateProofAvailable*(services: Services): bool
-  ## Scalar graph admission is shared by trusted finality and managed proof/read work.
 
 proc publishFinalized*(services: var Services, hash: BlockHash): ViewFinalizeError =
   ## Trusted local consensus/checkpoint input only: no proof is verified or authority inferred from peer claims.
@@ -2941,28 +2943,17 @@ func auditSigningMatches*(services: Services, identity: StateEdKey): bool =
   services.auditSigningConfigured and array[32, byte](services.auditSignerIdentity) == array[32,
       byte](identity)
 proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
-    excluded: openArray[genesis.BlockHash] = [], maximumSlot = high(uint64)): JudgmentSourceResult =
+    excluded: openArray[JudgmentSourceAttempt] = [], maximumSlot = high(uint64),
+    allowPrimary = true, allowAlternates = true): JudgmentSourceResult =
   ## Metadata-only selection observes actual canonical history solely while the shared graph gate is idle; Busy/default contains no guessed source.
   if not services.stateProofAvailable: return default(JudgmentSourceResult)
   let selected = services.canonical.chainView
   let alternatives = services.auditBranches.liveViews(selected)
   let source = judgmentAuthorityView(selected, alternatives, claim)
   if source.bestBlock.error != GenesisError.None: return default(JudgmentSourceResult)
-  let primary = selectJudgmentSource(source, claim, excluded, maximumSlot)
-  if excluded.len == 0 and primary.error == JudgmentSourceError.None: return primary
-  let primaryHead = source.bestBlock.value.blockHash
-  let selectedHead = selected.bestBlock
-  if selectedHead.error == GenesisError.None and array[32, byte](selectedHead.value.blockHash) !=
-      array[32, byte](primaryHead):
-    let alternate = alternateJudgmentSource(selected, claim, excluded)
-    if alternate.error == JudgmentSourceError.None: return alternate
-  for branch in alternatives:
-    let head = branch.bestBlock
-    if head.error != GenesisError.None or array[32, byte](head.value.blockHash) ==
-        array[32, byte](primaryHead): continue
-    let alternate = alternateJudgmentSource(branch, claim, excluded)
-    if alternate.error == JudgmentSourceError.None: return alternate
-  primary
+  var histories = @[selected]
+  for branch in alternatives: histories.add(branch)
+  selectJudgmentSourceAcross(source, histories, claim, excluded, maximumSlot, allowPrimary, allowAlternates)
 proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the fixed worker borrows its immutable input graph.
