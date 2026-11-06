@@ -34,7 +34,7 @@ type
   AuditEvaluationError* {.pure.} = enum ## Failed direct candidates contain diagnostics only, never negative judgments or successful earlier execution prefixes.
     Uninitialized, None, InvalidPolicy, InvalidOrigin, InvalidRecovery, LimitExceeded, Cancelled,
     BundleFailure, ExecutionFailure, ReportFailure, EncodingFailure, Mismatch
-  AuditEvaluationResult*[T] = object ## Every selected child is a genuine failed operation; only whole equality contains a completed capability.
+  AuditEvaluationResult*[T] = object ## Genuine failures have no judgment prefix. Completed capabilities require canonical equality or authenticated report/reconstruction faults.
     case status: AuditEvaluationError
     of None: completed: T
     of BundleFailure: bundleReason: AuditBundleResult[DecodedAuditBundle]
@@ -145,7 +145,7 @@ proc completedEvaluation(origin: AuditReportOrigin, positive: bool): AuditEvalua
 proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
     limits: AuditEvaluationLimits, control: AssuranceScanControl = default(
         AssuranceScanControl)): AuditEvaluationResult[AuditEvaluation] =
-  ## Run on the actual managed worker with every source alias frozen. Only full canonical equality certifies positive judgment; this entry point cannot create a negative capability.
+  ## Run with every source alias frozen. Unproved input failures cannot create a negative capability; intrinsically invalid authenticated report metadata needs no candidate bytes.
   if not limits.valid: return AuditEvaluationResult[AuditEvaluation](
       status: AuditEvaluationError.InvalidPolicy)
   if not origin.valid: return AuditEvaluationResult[AuditEvaluation](
@@ -156,6 +156,9 @@ proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
     return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.LimitExceeded)
   let original = origin.originReport.value
   let described = original.ownedReportInfo.value
+  # Every work package has a nonempty canonical prefix. A genuinely authenticated report claiming zero bytes is invalid independently of any remote candidate or shard proof.
+  if uint32(described.header.bundleLength) == 0:
+    return completedEvaluation(origin, false)
   if uint64(described.consumed) > uint64(limits.comparisonBytes):
     return AuditEvaluationResult[AuditEvaluation](status: AuditEvaluationError.LimitExceeded)
   let parameters = origin.originParameters.value

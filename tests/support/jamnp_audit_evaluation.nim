@@ -57,6 +57,8 @@ proc evaluationChecks*(fixture: AuditContextFixture) =
   for ordinal in 0..<origin.originInfo.value.reports:
     let target = origin.reportAt(ordinal).value
     let wire = fixture.originalWire(target)
+    let missing = evaluateDirectAudit(target, [], evaluationLimits())
+    assert missing.error == AuditEvaluationError.BundleFailure and missing.needsRecovery, "unproved empty data cannot invalidate a genuine nonzero bundle claim"
     let completed = evaluateDirectAudit(target, wire, evaluationLimits())
     diagnose(completed)
     assert completed.error == AuditEvaluationError.None and

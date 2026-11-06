@@ -251,3 +251,14 @@ ARC observation now includes authenticated parity recovery and remained at 308,2
 before and after. All 584 production modules and the entry point passed semantic checking;
 canonical formatting passed for 2,469 Nim files and Rust. Network acquisition retries, CE145 receipt/
 gossip and local audit scheduling are still required for the full runtime goal.
+
+
+Intrinsic report faults are checked separately from unproved candidate data. A signed report
+claiming a zero-byte bundle cannot represent any canonical work package, while the ordinary
+CE138 verifier correctly refuses zero-length availability payloads. Private evaluation therefore
+recognizes this authenticated source fault without waiting for impossible shard acquisition.
+Unproved empty bytes for a genuine nonzero bundle still request recovery and cannot invalidate it.
+Genuinely signed/admitted/assured/currently published zero-length cases and managed cancellation/
+signing witnesses passed native checked ARC and Clang ThinLTO. The mixed 1,000-cycle observation
+remained at 308,208 bytes before and after. Linux qualification runs on an isolated frozen snapshot;
+its verdict is recorded separately from these macOS results.

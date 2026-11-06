@@ -15,6 +15,7 @@ import ../../src/crypto/assurance_context
 import ../../src/state/computed/report
 import ../../src/state/availability/specifier
 import ../../src/state/erasure/[words, layout]
+import ../../src/jamnp-s/assurance_store
 import ../../src/jamnp-s/[audit_context, audit_origin, audit_evaluation, audit_recovery,
   availability_proof, availability_merkle, audit_registry, work_signer]
 import ./[current_guarantee_sequence_context, current_consecutive_context,
@@ -88,7 +89,7 @@ proc dishonestAvailability(base: OwnedReport, root: ErasureRoot,
   let written = encodeReportBorrowed(report, bytes, 2, output)
   assert written.error == CompositeError.None
   decodeOwnedReport(output.toOpenArray(0, written.written-1), 2).value
-proc faultFixture(padding: bool): FaultAuditFixture =
+proc faultFixture(padding: bool, empty = false): FaultAuditFixture =
   ## A raw report may lie about its package hash while retaining valid erasure commitments; full node admission cannot replace private auditing.
   result = default(FaultAuditFixture)
   let available = computedAvailabilityAtCore(0, 0, 6)
@@ -110,6 +111,8 @@ proc faultFixture(padding: bool): FaultAuditFixture =
     let malformed = malformedPadding(packets, descriptor.bundleLength)
     base = dishonestAvailability(original, malformed.root, malformed.length)
     packets = malformed.packets
+  elif empty:
+    base = dishonestAvailability(original, descriptor.erasureRoot, BundleLength(0))
   let sequence = currentGuaranteeSequenceFixture(base)
   var chain = initApplicationChain(genesisView(sequence.sequence.seed.parent)).value
   var ancestors = sequence.sequence.seed.older
@@ -273,3 +276,61 @@ proc authenticatedFaultChecks*() {.raises.} =
   ## Genuine current publication separately proves dishonest package identity and authenticated invalid erasure padding, with no synthetic source or private key injection.
   authenticatedFaultCase(false)
   authenticatedFaultCase(true)
+
+proc stopNow(raw: nil pointer): bool {.nimcall, raises: [].} =
+  ## Execution-only cancellation wins even over an intrinsically invalid authenticated source.
+  true
+proc intrinsicEmptyFaultChecks*() {.raises.} =
+  ## Zero-byte bundles cannot enter CE138 verification; actual signed/admitted/assured metadata alone proves this intrinsic fault and cannot strand the audit.
+  let fixture = faultFixture(false, true)
+  let limits = AuditOriginLimits(entries: ElementLimit(10000), nodes: TrieNodeLimit(1000000),
+      valueBytes: ByteLimit(8000000))
+  let origin = captureAuditOrigin(fixture.view, fixture.blockHash, fixture.context, limits).value
+  assert origin.originInfo.value.reports == 2, "actual availability publishes the intrinsically dishonest reports"
+  var keyFile = "empty-audit-key-" & $processId() & ".pem"
+  var certificateFile = "empty-audit-certificate-" & $processId() & ".pem"
+  var stateFile = "empty-audit-state-" & $processId() & ".json"
+  assuranceSignerFiles(keyFile, certificateFile, 12)
+  writeFile(stateFile, currentApplicationText(fixture.view.bestBlock.value))
+  defer:
+    discard posix.unlink(keyFile.toCString())
+    discard posix.unlink(certificateFile.toCString())
+    discard posix.unlink(stateFile.toCString())
+  var options = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", stateFile], options)
+  var owner = default(Services)
+  defer:
+    owner.close()
+  assert owner.start(options, "intrinsic empty audit source")
+  assert owner.configureAudits(registryLimits())
+  let selected = owner.retainAuditOrigin(origin).value
+  let identity = origin.originContext.value.auditorAt(1).value.ed25519
+  assert owner.configureAuditSigner(certificateFile, keyFile, identity).error ==
+      WorkSigningSetupError.None
+  let empty: seq[byte] = @[]
+  for ordinal in 0..<2:
+    let target = origin.reportAt(ordinal).value
+    assert uint32(target.originReport.value.ownedReportInfo.value.header.bundleLength) == 0
+    let inspected = evaluateDirectAudit(target, empty, evaluationLimits())
+    assert inspected.error == AuditEvaluationError.None and
+        not inspected.value.evaluationInfo.value.positive, "authenticated zero length proves invalidity without unproved candidate bytes"
+    let junk = evaluateDirectAudit(target, [255'u8], evaluationLimits())
+    assert junk.error == AuditEvaluationError.None and not junk.value.evaluationInfo.value.positive, "third-party bytes cannot alter the independent authenticated source fault"
+    let cancelled = evaluateDirectAudit(target, empty, evaluationLimits(), assuranceScanControl(
+        stopNow, nil))
+    assert cancelled.error == AuditEvaluationError.Cancelled, "cancellation never publishes an intrinsic judgment prefix"
+    let pending = owner.beginAuditEvaluation(selected, ordinal, empty, evaluationLimits()).value
+    owner.waitOwner()
+    assert owner.cancelStateProof(pending)
+    assert owner.collectAudit(pending).kind == ManagedAuditKind.Cancelled
+    assert owner.beginAuditSigning(selected, ordinal, StateValidatorIndex(1)).error ==
+        StateProofAdmissionError.QueryFailure, "cancelled intrinsic evaluation grants no private signing slot"
+    let started = owner.beginAuditEvaluation(selected, ordinal, empty, evaluationLimits()).value
+    owner.waitOwner()
+    let completed = owner.collectAudit(started)
+    assert completed.kind == ManagedAuditKind.Evaluated and not completed.evaluationInfo.positive, "managed evaluation retains the actual intrinsic metadata fault"
+    let signing = owner.beginAuditSigning(selected, ordinal, StateValidatorIndex(1)).value
+    owner.waitOwner()
+    let signed = owner.collectAudit(signing)
+    assert signed.kind == ManagedAuditKind.JudgmentSigned
+    verifySignedAudit(signed.signedJudgment, target, false)

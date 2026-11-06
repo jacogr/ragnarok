@@ -405,6 +405,7 @@ proc main() {.raises.} =
   registryChecks(fixture)
   recoveryChecks(fixture)
   authenticatedFaultChecks()
+  intrinsicEmptyFaultChecks()
   auditSigningChecks(fixture)
   managed(fixture)
   managedEvaluation(fixture)
