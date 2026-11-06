@@ -22,10 +22,29 @@ typedef void (*rq_handshake_cb)(void *, unsigned, int, const uint8_t *, uint16_t
 /* Enable once on an idle server; slot-count agreement protects the native-language fixed table. */
 int rq_observe_handshakes(rq_transport *, unsigned slots, rq_handshake_cb);
 /* Admitted server peers use the existing connection table; DER is borrowed only on admission. */
-enum { RQ_PEER_SLOTS = 16, RQ_PEER_ACCEPTED = 0, RQ_PEER_CLOSED = 1 };
+enum { RQ_PEER_SLOTS = 16, RQ_MAX_PEER_SLOTS = 4096, RQ_PEER_ACCEPTED = 0, RQ_PEER_CLOSED = 1 };
 typedef void (*rq_peer_cb)(void *, unsigned, int, const uint8_t *, size_t);
+/* Decide authenticated server admission before retaining a free slot. DER and negotiated ALPN
+ * are borrowed only for this synchronous callback. Exactly one permits admission. */
+typedef int (*rq_admission_cb)(void *, unsigned, const uint8_t *, size_t,
+                                const uint8_t *, size_t);
+/* Startup-only, bounded TLS correlation uses public SSL/LSQUIC APIs; no role policy lives in C. */
+int rq_admit_peers(rq_transport *, unsigned slots, rq_admission_cb);
+/* Copied owner-bound observation, never a foreign pointer or an owning connection handle. */
+typedef struct rq_peer_ref { uint64_t owner, generation; unsigned slot; } rq_peer_ref;
+/* Lookup requires a live authenticated retained connection; false writes no usable reference. */
+int rq_peer_at(rq_transport *, unsigned, rq_peer_ref *);
+int rq_stream_peer(rq_transport *, void *, rq_peer_ref *);
+/* Validate owner and admission generation on every operation, including after slot/owner reuse. */
+int rq_peer_live(rq_transport *, const rq_peer_ref *);
+int rq_open_peer(rq_transport *, const rq_peer_ref *);
+int rq_close_peer(rq_transport *, const rq_peer_ref *);
+
+
 /* Install before packets arrive; teardown alone does not generate a peer-close observation. */
 int rq_observe_peers(rq_transport *, unsigned slots, rq_peer_cb);
+/* Copy a server connection capacity before network processing/observer registration; failure is atomic. */
+int rq_set_peer_capacity(rq_transport *, unsigned maximum, int multiple);
 /* Create a bounded TLS/QUIC proof endpoint. Mode 0 normal, 1 flow-control soak, 2 multi-peer server, 3..5 reserved for IPv6 proof profiles. Strings need only live during this call. */
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream);

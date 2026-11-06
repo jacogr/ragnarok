@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real RPC remains available during original-context acquisition, then publishes the actual guaranteed successor and complete history.
+import ../../support/chain_alpn
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
@@ -129,7 +130,8 @@ proc check(fixture: CurrentGuaranteeSequenceFixture, disk, managed: bool) {.rais
   var responses = currentGuaranteeResponses(fixture)
   responses.add(@[0'u8, 0, 0, 0])
   var servers = default(DownloadResponders)
-  assert servers.openSequenceResponders(requests, responses, @[Gated, Healthy, Gated, Gated])
+  assert servers.openSequenceResponders(requests, responses,
+    @[Gated, Healthy, Gated, Gated], alpn = fixtureChainAlpn(ChainPath))
   let port = servers.port(true)
   let responder = posix.fork()
   assert int(responder) >= 0

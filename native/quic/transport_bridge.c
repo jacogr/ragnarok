@@ -22,11 +22,16 @@ struct rq_handshake {
     unsigned slot;
     int settled, overflow;
 };
+/* SSL owns a borrowed pointer to one stable registry entry until its ex-data destructor clears it. */
+struct rq_tls_entry { const SSL *ssl; };
 struct rq_transport {
     lsquic_engine_t *engine;
     lsquic_conn_t *connection;
     /* Stable bounded handles belong to the engine until on_conn_closed; no application payload lives here. */
-    lsquic_conn_t *connections[RQ_PEER_SLOTS];
+    lsquic_conn_t **connections;
+    unsigned peer_capacity;
+    uint64_t owner_id, next_generation;
+    uint64_t *generations;
     unsigned active, accepted, closed, peak, authenticated, capacity_rejected;
     int multi, persistent, ipv6, global_owned;
     SSL_CTX *tls;
@@ -40,6 +45,9 @@ struct rq_transport {
     rq_stream_cb stream;
     rq_handshake_cb handshake;
     rq_peer_cb peer;
+    rq_admission_cb admission;
+    struct rq_tls_entry *tls_entries;
+    unsigned tls_capacity;
     int destroying, packets_seen;
     struct rq_handshake handshakes[RQ_HANDSHAKE_SLOTS], overflow_handshake;
     uint8_t alpn[512];
@@ -49,6 +57,8 @@ struct rq_transport {
 };
 /* All adapters currently run on one OS thread. Global TLS state outlives every engine in that process. */
 static unsigned global_owners;
+/* Same selector-thread lifetime as global_owners; never reset on engine teardown or wrap. */
+static uint64_t next_owner_id;
 /* Construct an IPv6 loopback address; external endpoint routing remains outside this bounded proof. */
 static struct sockaddr_in6 address6(uint16_t port) {
     struct sockaddr_in6 a; memset(&a, 0, sizeof(a));
@@ -104,6 +114,65 @@ static int peer_address(lsquic_conn_t *connection, uint8_t address[16], uint16_t
 }
 /* One process-lifetime BoringSSL index; every engine is driven by the same selector thread. */
 static int handshake_index = -1;
+static int admission_index = -1;
+/* SSL destruction always precedes registry destruction; clear the only retained SSL pointer. */
+static void admission_freed(void *parent, void *value, CRYPTO_EX_DATA *data,
+                            int index, long argument, void *opaque) {
+    (void)parent; (void)data; (void)index; (void)argument; (void)opaque;
+    struct rq_tls_entry *entry = value;
+    if (entry) entry->ssl = NULL;
+}
+/* Track only admission-enabled server TLS objects; all pending/live correlations are bounded. */
+static int track_admission(rq_transport *t, SSL *ssl) {
+    if (!t->admission) return 1;
+    if (SSL_get_ex_data(ssl, admission_index)) return 1;
+    for (unsigned i = 0; i < t->tls_capacity; ++i) {
+        if (!t->tls_entries[i].ssl) {
+            if (!SSL_set_ex_data(ssl, admission_index, &t->tls_entries[i])) return 0;
+            t->tls_entries[i].ssl = ssl;
+            return 1;
+        }
+    }
+    return 0; /* Refuse TLS work rather than allocating an unbounded overflow registry. */
+}
+/* Install atomically before IO; extra pending allowance is independent of admitted slot count. */
+int rq_admit_peers(rq_transport *t, unsigned slots, rq_admission_cb callback) {
+    if (!t || !t->server || t->network_started || t->admission || !callback ||
+        slots != t->peer_capacity) return 0;
+    if (admission_index < 0)
+        admission_index = SSL_get_ex_new_index(0, NULL, NULL, NULL, admission_freed);
+    if (admission_index < 0) return 0;
+    /* peer_capacity <=4096; adding64 and multiplying this fixed pointer record cannot overflow. */
+    unsigned capacity = t->peer_capacity + RQ_HANDSHAKE_SLOTS;
+    struct rq_tls_entry *entries = calloc(capacity, sizeof(*entries));
+    if (!entries) return 0;
+    t->tls_entries = entries; t->tls_capacity = capacity; t->admission = callback;
+    return 1;
+}
+/* Public SSL-to-connection mapping follows promotion, so concurrent connections with identical
+ * keys, endpoints or certificates remain distinct. No saved mini-connection pointer is used. */
+static int permit_connection(rq_transport *t, lsquic_conn_t *connection, unsigned slot) {
+    if (!t->server || !t->admission) return 1;
+    for (unsigned i = 0; i < t->tls_capacity; ++i) {
+        const SSL *ssl = t->tls_entries[i].ssl;
+        if (ssl && lsquic_ssl_to_conn(ssl) == connection) {
+            const STACK_OF(CRYPTO_BUFFER) *chain = SSL_get0_peer_certificates(ssl);
+            const uint8_t *protocol = NULL;
+            unsigned protocol_length = 0;
+            SSL_get0_alpn_selected(ssl, &protocol, &protocol_length);
+            if (!chain || sk_CRYPTO_BUFFER_num(chain) == 0 ||
+                sk_CRYPTO_BUFFER_num(chain) > 8 || !protocol || !protocol_length ||
+                protocol_length > 255) return 0;
+            const CRYPTO_BUFFER *leaf = sk_CRYPTO_BUFFER_value(chain, 0);
+            size_t length = CRYPTO_BUFFER_len(leaf);
+            if (!length || length > 8192) return 0;
+            return t->admission(t->user, slot, CRYPTO_BUFFER_data(leaf), length,
+                                  protocol, protocol_length) == 1;
+        }
+    }
+    return 0; /* Missing correlation cannot grant a guessed role or identity. */
+}
+
 /* SSL destruction must not dereference SSL itself: BoringSSL documents parent as unavailable here. */
 static void handshake_freed(void *parent, void *ptr, CRYPTO_EX_DATA *data, int index,
                             long argl, void *argp) {
@@ -181,7 +250,7 @@ int rq_observe_handshakes(rq_transport *t, unsigned slots, rq_handshake_cb callb
 }
 /* Observe admitted peers independently of the larger pending-handshake table. */
 int rq_observe_peers(rq_transport *t, unsigned slots, rq_peer_cb callback) {
-    if (!t || !t->server || t->packets_seen || t->peer || !callback || slots != RQ_PEER_SLOTS)
+    if (!t || !t->server || t->packets_seen || t->peer || !callback || slots != t->peer_capacity)
         return 0; /* Late registration could miss the identity belonging to an already-live slot. */
     t->peer = callback;
     return 1;
@@ -209,6 +278,9 @@ static enum ssl_verify_result_t verify_certificate(SSL *ssl, uint8_t *alert) {
     /* Reject absent/oversized chains before exposing a certificate to native policy. */
     if (!t || !chain || sk_CRYPTO_BUFFER_num(chain) == 0 || sk_CRYPTO_BUFFER_num(chain) > 8) {
         *alert = SSL_AD_CERTIFICATE_REQUIRED; return ssl_verify_invalid;
+    }
+    if (!track_admission(t, ssl)) {
+        *alert = SSL_AD_INTERNAL_ERROR; return ssl_verify_invalid; /* Bounded correlation exhaustion is refusal. */
     }
     const CRYPTO_BUFFER *leaf = sk_CRYPTO_BUFFER_value(chain, 0);
     /* The callback decides identity; TLS separately proves possession of the certificate key. */
@@ -251,8 +323,8 @@ static int packets_out(void *ctx, const struct lsquic_out_spec *packets, unsigne
 /* Retain bounded connection handles; service mode isolates connection lifecycle from endpoint status. */
 static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
     struct rq_transport *t = ctx;
-    /* Single-peer proofs retain their original ceiling; service admits at most sixteen authenticated peers. */
-    if ((!t->multi && t->active) || t->active == RQ_PEER_SLOTS) {
+    /* Single-peer proofs retain their original ceiling; service admits only its configured bounded authenticated population. */
+    if ((!t->multi && t->active) || t->active == t->peer_capacity) {
         if (t->server && t->handshake) {
             /* Admission refusal is independent of TLS success and consumes no retained peer slot. */
             uint8_t address[16] = {0};
@@ -263,10 +335,23 @@ static lsquic_conn_ctx_t *new_connection(void *ctx, lsquic_conn_t *connection) {
         }
         ++t->capacity_rejected; lsquic_conn_abort(connection); return NULL;
     }
+    /* Exhaustion refuses before application policy can reserve any slot. */
+    if (t->next_generation == UINT64_MAX) { lsquic_conn_abort(connection); return NULL; }
     /* A vacant slot remains valid until this connection's final close callback. */
-    for (unsigned i = 0; i < RQ_PEER_SLOTS; ++i) {
+    for (unsigned i = 0; i < t->peer_capacity; ++i) {
         if (!t->connections[i]) {
+            if (!permit_connection(t, connection, i)) {
+                /* Policy refusal consumes no peer slot and never emits a peer-accepted event. */
+                if (t->handshake) {
+                    uint8_t address[16] = {0}; uint16_t port = 0;
+                    int known = peer_address(connection, address, &port);
+                    t->handshake(t->user, RQ_HANDSHAKE_SLOTS, RQ_ADMISSION_REFUSED,
+                                 known ? address : NULL, port, NULL, 0);
+                }
+                lsquic_conn_abort(connection); return NULL;
+            }
             t->connections[i] = connection;
+            t->generations[i] = ++t->next_generation; /* Validated above; callbacks can mint this exact live reference. */
             peer_accepted(t, connection, i); /* Authenticated identity belongs to this retained slot only. */
             break;
         }
@@ -289,7 +374,7 @@ static void connection_closed(lsquic_conn_t *connection) {
     struct rq_transport *t = (struct rq_transport *)lsquic_conn_get_ctx(connection);
     if (!t) return; /* Over-capacity attempts have no retained native owner. */
     /* Release only the slot belonging to this close; other peers keep their contexts and streams. */
-    for (unsigned i = 0; i < RQ_PEER_SLOTS; ++i) {
+    for (unsigned i = 0; i < t->peer_capacity; ++i) {
         if (t->connections[i] == connection) {
             if (t->server && t->peer && !t->destroying)
                 t->peer(t->user, i, RQ_PEER_CLOSED, NULL, 0); /* Real closure precedes slot reuse. */
@@ -323,12 +408,37 @@ static const struct lsquic_stream_if callbacks = {
     .on_read = stream_read, .on_write = stream_write, .on_close = stream_close, .on_reset = stream_reset,
 };
 /* Own TLS/engine resources and install native policy callbacks, with complete cleanup on setup failure. */
+/* Stable slot storage is immutable once network processing or an observer can depend on it. */
+int rq_set_peer_capacity(rq_transport *t, unsigned maximum, int multiple) {
+    if (!t || !t->server || t->network_started || t->peer || t->admission || t->active ||
+        maximum == 0 || maximum > RQ_MAX_PEER_SLOTS || multiple < 0 || multiple > 1) return 0;
+    if (maximum == t->peer_capacity) {
+        if (multiple) t->multi = 1; /* IPv6 and IPv4 share the same explicit multi-peer ownership policy. */
+        return 1;
+    }
+    lsquic_conn_t **replacement = calloc(maximum, sizeof(*replacement));
+    uint64_t *generations = calloc(maximum, sizeof(*generations));
+    if (!replacement || !generations) {
+        free(replacement); free(generations); return 0; /* Both old arrays remain owned on allocation failure. */
+    }
+    free(t->connections); free(t->generations);
+    t->connections = replacement; t->generations = generations; t->peer_capacity = maximum;
+    if (multiple) t->multi = 1; /* Native profile defaults may already require multi-peer service. */
+    return 1;
+}
 rq_transport *rq_transport_new(int soak, int server, uint16_t local_port, const char *certificate,
  const char *key, const char *alpn, void *user, rq_verify_cb verify, rq_send_cb send, rq_stream_cb stream) {
     size_t length = strlen(alpn);
     if (soak < 0 || soak > 5 || ((soak == 2 || soak == 5) && !server) || !verify || !send || !stream || !length || length > 255) return NULL; /* Bounded ALPN before byte narrowing. */
     struct rq_transport *t = calloc(1, sizeof(*t));
     if (!t) return NULL; /* Typed null failure, never an application panic. */
+    t->peer_capacity = RQ_PEER_SLOTS;
+    t->connections = calloc(t->peer_capacity, sizeof(*t->connections));
+    t->generations = calloc(t->peer_capacity, sizeof(*t->generations));
+    if (!t->connections || !t->generations || next_owner_id == UINT64_MAX) {
+        free(t->connections); free(t->generations); free(t); return NULL; /* No native/global owner exists yet. */
+    }
+    t->owner_id = ++next_owner_id; /* Failed later setup consumes an identity, never reuses one. */
     t->persistent = soak >= 3; t->multi = soak == 2 || soak == 5; t->server = server; t->user = user; t->verify = verify; t->send = send; t->stream = stream; t->local = address(local_port);
     t->alpn[0] = (uint8_t)length; memcpy(t->alpn + 1, alpn, length); t->alpn_length = (unsigned)length + 1;
     /* Initialize once, so constructing a second engine cannot reseed state used by the first. */
@@ -442,9 +552,49 @@ void rq_transport_free(rq_transport *t) {
     SSL_CTX_free(t->tls);
     /* Cleanup occurs only after the final engine is destroyed; failed setup releases only its acquired lease. */
     if (t->global_owned && --global_owners == 0) lsquic_global_cleanup();
+    free(t->tls_entries); /* All SSL ex-data destructors have cleared their borrowed entries. */
+    free(t->generations);
+    free(t->connections); /* Connection/SSL callbacks have retired before their handle storage. */
     free(t);
 }
 
+/* Validate copied references without dereferencing a pointer retained by the caller. */
+static lsquic_conn_t *peer_connection(rq_transport *t, const rq_peer_ref *peer) {
+    if (!t || t->destroying || !peer || !peer->owner || !peer->generation ||
+        peer->owner != t->owner_id || peer->slot >= t->peer_capacity ||
+        peer->generation != t->generations[peer->slot] || (!t->server && t->status != 1))
+        return NULL;
+    return t->connections[peer->slot];
+}
+/* Mint only from this live owner's authenticated retained table. */
+int rq_peer_at(rq_transport *t, unsigned slot, rq_peer_ref *out) {
+    if (!t || t->destroying || !out || slot >= t->peer_capacity || !t->connections[slot] ||
+        (!t->server && t->status != 1)) return 0;
+    out->owner = t->owner_id; out->generation = t->generations[slot]; out->slot = slot;
+    return 1;
+}
+/* Associate a borrowed live stream with the exact queried owner, never a port/key surrogate. */
+int rq_stream_peer(rq_transport *t, void *stream, rq_peer_ref *out) {
+    if (!t || t->destroying || !stream || !out) return 0;
+    lsquic_conn_t *connection = lsquic_stream_conn(stream);
+    for (unsigned slot = 0; slot < t->peer_capacity; ++slot) {
+        if (t->connections[slot] == connection) return rq_peer_at(t, slot, out);
+    }
+    return 0;
+}
+int rq_peer_live(rq_transport *t, const rq_peer_ref *peer) {
+    return peer_connection(t, peer) != NULL; /* No application protocol privilege follows from liveness. */
+}
+int rq_open_peer(rq_transport *t, const rq_peer_ref *peer) {
+    lsquic_conn_t *connection = peer_connection(t, peer);
+    if (!connection) return 0;
+    lsquic_conn_make_stream(connection); return 1; /* Queued request, not an observed stream or protocol completion. */
+}
+int rq_close_peer(rq_transport *t, const rq_peer_ref *peer) {
+    lsquic_conn_t *connection = peer_connection(t, peer);
+    if (!connection) return 0;
+    lsquic_conn_close(connection); return 1; /* Real retirement remains on_conn_closed's responsibility. */
+}
 /* Open a raw bidirectional stream on the authenticated connection. */
 void rq_open_stream(rq_transport *t) { if (t->connection && t->status == 1) lsquic_conn_make_stream(t->connection); }
 /* Preserve would-block separately from EOF and fatal transport errors. */

@@ -11,6 +11,8 @@ adoption remain explicit Nim decisions.
 | [`network.nim`](network.nim) | Explicit numeric bind/target selection with isolated proof defaults |
 | [`endpoints.nim`](endpoints.nim) | Fixed IPv6/little-endian-port projections from validator metadata |
 | [`alpn.nim`](alpn.nim), [`chain_alpn.nim`](chain_alpn.nim) | Configured-genesis domains, exact identifiers and base/builder negotiation |
+| [`identity.nim`](identity.nim), [`connections.nim`](connections.nim) | Bounded public-certificate identity and stable state-driven validator listener/dialer ownership |
+| [`topology.nim`](topology.nim), [`admission.nim`](admission.nim) | Complete-state roster/grid projections and bounded, epoch-gated validator/builder/other admission policy |
 | [`streams.nim`](streams.nim) | Connection-initiator and greatest-ID policy for unique persistent streams |
 | [`messages.nim`](messages.nim), [`audits.nim`](audits.nim) | Bounded generic E4 messages and upgraded CE144/145 structural batch codecs |
 | [`protocol.nim`](protocol.nim) | Pinned JAMNP-S peer identity, names and CE framing checks |
@@ -38,3 +40,10 @@ only the same configured pins. See [the on-demand contract](../../spec/state-anc
 
 The [compliance inventory](../../spec/jamnp-compliance.md) records the pinned requirements and
 remaining runtime gaps. Moving these modules does not add stream support.
+
+The [validator admission contract](../../spec/jamnp-validator-admission.md) records policy APIs and
+verification. Runtime dialing/closure and UP0 dispatch integration remain separate work.
+
+The [node connection contract](../../spec/jamnp-node-connections.md) covers authenticated
+preferred/fallback dialing, duplicate replacement, stream routing and explicit retirement.
+Ordinary command/backend and UP0 message integration remain following work.

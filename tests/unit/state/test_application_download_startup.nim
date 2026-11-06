@@ -22,7 +22,7 @@ import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]
 import ../../support/report_admission_context as report_context
 import ../../support/[application_candidate_context, accumulation_completion_context,
-  block_download_transport, arc_evidence]
+  block_download_transport, arc_evidence, chain_alpn]
 
 type Scenario = enum ## Each child process serves one explicitly selected wire outcome or identity pin.
   Healthy, WrongKey, MissingFin, Empty, PreparationRefusal, Fallback,
@@ -188,7 +188,8 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario,
   var servers = default(DownloadResponders)
   let mode = if scenario == MissingFin: NoFin else: DownloadTransferMode.Healthy
   let response = if scenario == Empty: @[0'u8, 0, 0, 0] else: frame
-  assert servers.openResponders(expected, response, mode, scenario == Fallback), "real responder startup"
+  assert servers.openResponders(expected, response, mode, scenario == Fallback,
+    fixtureChainAlpn("download-startup-chain.json")), "real responder startup"
   let port = servers.port(true)
   let firstPort = servers.port(false)
   let child = posix.fork()
@@ -247,7 +248,8 @@ proc roundTrip(expected: array[42, byte], frame: seq[byte], scenario: Scenario,
       AncestorDisk]: DownloadCommandResult.Adopted
     elif scenario == AncestorSuffix: DownloadCommandResult.InvalidAncestors
     else: DownloadCommandResult.Exhausted
-  assert outcome == wanted, "actual command terminal outcome"
+  assert outcome == wanted, "download startup " & $scenario & " expected " & $wanted & " got " &
+    $outcome
   writeFile("download-startup-stop", "stop")
   var status = 0.cint
   assert posix.waitpid(child, status, 0) == child, "join real responder"

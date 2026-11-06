@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual current command acquires original ancestry only after the first adoption, preserving exact prefixes on wrong context or timeout.
+import ../../support/chain_alpn
 import std/[assertions, envvars, syncio, monotimes, times, os, strutils]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
@@ -41,7 +42,8 @@ proc check(fixture: CurrentGuaranteeSequenceFixture, layout: int, mode: RemoteCa
   let modes = @[Healthy, Healthy, (if mode == RemoteCase.Timeout: NoFin else: Healthy)]
   var servers = default(DownloadResponders)
   assert servers.openSequenceResponders(currentGuaranteeRequests(fixture),
-      currentGuaranteeResponses(fixture, mode == RemoteCase.WrongParent), modes)
+      currentGuaranteeResponses(fixture, mode == RemoteCase.WrongParent), modes,
+      alpn = fixtureChainAlpn(ChainPath))
   let port = servers.port(true)
   let child = posix.fork()
   assert int(child) >= 0

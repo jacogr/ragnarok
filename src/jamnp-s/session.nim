@@ -7,6 +7,8 @@
 ## Exposes runPeer/runMesh, progress observations and peer/mesh selftests over retained
 ## transport sessions.
 
+from ./identity import preferredInitiator
+from ../codec/state/safrole import StateEdKey
 import ./network
 
 import std/[os, strutils, monotimes, times, assertions, syncio, envvars]
@@ -815,12 +817,8 @@ proc peerSelfTest*() =
 ## Retained two-peer IPv6 lifecycle policy shares this module's private owners and callbacks.
 
 proc preferred(local, remote: array[32, byte]): bool {.raises: [].} =
-  ## Compare the full public-key byte strings lexicographically, then apply pinned JAMNP-S Required connectivity.
-  var less = false
-  # The first unequal byte determines the ordering; the high bit is separately taken from byte 31.
-  for index in 0..<32:
-    if local[index] != remote[index]: less = local[index] < remote[index]; break
-  (local[31] > 127) xor (remote[31] > 127) xor less
+  ## The development mesh and validator owner share one pinned preferred-initiator implementation.
+  preferredInitiator(StateEdKey(local), StateEdKey(remote))
 
 proc meshSelfTest*() =
   ## Test ordering, both final-byte high bits and direction symmetry without any cryptographic secret material.
