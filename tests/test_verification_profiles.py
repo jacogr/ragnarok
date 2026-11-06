@@ -126,6 +126,7 @@ class VerificationProfiles(unittest.TestCase):
         """Every feature profile builds the app, rather than reviving a QUIC or telemetry executable."""
         import e2e_checks
         profiles = [(e2e_checks.prepare_peer, 'ragnarok'),
+                    (e2e_checks.prepare_current_download_peer, 'ragnarok-current-download'),
                     (e2e_checks.prepare_integrated_peer, 'ragnarok-integration'),
                     (e2e_checks.prepare_offload_peer, 'ragnarok-offload')]
         for prepare, name in profiles:
@@ -140,7 +141,7 @@ class VerificationProfiles(unittest.TestCase):
                 build.assert_called_once()
                 self.assertEqual(build.call_args.args[1], ROOT/'src/ragnarok.nim')
                 self.assertEqual(build.call_args.args[2], name)
-                self.assertEqual(build.call_args.kwargs.get('timeout'), 600 if name == 'ragnarok' else None)
+                self.assertEqual(build.call_args.kwargs.get('timeout'), 600 if name in ('ragnarok', 'ragnarok-current-download') else None)
 
 
 # Direct execution uses the same safeguards as normal unittest discovery.

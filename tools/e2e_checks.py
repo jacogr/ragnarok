@@ -255,7 +255,7 @@ def prepare_current_download_peer(context):
     """Build the shipped integration/offload profile for the current executable workload."""
     context.current_download_peer = context.checks.build(context.compiler, ROOT/'src/ragnarok.nim',
         'ragnarok-current-download', context.crypto, native_libraries=(context.bs,),
-        quic_library=context.quic, defines=('integration', 'offload'))
+        quic_library=context.quic, defines=('integration', 'offload'), timeout=600)
 
 
 @PLAN.workload(group='current', requires=('prepare_current_download_peer',))
