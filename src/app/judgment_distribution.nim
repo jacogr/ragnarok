@@ -22,6 +22,9 @@ type
     timeout, attempts: int
   ReceiptPhase {.pure.} = enum ## Every waiting phase retains one original bounded claim; CPU and native acquisition never create independent unmanaged workers.
     Empty, ClaimsReady, Claims, LocalReady, Local, Remote, VerifyReady, Verify, ReceiptReady, Receipt
+  FailedJudgmentSource = object ## Fixed selector pair and its exact batch position.
+    ordinal: int
+    attempt: JudgmentSourceAttempt
   JudgmentDispatcher* = object ## Stable noncopyable exact-token owner retains detached storage; report input aliases remain untouched through the private receipt lease.
     policy: JudgmentReceiptPolicy
     store, localStore: JudgmentStore
@@ -37,7 +40,8 @@ type
     claims: SignedJudgmentBatch
     inputs: seq[JudgmentSourceInput]
     replies: seq[ReadReply]
-    failedSources: seq[seq[JudgmentSourceAttempt]]
+    failedSources: array[128, FailedJudgmentSource]
+    failedCount: int
     sourceSlots: seq[uint64]
     wire: seq[byte]
     ordinal, primaryRetries, alternateRetries: int
@@ -88,7 +92,6 @@ proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owne
   `=wasMoved`(owner.claims)
   `=wasMoved`(owner.inputs)
   `=wasMoved`(owner.replies)
-  `=wasMoved`(owner.failedSources)
   `=wasMoved`(owner.sourceSlots)
   `=wasMoved`(owner.wire)
 proc `=destroy`*(owner: JudgmentDispatcher) =
@@ -108,7 +111,6 @@ proc `=destroy`*(owner: JudgmentDispatcher) =
   `=destroy`(owner.claims)
   `=destroy`(owner.inputs)
   `=destroy`(owner.replies)
-  `=destroy`(owner.failedSources)
   `=destroy`(owner.sourceSlots)
   `=destroy`(owner.wire)
 func received*(owner: JudgmentDispatcher): uint64 =
@@ -211,7 +213,7 @@ proc clearClaim(owner: var JudgmentDispatcher) =
   owner.claims = default(SignedJudgmentBatch)
   owner.inputs = @[]
   owner.replies = @[]
-  owner.failedSources = @[]
+  owner.failedCount = 0
   owner.sourceSlots = @[]
   owner.wire = @[]
   owner.ordinal = 0
@@ -337,10 +339,18 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       let alternateCredit = owner.alternateRetries < owner.policy.attempts-1
       if ordinal >= 0 and ordinal < owner.inputs.len and (primaryCredit or alternateCredit):
         let failed = owner.inputs[ordinal]
-        owner.failedSources[ordinal].add(JudgmentSourceAttempt(source: failed.source,
-            membership: failed.membership))
+        # At most 126 retried attempts can precede this failure in one message.
+        owner.failedSources[owner.failedCount] = FailedJudgmentSource(ordinal: ordinal,
+            attempt: JudgmentSourceAttempt(source: failed.source, membership: failed.membership))
+        inc owner.failedCount
+        var excluded = default(array[128, JudgmentSourceAttempt])
+        var count = 0
+        for index in 0..<owner.failedCount:
+          if owner.failedSources[index].ordinal == ordinal:
+            excluded[count] = owner.failedSources[index].attempt
+            inc count
         let next = services.judgmentSource(owner.claims.claimAt(ordinal).value,
-            owner.failedSources[ordinal], owner.sourceSlots[ordinal], primaryCredit, alternateCredit)
+            excluded.toOpenArray(0, count-1), owner.sourceSlots[ordinal], primaryCredit, alternateCredit)
         if next.error == JudgmentSourceError.None:
           let membership = next.membershipSource
           if array[32, byte](membership) == default(array[32, byte]): inc owner.primaryRetries
@@ -381,7 +391,6 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       return
     owner.inputs = newSeq[JudgmentSourceInput](owner.claims.len)
     owner.replies = newSeq[ReadReply](owner.claims.len)
-    owner.failedSources = newSeq[seq[JudgmentSourceAttempt]](owner.claims.len)
     owner.sourceSlots = newSeq[uint64](owner.claims.len)
     owner.ordinal = 0
     if not owner.nextReport(services): owner.reject(streams)

@@ -11,6 +11,9 @@ import ./jamnp_audit_validation
 import ../../src/app/proof/worker
 import ../../src/app/chain as application_chain
 import ../../src/app/disk/chain as disk_chain
+import ../../src/app/disk/worker as disk_worker
+import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
+import ./managed_storage_samples
 import ../../src/chain/parameters
 import ../../src/state/disk_store
 import ../../src/storage/[record_codec, database_identity]
@@ -297,7 +300,7 @@ proc auditAcquisitionChecks*(fixture: AuditContextFixture) {.raises.} =
   assert next.error == StateProofAdmissionError.QueryFailure,
       "the completed disputed origin releases its execution map in the same epoch"
 
-proc initializeAuditDisk(view: ChainView, database: string) =
+proc initializeAuditDisk(view: ChainView, database: string, managed = false) =
   ## Restore real retained maps and body through the same startup path as a deployed disk-backed node.
   let first = view.retainedBlockAt(RetainedBlockIndex(0)).value
   var identity: seq[byte] = @[]
@@ -313,8 +316,14 @@ proc initializeAuditDisk(view: ChainView, database: string) =
     valueBytes: ByteLimit(64000000)), bytes: ByteLimit(128000000),
     contextBytes: ByteLimit(4000000))
   var disk = default(DiskStateStore)
-  let initialized = initializeDiskChain(disk, database,
-      StorageChainId(array[32, byte](digest)), initApplicationChain(view).value, limits)
+  let chain = StorageChainId(array[32, byte](digest))
+  let owner = initApplicationChain(view).value
+  let initialized = if managed:
+      initializeManagedDiskChain(disk, database, chain, owner, ManagedLimits(
+          repository: limits.repository, roots: ElementLimit(65), snapshotBytes: limits.bytes,
+              journalBytes: limits.bytes,
+          contextBytes: limits.contextBytes))
+    else: initializeDiskChain(disk, database, chain, owner, limits)
   assert initialized.error == DiskChainError.None, "audit disk initialization: " &
       $initialized.error
   discard disk.close()
@@ -405,16 +414,17 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   let context = origin.originContext.value
   let local = context.auditorAt(8).value.ed25519
   let file = "declared-audit-chain.json"
-  var database = "declared-audit-state.db"
+  let database = "declared-audit-managed-" & $historicalProcessId()
   var chainPath = file
   writeFile(file, currentApplicationText(view.retainedBlockAt(RetainedBlockIndex(0)).value))
   defer:
     discard posix.unlink(chainPath.toCString())
-    discard posix.unlink(database.toCString())
-  initializeAuditDisk(view, database)
+    removeManagedSample(database, [ManagedEpoch(1), ManagedEpoch(2)])
+  initializeAuditDisk(view, database, managed = true)
   var settings = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", file,
-      "--state-storage", "disk", "--state-db", database], settings)
+      "--state-storage", "disk", "--state-db", database, "--state-layout", "managed",
+      "--state-compact-bytes", "0"], settings)
   var services = default(Services)
   defer: services.close()
   assert services.start(settings, "declared audit from retained body")
@@ -588,3 +598,20 @@ proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   services.stopStateProofs()
   assert services.beginAuditFetchPlanning(replacementPin, 0, fetchLimits()).error ==
       StateProofAdmissionError.QueryFailure, "joined cancellation must also release the abandoned map"
+  let diskCapture = services.beginAuditOriginCapture(fixture.blockHash, auditLimits(),
+      auditOriginLimits(), forDeclaration = true).value
+  let diskDeadline = getMonoTime()+initDuration(seconds = 10)
+  while services.stateProofPhase != ProofWorkerPhase.Done:
+    assert getMonoTime() < diskDeadline
+  let diskPin = services.collectAudit(diskCapture).originId
+  assert services.beginDiskMaintenance()
+  services.retireInitialAudit(diskPin)
+  assert services.diskPublicationActive
+  while services.diskPublicationActive:
+    services.tick(0)
+    assert getMonoTime() < diskDeadline
+  let diskDone = services.diskMaintenanceCompletion
+  assert diskDone.kind == DiskCompletionKind.Maintained
+  assert diskDone.maintenanceValue.error == DiskChainError.None
+  assert services.beginAuditFetchPlanning(diskPin, 0, fetchLimits()).error ==
+      StateProofAdmissionError.QueryFailure, "disk maintenance must release an abandoned declaration"

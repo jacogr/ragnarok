@@ -764,6 +764,16 @@ proc reportHistoryCleanup(services: Services) =
       log(services.historyLog, LogTarget.Storage, LogLevel.Warn,
           "Historical cleanup deferred reason=" & $reason)
 
+proc stateProofAvailable*(services: Services): bool
+  ## Scalar graph admission is shared by trusted finality and managed proof/read work.
+
+proc finishDiskGraph(services: var Services) =
+  ## Collected IO no longer borrows canonical state or retained audit origins.
+  services.publishing = false
+  discard services.rpc.resumeChain(services.rpcLease)
+  services.rpcLease = nil
+  if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
+
 proc finishDiskRetirement(services: var Services, completion: DiskPublicationCompletion) =
   ## Cleanup has its own receipt: never replace a completed canonical publication with a cleanup failure.
   services.retirementCompletion = completion
@@ -782,9 +792,7 @@ proc finishDiskRetirement(services: var Services, completion: DiskPublicationCom
     assert completion.kind == DiskCompletionKind.NotExecuted # Joined queued work entered no IO and leaves the target pending.
   services.diskRetirement = default(PreparedPagedRetirement)
   services.diskOperation = ServiceDiskOperation.Publication
-  services.publishing = false
-  discard services.rpc.resumeChain(services.rpcLease)
-  services.rpcLease = nil
+  services.finishDiskGraph()
 
 proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCompletion) =
   ## Joined/collected maintenance ends the physical lease without changing canonical/RPC state or adoption receipts.
@@ -798,10 +806,8 @@ proc finishDiskMaintenance(services: var Services, completion: DiskPublicationCo
   else:
     assert completion.kind == DiskCompletionKind.NotExecuted
   services.diskOperation = ServiceDiskOperation.Publication
-  services.publishing = false
   services.diskMaintenance = default(PreparedDiskMaintenance)
-  discard services.rpc.resumeChain(services.rpcLease)
-  services.rpcLease = nil
+  services.finishDiskGraph()
 
 proc finishCurrentDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Collection/join ends all borrows before exact receipt/context checks and canonical/RPC installation.
@@ -836,9 +842,7 @@ proc finishCurrentDiskPublication(services: var Services, completion: DiskPublic
     services.currentAdoption.refusePublication(CurrentHandoffError.DurabilityRefused) # Joined queued work creates no IO success.
   services.currentDiskPublication = default(PreparedCurrentDiskPublication)
   services.diskOperation = ServiceDiskOperation.Publication
-  services.publishing = false
-  discard services.rpc.resumeChain(services.rpcLease)
-  services.rpcLease = nil
+  services.finishDiskGraph()
 
 proc finishDiskPublication(services: var Services, completion: DiskPublicationCompletion) =
   ## Called only after collect/join retires all native temporaries; install before reopening RPC access.
@@ -871,10 +875,8 @@ proc finishDiskPublication(services: var Services, completion: DiskPublicationCo
   else:
     assert completion.kind == DiskCompletionKind.NotExecuted
     services.adoption.completePublication(durabilityFailure()) # Joined queued shutdown made no IO attempt.
-  services.publishing = false
   services.diskPublication = default(PreparedDiskPublication)
-  discard services.rpc.resumeChain(services.rpcLease)
-  services.rpcLease = nil
+  services.finishDiskGraph()
 
 proc stopDiskPublication*(services: var Services) =
   ## Shutdown outside callbacks joins before any input/canonical/RPC alias can retire, preserving actual IO receipts.
@@ -923,9 +925,6 @@ proc refreshAssuranceStorage(services: var Services) =
   else:
     # Closed admission carries no remembered namespace identity or capacity facts.
     services.assuranceInfo = default(AssuranceStorageInfo)
-
-proc stateProofAvailable*(services: Services): bool
-  ## Scalar graph admission is shared by trusted finality and managed proof/read work.
 
 proc stopStateProofs*(services: var Services) =
   ## Join before dropping the captured selection or releasing this proof job's exact RPC token.
@@ -2728,6 +2727,12 @@ proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHa
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitOrigin(result.value, forDeclaration)
+proc auditSelectorAvailable(services: var Services): bool =
+  ## Check the shared lease before draining; no admission can borrow a queued abandoned selector.
+  if not services.stateProofAvailable or services.audits.occupied: return false
+  services.audits.drainAbandonedDeclarations()
+  true
+
 proc stageManagedAuditEvaluation(services: var Services, id: AuditOriginId, ordinal: int,
     wire: openArray[byte], limits: AuditEvaluationLimits): WorkJobError =
   ## Only the privately registered original target enters the fixed evaluator; caller wire is copied within finite policy.
@@ -2738,7 +2743,7 @@ proc beginAuditEvaluation*(services: var Services, id: AuditOriginId, ordinal: i
     wire: openArray[byte], limits: AuditEvaluationLimits): AuditPlanningStart {.raises.} =
   ## A source-free selector grants no signing authority and cannot replace the registered complete predecessor.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+  if not services.auditSelectorAvailable: return AuditPlanningStart(
       status: StateProofAdmissionError.Busy)
   if not services.audits.configured: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
@@ -2778,7 +2783,7 @@ proc beginAuditFetchPlanning*(services: var Services, id: AuditOriginId, ordinal
     limits: AuditFetchLimits): AuditPlanningStart {.raises.} =
   ## Optional retrieval planning exposes only deep detached routes, never a private registry source.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable or services.audits.occupied:
+  if not services.auditSelectorAvailable:
     return AuditPlanningStart(status: StateProofAdmissionError.Busy)
   if not services.audits.configured:
     return AuditPlanningStart(status: StateProofAdmissionError.QueryFailure,
@@ -2801,7 +2806,7 @@ proc beginAuditRecoveryEvaluation*(services: var Services, id: AuditOriginId, or
     evaluation: AuditEvaluationLimits): AuditPlanningStart {.raises.} =
   ## Whole authenticated threshold recovery and genuine original evaluation share the ordinary exact canonical/RPC worker lease.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+  if not services.auditSelectorAvailable: return AuditPlanningStart(
       status: StateProofAdmissionError.Busy)
   if not services.audits.configured: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
@@ -2842,7 +2847,7 @@ proc beginAuditSigning*(services: var Services, id: AuditOriginId, ordinal: int,
     validator: StateValidatorIndex): AuditPlanningStart {.raises.} =
   ## A caller selects an original target/ordinal, never a purported validity bit, message or external evaluation capability.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+  if not services.auditSelectorAvailable: return AuditPlanningStart(
       status: StateProofAdmissionError.Busy)
   if not services.auditSignerReady: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
@@ -2890,7 +2895,7 @@ proc beginAuditPublication*(services: var Services, id: AuditOriginId, ordinal: 
     validator: StateValidatorIndex, limits: AuditPublicationLimits): AuditPlanningStart {.raises.} =
   ## No raw report-validity flag or external computation result can authorize a public judgment or its serving bytes.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+  if not services.auditSelectorAvailable: return AuditPlanningStart(
       status: StateProofAdmissionError.Busy)
   if not services.auditSignerReady: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: WorkJobError.InvalidInput)
@@ -2914,7 +2919,7 @@ proc beginAuditParticipation*(services: var Services, id: AuditOriginId, ordinal
     identity: StateEdKey, limits: AuditParticipationLimits): AuditPlanningStart {.raises.} =
   ## Explicit full-node planning preserves every original local ordinal and only actually known successor topology.
   if not services.started: return AuditPlanningStart(status: StateProofAdmissionError.Closed)
-  if not services.stateProofAvailable or services.audits.occupied: return AuditPlanningStart(
+  if not services.auditSelectorAvailable: return AuditPlanningStart(
       status: StateProofAdmissionError.Busy)
   let staged = services.stageAuditParticipation(id, ordinal, identity, limits)
   if staged != WorkJobError.None: return AuditPlanningStart(
