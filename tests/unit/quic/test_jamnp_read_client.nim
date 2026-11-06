@@ -25,6 +25,14 @@ proc main() {.raises.} =
     exchangeClient(ReadKind.Assurance, assurance, @[], holdFin = true, maximum = ByteLimit(0), budget = 0)
   exchangeClient(ReadKind.Assurance, newSeq[byte](97), @[0'u8], maximum = ByteLimit(0),
       failure = ReadError.InvalidRequest)
+  for size in [0, 131, 133, 16*133]:
+    # Every bounded CE144 batch, including empty transport input, waits for both FINs; managed proof checking grants acceptance separately.
+    exchangeClient(ReadKind.AuditAnnouncement, newSeq[byte](size), @[], holdFin = true,
+        maximum = ByteLimit(0), budget = 0)
+  assert decodeReadRequest(ReadKind.AuditAnnouncement, newSeq[byte](16*133+1)).error ==
+      ReadError.LimitExceeded, "audit upload hard ceiling precedes allocation"
+  exchangeClient(ReadKind.AuditAnnouncement, newSeq[byte](131), @[0'u8], maximum = ByteLimit(0),
+      failure = ReadError.InvalidRequest)
   let blockPayload = newSeq[byte](37)
   let blockRequest = decodeReadRequest(ReadKind.Blocks, blockPayload).value
   assert route.configure(blockRequest, ByteLimit(3)) == ReadError.LimitExceeded

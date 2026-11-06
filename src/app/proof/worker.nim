@@ -83,6 +83,10 @@ type
     query: ProofQuery
     outcome: ProofQueryResult[ProofResponse]
 
+func `==`*(left, right: ProofWorkerTicket): bool =
+  ## Compare host-only namespace and generation; equal default tickets still authorize no worker operation.
+  left.owner == right.owner and left.generation == right.generation
+
 proc `=wasMoved`*(worker: var StateProofWorker) {.nodestroy, inline,
     requires: not worker.started.} =
   ## Moving a live worker would invalidate the address borrowed by its native thread.
@@ -228,7 +232,9 @@ proc execute(worker: ptr StateProofWorker) =
     worker.assuranceOutcome = executeAssuranceStorage(worker.assuranceJob,
       assuranceScanControl(stopAssuranceScan, cast[pointer](worker)))
   of ProofWorkerOperation.WorkSubmission:
-    worker.workOutcome = executeWorkSubmission(worker.workJob) # Original state aliases retire before Done.
+    worker.workOutcome = executeWorkSubmission(worker.workJob,
+      assuranceScanControl(stopAssuranceScan, cast[pointer](
+          worker))) # Closed cooperative runners borrow cancellation only during execution; original source aliases retire before Done.
   of ProofWorkerOperation.TicketProduction:
     worker.ticketOutcome = executeTicketProduction(
         worker.productionJob) # Private signer/source aliases retire before Done.

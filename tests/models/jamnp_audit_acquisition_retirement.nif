@@ -1,0 +1,25 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+ SPDX-License-Identifier: MIT OR Apache-2.0
+ Hypothesis: timeout closes a dial; forgetting the pending target advancement permits another request to that already exhausted target.
+ Source: src/app/audit_acquisition.nim poll, advanceTarget and submit. Host turns are atomic; native dial retirement is asynchronous.
+ phase: 0 requested, 1 closing, 2 retired, 3 next request. target: original row zero or next row one. pending records the deferred advance. err=1 repeats an exhausted row.
+ Fix defaults to the deferred-advance implementation. Fix=false is an unprotected design control, not shipped code. Mut1 drops the deferred assignment. Witness reaches a next-target request. Native active-peer and dialing guards prevent submission while markClose retains an old physical dial; cryptography, stream data, worker completion and native slot reuse are outside this model.#
+  (variables :phase.0. :target.0. :pending.0. :err.0.)
+  (assign Fix.0. (true))
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Init.0. (and (prime phase.0. 0) (prime target.0. 0) (prime pending.0. (false)) (prime err.0. 0)))
+  (def :Timeout.0.#poll observes an expired actual requested peer, cancels its exact native tokens and records the deferred advance.#
+    (and (eq err.0. 0) (eq phase.0. 0) (prime phase.0. 1)
+      (prime pending.0. (and Fix.0. (not (eq Mut.0. 1))))))
+  (def :Retire.0.#A later native poll retires the cancelled dial. Host poll consumes pending advancement exactly once.#
+    (and (eq err.0. 0) (eq phase.0. 1) (prime phase.0. 2)
+      (prime target.0. (if pending.0. 1 target.0.)) (prime pending.0. (false))))
+  (def :Submit.0.#submit cannot start an attempt while closingDial remains true; once retired, it must use the next original row.#
+    (and (eq err.0. 0) (eq phase.0. 2)
+      (if (eq target.0. 0) (prime err.0. 1) (prime phase.0. 3))))
+  (def :Next.0. (or Timeout.0. Retire.0. Submit.0.))
+  (def :Safe.0. (eq err.0. 0))
+  (def :Reached.0. (and (eq phase.0. 3) (eq target.0. 1)))
+  (spec (always-stutter Init.0. Next.0. (tuple phase.0. target.0. pending.0. err.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))
