@@ -4,7 +4,7 @@
   "transitions": 33,
   "sibling_imports": 27,
   "fork_capacity": 8,
-  "epoch_guests_sha256": "12568d7b9b4509a96db4d8736a701864452c214d63df9ee1fe6b4e064a440bea",
+  "epoch_guests_sha256": "f6344c7a9ef2f07caa714d2b6970665babef9b291563b1a78f0c49c53fed811f",
   "successor_roots": [
     [
       "b002fc2d263fdc1c5bea415f616fe8d5897d19fa48783a8d8f32c3de973027ac",

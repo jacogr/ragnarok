@@ -1,7 +1,7 @@
 {
   "environment": "RAGNAROK_JAM_FUZZER_NETWORK",
   "files": {
-    "jam-fuzzer-network.json": "922a33d5a5f3971df66ba73f14bad11e48f109edcd7cfc0c95c9483591ef18be"
+    "jam-fuzzer-network.json": "519a5a2dee8175e10821e9179b80a7c619a15349a9469e713827f5181204a9f9"
   },
   "target": "jam-fuzzer-network.json"
 }
