@@ -24,9 +24,9 @@ def prepare_peer(context):
     report = context.report
     crypto_library = context.crypto
     quic_library = context.quic
-    # Download preparation imports Bandersnatch in every peer shape, including ordinary startup.
+    # The cold Release peer includes the full JAMNP-S stack and can exceed the small driver build deadline.
     compiled, binary = build(compiler, ROOT/'src/ragnarok.nim', 'ragnarok', crypto_library,
-                             native_libraries=(context.bs,), quic_library=quic_library)
+                             native_libraries=(context.bs,), quic_library=quic_library, timeout=600)
     report['quic_peer_build'] = compiled
     context.peer = compiled, binary
 
