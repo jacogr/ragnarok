@@ -11,7 +11,9 @@ type
     Uninitialized, None, InvalidClaim, InvalidSource, HistoryUnavailable, LimitExceeded
   JudgmentSourceResult* = object ## A default/refusal contains no usable selected identity.
     case status: JudgmentSourceError
-    of None: selected: genesis.BlockHash
+    of None:
+      selected: genesis.BlockHash
+      slot: uint64
     else: discard                # No guessed source survives a history or profile refusal.
 func error*(outcome: JudgmentSourceResult): JudgmentSourceError =
   ## Observe the selected reason before extracting actual metadata.
@@ -20,6 +22,10 @@ func value*(outcome: JudgmentSourceResult): genesis.BlockHash {.requires: outcom
     JudgmentSourceError.None.} =
   ## This copied hash still needs actual worker-side role, signature and full execution-source qualification.
   outcome.selected
+func sourceSlot*(outcome: JudgmentSourceResult): uint64 {.requires:
+    outcome.status == JudgmentSourceError.None.} =
+  ## Retries continue below the original candidate even when a newer head arrives.
+  outcome.slot
 proc eligible(candidate: BlockSnapshotResult, parameters: Parameters,
     guaranteeSlot, rotation: uint64): bool =
   ## Actual current/previous rotation is the maintained guarantee planner's window; availability's five-slot timeout is unrelated.
@@ -33,7 +39,7 @@ func containsSource(excluded: openArray[genesis.BlockHash], hash: genesis.BlockH
     if array[32, byte](previous) == array[32, byte](hash): return true
   false
 proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
-    excluded: openArray[genesis.BlockHash] = []): JudgmentSourceResult =
+    excluded: openArray[genesis.BlockHash] = [], maximumSlot = high(uint64)): JudgmentSourceResult =
   ## Inspect at most64 retained fixed metadata rows plus actual separate finality, trying newest known contexts at or after the raw slot. Failure makes no claim about report truth or unsupported unknown history.
   if excluded.len > 64: return JudgmentSourceResult(
       status: JudgmentSourceError.LimitExceeded)
@@ -58,12 +64,13 @@ proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
     if finalized.error == GenesisError.None and candidate.error == GenesisError.None:
       if array[32, byte](finalized.value.blockHash) == array[32, byte](
           candidate.value.blockHash): finalSeen = true
-    if eligible(candidate, parameters, slot, rotation) and
+    if eligible(candidate, parameters, slot, rotation) and candidate.value.slot <= maximumSlot and
         not excluded.containsSource(candidate.value.blockHash):
       return JudgmentSourceResult(status: JudgmentSourceError.None,
-          selected: candidate.value.blockHash)
+          selected: candidate.value.blockHash, slot: candidate.value.slot)
   if not finalSeen and eligible(finalized, parameters, slot, rotation) and
+      finalized.value.slot <= maximumSlot and
       not excluded.containsSource(finalized.value.blockHash):
     return JudgmentSourceResult(status: JudgmentSourceError.None,
-        selected: finalized.value.blockHash)
+        selected: finalized.value.blockHash, slot: finalized.value.slot)
   JudgmentSourceResult(status: JudgmentSourceError.HistoryUnavailable)

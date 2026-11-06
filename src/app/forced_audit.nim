@@ -166,10 +166,8 @@ proc rememberRoute(owner: var ForcedAudits, record: QualifiedJudgment,
   let head = owner.plan.participationInfo.value.source
   for index in 0..<owner.refresh.len:
     # Opposite judgments remain distinct accountable records.
-    let old = owner.refresh[index].record.judgmentRecord
-    if uint32(old.epoch) != uint32(raw.epoch) or uint16(old.validator) != uint16(raw.validator) or
-        old.valid != raw.valid or array[32, byte](old.report) != array[32, byte](
-            raw.report): continue
+    let old = owner.refresh[index].record
+    if not sameJudgmentKey(old, record) or old.judgmentRecord.valid != raw.valid: continue
     if owner.refresh[index].mode == JudgmentDeliveryMode.Produced and mode ==
         JudgmentDeliveryMode.Relayed:
       return true

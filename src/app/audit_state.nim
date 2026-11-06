@@ -262,14 +262,20 @@ proc admitJudgmentReceipt*(state: var ManagedAuditState, ticket: ProofWorkerTick
   state.operation = AuditOperation.JudgmentReceipt
   state.ticket = ticket
 proc retainJudgments(state: var ManagedAuditState, prepared: PreparedJudgmentBatch,
-    source: ChainView): ManagedAuditCompletion =
+    source: ChainView, branches: AuditBranches): ManagedAuditCompletion =
   ## Independently bind every original membership/support/execution context before atomically installing any negative origin.
   if not prepared.valid: return ManagedAuditCompletion(status: ManagedAuditKind.InvalidResult)
   var origins: seq[AuditDisputeOrigin] = @[]
   for ordinal in 0..<prepared.negativeCount:
     # All actual trust checks precede registry mutation, including a late foreign source in an otherwise valid batch.
     let origin = prepared.negativeOriginAt(ordinal).value
-    if not origin.matchesTrustedDispute(source):
+    var trusted = origin.matchesTrustedDispute(source)
+    if not trusted:
+      for branch in branches.liveViews(source):
+        if origin.matchesTrustedDispute(branch):
+          trusted = true
+          break
+    if not trusted:
       return ManagedAuditCompletion(status: ManagedAuditKind.RegistryFailure,
           registryReason: AuditRegistryError.InvalidSource)
     origins.add(origin)
@@ -335,7 +341,7 @@ proc finish*(state: var ManagedAuditState, completed: ProofWorkerCompletion,
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.JudgmentReceiptFailure,
           judgmentReason: work.judgmentReceiptError)
       elif work.kind == WorkJobResultKind.JudgmentReceiptPrepared:
-        state.completion = state.retainJudgments(work.preparedJudgmentReceipt, source)
+        state.completion = state.retainJudgments(work.preparedJudgmentReceipt, source, branches)
     of AuditOperation.Origin, AuditOperation.DeclarationOrigin:
       if work.kind == WorkJobResultKind.AuditOriginPreparationFailure:
         state.completion = ManagedAuditCompletion(status: ManagedAuditKind.OriginFailure,

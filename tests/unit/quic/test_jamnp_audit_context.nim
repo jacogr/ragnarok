@@ -535,6 +535,7 @@ proc main() {.raises.} =
   fetchChecks(fixture)
   auditAcquisitionChecks(fixture)
   declaredAuditChecks(fixture)
+  historicalJudgmentTlsChecks()
   managedEvaluation(fixture)
   let insufficient = auditContextFixture(6)
   let none = captureAuditContext(insufficient.view, insufficient.blockHash, auditLimits())

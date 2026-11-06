@@ -2929,14 +2929,18 @@ func auditSigningMatches*(services: Services, identity: StateEdKey): bool =
   services.auditSigningConfigured and array[32, byte](services.auditSignerIdentity) == array[32,
       byte](identity)
 proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
-    excluded: openArray[genesis.BlockHash] = []): JudgmentSourceResult =
+    excluded: openArray[genesis.BlockHash] = [], maximumSlot = high(uint64)): JudgmentSourceResult =
   ## Metadata-only selection observes actual canonical history solely while the shared graph gate is idle; Busy/default contains no guessed source.
   if not services.stateProofAvailable: return default(JudgmentSourceResult)
-  selectJudgmentSource(services.canonical.chainView, claim, excluded)
+  let selected = services.canonical.chainView
+  let source = judgmentAuthorityView(selected, services.auditBranches.liveViews(selected), claim)
+  selectJudgmentSource(source, claim, excluded, maximumSlot)
 proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the fixed worker borrows its immutable input graph.
-  let captured = captureJudgmentReceiptJob(services.canonical.chainView, claims, inputs, limits)
+  let selected = services.canonical.chainView
+  let captured = captureJudgmentReceiptJob(selected, claims, inputs, limits,
+      services.auditBranches.liveViews(selected))
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
 proc beginJudgmentReceipt*(services: var Services, claims: SignedJudgmentBatch,
@@ -2955,7 +2959,8 @@ proc beginJudgmentReceipt*(services: var Services, claims: SignedJudgmentBatch,
 proc stageJudgmentClaims(services: var Services, wire: openArray[byte],
     limits: JudgmentClaimLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the closed worker takes its exclusive original-roster lease.
-  let captured = captureJudgmentClaimJob(services.canonical.chainView, wire, limits)
+  let selected = services.canonical.chainView
+  let captured = captureJudgmentClaimJob(selected, wire, limits, services.auditBranches.liveViews(selected))
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
 proc beginJudgmentClaims*(services: var Services, wire: openArray[byte],

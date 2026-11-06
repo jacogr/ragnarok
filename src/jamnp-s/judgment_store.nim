@@ -43,11 +43,6 @@ proc configure*(store: var JudgmentStore, limits: JudgmentStoreLimits): bool =
   store.enabled = true
   store.limits = limits
   true
-func sameKey(left, right: AuditJudgment): bool =
-  ## Original epoch and validator ordinal remain independent of transport relay identity and current roster indices.
-  uint32(left.epoch) == uint32(right.epoch) and uint16(left.validator) == uint16(
-      right.validator) and
-    array[32, byte](left.report) == array[32, byte](right.report)
 func fitsCount(store: JudgmentStore, count: uint64): bool =
   ## Closed callers prove count<=272 from the bounded256-row ledger and at most16 new message records.
   count <= uint64(store.limits.records) and
@@ -66,18 +61,23 @@ proc expireBefore*(store: var JudgmentStore, minimumEpoch: uint64) =
 proc canAppendClaims*(store: JudgmentStore, claims: SignedJudgmentBatch): bool =
   ## Preflight only: unsupported negative signatures can reserve capacity but cannot insert a qualified record or private source. The single host actor keeps this ledger unchanged through receipt.
   if not store.enabled or not claims.valid or claims.len > 16: return false
-  var additions: seq[AuditJudgment] = @[]
+  var additions: seq[SignedJudgmentClaim] = @[]
   for ordinal in 0..<claims.len:
     # Reserve exactly the duplicate/conflict identities later used by qualified insertion before any expensive report acquisition or private origin installation.
-    let incoming = claims.claimAt(ordinal).value.judgmentRecord
+    let claim = claims.claimAt(ordinal).value
+    let incoming = claim.judgmentRecord
+    let auditor = claim.claimInfo.auditor.ed25519
     if uint64(uint32(incoming.epoch)) < store.minimumEpoch: return false
     var duplicate = false
     for prior in store.rows:
       let existing = prior.judgmentRecord
-      if sameKey(incoming, existing) and incoming.valid == existing.valid: duplicate = true
+      if sameJudgmentKey(incoming, existing, auditor, prior.judgmentAuditor) and
+          incoming.valid == existing.valid: duplicate = true
     for prior in additions:
-      if sameKey(incoming, prior) and incoming.valid == prior.valid: duplicate = true
-    if not duplicate: additions.add(incoming)
+      let existing = prior.judgmentRecord
+      if sameJudgmentKey(incoming, existing, auditor, prior.claimInfo.auditor.ed25519) and
+          incoming.valid == existing.valid: duplicate = true
+    if not duplicate: additions.add(claim)
   store.fitsCount(uint64(store.rows.len+additions.len))
 proc append*(store: var JudgmentStore, batch: openArray[QualifiedJudgment]): JudgmentStoreResult[int] =
   ## Same-key/same-validity retries are idempotent; opposite valid claims are both retained. Whole-message capacity is checked before the first insertion.
@@ -93,10 +93,10 @@ proc append*(store: var JudgmentStore, batch: openArray[QualifiedJudgment]): Jud
     var duplicate = false
     for prior in store.rows:
       let existing = prior.judgmentRecord
-      if sameKey(incoming, existing) and incoming.valid == existing.valid: duplicate = true
+      if sameJudgmentKey(record, prior) and incoming.valid == existing.valid: duplicate = true
     for prior in additions:
       let existing = prior.judgmentRecord
-      if sameKey(incoming, existing) and incoming.valid == existing.valid: duplicate = true
+      if sameJudgmentKey(record, prior) and incoming.valid == existing.valid: duplicate = true
     if not duplicate: additions.add(record)
   let count = uint64(store.rows.len+additions.len)
   # Validated fixed rows and 256-row policy prove these additions/products cannot wrap.
@@ -125,7 +125,7 @@ proc conflicted*(store: JudgmentStore, ordinal: int): bool =
   let selected = store.rows[ordinal].judgmentRecord
   for record in store.rows:
     let other = record.judgmentRecord
-    if sameKey(selected, other) and selected.valid != other.valid: return true
+    if sameJudgmentKey(store.rows[ordinal], record) and selected.valid != other.valid: return true
   false
 proc clear*(store: var JudgmentStore) =
   ## Explicit host lifecycle releases bounded detached evidence without touching any private source or key owner.

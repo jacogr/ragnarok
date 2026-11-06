@@ -38,6 +38,7 @@ type
     inputs: seq[JudgmentSourceInput]
     replies: seq[ReadReply]
     failedSources: seq[seq[genesis.BlockHash]]
+    sourceSlots: seq[uint64]
     wire: seq[byte]
     ordinal, retries: int
     received: uint64
@@ -83,6 +84,7 @@ proc `=wasMoved`*(owner: var JudgmentDispatcher) {.nodestroy, requires: not owne
   `=wasMoved`(owner.inputs)
   `=wasMoved`(owner.replies)
   `=wasMoved`(owner.failedSources)
+  `=wasMoved`(owner.sourceSlots)
   `=wasMoved`(owner.wire)
 proc `=destroy`*(owner: JudgmentDispatcher) =
   ## Explicit foreground close joins this owner's exact lease before report/source aliases retire.
@@ -102,6 +104,7 @@ proc `=destroy`*(owner: JudgmentDispatcher) =
   `=destroy`(owner.inputs)
   `=destroy`(owner.replies)
   `=destroy`(owner.failedSources)
+  `=destroy`(owner.sourceSlots)
   `=destroy`(owner.wire)
 func received*(owner: JudgmentDispatcher): uint64 =
   ## Count complete native acknowledgments after full qualification and retention.
@@ -204,6 +207,7 @@ proc clearClaim(owner: var JudgmentDispatcher) =
   owner.inputs = @[]
   owner.replies = @[]
   owner.failedSources = @[]
+  owner.sourceSlots = @[]
   owner.wire = @[]
   owner.ordinal = 0
   owner.retries = 0
@@ -232,6 +236,7 @@ proc nextReport(owner: var JudgmentDispatcher, services: Services): bool =
     let selected = services.judgmentSource(claim)
     if selected.error != JudgmentSourceError.None: return false
     owner.inputs[owner.ordinal].source = selected.value
+    owner.sourceSlots[owner.ordinal] = selected.sourceSlot
     var hash: seq[byte] = @[]
     for octet in array[32, byte](claim.judgmentRecord.report): hash.add(octet)
     let query = decodeReadRequest(ReadKind.Report, hash)
@@ -268,15 +273,9 @@ proc retainWhole(owner: var JudgmentDispatcher, completed: ManagedAuditCompletio
     if record.judgmentRecord.valid: continue
     var duplicate = false
     for old in owner.pending:
-      let a = old.judgment.judgmentRecord
-      let b = record.judgmentRecord
-      if uint32(a.epoch) == uint32(b.epoch) and uint16(a.validator) == uint16(b.validator) and
-          array[32, byte](a.report) == array[32, byte](b.report): duplicate = true
+      if sameJudgmentKey(old.judgment, record): duplicate = true
     for old in pending:
-      let a = old.judgment.judgmentRecord
-      let b = record.judgmentRecord
-      if uint32(a.epoch) == uint32(b.epoch) and uint16(a.validator) == uint16(b.validator) and
-          array[32, byte](a.report) == array[32, byte](b.report): duplicate = true
+      if sameJudgmentKey(old.judgment, record): duplicate = true
     if not duplicate: pending.add(retained)
     var known = false
     for old in owner.reports:
@@ -331,9 +330,11 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
       if ordinal >= 0 and ordinal < owner.inputs.len and owner.retries < owner.policy.attempts-1:
         owner.failedSources[ordinal].add(owner.inputs[ordinal].source)
         inc owner.retries
-        let next = services.judgmentSource(owner.claims.claimAt(ordinal).value, owner.failedSources[ordinal])
+        let next = services.judgmentSource(owner.claims.claimAt(ordinal).value, owner.failedSources[
+            ordinal], owner.sourceSlots[ordinal])
         if next.error == JudgmentSourceError.None:
           owner.inputs[ordinal].source = next.value
+          owner.sourceSlots[ordinal] = next.sourceSlot
           owner.phase = ReceiptPhase.ReceiptReady
           return
     let retained = owner.retainWhole(completed)
@@ -369,6 +370,7 @@ proc poll*(owner: var JudgmentDispatcher, services: var Services,
     owner.inputs = newSeq[JudgmentSourceInput](owner.claims.len)
     owner.replies = newSeq[ReadReply](owner.claims.len)
     owner.failedSources = newSeq[seq[genesis.BlockHash]](owner.claims.len)
+    owner.sourceSlots = newSeq[uint64](owner.claims.len)
     owner.ordinal = 0
     if not owner.nextReport(services): owner.reject(streams)
   of ReceiptPhase.Local:

@@ -107,11 +107,7 @@ func sameKey(a, b: StateEdKey): bool =
   array[32, byte](a) == array[32, byte](b)
 func sameRecord(a, b: QualifiedJudgment): bool =
   ## Supporting-guarantee retries are not new judgment signatures; opposite valid claims remain distinct accountable records.
-  let left = a.judgmentRecord
-  let right = b.judgmentRecord
-  uint32(left.epoch) == uint32(right.epoch) and uint16(left.validator) == uint16(
-      right.validator) and
-    left.valid == right.valid and array[32, byte](left.report) == array[32, byte](right.report)
+  sameJudgmentKey(a, b) and a.judgmentRecord.valid == b.judgmentRecord.valid
 proc offer*(owner: var JudgmentGossip, record: QualifiedJudgment,
     plan: AuditParticipationPlan, mode: JudgmentDeliveryMode): bool =
   ## Whole worst-case recipient storage and fixed wire credit precede row mutation; later known E+2 plans extend delivery without erasing prior acknowledgments.

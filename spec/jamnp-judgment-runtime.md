@@ -14,6 +14,17 @@ roster, but is not added to the signed domain. Unmerged epoch-domain proposal #5
 Current/previous roster populations remain independent, including null and repeated positions.
 Missing historical epochs remain unavailable, never mapped to the current key at the same index.
 
+Managed receipt checks the selected head and can use a still-anchored side view or retained
+historical membership source for the original epoch. The whole message shares one read and
+signature budget. The exact authenticated source hash and root accompany each claim through
+guarantor verification and execution-origin admission. Independently installed finality retires
+membership older than its previous epoch. Distinct authenticated keys at the same epoch and
+ordinal remain separate ledger entries.
+
+Support retries exclude failed hashes and continue toward older eligible sources even when the
+selected head advances. Inbound receipts and locally owed publications reserve separate
+judgment and report-serving capacity.
+
 A signed negative claim alone does not qualify its supporting guarantee or certify report
 invalidity. Unknown reports require full-hash-bound CE136 acquisition, actual two/three original
 credential role/signature qualification and a genuine complete execution source. Never fabricate

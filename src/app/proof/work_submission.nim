@@ -947,13 +947,14 @@ proc captureAuditOriginJob*(source: ChainView, blockHash: genesis.BlockHash,
     auditOriginLimits: limits)))
 proc checkJudgmentClaims(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## The fixed worker alone reads actual original-epoch rosters and verifies the complete CE145 message.
-  let checked = verifyJudgmentClaims(data.auditView, data.auditWire, data.judgmentClaimLimits, control)
+  let checked = verifyJudgmentClaims(data.auditView, data.auditWire, data.judgmentClaimLimits,
+      control, data.auditAlternatives, history = true)
   if checked.error != JudgmentClaimError.None:
     return WorkJobResult(status: WorkJobResultKind.JudgmentClaimFailure,
         judgmentClaimReason: checked)
   WorkJobResult(status: WorkJobResultKind.JudgmentClaimsVerified, judgmentClaims: checked.value)
 proc captureJudgmentClaimJob*(view: ChainView, wire: openArray[byte],
-    limits: JudgmentClaimLimits): WorkJobAdmission =
+    limits: JudgmentClaimLimits, alternatives: seq[ChainView] = @[]): WorkJobAdmission =
   ## Whole bounded raw bytes are detached before publication; no caller key table, signature-valid bit or callback becomes a verification runner.
   if not limits.valid or view.fuzzOnly or view.bestBlock.error != GenesisError.None:
     return workJobFailure(WorkJobError.InvalidInput)
@@ -963,7 +964,7 @@ proc captureJudgmentClaimJob*(view: ChainView, wire: openArray[byte],
   for ordinal in 0..<wire.len: captured[ordinal] = wire[ordinal]
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: checkJudgmentClaims, auditView: view, auditWire: move(captured),
-        judgmentClaimLimits: limits)))
+        judgmentClaimLimits: limits, auditAlternatives: alternatives)))
 proc planAuditParticipation(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## Original auditor and known successor extraction execute under the same fixed private full-source lease.
   let plan = captureAuditParticipation(data.auditTarget, data.auditParticipationCurrent,
@@ -1001,13 +1002,14 @@ proc captureAuditRoutingRefresh*(basis: AuditRoutingBasis, current: BlockSnapsho
 proc prepareIncomingJudgment(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## Original negative guarantees, historical lookup sources and whole-map accounting execute only on the fixed CPU worker.
   let prepared = prepareJudgmentReceipt(data.auditView, data.judgmentClaims, data.judgmentInputs,
-      data.judgmentReceiptLimits, control)
+      data.judgmentReceiptLimits, control, data.auditAlternatives)
   if prepared.error != JudgmentReceiptError.None:
     return WorkJobResult(status: WorkJobResultKind.JudgmentReceiptFailure,
         judgmentReceiptReason: prepared)
   WorkJobResult(status: WorkJobResultKind.JudgmentReceiptPrepared, judgmentReceipt: prepared.value)
 proc captureJudgmentReceiptJob*(view: ChainView, claims: SignedJudgmentBatch,
-    inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobAdmission =
+    inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits,
+    alternatives: seq[ChainView] = @[]): WorkJobAdmission =
   ## Every report/claim/source alias stays frozen until exact collection or joined stop. Raw report objects provide no inclusion or validity authority.
   if view.fuzzOnly or not claims.valid or not limits.valid or claims.len > 16 or inputs.len != claims.len:
     return workJobFailure(WorkJobError.InvalidInput)
@@ -1022,7 +1024,8 @@ proc captureJudgmentReceiptJob*(view: ChainView, claims: SignedJudgmentBatch,
       captured[ordinal] = inputs[ordinal]
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
     cancellable: prepareIncomingJudgment, auditView: view, judgmentClaims: claims,
-    judgmentInputs: move(captured), judgmentReceiptLimits: limits)))
+    judgmentInputs: move(captured), judgmentReceiptLimits: limits,
+        auditAlternatives: alternatives)))
 proc verifyAuditShard(data: WorkJobData, control: AssuranceScanControl): WorkJobResult =
   ## Exact expected source-free metadata and coordinates feed the maintained Merkle verifier on the CPU worker.
   if control.stopped: return WorkJobResult(status: WorkJobResultKind.InvalidSource)

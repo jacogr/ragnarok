@@ -73,8 +73,8 @@ func valid*(limits: JudgmentClaimLimits): bool =
     uint64(limits.readBytes) > 0 and uint64(limits.readBytes) <= 4'u64*1024*1024 and
     uint64(limits.workspaceBytes) > 0 and uint64(limits.workspaceBytes) <= 32'u64*1024*1024 and
     uint64(limits.retainedBytes) > 0 and uint64(limits.retainedBytes) <= 1024'u64*1024 and
-    uint64(limits.signatures) > 0 and uint64(limits.signatures) <= 16 and
-    uint64(limits.signatureBytes) > 0 and uint64(limits.signatureBytes) <= 16'u64*43
+    uint64(limits.signatures) > 0 and uint64(limits.signatures) <= 64 and
+    uint64(limits.signatureBytes) > 0 and uint64(limits.signatureBytes) <= 64'u64*43
 func valid*(claim: SignedJudgmentClaim): bool =
   ## Plain copied claim metadata cannot initialize this private success flag.
   claim.ready
@@ -105,36 +105,28 @@ proc claimAt*(batch: SignedJudgmentBatch, ordinal: int): JudgmentClaimResult[Sig
   if ordinal < 0 or ordinal >= data.records.len:
     return JudgmentClaimResult[SignedJudgmentClaim](status: JudgmentClaimError.InvalidIndex)
   JudgmentClaimResult[SignedJudgmentClaim](status: JudgmentClaimError.None, completed: data.records[ordinal])
-proc verifyJudgmentClaims*(view: ChainView, wire: openArray[byte], limits: JudgmentClaimLimits,
-    control: AssuranceScanControl = default(AssuranceScanControl)): JudgmentClaimResult[
-        SignedJudgmentBatch] =
-  ## Run on the fixed managed worker with the entire selected canonical view frozen; whole signature, scratch and retention reservations precede any accepted record.
-  if not limits.valid: return JudgmentClaimResult[SignedJudgmentBatch](
-      status: JudgmentClaimError.InvalidPolicy)
-  if view.fuzzOnly: return JudgmentClaimResult[SignedJudgmentBatch](
-      status: JudgmentClaimError.InvalidSource)
+proc checkJudgmentRoster(source: BlockSnapshotResult, decoded: JudgmentBatch,
+    claims: var seq[SignedJudgmentClaim], failures: var seq[JudgmentClaimError],
+    limits: JudgmentClaimLimits, control: AssuranceScanControl, wireLength, retained,
+    floor: uint64, reads, signatures: var uint64): JudgmentClaimResult[SignedJudgmentBatch] =
   if control.stopped: return JudgmentClaimResult[SignedJudgmentBatch](
       status: JudgmentClaimError.Cancelled)
-  let inspected = inspectJudgments(wire, limits.message)
-  if inspected.error != AuditError.None:
-    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.DecodeFailure,
-        decodeReason: inspected.error)
-  let count = inspected.value
-  if sizeof(SignedJudgmentClaim) > 1024 or sizeof(StateValidator) > 512:
-    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
-  let retained = 4096'u64+uint64(count)*(uint64(sizeof(SignedJudgmentClaim))+64)
-  if retained > uint64(limits.retainedBytes) or uint64(count) > uint64(limits.signatures) or
-      uint64(count)*43 > uint64(limits.signatureBytes):
-    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
-  let source = view.bestBlock
   if source.error != GenesisError.None:
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidSource)
   let parameters = source.value.chainParameters
   let epochSlots = parameters.get(epochPeriod)
   if epochSlots == 0 or parameters.get(coreCount) != uint64(limits.message.cores):
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidPolicy)
+  let sourceEpoch = source.value.slot div epochSlots
+  var needed = false
+  for ordinal in 0..<claims.len:
+    if claims[ordinal].valid: continue
+    let epoch = uint64(uint32(decoded.judgmentAt(ordinal).value.epoch))
+    if epoch >= floor and epoch <= sourceEpoch and sourceEpoch-epoch <= 1:
+      needed = true
+      break
+  if not needed: return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.None)
   let state = source.value.stateSnapshot
-  var reads = 0'u64
   for chapter in [8, 9, 11]:
     # Validate every complete chapter length before copying even the first roster or clock byte.
     let selected = state.lookup(chapterKey(StateChapter(chapter)))
@@ -147,7 +139,7 @@ proc verifyJudgmentClaims*(view: ChainView, wire: openArray[byte], limits: Judgm
       return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
     reads += length
   # Reads<=4MiB, wire<=4896 and count<=16 prove each multiplication/addition before any allocation.
-  if 4*reads+2*uint64(wire.len)+retained+65536 > uint64(limits.workspaceBytes):
+  if 4*reads+2*wireLength+retained+65536 > uint64(limits.workspaceBytes):
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
   let clockBytes = state.lookup(chapterKey(StateChapter(11))).value.bytes
   let clock = decodeStateTime(clockBytes)
@@ -170,36 +162,144 @@ proc verifyJudgmentClaims*(view: ChainView, wire: openArray[byte], limits: Judgm
         componentReason: previous.error)
   if active.value.consumed != activeBytes.len or previous.value.consumed != previousBytes.len:
     return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidSource)
-  let decoded = decodeJudgments(wire, limits.message).value
-  var claims = newSeq[SignedJudgmentClaim](count)
-  for ordinal in 0..<count:
+  for ordinal in 0..<claims.len:
     # Every original epoch/index selects its own actual roster; neither relay TLS identity nor an equal current ordinal can replace it.
     if control.stopped: return JudgmentClaimResult[SignedJudgmentBatch](
         status: JudgmentClaimError.Cancelled)
+    if claims[ordinal].valid: continue
     let record = decoded.judgmentAt(ordinal).value
     let originalEpoch = uint64(uint32(record.epoch))
-    if originalEpoch != epoch and (epoch == 0 or originalEpoch != epoch-1):
-      return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.UnknownEpoch)
+    if originalEpoch < floor or originalEpoch > epoch or epoch-originalEpoch > 1:
+      continue
     let roster = if originalEpoch == epoch: active.value.value else: previous.value.value
     let population = roster.validatorCount.value
     let selected = roster.validatorAt(StateValidatorIndex(uint64(uint16(record.validator))))
     if selected.error != StateComponentError.None:
-      return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidAuditor)
+      failures[ordinal] = JudgmentClaimError.InvalidAuditor
+      continue
     let auditor = selected.value
     let public = array[32, byte](auditor.ed25519)
     if public == default(array[32, byte]) or public == array[32, byte](nullValidator().ed25519):
-      return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidAuditor)
+      failures[ordinal] = JudgmentClaimError.InvalidAuditor
+      continue
+    if signatures >= uint64(limits.signatures) or (signatures+1)*43 > uint64(limits.signatureBytes):
+      return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
+    inc signatures
     var message: seq[byte] = @[]
     for character in (if record.valid: "jam_valid" else: "jam_invalid"): message.add(byte(ord(character)))
     for octet in array[32, byte](record.report): message.add(octet)
     if not verify(EdPublicKey(public), EdSignature(array[64, byte](record.signature)), message):
-      return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidSignature)
+      failures[ordinal] = JudgmentClaimError.InvalidSignature
+      continue
     claims[ordinal] = SignedJudgmentClaim(ready: true, record: record,
       info: JudgmentClaimInfo(sourceHead: source.value.blockHash,
         sourceRoot: source.value.stateRoot,
         sourceTime: clock.value.value, epoch: record.epoch, validator: record.validator,
         population: population, auditor: auditor))
+  JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.None)
+func complete(claims: openArray[SignedJudgmentClaim]): bool =
+  for claim in claims:
+    if not claim.valid: return false
+  true
+proc verifyJudgmentClaims*(view: ChainView, wire: openArray[byte], limits: JudgmentClaimLimits,
+    control: AssuranceScanControl = default(AssuranceScanControl),
+    alternatives: openArray[ChainView] = [], history = false): JudgmentClaimResult[
+        SignedJudgmentBatch] =
+  ## Run on the fixed managed worker with the entire selected canonical view frozen; whole signature, scratch and retention reservations precede any accepted record.
+  if not limits.valid: return JudgmentClaimResult[SignedJudgmentBatch](
+      status: JudgmentClaimError.InvalidPolicy)
+  if view.fuzzOnly or view.retainedCount > 64 or alternatives.len > 64: return JudgmentClaimResult[
+      SignedJudgmentBatch](status: JudgmentClaimError.InvalidSource)
   if control.stopped: return JudgmentClaimResult[SignedJudgmentBatch](
       status: JudgmentClaimError.Cancelled)
+  let inspected = inspectJudgments(wire, limits.message)
+  if inspected.error != AuditError.None:
+    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.DecodeFailure,
+        decodeReason: inspected.error)
+  let count = inspected.value
+  if sizeof(SignedJudgmentClaim) > 1024 or sizeof(StateValidator) > 512:
+    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
+  let retained = 4096'u64+uint64(count)*(uint64(sizeof(SignedJudgmentClaim))+64)
+  if retained > uint64(limits.retainedBytes) or uint64(count) > uint64(limits.signatures) or
+      uint64(count)*43 > uint64(limits.signatureBytes):
+    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.LimitExceeded)
+  let selected = view.bestBlock
+  if selected.error != GenesisError.None:
+    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidSource)
+  let parameters = selected.value.chainParameters
+  let period = parameters.get(epochPeriod)
+  if period == 0:
+    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.InvalidPolicy)
+  var floor = 0'u64
+  let finalized = view.finalizedBlock
+  if finalized.error == GenesisError.None:
+    let epoch = finalized.value.slot div period
+    if epoch > 0: floor = epoch-1
+  let decoded = decodeJudgments(wire, limits.message).value
+  var claims = newSeq[SignedJudgmentClaim](count)
+  var failures = newSeq[JudgmentClaimError](count)
+  var reads, signatures = 0'u64
+  let current = checkJudgmentRoster(selected, decoded, claims, failures, limits, control,
+      uint64(wire.len), retained, floor, reads, signatures)
+  if current.error != JudgmentClaimError.None: return current
+  for branch in alternatives:
+    if claims.complete: break
+    let source = branch.bestBlock
+    if branch.fuzzOnly or source.error != GenesisError.None or
+        not parameters.sameParameterProfile(source.value.chainParameters): continue
+    let checked = checkJudgmentRoster(source, decoded, claims, failures, limits, control,
+        uint64(wire.len), retained, floor, reads, signatures)
+    if checked.error != JudgmentClaimError.None: return checked
+  if history and not claims.complete:
+    # An independently retained original epoch can still authorize a successor's receipt.
+    var checkedEpoch = selected.value.slot div period
+    for offset in 0..<view.retainedCount:
+      if claims.complete: break
+      let source = view.retainedBlockAt(RetainedBlockIndex(view.retainedCount-1-offset))
+      if source.error != GenesisError.None: continue
+      let epoch = source.value.slot div period
+      if epoch >= checkedEpoch or epoch < floor: continue
+      checkedEpoch = epoch
+      let checked = checkJudgmentRoster(source, decoded, claims, failures, limits, control,
+          uint64(wire.len), retained, floor, reads, signatures)
+      if checked.error != JudgmentClaimError.None: return checked
+    if not claims.complete and finalized.error == GenesisError.None and
+        finalized.value.slot div period < checkedEpoch and finalized.value.slot div period >= floor:
+      let checked = checkJudgmentRoster(finalized, decoded, claims, failures, limits, control,
+          uint64(wire.len), retained, floor, reads, signatures)
+      if checked.error != JudgmentClaimError.None: return checked
+  if control.stopped:
+    return JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.Cancelled)
+  for ordinal in 0..<claims.len:
+    if claims[ordinal].valid: continue
+    let reason = failures[ordinal]
+    return JudgmentClaimResult[SignedJudgmentBatch](status:
+      if reason == JudgmentClaimError.Uninitialized: JudgmentClaimError.UnknownEpoch else: reason)
   JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.None,
     completed: SignedJudgmentBatch(data: ClaimData(records: move(claims), retainedBytes: retained)))
+proc hasJudgmentAuthority(view: ChainView, facts: JudgmentClaimInfo): bool =
+  if view.fuzzOnly: return false
+  let source = view.blockAt(facts.sourceHead)
+  source.error == GenesisError.None and
+    array[32, byte](source.value.stateRoot) == array[32, byte](facts.sourceRoot) and
+    source.value.slot == uint64(uint32(facts.sourceTime))
+proc judgmentAuthorityView*(view: ChainView, alternatives: openArray[ChainView],
+    claim: SignedJudgmentClaim): ChainView =
+  ## Follow the exact authenticated membership source through subsequent receipt stages.
+  if not claim.valid: return default(ChainView)
+  let facts = claim.claimInfo
+  let finalized = view.finalizedBlock
+  if finalized.error == GenesisError.None:
+    let period = finalized.value.chainParameters.get(epochPeriod)
+    if period == 0: return default(ChainView)
+    let epoch = finalized.value.slot div period
+    if epoch > 0 and uint64(uint32(facts.epoch)) < epoch-1: return default(ChainView)
+  if view.hasJudgmentAuthority(facts): return view
+  for branch in alternatives:
+    let best = branch.bestBlock
+    if best.error == GenesisError.None and
+        array[32, byte](best.value.blockHash) == array[32, byte](facts.sourceHead) and
+        branch.hasJudgmentAuthority(facts): return branch
+  for branch in alternatives:
+    if branch.hasJudgmentAuthority(facts): return branch
+  default(ChainView)

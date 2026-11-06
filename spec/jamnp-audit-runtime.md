@@ -26,6 +26,10 @@ reproduction from authenticated package/extrinsic/import evidence. Conflicting o
 cannot silently overwrite obligations, and announcing an obligation commits the local actor to
 complete it. Every native and shared-worker token remains exact through cancellation, Done and join.
 
+A completed initial declaration releases its private execution pin once every selected report's
+judgment is retained and ready for delivery. Other declarations and explicit host pins retain
+their original source. The detached announcement remains available for duplicate suppression.
+
 ## Deferred later tranches
 
 The two pinned revisions are also upstream's latest revisions as checked on November 5, 2026.

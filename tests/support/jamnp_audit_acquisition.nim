@@ -31,6 +31,7 @@ import ../../src/crypto/primitives
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_topology_fixture,
   current_application_context, assurance_signer_context, jamnp_judgment_support,
   jamnp_judgment_receipt, jamnp_audit_participation, jamnp_read_validation_context]
+import ./jamnp_judgment_claim
 proc acquisitionLimits*(): AuditAcquisitionLimits =
   ## Whole round credit covers every possible original target's proof work before any peer request.
   AuditAcquisitionLimits(fetch: fetchLimits(), evaluation: evaluationLimits(),
@@ -314,8 +315,89 @@ proc initializeAuditDisk(view: ChainView, database: string) =
   var disk = default(DiskStateStore)
   let initialized = initializeDiskChain(disk, database,
       StorageChainId(array[32, byte](digest)), initApplicationChain(view).value, limits)
-  assert initialized.error == DiskChainError.None
+  assert initialized.error == DiskChainError.None, "audit disk initialization: " &
+      $initialized.error
   discard disk.close()
+proc historicalProcessId(): cint {.importc: "getpid", header: "<unistd.h>".}
+proc historicalJudgmentTlsChecks*() {.raises.} =
+  ## An epoch-three validator authenticates an epoch-one judgment from its real retained disk history.
+  let original = claimView()
+  let parent = successorParent(original)
+  let previous = original.advanceView(parent).value
+  let successor = successorSnapshot(previous)
+  let advanced = previous.advanceView(successor).value
+  let view = advanced.finalizeView(parent.value.blockHash).value
+  let prefix = "historical-judgment-" & $historicalProcessId()
+  var path = prefix & "-chain.json"
+  var database = prefix & "-state.db"
+  var receiverKey = prefix & "-receiver.pem"
+  var receiverCert = prefix & "-receiver-cert.pem"
+  var senderKey = prefix & "-sender.pem"
+  var senderCert = prefix & "-sender-cert.pem"
+  defer:
+    discard posix.unlink(path.toCString())
+    discard posix.unlink(database.toCString())
+    discard posix.unlink(receiverKey.toCString())
+    discard posix.unlink(receiverCert.toCString())
+    discard posix.unlink(senderKey.toCString())
+    discard posix.unlink(senderCert.toCString())
+  writeFile(path, currentApplicationText(original.bestBlock.value))
+  initializeAuditDisk(view, database)
+  assuranceSignerFiles(receiverKey, receiverCert, 51)
+  assuranceSignerFiles(senderKey, senderCert, 52)
+  var settings = default(Options)
+  assert parseCanonicalOptions(@["server", "--with-state", "--chain", path,
+      "--state-storage", "disk", "--state-db", database], settings)
+  var services = default(Services)
+  defer: services.close()
+  assert services.start(settings, "historical judgment over managed TLS"), "historical disk startup"
+  assert services.chainView.bestBlock.value.slot == 36, "historical fixture restores its epoch-three head"
+  assert services.configureAudits(registryLimits()), "historical fixture audit registry"
+  let alpn = services.nodeProtocol
+  let now = StateTime(36)
+  let geometry = topologyLimits()
+  var receiver = default(ApplicationNode)
+  var sender = default(NodeService)
+  defer:
+    receiver.close()
+    sender.close()
+  assert receiver.open(services, initConnectionConfig(receiverCert, receiverKey, alpn), geometry,
+      now) == NodeError.None, "historical receiver TLS setup"
+  assert sender.open(initConnectionConfig(senderCert, senderKey, alpn), view, geometry) ==
+      NodeError.None, "historical relay TLS setup"
+  assert sender.enableJudgmentStreams(), "historical relay CE145 setup"
+  var verification = readVerificationLimits(4, 12, 12)
+  verification.wireBytes = ByteLimit(65536)
+  let ledger = JudgmentStoreLimits(records: ElementLimit(2), bytes: ByteLimit(1000000))
+  assert receiver.configureJudgmentReceipt(judgmentReceiptPolicy(claimLimits(), receiptLimits(),
+      verification, ledger, ByteLimit(8000000))), "historical receiver CE145 policy"
+  var relaySeed = default(array[32, byte])
+  relaySeed[0] = 52
+  let relay = StateEdKey(array[32, byte](importSeed(relaySeed).value.publicKey.value))
+  assert receiver.beginPeerConnection(relay, networkEndpoint(loopbackAddress(false),
+      sender.localPort)).error == DialError.None, "historical successor relay dial"
+  let wire = claimWire([rawClaim(1, 0, 21)])
+  let upload = decodeReadRequest(ReadKind.Judgment, wire).value
+  var sent = false
+  var ticket = default(NodeRequestTicket)
+  let deadline = getMonoTime()+initDuration(seconds = 15)
+  while true:
+    let clock = getMonoTime()
+    assert clock < deadline, "the actual epoch-three receiver must verify before acknowledging"
+    assert receiver.poll(clock, now, 0), "historical receiver poll"
+    assert sender.poll(clock, 0), "historical relay poll"
+    if not sent:
+      if sender.peerCount == 0: continue
+      let started = sender.request(sender.peerAt(0).value, upload, ByteLimit(0))
+      if started.error != NodeError.None: continue
+      sent = true
+      ticket = started.value
+    let reply = sender.takeReply(ticket)
+    if reply.error == ReadError.None: break
+    assert reply.error == ReadError.Unavailable, "historical relay reply state"
+  assert receiver.receivedJudgments == 1 and receiver.retainedJudgmentCount == 1, "historical judgment retained before bare FIN"
+  let judgment = receiver.retainedJudgmentAt(0).judgmentRecord
+  assert uint32(judgment.epoch) == 1 and uint16(judgment.validator) == 0, "historical epoch and ordinal preserved"
 proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   ## A normal validator tick discovers the matching key, declares, recovers the two selected reports and publishes exact original-position judgments.
   let view = fixture.view.finalizeView(fixture.blockHash).value

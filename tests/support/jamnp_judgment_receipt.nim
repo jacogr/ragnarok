@@ -6,7 +6,7 @@ import std/[assertions, monotimes, times, syncio, posix/posix]
 import ../../src/app/[services, options, audit_state]
 import ../../src/app/proof/worker
 import ../../src/jamnp-s/[judgment_claim, judgment_support, judgment_receipt, audit_origin,
-  audit_registry, audit_evaluation, audit_context, audits, work_signer]
+  audit_registry, audit_evaluation, audit_context, audits, work_signer, judgment_store]
 import ../../src/jamnp-s/[audit_participation, audit_publication, availability_proof,
     availability_merkle, read_stream]
 import ../../src/state/availability/specifier
@@ -16,6 +16,7 @@ import ../../src/codec/[bounded, disputes, guarantees, report_owned]
 import ../../src/codec/state/safrole
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_guarantee_support,
   jamnp_judgment_support, jamnp_audit_participation, current_application_context, assurance_signer_context]
+import ./jamnp_judgment_claim
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Temporary checkpoint names are private to the native runner process.
 proc receiptLimits*(): JudgmentReceiptLimits =
@@ -38,6 +39,20 @@ proc stopReceipt(raw: nil pointer): bool {.nimcall, raises: [].} =
   true
 proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Duplicate sources retain their first exact owner; late invalid support, source, aggregate quota and native Done cancellation expose no successful prefix.
+  let selectedRoster = claimView(repeated = true)
+  let side = claimView()
+  let wire = claimWire([rawClaim(1, 1, 21), rawClaim(1, 1, 22)])
+  let mixed = verifyJudgmentClaims(selectedRoster, wire, claimLimits(), alternatives = [side]).value
+  let empty = default(JudgmentSourceInput)
+  assert prepareJudgmentReceipt(selectedRoster, mixed, [empty, empty], receiptLimits()).error ==
+      JudgmentReceiptError.InvalidSource
+  let receipt = prepareJudgmentReceipt(selectedRoster, mixed, [empty, empty], receiptLimits(),
+      alternatives = [side]).value
+  var ledger = default(JudgmentStore)
+  assert ledger.configure(JudgmentStoreLimits(records: ElementLimit(2), bytes: ByteLimit(16000)))
+  assert ledger.canAppendClaims(mixed)
+  assert ledger.append([receipt.judgmentAt(0).value, receipt.judgmentAt(1).value]).value == 2,
+      "different authenticated keys at the same ordinal must not collapse across rosters"
   let source = supportFixture(fixture)
   let first = unseenGuarantee(source)
   let second = unseenGuarantee(source, mutation = 2)
