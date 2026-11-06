@@ -148,7 +148,9 @@ proc transfer(owner: var Services, frame: seq[byte], keyA, keyB: DownloadPeerKey
       DownloadPeerError.Busy
   for tick in 0..<4000:
     step(catalog, servers)
-    if not catalog.busy: break # A rejected binding still holds native ownership until actual close.
+    if not catalog.busy and servers.streamRetired(true):
+      break # Both endpoints must observe close before the fixture accepts a new stream.
+  assert servers.streamRetired(true), "rejected binding retires the responder stream"
   assert not catalog.busy and session.stage == BlockDownloadStage.Receiving
   assert catalog.bindingFailure(DownloadPeerId(22)).value.streamError ==
       DownloadStreamError.InvalidPolicy
