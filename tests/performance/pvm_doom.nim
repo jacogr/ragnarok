@@ -161,9 +161,8 @@ var invocationRuntime = if fullInvocation and requestedBackend == "jit": startIn
     ) else: default(InvocationRuntime)
 var context = HostContext(rom: newSeq[byte](rom.len), events: @[],
     outputBytes: 0, hosts: default(array[5, uint64]))
-for i in 0..<rom.len:
-  # Copy host-owned immutable input once, outside every collected execution.
-  context.rom[i] = byte(rom[i])
+# Deliver the checked, nonempty WAD to the host owner within the enclosing cold call.
+copyInvocationInput(context.rom, rom, 0)
 for i in 0..<5:
   # This blob has exactly five distinct import slots; malformed maps cannot select another host ABI.
   context.hosts[i] = word(data, 20+i*4, 4)
@@ -175,22 +174,20 @@ assert uint64(info.gas) == 1000000000000'u64
 for i in 0..<13: info.registers[i] = RegisterValue(word(data, 48+i*8, 8))
 assert uint64(info.registers[0]) == 0xffff0000'u64
 var wire = newSeq[byte](wireSize)
-for i in 0..<wireSize: wire[i] = byte(data[152+i])
+copyInvocationInput(wire, data, 152)
 let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(
     4*1024*1024), JumpCountLimit(1048576))
 assert decoded.error == ProgramError.None
 let owner = decoded.value
-var images: seq[PageImage] = @[]
+var images = newSeq[PageImage](pages)
 for page in 0..<pages:
   # Every complete source page retains its canonical index and permissions.
   let cursor = 152+wireSize+page*4101
   let permission = byte(data[cursor+4])
   assert permission in [1'u8, 2'u8]
-  var image = PageImage(index: PageIndex(uint32(word(data, cursor, 4))),
-    access: (if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite),
-    bytes: default(array[4096, byte]))
-  for i in 0..<4096: image.bytes[i] = byte(data[cursor+5+i])
-  images.add(image)
+  images[page].index = PageIndex(uint32(word(data, cursor, 4)))
+  images[page].access = if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite
+  copyInvocationInput(images[page].bytes, data, cursor+5)
 let captured = captureMemory(images, PageLimit(8192))
 assert captured.error == MachineError.None
 let source = captureMachine(owner, captured.value, info).value
