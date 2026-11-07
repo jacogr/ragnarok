@@ -1094,3 +1094,63 @@ The Linux artifact reports the public interpreted and JIT roles against their ma
 previous-source roles, plus the same-runner PolkaVM interpreted role. These ratios compare the
 recorded complete-call CPU clocks only; they do not isolate checkpoint publication or imply
 general PVM throughput across other programs.
+
+## Compact persistent instruction catalogue
+
+Prepared code retains source coordinates and logical admission metadata for every instruction,
+without storing its decoded operands or handler in each persistent fact. The private catalogue
+contains five uint32 fields (PC, next PC, source count, price index and node count), the opcode,
+ending flag and fallthrough flag. Pinned checked ARM builds measure a 24-byte stride, replacing the
+previous 48-byte rich fact. The existing facts sequence and source owner remain; no full rich-fact
+cache or execution-time plan mutation is introduced. Actual Linux x86 layout remains to be qualified.
+
+This changes representation, not admission. Preparation still eagerly calls the complete genuine
+instruction decoder for every marked source instruction, including unreachable code. Validation,
+error/limit precedence, global ordinals, containing-block prices, suffix source/node counts and the
+complete jump-table passes retain their existing order. Whole-suffix node/work reservations,
+both-arm resolution, sticky resource refusal and paid interior-entry/host resume are unchanged.
+No cheap-header decoding or deferred global validation is enabled.
+
+When a cold stream or native certificate needs original operands, a private helper reconstructs
+them from the retained immutable Program and checks its opcode/next coordinate against the
+catalogue. It preserves original register saturation, immediates, static targets and single-step
+dynamic handlers. Self-patched stream branch offsets remain executable coordinates, not source
+operand authority. Shared and legacy ARM/x86 builders, single stepping, and the included shared
+read-body/continuation certificate consumers use the same genuine-source reconstruction. Native
+requests still own their operation certificates and acquire no Program/plan/frame borrow.
+
+Existing cached-entry, native epoch/span and installed-handler guards precede reconstruction.
+Shared native pure/loop/read success handlers remain decode-free. ARM mixed-memory successful
+receipts also bypass reconstruction; only its validated exceptional one-operation replay rebuilds
+the original checked handler. Read-body discovery, nomination and install revalidation remain cold;
+their installed success and refusal/replay handlers are unchanged. Separate bounded cold builders
+may decode an instruction more than once; the catalogue does not promise one decode overall.
+
+The existing prepared-block suite adds short operand encodings, cross-marker operands, legal
+true-end zero suffixes, reordered cold/warm entries and paid/unpaid state. These compare paths
+through the same engine and establish cache/entry/quota parity, not an independent operand oracle.
+Independent step traces/literal controls, exact module/pricing/entry/host-resume checks, shared
+native publication/lifecycle and checked read-continuation arbitration also pass locally. Fresh
+1,000-cycle ARC observations retain unchanged occupied bytes. Interpreter, ARM and Linux/x86
+conditional semantic checks pass under the pinned checked ARC/Clang profile; an ARM ThinLTO
+witness and linked guard inspection pass. The local x86 suite exercises unsupported/fallback
+behavior on ARM. Native Linux x86 execution, layout and exact-head CI remain qualification gaps.
+
+One local M1 Max screen compares frozen `48d4d092` with this implementation using identical checked
+ARC/Clang ThinLTO ARM-native/owner-receipt flags, one staging source path and fresh private caches.
+Sieve 1000, memset 1000 and initialized DOOM tick each run interpreted/JIT through the unchanged
+canonical drivers, full-state/event oracles and clocks. The fixed AA/AB/reversed-BA/AA cohort retains
+48 processes and 624 calls, cold sample 0 and reused median 3..12, without retries or selection.
+Both directional candidates must lie outside all six baseline anchors on the same side, with both
+paired effects exceeding the entire baseline span. Source/image/input/asset seals, canonical
+positive/refusal controls and before/after pressure observations pass; native work matches.
+
+Cold sieve CPU falls 4.57%/6.33% in the two interpreted directions and 5.06%/2.63% with JIT;
+wall falls 4.67%/6.37% and 4.63%/3.37%, respectively. These four rows meet that rule. All reused
+rows, memset and DOOM remain unresolved. In particular, DOOM JIT cold CPU rises 4.94%/0.99%
+within the full baseline spread; this does not establish application nonregression. Existing sieve
+constructor CPU clocks fall from 0.958–0.997ms to 0.745–0.756ms across the two policies, but overlap
+the full cold invocation and are not additive stage attribution. No general throughput, whole-process
+memory saving, Linux performance or blanket nonregression claim follows from this screen. Retained
+source, technical and paired-screen manifests are in the private compact-catalogue qualification
+packet; no second local cohort or decoder/pricing deferral is part of this increment.

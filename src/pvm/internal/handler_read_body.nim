@@ -3,10 +3,11 @@
 ## Checked source certificate and invocation bridge for a bounded native read body.
 
 when declared(FlatFrame):
-  func flatReadTerminal(f: FlatFrame, node: uint32, fact: FlatFact): bool =
+  proc flatReadTerminal(f: FlatFrame, node: uint32, fact: FlatFact): bool =
     ## The original static fallthrough remains checked, whether the stream cached it or not.
-    if fact.opcode != 1 or not fact.ending or not fact.fallthrough or
-        fact.handler != flatJump[1]: return false
+    if fact.opcode != 1 or not fact.ending or not fact.fallthrough: return false
+    let payload = flatSourcePayload(f.plan, fact)
+    if payload.handler != flatJump[1]: return false
     let target = f.arguments[int(node)].y
     if f.handlers[int(node)] == flatJump[1]: return target == fact.next
     if f.handlers[int(node)] != flatCachedJump[1] or
@@ -38,9 +39,11 @@ when declared(FlatFrame):
       if fact.opcode == 2 or node >= walk.terminal or f.sites[int(node)] != ordinal or
           fact.priceIndex != f.plan.facts[int(source.first)].priceIndex: return
       let args = f.arguments[int(node)]
-      if args.x != fact.args.x or args.y != fact.args.y or args.slots != fact.args.slots: return
+      let payload = flatSourcePayload(f.plan, fact)
+      if args.x != payload.args.x or args.y != payload.args.y or args.slots !=
+          payload.args.slots: return
       if not addReadBodyOperation(body, node, ordinal, NativeOperation(opcode: fact.opcode,
-          slots: fact.args.slots, immediate: fact.args.x)): return
+          slots: payload.args.slots, immediate: payload.args.x)): return
       inc ordinal
       inc node
     if body.complete: result = body
@@ -66,9 +69,12 @@ when declared(FlatFrame):
     for index in 0..<operations.len:
       let fact = f.plan.facts[int(source.first)+index]
       let args = f.arguments[int(header)+1+index]
-      if fact.priceIndex != priceIndex or args.x != fact.args.x or args.y != fact.args.y or
-          args.slots != fact.args.slots: return false
-      operations[index] = NativeOperation(opcode: fact.opcode, slots: args.slots, immediate: args.x)
+      if fact.priceIndex != priceIndex: return false
+      let payload = flatSourcePayload(f.plan, fact)
+      if args.x != payload.args.x or args.y != payload.args.y or
+          args.slots != payload.args.slots: return false
+      operations[index] = NativeOperation(opcode: fact.opcode, slots: payload.args.slots,
+        immediate: payload.args.x)
     addNativeReadContinuation(body, NativeReadContinuation(header: header,
       terminal: walk.terminal, price: source.price), operations)
 
