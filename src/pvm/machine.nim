@@ -65,6 +65,7 @@ type
   PageData = ref object
     index: PageIndex
     access: PageAccess
+    zeroChunks: uint8 # Set bits prove complete zero chunks; clear bits mean unknown.
     chunks: array[8, PageChunk]
   # Immutable directory blocks share untouched page-reference groups between snapshots.
   PageBlock = ref object
@@ -200,7 +201,7 @@ proc chunkFromImage(image: PageImage, first: int): PageChunk {.requires:
 
 proc pageFromImage(image: PageImage): PageData =
   ## Construct all eight non-nil chunk owners before publishing an immutable page header.
-  PageData(index: image.index, access: image.access, chunks: [
+  PageData(index: image.index, zeroChunks: 0, access: image.access, chunks: [
     chunkFromImage(image, 0), chunkFromImage(image, 512), chunkFromImage(image, 1024),
     chunkFromImage(image, 1536), chunkFromImage(image, 2048), chunkFromImage(image, 2560),
     chunkFromImage(image, 3072), chunkFromImage(image, 3584)])
@@ -218,7 +219,7 @@ proc chunkFromReplacement(previous: PageChunk, image: PageImage,
 
 proc pageFromReplacement(previous: PageData, image: PageImage): PageData =
   ## Publish a fresh page identity with eight complete immutable chunk owners.
-  PageData(index: image.index, access: image.access, chunks: [
+  PageData(index: image.index, zeroChunks: 0, access: image.access, chunks: [
     chunkFromReplacement(previous.chunks[0], image, 0),
     chunkFromReplacement(previous.chunks[1], image, 512),
     chunkFromReplacement(previous.chunks[2], image, 1024),
@@ -240,7 +241,8 @@ proc sharedZeroChunk(seed: var nil PageChunk): PageChunk =
 proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): PageData =
   ## Only absent or explicitly cleared pages reach this helper; every later writer still clones touched chunks first.
   let chunk = sharedZeroChunk(seed)
-  PageData(index: index, access: access, chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
+  PageData(index: index, zeroChunks: 255, access: access, chunks: [chunk, chunk, chunk, chunk,
+      chunk, chunk, chunk, chunk])
 
 proc initializationChunk(input: openArray[byte], offset, length, start: int,
     zero: var nil PageChunk): PageChunk {.requires: offset >= 0 and offset <= input.len and
@@ -264,7 +266,11 @@ proc appendInitializationRegion(owned: var seq[PageData], region: Initialization
       owned.add(zeroPage(index, region.access, zero)) # Whole stack, extra heap and other absent prefixes.
     else:
       let count = min(remaining, 4096)
-      owned.add(PageData(index: index, access: region.access, chunks: [
+      var zeroChunks = 0'u8
+      for chunk in 0..<8:
+        # Only complete chunks beyond the admitted input prefix have genuine zero provenance.
+        if chunk*512 >= count: zeroChunks = zeroChunks or (1'u8 shl chunk)
+      owned.add(PageData(index: index, zeroChunks: zeroChunks, access: region.access, chunks: [
         initializationChunk(input, offset, count, 0, zero),
         initializationChunk(input, offset, count, 512, zero),
         initializationChunk(input, offset, count, 1024, zero),
@@ -391,11 +397,12 @@ proc imageFromPage(page: PageData): PageImage =
 
 proc pageWithAccess(page: PageData, access: PageAccess): PageData =
   ## Permission-only successors share immutable chunks and cannot change predecessor access or bytes.
-  PageData(index: page.index, access: access, chunks: page.chunks)
+  PageData(index: page.index, zeroChunks: page.zeroChunks, access: access, chunks: page.chunks)
 
 proc writablePageClone(page: PageData, offset, count: int): PageData =
   ## Callers preflight a nonempty interval within this page; clone its header and only touched chunks before mutation.
   result = pageWithAccess(page, page.access)
+  result.zeroChunks = 0 # Private mutation clears all inherited zero claims before the first byte store.
   let first = offset div 512
   let last = (offset+count-1) div 512
   for slot in first..last:
@@ -591,6 +598,20 @@ proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
   MachineResult[PageDescription](status: MachineError.None,
     completed: PageDescription(index: page.index, access: page.access))
 
+func memoryPageIsKnownZero*(memory: Memory, slot: MemoryPageSlot,
+    expected: PageDescription): MachineResult[bool] =
+  ## True proves all bytes zero in this exact immutable source page; false means unknown, never nonzero.
+  let data = memory.data
+  if data == nil: return MachineResult[bool](status: MachineError.InvalidOwner)
+  if uint64(slot) >= uint64(data.pages.len):
+    # The complete sorted-slot check precedes narrowing or any directory access.
+    return MachineResult[bool](status: MachineError.InvalidRange)
+  let page {.cursor.} = data.pages[int(uint32(slot))]
+  if page.index != expected.index or page.access != expected.access:
+    # Match coordinates/access, then read the zero fact only from this supplied immutable owner.
+    return MachineResult[bool](status: MachineError.InvalidRange)
+  MachineResult[bool](status: MachineError.None, completed: page.zeroChunks == 255)
+
 proc matchesMemoryPageBytes*(memory: Memory, slot: MemoryPageSlot,
     expected: PageDescription, bytes: openArray[byte]): MachineResult[bool] =
   ## Compare a borrowed private page with an immutable captured page; no source bytes or alias escape.
@@ -729,7 +750,7 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
     if cmpMem(unsafeAddr previous.chunks[chunk].bytes[0], unsafeAddr bytes[chunk*512], 512) != 0:
       differences = differences or (1'u8 shl chunk)
   if differences != 0:
-    let changed = PageData(index: previous.index, access: previous.access, chunks: [
+    let changed = PageData(index: previous.index, zeroChunks: 0, access: previous.access, chunks: [
       residentReplacementChunk(previous.chunks[0], bytes, 0, (differences and 1) != 0),
       residentReplacementChunk(previous.chunks[1], bytes, 512, (differences and 2) != 0),
       residentReplacementChunk(previous.chunks[2], bytes, 1024, (differences and 4) != 0),
@@ -1129,6 +1150,7 @@ proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) 
   writer.readPage = nil # A prior readable header may be the immutable page being replaced.
   if writer.dirty[slot] == 0:
     writer.pages[slot] = pageWithAccess(writer.pages[slot], writer.pages[slot].access)
+    writer.pages[slot].zeroChunks = 0 # Every writable cached header starts without inherited zero claims.
   writer.pages[slot].chunks[chunk] = PageChunk(bytes: writer.pages[slot].chunks[chunk].bytes)
   writer.dirty[slot] = writer.dirty[slot] or mask
 

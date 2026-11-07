@@ -1,0 +1,8 @@
+{
+  "defines": ["pvmResidentWitness"],
+  "directory": "codec",
+  "includes": [],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

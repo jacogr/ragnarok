@@ -12,7 +12,7 @@ import subprocess
 import sys
 from native_checks import NativeChecks, ROOT
 from native_requirements import NATIVE_REQUIREMENTS
-from native_tests import unit_environment, unit_source
+from native_tests import unit_environment, unit_source, unit_evidence, unit_evidence_directory
 from pvm_arm64_jit import qualify
 from pvm_benchmark import cpu_model
 from pvm_jit_platform import native_defines
@@ -68,20 +68,65 @@ def host_identity():
                 toolchain_platform=selected['platform'], archive=selected['download'])
 
 
-def qualify_policy(checks, shared_refusal=False):
-    """Keep memory leases and unbound owner policy; the selected shared gate owns real refusal."""
+RESIDENT_SUITES = ('pvm_fresh_resident', 'pvm_resident_bytes')
+
+
+def resident_source_paths():
+    """Bind fresh-map ownership, its OS header, both registered mains and their exact ARC contracts."""
+    paths = [ROOT/'src/pvm/internal/resident_bytes.nim',
+             ROOT/'src/pvm/internal/resident_capture.nim',
+             ROOT/'src/pvm/internal/resident_os.h', ROOT/'tests/support/arc_evidence.nim']
+    for suite in RESIDENT_SUITES:
+        source = unit_source(suite)
+        paths.extend((source, source.with_suffix('.output'),
+                      ROOT/'tools/native_requirements'/NATIVE_REQUIREMENTS[suite]['directory']/(suite+'.json')))
+    return paths
+
+
+def qualify_policy(checks, compiler, shared_refusal=False):
+    """Require registered lease/resident policy checks and retain fresh resident ARC proof in this artifact."""
+    for suite in RESIDENT_SUITES:
+        # Presence selects compatibility even for '=0' or '=false'; benign profile additions remain valid.
+        profile = NATIVE_REQUIREMENTS[suite]
+        keys = {value.split('=', 1)[0] for value in profile['defines']}
+        compatibility = {'nimMaxHeap', 'nimHardenOutOfMem', 'useMimalloc', 'useLibc', 'nimNoLibc'}
+        if 'pvmResidentWitness' not in keys or keys & compatibility:
+            raise ValueError('Resident qualification registration changed: '+suite)
+    identities = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in resident_source_paths()}
     rows = []
-    suites = ('pvm_memory_reuse', 'pvm_runtime_policy')
+    suites = ('pvm_memory_reuse', 'pvm_runtime_policy', *RESIDENT_SUITES)
     if not shared_refusal:
         # Unsupported hosts retain the registered fallback check; a real selected refusal replaces it.
         suites += ('pvm_runtime_policy_refused',)
     for suite in suites:
+        resident = suite in RESIDENT_SUITES
+        if resident:
+            # Retire only this suite's prior original and retained ARC file before the maintained launcher runs.
+            original = unit_evidence_directory(compiler)/(suite+'.json')
+            retained = checks.folder/(suite+'.json')
+            original.unlink(missing_ok=True)
+            retained.unlink(missing_ok=True)
         checked = checks.command([sys.executable, ROOT/'tools/native_tests.py', '--suite', suite],
                                  suite, timeout=900)
-        rows.append(dict(suite=suite, run=checked))
+        row = dict(suite=suite, run=checked)
+        if resident and original.is_file():
+            # The launcher can reject fresh ARC itself; retain its raw first failure before checking exit.
+            retained.write_bytes(original.read_bytes())
         if checked['exit_code']:
             raise RuntimeError('PVM memory/policy qualification failed: '+checked['log'])
+        if resident:
+            # Top-level JSON follows the existing artifact glob; a green child still requires fresh evidence.
+            proof = unit_evidence(compiler, suite, checks.folder)
+            if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != digest
+                   for path, digest in identities.items()):
+                raise ValueError('Resident qualification source changed')
+            row.update(arc=proof, arc_evidence=str(retained),
+                arc_evidence_sha256=hashlib.sha256(retained.read_bytes()).hexdigest(),
+                registered_defines=NATIVE_REQUIREMENTS[suite]['defines'], sources=identities)
+        rows.append(row)
     return rows
+
 
 
 def shared_source_paths():
@@ -205,7 +250,7 @@ def run():
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
-        paths += shared_source_paths()
+        paths += shared_source_paths()+resident_source_paths()
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
@@ -215,7 +260,7 @@ def run():
         report['shared_qualification'] = qualify_shared(NativeChecks(BUILD), compiler, report['host'])
         if native and report['shared_qualification']['status'] != 'passed':
             raise RuntimeError('Missing matching shared native qualification')
-        report['policy_qualification'] = qualify_policy(NativeChecks(BUILD),
+        report['policy_qualification'] = qualify_policy(NativeChecks(BUILD), compiler,
             shared_refusal=report['shared_qualification']['status'] == 'passed')
         report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],
             native_jit_available=native, native_build_defines=native_defines(report['host']['system'], report['host']['machine']),

@@ -10,6 +10,7 @@ import ../gas/[gas, plan as gas_plan, memo as gas_memo]
 import ./execution_types as oracle
 import ./register_ops
 import ./native_pipeline
+import ./[resident_bytes, resident_capture]
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
   import ./[arm64_jit, jit_rules]
 when defined(pvmX86Jit):
@@ -43,7 +44,7 @@ type
   FlatError* {.pure.} = enum ## Local preparation refusals never masquerade as successful guest exits.
     Uninitialized, None, InvalidPolicy, InvalidProgram, CodeLimitExceeded,
     FactLimitExceeded, JumpLimitExceeded, PageLimitExceeded, StreamLimitExceeded,
-      PreparationLimitExceeded, InvalidMemory
+      PreparationLimitExceeded, InvalidMemory, ResidentAllocationRefused
   FlatResult*[T] = object ## Private alternatives publish only completely admitted owners.
     case status: FlatError
     of None: completed: T
@@ -88,16 +89,20 @@ type
     first: uint64
     access: PageAccess
     bytes: seq[byte]
-  FlatMemoryScratch* = ref object
+  FlatMemoryScratchData = object
     ## One exclusive idle byte lease; immutable baseline and dirty ordinals restore each new input completely.
     baseline: Memory
     pages: seq[PageDescription]
     roBase, rwBase, stackBase: uint64
-    ro, rw, stack: seq[byte]
+    ro: seq[byte]
+    rw: RWView
+    stack: seq[byte]
     extra: seq[FlatRegion]
     dirty: seq[uint32]
     dirtyPages: seq[uint64] # Bounded 128 KiB bitmap; its set bits match dirty exactly.
     payloadBytes: uint64    # Logical baseline and private payload charged to the idle retention limit.
+    rwStorage: RWStorage    # Cold exclusive backing follows its view through active and idle leases.
+  FlatMemoryScratch* = ref FlatMemoryScratchData
   FlatX86WideProbe = object ## One source PC awaiting complete positive cached targets.
     pc: uint32
     attempts: uint8
@@ -119,7 +124,9 @@ type
     sourceMemory: Memory
     sourcePages: seq[PageDescription]
     roBase, rwBase, stackBase: uint64
-    ro, rw, stack: seq[byte]
+    ro: seq[byte]
+    rw: RWView
+    stack: seq[byte]
     extra: seq[FlatRegion]
     remaining*: uint64
     reservation: uint32 # Raw source end, or a high-bit-tagged stable header resolved only on attempted exit.
@@ -165,20 +172,87 @@ type
       armMemory: ArmReadContext   # Raw three triplets precede clipped reads; never retained by FlatStream.
       when defined(pvmArmMacroStateTrace):
         armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
+    rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
 
 
 
 
-when defined(pvmArm64Jit) or defined(pvmX86Jit):
-  proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
-    ## Reject copying an owner that contains exclusive native JIT resources.
+proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
+  ## Every profile rejects copying exclusive byte storage and any native children.
+proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
+  ## Interpreted execution carries the same exclusive resident-owner contract as native execution.
+proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
+  ## Delegate every owning child and remove source views without retiring transferred storage.
+  `=wasMoved`(frame.plan)
+  `=wasMoved`(frame.handlers)
+  `=wasMoved`(frame.arguments)
+  `=wasMoved`(frame.sites)
+  `=wasMoved`(frame.compiledForPc)
+  `=wasMoved`(frame.sourceMemory)
+  `=wasMoved`(frame.sourcePages)
+  `=wasMoved`(frame.ro)
+  `=wasMoved`(frame.stack)
+  `=wasMoved`(frame.extra)
+  `=wasMoved`(frame.hostSnapshot)
+  `=wasMoved`(frame.dirtyPages)
+  `=wasMoved`(frame.dirtyIndices)
+  `=wasMoved`(frame.pricingPlan)
+  `=wasMoved`(frame.pricingMemo)
+  `=wasMoved`(frame.nativeSession)
+  `=wasMoved`(frame.rwStorage)
+  frame.rw = default(RWView)
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+    # Native code owners move; invocation byte descriptors lose all authority in the source.
+    `=wasMoved`(frame.armOriginal)
+    `=wasMoved`(frame.armJit)
+    frame.armMemory = default(ArmReadContext)
+  when defined(pvmX86Jit):
+    # The admission object's managed bitmap moves with its code-only children.
+    `=wasMoved`(frame.x86Original)
+    `=wasMoved`(frame.x86Jit)
+    `=wasMoved`(frame.x86WideAdmission)
+  when NativeCheckedReadEnabled:
+    # A moved frame cannot retain a ready context into storage now owned elsewhere.
+    frame.readContext = default(NativeReadContext)
+    frame.readContextReady = false
 
-  proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
-    ## Reject duplication of an owner that contains exclusive native JIT resources.
+proc `=copy`*(destination: var FlatResult[FlatFrame], source: FlatResult[FlatFrame]) {.error.}
+  ## The success wrapper is itself noncopyable, independently of its exclusive child.
+proc `=dup`*(source: FlatResult[FlatFrame]): FlatResult[FlatFrame] {.error.}
+  ## Reject duplication of the actual successful frame result in every profile.
+proc `=wasMoved`*(outcome: var FlatResult[FlatFrame]) {.nodestroy, inline.} =
+  ## Initialization also calls this hook: select the payload-free neutral state without reading old storage.
+  outcome.status = FlatError.Uninitialized
+
+proc `=copy`*(destination: var FlatMemoryScratchData, source: FlatMemoryScratchData) {.error.}
+  ## Reference-handle identity may be shared; the actual owning heap payload cannot be cloned.
+proc `=dup`*(source: FlatMemoryScratchData): FlatMemoryScratchData {.error.}
+  ## Reject a second independent owner of a retained resident mapping.
+proc `=wasMoved`*(scratch: var FlatMemoryScratchData) {.nodestroy, inline.} =
+  ## Disarm all moved children and the old view while preserving automatic complete destruction.
+  `=wasMoved`(scratch.baseline)
+  `=wasMoved`(scratch.pages)
+  `=wasMoved`(scratch.ro)
+  `=wasMoved`(scratch.stack)
+  `=wasMoved`(scratch.extra)
+  `=wasMoved`(scratch.dirty)
+  `=wasMoved`(scratch.dirtyPages)
+  `=wasMoved`(scratch.rwStorage)
+  scratch.rw = default(RWView)
+  scratch.payloadBytes = 0
+
+proc clearFlatBorrowedMemory(f: var FlatFrame) {.inline.} =
+  ## Manual child transfer needs the same view retirement as a whole-frame move.
+  f.rw = default(RWView)
+  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+    f.armMemory = default(ArmReadContext)
+  when NativeCheckedReadEnabled:
+    f.readContext = default(NativeReadContext)
+    f.readContextReady = false
 
 const flatStop = high(uint32)
- # Source ordinals fit the four-MiB program ceiling; emitted offsets stay below2^31.
- # The disjoint high bit defers a complete reservation's source lookup until an attempted exit.
+  # Source ordinals fit the four-MiB program ceiling; emitted offsets stay below2^31.
+  # The disjoint high bit defers a complete reservation's source lookup until an attempted exit.
 const flatReservationHeaderFlag = 0x80000000'u32
 
 func defaultFlatLimits*(): FlatLimits =
@@ -417,7 +491,7 @@ template flatBranchSelect(f: var FlatFrame, args: FlatArgs, Code: static[int],
         byte(Code), f.info.registers, Code): uint32(args.x shr 32)
       else: args.y
 
-proc flatRead[W: static[int]](bytes: seq[byte], at: int): uint64 {.inline.} =
+proc flatReadSpan[W: static[int]](bytes: openArray[byte], at: int): uint64 {.inline.} =
   ## Complete bounds precede reads; the private initialized word never aliases the immutable source span.
   assert at >= 0 and bytes.len >= W and at <= bytes.len-W
   result = 0
@@ -435,7 +509,7 @@ proc flatRead[W: static[int]](bytes: seq[byte], at: int): uint64 {.inline.} =
       # Other host byte orders retain the original zero-extended little-endian byte equation.
       for i in 0..<W: result = result or (uint64(bytes[at+i]) shl(8*i))
 
-proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.inline.} =
+proc flatWriteSpan[W: static[int]](bytes: var openArray[byte], at: int, value: uint64) {.inline.} =
   ## No bytes change until the complete selected region extent has passed.
   assert at >= 0 and bytes.len >= W and at <= bytes.len-W
   when W == 1:
@@ -452,6 +526,28 @@ proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.i
     else:
       # Other host byte orders retain the original portable little-endian equation.
       for i in 0..<W: bytes[at+i] = byte((value shr (8*i)) and 255'u64)
+
+proc flatRead[W: static[int]](bytes: seq[byte], at: int): uint64 {.inline.} =
+  ## Existing managed regions use the same checked little-endian byte equations.
+  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
+  flatReadSpan[W](bytes.toOpenArray(at, at+W-1), 0)
+
+proc flatRead[W: static[int]](bytes: RWView, at: int): uint64 {.inline.} =
+  ## The cached RW pointer/length supplies a borrow without consulting its backing alternative.
+  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
+  flatReadSpan[W](bytes.toOpenArray(at, at+W-1), 0)
+
+proc flatWrite[W: static[int]](bytes: var seq[byte], at: int, value: uint64) {.inline.} =
+  ## Retain complete preflight before exposing a nonempty managed scalar span.
+  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
+  var span = bytes.toOpenArray(at, at+W-1)
+  flatWriteSpan[W](span, 0, value)
+
+proc flatWrite[W: static[int]](bytes: var RWView, at: int, value: uint64) {.inline.} =
+  ## The complete RW extent, never an allocation tag, authorizes this synchronous store.
+  assert W > 0 and at >= 0 and bytes.len >= W and at <= bytes.len-W
+  var span = bytes.toOpenArray(at, at+W-1)
+  flatWriteSpan[W](span, 0, value)
 
 proc flatRememberPage(f: var FlatFrame, page: int) {.noinline.} =
   ## A first write records one admitted page; keep sequence bookkeeping outside repeated-store code.
@@ -1853,7 +1949,7 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
       assert found
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+  proc flatArmReadRegionSpan(first: uint64, bytes: openArray[byte]): array[3, uint64] =
     ## Private region storage never resizes in place; a replacement frame rebuilds every borrowed descriptor before use.
     result = [first, 0'u64, 0'u64]
     if bytes.len >= 8:
@@ -1862,7 +1958,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       result[2] = cast[uint64](addr bytes[0])
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmClippedReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+  proc flatArmClippedReadRegionSpan(first: uint64, bytes: openArray[byte]): array[3, uint64] =
     ## Intersect a moved private region with the existing eight-byte native read bounds.
     result = [0'u64, 0'u64, 0'u64]
     if bytes.len < 8: return
@@ -1877,6 +1973,24 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let offset = low-first
     assert offset <= length-8'u64 and offset < uint64(bytes.len)
     result = [low, highExclusive-low, cast[uint64](addr bytes[int(offset)])]
+
+  proc flatArmReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+    ## Managed regions retain their original descriptor equations through a scoped borrow.
+    flatArmReadRegionSpan(first, bytes)
+
+  proc flatArmReadRegion(first: uint64, bytes: RWView): array[3, uint64] =
+    ## Empty views never take element zero; live RW owners supply the complete original extent.
+    if bytes.len < 8: return [first, 0'u64, 0'u64]
+    flatArmReadRegionSpan(first, bytes.toOpenArray(0, bytes.len-1))
+
+  proc flatArmClippedReadRegion(first: uint64, bytes: var seq[byte]): array[3, uint64] =
+    ## Existing managed clipping remains shared with the RW borrowed view.
+    flatArmClippedReadRegionSpan(first, bytes)
+
+  proc flatArmClippedReadRegion(first: uint64, bytes: RWView): array[3, uint64] =
+    ## Apply the original low/high clipping only after a complete nonempty borrow is possible.
+    if bytes.len < 8: return [0'u64, 0'u64, 0'u64]
+    flatArmClippedReadRegionSpan(first, bytes.toOpenArray(0, bytes.len-1))
 
   proc flatBuildArmReadContext(f: var FlatFrame) =
     ## Rebuild both tables only after the frame owns every moved private byte allocation.
@@ -1905,8 +2019,8 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
     faultPage: PageAddress(0), hostCall: oracle.HostCallId(0), handlers: @[], arguments: @[],
         sites: @[],
     compiledForPc: @[], sourceMemory: memory, sourcePages: @[],
-    roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: @[],
-        stack: @[], extra: @[],
+    roBase: 0, rwBase: uint64(high(uint32)), stackBase: uint64(high(uint32)), ro: @[], rw: default(
+        RWView), stack: @[], extra: @[], rwStorage: initRWStorage(),
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
   result.dynamicOffsets = default(array[256, uint64])
@@ -1920,64 +2034,92 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
     result.armPreviousValid = false
 
 
-proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: MachineInfo,
-    memory: Memory): FlatFrame =
-  ## Consume copied mapping metadata and read immutable page bytes directly into private resident regions.
-  assert plan != nil
-  # Admission already bounds the page count; also prove the exact owned snapshot allocation fits host indexing.
-  assert images.len <= high(int) div sizeof(PageDescription)
-  result = flatFrameShell[false](plan, memory, info, images.len)
+proc flatRegionPast(images: openArray[PageDescription], first: int): int =
+  ## Group only genuinely adjacent pages with equal permission before any region payload allocation.
+  assert first >= 0 and first < images.len
+  result = first+1
+  while result < images.len and images[result].access == images[first].access and
+      uint64(uint32(images[result].index)) == uint64(uint32(images[result-1].index))+1:
+    inc result # The admitted description count bounds both metadata walks identically.
 
-  var regions: seq[FlatRegion] = @[]
+proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: MachineInfo,
+    memory: Memory): FlatResult[FlatFrame] =
+  ## Classify first, then construct one complete frame; failure owns no partial public payload.
+  assert plan != nil
+  assert images.len <= high(int) div sizeof(PageDescription)
+  var frame = flatFrameShell[false](plan, memory, info, images.len)
+  var firstRO = -1
+  var firstRW = -1
+  var lastRW = -1
+  var ordinal = 0
   var first = 0
+  while first < images.len:
+    # Inaccessible descriptions never create a private allocation or native permission capability.
+    if images[first].access == PageAccess.Inaccessible:
+      inc first
+      continue
+    if images[first].access == PageAccess.ReadOnly and firstRO < 0: firstRO = ordinal
+    if images[first].access == PageAccess.ReadWrite:
+      if firstRW < 0: firstRW = ordinal
+      lastRW = ordinal
+    first = flatRegionPast(images, first)
+    inc ordinal
+  var regions: seq[FlatRegion] = @[]
+  var residentRW = false
+  first = 0
   while first < images.len:
     let image = images[first]
     if image.access == PageAccess.Inaccessible:
-      # Inaccessible pages retain their original snapshot metadata without authorizing a private byte region.
       inc first
       continue
-    var after = first+1
-    while after < images.len and images[after].access == image.access and
-        uint64(uint32(images[after].index)) == uint64(uint32(images[after-1].index))+1:
-      # Only an adjacent page with the same genuine permission belongs to this allocation.
-      inc after
+    let after = flatRegionPast(images, first)
     let pages = after-first
     assert pages > 0 and pages <= high(int) div 4096
     let address = uint64(uint32(image.index))*4096
+    if regions.len == firstRW:
+      # Only this first RW run may allocate foreign storage, before any legacy byte seq exists.
+      var captured = tryCaptureFreshZeroRW(memory, images, first, after)
+      case captured.error
+      of FreshRWStatus.Owned:
+        var resident = resident_capture.takeOwned(captured)
+        frame.rwStorage = takeResident(resident)
+        residentRW = true
+        regions.add(FlatRegion(first: address, access: image.access, bytes: @[]))
+      of FreshRWStatus.NotSelected:
+        discard # The unchanged managed construction below is the only fallback path.
+      of FreshRWStatus.AllocationRefused:
+        return FlatResult[FlatFrame](status: FlatError.ResidentAllocationRefused)
+      else:
+        return FlatResult[FlatFrame](status: FlatError.InvalidMemory)
+      if residentRW:
+        first = after
+        continue
     let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
     for page in first..<after:
-      # The complete private extent is allocated once; each proven page copies exactly its original bytes.
+      # All managed/unknown paths still restore complete pages; no allocation-origin promise survives here.
       let offset = (page-first)*4096
       assert offset >= 0 and offset <= region.bytes.len-4096
       flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))
     regions.add(region)
     first = after
-  # Compact metadata covers every input page; immutable source memory remains the only baseline byte owner.
-  result.sourcePages = move(images)
-  var firstRO = -1
-  var firstRW = -1
-  var lastRW = -1
+  frame.sourcePages = move(images)
   for i in 0..<regions.len:
-    let region {.cursor.} = regions[i]
-    if region.access == PageAccess.ReadOnly and firstRO < 0: firstRO = i
-    if region.access == PageAccess.ReadWrite:
-      if firstRW < 0: firstRW = i
-      lastRW = i
-  for i in 0..<regions.len:
+    # Preserve firstRO/firstRW/lastRW precedence, including a sole writable run remaining RW.
     let region {.cursor.} = regions[i]
     if i == firstRO:
-      result.roBase = region.first
-      result.ro = move(region.bytes)
+      frame.roBase = region.first
+      frame.ro = move(region.bytes)
     elif i == firstRW:
-      result.rwBase = region.first
-      result.rw = move(region.bytes)
+      frame.rwBase = region.first
+      if not residentRW: frame.rwStorage = takeManaged(region.bytes)
+      frame.rw = borrowRW(frame.rwStorage) # Derive the borrow only after final owner installation.
     elif i == lastRW:
-      result.stackBase = region.first
-      result.stack = move(region.bytes)
-    else: result.extra.add(region)
+      frame.stackBase = region.first
+      frame.stack = move(region.bytes)
+    else: frame.extra.add(region)
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # Only this frame owns these byte allocations; ordinary stores/host deltas mutate bytes without reallocating them.
-    flatBuildArmReadContext(result)
+    flatBuildArmReadContext(frame) # All final storage is live before native descriptors exist.
+  FlatResult[FlatFrame](status: FlatError.None, completed: move(frame))
 
 proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatResult[FlatFrame] =
   ## Validate complete page admission before private region copies; a refusal contains no partial frame.
@@ -1989,7 +2131,7 @@ proc prepareFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: Machi
   var layout = memoryLayout(memory.value)
   assert layout.error == MachineError.None
   var retained = machine.takeValue(layout)
-  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory.value))
+  buildFlatFrame(plan, retained, info, memory.value)
 
 proc newFlatFrame*(plan: FlatPlan, images: openArray[PageImage], info: MachineInfo): FlatFrame =
   ## Local witness convenience only; application admission uses prepareFlatFrame and checks its typed result.
@@ -2660,7 +2802,7 @@ when defined(pvmX86Jit):
       of X86MemoryCycleHandlerKind.NativeRegion: handler == flatX86Region
       else: false
 
-    proc flatX86CycleReadRegion(first: uint64, bytes: var seq[byte], address: uint64,
+    proc flatX86CycleReadRegionSpan(first: uint64, bytes: openArray[byte], address: uint64,
         width: uint8, memory: var X86CycleMemory) =
       ## A current private region supplies one clipped address interval, or no native read capability.
       if bytes.len == 0 or first > uint64(high(uint32))+1 or
@@ -2672,7 +2814,7 @@ when defined(pvmX86Jit):
       memory.readFirst = first
       memory.readEnd = ending
 
-    proc flatX86CycleWriteRegion(first: uint64, bytes: var seq[byte], address: uint64,
+    proc flatX86CycleWriteRegionSpan(first: uint64, bytes: openArray[byte], address: uint64,
         memory: var X86CycleMemory) =
       ## One complete writable four-byte extent is selected before any native store can occur.
       if bytes.len < 4 or first > uint64(high(uint32))+1 or
@@ -2682,6 +2824,28 @@ when defined(pvmX86Jit):
       memory.writePtr = addr bytes[0]
       memory.writeFirst = first
       memory.writeEnd = ending
+
+    proc flatX86CycleReadRegion(first: uint64, bytes: var seq[byte], address: uint64,
+        width: uint8, memory: var X86CycleMemory) =
+      ## Managed callers retain the original checked descriptor worker.
+      flatX86CycleReadRegionSpan(first, bytes, address, width, memory)
+
+    proc flatX86CycleReadRegion(first: uint64, bytes: RWView, address: uint64,
+        width: uint8, memory: var X86CycleMemory) =
+      ## Reborrow only the live RW allocation for this synchronous native call.
+      if bytes.len == 0: return
+      flatX86CycleReadRegionSpan(first, bytes.toOpenArray(0, bytes.len-1), address, width, memory)
+
+    proc flatX86CycleWriteRegion(first: uint64, bytes: var seq[byte], address: uint64,
+        memory: var X86CycleMemory) =
+      ## Managed write descriptors keep the unchanged complete four-byte guard.
+      flatX86CycleWriteRegionSpan(first, bytes, address, memory)
+
+    proc flatX86CycleWriteRegion(first: uint64, bytes: RWView, address: uint64,
+        memory: var X86CycleMemory) =
+      ## Empty/moved views supply no native writable capability.
+      if bytes.len == 0: return
+      flatX86CycleWriteRegionSpan(first, bytes.toOpenArray(0, bytes.len-1), address, memory)
 
     proc flatX86CycleMemory(f: var FlatFrame, candidate: X86MemoryCycleCandidate):
         X86CycleMemory =
@@ -5099,7 +5263,7 @@ proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo):
   if layout.error != MachineError.None: return FlatResult[FlatFrame](
       status: FlatError.InvalidMemory)
   var retained = machine.takeValue(layout)
-  FlatResult[FlatFrame](status: FlatError.None, completed: buildFlatFrame(plan, retained, info, memory))
+  buildFlatFrame(plan, retained, info, memory)
 
 proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   ## Both callers fully validate a fresh same-plan frame before moving the code-only cache and policies.
@@ -5249,7 +5413,10 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   let fast = f.fastResumes
   let fallbacks = f.fallbackResumes
   let pages = f.hostCopiedPages
-  if flatReplaceMemoryOwner(f, posterior, info) != FlatError.None:
+  let replacementError = flatReplaceMemoryOwner(f, posterior, info)
+  if replacementError != FlatError.None:
+    if replacementError == FlatError.ResidentAllocationRefused:
+      return oracle.StepError.ResidentAllocationRefused
     return oracle.StepError.InvalidHostResponse
   f.fastResumes = fast
   f.fallbackResumes = fallbacks+1
@@ -5456,7 +5623,9 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
   frame.rwBase = held.rwBase
   frame.stackBase = held.stackBase
   frame.ro = move(held.ro)
-  frame.rw = move(held.rw)
+  frame.rwStorage = move(held.rwStorage)
+  frame.rw = borrowRW(frame.rwStorage)
+  held.rw = default(RWView) # Manual payload transfer retires the old heap cell's borrowed authority.
   frame.stack = move(held.stack)
   frame.extra = move(held.extra)
   frame.dirtyPages = move(held.dirtyPages)
@@ -5492,10 +5661,19 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil
-  FlatMemoryScratch(baseline: f.sourceMemory, pages: move(f.sourcePages),
+  var scratch = FlatMemoryScratch(baseline: f.sourceMemory, pages: move(f.sourcePages),
     roBase: f.roBase, rwBase: f.rwBase, stackBase: f.stackBase,
-    ro: move(f.ro), rw: move(f.rw), stack: move(f.stack), extra: move(f.extra),
-    dirty: move(f.dirtyIndices), dirtyPages: move(f.dirtyPages), payloadBytes: total)
+    ro: move(f.ro), rw: default(RWView), stack: move(f.stack), extra: move(f.extra),
+    dirty: move(f.dirtyIndices), dirtyPages: move(f.dirtyPages), payloadBytes: total,
+    rwStorage: move(f.rwStorage))
+  scratch.rw = borrowRW(scratch.rwStorage)
+  clearFlatBorrowedMemory(f) # Child moves do not invoke the whole-frame move hook.
+  scratch
+
+when defined(pvmResidentWitness):
+  func residentFrameRWInfo*(frame: FlatFrame): array[3, uint64] =
+    ## Test-only lengths distinguish a retired view from storage still owned by an active or idle lease.
+    [uint64(frame.rw.len), logicalBytes(frame.rwStorage), mappedBytes(frame.rwStorage)]
 
 func flatMemoryScratchPayload*(scratch: nil FlatMemoryScratch): uint64 =
   ## Copied logical payload occupancy excludes allocator overhead and remains zero without an idle lease.
