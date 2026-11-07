@@ -1,0 +1,597 @@
+{
+  "status": "implementation prepared; root final source/manifest inspection required before push/dispatch",
+  "purpose": "One pinpoint paired Linux ARM DOOM tick diagnostic of unresolved adverse real-app observations. No final lgtm or merge request.",
+  "variants": {
+    "A": {
+      "commit": "95b586dc9169fce494ef379ec6902c5380e61038",
+      "tree": "29db55338cbf5fc38cfe4010e3a19e39b641e84c",
+      "key_source_sha256": {
+        "tests/performance/pvm_doom.nim": "eb7a13a7fcc8872729a7bc9a7e00c9f20fe65edc0fde10576ceccf62af320636",
+        "tests/performance/pvm_invocation_scope.nim": "f7414c750ce175696f4a8c821af53e0100c494aa5203e113099eea00091f482e",
+        "tests/performance/pvm_sieve_clock.h": "2a8f02309bdc7a11cb8f8222b003c25ea41bd44e944e4c125d423b737c3c98ed",
+        "tests/support/pvm_owner_record.nim": "cedc057236d169d1e988568f7ce2052185759a64850df815b6e23fd9ecdd6c4d",
+        "tools/pvm_ci_performance.py": "cba242473518b93136de6f89dddd81b0b10927df71154f0bc2dbd18d6c026d9c",
+        "tools/pvm_performance_report.py": "2c897df2c337fb132390be6c6b3b597f07047c45fa964d5fcb21bac460298699",
+        "tools/pvm_invocation_scope.py": "241e72e3c33a34a80c134cde30cdea998e8e17b589ee4ccb6b30c01a16440187",
+        "tools/native_checks.py": "737ecbdaa0f7b5bfca39c9441d8c61474f9d22708816d50ff6333052ca22274c",
+        "tools/pvm_native_ci.py": "d6c3b8caa8a7583b29d5a9942cadade324b4871b12eb784ad207d822ca81edc6",
+        "spec/toolchain.json": "b71b3f88f06f8022fa1d60082948e90cd9cc22833e53cc11d35f9be6692248ff",
+        "spec/polkavm-pins.json": "f5dd6fb598ec5a2a3e06bef684521f83d793cbf3ded68bc2501ae5eae7abb608",
+        "spec/pvm-doom-assets.json": "99fd1952cb6a5d91b361614765bc01ae9b4aa7f97c50d50fc89d5c66203a9315",
+        "spec/bandersnatch-pins.json": "c41e9e3e5cfd4f939a9591995515e086ac18efb5439bf5883c6bbd32077f7a81"
+      }
+    },
+    "B": {
+      "commit": "d2b04c7cc1c21d65a9dff8b34b2add2cea6ad05f",
+      "tree": "c4ef457ce85f28b8d12e67010da0d6c517963ff7",
+      "key_source_sha256": {
+        "tests/performance/pvm_doom.nim": "eb7a13a7fcc8872729a7bc9a7e00c9f20fe65edc0fde10576ceccf62af320636",
+        "tests/performance/pvm_invocation_scope.nim": "f7414c750ce175696f4a8c821af53e0100c494aa5203e113099eea00091f482e",
+        "tests/performance/pvm_sieve_clock.h": "2a8f02309bdc7a11cb8f8222b003c25ea41bd44e944e4c125d423b737c3c98ed",
+        "tests/support/pvm_owner_record.nim": "cedc057236d169d1e988568f7ce2052185759a64850df815b6e23fd9ecdd6c4d",
+        "tools/pvm_ci_performance.py": "cba242473518b93136de6f89dddd81b0b10927df71154f0bc2dbd18d6c026d9c",
+        "tools/pvm_performance_report.py": "2c897df2c337fb132390be6c6b3b597f07047c45fa964d5fcb21bac460298699",
+        "tools/pvm_invocation_scope.py": "241e72e3c33a34a80c134cde30cdea998e8e17b589ee4ccb6b30c01a16440187",
+        "tools/native_checks.py": "737ecbdaa0f7b5bfca39c9441d8c61474f9d22708816d50ff6333052ca22274c",
+        "tools/pvm_native_ci.py": "d6c3b8caa8a7583b29d5a9942cadade324b4871b12eb784ad207d822ca81edc6",
+        "spec/toolchain.json": "b71b3f88f06f8022fa1d60082948e90cd9cc22833e53cc11d35f9be6692248ff",
+        "spec/polkavm-pins.json": "f5dd6fb598ec5a2a3e06bef684521f83d793cbf3ded68bc2501ae5eae7abb608",
+        "spec/pvm-doom-assets.json": "99fd1952cb6a5d91b361614765bc01ae9b4aa7f97c50d50fc89d5c66203a9315",
+        "spec/bandersnatch-pins.json": "c41e9e3e5cfd4f939a9591995515e086ac18efb5439bf5883c6bbd32077f7a81"
+      }
+    },
+    "C": {
+      "commit": "e9bf7f9e1f51b828061a20690379f92a5d8c0cf0",
+      "tree": "675500b0b7dc2929627a1df17475eb0f835f11a4",
+      "key_source_sha256": {
+        "tests/performance/pvm_doom.nim": "eb7a13a7fcc8872729a7bc9a7e00c9f20fe65edc0fde10576ceccf62af320636",
+        "tests/performance/pvm_invocation_scope.nim": "f7414c750ce175696f4a8c821af53e0100c494aa5203e113099eea00091f482e",
+        "tests/performance/pvm_sieve_clock.h": "2a8f02309bdc7a11cb8f8222b003c25ea41bd44e944e4c125d423b737c3c98ed",
+        "tests/support/pvm_owner_record.nim": "cedc057236d169d1e988568f7ce2052185759a64850df815b6e23fd9ecdd6c4d",
+        "tools/pvm_ci_performance.py": "47774aba7bb626d381bbfd2df7410733412cd477b9aee97d03285d168a241ab3",
+        "tools/pvm_performance_report.py": "2c897df2c337fb132390be6c6b3b597f07047c45fa964d5fcb21bac460298699",
+        "tools/pvm_invocation_scope.py": "241e72e3c33a34a80c134cde30cdea998e8e17b589ee4ccb6b30c01a16440187",
+        "tools/native_checks.py": "737ecbdaa0f7b5bfca39c9441d8c61474f9d22708816d50ff6333052ca22274c",
+        "tools/pvm_native_ci.py": "d6c3b8caa8a7583b29d5a9942cadade324b4871b12eb784ad207d822ca81edc6",
+        "spec/toolchain.json": "b71b3f88f06f8022fa1d60082948e90cd9cc22833e53cc11d35f9be6692248ff",
+        "spec/polkavm-pins.json": "f5dd6fb598ec5a2a3e06bef684521f83d793cbf3ded68bc2501ae5eae7abb608",
+        "spec/pvm-doom-assets.json": "99fd1952cb6a5d91b361614765bc01ae9b4aa7f97c50d50fc89d5c66203a9315",
+        "spec/bandersnatch-pins.json": "c41e9e3e5cfd4f939a9591995515e086ac18efb5439bf5883c6bbd32077f7a81"
+      }
+    },
+    "D": {
+      "commit": "48d4d0920a208727029d65e723c829fa95288b11",
+      "tree": "ca68083bb8ef1614ceed055e0cf2c02b0d967264",
+      "key_source_sha256": {
+        "tests/performance/pvm_doom.nim": "eb7a13a7fcc8872729a7bc9a7e00c9f20fe65edc0fde10576ceccf62af320636",
+        "tests/performance/pvm_invocation_scope.nim": "f7414c750ce175696f4a8c821af53e0100c494aa5203e113099eea00091f482e",
+        "tests/performance/pvm_sieve_clock.h": "2a8f02309bdc7a11cb8f8222b003c25ea41bd44e944e4c125d423b737c3c98ed",
+        "tests/support/pvm_owner_record.nim": "cedc057236d169d1e988568f7ce2052185759a64850df815b6e23fd9ecdd6c4d",
+        "tools/pvm_ci_performance.py": "47774aba7bb626d381bbfd2df7410733412cd477b9aee97d03285d168a241ab3",
+        "tools/pvm_performance_report.py": "2c897df2c337fb132390be6c6b3b597f07047c45fa964d5fcb21bac460298699",
+        "tools/pvm_invocation_scope.py": "241e72e3c33a34a80c134cde30cdea998e8e17b589ee4ccb6b30c01a16440187",
+        "tools/native_checks.py": "737ecbdaa0f7b5bfca39c9441d8c61474f9d22708816d50ff6333052ca22274c",
+        "tools/pvm_native_ci.py": "d6c3b8caa8a7583b29d5a9942cadade324b4871b12eb784ad207d822ca81edc6",
+        "spec/toolchain.json": "b71b3f88f06f8022fa1d60082948e90cd9cc22833e53cc11d35f9be6692248ff",
+        "spec/polkavm-pins.json": "f5dd6fb598ec5a2a3e06bef684521f83d793cbf3ded68bc2501ae5eae7abb608",
+        "spec/pvm-doom-assets.json": "99fd1952cb6a5d91b361614765bc01ae9b4aa7f97c50d50fc89d5c66203a9315",
+        "spec/bandersnatch-pins.json": "c41e9e3e5cfd4f939a9591995515e086ac18efb5439bf5883c6bbd32077f7a81"
+      }
+    }
+  },
+  "orthogonal_patch_sha256": {
+    "guard_only": "be3a306c23f6f297461e50a29c96e0f7580c60d266d00005043827f9660c1ea7",
+    "guard_on_artifact": "be3a306c23f6f297461e50a29c96e0f7580c60d266d00005043827f9660c1ea7",
+    "artifact_only": "d91536e8cff5072d2ce6435f75d6636e8b5e87bc65dfd5961c0f8952ebeecc58",
+    "artifact_on_guard": "d91536e8cff5072d2ce6435f75d6636e8b5e87bc65dfd5961c0f8952ebeecc58"
+  },
+  "workflow": {
+    "branch_proposal": "codex/pvm-doom-layer-diagnostic",
+    "file_proposal": ".github/workflows/ci.yml on diagnostic branch only",
+    "script_proposal": ".github/diagnostics/pvm_doom_layers.py on diagnostic branch only",
+    "event": "workflow_dispatch only",
+    "jobs": 1,
+    "runner": "ubuntu-26.04-arm",
+    "timeout_minutes": 60,
+    "contents_permission": "read",
+    "checkout_action": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "python_action": "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+    "upload_action": "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+    "source_ancestry": "Private metadata-only ordinary merge b5e00a5ea8314b79b281576c09b1af566dd7a7f6, parents D and original C, exact D tree ca68083bb8ef1614ceed055e0cf2c02b0d967264. No conflict/resolution.",
+    "selected_setup": "make compiler-tools rust-tools; maintained setup_submodules.py vendor/polkavm only; locked Cargo fetch for tests/performance/polkavm_doom only. No full make setup, sources-all or native qualification repeat."
+  },
+  "source_staging": {
+    "path": "$GITHUB_WORKSPACE/build/pvm-doom-layer-diagnostic/stage",
+    "materialization": "Complete owned tracked tree at each immutable source commit; validate expected tree and per-file regular source hashes. Unchanged canonical driver and scope files across all four.",
+    "build_order": [
+      "A1",
+      "A2",
+      "B",
+      "C",
+      "D"
+    ],
+    "cache": "Fresh independent cache instance per build at one fixed physical cache pathname; remove only owned prior cache after retaining logs/generated C/evidence. No shared cache state.",
+    "output": "One fixed compiler/output/guest path for all builds; copy each sealed image to evidence/images/{A,B,C,D}. Build once per variant; all A/A runs reuse exact A bytes."
+  },
+  "build_profile": {
+    "compiler_commit": "63fed6cb4b2f59d34c9fbb18f1796e671e2024e4",
+    "linux_arm_compiler_sha256": "2bd7fa65a393d0172af4baaac6878e63fc831d53624e759bd256fcbc940cca4d",
+    "flags": [
+      "--mm:arc",
+      "--cc:clang",
+      "-d:release",
+      "--opt:speed",
+      "--boundchecks:on",
+      "--passC:-flto=thin",
+      "--passL:-flto=thin",
+      "--passL:-fuse-ld=lld",
+      "-d:pvmArm64Jit",
+      "-d:pvmArm64JitOwnerReceipt",
+      "--passC:-I<fixed-stage>/tests/performance",
+      "--passC:-I<fixed-stage>/native/pvm_jit"
+    ],
+    "match": "Same canonical native DOOM build flags; no -g, new experiment defines, affinity or readiness knobs. Record actual Clang/Rust/host/runner/image and compiler/header/source hashes."
+  },
+  "preparation": {
+    "entry": "Existing PerformanceRunner.prepare_doom, reference_sources/reference_build and immutable seal primitives from D; Make toolchain/sources/rust-tools and ordinary locked Cargo fetch first.",
+    "once": true,
+    "warmup_ticks": 1320,
+    "inputs": "One shared tick.input/tick.expected/tick.events/ROM and linked DOOM blob; seal all generated init/tick files and maintained upstream frame1320 golden. Never regenerate per variant.",
+    "oracle": "Frozen complete CPU/gas/register/memory/permission/source-immutability/event oracles in unchanged canonical driver/reference.",
+    "native_gate": "Reuse already passed exact-D both-host native qualification/source receipt; no 20-binary repeat. Current job asserts actual native Linux ARM64 and ELF64 images; controls observe and retain all native/policy counters without floors.",
+    "expected_frozen_input_sha256": {
+      "build/tests/pvm-performance/doom/doom.polkavm": "6ba024eaba62a18732b40340f209523c3bc0bdca7e0cca4b121e4e1342a07f32",
+      "vendor/polkavm/examples/doom/roms/doom1.wad": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+      "build/tests/pvm-performance/doom/prepared/init.events": "8c1f2b13b28beba5895c041b6b58f21d365ab6560b24552b8ff1711b49912756",
+      "build/tests/pvm-performance/doom/prepared/init.expected": "036dcc71335e5682bbeee5631ffb882aa97a0c4e4fde6145d2efd56535898c45",
+      "build/tests/pvm-performance/doom/prepared/init.input": "cb3fbd6f7299193703e7ff335cf103d3a8df4032d4814f0d94b58b7ab6256ef7",
+      "build/tests/pvm-performance/doom/prepared/tick.events": "845a32d2f454cc3659ef8714f40974a3f5297f734a59d15b7c88794d3304c0cc",
+      "build/tests/pvm-performance/doom/prepared/tick.expected": "c0885497b0a1f47c410c7e017bed369c76e1520947da9b9f372326b830eb2d52",
+      "build/tests/pvm-performance/doom/prepared/tick.input": "f5fa6a78d876a8c98ae57c3c4dd9aee8ecdf587f354566d3549d209f5df63c71"
+    },
+    "filesystem_modes": "Fresh canonical preparation remains writable and hash-sealed. Record modes and require owner-write bits on expected/events before canonical copy2 negative controls; no chmod of oracles, borrowed read-only corpus or runtime mirror/fallback."
+  },
+  "controls": {
+    "processes": 36,
+    "variant_processes": 32,
+    "reference_processes": 4,
+    "order": [
+      {
+        "variant": "A",
+        "policy": "interpreted",
+        "kind": "positive"
+      },
+      {
+        "variant": "A",
+        "policy": "interpreted",
+        "kind": "assertions"
+      },
+      {
+        "variant": "A",
+        "policy": "interpreted",
+        "kind": "state"
+      },
+      {
+        "variant": "A",
+        "policy": "interpreted",
+        "kind": "events"
+      },
+      {
+        "variant": "A",
+        "policy": "jit",
+        "kind": "positive"
+      },
+      {
+        "variant": "A",
+        "policy": "jit",
+        "kind": "assertions"
+      },
+      {
+        "variant": "A",
+        "policy": "jit",
+        "kind": "state"
+      },
+      {
+        "variant": "A",
+        "policy": "jit",
+        "kind": "events"
+      },
+      {
+        "variant": "B",
+        "policy": "interpreted",
+        "kind": "positive"
+      },
+      {
+        "variant": "B",
+        "policy": "interpreted",
+        "kind": "assertions"
+      },
+      {
+        "variant": "B",
+        "policy": "interpreted",
+        "kind": "state"
+      },
+      {
+        "variant": "B",
+        "policy": "interpreted",
+        "kind": "events"
+      },
+      {
+        "variant": "B",
+        "policy": "jit",
+        "kind": "positive"
+      },
+      {
+        "variant": "B",
+        "policy": "jit",
+        "kind": "assertions"
+      },
+      {
+        "variant": "B",
+        "policy": "jit",
+        "kind": "state"
+      },
+      {
+        "variant": "B",
+        "policy": "jit",
+        "kind": "events"
+      },
+      {
+        "variant": "C",
+        "policy": "interpreted",
+        "kind": "positive"
+      },
+      {
+        "variant": "C",
+        "policy": "interpreted",
+        "kind": "assertions"
+      },
+      {
+        "variant": "C",
+        "policy": "interpreted",
+        "kind": "state"
+      },
+      {
+        "variant": "C",
+        "policy": "interpreted",
+        "kind": "events"
+      },
+      {
+        "variant": "C",
+        "policy": "jit",
+        "kind": "positive"
+      },
+      {
+        "variant": "C",
+        "policy": "jit",
+        "kind": "assertions"
+      },
+      {
+        "variant": "C",
+        "policy": "jit",
+        "kind": "state"
+      },
+      {
+        "variant": "C",
+        "policy": "jit",
+        "kind": "events"
+      },
+      {
+        "variant": "D",
+        "policy": "interpreted",
+        "kind": "positive"
+      },
+      {
+        "variant": "D",
+        "policy": "interpreted",
+        "kind": "assertions"
+      },
+      {
+        "variant": "D",
+        "policy": "interpreted",
+        "kind": "state"
+      },
+      {
+        "variant": "D",
+        "policy": "interpreted",
+        "kind": "events"
+      },
+      {
+        "variant": "D",
+        "policy": "jit",
+        "kind": "positive"
+      },
+      {
+        "variant": "D",
+        "policy": "jit",
+        "kind": "assertions"
+      },
+      {
+        "variant": "D",
+        "policy": "jit",
+        "kind": "state"
+      },
+      {
+        "variant": "D",
+        "policy": "jit",
+        "kind": "events"
+      },
+      {
+        "variant": "reference",
+        "policy": "reference",
+        "kind": "positive"
+      },
+      {
+        "variant": "reference",
+        "policy": "reference",
+        "kind": "assertions"
+      },
+      {
+        "variant": "reference",
+        "policy": "reference",
+        "kind": "state"
+      },
+      {
+        "variant": "reference",
+        "policy": "reference",
+        "kind": "events"
+      }
+    ],
+    "positive_calls_per_process": 13,
+    "negative_calls": "Stop at the intended failure, retain full diagnostic; do not pretend 13 successful calls.",
+    "implementation": "Reuse canonical invocation/parse/intended_refusal and control logic, including private corrupted expectation copies; all controls before timed cohort.",
+    "reference_note": "The recommended optional reference package adds exactly two timed 13-call processes plus one canonical 4-probe preflight control set; no additional reference timing passes. If root chooses primary24-only, remove all reference records before final sealing, never as a runtime fallback."
+  },
+  "timing": {
+    "recommended_processes": 26,
+    "recommended_calls": 338,
+    "primary_our_processes": 24,
+    "primary_our_calls": 312,
+    "reference_processes": 2,
+    "reference_calls": 26,
+    "order": [
+      {
+        "index": 0,
+        "group": "reference-before",
+        "variant": "reference",
+        "policy": "reference",
+        "calls": 13
+      },
+      {
+        "index": 1,
+        "group": "AA-before",
+        "variant": "A",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 2,
+        "group": "AA-before",
+        "variant": "A",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 3,
+        "group": "AA-before",
+        "variant": "A",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 4,
+        "group": "AA-before",
+        "variant": "A",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 5,
+        "group": "forward",
+        "variant": "A",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 6,
+        "group": "forward",
+        "variant": "B",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 7,
+        "group": "forward",
+        "variant": "C",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 8,
+        "group": "forward",
+        "variant": "D",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 9,
+        "group": "forward",
+        "variant": "A",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 10,
+        "group": "forward",
+        "variant": "B",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 11,
+        "group": "forward",
+        "variant": "C",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 12,
+        "group": "forward",
+        "variant": "D",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 13,
+        "group": "reverse",
+        "variant": "D",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 14,
+        "group": "reverse",
+        "variant": "C",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 15,
+        "group": "reverse",
+        "variant": "B",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 16,
+        "group": "reverse",
+        "variant": "A",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 17,
+        "group": "reverse",
+        "variant": "D",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 18,
+        "group": "reverse",
+        "variant": "C",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 19,
+        "group": "reverse",
+        "variant": "B",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 20,
+        "group": "reverse",
+        "variant": "A",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 21,
+        "group": "AA-after",
+        "variant": "A",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 22,
+        "group": "AA-after",
+        "variant": "A",
+        "policy": "jit",
+        "calls": 13
+      },
+      {
+        "index": 23,
+        "group": "AA-after",
+        "variant": "A",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 24,
+        "group": "AA-after",
+        "variant": "A",
+        "policy": "interpreted",
+        "calls": 13
+      },
+      {
+        "index": 25,
+        "group": "reference-after",
+        "variant": "reference",
+        "policy": "reference",
+        "calls": 13
+      }
+    ],
+    "all_builds_and_controls_before_timing": true,
+    "canonical_flags": {
+      "RAGNAROK_PVM_PERFORMANCE": "1",
+      "RAGNAROK_PVM_DOOM_PRICING": "prepared",
+      "RAGNAROK_PVM_DOOM_PREPARATION": "1",
+      "RAGNAROK_PVM_DOOM_TIMING": "1",
+      "RAGNAROK_PVM_DOOM_ASSERT": "0",
+      "RAGNAROK_PVM_LOCAL_ONECALL": "0",
+      "RAGNAROK_PVM_DOOM_PHASE": "tick"
+    },
+    "identity": "Private diagnostic schema, never canonical full-cohort performance publication or a spoofed canonical CI identity."
+  },
+  "analysis": {
+    "cold": "sample0",
+    "reused": "median samples3\u201312",
+    "clocks": [
+      "cpu_ns",
+      "wall_ns"
+    ],
+    "comparisons": [
+      "B/A",
+      "C/A",
+      "D/C",
+      "D/B",
+      "D/A"
+    ],
+    "directions": [
+      "forward",
+      "reverse"
+    ],
+    "native_work": "Every sample and whole-process fragment/call/op/code-byte record retained, mismatches flagged without filtering or retry.",
+    "A_control_envelope": "Per policy/clock/phase use all SIX A processes: two before, forward A, reverse A, two after. Retain raw distributions. Report min/max and max/min-1; do not use only a favorable pair.",
+    "classification": "A directional effect is outside controls only if both directional candidate values lie beyond the full A min/max interval in the same direction AND both paired effect magnitudes exceed max/min-1. Otherwise unresolved. No significance or CI-vendor causal claim. Root decides final tradeoff.",
+    "reference": "Exactly one unchanged reference process before and after; context only, no normalization that manufactures acceptance.",
+    "identical_images": "Record A/C and B/D full byte hashes and code-section/disassembly observations; if identical still execute every predeclared process and retain the same order."
+  },
+  "failure": "Fail closed on first unexpected source/input/compiler/image drift, build/control error, malformed/nonpositive clock or oracle failure; preserve partial logs and mark incomplete/failed. No rerun, restart, replacement sample, best-pair selection or alternate oracle.",
+  "artifacts": "Always upload design+sealed attempt, source/tree/profile/host/toolchain/input/image hashes, build/control logs, all raw stdout/stderr, parsed 13-call rows, CSV/full distributions, all four ELF images and relevant generated C/disassembly. No private script/workflow merge into PVM PRs.",
+  "constraints": [
+    "No timing, builds or dispatch performed for this design.",
+    "No PR branch, labels or source changes.",
+    "Private implementation/workflow to be inspected and sealed by root before any dispatch.",
+    "No maintained new benchmark target/path: orchestration only, unchanged canonical kernels/preparer/parser/oracles."
+  ],
+  "schema": "pvm-doom-layer-attempt-v1",
+  "builds": {
+    "order": [
+      "A1",
+      "A2",
+      "B",
+      "C",
+      "D"
+    ],
+    "A1_A2_requirement": "Whole ELF image byte identity before any guest controls/timing. Both independently fresh caches and exact source/output/cache paths, profile and environment; keep both images/generated evidence and mismatch code/loadable/metadata diagnosis. On mismatch stop; do not waive flags, choose image or continue.",
+    "selected_A_image": "A1 only after required identity check; A2 retained, never selected by timing."
+  },
+  "harness_files": {
+    ".github/diagnostics/pvm_doom_layers.py": "c731e53d067566fa90f36c3acc8a99f24f07206856df9ced75cd8232583ae5fa",
+    ".github/workflows/ci.yml": "4685a88a59b4ce302cb087a1d33b4e74077015ac3f2458d1ee41e1a78ff037ac"
+  },
+  "authorization": "Root approved design103d61f12e1c5a792e766e76ef50285585fe2163fd9ffe0e6157aca447569a12 with one deterministic A rebuild added,26timed338calls/36controls retained. Root must inspect this actual implementation and digest before normal new-branch push and one dispatch."
+}
