@@ -244,6 +244,39 @@ block literal_crossing_publication_and_reuse:
     literalCrossingMemory(memoryOf(literalSource).value, literalImages, false)
     literalCrossingMemory(held, literalImages, true)
 
+block high_observer_dense_publication:
+  ## A low dirty page must publish without changing a higher nonwritable physical page.
+  let observerOwner = code([@[30'u8, 4, 0, 0, 1, 0, 123, 0, 0, 0], @[0'u8]])
+  for access in [PageAccess.ReadOnly, PageAccess.Inaccessible]:
+    # Both maps select dense publication while their last description extends beyond the writable word.
+    var low = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+    var high = PageImage(index: PageIndex(128), access: access)
+    for offset in 0..<4096:
+      # Distinct complete-page patterns expose unintended writes to either observer or untouched bytes.
+      low.bytes[offset] = byte((offset*3+7) mod 251)
+      high.bytes[offset] = byte((offset*5+11) mod 251)
+    let memory = captureMemory([low, high], PageLimit(2)).value
+    let retained = newPreparedProgram(observerOwner,
+      defaultPreparedLimits(GasCycleLimit(10000))).value
+    var published: seq[Machine] = @[]
+    for iteration in 0..<2:
+      # A repeated invocation restores the dirty low page and preserves the high observer's complete image.
+      let source = input(observerOwner, memory, iteration)
+      let actual = execute(source, ExecutionStepLimit(2), retained)
+      assert actual.error == StepError.None and actual.value.exit == StepExit.Panic, "high observer invocation completes"
+      let resultMemory = memoryOf(actual.value.machine).value
+      assert memoryLayout(resultMemory).value == memoryLayout(memory).value
+      assert pageImage(resultMemory, high.index).value == high, "high observer bytes and access"
+      var expected = low
+      expected.bytes[0] = 123
+      assert pageImage(resultMemory, low.index).value == expected, "low dirty byte publication"
+      assert pageImage(memory, low.index).value == low, "low immutable source"
+      assert pageImage(memory, high.index).value == high, "high immutable source"
+      published.add(actual.value.machine)
+    assert preparedInfo(retained).value.memoryReuses == 1, "high observer scratch reuse"
+    assert pageImage(memoryOf(published[0]).value, high.index).value == high, "held high observer snapshot"
+
+
 block sparse_physical_overlap_readback:
   ## Physical bitmap words and positional directory slots deliberately name different pages.
   let sparseOwner = code([@[62'u8, 0, 0xfd, 0xff, 3, 0],
@@ -455,6 +488,61 @@ proc fallible(context: var Context, suspension: StepOutcome): HostResult[Refusal
     inc context.calls
     return hostFailure(Refusal.Refused)
   hostSuccess[Refusal](terminal(context, suspension))
+
+
+proc continueWithTarget(context: var Context, suspension: StepOutcome): HostResponse {.raises: [].} =
+  ## The owned host response replaces a low map with a genuine high-page map before guest writes resume.
+  inc context.calls
+  let stopped = memoryOf(suspension.machine).value
+  assert pageImage(stopped, PageIndex(16)).value.bytes[0] == 123, "host sees preceding low store"
+  let cpu = machineInfo(suspension.machine).value
+  HostResponse(action: HostAction.Continue, memory: context.target, gas: cpu.gas,
+    registers: cpu.registers)
+
+block highest_page_host_remap:
+  ## A low-to-high remap rebuilds dirty capacity before a store within the final physical page.
+  # The existing exclusive-end rule traps at MAX32; MAX32-1 still exercises the highest physical bit.
+  let highOwner = code([@[30'u8, 4, 0, 0, 1, 0, 123, 0, 0, 0], @[10'u8, 1],
+    @[30'u8, 4, 254, 255, 255, 255, 109, 0, 0, 0],
+    @[52'u8, 0, 254, 255, 255, 255], @[0'u8]])
+  var low = PageImage(index: PageIndex(16), access: PageAccess.ReadWrite)
+  var high = PageImage(index: PageIndex(0xfffff), access: PageAccess.ReadWrite)
+  for offset in 0..<4096:
+    # Independent source patterns cover the whole low page and the final physical page.
+    low.bytes[offset] = byte((offset*3+17) mod 251)
+    high.bytes[offset] = byte((offset*7+19) mod 251)
+  let original = captureMemory([low], PageLimit(2)).value
+  let target = withPage(original, high).value
+  let retained = newPreparedProgram(highOwner,
+    defaultPreparedLimits(GasCycleLimit(10000))).value
+  var published: seq[Machine] = @[]
+  for iteration in 0..<3:
+    # First grow the stopped low map; then reuse high scratch; finally shrink input and grow it again.
+    let memory = if iteration == 1: target else: original
+    let source = input(highOwner, memory, iteration)
+    var context = Context(target: target, calls: 0, fail: false)
+    let actual = executeWithHost(source, context, continueWithTarget, ExecutionStepLimit(5),
+      HostCallLimit(1), retained)
+    assert actual.error == StepError.None and actual.value.exit == StepExit.Panic, "high-page remap completes"
+    assert context.calls == 1, "one host transition"
+    let resultMemory = memoryOf(actual.value.machine).value
+    assert memoryLayout(resultMemory).value == memoryLayout(target).value
+    assert pageImage(resultMemory, low.index).value == low, "host restores low input bytes"
+    var expected = high
+    expected.bytes[4094] = 109
+    assert pageImage(resultMemory, high.index).value == expected, "highest-page store publication"
+    assert uint64(machineInfo(actual.value.machine).value.registers[0]) == 109, "highest-page load reads stored byte"
+    assert pageImage(original, low.index).value == low, "low immutable source"
+    assert pageImage(target, high.index).value == high, "high immutable source"
+    published.add(actual.value.machine)
+  assert preparedInfo(retained).value.memoryReuses == 1, "same-map high scratch reuse"
+  for snapshot in published:
+    # Both later remapping directions and scratch restoration preserve every earlier high-page result.
+    let memory = memoryOf(snapshot).value
+    assert pageImage(memory, low.index).value == low, "held low remap snapshot"
+    var expected = high
+    expected.bytes[4094] = 109
+    assert pageImage(memory, high.index).value == expected, "held highest-page snapshot"
 
 
 proc hostTransitions() =

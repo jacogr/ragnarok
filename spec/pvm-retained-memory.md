@@ -6,6 +6,32 @@ temporary handlers. The idle lease can also retain a dirty bitmap, but every exe
 starts with its bits cleared after input restoration. Native code retains no invocation memory
 pointer; ARM descriptors are rebuilt from the newly leased byte owners before execution.
 
+## Physical dirty-bitmap extent
+
+A fresh frame allocates absolute physical-page bits through the highest sorted admitted description,
+including read-only and inaccessible pages. Empty maps allocate no words; other maps allocate
+`(uint64(last.index) shr 6)+1` words, at most 16,384 words (128 KiB). Low maps avoid unused trailing
+words without changing store indexing, frame layout or native descriptor ABI. High stack maps retain
+the full extent. Native descriptors borrow the actual word count. Unknown or short metadata keeps
+conservative publication/restoration behavior.
+
+Same-map scratch reuse moves the existing bitmap and clears its dirty epoch after byte restoration.
+Mapping or permission changes rebuild the frame and bitmap together, including host responses which
+add high pages. The retained-memory suite covers physical pages 63/64 across a store, dense publication
+with high read-only/inaccessible observations, and a low-to-high host remap followed by a store to
+address `0xfffffffe`, repeated scratch reuse and immutable predecessor checks.
+
+Local checked ARC/Clang qualification on macOS ARM64 passes the retained-memory suite (including
+1,000 unchanged-allocation ARC cycles), scalar memory boundaries, host resume, region/host lifecycle,
+real ARM macro capacity and shared-worker suites. The existing ARM ThinLTO correctness witness also
+passes dirty/word, memory/resident cycle and macro controls. Generated hot C and retained Frame/scratch
+declarations preserve the existing layout/indexing contract; this is not x86 native execution proof.
+The new highest-page fixture uses `0xfffffffe`: the existing exclusive-end rule still traps at
+`0xffffffff`, as covered by the unchanged scalar boundary suite.
+
+Reduced allocation extent is deterministic; its contribution to cold CPU cost remains unproved.
+Existing high-stack `memset` maps receive no bitmap reduction. No timing cohort or bitmap CI has run.
+
 ## Retention policy and lifetime
 
 `PreparedLimits.retainedMemoryBytes: RetainedMemoryByteLimit` bounds the logical payload of

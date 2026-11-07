@@ -99,7 +99,7 @@ type
     stack: seq[byte]
     extra: seq[FlatRegion]
     dirty: seq[uint32]
-    dirtyPages: seq[uint64] # Bounded 128 KiB bitmap; its set bits match dirty exactly.
+    dirtyPages: seq[uint64] # Bitmap through the highest mapped page, at most 128 KiB.
     payloadBytes: uint64    # Logical baseline and private payload charged to the idle retention limit.
     rwStorage: RWStorage    # Cold exclusive backing follows its view through active and idle leases.
   FlatMemoryScratch* = ref FlatMemoryScratchData
@@ -140,7 +140,7 @@ type
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64]       # One bounded 128 KiB bitmap covers all 32-bit guest pages.
+    dirtyPages: seq[uint64]       # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
@@ -2003,15 +2003,15 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.armMemory[5] = flatArmClippedReadRegion(f.roBase, f.ro)
 
 proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Memory,
-    info: MachineInfo, pageCount: int): FlatFrame =
+    info: MachineInfo, pageCount, dirtyWordCount: int): FlatFrame =
   ## Both paths initialize every execution field afresh; the memory lease never supplies execution state.
   result = FlatFrame(plan: plan,
       preparationFailure: FlatError.None, preparationUsed: 0, hostSnapshot: default(Memory),
           hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
-    # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
+    # The admitted map bounds this bitmap; a later host remap rebuilds both capabilities together.
     dirtyPages: (when reuseDirtyMetadata: default(seq[uint64])
-      else: (if pageCount == 0: @[] else: newSeq[uint64](16384))),
+      else: (if dirtyWordCount == 0: @[] else: newSeq[uint64](dirtyWordCount))),
     dirtyIndices: (when reuseDirtyMetadata: default(seq[uint32])
       else: newSeqOfCap[uint32](pageCount)),
         info: info, reason: oracle.StepError.None,
@@ -2047,7 +2047,10 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
   ## Classify first, then construct one complete frame; failure owns no partial public payload.
   assert plan != nil
   assert images.len <= high(int) div sizeof(PageDescription)
-  var frame = flatFrameShell[false](plan, memory, info, images.len)
+  # Sorted genuine descriptions bound every physical bit, including RO and inaccessible observations.
+  let dirtyWordCount = if images.len == 0: 0
+    else: int((uint64(uint32(images[images.len-1].index)) shr 6)+1)
+  var frame = flatFrameShell[false](plan, memory, info, images.len, dirtyWordCount)
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1
@@ -5621,7 +5624,7 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)
   var changes = machine.takeValue(delta)
-  var frame = flatFrameShell[true](plan, memory, info, held.pages.len)
+  var frame = flatFrameShell[true](plan, memory, info, held.pages.len, 0)
   frame.sourcePages = move(held.pages)
   frame.roBase = held.roBase
   frame.rwBase = held.rwBase
