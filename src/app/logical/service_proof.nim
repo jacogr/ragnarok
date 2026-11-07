@@ -60,7 +60,8 @@ proc planLogicalServiceProof*(source: CurrentLogicalState, service: ServiceIndex
   if uint64(count) > uint64(limits.services): fail(LogicalServiceProofError.LimitExceeded)
   var selected = -1
   for i in 0..<count:
-    if inventory.inventoryServiceAt(InventoryServiceIndex(uint64(i))).value.service == service:
+    let entry = inventory.inventoryServiceAt(InventoryServiceIndex(uint64(i))).value
+    if uint32(entry.service) == uint32(service):
       selected = i
       break # Captured complete inventories have unique service identities.
   if selected < 0: fail(LogicalServiceProofError.NoService)

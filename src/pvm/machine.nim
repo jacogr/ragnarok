@@ -115,6 +115,10 @@ type
   Machine* = object ## Copying the public handle retains the same immutable snapshot, never a mutable machine alias.
     data: nil MachineData
 
+func `==`*(left, right: PageIndex): bool {.inline.} =
+  ## Compare page ordinals within their nominal domain; other memory indices stay distinct.
+  uint32(left) == uint32(right)
+
 func checkedPageBlock(pages: PageDirectory, index: int): int {.inline.} =
   ## Every lookup retains the original complete sorted-slot bound, including the last partial block.
   assert index >= 0 and index < pages.len

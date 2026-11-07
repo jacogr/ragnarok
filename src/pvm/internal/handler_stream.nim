@@ -4741,11 +4741,12 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if fact.ending or not fact.fallthrough: break
       let payload = flatSourcePayload(f.plan, fact)
       let displacement = uint32(payload.args.x and 0xffffffff'u64)
-      if fact.opcode in 52'u8..58'u8:
-        emitArmDirectRead(native, payload.args.slots, displacement, range[52..58](int(fact.opcode)))
+      let readOpcode = int(fact.opcode) # Prove the converted value passed to each emitter.
+      if readOpcode >= 52 and readOpcode <= 58:
+        emitArmDirectRead(native, payload.args.slots, displacement, range[52..58](readOpcode))
         inc reads
-      elif fact.opcode in 124'u8..130'u8:
-        emitArmRead(native, payload.args.slots, displacement, range[124..130](int(fact.opcode)))
+      elif readOpcode >= 124 and readOpcode <= 130:
+        emitArmRead(native, payload.args.slots, displacement, range[124..130](readOpcode))
         inc reads
       elif supportedArmOpcode(fact.opcode):
         emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
