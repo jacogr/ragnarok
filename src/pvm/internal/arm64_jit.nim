@@ -972,12 +972,12 @@ when NativeCheckedReadEnabled:
       # X3 is the wrapped address. X17 keeps the borrowed context across every arithmetic operation.
       let descriptor = uint32(region*3)
       span.body.words.add(0xa9400a21'u32 or (descriptor shl 15)) # LDP X1,X2,[X17,#base].
-      span.body.words.add(0xf1000042'u32 or (width shl 10)) # SUBS X2,X2,#width.
-      span.body.words.add(0x540000e3'u32) # B.LO next_descriptor (extent shorter than width).
       # A below-base subtraction wraps above every admitted 32-bit extent.
       span.body.words.add(0xcb010061'u32) # SUB X1,X3,X1.
-      span.body.words.add(0xeb02003f'u32) # CMP X1,X2.
-      span.body.words.add(0x54000088'u32) # B.HI next_descriptor (offset exceeds the last load).
+      span.body.words.add(0xf1000042'u32 or (width shl 10)) # SUBS X2,X2,#width.
+      # Compare only with a valid length. Otherwise NZCV=2 sets carry and clears zero to force HI.
+      span.body.words.add(0xfa422022'u32) # CCMP X1,X2,#2,HS.
+      span.body.words.add(0x54000088'u32) # B.HI next_descriptor (short extent or past last load).
       span.body.words.add(0xf9400222'u32 or ((descriptor+2) shl 10)) # LDR X2,[X17,#data].
       span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
         destination) # LDRB Wd / LDRSW Xd / LDR Xd, [X2,X1].
