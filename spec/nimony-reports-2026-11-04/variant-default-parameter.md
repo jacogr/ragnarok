@@ -1,6 +1,7 @@
 # Omitted variant default argument is rejected although explicit default compiles
 
-Ready for maintainer submission; no upstream issue filed. Refreshed November 7, 2026.
+Submitted by the maintainer as [Nimony #2928](https://github.com/nim-lang/nimony/issues/2928)
+on November 7, 2026. Reproduction and controls refreshed on the same date.
 
 ## Environment
 
