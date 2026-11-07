@@ -33,6 +33,10 @@ type
     index*: PageIndex
     access*: PageAccess
     bytes*: array[4096, byte]
+  InitializationRegion* = object ## A mapped JAM interval with an optional borrowed payload prefix.
+    first*, past*: PageIndex
+    access*: PageAccess
+    offset*, length*: int
   MemoryPageSlot* = distinct uint32 ## Position within the supplied immutable owner's sorted mapping, separate from a physical page ordinal.
   PageDescription* = object ## Copied mapping metadata grants no mutable page storage or guest access permission.
     index*: PageIndex
@@ -71,6 +75,12 @@ type
     limit: PageLimit
   Memory* = object ## A default handle is invalid; captureMemory([], ...) creates valid empty memory.
     data: nil MemoryData
+  ResidentReplacementBatch* = object ## Internal frame publication owns completed replacements only.
+    source: Memory
+    status: MachineError
+    lastSlot: int
+    slots: seq[int]
+    changed: seq[PageData]
   ScalarMemoryWriter* = ref object ## Mutable scalar-write identity; copied handles share progress, while snapshotMemory publishes immutable epochs.
     base: Memory
     pages: seq[PageData]
@@ -228,6 +238,72 @@ proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): Pa
   ## Only absent or explicitly cleared pages reach this helper; every later writer still clones touched chunks first.
   let chunk = sharedZeroChunk(seed)
   PageData(index: index, access: access, chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
+
+proc initializationChunk(input: openArray[byte], offset, length, start: int,
+    zero: var nil PageChunk): PageChunk {.requires: offset >= 0 and offset <= input.len and
+      length >= 0 and length <= input.len-offset and start >= 0 and start <= 3584.} =
+  ## Copy the covered prefix into its final immutable chunk, preserving zero suffix bytes.
+  if start >= length:
+    return sharedZeroChunk(zero) # This chunk lies entirely beyond the admitted payload.
+  let first = offset+start
+  let count = min(512, length-start)
+  result = PageChunk(bytes: default(array[512, byte]))
+  copyMem(addr result.bytes[0], unsafeAddr input[first], count)
+
+proc appendInitializationRegion(owned: var seq[PageData], region: InitializationRegion,
+    input: openArray[byte], zero: var nil PageChunk) =
+  ## Consume an already checked source span in page order, with fresh headers even for zero pages.
+  var offset = region.offset
+  var remaining = region.length
+  for ordinal in uint32(region.first)..<uint32(region.past):
+    let index = PageIndex(ordinal)
+    if remaining == 0:
+      owned.add(zeroPage(index, region.access, zero)) # Whole stack, extra heap and other absent prefixes.
+    else:
+      let count = min(remaining, 4096)
+      owned.add(PageData(index: index, access: region.access, chunks: [
+        initializationChunk(input, offset, count, 0, zero),
+        initializationChunk(input, offset, count, 512, zero),
+        initializationChunk(input, offset, count, 1024, zero),
+        initializationChunk(input, offset, count, 1536, zero),
+        initializationChunk(input, offset, count, 2048, zero),
+        initializationChunk(input, offset, count, 2560, zero),
+        initializationChunk(input, offset, count, 3072, zero),
+        initializationChunk(input, offset, count, 3584, zero)]))
+      offset += count
+      remaining -= count
+
+proc captureInitializationMemory*(regions: array[4, InitializationRegion],
+    envelope, arguments: openArray[byte], limit: PageLimit): MachineResult[Memory] =
+  ## Capture RO, RW, stack and arguments in order. The first three spans refer to the envelope.
+  ## All descriptors and source extents are checked before allocation. No borrowed bytes escape.
+  var total = 0'u64
+  var previousPast = 0'u32
+  for index in 0..<regions.len:
+    let region = regions[index]
+    let first = uint32(region.first)
+    let past = uint32(region.past)
+    if first > past or past > 0x100000'u32:
+      return MachineResult[Memory](status: MachineError.InvalidRange) # Exclusive endpoint may equal 2^20.
+    let count = uint64(past-first)
+    let sourceLen = if index == 3: arguments.len else: envelope.len
+    if region.offset < 0 or region.offset > sourceLen or region.length < 0 or
+        region.length > sourceLen-region.offset or uint64(region.length) > count*4096:
+      return MachineResult[Memory](status: MachineError.InvalidRange) # Empty mappings require an empty prefix.
+    if first != past:
+      if first < previousPast:
+        return MachineResult[Memory](status: MachineError.UnsortedPages) # Reject overlap with any earlier mapping.
+      previousPast = past
+      total += count
+  if total > uint64(uint32(limit)) or total > uint64(high(int) div sizeof(PageData)):
+    return MachineResult[Memory](status: MachineError.LimitExceeded) # Count all mapped pages, including padding.
+  var owned = newSeqOfCap[PageData](int(total))
+  var zero: nil PageChunk = nil
+  for index in 0..<3:
+    appendInitializationRegion(owned, regions[index], envelope, zero)
+  appendInitializationRegion(owned, regions[3], arguments, zero)
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
 
 proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: PageAccess,
     total: int): PageDirectory =
@@ -607,6 +683,67 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
     changed.add(pageFromReplacement(data.pages[cursor], replacements[index]))
     inc cursor
   var directory = replacedDirectory(data.pages, slots, changed)
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
+
+proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
+  ## Bind one unpublished prepared-frame observation to its immutable source owner.
+  ResidentReplacementBatch(source: source, lastSlot: -1, slots: @[], changed: @[],
+    status: (if source.data == nil: MachineError.InvalidOwner else: MachineError.None))
+
+proc residentReplacementChunk(previous: PageChunk, bytes: openArray[byte], first: int,
+    changed: bool): PageChunk =
+  ## Retain equal immutable chunks or copy one complete changed chunk from the checked span.
+  if not changed: return previous
+  result = PageChunk(bytes: default(array[512, byte]))
+  copyMem(addr result.bytes[0], unsafeAddr bytes[first], 512)
+
+proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlot,
+    expected: PageDescription, bytes: openArray[byte]): MachineError =
+  ## Read a checked resident span synchronously; no pointer is stored in the batch.
+  if batch.status != MachineError.None: return batch.status
+  let data {.cursor.} = batch.source.data
+  assert data != nil
+  if uint64(slot) >= uint64(data.pages.len) or bytes.len != 4096:
+    batch.status = MachineError.InvalidRange
+    return batch.status
+  let at = int(uint32(slot))
+  if at <= batch.lastSlot:
+    batch.status = MachineError.UnsortedPages
+    return batch.status
+  let previous {.cursor.} = data.pages[at]
+  if previous.index != expected.index or previous.access != expected.access or
+      previous.access != PageAccess.ReadWrite:
+    batch.status = MachineError.InvalidRange
+    return batch.status
+  # The matched extent and eight fixed offsets prove every compared and copied span.
+  var differences = 0'u8
+  for chunk in 0..<8:
+    if cmpMem(unsafeAddr previous.chunks[chunk].bytes[0], unsafeAddr bytes[chunk*512], 512) != 0:
+      differences = differences or (1'u8 shl chunk)
+  if differences != 0:
+    let changed = PageData(index: previous.index, access: previous.access, chunks: [
+      residentReplacementChunk(previous.chunks[0], bytes, 0, (differences and 1) != 0),
+      residentReplacementChunk(previous.chunks[1], bytes, 512, (differences and 2) != 0),
+      residentReplacementChunk(previous.chunks[2], bytes, 1024, (differences and 4) != 0),
+      residentReplacementChunk(previous.chunks[3], bytes, 1536, (differences and 8) != 0),
+      residentReplacementChunk(previous.chunks[4], bytes, 2048, (differences and 16) != 0),
+      residentReplacementChunk(previous.chunks[5], bytes, 2560, (differences and 32) != 0),
+      residentReplacementChunk(previous.chunks[6], bytes, 3072, (differences and 64) != 0),
+      residentReplacementChunk(previous.chunks[7], bytes, 3584, (differences and 128) != 0)])
+    batch.slots.add(at)
+    batch.changed.add(changed)
+  batch.lastSlot = at
+  MachineError.None
+
+proc finishResidentReplacements*(batch: ResidentReplacementBatch): MachineResult[Memory] =
+  ## Publish one complete replacement directory after the whole batch succeeds.
+  if batch.status != MachineError.None: return MachineResult[Memory](status: batch.status)
+  if batch.changed.len == 0:
+    return MachineResult[Memory](status: MachineError.None, completed: batch.source)
+  let data {.cursor.} = batch.source.data
+  assert data != nil
+  var directory = replacedDirectory(data.pages, batch.slots, batch.changed)
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 

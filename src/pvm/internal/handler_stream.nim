@@ -887,6 +887,7 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
       # Shifts 0/8/16/24 extract one low word; base+1..3 cannot equal the opcode 171 bound.
       # Wrapped or other loop coordinates retain the original != predicate and bytewise order.
       break
+    let nextBase = base+4
     let address = (base+store.x) and 0xffffffff'u64
     if address < 65536 or address > uint64(high(uint32))-4:
       # Match the existing conservative four-byte fast-store extent; ambiguous/faulting spans stay scalar.
@@ -911,15 +912,13 @@ proc flatChargedWordLoop(f: var FlatFrame, off: uint32): uint32 =
     f.reservation = off or flatReservationHeaderFlag
     f.info.gas = MachineGas(uint64(f.info.gas)-charged)
     f.info.registers[prefix.slots.destinationIndex] = RegisterValue(word shr 24)
-    f.info.registers[store.slots.bIndex] = RegisterValue(base+4)
+    f.info.registers[store.slots.bIndex] = RegisterValue(nextBase)
     f.info.registers[prefix.slots.bIndex] = RegisterValue(shift+32)
     when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
       inc f.x86CheckedWordGroups
-    var destination = flatStop
-    flatBranchSelect(f, branch, 171, destination)
-    if destination != off:
-      # The fourth genuine branch may leave; its exact cached destination and paid reset still apply.
-      return destination
+    # The sealed true arm loops and the bound's distinct slot is unchanged by the batch.
+    f.info.blockCharged = false
+    if nextBase == bound: return branch.y
   # Every declined batch starts the untouched original checked loop, including its partial/fault behavior.
   flatChargedStoreLoop(f, off)
 
@@ -4912,18 +4911,12 @@ proc runFlatSingle*(f: var FlatFrame) =
     offset = handler(f, offset)
 
 proc flatCollectResidentPage(f: FlatFrame, page: int, resident: openArray[byte],
-    changes: var seq[PageImage]) =
-  ## The checked source owner is compared before one changed private page becomes an immutable image.
-  let description = f.sourcePages[page]
-  let match = matchesMemoryPageBytes(f.sourceMemory, MemoryPageSlot(uint32(page)),
-    description, resident)
-  assert match.error == MachineError.None
-  if match.value: return
-  var image = PageImage(index: description.index, access: description.access)
-  copyMem(addr image.bytes[0], unsafeAddr resident[0], 4096)
-  changes.add(image)
+    batch: var ResidentReplacementBatch) =
+  ## Stage one complete page against the exact immutable owner and ordered slot.
+  let staged = stageResidentPage(batch, MemoryPageSlot(uint32(page)), f.sourcePages[page], resident)
+  assert staged == MachineError.None
 
-proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
+proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatch) =
   ## Writing original bytes back still publishes no replacement or mutable source alias.
   let description = f.sourcePages[page]
   if description.access != PageAccess.ReadWrite:
@@ -4934,25 +4927,25 @@ proc flatCollectPage(f: FlatFrame, page: int, changes: var seq[PageImage]) =
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    flatCollectResidentPage(f, page, f.stack.toOpenArray(offset, offset+4095), changes)
+    flatCollectResidentPage(f, page, f.stack.toOpenArray(offset, offset+4095), batch)
     return
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    flatCollectResidentPage(f, page, f.rw.toOpenArray(offset, offset+4095), changes)
+    flatCollectResidentPage(f, page, f.rw.toOpenArray(offset, offset+4095), batch)
     return
   for slot in 0..<f.extra.len:
     let region {.cursor.} = f.extra[slot]
     if region.access == PageAccess.ReadWrite and address >= region.first and
         address-region.first+4096 <= uint64(region.bytes.len):
       let offset = int(address-region.first)
-      flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), changes)
+      flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), batch)
       return
   # Preserve the old checked observer fallback if a future region representation needs it.
   var original = PageImage(index: description.index, access: description.access)
   flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
   var image = original
   for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
-  if image.bytes != original.bytes: changes.add(image)
+  flatCollectResidentPage(f, page, image.bytes, batch)
 
 proc flatPublishMemory(f: FlatFrame): Memory =
   ## Publish only dirty pages while preserving immutable ownership and sorted replacement order.
@@ -4960,7 +4953,7 @@ proc flatPublishMemory(f: FlatFrame): Memory =
   if f.dirtyIndices.len == 0:
     # An untouched epoch has exactly its existing immutable bytes, permissions and local ceiling.
     return
-  var changes: seq[PageImage] = @[]
+  var batch = beginResidentReplacements(f.sourceMemory)
   if f.dirtyIndices.len < f.sourcePages.len div 8:
     # Sparse writes sort only their copied ordinals; publication never mutates the epoch's membership.
     var indices = newSeq[uint32](f.dirtyIndices.len)
@@ -4976,18 +4969,17 @@ proc flatPublishMemory(f: FlatFrame): Memory =
         if uint32(f.sourcePages[middle].index) < index: low = middle+1
         else: high = middle
       assert low < f.sourcePages.len and uint32(f.sourcePages[low].index) == index
-      flatCollectPage(f, low, changes)
+      flatCollectPage(f, low, batch)
       start = low+1
   else:
     # Dense writes retain the original linear walk instead of sorting nearly the entire mapping.
     for page in 0..<f.sourcePages.len:
       if flatDirty(f, f.sourcePages[page].index):
-        flatCollectPage(f, page, changes)
-  if changes.len > 0:
-    # The checked batch shares untouched owners and clones the root vector exactly once for this observation.
-    let updated = withReplacedPages(f.sourceMemory, changes)
-    assert updated.error == MachineError.None
-    result = updated.value
+        flatCollectPage(f, page, batch)
+  # Share untouched blocks and publish only after all resident pages have been accepted.
+  let updated = finishResidentReplacements(batch)
+  assert updated.error == MachineError.None
+  result = updated.value
 
 proc flatMemorySnapshot*(f: FlatFrame): Memory =
   ## A complete independently owned observation; no mutable resident buffer alias escapes.
@@ -5111,17 +5103,20 @@ proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: Machin
   info.registers = registers
   replaceFlatMemory(f, images, info)
 
-proc flatHostPage(f: var FlatFrame, image: PageImage, apply: bool): bool =
-  ## Preflight then optionally replace one full private writable page; no byte owner changes or escapes.
-  if image.access != PageAccess.ReadWrite: return false
-  let address = uint64(uint32(image.index))*4096
+proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
+    apply: bool): bool =
+  ## The complete posterior map check binds this slot to the frame's existing description.
+  let page = int(uint32(slot))
+  let description = f.sourcePages[page]
+  if description.access != PageAccess.ReadWrite: return false
+  let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    if apply: copyMem(addr f.stack[offset], unsafeAddr image.bytes[0], 4096)
+    if apply: flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
     return true
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    if apply: copyMem(addr f.rw[offset], unsafeAddr image.bytes[0], 4096)
+    if apply: flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
     return true
   for i in 0..<f.extra.len:
     # Fragmented mappings retain their own immutable access metadata and full-span checks.
@@ -5129,7 +5124,7 @@ proc flatHostPage(f: var FlatFrame, image: PageImage, apply: bool): bool =
     if region.access == PageAccess.ReadWrite and address >= region.first and
         address-region.first+4096 <= uint64(region.bytes.len):
       let offset = int(address-region.first)
-      if apply: copyMem(addr region.bytes[offset], unsafeAddr image.bytes[0], 4096)
+      if apply: flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
       return true
   false
 
@@ -5149,7 +5144,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
-  var delta = changedMemoryPages(f.hostSnapshot, posterior)
+  var delta = changedMemoryPageSlots(f.hostSnapshot, posterior)
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var info = f.info
   info.pc = CodeAddress(f.plan.facts[fact].next)
@@ -5160,10 +5155,10 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
     let changes = machine.takeValue(delta)
     for i in 0..<changes.len:
       # Complete preflight precedes the first host-byte mutation; unusual capabilities take the slow path.
-      if not flatHostPage(f, changes[i], false): replace = true
+      if not flatHostPage(f, posterior, changes[i], false): replace = true
     if not replace:
       for i in 0..<changes.len:
-        let applied = flatHostPage(f, changes[i], true)
+        let applied = flatHostPage(f, posterior, changes[i], true)
         assert applied
       f.sourceMemory = posterior
       flatClearDirty(f)

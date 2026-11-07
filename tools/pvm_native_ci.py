@@ -192,6 +192,7 @@ def run():
                  ROOT/'tests/support/pvm_arm_clipped_read_witness.nim',
                  ROOT/'tests/support/pvm_arm_memory_cycle_backend.nim',
                  *sorted((ROOT/'tests/unit/codec').glob('test_pvm_checked_read_*')),
+                 *sorted((ROOT/'tests/unit/state').glob('test_pvm_x86_resident_access.*')),
                  ROOT/'tests/unit/codec/test_pvm_memory_reuse.nim',
                  ROOT/'tests/unit/codec/test_pvm_memory_reuse.output',
                  ROOT/'tests/unit/codec/test_pvm_stream_all_opcodes.nim',
