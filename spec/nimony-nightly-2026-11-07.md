@@ -10,7 +10,9 @@ fails at runtime in both checked and ThinLTO profiles. The same source passes bo
 with the previously qualified October 28 compiler. This also reproduces locally on macOS ARM64.
 The new generated C replaces the post-call local read with literal `1`, comparing `1 == 3`
 after the call that increments the addressed local twice. The original witness is retained
-unchanged; a smaller standalone reduction is not yet established.
+unchanged. A [seven-line standalone var-parameter call](nimony-reports-2026-11-07/noninline-var-mutation.md)
+now reproduces in five clean optimized builds; the old optimized and new unoptimized controls pass.
+The maintainer submitted [Nimony #2930](https://github.com/nim-lang/nimony/issues/2930).
 
 Restore the October 28 compiler `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` and its
 matching browser backend `60f400e7104e534da63e38d79ac17eab0b1b19ee`. Keep the already
@@ -20,7 +22,12 @@ The historical upgrade evidence below is partial qualification, not a statement 
 passed. Repair receipts are under ignored `build/ci/nimony-master-repair/`.
 The restored pin passes the final 607-module Smoke gate and browser bootstrap, all 16 cases
 in the existing checked/ThinLTO compiler-control family, and the failed host-resume ASAN suite
-with all three sanitizer calibration controls. Full Linux CI is required before merging the repair.
+with all three sanitizer calibration controls. All 47 jobs in [full repair CI](https://github.com/jacogr/ragnarok/actions/runs/42401871665)
+passed on exact head `262644e603a113274b91c658a4391340872afbc4` before the
+[rollback repair](https://github.com/jacogr/ragnarok/pull/2025) merged as `315ac66e`.
+This includes both native Linux architectures, all compiler controls, unit/corpus shards,
+E2E, Fuzz, interoperability, builds and performance groups. Merge ownership retains post-merge
+master verification separately; no post-merge result is inferred from the PR run.
 
 ## Identities and scope
 
