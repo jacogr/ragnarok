@@ -4827,7 +4827,9 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # A reset or same-plan stream lease supplies an uncharged cold boundary after warmup.
     flatX86ColdWideAdmission(f, flatStop)
-  f.dynamicOffsets = default(array[256, uint64]) # Invocation reset remains inside execution timing.
+  if f.plan.jumps.len > 0:
+    # Only table-bearing plans can populate the cache; tableless frames retain their initialized zeros.
+    f.dynamicOffsets = default(array[256, uint64])
   let pc = uint32(uint64(f.info.pc) and 0xffffffff'u64)
   var offset = flatStop
   if f.info.blockCharged and uint64(pc) < uint64(f.plan.factAt.len) and f.compiledForPc.len > 0:
