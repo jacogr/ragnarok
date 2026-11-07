@@ -417,6 +417,9 @@ class PerformanceRunner:
                 RAGNAROK_PVM_SIEVE_EXPECTED=str(controlled))
             fixture = ROOT/'tests/fixtures'/('pvm-sieve' if name == 'sieve' else
                 'pvm-pinky' if name == 'pinky' else 'pvm-guests')/(name+'.polkavm')
+            if role != 'reference' and name != 'pinky':
+                # Ordinary canonical calls admit the same compact container as the direct reference.
+                env['RAGNAROK_PVM_SIEVE_ARTIFACT'] = str(fixture)
             args = ([self.references['micro'], '--sieve', fixture, data.parent, limit, 13]
                     if role == 'reference' else [self.images[family]])
         else:
