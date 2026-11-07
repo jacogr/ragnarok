@@ -111,6 +111,20 @@ Performance remains on hold pending the exact-head canonical Linux ARM64/x86-64 
 report and its retained control/native/state evidence. The 256-page selection bound remains
 experimental. Historical timing tables below do not qualify this new path.
 
+Post-rollback local validation at `01608aa7d` merges the reviewed published compiler rollback,
+restoring native `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` and the original browser pin.
+A private official SDK passes the canonical `make check-pvm-native` path, including actual ARM64
+native execution, forced refusals, shared lifecycle checks and both resident suites with fresh
+ARC evidence. The targeted `pvm_machine` and `pvm_memory_directory` suites also pass.
+
+An independent source/type/compiler audit retains the earlier corrected ownership-copy guards,
+calibrated owner/application ASan, and C reset/layout results as bounded equivalent coverage.
+Only upstream same-domain PageIndex/CodeAddress equality and an equivalent converted-opcode ARM
+membership proof differ in PVM production source. Owning/reset/view/native-adapter bodies, types
+and relevant profiles are unchanged. The retained results are not newly generated exact-head
+binaries or native Linux execution. Final publication qualification still requires the canonical
+report from both Linux architectures at the final candidate head.
+
 ## Restoring complete input
 
 Before reuse, `changedMemoryPageSlots` validates complete owner/count/index/access equivalence
