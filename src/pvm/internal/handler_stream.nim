@@ -53,12 +53,13 @@ type
     y: uint32
     slots: RegisterSlots
   FlatHandler = proc(f: var FlatFrame, off: uint32): uint32 {.nimcall, raises: [].}
-  FlatFact = object ## Decoded/priced boundary outside execution, captured from the independently validated program owner.
-    args: FlatArgs
-    handler: nil FlatHandler
+  FlatFact = object ## Immutable whole-program coordinates and quotas, captured by eager source decoding.
     pc, next, sourceCount, priceIndex, nodeCount: uint32
     opcode: byte
     ending, fallthrough: bool
+  FlatSourcePayload = object ## Temporary original operands and handler reconstructed only from the retained source.
+    args: FlatArgs
+    handler: nil FlatHandler
   FlatSourceInterval = object ## Bounded source coordinates and a captured charge, without complete-header authority.
     first, last, span: uint32
     price: uint64
@@ -1281,7 +1282,17 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   else: nil
 
 proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact =
-  ## Seal genuine operands once for either admission path; extracted mutable instructions cannot grant target facts.
+  ## Retain the same eagerly validated source boundaries and logical admission units without rich payload storage.
+  assert decoded.error == ProgramError.None
+  let item = decoded.value
+  let pc = uint64(item.address)
+  assert pc <= uint64(high(uint32))-25
+  FlatFact(pc: uint32(pc), next: uint32(pc+1+uint64(item.skip)), sourceCount: 0,
+    priceIndex: priceIndex, opcode: item.opcode, ending: terminatesBlock(item.opcode),
+    fallthrough: instructionHasFallthrough(decoded))
+
+func flatSourcePayload(decoded: ProgramResult[Instruction]): FlatSourcePayload =
+  ## Pack the original operands and target-dependent handler; mutable stream arguments never grant source facts.
   assert decoded.error == ProgramError.None
   let item = decoded.value
   let pc = uint64(item.address)
@@ -1300,9 +1311,19 @@ proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact
   elif item.opcode in {81'u8..90'u8, 170'u8..175'u8}:
     args.x = (args.x and 0xffffffff'u64) or ((target and 0xffffffff'u64) shl 32)
     args.y = uint32(next)
-  FlatFact(args: args, handler: flatHandler(item.opcode, valid, fallthrough),
-    pc: uint32(pc), next: uint32(next), sourceCount: 0, priceIndex: priceIndex,
-    opcode: item.opcode, ending: terminatesBlock(item.opcode), fallthrough: fallthrough)
+  FlatSourcePayload(args: args, handler: flatHandler(item.opcode, valid, fallthrough))
+
+proc flatSourcePayload(plan: FlatPlan, fact: FlatFact): FlatSourcePayload =
+  ## Query the exact immutable Program on the caller; no rich cache or source pointer reaches a worker.
+  let decoded = instruction(plan.source, CodeAddress(uint64(fact.pc)))
+  assert decoded.error == ProgramError.None
+  let item = decoded.value
+  assert item.opcode == fact.opcode and uint64(item.address)+1+uint64(item.skip) == uint64(fact.next)
+  result = flatSourcePayload(decoded)
+  if plan.singleStep:
+    # Single-step dynamic transfers retain their bounded scalar-successor handlers.
+    if fact.opcode == 50: result.handler = flatDynamic[50, true]
+    elif fact.opcode == 180: result.handler = flatDynamic[180, true]
 
 proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits,
     allowNative: bool = true): FlatResult[FlatPlan] =
@@ -1321,8 +1342,8 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
       int(instructions.value)
     else: 0
   assert sizeof(FlatArgs) == 16
-  # The admission count occupies existing alignment padding on the supported 64-bit targets.
-  when sizeof(pointer) == 8: assert sizeof(FlatFact) == 48
+  # Catalogue layout is a target for the later pinned layout gate, not a measured allocation claim.
+  when sizeof(pointer) == 8: assert sizeof(FlatFact) == 24
   var owner = FlatPlan(source: source, limits: limits, facts: newSeqOfCap[FlatFact](factCapacity),
     factAt: newSeq[uint32](int(extent.value)), pricePcs: @[], cycles: cycles, jumps: @[],
     allowNative: allowNative, singleStep: false)
@@ -1388,8 +1409,6 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
   var fact = flatFact(decoded, 0)
   fact.sourceCount = 1
   fact.nodeCount = 1
-  if fact.opcode == 50: fact.handler = flatDynamic[50, true]
-  elif fact.opcode == 180: fact.handler = flatDynamic[180, true]
   FlatResult[FlatPlan](status: FlatError.None, completed: FlatPlan(source: source,
     facts: @[fact], factAt: @[], pricePcs: @[], cycles: cycles, jumps: @[], limits: limits,
     allowNative: false, singleStep: true))
@@ -1554,7 +1573,8 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
       flatEmit(f, charge, FlatArgs(x: needed, y: fact.sourceCount, slots: default(RegisterSlots)),
           uint32(index))
       first = false
-    var selected = fact.handler
+    let payload = flatSourcePayload(f.plan, fact)
+    var selected = payload.handler
     assert selected != nil
     if fact.opcode != 2:
       # Bounded continuation prefixes stop at an original worker before the next chain begins.
@@ -1573,7 +1593,7 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
           inc continuations
         else: continuations = 0
       else: continuations = 0
-      if selected != nil: flatEmit(f, selected, fact.args, uint32(index))
+      if selected != nil: flatEmit(f, selected, payload.args, uint32(index))
     if fact.ending: break
     inc index
   flatConsiderNative(f, origin)
@@ -1646,11 +1666,13 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
     return
   let branch = f.arguments[int(span.past)]
   let exitHeader = branch.y
-  if uint32(branch.x shr 32) != header or uint32(terminal.args.x shr 32) != first.pc or
-      branch.slots != terminal.args.slots or (branch.x and 0xffffffff'u64) !=
-        (terminal.args.x and 0xffffffff'u64) or
+  if uint32(branch.x shr 32) != header: return
+  let terminalPayload = flatSourcePayload(f.plan, terminal)
+  if uint32(terminalPayload.args.x shr 32) != first.pc or
+      branch.slots != terminalPayload.args.slots or (branch.x and 0xffffffff'u64) !=
+        (terminalPayload.args.x and 0xffffffff'u64) or
       (exitHeader >= header and exitHeader <= span.past) or
-      not flatNativeHeader(f, exitHeader, terminal.args.y): return
+      not flatNativeHeader(f, exitHeader, terminalPayload.args.y): return
   for index in 0..<span.len:
     # Each original scalar fact has exactly one body node, with no folded or crossing instruction.
     let ordinal = span.first+uint32(index)
@@ -1658,10 +1680,11 @@ proc flatLoopCertificate(f: FlatFrame, span: NativeSpanInfo): NativeLoopInfo =
     let fact = f.plan.facts[int(ordinal)]
     let args = f.arguments[node]
     if f.sites[node] != ordinal or fact.ending or not fact.fallthrough or
-        fact.priceIndex != first.priceIndex or fact.next != f.plan.facts[int(ordinal)+1].pc or
-        args.x != fact.args.x or args.slots != fact.args.slots or
-        not matchesNativeOperation(f.nativeSession, index, fact.opcode, fact.args.slots,
-          fact.args.x): return
+        fact.priceIndex != first.priceIndex or fact.next != f.plan.facts[int(ordinal)+1].pc: return
+    let payload = flatSourcePayload(f.plan, fact)
+    if args.x != payload.args.x or args.slots != payload.args.slots or
+        not matchesNativeOperation(f.nativeSession, index, fact.opcode, payload.args.slots,
+          payload.args.x): return
   # The cached low word has been checked against the original branch fact.
   let immediate = if rightKind == NativeLoopRightKind.Immediate:
     flatSext32(uint32(branch.x and 0xffffffff'u64))
@@ -1734,8 +1757,12 @@ proc installNative(f: var FlatFrame) =
       let fact = f.plan.facts[int(ordinal)]
       # Folded noops remain original attempts but emit no register operation.
       if fact.opcode == 2: continue
-      if fact.ending or not fact.fallthrough or not matchesNativeOperation(f.nativeSession,
-          operation, fact.opcode, fact.args.slots, fact.args.x):
+      if fact.ending or not fact.fallthrough:
+        invalidateNativeStream(f.nativeSession)
+        return
+      let payload = flatSourcePayload(f.plan, fact)
+      if not matchesNativeOperation(f.nativeSession, operation, fact.opcode,
+          payload.args.slots, payload.args.x):
         invalidateNativeStream(f.nativeSession)
         return
       inc operation
@@ -1762,8 +1789,9 @@ proc flatConsiderNative(f: var FlatFrame, origin: uint32) =
     while int(at) < f.handlers.len and span.len < NativeSpanOperations:
       if int(at)+1 < f.sites.len and f.sites[int(at)] == f.sites[int(at)+1]: break
       let fact = f.plan.facts[int(f.sites[int(at)])]
-      if fact.ending or not fact.fallthrough or
-          not span.add(fact.opcode, fact.args.slots, fact.args.x, f.sites[int(at)], at+1): break
+      if fact.ending or not fact.fallthrough: break
+      let payload = flatSourcePayload(f.plan, fact)
+      if not span.add(fact.opcode, payload.args.slots, payload.args.x, f.sites[int(at)], at+1): break
       inc at
     if span.len >= NativeMinimumOperations and int(span.past) < f.handlers.len:
       considerNativeSpan(f.nativeSession, span)
@@ -2135,7 +2163,8 @@ when defined(pvmX86Jit):
     while current < ending:
       # Rebuild only immutable pure facts already admitted by this exact source record.
       let fact = f.plan.facts[int(f.sites[int(current)])]
-      emitX86Operation(native, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitX86Operation(native, fact.opcode, payload.args.slots, payload.args.x)
       inc current
     let args = f.arguments[int(ending)]
     let branch = f.plan.facts[int(f.sites[int(ending)])]
@@ -2234,7 +2263,8 @@ when defined(pvmX86Jit):
           terminal = true
           break
         if not fact.fallthrough or not supportedX86Opcode(fact.opcode): return false
-        emitX86Operation(native, fact.opcode, fact.args.slots, fact.args.x)
+        let payload = flatSourcePayload(f.plan, fact)
+        emitX86Operation(native, fact.opcode, payload.args.slots, payload.args.x)
         inc current
       if not terminal: return false
     let admitted = publishX86Region(jit, blocks, active)
@@ -2277,7 +2307,8 @@ when defined(pvmX86Jit):
         if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending+1)]: break
         let fact = f.plan.facts[int(f.sites[int(ending)])]
         if fact.ending or not fact.fallthrough or not supportedX86Opcode(fact.opcode): break
-        emitX86Operation(fragment, fact.opcode, fact.args.slots, fact.args.x)
+        let payload = flatSourcePayload(f.plan, fact)
+        emitX86Operation(fragment, fact.opcode, payload.args.slots, payload.args.x)
         inc ending
         inc count
       let terminal = if int(ending) < f.sites.len:
@@ -2553,7 +2584,7 @@ when defined(pvmX86Jit):
           readOperations: operations, readLoads: loads)
         true
 
-      func flatX86WideEmission(f: FlatFrame, candidate: X86WideCycleCandidate,
+      proc flatX86WideEmission(f: FlatFrame, candidate: X86WideCycleCandidate,
           emission: var X86WideEmission): bool =
         ## Copy only the sealed source operands; generated code receives no frame reference.
         emission = default(X86WideEmission)
@@ -2563,8 +2594,9 @@ when defined(pvmX86Jit):
         for index in 0..<2:
           let fact = f.plan.facts[int(guard.ordinal)+index]
           if not supportedX86Opcode(fact.opcode): return false
+          let payload = flatSourcePayload(f.plan, fact)
           emission.guardOperations[index] = X86WideOperation(opcode: fact.opcode,
-            slots: fact.args.slots, immediate: fact.args.x)
+            slots: payload.args.slots, immediate: payload.args.x)
         let guardBranch = f.arguments[int(guard.terminal)]
         emission.guardBranch = guardBranch.slots
         emission.guardImmediate = flatSext32(uint32(guardBranch.x and 0xffffffff'u64))
@@ -2578,8 +2610,9 @@ when defined(pvmX86Jit):
           if fact.opcode notin {52'u8..58'u8, 124'u8..130'u8} and
               not supportedX86Opcode(fact.opcode): return false
           if count >= uint32(emission.readOperations.len): return false
+          let payload = flatSourcePayload(f.plan, fact)
           emission.readOperations[int(count)] = X86WideOperation(opcode: fact.opcode,
-            slots: fact.args.slots, immediate: fact.args.x)
+            slots: payload.args.slots, immediate: payload.args.x)
           inc count
         if count != candidate.readOperations: return false
         emission.readCount = count
@@ -3093,8 +3126,7 @@ when defined(pvmX86Jit):
       childPublished = false
       var candidate = default(X86WideCycleCandidate)
       var emission = default(X86WideEmission)
-      if not flatX86SealWideCycle(f, prefixPc, candidate) or
-          not flatX86WideEmission(f, candidate, emission): return false
+      if not flatX86SealWideCycle(f, prefixPc, candidate): return false
       let jit = f.x86Jit
       if jit == nil or f.plan == nil or x86WideActive(jit) or
           not f.plan.allowNative or f.plan.singleStep or f.pricingKind != 0:
@@ -3108,6 +3140,8 @@ when defined(pvmX86Jit):
           (branch < f.x86Original.len and f.x86Original[branch] != nil) or
           x86CycleSlot(jit, candidate.cycle.dirty.header) >= 0:
         return false
+      # Reconstruct only after existing publication/installed-handler refusals, before any mutable publication.
+      if not flatX86WideEmission(f, candidate, emission): return false
       if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
       var child = -1
       if proofChildFirst:
@@ -3306,7 +3340,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       return flatArmBranch(f, destination)
     destination
 
-  func flatArmDirtyShape(f: FlatFrame, header: uint32): bool =
+  proc flatArmDirtyShape(f: FlatFrame, header: uint32): bool =
     ## One sealed five-op source block; neither admission nor code emission depends on a guest PC.
     if int(header)+6 >= f.handlers.len or f.pricingKind != 0: return false
     let start = f.sites[int(header)]
@@ -3317,8 +3351,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if f.handlers[int(header+3)] != flatArmBranch: return false
     let prefix = f.plan.facts[int(f.sites[int(header+1)])]
     let store = f.plan.facts[int(f.sites[int(header+2)])]
-    if prefix.opcode != 198 or store.opcode != 120 or
-        prefix.args.slots.destinationIndex == store.args.slots.bIndex: return false
+    if prefix.opcode != 198 or store.opcode != 120: return false
+    let prefixPayload = flatSourcePayload(f.plan, prefix)
+    let storePayload = flatSourcePayload(f.plan, store)
+    if prefixPayload.args.slots.destinationIndex == storePayload.args.slots.bIndex: return false
     if f.plan.facts[int(f.sites[int(header+3)])].opcode != 149 or
         f.plan.facts[int(f.sites[int(header+4)])].opcode != 149 or
         f.plan.facts[int(f.sites[int(header+5)])].opcode != 171: return false
@@ -3377,11 +3413,14 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var native = newArmRegionBody()
     let prefix = f.plan.facts[int(f.sites[int(offset+1)])]
     let store = f.plan.facts[int(f.sites[int(offset+2)])]
-    emitArmOperation(native, prefix.opcode, prefix.args.slots, prefix.args.x)
-    emitArmDirtyRegionByteStore(native, store.args.slots.aIndex)
+    let prefixPayload = flatSourcePayload(f.plan, prefix)
+    let storePayload = flatSourcePayload(f.plan, store)
+    emitArmOperation(native, prefix.opcode, prefixPayload.args.slots, prefixPayload.args.x)
+    emitArmDirtyRegionByteStore(native, storePayload.args.slots.aIndex)
     for step in 3..4:
       let fact = f.plan.facts[int(f.sites[int(offset)+step])]
-      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
     emitArmBranch(native, 171, branch.slots, flatSext32(uint32(branch.x and 0xffffffff'u64)),
         uint32(branch.x shr 32), branch.y)
     let charge = f.arguments[int(offset)]
@@ -3413,8 +3452,9 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let store = f.plan.facts[int(f.sites[int(offset+2)])]
     let item = flatArmDirtyBody(f, offset)
     let word = flatArmWordShape(f, offset)
-    let admitted = publishArmDirtyLoop(jit, item, store.args.slots.bIndex,
-        uint32(store.args.x and 0xffffffff'u64), word)
+    let storePayload = flatSourcePayload(f.plan, store)
+    let admitted = publishArmDirtyLoop(jit, item, storePayload.args.slots.bIndex,
+        uint32(storePayload.args.x and 0xffffffff'u64), word)
     jit.compilationNs+=armClock()-before
     f.handlers[int(offset)] = if admitted: flatArmDirtyLoop else: flatArmCheckedTail
     destination
@@ -3569,7 +3609,10 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if state[4] != completed:
         return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
       # The current stream worker may be fused or native; this immutable fact is the one-op checked worker.
-      return fact.handler(f, next)
+      let payload = flatSourcePayload(f.plan, fact)
+      let handler = payload.handler
+      assert handler != nil
+      return handler(f, next)
     flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
 
   const armMixedMaximumSourceSpan = 32
@@ -3582,7 +3625,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var used = 0'u32
     for current in header+1..<terminal:
       let fact = f.plan.facts[int(f.sites[int(current)])]
-      let slots = fact.args.slots
+      let payload = flatSourcePayload(f.plan, fact)
+      let slots = payload.args.slots
       used = used or (1'u32 shl int(slots.aIndex)) or
           (1'u32 shl int(slots.bIndex)) or (1'u32 shl int(slots.destinationIndex))
       var entry = default(FlatMixedOp)
@@ -3594,7 +3638,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         entry.base = uint32(slots.bIndex)
         entry.writes = not entry.store
         entry.destination = uint32(slots.aIndex)
-        entry.displacement = uint32(fact.args.x and 0xffffffff'u64)
+        entry.displacement = uint32(payload.args.x and 0xffffffff'u64)
         entry.width = access.width
       elif supportedArmOpcode(fact.opcode):
         entry.writes = true
@@ -3602,7 +3646,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       else: return false
       operations.add(entry)
     let branch = f.plan.facts[int(f.sites[int(terminal)])]
-    let branchSlots = branch.args.slots
+    let branchPayload = flatSourcePayload(f.plan, branch)
+    let branchSlots = branchPayload.args.slots
     used = used or (1'u32 shl int(branchSlots.aIndex)) or
         (1'u32 shl int(branchSlots.bIndex)) or
         (1'u32 shl int(branchSlots.destinationIndex))
@@ -3658,20 +3703,21 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       # Refuse publication unless every preceding physical node lowered exactly once.
       if armMixedLowered(mixed) != current-header-1: return false
       let fact = f.plan.facts[int(f.sites[int(current)])]
+      let payload = flatSourcePayload(f.plan, fact)
       if fact.opcode in 120'u8..130'u8:
         assert fact.opcode >= 120 and fact.opcode <= 130
         let index = int(current-header-1)
         let groupIndex = groupOf[index]
         if groupIndex >= 0:
           let group = groups[groupIndex]
-          emitArmMixedWindowMemory(mixed, range[120..130](fact.opcode), fact.args.slots,
-              uint32(fact.args.x and 0xffffffff'u64), current, group.minDisp,
+          emitArmMixedWindowMemory(mixed, range[120..130](fact.opcode), payload.args.slots,
+              uint32(payload.args.x and 0xffffffff'u64), current, group.minDisp,
               group.maxEnd, group.lane, uint32(index) == group.first, group.writable)
         else:
-          emitArmMixedMemory(mixed, range[120..130](fact.opcode), fact.args.slots,
-              uint32(fact.args.x and 0xffffffff'u64), current)
+          emitArmMixedMemory(mixed, range[120..130](fact.opcode), payload.args.slots,
+              uint32(payload.args.x and 0xffffffff'u64), current)
       elif supportedArmOpcode(fact.opcode):
-        emitArmMixedPure(mixed, fact.opcode, fact.args.slots, fact.args.x)
+        emitArmMixedPure(mixed, fact.opcode, payload.args.slots, payload.args.x)
       else: return false
     let args = f.arguments[int(terminal)]
     emitArmMixedBranch(mixed, branch.opcode, args.slots,
@@ -3776,7 +3822,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     var current = offset
     while current < ending:
       let fact = f.plan.facts[int(f.sites[int(current)])]
-      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
       inc current
     let args = f.arguments[int(ending)]
     let fact = f.plan.facts[int(f.sites[int(ending)])]
@@ -3812,7 +3859,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       let plain: FlatHandler = flatCharge
       if f.handlers[int(header)] == plain and f.sites[int(header)] == f.sites[int(header+1)] and
           f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y and
-          f.handlers[int(header+1)] != f.plan.facts[int(f.sites[int(header+1)])].handler:
+          f.handlers[int(header+1)] != flatSourcePayload(f.plan,
+            f.plan.facts[int(f.sites[int(header+1)])]).handler:
         f.handlers[int(header)] = flatArmCheckedTail
         if flatArmDirtyShape(f, header): f.handlers[int(header)] = flatArmDirtyProbeTail
     true
@@ -3901,6 +3949,7 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           terminal = true
           break
         if not fact.fallthrough or not supportedArmOpcode(fact.opcode): return false
+        let payload = flatSourcePayload(f.plan, fact)
         if active == 3 and fact.opcode == 151 and current-header < 64 and
             int(current)+1 < f.handlers.len:
           # Only genuine adjacent source nodes within this charged block can hide an overwritten intermediate shift.
@@ -3908,12 +3957,13 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
           let nextHeader = int(next)+1 < f.sites.len and f.sites[int(next)] == f.sites[int(next)+1]
           if not nextHeader and f.sites[int(next)] == f.sites[int(current)]+1:
             let following = f.plan.facts[int(f.sites[int(next)])]
-            if following.opcode == 152 and not following.ending and following.fallthrough and
-                emitArmShiftPair(native, fact.args.slots, following.args.slots, fact.args.x,
-                    following.args.x):
-              current+=2 # Source spans/operation counts still include both original instructions.
-              continue
-        emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+            if following.opcode == 152 and not following.ending and following.fallthrough:
+              let followingPayload = flatSourcePayload(f.plan, following)
+              if emitArmShiftPair(native, payload.args.slots, followingPayload.args.slots,
+                  payload.args.x, followingPayload.args.x):
+                current+=2 # Source spans/operation counts still include both original instructions.
+                continue
+        emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
         inc current
       if not terminal: return false
     let admitted = publishArmRegion(jit, blocks, active)
@@ -4039,15 +4089,17 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     for ordinal in uint64(first)..<endingSource-1:
       let fact = f.plan.facts[int(ordinal)]
       if fact.opcode == 2: continue
-      emitArmOperation(body, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmOperation(body, fact.opcode, payload.args.slots, payload.args.x)
+    let dirtyPayload = flatSourcePayload(f.plan, f.plan.facts[int(f.sites[int(dirty+2)])])
     item = ArmMemoryCycleBlock(prefixHeader: prefix, dirtyHeader: dirty, tailHeader: tail,
       tailEntry: readEntry, other: outside,
       prefixSpan: prefixCharge.y, tailSpan: tailCharge.y, prefixOperations: pure+1,
       tailOperations: terminal-readEntry+1, prefixPrice: prefixCharge.x,
       tailPrice: tailCharge.x, prefixBody: move(body),
       dirty: flatArmDirtyBody(f, dirty),
-      dirtyBaseSlot: f.plan.facts[int(f.sites[int(dirty+2)])].args.slots.bIndex,
-      dirtyDisplacement: uint32(f.plan.facts[int(f.sites[int(dirty+2)])].args.x and 0xffffffff'u64),
+      dirtyBaseSlot: dirtyPayload.args.slots.bIndex,
+      dirtyDisplacement: uint32(dirtyPayload.args.x and 0xffffffff'u64),
       dirtyWord: flatArmWordShape(f, dirty), tailRead: flatArmReadBody(f, readEntry, terminal))
     true
 
@@ -4262,7 +4314,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       let fact = f.plan.facts[int(f.sites[int(current)])]
       if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode):
         return false
-      emitArmOperation(body, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmOperation(body, fact.opcode, payload.args.slots, payload.args.x)
     let terminal = f.plan.facts[int(f.sites[int(shape.pureTerminal)])]
     let args = f.arguments[int(shape.pureTerminal)]
     if not terminal.ending or terminal.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
@@ -4483,14 +4536,16 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let first = f.plan.facts[int(f.sites[int(offset)])]
     let readOpcode = int(first.opcode)
     assert readOpcode >= 52 and readOpcode <= 58
+    let firstPayload = flatSourcePayload(f.plan, first)
     var native = default(ArmReadSpan)
     armUseClippedReads(native, f.armJit)
-    emitArmDirectRead(native, first.args.slots, uint32(first.args.x and 0xffffffff'u64),
-        range[52..58](readOpcode))
+    emitArmDirectRead(native, firstPayload.args.slots, uint32(firstPayload.args.x and
+        0xffffffff'u64), range[52..58](readOpcode))
     for current in offset+1..<ending:
       let fact = f.plan.facts[int(f.sites[int(current)])]
       assert supportedArmOpcode(fact.opcode)
-      emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
     let branch = f.plan.facts[int(f.sites[int(ending)])]
     let args = f.arguments[int(ending)]
     emitArmReadBranch(native, branch.opcode, args.slots,
@@ -4555,24 +4610,25 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if ending <= offset or ending-offset > 64 or int(ending) > f.sites.len: return false
     var written = 0'u32
     var window = true
-    let base = f.plan.facts[int(f.sites[int(offset)])].args.slots.bIndex
+    let base = flatSourcePayload(f.plan, f.plan.facts[int(f.sites[int(offset)])]).args.slots.bIndex
     var first = high(uint32)
     var last = 0'u32
     var reads = 0'u32
     for current in offset..<ending:
       let fact = f.plan.facts[int(f.sites[int(current)])]
       if fact.ending or not fact.fallthrough: return false
+      let payload = flatSourcePayload(f.plan, fact)
       if fact.opcode in 124'u8..130'u8:
-        let displacement = uint32(fact.args.x and 0xffffffff'u64)
+        let displacement = uint32(payload.args.x and 0xffffffff'u64)
         if fact.opcode != 130: window = false # Narrow/signed reads retain their own individual guards, never the scaled word window.
-        if fact.args.slots.bIndex != base or (written and (1'u32 shl int(base))) != 0:
+        if payload.args.slots.bIndex != base or (written and (1'u32 shl int(base))) != 0:
           window = false # Derived or overwritten address bases retain the accepted individual guards.
         if displacement < first: first = displacement
         if displacement > last: last = displacement
-        written = written or (1'u32 shl int(fact.args.slots.aIndex))
+        written = written or (1'u32 shl int(payload.args.slots.aIndex))
         inc reads
       elif supportedArmOpcode(fact.opcode):
-        written = written or (1'u32 shl int(fact.args.slots.destinationIndex))
+        written = written or (1'u32 shl int(payload.args.slots.destinationIndex))
       else: return false
     if reads < 2 or ending-offset < 4: return false
     if last-first > 4088: window = false
@@ -4581,23 +4637,26 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       # Relative scaled loads need equal low displacement bits; the initial effective address may still be unaligned.
       for current in offset..<ending:
         let fact = f.plan.facts[int(f.sites[int(current)])]
-        if fact.opcode == 130 and (uint32(fact.args.x and 0xffffffff'u64)-first) mod 8 != 0:
-          window = false
+        if fact.opcode == 130:
+          let payload = flatSourcePayload(f.plan, fact)
+          if (uint32(payload.args.x and 0xffffffff'u64)-first) mod 8 != 0:
+            window = false
     if window: beginArmReadWindow(native, base, first, last)
     else: armUseClippedReads(native, f.armJit)
     for current in offset..<ending:
       # Only a proved stable base uses the shared window; all other mixed spans preserve their original lowering.
       let fact = f.plan.facts[int(f.sites[int(current)])]
+      let payload = flatSourcePayload(f.plan, fact)
       if fact.opcode in 124'u8..130'u8:
-        let displacement = uint32(fact.args.x and 0xffffffff'u64)
-        if window: emitArmWindowRead(native, fact.args.slots.aIndex, displacement-first)
+        let displacement = uint32(payload.args.x and 0xffffffff'u64)
+        if window: emitArmWindowRead(native, payload.args.slots.aIndex, displacement-first)
         else:
           # Restate the sealed source predicate on a local scalar before the closed opcode conversion.
           let readOpcode = int(fact.opcode)
           assert readOpcode >= 124 and readOpcode <= 130
-          emitArmRead(native, fact.args.slots, displacement, range[124..130](readOpcode))
+          emitArmRead(native, payload.args.slots, displacement, range[124..130](readOpcode))
       else:
-        emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+        emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
     true
 
   proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
@@ -4641,7 +4700,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
       let fact = f.plan.facts[int(f.sites[int(ending)])]
       if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
       inc ending
       inc count
     if int(ending) < f.sites.len and f.plan.facts[int(f.sites[int(ending)])].opcode in
@@ -4679,15 +4739,16 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
       let fact = f.plan.facts[int(f.sites[int(ending)])]
       if fact.ending or not fact.fallthrough: break
-      let displacement = uint32(fact.args.x and 0xffffffff'u64)
+      let payload = flatSourcePayload(f.plan, fact)
+      let displacement = uint32(payload.args.x and 0xffffffff'u64)
       if fact.opcode in 52'u8..58'u8:
-        emitArmDirectRead(native, fact.args.slots, displacement, range[52..58](int(fact.opcode)))
+        emitArmDirectRead(native, payload.args.slots, displacement, range[52..58](int(fact.opcode)))
         inc reads
       elif fact.opcode in 124'u8..130'u8:
-        emitArmRead(native, fact.args.slots, displacement, range[124..130](int(fact.opcode)))
+        emitArmRead(native, payload.args.slots, displacement, range[124..130](int(fact.opcode)))
         inc reads
       elif supportedArmOpcode(fact.opcode):
-        emitArmReadArithmetic(native, fact.opcode, fact.args.slots, fact.args.x)
+        emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
       else:
         break # Stores, host work and unsupported semantics keep the complete original prefix.
       inc ending
@@ -4724,7 +4785,8 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
       let fact = f.plan.facts[int(f.sites[int(ending)])]
       if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      emitArmOperation(native, fact.opcode, fact.args.slots, fact.args.x)
+      let payload = flatSourcePayload(f.plan, fact)
+      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
       inc ending
       inc count
     let terminal = if int(ending) < f.sites.len:
@@ -4902,9 +4964,10 @@ proc runFlatSingle*(f: var FlatFrame) =
       f.reason = priced
       return
   flatEmit(f, flatCharge, FlatArgs(x: cost, y: 1, slots: default(RegisterSlots)), 0)
-  let selected = fact.handler
+  let payload = flatSourcePayload(f.plan, fact)
+  let selected = payload.handler
   assert selected != nil
-  if selected != nil: flatEmit(f, selected, fact.args, 0)
+  if selected != nil: flatEmit(f, selected, payload.args, 0)
   flatEmit(f, flatSingleEnd, FlatArgs(x: uint64(fact.next), y: 0, slots: default(RegisterSlots)), 0)
   var offset = 0'u32
   while offset != flatStop:
