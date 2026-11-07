@@ -5226,6 +5226,14 @@ proc observeFlatHostMemory*(f: var FlatFrame): Memory =
   f.hostReady = true
   f.hostSnapshot
 
+proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
+  ## Bind a genuine host stop without publishing memory; the callback receives only copied CPU state.
+  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
+  f.hostSnapshot = default(Memory)
+  f.hostSnapshotPc = f.info.pc
+  f.hostReady = true
+  f.info
+
 func flatNodes*(f: FlatFrame): int =
   ## A copied observation reports stream size without exposing mutable cache arrays.
   f.handlers.len
@@ -5361,10 +5369,9 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
       return true
   false
 
-proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
-    registers: RegisterFile): oracle.StepError =
-  ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
-  ## Refused responses leave the complete stopped invocation and observation usable for repair/retry.
+func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile,
+    info: var MachineInfo): oracle.StepError =
+  ## Both observation capabilities bind the same stopped PC and derive its successor from immutable facts.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or not f.hostReady or
       f.info.pc != f.hostSnapshotPc or not f.info.blockCharged or uint64(f.info.gasDeficit) != 0:
     return oracle.StepError.InvalidHostSuspension
@@ -5373,16 +5380,53 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   let packed = f.plan.factAt[int(pc)]
   if packed == 0: return oracle.StepError.InvalidHostSuspension
   let fact = int(packed - 1)
+  info = f.info
+  info.pc = CodeAddress(f.plan.facts[fact].next)
+  info.gas = gas
+  info.registers = registers
+  oracle.StepError.None
+
+proc flatCommitHostContinuation(f: var FlatFrame, info: MachineInfo) =
+  ## Reset segment controls only after complete validation; memory rebasing is the owned caller's duty.
+  f.info = info
+  f.reason = oracle.StepError.None
+  f.exit = oracle.StepExit.Continued
+  f.faultPage = PageAddress(0)
+  f.hostCall = oracle.HostCallId(0)
+  f.remaining = 0
+  f.reservation = 0
+  f.stoppedAt = 0
+  f.attemptedExit = false
+  f.barrier = flatStop
+  f.barrierFact = 0
+  f.savedHandler = nil
+  # The next runFlat entry applies the same paid-interior and jump-cache rules for either capability.
+  f.hostReady = false
+  f.hostSnapshot = default(Memory)
+  inc f.fastResumes
+
+proc resumeFlatHostScalars*(f: var FlatFrame, gas: MachineGas,
+    registers: RegisterFile): oracle.StepError =
+  ## Scalar replies cannot change mappings or bytes; retain all dirty membership against the old baseline.
+  var info = default(MachineInfo)
+  let checked = flatHostContinuation(f, gas, registers, info)
+  if checked != oracle.StepError.None: return checked
+  flatCommitHostContinuation(f, info)
+  oracle.StepError.None
+
+proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
+    registers: RegisterFile): oracle.StepError =
+  ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
+  ## Refused responses leave the complete stopped invocation and observation usable for repair/retry.
+  var info = default(MachineInfo)
+  let checked = flatHostContinuation(f, gas, registers, info)
+  if checked != oracle.StepError.None: return checked
   # Reject oversized host mappings before extracting changed pages or allocating replacement storage.
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
   var delta = changedMemoryPageSlots(f.hostSnapshot, posterior)
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
-  var info = f.info
-  info.pc = CodeAddress(f.plan.facts[fact].next)
-  info.gas = gas
-  info.registers = registers
   var replace = delta.error != MachineError.None
   if not replace:
     let changes = machine.takeValue(delta)
@@ -5395,22 +5439,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
         assert applied
       f.sourceMemory = posterior
       flatClearDirty(f)
-      f.info = info
-      f.reason = oracle.StepError.None
-      f.exit = oracle.StepExit.Continued
-      f.faultPage = PageAddress(0)
-      f.hostCall = oracle.HostCallId(0)
-      f.remaining = 0
-      f.reservation = 0
-      f.stoppedAt = 0
-      f.attemptedExit = false
-      f.barrier = flatStop
-      f.barrierFact = 0
-      f.savedHandler = nil
-      # The next runFlat entry clears jump offsets before any resumed dispatch.
-      f.hostReady = false
-      f.hostSnapshot = default(Memory)
-      inc f.fastResumes
+      flatCommitHostContinuation(f, info)
       f.hostCopiedPages+=uint64(changes.len)
       return oracle.StepError.None
   # Mapping/permission/RO replacement rebuilds all capabilities from a genuine validated snapshot.

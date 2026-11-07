@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical full requests include cold code/runtime admission and every call restoration/publication.
+## Modern host fixtures explicitly select copied-CPU callbacks; legacy/foreign callbacks keep owned snapshots.
 
 import std/[assertions, syncio, envvars, monotimes]
 import ./pvm_invocation_scope
@@ -23,21 +24,32 @@ proc word(data: string, at, width: int): uint64 =
     # Framing is independent of the production operand decoder.
     result = result or (uint64(byte(data[at + i])) shl (8 * i))
 
-proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.raises: [].} =
-  ## Test host replies perform the same increment/sum as the Rust benchmark embedding.
-  let cpu = machineInfo(suspension.machine).value
+proc respondScalar(context: var HostContext, call: HostCallId,
+    cpu: MachineInfo): ScalarHostResponse {.raises: [].} =
+  ## Canonical register-only calls receive copied CPU state, matching the Rust embedding's needed capability.
   var registers = cpu.registers
-  if uint64(suspension.hostCall) == 13:
+  if uint64(call) == 13:
     # Host dispatch and reply construction are part of the measured embedding workload.
     registers[7] = RegisterValue(uint64(registers[7]) + 1)
   else:
     # Unexpected host identifiers are failures, never accepted timing samples.
-    assert uint64(suspension.hostCall) == 14
+    assert uint64(call) == 14
     registers[8] = RegisterValue(uint64(registers[8]) + uint64(registers[7]))
   inc context.calls
-  HostResponse(action: HostAction.Continue, gas: cpu.gas,
+  ScalarHostResponse(action: HostAction.Continue, gas: cpu.gas,
       gasDeficit: GasDeficit(0),
-    registers: registers, memory: memoryOf(suspension.machine).value)
+    registers: registers)
+
+func scalarBenchmarkHost(call: HostCallId): bool =
+  ## Explicit caller capability: only the two authored register-only callbacks select scalar dispatch.
+  uint64(call) in [13'u64, 14'u64]
+
+proc respond(context: var HostContext, suspension: StepOutcome): HostResponse {.raises: [].} =
+  ## Legacy execution and explicit foreign engines keep the original retainable snapshot contract.
+  let cpu = machineInfo(suspension.machine).value
+  let response = respondScalar(context, suspension.hostCall, cpu)
+  HostResponse(action: response.action, gas: response.gas, gasDeficit: response.gasDeficit,
+    registers: response.registers, memory: memoryOf(suspension.machine).value)
 
 template runBenchmark(source: Machine, context: var HostContext, kind: uint64,
     steps: ExecutionStepLimit, hosts: HostCallLimit, cycles: GasCycleLimit,
@@ -230,11 +242,12 @@ for row in 0..<11:
       else: getMonoTime().ticks
     var context = HostContext(calls: 0)
     let evaluated = if modern:
-      # Both public paths include their fresh invocation memory and immutable publication.
+      # The modern host role explicitly consumes scalar CPU callbacks; final owned publication stays timed.
+      # Guest attempts, callback/context arithmetic and complete memory oracles are unchanged.
       if kind == 2:
         executeWithHost(source, context, respond, ExecutionStepLimit(
             perLoop*iterations+1),
-          HostCallLimit(2*iterations), prepared)
+          HostCallLimit(2*iterations), prepared, scalarBenchmarkHost, respondScalar)
       else: execute(source, ExecutionStepLimit(perLoop*iterations+1), prepared)
     else:
       runBenchmark(source, context, kind, ExecutionStepLimit(
