@@ -15,6 +15,9 @@ const
   Patterns = [0'u8, 17, 128, 255, 0x38, 0xc5]
   Seeds = [0'u64, 31, 64, 0x80000000'u64, 0x8000000000000000'u64, high(uint64)]
 
+when Native and defined(pvmX86Jit):
+  import ../../../src/pvm/internal/[native_ir, native_platform, native_read_body]
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Only container framing uses the natural encoder; each original instruction is a literal byte row.
   let encoded = encode(JamNatural(value))
@@ -186,6 +189,55 @@ block contextAndCurrentOperands:
     let receipt = callX86ResidentAbiProof(jit, mapped, actual, true)
     assert receipt == ((1'u64 shl 32) or 123'u64) and actual == expected
     assert getEnv("RAGNAROK_PVM_RESIDENT_BAD_ABI") != "1", "callee-clobber probe missed"
+
+when Native and defined(pvmX86Jit):
+  block checkedReadAbiAndRefusal:
+    # The six dirty lanes exercise every SysV save while the late U64 can still refuse.
+    let wire = [0'u8, 0, 27, 2, 124, 0x11, 2, 0, 1, 149, 0x11, 0, 0, 1,
+      129, 0x12, 0xff, 149, 0x33, 1, 51, 6, 0x26, 51, 7, 0x37, 130, 0x54, 1, 0,
+      0x43, 0x48, 0x92, 0x06]
+    let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    let owner = decoded.value
+    let terminal = instruction(owner, CodeAddress(25))
+    assert terminal.error == ProgramError.None and terminal.value.opcode == 1
+    assert instructionTargetStartsBlock(terminal)
+    var body = initNativeReadBody(40, 48, 10, 18, 1)
+    for index, pc in [1'u32, 6, 11, 14, 17, 20, 23]:
+      let inst = instruction(owner, CodeAddress(pc))
+      assert inst.error == ProgramError.None
+      let operation = NativeOperation(opcode: inst.value.opcode, slots: instructionRegisters(inst),
+        immediate: uint64(inst.value.x))
+      assert addReadBodyOperation(body, uint32(41+index), uint32(11+index), operation)
+    assert body.complete
+    let image = lowerNativeReadBody(body)
+    assert isReadBody(image)
+
+    var original = initial(0x1234567800000000'u64)
+    original[1] = RegisterValue(0x00000001fffffffe'u64)
+    original[5] = RegisterValue(0x20000)
+    var expected = original
+    expected[1] = RegisterValue(0x10080) # The aliased U8 consumes old r1 before writing it.
+    expected[2] = RegisterValue(0xffffffff80000001'u64)
+    expected[3] = RegisterValue(0x1234567800000004'u64) # Mapped scalar read before its first write.
+    expected[4] = RegisterValue(0xfedcba9876543210'u64)
+    expected[6] = RegisterValue(0x26)
+    expected[7] = RegisterValue(0x37)
+    var byteRegion = [0xa5'u8, 0x80]
+    var signedRegion = [1'u8, 0, 0, 0x80]
+    var wideRegion = [0x10'u8, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+    var context = [initNativeReadRegion(0xffff'u64, byteRegion),
+      initNativeReadRegion(0x1007f'u64, signedRegion),
+      initNativeReadRegion(0x20000'u64, wideRegion)]
+    var actual = original
+    assert enterNativeReadBodyAbiProof(image, actual, context) and actual == expected
+    context[2] = initNativeReadRegion(0x20000'u64, wideRegion.toOpenArray(0, 6))
+    actual = original
+    assert not enterNativeReadBodyAbiProof(image, actual, context) and actual == original
+    context[2] = initNativeReadRegion(0x20000'u64, wideRegion)
+    assert enterNativeReadBodyAbiProof(image, actual, context) and actual == expected
+    assert byteRegion == [0xa5'u8, 0x80] and signedRegion == [1'u8, 0, 0, 0x80]
+    assert wideRegion == [0x10'u8, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
 
 when Native:
   assert scalarCases == 11448 and branchCases == 3456
