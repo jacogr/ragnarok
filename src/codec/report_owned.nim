@@ -36,6 +36,7 @@ proc reportOwnedError(error: CompositeError): OwnershipError {.raises: [].} =
   of OutputTooSmall: OwnershipError.OutputTooSmall # Complete destination storage is required.
   of AliasedBuffers: OwnershipError.AliasedBuffers # Borrowed source storage must stay stable.
   of LengthOverflow: OwnershipError.LengthOverflow # A host extent is unrepresentable.
+  of InvalidCount: OwnershipError.InvalidCount # Preserve a sequence schema refusal.
   of InvalidTag: OwnershipError.InvalidTag # No such work-output variant exists.
   of InvalidSpan: OwnershipError.InvalidSpan # A caller descriptor is invalid.
 

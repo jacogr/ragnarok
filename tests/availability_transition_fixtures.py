@@ -9,6 +9,7 @@ import hashlib
 import json
 import subprocess
 from test_support import ROOT
+from preview_vectors import pins as preview_pins, blob as preview_blob
 from assurances_oracle import wire
 from disputes_transition_fixtures import assignments
 from validator_rotation_fixtures import roster
@@ -17,10 +18,10 @@ from report_oracle import from_json, encode as report_wire
 
 # Preserve every supplied assurance, parent identity, roster and assignment without semantic repair.
 def prepare(folder):
-    pins = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
+    pins = preview_pins()
     rows, sources = [], []
     for path in sorted(p for p in pins['git_blobs'] if p.startswith('stf/assurances/') and p.endswith('.json')):
-        raw = subprocess.check_output(['git', '-C', str(ROOT/pins['path']), 'show', pins['commit']+':'+path])
+        raw = preview_blob(path)
         digest = hashlib.sha256(raw).hexdigest()
         assert digest == pins['git_blobs'][path]
         case = json.loads(raw)
@@ -29,7 +30,7 @@ def prepare(folder):
         records = []
         for a in case['input']['assurances']:
             bits = bytes.fromhex(a['bitfield'][2:])
-            records.append((bytes.fromhex(a['anchor'][2:]), bits.ljust(43, b'\0'),
+            records.append((bytes(32), bits.ljust(43, b'\0'),
                 a['validator_index'], bytes.fromhex(a['signature'][2:]))) # Preserve order and signatures.
         expected = case['output'].get('err', 'ok')
         reports = ','.join(report_wire(from_json(r)).hex() for r in case['output'].get('ok', {}).get('reported', [])) or '-'

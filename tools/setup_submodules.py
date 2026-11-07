@@ -103,6 +103,26 @@ def prefetch_blobs(path, revision, names):
                        input='\n'.join(missing)+'\n', text=True, check=True)
 
 
+def initialize_vector_preview(path):
+    """Retain the separately qualified preview without changing the supervisor-era checkout."""
+    preview = json.loads((ROOT/'spec/pins.json').read_text()).get('vectors_preview')
+    if preview is None:
+        return  # Older source pins have no explicitly selected preview.
+    revision = preview['commit']
+    if re.fullmatch(r'[0-9a-f]{40}', revision) is None or ROOT/preview['path'] != path:
+        raise ValueError('Invalid vector preview identity')
+    ref = 'refs/ragnarok/vectors/preview/' + revision
+    local = subprocess.run(['git', '-C', str(path), 'cat-file', '-e', revision+'^{commit}'],
+                           env={**os.environ, 'GIT_NO_LAZY_FETCH': '1'}, capture_output=True)
+    if local.returncode:
+        git('fetch', '--depth=1', '--filter=blob:none', '--no-tags',
+            '--no-recurse-submodules', '--no-write-fetch-head', 'origin', revision+':'+ref,
+            cwd=path)
+    else:
+        git('update-ref', ref, revision, cwd=path)  # Retain the exact selected history against collection.
+    prefetch_blobs(path, revision, preview['git_blobs'])
+
+
 def prefetch_polkavm_history(path, revision, names):
     """Keep the pinned historical commit and selected blobs beside the active checkout."""
     if not isinstance(revision, str) or re.fullmatch(r'[0-9a-f]{40}', revision) is None:
@@ -199,6 +219,8 @@ def main(arguments=None):
         git('submodule','update','--init',*recursive,'--checkout','--depth=1',
             '--filter=blob:none','--',relative)
         assert git('rev-parse','HEAD',cwd=path,output=True)==revision, f'Wrong checkout: {relative}'
+        if relative=='vendor/jamtestvectors':
+            initialize_vector_preview(path)
         if relative=='vendor/polkavm':
             initialize_polkavm_history(path, revision)
         elif relative=='vendor/jamtestvectors' and arguments.prefetch_blobs:

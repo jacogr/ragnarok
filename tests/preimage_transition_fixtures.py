@@ -16,6 +16,7 @@ from state_layout_oracle import chapter_key, token
 from state_trie_oracle import tree
 from test_codec import reference_encode as natural
 from test_support import ROOT
+from preview_vectors import pins as preview_pins, blob as preview_blob
 
 
 # Reduced published account schemas omit metadata; preserve each real lookup/request value unchanged.
@@ -40,17 +41,18 @@ def mapping(state):
 
 # Pin-check complete JSON cases before independently framing transport and expected observations.
 def prepare(folder):
-    pins = json.loads((ROOT/'spec/pins.json').read_text())['vectors']
+    pins = preview_pins()
     names = ['preimage_needed-1', 'preimage_needed-2', 'preimage_not_needed-1', 'preimage_not_needed-2']
     names += [f'preimages_order_check-{i}' for i in range(1, 5)]
+    names += ['preimages_max_count-1']
     lines, sources = [], []
     # Both pinned profile families exercise the same preimage rules independently of roster cardinality.
     for profile in ('tiny', 'full'):
         # Preserve every success and refusal case, including order and duplicate checks.
         for name in names:
-            # These sixteen cases are the complete pinned preimages STF JSON family.
+            # All eighteen cases include the 256-item boundary in both profiles.
             path = f'stf/preimages/{profile}/{name}.json'
-            raw = subprocess.check_output(['git', '-C', str(ROOT/pins['path']), 'show', pins['commit']+':'+path])
+            raw = preview_blob(path)
             digest = hashlib.sha256(raw).hexdigest()
             assert digest == pins['git_blobs'][path], path
             case = json.loads(raw)
@@ -61,8 +63,12 @@ def prepare(folder):
                 # Service uses E4 and blob length uses the general compact natural; retain source order.
                 blob = bytes.fromhex(item['blob'][2:])
                 wire += item['requester'].to_bytes(4, 'little')+natural(len(blob))+blob
+            # The binary input contains this exact sequence followed by its fixed block slot.
+            binary = preview_blob(path.removesuffix('.json') + '.bin')
+            assert binary.startswith(wire + case['input']['slot'].to_bytes(4, 'little')), path
             verdict = 'None' if 'ok' in case['output'] else {
-                'preimage_unneeded': 'NotRequested', 'preimages_not_sorted_unique': 'NotOrderedUnique'
+                'preimage_unneeded': 'NotRequested', 'preimages_not_sorted_unique': 'NotOrderedUnique',
+                'preimages_too_big': 'TooBig'
             }[case['output']['err']]
             statistics = case['post_state']['statistics']
             assert case['pre_state']['statistics'] == []

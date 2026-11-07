@@ -192,7 +192,7 @@ proc inspect[kind: static[ComponentKind]](input: openArray[byte], config: FrameC
     info = ComponentInfo(records: parsed.count, consumed: parsed.consumed)
   elif kind == ComponentKind.Preimages:
     # This static alternative delegates all preimages framing and structural policy to its existing codec.
-    let parsed = inspectPreimages(input, config.preimages, config.maxBytes)
+    let parsed = inspectPreimageExtrinsic(input, config.preimages, config.maxBytes)
     # A child failure must remain attributed to its schema, with no partial parent value.
     if parsed.error != CompositeError.None:
       return failed[ComponentInfo](ComponentFailure(schema: ComponentKind.Preimages,

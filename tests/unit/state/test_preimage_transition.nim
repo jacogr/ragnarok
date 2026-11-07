@@ -32,7 +32,7 @@ proc storeLimits(): StateStoreLimits =
 
 ## Independent admission work/copy ceilings are reapplied even if capture used a broader policy.
 proc config(): PreimageLimits =
-  PreimageLimits(items: ElementLimit(100), perBlob: ByteLimit(1000000), totalBlobBytes: ByteLimit(1000000))
+  PreimageLimits(items: ElementLimit(300), perBlob: ByteLimit(1000000), totalBlobBytes: ByteLimit(1000000))
 
 ## Trusted hexadecimal fixture transport preserves empty values explicitly as '-'.
 proc unhex(text: string): seq[byte] =
@@ -110,10 +110,10 @@ proc published() {.raises.} =
       assert statistics == 0 # Invalid published extrinsics preserve account/statistics projections.
       matches(state.snapshot.value, after, unhex(fields[8]))
     inc cases
-  assert cases == 16
+  assert cases == 18
 
 ## Build canonical test input framing before native owner capture; admission never receives these mutable arrays.
-proc frame(items: openArray[Item]): OwnedFrame =
+proc frame(items: openArray[Item], bounds: PreimageLimits = config()): OwnedFrame =
   var wire: seq[byte] = @[]
   let count = natural.encode(JamNatural(uint64(items.len)))
   for i in 0..<count.len: wire.add(count.bytes[i]) # General compact outer count.
@@ -123,7 +123,7 @@ proc frame(items: openArray[Item]): OwnedFrame =
     let size = natural.encode(JamNatural(uint64(item.blob.len)))
     for i in 0..<size.len: wire.add(size.bytes[i]) # General compact blob length.
     for b in item.blob: wire.add(b) # Preserve exact input order and raw payload.
-  decodeOwnedPreimages(wire, config()).value
+  decodeOwnedPreimages(wire, bounds).value
 
 ## Derive a genuine request identity using the actual content hash and advertised length.
 proc request(item: Item, history = requestedHistory()): StateEntry =
@@ -362,8 +362,48 @@ proc lifetime() =
   recordArcRelease("preimage_transition", 1000, before, after)
 
 ## Run the complete focused suite and retain captured sources beyond construction scopes.
+proc protocolBounds() =
+  ## Count and raw payload protocol ceilings cannot be widened by capture or admission policy.
+  let roomy = PreimageLimits(items: ElementLimit(1000),
+    perBlob: ByteLimit(MaxPreimageExtrinsicDataBytes + 1),
+    totalBlobBytes: ByteLimit(MaxPreimageExtrinsicDataBytes + 1))
+  var many: seq[Item] = @[]
+  for i in 0..<257:
+    many.add(Item(service: uint32(i), blob: @[])) # Unique sorted rows isolate cardinality.
+  var empty = newStateStore(@[], storeLimits()).value
+  let emptyPrior = empty.snapshot.value
+  let oversizedCount = frame(many, roomy)
+  failHash(2)
+  assert admitPreimages(emptyPrior, oversizedCount, roomy).error ==
+      PreimageTransitionError.TooManyItems
+  failHash(0)
+  # Internal host-provided value sets retain their separate, locally bounded domain.
+  assert prepareProvidedPreimages(oversizedCount, roomy).error == PreimageTransitionError.None
+  var large = @[Item(service: 1, blob: newSeq[byte](int(MaxPreimageExtrinsicDataBytes div 2))),
+    Item(service: 2, blob: newSeq[byte](int(MaxPreimageExtrinsicDataBytes div 2)))]
+  var state = newStateStore(entries(large), storeLimits()).value
+  let exact = frame(large, roomy)
+  let admitted = admitPreimages(state.snapshot.value, exact, roomy)
+  assert admitted.error == PreimageTransitionError.None
+  assert uint64(admitted.value.preimageInfo.value.bytes) == MaxPreimageExtrinsicDataBytes
+  for index in 0..<2:
+    let provision = admitted.value.provisionAt(ProvisionIndex(uint64(index))).value
+    assert uint32(provision.service) == uint32(index + 1)
+    assert uint64(provision.count) == 1
+    assert uint64(provision.bytes) == MaxPreimageExtrinsicDataBytes div 2
+  var tight = roomy
+  tight.totalBlobBytes = ByteLimit(MaxPreimageExtrinsicDataBytes - 1)
+  assert admitPreimages(state.snapshot.value, exact, tight).error ==
+      PreimageTransitionError.LimitExceeded
+  large[1].blob.add(0)
+  let excess = frame(large, roomy)
+  failHash(2)
+  assert admitPreimages(state.snapshot.value, excess, roomy).error == PreimageTransitionError.TooBig
+  failHash(0)
+
 proc main() {.raises.} =
   published()
+  protocolBounds()
   let retained = boundaries()
   assert uint32(retained.preimageSource.value.ownedService(0).value) == 0
   malformed()

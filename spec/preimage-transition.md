@@ -1,5 +1,10 @@
 # Preimage admission and integration
 
+Current source and preview compatibility are recorded in the
+[preimage limits and supervisor reconciliation](gp-preimages-preview-reconciliation.md).
+The historical qualification below retains its original scope.
+
+
 ## Current request-length error boundary
 
 Scope: on Gray Paper `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d` (PR542),

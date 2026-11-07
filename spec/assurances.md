@@ -1,5 +1,10 @@
 # Assurances extrinsic codec
 
+Current source and preview compatibility are recorded in the
+[preimage limits and supervisor reconciliation](gp-preimages-preview-reconciliation.md).
+The historical qualification below retains its original scope.
+
+
 Target source: Gray Paper `fad0ded4a433052397bf7234352a57fe491883f7`, Appendix C.1/C.2
 and `text/reporting_assurance.tex`. Source-pin adoption is the final stack layer; see
 [qualification](graypaper-current-qualification.md). Historical vector hashes stay pinned.
