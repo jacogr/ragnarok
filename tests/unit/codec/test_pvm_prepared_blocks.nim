@@ -156,6 +156,58 @@ proc shortOperandReuse() =
 
 shortOperandReuse()
 
+proc headerCatalogueLimits() =
+  ## Unreachable headers still consume global facts; demanded extended operands retain cross-marker bytes.
+  let program = owner([@[0'u8], @[20'u8, 255], @[50'u8, 0]])
+  var limits = defaultPreparedLimits(GasCycleLimit(100000))
+  limits.resources.codeBytes = ProgramByteLimit(5)
+  limits.resources.facts = ExecutionFactLimit(3)
+  limits.resources.nodes = ExecutionNodeLimit(5)
+  limits.resources.preparation = ExecutionPreparationLimit(6)
+  var tooFew = limits
+  tooFew.resources.facts = ExecutionFactLimit(2)
+  assert newPreparedProgram(program, tooFew).error == PreparationError.LimitExceeded
+  let admitted = newPreparedProgram(program, limits)
+  assert admitted.error == PreparationError.None
+  let prepared = admitted.value
+  let empty = preparedInfo(prepared).value
+  assert empty.decodedInstructions == 3 and empty.streamNodes == 0 and empty.preparationUnits == 0
+  var initial = default(RegisterFile)
+  for index in 0..<13:
+    # Distinct registers expose descriptor saturation and any unintended write during lazy operand reconstruction.
+    initial[index] = RegisterValue(uint64(100+index))
+  initial[0] = RegisterValue(0xffff0000'u64)
+  var loaded = false
+  for pc in [0'u64, 1, 0, 1]:
+    # PC0 panics before the load; PC1 loads the following marked opcode byte50 into saturated R12, then halts.
+    let before = MachineInfo(pc: CodeAddress(pc), gas: MachineGas(1000000), registers: initial)
+    let input = captureMachine(program, mapped, before).value
+    let actual = execute(input, ExecutionStepLimit(2), prepared)
+    assert actual.error == StepError.None
+    assert actual.value.exit == (if pc == 0: StepExit.Panic else: StepExit.Halt)
+    let posterior = machineInfo(actual.value.machine).value
+    assert uint64(posterior.pc) == 0 and uint64(posterior.gasDeficit) == 0
+    for index in 0..<13:
+      # The extended immediate reads across the marked jump; truncation at its boundary would incorrectly load zero.
+      let expected = if pc == 1 and index == 12: RegisterValue(50) else: initial[index]
+      assert posterior.registers[index] == expected
+    sameCpu(machineInfo(input).value, before)
+    if pc == 1: loaded = true
+    let current = preparedInfo(prepared).value
+    assert current.decodedInstructions == 3
+    assert current.streamNodes == (if loaded: 5'u64 else: 2'u64)
+    assert current.preparationUnits == (if loaded: 6'u64 else: 2'u64)
+  let unpaid = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(1),
+    gas: MachineGas(0), registers: initial)).value
+  assert execute(unpaid, ExecutionStepLimit(0), prepared).error == StepError.StepLimitExceeded
+  let exhausted = execute(unpaid, ExecutionStepLimit(2), prepared)
+  assert exhausted.error == StepError.None and exhausted.value.exit == StepExit.OutOfGas
+  assert machineInfo(exhausted.value.machine).value.registers[12] == initial[12]
+  assert preparedInfo(prepared).value.streamNodes == 5
+  assert preparedInfo(prepared).value.preparationUnits == 6
+
+headerCatalogueLimits()
+
 proc registerPrefixMatrix() =
   ## Every literal register opcode precedes every genuine second opcode; budgets distinguish original and paired dispatch.
   var initial = default(RegisterFile)

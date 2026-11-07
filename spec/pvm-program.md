@@ -276,3 +276,39 @@ program.nim/register_ops.nim and their frozen snapshots. Native instructions cha
 (199,920,934→197,823,901). Instrumented clocks are discarded. These counter changes
 support the separate paired results without predicting timing or memo-policy gains.
 The full archive and source-binding proof remain under `build/pvm12/ci-40135301299/`.
+
+
+## Shared checked instruction headers, 2026-11-07
+
+`instructionHeader(program, address)` returns copied scalar source metadata in a guarded
+`ProgramResult[InstructionHeader]`: address, opcode and bounded skip, plus the success-guarded
+`instructionHasFallthrough` query. It validates the immutable owner, address extent before
+narrowing, marked boundary and supported opcode family. A nil owner returns `InvalidOwner` even
+for an invalid address; out-of-range and unmarked addresses return `InvalidInstruction`. The
+header contains no operand, static-target or register-coordinate authority and retains no owner.
+Public scalar copies cannot alter the private family/fallthrough metadata in the tagged result.
+
+One private classifier covers the same 139 opcode bytes and thirteen existing operand families.
+Capture validation and full/header lookup derive support from that classifier. Full `instruction`
+uses the same checked reader once, then one exhaustive operand-family extractor with the original
+register saturation, zero suffix, memory-role and target equations. The family token is reused;
+full lookup does not classify twice. Public OperandShape members/order and Program ownership are
+unchanged. Raw/JAM final-successor distinctions and unsupported-byte admission remain unchanged.
+
+Independent literal opcode/marker fixtures cover nil/MAX64/code-end/unmarked errors, gap0..24
+and gap25, copied-owner/input mutation and final raw/JAM opcodes. The existing independent
+62,550-case operand reference still checks full fields in both owned profiles. Local checked ARC
+semantic checks cover interpreter, ARM and Linux AMD64 conditionals; runtime coverage includes
+program, operand, prepared/gas/step and lifecycle consumers. No new language privacy/type-mismatch
+or enum-exhaustiveness probes are part of this change.
+
+Actual local ARM C layout measures header32/result40 bytes versus unchanged full instruction56/
+result64, all aligned to8. Private reader/classifier/extractor have no added owner-reference or
+allocator calls. Full lookup retains its existing one owner lease and writes the extracted
+Instruction directly into the final result payload. Linked classifier sites are mutually exclusive
+exits of the skip scan, with at most one classification per query. Outlined calls remain: the96-byte
+wrapper plus64-byte reader reaches160 bytes on the ordinary reader path, versus128 bytes for the
+same-source/pin/profile original module in a different application image. This is static lowering
+evidence, not a timing claim or a public ABI promise. Native Linux layout/execution qualification
+belongs to the exact-head canonical CI gate. See the shared-header measurement record in
+[pvm-handler-stream.md](pvm-handler-stream.md#shared-header-global-preparation).

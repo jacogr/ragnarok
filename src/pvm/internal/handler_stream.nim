@@ -1291,6 +1291,16 @@ proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact
     priceIndex: priceIndex, opcode: item.opcode, ending: terminatesBlock(item.opcode),
     fallthrough: instructionHasFallthrough(decoded))
 
+proc flatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32): FlatFact =
+  ## Capture genuine header boundaries with the same logical quotas; this overload grants no operand facts.
+  assert decoded.error == ProgramError.None
+  let item = decoded.value
+  let pc = uint64(item.address)
+  assert pc <= uint64(high(uint32))-25
+  FlatFact(pc: uint32(pc), next: uint32(pc+1+uint64(item.skip)), sourceCount: 0,
+    priceIndex: priceIndex, opcode: item.opcode, ending: terminatesBlock(item.opcode),
+    fallthrough: instructionHasFallthrough(decoded))
+
 func flatSourcePayload(decoded: ProgramResult[Instruction]): FlatSourcePayload =
   ## Pack the original operands and target-dependent handler; mutable stream arguments never grant source facts.
   assert decoded.error == ProgramError.None
@@ -1353,7 +1363,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   while pc < extent.value:
     if uint64(owner.facts.len) >= uint64(limits.facts):
       return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
-    let decoded = instruction(source, CodeAddress(pc))
+    let decoded = instructionHeader(source, CodeAddress(pc))
     if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
         status: FlatError.InvalidProgram)
     let item = decoded.value

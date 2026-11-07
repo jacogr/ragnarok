@@ -5,7 +5,7 @@
 ## during validation, then copied into private acyclic ARC storage.
 ##
 ## Exposes Program snapshots and nominal address/index/limit types, decodeProgram/decodeJamProgram,
-## instruction/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
+## instruction/header/opcode/jump lookup, raw instruction-byte lookup with zero padding, and block-boundary
 ## and containing-block queries. Genuine instruction results additionally expose success-guarded
 ## instructionHasFallthrough/TargetStartsBlock and instructionRegisters/instructionMemoryOperands
 ## without publishing mutable validation metadata.
@@ -50,6 +50,12 @@ type
     NoArguments, OneImmediate, ExtendedImmediate, TwoImmediates, OneOffset,
     RegisterImmediate, RegisterTwoImmediates, RegisterImmediateOffset, TwoRegisters,
     TwoRegistersImmediate, TwoRegistersOffset, TwoRegistersTwoImmediates, ThreeRegisters
+  InstructionHeader* = object ## Copied source boundaries; only a genuine result grants fallthrough, never decoded operand facts.
+    address*: CodeAddress
+    opcode*: byte
+    skip*: range[0..24]
+    family: OperandShape     # The full decoder consumes the same private classification without a second lookup.
+    fallthroughPresent: bool # Extracted scalar edits cannot rebind this owner-derived fact.
   RegisterSlots* = object ## Copied bounded host coordinates retain no program/machine owner; only genuine instruction queries bind them to operands.
     aSlot, bSlot, dSlot, writeSlot: range[0'u8..12'u8]
   MemoryBase* {.pure.} = enum ## A decoded memory address uses no register, original A or original B.
@@ -86,6 +92,11 @@ func instructionHasFallthrough*(decoded: ProgramResult[Instruction]): bool {.inl
   ## A genuine successful decode proves whether its sequential successor is executable in the same immutable program.
   ## Default/failed results grant no fact. Extracted mutable operand copies cannot change or rebind this capability.
   decoded.completed.fallthroughPresent
+
+func instructionHasFallthrough*(header: ProgramResult[InstructionHeader]): bool {.inline,
+    requires: header.status == ProgramError.None.} =
+  ## A genuine header proves sequential membership in its immutable v_blob chain without granting operands.
+  header.completed.fallthroughPresent
 
 func instructionTargetStartsBlock*(decoded: ProgramResult[Instruction]): bool {.inline,
     requires: decoded.status == ProgramError.None.} =
@@ -175,11 +186,62 @@ func boundedRegister(value: byte): range[0'u8..12'u8] {.inline.} =
   if value > 12: return 12'u8
   value
 
+func opcodeShape(opcode: byte): ProgramResult[OperandShape] =
+  ## One supported-opcode authority serves capture, header admission and exhaustive full operand decoding.
+  case opcode
+  of 0..2:
+    # Trap, fallthrough and unlikely have no operands.
+    ProgramResult[OperandShape](status: ProgramError.None, completed: OperandShape.NoArguments)
+  of 10:
+    # Host suspension carries one compact immediate.
+    ProgramResult[OperandShape](status: ProgramError.None, completed: OperandShape.OneImmediate)
+  of 20:
+    # The extended load carries an unconditional eight-byte immediate.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.ExtendedImmediate)
+  of 30..33:
+    # Absolute immediate stores carry two immediates.
+    ProgramResult[OperandShape](status: ProgramError.None, completed: OperandShape.TwoImmediates)
+  of 40:
+    # The static jump carries one signed offset.
+    ProgramResult[OperandShape](status: ProgramError.None, completed: OperandShape.OneOffset)
+  of 50..62:
+    # Dynamic jump, immediate load and absolute memory operations share one register/immediate layout.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.RegisterImmediate)
+  of 70..73:
+    # Indirect immediate stores use a register and two immediates.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.RegisterTwoImmediates)
+  of 80..90:
+    # Static load/jump and immediate branches use a register, immediate and signed offset.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.RegisterImmediateOffset)
+  of 100..110:
+    # Unary register operations name D and A.
+    ProgramResult[OperandShape](status: ProgramError.None, completed: OperandShape.TwoRegisters)
+  of 120..161:
+    # Indirect memory and immediate arithmetic name A/B and one immediate.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.TwoRegistersImmediate)
+  of 170..175:
+    # Register comparisons name A/B and a signed offset.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.TwoRegistersOffset)
+  of 180:
+    # Dynamic load-and-jump carries A/B and two immediates.
+    ProgramResult[OperandShape](status: ProgramError.None,
+        completed: OperandShape.TwoRegistersTwoImmediates)
+  of 190..230:
+    # Register arithmetic names A/B/D.
+    ProgramResult[OperandShape](status: ProgramError.None, completed: OperandShape.ThreeRegisters)
+  else:
+    # Unsupported bytes fail before either query can publish a successful result.
+    ProgramResult[OperandShape](status: ProgramError.InvalidInstruction)
+
 func validOpcode*(opcode: byte): bool =
-  ## Exact set U from the 0.8.0 instruction tables, including unlikely (2).
-  opcode in {0'u8..2'u8, 10'u8, 20'u8, 30'u8..33'u8, 40'u8, 50'u8..62'u8,
-    70'u8..73'u8, 80'u8..90'u8, 100'u8..110'u8, 120'u8..161'u8,
-    170'u8..175'u8, 180'u8, 190'u8..230'u8}
+  ## Exact set U follows the same complete operand-family dispatch, including unlikely (2).
+  opcodeShape(opcode).error == ProgramError.None
 
 func terminatesBlock*(opcode: byte): bool =
   ## Exact set T; a host call suspends execution but does not terminate a basic block.
@@ -399,104 +461,110 @@ func validStaticTarget(data: ProgramData, target: uint64): bool =
   if not marked(data.bytes, data.maskOffset, pc): return false
   startsBlock(data, pc)
 
-proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruction] =
-  ## Copy a decoded instruction; invalid addresses and default handles never yield operands.
-  # A default handle has no validated storage to inspect.
-  if program.data == nil: return ProgramResult[Instruction](status: ProgramError.InvalidOwner)
-  let data = program.data
+proc readInstructionHeader(data: ProgramData, address: CodeAddress): ProgramResult[
+    InstructionHeader] =
+  ## Read only source boundaries and one family token from a live immutable owner; operands remain untouched.
   let pc = uint64(address)
   # Check the address before narrowing it or accessing the mask.
   if pc >= uint64(data.codeLength):
-    return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
-  # Only marked bytes may be decoded as opcodes.
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidInstruction)
+  # Only marked bytes can grant an instruction header, even if an operand encodes a valid opcode.
   if not marked(data.bytes, data.maskOffset, int(pc)):
-    return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidInstruction)
   let opcode = codeByte(data, pc)
   let skip = distance(data.bytes, data.maskOffset, data.codeLength, int(pc))
+  let family = opcodeShape(opcode)
+  # Keep an explicit typed support check rather than assuming capture and decoder coverage agree.
+  if family.error != ProgramError.None:
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidInstruction)
+  # The immutable v_blob walk validated this same distance and successor; pc<codeLength bounds subtraction.
+  ProgramResult[InstructionHeader](status: ProgramError.None, completed: InstructionHeader(
+    address: address, opcode: opcode, skip: skip, family: family.value,
+    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1))
+
+proc instructionHeader*(program: Program, address: CodeAddress): ProgramResult[InstructionHeader] =
+  ## Copy a marked boundary without operand/target facts; default owners fail before address checks.
+  if program.data == nil:
+    # A header contains scalar observations, never a borrow or a replacement for its genuine source owner.
+    return ProgramResult[InstructionHeader](status: ProgramError.InvalidOwner)
+  let data = program.data
+  readInstructionHeader(data, address)
+
+func decodeOperands(data: ProgramData, header: InstructionHeader): Instruction =
+  ## Every admitted family has total operand equations; this private value result cannot defer a typed decode refusal.
+  let pc = uint64(header.address)
+  let opcode = header.opcode
+  let skip = header.skip
   let first = int(codeByte(data, pc + 1))
-  # v_blob traversed every marked opcode with this same capped skip. Within the owner extent,
-  # the next sequential position is therefore already a validated marked opcode, not an arbitrary byte.
-  # pc<codeLength proves both subtractions below; no speculative successor addition can wrap.
-  var item = Instruction(address: address, opcode: opcode, skip: skip,
-    shape: OperandShape.NoArguments, a: RegisterIndex(0), b: RegisterIndex(0),
+  var item = Instruction(address: header.address, opcode: opcode, skip: skip,
+    shape: header.family, a: RegisterIndex(0), b: RegisterIndex(0),
     d: RegisterIndex(0), x: Immediate(0), y: Immediate(0), displacement: 0,
-    fallthroughPresent: uint64(skip) < uint64(data.codeLength)-pc-1, targetStartsBlock: false,
+    fallthroughPresent: header.fallthroughPresent, targetStartsBlock: false,
         registerSlots: default(RegisterSlots), memoryOperands: default(MemoryOperands))
   # Each branch corresponds to one complete operand shape in the pinned instruction tables.
-  case opcode
-  of 0..2:
+  case header.family
+  of OperandShape.NoArguments:
     # Argument-free opcodes ignore any intervening unmarked bytes.
     discard
-  of 10:
+  of OperandShape.OneImmediate:
     # A single compact immediate uses up to four skipped bytes.
-    item.shape = OperandShape.OneImmediate
     item.x = Immediate(extended(data, pc + 1, min(4, int(skip))))
-  of 20:
+  of OperandShape.ExtendedImmediate:
     # Extended immediates always read eight bytes, independently of skip.
-    item.shape = OperandShape.ExtendedImmediate
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.registerSlots.writeSlot = item.registerSlots.aSlot # Extended load writes its decoded A.
     item.x = Immediate(unsignedOperand(data, pc + 2, 8))
-  of 30..33:
+  of OperandShape.TwoImmediates:
     # The prefix chooses X width; remaining skipped bytes choose Y width.
-    item.shape = OperandShape.TwoImmediates
     let xlen = min(4, first mod 8)
     item.x = Immediate(extended(data, pc + 2, xlen))
     item.y = Immediate(extended(data, pc + 2 + uint64(xlen), min(4, max(0, int(skip) - xlen - 1))))
-  of 40:
+  of OperandShape.OneOffset:
     # Preserve the signed displacement for subsequent checked static-target resolution.
-    item.shape = OperandShape.OneOffset
     item.displacement = offsetOperand(data, pc + 1, min(4, int(skip)))
-  of 50..62:
+  of OperandShape.RegisterImmediate:
     # Register nibbles saturate at 12; they are not rejected or reduced modulo 13.
-    item.shape = OperandShape.RegisterImmediate
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     if opcode == 51: item.registerSlots.writeSlot = item.registerSlots.aSlot # Only load_imm is register arithmetic in this family.
     item.x = Immediate(extended(data, pc + 2, min(4, max(0, int(skip) - 1))))
-  of 70..73, 80..90:
+  of OperandShape.RegisterTwoImmediates, OperandShape.RegisterImmediateOffset:
     # These groups share X and register decoding; Y is immediate or signed offset.
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     let xlen = min(4, (first div 16) mod 8)
     let ylen = min(4, max(0, int(skip) - xlen - 1))
     item.x = Immediate(extended(data, pc + 2, xlen))
-    if opcode <= 73:
+    if header.family == OperandShape.RegisterTwoImmediates:
       # Stores use two register-width immediate bit patterns.
-      item.shape = OperandShape.RegisterTwoImmediates
       item.y = Immediate(extended(data, pc + 2 + uint64(xlen), ylen))
     else:
       # Static jumps and immediate branches use a signed second operand.
-      item.shape = OperandShape.RegisterImmediateOffset
       item.displacement = offsetOperand(data, pc + 2 + uint64(xlen), ylen)
-  of 100..110:
+  of OperandShape.TwoRegisters:
     # This group uniquely names the low nibble D and the high nibble A.
-    item.shape = OperandShape.TwoRegisters
     item.registerSlots.dSlot = boundedRegister(byte(first mod 16))
     item.d = RegisterIndex(byte(item.registerSlots.dSlot))
     item.registerSlots.writeSlot = item.registerSlots.dSlot # Unary/three-register arithmetic writes its explicit D.
     item.registerSlots.aSlot = boundedRegister(byte(first div 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
-  of 120..161, 170..175:
+  of OperandShape.TwoRegistersImmediate, OperandShape.TwoRegistersOffset:
     # Both groups decode low A and high B; the last operand determines their shape.
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.registerSlots.bSlot = boundedRegister(byte(first div 16))
     item.b = RegisterIndex(byte(item.registerSlots.bSlot))
     let width = min(4, max(0, int(skip) - 1))
-    if opcode <= 161:
+    if header.family == OperandShape.TwoRegistersImmediate:
       # Arithmetic and indirect memory instructions use a sign-extended immediate.
-      item.shape = OperandShape.TwoRegistersImmediate
       if opcode >= 131: item.registerSlots.writeSlot = item.registerSlots.aSlot # Immediate arithmetic writes A; indirect memory retains zero.
       item.x = Immediate(extended(data, pc + 2, width))
     else:
       # Register comparisons use a signed static branch displacement.
-      item.shape = OperandShape.TwoRegistersOffset
       item.displacement = offsetOperand(data, pc + 2, width)
-  of 180:
+  of OperandShape.TwoRegistersTwoImmediates:
     # Dynamic load-and-jump has a second descriptor byte before its two immediates.
-    item.shape = OperandShape.TwoRegistersTwoImmediates
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.registerSlots.bSlot = boundedRegister(byte(first div 16))
@@ -504,9 +572,8 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     let xlen = min(4, int(codeByte(data, pc + 2)) mod 8)
     item.x = Immediate(extended(data, pc + 3, xlen))
     item.y = Immediate(extended(data, pc + 3 + uint64(xlen), min(4, max(0, int(skip) - xlen - 2))))
-  of 190..230:
+  of OperandShape.ThreeRegisters:
     # PR554: every current-paper owner masks the third-register destination to its low nibble.
-    item.shape = OperandShape.ThreeRegisters
     item.registerSlots.aSlot = boundedRegister(byte(first mod 16))
     item.a = RegisterIndex(byte(item.registerSlots.aSlot))
     item.registerSlots.bSlot = boundedRegister(byte(first div 16))
@@ -516,9 +583,6 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     item.registerSlots.dSlot = boundedRegister(byte(destination))
     item.d = RegisterIndex(byte(item.registerSlots.dSlot))
     item.registerSlots.writeSlot = item.registerSlots.dSlot # Unary/three-register arithmetic writes its explicit D.
-  else:
-    # A valid owner cannot contain another marked opcode; retain an explicit failure alternative.
-    return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
   item.memoryOperands = decodeMemoryOperands(opcode) # Derive once after operand validation; cached results carry these facts unchanged.
   if opcode == 1:
     # A present successor after a terminating fallthrough is necessarily a block boundary in the validated chain.
@@ -531,7 +595,19 @@ proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruc
     else:
       # Captured PCs fit host int and nonnegative offsets fit signed32, so this uint64 sum cannot wrap.
       item.targetStartsBlock = validStaticTarget(data, pc+uint64(item.displacement))
-  ProgramResult[Instruction](status: ProgramError.None, completed: item)
+  item
+
+proc instruction*(program: Program, address: CodeAddress): ProgramResult[Instruction] =
+  ## Copy complete original operands after the same owner/boundary/family checks as instructionHeader.
+  if program.data == nil:
+    # Default owners retain InvalidOwner even when the supplied address is also invalid.
+    return ProgramResult[Instruction](status: ProgramError.InvalidOwner)
+  let data = program.data
+  let header = readInstructionHeader(data, address)
+  # Both lookups reject unsupported families before a complete decoded value can be published.
+  if header.error != ProgramError.None:
+    return ProgramResult[Instruction](status: ProgramError.InvalidInstruction)
+  ProgramResult[Instruction](status: ProgramError.None, completed: decodeOperands(data, header.value))
 
 proc instructionOpcode*(program: Program, address: CodeAddress): ProgramResult[byte] =
   ## Copy the opcode at a validated marked instruction location without decoding its operands.

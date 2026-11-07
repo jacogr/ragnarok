@@ -43,6 +43,15 @@ proc ins(code: openArray[byte], starts: openArray[int], pc = 0'u64): Instruction
   assert decoded.error == ProgramError.None
   let item = instruction(decoded.value, CodeAddress(pc))
   assert item.error == ProgramError.None
+  let header = instructionHeader(decoded.value, CodeAddress(pc))
+  assert header.error == ProgramError.None
+  assert pc < uint64(code.len)
+  assert uint64(header.value.address) == pc and header.value.opcode == code[int(pc)]
+  var expectedSkip = min(24, code.len-int(pc)-1)
+  for start in starts:
+    # Literal marker positions and code extent independently bound the capped header distance.
+    if uint64(start) > pc: expectedSkip = min(expectedSkip, start-int(pc)-1)
+  assert header.value.skip == expectedSkip
   let slots = instructionRegisters(item)
   assert slots.aIndex == int(byte(item.value.a))
   assert slots.bIndex == int(byte(item.value.b))
@@ -52,6 +61,7 @@ proc ins(code: openArray[byte], starts: openArray[int], pc = 0'u64): Instruction
     # Independent literal marker positions define whether this instruction has a sequential successor.
     if uint64(start) > pc: later = true
   assert instructionHasFallthrough(item) == later
+  assert instructionHasFallthrough(header) == later
   if item.value.opcode notin {1'u8, 40'u8, 80'u8..90'u8, 170'u8..175'u8}:
     assert not instructionTargetStartsBlock(item) # Dynamic/noncontrol instructions never grant a static destination fact.
   item.value
@@ -61,6 +71,9 @@ let defaultResult = default(ProgramResult[Program])
 assert defaultResult.error == ProgramError.Uninitialized
 assert codeLength(default(Program)).error == ProgramError.InvalidOwner
 assert instruction(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
+assert instructionHeader(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
+assert instructionHeader(default(Program), CodeAddress(high(uint64))).error ==
+    ProgramError.InvalidOwner
 assert instructionOpcode(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
 assert jumpTarget(default(Program), JumpIndex(0)).error == ProgramError.InvalidOwner
 assert basicBlockStart(default(Program), CodeAddress(0)).error == ProgramError.InvalidOwner
@@ -120,11 +133,26 @@ for op in 0..255:
   assert validOpcode(byte(op)) == expected
   assert terminatesBlock(byte(op)) == terminal
   assert (read(blob([byte(op), 0], [0, 1])).error == ProgramError.None) == expected
+  assert (read(blob([0'u8, byte(op), 0], [0, 1, 2])).error == ProgramError.None) == expected
   assert (read(blob([byte(op)], [0])).error == ProgramError.None) == terminal
   if expected:
     # Every admitted opcode byte is returned literally without depending on its operand shape.
     let owned = read(blob([byte(op), 0], [0, 1])).value
     assert instructionOpcode(owned, CodeAddress(0)).value == byte(op)
+    let header = instructionHeader(owned, CodeAddress(0))
+    assert header.error == ProgramError.None
+    assert uint64(header.value.address) == 0 and header.value.opcode == byte(op)
+    assert header.value.skip == 0 and instructionHasFallthrough(header)
+  if terminal:
+    # Raw final terminators may lack a successor; JAM admits only its literal no-fallthrough subset.
+    let finalWire = blob([byte(op)], [0])
+    let finalOwner = read(finalWire)
+    assert finalOwner.error == ProgramError.None
+    let lastHeader = instructionHeader(finalOwner.value, CodeAddress(0))
+    assert lastHeader.error == ProgramError.None and lastHeader.value.opcode == byte(op)
+    assert lastHeader.value.skip == 0 and not instructionHasFallthrough(lastHeader)
+    let jam = decodeJamProgram(finalWire, CodeAddress(0), ProgramByteLimit(4096), JumpCountLimit(1000))
+    assert (jam.error == ProgramError.None) == (op in [0, 40, 50, 80, 180])
 
 # A cheap opcode query retains independent marker membership across bitmap bytes and copied input ownership.
 block opcodeLocations:
@@ -143,12 +171,20 @@ block opcodeLocations:
       # Complete decoders and the scalar query agree, but explicit marker expectations remain independent.
       let opcode = instructionOpcode(owner, CodeAddress(pc))
       let decoded = instruction(owner, CodeAddress(pc))
+      let header = instructionHeader(owner, CodeAddress(pc))
       assert opcode.error == decoded.error
       if pc in [0'u64, 8, 16, 24, 32]:
         assert opcode.error == ProgramError.None and opcode.value == 0
+        assert header.error == ProgramError.None and header.value.opcode == 0
+        assert uint64(header.value.address) == pc
+        assert header.value.skip == (if pc == 32: 0 else: 7)
+        assert instructionHasFallthrough(header) == (pc != 32)
       else:
         assert opcode.error == ProgramError.InvalidInstruction
+        assert header.error == ProgramError.InvalidInstruction
     assert instructionOpcode(owner, CodeAddress(high(uint64))).error ==
+        ProgramError.InvalidInstruction
+    assert instructionHeader(owner, CodeAddress(high(uint64))).error ==
         ProgramError.InvalidInstruction
     assert instructionByte(owner, CodeAddress(1)).value == 0
     assert instructionByte(owner, CodeAddress(high(uint64))).value == 0
@@ -162,6 +198,9 @@ for gap in 0..26:
   if parsed.error == ProgramError.None:
     # Accepted skip distances preserve both instruction and basic-block membership.
     assert instruction(parsed.value, CodeAddress(0)).value.skip == gap
+    let header = instructionHeader(parsed.value, CodeAddress(0))
+    assert header.error == ProgramError.None and header.value.skip == gap
+    assert instructionHasFallthrough(header)
     assert not basicBlockStart(parsed.value, CodeAddress(uint64(gap + 1))).value
 
 # All thirteen operand forms: explicit values catch register naming and immediate-width mistakes.

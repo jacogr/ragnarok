@@ -1104,12 +1104,13 @@ ending flag and fallthrough flag. Pinned checked ARM builds measure a 24-byte st
 previous 48-byte rich fact. The existing facts sequence and source owner remain; no full rich-fact
 cache or execution-time plan mutation is introduced. Actual Linux x86 layout remains to be qualified.
 
-This changes representation, not admission. Preparation still eagerly calls the complete genuine
-instruction decoder for every marked source instruction, including unreachable code. Validation,
+The initial compact-catalogue increment changed representation while still eagerly calling the
+complete genuine instruction decoder for every marked source instruction, including unreachable
+code; the shared-header increment below replaces that global operand work. Validation,
 error/limit precedence, global ordinals, containing-block prices, suffix source/node counts and the
 complete jump-table passes retain their existing order. Whole-suffix node/work reservations,
 both-arm resolution, sticky resource refusal and paid interior-entry/host resume are unchanged.
-No cheap-header decoding or deferred global validation is enabled.
+That initial increment enabled neither header-only decoding nor deferred global validation.
 
 When a cold stream or native certificate needs original operands, a private helper reconstructs
 them from the retained immutable Program and checks its opcode/next coordinate against the
@@ -1154,3 +1155,83 @@ the full cold invocation and are not additive stage attribution. No general thro
 memory saving, Linux performance or blanket nonregression claim follows from this screen. Retained
 source, technical and paired-screen manifests are in the private compact-catalogue qualification
 packet; no second local cohort or decoder/pricing deferral is part of this increment.
+
+
+## Shared-header global preparation
+
+Global `prepareFlatPlan` now reads genuine instruction headers instead of full operands while
+building the same compact catalogue. The per-fact limit still precedes that query; whole-program
+capture validation, opcode support, skip/fallthrough, global ordinals, containing-block prices,
+source/node counts and jump passes remain eager in their existing order. Only the private
+`flatFact` overload and that global query change. The fourteen other full-operand query sites,
+single-step preparation, cold payload reconstruction and native source certificates retain their
+full decoder paths. No new cache, persistent field or native invocation capability is added.
+
+A literal five-byte fixture retains all three global facts, including unreachable code, then
+checks exact5-node/6-work limits with reordered cold/reused entries. Its marked opcode also
+supplies an extended operand across the next boundary. All registers, source preservation,
+zero-attempt/zero-gas ordering and panic/halt behavior are checked. Twenty maintained local suites
+and six semantic configurations pass; five fresh1,000-cycle ARC windows have flat occupied bytes.
+A fresh checked ARM ThinLTO native run matches the registered golden and records actual supported
+native submission/completion/calls. Local x86 execution on this ARM host exercises unsupported/
+fallback behavior; it does not establish native Linux x86 performance.
+
+The actual generated/linked global walk never reaches full instruction/operand extraction and
+adds no header-path heap allocation. Existing plan/vector allocations remain. Header/result
+storage, outlined calls, stack and code layout still have costs; eliminating global operand work
+does not by itself establish application speed or nonregression.
+
+One canonical local M1 Max screen compares e16-equivalent master tree
+`da633caf546235f892d07e39d789d80820fe918b` with source tree
+`ff73f887d662a5c0ab691d342d50a62aa1a958a3`. Product source matches the technically qualified
+candidate exactly; publication adds these docs only. Checked ARC/Clang ThinLTO ARM-native/owner
+receipt flags, same physical staging path, four fresh family/variant caches, original inputs and
+full-state/event oracles are bound. Forty canonical control processes pass. The unchanged fixed
+AA/AB/reversed-BA/AA order runs48 physical timed children,13 actual calls each:624 calls total,
+with cold0 and reused median3..12. No synthetic bundle is selected; complete parsed/raw cache,
+policy, owner and incidental records remain. There are no retries, filters or readiness waits.
+
+Each metric uses all six A anchors. Both directional B values must lie on the same side outside
+that entire interval, and both paired effects must exceed its full span. One workload/policy/phase
+cell, cold interpreted sieve, qualifies on both CPU and wall clocks. Those are two metrics for one
+cell, not independent workload wins. The other22 metric rows remain unresolved. No regression is
+classified; adverse raw values below remain evidence and do not establish nonregression. DOOM has
+no qualified gain or neutrality result. Percentages are(B−A)/A; raw nanoseconds and full anchor
+intervals remain in the sealed screen RESULTS/ANALYSIS and raw transcripts.
+
+| Case/policy | Metric | Forward % | Reverse % | Verdict |
+|---|---|---:|---:|---|
+| memset-1000/I | CPU/cold | +6.27 | +0.93 | unresolved |
+| memset-1000/I | CPU/reused | +7.95 | -2.33 | unresolved |
+| memset-1000/I | wall/cold | +6.35 | +1.10 | unresolved |
+| memset-1000/I | wall/reused | +2.78 | -2.50 | unresolved |
+| memset-1000/J | CPU/cold | -11.81 | -0.64 | unresolved |
+| memset-1000/J | CPU/reused | +3.49 | +5.81 | unresolved |
+| memset-1000/J | wall/cold | -13.61 | +1.88 | unresolved |
+| memset-1000/J | wall/reused | +4.57 | +0.00 | unresolved |
+| sieve-1000/I | CPU/cold | -9.48 | -10.99 | gain |
+| sieve-1000/I | CPU/reused | +9.09 | +1.32 | unresolved |
+| sieve-1000/I | wall/cold | -9.36 | -10.48 | gain |
+| sieve-1000/I | wall/reused | +10.90 | -1.62 | unresolved |
+| sieve-1000/J | CPU/cold | -7.04 | -5.07 | unresolved |
+| sieve-1000/J | CPU/reused | +0.00 | +5.13 | unresolved |
+| sieve-1000/J | wall/cold | -7.30 | -4.98 | unresolved |
+| sieve-1000/J | wall/reused | +2.06 | -1.81 | unresolved |
+| doom-tick/I | CPU/cold | -9.05 | -15.50 | unresolved |
+| doom-tick/I | CPU/reused | +1.47 | +0.34 | unresolved |
+| doom-tick/I | wall/cold | -8.27 | -15.41 | unresolved |
+| doom-tick/I | wall/reused | +1.79 | +0.15 | unresolved |
+| doom-tick/J | CPU/cold | -2.82 | -5.80 | unresolved |
+| doom-tick/J | CPU/reused | -0.09 | -1.65 | unresolved |
+| doom-tick/J | wall/cold | -3.03 | -5.90 | unresolved |
+| doom-tick/J | wall/reused | +0.08 | -1.91 | unresolved |
+
+Native fragment/call/operation/code-byte tuples match in every retained process across A/B;
+pressure/preflight and before/after source/image/input seals pass. Sieve/memset JIT observe only
+12 calls/24 native operations in this local cohort, while DOOM observes1,536,000 calls/38,400,000
+operations; these receipts do not imply general native coverage. The exact source/technical/screen
+packet is retained privately; screen final manifest SHA-256 is
+`094f85b4fa5a356552ab433f9c6ec4660e0ab103e05398217724a9153eea4db5`.
+There is no second local cohort. Performance readiness remains subject to the coordinator's
+exact-head canonical two-architecture CI disposition; this local screen does not claim Linux
+performance, header neutrality, allocator-stage attribution or broad application nonregression.
