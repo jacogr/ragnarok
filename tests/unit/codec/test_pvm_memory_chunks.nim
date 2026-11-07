@@ -356,6 +356,171 @@ proc replacementWriterCycle() =
     assert c.bytes[offset] == second and d.bytes[offset] == resumed and e.bytes[
         offset] == final
 
+proc residentImages(count: int): seq[PageImage] =
+  ## Sparse page indices and nonuniform complete bytes expose slot confusion and shared-chunk clobbering.
+  result = @[]
+  for slot in 0..<count:
+    var image = PageImage(index: PageIndex(16'u32+uint32(slot)*2), access: PageAccess.ReadWrite,
+      bytes: default(array[4096, byte]))
+    for offset in 0..<4096:
+      # Every unchanged byte remains independently predictable after the batch and its inputs retire.
+      image.bytes[offset] = byteAt(slot*4096+offset)
+    result.add(image)
+
+proc residentChanged(image: PageImage): PageImage =
+  ## Authored differences straddle a chunk boundary and include the final byte of the page.
+  result = image
+  result.bytes[511] = result.bytes[511] xor 64'u8
+  result.bytes[512] = result.bytes[512] xor 128'u8
+  result.bytes[4095] = result.bytes[4095] xor 32'u8
+
+proc residentSnapshot(source: Memory, images: openArray[PageImage], changes: int): Memory =
+  ## Unchanged pages surround the changed prefix; the completed owner outlives batch and resident inputs.
+  var batch = beginResidentReplacements(source)
+  for slot in 0..<images.len:
+    var resident = if slot > 0 and slot <= changes: residentChanged(images[slot]) else: images[slot]
+    let description = PageDescription(index: resident.index, access: resident.access)
+    assert stageResidentPage(batch, MemoryPageSlot(uint32(slot)), description,
+      resident.bytes) == MachineError.None
+    # A staged replacement cannot retain the caller's mutable bytes.
+    resident.bytes[511] = 0
+    resident.bytes[512] = 0
+    resident.bytes[4095] = 0
+  let published = finishResidentReplacements(batch)
+  assert published.error == MachineError.None
+  published.value
+
+proc residentBatchBoundaries() =
+  ## Zero, one, two, three and cross-directory many-page changes publish the same complete immutable state.
+  let images = residentImages(72)
+  let original = captureMemory(images, PageLimit(72)).value
+  let counts = [0, 1, 2, 3, 70]
+  var retained: seq[Memory] = @[]
+  for count in counts:
+    # Two actual changes stay small despite every equal page also being staged in sorted order.
+    retained.add(residentSnapshot(original, images, count))
+  assert retained[0] == original # No actual changes preserve the exact original Memory owner.
+  for generation in 0..<counts.len:
+    var expectedSlots: seq[MemoryPageSlot] = @[]
+    for slot in 0..<images.len:
+      # All generations remain observable after subsequent inline and spilled publications.
+      let expected = if slot > 0 and slot <= counts[generation]: residentChanged(images[
+          slot]) else: images[slot]
+      assert pageImage(retained[generation], images[slot].index).value == expected
+      assert pageImage(original, images[slot].index).value == images[slot]
+      if slot > 0 and slot <= counts[generation]: expectedSlots.add(MemoryPageSlot(uint32(slot)))
+    assert changedMemoryPageSlots(original, retained[generation]).value == expectedSlots
+
+proc residentBatchFailures() =
+  ## An invalid later page poisons the batch without changing its source or an earlier published snapshot.
+  let images = residentImages(6)
+  let original = captureMemory(images, PageLimit(6)).value
+  for changes in [1, 2, 3]:
+    # Exercise a poisoned prefix before capacity, at capacity and immediately after spilling.
+    for failure in 0..4:
+      var batch = beginResidentReplacements(original)
+      for slot in 0..<changes:
+        # A successfully published prefix remains independent of a later refusal in this same batch.
+        let resident = residentChanged(images[slot])
+        assert stageResidentPage(batch, MemoryPageSlot(uint32(slot)),
+          PageDescription(index: resident.index, access: resident.access), resident.bytes) ==
+              MachineError.None
+      let completed = finishResidentReplacements(batch)
+      assert completed.error == MachineError.None
+      var refused = MachineError.None
+      let next = images[changes]
+      let description = PageDescription(index: next.index, access: next.access)
+      case failure
+      of 0:
+        # A duplicate slot is unsorted even when its supplied bytes would be equal to the source.
+        let previous = images[changes-1]
+        refused = stageResidentPage(batch, MemoryPageSlot(uint32(changes-1)),
+          PageDescription(index: previous.index, access: previous.access), previous.bytes)
+        assert refused == MachineError.UnsortedPages
+      of 1:
+        # Wrong expected access fails after the valid inline or spilled prefix.
+        refused = stageResidentPage(batch, MemoryPageSlot(uint32(changes)),
+          PageDescription(index: next.index, access: PageAccess.ReadOnly), next.bytes)
+        assert refused == MachineError.InvalidRange
+      of 2:
+        # A truncated resident span never becomes a partial replacement.
+        refused = stageResidentPage(batch, MemoryPageSlot(uint32(changes)), description,
+          next.bytes.toOpenArray(0, 4094))
+        assert refused == MachineError.InvalidRange
+      of 3:
+        # A description cannot substitute another physical page at the same sorted slot.
+        refused = stageResidentPage(batch, MemoryPageSlot(uint32(changes)),
+          PageDescription(index: images[0].index, access: next.access), next.bytes)
+        assert refused == MachineError.InvalidRange
+      else:
+        # An absent slot fails before any source access and cannot publish the earlier prefix.
+        refused = stageResidentPage(batch, MemoryPageSlot(6), description, next.bytes)
+        assert refused == MachineError.InvalidRange
+      assert finishResidentReplacements(batch).error == refused
+      assert stageResidentPage(batch, MemoryPageSlot(uint32(changes)), description,
+        next.bytes) == refused # The first refusal stays selected.
+      for slot in 0..<images.len:
+        let expected = if slot < changes: residentChanged(images[slot]) else: images[slot]
+        assert pageImage(completed.value, images[slot].index).value == expected
+        assert pageImage(original, images[slot].index).value == images[slot]
+  var readonly = beginResidentReplacements(withPageRange(original, images[5].index,
+    PageIndex(uint32(images[5].index)+1), PageAccess.ReadOnly, PageContent.Preserved).value)
+  assert stageResidentPage(readonly, MemoryPageSlot(5),
+    PageDescription(index: images[5].index, access: PageAccess.ReadOnly),
+    images[5].bytes) == MachineError.InvalidRange
+  assert finishResidentReplacements(readonly).error == MachineError.InvalidRange
+  var unchanged = beginResidentReplacements(original)
+  let first = PageDescription(index: images[0].index, access: images[0].access)
+  assert stageResidentPage(unchanged, MemoryPageSlot(0), first, images[0].bytes) ==
+      MachineError.None
+  # An equal page consumes no change capacity but still advances the strict source-slot order.
+  assert stageResidentPage(unchanged, MemoryPageSlot(0), first, images[0].bytes) ==
+      MachineError.UnsortedPages
+  assert finishResidentReplacements(unchanged).error == MachineError.UnsortedPages
+  let empty = captureMemory([], PageLimit(0)).value
+  assert finishResidentReplacements(beginResidentReplacements(empty)).value == empty
+  assert finishResidentReplacements(beginResidentReplacements(default(Memory))).error ==
+      MachineError.InvalidOwner
+
+proc residentBatchLifetimeCycle() =
+  ## Inline owners, spilled vectors and a copied batch release through generated ownership while snapshots survive.
+  let images = residentImages(5)
+  let original = captureMemory(images, PageLimit(5)).value
+  var retained: seq[Memory] = @[]
+  block:
+    var batch = beginResidentReplacements(original)
+    for slot in 0..<4:
+      # Observe every small/spill boundary before adding another immutable changed-page owner.
+      let resident = residentChanged(images[slot])
+      assert stageResidentPage(batch, MemoryPageSlot(uint32(slot)),
+        PageDescription(index: resident.index, access: resident.access), resident.bytes) ==
+            MachineError.None
+      let published = finishResidentReplacements(batch)
+      assert published.error == MachineError.None
+      retained.add(published.value)
+      block:
+        # Every prefix can be copied and retired independently, including inline and spilled ownership.
+        let copied = batch
+        assert finishResidentReplacements(copied).error == MachineError.None
+    let copied = batch
+    # Failure and retirement of the original cannot invalidate the generated copy or retained generations.
+    assert stageResidentPage(batch, MemoryPageSlot(3),
+      PageDescription(index: images[3].index, access: images[3].access),
+      images[3].bytes) == MachineError.UnsortedPages
+    assert finishResidentReplacements(batch).error == MachineError.UnsortedPages
+    batch = default(ResidentReplacementBatch)
+    let published = finishResidentReplacements(copied)
+    assert published.error == MachineError.None
+    retained.add(published.value)
+  for generation in 0..<retained.len:
+    let changes = min(generation+1, 4)
+    for slot in 0..<images.len:
+      # Page/chunk storage remains immutable after all temporary batch references have retired.
+      let expected = if slot < changes: residentChanged(images[slot]) else: images[slot]
+      assert pageImage(retained[generation], images[slot].index).value == expected
+      assert pageImage(original, images[slot].index).value == images[slot]
+
+
 snapshotCycle()
 captureCycle()
 observationCycle()
@@ -363,6 +528,9 @@ zeroCycle()
 replacementLifetimeCycle()
 replacementCycle()
 replacementWriterCycle()
+residentBatchBoundaries()
+residentBatchFailures()
+residentBatchLifetimeCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
   snapshotCycle() # Private chunk/header owners and every retained generation must retire without cycles.
@@ -372,6 +540,7 @@ for cycle in 0..<1000:
   replacementLifetimeCycle()
   replacementCycle()
   replacementWriterCycle()
+  residentBatchLifetimeCycle()
 let after = getOccupiedMem()
 assert before == after
 recordArcRelease("pvm_memory_chunks", 1000, before, after)

@@ -82,8 +82,11 @@ type
     source: Memory
     status: MachineError
     lastSlot: int
+    inlineCount: int                 # Only completed changes consume the two initialized inline positions.
+    inlineSlots: array[2, int]
+    inlineChanged: array[2, nil PageData] # Unused positions are nil; generated ARC owns populated entries.
     slots: seq[int]
-    changed: seq[PageData]
+    changed: seq[PageData]           # Nonempty only after the third actual change spills the whole prefix.
   ScalarMemoryWriter* = ref object ## Mutable scalar-write identity; copied handles share progress, while snapshotMemory publishes immutable epochs.
     base: Memory
     pages: seq[PageData]
@@ -695,8 +698,30 @@ proc withReplacedPages*(memory: Memory, replacements: openArray[PageImage]): Mac
 
 proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
   ## Bind one unpublished prepared-frame observation to its immutable source owner.
-  ResidentReplacementBatch(source: source, lastSlot: -1, slots: @[], changed: @[],
+  ResidentReplacementBatch(source: source, lastSlot: -1, inlineCount: 0,
+    inlineSlots: default(array[2, int]), inlineChanged: default(array[2, nil PageData]),
+    slots: @[], changed: @[],
     status: (if source.data == nil: MachineError.InvalidOwner else: MachineError.None))
+
+proc appendResidentReplacement(batch: var ResidentReplacementBatch, slot: int, page: PageData) =
+  ## Keep two completed replacements inline; spill a sorted owned prefix before the third append.
+  assert batch.inlineCount >= 0 and batch.inlineCount <= 2
+  if batch.changed.len == 0 and batch.inlineCount < 2:
+    # This bounded initialized prefix never exposes either unused nullable owner.
+    batch.inlineSlots[batch.inlineCount] = slot
+    batch.inlineChanged[batch.inlineCount] = page
+    inc batch.inlineCount
+  else:
+    if batch.changed.len == 0:
+      # The first overflow preserves both inline owners until ordinary generated destruction.
+      assert batch.inlineCount == 2
+      for index in 0..<batch.inlineCount:
+        let retained {.cursor.} = batch.inlineChanged[index]
+        assert retained != nil
+        batch.slots.add(batch.inlineSlots[index])
+        batch.changed.add(retained)
+    batch.slots.add(slot)
+    batch.changed.add(page)
 
 proc residentReplacementChunk(previous: PageChunk, bytes: openArray[byte], first: int,
     changed: bool): PageChunk =
@@ -738,19 +763,38 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
       residentReplacementChunk(previous.chunks[5], bytes, 2560, (differences and 32) != 0),
       residentReplacementChunk(previous.chunks[6], bytes, 3072, (differences and 64) != 0),
       residentReplacementChunk(previous.chunks[7], bytes, 3584, (differences and 128) != 0)])
-    batch.slots.add(at)
-    batch.changed.add(changed)
+    appendResidentReplacement(batch, at, changed)
   batch.lastSlot = at
   MachineError.None
 
 proc finishResidentReplacements*(batch: ResidentReplacementBatch): MachineResult[Memory] =
   ## Publish one complete replacement directory after the whole batch succeeds.
   if batch.status != MachineError.None: return MachineResult[Memory](status: batch.status)
-  if batch.changed.len == 0:
+  if batch.changed.len == 0 and batch.inlineCount == 0:
     return MachineResult[Memory](status: MachineError.None, completed: batch.source)
   let data {.cursor.} = batch.source.data
   assert data != nil
-  var directory = replacedDirectory(data.pages, batch.slots, batch.changed)
+  var directory = default(PageDirectory)
+  if batch.changed.len != 0:
+    # Spilled vectors retain the same complete source-order input to directory publication.
+    directory = replacedDirectory(data.pages, batch.slots, batch.changed)
+  else:
+    # Only initialized owners enter nonnullable temporary arrays; no nullable array is cast or borrowed unsafely.
+    assert batch.inlineCount == 1 or batch.inlineCount == 2
+    let first {.cursor.} = batch.inlineChanged[0]
+    assert first != nil
+    let firstPage: PageData = first
+    if batch.inlineCount == 1:
+      let completed: array[1, PageData] = [firstPage]
+      directory = replacedDirectory(data.pages, batch.inlineSlots.toOpenArray(0, 0),
+        completed.toOpenArray(0, 0))
+    else:
+      let second {.cursor.} = batch.inlineChanged[1]
+      assert second != nil
+      let secondPage: PageData = second
+      let completed: array[2, PageData] = [firstPage, secondPage]
+      directory = replacedDirectory(data.pages, batch.inlineSlots.toOpenArray(0, 1),
+        completed.toOpenArray(0, 1))
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: move(directory), limit: data.limit)))
 

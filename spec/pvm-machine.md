@@ -400,3 +400,33 @@ profiles. ARM artifact12917681840 SHA256
 x86 artifact12916413873 SHA256
 `fdd13b961c0b6668f2c5a45453eeba5b7ad451e0f41ed689b9b876e55d2411f6`.
 The consumer's changed behavior still requires its own native CI and paired counter qualification.
+
+## Small resident publication batches
+
+`ResidentReplacementBatch` retains up to two completed page replacements inline. A third actual
+change copies that sorted prefix into the existing sequence path; equal staged pages consume no
+replacement capacity but still advance strict slot ordering. All eight chunk comparisons, owner,
+extent, index, permission and order checks remain unchanged. The first refusal prevents batch
+publication, and no changes return the exact original memory owner. Previously published snapshots
+remain immutable. Spill deliberately retains the two inline references until normal generated ARC
+destruction; there are no custom ownership hooks or borrowed resident bytes.
+
+Local checked ARM qualification covers `pvm_memory_chunks`, `pvm_memory_page_slots`,
+`pvm_memory_reuse`, `pvm_stream_host_resume`, `pvm_stream_publication_witness`,
+`pvm_checked_read_tiny` and `pvm_shared_async_arm`. Cases include 0/1/2/3/70 actual changes, equal
+staged pages, partial-batch failure, retained publications and copied inline/spilled lifetimes.
+The 1,000-cycle ARC checks return chunks from 192 to 192 live bytes and memory reuse from
+430,928 to 430,928. This is local evidence, not exact-parent Linux qualification.
+
+Actual generated ARM C and linked checked ARC/Clang ThinLTO inspection show the batch grows from
+56 to 96 bytes; `FlatFrame` remains 3,032 bytes. Small temporary arrays hold 8 or 16 bytes of page
+references. The 0–2-change path avoids replacement-vector growth, without an extra directory
+payload copy. Changed chunks, directory publication and memory roots still allocate. Added helper
+calls, reference operations, stack nesting and the larger batch may offset the saved vectors;
+these code observations do not establish a speedup.
+
+The local canonical performance screen is inconclusive. Its first baseline synthetic control
+failed because an incidental arithmetic case measured zero process CPU time, below the canonical
+clock resolution. No candidate comparison or timing cohort ran, and no retry, clock waiver,
+selector or partial target result was accepted. The retained source and technical evidence await
+later qualification on the final parent; there is no performance result for this change.
