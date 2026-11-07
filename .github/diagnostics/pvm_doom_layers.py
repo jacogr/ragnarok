@@ -187,8 +187,14 @@ class DurableChecks(NativeChecks):
         rom = environment.get('RAGNAROK_PVM_DOOM_ROM')
         if rom:
             inputs[rom] = digest(rom)
-        # Reference blob is another direct input; do not infer it from a mutable directory name.
-        if len(arguments) > 2 and arguments[1] == 'run':
+        # Only the canonical DOOM CLI run grammar owns a blob; rustup run owns a toolchain name.
+        if (len(arguments) > 1 and Path(arguments[0]).name == 'ragnarok-pvm-doom'
+                and arguments[1] == 'run'):
+            if (len(arguments) != 6 or environment.get('RAGNAROK_PVM_DOOM_INPUT') != arguments[4]
+                    or environment.get('RAGNAROK_PVM_DOOM_ROM') != arguments[3]
+                    or environment.get('RAGNAROK_PVM_DOOM_PHASE') != arguments[5]
+                    or arguments[5] not in ('init', 'tick')):
+                raise ValueError('Reference run arguments differ from explicit DOOM input bindings')
             inputs[arguments[2]] = digest(arguments[2])
         knobs = {k:v for k,v in environment.items() if k.startswith('RAGNAROK_PVM_')}
         modes={name:oct(stat.S_IMODE(Path(name).stat().st_mode)) for name in inputs}
