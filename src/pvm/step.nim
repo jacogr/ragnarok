@@ -493,6 +493,11 @@ proc runForeignFrame(source: Machine, prepared: PreparedProgram,
     limit: ExecutionStepLimit): StepResult
   ## Implemented by the included optional adapter below the common host/result declarations.
 
+func frameCreationError(error: FlatError): StepError =
+  ## Preserve a selected OS-allocation refusal while retaining all historical admission mappings.
+  if error == FlatError.ResidentAllocationRefused: StepError.ResidentAllocationRefused
+  else: StepError.InvalidPreparedProgram
+
 proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: ExecutionStepLimit,
     plan: GasPlan, memo: GasMemo, single: bool = false): StepResult =
   ## Lease code and optional idle bytes; initialize CPU and restore complete input memory before execution.
@@ -522,7 +527,7 @@ proc runPreparedFrame(source: Machine, prepared: PreparedProgram, limit: Executi
         kind: StepExit.Panic, machine: terminal.value))
   var reusedMemory = false
   var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
-  if created.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
+  if created.error != FlatError.None: return StepResult(status: frameCreationError(created.error))
   var frame = takeValue(created)
   if reusedMemory: inc data.memoryReuses
   let policy = selectFlatPrices(frame, plan, memo)
@@ -609,7 +614,7 @@ proc runSingleStep(source: Machine, cycles: GasCycleLimit, plan: GasPlan): StepR
   if prepared.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
   let admitted = takeValue(prepared)
   var created = prepareFlatMemoryFrame(admitted, memory, cpu)
-  if created.error != FlatError.None: return StepResult(status: StepError.InvalidPreparedProgram)
+  if created.error != FlatError.None: return StepResult(status: frameCreationError(created.error))
   var frame = takeValue(created)
   let policy = selectFlatPrices(frame, plan, default(GasMemo))
   if policy != StepError.None: return StepResult(status: policy)
@@ -792,7 +797,7 @@ proc runPreparedHost[Context; Reason: enum; Fallible: static[bool]](
   var reusedMemory = false
   var created = prepareReusedFlatMemoryFrame(data.plan, memory, cpu, data.memoryScratch, reusedMemory)
   if created.error != FlatError.None:
-    return executionResult[Reason](StepResult(status: StepError.InvalidPreparedProgram))
+    return executionResult[Reason](StepResult(status: frameCreationError(created.error)))
   var frame = takeValue(created)
   if reusedMemory: inc data.memoryReuses
   let policy = selectFlatPrices(frame, plan, memo)
