@@ -5104,17 +5104,20 @@ proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: Machin
   info.registers = registers
   replaceFlatMemory(f, images, info)
 
-proc flatHostPage(f: var FlatFrame, image: PageImage, apply: bool): bool =
-  ## Preflight then optionally replace one full private writable page; no byte owner changes or escapes.
-  if image.access != PageAccess.ReadWrite: return false
-  let address = uint64(uint32(image.index))*4096
+proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
+    apply: bool): bool =
+  ## The complete posterior map check binds this slot to the frame's existing description.
+  let page = int(uint32(slot))
+  let description = f.sourcePages[page]
+  if description.access != PageAccess.ReadWrite: return false
+  let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    if apply: copyMem(addr f.stack[offset], unsafeAddr image.bytes[0], 4096)
+    if apply: flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
     return true
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    if apply: copyMem(addr f.rw[offset], unsafeAddr image.bytes[0], 4096)
+    if apply: flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
     return true
   for i in 0..<f.extra.len:
     # Fragmented mappings retain their own immutable access metadata and full-span checks.
@@ -5122,7 +5125,7 @@ proc flatHostPage(f: var FlatFrame, image: PageImage, apply: bool): bool =
     if region.access == PageAccess.ReadWrite and address >= region.first and
         address-region.first+4096 <= uint64(region.bytes.len):
       let offset = int(address-region.first)
-      if apply: copyMem(addr region.bytes[offset], unsafeAddr image.bytes[0], 4096)
+      if apply: flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
       return true
   false
 
@@ -5142,7 +5145,7 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
-  var delta = changedMemoryPages(f.hostSnapshot, posterior)
+  var delta = changedMemoryPageSlots(f.hostSnapshot, posterior)
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
   var info = f.info
   info.pc = CodeAddress(f.plan.facts[fact].next)
@@ -5153,10 +5156,10 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
     let changes = machine.takeValue(delta)
     for i in 0..<changes.len:
       # Complete preflight precedes the first host-byte mutation; unusual capabilities take the slow path.
-      if not flatHostPage(f, changes[i], false): replace = true
+      if not flatHostPage(f, posterior, changes[i], false): replace = true
     if not replace:
       for i in 0..<changes.len:
-        let applied = flatHostPage(f, changes[i], true)
+        let applied = flatHostPage(f, posterior, changes[i], true)
         assert applied
       f.sourceMemory = posterior
       flatClearDirty(f)
