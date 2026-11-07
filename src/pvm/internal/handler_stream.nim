@@ -2097,7 +2097,9 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       if residentRW:
         first = after
         continue
-    let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
+    # Fill every private byte below before publishing this region or deriving frame/native views.
+    let region = FlatRegion(first: address, access: image.access,
+      bytes: newSeqUninit[byte](pages*4096))
     for page in first..<after:
       # All managed/unknown paths still restore complete pages; no allocation-origin promise survives here.
       let offset = (page-first)*4096

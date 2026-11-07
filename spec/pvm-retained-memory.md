@@ -32,6 +32,35 @@ The new highest-page fixture uses `0xfffffffe`: the existing exclusive-end rule 
 Reduced allocation extent is deterministic; its contribution to cold CPU cost remains unproved.
 Existing high-stack `memset` maps receive no bitmap reduction. No timing cohort or bitmap CI has run.
 
+## Managed region fill before publication
+
+Managed regions allocate uninitialized private bytes only inside `buildFlatFrame`. Each admitted
+adjacent run has one access mode; the constructor copies every complete 4 KiB source page into its
+disjoint output span before adding the region or deriving any Frame/native view. Inaccessible pages
+allocate no region. The source owner and layout remain immutable throughout the copy.
+
+This local fill-before-publication rule preserves completed-buffer ownership for `RWStorage`,
+retained scratch and transactional host replacement. It uses the same pinned allocator, size bounds,
+heap caps and OOM policy; the resident first-RW zero-provenance path is unchanged. Byte payload has
+no resource destructor. Local checked ARC/Clang ThinLTO C inspection confirms direct metadata
+transfer, cleanup without payload reads and complete page writes before publication, including
+the intervening region-ref allocation and its terminating failure path. The managed allocation's
+default-fill loop is absent; unrelated sequence initialization remains unchanged.
+
+The isolated prototype on scalar-host tip `1708cbea` passes the existing complete-page canary,
+map, host-remap, sparse, memory-reuse, fresh-resident and mixed-scalar suites, plus ARM macro-capacity
+and shared-worker consumers. Fresh 1,000-cycle ARC observations remain unchanged for memory reuse,
+fresh-resident and mixed-scalar execution. The actual ARM ThinLTO witness and maintained native
+receipt validators pass. Retained Frame/scratch C declarations match the earlier bitmap witness;
+104 common hot C functions match after local-variable/label renaming. This comparison does not
+establish whole linked-image equivalence or x86 native execution.
+
+The existing `nimMaxHeap=67108864` compatibility profile also passes its complete-byte and fresh
+ARC checks. The pinned runtime interprets that value in MiB, so this proves managed-path selection
+and preserved cap dispatch, not a 64 MiB pressure/refusal test. No timing or CI qualification has run
+for this prototype. The observed zero-then-copy pattern motivates the change; unqualified diagnostic
+counts establish no CPU dominance or speedup.
+
 ## Retention policy and lifetime
 
 `PreparedLimits.retainedMemoryBytes: RetainedMemoryByteLimit` bounds the logical payload of
