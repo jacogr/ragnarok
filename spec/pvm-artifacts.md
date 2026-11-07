@@ -15,6 +15,14 @@ Memory uses4096-byte pages,65536-byte guard/alignment regions and the pinned
 32-bit ABI; initial RA is0xffff0000 and SP is0xfffe0000. Memory snapshots and
 symbol observations never expose mutable loader storage.
 
+Initial memory uses the same checked prefix-region capture as standard JAM initialization.
+Three sorted descriptors map RO, RW and stack; explicit source selectors bind RO to its
+data input and RW to its independent data input. Stack and missing suffixes share an
+operation-local immutable zero chunk, with fresh page headers. Geometry, source extents
+and the complete page budget are checked before allocation. No temporary full page-image
+vector or concatenation of the two data sections is needed; input mutation and later guest
+writes cannot change an earlier snapshot.
+
 `ragnarok --pvm-code FILE [--pvm-entry NAME] [--pvm-backend MODE]` executes one
 export (default `main`) without starting networking. Gas and attempts are bounded
 by `--pvm-gas` and `--pvm-steps` (defaults10000000 each). No guest arguments or

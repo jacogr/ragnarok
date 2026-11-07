@@ -50,12 +50,14 @@ func rounded(value, quantum: uint64): uint64 =
   ## Inputs are bounded by fixed-width envelope fields or the 2^24 argument bound, so rounding is safe.
   ((value + quantum - 1) div quantum) * quantum
 
-func region(start, size: uint64, access: PageAccess, offset, length: int): InitializationRegion =
+func region(start, size: uint64, access: PageAccess, source: InitializationSource,
+    offset, length: int): InitializationRegion =
   ## Convert the admitted page-aligned layout to exclusive page endpoints.
   assert start mod 4096 == 0 and size mod 4096 == 0
   assert start <= 0x100000000'u64 and size <= 0x100000000'u64-start
   InitializationRegion(first: PageIndex(uint32(start div 4096)),
-    past: PageIndex(uint32((start+size) div 4096)), access: access, offset: offset, length: length)
+    past: PageIndex(uint32((start+size) div 4096)), access: access, source: source,
+    offset: offset, length: length)
 
 proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     gas: MachineGas, limits: InitializationLimits,
@@ -116,11 +118,14 @@ proc initializeMachine*(input, arguments: openArray[byte], entry: CodeAddress,
     retained = InitializationCode(source: source, bytes: limits.program, jumps: limits.jumps)
   # Capture each region directly, including read-only tails and the untouched stack and heap.
   let regions = [
-    region(65536, roSize, PageAccess.ReadOnly, 11, int(readOnlyLength)),
+    region(65536, roSize, PageAccess.ReadOnly, InitializationSource.First, 11,
+      int(readOnlyLength)),
     region(131072 + rounded(readOnlyLength, 65536), rwSize, PageAccess.ReadWrite,
-      11 + int(readOnlyLength), int(writableLength)),
-    region(0xfefe0000'u64 - stackSize, stackSize, PageAccess.ReadWrite, 0, 0),
-    region(0xfeff0000'u64, argumentSize, PageAccess.ReadOnly, 0, arguments.len)]
+      InitializationSource.First, 11 + int(readOnlyLength), int(writableLength)),
+    region(0xfefe0000'u64 - stackSize, stackSize, PageAccess.ReadWrite,
+      InitializationSource.First, 0, 0),
+    region(0xfeff0000'u64, argumentSize, PageAccess.ReadOnly, InitializationSource.Second,
+      0, arguments.len)]
   let memory = captureInitializationMemory(regions, input, arguments, limits.pages)
   # These invariants were established above; a failure indicates an internal layout bug.
   assert memory.error == MachineError.None

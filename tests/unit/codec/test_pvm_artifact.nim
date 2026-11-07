@@ -60,6 +60,12 @@ assert default(Artifact).entry("main").error == ArtifactError.Uninitialized, "ar
 let absentResult = default(ArtifactResult[Artifact])
 assert absentResult.error == ArtifactError.Uninitialized, "artifact witness 59: absentResult.error == ArtifactError.Uninitialized"
 let memory = memoryOf(owned)
+var exactLimits = defaultArtifactLimits()
+exactLimits.pages = 3
+let bounded = decodeArtifact(raw, exactLimits)
+assert bounded.error == ArtifactError.None
+assert withPage(memoryOf(bounded.value), PageImage(index: PageIndex(0),
+    access: PageAccess.ReadWrite)).error == MachineError.LimitExceeded
 assert uint64(load(memory, MemoryAddress(65536), AccessWidth(1)).value) == 7, "artifact witness 61: uint64(load(memory, MemoryAddress(65536), AccessWidth(1)).value) == 7"
 assert uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10, "artifact witness 62: uint64(load(memory, MemoryAddress(196608), AccessWidth(1)).value) == 10"
 assert load(memory, MemoryAddress(131072), AccessWidth(1)).error == MachineError.Fault, "artifact witness 63: load(memory, MemoryAddress(131072), AccessWidth(1)).error == MachineError.Fault"

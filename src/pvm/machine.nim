@@ -33,9 +33,12 @@ type
     index*: PageIndex
     access*: PageAccess
     bytes*: array[4096, byte]
-  InitializationRegion* = object ## A mapped JAM interval with an optional borrowed payload prefix.
+  InitializationSource* {.pure.} = enum ## Select one of the two borrowed inputs for a mapped prefix.
+    First, Second
+  InitializationRegion* = object ## A mapped page interval with a copied prefix from an explicit input.
     first*, past*: PageIndex
     access*: PageAccess
+    source*: InitializationSource
     offset*, length*: int
   MemoryPageSlot* = distinct uint32 ## Position within the supplied immutable owner's sorted mapping, separate from a physical page ordinal.
   PageDescription* = object ## Copied mapping metadata grants no mutable page storage or guest access permission.
@@ -273,35 +276,39 @@ proc appendInitializationRegion(owned: var seq[PageData], region: Initialization
       offset += count
       remaining -= count
 
-proc captureInitializationMemory*(regions: array[4, InitializationRegion],
-    envelope, arguments: openArray[byte], limit: PageLimit): MachineResult[Memory] =
-  ## Capture RO, RW, stack and arguments in order. The first three spans refer to the envelope.
+proc captureInitializationMemory*(regions: openArray[InitializationRegion],
+    first, second: openArray[byte], limit: PageLimit): MachineResult[Memory] =
+  ## Capture sorted mapped prefixes from two explicit inputs, zero-filling every absent suffix.
   ## All descriptors and source extents are checked before allocation. No borrowed bytes escape.
   var total = 0'u64
   var previousPast = 0'u32
   for index in 0..<regions.len:
     let region = regions[index]
-    let first = uint32(region.first)
-    let past = uint32(region.past)
-    if first > past or past > 0x100000'u32:
+    let firstPage = uint32(region.first)
+    let pastPage = uint32(region.past)
+    if firstPage > pastPage or pastPage > 0x100000'u32:
       return MachineResult[Memory](status: MachineError.InvalidRange) # Exclusive endpoint may equal 2^20.
-    let count = uint64(past-first)
-    let sourceLen = if index == 3: arguments.len else: envelope.len
+    let count = uint64(pastPage-firstPage)
+    let sourceLen = if region.source == InitializationSource.First: first.len else: second.len
     if region.offset < 0 or region.offset > sourceLen or region.length < 0 or
         region.length > sourceLen-region.offset or uint64(region.length) > count*4096:
       return MachineResult[Memory](status: MachineError.InvalidRange) # Empty mappings require an empty prefix.
-    if first != past:
-      if first < previousPast:
+    if firstPage != pastPage:
+      if firstPage < previousPast:
         return MachineResult[Memory](status: MachineError.UnsortedPages) # Reject overlap with any earlier mapping.
-      previousPast = past
+      previousPast = pastPage
+      # Sorted disjoint intervals lie in the fixed physical domain, so their sum is at most 2^20.
       total += count
   if total > uint64(uint32(limit)) or total > uint64(high(int) div sizeof(PageData)):
     return MachineResult[Memory](status: MachineError.LimitExceeded) # Count all mapped pages, including padding.
   var owned = newSeqOfCap[PageData](int(total))
   var zero: nil PageChunk = nil
-  for index in 0..<3:
-    appendInitializationRegion(owned, regions[index], envelope, zero)
-  appendInitializationRegion(owned, regions[3], arguments, zero)
+  for region in regions:
+    case region.source
+    of InitializationSource.First:
+      appendInitializationRegion(owned, region, first, zero) # Capture only this admitted first-input span.
+    of InitializationSource.Second:
+      appendInitializationRegion(owned, region, second, zero) # Capture only this admitted second-input span.
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
 
