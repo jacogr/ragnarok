@@ -72,6 +72,8 @@ def preimage_inspect(data,config):
     if parsed in ('truncated','noncanonical'):
         return parsed # Canonical count framing precedes every policy/extent decision.
     count,cursor=map(int,parsed.split())
+    if count>256:
+        return 'invalidcount' # Protocol sequence bound is independent of local resource policy.
     if count>items:
         return 'limitexceeded' # Count policy applies before minimum-wire extent.
     if count>(len(data)-cursor)//5:

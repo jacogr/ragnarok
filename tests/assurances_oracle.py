@@ -126,22 +126,17 @@ def record(index, cores, seed=0):
 
 # Verify immutable official JSON/bin pairs and convert their named fields to independent source records.
 def official(chain, cores):
-    folder = ROOT/f'vendor/jamtestvectors/codec/{chain}'
-    pins = json.loads((ROOT/'spec/pins.json').read_text())['vectors']['files']
-    # Both published formats must remain byte-for-byte at their pinned hashes.
-    for extension in ('json','bin'):
-        path=folder/f'assurances_extrinsic.{extension}'
-        assert hashlib.sha256(path.read_bytes()).hexdigest()==pins[str(path.relative_to(ROOT))]
-    result=[]
-    for value in json.loads((folder/'assurances_extrinsic.json').read_text()):
-        bits=bytes.fromhex(value['bitfield'][2:])
-        assert len(bits)==(cores+7)//8
-        result.append((bytes.fromhex(value['anchor'][2:]),bits+bytes(43-len(bits)),value['validator_index'],
+    from preview_vectors import blob
+    prefix = f'codec/{chain}/assurances_extrinsic'
+    records = json.loads(blob(prefix + '.json'))
+    result = []
+    # The preview carries no anchor; parent binding belongs to signature verification.
+    for value in records:
+        bits = bytes.fromhex(value['bitfield'][2:])
+        assert len(bits) == (cores + 7) // 8 and 'anchor' not in value
+        result.append((bytes(32), bits + bytes(43 - len(bits)), value['validator_index'],
                        bytes.fromhex(value['signature'][2:])))
-    # Verify original binary provenance separately; current wire deliberately omits each old anchor.
-    historical = natural(len(result))+b''.join(anchor+bits[:(cores+7)//8]+index.to_bytes(2,'little')+signature
-        for anchor,bits,index,signature in result)
-    assert historical==(folder/'assurances_extrinsic.bin').read_bytes()
+    assert wire(result, cores) == blob(prefix + '.bin')
     return result
 
 

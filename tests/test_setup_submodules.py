@@ -7,6 +7,8 @@
 Exposes local Git witnesses for pin transitions, dirty-source refusal, sparse sources and missing pins.
 """
 import os
+import json
+import hashlib
 import contextlib
 import io
 from pathlib import Path
@@ -82,6 +84,29 @@ class PinnedBlobSetupTests(unittest.TestCase):
             setup_submodules.prefetch_blobs(self.clone, self.revision, ['second', 'first'])
             setup_submodules.prefetch_blobs(self.clone, self.revision, [])
 
+    def test_preview_history_preserves_active_checkout(self):
+        """Provision a distinct preview while preserving the older active source and sparse tree."""
+        (self.remote/'first').write_text('preview data\n')
+        self.git('-C', str(self.remote), 'add', 'first')
+        self.git('-C', str(self.remote), '-c', 'user.name=Fixture', '-c',
+                 'user.email=fixture@example.invalid', '-c', 'commit.gpgsign=false',
+                 'commit', '-qm', 'preview')
+        revision = self.git('-C', str(self.remote), 'rev-parse', 'HEAD').strip()
+        (self.root/'spec').mkdir()
+        pins = {'vectors_preview': {'path': 'sparse', 'commit': revision,
+                'git_blobs': {'first': hashlib.sha256(b'preview data\n').hexdigest()}}}
+        (self.root/'spec/pins.json').write_text(json.dumps(pins))
+        with patch.object(setup_submodules, 'ROOT', self.root):
+            setup_submodules.initialize_vector_preview(self.clone)
+            self.assertEqual(self.git('-C', str(self.clone), 'rev-parse', 'HEAD').strip(),
+                             self.revision)
+            self.assertFalse((self.clone/'first').exists())
+            # An offline repeat proves that setup retained the preview objects and ref locally.
+            with patch.dict(os.environ, {'GIT_ALLOW_PROTOCOL': ''}):
+                setup_submodules.initialize_vector_preview(self.clone)
+                self.assertEqual(self.git('-C', str(self.clone), 'show', revision+':first'),
+                                 'preview data\n')
+
     def test_polkavm_history_stays_separate_and_verification_is_offline(self):
         """Fetch a distinct shallow history, then read only its selected blob without moving HEAD."""
         (self.remote/'first').write_text('historical lock bytes\n')
@@ -131,6 +156,10 @@ class PinnedCheckoutTests(unittest.TestCase):
         (self.upstream/'codec').mkdir()
         (self.upstream/'codec/payload').write_text('first\n')
         self.first = self.commit(self.upstream, 'first')
+        # Older parent fixtures explicitly have no separately selected vector preview.
+        (self.root/'spec').mkdir()
+        (self.root/'spec/pins.json').write_text('{}\n')
+        self.git('-C', self.root, 'add', 'spec/pins.json')
         self.relative = 'vendor/static'
         self.add_source(self.relative)
         (self.upstream/'codec/payload').write_text('second\n')

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "graypaper_commit": "fad0ded4a433052397bf7234352a57fe491883f7",
+  "graypaper_commit": "44e0b1154ec1f556354b92b8ee58d097c2038167",
   "nim": "2.2.12",
   "nim_memory_manager": "arc",
   "sources": {},

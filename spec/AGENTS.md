@@ -50,3 +50,11 @@ JAM parity. Keep routine progress out of the shared design pages.
   The pinned vector dataset remains historical encoding evidence; current qualification uses
   explicitly derived target records without alternate production decoding. See
   [current qualification](graypaper-current-qualification.md).
+
+- On 2026-11-07 the maintainer authorized source
+  `44e0b1154ec1f556354b92b8ee58d097c2038167`, superseding the earlier source targets.
+  Enforce the preimage extrinsic's 256-item and 2^25 raw-data-byte ceilings separately
+  from local resource policy. The target retains supervision. Its supervisor-free
+  vector preview is separately pinned for selected compatible consumers, not an
+  authority to remove production metadata or host calls. See
+  [the compatibility decision](gp-preimages-preview-reconciliation.md).

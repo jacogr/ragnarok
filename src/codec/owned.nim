@@ -15,7 +15,7 @@ type
     Bytes, Optional, Work, Preimages, Digest
   OwnershipError* {.pure.} = enum ## Wire failures retain their meaning; ownership operations add missing-owner/schema/index failures.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
-    AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan, InvalidOwner,
+    AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan, InvalidOwner, InvalidCount,
     WrongSchema, InvalidIndex, AllocationFailure
   # Private, acyclic ARC storage; neither wire bytes nor borrowed descriptors leave this module.
   FrameData = ref object
@@ -117,6 +117,7 @@ proc ownershipError(error: CompositeError): OwnershipError =
   of OutputTooSmall: OwnershipError.OutputTooSmall # Complete storage is required.
   of AliasedBuffers: OwnershipError.AliasedBuffers # Borrowed preflight rejected overlap.
   of LengthOverflow: OwnershipError.LengthOverflow # A host extent is unrepresentable.
+  of InvalidCount: OwnershipError.InvalidCount # Preserve an invalid protocol sequence count.
   of InvalidTag: OwnershipError.InvalidTag # The schema discriminator is unsupported.
   of InvalidSpan: OwnershipError.InvalidSpan # A borrowed descriptor is invalid.
 

@@ -11,8 +11,8 @@
 
 import ../../support/arc_evidence
 import std/[assertions, envvars, syncio]
-import ../../../src/codec/[block_codec, bounded, composite, owned, tickets, assurances, guarantees,
-    disputes, header]
+import ../../../src/codec/[natural, block_codec, bounded, composite, owned, tickets, assurances,
+    guarantees, disputes, header]
 
 # Missing fixture configuration must fail before constructing any relative or root-level child path.
 let fixtureFolder = getEnv("RAGNAROK_BLOCK_FIXTURES")
@@ -207,3 +207,18 @@ try:
 except:
   # Missing trusted fixtures fail the suite without changing protocol error semantics.
   quit(2)
+
+
+block:
+  # A generic owned value set can be larger, but a block preimage component has a fixed protocol maximum.
+  var rows: seq[byte] = @[]
+  let count = natural.encode(JamNatural(256))
+  for i in 0..<count.len: rows.add(count.bytes[i])
+  for i in 0..<256:
+    for j in 0..<5: rows.add(0) # E4 service plus an empty payload; ordering is admission's responsibility.
+  assert decodeComponent[ComponentKind.Preimages](rows, config).error == FrameError.None
+  rows[0] = 0x81
+  rows[1] = 0x01 # Canonical count 257, rejected before any missing tuple can be inspected.
+  let excessive = decodeComponent[ComponentKind.Preimages](rows, config)
+  assert excessive.error == FrameError.InvalidComponent
+  assert excessive.cause.preimageError == CompositeError.InvalidCount

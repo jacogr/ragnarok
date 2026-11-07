@@ -24,7 +24,7 @@ type
     bytes*: ProvisionBytes
   PreimageTransitionError* {.pure.} = enum ## Refusal never exposes partially admitted input, proposed writes or a candidate state root.
     Uninitialized, None, InvalidInput, InvalidState, NotOrderedUnique, NotRequested,
-    MalformedState, LimitExceeded, BackendFailure, InvalidIndex
+    MalformedState, LimitExceeded, BackendFailure, InvalidIndex, TooManyItems, TooBig
   ## Fixed private rows cache only identities proved from the retained input; no caller buffer is trusted later.
   PreimageRow = object
     service: ServiceIndex
@@ -129,6 +129,8 @@ proc preparePreimages(prior: StateStoreSnapshot, source: OwnedFrame,
   if meta.value.kind != OwnedKind.Preimages: fail(
       PreimageTransitionError.InvalidInput) # Other owned frames cannot supply this extrinsic.
   let count = meta.value.blobCount
+  if requireRequested and uint64(count) > MaxPreimageExtrinsicItems:
+    fail(PreimageTransitionError.TooManyItems) # Generic provided-value sets have no extrinsic count restriction.
   if uint64(count) > uint64(limits.items) or count > high(int) div sizeof(PreimageRow) or
       count > high(int) div sizeof(PreimageProvision) or count > high(int) div (2*sizeof(StateWrite)):
     fail(PreimageTransitionError.LimitExceeded) # Prove row/statistics/write descriptor bounds before allocation.
@@ -143,6 +145,8 @@ proc preparePreimages(prior: StateStoreSnapshot, source: OwnedFrame,
     let size = uint64(source.ownedBlobLength(i).value)
     if size >= uint64(high(uint32)) - 1:
       fail(PreimageTransitionError.InvalidInput) # Exclude reserved namespace selectors before copying or hashing.
+    if requireRequested and size > MaxPreimageExtrinsicDataBytes - total:
+      fail(PreimageTransitionError.TooBig) # Protocol data sum excludes service/length framing and precedes hashing.
     if size > uint64(limits.perBlob) or size > uint64(limits.totalBlobBytes)-total:
       fail(PreimageTransitionError.LimitExceeded) # Subtract before aggregate addition under wrapping arithmetic.
     total += size

@@ -10,6 +10,10 @@ import ./natural
 import ./fixed_unsigned
 import ./bounded
 
+const
+  MaxPreimageExtrinsicItems* = 256'u64          ## Protocol count ceiling, independent of local capture budgets.
+  MaxPreimageExtrinsicDataBytes* = 33554432'u64 ## Sum of raw payload bytes; framing is excluded.
+
 type
   BlobSpan* = object ## Caller-supplied or decoded coordinates in a borrowed pool; encoders validate bounds against that pool.
     offset*, length*: int
@@ -40,7 +44,7 @@ type
     perBlob*, totalBlobBytes*: ByteLimit
   CompositeError* {.pure.} = enum ## Typed status discriminator: Uninitialized is the default failure; None selects completed data.
     Uninitialized, None, Truncated, NonCanonical, LimitExceeded, OutputTooSmall,
-    AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan
+    AliasedBuffers, LengthOverflow, InvalidTag, InvalidSpan, InvalidCount
   CompositeWrite* = object ## Completed output extent; callers cannot retag failures or read uncommitted progress.
     case status: CompositeError
     of None:
@@ -412,3 +416,12 @@ proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
     return PreimageResult(status: CompositeError.LengthOverflow)
   var unused: array[0, Preimage] = default(array[0, Preimage])
   walk(input, int(prefix.consumed), int(count), limits, unused, false, wireLimit)
+
+
+proc inspectPreimageExtrinsic*(input: openArray[byte], limits: PreimageLimits,
+    wireLimit: ByteLimit): PreimageResult {.raises: [].} =
+  ## Enforce the protocol sequence bound before applying independent local capture policies.
+  let prefix = natural.decode(input)
+  if prefix.ok and uint64(prefix.value) > MaxPreimageExtrinsicItems:
+    return PreimageResult(status: CompositeError.InvalidCount) # No caller ceiling can widen the schema.
+  inspectPreimages(input, limits, wireLimit)
