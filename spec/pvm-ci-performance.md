@@ -79,6 +79,18 @@ state and refusal controls remain mandatory.
 Ordinary guest reset reuses the module's declared immutable initial RAM, whose
 compatibility is established by the frozen-fixture producer. Initialized Pinky
 and DOOM writable snapshots override that baseline through normal write APIs.
+Canonical Ragnarok non-Pinky guests receive the same compact artifact through
+`RAGNAROK_PVM_SIEVE_ARTIFACT` and admit it with production `decodeArtifact` inside
+the cold clock. The frozen invocation still supplies all thirteen registers, gas
+and entry; artifact entry lookup must match `run_checked`, and its page limit is
+the invocation's exact mapped-page count. The expanded snapshot remains the
+independent post-clock oracle for exact initial code, page identities, permissions,
+bytes and page ceiling. Pinky retains its complete initialized snapshot admission.
+Historical execution-only adapters keep their explicit snapshot input path.
+Both admission paths use the same 4 MiB program-byte ceiling. Artifact admission's
+jump ceiling is its 4 MiB code-byte limit rather than the snapshot path's 1 Mi
+entries; frozen sieve/minimal/memset declare only 148/4/11 entries respectively.
+Artifact format, symbol and export validation remain normal production work.
 Ordinary guest code/jump-table bytes are compared exactly against the admitted raw
 module source after sample0, including unreachable instructions. The raw source is
 retained with an immutable shared byte handle created inside cold admission; no

@@ -258,6 +258,71 @@ block:
   arguments.add(0)
   assert start(empty, arguments, 4097).error == InitializationError.ArgumentsTooLarge
 
+proc regionSources() =
+  ## Arbitrary region count and source selection preserve exact bytes, refusal order and ownership.
+  var first = newSeq[byte](515)
+  var second = newSeq[byte](514)
+  for index in 0..<first.len:
+    first[index] = byte((index*7+1) and 255) # Distinct patterns expose accidental positional selection.
+  for index in 0..<second.len:
+    second[index] = byte((index*11+3) and 255)
+  let regions = [
+    InitializationRegion(first: PageIndex(16), past: PageIndex(17), access: PageAccess.ReadOnly,
+      source: InitializationSource.Second, offset: 1, length: 513),
+    InitializationRegion(first: PageIndex(32), past: PageIndex(34), access: PageAccess.ReadWrite,
+      source: InitializationSource.First, offset: 2, length: 513),
+    InitializationRegion(first: PageIndex(0xfffff), past: PageIndex(0x100000),
+      access: PageAccess.ReadWrite, source: InitializationSource.Second, offset: second.len,
+      length: 0)]
+  let captured = captureInitializationMemory(regions, first, second, PageLimit(4))
+  assert captured.error == MachineError.None
+  let memory = captured.value
+  for page in [16'u32, 32, 33, 0xfffff]:
+    # Compare every byte, including both partial chunks, whole zero pages and the last physical page.
+    let image = pageImage(memory, PageIndex(page)).value
+    assert image.access == (if page == 16: PageAccess.ReadOnly else: PageAccess.ReadWrite)
+    for offset in 0..<4096:
+      let expected = if page == 16 and offset < 513: second[1+offset]
+        elif page == 32 and offset < 513: first[2+offset] else: 0'u8
+      assert image.bytes[offset] == expected
+  assert load(memory, MemoryAddress(17*4096), AccessWidth(1)).error == MachineError.Fault
+  let another = captureInitializationMemory(regions, first, second, PageLimit(4)).value
+  assert not samePage(memory, another, PageIndex(33)) # Page headers remain invocation-owned.
+  let changed = store(memory, MemoryAddress(33*4096-1), AccessWidth(8),
+      RegisterValue(0x1122334455667788'u64)).value
+  assert uint64(load(changed, MemoryAddress(33*4096-1), AccessWidth(8)).value) ==
+      0x1122334455667788'u64
+  assert uint64(load(memory, MemoryAddress(33*4096-1), AccessWidth(8)).value) == 0
+  assert uint64(load(changed, MemoryAddress(0xfffff000'u64), AccessWidth(8)).value) == 0
+  first[2] = 0
+  second[1] = 0
+  assert uint64(load(memory, MemoryAddress(32*4096), AccessWidth(1)).value) == 15
+  assert uint64(load(memory, MemoryAddress(16*4096), AccessWidth(1)).value) == 14
+  assert captureInitializationMemory(regions, first, second, PageLimit(3)).error ==
+      MachineError.LimitExceeded
+  var invalid = regions
+  invalid[2].offset = second.len+1
+  assert captureInitializationMemory(invalid, first, second, PageLimit(0)).error ==
+      MachineError.InvalidRange # A late source refusal precedes aggregate page-budget admission.
+  invalid = regions
+  invalid[2].first = PageIndex(31)
+  invalid[2].past = PageIndex(32)
+  assert captureInitializationMemory(invalid, first, second, PageLimit(0)).error ==
+      MachineError.UnsortedPages
+  invalid = regions
+  invalid[2].past = PageIndex(0x100001)
+  assert captureInitializationMemory(invalid, first, second, PageLimit(0)).error ==
+      MachineError.InvalidRange
+  invalid = regions
+  invalid[0].offset = -1
+  assert captureInitializationMemory(invalid, first, second, PageLimit(4)).error ==
+      MachineError.InvalidRange
+  let empty: seq[InitializationRegion] = @[]
+  assert pageIndices(captureInitializationMemory(empty, first, second, PageLimit(
+      0)).value).value.len == 0
+
+regionSources()
+
 # A complete invocation lifetime checks independent snapshots after mutating caller-owned inputs.
 proc cycle() =
   var blob = envelope([7'u8], [11'u8], [0'u8, 0, 1, 0, 1], 1, 1)
