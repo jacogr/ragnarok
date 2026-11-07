@@ -120,25 +120,18 @@ proc initialMemory(ro, rw, stack: uint32, roData, rwData: seq[byte],
     return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   let count = roPages+rwPages+stackPages
   if count > uint64(limit): return ArtifactResult[Memory](status: ArtifactError.LimitExceeded)
-  var pages = newSeq[PageImage](int(count))
-  var slot = 0
-  for region in 0..2:
-    # Sorted nonoverlapping RO, RW and stack regions leave all guard pages inaccessible.
-    let base = if region == 0: 65536'u64 elif region ==
-        1: rwStart else: 0xfffe0000'u64-stackPages*4096
-    let length = if region == 0: roPages elif region == 1: rwPages else: stackPages
-    for page in 0..<int(length):
-      var image = PageImage(index: PageIndex(uint32(base div 4096+uint64(page))),
-          access: (if region == 0: PageAccess.ReadOnly else: PageAccess.ReadWrite))
-      for within in 0..<4096:
-        let offset = page*4096+within
-        if region == 0 and offset < roData.len:
-          image.bytes[within] = roData[offset] # Missing initialized bytes remain zero.
-        elif region == 1 and offset < rwData.len:
-          image.bytes[within] = rwData[offset] # Stack is entirely zero-initialized.
-      pages[slot] = image
-      inc slot
-  let memory = captureMemory(pages, PageLimit(limit))
+  # Explicit source choices preserve independent RO/RW prefixes without a temporary page-image vector.
+  let regions = [
+    InitializationRegion(first: PageIndex(16), past: PageIndex(uint32(16+roPages)),
+      access: PageAccess.ReadOnly, source: InitializationSource.First, offset: 0,
+      length: roData.len),
+    InitializationRegion(first: PageIndex(uint32(rwStart div 4096)),
+      past: PageIndex(uint32(rwStart div 4096+rwPages)), access: PageAccess.ReadWrite,
+      source: InitializationSource.Second, offset: 0, length: rwData.len),
+    InitializationRegion(first: PageIndex(uint32(0xfffe0000'u64 div 4096-stackPages)),
+      past: PageIndex(uint32(0xfffe0000'u64 div 4096)), access: PageAccess.ReadWrite,
+      source: InitializationSource.First, offset: 0, length: 0)]
+  let memory = captureInitializationMemory(regions, roData, rwData, PageLimit(limit))
   if memory.error != MachineError.None:
     return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   ArtifactResult[Memory](status: ArtifactError.None, completed: memory.value)
