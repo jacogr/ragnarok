@@ -590,7 +590,7 @@
     "selected_A_image": "A1 only after required identity check; A2 retained, never selected by timing."
   },
   "harness_files": {
-    ".github/diagnostics/pvm_doom_layers.py": "c731e53d067566fa90f36c3acc8a99f24f07206856df9ced75cd8232583ae5fa",
+    ".github/diagnostics/pvm_doom_layers.py": "b82630e987e804e1bea21876c7e3caf8f2b50d58e979a95dd5ae28094b1b80ac",
     ".github/workflows/ci.yml": "4685a88a59b4ce302cb087a1d33b4e74077015ac3f2458d1ee41e1a78ff037ac"
   },
   "authorization": "Root approved design103d61f12e1c5a792e766e76ef50285585fe2163fd9ffe0e6157aca447569a12 with one deterministic A rebuild added,26timed338calls/36controls retained. Root must inspect this actual implementation and digest before normal new-branch push and one dispatch."

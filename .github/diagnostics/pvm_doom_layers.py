@@ -361,6 +361,7 @@ def build_images(plan, compiler, report, seals):
             raise ValueError('Actual compile profile differs from approved contract')
         image = record/'guest'
         shutil.copy2(binary,image)
+        seals[image]=digest(image)  # Completed images become immutable before later builds can run.
         save(record/'elf.json', elf_identity(image))
         # Disassembly is evidence only; every variant still follows the unchanged timed order.
         disassembly = checks.command(['objdump','-d',str(image)],'disassembly-'+label)
@@ -374,6 +375,7 @@ def build_images(plan, compiler, report, seals):
             determinism_gate(images['A'],image,OUTPUT/'A-determinism.json')
         else:
             images[variant] = image
+        verify(seals)
         save(OUTPUT/'results.json',report)
     return images
 
