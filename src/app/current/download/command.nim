@@ -475,6 +475,8 @@ proc performDownloads(options: Options, adopted: var int,
     # The original tuple supplies credentials shared by every additional PORT PEER pair.
     let portArgument = if index == 0: 2 else: 9 + (index - 1) * 2
     let peerArgument = if index == 0: 5 else: portArgument + 1
+    if peerArgument < 1 or peerArgument > MaxDownloadArguments:
+      return CurrentDownloadCommandResult.InvalidOptions # Validate the selected argument before narrowing.
     let port = number(options.argument(portArgument), 65535)
     if port == 0: return CurrentDownloadCommandResult.InvalidEndpoint
     ports[index] = uint16(port)

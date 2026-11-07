@@ -173,7 +173,7 @@ proc findServiceCode*(table: StateCodeAvailability, service: ServiceIndex): Code
   let data = table.data
   if data == nil: return CodeAvailabilityResult[int](status: CodeAvailabilityError.Uninitialized)
   for i in 0..<data.rows.len:
-    if data.rows[i].info.service == service: return CodeAvailabilityResult[int](
+    if uint32(data.rows[i].info.service) == uint32(service): return CodeAvailabilityResult[int](
         status: CodeAvailabilityError.None, completed: i)
   CodeAvailabilityResult[int](status: CodeAvailabilityError.NoService)
 

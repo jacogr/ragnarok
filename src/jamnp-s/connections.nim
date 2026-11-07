@@ -400,6 +400,8 @@ proc incomingPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   let owner = cast[ptr NodeConnections](user)
   if slot >= cuint(owner.incoming.len): fail(owner[]); return
   let position = int(slot)
+  if position < 0 or position >= MaxIncomingPeers:
+    fail(owner[]); return # Validate the converted value passed to the native peer-index API.
   if event == PeerAccepted:
     let found = owner.listener.peerAt(position)
     if found.error != PeerError.None: fail(owner[]); return
