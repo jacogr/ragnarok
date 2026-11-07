@@ -65,6 +65,14 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
                         event_context('workflow_dispatch', suite='tooling')):
             self.assertEqual(selected_families(text, 'pvm-comparison', context), [])
 
+    def test_native_preflight_fetches_locked_crypto_before_offline_state_checks(self):
+        """Standalone native qualification owns the new product fixture's locked offline closure."""
+        planned = make_plan('check-pvm-native',
+            skip=('toolchain', 'sources', 'rust-tools', 'check-inventory'))
+        fetch = 'cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml'
+        self.assertIn(fetch, planned)
+        self.assertLess(planned.index(fetch), planned.index('tools/pvm_native_ci.py'))
+
     def test_make_qualifies_before_samples_and_latest_does_not_build(self):
         """Standalone execution owns setup/qualification; downloading evidence starts no guest toolchain."""
         planned = make_plan('bench-pvm-performance', skip=('toolchain', 'sources', 'rust-tools', 'check-inventory'))
