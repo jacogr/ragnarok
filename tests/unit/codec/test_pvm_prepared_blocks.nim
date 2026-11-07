@@ -131,6 +131,31 @@ for op in 0..255:
           compare(source, prepared, 16, 100000)
 assert opcodes == 139
 
+proc shortOperandReuse() =
+  ## Reconstruct short operands from the retained code, including following marked bytes and the zero suffix.
+  for code in 0..255:
+    if not validOpcode(byte(code)): continue
+    for width in [1, 2, 5, 9]:
+      # The first operation can read into subsequent marked code, independently of the later entry.
+      var part = @[byte(code)]
+      for index in 1..<width: part.add(255'u8)
+      for atEnd in [false, true]:
+        # True-end zero-suffix cases use only legal no-fallthrough terminators, including the JAM profile.
+        if atEnd and byte(code) notin {0'u8, 40'u8, 50'u8, 80'u8, 180'u8}: continue
+        var parts = @[part, @[51'u8, 7, 19], @[0'u8], part]
+        if not atEnd: parts.add(@[0'u8]) # Every arbitrary opcode retains a legal terminating suffix.
+        let program = owner(parts)
+        let prepared = cache(program)
+        let last = uint64(width+4)
+        for pc in [last, 0'u64, last, 0'u64]:
+          for paid in [false, true]:
+            # Reordered cold and warm entries preserve complete-block pricing and every original register/memory effect.
+            let input = captureMachine(program, mapped, MachineInfo(pc: CodeAddress(pc),
+              gas: MachineGas(100000), blockCharged: paid, registers: registers)).value
+            compare(input, prepared, 8, 100000)
+
+shortOperandReuse()
+
 proc registerPrefixMatrix() =
   ## Every literal register opcode precedes every genuine second opcode; budgets distinguish original and paired dispatch.
   var initial = default(RegisterFile)
