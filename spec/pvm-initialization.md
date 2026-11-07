@@ -71,10 +71,16 @@ payload reads. Rejection never returns a partially initialized machine.
 
 Input arrays must remain stable during the call. The embedded program and mapped
 bytes are copied into private acyclic owners; input mutation afterwards cannot alter
-them. Capture temporarily holds the page-image vector as well as final owned pages,
-so the page ceiling bounds logical pages rather than claiming a single-copy peak
-allocation. Initialization is linear in input/program validation and materialized
-page bytes. It performs no guest instruction or host side effect.
+them. `captureInitializationMemory` admits sorted mapped prefixes with explicit
+`InitializationSource.First` or `Second` selection from two independently borrowed
+inputs. JAM selects its envelope for RO/RW/stack and its arguments for the argument
+region. Artifact admission reuses the same constructor with three regions. Every
+descriptor, including empty source-end spans, is validated before the aggregate
+page budget and any allocation. Capture builds fresh page headers and final owned
+payload chunks directly, sharing one operation-local immutable zero chunk for
+absent prefixes and suffixes. The page ceiling bounds logical mapped pages.
+Initialization is linear in input/program validation, copied prefix bytes and
+mapped page headers. It performs no guest instruction or host side effect.
 
 ## Verification and next scope
 

@@ -4,7 +4,7 @@
 ## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
 import std/[assertions, syncio, monotimes, envvars]
 import ./pvm_invocation_scope
-import ../../src/pvm/[program, machine]
+import ../../src/pvm/[artifact, program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]
 import ../../src/pvm/step as reference
 
@@ -73,14 +73,15 @@ proc count(guest: GuestKind, limit: uint64): uint64 =
     0'u64
 
 proc checkMemory(memory: Memory, indices: seq[PageIndex], access: seq[
-    PageAccess], expected: string, offset: int): void =
+    PageAccess], expected: string, offset: int,
+    diagnostic: string = "pvm sieve terminal memory mismatch"): void =
   ## Compare every initialized/mapped byte; a matching prime count alone is insufficient.
   assert expected.len == offset + indices.len * 4096
   for page in 0..<indices.len:
     let image = pageImage(memory, indices[page]).value
     assert image.access == access[page]
     for i in 0..<4096: assert image.bytes[i] == byte(expected[offset + page *
-        4096 + i])
+        4096 + i]), diagnostic
 
 proc check(machine: Machine, cpu: MachineInfo, indices: seq[PageIndex], access: seq[PageAccess],
     expected: string, limit: uint64, guest: GuestKind) =
@@ -99,9 +100,17 @@ if getEnv("RAGNAROK_PVM_SIEVE_ASSERT_PROBE") == "1":
   assert false, "pvm sieve native assertion control"
 var data = ""
 var expected = ""
+var artifactData = ""
+let artifactPath = getEnv("RAGNAROK_PVM_SIEVE_ARTIFACT")
+let artifactAdmission = artifactPath.len > 0
+if artifactAdmission:
+  # Canonical ordinary guests admit their compact container; initialized Pinky retains its snapshot.
+  assert fullInvocation and guest != GuestKind.Pinky
 try:
   data = readFile(getEnv("RAGNAROK_PVM_SIEVE_INPUT"))
   expected = readFile(getEnv("RAGNAROK_PVM_SIEVE_EXPECTED"))
+  if artifactAdmission:
+    artifactData = readFile(artifactPath) # Read caller bytes before timing, as in the Rust driver.
 except:
   quit 2
 assert data.len >= 136 and data[0..7] == "PVMSIV01"
@@ -157,27 +166,47 @@ let coldCall = if fullInvocation: beginInvocation() else: default(
     InvocationClock)
 var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
     ) else: default(InvocationRuntime)
-var wire = newSeq[byte](wireSize)
-copyInvocationInput(wire, data, 136)
-let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4 *
-    1024 * 1024),
-  JumpCountLimit(1024 * 1024))
-assert decoded.error == ProgramError.None, "sieve program decoding"
-let owner = decoded.value
-var images = newSeq[PageImage](pageCount)
-var cursor = 136 + wireSize
-for page in 0..<pageCount:
-  # Deliver each checked record directly into its final owned staging slot.
-  let index = PageIndex(uint32(word(data, cursor, 4)))
-  let permission = byte(data[cursor + 4])
-  assert permission in [1'u8, 2'u8]
-  images[page].index = index
-  images[page].access = if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite
-  copyInvocationInput(images[page].bytes, data, cursor + 5)
-  cursor += 4101
-let captured = captureMemory(images, PageLimit(uint32(pageCount)))
-assert captured.error == MachineError.None
-let memory = captured.value
+var owner = default(Program)
+var memory = default(Memory)
+if artifactAdmission:
+  # Owned byte admission, program validation and initial memory capture remain inside the cold clock.
+  var limits = defaultArtifactLimits()
+  limits.pages = uint32(pageCount)
+  assert uint64(artifactData.len) <= limits.bytes, "sieve artifact byte limit"
+  var raw = newSeq[byte](artifactData.len)
+  if raw.len > 0:
+    copyInvocationInput(raw, artifactData, 0) # An empty container reaches the production format refusal.
+  let decoded = decodeArtifact(raw, limits)
+  assert decoded.error == ArtifactError.None, "sieve artifact decoding"
+  let admitted = decoded.value
+  let selected = artifact.entry(admitted, "run_checked")
+  assert selected.error == ArtifactError.None, "sieve artifact export"
+  assert uint64(selected.value) == entry, "sieve artifact entry mismatch"
+  owner = programOf(admitted)
+  memory = memoryOf(admitted)
+else:
+  # Initialized snapshots and historical execution-only callers retain their complete byte input.
+  var wire = newSeq[byte](wireSize)
+  copyInvocationInput(wire, data, 136)
+  let decoded = decodeJamProgram(wire, CodeAddress(entry), ProgramByteLimit(4 *
+      1024 * 1024), JumpCountLimit(1024 * 1024))
+  assert decoded.error == ProgramError.None, "sieve program decoding"
+  owner = decoded.value
+  var images = newSeq[PageImage](pageCount)
+  var cursor = 136 + wireSize
+  for page in 0..<pageCount:
+    # Pinky's writable state includes its initializer's heap, framebuffer and stack residues.
+    let index = PageIndex(uint32(word(data, cursor, 4)))
+    let permission = byte(data[cursor + 4])
+    assert permission in [1'u8, 2'u8]
+    images[page].index = index
+    images[page].access = if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite
+    copyInvocationInput(images[page].bytes, data, cursor + 5)
+    cursor += 4101
+  let captured = captureMemory(images, PageLimit(uint32(pageCount)))
+  assert captured.error == MachineError.None
+  memory = captured.value
+# All thirteen caller registers, finite gas and uncharged entry come from the frozen invocation ABI.
 let source = captureMachine(owner, memory, info).value
 var plan = default(GasPlan)
 var memo = default(GasMemo)
@@ -261,6 +290,18 @@ for sample in 0..<samples:
   let elapsed = if clocked: getMonoTime().ticks - wallStart else: 0'i64
   let cpuElapsed = if clocked: cpuNanoseconds() - cpuStart else: 0'i64
   if sample == 0:
+    if artifactAdmission:
+      # The expanded fixture remains an independent oracle, checked after the complete cold call.
+      var originalWire = newSeq[byte](wireSize)
+      copyInvocationInput(originalWire, data, 136)
+      assert matchesProgramEncoding(owner, originalWire), "sieve artifact program mismatch"
+      let mapped = pageIndices(memory).value
+      assert mapped.len == indices.len, "sieve artifact map mismatch"
+      for page in 0..<mapped.len:
+        assert uint32(mapped[page]) == uint32(indices[page]), "sieve artifact map mismatch"
+      # Page zero is an unmapped ABI guard; inserting it must still hit the exact caller page ceiling.
+      assert withPage(memory, PageImage(index: PageIndex(0), access:
+        PageAccess.ReadWrite)).error == MachineError.LimitExceeded, "sieve artifact page limit mismatch"
     if fullInvocation:
       echo "PREPARED_PROGRAM,", preparationCpuNs, ",", preparationWallNs, ",",
         preparationCodeBytes, ",", preparationInstructions
@@ -275,7 +316,7 @@ for sample in 0..<samples:
     echo "PREPARED_CACHE,", sample, ",", observed.streamNodes, ",",
         observed.preparationUnits, ",", uint64(observed.limits.resources.nodes),
             ",", uint64(observed.limits.resources.preparation)
-  checkMemory(memory, indices, access, originalBytes, 0)
+  checkMemory(memory, indices, access, originalBytes, 0, "pvm sieve initial memory mismatch")
   let original = machineInfo(source).value
   assert uint64(original.pc) == entry and uint64(original.gas) == uint64(info.gas)
   assert not original.blockCharged

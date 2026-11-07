@@ -230,6 +230,32 @@ class PerformanceOrchestrationTests(unittest.TestCase):
         self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'passed')
         self.assertIn('CPU', (self.folder/'summary.md').read_text())
 
+    def test_canonical_guest_admission_preserves_pinky_snapshot_and_all_inputs(self):
+        """All eight ordinary configurations pass the raw reference artifact with the full ABI oracle."""
+        runner = InertRunner(self.folder, scope='micro')
+        runner.prepare_micro()
+        runner.build_images()
+        ordinary = set()
+        for case in runner.cases:
+            if case['family'] != 'guest':
+                continue
+            for role in performance.ROLES:
+                args, environment, controlled = runner.invocation(case, role)
+                data, expected = runner.inputs[case['case_id']]
+                self.assertEqual(environment['RAGNAROK_PVM_SIEVE_INPUT'], str(data))
+                self.assertEqual(environment['RAGNAROK_PVM_SIEVE_EXPECTED'], str(expected))
+                self.assertEqual(controlled, expected)
+                self.assertEqual(environment['RAGNAROK_PVM_PERFORMANCE'], '1')
+                if case['case'] == 'pinky' or role == 'reference':
+                    self.assertNotIn('RAGNAROK_PVM_SIEVE_ARTIFACT', environment)
+                else:
+                    ordinary.add(case['case_id'])
+                    reference, _, _ = runner.invocation(case, 'reference')
+                    self.assertEqual(environment['RAGNAROK_PVM_SIEVE_ARTIFACT'], str(reference[2]))
+        self.assertEqual(ordinary, {
+            'sieve-1000', 'sieve-10000', 'sieve-100000', 'sieve-10000000',
+            'minimal-1000', 'minimal-100000', 'memset-1000', 'memset-100000'})
+
     def test_interpreted_lifecycle_is_absent_in_real_publication(self):
         """The orchestration/report seam publishes no compiler-start/close evidence for interpreted."""
         report = InertRunner(self.folder, scope='doom').execute()
