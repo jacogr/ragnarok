@@ -41,6 +41,34 @@ other immutable page storage. No backing
 reference or borrowed pointer is public. Failure returns only a typed reason;
 a guest page-fault address is part of that reason, never partial operation progress.
 
+## Fresh owned resident-region copies
+
+`copyMemoryRegion` copies a positive number of consecutive `MemoryPageSlot`s into a fresh
+caller-owned byte sequence. The first `PageDescription` binds its physical start and uniform
+read-only/read-write access. Owner validity, complete slot bounds, physical adjacency, permission
+equality, the physical endpoint and the host byte-size ceiling are checked before allocation.
+Malformed spans return `InvalidRange`; an invalid owner returns `InvalidOwner`, and a span that
+cannot fit host byte indexing returns `LimitExceeded`. A refusal exposes no copied prefix.
+
+The factory allocates and zero-initializes the entire destination itself. Private page metadata
+may prove that complete 512-byte chunks are already zero; only their redundant payload copies
+are omitted. Supplied or partially covered chunks remain unknown and are copied in full.
+Permission-only updates preserve proofs. Payload replacements and first writable page clones
+clear the entire page's proofs before any mutation, including scalar-writer cache reuse.
+No content scan, source-pointer exposure or caller-prezeroed flag is part of this API.
+
+Only fresh interpreter frame construction uses this factory. Existing `copyMemoryPage` retains
+its complete-overwrite contract for arbitrary nonzero observation, host and scratch destinations.
+Resident buffers remain fully initialized, contiguous and independently owned; native pointer
+extents, per-opcode access, publication and retention accounting retain their existing contracts.
+The new metadata preflight walk and per-page proof branch remain constructor costs. Page layout,
+return lowering and performance require later qualification. No unchanged-size or speed claim
+is made.
+
+The source-stage controls extend `pvm_memory_page_slots` with full-span refusals and independent
+owned copies, and `pvm_memory_chunks` with partial-prefix, replacement, COW, cached-writer epoch,
+complete-overwrite and repeated ARC ownership cases. Compiler, native and layout checks are pending.
+
 ## Scalar access contract
 
 Loads and stores support widths 1, 2, 4 and 8. Other widths return a local

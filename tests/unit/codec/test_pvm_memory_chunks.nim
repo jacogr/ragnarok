@@ -11,6 +11,14 @@ proc byteAt(offset: int): byte =
   ## An independent nonuniform pattern exposes accidental neighboring writes and stale chunk selection.
   byte((offset*37+offset div 71+19) mod 256)
 
+proc residentBytes(memory: Memory, first: uint32, count: uint32,
+    access: PageAccess = PageAccess.ReadWrite): seq[byte] =
+  ## Observe a fresh owned region at slot zero without exposing its immutable backing or proofs.
+  var copied = copyMemoryRegion(memory, MemoryPageSlot(0), PageCount(count),
+    PageDescription(index: PageIndex(first), access: access))
+  assert copied.error == MachineError.None
+  takeValue(copied)
+
 proc snapshotCycle() =
   ## Retain all mutation generations and permission aliases until complete page observations finish.
   var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite,
@@ -192,6 +200,8 @@ proc zeroCycle() =
   let bulk = writeBytes(cleared, MemoryAddress(74238), input, MemoryByteLimit(1026)).value
   let scalar = store(cleared, MemoryAddress(81914), AccessWidth(4), RegisterValue(
       0x44332211'u64)).value
+  # The existing repeated ARC cycle owns and retires a fresh region alongside all old observations.
+  let resident = residentBytes(scalar, 16, 4)
   for side in 0..<4:
     # Independent expectations expose unintended writes to another chunk/page that happens to share the same zero child.
     let index = PageIndex(uint32(16+side))
@@ -221,6 +231,7 @@ proc zeroCycle() =
           byte((0x44332211'u64 shr (8*(offset-4090))) and 255)
         else: 0'u8
       assert word.bytes[offset] == octet
+      assert resident[side*4096+offset] == octet
   let dropped = withPageRange(cleared, PageIndex(16), PageIndex(20), PageAccess.Inaccessible,
     PageContent.Zeroed).value
   assert uint32(writablePageCount(dropped, PageIndex(16), PageIndex(20)).value) == 0
@@ -356,6 +367,114 @@ proc replacementWriterCycle() =
     assert c.bytes[offset] == second and d.bytes[offset] == resumed and e.bytes[
         offset] == final
 
+proc residentPrefixCycle() =
+  ## A partial chunk must copy its nonzero prefix while wholly uncovered chunks remain zero.
+  for length in [0, 1, 511, 512, 513, 4095, 4096, 4097, 8191, 8192]:
+    # Source bytes are all nonzero so an overly broad zero proof cannot pass the output oracle.
+    var input = newSeq[byte](length)
+    for offset in 0..<input.len: input[offset] = byte((offset*7+13) mod 251+1)
+    let regions = [InitializationRegion(first: PageIndex(16), past: PageIndex(18),
+      access: PageAccess.ReadWrite, source: InitializationSource.First, offset: 0, length: length)]
+    let captured = captureInitializationMemory(regions, input, [], PageLimit(2))
+    assert captured.error == MachineError.None
+    let source = captured.value
+    var first = residentBytes(source, 16, 2)
+    let second = residentBytes(source, 16, 2)
+    if input.len > 0: input[0] = 0 # No returned region can borrow a caller's prefix.
+    first[8191] = 91
+    var overwritten = default(array[4096, byte])
+    for offset in 0..<overwritten.len: overwritten[offset] = 77
+    assert copyMemoryPage(source, MemoryPageSlot(1), overwritten).error == MachineError.None
+    let firstPage = pageImage(source, PageIndex(16)).value
+    let secondPage = pageImage(source, PageIndex(17)).value
+    for offset in 0..<8192:
+      # The second copy and complete predecessor observations retain every literal byte.
+      let expected = if offset < length: byte((offset*7+13) mod 251+1) else: 0'u8
+      assert first[offset] == (if offset == 8191: 91'u8 else: expected)
+      assert second[offset] == expected
+      let original = if offset < 4096: firstPage.bytes[offset] else: secondPage.bytes[offset-4096]
+      assert original == expected
+      if offset >= 4096: assert overwritten[offset-4096] == expected
+
+proc residentProofCycle() =
+  ## Recopy mutations of proven-zero pages through each page construction and writer ownership path.
+  let empty = captureMemory([], PageLimit(3)).value
+  let original = withWritablePages(empty, PageIndex(16), PageIndex(19)).value
+  let readonly = withPageRange(original, PageIndex(16), PageIndex(19), PageAccess.ReadOnly,
+    PageContent.Preserved).value
+  let writable = withWritablePages(readonly, PageIndex(16), PageIndex(19)).value
+  let baseline = residentBytes(readonly, 16, 3, PageAccess.ReadOnly)
+  for width in [1, 2, 4, 8]:
+    for offset in [511, 512, 4093, 4095]:
+      # Complete scalar preflight and first-write cloning precede either side of a chunk/page edge.
+      let changed = store(writable, MemoryAddress(uint64(65536+offset)), AccessWidth(byte(width)),
+        RegisterValue(0x8877665544332211'u64)).value
+      let bytes = residentBytes(changed, 16, 3)
+      for at in 0..<bytes.len:
+        let expected = if at >= offset and at-offset < width:
+            byte((0x8877665544332211'u64 shr ((at-offset)*8)) and 255)
+          else: 0'u8
+        assert bytes[at] == expected and baseline[at] == 0
+  let payload = [13'u8, 27, 39, 51, 63, 75, 87, 99]
+  let bulk = writeBytes(writable, MemoryAddress(65536+4093), payload,
+    MemoryByteLimit(uint64(payload.len))).value
+  var image = pageImage(writable, PageIndex(17)).value
+  image.bytes[512] = 61
+  let replaced = withReplacedPages(writable, [image]).value
+  image.bytes[513] = 83
+  let inserted = withPage(writable, image).value
+  var batch = beginResidentReplacements(writable)
+  var page = default(array[4096, byte])
+  page[511] = 107
+  assert stageResidentPage(batch, MemoryPageSlot(2), PageDescription(index: PageIndex(18),
+    access: PageAccess.ReadWrite), page) == MachineError.None
+  let published = finishResidentReplacements(batch).value
+  let hidden = withPageRange(inserted, PageIndex(16), PageIndex(19), PageAccess.Inaccessible,
+    PageContent.Preserved).value
+  let restored = withWritablePages(hidden, PageIndex(16), PageIndex(19)).value
+  let cleared = withPageRange(restored, PageIndex(16), PageIndex(19), PageAccess.ReadWrite,
+    PageContent.Zeroed).value
+  let bulkBytes = residentBytes(bulk, 16, 3)
+  let replacementBytes = residentBytes(replaced, 16, 3)
+  let insertionBytes = residentBytes(inserted, 16, 3)
+  let publishedBytes = residentBytes(published, 16, 3)
+  let restoredBytes = residentBytes(restored, 16, 3)
+  let clearedBytes = residentBytes(cleared, 16, 3)
+  for at in 0..<baseline.len:
+    # Literal offsets distinguish public replacement, resident publication and permission retention.
+    assert bulkBytes[at] == (if at >= 4093 and at < 4101: payload[at-4093] else: 0'u8)
+    assert replacementBytes[at] == (if at == 4608: 61'u8 else: 0'u8)
+    let expected = if at == 4608: 61'u8 elif at == 4609: 83'u8 else: 0'u8
+    assert insertionBytes[at] == expected and restoredBytes[at] == expected
+    assert publishedBytes[at] == (if at == 8703: 107'u8 else: 0'u8)
+    assert clearedBytes[at] == 0 and baseline[at] == 0
+  let writer = newScalarMemoryWriter(writable).value
+  let alias = writer
+  assert store(writer, MemoryAddress(65540), AccessWidth(1), RegisterValue(0)).error ==
+    MachineError.None
+  assert store(writer, MemoryAddress(65540), AccessWidth(1), RegisterValue(71)).error ==
+    MachineError.None
+  assert store(writer, MemoryAddress(69636), AccessWidth(1), RegisterValue(0)).error ==
+    MachineError.None
+  assert store(writer, MemoryAddress(65540), AccessWidth(1), RegisterValue(73)).error ==
+    MachineError.None
+  assert store(writer, MemoryAddress(69636), AccessWidth(1), RegisterValue(91)).error ==
+    MachineError.None
+  let first = snapshotMemory(writer).value
+  assert store(alias, MemoryAddress(65540), AccessWidth(1), RegisterValue(19)).error ==
+    MachineError.None
+  let second = snapshotMemory(alias).value
+  let firstBytes = residentBytes(first, 16, 3)
+  let secondBytes = residentBytes(second, 16, 3)
+  let predecessor = residentBytes(original, 16, 3)
+  for at in 0..<baseline.len:
+    # Zero first writes, cache hits and later alias epochs must not keep stale proofs.
+    assert firstBytes[at] == (if at == 4: 73'u8 elif at == 4100: 91'u8 else: 0'u8)
+    assert secondBytes[at] == (if at == 4: 19'u8 elif at == 4100: 91'u8 else: 0'u8)
+    assert predecessor[at] == 0
+
+residentPrefixCycle()
+residentProofCycle()
 snapshotCycle()
 captureCycle()
 observationCycle()

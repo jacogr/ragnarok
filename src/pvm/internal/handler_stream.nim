@@ -1916,12 +1916,11 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     let pages = after-first
     assert pages > 0 and pages <= high(int) div 4096
     let address = uint64(uint32(image.index))*4096
-    let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
-    for page in first..<after:
-      # The complete private extent is allocated once; each proven page copies exactly its original bytes.
-      let offset = (page-first)*4096
-      assert offset >= 0 and offset <= region.bytes.len-4096
-      flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))
+    # The owner validates this complete span and allocates/fills one fresh fully resident buffer.
+    var copied = copyMemoryRegion(memory, MemoryPageSlot(uint32(first)),
+      PageCount(uint32(pages)), image)
+    assert copied.error == MachineError.None
+    let region = FlatRegion(first: address, access: image.access, bytes: machine.takeValue(copied))
     regions.add(region)
     first = after
   # Compact metadata covers every input page; immutable source memory remains the only baseline byte owner.

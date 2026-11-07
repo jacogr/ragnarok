@@ -78,4 +78,96 @@ block refuseAfterEarlierByteChange:
   let shorter = checked(captureMemory(images.toOpenArray(0, 129), PageLimit(130)))
   assert changedMemoryPageSlots(baseline, shorter).error == MachineError.InvalidRange
 
+block ownedContiguousRegions:
+  ## Each successful copy owns every byte independently of input, source and other returned regions.
+  var input = default(array[3, PageImage])
+  for page in 0..<input.len:
+    # A dense nonzero pattern exercises the unknown-proof path and the last admitted slot.
+    input[page] = PageImage(index: PageIndex(uint32(16+page)), access: PageAccess.ReadWrite)
+    for offset in 0..<4096: input[page].bytes[offset] = byte((page*29+offset*7) mod 251+1)
+  var source = checked(captureMemory(input, PageLimit(3)))
+  let description = PageDescription(index: PageIndex(16), access: PageAccess.ReadWrite)
+  var created = copyMemoryRegion(source, MemoryPageSlot(0), PageCount(3), description)
+  assert created.error == MachineError.None
+  var first = takeValue(created)
+  assert created.error == MachineError.Uninitialized and first.len == 3*4096
+  let second = checked(copyMemoryRegion(source, MemoryPageSlot(0), PageCount(3), description))
+  let last = checked(copyMemoryRegion(source, MemoryPageSlot(2), PageCount(1),
+    PageDescription(index: PageIndex(18), access: PageAccess.ReadWrite)))
+  input[0].bytes[0] = 0 # Caller input storage was captured, never borrowed by the source or copies.
+  first[0] = 0
+  assert checked(pageImage(source, PageIndex(16))).bytes[0] == 1
+  assert second[0] == 1
+  let readonly = checked(withPageRange(source, PageIndex(16), PageIndex(19),
+    PageAccess.ReadOnly, PageContent.Preserved))
+  let readCopy = checked(copyMemoryRegion(readonly, MemoryPageSlot(0), PageCount(3),
+    PageDescription(index: PageIndex(16), access: PageAccess.ReadOnly)))
+  source = default(Memory) # The copied payloads remain owned after this source handle retires.
+  for page in 0..<3:
+    for offset in 0..<4096:
+      # The authored pattern also checks that no nonfirst page or byte suffix is omitted.
+      let expected = byte((page*29+offset*7) mod 251+1)
+      let at = page*4096+offset
+      assert first[at] == (if at == 0: 0'u8 else: expected)
+      assert second[at] == expected and readCopy[at] == expected
+      if page == 2: assert last[offset] == expected
+
+block regionRefusals:
+  ## Refuse the complete requested capability before exposing any valid earlier-page prefix.
+  let description = PageDescription(index: PageIndex(16), access: PageAccess.ReadWrite)
+  let empty = checked(captureMemory([], PageLimit(0)))
+  assert copyMemoryRegion(default(Memory), MemoryPageSlot(0), PageCount(0),
+    description).error == MachineError.InvalidOwner
+  assert copyMemoryRegion(empty, MemoryPageSlot(0), PageCount(0),
+    description).error == MachineError.InvalidRange
+  var input = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(17), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(18), access: PageAccess.ReadWrite)]
+  let source = checked(captureMemory(input, PageLimit(3)))
+  assert copyMemoryRegion(source, MemoryPageSlot(0), PageCount(0),
+    description).error == MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(3), PageCount(1),
+    description).error == MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(high(uint32)), PageCount(1),
+    description).error == MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(1), PageCount(high(uint32)),
+    description).error == MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(0), PageCount(3), PageDescription(
+    index: PageIndex(high(uint32)), access: PageAccess.ReadWrite)).error ==
+    MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(0), PageCount(3), PageDescription(
+    index: PageIndex(0xfffff), access: PageAccess.ReadWrite)).error == MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(0), PageCount(3), PageDescription(
+    index: PageIndex(17), access: PageAccess.ReadWrite)).error == MachineError.InvalidRange
+  assert copyMemoryRegion(source, MemoryPageSlot(0), PageCount(3), PageDescription(
+    index: PageIndex(16), access: PageAccess.ReadOnly)).error == MachineError.InvalidRange
+  input[2].index = PageIndex(19)
+  let gap = checked(captureMemory(input, PageLimit(3)))
+  assert copyMemoryRegion(gap, MemoryPageSlot(0), PageCount(3),
+    description).error == MachineError.InvalidRange
+  input[2].index = PageIndex(18)
+  input[2].access = PageAccess.ReadOnly
+  let mixed = checked(captureMemory(input, PageLimit(3)))
+  assert copyMemoryRegion(mixed, MemoryPageSlot(0), PageCount(3),
+    description).error == MachineError.InvalidRange
+  input[2].access = PageAccess.Inaccessible
+  input[2].bytes[4095] = 91
+  let inaccessible = checked(captureMemory(input, PageLimit(3)))
+  assert copyMemoryRegion(inaccessible, MemoryPageSlot(0), PageCount(3),
+    description).error == MachineError.InvalidRange
+  assert copyMemoryRegion(inaccessible, MemoryPageSlot(2), PageCount(1), PageDescription(
+    index: PageIndex(18), access: PageAccess.Inaccessible)).error == MachineError.InvalidRange
+  var retained = default(array[4096, byte])
+  assert checked(copyMemoryPage(inaccessible, MemoryPageSlot(2), retained)).index == PageIndex(18)
+  assert retained[4095] == 91 # The complete observer still copies inaccessible retained bytes.
+
+block lastPhysicalPageRegion:
+  ## A complete page copy may include the final physical byte, unlike a wrapping scalar access.
+  var input = PageImage(index: PageIndex(0xfffff), access: PageAccess.ReadOnly)
+  input.bytes[4095] = 113
+  let source = checked(captureMemory([input], PageLimit(1)))
+  let bytes = checked(copyMemoryRegion(source, MemoryPageSlot(0), PageCount(1),
+    PageDescription(index: PageIndex(0xfffff), access: PageAccess.ReadOnly)))
+  for offset in 0..<4096: assert bytes[offset] == (if offset == 4095: 113'u8 else: 0'u8)
+
 echo "PVM changed memory page slots passed"
