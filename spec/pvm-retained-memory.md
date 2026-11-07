@@ -24,11 +24,106 @@ limit an RSS bound. Both are released with the lease. `PreparedInfo` copies
 Empty private allocations are not retained. Oversized leases retire normally with no guest refusal.
 Eviction or dropping the final prepared handle releases code and idle memory through acyclic ARC.
 
-The lease owns only managed region buffers, copied sorted mapping metadata, one immutable
-baseline, dirty physical page ordinals and their bounded bitmap. It holds no CPU, gas, callback,
+The lease owns managed region buffers and, when selected, one exclusive mapped RW buffer,
+copied sorted mapping metadata, one immutable baseline, dirty physical page ordinals and
+their bounded bitmap. It holds no CPU, gas, callback,
 native arena or frame address. Same-owner synchronous reentry remains refused by the existing
 exclusive prepared lease.
-There is no global memory pool or additional OS allocation interface.
+There is no global memory pool. The optional fresh-RW mapping is owned and released by the
+private resident-storage boundary described below.
+
+## Fresh first-RW capture
+
+The first contiguous writable run is classified before any region byte allocation. A private
+factory may use fresh anonymous read/write storage when the immutable source proves at least
+256 complete pages zero (an initial unmeasured 1 MiB selection bound). It validates the entire
+run's owner, sorted positions, physical adjacency and permission before allocation. It skips
+only whole pages with genuine construction provenance and copies every unknown page, including
+mixed initialized prefixes, before returning a complete owner. No caller freshness promise,
+content scan, old full RW sequence allocation or post-refusal managed retry is used.
+
+This path requires the standard native allocator on a 64-bit Linux/macOS profile. Any presence
+of `nimMaxHeap` or `nimHardenOutOfMem`, including zero/false definitions, selects the existing
+managed path. Mimalloc, libc allocator, no-libc and unsupported profiles also remain managed.
+These are compatibility guards; there is no new aggregate cap, quota, CLI or accounting domain.
+Dense/imported sources without sufficient provenance retain complete managed construction.
+
+A length-first pointer/length view occupies the RW access slot, while a cold exclusive
+Empty/Managed/Resident owner controls retirement. Access, slicing and native descriptors inspect
+only that view, with the existing bounds and permission guards. RO, stack and fragmented regions
+remain managed. The view never owns storage or enters an asynchronous code cache. Actual layout
+and lowering require checked validation; the type declaration alone proves no ABI result.
+
+Full logical private bytes and all baseline pages still enter the existing retention bill.
+A mapped owner additionally retains its complete original rounded release span until unmap;
+these extents are neither RSS nor managed-heap statistics. Ownership moves intact through active
+frames and idle scratch. Destination views/descriptors derive from final storage; moved-source
+RW and cached ARM/read contexts are disarmed, including manual child transfers to scratch.
+Frame, success-wrapper and actual scratch heap payloads reject copying in interpreted and native
+profiles. Compiler-generated aggregate destruction retires all remaining managed/native children.
+
+A selected OS allocation refusal returns `ResidentAllocationRefused` through preparation,
+ordinary/single-step/host execution and replacement. It is a local failure, with no guest trap,
+gas outcome or malformed-program/host-response substitution. Replacement constructs completely
+before moving code caches or committing, so refusal preserves the old stopped frame and its
+CPU, bytes, counters and descriptors. A mismatched idle lease is discarded before fresh
+construction as before. Managed metadata allocation retains its existing OOM behavior; this
+change does not claim whole-call OOM recovery.
+
+Full-page reset, dirty/changed-source reuse and host updates always restore complete source
+bytes even when the allocation was initially zero. Fresh-zero authority ends at construction;
+allocation origin never licenses skipping a later overwrite or inferring access permission.
+
+Focused maintained coverage is owned by `pvm_resident_bytes` (storage/layout/release) and
+`pvm_fresh_resident` (mixed-prefix Frame construction, dense fallback, complete dirty/changed
+restore, exact retention boundary, allocation refusal and stopped-host rollback). Both include
+1,000-cycle ARC/lifetime workloads with separate mapped-extent observations. Source-owned
+ordinary-assignment guards cover actual owning resources, Frame/results and the scratch heap
+payload. Existing memory/host/native lifecycle suites remain required. Local correctness and
+lowering evidence must precede performance claims; prior timing tables below describe their
+historical managed implementations, not this new allocation path.
+
+### Validation and performance status, 2026-11-07
+
+The local base is `e16e9bd02a1b7beac9ba1f322a6d44c991d01231`. The corrected feature passes
+thirteen affected maintained application suites, the owner suite, and fourteen exact
+ownership-copy refusals under pinned checked ARC/Clang. Calibrated AddressSanitizer runs of the
+unchanged owner and application suites also pass. Each suite completes 1,000 ownership cycles:
+managed occupancy stays 192 bytes for the owner and 24,896 bytes for the application, alongside
+balanced logical/mapped extent observations. These are scoped correctness results, not RSS or
+allocation-cap measurements.
+
+The unchanged application also passes ThinLTO builds with ARM and x86 native include profiles,
+and with a 64 MiB managed-heap cap. The host is macOS ARM64; the x86-enabled result establishes
+compilation and portable application behavior, not native x86 execution. Actual ARM C layout
+preserves all 53 prior Frame field offsets and all 12 scratch offsets. Cold ownership adds
+32 bytes at the end: Frame 3,032 to 3,064 bytes, scratch 152 to 184 bytes. The RW view remains
+16 bytes, with length at offset zero and pointer at offset eight. Variant reset hooks select
+payload-free neutral tags using writes only because the pinned compiler also calls them on
+uninitialized storage; live-value destruction still follows the valid active tag.
+
+The single local paired performance screen stopped at its first baseline synthetic interpreted
+positive control: `arithmetic-1`, sample 1, reported CPU 0 ns and wall 417 ns, then the existing
+execution CPU clock-resolution assertion failed. Three baseline images had linked; no candidate
+image or A/B timing process ran. The failure and raw transcript are retained without a retry,
+filter or clock-threshold change. This establishes no performance result for resident storage.
+Performance remains on hold pending the exact-head canonical Linux ARM64/x86-64 `bench-pvm`
+report and its retained control/native/state evidence. The 256-page selection bound remains
+experimental. Historical timing tables below do not qualify this new path.
+
+Post-rollback local validation at `01608aa7d` merges the reviewed published compiler rollback,
+restoring native `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` and the original browser pin.
+A private official SDK passes the canonical `make check-pvm-native` path, including actual ARM64
+native execution, forced refusals, shared lifecycle checks and both resident suites with fresh
+ARC evidence. The targeted `pvm_machine` and `pvm_memory_directory` suites also pass.
+
+An independent source/type/compiler audit retains the earlier corrected ownership-copy guards,
+calibrated owner/application ASan, and C reset/layout results as bounded equivalent coverage.
+Only upstream same-domain PageIndex/CodeAddress equality and an equivalent converted-opcode ARM
+membership proof differ in PVM production source. Owning/reset/view/native-adapter bodies, types
+and relevant profiles are unchanged. The retained results are not newly generated exact-head
+binaries or native Linux execution. Final publication qualification still requires the canonical
+report from both Linux architectures at the final candidate head.
 
 ## Restoring complete input
 

@@ -400,3 +400,16 @@ profiles. ARM artifact12917681840 SHA256
 x86 artifact12916413873 SHA256
 `fdd13b961c0b6668f2c5a45453eeba5b7ad451e0f41ed689b9b876e55d2411f6`.
 The consumer's changed behavior still requires its own native CI and paired counter qualification.
+
+## Conservative zero-source provenance
+
+Private page headers carry eight conservative complete-chunk zero facts. Only zero construction
+and complete chunks beyond an admitted initialization prefix establish them; caller PageImages,
+replacements and mutated/private writer headers remain unknown. Permission-only snapshots retain
+the facts with the same immutable chunks. No value scan promotes unknown input to proven zero.
+`memoryPageIsKnownZero(memory, slot, expected)` checks a live source, complete sorted slot and
+matching copied index/access, then reports that supplied owner's fact for the entire page.
+False means unknown. The query exposes no chunk pointer and accepts no destination-zero promise.
+The internal fresh-RW factory owns selection, fresh zero allocation and all unknown-page copies;
+see [resident memory](pvm-retained-memory.md#fresh-first-rw-capture). Publication and ordinary
+copy/restore operations retain their complete-byte semantics.

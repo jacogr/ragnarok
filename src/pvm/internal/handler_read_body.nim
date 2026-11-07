@@ -78,10 +78,15 @@ when declared(FlatFrame):
     addNativeReadContinuation(body, NativeReadContinuation(header: header,
       terminal: walk.terminal, price: source.price), operations)
 
+  proc flatRWReadRegion(first: uint64, bytes: RWView): NativeReadRegion =
+    ## Match the original empty/clipped openArray constructor without borrowing element zero of an empty view.
+    if bytes.len == 0: return default(NativeReadRegion)
+    initNativeReadRegion(first, bytes.toOpenArray(0, bytes.len-1))
+
   proc prepareFlatReadContext(f: var FlatFrame) {.noinline.} =
     ## Fresh frame allocations own these bytes. A replacement frame starts without descriptors.
     f.readContext = [initNativeReadRegion(f.stackBase, f.stack),
-      initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
     f.readContextReady = true
 
   proc flatNativeReadBody(f: var FlatFrame, off: uint32): uint32 =
@@ -102,7 +107,7 @@ when declared(FlatFrame):
   proc runFlatReadContinuationCold(f: var FlatFrame): bool {.noinline.} =
     ## Publish fresh descriptors only once the combined register transaction commits.
     var context = [initNativeReadRegion(f.stackBase, f.stack),
-      initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
     if not runNativeReadBody(f.nativeSession, f.info.registers, context): return false
     f.readContext = context
     f.readContextReady = true

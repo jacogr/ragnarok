@@ -146,6 +146,31 @@ assert copyMemoryPage(original, MemoryPageSlot(129), output).error == MachineErr
 for value in output: assert value == 0x5a
 assert memoryPageCount(captureMemory([], PageLimit(0)).value).error == MachineError.None
 assert memoryPageCount(default(Memory)).error == MachineError.InvalidOwner
+proc zeroProvenance() =
+  ## Only construction facts prove zero; imported bytes and a write followed by clearing remain unknown.
+  let empty = captureMemory([], PageLimit(2)).value
+  let zero = withPageRange(empty, PageIndex(32), PageIndex(34), PageAccess.ReadWrite,
+    PageContent.Zeroed).value
+  let expected = PageDescription(index: PageIndex(32), access: PageAccess.ReadWrite)
+  assert memoryPageIsKnownZero(zero, MemoryPageSlot(0), expected).value
+  let imported = captureMemory([PageImage(index: PageIndex(32),
+    access: PageAccess.ReadWrite)], PageLimit(2)).value
+  assert not memoryPageIsKnownZero(imported, MemoryPageSlot(0), expected).value
+  let written = store(zero, MemoryAddress(32*4096), AccessWidth(1), RegisterValue(7)).value
+  let cleared = store(written, MemoryAddress(32*4096), AccessWidth(1), RegisterValue(0)).value
+  assert not memoryPageIsKnownZero(cleared, MemoryPageSlot(0), expected).value
+  assert memoryPageIsKnownZero(zero, MemoryPageSlot(0), expected).value
+  let readonly = withPageRange(zero, PageIndex(32), PageIndex(34), PageAccess.ReadOnly,
+    PageContent.Preserved).value
+  assert memoryPageIsKnownZero(readonly, MemoryPageSlot(0),
+    PageDescription(index: PageIndex(32), access: PageAccess.ReadOnly)).value
+  assert memoryPageIsKnownZero(zero, MemoryPageSlot(1), expected).error == MachineError.InvalidRange
+  assert memoryPageIsKnownZero(zero, MemoryPageSlot(2), expected).error == MachineError.InvalidRange
+  assert memoryPageIsKnownZero(default(Memory), MemoryPageSlot(0), expected).error ==
+      MachineError.InvalidOwner
+
+zeroProvenance()
+
 releaseCycle()
 let occupiedBefore = getOccupiedMem()
 for cycle in 0..<1000: releaseCycle()
