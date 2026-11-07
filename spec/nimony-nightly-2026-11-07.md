@@ -1,5 +1,27 @@
 # Nimony November 7 nightly upgrade
 
+## Post-merge qualification failure: roll back the pin
+
+Master run `42399589391` at `ba0499c76141441bf2952a34dda1673aa8ab3154` revealed
+additional nominal comparisons in performance, ASAN, E2E and fuzzer verification drivers that
+the initial selected local coverage did not exercise. More seriously, the unchanged
+`nimony_production_regressions_results.nim pointer-refinement` positive control compiles but
+fails at runtime in both checked and ThinLTO profiles. The same source passes both profiles
+with the previously qualified October 28 compiler. This also reproduces locally on macOS ARM64.
+The new generated C replaces the post-call local read with literal `1`, comparing `1 == 3`
+after the call that increments the addressed local twice. The original witness is retained
+unchanged; a smaller standalone reduction is not yet established.
+
+Restore the October 28 compiler `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` and its
+matching browser backend `60f400e7104e534da63e38d79ac17eab0b1b19ee`. Keep the already
+reviewed source validation adaptations, runtime checks, ownership hooks and new issue records.
+Do not mask the positive failure with weaker expectations or altered assertion output matching.
+The historical upgrade evidence below is partial qualification, not a statement that master CI
+passed. Repair receipts are under ignored `build/ci/nimony-master-repair/`.
+The restored pin passes the final 607-module Smoke gate and browser bootstrap, all 16 cases
+in the existing checked/ThinLTO compiler-control family, and the failed host-resume ASAN suite
+with all three sanitizer calibration controls. Full Linux CI is required before merging the repair.
+
 ## Identities and scope
 
 Upgrade master `e16e9bd02` from Nimony 0.6.3 `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`
