@@ -161,13 +161,21 @@ proc decodeNodeAssurancePolicy*(text: string): NodeAssurancePolicyResult =
   if values.mode > 1: return refused(WorkPolicyError.InvalidPolicy, "mode")
   if values.startupMs < 1 or values.startupMs > 600000: return refused(
       WorkPolicyError.InvalidPolicy, "startupMs")
-  for entry in [("acquisitionPeerMs", values.acquisitionPeerMs), ("acquisitionJobMs",
-      values.acquisitionJobMs), ("receiptMs", values.receiptMs), ("broadcastPeerMs",
-          values.broadcastPeerMs), ("broadcastJobMs", values.broadcastJobMs)]:
-    if entry[1] < 1 or entry[1] > 120000: return refused(WorkPolicyError.InvalidPolicy, entry[0])
-  for entry in [("acquisitionRoundMs", values.acquisitionRoundMs), ("acquisitionRetryMs",
-      values.acquisitionRetryMs)]:
-    if entry[1] < 1 or entry[1] > 600000: return refused(WorkPolicyError.InvalidPolicy, entry[0])
+  # Check each original field so its range proof survives conversion below.
+  if values.acquisitionPeerMs < 1 or values.acquisitionPeerMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "acquisitionPeerMs")
+  if values.acquisitionJobMs < 1 or values.acquisitionJobMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "acquisitionJobMs")
+  if values.receiptMs < 1 or values.receiptMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "receiptMs")
+  if values.broadcastPeerMs < 1 or values.broadcastPeerMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "broadcastPeerMs")
+  if values.broadcastJobMs < 1 or values.broadcastJobMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "broadcastJobMs")
+  if values.acquisitionRoundMs < 1 or values.acquisitionRoundMs > 600000:
+    return refused(WorkPolicyError.InvalidPolicy, "acquisitionRoundMs")
+  if values.acquisitionRetryMs < 1 or values.acquisitionRetryMs > 600000:
+    return refused(WorkPolicyError.InvalidPolicy, "acquisitionRetryMs")
   if values.acquisitionAttempts < 1 or values.acquisitionAttempts > 3: return refused(
       WorkPolicyError.InvalidPolicy, "acquisitionAttempts")
   if values.broadcastParallel < 1 or values.broadcastParallel > 64: return refused(

@@ -73,6 +73,10 @@ type
     x*, y*: Immediate
     displacement*: int64
 
+func `==`*(left, right: CodeAddress): bool {.inline.} =
+  ## Compare instruction addresses without accepting other numeric domains.
+  uint64(left) == uint64(right)
+
 func error*[T](r: ProgramResult[T]): ProgramError =
   ## Inspect status without exposing a mutable discriminator.
   r.status

@@ -12,6 +12,11 @@ The October 21–23 nightly review and retained-workaround decisions are recorde
 [the upgrade audit](../spec/nimony-nightly-2026-10-21.md).
 The October 26 nightly `358b9bce4` fixes sequence slicing ([#2782](https://github.com/nim-lang/nimony/issues/2782), [#2789](https://github.com/nim-lang/nimony/pull/2789)). Upstream [classified integer-generic formatting as not a bug](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445): `SomeInteger` does not guarantee a `$` operator. Keep the concrete integer overloads as a supported implementation choice. Nullable mutable-callback refinement ([#2809](https://github.com/nim-lang/nimony/issues/2809)) remains separately reported; refreshed [integer](../spec/nimony-reports-2026-10-27/integer-generic.md) and [callback](../spec/nimony-reports-2026-10-27/nullable-var-call.md) drafts record five clean reproductions and successful alternatives. See the [October 26 upgrade audit](../spec/nimony-nightly-2026-10-26.md) for current qualification.
 The October 28 nightly `63fed6cb4` fixes guarded-pointer refinement ([#2809](https://github.com/nim-lang/nimony/issues/2809)); guarded transport fixture annotations are removed with native retesting. It also requires an explicit `=wasMoved` beside each written destructor; preserve field move hooks and lifecycle guards. See the [October 28 upgrade audit](../spec/nimony-nightly-2026-10-28.md). Qualified `declared()` still crashes; [NIM-004](../spec/compiler-issues.md) retains the current draft.
+The November 7 nightly `ee5497661` adds shared stdlib caching, per-module frontend option tracking,
+copy propagation and range-proof changes. Distinct ordinal comparisons now require explicit
+same-domain implementations; policy range validation must prove the original fields rather than
+validated tuple copies. Keep runtime checks and supported concrete integer overloads. See the
+[November 7 qualification](../spec/nimony-nightly-2026-11-07.md) for scope and retained issues.
 These observations describe exercised APIs and targets, rather than compiler-wide support guarantees.
 
 | Area | Observed behavior | Working approach and evidence |

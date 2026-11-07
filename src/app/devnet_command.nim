@@ -173,6 +173,7 @@ proc node(arguments: openArray[string], logging: LogWriter, selected: PvmBackend
       parameters.get(slotPeriodSec) != 6 or parameters.get(epochTailStart) != 10:
     stderr.writeLine("DEVNET_START_FAILED profile")
     return 2 # The Tiny command never converts a supplied foreign profile or shortens slot time.
+  if index > 5: return 2 # Keep the parsed ordinal proof explicit at the range conversion.
   let secret = tinySigningKey(int(index))
   if secret.error != BsError.None: return 2
   var peers = default(array[6, array[32, byte]])
