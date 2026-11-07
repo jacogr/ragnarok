@@ -33,6 +33,10 @@ type
     index*: PageIndex
     access*: PageAccess
     bytes*: array[4096, byte]
+  InitializationRegion* = object ## A mapped JAM interval with an optional borrowed payload prefix.
+    first*, past*: PageIndex
+    access*: PageAccess
+    offset*, length*: int
   MemoryPageSlot* = distinct uint32 ## Position within the supplied immutable owner's sorted mapping, separate from a physical page ordinal.
   PageDescription* = object ## Copied mapping metadata grants no mutable page storage or guest access permission.
     index*: PageIndex
@@ -234,6 +238,72 @@ proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): Pa
   ## Only absent or explicitly cleared pages reach this helper; every later writer still clones touched chunks first.
   let chunk = sharedZeroChunk(seed)
   PageData(index: index, access: access, chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
+
+proc initializationChunk(input: openArray[byte], offset, length, start: int,
+    zero: var nil PageChunk): PageChunk {.requires: offset >= 0 and offset <= input.len and
+      length >= 0 and length <= input.len-offset and start >= 0 and start <= 3584.} =
+  ## Copy the covered prefix into its final immutable chunk, preserving zero suffix bytes.
+  if start >= length:
+    return sharedZeroChunk(zero) # This chunk lies entirely beyond the admitted payload.
+  let first = offset+start
+  let count = min(512, length-start)
+  result = PageChunk(bytes: default(array[512, byte]))
+  copyMem(addr result.bytes[0], unsafeAddr input[first], count)
+
+proc appendInitializationRegion(owned: var seq[PageData], region: InitializationRegion,
+    input: openArray[byte], zero: var nil PageChunk) =
+  ## Consume an already checked source span in page order, with fresh headers even for zero pages.
+  var offset = region.offset
+  var remaining = region.length
+  for ordinal in uint32(region.first)..<uint32(region.past):
+    let index = PageIndex(ordinal)
+    if remaining == 0:
+      owned.add(zeroPage(index, region.access, zero)) # Whole stack, extra heap and other absent prefixes.
+    else:
+      let count = min(remaining, 4096)
+      owned.add(PageData(index: index, access: region.access, chunks: [
+        initializationChunk(input, offset, count, 0, zero),
+        initializationChunk(input, offset, count, 512, zero),
+        initializationChunk(input, offset, count, 1024, zero),
+        initializationChunk(input, offset, count, 1536, zero),
+        initializationChunk(input, offset, count, 2048, zero),
+        initializationChunk(input, offset, count, 2560, zero),
+        initializationChunk(input, offset, count, 3072, zero),
+        initializationChunk(input, offset, count, 3584, zero)]))
+      offset += count
+      remaining -= count
+
+proc captureInitializationMemory*(regions: array[4, InitializationRegion],
+    envelope, arguments: openArray[byte], limit: PageLimit): MachineResult[Memory] =
+  ## Capture RO, RW, stack and arguments in order. The first three spans refer to the envelope.
+  ## All descriptors and source extents are checked before allocation. No borrowed bytes escape.
+  var total = 0'u64
+  var previousPast = 0'u32
+  for index in 0..<regions.len:
+    let region = regions[index]
+    let first = uint32(region.first)
+    let past = uint32(region.past)
+    if first > past or past > 0x100000'u32:
+      return MachineResult[Memory](status: MachineError.InvalidRange) # Exclusive endpoint may equal 2^20.
+    let count = uint64(past-first)
+    let sourceLen = if index == 3: arguments.len else: envelope.len
+    if region.offset < 0 or region.offset > sourceLen or region.length < 0 or
+        region.length > sourceLen-region.offset or uint64(region.length) > count*4096:
+      return MachineResult[Memory](status: MachineError.InvalidRange) # Empty mappings require an empty prefix.
+    if first != past:
+      if first < previousPast:
+        return MachineResult[Memory](status: MachineError.UnsortedPages) # Reject overlap with any earlier mapping.
+      previousPast = past
+      total += count
+  if total > uint64(uint32(limit)) or total > uint64(high(int) div sizeof(PageData)):
+    return MachineResult[Memory](status: MachineError.LimitExceeded) # Count all mapped pages, including padding.
+  var owned = newSeqOfCap[PageData](int(total))
+  var zero: nil PageChunk = nil
+  for index in 0..<3:
+    appendInitializationRegion(owned, regions[index], envelope, zero)
+  appendInitializationRegion(owned, regions[3], arguments, zero)
+  MachineResult[Memory](status: MachineError.None,
+    completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
 
 proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: PageAccess,
     total: int): PageDirectory =
