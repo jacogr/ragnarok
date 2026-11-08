@@ -242,6 +242,9 @@ for row in 0..<11:
       else: getMonoTime().ticks
     var context = HostContext(calls: 0)
     let evaluated = if modern:
+      # Kind 5 at 1,000 iterations keeps 4,001 attempts, below the 4,096 native invocation floor.
+      # Admission requires both this call's budget and retained proven work to meet the floor.
+      # Proven work keeps the maximum from a single completed call, never a lifetime sum.
       # The modern host role explicitly consumes scalar CPU callbacks; final owned publication stays timed.
       # Guest attempts, callback/context arithmetic and complete memory oracles are unchanged.
       if kind == 2:

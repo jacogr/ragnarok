@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 """Exercise scheduled native comparisons, focused scopes and evidence without running benchmarks."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import unittest
 from harness_fixtures import make_plan
 from workflow_fixtures import artifact_paths, commands, event_context, expression, family_section, selected_families, workflow
@@ -64,6 +64,33 @@ class PvmPerformanceWorkflowTests(unittest.TestCase):
                         event_context('pull_request', 'labeled', 'ci:perf', state='closed'),
                         event_context('workflow_dispatch', suite='tooling')):
             self.assertEqual(selected_families(text, 'pvm-comparison', context), [])
+
+    def test_original_read_width_json_is_retained_without_native_build_payloads(self):
+        """Ordinary native routes retain either original width proof, including first failure evidence."""
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        contexts = (event_context(), event_context('workflow_dispatch', suite='full'),
+                    event_context('workflow_dispatch', suite='perf'),
+                    event_context('workflow_dispatch', suite='bench-pvm'),
+                    event_context('workflow_dispatch', suite='bench-doom'),
+                    event_context('pull_request', 'labeled', 'ci:perf'),
+                    event_context('pull_request', 'labeled', 'ci:full'))
+        for context in contexts:
+            for family in selected_families(text, 'pvm-comparison', context):
+                section = family_section(text, 'pvm-comparison', family['group'], context=context)
+                paths = artifact_paths(section)
+                for name in ('arm-evidence/pvm_read_widths_arm64.json',
+                             'x86-evidence/pvm_read_widths_x86_64.json'):
+                    proof = 'build/tests/pvm-native/pvm_shared_read_widths_'+name
+                    self.assertTrue(any(PurePosixPath(proof).match(pattern) for pattern in paths))
+                for name in ('pvm_shared_read_widths_x86',
+                             'pvm_shared_read_widths_x86-evidence/generated.c',
+                             'pvm_shared_read_widths_arm-evidence/unrelated.json',
+                             'unrelated-evidence/pvm_read_widths_arm64.json'):
+                    private = 'build/tests/pvm-native/'+name
+                    self.assertFalse(any(PurePosixPath(private).match(pattern) for pattern in paths))
+                upload, = [step for step in section['steps']
+                           if str(step.get('with', {}).get('name', '')).startswith('pvm-performance-')]
+                self.assertTrue(expression(upload['if'], dict(context, cancelled=True)))
 
     def test_native_preflight_fetches_locked_crypto_before_offline_state_checks(self):
         """Standalone native qualification owns the new product fixture's locked offline closure."""
