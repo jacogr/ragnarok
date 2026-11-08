@@ -3,6 +3,7 @@
 
 ## Explicit scalar callbacks preserve accumulated dirty bytes, retained owned epochs and shared budgets.
 ## Authored mixed programs exercise the public driver and stopped-frame refusal/retry boundary.
+
 # @@Verification={"arc": "pvm_scalar_host_arc_release"}
 
 import std/[assertions, syncio]
