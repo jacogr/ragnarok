@@ -85,10 +85,11 @@ type
     limits: FlatLimits # Cold admission policy follows the existing hot plan fields.
     allowNative: bool  # Immutable cold policy; forced interpretation never creates native handlers.
     singleStep: bool   # A bounded adapter plan owns one instruction and never enters whole-program emission.
-  FlatRegion = ref object ## Additional fragmented regions retain private bytes and immutable access metadata.
+  FlatRegion = ref object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
-    bytes: seq[byte]
+    size, sourceFirst: int # Logical bytes and genuine sorted source slot survive optional payload allocation.
+    bytes: seq[byte] # Empty means baseline-backed; otherwise every logical byte is privately owned.
   FlatMemoryScratchData = object
     ## One exclusive idle byte lease; immutable baseline and dirty ordinals restore each new input completely.
     baseline: Memory
@@ -594,16 +595,55 @@ func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   if word >= uint64(f.dirtyPages.len): return true
   (f.dirtyPages[int(word)] and (1'u64 shl int(page and 63))) != 0
 
-proc flatByte(f: FlatFrame, address: uint64): byte =
-  ## Slow paths and observers find the latest private byte only after complete genuine scalar preflight.
+proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
+    output: var openArray[byte]) =
+  ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
+  let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
+  assert copied.error == MachineError.None
+  assert copied.value.index == expected.index and copied.value.access == expected.access
+
+proc flatMaterializeStore[W: static[int]](f: var FlatFrame, address: uint64) =
+  ## Whole-store preflight has succeeded; adjacent equal-permission pages belong to one captured run.
+  for index in 0..<f.extra.len:
+    let region {.cursor.} = f.extra[index]
+    if address >= region.first and address-region.first < uint64(region.size):
+      assert region.access == PageAccess.ReadWrite
+      assert region.size >= W and address-region.first <= uint64(region.size-W)
+      if region.bytes.len == 0:
+        # Ordinary managed OOM can now occur on first write; no guest byte or dirty bit changed yet.
+        assert region.size > 0 and region.size mod 4096 == 0
+        let pages = region.size div 4096
+        assert region.sourceFirst >= 0 and pages <= f.sourcePages.len
+        assert region.sourceFirst <= f.sourcePages.len-pages
+        var bytes = newSeqUninit[byte](region.size)
+        # Managed refusal may return empty bytes; reject the actual extent before constructing any span.
+        assert bytes.len == region.size
+        for page in 0..<pages:
+          # Fill the complete temporary from this frame's retained owner before installing any payload.
+          let source = region.sourceFirst+page
+          let offset = page*4096
+          assert f.sourcePages[source].access == region.access
+          assert uint64(uint32(f.sourcePages[source].index))*4096 == region.first+uint64(offset)
+          flatCopySourcePage(f.sourceMemory, source, f.sourcePages[source],
+            bytes.toOpenArray(offset, offset+4095))
+        region.bytes = move(bytes)
+      else:
+        # Repeated stores retain the already materialized whole-run allocation.
+        assert region.bytes.len == region.size
+      return
+
+proc flatByte(f: FlatFrame, address: uint64, baseline: byte): byte =
+  ## The caller supplies a genuine checked scalar/page byte; logical membership selects any private overlay.
   if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len): return f.stack[int(
       address-f.stackBase)]
   if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len): return f.rw[int(address-f.rwBase)]
   if address >= f.roBase and address-f.roBase < uint64(f.ro.len): return f.ro[int(address-f.roBase)]
   for i in 0..<f.extra.len:
     let r {.cursor.} = f.extra[i]
-    if address >= r.first and address-r.first < uint64(r.bytes.len): return r.bytes[int(
-        address-r.first)]
+    if address >= r.first and address-r.first < uint64(r.size):
+      if r.bytes.len == 0: return baseline
+      assert r.bytes.len == r.size
+      return r.bytes[int(address-r.first)]
   assert false, "validated readable byte must belong to a captured private region"
   0
 
@@ -615,14 +655,15 @@ proc flatSetByte(f: var FlatFrame, address: uint64, value: byte) =
       address-f.rwBase)] = value; return
   for i in 0..<f.extra.len:
     let r {.cursor.} = f.extra[i]
-    if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.bytes.len):
+    if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.size):
+      assert r.bytes.len == r.size # The whole store installed its complete payload before dirty marking.
       r.bytes[int(address-r.first)] = value
       return
   assert false, "validated writable byte must belong to a captured writable region"
 
 proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     value: var uint64): bool =
-  ## The original immutable memory preflight preserves every protected/overflow/permission/fault ordering; its old byte value is not used.
+  ## Canonical preflight provides baseline bytes; private overlays preserve later stores without repeating source reads.
   let checked = load(f.sourceMemory, MemoryAddress(address), AccessWidth(byte(W)))
   if checked.error != MachineError.None:
     if checked.error == MachineError.Fault:
@@ -633,8 +674,12 @@ proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
         oracle.StepError.AmbiguousAccessOrder)
     else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
     return false
+  let baseline = uint64(checked.value)
   value = 0
-  for i in 0..<W: value = value or (uint64(flatByte(f, address+uint64(i))) shl (8*i))
+  for i in 0..<W:
+    # Each baseline lane is genuine even when only part of this load has a private overlay.
+    let original = byte((baseline shr (8*i)) and 255'u64)
+    value = value or (uint64(flatByte(f, address+uint64(i), original)) shl (8*i))
   true
 
 proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value: uint64): bool =
@@ -649,6 +694,7 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
         oracle.StepError.AmbiguousAccessOrder)
     else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
     return false
+  flatMaterializeStore[W](f, address)
   flatMarkStore[W](f, address)
   for i in 0..<W: flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64))
   true
@@ -1904,13 +1950,6 @@ proc settledNativeWork*(f: FlatFrame, supplied: uint64): uint64 =
   if attempted == 0: return 0
   attempted-1
 
-proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
-    output: var openArray[byte]) =
-  ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
-  let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
-  assert copied.error == MachineError.None
-  assert copied.value.index == expected.index and copied.value.access == expected.access
-
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   ## Restore input outside the execution clock, preserving the explicit reset boundary; cached code/links alone persist.
   when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
@@ -1941,9 +1980,12 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
       var found = false
       for i in 0..<f.extra.len:
         let region {.cursor.} = f.extra[i]
-        if address >= region.first and address-region.first+4096 <= uint64(region.bytes.len):
-          let offset = int(address-region.first)
-          flatCopySourcePage(memory, page, image, region.bytes.toOpenArray(offset, offset+4095))
+        if address >= region.first and address-region.first+4096 <= uint64(region.size):
+          if region.bytes.len != 0:
+            # A baseline-backed extra is already restored through this immutable source owner.
+            assert region.bytes.len == region.size
+            let offset = int(address-region.first)
+            flatCopySourcePage(memory, page, image, region.bytes.toOpenArray(offset, offset+4095))
           found = true
           break
       assert found
@@ -2087,7 +2129,8 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
         var resident = resident_capture.takeOwned(captured)
         frame.rwStorage = takeResident(resident)
         residentRW = true
-        regions.add(FlatRegion(first: address, access: image.access, bytes: @[]))
+        regions.add(FlatRegion(first: address, access: image.access,
+          size: pages*4096, sourceFirst: first, bytes: @[]))
       of FreshRWStatus.NotSelected:
         discard # The unchanged managed construction below is the only fallback path.
       of FreshRWStatus.AllocationRefused:
@@ -2097,11 +2140,17 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       if residentRW:
         first = after
         continue
-    # Fill every private byte below before publishing this region or deriving frame/native views.
+    if regions.len != firstRO and regions.len != firstRW and regions.len != lastRW:
+      # Extras retain logical coordinates under the frame's immutable owner without allocating payload bytes.
+      regions.add(FlatRegion(first: address, access: image.access,
+        size: pages*4096, sourceFirst: first, bytes: @[]))
+      first = after
+      continue
+    # Preserve eager primary allocation and complete fill before deriving any frame/native view.
     let region = FlatRegion(first: address, access: image.access,
-      bytes: newSeqUninit[byte](pages*4096))
+      size: pages*4096, sourceFirst: first, bytes: newSeqUninit[byte](pages*4096))
     for page in first..<after:
-      # All managed/unknown paths still restore complete pages; no allocation-origin promise survives here.
+      # All managed primary paths still restore complete pages before installing the final owner.
       let offset = (page-first)*4096
       assert offset >= 0 and offset <= region.bytes.len-4096
       flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))
@@ -5171,7 +5220,8 @@ proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatc
   for slot in 0..<f.extra.len:
     let region {.cursor.} = f.extra[slot]
     if region.access == PageAccess.ReadWrite and address >= region.first and
-        address-region.first+4096 <= uint64(region.bytes.len):
+        address-region.first+4096 <= uint64(region.size):
+      assert region.bytes.len == region.size # Only a completed materialized payload can become dirty.
       let offset = int(address-region.first)
       flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), batch)
       return
@@ -5179,7 +5229,7 @@ proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatc
   var original = PageImage(index: description.index, access: description.access)
   flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
   var image = original
-  for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
+  for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at), original.bytes[at])
   flatCollectResidentPage(f, page, image.bytes, batch)
 
 proc flatPublishMemory(f: FlatFrame): Memory =
@@ -5264,7 +5314,7 @@ proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
     for at in 0..<4096:
       # Inaccessible bytes have no resident region and remain solely in their immutable source page.
       let current = if description.access == PageAccess.Inaccessible: image.bytes[at]
-        else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at))
+        else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at), image.bytes[at])
       assert current == byte(expected[offset+page*4096+at])
 
 proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame] =
@@ -5347,27 +5397,35 @@ proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: Machin
   replaceFlatMemory(f, images, info)
 
 proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
-    apply: bool): bool =
-  ## The complete posterior map check binds this slot to the frame's existing description.
+    apply: bool, copiedPages: var uint64): bool =
+  ## Valid destination and physical copy count are distinct; preflight never changes bytes or the count.
   let page = int(uint32(slot))
   let description = f.sourcePages[page]
   if description.access != PageAccess.ReadWrite: return false
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    if apply: flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
+    if apply:
+      flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
+      inc copiedPages
     return true
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    if apply: flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
+    if apply:
+      flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
+      inc copiedPages
     return true
   for i in 0..<f.extra.len:
     # Fragmented mappings retain their own immutable access metadata and full-span checks.
     let region {.cursor.} = f.extra[i]
     if region.access == PageAccess.ReadWrite and address >= region.first and
-        address-region.first+4096 <= uint64(region.bytes.len):
-      let offset = int(address-region.first)
-      if apply: flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
+        address-region.first+4096 <= uint64(region.size):
+      assert region.bytes.len == 0 or region.bytes.len == region.size
+      if apply and region.bytes.len != 0:
+        # Baseline-backed extras accept the changed owner without allocating or physically copying bytes.
+        let offset = int(address-region.first)
+        flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
+        inc copiedPages
       return true
   false
 
@@ -5432,17 +5490,18 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   var replace = delta.error != MachineError.None
   if not replace:
     let changes = machine.takeValue(delta)
+    var copiedPages = 0'u64
     for i in 0..<changes.len:
       # Complete preflight precedes the first host-byte mutation; unusual capabilities take the slow path.
-      if not flatHostPage(f, posterior, changes[i], false): replace = true
+      if not flatHostPage(f, posterior, changes[i], false, copiedPages): replace = true
     if not replace:
       for i in 0..<changes.len:
-        let applied = flatHostPage(f, posterior, changes[i], true)
+        let applied = flatHostPage(f, posterior, changes[i], true, copiedPages)
         assert applied
       f.sourceMemory = posterior
       flatClearDirty(f)
       flatCommitHostContinuation(f, info)
-      f.hostCopiedPages+=uint64(changes.len)
+      f.hostCopiedPages+=copiedPages
       return oracle.StepError.None
   # Mapping/permission/RO replacement rebuilds all capabilities from a genuine validated snapshot.
   let fast = f.fastResumes
@@ -5632,9 +5691,12 @@ proc flatRestoreScratchPage(f: var FlatFrame, page: int) =
     var found = false
     for index in 0..<f.extra.len:
       let region = f.extra[index]
-      if address >= region.first and address-region.first+4096 <= uint64(region.bytes.len):
-        let offset = int(address-region.first)
-        flatCopySourcePage(f.sourceMemory, page, description, region.bytes.toOpenArray(offset, offset+4095))
+      if address >= region.first and address-region.first+4096 <= uint64(region.size):
+        if region.bytes.len != 0:
+          # Lazy extras use the already installed incoming baseline; materialized bytes need restoration.
+          assert region.bytes.len == region.size
+          let offset = int(address-region.first)
+          flatCopySourcePage(f.sourceMemory, page, description, region.bytes.toOpenArray(offset, offset+4095))
         found = true
         break
     assert found
@@ -5694,8 +5756,8 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if payloadLimit == 0: return nil
   var bytes = uint64(f.ro.len)+uint64(f.rw.len)+uint64(f.stack.len)
   for region in f.extra:
-    # Disjoint captured regions own exactly their accessible page bytes, including fragmented layouts.
-    bytes += uint64(region.bytes.len)
+    # Charge complete logical extents even when an untouched extra has no private payload yet.
+    bytes += uint64(region.size)
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil

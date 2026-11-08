@@ -34,7 +34,7 @@ Existing high-stack `memset` maps receive no bitmap reduction. No timing cohort 
 
 ## Managed region fill before publication
 
-Managed regions allocate uninitialized private bytes only inside `buildFlatFrame`. Each admitted
+The qualified managed-fill parent allocates uninitialized private bytes inside `buildFlatFrame`. Each admitted
 adjacent run has one access mode; the constructor copies every complete 4 KiB source page into its
 disjoint output span before adding the region or deriving any Frame/native view. Inaccessible pages
 allocate no region. The source owner and layout remain immutable throughout the copy.
@@ -61,10 +61,89 @@ and preserved cap dispatch, not a 64 MiB pressure/refusal test. No timing or CI 
 for this prototype. The observed zero-then-copy pattern motivates the change; unqualified diagnostic
 counts establish no CPU dominance or speedup.
 
+## Local lazy EXTRA payload prototype
+
+The separate prototype based on `70a59bbb` leaves primary RO/RW/stack payload construction and
+native descriptors unchanged. Additional fragmented regions retain their positive logical extent,
+access and genuine sorted source-slot range under the containing Frame's immutable `sourceMemory`.
+An empty EXTRA payload reads that baseline; a materialized payload owns the complete logical run.
+Scratch retains the same source owner and coordinates. No borrowed page pointer, new extraction
+API, content fingerprint or caller freshness promise is introduced.
+
+Slow loads still perform the complete canonical scalar preflight. Its returned baseline bytes
+are overlaid with any current private bytes. Publication fallback and independent complete-byte
+checking use their existing copied source page for the same overlay; final-address and inaccessible
+payload observations remain complete. Holes remain unmapped. Untouched extras remain absent from
+dirty-only publication and preserve the immutable baseline directly.
+
+A slow store first completes the unchanged whole-width page/permission preflight. Only then may it
+allocate a full EXTRA temporary, copy every source page, install the completed payload, mark dirty
+pages and mutate guest bytes. Adjacent pages with equal access are one captured run, so a successful
+scalar store of at most eight bytes cannot span distinct regions; a hole/permission boundary fails
+before materialization. Repeated stores reuse the completed buffer. No allocation occurs inside
+the per-byte setter. Ordinary managed payload OOM is deliberately deferred from construction to
+first write. This local physical-allocation timing tradeoff adds no recoverable-OOM contract and
+does not change selected resident-allocation refusal or canonical gas/attempt/fault precedence.
+
+Reset and same-map reuse restore complete materialized pages for the existing dirty/changed-source
+union. Baseline-backed extras follow the admitted incoming owner without private copying. Complete
+map/access equality precedes source rebasing; remaps and permission changes still rebuild a complete
+logical frame transactionally before moving caches or committing. Scalar host replies retain old
+baseline and dirty membership. Owned host replies preflight every changed logical destination before
+applying any private copy, then commit the posterior source owner and clear dirty state. Lazy extras
+accept that new owner without allocation; materialized writable extras receive full changed pages.
+Selected fresh-RW refusal still preserves the old stopped frame and all repair/retry observations.
+
+`flatHostStats`' third diagnostic now counts actual full-page copies during accepted same-map host
+updates. Previously it counted accepted changed slots, which coincided with physical copies while
+all extras were eager. A baseline-backed extra update now contributes zero; a materialized update
+contributes one per copied page. Destination validity remains a separate boolean and a zero-copy
+accepted change is not a refusal. Existing primary-update counter expectations are unchanged.
+
+Retention continues to charge every EXTRA's full logical extent, including unmaterialized payloads,
+plus all stored baseline pages. Zero disables retention and an oversized idle lease retires without
+guest refusal. This conservative logical charge does not claim RSS or physically allocated bytes.
+The existing resource-boundary suite gains one complete-page host/store/scalar/scratch lifecycle
+case with nonzero canaries, cross-page EXTRA writes, immutable predecessor snapshots, unchanged
+RO/inaccessible payloads, an unmapped hole, incoming source rebasing and literal copy-count checks.
+All existing byte, map, source, alias, capacity and resident-refusal oracles remain unchanged.
+
+Local macOS ARM64 checked qualification passes seven existing correctness suites:
+`pvm_stream_resource_boundary`, `pvm_memory_reuse`, `pvm_stream_regions_and_host`,
+`pvm_fresh_resident`, `pvm_scalar_host`, `pvm_jit_memory_rules` and `pvm_shared_async_arm`.
+The changed resource-boundary image passes its exact registered output under ARC/Clang/ThinLTO;
+the other suites use their unchanged maintained profiles. Fresh 1,000-cycle ARC observations for
+memory reuse, fresh resident and scalar host return to their baseline allocation counts. The shared
+ARM positive receipt records one submitted/completed fragment, three native calls and 18,432 native
+operations. Bare-frame memory-rule checks remain separate from this actual native-entry evidence.
+
+Generated C inspection found and corrected a first-write allocation-refusal gap: the pinned managed
+sequence allocator may return empty bytes after reporting OOM. An explicit actual-length assertion
+now precedes every output span, source copy and payload installation in all four scalar widths in
+both resource-boundary and canonical ARM images. This restores the existing controlled fatal/assertion
+boundary without claiming recoverable whole-call OOM. No forced-refusal or heap-pressure profile ran.
+The first guest run also exposed an invalid new hole oracle: an absent in-domain `pageImage` succeeds
+with an inaccessible zero page. The corrected witness checks that complete representation and a
+canonical load fault with the exact aligned page. Earlier failure outputs and images remain preserved;
+the first bare assertion output alone does not uniquely locate every possible failing assertion.
+
+Canonical generated Frame/scratch/RW-view declarations and primary/native descriptor paths retain
+their recorded layout/source contract. EXTRA descriptors gain two integer coordinates, including
+temporary primary construction wrappers, so this is not a claim of zero metadata cost. The source
+owner, complete byte checks and conservative logical retention bill remain unchanged. This is bounded
+local correctness evidence, not Linux/x86 qualification, linked-image equivalence or a performance
+result. The canonical producer was built but never executed; no timing cohort or CI ran.
+
+For the existing sparse kind4 fixture only, 62 untouched two-page EXTRA runs omit 62 private payload
+allocations and 124 source-page copies (507,904 bytes / 496 KiB). Both primary runs, all 128 immutable
+source pages, metadata, logical retention charges and complete canary checks remain. Actual latency
+benefit remains unmeasured; source-work counts alone do not establish one.
+
 ## Retention policy and lifetime
 
 `PreparedLimits.retainedMemoryBytes: RetainedMemoryByteLimit` bounds the logical payload of
-the immutable baseline plus private region bytes. Zero disables retention. The convenience
+the immutable baseline plus complete logical private region extents, including lazy EXTRA payloads.
+Zero disables retention. The convenience
 `defaultPreparedLimits` selects 64 MiB per prepared identity. Explicit limits constructed without
 this field retain their zero/default behavior. The worker cache still retains one prepared
 identity and includes this budget in its source/policy key.

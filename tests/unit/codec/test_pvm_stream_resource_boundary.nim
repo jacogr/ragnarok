@@ -351,6 +351,131 @@ proc posteriorOwnerReentry() =
     # Full literal read/CPU/gas and retained-owner checks above prove semantics, with no native substitute.
     assert executed == native, "posterior-owner checked read does not publish or enter native code"
 
+proc extraLifecyclePages(memory: Memory, expected: openArray[PageImage]) =
+  ## Every mapped byte/access tag, including untouched RO and inaccessible payloads, remains observable.
+  let count = memoryPageCount(memory)
+  assert count.error == MachineError.None and uint32(count.value) == uint32(expected.len)
+  for image in expected:
+    let actual = pageImage(memory, image.index)
+    assert actual.error == MachineError.None and actual.value == image
+  # An absent in-domain page has a copied inaccessible image but still faults on canonical guest loads.
+  let hole = pageImage(memory, PageIndex(34))
+  assert hole.error == MachineError.None
+  assert hole.value == PageImage(index: PageIndex(34), access: PageAccess.Inaccessible,
+    bytes: default(array[4096, byte]))
+  let fault = load(memory, MemoryAddress(34'u64*4096), AccessWidth(1))
+  assert fault.error == MachineError.Fault and uint32(fault.faultPage) == 34'u32*4096
+
+proc extraOwnerLifecycle() =
+  ## Host rebasing, first cross-page store, scalar continuation and scratch restore share complete byte oracles.
+  let program = owner([@[10'u8, 1], @[58'u8, 7, 0, 0, 2, 0], @[52'u8, 11, 6, 0, 3, 0],
+    @[33'u8, 4, 255, 15, 2, 0, 120, 86, 52, 18], @[10'u8, 1], @[10'u8, 1],
+    @[58'u8, 8, 255, 15, 2, 0], @[52'u8, 9, 6, 0, 3, 0],
+    @[52'u8, 10, 19, 16, 2, 0], @[10'u8, 1], @[0'u8]])
+  let plan = newFlatPlan(program, cycles)
+  var original = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(17), access: PageAccess.ReadOnly),
+    PageImage(index: PageIndex(32), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(33), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(48), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(64), access: PageAccess.ReadWrite),
+    PageImage(index: PageIndex(96), access: PageAccess.Inaccessible)]
+  for page in 0..<original.len:
+    # Nonzero canaries make a missed full-region copy observable outside the written scalar.
+    for offset in 0..<4096: original[page].bytes[offset] = byte((offset*7+page*31) mod 251)
+  for offset in 0..<8: original[2].bytes[offset] = byte(offset+1)
+  let initial = MachineInfo(gas: MachineGas(10000))
+  var current = newFlatFrame(plan, original, initial)
+  runFlat(current, 20)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let held = observeFlatHostMemory(current)
+  extraLifecyclePages(held, original)
+  var expected = original
+  expected[2].bytes[0] = 0xd1
+  expected[4].bytes[6] = 0xe1
+  let firstResult = withReplacedPages(held, [expected[2], expected[4]])
+  assert firstResult.error == MachineError.None
+  let first = firstResult.value
+  let lazyStopped = current.info
+  assert resumeFlatHostMemory(current, first, lazyStopped.gas, lazyStopped.registers) == StepError.None
+  assert flatHostStats(current) == [1'u64, 0, 0], "lazy host updates accept without payload copies"
+  extraLifecyclePages(flatMemorySnapshot(current), expected)
+  checkFlatSource(current, expected)
+  runFlat(current, 20)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  assert uint64(current.info.registers[7]) == 0x08070605040302d1'u64
+  assert uint64(current.info.registers[11]) == 0xe1
+  expected[2].bytes[4095] = 0x78
+  for offset, value in [0x56'u8, 0x34, 0x12, 0, 0, 0, 0]: expected[3].bytes[offset] = value
+  let scalar = observeFlatHostScalars(current)
+  let guest = flatMemorySnapshot(current)
+  extraLifecyclePages(guest, expected)
+  assert resumeFlatHostScalars(current, scalar.gas, scalar.registers) == StepError.None
+  assert flatHostStats(current) == [2'u64, 0, 0]
+  runFlat(current, 20)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  let checkpoint = observeFlatHostMemory(current)
+  extraLifecyclePages(checkpoint, expected)
+  expected[3].bytes[19] = 0xa5
+  expected[4].bytes[6] = 0xf2
+  let posteriorResult = withReplacedPages(checkpoint, [expected[3], expected[4]])
+  assert posteriorResult.error == MachineError.None
+  let posterior = posteriorResult.value
+  let materializedStopped = current.info
+  assert resumeFlatHostMemory(current, posterior, materializedStopped.gas,
+    materializedStopped.registers) == StepError.None
+  assert flatHostStats(current) == [3'u64, 0, 1], "only materialized extra receives a physical page copy"
+  checkFlatSource(current, expected)
+  runFlat(current, 20)
+  assert current.reason == StepError.None and current.exit == StepExit.Host
+  assert uint64(current.info.registers[8]) == 0x12345678'u64
+  assert uint64(current.info.registers[9]) == 0xf2 and uint64(current.info.registers[10]) == 0xa5
+  extraLifecyclePages(flatMemorySnapshot(current), expected)
+  extraLifecyclePages(held, original)
+  var firstExpected = original
+  firstExpected[2].bytes[0] = 0xd1
+  firstExpected[4].bytes[6] = 0xe1
+  extraLifecyclePages(first, firstExpected)
+  firstExpected[2].bytes[4095] = 0x78
+  for offset, value in [0x56'u8, 0x34, 0x12, 0, 0, 0, 0]: firstExpected[3].bytes[offset] = value
+  extraLifecyclePages(guest, firstExpected)
+  extraLifecyclePages(checkpoint, firstExpected)
+  resetFlatFrame(current, initial)
+  extraLifecyclePages(flatMemorySnapshot(current), expected)
+  # Six accessible private extents plus all seven baseline pages are billed even with a lazy extra.
+  const RetainedBytes = 13'u64*4096
+  var scratch = takeFlatMemoryScratch(current, RetainedBytes)
+  assert scratch != nil and flatMemoryScratchPayload(scratch) == RetainedBytes
+  var incomingExpected = expected
+  incomingExpected[2].bytes[0] = 0x99
+  incomingExpected[4].bytes[6] = 0xb3
+  let incomingResult = withReplacedPages(posterior, [incomingExpected[2], incomingExpected[4]])
+  assert incomingResult.error == MachineError.None
+  let incoming = incomingResult.value
+  var reused = false
+  var prepared = prepareReusedFlatMemoryFrame(plan, incoming, initial, scratch, reused)
+  assert prepared.error == FlatError.None and reused and scratch == nil
+  var next = takeValue(prepared)
+  runFlat(next, 20)
+  assert next.reason == StepError.None and next.exit == StepExit.Host
+  let restored = observeFlatHostMemory(next)
+  extraLifecyclePages(restored, incomingExpected)
+  checkFlatSource(next, incomingExpected)
+  assert flatHostStats(next) == [0'u64, 0, 0]
+  let restoredCpu = next.info
+  assert resumeFlatHostMemory(next, restored, restoredCpu.gas, restoredCpu.registers) == StepError.None
+  runFlat(next, 20)
+  assert next.reason == StepError.None and next.exit == StepExit.Host
+  # Both guest loads precede the store: stale materialized bytes or a stale lazy baseline change registers.
+  assert uint64(next.info.registers[7]) == 0x0807060504030299'u64
+  assert uint64(next.info.registers[11]) == 0xb3
+  extraLifecyclePages(flatMemorySnapshot(next), incomingExpected)
+  checkFlatSource(next, incomingExpected)
+  extraLifecyclePages(restored, incomingExpected)
+  extraLifecyclePages(held, original)
+  extraLifecyclePages(posterior, expected)
+
 posteriorOwnerReentry()
+extraOwnerLifecycle()
 
 echo "PASS typed plan/frame limits / consumed results / exact suffix nodes / sticky refusal / jump policy / preparation spans / host retry"
