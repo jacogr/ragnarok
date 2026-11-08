@@ -85,18 +85,175 @@ class NativeHostTests(unittest.TestCase):
 
 
 class PolicyQualificationTests(unittest.TestCase):
-    def test_memory_and_owner_suites_precede_success(self):
-        """The native CI gate requires memory reuse and both owner policies on either architecture."""
-        checks = Mock()
-        checks.command.return_value = dict(exit_code=0, log='policy.log')
-        rows = ci.qualify_policy(checks)
-        self.assertEqual([row['suite'] for row in rows],
-                         ['pvm_memory_reuse', 'pvm_runtime_policy', 'pvm_runtime_policy_refused'])
-        for call in checks.command.call_args_list:
-            self.assertIn('--suite', call.args[0])
-        checks.command.return_value = dict(exit_code=1, log='failure.log')
+    """Exercise resident qualification and its retained evidence with inert registered-suite outcomes."""
+
+    def setUp(self):
+        """Create independent source/header/profile contracts; no compiler or executable is invoked."""
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.live = self.root/'live-evidence'
+        self.live.mkdir()
+        self.folder = self.root/'native-artifact'
+        self.folder.mkdir()
+        self.compiler = self.root/'tool/bin/nimony'
+        self.compiler.parent.mkdir(parents=True)
+        self.compiler.write_bytes(b'inert compiler')
+        (self.compiler.parent.parent/'NIGHTLY.txt').write_text('inert pinned identity')
+        self.profiles = {suite: dict(directory='codec', libraries=[], includes=[], observers=[],
+            defines=['pvmResidentWitness'], prepared=False)
+            for suite in ('pvm_fresh_resident', 'pvm_resident_bytes')}
+        self.inputs = ['src/pvm/internal/resident_bytes.nim',
+            'src/pvm/internal/resident_capture.nim', 'src/pvm/internal/resident_os.h',
+            'tests/support/arc_evidence.nim']
+        for suite in self.profiles:
+            self.inputs.extend(('tests/unit/codec/test_'+suite+'.nim',
+                'tests/unit/codec/test_'+suite+'.output',
+                'tools/native_requirements/codec/'+suite+'.json'))
+        for relative in self.inputs:
+            target = self.root/relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('independent qualification input: '+relative)
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.stack.enter_context(patch.object(ci, 'ROOT', self.root))
+        self.stack.enter_context(patch.object(ci, 'NATIVE_REQUIREMENTS', self.profiles))
+        self.stack.enter_context(patch.object(ci, 'unit_source', side_effect=lambda suite:
+            self.root/'tests/unit'/self.profiles[suite]['directory']/('test_'+suite+'.nim')))
+        self.stack.enter_context(patch.object(ci, 'unit_evidence_directory', return_value=self.live))
+        self.proof = dict(cycles=1000, occupied_before=192, occupied_after=192)
+        self.emit = True
+        self.tamper = None
+        self.checks = Mock(folder=self.folder)
+        self.checks.command.side_effect = self.suite_result
+
+    def suite_result(self, arguments, name, **options):
+        """Only a newly emitted numeric observation can stand in for successful maintained execution."""
+        suite = arguments[arguments.index('--suite')+1]
+        if suite in self.profiles:
+            if self.emit:
+                (self.live/(suite+'.json')).write_text(json.dumps(self.proof))
+            if self.tamper:
+                (self.root/self.tamper).write_text('changed during qualification')
+        return dict(exit_code=0, log='policy.log')
+
+    def test_registered_resident_units_and_fresh_arc_are_required(self):
+        """Both shared-refusal policies run each new unit once and retain ARC after original files disappear."""
+        for shared in (False, True):
+            with self.subTest(shared=shared):
+                self.checks.command.reset_mock()
+                rows = ci.qualify_policy(self.checks, self.compiler, shared_refusal=shared)
+                expected = ['pvm_memory_reuse', 'pvm_runtime_policy',
+                    'pvm_fresh_resident', 'pvm_resident_bytes']
+                if not shared:
+                    expected.append('pvm_runtime_policy_refused')
+                self.assertCountEqual([row['suite'] for row in rows], expected)
+                selected = [call.args[0][call.args[0].index('--suite')+1]
+                    for call in self.checks.command.call_args_list]
+                self.assertCountEqual(selected, expected)
+                for row in rows:
+                    if row['suite'] in self.profiles:
+                        (self.live/(row['suite']+'.json')).unlink()
+                        retained = Path(row['arc_evidence'])
+                        self.assertEqual(retained.parent, self.folder)
+                        self.assertEqual(json.loads(retained.read_text()), self.proof)
+                        self.assertEqual(row['arc'], self.proof)
+                        self.assertEqual(row['arc_evidence_sha256'], ci.hashlib.sha256(retained.read_bytes()).hexdigest())
+                        self.assertIn('src/pvm/internal/resident_os.h', row['sources'])
+
+    def test_failed_suite_prevents_qualification(self):
+        """A failed maintained unit cannot produce a green policy qualification."""
+        self.checks.command.side_effect = None
+        self.checks.command.return_value = dict(exit_code=1, log='failure.log')
         with self.assertRaisesRegex(RuntimeError, 'failure.log'):
-            ci.qualify_policy(checks)
+            ci.qualify_policy(self.checks, self.compiler)
+
+    def test_zero_exit_cannot_reuse_stale_arc(self):
+        """A green child without fresh evidence cannot accept old live or previously retained observations."""
+        for suite in self.profiles:
+            (self.live/(suite+'.json')).write_text(json.dumps(self.proof))
+            (self.folder/(suite+'.json')).write_text(json.dumps(self.proof))
+        self.emit = False
+        with self.assertRaises(FileNotFoundError):
+            ci.qualify_policy(self.checks, self.compiler)
+
+    def test_failed_resident_suite_retains_fresh_invalid_arc(self):
+        """The maintained launcher can reject ARC itself; its nonzero exit must not discard raw proof."""
+        invalid = b'{invalid fresh ARC observation'
+
+        def rejected(arguments, name, **options):
+            suite = arguments[arguments.index('--suite')+1]
+            if suite == 'pvm_fresh_resident':
+                (self.live/(suite+'.json')).write_bytes(invalid)
+                return dict(exit_code=1, log='resident-arc-failure.log')
+            return dict(exit_code=0, log='policy.log')
+
+        self.checks.command.side_effect = rejected
+        with self.assertRaisesRegex(RuntimeError, 'resident-arc-failure.log'):
+            ci.qualify_policy(self.checks, self.compiler)
+        self.assertEqual((self.folder/'pvm_fresh_resident.json').read_bytes(), invalid)
+
+    def test_zero_exit_cannot_hide_arc_growth(self):
+        """The shared numeric validator rejects fresh growth even if the child claimed success."""
+        self.proof['occupied_after'] += 8
+        with self.assertRaisesRegex(ValueError, 'return to baseline'):
+            ci.qualify_policy(self.checks, self.compiler)
+        self.assertTrue((self.folder/'pvm_fresh_resident.json').exists())
+
+    def test_mapping_header_and_support_contracts_cannot_change(self):
+        """Changing an OS binding, helper, oracle or registered profile during execution invalidates its proof."""
+        for relative in ('src/pvm/internal/resident_os.h', 'tests/support/arc_evidence.nim',
+                'tests/unit/codec/test_pvm_fresh_resident.output',
+                'tools/native_requirements/codec/pvm_resident_bytes.json'):
+            with self.subTest(source=relative):
+                original = (self.root/relative).read_bytes()
+                self.tamper = relative
+                try:
+                    with self.assertRaisesRegex(ValueError, 'source changed'):
+                        ci.qualify_policy(self.checks, self.compiler)
+                finally:
+                    (self.root/relative).write_bytes(original)
+
+    def test_compatibility_profile_cannot_substitute_for_fresh_map(self):
+        """The Linux native gate must not silently qualify only a capped managed-storage fallback."""
+        for key in ('nimMaxHeap', 'nimHardenOutOfMem', 'useMimalloc', 'useLibc', 'nimNoLibc'):
+            for suffix in ('', '=0', '=false'):
+                with self.subTest(define=key+suffix):
+                    self.profiles['pvm_fresh_resident']['defines'] = ['pvmResidentWitness', key+suffix]
+                    with self.assertRaisesRegex(ValueError, 'Resident qualification registration changed'):
+                        ci.qualify_policy(self.checks, self.compiler)
+                    self.checks.command.assert_not_called()
+
+    def test_resident_witness_is_required(self):
+        """Without instrumentation, a passing fallback workload cannot establish mapped acquisitions."""
+        self.profiles['pvm_fresh_resident']['defines'] = ['integration']
+        with self.assertRaisesRegex(ValueError, 'Resident qualification registration changed'):
+            ci.qualify_policy(self.checks, self.compiler)
+        self.checks.command.assert_not_called()
+
+    def test_benign_additional_profile_configuration_is_allowed(self):
+        """Qualification guards allocation policy without freezing unrelated registered configuration."""
+        self.profiles['pvm_fresh_resident']['defines'] = ['integration', 'pvmResidentWitness']
+        rows = ci.qualify_policy(self.checks, self.compiler)
+        self.assertTrue(any(row['suite'] == 'pvm_fresh_resident' and row['arc'] == self.proof
+            for row in rows))
+
+    def test_native_receipt_binds_new_header_and_suite_inputs(self):
+        """The performance preflight receives the OS header/support/golden/profile seals in the native receipt."""
+        with patch.object(ci, 'BUILD', self.folder), \
+                patch.object(ci, 'host_identity', return_value=dict(system='Linux', machine='aarch64', architecture='arm64')), \
+                patch.object(ci, 'installed', return_value=(self.compiler, None)), \
+                patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
+                patch.object(ci, 'qualify_host', return_value=['passed']), \
+                patch.object(ci, 'qualify_shared', return_value=dict(status='passed')), \
+                patch.object(ci, 'qualify_policy', return_value=['passed']), \
+                patch('builtins.print'):
+            ci.run()
+        observed = json.loads((self.folder/'results.json').read_text())
+        self.assertEqual(observed['status'], 'passed')
+        for relative in self.inputs:
+            self.assertEqual(observed['sources'][relative],
+                ci.hashlib.sha256((self.root/relative).read_bytes()).hexdigest())
 
 
 class SharedQualificationTests(unittest.TestCase):
@@ -270,6 +427,7 @@ class SharedQualificationTests(unittest.TestCase):
 
     def test_common_failure_prevents_overall_green_receipt(self):
         """Even green legacy gates cannot publish native CI success when common proof fails."""
+        # This isolated shared-gate fixture supplies shared sources; resident provenance has its own test.
         compiler = self.root/'tool/bin/nimony'
         compiler.parent.mkdir(parents=True)
         compiler.write_bytes(b'inert compiler')
@@ -280,6 +438,7 @@ class SharedQualificationTests(unittest.TestCase):
                 patch.object(ci, 'installed', return_value=(compiler, None)), \
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['legacy passed']), \
+                patch.object(ci, 'resident_source_paths', return_value=[]), \
                 patch.object(ci, 'qualify_shared', side_effect=RuntimeError('common failed')), \
                 patch.object(ci, 'qualify_policy') as policies:
             with self.assertRaisesRegex(RuntimeError, 'common failed'):
@@ -292,6 +451,7 @@ class SharedQualificationTests(unittest.TestCase):
 
     def test_unavailable_common_receipt_cannot_green_a_supported_host(self):
         """An unsupported common result is not a native pass, even when legacy checks are green."""
+        # Keep this existing host/shared verdict test independent of the separately tested resident inputs.
         compiler = self.root/'tool/bin/nimony'
         compiler.parent.mkdir(parents=True)
         compiler.write_bytes(b'inert compiler')
@@ -302,6 +462,7 @@ class SharedQualificationTests(unittest.TestCase):
                 patch.object(ci, 'installed', return_value=(compiler, None)), \
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['legacy passed']), \
+                patch.object(ci, 'resident_source_paths', return_value=[]), \
                 patch.object(ci, 'qualify_shared', return_value=dict(status='unavailable')), \
                 patch.object(ci, 'qualify_policy') as policies:
             with self.assertRaisesRegex(RuntimeError, 'matching shared'):
@@ -314,7 +475,9 @@ class SharedQualificationTests(unittest.TestCase):
         """The real refused main already keeps the unbound checks; unsupported hosts retain fallback."""
         checks = Mock()
         checks.command.return_value = dict(exit_code=0, log='policy.log')
-        rows = ci.qualify_policy(checks, shared_refusal=True)
+        with patch.object(ci, 'RESIDENT_SUITES', ()), \
+                patch.object(ci, 'resident_source_paths', return_value=[]):
+            rows = ci.qualify_policy(checks, Path('inert-compiler'), shared_refusal=True)
         self.assertEqual([row['suite'] for row in rows], ['pvm_memory_reuse', 'pvm_runtime_policy'])
 
 

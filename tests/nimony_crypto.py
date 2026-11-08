@@ -8,7 +8,7 @@ Exposes command, prepare, corpus for the verification harness.
 import platform
 import subprocess
 from test_crypto import ROOT, BUILD, bridge_checks, test, generated_signatures, PINS
-from build_crypto import dependencies, build_native
+from build_crypto import dependencies, build_native, LOGS
 
 
 # Record each test-only compile/link command and fail before using any stale object or library.
@@ -40,7 +40,7 @@ def prepare(folder):
                              BUILD/('libragnarok_bandersnatch.dylib' if platform.system() == 'Darwin' else 'libragnarok_bandersnatch.so'),
                              '-Wl,-rpath,'+str(BUILD),
                              '-pthread', '-o', observed], folder, 'crypto-observer-link'))
-    return library, observed, dict(commands=commands, native_log=str((BUILD/'build.log').relative_to(ROOT)),
+    return library, observed, dict(commands=commands, native_log=str((LOGS/'build.log').relative_to(ROOT)),
                                     bridge_checks='passed', pins=PINS, patches=[])
 
 

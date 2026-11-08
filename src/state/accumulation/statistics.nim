@@ -102,7 +102,7 @@ proc appendGas(usage: AccumulationGasUsage, rows: var seq[ServiceStatisticsEntry
     cursor: var int, total: var uint64, budget: uint64, group: InvocationServiceInfo): bool =
   ## Append one genuine service gas row and its bound destination transfer count into preflighted scratch.
   let gas = uint64(usage.gasUsed)
-  if usage.service != group.service or gas > budget-total:
+  if uint32(usage.service) != uint32(group.service) or gas > budget-total:
     return false # Prove aggregate arithmetic against actual certified consumption.
   total += gas
   # Complete source coverage pairs each sorted gas row with one exact input group; counts partition the preflighted total.

@@ -78,10 +78,15 @@ when declared(FlatFrame):
     addNativeReadContinuation(body, NativeReadContinuation(header: header,
       terminal: walk.terminal, price: source.price), operations)
 
+  proc flatRWReadRegion(first: uint64, bytes: RWView): NativeReadRegion =
+    ## Match the original empty/clipped openArray constructor without borrowing element zero of an empty view.
+    if bytes.len == 0: return default(NativeReadRegion)
+    initNativeReadRegion(first, bytes.toOpenArray(0, bytes.len-1))
+
   proc prepareFlatReadContext(f: var FlatFrame) {.noinline.} =
     ## Fresh frame allocations own these bytes. A replacement frame starts without descriptors.
     f.readContext = [initNativeReadRegion(f.stackBase, f.stack),
-      initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
     f.readContextReady = true
 
   proc flatNativeReadBody(f: var FlatFrame, off: uint32): uint32 =
@@ -102,7 +107,7 @@ when declared(FlatFrame):
   proc runFlatReadContinuationCold(f: var FlatFrame): bool {.noinline.} =
     ## Publish fresh descriptors only once the combined register transaction commits.
     var context = [initNativeReadRegion(f.stackBase, f.stack),
-      initNativeReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
+      flatRWReadRegion(f.rwBase, f.rw), initNativeReadRegion(f.roBase, f.ro)]
     if not runNativeReadBody(f.nativeSession, f.info.registers, context): return false
     f.readContext = context
     f.readContextReady = true
@@ -130,6 +135,20 @@ when declared(FlatFrame):
     f.remaining-=uint64(NativeReadContinuationSpan)
     f.reservation = continuation.header or flatReservationHeaderFlag
     continuation.terminal
+
+  proc validateFlatReadNomination(f: var FlatFrame) =
+    ## Reconstruct every original operand and optional continuation at the saved coordinates after restoration.
+    let info = deferredNativeReadInfo(f.nativeSession)
+    if info.epoch == 0: return
+    if int(info.first) >= f.plan.facts.len:
+      invalidateNativeStream(f.nativeSession)
+      return
+    var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    let extended = nativeReadContinuation(f.nativeSession).terminal != 0
+    if (extended and not extendFlatReadBody(f, body)) or
+        not validateNativeRead(f.nativeSession, body):
+      # Changed geometry or operands revoke the nomination rather than authorizing stale code.
+      invalidateNativeStream(f.nativeSession)
 
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo) =
     ## Rebuild the typed certificate before installing a body-only stream patch.

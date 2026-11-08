@@ -77,8 +77,8 @@ type
     state: NativeState
     span: NativeSpan
     when NativeCheckedReadEnabled:
-      readBody: NativeReadBody # Current nomination, then the immutable accepted certificate.
-      readNominated: bool
+      readBody: NativeReadBody # Retained deferred nomination, then the immutable accepted certificate.
+      readNominated, readValidated: bool # Source validation belongs to this invocation, not a prior stream lease.
     image: NativeImage
     invocation, allowed: bool
     provenWork, invocationWork, invocationBudget, calls, operations, publications: uint64
@@ -481,6 +481,9 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
     data.invocationWork = 0
     data.invocationBudget = budget
     data.workValid = true
+    when NativeCheckedReadEnabled:
+      # A retained nomination must be rebound to this invocation's restored source stream before retry.
+      data.readValidated = false
     # Coarse shared horizon is necessary, not a claim of candidate-specific measured profitability.
     data.allowed = budget >= NativeInvocationFloor and data.provenWork >= NativeInvocationFloor
   else:
@@ -528,6 +531,22 @@ when NativeCheckedReadEnabled:
       return
     data.readBody = body
     data.readNominated = true
+    data.readValidated = true
+
+  func deferredNativeReadInfo*(session: NativeSession): NativeReadBodyInfo =
+    ## Copy only retained coordinates for bounded source revalidation, never another discovery scan.
+    let data {.cursor.} = session.data
+    if data == nil or not data.invocation or data.state != NativeState.Deferred or
+        not data.readNominated or data.ticket != 0 or data.image.ready or
+        data.invocationBudget < NativeInvocationFloor: return default(NativeReadBodyInfo)
+    data.readBody.info
+
+  proc validateNativeRead*(session: NativeSession, body: NativeReadBody): bool =
+    ## Only an exact current source/epoch certificate permits this invocation to retry the retained read.
+    let data {.cursor.} = session.data
+    if data == nil or deferredNativeReadInfo(session).epoch == 0: return false
+    result = body.info.epoch == data.epoch and data.readBody.sameReadBody(body)
+    data.readValidated = result
 
 func nativeScanStart*(session: NativeSession): uint32 =
   ## One monotone classification cursor prevents rescanning structurally unsupported cached nodes each call.
@@ -557,6 +576,7 @@ proc invalidateNativeStream*(session: NativeSession) =
   when NativeCheckedReadEnabled:
     data.readBody = default(NativeReadBody)
     data.readNominated = false
+    data.readValidated = false
   data.nextScan = 0
   data.ticket = 0
   data.provenWork = 0
@@ -637,49 +657,54 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   assert anchor != nil
   let runtime = addr anchor.storage
   let selectRead = when NativeCheckedReadEnabled:
-    data.readNominated and completedWork >= NativeInvocationFloor and
+    data.readNominated and data.readValidated and completedWork >= NativeInvocationFloor and
       data.span.kind != NativeKind.ClosedRegisterLoop
   else:
     false
-  let candidate = data.span.len >= NativeMinimumOperations or selectRead
-  if tryAcquire(runtime.lock):
-    if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
-        runtime.slots[data.slot].state == Live and
-        runtime.slots[data.slot].generation == data.generation and
-        runtime.slots[data.slot].location == CompletionLocation.Empty and
-        data.state == NativeState.Deferred and candidate and
-        completedWork > 0 and data.provenWork >= NativeInvocationFloor and
-        runtime.nextTicket < high(uint64):
-      inc runtime.nextTicket
-      assert not data.image.ready and not runtime.slots[data.slot].completion.ready
-      # selectRead already excludes a certified closed loop. Write only the selected payload.
-      let kind = if selectRead: NativeKind.CheckedReadBody else: data.span.kind
-      let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
-        epoch: data.epoch, kind: kind)
-      when NativeCheckedReadEnabled:
-        if selectRead:
-          runtime.request.body = data.readBody
-        else:
-          runtime.request.span = data.span
+  let waitingRead = when NativeCheckedReadEnabled:
+    data.readNominated and data.span.kind != NativeKind.ClosedRegisterLoop
+  else:
+    false
+  # Short/failed calls cannot replace a stronger retained nomination with its pure prefix.
+  let candidate = if waitingRead: selectRead else: data.span.len >= NativeMinimumOperations
+  # Check admission under the mutex already required to release this invocation's lease.
+  acquire(runtime.lock)
+  if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
+      runtime.slots[data.slot].state == Live and
+      runtime.slots[data.slot].generation == data.generation and
+      runtime.slots[data.slot].location == CompletionLocation.Empty and
+      data.state == NativeState.Deferred and candidate and
+      completedWork > 0 and data.provenWork >= NativeInvocationFloor and
+      runtime.nextTicket < high(uint64):
+    inc runtime.nextTicket
+    assert not data.image.ready and not runtime.slots[data.slot].completion.ready
+    # selectRead already excludes a certified closed loop. Write only the selected payload.
+    let kind = if selectRead: NativeKind.CheckedReadBody else: data.span.kind
+    let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
+      epoch: data.epoch, kind: kind)
+    when NativeCheckedReadEnabled:
+      if selectRead:
+        runtime.request.body = data.readBody
       else:
         runtime.request.span = data.span
-      assert requestMatches(runtime.request, key)
-      runtime.key = key
-      runtime.slots[data.slot].key = key
-      runtime.slots[data.slot].cancelled = false
-      runtime.slots[data.slot].location = CompletionLocation.Queued
-      runtime.work = WorkPhase.Queued
-      data.ticket = key.ticket
-      data.state = NativeState.Pending
-      if runtime.submitted < high(uint64): inc runtime.submitted
-      signal(runtime.changed)
-    release(runtime.lock)
+    else:
+      runtime.request.span = data.span
+    assert requestMatches(runtime.request, key)
+    runtime.key = key
+    runtime.slots[data.slot].key = key
+    runtime.slots[data.slot].cancelled = false
+    runtime.slots[data.slot].location = CompletionLocation.Queued
+    runtime.work = WorkPhase.Queued
+    data.ticket = key.ticket
+    data.state = NativeState.Pending
+    if runtime.submitted < high(uint64): inc runtime.submitted
+    signal(runtime.changed)
   when NativeCheckedReadEnabled:
-    if data.readNominated:
-      # Only the accepted read ticket keeps its copied certificate.
-      if data.ticket == 0 or not selectRead: data.readBody = default(NativeReadBody)
+    if data.readNominated and data.ticket != 0:
+      # Submission fixes the selected ABI; occupied work slots retain the qualified copied nomination.
+      if not selectRead: data.readBody = default(NativeReadBody)
       data.readNominated = false
-  acquire(runtime.lock)
+    data.readValidated = false
   assert runtime.active > 0
   dec runtime.active
   data.invocation = false

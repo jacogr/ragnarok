@@ -75,3 +75,21 @@ class MinifierSetup(unittest.TestCase):
                 setup_minifier.subprocess, 'check_output', return_value='wrong-version'):
             with self.assertRaisesRegex(ValueError, 'version'):
                 setup_minifier.prepare()
+
+
+class ApplicationMinifierHosts(unittest.TestCase):
+    """CI setup must provision minification on every supported native application host."""
+
+    def test_supported_application_hosts(self):
+        """A new application host cannot silently retain an unsupported minified setup path."""
+        root = Path(__file__).resolve().parents[1]
+        tools = json.loads((root/'spec/ui-tools.json').read_text())
+        application = json.loads((root/'spec/toolchain.json').read_text())
+        for name, host in application['platforms'].items():
+            # Exercise every accepted spelling, including Linux's actual aarch64 runner identity.
+            for machine in host['machines']:
+                with self.subTest(system=host['system'], machine=machine), patch.object(
+                        setup_minifier.platform, 'system', return_value=host['system']), patch.object(
+                        setup_minifier.platform, 'machine', return_value=machine):
+                    selected, _ = setup_minifier.selected(tools)
+                    self.assertEqual(selected, name)

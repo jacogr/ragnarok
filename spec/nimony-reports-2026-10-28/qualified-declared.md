@@ -1,5 +1,11 @@
 # Qualified declared() crashes with an unconsumed NIF child assertion
 
+Submitted by the maintainer as [Nimony #2927](https://github.com/nim-lang/nimony/issues/2927)
+on November 7, 2026. Fresh official-nightly retesting at
+`ee5497661fac399ff471d7aff472803e36a1e0f0` preserves the same six-child assertion;
+the unqualified control compiles and executes successfully. The original October 28
+submission draft and historical diagnostics are retained below.
+
 ## Nim Version
 
 ```text
@@ -74,6 +80,5 @@ covered. Refresh duplicate triage before submission. No root cause is asserted.
 The same trigger also fails on the October 26 archive
 `358b9bce4dd855453f57a80a0c499b0b2e27d7ee`. The newest published October 28 archive
 is checked here; a separate build of upstream master, Linux runtime and a regression bisect
-are not checked. The reproducer remains available for maintainer submission after duplicate review. This is a local draft for
-maintainer review, not a filed issue. Private project paths in the final observed output are
+are not checked. The reproducer remains available for maintainer submission after duplicate review. This was a local draft when originally prepared; the current submission is linked above. Private project paths in the final observed output are
 redacted as `/Users/<user>/Projects/<project>`; other output is unchanged.

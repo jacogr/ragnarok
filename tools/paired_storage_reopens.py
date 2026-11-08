@@ -70,7 +70,7 @@ def read_config(path):
 def provider_hashes():
     """Observe the providers the fixed native rpath will actually load on this host."""
     suffix = '.dylib' if platform.system() == 'Darwin' else '.so'
-    return component_hashes(crypto_components(ROOT/'build/crypto'/('libragnarok_crypto'+suffix)))
+    return component_hashes(crypto_components(ROOT/'build-tools/crypto'/('libragnarok_crypto'+suffix)))
 
 
 def admit(config):

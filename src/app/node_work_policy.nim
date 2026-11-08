@@ -91,9 +91,6 @@ proc encodeGuarantorPolicy*(settings: NodeWorkSettings): string =
   ## Emission lists every input value; it neither supplies budgets nor loads private keys.
   result = GuarantorPolicyHeader & "\n"
   guarantorPolicyFields(settings, result, writeField)
-func duration(value: uint64): bool =
-  ## All narrowing to bounded host durations follows this check.
-  value >= 1 and value <= 120000
 proc decodeNodeWorkPolicy*(text: string, logging = default(LogWriter)): NodeWorkPolicyResult =
   ## Exact declared versions share lexical validation; there is no header guessing or partially configured fallback.
   if text.len > WorkPolicyBytes: return refused(WorkPolicyError.LimitExceeded)
@@ -113,12 +110,21 @@ proc decodeNodeWorkPolicy*(text: string, logging = default(LogWriter)): NodeWork
   for entry in input.values:
     if not entry.used: return refused(WorkPolicyError.UnknownField, entry.name)
   if input.error != WorkPolicyError.None: return refused(input.error, input.field)
-  for entry in [("timeoutMs", values.timeoutMs), ("exchangeTimeoutMs", values.exchangeTimeoutMs),
-      ("peerTimeoutMs", values.peerTimeoutMs), ("deliveryTimeoutMs", values.deliveryTimeoutMs),
-      ("deliveryPeerTimeoutMs", values.deliveryPeerTimeoutMs),
-      ("acquisitionTimeoutMs", values.acquisitionTimeoutMs), ("recovery.timeoutMs",
-          values.recoveryTimeoutMs)]:
-    if not duration(entry[1]): return refused(WorkPolicyError.InvalidPolicy, entry[0])
+  # Validate the original fields so later range conversions retain their proofs.
+  if values.timeoutMs < 1 or values.timeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "timeoutMs")
+  if values.exchangeTimeoutMs < 1 or values.exchangeTimeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "exchangeTimeoutMs")
+  if values.peerTimeoutMs < 1 or values.peerTimeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "peerTimeoutMs")
+  if values.deliveryTimeoutMs < 1 or values.deliveryTimeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "deliveryTimeoutMs")
+  if values.deliveryPeerTimeoutMs < 1 or values.deliveryPeerTimeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "deliveryPeerTimeoutMs")
+  if values.acquisitionTimeoutMs < 1 or values.acquisitionTimeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "acquisitionTimeoutMs")
+  if values.recoveryTimeoutMs < 1 or values.recoveryTimeoutMs > 120000:
+    return refused(WorkPolicyError.InvalidPolicy, "recovery.timeoutMs")
   if values.graceMs < 2000 or values.graceMs > 120000 or values.exchangeTimeoutMs <= values.graceMs:
     return refused(WorkPolicyError.InvalidPolicy, "graceMs")
   if values.deliveryEntries < 1 or values.deliveryEntries > 64:

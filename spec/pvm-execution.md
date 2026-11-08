@@ -11,6 +11,13 @@ The current implementation uses one [checked handler-stream engine](pvm-handler-
 both recursive and single-step execution; the earlier evaluator is removed. The adapter contracts
 below remain unchanged, with explicit local preparation admission as documented there.
 
+A selected fresh resident-allocation refusal is the local `ResidentAllocationRefused` reason,
+propagated through ordinary, single-step and host execution. It does not charge a guest outcome
+or claim a partial successor. Stopped-host replacement remains transactional; managed metadata
+OOM behavior and earlier admission/step/gas precedence stay unchanged. The
+[resident-memory contract](pvm-retained-memory.md#fresh-first-rw-capture) owns profile selection,
+lifetime and complete restoration rules.
+
 ## APIs and scope
 
 `stepOnce(machine, gasLimit)` implements the single-step opcode capability for

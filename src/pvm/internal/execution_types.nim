@@ -14,4 +14,4 @@ type
       InvalidHostResponse, HostCallLimitExceeded, InvalidGasPlan, InvalidGasMemo,
         InvalidPreparedProgram, PreparedProgramBusy, BackendNotBuilt, BackendUnavailable,
         BackendReentryUnsupported, BackendRevisionMismatch, BackendProgramUnsupported,
-          BackendCapabilityUnsupported, BackendFailure
+          BackendCapabilityUnsupported, BackendFailure, ResidentAllocationRefused

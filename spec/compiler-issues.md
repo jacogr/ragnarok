@@ -1,7 +1,7 @@
 # Compiler issue register
 
-Follow the [tracking process](../docs/compiler-issues.md). This register starts with the four
-recently investigated behaviors; older observations remain in the
+Follow the [tracking process](../docs/compiler-issues.md). Investigated behaviors are recorded here;
+older observations remain in the
 [compatibility reference](../docs/nimony-compatibility.md) and should receive an entry when reviewed.
 IDs are stable. Status below is distinct from the last compiler actually tested.
 
@@ -10,10 +10,11 @@ IDs are stable. Status below is distinct from the last compiler actually tested.
 | NIM-001 | Sequence slicing rejected; fixture copies required. | Locally verified fixed. [#2782](https://github.com/nim-lang/nimony/issues/2782), [fix #2789](https://github.com/nim-lang/nimony/pull/2789). Owned slice adapters removed in [Ragnarök #1723](https://github.com/jacogr/ragnarok/pull/1723); retain useful borrowed views. | October 28, 2026; `63fed6cb4`, macOS ARM64. |
 | NIM-002 | `$value` in a `SomeInteger` generic rejected; JSON writer uses concrete overloads. | [#2808 closed as not a bug](https://github.com/nim-lang/nimony/issues/2808#issuecomment-6448849445). A type constraint does not guarantee a dollar operator. Retain supported concrete overloads; no pending compiler fix. | October 27, 2026; `358b9bce4`, macOS ARM64. |
 | NIM-003 | Second mutable pointee call loses nil proof; callback needed explicitly typed non-null pointer. | Locally verified fixed in October 28 archive containing [#2811](https://github.com/nim-lang/nimony/pull/2811) and [#2813](https://github.com/nim-lang/nimony/pull/2813). Original inferred-local probe and typed control run; transport callback fixtures use inferred pointers again. See [qualification](nimony-nightly-2026-10-28.md). | October 28, 2026; `63fed6cb4`, macOS ARM64. |
-| NIM-004 | Qualified `declared(...)` crashes compiler; PVM comparison guard uses unqualified lookup. | Draft for maintainer submission; still crashes in 5/5 clean directories on the newest published archive. No upstream issue filed. | October 28, 2026; `63fed6cb4`, macOS ARM64. |
+| NIM-004 | Qualified `declared(...)` crashes compiler; PVM comparison guard uses unqualified lookup. | Submitted as [Nimony #2927](https://github.com/nim-lang/nimony/issues/2927). November 7 standalone retest retains the same assertion and a passing unqualified control. Historical five-clean-run receipts remain in the report. | November 7, 2026; `ee5497661`, macOS ARM64. |
 | NIM-005 | Direct JIT counter field read appears stale after a mutating call in one width-loop test; the native witness uses a test-only `noinline` observer. | Suspected; [project-bound draft](nimony-reports-2026-11-03/counter-field-cse.md) and [candidate source](nimony-reports-2026-11-03/counter-field-cse.nim) retained. Standalone reduction, language-contract review, upstream duplicate/devel checks and fresh retest pending; no issue filed. | November 3, 2026; `63fed6cb4`, macOS ARM64 (retained binary rerun, fresh compile pending). |
-| NIM-006 | An omitted argument with `default(variant)` is rejected as conflicting inactive fields, while explicit default and domain-factory controls compile. | Confirmed5/5 clean reproductions; [local draft](nimony-reports-2026-11-04/variant-default-parameter.md). No exact upstream duplicate identified and no issue filed. Work-submission capture uses an explicit chain-context overload and the owning empty-view factory. | November 4, 2026; `63fed6cb4`, macOS ARM64. |
+| NIM-006 | An omitted argument with `default(variant)` is rejected as conflicting inactive fields, while explicit default and domain-factory controls compile. | Submitted as [Nimony #2928](https://github.com/nim-lang/nimony/issues/2928). Five fresh November 7 reproductions reject the omitted argument; explicit-default and factory controls compile and execute. [Report and evidence](nimony-reports-2026-11-04/variant-default-parameter.md). Retain the explicit chain-context overload and owning empty-view factory. | November 7, 2026; `ee5497661`, macOS ARM64. |
 | NIM-007 | Linux-target semantic checking on macOS crashes in the unchanged CLI catalog with a `nifcore.nim(1942)` bounds assertion. | Suspected; [project-bound witness](nimony-reports-2026-11-04/linux-cli-catalog.md). Recovery core checks pass independently. No workaround or pin change; standalone reduction, contract review, duplicate search and native Linux qualification pending. | November 4, 2026; `63fed6cb4`, macOS ARM64 targeting Linux AMD64. |
+| NIM-008 | Optimized code reads an initial constant after a non-inlined call mutates a local integer through a var parameter; the original pointer positive control also fails. | Submitted as [Nimony #2930](https://github.com/nim-lang/nimony/issues/2930). [Seven-line standalone report](nimony-reports-2026-11-07/noninline-var-mutation.md) reproduces in five clean optimized builds; old optimized and new unoptimized controls pass. Native and browser pins were rolled back; preserve the original positive control. All 47 repair CI jobs passed before merge. | November 7, 2026; `ee5497661` fails, `63fed6cb4` passes, macOS ARM64; November 7 Linux CI also fails. |
 
 ## Reproducers, workarounds and evidence
 
@@ -45,6 +46,17 @@ Preserve each row's own last-tested identity rather than silently refreshing his
   uses a `noinline` counter reader only in tests. Generated-C and process receipts are under ignored
   `build/pvm-stage-zero-master/build/`; a standalone reduction and contract check are still required
   before attributing this observation to the compiler or drafting an upstream submission.
+
+- NIM-008: [submitted standalone report and controls](nimony-reports-2026-11-07/noninline-var-mutation.md).
+  Five clean November 7 optimized builds fail at runtime; the October 28 optimized and November 7
+  unoptimized controls compile and run successfully. The unchanged production-regression driver
+  fails both checked and ThinLTO profiles under the November 7 compiler and passes both under
+  October 28. The [rollback repair](https://github.com/jacogr/ragnarok/pull/2025) passed all 47
+  jobs in [full CI](https://github.com/jacogr/ragnarok/actions/runs/42401871665), exact head
+  `262644e603a113274b91c658a4391340872afbc4`, before merging as `315ac66e`.
+  Raw sources, diagnostics, generated C and old/new controls remain under ignored
+  `build/ci/nimony-master-repair/`. A later upgrade must pass the unchanged standalone source,
+  its controls and the existing production-regression family before retiring this hold.
 
 ## Retained ownership rejection regressions
 

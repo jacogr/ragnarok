@@ -220,7 +220,7 @@ class NimonyCISafeguards(unittest.TestCase):
         text = (ROOT/'.github/workflows/ci.yml').read_text()
         sensitive = ('build/tests/mcp-interop/certificates/a.key.pem',
                      'build/tests/e2e/tiny-devnet-example/node-1/a.key.pem',
-                     'build/quic/fixtures/a.key.pem', 'vendor/example/private.key',
+                     'build/tests/quic/fixtures/a.key.pem', 'vendor/example/private.key',
                      'build/mcp-interop-python/lib/python/site-packages/example.py')
         paths = [path for job in workflow(text)['jobs'].values() for path in artifact_paths(job)]
         self.assertTrue(paths)
@@ -230,26 +230,41 @@ class NimonyCISafeguards(unittest.TestCase):
                                  (pattern, private))
 
     def test_bandersnatch_clean_build_directory(self):
+        """Cold and retained caches both run locked release tests and retain fresh native evidence."""
         with temporary_folder() as temporary:
-            folder = temporary/'build/bandersnatch'
+            folder = temporary/'build-tools/bandersnatch'
+            logs = temporary/'build/ci/native/bandersnatch'
+            suffix = '.dylib' if bandersnatch.platform.system() == 'Darwin' else '.so'
+            expected = folder/'target/release'/('libragnarok_bandersnatch'+suffix)
             features = 'secret-split\n'
-            outputs = ['rustc '+bandersnatch.PINS['rust']+' fixture',
-                       'cargo '+bandersnatch.PINS['rust']+' fixture', features]
+            def output(arguments, **options):
+                """Answer external tool queries without depending on their internal call order."""
+                if arguments[0] == 'rustc':
+                    return 'rustc '+bandersnatch.PINS['rust']+' fixture'
+                if arguments[1] == 'tree':
+                    return features
+                return 'cargo '+bandersnatch.PINS['rust']+' fixture'
+            def native_command(arguments, log):
+                """Publish inert ABI bytes only after the requested build command."""
+                if arguments[1] == 'build':
+                    expected.parent.mkdir(parents=True, exist_ok=True)
+                    expected.write_bytes(b'inert Rust ABI')
             with patch.object(bandersnatch, 'BUILD', folder), patch.object(
-                    bandersnatch.subprocess, 'check_output', side_effect=outputs), patch.object(
-                    bandersnatch, 'run') as run:
+                    bandersnatch, 'LOGS', logs), patch.object(
+                    bandersnatch.subprocess, 'check_output', side_effect=output), patch.object(
+                    bandersnatch, 'run', side_effect=native_command) as run:
                 library = bandersnatch.build_native(False)
-                # Reusing the same directory must also succeed, without fetching dependencies.
-                with patch.object(bandersnatch.subprocess, 'check_output', side_effect=outputs):
-                    self.assertEqual(bandersnatch.build_native(False), library)
-            self.assertTrue((folder/'build.log').is_file())
-            self.assertEqual((folder/'cargo-features.log').read_text(), features)
-            self.assertEqual(library.parent, folder/'target/release')
-            self.assertEqual([call.args[0][1] for call in run.call_args_list],
-                             ['fmt', 'test', 'build']*2)
-            for call in (run.call_args_list[1], run.call_args_list[4]):
-                # Adapter tests must share the shipped release profile instead of building debug dependencies.
-                self.assertIn('--release', call.args[0])
+                self.assertEqual(bandersnatch.build_native(False), library)
+            self.assertTrue((logs/'build.log').is_file())
+            self.assertEqual((logs/'cargo-features.log').read_text(), features)
+            self.assertEqual(library, expected)
+            tests = [call.args[0] for call in run.call_args_list if call.args[0][1] == 'test']
+            self.assertEqual(len(tests), 2)
+            for arguments in tests:
+                # Reuse must preserve production-profile adapter tests and offline locked dependencies.
+                for required in ('--release', '--locked', '--offline'):
+                    self.assertIn(required, arguments)
+            self.assertFalse(any(call.args[0][1] == 'fetch' for call in run.call_args_list))
 
     # The same immutable nightly revision must select the correct platform archive and reject unknown hosts.
     def test_local_and_ci_host_selection(self):
