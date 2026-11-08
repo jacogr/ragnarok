@@ -215,6 +215,81 @@ def qualify_host(checks, compiler, host):
     return qualify(checks, compiler, native=bool(flags))
 
 
+def read_width_source_paths():
+    """Bind both ISA mains, literals, ABI/source checks and their discovered native profiles."""
+    paths = [ROOT/'tests/support/pvm_shared_read_widths.nim',
+             ROOT/'tools/pvm_native_ci.py']
+    for name in ('native_read_body', 'handler_read_body', 'read_admission_probe',
+                 'handler_stream', 'handler_trace_source', 'jit_rules', 'native_ir',
+                 'native_pipeline', 'native_platform', 'arm64_jit', 'x86_jit', 'x86_resident_access'):
+        paths.append(ROOT/'src/pvm/internal'/(name+'.nim'))
+    for isa in ('arm', 'x86'):
+        source = ROOT/'tests/unit/codec'/('test_pvm_shared_read_widths_'+isa+'.nim')
+        paths.extend((source, source.with_suffix('.output'),
+                      ROOT/'tools/native_requirements/codec'/('pvm_shared_read_widths_'+isa+'.json')))
+    return paths
+
+
+def validate_read_width_proof(proof, isa):
+    """Require all four new forms in both actual public native register-bank policies."""
+    if (not isinstance(proof, dict) or set(proof) != {'schema', 'isa', 'rows'} or
+            type(proof['schema']) is not int or proof['schema'] != 1 or proof['isa'] != isa or
+            not isinstance(proof['rows'], list) or len(proof['rows']) != 8):
+        raise ValueError('Missing complete scalar read-width proof')
+    seen = set()
+    for row in proof['rows']:
+        # An unrelated pure/loop image, generic golden or checked fallback cannot satisfy this gate.
+        if (not isinstance(row, dict) or set(row) != {'opcode', 'dirty', 'kind', 'calls', 'operations'} or
+                any(type(row[key]) is not int for key in ('opcode', 'dirty', 'calls', 'operations')) or
+                row['opcode'] not in (125, 126, 127, 128) or row['dirty'] not in (3, 7) or
+                row['kind'] != 'CheckedReadBody' or row['calls'] != 40000 or
+                row['operations'] != row['dirty']*40000 or (row['opcode'], row['dirty']) in seen):
+            raise ValueError('Invalid scalar read-width native activity')
+        seen.add((row['opcode'], row['dirty']))
+    if seen != {(opcode, dirty) for opcode in (125, 126, 127, 128) for dirty in (3, 7)}:
+        raise ValueError('Incomplete scalar read-width coverage')
+    return proof
+
+
+def qualify_read_widths(checks, compiler, host):
+    """Run the matching registered public-width witness and require fresh per-form native evidence."""
+    production = native_defines(host['system'], host['machine'])
+    if not production:
+        # Unsupported hosts remain explicit fallback; no public-native receipt is synthesized.
+        return dict(status='unavailable', production_defines=[])
+    isa = architecture(host['machine'])
+    suite = 'pvm_shared_read_widths_'+('arm' if isa == 'arm64' else 'x86')
+    profile = NATIVE_REQUIREMENTS[suite]
+    if (len(profile['defines']) != 2 or set(profile['defines']) != {*production, 'pvmSharedAsyncWitness'} or
+            profile['libraries'] or profile['observers'] or profile['prepared'] or
+            profile['includes'] != ['pvm_jit']):
+        raise ValueError('Scalar read-width qualification profile changed')
+    identities = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in read_width_source_paths()}
+    source = unit_source(suite)
+    built, binary = checks.build(compiler, source, suite, defines=profile['defines'],
+        cflags=['-I'+str(ROOT/'native/pvm_jit')])
+    if built['exit_code']:
+        raise RuntimeError('Scalar read-width qualification build failed: '+built['log'])
+    directory = checks.folder/(suite+'-evidence')
+    directory.mkdir(parents=True, exist_ok=True)
+    evidence = directory/('pvm_read_widths_'+isa+'.json')
+    evidence.unlink(missing_ok=True)
+    environment = unit_environment(compiler, suite)
+    environment['RAGNAROK_TEST_EVIDENCE'] = str(directory)
+    observed = checks.command([binary], suite+'-run', environment=environment, timeout=60)
+    if observed['exit_code'] or observed['output'] != source.with_suffix('.output').read_text():
+        raise RuntimeError('Scalar read-width qualification execution failed: '+observed['log'])
+    proof = validate_read_width_proof(json.loads(evidence.read_text()), isa)
+    if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != value
+           for path, value in identities.items()):
+        raise ValueError('Scalar read-width qualification source changed')
+    return dict(status='passed', suite=suite, production_defines=production,
+        registered_defines=profile['defines'], build=built, run=observed, sources=identities,
+        binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), evidence=str(evidence),
+        evidence_sha256=hashlib.sha256(evidence.read_bytes()).hexdigest(), native_evidence=proof)
+
+
 def run():
     """Retain incomplete evidence on every failure and require all maintained correctness gates before success."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -250,7 +325,7 @@ def run():
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
-        paths += shared_source_paths()+resident_source_paths()
+        paths += shared_source_paths()+resident_source_paths()+read_width_source_paths()
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
@@ -260,6 +335,9 @@ def run():
         report['shared_qualification'] = qualify_shared(NativeChecks(BUILD), compiler, report['host'])
         if native and report['shared_qualification']['status'] != 'passed':
             raise RuntimeError('Missing matching shared native qualification')
+        report['read_width_qualification'] = qualify_read_widths(NativeChecks(BUILD), compiler, report['host'])
+        if native and report['read_width_qualification']['status'] != 'passed':
+            raise RuntimeError('Missing matching scalar read-width native qualification')
         report['policy_qualification'] = qualify_policy(NativeChecks(BUILD), compiler,
             shared_refusal=report['shared_qualification']['status'] == 'passed')
         report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],

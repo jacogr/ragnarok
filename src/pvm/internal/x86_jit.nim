@@ -789,9 +789,13 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           labels[int(accepted)] = code.bytes.len
           case op.opcode
           of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
+          of 125: put(code, [0x48'u8, 0x0f, 0xbe, 0x04, 0x01]) # MOVSX RAX,byte [RCX+RAX].
+          of 126: put(code, [0x0f'u8, 0xb7, 0x04, 0x01]) # MOVZX EAX,word [RCX+RAX] clears upper32.
+          of 127: put(code, [0x48'u8, 0x0f, 0xbf, 0x04, 0x01]) # MOVSX RAX,word [RCX+RAX].
+          of 128: put(code, [0x8b'u8, 0x04, 0x01]) # MOV EAX,dword [RCX+RAX] clears upper32.
           of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
           of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
-          else: assert false # The common certificate admits only the three explicit load forms.
+          else: assert false # The common certificate admits only these seven relative load forms.
           writeAccess(code, access, op.slots.aIndex)
 
     proc sealCheckedRead(code: var X86Block, fixes: seq[X86CycleFixup],

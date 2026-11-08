@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 ## Private literal scalar/branch residency, canonical bytes and actual six-register SysV controls.
+## Full-width relative reads prove both register transactions and late-refusal atomicity.
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, registers]
@@ -191,6 +192,71 @@ block contextAndCurrentOperands:
     assert getEnv("RAGNAROK_PVM_RESIDENT_BAD_ABI") != "1", "callee-clobber probe missed"
 
 when Native and defined(pvmX86Jit):
+  type ReadWidthCase = object
+    ## Literal bytes and full-width oracles distinguish the four newly admitted load forms.
+    opcode: byte
+    width: range[1..8]
+    data, changed: array[8, byte]
+    value, changedValue: uint64
+    chainOffset: uint32
+
+  const
+    ReadWidths = [
+      ReadWidthCase(opcode: 125, width: 1, data: [0x80'u8, 0, 0, 0, 0, 0, 0, 0],
+        changed: [0x7f'u8, 0, 0, 0, 0, 0, 0, 0], value: 0xffffffffffffff80'u64,
+        changedValue: 0x7f, chainOffset: 0x20081),
+      ReadWidthCase(opcode: 126, width: 2, data: [1'u8, 0x80, 0, 0, 0, 0, 0, 0],
+        changed: [0xff'u8, 0xff, 0, 0, 0, 0, 0, 0], value: 0x8001,
+        changedValue: 0xffff, chainOffset: 0x18000),
+      ReadWidthCase(opcode: 127, width: 2, data: [1'u8, 0x80, 0, 0, 0, 0, 0, 0],
+        changed: [0xff'u8, 0x7f, 0, 0, 0, 0, 0, 0], value: 0xffffffffffff8001'u64,
+        changedValue: 0x7fff, chainOffset: 0x28000),
+      ReadWidthCase(opcode: 128, width: 4, data: [1'u8, 0, 0, 0x80, 0, 0, 0, 0],
+        changed: [0xff'u8, 0xff, 0xff, 0xff, 0, 0, 0, 0], value: 0x80000001'u64,
+        changedValue: 0xffffffff'u64, chainOffset: 0x80020000'u32)]
+    ReadWideBytes = [0x10'u8, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+    ReadWideValue = 0xfedcba9876543210'u64
+
+  proc widthOperation(opcode: byte, destination, base: range[0..12],
+      offset: uint32): NativeOperation =
+    ## Decode one marked literal six-byte instruction; no private register-slot constructor is used.
+    let packed = byte(int(destination) or (int(base) shl 4))
+    let wire = @[0'u8, 0, 7, opcode, packed, byte(offset and 255),
+      byte((offset shr 8) and 255), byte((offset shr 16) and 255),
+      byte((offset shr 24) and 255), 0, 0x41]
+    let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(16), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None
+    let inst = instruction(decoded.value, CodeAddress(0))
+    assert inst.error == ProgramError.None
+    let slots = instructionRegisters(inst)
+    assert slots.aIndex == destination
+    if opcode == 51:
+      # The scalar load contributes one distinct dirty lane without another memory access.
+      assert slots.destinationIndex == destination
+    else:
+      # Genuine relative read operands keep both alias coordinates and the original clipped offset.
+      assert nativeReadOpcode(opcode) and slots.bIndex == base
+    assert uint32(uint64(inst.value.x) and 0xffffffff'u64) == offset
+    NativeOperation(opcode: opcode, slots: slots, immediate: uint64(inst.value.x))
+
+  proc widthBody(row: ReadWidthCase, dirty: range[6..7], variant: range[0..2]): NativeReadBody =
+    ## Six dirty lanes select resident registers; seven force a stack transaction of the same reads.
+    let firstOpcode = if variant == 1: 130'u8 else: row.opcode
+    let lastOpcode = if variant == 1: row.opcode else: 130'u8
+    let lastBase: range[0..12] = if variant == 2: 1 else: 8
+    let lastOffset = if variant == 2: row.chainOffset else: 0'u32
+    var operations = @[widthOperation(firstOpcode, 1, 1, 0x10002)]
+    for slot in 2..<dirty:
+      # These distinct scalar destinations expose late publication in every saved hardware lane.
+      operations.add(widthOperation(51, range[0..12](slot), 0, uint32(32+slot)))
+    operations.add(widthOperation(lastOpcode, 0, range[0..12](lastBase), lastOffset))
+    assert operations.len == dirty
+    result = initNativeReadBody(40, uint32(41+dirty), 10, uint32(11+dirty), 1)
+    for index, operation in operations:
+      # Copied geometry is complete and consecutive; the old leading noop/terminal remain accounted.
+      assert addReadBodyOperation(result, uint32(41+index), uint32(11+index), operation)
+    assert result.complete
+
   block checkedReadAbiAndRefusal:
     # The six dirty lanes exercise every SysV save while the late U64 can still refuse.
     let wire = [0'u8, 0, 27, 2, 124, 0x11, 2, 0, 1, 149, 0x11, 0, 0, 1,
@@ -238,6 +304,72 @@ when Native and defined(pvmX86Jit):
     assert enterNativeReadBodyAbiProof(image, actual, context) and actual == expected
     assert byteRegion == [0xa5'u8, 0x80] and signedRegion == [1'u8, 0, 0, 0x80]
     assert wideRegion == [0x10'u8, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+
+  block newReadWidthsBothTransactions:
+    # Every new form uses the actual published two-borrow leaf and existing six-GPR ABI sentinel.
+    for row in ReadWidths:
+      for dirty in 6..7:
+        for variant in 0..2:
+          # New→U64, U64→new and new→dependent-U64 expose both late widths and current aliases.
+          let body = widthBody(row, dirty, variant)
+          keepBytes("read-width-" & $row.opcode & "-dirty-" & $dirty & "-variant-" & $variant,
+            x86CheckedReadInstructions(body))
+          let image = lowerNativeReadBody(body)
+          assert isReadBody(image)
+          let firstWidth = if variant == 1: 8 else: row.width
+          let lastWidth = if variant == 1: row.width else: 8
+          assert firstWidth in 1..8 and lastWidth in 1..8
+          var firstData = default(array[9, byte])
+          firstData[0] = 0xa5
+          var lastData = default(array[8, byte])
+          for index in 0..<firstWidth:
+            # The clipped lower extent drops a canary and presents an exact-fit, potentially unaligned load.
+            firstData[index+1] = if variant == 1: ReadWideBytes[index] else: row.data[index]
+          for index in 0..<8:
+            # The later extent starts at an unaligned guest address; trailing backing bytes remain canaries.
+            lastData[index] = if variant == 1: row.data[index] else: ReadWideBytes[index]
+          let originalFirst = firstData
+          let originalLast = lastData
+          var original = initial(0x1234567800000000'u64)
+          original[1] = RegisterValue(0x00000001fffffffe'u64)
+          original[8] = RegisterValue(0x1234567800020001'u64)
+          var expected = original
+          expected[1] = RegisterValue(if variant == 1: ReadWideValue else: row.value)
+          expected[0] = RegisterValue(if variant == 1: row.value else: ReadWideValue)
+          for slot in 2..<dirty:
+            # Literal scalar values distinguish every dirty destination from its original sentinel.
+            expected[slot] = RegisterValue(uint64(32+slot))
+          var context = default(NativeReadContext)
+          context[0] = initNativeReadRegion(0xffff, firstData.toOpenArray(0, firstWidth))
+          for truncated in [false, true, false]:
+            # A late failed guard must discard earlier reads and scalar writes before a recovered call.
+            if truncated and lastWidth == 1:
+              # A width-one short extent is empty and has no usable pointer.
+              context[1] = default(NativeReadRegion)
+            else:
+              # Exact fit succeeds; a width-minus-one extent refuses before touching its host pointer.
+              let length = lastWidth-(if truncated: 1 else: 0)
+              assert length in 1..8
+              context[1] = initNativeReadRegion(0x20001, lastData.toOpenArray(0, length-1))
+            var actual = original
+            assert enterNativeReadBodyAbiProof(image, actual, context) == (not truncated)
+            assert actual == (if truncated: original else: expected)
+            assert firstData == originalFirst and lastData == originalLast
+          if variant != 2:
+            # The same image must consume changed bytes; a fixed dependent address is tested above instead.
+            if variant == 0:
+              # Signed positive and unsigned high-bit alternatives replace the earlier aliased read result.
+              for index in 0..<row.width: firstData[index+1] = row.changed[index]
+              expected[1] = RegisterValue(row.changedValue)
+            else:
+              # A changed final value must also clear/sign-extend all upper destination bits.
+              for index in 0..<row.width: lastData[index] = row.changed[index]
+              expected[0] = RegisterValue(row.changedValue)
+            let changedFirst = firstData
+            let changedLast = lastData
+            var actual = original
+            assert enterNativeReadBodyAbiProof(image, actual, context) and actual == expected
+            assert firstData == changedFirst and lastData == changedLast
 
 when Native:
   assert scalarCases == 11448 and branchCases == 3456

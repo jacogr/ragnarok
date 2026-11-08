@@ -225,9 +225,9 @@ discard, retiming or local benchmark retry. Actual two-architecture canonical Li
 and performance reports on the final published source remain pending. No local or semantic result
 here establishes complete CI qualification, full native feature coverage or a latency improvement.
 
-## ARM64 checked read bodies
+## Shared scalar read bodies
 
-The supported ARM64 JIT profile enables checked read admission on Linux and macOS.
+Checked read admission supports Linux x86_64 and ARM64, and macOS ARM64.
 The shared scheduler considers loop, then read, then pure work. In `executeWithHost`,
 discovery requires a fresh handler stream and an uncharged first checked segment.
 The probe restores the original terminal handlers before host callbacks. A successful checked
@@ -238,7 +238,71 @@ facts each. A typed mailbox owns the copied request. A ready read body uses the
 current invocation's checked memory extents and falls back to the original paid
 handler when it cannot run.
 
-The local production-shaped DOOM cohort showed a 14–20% CPU reduction for reused
+The shared certificate admits all seven GP relative scalar loads: U8/S8/U16/S16/U32/S32/U64,
+opcodes124–130. This ports the remaining S8/U16/S16/U32 forms to the common path. The same
+`indirectMemoryAccess` table supplies each exact width. ARM reuses its existing typed encoding;
+x86 adds four explicit load alternatives in the guarded emitter shared by resident and stack
+transactions. Signed byte/halfword loads extend to64 bits. Unsigned halfword/word loads clear
+every higher destination bit, including an old nonzero upper word. No evaluator or public API
+is added.
+
+The source certificate, nomination policy, worker ownership and limits remain unchanged.
+Admission still needs2–8 reads in at most32 original facts; stores, direct loads and hosts are
+excluded. The optional continuation remains three pure scalar operations. Every install/retry
+reconstructs the original opcode, register slots, immediate, geometry and source epoch. Width
+admission does not authorize a stale certificate. Adding eligible operations can change which
+candidate wins despite identical thresholds; identical coverage or faster applications is not
+implied.
+
+The common72-byte memory context contains three clipped `(first, length, borrowed pointer)`
+regions. Each load must fit its actual width within one current allocation and the interval
+`[65536, 0xffffffff)`. Address formation wraps modulo2^32 before checking the extent. The
+base is read before an aliased destination is overwritten; subsequent operations use the staged
+current value. Any later guard refusal discards all speculative **register** writes before the
+paid checked source body replays. This read-only body never stages a guest-memory write. The
+legacy ARM144-byte raw/clipped context and its conservative eight-byte mechanical helpers
+remain separate and unchanged.
+
+`pvm_shared_read_widths_arm` and `pvm_shared_read_widths_x86` use the same independent
+little-endian register literals, full CPU/RAM/permission/source oracles and real public prepared
+owners. Each new opcode occurs twice in its genuine certified read block. The core body writes
+three lanes; four additional immediate writes force x86's existing seven-destination stack
+transaction. Correctness-only `AfterPublish` gates remain outside public invocations. Each ready
+history requires the actual `CheckedReadBody` image,40,000 native calls,120,000 or280,000 original
+body operations respectively, and no unrelated branch/header activity. An unsupported checked
+fallback cannot produce the per-form native proof. These gates never enter application drivers
+or performance readiness policy.
+
+Mechanical cases cover sign/zero extension, aliases and a loaded-value address chain, positive
+and negative wrapped displacements, unaligned accesses, empty/short/exact extents, clipped
+pointer adjustment, upper endpoints and a new-form late refusal with all13 caller registers
+checked before replay. Public histories cover changed input bytes, exact-width page tails and
+their first invalid starts, missing/inaccessible late pages, repaired mapping reuse and retained
+old snapshots. A separate genuine host7 callback replaces the map and reenters the same ready
+read image; its one following visit must use the new bytes.
+
+Frame witnesses retain complete partial snapshots and literal PCs/paid gas for all six boundaries
+of the core five-fact block, exact/insufficient unpaid gas and a zero-gas paid interior attempt.
+They independently reject changed opcode, destination, immediate and epoch certificates. The
+public quota checks retain the4,096 invocation floor and the longer stack body's original
+source attempts. The read block costs40 gas in both core and stack fixtures: its original
+`UNLIKELY` latency dominates the independent reads/immediate writes. Four extra stack-body
+instructions increase attempts from284,201 to444,201 for the complete guest, without changing
+that block price. Expectations are literal; neither image metadata nor `blockGas` supplies them.
+
+The native-host collector selects the registered matching ISA suite, seals its source/profile/
+golden dependencies, removes any previous proof, and requires all eight distinct opcode/bank
+records. Missing, duplicate, truncated, foreign-ISA, unrelated-image and zero-activity receipts
+fail. The x86 mechanical ABI suite additionally exercises exactly six dirty lanes (all six
+callee-saved GPRs) and seven dirty lanes through the maintained two-borrow sentinel wrapper.
+
+Local ARM correctness is distinct from Linux qualification. Base `b3cc7564` includes the UI
+platform fix from PR2038; the unchanged PVM source proof is retained in
+`build/read-width-evidence/UI-INTEGRATION.json`. Real LinuxARM64 andx86_64 execution and
+canonical enclosing performance comparisons remain pending. No timing result or performance
+improvement is attributed to this capability port.
+
+The earlier ARM-only local production-shaped DOOM cohort showed a 14–20% CPU reduction for reused
 ticks. Wall time was inconclusive. The earlier short-call cohort with a fresh worker
 showed regressions whose cause remains open. Canonical Linux qualification is pending.
 
