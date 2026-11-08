@@ -5501,6 +5501,9 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   f.nativeEntry = stream.nativeEntry
   f.nativeInstalledEpoch = stream.nativeInstalledEpoch
   flatConsiderNative(f, 0) # Reconsider prior cached code after transient registration capacity becomes available.
+  when NativeCheckedReadEnabled:
+    # Restored original facts authorize a deferred read retry without discovering another candidate.
+    validateFlatReadNomination(f)
   installNative(f)
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
