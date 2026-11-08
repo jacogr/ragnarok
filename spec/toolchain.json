@@ -14,8 +14,8 @@
       ],
       "download": {
         "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-ad334fb80/nimony-0.6.3-ad334fb80-linux_amd64.tar.xz",
-        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/724268082",
-        "sha256": "539df04c1dc00e2702c0df121b1e7607965541eea7a254112fd11fdefab08cc7"
+        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/724722062",
+        "sha256": "4519503bff6b7500f111d16021c2f81cf9f6a01ad027016b7ca548fa440e8f08"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed/nim-2.4.1-linux_x64.tar.xz",
@@ -31,8 +31,8 @@
       ],
       "download": {
         "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-ad334fb80/nimony-0.6.3-ad334fb80-linux_arm64.tar.xz",
-        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/724265740",
-        "sha256": "b37839d95ba5c17eb1da070e1cd1ea4ada1b655ce5abc07924db5736870252ce"
+        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/724717905",
+        "sha256": "34c77a77f64b2e7a2cc6a85050fb33793e303f739a7a2ffbcc8949c642707633"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed/nim-2.4.1-linux_arm64.tar.xz",
@@ -48,8 +48,8 @@
       ],
       "download": {
         "url": "https://github.com/nim-lang/nimony-website/releases/download/nightly-0.6.3-ad334fb80/nimony-0.6.3-ad334fb80-macos_arm64.tar.xz",
-        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/724328650",
-        "sha256": "d09e7b4b632830c9beaf13039836a19294509b7065adcc74656aeacb126cf0b4"
+        "api_url": "https://api.github.com/repos/nim-lang/nimony-website/releases/assets/724774104",
+        "sha256": "71d471de4d8e92d41f60a15ad632a7c680a839f2d045884450d89cc810d300b9"
       },
       "formatter_download": {
         "url": "https://github.com/nim-lang/nightlies/releases/download/2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed/nim-2.4.1-macosx_arm64.tar.xz",
