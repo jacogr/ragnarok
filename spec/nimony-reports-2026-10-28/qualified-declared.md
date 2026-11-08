@@ -1,5 +1,9 @@
 # Qualified declared() crashes with an unconsumed NIF child assertion
 
+Resolution retest, November 8: the original reproducer and its controls pass on official
+`ad334fb80c031da5b9932e3f254c23b6dd5ccbe1`. See the
+[upgrade qualification](../nimony-nightly-2026-11-08.md). Historical report and output follow.
+
 Submitted by the maintainer as [Nimony #2927](https://github.com/nim-lang/nimony/issues/2927)
 on November 7, 2026. Fresh official-nightly retesting at
 `ee5497661fac399ff471d7aff472803e36a1e0f0` preserves the same six-child assertion;

@@ -138,6 +138,10 @@ type
     owner*: OwnedWinnersMarker
     consumed*: int
 
+func `==`*(left, right: HeaderSlot): bool {.inline.} =
+  ## Compare header timeslots within their wire domain, independently of other slot types.
+  uint32(left) == uint32(right)
+
 func error*[T](value: HeaderResult[T]): HeaderError =
   ## Read generic outcomes without exposing a mutable result discriminator.
   value.status

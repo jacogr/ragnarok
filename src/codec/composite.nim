@@ -91,6 +91,10 @@ type
       # Failure has no value, span, count or consumed/written metadata.
       discard
 
+func `==`*(left, right: ServiceIndex): bool {.inline.} =
+  ## Compare protocol service identities without accepting counts or inventory ordinals.
+  uint32(left) == uint32(right)
+
 func absentBlob*(): OptionalBlob =
   ## Construct a payload-free optional source descriptor without borrowing any buffer.
   OptionalBlob(isPresent: false)

@@ -248,6 +248,8 @@ proc runClippedReadWitness*(): int =
   # Address arithmetic remains modulo 2^32 for both small and negative displacements.
   var wrapCases = 0
   for opcode in [124'u8, 130'u8]:
+    let readOpcode = int(opcode)
+    assert readOpcode >= 124 and readOpcode <= 130, "fixed read cases fit the emitter opcode range"
     let selected = slotsFor(@[opcode, 16'u8, 0, 0, 0, 0, 0'u8])
     for caseIndex in 0..<6:
       let displacement = case caseIndex
@@ -277,9 +279,9 @@ proc runClippedReadWitness*(): int =
       var rawBody = default(ArmBlock)
       var clippedBody = default(ArmBlock)
       var rawWords = armMemoryInstructions(rawBody, selected, displacement, 37,
-          range[124..130](int(opcode)))
+          range[124..130](readOpcode))
       var clippedWords = armMemoryInstructionsForOwner(clipped, clippedBody,
-          selected, displacement, 37, range[124..130](int(opcode)))
+          selected, displacement, 37, range[124..130](readOpcode))
       assert rawWords.len-clippedWords.len == 5
       assert publishArmEntry(raw, 0, 37, 1, rawWords)
       assert publishArmEntry(clipped, 0, 37, 1, clippedWords)

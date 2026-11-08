@@ -133,7 +133,7 @@ let preparedMode = pricing == "prepared"
 let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
 assert requestedBackend in ["", "jit", "interpreted"]
 if fullInvocation: assert requestedBackend in ["jit", "interpreted"]
-when declared(DefaultPvmBackend):
+when declared(reference.DefaultPvmBackend):
   var selectedBackend = reference.DefaultPvmBackend
   if requestedBackend.len > 0:
     assert reference.parsePvmBackend(requestedBackend, selectedBackend)
@@ -246,7 +246,7 @@ if preparedMode:
   # Construction admits decoded facts; sample zero includes lazy executable-node and price preparation.
   let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
-  let created = when declared(DefaultPvmBackend):
+  let created = when declared(reference.DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
     reference.newPreparedProgram(owner, reference.defaultPreparedLimits(
         GasCycleLimit(1000000)), selectedBackend, invocationRuntime)
@@ -327,7 +327,7 @@ if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
   echo "GAS_MEMO_END,", gasMemoInfo(memo).value.pricedBlocks
 
-when declared(DefaultPvmBackend):
+when declared(reference.DefaultPvmBackend):
   if requestedBackend.len > 0:
     # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
     assert preparedMode

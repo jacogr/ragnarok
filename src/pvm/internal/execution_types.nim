@@ -15,3 +15,7 @@ type
         InvalidPreparedProgram, PreparedProgramBusy, BackendNotBuilt, BackendUnavailable,
         BackendReentryUnsupported, BackendRevisionMismatch, BackendProgramUnsupported,
           BackendCapabilityUnsupported, BackendFailure, ResidentAllocationRefused
+
+func `==`*(left, right: HostCallId): bool {.inline.} =
+  ## Compare complete host-call numbers without accepting unrelated register-width domains.
+  uint64(left) == uint64(right)
