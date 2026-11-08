@@ -5,7 +5,8 @@
 """Assess stock WebSocket slow-peer closure in an isolated, bounded child process.
 
 A completed assessment reports evidence, never transport qualification. Unknown failures fail
-this command; the specific witnessed SIGPIPE outcome remains an explicit adoption blocker.
+this command. Configured Darwin listeners must retire cleanly; other platform defaults may
+still expose the witnessed SIGPIPE blocker. RPC adoption remains a separate qualification.
 """
 import hashlib
 import json
@@ -22,9 +23,9 @@ PREFIX = ('probe: upgrades=8\n'
 COMPLETE = PREFIX + 'probe: task owners retired and pool joined\n'
 
 
-def classify(returncode, output):
-    """Require the exact fairness witnesses before recognizing either supported close outcome."""
-    if returncode == -signal.SIGPIPE and output == PREFIX:
+def classify(returncode, output, *, require_clean_exit=False):
+    """Require exact witnesses; configured listeners must reach joined cleanup without a signal."""
+    if returncode == -signal.SIGPIPE and output == PREFIX and not require_clean_exit:
         # Only this signal after all witnesses identifies the observed slow-peer close blocker.
         return 'blocked-by-sigpipe'
     if returncode == 0 and output == COMPLETE:
@@ -47,8 +48,10 @@ def main():
         # A stale binary cannot substitute for the current source's failed build.
         raise RuntimeError('WebSocket probe build failed; see '+built['log'])
     result = checks.command([binary], 'slow-peer-runtime', timeout=20)
-    outcome = classify(result['exit_code'], result['output'])
+    outcome = classify(result['exit_code'], result['output'],
+                       require_clean_exit=platform.system() == 'Darwin')
     record = {'adoption': 'not-qualified', 'build': built, 'host': platform.platform(),
+              'macos_listener_nosigpipe': platform.system() == 'Darwin',
               'inputs': {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in
                          ('spec/toolchain.json', 'tests/native/websocket_slow_peer.nim',
                           'tests/support/websocket_adoption.nim', 'tools/websocket_adoption.py')},

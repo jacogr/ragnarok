@@ -9,7 +9,9 @@ No Gray Paper wire interpretation changes are involved.
 
 **Do not replace the RPC transport yet.** Basic unsolicited delivery works, but bounded
 RPC integration, local cancellation, and canonical-state exclusion remain adoption gates.
-A slow-peer closure also terminates the pinned library probe with SIGPIPE on macOS ARM64.
+HTTP message retirement also needs upstream qualification under NIM-009.
+The macOS listener now sets `SO_NOSIGPIPE` through its public descriptor before accept.
+Its accepted connections survive slow-peer closure with catchable send errors and joined cleanup.
 These results do not establish Linux behavior or the behavior of newer upstream revisions.
 
 ## Evidence and remaining gates
@@ -22,7 +24,8 @@ These results do not establish Linux behavior or the behavior of newer upstream 
 | Canonical-state exclusion | Probe tasks carry only owned transport halves, owned strings and pointers to fixed-lifetime atomic scalar observations. They import no application/query/canonical-state modules. | Keep decoding/routing and every canonical access on the dispatcher, retain `pauseChain`/`resumeChain` lease exclusion, and test concurrent publication, proof leases, disconnect and stale completions with a real detached-byte bridge. Probe isolation is not proof of that unimplemented bridge. |
 | Process lifecycle | Import initializes the shared I/O runtime; shutdown stops its process-wide pool. Calling init again leaves the pool stopped. | Integrate startup and joined shutdown with all existing owners. An RPC listener cannot independently stop a process-global runtime used by other services. |
 | Listener admission | The stock `listenHttp`/`listenTcp` path binds IPv4 wildcard; the probe's clients connect over loopback. | Preserve the production RPC listener's loopback-only binding through supported public APIs before adoption. |
-| Peer failure | On the pinned macOS runtime the backpressured send can end the process with SIGPIPE after the seven delivery witnesses. | Confirm/reduce upstream and qualify a stock upstream fix before adopting. Do not ignore the signal or add a local compatibility patch. |
+| HTTP owner retirement | The stock handshake constructs `HttpMsg` owners; [NIM-009](nimony-reports-2026-11-08/http-message-retirement.md) records their retirement failure at this pin. | Qualify the upstream fix and complete connection cleanup; successful delivery alone does not discharge this dependency gate. |
+| Peer failure | An unconfigured macOS listener reproduces SIGPIPE. Setting `SO_NOSIGPIPE` before accept makes the slow-peer assessment retire all owners cleanly through the stock error path. | Carry this ordinary Darwin socket configuration into a future transport owner. A configured listener must pass clean retirement; upstream patching is not required for this setting. Qualify supported hosts separately. |
 
 The existing RPC server deliberately services at most one accept, one bounded read, one frame
 and one write per slot per dispatcher turn. Publication uses connection-local, count/byte-bounded
@@ -35,6 +38,11 @@ At the pinned library, `WebSocket.reader` and `.writer` expose move-only split o
 single writer owner per connection: the pair's `recv` automatically emits pong/close responses,
 so its documented contract forbids concurrent use with another writer task. Bare reader `recv`
 returns control frames for the writer owner to handle instead.
+
+On macOS the probe configures `SO_NOSIGPIPE` on the listener before accepting any peers.
+The accepted sockets inherit it. This uses the public descriptor and ordinary OS socket policy;
+it changes neither library code nor the process-wide signal handler. A one-peer reset control
+also changes from SIGPIPE to a caught `ErrorCode` with this option.
 
 The stock upgrade defaults to a 1 MiB maximum message and no idle deadline. The probe observes
 that default instead of imposing generic HTTP/framing policies. Future integration must still
@@ -60,9 +68,11 @@ contract and no foreign application libraries.
 Run `make assess-websocket-adoption` for isolated slow-peer closure. It compiles current source
 using the shared checked ARC/Clang/ThinLTO profile and a private cache, enforces a 20-second child
 runtime limit, and writes `build/tests/websocket-adoption/assessment.json` plus compiler/runtime
-logs. A recognized SIGPIPE outcome is reported as `blocked-by-sigpipe`, never transport success.
-A clean peer-driven retirement is reported separately; either result remains `not-qualified`.
-Missing progress witnesses, arbitrary crashes, failed builds and timeouts fail the assessment.
+logs. On macOS the configured listener must reach `peer-close-retired`; SIGPIPE is a failed
+assessment. An unconfigured platform may still report the witnessed `blocked-by-sigpipe`
+blocker, never transport success. Every result remains `not-qualified` until the RPC integration
+gates pass. Missing progress witnesses, arbitrary crashes, failed builds and timeouts fail
+the assessment. The report records whether the Darwin listener option was enabled.
 This optional experiment is not a new production failure policy or an expected-crash CI gate.
 
 Only the independent raw test client uses `SO_RCVBUF=4096` to arrange backpressure; this is not a
@@ -71,11 +81,12 @@ The unit and slow-peer process own no canonical state and replace no production 
 
 ## Next bounded work
 
-Reduce the pinned slow-peer SIGPIPE observation to a standalone upstream reproducer and test
-current upstream before filing. The upstream issue search for SIGPIPE found no match on
-2026-11-08; current upstream was not executed. No upstream issue has been filed by this PR.
+A one-peer reset reproduction and a listener-option control were prepared for a maintainer
+issue draft. The upstream issue search for SIGPIPE found no match on 2026-11-08; current upstream
+was not executed. No upstream issue has been filed by this PR. Clarifying or changing upstream
+defaults is separate from using the demonstrated public listener configuration here.
 
-After a stock dependency can survive that witness, design one bounded detached-byte bridge
+Design one bounded detached-byte bridge
 between library tasks and the existing dispatcher. Prove cancellation and overflow ownership
 before implementing it; then run real subscription, lease and service-lifecycle integration
 scenarios on the supported hosts. Replacing the RPC transport is a separate decision after

@@ -24,6 +24,9 @@ proc setOption(fd, level, option: cint, value: pointer, size: SockLen): cint {.
   ## Clamp only the independent test peer's receive window to arrange backpressure.
 let ReceiveBuffer {.importc: "SO_RCVBUF", header: "<sys/socket.h>".}: cint
 let SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
+when defined(macosx):
+  # Accepted Darwin sockets inherit this ordinary listener option.
+  let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint
 
 proc readTask(input: sink ws.WebSocketReader; observed: ptr Observation) {.passive.} =
   ## The reader has its own owner and reports only scalar progress to the foreground.
@@ -56,6 +59,10 @@ proc writeTask(output: sink ws.WebSocketWriter; text: sink string; repeats: int;
 proc runWebSocketTrial*[slowPeer: static[bool]]() {.raises.} =
   ## Local owners outlive every task; explicit peer close precedes pool shutdown and retirement.
   var listener = http.listenHttp(0, http.newHttpTags())
+  when defined(macosx):
+    # Configure the public descriptor before accept; the process signal policy stays untouched.
+    var enabled = 1.cint
+    assert setOption(listener.fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) == 0
   let port = io.boundPort(listener.fd)
   var clients = default(array[Peers, tcp.Socket])
   for index in 0..<Peers: clients[index].fd = -1 # Default Socket's zero descriptor must not own stdin.

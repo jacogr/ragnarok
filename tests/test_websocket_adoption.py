@@ -33,6 +33,12 @@ class WebSocketAssessment(unittest.TestCase):
             with self.subTest(code=code, output=output), self.assertRaises(ValueError):
                 classify(code, output)
 
+    def test_configured_listener_requires_clean_retirement(self):
+        """SIGPIPE after setting the Darwin listener option is a failed configuration regression."""
+        self.assertEqual(classify(0, COMPLETE, require_clean_exit=True), 'peer-close-retired')
+        with self.assertRaises(ValueError):
+            classify(-signal.SIGPIPE, PREFIX, require_clean_exit=True)
+
     def test_failed_build_or_timeout_cannot_retain_old_assessment(self):
         """A stale successful report or binary must not survive an incomplete fresh run."""
         for failed_build in (True, False):
