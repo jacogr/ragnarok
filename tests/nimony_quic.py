@@ -14,4 +14,4 @@ def prepare():
     library = build_native(dependencies(False))
     fixture_folder = BUILD/'nimony-fixtures'
     fixtures(fixture_folder)
-    return library, fixture_folder, dict(pins=PINS, patches=PINS['patches'], build_log='build/quic/build.log')
+    return library, fixture_folder, dict(pins=PINS, patches=PINS['patches'], build_log='build/ci/native/quic/build.log')

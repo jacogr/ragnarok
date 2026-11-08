@@ -241,3 +241,53 @@ handler when it cannot run.
 The local production-shaped DOOM cohort showed a 14–20% CPU reduction for reused
 ticks. Wall time was inconclusive. The earlier short-call cohort with a fresh worker
 showed regressions whose cause remains open. Canonical Linux qualification is pending.
+
+## Retained qualified read nominations
+
+A read certificate qualified by the bounded first-segment probe remains owned by its deferred
+session when the compiler work slot is occupied. A later ordinary invocation restores the same
+checked stream and reconstructs only the saved geometry, every original operation/operand and
+the optional continuation. An exact source/epoch comparison permits retry; a mismatch explicitly
+invalidates the stream epoch. This does not rescan a nonempty stream or discover another candidate.
+
+Source validation is invocation-local. A short or failed call neither submits the retained read
+nor replaces it with the weaker pure prefix. Retry still requires the existing successful-call
+work floor, current invocation horizon and idle compiler work slot. A certified closed loop keeps
+its existing higher priority. Submission fixes the request ABI and copied payload; pending and
+ready jobs remain immutable. Epoch invalidation clears the deferred certificate. Close prevents
+another invocation/submission, and final drop returns a nomination-only registration without
+waiting for unrelated work. Queued/running read images retain normal cancellation and physical
+retirement rules.
+
+The read arbitration suite covers occupied-slot retention, repeated restored-stream calls,
+short/failed non-admission, loop precedence, retained optional continuations, source-epoch reset,
+deferred close/drop and cancellation after a real read image has been lowered. Its supported
+public path requires actual native read call/operation counts on each ISA; generic shared-span
+positives alone do not qualify read retry. Existing partial/gas/fault and complete CPU/RAM/host
+oracles remain. Local pinned checked ARC/Clang release qualification passes the maintained
+selected arbitration runner on Mac ARM, including a fresh public proof of one image, 40,000 calls
+and 120,000 completed read operations. The unchanged tiny-read, shared-async ARM and
+allocation-refusal selected suites also pass. The final test source passes Linux x86-64 semantic
+checking and the no-native public adapter passes default semantic checking.
+
+An ignored public-only contention probe against archived master
+`1eefb86b92b8e87e39cc07d0e0049590fbc88694` compiles with checked ARC/Clang ThinLTO and fails at
+the intended short-call submission-count assertion. This is a runtime reproduction of lost read
+selection, not a missing-helper compiler failure. Local selected runner flags retain their normal
+non-LTO profile; these results do not qualify Linux execution or claim a speed improvement.
+Exact-source Linux ARM64 and x86-64 qualification remains pending.
+The [migration contract](pvm-async-migration.md) records broader applicable capability obligations.
+
+## Shared admission and lease-release lock
+
+`finishNativeInvocation` checks admission, clears unaccepted copied read nomination and releases
+the active invocation lease under one mutex acquisition. The existing admission predicates,
+request certificates, work thresholds and queue signal remain unchanged. Busy work or another
+failed predicate can still defer admission; this does not introduce a readiness wait or a fairness
+guarantee. Read-body POD cleanup remains before the active lease is released.
+
+Scoped local qualification passes the unchanged shared ARM positive and allocation-refusal mains
+with their complete goldens and fresh numeric proofs under checked ARC/Clang/ThinLTO. Actual
+generated C confirms one acquire/release pair and POD cleanup before lease release. Mac ARM and
+Linux x86 semantic checks pass; Linux runtime qualification and performance remain pending.
+This architectural change does not establish the cause of the earlier shared-witness timeout.

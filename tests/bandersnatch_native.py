@@ -28,5 +28,5 @@ def prepare(folder):
     return library, observed, dict(pins=PINS, patches=[], commands=commands,
                                   rustc=subprocess.check_output(['rustc', '--version'], text=True).strip(),
                                   cargo=subprocess.check_output(['cargo', '--version'], text=True).strip(),
-                                  rust_log='build/bandersnatch/build.log',
-                                  features_log='build/bandersnatch/cargo-features.log')
+                                  rust_log='build/ci/native/bandersnatch/build.log',
+                                  features_log='build/ci/native/bandersnatch/cargo-features.log')

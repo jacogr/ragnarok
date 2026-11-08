@@ -16,6 +16,7 @@ import subprocess
 import shlex
 import hashlib
 from toolchain_archives import ROOT, download, extract
+from managed_tools import operation, replacement
 
 
 # Require the archive's own identity before any compiler execution or PATH export.
@@ -84,7 +85,7 @@ def cache_directory(compiler, folder, name):
 
 # Resolve the normal local installation without depending on a global compiler executable.
 def installed(destination=None):
-    destination = ROOT/'build/toolchain' if destination is None else Path(destination)
+    destination = ROOT/'build-tools/toolchain' if destination is None else Path(destination)
     manifest = json.loads((destination/'environment.json').read_text())
     pins = host_pins(json.loads((ROOT/'spec/toolchain.json').read_text()))
     verify_identity(Path(manifest['compiler']).parent.parent, pins)
@@ -103,14 +104,20 @@ def installed(destination=None):
 # Install project-local tools, print a sourceable environment, and export the same paths to GitHub steps.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--destination', type=Path, default=ROOT/'build/toolchain')
+    parser.add_argument('--destination', type=Path, default=ROOT/'build-tools/toolchain')
     parser.add_argument('--ensure', action='store_true', help='Reuse an intact installation with current pins')
     args = parser.parse_args()
+    with operation(args.destination.resolve()):
+        prepare(args)
+
+
+def prepare(args):
+    """Reuse a verified installation or replace it completely at its stable path."""
     if args.ensure:
         # Ordinary Make targets validate retained tools without extracting archives again on every run.
         try:
             compiler, _ = installed(args.destination.resolve())
-        except (OSError, ValueError, subprocess.CalledProcessError):
+        except (OSError, ValueError, KeyError, subprocess.CalledProcessError):
             # Missing tools, changed pins or damaged managed binaries need the normal verified installation path.
             pass
         else:
@@ -119,21 +126,24 @@ def main():
             return
     pins = host_pins(json.loads((ROOT/'spec/toolchain.json').read_text()))
     destination = args.destination.resolve()
-    root, paths, metadata = install(destination, pins)
-    compiler, formatter = root/'bin/nimony', paths[1]/'nimpretty'
-    version = verify_version(compiler, pins['version'])
-    banner = subprocess.check_output([str(formatter), '--version'], text=True).strip()
-    if banner != pins['formatter_banner']:
-        raise ValueError('Unexpected formatter banner: '+banner)
-    manifest = dict(compiler=str(compiler), formatter=str(formatter),
-                    compiler_sha256=hashlib.sha256(compiler.read_bytes()).hexdigest(),
-                    formatter_sha256=hashlib.sha256(formatter.read_bytes()).hexdigest(),
-                    pins_sha256=hashlib.sha256((ROOT/'spec/toolchain.json').read_bytes()).hexdigest())
-    (destination/'environment.json').write_text(json.dumps(manifest, indent=2)+'\n')
-    # Shell quoting preserves spaces without executing any path as shell code during setup.
-    (destination/'env.sh').write_text('export NIMONY='+shlex.quote(str(compiler))+'\n'+
-        'export NIMPRETTY='+shlex.quote(str(formatter))+'\n'+
-        'export PATH='+shlex.quote(':'.join(str(path) for path in paths))+':"$PATH"\n')
+    archives = [prefix+'-'+pins[field]['sha256']+'.archive'
+                for prefix, field in [('nimony', 'download'), ('formatter', 'formatter_download')]]
+    with replacement(destination, archives):
+        root, paths, metadata = install(destination, pins)
+        compiler, formatter = root/'bin/nimony', paths[1]/'nimpretty'
+        version = verify_version(compiler, pins['version'])
+        banner = subprocess.check_output([str(formatter), '--version'], text=True).strip()
+        if banner != pins['formatter_banner']:
+            raise ValueError('Unexpected formatter banner: '+banner)
+        manifest = dict(compiler=str(compiler), formatter=str(formatter),
+                        compiler_sha256=hashlib.sha256(compiler.read_bytes()).hexdigest(),
+                        formatter_sha256=hashlib.sha256(formatter.read_bytes()).hexdigest(),
+                        pins_sha256=hashlib.sha256((ROOT/'spec/toolchain.json').read_bytes()).hexdigest())
+        (destination/'environment.json').write_text(json.dumps(manifest, indent=2)+'\n')
+        # Shell quoting preserves spaces without executing any path as shell code during setup.
+        (destination/'env.sh').write_text('export NIMONY='+shlex.quote(str(compiler))+'\n'+
+            'export NIMPRETTY='+shlex.quote(str(formatter))+'\n'+
+            'export PATH='+shlex.quote(':'.join(str(path) for path in paths))+':"$PATH"\n')
     if os.environ.get('GITHUB_PATH'):
         # GitHub consumes the same selected compiler and formatter-only directories in later steps.
         with Path(os.environ['GITHUB_PATH']).open('a') as output:
