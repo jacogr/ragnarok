@@ -292,15 +292,10 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   else: uint64(x)
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmPrepare(f: var FlatFrame, origin: uint32)
-    ## Cold suffix preparation may replace eligible entries with native fragments.
-
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
     ## Only an observed, fully validated closed cycle may authorize a connected native loop.
 
 when defined(pvmX86Jit):
-  proc flatX86Prepare(f: var FlatFrame, origin: uint32)
-    ## Cold source emission alone can replace complete pure spans with native entries.
   proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32)
     ## Record one positive backedge or settle bounded source candidates at a safe call boundary.
 
@@ -2485,53 +2480,6 @@ when defined(pvmX86Jit):
     ## Original first execution admits both branch arms; only a later full reservation may promote native control.
     if f.barrier == flatStop and flatX86Upgrade(f, offset): return flatX86Branch(f, offset)
     flatX86Execute(f, offset)
-
-  proc flatX86Prepare(f: var FlatFrame, origin: uint32) =
-    ## Compile bounded same-block pure spans only, leaving pricing, branches, memory, hosts and faults checked.
-    if not f.plan.allowNative: return
-    let before = x86Clock()
-    if f.x86Jit == nil: f.x86Jit = newX86Jit()
-    let jit = f.x86Jit
-    assert jit != nil
-    if jit == nil: return
-    var offset = origin
-    while int(offset) < f.handlers.len:
-      # Duplicate source sites are synthetic charge headers and never authorize native source operations.
-      if x86Entry(jit, offset, uint32(f.handlers.len)) != 0 or
-          (int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset+1)]):
-        inc offset
-        continue
-      var ending = offset
-      var count = 0'u32
-      var fragment = default(X86Block)
-      while int(ending) < f.handlers.len and count < 64:
-        if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending+1)]: break
-        let fact = f.plan.facts[int(f.sites[int(ending)])]
-        if fact.ending or not fact.fallthrough or not supportedX86Opcode(fact.opcode): break
-        let payload = flatSourcePayload(f.plan, fact)
-        emitX86Operation(fragment, fact.opcode, payload.args.slots, payload.args.x)
-        inc ending
-        inc count
-      let terminal = if int(ending) < f.sites.len:
-          f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
-      let conditional = terminal in {81'u8..90, 170..175}
-      var whole = false
-      if conditional and offset > 0 and int(ending) < f.sites.len:
-        # Short native handoffs pay off only with a complete ordinary charge entry; interior prefixes retain fused checked workers.
-        let header = offset-1
-        let plain: FlatHandler = flatCharge
-        whole = f.handlers[int(header)] == plain and
-            f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y
-      if count == 0 or (count < 4 and not whole) or
-          not publishX86Entry(jit, offset, ending, count, fragment, shortPrefix = whole):
-        refuseX86Entry(jit, offset)
-        inc offset
-        continue
-      if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
-      f.x86Original[int(offset)] = f.handlers[int(offset)]
-      f.handlers[int(offset)] = if conditional: flatX86Pending else: flatX86Execute
-      offset = ending
-    jit.compilationNs += x86Clock()-before
 
   when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
     func flatX86CompleteSource(f: FlatFrame, pc: uint32,
@@ -5032,18 +4980,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
         170'u8..175'u8}: flatArmPending else: flatArmExecute
     ending
-
-  proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
-    ## Only newly emitted suffix nodes are examined. Unsupported nodes keep the ordinary hot loop unchanged.
-    if not f.plan.allowNative: return # Decide before scanning, allocating storage or consulting a native cache.
-    let before = armClock()
-    var offset = origin
-    while int(offset) < f.handlers.len:
-      let ending = flatArmCompile(f, offset)
-      offset = if ending > offset: ending else: offset+1
-    for candidate in origin..<uint32(f.handlers.len): flatArmTryMixedProbe(f, candidate)
-    let jit = f.armJit
-    if jit != nil: jit.compilationNs+=armClock()-before
 
   proc flatArmStatistics*(f: FlatFrame): array[5, uint64] =
     ## Explicit native coverage counters distinguish compilation, reuse, lowered operations and emitted bytes.
