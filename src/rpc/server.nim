@@ -155,6 +155,7 @@ proc close(slot: var Connection) =
   slot.opened = false
   slot.session = default(RpcSession) # Reused connection slots cannot inherit subscriptions or pending updates.
   slot.input = ""; slot.output = ""; slot.message = ""
+  slot.headScanner = default(http_parse.HeadScanner) # The next client starts scanning its own input at zero.
   slot.messageDeadline = 0
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
