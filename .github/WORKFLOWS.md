@@ -48,7 +48,13 @@ into the Linux filesystem, builds and selftests the peer as an ordinary user, th
 existing resident-memory, full/light paged recovery, retained-reader and process-lock suites.
 Logs record the commit, kernel and filesystem; the first failure fails the trial. This is
 compatibility evidence only, not a power-loss qualification or a native Windows build.
-No successful WSL run has been recorded yet.
+The [2026-11-08 trial](https://github.com/jacogr/ragnarok/actions/runs/42476431068) passed
+the build, peer selftest and all seven selected suites in 13m15s at commit
+`add308f130bb1e66a2eee7e773aa3e6ca1c57e72`. Evidence records Ubuntu 24.04 x86-64,
+kernel `6.18.54.1-microsoft-standard-WSL2`, ext4 and an unprivileged test user. The initial
+workflow invocation needed `wsl --exec` to preserve Windows path arguments; no application
+changes were required. This runner result does not qualify Windows 11 desktop deployment,
+network exposure, sustained performance or host power-loss recovery.
 
 Automatic PR updates and manual
 `smoke` requests select **Build / Smoke** alone. Master/full requests select **Smoke**, **Tooling**,
