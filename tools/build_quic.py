@@ -137,7 +137,11 @@ def build_native(paths):
     native = ROOT / 'native/quic'
     inputs = [ROOT/'spec/quic-proof-pins.json', native, ROOT/'tools/build_quic.py']
     with native_cache(BUILD, inputs,
-                      [['clang', '--version'], ['clang++', '--version'], ['cmake', '--version']], (library,)):
+                      [['clang', '--version'], ['clang++', '--version'], ['cmake', '--version']], (library,)) as reusable:
+        if reusable:
+            # Source/patch validation precedes this identity and output-hash check; runtime probes still run.
+            (LOGS/'build.log').write_text('Reused validated native library: '+str(library)+'\n')
+            return library
         # Use the same Clang toolchain as the bridges rather than the host default C/C++ compiler.
         # The exact native configure/build output is retained instead of hidden behind a success claim.
         with (LOGS / 'build.log').open('w') as log:

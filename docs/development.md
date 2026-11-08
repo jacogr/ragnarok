@@ -28,12 +28,25 @@ stay under ignored `build-tools/`.
 GitHub Actions restores public compiler/model-tool archives and Cargo registry/Git downloads
 before normal Make setup. Cache keys separate operating systems and architectures and include
 the relevant committed pins/lockfiles. Restored tool archives still require their pinned SHA-256;
-Cargo retains its locked fetch and offline build checks. Installed tools, native/application build
-outputs, test evidence and Cargo credentials are excluded. Docker retains its isolated setup.
+Cargo retains its locked fetch and offline build checks. Application outputs, test evidence,
+installed compiler trees and Cargo credentials are excluded. Docker retains its isolated setup.
 A cache miss, eviction or cache-service failure uses normal setup; caching does not replace the
 browser/API download fallback. Cache entries are immutable, so pin changes create new keys;
 GitHub eventually evicts unused entries. To compare cold and warm runs, compare the cache-step
 restore/transfer durations with setup-step durations on the same commit and runner architecture.
+
+Separate caches retain the built model checker, cryptographic Rust dependencies/C bridge, QUIC
+ABI and optional PolkaVM Rust build. Keys include the hosted image, kernel, compiler paths/versions,
+workspace path and relevant source, patch, pin and build-helper contents. Model setup checks the
+checker identity and executable hash. Native preparation validates pristine upstream sources and
+its existing compiler/environment/output-hash receipt before reuse. LSQUIC patches are checked
+and freshly applied outside vendor sources even on a hit; only its verified final shared library
+is cached, avoiding timestamp-sensitive CMake/source restoration. Intact C libraries skip compilation;
+Rust adapter tests and builds still run with retained Cargo intermediates. Runtime suites and
+model verification always execute. Missing, changed or damaged output requires normal rebuilding.
+Separate library caches prevent a job that needs only crypto from publishing an incomplete QUIC
+cache. These are disposable accelerators; clean-environment setup remains the fallback.
+
 
 `make clean` removes project outputs under `build/` and retains the provisioned tools. Use
 `make clean-tools` to remove the retained compiler, formatter, model checker, browser backend
