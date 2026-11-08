@@ -8,10 +8,14 @@ Exposes unittest discovery cases for the Python build tool; HTTP behavior remain
 import ast
 import argparse
 import gzip
+import json
 from pathlib import Path
+import shutil
+import sys
 import tempfile
 import unittest
 import subprocess
+from contextlib import contextmanager
 from unittest.mock import patch
 import build_ui
 from build_ui import build
@@ -88,6 +92,151 @@ class UiBuild(unittest.TestCase):
 
 class UiCompiler(unittest.TestCase):
     """Ensure generated JS uses the pinned compiler/backend and cannot reuse stale failure output."""
+
+    @contextmanager
+    def inert_compiler(self, root):
+        """Model a populated NIF dependency index containing an absolute old cache path."""
+        compiler = root/'tools/compiler.py'
+        compiler.parent.mkdir()
+        compiler.write_text('''from pathlib import Path
+import json
+import sys
+
+arguments = sys.argv[1:]
+cache = Path(next(a.removeprefix('--nimcache:') for a in arguments if a.startswith('--nimcache:')))
+output = Path(next(a.removeprefix('--out:') for a in arguments if a.startswith('--out:')))
+if Path(arguments[-1]).read_text().startswith('reject'):
+    print('inert compiler: source rejected')
+    sys.exit(23)
+index = cache/'client.s.deps.nif'
+reused = index.is_file()
+if reused:
+    dependency = Path(index.read_text())
+    if not dependency.is_file():
+        print('[Error] cannot open: '+str(dependency)+' (No such file or directory)')
+        sys.exit(7)
+else:
+    cache.mkdir(parents=True, exist_ok=True)
+    dependency = cache/'dependency.s.deps.nif'
+    dependency.write_text('inert dependency')
+    index.write_text(str(dependency.resolve()))
+output.write_text(json.dumps(dict(cache=str(cache.resolve()), reused=reused)))
+''')
+        backend = root/'web/bin/jorogumo'
+        backend.parent.mkdir(parents=True)
+        backend.write_text('inert backend identity fixture; never executed')
+        calls = []
+        run = subprocess.run
+
+        def invoke(command, **kwargs):
+            """Use Python portably for this inert compiler; retain the real cwd/log/failure boundary."""
+            calls.append(command)
+            return run([sys.executable, *command], **kwargs)
+
+        with patch.object(build_ui, 'native_tools', return_value=(compiler, None)), patch.object(
+                build_ui, 'web_tools', return_value=(backend, 'a'*64)), patch.object(
+                build_ui.subprocess, 'run', side_effect=invoke):
+            yield compiler, backend, calls
+
+    def compile_project(self, project, **kwargs):
+        """Compile an isolated project's inert source through the actual UI wrapper."""
+        with patch.object(build_ui, 'ROOT', project):
+            return json.loads(build_ui.compile_client(**kwargs))
+
+    def project(self, path):
+        """Create only the source consumed by the inert compiler, without installing any tools."""
+        source = path/'src/ui/client.nim'
+        source.parent.mkdir(parents=True)
+        source.write_text('valid inert source')
+        return path
+
+    def test_copied_populated_browser_cache_uses_new_project(self):
+        """A relocated checkout must not select copied NIF indexes naming an unavailable old root."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            original = self.project(root/'original')
+            with self.inert_compiler(root):
+                first = self.compile_project(original)
+                self.assertFalse(first['reused'])
+                self.assertTrue(self.compile_project(original)['reused'])
+                relocated = root/'relocated'
+                shutil.copytree(original, relocated)
+                copied = relocated/Path(first['cache']).relative_to(original)
+                index = copied/'client.s.deps.nif'
+                preserved = index.read_bytes()
+                self.assertTrue(Path(index.read_text()).is_file())
+                original.rename(root/'retained-original')
+                self.assertFalse(Path(index.read_text()).exists())
+                try:
+                    after = self.compile_project(relocated)
+                except subprocess.CalledProcessError:
+                    self.fail('Relocated compilation selected stale NIF dependencies:\n'+
+                              (relocated/'build/ui-client/compile.log').read_text())
+                self.assertFalse(after['reused'])
+                self.assertNotEqual(Path(after['cache']), copied)
+                self.assertEqual(index.read_bytes(), preserved)
+                self.assertTrue(self.compile_project(relocated)['reused'])
+
+    def test_copied_browser_cache_folder_uses_new_location(self):
+        """Moving only the cache folder cannot reuse dependency indexes naming its old location."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            project = self.project(root/'project')
+            with self.inert_compiler(root):
+                first = self.compile_project(project)
+                original = project/'build/ui-client'
+                relocated = project/'build/relocated-client'
+                shutil.copytree(original, relocated)
+                copied = relocated/Path(first['cache']).relative_to(original)
+                preserved = (copied/'client.s.deps.nif').read_bytes()
+                original.rename(project/'build/retained-client')
+                after = self.compile_project(project, folder=relocated)
+                self.assertFalse(after['reused'])
+                self.assertNotEqual(Path(after['cache']), copied)
+                self.assertEqual((copied/'client.s.deps.nif').read_bytes(), preserved)
+                self.assertTrue(self.compile_project(project, folder=relocated)['reused'])
+
+    def test_compiler_and_backend_changes_isolate_browser_cache(self):
+        """Project ownership supplements existing compiler-location and backend identities."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            project = self.project(root/'project')
+            with self.inert_compiler(root) as (compiler, backend, _):
+                first = self.compile_project(project)
+                alternate = root/'tools/alternate-compiler.py'
+                shutil.copyfile(compiler, alternate)
+                with patch.object(build_ui, 'native_tools', return_value=(alternate, None)):
+                    changed_compiler = self.compile_project(project)
+                    self.assertFalse(changed_compiler['reused'])
+                    self.assertNotEqual(first['cache'], changed_compiler['cache'])
+                    with patch.object(build_ui, 'web_tools', return_value=(backend, 'b'*64)):
+                        changed_backend = self.compile_project(project)
+                        self.assertFalse(changed_backend['reused'])
+                        self.assertNotEqual(changed_compiler['cache'], changed_backend['cache'])
+                        self.assertTrue(self.compile_project(project)['reused'])
+
+    def test_real_compiler_failure_propagates_once_with_populated_cache(self):
+        """Valid reuse does not retry genuine errors or return an old successful app.js."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            project = self.project(root/'project')
+            with self.inert_compiler(root) as (_, _, calls):
+                first = self.compile_project(project)
+                output = project/'build/ui-client/app.js'
+                source = project/'src/ui/client.nim'
+                source.write_text('valid changed inert source')
+                self.assertTrue(self.compile_project(project)['reused'])
+                previous = output.read_bytes()
+                source.write_text('reject this source')
+                before = len(calls)
+                with self.assertRaises(subprocess.CalledProcessError) as error:
+                    self.compile_project(project)
+                self.assertEqual(error.exception.returncode, 23)
+                self.assertEqual(len(calls), before+1)
+                self.assertIn('inert compiler: source rejected',
+                              (project/'build/ui-client/compile.log').read_text())
+                self.assertEqual(output.read_bytes(), previous)
+                self.assertTrue(Path(first['cache']).is_dir())
 
     def test_browser_command_and_cache(self):
         """Backend identity selects a separate cache, and the JS command enables browser-only code."""
