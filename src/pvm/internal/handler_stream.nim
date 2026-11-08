@@ -1423,7 +1423,7 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 130: flatMemoryWorker[8, true, false, true, false, true, true]
   else: nil
 
-proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact =
+proc flatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32): FlatFact =
   ## Retain the same eagerly validated source boundaries and logical admission units without rich payload storage.
   assert decoded.error == ProgramError.None
   let item = decoded.value
@@ -1495,7 +1495,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   while pc < extent.value:
     if uint64(owner.facts.len) >= uint64(limits.facts):
       return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
-    let decoded = instruction(source, CodeAddress(pc))
+    let decoded = instructionHeader(source, CodeAddress(pc))
     if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
         status: FlatError.InvalidProgram)
     let item = decoded.value
@@ -1545,7 +1545,7 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
       status: FlatError.InvalidProgram)
   if extent.value > uint64(limits.codeBytes): return FlatResult[FlatPlan](
       status: FlatError.CodeLimitExceeded)
-  let decoded = instruction(source, pc)
+  let decoded = instructionHeader(source, pc)
   if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
       status: FlatError.InvalidProgram)
   var fact = flatFact(decoded, 0)
