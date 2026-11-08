@@ -246,6 +246,7 @@ class PolicyQualificationTests(unittest.TestCase):
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['passed']), \
                 patch.object(ci, 'qualify_shared', return_value=dict(status='passed')), \
+                patch.object(ci, 'qualify_read_widths', return_value=dict(status='passed')), \
                 patch.object(ci, 'qualify_policy', return_value=['passed']), \
                 patch('builtins.print'):
             ci.run()
@@ -945,6 +946,81 @@ class QualificationTests(unittest.TestCase):
         refused = self.witness_receipt(False, refused=True)
         with self.assertRaisesRegex(ValueError,'word-group'):
             self.check(True,refused_receipt=refused.replace('ARM_WORD_GROUPS,0\n','ARM_WORD_GROUPS,5\n'))
+
+
+class ReadWidthQualificationTests(unittest.TestCase):
+    """New opcode coverage cannot be substituted by a generic golden, stale file or foreign image."""
+
+    def proof(self, isa='arm64'):
+        """Construct an independent transcript for the two public bank histories of each new form."""
+        return dict(schema=1, isa=isa, rows=[dict(opcode=opcode, dirty=dirty,
+            kind='CheckedReadBody', calls=40000, operations=dirty*40000)
+            for opcode in (125, 126, 127, 128) for dirty in (3, 7)])
+
+    def test_complete_native_activity_and_all_incomplete_substitutions(self):
+        """Both ISAs need eight exact rows; missing/duplicate/foreign/zero/boolean values fail."""
+        for isa in ('arm64', 'x86_64'):
+            self.assertEqual(ci.validate_read_width_proof(self.proof(isa), isa), self.proof(isa))
+        negatives = []
+        missing = self.proof()
+        missing['rows'].pop()
+        negatives.append(missing)
+        duplicate = self.proof()
+        duplicate['rows'][-1] = dict(duplicate['rows'][0])
+        negatives.append(duplicate)
+        negatives.append(self.proof('x86_64'))
+        for key, value in (('kind', 'PurePrefix'), ('kind', 'ClosedRegisterLoop'),
+                           ('calls', 0), ('operations', 0), ('operations', 40001),
+                           ('dirty', 6), ('opcode', 124), ('calls', True)):
+            # Mutate one execution fact at a time, retaining every other well-formed row.
+            proof = self.proof()
+            proof['rows'][0][key] = value
+            negatives.append(proof)
+        for proof in negatives:
+            with self.subTest(proof=proof), self.assertRaises(ValueError):
+                ci.validate_read_width_proof(proof, 'arm64')
+
+    def test_fresh_execution_and_sealed_source_are_required(self):
+        """Exercise the real gate with inert tools; stale proof, failed run and changed source fail."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'test_width.nim'
+            source.write_text('inert source')
+            source.with_suffix('.output').write_text('width passed\n')
+            profile = dict(defines=['pvmArm64Jit', 'pvmSharedAsyncWitness'], includes=['pvm_jit'],
+                           libraries=[], observers=[], prepared=False)
+            checks = Mock(folder=root/'checks')
+            binary = root/'inert-image'
+            binary.write_bytes(b'inert image')
+            checks.build.return_value = (dict(exit_code=0, log='build.log'), binary)
+            failure = None
+
+            def command(arguments, name, environment, timeout):
+                """Only the current successful process writes its proof, like the real native witness."""
+                path = Path(environment['RAGNAROK_TEST_EVIDENCE'])/'pvm_read_widths_arm64.json'
+                if failure not in ('missing', 'exit'):
+                    # The real decoder must reject truncated evidence even after a green process exit.
+                    encoded = json.dumps(self.proof())
+                    path.write_text(encoded[:-1] if failure == 'truncated' else encoded)
+                if failure == 'source':
+                    source.write_text('changed source')
+                return dict(exit_code=1 if failure == 'exit' else 0,
+                            output='width passed\n', log=name+'.log')
+
+            checks.command.side_effect = command
+            with patch.object(ci, 'ROOT', root), \
+                    patch.object(ci, 'NATIVE_REQUIREMENTS', {'pvm_shared_read_widths_arm': profile}), \
+                    patch.object(ci, 'read_width_source_paths', return_value=[source]), \
+                    patch.object(ci, 'unit_source', return_value=source), \
+                    patch.object(ci, 'unit_environment', return_value={}):
+                result = ci.qualify_read_widths(checks, 'compiler', dict(system='Linux', machine='aarch64'))
+                self.assertEqual(result['status'], 'passed')
+                for failure, error in (('missing', FileNotFoundError), ('exit', RuntimeError),
+                                       ('truncated', json.JSONDecodeError),
+                                       ('source', ValueError)):
+                    # Leave the preceding green proof in place; the gate must retire it before running.
+                    with self.subTest(failure=failure), self.assertRaises(error):
+                        ci.qualify_read_widths(checks, 'compiler', dict(system='Linux', machine='aarch64'))
 
 
 if __name__=='__main__':
