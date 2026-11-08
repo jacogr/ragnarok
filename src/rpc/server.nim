@@ -9,6 +9,7 @@
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
+import std/http/httpparse as http_parse
 import ./[wire, protocol, proof_requests]
 import ./light_source
 from ../codec/state/trie as state_trie import StateRoot
@@ -26,6 +27,7 @@ type
     opened, upgraded, closing, fragmented: bool
     fd: cint
     input, output, message: string
+    headScanner: http_parse.HeadScanner
     offset: int
     session: RpcSession # Per-connection IDs and bounded notifications, released on disconnect.
     deadline, messageDeadline: int64
@@ -153,6 +155,7 @@ proc close(slot: var Connection) =
   slot.opened = false
   slot.session = default(RpcSession) # Reused connection slots cannot inherit subscriptions or pending updates.
   slot.input = ""; slot.output = ""; slot.message = ""
+  slot.headScanner = default(http_parse.HeadScanner) # The next client starts scanning its own input at zero.
   slot.messageDeadline = 0
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
@@ -403,18 +406,17 @@ proc reject(slot: var Connection, code: int, now: int64) =
 proc process(slot: var Connection, info: ClientInfo, now: int64, uiPort: uint16 = 0) =
   ## Process at most one frame per slot/turn, including control frames interleaved with fragmented text.
   if not slot.upgraded: # The only HTTP operation is an explicit WebSocket upgrade, never RPC over POST.
-    let ending = slot.input.find("\r\n\r\n")
-    if ending < 0:
-      if slot.input.len >= MaxHeader:
-        # Incomplete headers cannot grow without bound.
-        slot.close()
+    let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+    if headBytes == http_parse.ParseIncomplete: return
+    if headBytes < 0:
+      slot.close() # The library's scanner refuses an oversized incomplete upgrade.
       return
-    let response = upgrade(slot.input[0..<ending + 4], uiPort)
+    let response = upgrade(slot.input.substr(0, headBytes - 1), uiPort)
     if response.len == 0:
       # Invalid upgrades close without dispatching their body.
       slot.close()
       return
-    slot.input = slot.input[ending + 4..^1]
+    slot.input = slot.input.substr(headBytes)
     slot.output = response
     slot.upgraded = true
     slot.deadline = now + 5000

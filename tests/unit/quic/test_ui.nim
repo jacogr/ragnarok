@@ -56,6 +56,25 @@ absent.process(-1)
 assert "404 Not Found" in absent.output and not absent.embedded
 
 # Gzip-only serving rejects missing/empty/excluded codings and respects explicit wildcard overrides.
+# Stock syntax applies to fields unrelated to asset negotiation.
+for extra in ["X-Client: a\tb\r\n"]:
+  var refused = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n" &
+      extra & "\r\n")
+  refused.process(-1)
+  assert "400 Bad Request" in refused.output
+var normalized = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nContent-Length: 000000\r\n\r\n")
+normalized.process(-1)
+assert "200 OK" in normalized.output
+normalized.close()
+for wire in ["GET / HTTP/1.0\nHost: localhost\nAccept-Encoding: gzip\n\n",
+    "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nX-Client: a\r\nx-client: b\r\n\r\n"]:
+  # Stock version/framing behavior is used directly; it is independent of asset selection.
+  var accepted = Connection(input: wire)
+  accepted.process(-1)
+  assert "200 OK" in accepted.output
+  accepted.close()
+
+# Keep the existing content-coding policy independent of the parsed representation.
 for value in ["", "br", "identity", "gzip;q=0", "gzip;q=0.000", "*;q=0", "*;q=1, gzip;q=0",
     "gzip;q=1.001", "gzip;q=-1", "gzip;q=0.0001", "gzip;q=oops", "gzip;level=1",
     "gzip;q=1;q=0", "gzip;q=1, gzip;q=0"]:

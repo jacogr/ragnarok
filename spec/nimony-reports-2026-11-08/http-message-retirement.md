@@ -3,7 +3,7 @@
 Status: draft investigation, pending retest on the planned newer Nimony. No issue filed.
 Last tested: November 8, 2026; official Nimony 0.6.3 archive at
 `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, macOS ARM64, `nimony c`, checked release,
-ARC/Clang/ThinLTO. No compiler or library files were modified.
+ARC/Clang/ThinLTO. The installed compiler and library remain unmodified; the candidate patch below was tested in an isolated source copy.
 
 ## Reproduction and output
 
@@ -75,9 +75,48 @@ Additional same-pin controls recorded in `build/probes/http-cleanup/`:
 `HttpMsg` documents a move-only message with an owned literal pool that dies with it.
 The inspected `TokenBuf` contains owning `pool`, `tags` and `openTags` fields, but its custom
 `=destroy` only releases the cursor owner or raw token data. The pinned generated C shows the
-same cleanup and does not release those fields. This is the leading ownership attribution;
-no library patch was made to claim a verified upstream fix. The exact compiler/library stage
-responsible must be rechecked on the new pin before submitting upstream.
+same cleanup and does not release those fields. Adding explicit destruction of those owning fields in an isolated source copy removes the
+measured growth; the unmodified installed library retains it. Current-upstream runtime
+qualification remains outstanding.
+
+## Validated candidate patch
+
+The smallest tested candidate adds three field destructions in each conditional destructor
+variant. Cursor-owner cleanup still runs first, and the existing moved-from hook already clears
+these fields. The change is a proposed upstream patch, not part of the project toolchain.
+
+```diff
+--- a/src/lib/nifcore.nim
++++ b/src/lib/nifcore.nim
+@@ -1413,7 +1413,13 @@
+   proc `=destroy`(dest: TokenBuf) {.inline.} =
+     if dest.owner != nil: decRcAndFree(dest.owner)
+     elif dest.data != nil: dealloc(dest.data)
++    `=destroy`(dest.tags)
++    `=destroy`(dest.pool)
++    `=destroy`(dest.openTags)
+ else:
+   proc `=destroy`(dest: var TokenBuf) {.inline.} =
+     if dest.owner != nil: decRcAndFree(dest.owner)
+     elif dest.data != nil: dealloc(dest.data)
++    `=destroy`(dest.tags)
++    `=destroy`(dest.pool)
++    `=destroy`(dest.openTags)
+```
+
+Under the unchanged pinned compiler and checked ARC/Clang profile:
+
+| Retired owners | Unmodified copy | Patched copy |
+| --- | ---: | ---: |
+| 100 empty messages | 11,200 bytes | 0 bytes |
+| 100 parsed messages | 20,800 bytes | 0 bytes |
+| 10 owners, each reused/reset 100 times | 2,080 bytes | 0 bytes |
+
+The complete reproduction above also changes from the named assertion failure to exit 0 and
+`retained bytes after 100 retired messages: 0`. Moved-message and owning-cursor-outlives-buffer
+controls pass with pinned Nimony; the host Nim 2.4.1 ARC control passes as well. The full upstream
+suite and Nimony native backend have not been run. Raw evidence is retained under
+`build/probes/tokenbuf-fix/`, including the patch, before/after results and ownership controls.
 
 ## Application impact and next action
 
@@ -91,4 +130,4 @@ A normal UI test now requires flat memory across repeated request-owner retireme
 The upstream issue search `TokenBuf leak` found no match on November 8. Current upstream source
 at `ad334fb80c031da5b9932e3f254c23b6dd5ccbe1` was inspected; its runtime/compiler was **not run**.
 Retest the standalone source and complete consumer lifecycle after the planned upgrade, search
-again, and file upstream only if the problem persists. This draft is not ready for submission.
+again, and file upstream only if the problem persists. A self-contained issue draft including the reproduction and patch was prepared for maintainer submission; its upstream URL is pending. Stock parser adoption remains blocked until the selected upstream version passes cleanup qualification.

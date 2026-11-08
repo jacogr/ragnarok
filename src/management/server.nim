@@ -8,12 +8,14 @@
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
+import std/http/httpmsg as http_msg
+import std/http/httpparse as http_parse
 import ./[protocol, file_status, resources]
 import ../lib/utf8
 
 const
   MaxConnections = 4
-  MaxHeader = 4096
+  MaxHeader = http_parse.MaxHeadLen
   MaxInput = MaxHeader + MaxManagementBody
 
 type
@@ -29,6 +31,7 @@ type
     opened: bool
     fd: cint
     input, output: string
+    headScanner: http_parse.HeadScanner
     offset: int
     deadline: int64
   ManagementServer* = object ## Non-copyable local listener; an empty configuration opens nothing.
@@ -152,57 +155,36 @@ proc response(status, body = ""): string =
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n" & body
 
 proc process(slot: var Connection, info: ManagementInfo) =
-  ## Parse strict HTTP/1.1 POST / with one explicit length; no upgrade, chunking or pipelining.
-  let ending = slot.input.find("\r\n\r\n")
-  if ending < 0:
-    if slot.input.len >= MaxHeader: slot.output = response("431 Request Header Fields Too Large")
-    return
+  ## Parse stock HTTP POST / with one explicit length; no upgrade, chunking or pipelining.
+  let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+  if headBytes == http_parse.ParseIncomplete: return
+  if headBytes < 0:
+    slot.output = response("431 Request Header Fields Too Large")
+    return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
-  if ending + 4 > MaxHeader: return
-  let lines = slot.input.substr(0, ending - 1).split("\r\n")
-  if lines[0] != "POST / HTTP/1.1":
+  var head = http_msg.initHttpMsg(http_msg.newHttpTags())
+  if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
+      headBytes: return
+  for field in ["host", "content-type"]:
+    if head.countHeaderByName(field) > 1: return # Application selectors must be unambiguous.
+  if head.methodOf != http_msg.tag(http_msg.mPost) or head.target != "/":
     slot.output = response("405 Method Not Allowed")
-    return # GET/OPTIONS/WS upgrades never acquire management dispatch authority.
-  var names: seq[string] = @[]
-  var host, contentType = false
-  var length = -1
-  for index in 1..<lines.len:
-    let line = lines[index]
-    let colon = line.find(':')
-    if colon < 1: return
-    let name = line.substr(0, colon - 1).toLowerAscii()
-    for c in name:
-      if c notin {'a'..'z', '0'..'9', '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_',
-          '`', '|', '~'}:
-        return # Invalid names and folded headers cannot hide framing fields.
-    if name in names: return
-    names.add(name)
-    let raw = line.substr(colon + 1)
-    for c in raw:
-      if (ord(c) < 32 and c != '\t') or ord(c) == 127: return # Validate before trimming optional whitespace.
-    let value = raw.strip()
-    case name
-    of "host": host = value.len > 0
-    of "content-type": contentType = value.toLowerAscii() in ["application/json", "application/json; charset=utf-8"]
-    of "origin", "transfer-encoding", "upgrade", "expect",
-        "content-encoding": return # Browser and ambiguous body transports are refused.
-    of "content-length":
-      if value.len == 0 or value.len > 4: return
-      length = 0
-      for c in value:
-        if c notin {'0'..'9'}: return
-        length = length * 10 + ord(c) - ord('0') # Four digits cannot overflow; body budget is checked below.
-    else: discard # Unknown ordinary headers grant no additional capabilities.
-  if not host or not contentType or length < 0: return
+    return # Public WS methods and other HTTP routes acquire no management authority.
+  if head.getStr(http_msg.hHost).len == 0: return
+  for forbidden in ["origin", "transfer-encoding", "upgrade", "expect", "content-encoding"]:
+    if head.countHeaderByName(forbidden) > 0: return # Browser and alternate body transports are refused.
+  let contentType = head.getStr(http_msg.hContentType).toLowerAscii()
+  let length = head.contentLength
+  if contentType notin ["application/json", "application/json; charset=utf-8"] or length < 0: return
   if length > MaxManagementBody:
     slot.output = response("413 Content Too Large")
     return
-  let total = ending + 4 + length # Both operands have already been bounded independently.
+  let total = headBytes + length # Both operands have already been bounded independently.
   if slot.input.len > total: return # No pipelined suffix is interpreted as another request.
   if slot.input.len < total:
     slot.output = ""
     return # A bounded partial body waits only until its original connection deadline.
-  let body = if length == 0: "" else: slot.input.substr(ending + 4, total - 1)
+  let body = if length == 0: "" else: slot.input.substr(headBytes, total - 1)
   let reply = respond(body, info)
   slot.output = response(if reply.len == 0: "204 No Content" else: "200 OK", reply)
   slot.input = "" # No parser token or input borrow survives this synchronous call.

@@ -334,6 +334,20 @@ extracted[0] = 99
 assert readMetadata.value.bytes[0] == 0
 
 let upgradeHeader = "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: keep-alive, Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n"
+block reused_header_scanner:
+  # A retired client's long partial header must not move the next client's scan past its terminator.
+  var reused = Connection(input: repeat('x', 1000))
+  assert reused.headScanner.findHeadEnd(toOpenArray(reused.input, 0, reused.input.len - 1)) ==
+    http_parse.ParseIncomplete
+  assert reused.headScanner.pos == 1000
+  reused.close()
+  let suffix = masked("probe", 9)
+  reused.input = upgradeHeader & suffix
+  reused.process(default(ClientInfo), 1)
+  assert reused.upgraded, "Reused RPC slot finds a shorter header on its first processing turn"
+  assert reused.input == suffix, "Buffered WebSocket bytes remain after the exact header boundary"
+  assert "101 Switching Protocols" in reused.output
+  reused.close()
 assert "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=" in upgrade(upgradeHeader) # RFC 6455 section 1.3 known answer.
 assert upgrade(upgradeHeader.replace("GET /", "POST /")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin : http://example.com")).len == 0
@@ -342,6 +356,11 @@ assert upgrade(upgradeHeader.replace("13\r\n", "12\r\n")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin: http://example.com")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
 assert upgrade(upgradeHeader.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
+# Stock HTTP syntax precedes the WebSocket-specific challenge policy.
+for extra in ["X-Client: a\tb\r\n",
+    "Content-Length: 000000\r\n"]:
+  assert upgrade(upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & extra)).len == 0
+assert upgrade(upgradeHeader.replace("\r\n", "\n")).len > 0 # Stock framing accepts LF.
 let encoded = masked(request)
 # Every proper prefix is incomplete and has no success-only payload or consumption fields.
 for n in 0..<encoded.len: assert decodeFrame(encoded[0..<n]).status == incomplete

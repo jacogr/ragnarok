@@ -63,6 +63,23 @@ assert "200 OK" in partial.output
 var capped = Connection(input: "POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 8193\r\n\r\n")
 capped.process(admin)
 assert "413" in capped.output
+# The stock parser rejects unsupported whitespace before application dispatch.
+for extra in ["X-Client: a\tb\r\n"]:
+  var refused = Connection(input: packet(request).replace("Content-Length:", extra &
+      "Content-Length:"))
+  refused.process(admin)
+  assert "400 Bad Request" in refused.output
+var normalized = Connection(input: packet(request).replace("Content-Length: " & $request.len,
+  "Content-Length: 000000" & $request.len))
+normalized.process(admin)
+assert "200 OK" in normalized.output
+for wire in [packet(request).replace("\r\n", "\n"),
+    packet(request).replace("HTTP/1.1", "HTTP/1.0"),
+    packet(request).replace("Content-Length:", "X-Client: a\r\nx-client: b\r\nContent-Length:")]:
+  # Stock grammar owns framing and ordinary repeated fields; management authorization stays separate.
+  var accepted = Connection(input: wire)
+  accepted.process(admin)
+  assert "200 OK" in accepted.output
 
 var directory = "/tmp/ragnarok-management-" & $processId()
 var path = directory & "/admin.sock"

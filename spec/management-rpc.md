@@ -1,7 +1,7 @@
 # Local management RPC
 
 The management API is a Ragnarök extension, independent of JAM/JIP public RPC. It uses
-HTTP/1.1 over a Unix domain socket and a separate JSON-RPC method registry. No public WS
+HTTP over a Unix domain socket and a separate JSON-RPC method registry. No public WS
 methods are registered here; no management methods are registered in WS RPC. This is optional
 and disabled unless explicitly selected. UI, state and WS activation do not imply management.
 
@@ -15,14 +15,14 @@ administrators can connect. There is no TCP listener, CORS support or bearer tok
 Existing socket/file paths are refused without removal. After a crash, the operator must verify and
 remove a stale socket. Normal shutdown removes only the device/inode this listener created.
 
-POST `/` requires HTTP/1.1, Host, `Content-Type: application/json` (optionally
+POST `/` requires Host, `Content-Type: application/json` (optionally
 `; charset=utf-8`) and one decimal Content-Length. Every reply closes the connection and
 includes `Cache-Control: no-store`. Notifications yield HTTP 204; JSON-RPC responses yield HTTP
 200. Transport errors produce empty HTTP 4xx responses. GET, upgrades, Origin, Expect,
-Content-Encoding, Transfer-Encoding, duplicate headers, folded headers and pipelined suffixes are
+Content-Encoding, Transfer-Encoding, duplicate application selectors, folded headers and pipelined suffixes are
 refused. A late second request cannot execute: the connection accepts one request and closes.
 
-Limits: four connections; 4096 header bytes; 8192 request-body bytes; 8192 reply-body bytes;
+Limits: four connections; the stock Nimony header limit (currently 16 KiB); 8192 request-body bytes; 8192 reply-body bytes;
 eight JSON nesting levels; 256 JSON tokens; sixteen batch members. Each connection has an
 absolute five-second deadline. Each dispatcher turn accepts at most one connection and performs
 at most one nonblocking read/write per slot. Socket descriptors are close-on-exec and suppress
