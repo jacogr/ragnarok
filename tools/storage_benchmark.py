@@ -88,7 +88,7 @@ def crypto_components(library):
     """Cover both loader locations of the colocated locked Rust provider, as well as the primitive bridge."""
     name='libragnarok_bandersnatch'+('.dylib' if platform.system()=='Darwin' else '.so')
     return dict(bridge=Path(library),provider_loader=Path(library).parent/name,
-        provider_build=ROOT/'build/bandersnatch/target/release'/name)
+        provider_build=ROOT/'build-tools/bandersnatch/target/release'/name)
 
 
 def component_hashes(paths):

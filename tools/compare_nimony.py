@@ -44,7 +44,7 @@ def build(folder, compiler, baseline_compiler):
     library = folder/('libobserve.'+suffix)
     commands = [command(['clang', '-dynamiclib' if platform.system() == 'Darwin' else '-shared',
                          '-fPIC', '-O2', observer, '-o', library], folder, 'observer-build')]
-    crypto = ROOT/('build/crypto/libragnarok_crypto.'+suffix)
+    crypto = ROOT/('build-tools/crypto/libragnarok_crypto.'+suffix)
     if not crypto.is_file():
         raise ValueError('Run the normal correctness suite to build the pinned crypto library first')
     binaries, hashes = {}, {}

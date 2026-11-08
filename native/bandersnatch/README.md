@@ -18,7 +18,7 @@ leave outputs unpublished. The Nim layer supplies typed ownership and protocol d
 The [Bandersnatch pins](../../spec/bandersnatch-pins.json) bind source trees, SRS, fixtures and
 Cargo lock bytes. Build orchestration in [`build_bandersnatch.py`](../../tools/build_bandersnatch.py)
 validates those inputs and runs locked/offline builds after Make setup. Generated artifacts stay
-under `build/bandersnatch/`; upstream sources remain pristine under `vendor/`.
+under `build-tools/bandersnatch/`; upstream sources remain pristine under `vendor/`.
 
 See the [primitive contract](../../spec/bandersnatch.md), [crypto guide](../../docs/crypto.md) and
 [folder instructions](AGENTS.md) for verification, exact profile constraints and the documented
