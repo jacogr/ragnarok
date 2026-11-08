@@ -241,3 +241,17 @@ handler when it cannot run.
 The local production-shaped DOOM cohort showed a 14–20% CPU reduction for reused
 ticks. Wall time was inconclusive. The earlier short-call cohort with a fresh worker
 showed regressions whose cause remains open. Canonical Linux qualification is pending.
+
+## Shared admission and lease-release lock
+
+`finishNativeInvocation` checks admission, clears unaccepted copied read nomination and releases
+the active invocation lease under one mutex acquisition. The existing admission predicates,
+request certificates, work thresholds and queue signal remain unchanged. Busy work or another
+failed predicate can still defer admission; this does not introduce a readiness wait or a fairness
+guarantee. Read-body POD cleanup remains before the active lease is released.
+
+Scoped local qualification passes the unchanged shared ARM positive and allocation-refusal mains
+with their complete goldens and fresh numeric proofs under checked ARC/Clang/ThinLTO. Actual
+generated C confirms one acquire/release pair and POD cleanup before lease release. Mac ARM and
+Linux x86 semantic checks pass; Linux runtime qualification and performance remain pending.
+This architectural change does not establish the cause of the earlier shared-witness timeout.
