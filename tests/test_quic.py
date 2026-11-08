@@ -18,7 +18,8 @@ import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from build_quic import ROOT, BUILD, PINS
+from build_quic import ROOT, PINS
+BUILD = ROOT/'build/tests/quic'
 
 # The shipped application owns one dispatcher and one bounded logging writer by default.
 THREAD_BASELINES = {'nim': 2}

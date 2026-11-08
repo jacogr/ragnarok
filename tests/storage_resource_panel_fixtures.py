@@ -20,8 +20,8 @@ def fixture(module):
     binary = '/fixture/panel-native'
     build = ['/fixture/nimony', 'c', '--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on',
              '--passC:-flto=thin', '--passL:-flto=thin', '--passC:-I'+str(panel.ROOT/'native/crypto'),
-             '--passL:'+str(panel.ROOT/'build/crypto/libragnarok_crypto.dylib'),
-             '--passL:-Wl,-rpath,'+str(panel.ROOT/'build/crypto'),
+             '--passL:'+str(panel.ROOT/'build-tools/crypto/libragnarok_crypto.dylib'),
+             '--passL:-Wl,-rpath,'+str(panel.ROOT/'build-tools/crypto'),
              *['-d:'+v for v in module.DEFINES], '--nimcache:/fixture/cache', '--out:'+binary, str(module.SOURCE)]
     with tempfile.TemporaryDirectory() as folder:
         observed_environment = environment(folder)

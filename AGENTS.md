@@ -66,7 +66,8 @@ implementation work. For unfamiliar pinned APIs, consult the short
 - Use `make format` / `make format-check` for pinned Nim/Rust formatters; retain explanatory comments.
   Follow `.editorconfig`: Nim two spaces, Rust/C four, 100-column target.
 - Make owns setup and command sequencing: `make setup`, `make build` to build, `make check` for complete
-  verification; `make clean` removes `build/`. No undocumented bootstrap pre-steps.
+  verification; `make clean` removes `build/`;
+  `make clean-tools` removes retained tools and native libraries under `build-tools/`. No undocumented bootstrap pre-steps.
 - Select local checks from the actual diff and affected consumers. Use `make unit SUITE=<name>`;
   registry-only edits need inventory/provenance checks, docs/comments relevant lint only.
   Reuse prior results for proven identical trees. Do not repeat passing checks on unchanged code;

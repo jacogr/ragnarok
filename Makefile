@@ -58,9 +58,20 @@ package-binary: build
 
 # Docker owns an isolated setup/build; do not provision host compilers or reuse host artifacts.
 .PHONY: docker-build check-docker
+# BuildKit receives only the credential's environment name; the image consumes an ephemeral mount.
+define docker_download_secret
+secret_args=(); \
+if [ -n "$${GH_TOKEN:-}" ]; then \
+  secret_args=(--secret id=github_token,env=GH_TOKEN); \
+elif [ -n "$${GITHUB_TOKEN:-}" ]; then \
+  secret_args=(--secret id=github_token,env=GITHUB_TOKEN); \
+fi
+endef
+
 docker-build:
 	mkdir -p build/ci
-	$(DOCKER) build --platform "$(DOCKER_PLATFORM)" --tag "$(DOCKER_IMAGE)" . 2>&1 | tee build/ci/docker-build.log
+	@$(docker_download_secret); \
+	$(DOCKER) build $${secret_args[@]+"$${secret_args[@]}"} --platform "$(DOCKER_PLATFORM)" --tag "$(DOCKER_IMAGE)" . 2>&1 | tee build/ci/docker-build.log
 
 # Exercise the packaged ABI closure and checked peer selftests as its non-root runtime user.
 check-docker: docker-build
@@ -74,7 +85,7 @@ setup: check-inventory toolchain model-tools sources rust-tools ui-assets build-
 # Share the unchanged pinned/offline Cargo fetch with dependency-scoped Contract setup.
 .PHONY: bandersnatch-fetch
 bandersnatch-fetch: rust-tools sources
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/bandersnatch/Cargo.toml
 
 # Refresh source/release metadata even when all native dependencies are already provisioned.
 build-info: compiler-tools
@@ -104,7 +115,7 @@ ui-assets: web-toolchain $(if $(filter 1,$(UI_MINIFY)),ui-minifier)
 
 # Formatting needs pinned Rust/rustfmt, but no dependency downloads or native library builds.
 rust-tools:
-	rustup toolchain install "$(RUSTUP_TOOLCHAIN)" --profile minimal --component rustfmt --no-self-update
+	$(PYTHON) tools/download_retry.py rustup toolchain install "$(RUSTUP_TOOLCHAIN)" --profile minimal --component rustfmt --no-self-update
 
 # Check out clean static source submodules at recorded pins, including after parent updates; never overwrite edits.
 # Python provenance/reference tests need these sources, but no native toolchain or bridge builds.
@@ -131,8 +142,8 @@ host-tools:
 	        apt_source_args=(-o "Dir::Etc::sourcelist=$(CURDIR)/build/ci/storage-pressure-https.list" -o Dir::Etc::sourceparts=-); \
 	      fi; \
 	    fi; \
-	    sudo timeout --kill-after=10s 300s apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
-	    sudo apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
+	    $(PYTHON) tools/download_retry.py sudo timeout --kill-after=10s 300s apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} -o APT::Update::Error-Mode=any update 2>&1 | tee build/ci/host-tools-update.log; \
+	    $(PYTHON) tools/download_retry.py sudo apt-get $$apt_options $${apt_source_args[@]+"$${apt_source_args[@]}"} install --no-install-recommends -y $$packages 2>&1 | tee build/ci/host-tools-install.log; \
 	  fi; \
 	fi
 
@@ -154,9 +165,14 @@ model-tools: toolchain
 check-models: check-inventory model-tools
 	$(PYTHON) tools/test_models.py 2>&1 | tee build/ci/models.log
 
-# Remove all generated artifacts, including the local compiler and downloaded archives.
+# Remove project outputs while retaining the verified development tools.
 clean:
 	rm -rf -- build
+
+# Retire provisioned tools explicitly, serialized with their installers.
+.PHONY: clean-tools
+clean-tools:
+	$(PYTHON) tools/managed_tools.py clean
 
 # Local complete verification runs the same independent groups scheduled concurrently by CI.
 check: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
@@ -165,41 +181,41 @@ test: check
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
 check-modules: check-inventory compiler-tools ui-assets build-info
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 .PHONY: check-corpus summary-corpus
 check-corpus: override UNIT_SCOPE := corpus
 check-corpus: check-unit
 check-unit: setup format-check
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
 
 # Fast PR gate checks all formatting and every production source with an unoptimized semantic profile.
 .PHONY: check-smoke
 check-smoke: check-inventory format-check ui-assets build-info
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" --smoke --output build/tests/smoke 2>&1 | tee build/ci/smoke.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" --smoke --output build/tests/smoke 2>&1 | tee build/ci/smoke.log
 
 # Optional differential verification owns Rust setup; ordinary native tests retain frozen inputs.
 check-pvm-reference: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/reference/polkavm_memory/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/reference/polkavm_memory/Cargo.toml
 	$(PYTHON) tools/pvm_reference.py
 
 # Speed baselines are opt-in, validated before timing and separate from correctness verification.
 bench-pvm: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_benchmark.py
 
 # Frozen real guest; normal setup installs no historical guest compiler or experimental backend.
 .PHONY: bench-pvm-sieve
 bench-pvm-sieve: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_sieve_benchmark.py
 
 # Broader frozen real guests share strict full-state interpreted controls; historical guest compilers stay unused.
 .PHONY: bench-pvm-guests
 bench-pvm-guests: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fmt --manifest-path tests/performance/polkavm/Cargo.toml -- --check
 	$(PYTHON) tools/pvm_guest_benchmark.py
 
@@ -211,7 +227,7 @@ compare-pvm-guests: export RAGNAROK_PVM_COMPARE_SCOPE = $(value PVM_COMPARE_SCOP
 compare-pvm-guests: export RAGNAROK_PVM_COMPARE_OUTPUT = $(value PVM_COMPARE_OUTPUT)
 compare-pvm-guests: export RAGNAROK_PVM_COMPARE_SYNTHETIC = $(value PVM_COMPARE_SYNTHETIC)
 compare-pvm-guests: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_guest_compare.py
 
 # Native host byte-range API throughput is separate from interpreter backend comparisons.
@@ -232,11 +248,11 @@ check-pvm-asan: toolchain check-inventory
 # Prepared execution stays optional; local qualification disables clocks and CI owns calibrated measurements.
 .PHONY: check-pvm-prepared profile-pvm-prepared
 check-pvm-prepared: setup check-inventory
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_prepared_blocks.py
 
 profile-pvm-prepared: setup check-inventory
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_prepared_blocks.py --counts --timings
 
 # The retired evaluator's opcode-injection targets are removed. Historical parsers remain for
@@ -245,13 +261,13 @@ profile-pvm-prepared: setup check-inventory
 # Explicit Linux Callgrind diagnostics use one state-checked invocation per selected guest/policy, without timing claims.
 .PHONY: profile-pvm-guests
 profile-pvm-guests: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_instruction_profile.py
 
 # Opt-in comparative diagnosis keeps both release interpreters and all full-state fixtures unchanged.
 .PHONY: diagnose-pvm-interpreters
 diagnose-pvm-interpreters: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_interpreter_diagnosis.py
 
 # Verify Linux ELF identity before deeper attribution; no benchmark timings are collected.
@@ -259,7 +275,7 @@ diagnose-pvm-interpreters: setup
 diagnose-pvm-build-identity: setup
 	# The rejected stress commit can outlive its remote branch; fetch its exact object only when absent.
 	git cat-file -e 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f^{commit} 2>/dev/null || \
-	  git fetch --no-tags origin 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f
+	  $(PYTHON) tools/download_retry.py git fetch --no-tags origin 11f79d979ad63a86fe3f3cdecc4559ec6d00da2f
 	$(PYTHON) tools/pvm_build_identity.py
 
 # Own the full prerequisite chain: strict stress identity, complete same-image control, then source attribution.
@@ -284,7 +300,8 @@ check-jam-network: setup check-inventory
 	$(PYTHON) tools/check_jam_network.py
 
 docker-build-jam-fuzz:
-	$(DOCKER) build --platform "$(DOCKER_PLATFORM)" --target fuzz-target --tag "$(DOCKER_IMAGE)-jam-fuzz" .
+	@$(docker_download_secret); \
+	$(DOCKER) build $${secret_args[@]+"$${secret_args[@]}"} --platform "$(DOCKER_PLATFORM)" --target fuzz-target --tag "$(DOCKER_IMAGE)-jam-fuzz" .
 
 # Python zipimport runs exact pure-Python codecs without upstream installers or global packages.
 .PHONY: minifuzz-tools
@@ -294,7 +311,7 @@ minifuzz-tools: sources
 # Upstream owns its separate pinned fuzz nightly; ordinary runtime builds never depend on it.
 .PHONY: fuzz-pvm-upstream upstream-fuzz-tools
 upstream-fuzz-tools: sources
-	rustup toolchain install nightly-2025-03-29 --profile minimal
+	$(PYTHON) tools/download_retry.py rustup toolchain install nightly-2025-03-29 --profile minimal
 
 fuzz-pvm-upstream: toolchain rust-tools upstream-fuzz-tools check-inventory
 	rustup run "$(RUSTUP_TOOLCHAIN)" rustfmt --edition 2021 --check tests/fuzz/pvm_upstream_bridge.rs.inc
@@ -307,11 +324,11 @@ failure-setup:
 	$(PYTHON) tools/prepare_failures.py --make "$(MAKE)"
 
 check-failures: failure-setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
 
 # Compiler rejection checks retain their own logs/caches and do not execute the unit/corpus workload.
 check-guards: setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_guards.py --compiler "$$NIMONY" 2>&1 | tee build/ci/guards.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_guards.py --compiler "$$NIMONY" 2>&1 | tee build/ci/guards.log
 
 # Inventory validation runs before provisioning and is independently usable on a fresh checkout.
 check-inventory:
@@ -322,13 +339,13 @@ check-inventory:
 .PHONY: python-test-tools
 python-test-tools: tools/python-test-requirements.txt
 	$(PYTHON) -m venv build/python-tests
-	build/python-tests/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/python-test-requirements.txt
+	$(PYTHON) tools/download_retry.py build/python-tests/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/python-test-requirements.txt
 
 check-python: check-inventory sources python-test-tools
 	$(PYTHON) tools/setup_submodules.py --prefetch-blobs vendor/jamtestvectors 2>&1 | tee build/ci/python-sources.log
 	build/python-tests/bin/python tools/test_python.py 2>&1 | tee build/ci/python.log
 check-e2e: setup browser-tools
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
 
 # CI builds the pristine gitlink with the shared Rust pin and keeps Cargo output under build/.
 telemetry-interop-collector: host-tools rust-tools
@@ -343,7 +360,7 @@ check-telemetry-interop-ci: check-inventory telemetry-interop-collector
 # Install a complete hash-locked official MCP client in an isolated test-only environment.
 mcp-interop-python: tools/mcp-interop-requirements.txt
 	$(PYTHON) -m venv build/mcp-interop-python
-	build/mcp-interop-python/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/mcp-interop-requirements.txt
+	$(PYTHON) tools/download_retry.py build/mcp-interop-python/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/mcp-interop-requirements.txt
 
 # The independent SDK owns the MCP serialization/session machinery; the real peer owns its sockets.
 check-mcp-interop: check-inventory mcp-interop-python build
@@ -354,7 +371,7 @@ check-mcp-interop: check-inventory mcp-interop-python build
 telemetry-interop-python:
 	@test -n "$(JAMTART)" || { echo 'Set JAMTART to an explicitly built tart-backend binary'; exit 1; }
 	$(PYTHON) -m venv build/telemetry-interop-python
-	build/telemetry-interop-python/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/telemetry-interop-requirements.txt
+	$(PYTHON) tools/download_retry.py build/telemetry-interop-python/bin/python -m pip install --disable-pip-version-check --only-binary=:all: --require-hashes -r tools/telemetry-interop-requirements.txt
 check-telemetry-interop: check-inventory telemetry-interop-python build
 	build/telemetry-interop-python/bin/python tools/test_telemetry_interop.py --collector "$(JAMTART)"
 
@@ -368,7 +385,7 @@ unit: setup
 
 # Apply both pinned language formatters; check mode must leave source files untouched.
 format: compiler-tools rust-tools
-	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/format.py
 # Storage measures matching public operations; Make provisions the checked native crypto toolchain first.
 # Separate whole-process resource observations never contribute speed samples to Perf Storage.
 probe-storage-resident-pressure:
@@ -439,7 +456,7 @@ bench-storage: setup
 	$(PYTHON) tools/storage_benchmark.py --panel comparison
 
 format-check: compiler-tools rust-tools
-	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py --check
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/format.py --check
 
 # Summaries can run after a failed job; do not trigger setup or disguise a missing report.
 summary-storage-memory-ceilings:
@@ -524,6 +541,7 @@ help:
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \
 	  'make bench-pvm-guests  Compare frozen checked indirect-call and memory-fill guests' \
 	  'make check-pvm-reference  Run pinned PolkaVM probes and matching native suites' \
+	  'make clean-tools   Remove retained tools and native library caches' \
 	  'make model-tools   Build the pinned verification-only tlanif' \
 	  'make check-models  Check bounded models, mutants and reachability' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
@@ -542,29 +560,29 @@ help:
 # Repeat fixed crypto-work/live-memory observations; an optional baseline is supplied via the environment.
 .PHONY: measure-state-store
 measure-state-store: setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_state_store.py --compiler "$$NIMONY"
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/measure_state_store.py --compiler "$$NIMONY"
 
 # Repeat real-file state workloads; compare only an explicitly supplied compatible prior report.
 .PHONY: measure-disk-store
 measure-disk-store: setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_disk_store.py --compiler "$$NIMONY" $(if $(DISK_STORE_BASELINE),--baseline "$(DISK_STORE_BASELINE)",)
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/measure_disk_store.py --compiler "$$NIMONY" $(if $(DISK_STORE_BASELINE),--baseline "$(DISK_STORE_BASELINE)",)
 
 # Bounded pinned DOOM correctness and opt-in Linux instruction attribution; no local guest timings.
 PVM_DOOM_WARMUP ?= 1320
 PVM_DOOM_COUNTS_ONLY ?= 0
 .PHONY: check-pvm-doom profile-pvm-doom
 check-pvm-doom: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_attribution.py --check
 profile-pvm-doom: export RAGNAROK_PVM_DOOM_WARMUP = $(value PVM_DOOM_WARMUP)
 profile-pvm-doom: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_attribution.py $(if $(filter 1,$(PVM_DOOM_COUNTS_ONLY)),--counts-only,)
 
 # Regular CI records real interpreted call timings without optional instruction instrumentation.
 .PHONY: bench-pvm-doom
 bench-pvm-doom: setup
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_doom_attribution.py --timings-only --warmup 1320
 
 # Paired DOOM revisions use shared complete gameplay admission; local checks keep clocks disabled.
@@ -601,8 +619,8 @@ PVM_PERF_SCOPE ?= all
 .PHONY: bench-pvm-performance pvm-perf-latest
 bench-pvm-performance: export RAGNAROK_PVM_PERF_SCOPE = $(value PVM_PERF_SCOPE)
 bench-pvm-performance: toolchain sources rust-tools check-pvm-native
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_ci_performance.py --scope "$${RAGNAROK_PVM_PERF_SCOPE}"
 
 # Download and validate the newest master-push measurement, without rebuilding or sampling guests.
@@ -612,28 +630,28 @@ pvm-perf-latest:
 # Three-engine exact-master comparison; setup remains reproducible from a clean Linux checkout.
 .PHONY: bench-pvm-interpreter
 bench-pvm-interpreter: toolchain sources rust-tools
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_interpreter_compare.py
 
 # Explicit reference-only calibration; no application build or broad verification matrix.
 .PHONY: bench-pvm-polkavm
 bench-pvm-polkavm: sources rust-tools
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_polkavm_compare.py
 
 # Explicit retained-frame ARM64 JIT trial; the public application cohort owns CI timing.
 .PHONY: bench-pvm-arm64-jit
 bench-pvm-arm64-jit: toolchain sources rust-tools
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
 	$(PYTHON) tools/pvm_arm64_jit.py
 
 # Native ARM64 application comparison reuses pinned reference preparation locally and in CI.
 .PHONY: bench-pvm-arm64-applications
 bench-pvm-arm64-applications: toolchain sources rust-tools
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_arm64_jit_applications.py
 
 # Scoped stack diagnostics consume a complete application receipt and discard all sampled clocks.
@@ -643,7 +661,7 @@ calibrate-pvm-arm64-linux:
 
 .PHONY: profile-pvm-arm64-linux
 profile-pvm-arm64-linux:
-	. ./build/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64 --include-minimal
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64 --include-minimal
 
 .PHONY: profile-pvm-arm64-jit
 profile-pvm-arm64-jit: bench-pvm-arm64-applications
@@ -660,7 +678,8 @@ check-pvm-arm64-jit-linux: compiler-tools
 # Provision privately, then retain the network-isolated container's exact native evidence on the host.
 .PHONY: check-pvm-arm64-jit-docker
 check-pvm-arm64-jit-docker: stage-pvm-arm64-jit-linux
-	$(DOCKER) build --platform linux/arm64 --progress plain -f tools/docker/pvm-arm64-jit.Dockerfile -t ragnarok:pvm-arm64-jit-local build/pvm-arm64-jit/linux/context > build/pvm-arm64-jit/linux/docker-build.log 2>&1
+	@$(docker_download_secret); \
+	$(DOCKER) build $${secret_args[@]+"$${secret_args[@]}"} --platform linux/arm64 --progress plain -f tools/docker/pvm-arm64-jit.Dockerfile -t ragnarok:pvm-arm64-jit-local build/pvm-arm64-jit/linux/context > build/pvm-arm64-jit/linux/docker-build.log 2>&1
 	$(PYTHON) tools/pvm_arm64_jit_linux.py --docker
 
 # Optional runtime ABI shares pristine source/tool provisioning without affecting normal application linking.
@@ -671,8 +690,8 @@ build-pvm-runtime: setup
 # Correctness-only native CI parity uses the actual optional adapter and continuing gameplay state.
 .PHONY: check-pvm-doom-backends
 check-pvm-doom-backends: check-inventory toolchain sources rust-tools
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path native/polkavm/Cargo.toml
 	$(PYTHON) tools/native_tests.py --suite pvm_artifact
 	$(PYTHON) tools/native_tests.py --suite app_cli
 	$(PYTHON) tools/native_tests.py --suite app_options
@@ -686,8 +705,8 @@ check-pvm-x86-jit: toolchain check-inventory
 # Same complete matched-image application cohort, explicitly on a native Linux x86-64 CI runner.
 .PHONY: bench-pvm-x86-applications
 bench-pvm-x86-applications: toolchain sources rust-tools
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
-	rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm/Cargo.toml
+	$(PYTHON) tools/download_retry.py rustup run "$(RUSTUP_TOOLCHAIN)" cargo fetch --locked --manifest-path tests/performance/polkavm_doom/Cargo.toml
 	$(PYTHON) tools/pvm_x86_jit_applications.py
 
 # Profiles consume the already complete same-job cohort; instrumented clocks never enter timing tables.

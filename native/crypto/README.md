@@ -12,7 +12,7 @@ is cleansed before return. JAM signing domains, serialized transcripts, codec co
 protocol acceptance policy belong to the Nim caller.
 
 [`build_crypto.py`](../../tools/build_crypto.py) validates pinned sources and builds the shared
-library under `build/crypto/`; [`crypto-pins.json`](../../spec/crypto-pins.json) records dependency
+library under `build-tools/crypto/`; [`crypto-pins.json`](../../spec/crypto-pins.json) records dependency
 identities and fixture inputs. Make owns setup and build sequencing.
 
 The [crypto contract](../../spec/crypto.md) and [crypto guide](../../docs/crypto.md) describe
