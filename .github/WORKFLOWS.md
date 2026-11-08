@@ -41,6 +41,15 @@ See [the performance monitoring contract](../spec/pvm-ci-performance.md).
 Jobs publish summaries and retain diagnostic logs and reports from `build/`. See
 [requesting CI](../docs/testing.md#requesting-ci) for label scopes, reruns and revision semantics.
 
+[`workflows/wsl2-trial.yml`](workflows/wsl2-trial.yml) is an opt-in Windows/WSL experiment.
+It runs on a push to `codex/wsl2-trial`, or manual dispatch once the workflow is registered,
+using Windows Server 2025 and Ubuntu 24.04 on WSL 2. It fetches the exact triggering commit
+into the Linux filesystem, builds and selftests the peer as an ordinary user, then runs
+existing resident-memory, full/light paged recovery, retained-reader and process-lock suites.
+Logs record the commit, kernel and filesystem; the first failure fails the trial. This is
+compatibility evidence only, not a power-loss qualification or a native Windows build.
+No successful WSL run has been recorded yet.
+
 Automatic PR updates and manual
 `smoke` requests select **Build / Smoke** alone. Master/full requests select **Smoke**, **Tooling**,
 **Linux & Docker** and **macOS**. Workloads retain **Build**, **Unit**, **Contract**, **E2E**, **Interop**, **Perf** and **Fuzz**
