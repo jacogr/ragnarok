@@ -96,6 +96,24 @@ assert "\"isError\":true" in respond(call("get_block", "{\"block_hash\":\"bad\"}
 # Strict HTTP boundaries refuse cross-origin access, DNS aliases, ambiguity and protocol mismatches.
 let ping = request("ping")
 assert "200 OK" in processed(http(ping))
+# Stock parser syntax is accepted directly; decoded length remains bounded before MCP dispatch.
+for extra in ["X-Client: a\tb\r\n"]:
+  assert "400 Bad Request" in processed(http(ping, extra = extra))
+assert "200 OK" in processed(http(ping).replace("Content-Length: " & $ping.len,
+  "Content-Length: 000000" & $ping.len))
+assert "200 OK" in processed(http(ping).replace("\r\n", "\n")) # Upstream framing, without CRLF policy.
+assert "200 OK" in processed(http(ping).replace("HTTP/1.1", "HTTP/1.0"))
+assert "200 OK" in processed(http(ping, extra = "X-Client: a\r\nx-client: b\r\n"))
+assert "200 OK" in processed(http(ping, extra = "X-Padding: " & repeat('a', 5000) & "\r\n"))
+assert "400 Bad Request" in processed(http(ping, extra = "Host: localhost:14141\r\n"))
+for splitAt in 0..<http(ping).len:
+  # Resume the library scanner across every packet boundary, including inside the terminator.
+  var partial = Connection(input: http(ping).substr(0, splitAt - 1))
+  partial.process(14141, empty)
+  assert partial.output.len == 0
+  partial.input.add(http(ping).substr(splitAt))
+  partial.process(14141, empty)
+  assert "200 OK" in partial.output
 assert "202 Accepted" in processed(http("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
 assert "403 Forbidden" in processed(http(ping, extra = "Origin: https://evil.example\r\n"))
 assert "403 Forbidden" in processed(http(ping).replace("127.0.0.1:14141", "evil.example:14141"))
@@ -107,7 +125,7 @@ assert "400 Bad Request" in processed(http(ping) & "suffix")
 assert "406 Not Acceptable" in processed(http(ping).replace(", text/event-stream", ""))
 assert "405 Method Not Allowed" in processed(http(ping).replace("POST", "GET"))
 assert processed(http(ping).substr(0, http(ping).len-2)) == ""
-assert "431 Request Header Fields Too Large" in processed(repeat("x", MaxHeader))
+assert "431 Request Header Fields Too Large" in processed(repeat("x", MaxHeader + 1))
 assert "413 Content Too Large" in processed(http(repeat("x", MaxMcpBody+1)))
 
 block loopback:
