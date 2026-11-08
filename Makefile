@@ -611,7 +611,7 @@ check-devnet-authoring: build
 
 # Bounded native-host qualification shares the maintained positive, refusal and lifetime gates.
 .PHONY: check-pvm-native
-check-pvm-native: toolchain check-inventory
+check-pvm-native: toolchain bandersnatch-fetch check-inventory
 	$(PYTHON) tools/pvm_native_ci.py
 
 # One maintained current-source performance path; qualification is mandatory before any samples.
