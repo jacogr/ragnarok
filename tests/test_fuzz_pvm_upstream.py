@@ -61,7 +61,10 @@ class UpstreamFuzzToolTests(unittest.TestCase):
                 self.assertIn('make fuzz-pvm-upstream',commands(section))
                 self.assertIn('build/pvm-upstream-fuzz/artifacts/',artifact_paths(section))
                 self.assertFalse(section.get('continue-on-error',False))
-                self.assertFalse(any(step.get('continue-on-error',False) for step in section['steps']))
+                # Cache transport may fail; upstream/bridge checks and their evidence remain authoritative.
+                self.assertFalse(any(step.get('continue-on-error',False)
+                                     for step in section['steps']
+                                     if not step.get('uses','').startswith('actions/cache@')))
         self.assertFalse(selected_families(text,'pvm-fuzz',event_context('pull_request','synchronize')))
         plan=make_plan('fuzz-pvm-upstream')
         install='rustup toolchain install '+fuzz.NIGHTLY+' --profile minimal'
