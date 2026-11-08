@@ -61,12 +61,16 @@ type
   # Fixed chunks are immutable after publication; a scalar clones at most two small payloads.
   PageChunk = ref object
     bytes: array[512, byte]
-  # A page header owns exactly eight initialized chunks; permissions and bytes remain snapshot-local.
+  # Full input pages share seven immutable spans through one owner; the eighth stays an ordinary chunk.
+  PageBacking = ref object
+    bytes: array[3584, byte]
+  # Each effective chunk is an override or a span in backing; index7 always has an ordinary owner.
   PageData = ref object
     index: PageIndex
     access: PageAccess
     zeroChunks: uint8 # Set bits prove complete zero chunks; clear bits mean unknown.
-    chunks: array[8, PageChunk]
+    backing: nil PageBacking
+    chunks: array[8, nil PageChunk]
   # Immutable directory blocks share untouched page-reference groups between snapshots.
   PageBlock = ref object
     entries: seq[PageData] # Each immutable block has at most 64 initialized page references.
@@ -132,7 +136,9 @@ template `[]`(pages: PageDirectory, index: int): untyped =
 proc pageDirectory(pages: sink seq[PageData]): PageDirectory =
   ## Transfer an admitted sorted vector into immutable blocks without another per-page retain/release pass.
   var owned = move(pages)
-  result = PageDirectory(len: owned.len, blocks: @[])
+  # Quotient and remainder count the last partial block without adding to the admitted page count.
+  let blockCount = owned.len div 64 + int(owned.len mod 64 != 0)
+  result = PageDirectory(len: owned.len, blocks: newSeqOfCap[PageBlock](blockCount))
   var first = 0
   while first < owned.len:
     # The final block contains only its initialized references.
@@ -197,41 +203,65 @@ func failure[T, U](r: MachineResult[U]): MachineResult[T] {.requires: r.status !
     return MachineResult[T](status: MachineError.Fault, failedPage: r.failedPage)
   MachineResult[T](status: r.status)
 
-proc chunkFromImage(image: PageImage, first: int): PageChunk {.requires:
-    first >= 0 and first <= 3584.} =
-  ## Copy one complete proven span into fresh private storage; no caller-owned backing address survives capture.
+func borrowPageChunk(page: PageData, slot: int, within = 0): ptr byte
+    {.inline, requires: slot >= 0 and slot < 8 and within >= 0 and within < 512.} =
+  ## Private read-only borrow: retain the unchanged page through the immediate byte read or copy.
+  ## The offset names one initialized byte; a copying caller also proves count <= 512-within.
+  ## This pointer owns nothing and is never stored or exported.
+  let owned {.cursor.} = page.chunks[slot]
+  if owned != nil:
+    return unsafeAddr owned.bytes[within]
+  let backing {.cursor.} = page.backing
+  assert backing != nil and slot < 7
+  # The checked slot/within prove this real-array index is at most3583 before taking its address.
+  unsafeAddr backing.bytes[slot*512+within]
+
+proc copiedChunk(input: openArray[byte], first: int): PageChunk {.requires:
+    first >= 0 and first <= input.len and 512 <= input.len-first.} =
+  ## Capture one complete borrowed span; no caller pointer survives the initialized owner.
   result = PageChunk(bytes: default(array[512, byte]))
-  copyMem(addr result.bytes[0], unsafeAddr image.bytes[first], 512)
+  copyMem(addr result.bytes[0], unsafeAddr input[first], 512)
+
+proc fullPage(index: PageIndex, access: PageAccess, input: openArray[byte]): PageData
+    {.requires: input.len == 4096.} =
+  ## Copy a complete unknown prefix into final immutable owners before publishing its header.
+  let backing = PageBacking(bytes: default(array[3584, byte]))
+  copyMem(addr backing.bytes[0], unsafeAddr input[0], 3584)
+  let tail = copiedChunk(input, 3584)
+  PageData(index: index, zeroChunks: 0, access: access, backing: backing,
+    chunks: [nil, nil, nil, nil, nil, nil, nil, tail])
 
 proc pageFromImage(image: PageImage): PageData =
-  ## Construct all eight non-nil chunk owners before publishing an immutable page header.
-  PageData(index: image.index, zeroChunks: 0, access: image.access, chunks: [
-    chunkFromImage(image, 0), chunkFromImage(image, 512), chunkFromImage(image, 1024),
-    chunkFromImage(image, 1536), chunkFromImage(image, 2048), chunkFromImage(image, 2560),
-    chunkFromImage(image, 3072), chunkFromImage(image, 3584)])
+  ## Caller-owned full images remain unknown even if all their copied bytes happen to be zero.
+  fullPage(image.index, image.access, image.bytes)
 
-proc chunkFromReplacement(previous: PageChunk, image: PageImage,
-    first: int): PageChunk {.requires:
-    first >= 0 and first <= 3584.} =
-  ## Reuse equal immutable bytes; differing input copies into one fresh owned chunk.
-  if cmpMem(unsafeAddr previous.bytes[0], unsafeAddr image.bytes[first], 512) == 0:
-    # The caller retains the source page throughout construction; this equal result owns one shared ref.
-    previous
-  else:
-    # Only differing bytes allocate and copy; the previous chunk remains borrowed and untouched.
-    chunkFromImage(image, first)
+proc copiedPageChunk(page: PageData, slot: int): PageChunk {.requires:
+    slot >= 0 and slot < 8.} =
+  ## Allocate before borrowing, then copy exactly one effective span; never return an owning array temporary.
+  result = PageChunk(bytes: default(array[512, byte]))
+  copyMem(addr result.bytes[0], borrowPageChunk(page, slot), 512)
+
+proc dropCoveredBacking(page: PageData) =
+  ## Only complete override coverage releases the base; nullable owners never certify writer privacy.
+  if page.backing == nil: return
+  for slot in 0..<7:
+    # A missing override still needs its corresponding immutable base span.
+    if page.chunks[slot] == nil: return
+  page.backing = nil
 
 proc pageFromReplacement(previous: PageData, image: PageImage): PageData =
-  ## Publish a fresh page identity with eight complete immutable chunk owners.
-  PageData(index: image.index, zeroChunks: 0, access: image.access, chunks: [
-    chunkFromReplacement(previous.chunks[0], image, 0),
-    chunkFromReplacement(previous.chunks[1], image, 512),
-    chunkFromReplacement(previous.chunks[2], image, 1024),
-    chunkFromReplacement(previous.chunks[3], image, 1536),
-    chunkFromReplacement(previous.chunks[4], image, 2048),
-    chunkFromReplacement(previous.chunks[5], image, 2560),
-    chunkFromReplacement(previous.chunks[6], image, 3072),
-    chunkFromReplacement(previous.chunks[7], image, 3584)])
+  ## Preserve a fresh page identity and unknown provenance, sharing every unchanged effective span.
+  var chunks = default(array[8, nil PageChunk])
+  for slot in 0..<8:
+    # The retained previous page owns this immediate borrow; allocation follows comparison.
+    if cmpMem(borrowPageChunk(previous, slot), unsafeAddr image.bytes[slot*512], 512) != 0:
+      chunks[slot] = copiedChunk(image.bytes, slot*512)
+    else:
+      # Retain unchanged overrides only; nil continues to select the same immutable backing.
+      chunks[slot] = previous.chunks[slot]
+  result = PageData(index: image.index, zeroChunks: 0, access: image.access,
+    backing: previous.backing, chunks: move(chunks))
+  dropCoveredBacking(result)
 
 proc sharedZeroChunk(seed: var nil PageChunk): PageChunk =
   ## Lazily retain one immutable known-zero payload within this mapping operation; no process-global pool exists.
@@ -245,8 +275,8 @@ proc sharedZeroChunk(seed: var nil PageChunk): PageChunk =
 proc zeroPage(index: PageIndex, access: PageAccess, seed: var nil PageChunk): PageData =
   ## Only absent or explicitly cleared pages reach this helper; every later writer still clones touched chunks first.
   let chunk = sharedZeroChunk(seed)
-  PageData(index: index, zeroChunks: 255, access: access, chunks: [chunk, chunk, chunk, chunk,
-      chunk, chunk, chunk, chunk])
+  PageData(index: index, zeroChunks: 255, access: access, backing: nil,
+    chunks: [chunk, chunk, chunk, chunk, chunk, chunk, chunk, chunk])
 
 proc initializationChunk(input: openArray[byte], offset, length, start: int,
     zero: var nil PageChunk): PageChunk {.requires: offset >= 0 and offset <= input.len and
@@ -270,19 +300,23 @@ proc appendInitializationRegion(owned: var seq[PageData], region: Initialization
       owned.add(zeroPage(index, region.access, zero)) # Whole stack, extra heap and other absent prefixes.
     else:
       let count = min(remaining, 4096)
-      var zeroChunks = 0'u8
-      for chunk in 0..<8:
-        # Only complete chunks beyond the admitted input prefix have genuine zero provenance.
-        if chunk*512 >= count: zeroChunks = zeroChunks or (1'u8 shl chunk)
-      owned.add(PageData(index: index, zeroChunks: zeroChunks, access: region.access, chunks: [
-        initializationChunk(input, offset, count, 0, zero),
-        initializationChunk(input, offset, count, 512, zero),
-        initializationChunk(input, offset, count, 1024, zero),
-        initializationChunk(input, offset, count, 1536, zero),
-        initializationChunk(input, offset, count, 2048, zero),
-        initializationChunk(input, offset, count, 2560, zero),
-        initializationChunk(input, offset, count, 3072, zero),
-        initializationChunk(input, offset, count, 3584, zero)]))
+      if count == 4096:
+        # Genuine full prefixes use the same private constructor as unknown full-page capture.
+        owned.add(fullPage(index, region.access, input.toOpenArray(offset, offset+4095)))
+      else:
+        var zeroChunks = 0'u8
+        for chunk in 0..<8:
+          # Only complete chunks beyond the admitted input prefix have genuine zero provenance.
+          if chunk*512 >= count: zeroChunks = zeroChunks or (1'u8 shl chunk)
+        owned.add(PageData(index: index, zeroChunks: zeroChunks, access: region.access,
+          backing: nil, chunks: [initializationChunk(input, offset, count, 0, zero),
+          initializationChunk(input, offset, count, 512, zero),
+          initializationChunk(input, offset, count, 1024, zero),
+          initializationChunk(input, offset, count, 1536, zero),
+          initializationChunk(input, offset, count, 2048, zero),
+          initializationChunk(input, offset, count, 2560, zero),
+          initializationChunk(input, offset, count, 3072, zero),
+          initializationChunk(input, offset, count, 3584, zero)]))
       offset += count
       remaining -= count
 
@@ -357,18 +391,19 @@ proc appendedDirectory(pages: PageDirectory, first, past: PageIndex, access: Pag
   assert result.blocks.len == blockCount
 
 func pageByte(page: PageData, offset: int): byte {.inline.} =
-  ## Read one proven page offset without returning a mutable chunk or retaining a transient reference.
-  page.chunks[offset div 512].bytes[offset mod 512]
+  ## Read one proven effective span without retaining a transient reference or exposing its borrow.
+  borrowPageChunk(page, offset div 512, offset mod 512)[]
 
 func pageScalar(page: PageData, offset, count: int): uint64 {.inline,
     requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
         4096-offset.} =
-  ## Copy a proven scalar span from one immutable chunk into a private initialized word; no borrowed address escapes.
+  ## Resolve one immutable span into a private initialized word; no borrowed address escapes.
   result = 0
   if count == 1: return uint64(pageByte(page, offset))
   let chunk = offset div 512
   let within = offset mod 512
   if within <= 512-count:
+    let source = borrowPageChunk(page, chunk, within)
     # Disjoint stack and immutable heap storage permit an unaligned-safe copy only after proving the entire source extent.
     var endian = 1'u16
     var tag = default(array[2, byte])
@@ -377,16 +412,16 @@ func pageScalar(page: PageData, offset, count: int): uint64 {.inline,
       case count
       of 2:
         # Fixed admitted widths lower to unaligned-safe native loads without a variable copy call.
-        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], 2)
+        copyMem(addr result, source, 2)
       of 4:
         # Copy the complete half-register span after the same permission and chunk preflight.
-        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], 4)
+        copyMem(addr result, source, 4)
       of 8:
         # A full register still reads exactly eight bytes, including unaligned offsets.
-        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], 8)
+        copyMem(addr result, source, 8)
       else:
         # Page-fragment widths retain the original bounded byte-count copy.
-        copyMem(addr result, unsafeAddr page.chunks[chunk].bytes[within], count)
+        copyMem(addr result, source, count)
       return # Little-endian hosts now hold the exact zero-extended guest word.
   for index in 0..<count:
     # Big-endian hosts and chunk-crossing spans retain the portable byte-wise equation.
@@ -396,12 +431,13 @@ proc imageFromPage(page: PageData): PageImage =
   ## Materialize the public copied image; chunk sharing never escapes through observation.
   result = PageImage(index: page.index, access: page.access, bytes: default(array[4096, byte]))
   for slot in 0..<8:
-    # Each immutable chunk supplies exactly512 bytes to its disjoint fixed-array span in the fresh copied image.
-    copyMem(addr result.bytes[slot*512], unsafeAddr page.chunks[slot].bytes[0], 512)
+    # Resolve each effective span once and copy512 bytes into the fresh independent image.
+    copyMem(addr result.bytes[slot*512], borrowPageChunk(page, slot), 512)
 
 proc pageWithAccess(page: PageData, access: PageAccess): PageData =
-  ## Permission-only successors share immutable chunks and cannot change predecessor access or bytes.
-  PageData(index: page.index, zeroChunks: page.zeroChunks, access: access, chunks: page.chunks)
+  ## Permission-only successors share base/override owners without changing predecessor access or bytes.
+  PageData(index: page.index, zeroChunks: page.zeroChunks, access: access,
+    backing: page.backing, chunks: page.chunks)
 
 proc writablePageClone(page: PageData, offset, count: int): PageData =
   ## Callers preflight a nonempty interval within this page; clone its header and only touched chunks before mutation.
@@ -410,12 +446,14 @@ proc writablePageClone(page: PageData, offset, count: int): PageData =
   let first = offset div 512
   let last = (offset+count-1) div 512
   for slot in first..last:
-    result.chunks[slot] = PageChunk(bytes: page.chunks[
-        slot].bytes) # Untouched payloads stay immutable and shared.
+    result.chunks[slot] = copiedPageChunk(page, slot) # Untouched effective spans remain shared.
+  dropCoveredBacking(result)
 
 proc setPageByte(page: PageData, offset: int, value: byte) {.inline.} =
   ## Only private writable clones reach this helper, and their touched chunk was copied before the first write.
-  page.chunks[offset div 512].bytes[offset mod 512] = value
+  let target {.cursor.} = page.chunks[offset div 512]
+  assert target != nil # Complete clone/epoch preflight, not this owner test, grants write authority.
+  target.bytes[offset mod 512] = value
 
 proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
     requires: offset >= 0 and offset < 4096 and count >= 1 and count <= 8 and count <=
@@ -427,6 +465,8 @@ proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
   let chunk = offset div 512
   let within = offset mod 512
   if within <= 512-count:
+    let target {.cursor.} = page.chunks[chunk]
+    assert target != nil # The caller proved exclusive ownership before entering this helper.
     # Copy only a complete admitted span from a disjoint initialized stack word into the private chunk.
     var endian = 1'u16
     var tag = default(array[2, byte])
@@ -436,16 +476,16 @@ proc setPageScalar(page: PageData, offset, count: int, value: uint64) {.inline,
       case count
       of 2:
         # Fixed admitted widths permit native unaligned-safe stores after private-chunk preparation.
-        copyMem(addr page.chunks[chunk].bytes[within], addr word, 2)
+        copyMem(addr target.bytes[within], addr word, 2)
       of 4:
         # Only the low four little-endian bytes replace this proven private extent.
-        copyMem(addr page.chunks[chunk].bytes[within], addr word, 4)
+        copyMem(addr target.bytes[within], addr word, 4)
       of 8:
         # The full register replaces exactly the admitted eight-byte span.
-        copyMem(addr page.chunks[chunk].bytes[within], addr word, 8)
+        copyMem(addr target.bytes[within], addr word, 8)
       else:
         # Cross-page fragments retain their original exact-width copy.
-        copyMem(addr page.chunks[chunk].bytes[within], addr word, count)
+        copyMem(addr target.bytes[within], addr word, count)
       return
   for index in 0..<count:
     # Big-endian and chunk-crossing writes retain byte-wise little-endian semantics.
@@ -465,7 +505,7 @@ proc captureMemory*(pages: openArray[PageImage], limit: PageLimit): MachineResul
     if i > 0 and uint32(pages[i - 1].index) >= uint32(pages[i].index):
       return MachineResult[Memory](status: MachineError.UnsortedPages)
   var owned = newSeqOfCap[PageData](pages.len)
-  # Fixed arrays copy their bytes; no caller-owned pointer survives this call.
+  # Final private backing/tail owners copy every byte; no caller-owned pointer survives this call.
   for i in 0..<pages.len: owned.add(pageFromImage(pages[i]))
   MachineResult[Memory](status: MachineError.None,
     completed: Memory(data: MemoryData(pages: pageDirectory(move(owned)), limit: limit)))
@@ -597,8 +637,8 @@ proc copyMemoryPage*(memory: Memory, slot: MemoryPageSlot,
     return MachineResult[PageDescription](status: MachineError.InvalidRange)
   let page {.cursor.} = data.pages[int(uint32(slot))]
   for chunk in 0..<8:
-    # Each fixed512-byte immutable chunk copies into a disjoint proven portion of the complete output page.
-    copyMem(addr output[chunk*512], unsafeAddr page.chunks[chunk].bytes[0], 512)
+    # Each effective512-byte span copies completely into its disjoint portion of the output page.
+    copyMem(addr output[chunk*512], borrowPageChunk(page, chunk), 512)
   MachineResult[PageDescription](status: MachineError.None,
     completed: PageDescription(index: page.index, access: page.access))
 
@@ -627,7 +667,7 @@ proc matchesMemoryPageBytes*(memory: Memory, slot: MemoryPageSlot,
   if page.index != expected.index or page.access != expected.access:
     return MachineResult[bool](status: MachineError.InvalidRange)
   for chunk in 0..<8:
-    if cmpMem(unsafeAddr page.chunks[chunk].bytes[0], unsafeAddr bytes[chunk*512], 512) != 0:
+    if cmpMem(borrowPageChunk(page, chunk), unsafeAddr bytes[chunk*512], 512) != 0:
       return MachineResult[bool](status: MachineError.None, completed: false)
   MachineResult[bool](status: MachineError.None, completed: true)
 
@@ -723,13 +763,6 @@ proc beginResidentReplacements*(source: Memory): ResidentReplacementBatch =
   ResidentReplacementBatch(source: source, lastSlot: -1, slots: @[], changed: @[],
     status: (if source.data == nil: MachineError.InvalidOwner else: MachineError.None))
 
-proc residentReplacementChunk(previous: PageChunk, bytes: openArray[byte], first: int,
-    changed: bool): PageChunk =
-  ## Retain equal immutable chunks or copy one complete changed chunk from the checked span.
-  if not changed: return previous
-  result = PageChunk(bytes: default(array[512, byte]))
-  copyMem(addr result.bytes[0], unsafeAddr bytes[first], 512)
-
 proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlot,
     expected: PageDescription, bytes: openArray[byte]): MachineError =
   ## Read a checked resident span synchronously; no pointer is stored in the batch.
@@ -751,18 +784,20 @@ proc stageResidentPage*(batch: var ResidentReplacementBatch, slot: MemoryPageSlo
   # The matched extent and eight fixed offsets prove every compared and copied span.
   var differences = 0'u8
   for chunk in 0..<8:
-    if cmpMem(unsafeAddr previous.chunks[chunk].bytes[0], unsafeAddr bytes[chunk*512], 512) != 0:
+    if cmpMem(borrowPageChunk(previous, chunk), unsafeAddr bytes[chunk*512], 512) != 0:
       differences = differences or (1'u8 shl chunk)
   if differences != 0:
-    let changed = PageData(index: previous.index, zeroChunks: 0, access: previous.access, chunks: [
-      residentReplacementChunk(previous.chunks[0], bytes, 0, (differences and 1) != 0),
-      residentReplacementChunk(previous.chunks[1], bytes, 512, (differences and 2) != 0),
-      residentReplacementChunk(previous.chunks[2], bytes, 1024, (differences and 4) != 0),
-      residentReplacementChunk(previous.chunks[3], bytes, 1536, (differences and 8) != 0),
-      residentReplacementChunk(previous.chunks[4], bytes, 2048, (differences and 16) != 0),
-      residentReplacementChunk(previous.chunks[5], bytes, 2560, (differences and 32) != 0),
-      residentReplacementChunk(previous.chunks[6], bytes, 3072, (differences and 64) != 0),
-      residentReplacementChunk(previous.chunks[7], bytes, 3584, (differences and 128) != 0)])
+    var chunks = default(array[8, nil PageChunk])
+    for chunk in 0..<8:
+      # Copy changed chunks only; do not retain their superseded source owners first.
+      if (differences and (1'u8 shl chunk)) != 0:
+        chunks[chunk] = copiedChunk(bytes, chunk*512)
+      else:
+        # Unchanged nil overrides still resolve through the retained immutable base.
+        chunks[chunk] = previous.chunks[chunk]
+    let changed = PageData(index: previous.index, zeroChunks: 0, access: previous.access,
+      backing: previous.backing, chunks: move(chunks))
+    dropCoveredBacking(changed)
     batch.slots.add(at)
     batch.changed.add(changed)
   batch.lastSlot = at
@@ -1070,7 +1105,8 @@ proc copyPageOut(page: PageData, offset: int, output: var seq[byte], first, coun
     let position = offset+copied
     let within = position mod 512
     let batch = min(count-copied, 512-within)
-    copyMem(addr output[first+copied], unsafeAddr page.chunks[position div 512].bytes[within], batch)
+    let source = borrowPageChunk(page, position div 512, within)
+    copyMem(addr output[first+copied], source, batch)
     copied += batch
 
 proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, count: int)
@@ -1083,7 +1119,9 @@ proc copyPageIn(page: PageData, offset: int, input: openArray[byte], first, coun
     let position = offset+copied
     let within = position mod 512
     let batch = min(count-copied, 512-within)
-    copyMem(addr page.chunks[position div 512].bytes[within], unsafeAddr input[first+copied], batch)
+    let target {.cursor.} = page.chunks[position div 512]
+    assert target != nil # Every target span was cloned before the host operation's first write.
+    copyMem(addr target.bytes[within], unsafeAddr input[first+copied], batch)
     copied += batch
 
 proc readBytes*(memory: Memory, address: MemoryAddress, length: MemoryLength,
@@ -1155,7 +1193,8 @@ proc cloneWriterChunk(writer: ScalarMemoryWriter, slot, chunk: int, mask: byte) 
   if writer.dirty[slot] == 0:
     writer.pages[slot] = pageWithAccess(writer.pages[slot], writer.pages[slot].access)
     writer.pages[slot].zeroChunks = 0 # Every writable cached header starts without inherited zero claims.
-  writer.pages[slot].chunks[chunk] = PageChunk(bytes: writer.pages[slot].chunks[chunk].bytes)
+  writer.pages[slot].chunks[chunk] = copiedPageChunk(writer.pages[slot], chunk)
+  dropCoveredBacking(writer.pages[slot])
   writer.dirty[slot] = writer.dirty[slot] or mask
 
 proc prepareWriterSpan(writer: ScalarMemoryWriter, slot, offset, count: int) =

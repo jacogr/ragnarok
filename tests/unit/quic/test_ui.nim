@@ -7,6 +7,20 @@
 import std/[assertions, syncio]
 include ../../../src/ui/server
 
+proc retireHttpRequest() =
+  ## Parsing and retiring a request must release its metadata and response ownership each time.
+  var slot = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
+  slot.process(-1)
+  assert "200 OK" in slot.output
+  slot.close()
+
+for index in 0..<10:
+  retireHttpRequest() # Warm immutable asset lookup before measuring request-owned allocations.
+let httpBaseline = getOccupiedMem()
+for index in 0..<100:
+  retireHttpRequest() # Repeated valid requests must not consume the peer's shutdown allowance.
+assert getOccupiedMem() <= httpBaseline + 256, "retired HTTP requests release owned storage"
+
 # Disabled startup must not inspect the directory or own a socket.
 var disabled = default(UiServer)
 assert disabled.start(0, "missing-static-directory")

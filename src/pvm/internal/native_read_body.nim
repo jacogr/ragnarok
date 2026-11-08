@@ -49,8 +49,8 @@ func initNativeReadBody*(header, terminal, first, last: uint32,
     last: last, epoch: epoch)
 
 func nativeReadOpcode*(opcode: byte): bool =
-  ## The first shared ABI handles only relative U8, S32 and U64.
-  opcode in {124'u8, 129'u8, 130'u8}
+  ## Every GP relative scalar load shares the same clipped extent and staged-register ABI.
+  opcode in {124'u8..130'u8}
 
 proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
     operation: NativeOperation): bool =

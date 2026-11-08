@@ -52,7 +52,11 @@ def build_native(paths):
     backend = build_rust(False)
     inputs = [ROOT/'spec/crypto-pins.json', ROOT/'native/crypto', ROOT/'tools/build_crypto.py', backend]
     with native_cache(BUILD, inputs, [['clang', '--version'], ['clang++', '--version']],
-                      (library, BUILD/backend.name)):
+                      (library, BUILD/backend.name)) as reusable:
+        if reusable:
+            # Source/patch validation precedes this identity and output-hash check; runtime probes still run.
+            (LOGS/'build.log').write_text('Reused validated native library: '+str(library)+'\n')
+            return library
         # The provider is already needed for VRFs; colocate a byte-identical copy for crypto-only users.
         shutil.copy2(backend, BUILD / backend.name)
         include = [ROOT / 'native/crypto']

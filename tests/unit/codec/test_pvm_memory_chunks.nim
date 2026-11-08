@@ -356,6 +356,73 @@ proc replacementWriterCycle() =
     assert c.bytes[offset] == second and d.bytes[offset] == resumed and e.bytes[
         offset] == final
 
+proc fullPrefixCycle() =
+  ## Full/partial/zero initial pages coexist while writer epochs and resident publication share old bytes.
+  var input = newSeq[byte](4096+513)
+  for offset in 0..<input.len: input[offset] = byteAt(offset)
+  let regions = [InitializationRegion(first: PageIndex(16), past: PageIndex(19),
+    access: PageAccess.ReadWrite, source: InitializationSource.First, offset: 0, length: input.len)]
+  let original = captureInitializationMemory(regions, input, [], PageLimit(3)).value
+  input[0] = 0 # The full prefix must own its bytes before caller input changes.
+  let writer = newScalarMemoryWriter(original).value
+  let alias = writer
+  var middle = original
+  for chunk in 0..<7:
+    # Seal after three overrides, then complete all seven through the same aliased writer identity.
+    assert store(alias, MemoryAddress(uint64(65536+chunk*512+17)), AccessWidth(1),
+      RegisterValue(uint64(201+chunk))).error == MachineError.None
+    if chunk == 2: middle = snapshotMemory(writer).value
+  let covered = snapshotMemory(alias).value
+  assert store(writer, MemoryAddress(65536+3583), AccessWidth(2), RegisterValue(0x9abc)).error ==
+    MachineError.None
+  let last = snapshotMemory(writer).value
+  assert uint64(load(last, MemoryAddress(65536+3583), AccessWidth(2)).value) == 0x9abc
+  let prior = pageImage(original, PageIndex(16)).value
+  let early = pageImage(middle, PageIndex(16)).value
+  let complete = pageImage(covered, PageIndex(16)).value
+  let final = pageImage(last, PageIndex(16)).value
+  for offset in 0..<4096:
+    # Literal expected updates cross the backing/tail boundary without rewriting predecessor bytes.
+    let chunk = offset div 512
+    let changed = offset mod 512 == 17 and chunk < 7
+    let earlyByte = if changed and chunk < 3: byte(201+chunk) else: byteAt(offset)
+    let completeByte = if changed: byte(201+chunk) else: byteAt(offset)
+    let finalByte = if offset == 3583: 0xbc'u8 elif offset == 3584: 0x9a'u8 else: completeByte
+    assert prior.bytes[offset] == byteAt(offset) and early.bytes[offset] == earlyByte
+    assert complete.bytes[offset] == completeByte and final.bytes[offset] == finalByte
+  var resident = newSeq[byte](4096)
+  for offset in 0..<4096:
+    # Three overridden chunks and four borrowed base spans must compare as the same complete page.
+    resident[offset] = if offset mod 512 == 17 and offset div 512 < 3:
+      byte(201+offset div 512) else: byteAt(offset)
+  resident[5*512+1] = 77
+  resident[3587] = 88
+  var batch = beginResidentReplacements(middle)
+  let description = PageDescription(index: PageIndex(16), access: PageAccess.ReadWrite)
+  assert stageResidentPage(batch, MemoryPageSlot(0), description, resident) == MachineError.None
+  let published = finishResidentReplacements(batch).value
+  resident[5*512+1] = 0 # Completed publication retains no pointer into caller-owned input.
+  let observed = pageImage(published, PageIndex(16)).value
+  let retained = pageImage(middle, PageIndex(16)).value
+  for offset in 0..<4096:
+    let initial = if offset mod 512 == 17 and offset div 512 < 3:
+      byte(201+offset div 512) else: byteAt(offset)
+    let expected = if offset == 5*512+1: 77'u8 elif offset == 3587: 88'u8 else: initial
+    assert observed.bytes[offset] == expected and retained.bytes[offset] == initial
+  let changed = changedMemoryPageSlots(middle, published).value
+  assert changed.len == 1 and uint32(changed[0]) == 0
+  assert samePage(original, published, PageIndex(17)) and samePage(original, published, PageIndex(18))
+  let partial = pageImage(published, PageIndex(17)).value
+  let zero = pageImage(published, PageIndex(18)).value
+  for offset in 0..<4096:
+    # The unchanged partial constructor keeps its zero suffix, and the absent prefix stays wholly zero.
+    assert partial.bytes[offset] == (if offset < 513: byteAt(4096+offset) else: 0'u8)
+    assert zero.bytes[offset] == 0
+  assert not memoryPageIsKnownZero(original, MemoryPageSlot(0), description).value
+  assert memoryPageIsKnownZero(original, MemoryPageSlot(2),
+    PageDescription(index: PageIndex(18), access: PageAccess.ReadWrite)).value
+
+fullPrefixCycle()
 snapshotCycle()
 captureCycle()
 observationCycle()
@@ -365,6 +432,7 @@ replacementCycle()
 replacementWriterCycle()
 let before = getOccupiedMem()
 for cycle in 0..<1000:
+  fullPrefixCycle() # All base/override owners and predecessor epochs must retire together.
   snapshotCycle() # Private chunk/header owners and every retained generation must retire without cycles.
   captureCycle()
   observationCycle()

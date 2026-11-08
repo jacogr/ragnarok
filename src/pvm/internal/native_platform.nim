@@ -108,6 +108,9 @@ proc lowerNative*(span: NativeSpan): NativeImage =
       if loop.kind == NativeKind.ClosedRegisterLoop:
         image = encodeX86Loop(span, loopControl(loop))
       else:
+        # ARM/x86 gap: ARM's ArmBlock keeps guest lanes resident across this pure span;
+        # this x86 path still uses canonical array access per operation. Revisit residency
+        # here while retaining the common opcode subset and exact source accounting.
         var body = default(X86Block)
         for index in 0..<span.len:
           let op = span.operation(index)

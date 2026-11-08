@@ -980,7 +980,7 @@ when NativeCheckedReadEnabled:
       span.body.words.add(0x54000088'u32) # B.HI next_descriptor (offset exceeds the last load).
       span.body.words.add(0xf9400222'u32 or ((descriptor+2) shl 10)) # LDR X2,[X17,#data].
       span.body.words.add(armReadEncoding(opcode) or (1'u32 shl 16) or (2'u32 shl 5) or
-        destination) # LDRB Wd / LDRSW Xd / LDR Xd, [X2,X1].
+        destination) # Unsigned loads clear upper bits; signed loads extend into the full Xd.
       accepted[region] = span.body.words.len
       span.body.words.add(0x14000000'u32) # B next_operation (patched below).
     armReadRefusal(span, 0x14000000'u32, false) # B refuse (skip the commit epilogue).

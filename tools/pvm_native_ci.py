@@ -69,6 +69,7 @@ def host_identity():
 
 
 RESIDENT_SUITES = ('pvm_fresh_resident', 'pvm_resident_bytes')
+SCALAR_SUITES = ('pvm_accumulation_scalar_host', 'pvm_scalar_host')
 
 
 def resident_source_paths():
@@ -83,8 +84,20 @@ def resident_source_paths():
     return paths
 
 
+def scalar_source_paths():
+    """Bind both registered scalar mains, full output/profile contracts and their actual local support."""
+    paths = [ROOT/'tests/support/arc_evidence.nim',
+             ROOT/'tests/support/pvm_accumulation_context.nim',
+             ROOT/'tests/support/pvm_accumulation_program.nim']
+    for suite in SCALAR_SUITES:
+        source = unit_source(suite)
+        paths.extend((source, source.with_suffix('.output'),
+                      ROOT/'tools/native_requirements'/NATIVE_REQUIREMENTS[suite]['directory']/(suite+'.json')))
+    return paths
+
+
 def qualify_policy(checks, compiler, shared_refusal=False):
-    """Require registered lease/resident policy checks and retain fresh resident ARC proof in this artifact."""
+    """Require registered policy/scalar checks and retain their source-bound fresh ARC contracts."""
     for suite in RESIDENT_SUITES:
         # Presence selects compatibility even for '=0' or '=false'; benign profile additions remain valid.
         profile = NATIVE_REQUIREMENTS[suite]
@@ -93,15 +106,17 @@ def qualify_policy(checks, compiler, shared_refusal=False):
         if 'pvmResidentWitness' not in keys or keys & compatibility:
             raise ValueError('Resident qualification registration changed: '+suite)
     identities = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                  for path in resident_source_paths()}
+                  for path in resident_source_paths()+scalar_source_paths()}
     rows = []
-    suites = ('pvm_memory_reuse', 'pvm_runtime_policy', *RESIDENT_SUITES)
+    suites = ('pvm_memory_reuse', 'pvm_runtime_policy', *RESIDENT_SUITES, *SCALAR_SUITES)
     if not shared_refusal:
         # Unsupported hosts retain the registered fallback check; a real selected refusal replaces it.
         suites += ('pvm_runtime_policy_refused',)
     for suite in suites:
         resident = suite in RESIDENT_SUITES
-        if resident:
+        bound = resident or suite in SCALAR_SUITES
+        retain_arc = resident or suite == 'pvm_scalar_host'
+        if retain_arc:
             # Retire only this suite's prior original and retained ARC file before the maintained launcher runs.
             original = unit_evidence_directory(compiler)/(suite+'.json')
             retained = checks.folder/(suite+'.json')
@@ -110,20 +125,22 @@ def qualify_policy(checks, compiler, shared_refusal=False):
         checked = checks.command([sys.executable, ROOT/'tools/native_tests.py', '--suite', suite],
                                  suite, timeout=900)
         row = dict(suite=suite, run=checked)
-        if resident and original.is_file():
+        if retain_arc and original.is_file():
             # The launcher can reject fresh ARC itself; retain its raw first failure before checking exit.
             retained.write_bytes(original.read_bytes())
         if checked['exit_code']:
             raise RuntimeError('PVM memory/policy qualification failed: '+checked['log'])
-        if resident:
+        if retain_arc:
             # Top-level JSON follows the existing artifact glob; a green child still requires fresh evidence.
             proof = unit_evidence(compiler, suite, checks.folder)
+            row.update(arc=proof, arc_evidence=str(retained),
+                arc_evidence_sha256=hashlib.sha256(retained.read_bytes()).hexdigest())
+        if bound:
+            # Actual state scalar execution owns its registered observer preparation, without an invented ARC record.
             if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != digest
                    for path, digest in identities.items()):
-                raise ValueError('Resident qualification source changed')
-            row.update(arc=proof, arc_evidence=str(retained),
-                arc_evidence_sha256=hashlib.sha256(retained.read_bytes()).hexdigest(),
-                registered_defines=NATIVE_REQUIREMENTS[suite]['defines'], sources=identities)
+                raise ValueError('Policy qualification source changed')
+            row.update(registered_defines=NATIVE_REQUIREMENTS[suite]['defines'], sources=identities)
         rows.append(row)
     return rows
 
@@ -215,6 +232,81 @@ def qualify_host(checks, compiler, host):
     return qualify(checks, compiler, native=bool(flags))
 
 
+def read_width_source_paths():
+    """Bind both ISA mains, literals, ABI/source checks and their discovered native profiles."""
+    paths = [ROOT/'tests/support/pvm_shared_read_widths.nim',
+             ROOT/'tools/pvm_native_ci.py']
+    for name in ('native_read_body', 'handler_read_body', 'read_admission_probe',
+                 'handler_stream', 'handler_trace_source', 'jit_rules', 'native_ir',
+                 'native_pipeline', 'native_platform', 'arm64_jit', 'x86_jit', 'x86_resident_access'):
+        paths.append(ROOT/'src/pvm/internal'/(name+'.nim'))
+    for isa in ('arm', 'x86'):
+        source = ROOT/'tests/unit/codec'/('test_pvm_shared_read_widths_'+isa+'.nim')
+        paths.extend((source, source.with_suffix('.output'),
+                      ROOT/'tools/native_requirements/codec'/('pvm_shared_read_widths_'+isa+'.json')))
+    return paths
+
+
+def validate_read_width_proof(proof, isa):
+    """Require all four new forms in both actual public native register-bank policies."""
+    if (not isinstance(proof, dict) or set(proof) != {'schema', 'isa', 'rows'} or
+            type(proof['schema']) is not int or proof['schema'] != 1 or proof['isa'] != isa or
+            not isinstance(proof['rows'], list) or len(proof['rows']) != 8):
+        raise ValueError('Missing complete scalar read-width proof')
+    seen = set()
+    for row in proof['rows']:
+        # An unrelated pure/loop image, generic golden or checked fallback cannot satisfy this gate.
+        if (not isinstance(row, dict) or set(row) != {'opcode', 'dirty', 'kind', 'calls', 'operations'} or
+                any(type(row[key]) is not int for key in ('opcode', 'dirty', 'calls', 'operations')) or
+                row['opcode'] not in (125, 126, 127, 128) or row['dirty'] not in (3, 7) or
+                row['kind'] != 'CheckedReadBody' or row['calls'] != 40000 or
+                row['operations'] != row['dirty']*40000 or (row['opcode'], row['dirty']) in seen):
+            raise ValueError('Invalid scalar read-width native activity')
+        seen.add((row['opcode'], row['dirty']))
+    if seen != {(opcode, dirty) for opcode in (125, 126, 127, 128) for dirty in (3, 7)}:
+        raise ValueError('Incomplete scalar read-width coverage')
+    return proof
+
+
+def qualify_read_widths(checks, compiler, host):
+    """Run the matching registered public-width witness and require fresh per-form native evidence."""
+    production = native_defines(host['system'], host['machine'])
+    if not production:
+        # Unsupported hosts remain explicit fallback; no public-native receipt is synthesized.
+        return dict(status='unavailable', production_defines=[])
+    isa = architecture(host['machine'])
+    suite = 'pvm_shared_read_widths_'+('arm' if isa == 'arm64' else 'x86')
+    profile = NATIVE_REQUIREMENTS[suite]
+    if (len(profile['defines']) != 2 or set(profile['defines']) != {*production, 'pvmSharedAsyncWitness'} or
+            profile['libraries'] or profile['observers'] or profile['prepared'] or
+            profile['includes'] != ['pvm_jit']):
+        raise ValueError('Scalar read-width qualification profile changed')
+    identities = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
+                  for path in read_width_source_paths()}
+    source = unit_source(suite)
+    built, binary = checks.build(compiler, source, suite, defines=profile['defines'],
+        cflags=['-I'+str(ROOT/'native/pvm_jit')])
+    if built['exit_code']:
+        raise RuntimeError('Scalar read-width qualification build failed: '+built['log'])
+    directory = checks.folder/(suite+'-evidence')
+    directory.mkdir(parents=True, exist_ok=True)
+    evidence = directory/('pvm_read_widths_'+isa+'.json')
+    evidence.unlink(missing_ok=True)
+    environment = unit_environment(compiler, suite)
+    environment['RAGNAROK_TEST_EVIDENCE'] = str(directory)
+    observed = checks.command([binary], suite+'-run', environment=environment, timeout=60)
+    if observed['exit_code'] or observed['output'] != source.with_suffix('.output').read_text():
+        raise RuntimeError('Scalar read-width qualification execution failed: '+observed['log'])
+    proof = validate_read_width_proof(json.loads(evidence.read_text()), isa)
+    if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != value
+           for path, value in identities.items()):
+        raise ValueError('Scalar read-width qualification source changed')
+    return dict(status='passed', suite=suite, production_defines=production,
+        registered_defines=profile['defines'], build=built, run=observed, sources=identities,
+        binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), evidence=str(evidence),
+        evidence_sha256=hashlib.sha256(evidence.read_bytes()).hexdigest(), native_evidence=proof)
+
+
 def run():
     """Retain incomplete evidence on every failure and require all maintained correctness gates before success."""
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -250,7 +342,8 @@ def run():
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
-        paths += shared_source_paths()+resident_source_paths()
+        paths += (shared_source_paths()+resident_source_paths()+scalar_source_paths()+
+                  read_width_source_paths())
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')
@@ -260,6 +353,9 @@ def run():
         report['shared_qualification'] = qualify_shared(NativeChecks(BUILD), compiler, report['host'])
         if native and report['shared_qualification']['status'] != 'passed':
             raise RuntimeError('Missing matching shared native qualification')
+        report['read_width_qualification'] = qualify_read_widths(NativeChecks(BUILD), compiler, report['host'])
+        if native and report['read_width_qualification']['status'] != 'passed':
+            raise RuntimeError('Missing matching scalar read-width native qualification')
         report['policy_qualification'] = qualify_policy(NativeChecks(BUILD), compiler,
             shared_refusal=report['shared_qualification']['status'] == 'passed')
         report['policies'] = dict(reference='polkavm-interpreted', independent=['interpreted','jit'],

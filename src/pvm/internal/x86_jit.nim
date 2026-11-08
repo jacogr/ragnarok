@@ -473,6 +473,9 @@ proc x86LoopEdge(fragment: var X86Block, fixes: var seq[X86LoopFixup],
 
 proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
   ## Lower the shared actions with canonical scalar loads/stores and SysV caller-saved lanes.
+  # ARM/x86 gap: encodeArmLoop retains guest lanes across loop iterations; this emitter
+  # accesses their array for each operation. Revisit loop residency while preserving the
+  # shared LoopControl guard, debit, continuation and final register-publication ordering.
   let loop = span.loopInfo
   let immediateWord = uint32(loop.rightImmediate and 0xffffffff'u64)
   if loop.rightKind == NativeLoopRightKind.Immediate and
@@ -789,9 +792,13 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           labels[int(accepted)] = code.bytes.len
           case op.opcode
           of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
+          of 125: put(code, [0x48'u8, 0x0f, 0xbe, 0x04, 0x01]) # MOVSX RAX,byte [RCX+RAX].
+          of 126: put(code, [0x0f'u8, 0xb7, 0x04, 0x01]) # MOVZX EAX,word [RCX+RAX] clears upper32.
+          of 127: put(code, [0x48'u8, 0x0f, 0xbf, 0x04, 0x01]) # MOVSX RAX,word [RCX+RAX].
+          of 128: put(code, [0x8b'u8, 0x04, 0x01]) # MOV EAX,dword [RCX+RAX] clears upper32.
           of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
           of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
-          else: assert false # The common certificate admits only the three explicit load forms.
+          else: assert false # The common certificate admits only these seven relative load forms.
           writeAccess(code, access, op.slots.aIndex)
 
     proc sealCheckedRead(code: var X86Block, fixes: seq[X86CycleFixup],
@@ -890,6 +897,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
       assert body.complete and sizeof(RegisterFile) == 104
+      # ARM/x86 allocation gap: this bank selects dirty lanes only; read-only live-ins
+      # reload canonical slots. Above six dirty lanes we copy all thirteen slots to the stack.
+      # ARM retains live-ins and writes in ArmReadSpan's bank. Revisit live-in allocation and
+      # sparse/hybrid staging, preserving delayed publication and unchanged-register refusal.
+      # Both x86 choices execute native read code.
       let dirty = readBodyDirty(body)
       var count = 0
       for slot in 0..12:

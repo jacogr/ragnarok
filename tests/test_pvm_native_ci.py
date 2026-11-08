@@ -85,7 +85,7 @@ class NativeHostTests(unittest.TestCase):
 
 
 class PolicyQualificationTests(unittest.TestCase):
-    """Exercise resident qualification and its retained evidence with inert registered-suite outcomes."""
+    """Exercise registered resident/scalar qualification and retained evidence with inert outcomes."""
 
     def setUp(self):
         """Create independent source/header/profile contracts; no compiler or executable is invoked."""
@@ -103,17 +103,28 @@ class PolicyQualificationTests(unittest.TestCase):
         self.profiles = {suite: dict(directory='codec', libraries=[], includes=[], observers=[],
             defines=['pvmResidentWitness'], prepared=False)
             for suite in ('pvm_fresh_resident', 'pvm_resident_bytes')}
+        self.profiles.update(
+            pvm_accumulation_scalar_host=dict(directory='state', libraries=['observer'],
+                includes=['crypto'], observers=[], defines=[], prepared=False),
+            pvm_scalar_host=dict(directory='codec', libraries=[], includes=[], observers=[],
+                defines=[], prepared=False))
+        self.arc_suites = {'pvm_fresh_resident', 'pvm_resident_bytes', 'pvm_scalar_host'}
         self.inputs = ['src/pvm/internal/resident_bytes.nim',
             'src/pvm/internal/resident_capture.nim', 'src/pvm/internal/resident_os.h',
-            'tests/support/arc_evidence.nim']
-        for suite in self.profiles:
-            self.inputs.extend(('tests/unit/codec/test_'+suite+'.nim',
-                'tests/unit/codec/test_'+suite+'.output',
-                'tools/native_requirements/codec/'+suite+'.json'))
+            'tests/support/arc_evidence.nim', 'tests/support/pvm_accumulation_context.nim',
+            'tests/support/pvm_accumulation_program.nim']
+        for suite, profile in self.profiles.items():
+            directory = profile['directory']
+            self.inputs.extend(('tests/unit/'+directory+'/test_'+suite+'.nim',
+                'tests/unit/'+directory+'/test_'+suite+'.output',
+                'tools/native_requirements/'+directory+'/'+suite+'.json'))
         for relative in self.inputs:
             target = self.root/relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text('independent qualification input: '+relative)
+        for suite, profile in self.profiles.items():
+            (self.root/'tools/native_requirements'/profile['directory']/(suite+'.json')).write_text(
+                json.dumps(profile))
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.stack.enter_context(patch.object(ci, 'ROOT', self.root))
@@ -131,20 +142,21 @@ class PolicyQualificationTests(unittest.TestCase):
         """Only a newly emitted numeric observation can stand in for successful maintained execution."""
         suite = arguments[arguments.index('--suite')+1]
         if suite in self.profiles:
-            if self.emit:
+            if self.emit and suite in self.arc_suites:
                 (self.live/(suite+'.json')).write_text(json.dumps(self.proof))
             if self.tamper:
                 (self.root/self.tamper).write_text('changed during qualification')
         return dict(exit_code=0, log='policy.log')
 
-    def test_registered_resident_units_and_fresh_arc_are_required(self):
+    def test_registered_resident_scalar_units_and_fresh_arc_are_required(self):
         """Both shared-refusal policies run each new unit once and retain ARC after original files disappear."""
         for shared in (False, True):
             with self.subTest(shared=shared):
                 self.checks.command.reset_mock()
                 rows = ci.qualify_policy(self.checks, self.compiler, shared_refusal=shared)
                 expected = ['pvm_memory_reuse', 'pvm_runtime_policy',
-                    'pvm_fresh_resident', 'pvm_resident_bytes']
+                    'pvm_fresh_resident', 'pvm_resident_bytes',
+                    'pvm_accumulation_scalar_host', 'pvm_scalar_host']
                 if not shared:
                     expected.append('pvm_runtime_policy_refused')
                 self.assertCountEqual([row['suite'] for row in rows], expected)
@@ -153,6 +165,10 @@ class PolicyQualificationTests(unittest.TestCase):
                 self.assertCountEqual(selected, expected)
                 for row in rows:
                     if row['suite'] in self.profiles:
+                        for relative in self.inputs:
+                            self.assertEqual(row['sources'][relative],
+                                ci.hashlib.sha256((self.root/relative).read_bytes()).hexdigest())
+                    if row['suite'] in self.arc_suites:
                         (self.live/(row['suite']+'.json')).unlink()
                         retained = Path(row['arc_evidence'])
                         self.assertEqual(retained.parent, self.folder)
@@ -160,6 +176,9 @@ class PolicyQualificationTests(unittest.TestCase):
                         self.assertEqual(row['arc'], self.proof)
                         self.assertEqual(row['arc_evidence_sha256'], ci.hashlib.sha256(retained.read_bytes()).hexdigest())
                         self.assertIn('src/pvm/internal/resident_os.h', row['sources'])
+                    if row['suite'] == 'pvm_accumulation_scalar_host':
+                        self.assertNotIn('arc', row)
+                        self.assertNotIn('arc_evidence', row)
 
     def test_failed_suite_prevents_qualification(self):
         """A failed maintained unit cannot produce a green policy qualification."""
@@ -177,21 +196,65 @@ class PolicyQualificationTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             ci.qualify_policy(self.checks, self.compiler)
 
-    def test_failed_resident_suite_retains_fresh_invalid_arc(self):
+    def test_failed_arc_suite_retains_fresh_invalid_arc(self):
         """The maintained launcher can reject ARC itself; its nonzero exit must not discard raw proof."""
         invalid = b'{invalid fresh ARC observation'
 
-        def rejected(arguments, name, **options):
-            suite = arguments[arguments.index('--suite')+1]
-            if suite == 'pvm_fresh_resident':
-                (self.live/(suite+'.json')).write_bytes(invalid)
-                return dict(exit_code=1, log='resident-arc-failure.log')
-            return dict(exit_code=0, log='policy.log')
+        for target in ('pvm_fresh_resident', 'pvm_scalar_host'):
+            with self.subTest(suite=target):
+                def rejected(arguments, name, **options):
+                    suite = arguments[arguments.index('--suite')+1]
+                    if suite == target:
+                        (self.live/(suite+'.json')).write_bytes(invalid)
+                        return dict(exit_code=1, log='arc-failure.log')
+                    return self.suite_result(arguments, name, **options)
 
-        self.checks.command.side_effect = rejected
-        with self.assertRaisesRegex(RuntimeError, 'resident-arc-failure.log'):
+                self.checks.command.side_effect = rejected
+                with self.assertRaisesRegex(RuntimeError, 'arc-failure.log'):
+                    ci.qualify_policy(self.checks, self.compiler)
+                self.assertEqual((self.folder/(target+'.json')).read_bytes(), invalid)
+
+    def test_either_scalar_child_failure_prevents_qualification(self):
+        """The actual product main and mixed scalar main must each succeed through the registered launcher."""
+        for target in ('pvm_accumulation_scalar_host', 'pvm_scalar_host'):
+            with self.subTest(suite=target):
+                def rejected(arguments, name, **options):
+                    suite = arguments[arguments.index('--suite')+1]
+                    if suite == target:
+                        return dict(exit_code=1, log=target+'-failure.log')
+                    return self.suite_result(arguments, name, **options)
+
+                self.checks.command.side_effect = rejected
+                with self.assertRaisesRegex(RuntimeError, target+'-failure.log'):
+                    ci.qualify_policy(self.checks, self.compiler)
+
+    def test_scalar_codec_zero_exit_cannot_reuse_stale_arc(self):
+        """Fresh resident proof cannot excuse an old mixed-codec observation after a green child."""
+        for directory in (self.live, self.folder):
+            (directory/'pvm_scalar_host.json').write_text(json.dumps(self.proof))
+
+        def omitted(arguments, name, **options):
+            suite = arguments[arguments.index('--suite')+1]
+            if suite == 'pvm_scalar_host':
+                return dict(exit_code=0, log='missing-scalar-arc.log')
+            return self.suite_result(arguments, name, **options)
+
+        self.checks.command.side_effect = omitted
+        with self.assertRaises(FileNotFoundError) as error:
             ci.qualify_policy(self.checks, self.compiler)
-        self.assertEqual((self.folder/'pvm_fresh_resident.json').read_bytes(), invalid)
+        self.assertIn('pvm_scalar_host.json', str(error.exception))
+
+    def test_state_scalar_support_cannot_change_during_its_run(self):
+        """The product fixture's support bytes are checked even though it declares no ARC observation."""
+        def changed(arguments, name, **options):
+            suite = arguments[arguments.index('--suite')+1]
+            if suite == 'pvm_accumulation_scalar_host':
+                self.tamper = 'tests/support/pvm_accumulation_program.nim'
+            return self.suite_result(arguments, name, **options)
+
+        self.checks.command.side_effect = changed
+        with self.assertRaisesRegex(ValueError, 'source changed'):
+            ci.qualify_policy(self.checks, self.compiler)
 
     def test_zero_exit_cannot_hide_arc_growth(self):
         """The shared numeric validator rejects fresh growth even if the child claimed success."""
@@ -246,6 +309,7 @@ class PolicyQualificationTests(unittest.TestCase):
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['passed']), \
                 patch.object(ci, 'qualify_shared', return_value=dict(status='passed')), \
+                patch.object(ci, 'qualify_read_widths', return_value=dict(status='passed')), \
                 patch.object(ci, 'qualify_policy', return_value=['passed']), \
                 patch('builtins.print'):
             ci.run()
@@ -439,6 +503,7 @@ class SharedQualificationTests(unittest.TestCase):
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['legacy passed']), \
                 patch.object(ci, 'resident_source_paths', return_value=[]), \
+                patch.object(ci, 'scalar_source_paths', return_value=[]), \
                 patch.object(ci, 'qualify_shared', side_effect=RuntimeError('common failed')), \
                 patch.object(ci, 'qualify_policy') as policies:
             with self.assertRaisesRegex(RuntimeError, 'common failed'):
@@ -463,6 +528,7 @@ class SharedQualificationTests(unittest.TestCase):
                 patch.object(ci.subprocess, 'check_output', return_value='a'*40), \
                 patch.object(ci, 'qualify_host', return_value=['legacy passed']), \
                 patch.object(ci, 'resident_source_paths', return_value=[]), \
+                patch.object(ci, 'scalar_source_paths', return_value=[]), \
                 patch.object(ci, 'qualify_shared', return_value=dict(status='unavailable')), \
                 patch.object(ci, 'qualify_policy') as policies:
             with self.assertRaisesRegex(RuntimeError, 'matching shared'):
@@ -476,7 +542,9 @@ class SharedQualificationTests(unittest.TestCase):
         checks = Mock()
         checks.command.return_value = dict(exit_code=0, log='policy.log')
         with patch.object(ci, 'RESIDENT_SUITES', ()), \
-                patch.object(ci, 'resident_source_paths', return_value=[]):
+                patch.object(ci, 'SCALAR_SUITES', ()), \
+                patch.object(ci, 'resident_source_paths', return_value=[]), \
+                patch.object(ci, 'scalar_source_paths', return_value=[]):
             rows = ci.qualify_policy(checks, Path('inert-compiler'), shared_refusal=True)
         self.assertEqual([row['suite'] for row in rows], ['pvm_memory_reuse', 'pvm_runtime_policy'])
 
@@ -945,6 +1013,81 @@ class QualificationTests(unittest.TestCase):
         refused = self.witness_receipt(False, refused=True)
         with self.assertRaisesRegex(ValueError,'word-group'):
             self.check(True,refused_receipt=refused.replace('ARM_WORD_GROUPS,0\n','ARM_WORD_GROUPS,5\n'))
+
+
+class ReadWidthQualificationTests(unittest.TestCase):
+    """New opcode coverage cannot be substituted by a generic golden, stale file or foreign image."""
+
+    def proof(self, isa='arm64'):
+        """Construct an independent transcript for the two public bank histories of each new form."""
+        return dict(schema=1, isa=isa, rows=[dict(opcode=opcode, dirty=dirty,
+            kind='CheckedReadBody', calls=40000, operations=dirty*40000)
+            for opcode in (125, 126, 127, 128) for dirty in (3, 7)])
+
+    def test_complete_native_activity_and_all_incomplete_substitutions(self):
+        """Both ISAs need eight exact rows; missing/duplicate/foreign/zero/boolean values fail."""
+        for isa in ('arm64', 'x86_64'):
+            self.assertEqual(ci.validate_read_width_proof(self.proof(isa), isa), self.proof(isa))
+        negatives = []
+        missing = self.proof()
+        missing['rows'].pop()
+        negatives.append(missing)
+        duplicate = self.proof()
+        duplicate['rows'][-1] = dict(duplicate['rows'][0])
+        negatives.append(duplicate)
+        negatives.append(self.proof('x86_64'))
+        for key, value in (('kind', 'PurePrefix'), ('kind', 'ClosedRegisterLoop'),
+                           ('calls', 0), ('operations', 0), ('operations', 40001),
+                           ('dirty', 6), ('opcode', 124), ('calls', True)):
+            # Mutate one execution fact at a time, retaining every other well-formed row.
+            proof = self.proof()
+            proof['rows'][0][key] = value
+            negatives.append(proof)
+        for proof in negatives:
+            with self.subTest(proof=proof), self.assertRaises(ValueError):
+                ci.validate_read_width_proof(proof, 'arm64')
+
+    def test_fresh_execution_and_sealed_source_are_required(self):
+        """Exercise the real gate with inert tools; stale proof, failed run and changed source fail."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root/'test_width.nim'
+            source.write_text('inert source')
+            source.with_suffix('.output').write_text('width passed\n')
+            profile = dict(defines=['pvmArm64Jit', 'pvmSharedAsyncWitness'], includes=['pvm_jit'],
+                           libraries=[], observers=[], prepared=False)
+            checks = Mock(folder=root/'checks')
+            binary = root/'inert-image'
+            binary.write_bytes(b'inert image')
+            checks.build.return_value = (dict(exit_code=0, log='build.log'), binary)
+            failure = None
+
+            def command(arguments, name, environment, timeout):
+                """Only the current successful process writes its proof, like the real native witness."""
+                path = Path(environment['RAGNAROK_TEST_EVIDENCE'])/'pvm_read_widths_arm64.json'
+                if failure not in ('missing', 'exit'):
+                    # The real decoder must reject truncated evidence even after a green process exit.
+                    encoded = json.dumps(self.proof())
+                    path.write_text(encoded[:-1] if failure == 'truncated' else encoded)
+                if failure == 'source':
+                    source.write_text('changed source')
+                return dict(exit_code=1 if failure == 'exit' else 0,
+                            output='width passed\n', log=name+'.log')
+
+            checks.command.side_effect = command
+            with patch.object(ci, 'ROOT', root), \
+                    patch.object(ci, 'NATIVE_REQUIREMENTS', {'pvm_shared_read_widths_arm': profile}), \
+                    patch.object(ci, 'read_width_source_paths', return_value=[source]), \
+                    patch.object(ci, 'unit_source', return_value=source), \
+                    patch.object(ci, 'unit_environment', return_value={}):
+                result = ci.qualify_read_widths(checks, 'compiler', dict(system='Linux', machine='aarch64'))
+                self.assertEqual(result['status'], 'passed')
+                for failure, error in (('missing', FileNotFoundError), ('exit', RuntimeError),
+                                       ('truncated', json.JSONDecodeError),
+                                       ('source', ValueError)):
+                    # Leave the preceding green proof in place; the gate must retire it before running.
+                    with self.subTest(failure=failure), self.assertRaises(error):
+                        ci.qualify_read_widths(checks, 'compiler', dict(system='Linux', machine='aarch64'))
 
 
 if __name__=='__main__':

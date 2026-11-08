@@ -9,6 +9,7 @@
 
 import std/[strutils, oserrors, nativesocket]
 import std/posix/posix
+import ../lib/socket_io
 import ./wire
 import ../lib/logging
 
@@ -42,52 +43,20 @@ type
     nextEvent, lost: uint64
     firstLost, lastLost: Timestamp
 
-proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
-  ## OS interfaces borrow stack addresses and buffers synchronously, including failed calls.
-
-proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
-    header: "<sys/socket.h>".}
-  ## Connect returns immediately because the descriptor is made nonblocking before use.
-
 proc poll(entries: ptr PollEntry, count: culong, timeout: cint): cint {.importc: "poll",
     header: "<poll.h>".}
   ## Readiness never waits and reports connection completion through SO_ERROR below.
 
-proc sendBytes(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "send",
-    header: "<sys/socket.h>".}
-  ## Send copies at most the fixed queued frame prefix into the kernel.
-
 proc getOption(fd, level, option: cint, value: pointer,
     size: ptr SockLen): cint {.importc: "getsockopt", header: "<sys/socket.h>".}
   ## Socket option calls expose only fixed scalar option storage.
-
-proc setOption(fd, level, option: cint, value: pointer,
-    size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-  ## Disable SIGPIPE per socket on BSD so a dead collector cannot terminate the peer.
-
-proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
-    header: "<arpa/inet.h>".}
-  ## Parse numeric IP literals only; no DNS work occurs on the peer dispatcher.
-
-proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
-  ## Ports are converted independently of host byte order.
 
 let
   Writable {.importc: "POLLOUT", header: "<poll.h>".}: cshort
   PollError {.importc: "POLLERR", header: "<poll.h>".}: cshort
   Hangup {.importc: "POLLHUP", header: "<poll.h>".}: cshort
   Invalid {.importc: "POLLNVAL", header: "<poll.h>".}: cshort
-  GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
-  SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
-  CloseExec {.importc: "FD_CLOEXEC", header: "<fcntl.h>".}: cint
-  SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
   SocketError {.importc: "SO_ERROR", header: "<sys/socket.h>".}: cint
-when defined(macosx):
-  # BSD uses a socket option instead of a per-send flag.
-  let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint
-else:
-  # Linux suppresses SIGPIPE on each send without changing process-wide signal handlers.
-  let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint
 
 proc `=copy`*(destination: var Client, source: Client) {.error: "Telemetry Client owns one descriptor".}
   ## Native ownership may move but must never copy a live socket descriptor.
@@ -265,19 +234,10 @@ proc begin(client: var Client, now: int64, timestamp: Timestamp) =
     client.failed(now)
     return
   client.opened = true
-  let flags = fcntl(client.fd, F_GETFL, 0)
-  let descriptorFlags = fcntl(client.fd, GetFd, 0)
-  # Reject partial setup before connect, preserving nonblocking and inheritance guarantees.
-  if flags < 0 or descriptorFlags < 0 or fcntl(client.fd, F_SETFL, flags or O_NONBLOCK) < 0 or
-      fcntl(client.fd, SetFd, descriptorFlags or CloseExec) < 0:
+  # Failed shared descriptor setup retains telemetry's existing retry and cleanup policy.
+  if not nonblocking(client.fd):
     client.failed(now)
     return
-  when defined(macosx):
-    var enabled = 1.cint
-    # Failure to suppress SIGPIPE is a telemetry setup failure, not a process-wide policy change.
-    if setOption(client.fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
-      client.failed(now)
-      return
   var connected = -1.cint
   if client.ipv6:
     # The configured family and exact sockaddr extent must agree on every reconnect.
@@ -338,24 +298,13 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
     client.connecting = false
     log(client.logWriter, LogTarget.Telemetry, LogLevel.Info, "Connected to telemetry collector")
   if client.length == 0: return # Connected idle clients have nothing to send.
-  var flags = 0.cint
-  when not defined(macosx):
-    flags = NoSignal # Linux suppression is per syscall.
-  let sent = sendBytes(client.fd, addr client.buffer[client.offset], csize_t(client.length -
-      client.offset), flags)
-  if sent > 0:
-    # Retain unsent suffixes exactly; no frame can interleave with a partial write.
-    client.offset += sent
-    if client.offset == client.length:
-      client.length = 0
-      client.offset = 0
-  elif sent == 0:
-    client.failed(now) # A zero-byte send cannot make progress.
-  else:
-    let error = osLastError()
-    # Backpressure and signals defer the same suffix; fatal errors start a fresh connection.
-    if error != OSErrorCode(EAGAIN) and error != OSErrorCode(EWOULDBLOCK) and error != OSErrorCode(EINTR):
-      client.failed(now)
+  let written = writePending(client.fd, addr client.buffer[0], client.length, client.offset)
+  if written == WriteComplete:
+    # Retire the fixed frame only after its complete suffix entered the kernel.
+    client.length = 0
+    client.offset = 0
+  elif written == WriteFailed:
+    client.failed(now) # Permanent failure starts a fresh connection on the existing retry schedule.
 
 proc omit*(client: var Client, timestamp: Timestamp) =
   ## Account for a native observation that lacked bounded tracking space or usable metadata.

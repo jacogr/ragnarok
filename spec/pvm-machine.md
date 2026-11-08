@@ -175,6 +175,50 @@ are unchanged. `captureMemory` copies all input bytes into private chunks and
 view is exported. Chunk geometry is an implementation detail, not a protocol page
 size or a new caller resource policy. Owners remain an acyclic ARC graph.
 
+### Seven-chunk immutable backing: local qualification
+
+The local implementation captures unknown full `PageImage` inputs and genuine complete
+4096-byte initialization prefixes with one private 3584-byte immutable backing and an ordinary
+512-byte tail owner. Eight optional chunk overrides preserve the existing COW granularity; the
+eighth always owns a chunk. A missing override in the first seven positions selects its backing
+span. Zero and partial initialization pages retain their shared-zero/prefix construction unchanged.
+
+Private readers take a byte address from a real bounded owner array while retaining its page;
+copying callers also prove the complete span stays within that 512-byte chunk. Borrowing introduces
+no owning source-byte-array temporary, stored borrow or public pointer API. Bulk operations resolve
+once per chunk; existing scalar boundary fallbacks keep their byte-wise semantics. Writers still
+clone every touched chunk after complete preflight and use exact epoch masks as the privacy proof.
+A backing may be released only when all seven overrides own complete bytes. No predecessor chain
+or caller storage is retained. Page identity, snapshot deltas and permission/provenance rules stay
+independent of backing identity; unknown literal zeros never gain construction provenance.
+
+Resident publication compares and copies effective chunks with its existing sparse COW policy;
+dense full-page backing selection there is deferred. Page/byte admission, logical scratch charges
+and normal allocator/cap dispatch are unchanged. Scoped ARC/Clang Mac ARM64 semantic checks and both
+ThinLTO builds pass. Actual C/ARC inspection confirms retained heap-field byte addresses,
+complete fill before page publication, copy before old-owner release, nullable reference moves and
+seven-override-only backing release. The backing's target request is 3592 bytes, rounded to 3600
+in the pinned default allocator's small-cell path; these are layout facts, not measured occupancy.
+
+Generated C still contains zero-default 512/3584-byte array temporaries. Inspected linked ThinLTO
+helpers fold those initializers to heap zeroing and direct source-to-heap copies: no payload-sized
+stack buffers occur in those inspected unit helpers or production `captureMemory`. Heap zeroing
+remains. This does not establish stack-buffer absence throughout the linked image or other profiles.
+
+The exact sealed ThinLTO `pvm_memory_chunks` image passes its new mixed full/partial/zero lifecycle,
+all-seven replacement, retained writer epochs, resident publication and existing 1,000-cycle ARC
+closure. Registered checked-release consumers also pass: `pvm_memory_directory`, `pvm_machine`,
+`pvm_scalar_writer`, `pvm_scalar_windows`, `pvm_host_memory`, `pvm_initialization`, `pvm_artifact`,
+`pvm_memory_reuse`, `pvm_stream_regions_and_host`, `pvm_fresh_resident`, `pvm_scalar_host` and
+`pvm_shared_async_arm`. Ten fresh release workloads each retain their own equal before/after
+allocation counts across 1,000 cycles. The fresh shared ARM receipt confirms actual native
+publication and execution, rather than accepting the fallback golden alone.
+
+Linux/x86 execution, capped/custom allocator runtime, forced OOM and performance remain unqualified;
+no undeclared capped variant was added. The canonical workload image was built but never executed.
+Three constructor objects instead of nine do not establish a speed or memory benefit. Publication
+and full performance qualification remain separate from this bounded local correctness evidence.
+
 Sorted page references now use immutable 64-entry blocks. Sparse scalar, host and
 checkpoint updates share untouched blocks; complete mapping/access validation still
 precedes successor publication. See the [snapshot directory design and measurements](pvm-snapshot-directory.md)

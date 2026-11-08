@@ -71,10 +71,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - &ubuntu-x86-version ubuntu-26.04
-        family: ${{ fromJSON(inputs.suite == 'tooling' && '[{"name":"Tooling","group":"python","platform":""}]' || (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","platform":""}]') }}
-    runs-on: ${{ matrix.family.os || matrix.os }}
+        runner:
+          - x86: &ubuntu-x86-version ubuntu-26.04
+            arm: &ubuntu-arm-version ubuntu-26.04-arm
+        family: >-
+          ${{ fromJSON(
+            inputs.suite == 'tooling' && '[{"name":"Tooling","group":"python","platform":""}]'
+            || (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]'
+            || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
+            || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]'
+            || inputs.suite == 'build' && '[{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
+            || '[{"name":"Smoke","group":"smoke","platform":""}]'
+          ) }}
+    runs-on: ${{ matrix.family.os || (matrix.family.platform == 'linux-arm64' && matrix.runner.arm || matrix.runner.x86) }}
     steps:
       - &checkout
         name: Checkout
@@ -86,6 +95,111 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      # Cache only public download inputs; normal Make setup still verifies and prepares them.
+      - &tool-download-cache
+        name: Cache pinned compiler archives
+        if: ${{ matrix.family.group != 'docker' }}
+        continue-on-error: true
+        uses: &cache-action actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        env: &cache-timeout
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
+        with:
+          path: |
+            build-tools/toolchain/*.archive
+          key: compiler-archives-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('spec/toolchain.json') }}
+      - &model-download-cache
+        name: Cache pinned model-tool sources
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          path: build-tools/model-tools/*.archive
+          key: model-archives-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('spec/model-tools.json') }}
+      - &cargo-download-cache
+        name: Cache Cargo dependency downloads
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          # Do not cache Cargo credentials/configuration, installed executables or target outputs.
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/**/Cargo.lock', 'spec/bandersnatch-pins.json', 'spec/polkavm-pins.json', '.gitmodules') }}
+      - &built-cache-host
+        name: Identify built dependency environment
+        id: built_cache_host
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        run: |
+          python3 - <<'PYCODE' >> "$GITHUB_OUTPUT"
+          import hashlib, json, os, platform, shutil, subprocess
+          # Generated build metadata embeds workspace/tool paths; never restore across host images.
+          tools = {}
+          for name in ('clang', 'clang++', 'gcc', 'cmake'):
+              path = shutil.which(name)
+              tools[name] = [path, subprocess.check_output([path, '--version'], text=True)] if path else None
+          flags = {name: os.environ.get(name) for name in (
+              'CC', 'CXX', 'AR', 'CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'LDFLAGS', 'RUSTFLAGS',
+              'RUSTC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER', 'CARGO_ENCODED_RUSTFLAGS',
+              'CARGO_BUILD_RUSTFLAGS', 'CARGO_BUILD_TARGET', 'RUSTUP_TOOLCHAIN', 'SDKROOT',
+              'MACOSX_DEPLOYMENT_TARGET', 'CMAKE_GENERATOR')}
+          host = [os.environ.get('ImageOS'), os.environ.get('ImageVersion'), os.getcwd(), flags,
+                  platform.system(), platform.machine(), platform.release(), platform.version(), tools]
+          print('key=' + hashlib.sha256(json.dumps(host, sort_keys=True).encode()).hexdigest())
+          PYCODE
+      - &model-built-cache
+        name: Cache built model checker
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          path: |
+            build-tools/model-tools/bin/tlanif
+            build-tools/model-tools/environment.json
+          key: model-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/model-tools.json', 'spec/toolchain.json', 'tools/setup_tlanif.py', 'tools/managed_tools.py') }}
+      - &crypto-built-cache
+        name: Cache built cryptographic dependencies
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          # Rust adapter tests still run, so retain their compiled dependencies and test executables.
+          path: |
+            build-tools/bandersnatch/native-environment.json
+            build-tools/bandersnatch/target/release
+            build-tools/crypto/native-environment.json
+            build-tools/crypto/*.so
+            build-tools/crypto/*.dylib
+          key: crypto-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/bandersnatch-pins.json', 'spec/crypto-pins.json', 'native/bandersnatch/**', 'native/crypto/**', 'tools/build_bandersnatch.py', 'tools/build_crypto.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
+      - &quic-built-cache
+        name: Cache built QUIC dependency
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          # Only the verified ABI and receipt: pristine sources and LSQUIC patch staging stay fresh.
+          path: |
+            build-tools/quic/native-environment.json
+            build-tools/quic/*.so
+            build-tools/quic/*.dylib
+          key: quic-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/quic-proof-pins.json', 'native/quic/**', 'tools/build_quic.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
+      - &polkavm-built-cache
+        name: Cache built optional PolkaVM dependency
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          path: |
+            build-tools/polkavm/native-environment.json
+            build-tools/polkavm/release
+          key: polkavm-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/polkavm-pins.json', 'spec/bandersnatch-pins.json', 'native/polkavm/**', 'tools/build_polkavm.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
       - name: Validate verification inventory
         if: ${{ matrix.family.group != 'smoke' }}
         run: &inventory-run make check-inventory
@@ -114,7 +228,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-python-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-python-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -133,7 +247,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-models-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-models-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -155,7 +269,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-guards-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-guards-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -201,19 +315,19 @@ jobs:
         if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-modules-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-modules-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
-      # The image keeps its isolated build and still runs after a native archive failure.
+      # The container owns an independent image build and runtime smoke checks.
       - name: Build and smoke-test Docker image
-        if: ${{ !cancelled() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        if: ${{ !cancelled() && matrix.family.group == 'docker' }}
         run: make check-docker
       - name: Retain Docker build diagnostics
-        if: ${{ always() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        if: ${{ always() && matrix.family.group == 'docker' }}
         uses: *upload-artifact
         with:
           name: docker-${{ github.run_attempt }}
@@ -243,6 +357,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Native unit or corpus tests
@@ -299,6 +421,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Runtime failure and contract tests
@@ -348,6 +478,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: E2E Networking
@@ -435,6 +573,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Compare pinned PolkaVM and native PVM fixtures
@@ -495,7 +641,7 @@ jobs:
         family:
           - name: Linux ARM64
             arch: arm64
-            os: &ubuntu-arm-version ubuntu-26.04-arm
+            os: *ubuntu-arm-version
           - name: Linux x86-64
             arch: x86_64
             os: *ubuntu-x86-version
@@ -507,6 +653,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Install DOOM asset decompressor
         run: |
           sudo apt-get update
@@ -549,6 +703,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Compare validated memory and durable storage workloads
@@ -658,6 +820,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Install pinned asset decompression prerequisite
         run: |
           sudo apt-get update
@@ -685,6 +855,7 @@ jobs:
             build/tests/pvm-performance/*.md
             build/tests/pvm-performance/**/*.log
             build/tests/pvm-native/*.json
+            build/tests/pvm-native/pvm_shared_read_widths_*-evidence/pvm_read_widths_*.json
             build/tests/pvm-native/*.log
             build/tests/native/selected/pvm_memory_reuse.log
             build/tests/native/compiler-*/evidence/pvm_memory_reuse.json
@@ -706,6 +877,14 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Run pinned upstream campaigns and JAM bridge

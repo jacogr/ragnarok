@@ -611,7 +611,7 @@ check-devnet-authoring: build
 
 # Bounded native-host qualification shares the maintained positive, refusal and lifetime gates.
 .PHONY: check-pvm-native
-check-pvm-native: toolchain check-inventory
+check-pvm-native: toolchain bandersnatch-fetch check-inventory
 	$(PYTHON) tools/pvm_native_ci.py
 
 # One maintained current-source performance path; qualification is mandatory before any samples.
@@ -713,3 +713,11 @@ bench-pvm-x86-applications: toolchain sources rust-tools
 .PHONY: profile-pvm-x86-jit
 profile-pvm-x86-jit:
 	$(PYTHON) tools/pvm_x86_jit_profile.py --paired-baseline --include-init --include-minimal
+
+# Consume an explicitly qualified live image; never provision/rebuild a guest to obtain symbols.
+export PVM_COLD_REPORT ?=
+export PVM_COLD_SOURCE_REVISION ?=
+export PVM_COLD_REBUILT_REPORT ?=
+.PHONY: profile-pvm-cold
+profile-pvm-cold:
+	$(PYTHON) tools/pvm_cold_profile.py
