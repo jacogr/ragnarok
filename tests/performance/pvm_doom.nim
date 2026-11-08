@@ -144,7 +144,7 @@ let preparedMode = pricing == "prepared"
 let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
 assert requestedBackend in ["", "jit", "interpreted"]
 if fullInvocation: assert requestedBackend in ["jit", "interpreted"]
-when declared(DefaultPvmBackend):
+when declared(step.DefaultPvmBackend):
   var selectedBackend = DefaultPvmBackend
   if requestedBackend.len > 0:
     assert parsePvmBackend(requestedBackend, selectedBackend)
@@ -197,7 +197,7 @@ var plan = default(GasPlan)
 var prepared = default(PreparedProgram)
 if preparedMode:
   # Canonical owner admission is nested inside the enclosing cold call; stream work stays lazy.
-  let created = when declared(DefaultPvmBackend):
+  let created = when declared(step.DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
     newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)),
         selectedBackend, invocationRuntime)
@@ -296,7 +296,7 @@ for sample in 0..<samples:
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
 
-when declared(DefaultPvmBackend):
+when declared(step.DefaultPvmBackend):
   if requestedBackend.len > 0:
     # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
     assert preparedMode

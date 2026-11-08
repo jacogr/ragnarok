@@ -37,6 +37,8 @@ proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   let owner = cast[ptr Party](user)
   if slot >= 2: owner.invalid = true; return
   let index = int(slot)
+  # Preserve the accepted callback bound on the converted local before bounded peer lookup.
+  assert index >= 0 and index < 2, "accepted callback slot fits the two-peer fixture"
   if event == PeerAccepted:
     let found = owner.transport.peerAt(index)
     if found.error != PeerError.None or owner.known[index]: owner.invalid = true; return

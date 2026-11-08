@@ -124,6 +124,30 @@ func `==`*(left, right: PageIndex): bool {.inline.} =
   ## Compare page ordinals within their nominal domain; other memory indices stay distinct.
   uint32(left) == uint32(right)
 
+func `==`*(left, right: MemoryPageSlot): bool {.inline.} =
+  ## Compare sorted mapping positions without accepting physical page ordinals.
+  uint32(left) == uint32(right)
+
+func `==`*(left, right: PageAddress): bool {.inline.} =
+  ## Compare aligned fault addresses without treating them as page ordinals.
+  uint32(left) == uint32(right)
+
+func `==`*(left, right: PageCount): bool {.inline.} =
+  ## Compare materialized-page counts without accepting page indices or allocation policies.
+  uint32(left) == uint32(right)
+
+func `==`*(left, right: RegisterValue): bool {.inline.} =
+  ## Compare register words without admitting addresses, gas balances or other nominal domains.
+  uint64(left) == uint64(right)
+
+func `==`*(left, right: MachineGas): bool {.inline.} =
+  ## Compare complete gas balances within their unsigned nominal domain.
+  uint64(left) == uint64(right)
+
+func `==`*(left, right: GasDeficit): bool {.inline.} =
+  ## Compare terminal deficit magnitudes without mixing them with spendable gas balances.
+  uint64(left) == uint64(right)
+
 func checkedPageBlock(pages: PageDirectory, index: int): int {.inline.} =
   ## Every lookup retains the original complete sorted-slot bound, including the last partial block.
   assert index >= 0 and index < pages.len
