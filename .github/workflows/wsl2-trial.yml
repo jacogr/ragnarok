@@ -94,9 +94,9 @@ jobs:
           '@
           $scriptPath = Join-Path $env:RUNNER_TEMP 'wsl2-trial.sh'
           [IO.File]::WriteAllText($scriptPath, $script.Replace("`r`n", "`n"), [Text.UTF8Encoding]::new($false))
-          $linuxPath = wsl -d Ubuntu-24.04 -u root -- wslpath -u $scriptPath
+          $linuxPath = wsl -d Ubuntu-24.04 -u root --exec wslpath -u $scriptPath
           if ($LASTEXITCODE -ne 0) { throw 'Cannot translate trial script path' }
-          wsl -d Ubuntu-24.04 -u root -- bash $linuxPath $env:GITHUB_REPOSITORY $env:GITHUB_SHA
+          wsl -d Ubuntu-24.04 -u root --exec bash $linuxPath $env:GITHUB_REPOSITORY $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'WSL build or storage trial failed' }
 
       - name: Collect Linux diagnostics
@@ -107,10 +107,10 @@ jobs:
           New-Item -ItemType Directory -Force $destination | Out-Null
           # The Windows status receipt remains available even if Ubuntu never booted.
           wsl --list --verbose 2>&1 | Out-File (Join-Path $destination 'wsl-status.log')
-          $linuxDestination = wsl -d Ubuntu-24.04 -u root -- wslpath -u $destination
+          $linuxDestination = wsl -d Ubuntu-24.04 -u root --exec wslpath -u $destination
           if ($LASTEXITCODE -ne 0) { throw 'Ubuntu unavailable; see WSL status receipt' }
           # Copy only diagnostics; exclude binaries, dependencies and generated keys.
-          wsl -d Ubuntu-24.04 -u root -- bash -c 'set -euo pipefail; cd /home/trial/ragnarok; for directory in build/ci build/tests/native; do if test -d "$directory"; then find "$directory" -type f \( -name "*.log" -o -name "*.json" \) -print0; fi; done | tar --null -T - -cf - | tar -xf - -C "$1"' trial $linuxDestination
+          wsl -d Ubuntu-24.04 -u root --exec bash -c 'set -euo pipefail; cd /home/trial/ragnarok; for directory in build/ci build/tests/native; do if test -d "$directory"; then find "$directory" -type f \( -name "*.log" -o -name "*.json" \) -print0; fi; done | tar --null -T - -cf - | tar -xf - -C "$1"' trial $linuxDestination
           if ($LASTEXITCODE -ne 0) { throw 'Cannot collect Linux diagnostics' }
 
       - name: Retain trial evidence
