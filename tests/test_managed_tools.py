@@ -73,9 +73,10 @@ class ManagedTools(unittest.TestCase):
                 elif change == 'damage':
                     library.write_bytes(b'tampered library')
                 with self.subTest(change=change), managed_tools.native_cache(
-                        self.destination, [source], commands, [library]):
+                        self.destination, [source], commands, [library]) as reusable:
                     self.assertEqual(object_file.exists(), change == 'reuse')
-                    # The real builders run their checks and build commands even on a cache hit.
+                    self.assertEqual(reusable, change == 'reuse')
+                    # Rust builders retain their tests/builds; C builders can reuse validated output.
                     object_file.write_bytes(b'compiled object')
                     library.write_bytes(b'validated ABI')
 

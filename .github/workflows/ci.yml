@@ -129,6 +129,77 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/**/Cargo.lock', 'spec/bandersnatch-pins.json', 'spec/polkavm-pins.json', '.gitmodules') }}
+      - &built-cache-host
+        name: Identify built dependency environment
+        id: built_cache_host
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        run: |
+          python3 - <<'PYCODE' >> "$GITHUB_OUTPUT"
+          import hashlib, json, os, platform, shutil, subprocess
+          # Generated build metadata embeds workspace/tool paths; never restore across host images.
+          tools = {}
+          for name in ('clang', 'clang++', 'gcc', 'cmake'):
+              path = shutil.which(name)
+              tools[name] = [path, subprocess.check_output([path, '--version'], text=True)] if path else None
+          flags = {name: os.environ.get(name) for name in (
+              'CC', 'CXX', 'AR', 'CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'LDFLAGS', 'RUSTFLAGS',
+              'RUSTC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER', 'CARGO_ENCODED_RUSTFLAGS',
+              'CARGO_BUILD_RUSTFLAGS', 'CARGO_BUILD_TARGET', 'RUSTUP_TOOLCHAIN', 'SDKROOT',
+              'MACOSX_DEPLOYMENT_TARGET', 'CMAKE_GENERATOR')}
+          host = [os.environ.get('ImageOS'), os.environ.get('ImageVersion'), os.getcwd(), flags,
+                  platform.system(), platform.machine(), platform.release(), platform.version(), tools]
+          print('key=' + hashlib.sha256(json.dumps(host, sort_keys=True).encode()).hexdigest())
+          PYCODE
+      - &model-built-cache
+        name: Cache built model checker
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          path: |
+            build-tools/model-tools/bin/tlanif
+            build-tools/model-tools/environment.json
+          key: model-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/model-tools.json', 'spec/toolchain.json', 'tools/setup_tlanif.py', 'tools/managed_tools.py') }}
+      - &crypto-built-cache
+        name: Cache built cryptographic dependencies
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          # Rust adapter tests still run, so retain their compiled dependencies and test executables.
+          path: |
+            build-tools/bandersnatch/native-environment.json
+            build-tools/bandersnatch/target/release
+            build-tools/crypto/native-environment.json
+            build-tools/crypto/*.so
+            build-tools/crypto/*.dylib
+          key: crypto-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/bandersnatch-pins.json', 'spec/crypto-pins.json', 'native/bandersnatch/**', 'native/crypto/**', 'tools/build_bandersnatch.py', 'tools/build_crypto.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
+      - &quic-built-cache
+        name: Cache built QUIC dependency
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          # Only the verified ABI and receipt: pristine sources and LSQUIC patch staging stay fresh.
+          path: |
+            build-tools/quic/native-environment.json
+            build-tools/quic/*.so
+            build-tools/quic/*.dylib
+          key: quic-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/quic-proof-pins.json', 'native/quic/**', 'tools/build_quic.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
+      - &polkavm-built-cache
+        name: Cache built optional PolkaVM dependency
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          path: |
+            build-tools/polkavm/native-environment.json
+            build-tools/polkavm/release
+          key: polkavm-built-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.built_cache_host.outputs.key }}-${{ hashFiles('spec/polkavm-pins.json', 'spec/bandersnatch-pins.json', 'native/polkavm/**', 'tools/build_polkavm.py', 'tools/managed_tools.py', 'tools/native_dependencies.py') }}
       - name: Validate verification inventory
         if: ${{ matrix.family.group != 'smoke' }}
         run: &inventory-run make check-inventory
@@ -289,6 +360,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Native unit or corpus tests
@@ -348,6 +424,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Runtime failure and contract tests
@@ -400,6 +481,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: E2E Networking
@@ -490,6 +576,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Compare pinned PolkaVM and native PVM fixtures
@@ -565,6 +656,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Install DOOM asset decompressor
         run: |
           sudo apt-get update
@@ -610,6 +706,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Compare validated memory and durable storage workloads
@@ -722,6 +823,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Install pinned asset decompression prerequisite
         run: |
           sudo apt-get update
@@ -773,6 +879,11 @@ jobs:
       - *tool-download-cache
       - *model-download-cache
       - *cargo-download-cache
+      - *built-cache-host
+      - *model-built-cache
+      - *crypto-built-cache
+      - *quic-built-cache
+      - *polkavm-built-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Run pinned upstream campaigns and JAM bridge

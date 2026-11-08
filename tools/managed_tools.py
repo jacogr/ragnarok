@@ -92,7 +92,8 @@ def clean():
 def native_cache(destination, inputs, commands, outputs):
     """Retain native incremental builds only for unchanged inputs, tools, environment and ABI bytes.
 
-Callers still execute their normal source checks, Cargo tests and build commands on every call.
+Yield whether the validated outputs are reusable. Callers retain source checks and runtime
+assurance; C bridges may skip compilation while Rust adapters still execute Cargo tests/builds.
 Changed identities replace the entire cache so old pin versions cannot accumulate indefinitely.
 """
     environment = ('CC', 'CXX', 'AR', 'CFLAGS', 'CPPFLAGS', 'CXXFLAGS', 'LDFLAGS',
@@ -123,7 +124,7 @@ Changed identities replace the entire cache so old pin versions cannot accumulat
             reusable = False # Missing or changed output must rebuild before any consumer can link it.
         transaction = nullcontext() if reusable else replacement(destination)
         with transaction:
-            yield
+            yield reusable
             hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in outputs}
             manifest = dict(identity=signature, outputs=hashes)
             stamp.write_text(json.dumps(manifest, indent=2)+'\n')

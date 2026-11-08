@@ -13,6 +13,84 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 import build_quic
+import build_crypto
+import managed_tools
+
+
+class QuicLibraryReuse(unittest.TestCase):
+    """Restored ABIs avoid compilation only with matching inputs and intact output bytes."""
+
+    def test_reuse_patch_change_and_output_damage(self):
+        """A wrapper/patch update or damaged ABI rebuilds; an intact hit needs no CMake tree."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build = root/'build-tools/quic'
+            native = root/'native/quic'
+            native.mkdir(parents=True)
+            source = native/'approved.patch'
+            source.write_bytes(b'approved patch')
+            library = build/'libquic_proof.so'
+
+            def compile_output(*args):
+                """Produce inert output at the process boundary without executing a compiler."""
+                library.write_bytes(b'compiled fixture')
+
+            with patch.object(build_quic, 'ROOT', root), patch.object(build_quic, 'BUILD', build), \
+                    patch.object(build_quic, 'LOGS', root/'logs'), \
+                    patch.object(managed_tools, 'TOOLS', root/'build-tools'), \
+                    patch.object(build_quic.platform, 'system', return_value='Linux'), \
+                    patch.object(build_quic.shutil, 'which', return_value='/inert/clang'), \
+                    patch.object(managed_tools.subprocess, 'check_output', return_value='inert tool'), \
+                    patch.object(build_quic, 'run', side_effect=compile_output) as run:
+                for change in ('cold', 'reuse', 'patch', 'damage'):
+                    # Exercise the real receipt/hash validation, replacing only external compilation.
+                    if change == 'patch':
+                        source.write_bytes(b'updated approved patch')
+                    elif change == 'damage':
+                        library.write_bytes(b'damaged output')
+                    run.reset_mock()
+                    with self.subTest(change=change):
+                        self.assertEqual(build_quic.build_native(
+                            {'boringssl': root/'vendor/boringssl', 'lsquic': root/'staged'}), library)
+                        self.assertEqual(run.called, change != 'reuse')
+                        self.assertEqual(library.read_bytes(), b'compiled fixture')
+
+
+class CryptoLibraryReuse(unittest.TestCase):
+    """The C bridge cache must never suppress Rust provider validation/tests."""
+
+    def test_provider_checks_survive_reuse_and_provider_changes_rebuild(self):
+        """Reuse only the C compilation; a changed Rust ABI invalidates its dependent bridge."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build = root/'build-tools/crypto'
+            backend = root/'libragnarok_bandersnatch.so'
+            backend.write_bytes(b'provider one')
+            library = build/'libragnarok_crypto.so'
+
+            def compile_output(*args):
+                """Simulate only the external compiler output, preserving real copy/hash behavior."""
+                library.write_bytes(b'compiled bridge')
+
+            with patch.object(build_crypto, 'ROOT', root), patch.object(build_crypto, 'BUILD', build), \
+                    patch.object(build_crypto, 'LOGS', root/'logs'), \
+                    patch.object(managed_tools, 'TOOLS', root/'build-tools'), \
+                    patch.object(build_crypto.platform, 'system', return_value='Linux'), \
+                    patch.object(managed_tools.subprocess, 'check_output', return_value='inert tool'), \
+                    patch.object(build_crypto, 'rust_sources') as sources, \
+                    patch.object(build_crypto, 'build_rust', return_value=backend) as rust, \
+                    patch.object(build_crypto, 'run', side_effect=compile_output) as run:
+                for change in ('cold', 'reuse', 'provider'):
+                    # Fresh Rust preparation remains outside the C bridge cache on every invocation.
+                    if change == 'provider':
+                        backend.write_bytes(b'provider two')
+                    run.reset_mock()
+                    with self.subTest(change=change):
+                        self.assertEqual(build_crypto.build_native({}), library)
+                        self.assertEqual(run.called, change != 'reuse')
+                        self.assertEqual((build/backend.name).read_bytes(), backend.read_bytes())
+                self.assertEqual(sources.call_count, 3)
+                self.assertEqual(rust.call_count, 3)
 
 
 class QuicCompilerConfiguration(unittest.TestCase):
