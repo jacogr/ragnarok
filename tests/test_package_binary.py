@@ -41,9 +41,11 @@ class BinaryPackaging(unittest.TestCase):
 
     def test_archive_has_exact_payload_and_relocated_smoke(self):
         """Published checksums describe the actual archive; smoke commands use only its unpacked peer."""
-        for system in ('Linux', 'Darwin'):
-            with self.subTest(system=system), temporary_folder() as root:
+        for system, platform in (('Linux', 'linux_amd64'), ('Linux', 'linux_arm64'),
+                                 ('Darwin', 'macos_arm64')):
+            with self.subTest(platform=platform), temporary_folder() as root:
                 host = self.fixture(root, system)
+                host['platform'] = platform
                 calls = []
                 def command(checks, arguments, **options):
                     """Observe real orchestration while substituting only native tools and process execution."""
@@ -69,6 +71,8 @@ class BinaryPackaging(unittest.TestCase):
                              for member in payload.getmembers() if member.isfile()}
                 manifest = json.loads(files.pop('manifest.json'))
                 self.assertEqual(manifest['lto'], 'thin')
+                self.assertEqual(manifest['platform'], platform)
+                self.assertEqual(archive.name, 'ragnarok-'+platform.replace('_', '-')+'.tar.gz')
                 self.assertEqual(manifest['revision'], 'revision')
                 self.assertEqual(set(files), {'bin/ragnarok', 'LICENSE-APACHE', 'LICENSE-MIT',
                     *('lib/ragnarok/'+name+('.so' if system == 'Linux' else '.dylib') for name in packaging.LIBRARIES)})

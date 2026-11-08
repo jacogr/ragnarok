@@ -17,7 +17,7 @@ make check
 make
 ```
 
-The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
+The installer supports Linux x86-64, Linux ARM64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
 select exact official archives and SHA-256 checksums; no upstream installer runs. Record the
 matching GitHub release asset API URL when updating a release archive pin, so transient browser
 download failures can use the same pinned bytes through the API. API requests use available
