@@ -124,6 +124,10 @@ func `==`*(left, right: PageIndex): bool {.inline.} =
   ## Compare page ordinals within their nominal domain; other memory indices stay distinct.
   uint32(left) == uint32(right)
 
+func `==`*(left, right: MemoryPageSlot): bool {.inline.} =
+  ## Compare sorted mapping positions without accepting physical page ordinals.
+  uint32(left) == uint32(right)
+
 func `==`*(left, right: PageAddress): bool {.inline.} =
   ## Compare aligned fault addresses without treating them as page ordinals.
   uint32(left) == uint32(right)

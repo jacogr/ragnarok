@@ -39,7 +39,8 @@ non-inlined call boundary even if an inliner changes the original pointer witnes
 checked/ThinLTO production-regression driver is unchanged.
 
 The newer comparison rules require explicit same-domain equality for service IDs, header slots,
-register words, spendable gas, terminal deficits, fault addresses, page counts and host-call IDs.
+register words, spendable gas, terminal deficits, fault addresses, page counts, mapping slots,
+assignment registration slots, activity counts/gas, validator identities, state timeslots and host-call IDs.
 Each overload compares its own underlying representation and accepts no other nominal domain.
 Existing CodeAddress/PageIndex equality and all ownership exclusions remain. This repairs the
 comparison instantiations missed by the November 7 selected local run, including arrays of register
@@ -102,3 +103,23 @@ The merged complete application build and its help command pass. The optimized s
 again passes all 610 modules and peer main; three browser
 bootstrap tests pass. The removed entry points do not overlap the equality or guard changes.
 Final native Linux/runtime qualification belongs to the authorized full-CI run on the PR head.
+
+## Full-CI comparison and fixture follow-up
+
+The first full run on `a2d3d0aa` exposed additional comparison instantiations in
+`pvm_memory_chunks`, `pvm_memory_page_slots`, `disputes_transition`,
+`core_service_activity`, `assurance_context`, `jamnp_assurance_signing` and
+`jamnp_work_anchors`. Same-domain scalar equality now covers
+`MemoryPageSlot`, `AssignmentSlot`, `ActivityNatural`, `ActivityGas`, `ValidatorIndex` and
+`StateTime`, retaining the original sequence, array and aggregate assertions. The QUIC peer-control fixture also
+checks the converted callback index against its existing two-peer bound before the bounded
+`peerAt` call. The foreign unsigned-slot rejection remains in place.
+
+The QUIC transport refusal loop retains the exact `1` and `16383` receive-window samples,
+with their common bound checked before the ranged public calls. Both remain below the valid
+window minimum; the original rejection and resource-retirement assertions are unchanged.
+
+All nine affected suites pass locally through `make unit SUITE=...` on macOS ARM64,
+including their registered ARC evidence where applicable. Pinned formatting also passes.
+The repaired head still requires a new full-CI run; these local results do not replace native
+Linux, browser or remaining verification groups.

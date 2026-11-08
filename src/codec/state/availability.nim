@@ -60,6 +60,10 @@ type
     slots: array[341, SlotLayout]
     present, consumed: int
 
+func `==`*(left, right: AssignmentSlot): bool {.inline.} =
+  ## Compare registration times without accepting guarantee evaluation slots.
+  uint32(left) == uint32(right)
+
 func error*[T](value: AvailabilityResult[T]): AvailabilityError =
   ## Read-only failure reasons cannot authorize parent values, child handles or parser progress.
   value.status

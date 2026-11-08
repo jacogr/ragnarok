@@ -259,6 +259,8 @@ proc windowPolicy(cert, key: string) =
   var token = 0
   defer: owner.closeTransport()
   for window in [1, 16383]:
+    # Both refusal samples fit the public numeric range while remaining below its valid minimum.
+    assert window >= 1 and window <= 16383, "window refusal sample stays below the valid minimum"
     # Each invalid half uses genuine otherwise-valid credentials; refusal cannot be attributed to missing test files.
     assert not owner.openTransport(true, false, 0, cert, key, "jamnp-s/1/00000000",
       addr token, rejectFixtureIdentity, stream, streamWindow = window)
