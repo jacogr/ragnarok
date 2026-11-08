@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_file_arc_release"}
 
 ## Startup recovery reads exactly one selected bounded envelope and never repairs or modifies it.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -15,12 +16,14 @@ import ../../../src/state/store
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const PathName = "application-recovery-file"
+
 proc cycle(wire: seq[byte], expected: ApplicationCheckpointIdentity) =
   ## Each read and complete restored graph retires on the startup thread.
   let owner = loadRecoveryCheckpoint(PathName, wire, expected, genesisStoreLimits(), ByteLimit(100000)).value
   assert sameApplicationCheckpoint(captureApplicationCheckpointIdentity(owner).value, expected)
   assert owner.chainView.retainedCount == 1
   assert owner.chainView.finalizedBlock.error != GenesisError.None
+
 proc main() {.raises.} =
   ## Native failures and malformed/context-mismatched files cannot authorize a partial application.
   var path = PathName

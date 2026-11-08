@@ -3,6 +3,7 @@
 
 ## Validate all global chapter serializations from one complete immutable map without hashing.
 ## Retained source identity and typed chapters confer no valid-state or trusted-root authority.
+
 import ../codec/bounded
 import ../codec/state/[layout as state_layout, composition as state_composition]
 import ./store

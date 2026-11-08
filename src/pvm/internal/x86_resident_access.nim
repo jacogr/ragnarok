@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Included private ISA-only register accessors; no source, window, ledger or admission semantics.
+
 when declared(X86Block):
   const X86ResidentHardware = [3'u8, 5, 12, 13, 14, 15]       # RBX,RBP,R12..R15 are SysV preserved.
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused consensus owners reveal no source, observations or partially composed map.
+
 import std/cmdline
 import ../../src/state/accumulation/current/consensus as accumulation_current_consensus
 import ../../src/state/accumulation/consensus as accumulation_consensus

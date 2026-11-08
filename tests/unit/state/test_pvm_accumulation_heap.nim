@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_heap_arc_release"}
 
 ## Actual heap calls preserve immutable CPUs and adopted gas/address rules under bounded allocation.

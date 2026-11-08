@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A bounded 4096-snapshot vector shares one graph and keeps every exact root/generation alive after close.
+
 import std/[assertions, syncio]
 import ../../support/[storage_lifetime_samples, storage_allocations]
 

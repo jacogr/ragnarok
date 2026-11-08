@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict planned checkpoint payload/reason guards retain a genuine expected-root complete-review control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, planned_review_checkpoint_context, economic_profile_context]
 import ../../src/chain/parameters
@@ -10,18 +11,23 @@ import ../../src/state/account/review as account_review
 import ../../src/state/[checkpoint, store, manifest, economic_profile]
 import ../../src/codec/state/trie as state_trie
 include ./composition_fixture
+
 proc extract(outcome: PlannedReviewCheckpointResult) {.noinline.} =
   ## No failed/default adapter result grants a review.
   discard outcome.value
+
 proc guardSerialization(outcome: PlannedReviewCheckpointResult) {.noinline.} =
   ## Wrong alternatives invent no failed serialization stage.
   discard outcome.serializationFailure
+
 proc guardInventory(outcome: PlannedReviewCheckpointResult) {.noinline.} =
   ## Wrong alternatives invent no failed inventory stage.
   discard outcome.inventoryFailure
+
 proc guardPreparation(outcome: PlannedReviewCheckpointResult) {.noinline.} =
   ## Wrong alternatives invent no failed preparation stage.
   discard outcome.preparationFailure
+
 proc guardExecution(outcome: PlannedReviewCheckpointResult) {.noinline.} =
   ## Wrong alternatives invent no failed execution stage.
   discard outcome.executionFailure

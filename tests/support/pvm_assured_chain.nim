@@ -21,6 +21,7 @@ type AssuredChainSeed* = object ## Test-owned mutable handles retain the authent
 proc assuredChainFixture*(votes = 7): ComposedAssuredState =
   ## Complete actual assured execution and composition before canonical publication is attempted.
   composeAssuredState(assuredCompositionFixture(votes), assuredCompositionConfig()).value
+
 proc assuredChainSeed*(source: ComposedAssuredState): AssuredChainSeed =
   ## Re-adopt the closed predecessor's already prepared map, preserving physical owner and the real full header chain.
   let previous = source.assuredCompositionSource.value.assuredExecutionSource.value.assuredQueueSource.value.computedAssuranceSource.value

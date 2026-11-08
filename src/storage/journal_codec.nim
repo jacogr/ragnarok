@@ -3,6 +3,7 @@
 
 ## Exact checksummed revision frames support bounded append-only physical node journals.
 ## Framing is local integrity; selected roots still require independent caller trust.
+
 import ./node/records as node_records
 import ./record_codec
 import ./node/repository as node_repository

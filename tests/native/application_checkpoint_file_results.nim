@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Invalid file outcomes must fail the exact same checked accessors as genuine publication and recovery.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/app/chain
@@ -11,18 +12,23 @@ import ../../src/chain/genesis
 import ../../src/codec/bounded
 import ../../src/lib/atomic/file as atomic_file
 import ../support/application_checkpoint_context
+
 proc extractIdentity(outcome: ApplicationCheckpointFileResult[ApplicationCheckpointIdentity]) =
   ## Publication grants context only after durable complete success.
   discard outcome.value
+
 proc extractStore(outcome: ApplicationCheckpointFileResult[StateStore]) =
   ## Failed files never grant a partial complete-map owner.
   discard outcome.value
+
 proc inspectIdentity(outcome: ApplicationCheckpointFileResult[StateStore]) =
   ## Only matching identity failures expose their cause.
   discard outcome.identityError
+
 proc inspectCheckpoint(outcome: ApplicationCheckpointFileResult[StateStore]) =
   ## Only matching map failures expose their cause.
   discard outcome.checkpointError
+
 proc main() {.raises.} =
   ## Independent fixture context and a real file provide genuine controls; misuse modes need no fixture.
   let mode = paramStr(1)

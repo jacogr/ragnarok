@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_report_identity_arc_release"}
 
 ## Source-derived hashes, exact dictionary keys, byte policies, immutable copies and owner lifetimes.
@@ -104,11 +105,13 @@ assert default(ReportIdentity).identityRoot(identityKey(1)).error ==
     ReportIdentityError.Uninitialized
 assert default(ReportIdentity).identityLookupAt(ReportLookupIndex(0)).error ==
     ReportIdentityError.Uninitialized
+
 proc detached(): ReportIdentity =
   ## Retain only the prepared owner after original source and borrowed dictionary handles retire.
   let source = identityFixture([@[a, a]])
   prepareReportIdentity(source, [identityPair(1)], identityLimits()).value
 assert detached().identityRoot(identityKey(1)).value.bytes == identityPair(1).segmentRoot.bytes
+
 proc cycle() =
   ## Fresh original execution and identity owners plus local refusals release their entire acyclic graph.
   let source = identityFixture([@[a, root], @[b, a]])

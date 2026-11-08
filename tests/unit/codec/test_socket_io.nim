@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real stream backpressure preserves exact bytes and offsets; closed peers cannot raise SIGPIPE.
+
 import std/[assertions, syncio, strutils, nativesocket, oserrors]
 import std/posix/posix
 import ../../../src/lib/socket_io

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Stage complete qualified logical declarations for bounded detached export without recapturing producer or root authority.
+
 import ../../state/current/logical as current_logical
 import ../../state/supplied/services as supplied_services
 import ../../codec/state/composition as state_composition

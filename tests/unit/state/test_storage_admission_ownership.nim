@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fused transfers and legacy raw admission retain independent immutable values, metadata, handles and lookups.
+
 # @@Verification={"arc": "storage_admission_ownership_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[admission_samples, arc_evidence]
@@ -16,10 +17,13 @@ type
     value: byte
   Counter = object ## An erased wire must refuse before any user consumer runs.
     calls: int
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Keep invalid-source preflight work separate from real setup and owner verification.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count genuine local integrity attempts without replacing cryptographic results.
+
 proc witness(source: AdmissionFixture): LeafWitness =
   ## Select an actual one-byte fixture leaf while copying only its fixed expected bytes.
   for record in source.image.collection.records:
@@ -27,10 +31,12 @@ proc witness(source: AdmissionFixture): LeafWitness =
       assert record.payload.len == 1
       return LeafWitness(digest: record.digest, value: record.payload[0])
   assert false, "authored image must include a leaf"
+
 proc count(counter: var Counter, record: var TrieRecord): bool =
   ## No payload is retained and malformed retired input must never reach this callback.
   inc counter.calls
   true
+
 proc cycle() =
   ## Keep raw and fused owners plus an independent mutable handle alive through every source mutation.
   var source = admissionFixture()

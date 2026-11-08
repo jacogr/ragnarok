@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_worker_arc_release"}
 
 ## Native whole-envelope publication owns one slot through acknowledgement and preserves actual joined outcomes.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/checkpoint/[worker as checkpoint_worker, transfer as checkpoint_transfer,
@@ -12,6 +13,7 @@ import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-worker"
+
 proc cycle(worker: var ApplicationCheckpointWorker) {.raises.} =
   ## Host-created buffers return to their allocator only after worker-local file activations retire.
   var source = detachedApplicationCheckpoint()
@@ -25,6 +27,7 @@ proc cycle(worker: var ApplicationCheckpointWorker) {.raises.} =
   assert completed.kind == ApplicationCheckpointCompletionKind.Completed
   assert completed.value.error == ApplicationCheckpointFileError.None
   assert sameApplicationCheckpoint(completed.value.value, expected)
+
 proc main() {.raises.} =
   ## Admission refusal preserves caller ownership; stale and foreign namespaces never grant another request's receipt.
   defer:

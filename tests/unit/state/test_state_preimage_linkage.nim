@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete maps prove request-key membership without conflating history, content or resource refusal.
+
 # @@Verification={"arc": "state_preimage_linkage_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
@@ -10,16 +11,20 @@ import ../../../src/state/[inventory, manifest, store]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[requests as state_requests, service_values as state_service_values]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after independent fixture capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Prove matching performs no payload hashing or source reconstruction.
 const limits = PreimageLinkageLimits(services: ElementLimit(2), preimages: ElementLimit(1),
     comparisons: ElementLimit(1))
+
 proc cycle(source: StateInventory) =
   ## Retire a complete certificate and its retained owner each iteration.
   let checked = auditPreimageLinkage(source, limits).value
   assert checked.linkageInfo.value.preimages == 1
+
 proc main() {.raises.} =
   ## Capture sources that independently vary request membership while retaining complete-map provenance.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

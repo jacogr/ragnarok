@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed appends preserve exact parent identity and require explicit exact-prefix torn-tail recovery.
+
 import std/[assertions, syncio]
 import ../../support/[storage_samples, managed_storage_samples]
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
@@ -12,6 +13,7 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc main() {.raises.} =
   ## Actual file edits exercise torn/corrupt successors without production fault-injection hooks.
   let limits = managedStorageLimits()

@@ -63,6 +63,7 @@ proc tickets(bytes: seq[byte]): seq[WinningTicket] =
 proc append(output: var seq[byte], input: openArray[byte]) =
   # Every copied octet is independent observation data, not a production encoding expectation.
   for octet in input: output.add(octet)
+
 # Parse full-width unsigned fixture values without signed narrowing.
 proc unsigned(text: string): uint64 =
   var number: uint64 = 0

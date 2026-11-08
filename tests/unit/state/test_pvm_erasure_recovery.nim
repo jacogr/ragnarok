@@ -1,21 +1,26 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_erasure_recovery_arc_release"}
 
 ## Frozen independent Lagrange codewords validate arbitrary-point chunk recovery without using the production encoder.
+
 import std/[assertions, syncio]
 import ../../../src/state/erasure/[words, layout]
 import ../../../src/codec/bounded
 import ../../../src/codec/work/report
 import ../../support/[pvm_erasure_vectors, arc_evidence]
+
 proc generous(): ErasureWordLimits =
   ## Explicit bounds cover full segment recovery and maximum validator geometry.
   ErasureWordLimits(bytes: ByteLimit(100000), products: FieldProductLimit(10000000))
+
 proc originalCount(validators: int): int =
   ## Increasing divisor enumeration independently fixes the reconstruction threshold.
   result = 1
   for candidate in 1..(validators div 3+1):
     if 2052 mod candidate == 0: result = candidate
+
 proc frozen(validators: uint16, code: openArray[uint16], width, mode: int, padded = false) =
   ## XOR with a column constant is a known constant-polynomial addition to each independent frozen codeword.
   let policy = generous()
@@ -63,6 +68,7 @@ proc frozen(validators: uint16, code: openArray[uint16], width, mode: int, padde
   output[0] = output[0] xor 1
   input[0] = input[0] xor 1
   assert recovered.value.recoveredBytes.value[0] == expected[0], "independent immutable output"
+
 proc cycle() =
   ## Complete parity recovery and its copied output retire before every ARC observation.
   let policy = generous()
@@ -77,6 +83,7 @@ proc cycle() =
   let systematic = [ErasureShardIndex(0), ErasureShardIndex(1), ErasureShardIndex(2)]
   assert recoverErasureChunks(@[0'u8, 0, 0, 0, 0, 1], systematic, BundleLength(5),
     ErasureShards(6), policy).error == ErasureWordError.InvalidPadding
+
 proc main() =
   ## Full Cantor-coordinate populations and segment/bundle layouts are checked before hostile admission boundaries.
   let policy = generous()

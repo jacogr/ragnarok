@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real successful syscall stops qualify paged publication, explicit replay recovery and exact retired-epoch cleanup.
+
 import std/[assertions, syncio, envvars]
 import ../../support/[paged_native_fixture, paged_reference, storage_io, storage_crash]
 import ../../../src/storage/paged/[store as paged_store, io as paged_io, codec as paged_codec,
@@ -11,23 +12,28 @@ import ../../../src/storage/light/delta as light_delta
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/light/state_cache as light_state_cache
 import ../../../src/storage/state_proof
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only fixed test-owned names; discovery never grants recovery authority.
+
 proc exists(path: string): bool =
   ## Absence remains distinct from a created zero-byte artifact.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc text(bytes: seq[byte]): string =
   ## Fixture-sized independent oracle bytes may be resident only in these tests.
   result = newString(bytes.len)
   for index, value in bytes: result[index] = char(value)
+
 proc prefix(path, expected: string) {.raises.} =
   ## Interrupted files must be absent or exact bounded prefixes of independently authored bytes.
   if not exists(path): return
   let actual = readFile(path)
   assert actual.len <= expected.len
   for index in 0..<actual.len: assert actual[index] == expected[index]
+
 proc capture(path: string): seq[string] {.raises.} =
   ## Strict reopen must preserve all known names and their complete forensic bytes.
   result = @[]
@@ -35,6 +41,7 @@ proc capture(path: string): seq[string] {.raises.} =
       "paged-0000000000000002.bin"]:
     let child = path & "/" & name
     result.add(if exists(child): "present:" & readFile(child) else: "absent")
+
 proc prepare(writer: var PagedWriter, candidate: var PagedCandidate, mode: int,
     target: PagedNativeFixture) =
   ## The selected operation controls sequence semantics; callers supply independently trusted destination proofs.
@@ -45,6 +52,7 @@ proc prepare(writer: var PagedWriter, candidate: var PagedCandidate, mode: int,
     else: preparePagedReplacement(writer, candidate, target.records.nativeProducer,
         uint64(target.records.len), target.payload)
   assert checked.error == PagedNativeError.None
+
 proc trial(old, fresh: PagedNativeFixture, mode: int, operation, skip: cint,
     chunk: int): uint64 {.raises.} =
   ## Every trial owns one exact child and namespace; the parent releases its writer before fork.
@@ -211,6 +219,7 @@ proc trial(old, fresh: PagedNativeFixture, mode: int, operation, skip: cint,
     assert retained.selected.value.bytes == source.bytes
     assert retained.close == FileError.None
   if mode != 0: assert readFile(path & "/KEEP") == "preserved paged crash sibling"
+
 proc main() {.raises.} =
   ## Positive completion controls measure genuine operations; every observed successful boundary gets an exact kill trial.
   let old = nativeFixture(7)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Detached audit participation plans preserve original auditor positions, local signing ordinals and explicitly known successor recipients. Only genuine private origins and actual current canonical topology supply role/routing facts.
+
 import ./[audit_origin, topology, endpoints, assurance_store]
 import ../chain/[genesis, parameters, reports]
 import ../codec/[bounded, report_owned]
@@ -49,21 +50,26 @@ type
     of TopologyFailure: topologyReason: TopologyError
     of StateFailure: stateReason: StateStoreError
     else: discard # No unrelated child or partial plan survives refusal.
+
 func error*[T](outcome: AuditParticipationResult[T]): AuditParticipationError =
   ## Observe the selected status before extracting complete detached metadata.
   outcome.status
+
 func value*[T](outcome: AuditParticipationResult[T]): T {.requires: outcome.status ==
     AuditParticipationError.None.} =
   ## Success carries only fixed copied recipient and original-position observations.
   outcome.completed
+
 func topologyError*[T](outcome: AuditParticipationResult[
     T]): TopologyError {.requires: outcome.status == AuditParticipationError.TopologyFailure.} =
   ## Preserve the actual bounded topology decoder refusal.
   outcome.topologyReason
+
 func stateError*[T](outcome: AuditParticipationResult[
     T]): StateStoreError {.requires: outcome.status == AuditParticipationError.StateFailure.} =
   ## Missing complete chapters cannot become fabricated empty future sets.
   outcome.stateReason
+
 func valid*(limits: AuditParticipationLimits): bool =
   ## Explicit independent finite ceilings precede every snapshot/recipient allocation.
   uint64(limits.topology.validators.validators) in 6'u64..1023'u64 and
@@ -72,9 +78,11 @@ func valid*(limits: AuditParticipationLimits): bool =
     uint64(limits.readBytes) in 1'u64..4'u64*1024*1024 and
     uint64(limits.workspaceBytes) in 1'u64..64'u64*1024*1024 and
     uint64(limits.outputBytes) in 1'u64..4'u64*1024*1024
+
 func valid*(plan: AuditParticipationPlan): bool =
   ## An absent handle grants no initialized empty-duty plan.
   plan.data != nil
+
 proc participationInfo*(plan: AuditParticipationPlan): AuditParticipationResult[
     AuditParticipationInfo] =
   ## Copy fixed source/count facts without exporting any backing sequence.
@@ -83,6 +91,7 @@ proc participationInfo*(plan: AuditParticipationPlan): AuditParticipationResult[
       status: AuditParticipationError.Uninitialized)
   AuditParticipationResult[AuditParticipationInfo](status: AuditParticipationError.None,
       completed: data.info)
+
 proc localValidatorAt*(plan: AuditParticipationPlan, ordinal: int): AuditParticipationResult[
     StateValidatorIndex] =
   ## Every original matching local-key position is retained, including repeated keys; current roster positions never substitute.
@@ -94,6 +103,7 @@ proc localValidatorAt*(plan: AuditParticipationPlan, ordinal: int): AuditPartici
         status: AuditParticipationError.InvalidIndex)
   AuditParticipationResult[StateValidatorIndex](status: AuditParticipationError.None,
       completed: data.local[ordinal])
+
 proc participantAt*(plan: AuditParticipationPlan, successor: bool,
     ordinal: int): AuditParticipationResult[AuditParticipant] =
   ## Explicitly separate original-grid forwarding from known successor broadcast recipients.
@@ -105,23 +115,28 @@ proc participantAt*(plan: AuditParticipationPlan, successor: bool,
     return AuditParticipationResult[AuditParticipant](status: AuditParticipationError.InvalidIndex)
   AuditParticipationResult[AuditParticipant](status: AuditParticipationError.None,
     completed: if successor: data.successors[ordinal] else: data.neighbours[ordinal])
+
 func sameKey(a, b: StateEdKey): bool =
   ## Identity equality is independent of metadata and original index.
   array[32, byte](a) == array[32, byte](b)
+
 func nonzero(key: StateEdKey): bool =
   ## Zero/null positions stay counted but never become a remote connection or local signer.
   if sameKey(key, nullValidator().ed25519): return false
   for octet in array[32, byte](key):
     if octet != 0: return true
   false
+
 func valid*(basis: AuditRoutingBasis): bool =
   ## Defaults grant no original roster authority.
   basis.data != nil
+
 proc routingBasis*(plan: AuditParticipationPlan): AuditRoutingBasis =
   ## Return the immutable public routing input without exposing a mutable roster.
   let data = plan.data
   if data == nil: return default(AuditRoutingBasis)
   data.basis
+
 proc detached*(basis: AuditRoutingBasis, bytes: ByteLimit): AuditRoutingBasis =
   ## A worker-owned copy never borrows the foreground gossip row's ARC graph.
   let data = basis.data
@@ -131,6 +146,7 @@ proc detached*(basis: AuditRoutingBasis, bytes: ByteLimit): AuditRoutingBasis =
   for index in 0..<members.len: members[index] = data.members[index]
   AuditRoutingBasis(data: RoutingData(parameters: data.parameters, report: data.report,
       epoch: data.epoch, local: data.local, members: move(members)))
+
 proc refreshAuditParticipation*(basis: AuditRoutingBasis, current: BlockSnapshotResult,
     limits: AuditParticipationLimits,
     control: AssuranceScanControl = default(AssuranceScanControl)): AuditParticipationResult[

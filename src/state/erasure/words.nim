@@ -148,12 +148,14 @@ type
     bytes: seq[byte]
   RecoveredErasureChunks* = object ## Default/rejected recovery exposes no partial systematic prefix.
     data: nil RecoveryData
+
 proc recoveryInfo*(recovered: RecoveredErasureChunks): ErasureWordResult[ErasureRecoveryInfo] =
   ## Observe fixed dimensions only after complete recovery and padding validation.
   let data = recovered.data
   if data == nil: return ErasureWordResult[ErasureRecoveryInfo](
       status: ErasureWordError.Uninitialized)
   ErasureWordResult[ErasureRecoveryInfo](status: ErasureWordError.None, completed: data.info)
+
 proc recoveredBytes*(recovered: RecoveredErasureChunks): ErasureWordResult[seq[byte]] =
   ## Return an independent original-length copy; retained checked padding never appears as payload.
   let data = recovered.data
@@ -161,6 +163,7 @@ proc recoveredBytes*(recovered: RecoveredErasureChunks): ErasureWordResult[seq[b
   var bytes = newSeq[byte](int(uint32(data.info.length)))
   for index in 0..<bytes.len: bytes[index] = data.bytes[index]
   ErasureWordResult[seq[byte]](status: ErasureWordError.None, completed: bytes)
+
 proc recoverErasureChunks*(input: openArray[byte], indices: openArray[ErasureShardIndex],
     length: BundleLength, shards: ErasureShards,
     limits: ErasureWordLimits): ErasureWordResult[RecoveredErasureChunks] =

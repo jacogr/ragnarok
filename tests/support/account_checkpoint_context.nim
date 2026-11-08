@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit restoration and invariant policies support unchanged-format checkpoint consumer fixtures.
+
 import ./[state_inventory_context, account_invariant_context]
 import ../../src/state/account/checkpoint as account_checkpoint
 import ../../src/state/[validated_checkpoint, store, global_snapshot]

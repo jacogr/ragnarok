@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded source-free CE145 delivery preserves original signed records across original-grid forwarding and known successor broadcast. One exact native request/dial retires before another target takes ownership; no canonical state or signing key enters this host scheduler.
+
 import std/[monotimes, times]
 import ./[node, connections, endpoints, read_stream, read_client, audits, judgment_receipt, audit_participation]
 import ../codec/[bounded, disputes]
@@ -45,6 +46,7 @@ type
     dialIdentity: StateEdKey
     started: MonoTime
     attempted, acknowledged, minimumEpoch: uint64
+
 func judgmentGossipPolicy*(message: AuditLimits, entries: range[1..32768], bytes: ByteLimit,
     requestsPerRecord: range[1..12288] = 12288, dialsPerRecord: range[0..12288] = 3072,
     attempts: range[1..4] = 4, timeoutMs: range[1..120000] = 1000,
@@ -57,17 +59,22 @@ func judgmentGossipPolicy*(message: AuditLimits, entries: range[1..32768], bytes
   JudgmentGossipPolicy(ready: true, message: message, entries: entries, bytes: bytes,
     requests: uint64(requestsPerRecord), dials: uint64(dialsPerRecord), attempts: attempts,
     timeout: timeoutMs, retry: retryMs)
+
 func valid*(policy: JudgmentGossipPolicy): bool =
   ## Omission activates no delivery queue or outgoing wire.
   policy.ready
+
 proc `=copy`*(destination: var JudgmentGossip, source: JudgmentGossip) {.error.}
   ## Duplicate ownership could cancel another scheduler's exact native stream or demand connection.
+
 proc `=dup`*(source: JudgmentGossip): JudgmentGossip {.error.}
   ## Construction cannot duplicate live cancellation authority.
+
 proc requireClosed(owner: JudgmentGossip) {.requires: not owner.active and not owner.requested and
     not owner.dialing.} =
   ## Explicit close requests exact native cancellation before scheduler storage retires.
   discard
+
 proc `=wasMoved`*(owner: var JudgmentGossip) {.nodestroy, requires: not owner.active and
     not owner.requested and not owner.dialing.} =
   ## Only source-free closed storage moves; native callbacks belong exclusively to NodeService.
@@ -76,6 +83,7 @@ proc `=wasMoved`*(owner: var JudgmentGossip) {.nodestroy, requires: not owner.ac
   `=wasMoved`(owner.request)
   `=wasMoved`(owner.dial)
   `=wasMoved`(owner.dialIdentity)
+
 proc `=destroy`*(owner: JudgmentGossip) =
   ## No implicit destructor abandons an exact outstanding native request or dial.
   requireClosed(owner)
@@ -84,30 +92,38 @@ proc `=destroy`*(owner: JudgmentGossip) =
   `=destroy`(owner.request)
   `=destroy`(owner.dial)
   `=destroy`(owner.dialIdentity)
+
 func attempted*(owner: JudgmentGossip): uint64 =
   ## Count actual admitted requests, independently of waiting/busy attempts and remote consensus behavior.
   owner.attempted
+
 func acknowledged*(owner: JudgmentGossip): uint64 =
   ## A remote bare FIN confirms complete receipt only, never report truth, block inclusion or finality.
   owner.acknowledged
+
 func configured*(owner: JudgmentGossip): bool =
   ## Defaults have neither an enabled sender nor any inferred capacity.
   owner.policy.ready
+
 func sending*(owner: JudgmentGossip): bool =
   ## Exact active ownership includes queued requests, physical dial retirement and bounded peer waits.
   owner.active
+
 proc configure*(owner: var JudgmentGossip, policy: JudgmentGossipPolicy): bool =
   ## Configuration cannot erase retained acknowledgments or replace a live scheduler.
   if owner.policy.ready or not policy.ready or owner.active: return false
   owner.policy = policy
   owner.rows = newSeq[GossipRow](policy.entries)
   true
+
 func sameKey(a, b: StateEdKey): bool =
   ## Physical identity deduplication never changes original validator ordinals in the immutable participation plan.
   array[32, byte](a) == array[32, byte](b)
+
 func sameRecord(a, b: QualifiedJudgment): bool =
   ## Supporting-guarantee retries are not new judgment signatures; opposite valid claims remain distinct accountable records.
   sameJudgmentKey(a, b) and a.judgmentRecord.valid == b.judgmentRecord.valid
+
 proc offer*(owner: var JudgmentGossip, record: QualifiedJudgment,
     plan: AuditParticipationPlan, mode: JudgmentDeliveryMode): bool =
   ## Whole worst-case recipient storage and fixed wire credit precede row mutation; later known E+2 plans extend delivery without erasing prior acknowledgments.
@@ -155,6 +171,7 @@ proc offer*(owner: var JudgmentGossip, record: QualifiedJudgment,
     candidateReady: false, requests: 0, dials: 0, reservation: reservation, refresh: 1)
   owner.bytes += reservation
   true
+
 proc expand(owner: var JudgmentGossip, index: int) =
   ## Spend one comparison/extraction per turn so large recipient refreshes cannot stall ordinary native polling.
   if not owner.rows[index].used: return
@@ -190,6 +207,7 @@ proc expand(owner: var JudgmentGossip, index: int) =
     owner.rows[index].peers.add(Delivery(member: candidate, attempts: 0, done: false,
       acknowledged: false, retry: default(MonoTime), refresh: owner.rows[index].refresh))
   owner.rows[index].candidateReady = false # A full reserved row cannot allocate another identity; existing accountable records/acknowledgments remain intact.
+
 proc retireDial(owner: var JudgmentGossip, streams: var NodeService, force: bool) =
   ## The fixed actual dial identity survives row refresh and target changes until its exact physical connection retires.
   if not owner.dialing: return
@@ -199,6 +217,7 @@ proc retireDial(owner: var JudgmentGossip, streams: var NodeService, force: bool
     owner.dial = default(DialTicket)
   elif not owner.closing and (force or not streams.peerBusy(owner.dialIdentity)):
     owner.closing = streams.cancelPeerConnection(owner.dial)
+
 proc finishAttempt(owner: var JudgmentGossip, streams: var NodeService, clock: MonoTime,
     acknowledged: bool) =
   ## Cancel only owned native request/dial authority. A failed bounded attempt is not a successful delivery.
@@ -218,6 +237,7 @@ proc finishAttempt(owner: var JudgmentGossip, streams: var NodeService, clock: M
   owner.finishing = true
   owner.retireDial(streams, false)
   if not owner.dialing: owner.active = false
+
 proc startPeer(owner: var JudgmentGossip, streams: var NodeService, clock: MonoTime) =
   ## Prefer an existing authenticated generation; an owned demand dial is separately bounded and never replaces/cancels a pre-existing connection.
   let row = owner.row
@@ -252,6 +272,7 @@ proc startPeer(owner: var JudgmentGossip, streams: var NodeService, clock: MonoT
     owner.dialing = true
     owner.closing = false
     inc owner.rows[row].dials
+
 proc poll*(owner: var JudgmentGossip, streams: var NodeService, clock: MonoTime) =
   ## One exact native completion and at most64 bounded row turns preserve foreground fairness independently of Services worker leases.
   if not owner.policy.ready or not streams.isOpen: return
@@ -301,6 +322,7 @@ proc poll*(owner: var JudgmentGossip, streams: var NodeService, clock: MonoTime)
     inc owner.rows[row].peers[peer].attempts
     owner.startPeer(streams, clock)
     return
+
 proc expireBefore*(owner: var JudgmentGossip, streams: var NodeService, floor: uint64) =
   ## Exact cancellation releases only a retired record's owned stream and temporary connection.
   if floor <= owner.minimumEpoch: return
@@ -320,6 +342,7 @@ proc expireBefore*(owner: var JudgmentGossip, streams: var NodeService, floor: u
       owner.dial = default(DialTicket)
     owner.bytes -= owner.rows[row].reservation
     owner.rows[row] = default(GossipRow)
+
 proc close*(owner: var JudgmentGossip, streams: var NodeService) =
   ## Native NodeService owns callback buffers independently; exact cancellation precedes dropping only this scheduler's detached records and tokens.
   if owner.requested: discard streams.cancelRequest(owner.request)

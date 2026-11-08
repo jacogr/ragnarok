@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full V2 artifacts atomically select opaque context with complete roots, preserving native ownership and replay authority.
+
 # @@Verification={"arc":"storage_full_paged_context_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -14,13 +15,16 @@ import ../../../src/storage/durability
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc path(label: string): string =
   ## Process-private test namespaces remain under the ignored native runner directory.
   "full-paged-context-" & $storageProcessId() & "-" & label
+
 proc body(size: int, first = 7'u8): seq[byte] =
   ## Deterministic context bytes cross every page boundary without borrowing any state value buffer.
   result = newSeq[byte](size)
   for index in 0..<size: result[index] = byte((index+int(first)) mod 251) # Bounded fixture arithmetic.
+
 proc configuration(source: FullPagedFixture, maximum = 65537'u64): FullPagedNativeConfig =
   ## Context, artifact, native working and authoring quotas are explicit independent local policies.
   result = source.config
@@ -34,6 +38,7 @@ proc configuration(source: FullPagedFixture, maximum = 65537'u64): FullPagedNati
   result.construction.readBytes = ByteLimit(256000000)
   result.construction.writeBytes = ByteLimit(16000000)
   result.replayBytes = ByteLimit(16000000)
+
 proc expected(source: FullPagedFixture, context: seq[byte], epoch, generation: uint64,
     limits: PagedLimits): FullPagedFixture =
   ## Existing independent record bytes plus a separately computed context section/tree form the full artifact oracle.
@@ -59,6 +64,7 @@ proc expected(source: FullPagedFixture, context: seq[byte], epoch, generation: u
   FullPagedFixture(header: header, manifest: encodeFullPagedManifest(header, FullPagedDigest(
       root)).value,
     records: source.records, io: FullPagedTestIO(bytes: bytes))
+
 proc output(io: FullPagedTestIO): PagedOutput =
   ## A resident test sink exposes actual callback failures without replacing any production encoding or hashing.
   proc append(input: openArray[byte]): bool {.closure.} =
@@ -68,23 +74,28 @@ proc output(io: FullPagedTestIO): PagedOutput =
     for octet in input: io.bytes.add(octet) # Append the exact borrowed extent.
     true
   PagedOutput(source: io.input, append: append)
+
 proc limits(config: FullPagedNativeConfig): FullPagedBuildLimits =
   ## The same finite native authoring contract also qualifies low-level callback transport.
   FullPagedBuildLimits(admission: config.limits, producerCalls: config.construction.producerCalls,
     ioCalls: config.construction.ioCalls, hashes: config.construction.hashes,
     readBytes: config.construction.readBytes, writeBytes: config.construction.writeBytes)
+
 proc text(input: openArray[byte]): string =
   ## Native fixture files preserve every octet without text encoding transformations.
   result = newString(input.len)
   for index in 0..<input.len: result[index] = char(input[index]) # Direct test-only bytes.
+
 proc write(path: string, bytes: openArray[byte]) =
   ## Only explicitly owned fixture paths may be replaced to qualify strict corruption refusal.
   try: writeFile(path, text(bytes))
   except: assert false # A failed fixture write cannot masquerade as successful tampering.
+
 proc read(path: string): string =
   ## Native file observations stay separate from the independently constructed expected bytes.
   try: result = readFile(path)
   except: assert false # Missing or failed native reads invalidate the test.
+
 proc initialize(writer: var FullPagedWriter, directory: string, source: FullPagedFixture,
     config: FullPagedNativeConfig, context: seq[byte]) =
   ## A confirmed file/directory barrier is required before any ordinary native consumer runs.
@@ -93,6 +104,7 @@ proc initialize(writer: var FullPagedWriter, directory: string, source: FullPage
   assert initialized.error == FullPagedNativeError.None
   assert initialized.value.durability == StorageDurability.FileAndDirectorySynced
   assert initialized.value.retirementError == FileError.None and initialized.value.writerUsable
+
 proc lowLevel(source: FullPagedFixture) =
   ## Cross-page and maximum-sized contexts match an independent complete byte/tree oracle under both cache settings.
   for size in [1, 31, 4095, 4096, 4097, 65537, 4194304]:
@@ -152,6 +164,7 @@ proc lowLevel(source: FullPagedFixture) =
   assert oracle.io.calls == 0
   config.limits.contextBytes = ByteLimit(uint64(context.len)-1)
   assert oracle.check(config.limits).error == FullPagedStreamError.LimitExceeded
+
 proc normal(source, history: FullPagedFixture) =
   ## Context/root publication, retained old readers and exact page-wise compaction share one CURRENT decision.
   let directory = path("normal")
@@ -215,6 +228,7 @@ proc normal(source, history: FullPagedFixture) =
   assert newest.close == FileError.None
   assert retained.bytes == before and uint64(retained.manifest.epoch) == 1
   assert captured.bytes == after and uint64(captured.manifest.epoch) == 2
+
 proc refusals(source: FullPagedFixture) =
   ## Format presence, context policy and exact provided bytes refuse before any native bootstrap namespace is acquired.
   let context = body(33)
@@ -251,6 +265,7 @@ proc refusals(source: FullPagedFixture) =
   assert refused.graphError == FullPagedStreamError.LimitExceeded and ioCalls(readIo) == 0
   assert reader.close == FileError.None
   assert reader.readContext(config.limits.work).error == FullPagedNativeError.Uninitialized
+
 proc nativeFailures(source: FullPagedFixture) =
   ## Every observed context source read failure preserves whole-result refusal and requires fresh native reopen.
   let directory = path("read-failures")
@@ -277,6 +292,7 @@ proc nativeFailures(source: FullPagedFixture) =
     assert reader.close == FileError.None
     assert openFullPagedReader(reader, directory, config).error == FullPagedNativeError.None
   assert reader.close == FileError.None
+
 proc replay(source: FullPagedFixture) =
   ## Complete candidate replay binds opaque context bytes even when complete JAM roots/counts remain unchanged.
   let directory = path("replay")
@@ -319,6 +335,7 @@ proc replay(source: FullPagedFixture) =
   assert writer.publish(candidate).error == FullPagedNativeError.None
   assert writer.readContext(config.limits.work).value.bytes == target
   assert writer.close == FileError.None
+
 proc corruptions(source: FullPagedFixture) =
   ## Resealed noncanonical padding is still malformed; unresealed opaque context corruption fails page authentication.
   let context = body(33)
@@ -361,6 +378,7 @@ proc corruptions(source: FullPagedFixture) =
     assert ioCalls(unlinkIo) == 0 and ioCalls(renameIo) == 0
     assert read(directory & "/CURRENT") == selected
     assert read(directory & "/" & epochName(ManagedEpoch(1)).value) == text(bytes)
+
 proc writeFailures(source: FullPagedFixture) =
   ## Every observed candidate write refuses without moving CURRENT; complete fresh readers still restore the old context.
   let initial = body(33, 7)
@@ -398,6 +416,7 @@ proc writeFailures(source: FullPagedFixture) =
     assert openFullPagedReader(reader, directory, config).error == FullPagedNativeError.None
     assert reader.readContext(config.limits.work).value.bytes == initial
     assert reader.close == FileError.None
+
 proc bootstrap(source: FullPagedFixture) =
   ## Explicit V2 bootstrap replay reproduces context before deleting any incomplete initial epoch prefix.
   let directory = path("bootstrap")
@@ -420,6 +439,7 @@ proc bootstrap(source: FullPagedFixture) =
   assert read(directory & "/CURRENT") == text(oracle.manifest.bytes.value)
   assert read(directory & "/" & epochName(ManagedEpoch(1)).value) == text(oracle.io.bytes)
   assert writer.close == FileError.None
+
 proc cycle(reader: var FullPagedReader, directory: string, config: FullPagedNativeConfig,
     context: seq[byte], lateRead: cint) =
   ## Success copies and a late failed private prefix retire around a genuine poisoned-reader close/reopen.
@@ -438,6 +458,7 @@ proc cycle(reader: var FullPagedReader, directory: string, config: FullPagedNati
   assert reader.close == FileError.None
   assert captured.bytes == context # Captured context owns no foreign file or pin alias.
   assert openFullPagedReader(reader, directory, config).error == FullPagedNativeError.None
+
 proc main() =
   ## Native IO and independent roots qualify atomic opaque context without application trust shortcuts.
   let source = sample(7)

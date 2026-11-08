@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_block_publication_arc_release"}
 
 ## Exact-parent publication adopts prepared complete snapshots without rehashing, replay or losing inherited policy/history.
@@ -23,6 +24,7 @@ import ../../support/[accumulation_activity_context, report_context, arc_evidenc
 
 # Prepare genuine candidates first; publication must remain successful even while every Blake2b call would refuse.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type

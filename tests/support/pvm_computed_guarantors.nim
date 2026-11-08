@@ -16,6 +16,7 @@ proc guarantorLimits*(): ComputedGuarantorLimits =
     judgments: DisputeStateConfig(perSet: ElementLimit(10), totalItems: ElementLimit(40),
         maxBytes: ByteLimit(36)),
     offenders: ElementLimit(1))
+
 proc guarantorFixture*(shrink = false, core = 0'u64, target = 0'u32,
     offender = false, rotation = 4'u16): RosterEligibleComputedReport =
   ## Capture original rotation before execution and config binding; no posterior result or parameter tuple is forged.

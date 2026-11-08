@@ -284,6 +284,7 @@ let serviceText = genesisText.replace(genesisState, serviceState)
 let serviceGenesis = configuredGenesis(serviceText, genesisParameters.value)
 assert serviceGenesis.error == GenesisError.None
 let serviceInfo = ClientInfo(chain: genesisView(serviceGenesis))
+
 # Produce ordinary positional calls while keeping expected payloads independent of production codecs.
 proc serviceCall(methodName, service, extra: string): string =
   "{\"jsonrpc\":\"2.0\",\"method\":\"" & methodName & "\",\"params\":[\"" & genesisHash & "\"," &
@@ -401,6 +402,7 @@ let activityHex = "06" & repeat("00", 36) & "06" & repeat("00", 36) & repeat("00
     "012a000000" & repeat("00", 10) & "ff" & repeat("ff", 8)
 let activityKey = "0d" & repeat("00", 30)
 let previousKey = "09" & repeat("00", 30)
+
 # Build a fresh configured view, preserving independent current and previous roster encodings.
 proc activityInfo(wire: string, previous = "06" & repeat("00", 2016)): ClientInfo =
   let state = genesisState[0..^2] & ",\"" & previousKey & "\":\"" & previous & "\",\"" &
@@ -448,6 +450,7 @@ assert activityView.error == StatisticsReadError.None
 var activityCopy = activityView.value.bytes
 activityCopy[0] = 0
 assert activityView.value.bytes[0] == 6
+
 # Repeated decoding and response construction must release roster and statistics temporary owners.
 proc retireActivityReply() =
   assert respond(activityCall, activityOwner) == activityAnswer
@@ -472,11 +475,13 @@ for invalid in [listCall.replace(genesisHash, "bad"), listCall.replace("],", ",0
     listCall.replace("[\"" & genesisHash & "\"]", "[]"), listCall.replace("[\"" & genesisHash &
         "\"]", "{}")]:
   assert "\"code\":-32602" in respond(invalid, serviceInfo) # Exactly one canonical hash is mandatory.
+
 # Independently construct literal C(255, service) keys without the production constructor.
 proc accountHex(service: uint32): string =
   result = "ff"
   for shift in 0..<4: result.add(toHex(int64((service shr (shift * 8)) and 255), 2) & "00") # E4 interleaving.
   result.add(repeat("00", 22)) # Complete all fixed zero positions of the 31-byte key.
+
 # Capture one map from supplied account JSON; source buffers may be edited/dropped afterward.
 proc discoveryInfo(accounts: string): ClientInfo =
   let state = genesisState[0..^2] & accounts & "}"
@@ -530,6 +535,7 @@ let requestState = serviceState[0..^2] &
 let requestsText = genesisText.replace(genesisState, requestState)
 let requestsInfo = ClientInfo(chain: genesisView(configuredGenesis(requestsText,
     genesisParameters.value)))
+
 # Build four-argument history queries without narrowing unsigned length literals.
 proc requestCall(length: string): string =
   serviceCall("serviceRequest", "42", ",\"" & repeat("A", 43) & "=\"," & length)
@@ -582,6 +588,7 @@ let longHistoryText = requestsText.replace(threeSlots & "\"", threeSlots & "00\"
 let longHistoryInfo = ClientInfo(chain: genesisView(configuredGenesis(longHistoryText,
     genesisParameters.value)))
 assert "\"code\":0" in respond(requestCall("3"), longHistoryInfo)
+
 proc retireRequestReply() =
   assert "\"result\":[0,2147483648,4294967295]" in respond(requestCall("3"), requestsInfo)
 retireRequestReply()
@@ -594,6 +601,7 @@ var server = default(Server)
 assert server.start(0, "server")
 server.tick(0)
 server.close(); server.close()
+
 # Probe custom-destructor lowering with owned strings even when explicit close is never called.
 proc retireBuffers() =
   var owner = default(Server)
@@ -606,6 +614,7 @@ retireBuffers() # Warm fixed allocator bookkeeping before measuring retained app
 let baseline = getOccupiedMem()
 for iteration in 0..<100: retireBuffers() # Repeated custom destruction must not retain nested slot strings.
 assert getOccupiedMem() <= baseline + 256
+
 # A newly imported snapshot must retire with the server, even without explicit shutdown.
 proc retireGenesis() =
   var owner = default(Server)
@@ -688,6 +697,7 @@ assert "\"code\":-32602" in respond(reportCall.replace(reportHashText, "bad"), r
 # Complete parent validation rejects truncation, invalid tags and suffixes even after a matching report.
 for wire in ["", "02", reportWire[0..^3], reportWire & "00"]:
   assert "\"code\":0" in respond(reportCall, reportInfo(wire))
+
 # Repeated lookup must retire parent snapshots, report copies and cryptographic temporary buffers.
 proc retireReportReply() =
   ## Assert lookup while retaining only the original configured state across calls.
@@ -711,6 +721,7 @@ assert workReport(reportOwner.chain.bestBlock.value, reportIdentity, ByteLimit(3
     ReportReadError.None
 assert workReport(reportOwner.chain.bestBlock.value, default(WorkReportHash), ByteLimit(0)).error ==
     ReportReadError.Missing
+
 # A returned report owns its bytes even after the configured map and parent decoder retire.
 proc retainedReport(): OwnedReport =
   ## Return just the validated report owner from a short-lived configured state.
@@ -737,6 +748,7 @@ let readyReportHex = "30466e0ae1b05dde5249872475f6beeac368fd014b5a3413ceb32d3872
 let readyReportHash = "xFVJ93pjaMduU8oqsAhx/ts/IQl3aFgxetYf8dWPqcw="
 let readyCall = reportCall.replace(reportHashText, readyReportHash)
 let readyAnswer = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"MEZuCuGwXd5SSYckdfa+6sNo/QFLWjQTzrMtOHIUMoQqAAAAevEf2qcXw5jiIyEYQrQTkvGN9LvE6g9M+5cvGcemSUkGAOjlKUn25PsdlDJI30jD8rU4IA/d/qIjiOXgYb6OvyGnRQDAVkxeDeCUJYnfQ0OtGVbaZnlyQOKi8tb4EWtQR3aJhgsAAAD2lnZY32Jvo5y/tgFLUBltI7ws+/pxp1kcp3FUct0rSJMp3mNdS7uMR83Mu8EoXki/nbrTZa9EsgU0PpneopjzYHUatbJRNh+/061bDoTwUczs5rAIMK7TGlNU4Asgue0hAAAAj2ZcQFc/Eoh0l2dBdDD2I2DjeGXvdzwkGGUnqiS1pJMAAgIuXhZcyL1YZAQlf1zW9aMRd7XJUesHbHwQF0+QAG7vAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}"
+
 proc readyReportInfo(wire: string, assignments = "", largeEpoch = false): ClientInfo =
   ## Retain supplied ready bytes and optional availability under one captured parameter context.
   var state = genesisState[0..^2] & ",\"0e" & repeat("00", 30) & "\":\"" & wire & "\""
@@ -779,6 +791,7 @@ assert workReport(readyOwner.chain.bestBlock.value, readyIdentity, ByteLimit(393
     ReportReadError.None
 assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 1048577)))
 assert "\"code\":0" in respond(readyCall, readyReportInfo(repeat("00", 4097), largeEpoch = true))
+
 proc retainReadyReport(): OwnedReport =
   ## Return a child owner beyond both genesis and ready-ring decoder lifetimes.
   let transient = readyReportInfo(readyWire)
@@ -789,6 +802,7 @@ let readyRetained = retainReadyReport()
 var readyCopy = newSeq[byte](393)
 assert encodeOwnedReport(readyRetained, readyCopy).error == OwnershipError.None
 assert base64.encode(readyCopy) in readyAnswer
+
 proc retireReadyReply() =
   ## Decode and release ring rows, dependency storage and report owners on every call.
   assert respond(readyCall, readyOwner) == readyAnswer
@@ -825,6 +839,7 @@ for args in ["[]", "[0,0]", "[\"" & genesisHash & "\"]", "[\"" & genesisHash & "
     "[\"" & genesisHash & "\",\"" & rawTimeKey & "\",0]"]:
   assert "\"code\":-32602" in respond(rawCall.replace("[\"" & genesisHash & "\",\"" & rawTimeKey &
       "\"]", args), withGenesis)
+
 proc rawValueInfo(hex: string): ClientInfo =
   ## Capture opaque bytes at an otherwise absent serialized key; no schema validation is implied.
   let state = genesisState[0..^2] & ",\"ff" & repeat("00", 30) & "\":\"" & hex & "\"}"
@@ -840,6 +855,7 @@ assert "\"code\":0" in respond(rawOpaqueCall, rawValueInfo(repeat("78", 32769)))
 let rawBatch = respond("[" & rawOpaqueCall & "," & rawOpaqueCall & "]", rawLarge)
 assert rawBatch.len <= 65535 and "\"code\":0" in rawBatch
 assert rawLargeReply in rawBatch # A later refusal does not truncate an earlier complete reply.
+
 proc retireRawReply() =
   ## Repeated raw copies and response serialization must release all temporary storage.
   assert respond(rawCall, withGenesis) == rawAnswer
@@ -893,6 +909,7 @@ assert keysMaximumReply.split("==").len == 130
 let keysBatch = respond("[" & repeat(keysMaximum & ",", 15) & keysMaximum & "]", manyServices)
 assert keysBatch.len <= 65535 and "\"code\":0" in keysBatch
 assert keysMaximumReply in keysBatch
+
 proc retireKeysReply() =
   ## Retain the immutable index while temporary key copies and JSON responses retire.
   assert respond(keysRequest, withGenesis) == keysFirst
@@ -915,6 +932,7 @@ assert "\"code\":1" in respond(headerCall, info)
 assert "\"code\":1" in respond(headerCall.replace(genesisHash, repeat("A", 43) & "="), withGenesis)
 for args in ["[]", "[0]", "[\"bad\"]", "[\"" & genesisHash & "\",0]"]:
   assert "\"code\":-32602" in respond(headerCall.replace("[\"" & genesisHash & "\"]", args), withGenesis)
+
 proc retainedHeader(): OwnedHeader =
   ## Retain the sealed owner after the chainspec text and temporary genesis handle retire.
   var source = genesisText
@@ -928,6 +946,7 @@ assert encodeOwnedHeader(headerRetained, headerCopy).error == HeaderError.None
 headerCopy[0] = 255 # Caller-owned copies cannot mutate the retained wire or its identity.
 assert encodeOwnedHeader(headerRetained, headerCopy).error == HeaderError.None
 assert base64.encode(headerCopy) in headerAnswer
+
 # Independently framed winner/offender fields produce exact 32 KiB and one-byte-over valid headers.
 proc headerBoundary(epoch: int, offender: bool): tuple[info: ClientInfo, raw: string] =
   ## Author canonical C.2 fields directly; no production header encoder constructs this fixture.
@@ -953,6 +972,7 @@ assert base64.encode(headerAtLimit.raw) in headerLargeAnswer
 assert "\"code\":0" in respond(headerOverCall, headerOverLimit.info)
 let headerBatch = respond("[" & headerAtCall & "," & headerAtCall & "]", headerAtLimit.info)
 assert headerBatch.len <= 65535 and "\"code\":0" in headerBatch and headerLargeAnswer in headerBatch
+
 proc retireHeaderReply() =
   ## Header response construction must release byte copies and Base64 buffers on each call.
   assert respond(headerCall, withGenesis) == headerAnswer

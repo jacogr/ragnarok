@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_manager_publication_arc_release"}
 
 ## Real parallel bless/assign guests prove manager precedence, original queue authority and atomic bounded full-map publication.
@@ -19,13 +20,18 @@ import ../../support/[accumulation_batch_context, pvm_accumulation_context,
 
 type Ending = enum ## Authored terminal selection preserves or discards actual privilege provenance.
   Halt, Panic, CheckpointPanic, Restore, HashReturn
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc put(bytes: var seq[byte], value: uint64, width: int) =
   ## Append literal little-endian protocol fields independently of the production C(12) codec.
   for offset in 0..<width:
     bytes.add(byte((value shr (8*offset)) and 255)) # Fixed four/eight-byte widths keep shifts below 64.
+
 proc parameters(): Parameters =
   ## Real hosts validate the tiny chain profile and eighty-entry queues without unfunded fixture deposits.
   var wire = encodeParameters(pvmParameters())
@@ -35,6 +41,7 @@ proc parameters(): Parameters =
   wire[82] = 80
   wire[83] = 0
   decodeParameters(wire).value
+
 proc managerProgram(changed: bool, ending: Ending, pairs: int): seq[byte] =
   ## The manager selects independent roles and a canonical dictionary, including full unsigned gas/service domains.
   var payload: seq[byte] = @[]
@@ -71,12 +78,14 @@ proc managerProgram(changed: bool, ending: Ending, pairs: int): seq[byte] =
     instructions.add(registerImmediate(8, 32)) # Normalized hash return must retain regular privilege changes.
   instructions.add(@[50'u8, 0])
   guestEnvelope(instructions, writable = payload)
+
 proc assignProgram(): seq[byte] =
   ## Original assigner 99 changes only core zero; manager handoff must not replace its queue source.
   var payload = newSeq[byte](96)
   for index in 64..<96: payload[index] = byte(index) # Independently observable slot-two queue hash.
   guestEnvelope([registerImmediate(7, 0), registerImmediate(8, 196608),
     registerImmediate(9, 77), @[10'u8, 17], @[50'u8, 0]], writable = payload)
+
 proc policy(pairs, original: int): AccumulationBatchLimits =
   ## Explicit exact wire/item ceilings cover original and selected manager C(12), including cardinality changes.
   result = batchPolicy()
@@ -84,6 +93,7 @@ proc policy(pairs, original: int): AccumulationBatchLimits =
   result.assignBytes = ByteLimit(5120+21+12*max(pairs, original))
   result.managerEntries = ElementLimit(max(pairs, original))
   result.managerBytes = ByteLimit(42+12*(pairs+original))
+
 proc expected(fixture: BatchFixture, changed: bool, ending: Ending, pairs: int,
     subset = false): seq[StateEntry] =
   ## Literal whole-map bytes are an independent oracle for R and original-owner queue selection.
@@ -118,6 +128,7 @@ proc expected(fixture: BatchFixture, changed: bool, ending: Ending, pairs: int,
         row = serviceMetadataEntry(service, account, ByteLimit(
             ServiceMetadataBytes)).value # Independently known incoming credits remain atomic with global writes.
     result.add(row)
+
 proc check(changed: bool, ending: Ending, pairs: int, reverse = false, original = 0) =
   ## Refusal never hashes or mutates callers; exact budgets publish literal complete-map roots and release every plan owner.
   let always = if original == 0: newSeq[AlwaysAccumulate]() else:
@@ -194,6 +205,7 @@ proc check(changed: bool, ending: Ending, pairs: int, reverse = false, original 
     assert array[32, byte](applyAccumulationBatch(private, local).value.commitment.root) == array[
         32, byte](wanted.root)
   assert before == getOccupiedMem(), "manager publication plans release"
+
 proc checkSubset() =
   ## An absent manager cannot donate its unexecuted role changes or allowance dictionary.
   let fixture = batchFixture(firstEnvelope = managerProgram(true, Halt, 2),
@@ -207,6 +219,7 @@ proc checkSubset() =
   let published = applyAccumulationBatch(caller, plan).value
   for entry in expected(fixture, true, Halt, 2, subset = true):
     assert published.lookup(entry.key).value.bytes == entry.value, "absent manager retains original roles"
+
 proc checkStoreLimit() =
   ## Hosts individually fit three writes, but the four-write combined candidate must retain inherited store limits.
   let fixture = batchFixture(writes = 3, firstEnvelope = managerProgram(true, Halt, 2),
@@ -223,6 +236,7 @@ proc checkStoreLimit() =
   assert refused.error == AccumulationBatchError.StoreFailure and refused.storeError ==
       StateStoreError.LimitExceeded
   assert sameStateSnapshot(caller.snapshot.value, fixture.state.snapshot.value)
+
 proc checkManagerOnly() =
   ## A selected manager publishes C(12) even when no selected service assigned a queue.
   let fixture = batchFixture(firstEnvelope = managerProgram(true, Halt, 2),
@@ -243,6 +257,7 @@ proc checkManagerOnly() =
   var caller = fixture.state
   let published = applyAccumulationBatch(caller, plan).value
   assert array[32, byte](published.commitment.root) == array[32, byte](wanted.root)
+
 proc checkStagingGate() =
   ## A real designate between two successful bless calls retains its independent staging publication budget.
   let program = guestEnvelope([registerImmediate(7, 42), registerImmediate(8, 196608),
@@ -262,6 +277,7 @@ proc checkStagingGate() =
   assert selected.effectAccountScope.value == AccumulationAccountScope.Initial
   assert prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value, [a, b], [],
     HeaderSlot(128), policy(0, 0)).error == AccumulationBatchError.LimitExceeded
+
 proc main() =
   ## Exercise manager changes, R fallback, terminal rollback, restored-equal occurrence, growth/shrinkage and independent execution order.
   check(true, Halt, 2)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full paged application bootstrap and strict restart bind every rolling root, complete header/profile and older explicit finality.
+
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, application_checkpoint_context]
 import ../../../src/app/chain
@@ -14,8 +15,10 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/[record_codec, database_identity]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc appPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private application namespaces preserve earlier forensic artifacts without stale test collisions.
+
 proc main() {.raises.} =
   ## Only the final atomic V2 selection can restore a canonical history; failed identity/profile binding retires every lease.
   let fixture = diskHistoryFixture()

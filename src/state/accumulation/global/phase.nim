@@ -4,6 +4,7 @@
 ## Apply selected C12 roles, original-owner C2 queues and C7 staging after private account/provision preparation.
 ## Genuine annulment sources govern every component; no caller map, role recipient or fabricated empty context substitutes authority.
 ## This reusable phase trusts explicit coverage/frame configuration; it cannot construct an authenticated Stage owner.
+
 import ../../../codec/[bounded, assurances]
 import ../../../codec/state/[authorization as state_authorization, privileges as state_privileges,
     safrole as state_safrole, layout as state_layout]

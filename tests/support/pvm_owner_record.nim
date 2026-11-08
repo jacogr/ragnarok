@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Common full-invocation owner record, shared with the native qualification witness.
 
 from ../../src/pvm/step import PreparedInfo

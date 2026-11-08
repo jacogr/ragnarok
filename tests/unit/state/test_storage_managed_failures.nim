@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real kernel short writes and abrupt child exit check managed append and epoch-publication boundaries.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
@@ -24,15 +25,19 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before selecting a smaller soft limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Change only the isolated child, never the native runner's resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep SIGXFSZ as a typed write error rather than accepting signal termination as evidence.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## Signal handling performs no allocation, output or storage operation.
   discard
@@ -42,6 +47,7 @@ proc join(child: Pid) =
   var status = 0.cint
   assert posix.waitpid(child, status, 0) == child
   assert WIFEXITED(status) and WEXITSTATUS(status) == 0, "managed failure child"
+
 proc appendCut(cut: int, number: int) {.raises.} =
   ## The kernel stops the actual append at an exact extent, leaving its selected prefix untouched.
   let limits = managedStorageLimits()
@@ -107,6 +113,7 @@ proc appendCut(cut: int, number: int) {.raises.} =
     assert repository.close == FileError.None
   removeManagedSample(path, [ManagedEpoch(1)])
   assert memory.close == RepositoryError.None
+
 proc epochCut(cut: int) {.raises.} =
   ## Exit after each durable staging boundary; only CURRENT replacement changes restart selection.
   let limits = managedStorageLimits()
@@ -160,6 +167,7 @@ proc epochCut(cut: int) {.raises.} =
   assert repository.close == FileError.None
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
   assert memory.close == RepositoryError.None
+
 proc compactCut() {.raises.} =
   ## A real partial staged snapshot cannot change CURRENT or permit reuse of an uncertain live owner.
   let limits = managedStorageLimits()
@@ -201,6 +209,7 @@ proc compactCut() {.raises.} =
   assert repository.close == FileError.None
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
   assert memory.close == RepositoryError.None
+
 proc main() {.raises.} =
   ## Cover prefix/header/body/checksum tears and all selected epoch staging barriers.
   for index, cut in [0, 1, 7, 8, 16, 32, 100, -1]: appendCut(cut, index)

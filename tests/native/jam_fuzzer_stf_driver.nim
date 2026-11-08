@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual fuzzer Initialize/ImportBlock/GetState execution emits complete maps for the independent STF oracle.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, accumulation_current_chain_context,
     current_consecutive_context,
@@ -13,15 +14,18 @@ import ../../src/codec/[bounded, header, report_owned, block_codec]
 import ../../src/codec/state/trie as state_trie
 import ../../src/state/fuzz/protocol as fuzz_protocol
 import ../../src/state/[store, checkpoint]
+
 proc hex(bytes: openArray[byte]): string =
   ## Preserve every wire octet for complete deterministic comparison.
   result = ""
   for octet in bytes: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc checkpointHex(state: StateStoreSnapshot): string =
   ## A whole-map comparison includes every key/value and an independently recomputed commitment.
   let encoded = encodeFullCheckpoint(state, ByteLimit(100000))
   assert encoded.error == CheckpointError.None
   hex(encoded.value)
+
 proc run(base: OwnedReport, populated: bool) =
   ## Use the same independent two-chain fixture as the established whole-map STF corpus.
   let seeds = if populated: namespaceSeeds() else: @[]
@@ -64,6 +68,7 @@ proc run(base: OwnedReport, populated: bool) =
     echo "O ", checkpointHex(after)
   assert checkpointHex(backend.executeFuzz(fuzzGetState(
       context.parent.value.header)).value.fuzzState.value) == checkpointHex(original)
+
 proc main() {.raises.} =
   ## The frozen report seeds unused service code; independently signed empty-body children exercise actual STF.
   let raw = readFile(paramStr(1))

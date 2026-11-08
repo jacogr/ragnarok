@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_reentry_outputs_arc_release"}
 
 ## Genuine repeated rounds form a bounded immutable pair union, with independent literal log/root witnesses.
@@ -22,6 +23,7 @@ import ../../support/[accumulation_reentry_context, accumulation_execution_conte
 
 # Fail hashing only after genuine signed sources have been constructed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Return the real compact bootstrap tuple, or a fixed readable address, from the initialized CPU.

@@ -3,6 +3,7 @@
 
 ## Bounded global chapter selectors and authenticated reads of partial evidence.
 ## Typed chapter captures retain existing codec/profile rules without granting complete-map authority.
+
 import std/assertions
 import ../../codec/state/statistics as state_statistics
 import ../../codec/state/outputs as state_outputs

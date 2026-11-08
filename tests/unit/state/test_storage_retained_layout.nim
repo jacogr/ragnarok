@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Public-operation retained heap measurements separate payload slopes from immutable graph overhead.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/records as node_records

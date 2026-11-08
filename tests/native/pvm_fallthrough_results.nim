@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Missing decoded results grant no fallthrough fact; a genuine success is the runtime positive control.
+
 import std/[assertions, cmdline]
 import ../../src/pvm/program
+
 proc runFailureProbe*(origin: string) =
   ## Execute exactly one argv-selected probe; the caller retains separate process isolation.
   var decoded = default(ProgramResult[Instruction])

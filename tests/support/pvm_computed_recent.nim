@@ -28,14 +28,17 @@ type
     source*: StateBoundComputedReport
     state*: StateStore
     original*: seq[byte]
+
 proc recentConfig*(): HistoryConfig =
   ## Original two-core profile with independent recent-record, pair, peak and complete-value ceilings.
   HistoryConfig(cores: CoreCount(2), blocks: ElementLimit(8), perBlock: ElementLimit(2),
     totalPackages: ElementLimit(16), peaks: ElementLimit(64), maxBytes: ByteLimit(100000))
+
 proc recentHash*(first: byte): array[32, byte] =
   ## Literal leading-byte markers distinguish records, state roots and accumulation super-peaks without new hashes.
   result = default(array[32, byte])
   result[0] = first
+
 proc recentReport(execution: InputRefinement): ComputedReportLinks =
   ## Complete the original zero-lookup bundle/availability/report/transcript path before any anchor checking.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -47,6 +50,7 @@ proc recentReport(execution: InputRefinement): ComputedReportLinks =
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
+
 proc recentFixture*(mode = 0): ComputedRecentFixture =
   ## Commit C3/C11 before final context capture and execution; each negative mode remains a genuine completed state binding.
   let halt = @[50'u8, 0]

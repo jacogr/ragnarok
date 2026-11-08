@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Constant-size proof templates generate populated paged datasets; fresh consumers measure strict admission and spread reads.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[storage_io, storage_allocations]
 import ../../src/storage/paged/[store as paged_store, io as paged_io, stream as paged_stream,
@@ -17,26 +18,33 @@ import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 type Fixture = object ## Only three bounded proofs and one cross-page value survive independent complete-map construction.
   config: PagedNativeConfig
   first, absent, last: LightStateProof
+
 proc descriptors(): cint {.importc: "ragnarok_paged_descriptors",
     header: "storage_paged_resources.h".}
   ## SDK-owned descriptor enumeration excludes its own observation handle and refuses unsupported scans.
+
 proc usage(selector: cint): clonglong {.importc: "ragnarok_paged_usage",
     header: "storage_paged_resources.h".}
   ## Actual SDK getrusage samples include native runtime/provider/translator resources after storage work, before final receipt formatting.
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count maintained cryptography without fault injection or altered proof semantics.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## The bounded source-owned dataset plan stays below the observer's signed counter ceiling.
+
 func key(ordinal: uint64): StateKey =
   ## Fixed big-endian prefixes preserve numeric sorting and stay strictly below the all-ones final key.
   var raw = default(array[31, byte])
   for index in 0..<8: raw[index] = byte((ordinal shr ((7-index)*8)) and 255)
   StateKey(raw)
+
 func lastKey(): StateKey =
   ## This retained present-empty leaf is independent of dataset cardinality.
   var raw = default(array[31, byte])
   for index in 0..<raw.len: raw[index] = 255
   StateKey(raw)
+
 func limits(cache: int): PagedStreamLimits =
   ## All runs inherit identical finite bounds except the explicit zero/one page treatment.
   let calls = ElementLimit(1000000000)
@@ -47,6 +55,7 @@ func limits(cache: int): PagedStreamLimits =
     workingBytes: ByteLimit(65536), cachePages: ElementLimit(uint64(cache)),
     work: PagedWorkLimits(ioCalls: calls, producerCalls: calls, pageHashes: calls, proofs: calls,
       nodes: calls, readBytes: bytes, writeBytes: bytes, valueBytes: bytes))
+
 proc fixture(cache: int): Fixture =
   ## An independent complete two-entry map anchors nonempty-root proofs, with no count-sized resident input.
   var value = newSeq[byte](4097)
@@ -67,6 +76,7 @@ proc fixture(cache: int): Fixture =
       result.config.limits.proof).value)
   assert result.first.proof.nodes.len == 2 and result.absent.proof.nodes.len == 2 and
     result.last.proof.nodes.len == 2
+
 proc producer(source: Fixture, count: uint64): PagedProducer =
   ## The borrowed synchronous stream reuses three constant templates and retains no record batch or whole index.
   proc next(pass: int, ordinal: uint64, output: var LightStateProof): PagedProducerStep {.closure.} =
@@ -79,6 +89,7 @@ proc producer(source: Fixture, count: uint64): PagedProducer =
       output.key = key(ordinal)
     PagedProducerStep.Item
   next
+
 proc rootHex(root: StateRoot): string =
   ## Emit independently recomputed root identity for cross-process attribution, never inferred from disk metadata.
   const digits = "0123456789abcdef"
@@ -86,6 +97,7 @@ proc rootHex(root: StateRoot): string =
   for value in array[32, byte](root):
     result.add(digits[int(value shr 4)])
     result.add(digits[int(value and 15)])
+
 proc run(mode, path: string, count: uint64, cache: int) =
   ## Each executable invocation owns a single preparation or fresh admission; all resources retire before final samples.
   let source = fixture(cache)
@@ -176,6 +188,7 @@ proc run(mode, path: string, count: uint64, cache: int) =
     "\t", shape.dataPages, "\t", baseline, "\t", opened, "\t", released, "\t", handles,
     "\t", openHandles, "\t", finalHandles, "\t", ioCalls(readIo), "\t", ioCalls(writeIo),
     "\t", hashes, "\t", checked, "\t", rss, "\t", minor, "\t", major
+
 proc main() =
   ## A deliberately finite case plan bounds arithmetic, workload and all observer counters before native IO.
   assert paramCount() == 4 and paramStr(1) in ["prepare", "open"]

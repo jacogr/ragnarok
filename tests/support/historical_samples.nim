@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact test-owned historical namespace inventories and explicit full-state storage ceilings.
+
 import std/assertions
 import std/posix/posix
 import ../../src/chain/genesis
@@ -21,6 +22,7 @@ func historyHashName*(hash: BlockHash): string =
   for index, octet in source:
     result[index*2] = digits[int(octet shr 4)]
     result[index*2+1] = digits[int(octet and 15)]
+
 proc removeHistorySample*(database: string, blocks: openArray[BlockSnapshotResult], ordinals = 0) =
   ## Remove only authored row/record ordinals and known full-hash aliases; unknown filesystem entries never drive cleanup.
   let folder = database & ".history"
@@ -38,12 +40,14 @@ proc removeHistorySample*(database: string, blocks: openArray[BlockSnapshotResul
     discard posix.unlink(path.toCString())
   var path = folder
   assert posix.rmdir(path.toCString()) == 0 or errno() == ENOENT
+
 proc historicalJournalLimits*(policy: StateStoreLimits): JournalLimits =
   ## Finite complete-state graph/context budgets are independent from retained historical file count.
   JournalLimits(repository: RepositoryLimits(codec: RecordLimits(trie: policy.trie,
     records: TrieExportLimits(records: TrieNodeLimit(1000000), valueBytes: ByteLimit(16777216)),
     encoded: ByteLimit(33554432)), records: ElementLimit(2000000), valueBytes: ByteLimit(67108864)),
     bytes: ByteLimit(134217728), contextBytes: ByteLimit(1048576))
+
 proc historicalManagedLimits*(policy: StateStoreLimits): ManagedLimits =
   ## Archive data never expands the bounded live validation/finality graph's root inventory.
   let limits = historicalJournalLimits(policy)

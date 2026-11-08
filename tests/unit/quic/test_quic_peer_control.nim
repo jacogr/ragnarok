@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact live-peer routing rejects stale owner/slot generations across real TLS replacements.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/quic/transport
 import ../../../src/jamnp-s/protocol
@@ -22,15 +23,19 @@ type
     target: PeerHandle
     outgoing, last: byte
     accepted, closed, completed: int
+
 proc `=copy`(destination: var Party, source: Party) {.error.}
   ## No copy may relocate the transport or its borrowed outer callback context.
+
 proc `=dup`(source: Party): Party {.error.}
   ## Foreign callback retirement also forbids implicit duplication.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Both incoming same-key clients remain distinct authenticated connections.
   let owner = cast[ptr Party](user)
   if owner.server: return cint(validPeer(cast[ptr byte](der), length, []))
   cint(validPeer(cast[ptr byte](der), length, owner.pin))
+
 proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   ## Mint a reference in the exact accepted slot; preserve its old copy when the native peer closes.
@@ -50,6 +55,7 @@ proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     owner.known[index] = false
     inc owner.closed
   else: owner.invalid = true # Unknown events cannot mint or release peer observations.
+
 proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Opaque finite exchanges prove per-connection selection independently from JAM message framing.
   let owner = cast[ptr Party](user)
@@ -110,12 +116,14 @@ proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [
       owner.exchanges[position].written and not owner.exchanges[position].reported:
     owner.exchanges[position].reported = true
     inc owner.completed # Both one-byte directions and clean FIN must complete once.
+
 proc key(path: string): array[32, byte] {.raises.} =
   ## Public fixture pins have exact32-byte width.
   let raw = readFile(path)
   assert raw.len == 32
   result = default(array[32, byte])
   for index in 0..<32: result[index] = byte(raw[index])
+
 proc listen(server: var Party) =
   ## Same stable outer owner can reopen after all earlier foreign callbacks retire.
   server.known = default(array[2, bool])
@@ -123,6 +131,7 @@ proc listen(server: var Party) =
     getEnv("RAGNAROK_TEST_KEY"), "peer-control/v1", addr server, verify, stream,
     multi = true, incomingPeers = 2), "listener setup"
   assert server.transport.observePeers(peer)
+
 proc connect(client: var Party, server: var Party) {.raises.} =
   ## Explicitly store a stable foreign owner only for synchronous cross-engine extraction checks.
   client.pin = key(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -131,6 +140,7 @@ proc connect(client: var Party, server: var Party) {.raises.} =
     getEnv("RAGNAROK_TEST_KEY_B"), "peer-control/v1", addr client, verify, stream)
   client.opened = true
   assert client.transport.connectTransport(localPort(server.transport))
+
 proc pump(server: var Party, clients: var array[3, Party], accepted, closed, completed: int) =
   ## Wait for actual connection/stream milestones under a finite native event-loop deadline.
   let deadline = getMonoTime()+initDuration(seconds = 3)
@@ -146,11 +156,13 @@ proc pump(server: var Party, clients: var array[3, Party], accepted, closed, com
         responses == completed: return
   assert false, "peer-control milestones: accepted=" & $server.accepted & " closed=" &
       $server.closed & " completed=" & $server.completed
+
 proc send(server: var Party, target: PeerHandle, value: byte) =
   ## The target/value are selected before make_stream may call back synchronously.
   server.target = target
   server.outgoing = value
   assert server.transport.openPeerStream(target), "live targeted stream request"
+
 proc scenario() {.raises.} =
   ## A stale reference must not target replacements in the same slot or a reopened owner.
   var server = Party(server: true)

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Checked memory leases preserve source changes, permissions, budgets, host exits and immutable predecessors.
+
 # @@Verification={"arc": "pvm_memory_reuse_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine]
@@ -276,7 +278,6 @@ block high_observer_dense_publication:
     assert preparedInfo(retained).value.memoryReuses == 1, "high observer scratch reuse"
     assert pageImage(memoryOf(published[0]).value, high.index).value == high, "held high observer snapshot"
 
-
 block sparse_physical_overlap_readback:
   ## Physical bitmap words and positional directory slots deliberately name different pages.
   let sparseOwner = code([@[62'u8, 0, 0xfd, 0xff, 3, 0],
@@ -466,8 +467,6 @@ assert b.error == PreparationError.None
 assert uint64(preparedInfo(b.value).value.limits.retainedMemoryBytes) == 32768
 assert preparedCacheInfo(worker).value.preparations == 2
 
-
-
 type
   Refusal = enum
     Refused
@@ -488,7 +487,6 @@ proc fallible(context: var Context, suspension: StepOutcome): HostResult[Refusal
     inc context.calls
     return hostFailure(Refusal.Refused)
   hostSuccess[Refusal](terminal(context, suspension))
-
 
 proc continueWithTarget(context: var Context, suspension: StepOutcome): HostResponse {.raises: [].} =
   ## The owned host response replaces a low map with a genuine high-page map before guest writes resume.
@@ -543,7 +541,6 @@ block highest_page_host_remap:
     var expected = high
     expected.bytes[4094] = 109
     assert pageImage(memory, high.index).value == expected, "held highest-page snapshot"
-
 
 proc hostTransitions() =
   let owner = code([@[52'u8, 0, 0, 0, 1, 0], @[52'u8, 1, 0, 32, 1, 0],
@@ -608,7 +605,6 @@ proc hostTransitions() =
   same(actual.value.machine, expected.value.machine)
   assert uint64(machineInfo(actual.value.machine).value.registers[2]) == 57
   assert preparedInfo(reused).value.memoryReuses == 2
-
 
 proc argumentSuccessor(base: Memory, value: byte): Memory =
   ## Fresh argument owners exercise the public append/replacement path without an initializer template.

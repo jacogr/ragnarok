@@ -54,6 +54,7 @@ proc unsigned(text: string): uint64 =
   var number: uint64 = 0
   assert text.len > 0 and parseBiggestUInt(text, number) == text.len
   number
+
 ## Fixture indices must fit native indexing before conversion.
 proc integer(text: string): int =
   let number = unsigned(text)
@@ -131,7 +132,6 @@ proc selftest(baseline: StateChapters, profile: StateProfile) =
     requests: @[StateRequestItem(length: RequestLength(0xfffffffe'u32))])
   let overlap = composeState(baseline, [service], limits, ByteLimit(1))
   assert overlap.error == StateCompositionError.InvalidComponent # Current request lengths exclude both historical aliases.
-
 
 ## Construct a complete typed service source from fixed metadata and explicitly delimited nested items.
 proc service(text: string): StateService =

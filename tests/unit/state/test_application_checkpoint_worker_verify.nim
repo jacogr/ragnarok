@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_worker_verify_arc_release"}
 
 ## Verification owns all decoded maps on the native thread and returns only fixed context with explicit operation identity.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -15,6 +16,7 @@ import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, application_checkpoint_worker_context, arc_evidence]
 const FileName = "application-checkpoint-worker-verify"
+
 proc verified(worker: var ApplicationCheckpointWorker, expected: ApplicationCheckpointIdentity,
     limits: StateStoreLimits, limit: ByteLimit): ApplicationCheckpointCompletion =
   ## Every admitted request reports actual native verification, including exact typed refusals.
@@ -24,11 +26,13 @@ proc verified(worker: var ApplicationCheckpointWorker, expected: ApplicationChec
   result = worker.collect(ticket)
   assert result.kind == ApplicationCheckpointCompletionKind.Completed
   assert result.operation == ApplicationCheckpointOperation.Verify
+
 proc cycle(worker: var ApplicationCheckpointWorker, expected: ApplicationCheckpointIdentity) =
   ## Only host ticket/fixed-receipt occupancy is observed; decoded graph release is covered by the verifier's native suite.
   let completed = verified(worker, expected, genesisStoreLimits(), ByteLimit(100000))
   assert completed.value.error == ApplicationCheckpointFileError.None
   assert sameApplicationCheckpoint(completed.value.value, expected)
+
 proc main() {.raises.} =
   ## Publication and verification share capacity, generation authority, cancellation and joined receipt preservation.
   defer:

@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_local_ancestors_arc_release"}
 
 ## Retained canonical parent capture excludes the selected head and separated finality, with atomic exact quotas.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/ancestor/inputs as ancestor_inputs
 import ../../../src/chain/[genesis, provider]

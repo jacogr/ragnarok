@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native runtime extraction guards and actual positive controls share each public result accessor.
+
 import std/[assertions, cmdline]
 import ../../src/state/ancestor_context
 import ../../src/codec/[bounded, header]
@@ -9,9 +10,11 @@ import ../../src/codec/[bounded, header]
 proc context(outcome: AncestorContextResult[AncestorContext]) =
   ## Default and refused capture cannot expose a context owner.
   discard outcome.value
+
 proc selected(outcome: AncestorContextResult[OwnedHeader]) =
   ## Invalid indices cannot yield a fabricated header or the first retained owner.
   discard outcome.value
+
 proc main() =
   ## Explicit canonical serialization supplies every positive owner rather than constructing private fields.
   let config = fullHeaderConfig(ByteLimit(1024))

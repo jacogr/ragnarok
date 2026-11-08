@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_handoff_arc_release"}
 
 ## A genuine current update crosses one bounded slot once; canonical/RPC visibility and refusal survive until acknowledgment.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -13,8 +15,11 @@ import ../../../src/rpc/server
 import ../../../src/state/store
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../support/[accumulation_current_chain_context, rpc_socket, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc listener(rpc: var Server, view: ChainView) =
   ## Bounded ephemeral-port retry keeps native RPC checks isolated from fixed-port assumptions.
   let parameters = decodeParameters(currentChainSettings().encodeParameters)
@@ -23,6 +28,7 @@ proc listener(rpc: var Server, view: ChainView) =
     discard posix.close(port.fd)
     if rpc.start(port.port, "current-handoff-test", parameters, view): return
   assert false, "current handoff RPC startup failed"
+
 proc canonical(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   ## Busy/completed backpressure, cancellation and stale-source refusal never replace existing ownership.
   var owner = original
@@ -59,6 +65,7 @@ proc canonical(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   owner.installPrepared(update)
   handoff.process(owner)
   assert handoff.take.error == CurrentHandoffError.StaleState
+
 proc joint(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   ## RPC refusal is terminal and leaves canonical state unchanged; a subsequent admitted exact lease installs once.
   var owner = original
@@ -85,6 +92,7 @@ proc joint(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   assert rpc.chainPaused and rpc.resumeChain(lease)
   failHash(0)
   rpc.close()
+
 proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   ## Both cancellation and complete acknowledgment release exactly their own retained immutable candidate aliases.
   var owner = original
@@ -94,6 +102,7 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   assert handoff.enqueue(owner, update) == CurrentHandoffAdmission.None
   handoff.process(owner)
   assert handoff.take.error == CurrentHandoffError.None
+
 proc main() {.raises.} =
   ## Current production preparation supplies the exact owner; the handoff grants no preparation authority itself.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

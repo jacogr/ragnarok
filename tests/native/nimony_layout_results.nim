@@ -10,6 +10,7 @@
 import std/[cmdline, syncio]
 import ../../src/codec/state/layout as state_layout
 import ../../src/codec/[bounded, composite]
+
 # Native refusals exist only in the test observer, never the production primitive library.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 let useDefault = paramStr(2) == "default"

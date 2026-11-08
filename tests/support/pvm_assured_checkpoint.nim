@@ -26,6 +26,7 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives successive writes; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, present: bool) =
   ## Distinguish retained checkpoint absence from both the initial parent and actual later regular restoration.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -39,12 +40,14 @@ proc storage(state: StateStoreSnapshot, present: bool) =
     assert found.error == StateStoreError.MissingKey
     assert uint32(account.storageItems) == 0 and uint64(account.storageBytes) == 0
   assert uint64(account.balance) == 58
+
 proc config(fixture: AssuredOutcomeFixture): AssuredExecutionConfig =
   ## Match original mode-specific local scheduling while certifying only the selected checkpoint deletion.
   result = assuredExecutionConfig(fixture.queue)
   result.runner.steps = ExecutionStepLimit(32)
   result.runner.calls = HostCallLimit(5)
   result.runner.completion.batch.selfValueBytes = ByteLimit(0)
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute the real fetch/deletion/checkpoint/read/restoration/branch sequence under the unchanged original protocol tuple.
   let outcome = executeAssuredAccumulation(fixture.queue, config(fixture))
@@ -54,12 +57,14 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Compose the selected checkpoint deletion without replaying initial guest work.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
   if outcome.error != AssuredCompositionError.None: echo "checkpoint composition ", outcome.error
   assert outcome.error == AssuredCompositionError.None
   outcome.value
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Execute the input-controlled checkpoint fault, compose and publish its absent key, then release every successor owner.
   let source = compose(execute(fixture))
@@ -68,6 +73,7 @@ proc cycle(fixture: AssuredOutcomeFixture) =
   let published = advanceAssuredChain(state, view, source)
   assert published.error == AssuredChainError.None
   storage(published.value.assuredChainSnapshot.value, false)
+
 proc verifyCheckpointDeletion*(mode: ComputedStorageMode, evidenceName: string) =
   ## Execute one originally authored terminal path through the full pipeline and retain distinct suite ARC evidence.
   assert mode in {ComputedStorageMode.ReadCheckpointPanic, ComputedStorageMode.ReadCheckpointFault,

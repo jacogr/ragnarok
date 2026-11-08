@@ -3,6 +3,7 @@
 
 ## Immutable JAMNP-S roster/grid projection from a complete block snapshot. The caller selects
 ## canonical state; structural snapshot capture alone proves neither consensus nor finality.
+
 import std/assertions
 import ../chain/[genesis, parameters]
 import ../codec/[bounded, header]
@@ -33,38 +34,47 @@ type
 func error*[T](outcome: TopologyResult[T]): TopologyError =
   ## Inspect the reason before extraction.
   outcome.status
+
 func value*[T](outcome: TopologyResult[T]): T {.requires: outcome.status == TopologyError.None.} =
   ## Return only completed immutable data or fixed facts.
   outcome.completed
+
 func identity*(membership: Membership): StateEdKey =
   ## Copy the exact Ed25519 identity; metadata never authenticates it.
   membership.key
+
 func endpoint*(membership: Membership): EndpointResult =
   ## Preserve unavailable advertised routing independently from membership.
   membership.route
+
 func ready*(topology: ValidatorTopology): bool =
   ## Defaults are explicitly unavailable.
   topology.data != nil
+
 func sourceBlock*(topology: ValidatorTopology): BlockHash {.requires: topology.ready.} =
   ## Bind the projection to the exact selected block.
   let data = topology.data
   assert data != nil # Bind the retained owner before reading immutable data.
   data.source
+
 func slot*(topology: ValidatorTopology): uint32 {.requires: topology.ready.} =
   ## Return the source clock, without inventing epoch transition authority.
   let data = topology.data
   assert data != nil # Bind the retained owner before reading immutable data.
   data.atSlot
+
 func epochSlots*(topology: ValidatorTopology): uint32 {.requires: topology.ready.} =
   ## Return the source chain's validated epoch length.
   let data = topology.data
   assert data != nil # Bind the retained owner before reading immutable data.
   data.epochLength
+
 func population*(topology: ValidatorTopology, epoch: ValidatorEpoch): int {.requires: topology.ready.} =
   ## Count ordinal positions, including null validators and repeated keys.
   let data = topology.data
   assert data != nil # Bind the retained owner before reading immutable data.
   data.rosters[epoch].len
+
 proc membershipAt*(topology: ValidatorTopology, epoch: ValidatorEpoch,
     index: StateValidatorIndex): TopologyResult[Membership] =
   ## A checked ordinal returns a fixed copy bound to this projection during extraction.
@@ -73,12 +83,15 @@ proc membershipAt*(topology: ValidatorTopology, epoch: ValidatorEpoch,
   if uint64(index) >= uint64(data.rosters[epoch].len):
     return TopologyResult[Membership](status: TopologyError.InvalidIndex) # Narrow only within the retained roster.
   TopologyResult[Membership](status: TopologyError.None, completed: data.rosters[epoch][int(uint64(index))])
+
 func sameKey(left, right: StateEdKey): bool =
   ## Compare identity bytes without confusing them with Bandersnatch or metadata.
   array[32, byte](left) == array[32, byte](right)
+
 func participant(key: StateEdKey): bool =
   ## The current pinned null Ed25519 encoding denotes a vacant ordinal.
   not sameKey(key, nullValidator().ed25519)
+
 proc contains*(topology: ValidatorTopology, key: StateEdKey): bool =
   ## Membership is the union of all three epochs; no endpoint is required for authority.
   let data = topology.data
@@ -88,10 +101,12 @@ proc contains*(topology: ValidatorTopology, key: StateEdKey): bool =
     for index in 0..<data.rosters[epoch].len:
       if sameKey(data.rosters[epoch][index].key, key): return true # Keep searching only until one real membership matches.
   false
+
 func gridWidth(count: int): int =
   ## Exact integer floor(sqrt(V)); rosters are codec-bounded to 6..1023.
   result = 1
   while (result+1)*(result+1) <= count: inc result # Products are below 1024 here.
+
 proc neighbours*(topology: ValidatorTopology, left, right: StateEdKey): bool =
   ## Compute the identity union in linear roster work, retaining every alias/ordinal.
   let data = topology.data
@@ -116,15 +131,18 @@ proc neighbours*(topology: ValidatorTopology, left, right: StateEdKey): bool =
         for other in low(ValidatorEpoch)..high(ValidatorEpoch):
           if other != epoch and positions[other][index]: return true # Equal indices connect different epochs.
   false
+
 func codecError(reason: StateComponentError): TopologyError =
   ## Preserve caller policy refusal separately from malformed exact state.
   case reason
   of StateComponentError.InvalidConfig: TopologyError.InvalidConfig # Configuration is not a wire defect.
   of StateComponentError.LimitExceeded: TopologyError.LimitExceeded # Keep explicit local work ceilings observable.
   else: TopologyError.InvalidState # Other structural failures grant no membership.
+
 proc project(record: StateValidator): Membership =
   ## Copy only networking facts; no key validation or routing fallback is fabricated.
   Membership(key: record.ed25519, route: validatorEndpoint(array[128, byte](record.metadata)))
+
 proc captureValidatorTopology*(source: BlockSnapshotResult,
     policy: SafroleStateConfig): TopologyResult[ValidatorTopology] =
   ## Decode exact C(4)/C(8)/C(9) under explicit bounded policy; C(7) is irrelevant.

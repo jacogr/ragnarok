@@ -3,6 +3,7 @@
 
 ## Bind retained supplied logical declarations to the original qualified current successor and full parameter provenance.
 ## This read-only parent description does not export a producer manifest or certify propagation through later execution.
+
 import ../../codec/state/composition as state_composition
 import ./state as current_state
 import ../inventory

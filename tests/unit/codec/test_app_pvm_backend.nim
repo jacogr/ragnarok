@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical backend CLI defaults, all explicit modes, strict refusals and dedicated-command extraction.
+
 import std/[assertions, syncio, strutils]
 import ../../../src/app/options
 import ../../../src/app/cli/commands

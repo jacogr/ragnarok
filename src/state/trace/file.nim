@@ -3,6 +3,7 @@
 
 ## Bounded offline TraceStep files require exact EOF and preserve atomic publication outcomes.
 ## Files carry framed comparison inputs only; actual-chain STF import remains a separate application operation.
+
 import ./step as trace_step
 import ../../codec/bounded
 import ../../lib/atomic/file as atomic_file

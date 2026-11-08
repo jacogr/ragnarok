@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A default current slot has neither a queued update nor an acknowledged successful child.
+
 import std/cmdline
 import ../../src/app/current/handoff as current_handoff
 var handoff = default(CurrentAccumulationHandoff)

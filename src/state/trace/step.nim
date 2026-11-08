@@ -3,6 +3,7 @@
 
 ## Published TraceStep composition owns one pre-state, full block and post-state in normative order.
 ## Wire capture validates framing and complete opaque roots, not STF execution, signatures or chain authority.
+
 import std/assertions
 import ./state as trace_state
 import ../store

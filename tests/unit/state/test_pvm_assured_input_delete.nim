@@ -28,6 +28,7 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives storage deletion; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, present: bool) =
   ## Distinguish actual MissingKey from a present empty value and independently check both storage counters.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -40,10 +41,12 @@ proc storage(state: StateStoreSnapshot, present: bool) =
     assert found.error == StateStoreError.MissingKey
     assert uint32(account.storageItems) == 0 and uint64(account.storageBytes) == 0
   assert uint64(account.balance) == 50
+
 proc config(fixture: AssuredOutcomeFixture): AssuredExecutionConfig =
   ## Five current write-marshalling instructions extend the original seventeen-step count-controlled path.
   result = assuredExecutionConfig(fixture.queue)
   result.runner.steps = ExecutionStepLimit(22)
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute real count fetch/load/arithmetic/cmov/write instructions under original source parameters and unchanged runner ceilings.
   let outcome = executeAssuredAccumulation(fixture.queue, config(fixture))
@@ -53,6 +56,7 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Stop and compose the actual deleted-key implications without replaying initial guest work.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -153,6 +157,7 @@ for field in low(Parameter)..high(Parameter):
 assert sameStateSnapshot(fixture.state.snapshot.value, original) and sameChainView(fixture.view, oldView)
 storage(original, true)
 assert uint32(metadata(original).lastAccumulation) == 2
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Execute real count-driven deletion, compose and publish its absent key, then release every actual successor owner.
   let source = compose(execute(fixture))

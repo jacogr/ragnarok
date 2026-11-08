@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original selected parent globals preserve source/view identity, cached exact limits and missing-chapter distinction.
+
 # @@Verification={"arc": "state_parent_globals_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, parent_profile_context,
@@ -11,10 +12,13 @@ import ../../../src/state/[global_snapshot, store]
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, composition as state_composition]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Global seed qualification and copied source observations require no hashing after fixture setup.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Every original selected parent global decode must be hash-free.
+
 proc verify(view: ChainView) =
   ## The same original configured source supplies cardinalities and all required global bytes, with explicit complete-view retention.
   let profile = captureParentProfile(view, parentProfileTestLimits).value
@@ -44,10 +48,12 @@ proc verify(view: ChainView) =
   short = exact
   short.chapter.maxBytes = ByteLimit(maximum-1)
   assert qualifyParentGlobals(profile, short).globalFailure.error == GlobalStateError.LimitExceeded
+
 proc cycle(profile: SelectedParentProfile) =
   ## Retire all decoded chapter owners and retained original selected-view aliases every cycle.
   let qualified = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   assert qualified.parentGlobals.value.globalByteLength.value > 0
+
 proc main() {.raises.} =
   ## Complete authored signed parent modes and legacy missing-C16 control preserve their original maps without repair.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

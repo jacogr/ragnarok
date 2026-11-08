@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_signing_arc_release"}
 
 ## Genuine admitted pending data, real TLS private ownership, all-local durable renewal and native Services/worker leases precede exact independent assurance signature checks.
+
 import std/[assertions, syncio, dirs, paths, monotimes, times, strutils]
 import std/posix/posix
 import ../../../src/app/[services, options, assurance_pool]
@@ -22,20 +24,26 @@ import ../../support/[jamnp_assurance_fixture, assurance_signer_context,
   jamnp_assurance_receipt_runtime, jamnp_assurance_acquirer_runtime,
   current_application_context, jamnp_import_recovery_fixture,
   pvm_computed_chain, storage_io, arc_evidence]
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observed actual crypto attempts and explicitly selected maintained-provider failures.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Read counts only after synchronous execution or exact collection/join.
+
 proc signatures(): cint {.importc: "ro_sign_calls", cdecl.}
   ## A real private Ed25519 attempt must occur only after every selected local coordinate is durably renewed.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield under monotonic deadlines without touching leased native/source/key aliases.
+
 proc limits(): AssurancePossessionLimits =
   ## Source, selected coordinates, complete logical IO/hash work and peak single-record workspace are explicit independent policies.
   AssurancePossessionLimits(duty: AssuranceDutyLimits(chapterBytes: ByteLimit(1000000),
     readBytes: ByteLimit(4000000), reports: ElementLimit(341), requests: ElementLimit(341*1023)),
     shards: ElementLimit(16), hashes: ElementLimit(100000), ioBytes: ByteLimit(64000000),
     hashBytes: ByteLimit(64000000), workspaceBytes: ByteLimit(64000000))
+
 proc storage(): AssuranceStoreLimits =
   ## Four exact coordinates keep old promises resident while repeated-identity tests acquire the additional required shard.
   AssuranceStoreLimits(entries: ElementLimit(4), scanEntries: ElementLimit(400), bytes: ByteLimit(
@@ -43,14 +51,17 @@ proc storage(): AssuranceStoreLimits =
     record: AssuranceRecordLimits(bytes: ByteLimit(16000000),
         verification: AvailabilityMerkleLimits(
       bytes: ByteLimit(64000000), hashes: ElementLimit(100000), hashBytes: ByteLimit(64000000))))
+
 proc selection(): AssuranceBits =
   ## Literal core-zero LSB selection contains no caller-issued possession assertion.
   result = default(AssuranceBits)
   result.bytes[0] = 1
+
 proc clean(folder: string) =
   ## Only test-owned paths are removed after all declared native/source/key borrowers retire.
   try: removeDir(path(folder))
   except: assert false, "signing fixture cleanup"
+
 proc retain(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     source: BlockSnapshotResult, ordinal: int, now: uint64) =
   ## Construct and independently verify actual original erasure data before its real file/directory publication.
@@ -63,6 +74,7 @@ proc retain(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
   assert verified.error == AvailabilityTransferError.None, "genuine original assigned shard proof"
   assert owner.rememberAssuranceShard(verified.value, AssuranceTime(now)).error ==
       AssuranceStoreError.None, "actual durable shard publication"
+
 proc repeated(source: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResult =
   ## This explicitly independently trusted structural roster variant isolates repeated-key/source-root handling; the ordinary source remains genuinely computed/admitted/published.
   let saved = source.value
@@ -82,6 +94,7 @@ proc repeated(source: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResu
         value: saved.lookup(selected).value.bytes))
   entries.add(chapter)
   captureBlockSnapshot(chainHeaderBytes(saved.header), entries, saved.chainParameters)
+
 proc withoutAssignments(source: BlockSnapshotResult): BlockSnapshotResult =
   ## An explicitly independently trusted structural empty-C10 variant tests pending-bit exclusion; it is not a GP-admitted transition.
   let saved = source.value
@@ -95,6 +108,7 @@ proc withoutAssignments(source: BlockSnapshotResult): BlockSnapshotResult =
   entries.add(StateEntry(key: key, value: @[0'u8, 0,
       0])) # Three literal absent optional assignments match this fixture's actual core count.
   captureBlockSnapshot(chainHeaderBytes(saved.header), entries, saved.chainParameters)
+
 proc verifyWire(signed: SignedAssurance, source: BlockSnapshotResult, local: StateEdKey) =
   ## Independent literal transcript assembly never calls the production assurance-message constructor or codec verifier.
   let encoded = signed.assuranceBytes(source, ByteLimit(97))
@@ -289,12 +303,14 @@ proc direct(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, sig
     else: assert owner.faulted, "visible uncertain renewal closes the signing gate"
   resetIo()
   reset(0)
+
 proc rosterSeed(index: int): array[32, byte] =
   ## Two literal seed bytes provide 1023 distinct real test identities without exposing a production key-import shortcut.
   assert index >= 0 and index < 1023, "bounded wide roster fixture index"
   result = default(array[32, byte])
   result[0] = byte(index mod 256)
   result[1] = byte(index div 256)
+
 proc productionPool(fixture: AssuranceAcquisitionFixture) =
   ## An explicitly independently trusted structural 341-core/1023-validator parent checks quorum-sized candidate retention, not GP block admission or actual shard possession.
   let original = registrationSnapshot(fixture.availability, active = 1023, previous = 1023)
@@ -349,6 +365,7 @@ proc productionPool(fixture: AssuranceAcquisitionFixture) =
   assert pool.len == 683 and pool.candidateCount == 683, "clear two-thirds production-size candidate capacity"
   assert pool.candidateAt(0).validator == ValidatorIndex(0) and pool.candidateAt(682).validator ==
       ValidatorIndex(682), "capacity refusal preserves every original retained coordinate"
+
 proc staged(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, signer: WorkSigner,
     now: uint64): AssuranceSigningJob =
   ## Retire temporary source/key/result aliases before moving this closed job into native execution.
@@ -356,12 +373,14 @@ proc staged(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, sig
     selection(), AssuranceTime(now), limits())
   assert admitted.error == AssuranceSigningJobError.None, "complete bounded signing capture"
   admitted.value
+
 proc waitDone(worker: var StateProofWorker) =
   ## Only synchronized scalar phase is observed while private key/source/native aliases belong to the worker.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded signing completion"
     discard pauseMicros(100)
+
 proc waitDone(owner: var Services) =
   ## Cached host status and unrelated ticks remain safe under the exact canonical/private-key/archive lease.
   let deadline = getMonoTime()+initDuration(seconds = 20)
@@ -369,6 +388,7 @@ proc waitDone(owner: var Services) =
     assert getMonoTime() < deadline, "bounded managed signing completion"
     owner.tick(0)
     discard pauseMicros(100)
+
 proc stagedReceipt(fixture: AssuranceAcquisitionFixture,
     signed: SignedAssurance): WorkSubmissionJob =
   ## Temporary detached wire, canonical snapshot and capture wrapper aliases retire before moved receipt publication.
@@ -378,6 +398,7 @@ proc stagedReceipt(fixture: AssuranceAcquisitionFixture,
     AssuranceDistributionLimits(duty: limits().duty, wireBytes: ByteLimit(139)))
   assert captured.error == WorkJobError.None, "closed receipt capture"
   captured.value
+
 proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
     fixture: AssuranceAcquisitionFixture, signer: WorkSigner, index: int) =
   ## Completed cancellation hides the real signature while preserving every already renewed record until exact collection.
@@ -408,6 +429,7 @@ proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
     assert not worker.active(receiving.value), "exact receipt retirement revokes old generation"
 
   assert not owner.faulted, "namespace observed only after exact retirement"
+
 proc managed(fixture: AssuranceAcquisitionFixture, keyPath, certificatePath,
     suffix: string) {.raises.} =
   ## The genuinely executed complete child is an explicit trusted seed here; this component test does not claim network bootstrap or adoption from another genesis.
@@ -528,6 +550,7 @@ proc managed(fixture: AssuranceAcquisitionFixture, keyPath, certificatePath,
       AssuranceSigningError.StaleSource, "new valid signature does not revive an old same-root/key result"
   assert current.value.assuranceBytes(fixture.source, ByteLimit(97)).value == signed.assuranceBytes(
       fixture.source, ByteLimit(97)).value, "identical deterministic wire bytes do not substitute for current Services authorization"
+
 proc main() {.raises.} =
   ## Genuine report/chain publication precedes private TLS fixture loading and any assertion of stored availability.
   reset(0)

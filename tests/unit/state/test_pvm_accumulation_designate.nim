@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_designate_arc_release"}
 
 ## Authored designate programs verify exact costs, opaque ordered rosters and current delegator authority.
@@ -22,8 +23,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject failure after authentic fixture construction, independently of protocol input validation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Count attempted Merklization hashes to detect state work on refused calls.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Refuse after completed child hashes to exercise cleanup of a partial candidate tree.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

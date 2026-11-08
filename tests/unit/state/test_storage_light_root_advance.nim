@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent roots qualify replacement knowledge, exact source binding, durable publication, explicit cleanup and immutable reader lifetimes.
+
 # @@Verification={"arc":"storage_light_root_advance_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, storage_light_journal, storage_light_root]
@@ -14,24 +15,31 @@ import ../../../src/storage/managed/[io as managed_io, manifest as managed_manif
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Pure refusal and prepared publication must not redo destination proof/image hashing.
+
 proc refuseAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Manifest and anchor hashing each receive a real late provider refusal.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exact provider work independently of successful result construction.
+
 proc path(label: string): string =
   ## Native suite cwd is already an isolated ignored namespace; fixture paths add no missing parent directories.
   "light-root-" & $storageProcessId() & "-" & label
+
 proc seed(directory: string, fixture: LightRootFixture) =
   ## Initialize and explicitly retire one source-root owner before each independently opened test.
   var owner = default(LightJournalCache)
   assert initializeLightJournalCache(owner, directory, fixture.oldConfig, fixture.source).error == FileError.None
   assert owner.close == FileError.None
+
 proc prepare(owner: LightJournalCache, fixture: LightRootFixture): PreparedLightRootAdvance =
   ## Explicit destination root selection is separate from the opaque target image's embedded root.
   prepareLightRootAdvance(owner, owner.epoch.value, owner.sequence.value,
     fixture.newConfig.root, fixture.destination).value
+
 proc cycle(owner: LightJournalCache, fixture: LightRootFixture) =
   ## Late private metadata refusal and successful copied candidates all retire before the caller samples ARC.
   refuseAfter(1)
@@ -42,6 +50,7 @@ proc cycle(owner: LightJournalCache, fixture: LightRootFixture) =
   let copied = candidate
   assert uint64(copied.epoch) == 2 and copied.snapshot.encodedBytes ==
       fixture.destination.encodedBytes
+
 proc mutation(owner: LightJournalCache, fixture: LightRootFixture) =
   ## Caller-owned proof/key and extracted-byte mutation cannot retag or alter the sealed root candidate or source readers.
   let transport = fixture.destination.prove(lightKey(0), LightProofReadLimits(entries: ElementLimit(1),
@@ -60,6 +69,7 @@ proc mutation(owner: LightJournalCache, fixture: LightRootFixture) =
   assert candidate.snapshot.cache.lookup(lightKey(0)).value.bytes[0] == 9, "prepared target lookup is independent of caller proof mutation"
   assert candidate.snapshot.cache.lookup(lightKey(255)).error == LightCacheError.UnknownKey
   assert owner.snapshot.value.lookup(lightKey(0)).value.bytes[0] == 7, "caller mutation cannot affect source root reader"
+
 proc normal(fixture: LightRootFixture) {.raises.} =
   ## New knowledge replaces all source evidence while old caches/readers and exact source-bound plans keep their original meaning.
   let directory = path("normal")
@@ -143,6 +153,7 @@ proc normal(fixture: LightRootFixture) {.raises.} =
       0)).value.bytes[0] == 7, "original reader survives all root lifetimes"
   retireRootEpoch(directory, ManagedEpoch(3))
   retireLightJournal(directory)
+
 proc refusals(fixture: LightRootFixture) {.raises.} =
   ## Old positive/negative proofs, independent identity, policy, provider and stale positions refuse without changing selected knowledge.
   let directory = path("refusals")
@@ -208,6 +219,7 @@ proc refusals(fixture: LightRootFixture) {.raises.} =
   assert ioCalls(writeIo) == 0
   assert owner.close == FileError.None
   retireLightJournal(directory)
+
 proc emptyReadOnly() {.raises.} =
   ## Full replacement evidence is independent of zero future writes, and an empty trusted destination still leaves every key unknown.
   let fixture = rootFixture(ElementLimit(0))
@@ -238,6 +250,7 @@ proc emptyReadOnly() {.raises.} =
     assert owner.close == FileError.None
     retireRootEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc failures(fixture: LightRootFixture) {.raises.} =
   ## Every physical publication phase preserves old/new root distinction and separates confirmed selection from old-handle retirement.
   for mode in 0..<10:
@@ -315,6 +328,7 @@ proc failures(fixture: LightRootFixture) {.raises.} =
     assert owner.close == FileError.None
     retireRootEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc cleanupRetry(fixture: LightRootFixture) {.raises.} =
   ## A partial target remains explicitly cleanable after same-epoch appends; a last-unlink barrier failure permits a durable absent-name retry.
   for barrierFailure in [false, true]:
@@ -351,8 +365,10 @@ proc cleanupRetry(fixture: LightRootFixture) {.raises.} =
     assert owner.close == FileError.None
     retireRootEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc renameFile(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Maximum-counter fixtures relocate only canonical test-owned files before strict admission.
+
 proc maxima(fixture: LightRootFixture) {.raises.} =
   ## Root selection exhausts only epoch space; the maximum ordinary-update sequence remains a valid unchanged checkpoint baseline.
   for maximumEpoch in [false, true]:
@@ -396,6 +412,7 @@ proc maxima(fixture: LightRootFixture) {.raises.} =
     if maximumEpoch: retireRootEpoch(directory, epoch)
     else: retireRootEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc physicalCycles(fixture: LightRootFixture) {.raises.} =
   ## Physical compaction and an equal-sequence root/image return must each invalidate earlier source positions.
   let directory = path("physical-cycles")
@@ -432,6 +449,7 @@ proc physicalCycles(fixture: LightRootFixture) {.raises.} =
   assert forward.snapshot.encodedBytes == fixture.destination.encodedBytes, "prepared target outlives source owner and all retired files"
   retireRootEpoch(directory, ManagedEpoch(4))
   retireLightJournal(directory)
+
 proc main() {.raises.} =
   ## Each fixture has independent root provenance and no state/application adapters.
   let fixture = rootFixture()

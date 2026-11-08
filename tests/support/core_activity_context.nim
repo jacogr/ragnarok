@@ -17,12 +17,15 @@ import ./report_context
 import ./report_admission_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc corePolicy*(): CoreActivityConfig =
   ## Independently bound every small source population and full original assurance encoding.
   CoreActivityConfig(cores: ElementLimit(341), incoming: ElementLimit(3), available: ElementLimit(3),
     digests: ElementLimit(3), assurances: ElementLimit(6), assuranceBits: ElementLimit(2046),
     assuranceBytes: ByteLimit(4096))
+
 proc authoredCore(base: OwnedReport, core = 0, segments = 1'u16, bundle = 7'u32,
     gas = 11'u64, imports = 13'u64, failed = false): OwnedReport =
   ## Re-encode finite independent refinement metrics; maximum authorization gas must never be counted.
@@ -41,6 +44,7 @@ proc authoredCore(base: OwnedReport, core = 0, segments = 1'u16, bundle = 7'u32,
   let encoded = encodeReportBorrowed(report, raw, 341, bytes)
   assert encoded.error == CompositeError.None
   decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 341).value
+
 proc sameCore(left, right: CoreActivity) =
   ## Compare every counter and gas field, including unrelated explicit zeros.
   assert uint64(left.gas) == uint64(right.gas)

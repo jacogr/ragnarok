@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Three genuine adoptions traverse automatic managed maintenance while preserving exact history and a later refusal prefix.
+
 import std/[assertions, syncio, envvars, monotimes]
 import std/posix/posix
 import ../../../src/app/current/download/command as current_download_command

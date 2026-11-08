@@ -3,6 +3,7 @@
 
 ## Ordinary authenticated full-state node loop with explicitly trusted local finality.
 ## Stable actor storage retires before Services; wall-clock authority never comes from peers.
+
 import std/[monotimes, times, syncio, strutils]
 import ./[options, services, node as application_node]
 import ./cli/commands
@@ -34,9 +35,11 @@ const JamCommonEraUnix* = 1735732800'i64 ## Pinned GP Overview:1200 UTC January1
 func error*(clock: NodeClockResult): NodeClockError =
   ## Read a failed conversion without extracting a default timeslot.
   clock.status
+
 func value*(clock: NodeClockResult): StateTime {.requires: clock.status == NodeClockError.None.} =
   ## Only an admitted unsigned32-bit slot can reach connectivity epoch timing.
   clock.slot
+
 func nodeClock*(unixSeconds: int64, secondsPerSlot: uint64): NodeClockResult =
   ## Subtract only after proving the common-era lower bound and narrow only after the slot ceiling.
   if secondsPerSlot == 0: return NodeClockResult(status: NodeClockError.InvalidPeriod)
@@ -45,6 +48,7 @@ func nodeClock*(unixSeconds: int64, secondsPerSlot: uint64): NodeClockResult =
   let slot = elapsed div secondsPerSlot
   if slot > uint64(high(uint32)): return NodeClockResult(status: NodeClockError.Overflow)
   NodeClockResult(status: NodeClockError.None, slot: StateTime(uint32(slot)))
+
 proc configuration(options: Options, finalized: var BlockHash, port: var uint16,
     timeout: var uint64): bool =
   ## Revalidate private canonical argument shapes before filesystem/native setup, even for internal callers.
@@ -82,6 +86,7 @@ proc configuration(options: Options, finalized: var BlockHash, port: var uint16,
     hash[index div 2] = (hash[index div 2] shl 4) or nibble
   finalized = BlockHash(hash)
   true
+
 proc policy(services: Services, limits: var SafroleStateConfig, period: var uint64): bool =
   ## Retire temporary canonical aliases before the loop can admit any worker or native callback.
   limits = default(SafroleStateConfig)
@@ -99,6 +104,7 @@ proc policy(services: Services, limits: var SafroleStateConfig, period: var uint
     validators: ElementLimit(cores*3), maxBytes: ByteLimit(1048576)),
     epochSlots: EpochSlots(epoch), maxAccumulator: ElementLimit(4096), maxBytes: ByteLimit(1048576))
   true
+
 proc configureSignerFile(services: var Services, path: string): bool {.raises.} =
   ## Explicit optional input reads at most33 bytes and wipes all borrowed seed storage on every return/exception path.
   var seed = default(array[33, byte])
@@ -113,8 +119,10 @@ proc configureSignerFile(services: var Services, path: string): bool {.raises.} 
         TicketSignerError.None
   except:
     return false # The typed command outcome reports local configuration failure without exposing file or key contents.
+
 proc pauseStartup(microseconds: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Startup yields only through the platform OS; all JAM policy and worker ownership remain in Nim.
+
 proc configureAssurances(host: var ApplicationNode, services: var Services,
     policy: NodeAssurancePolicy, folder, certificate, privateKey: string,
     signals: var StopSignals): bool {.raises.} =
@@ -141,6 +149,7 @@ proc configureAssurances(host: var ApplicationNode, services: var Services,
   if not host.configureAssuranceAcquisition(policy.acquisitionPolicy): return false
   if not host.configureAssuranceReceipt(policy.receiptPolicy): return false
   return host.configureAssuranceBroadcast(policy.broadcastPolicy)
+
 proc runNodeCommand*(options: Options): NodeCommandError {.raises.} =
   ## One foreground owner polls authenticated topology/UP0/reads with optional services until signal or finite deadline.
   var finalized = default(BlockHash)

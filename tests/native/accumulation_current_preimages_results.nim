@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current preimage owners cannot expose source, partial fulfilled maps or inactive causes.
+
 import std/cmdline
 import ../../src/state/accumulation/current/preimages as accumulation_current_preimages
 import ../../src/state/accumulation/preimages as accumulation_preimages

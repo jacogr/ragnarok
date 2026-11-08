@@ -2,27 +2,34 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict current-profile payload/reason guards retain a genuinely prepared current child as positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, accumulation_current_chain_context]
 import ../../src/state/current/profile as current_profile
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/state/composition as state_composition
+
 proc extract(outcome: CurrentProfileResult[DerivedCurrentProfile]) {.noinline.} =
   ## Default/refused projection grants no source-bound profile.
   discard outcome.value
+
 proc reason(outcome: CurrentProfileResult[DerivedCurrentProfile]) {.noinline.} =
   ## Unrelated alternatives invent no C9 decoder refusal.
   discard outcome.previousError
+
 proc profile(source: DerivedCurrentProfile) {.noinline.} =
   ## A default projection grants no cardinalities.
   discard source.derivedStateProfile.value
+
 proc parameters(source: DerivedCurrentProfile) {.noinline.} =
   ## A default projection grants no full execution tuple.
   discard source.derivedParameters.value
+
 proc origin(source: DerivedCurrentProfile) {.noinline.} =
   ## A default projection grants no producer owner.
   discard source.derivedUpdate.value
+
 proc main() {.raises.} =
   ## Trusted fixture I/O is bounded by the caller's signed native control setup.
   case paramStr(1)

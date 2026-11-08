@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_erasure_layout_arc_release"}
 
 ## Exhaustive validator geometry, systematic contiguous bytes and immutable executed-source ownership.
@@ -13,8 +14,10 @@ import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse crypto after source execution to demonstrate pure layout preparation.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive calls in the selected native observer.
+
 proc expect[T](outcome: ErasureLayoutResult[T], reason: ErasureLayoutError) =
   ## Inspect exact reasons without extracting a refused value.
   assert outcome.error == reason, "erasure layout reason"
@@ -61,6 +64,7 @@ for shards in [6'u16, 1023]:
       assert info.paddingBytes == 0, "aligned input has no extra block"
 let bundle = prepareAuditableBundle(bundleExecution(), ByteLimit(OrdinaryLength)).value
 let wire = bundle.bundleBytes.value
+
 proc verify(source: AuditableBundle, shards: uint16) =
   ## Reconstruct contiguous original chunks and inspect every original and padded byte independently.
   let bytes = source.bundleBytes.value
@@ -108,11 +112,13 @@ reset(1)
 expect(prepareErasureLayout(bundle, ErasureShards(1023), ByteLimit(8892)), ErasureLayoutError.None)
 assert hashes() == 0, "layout performs no hashes"
 reset(0)
+
 proc detached(): ErasureLayout =
   ## Retain original execution and bundle after all local construction temporaries retire.
   prepareErasureLayout(prepareAuditableBundle(bundleExecution(), ByteLimit(OrdinaryLength)).value,
     ErasureShards(1023), ByteLimit(8892)).value
 assert detached().layoutSource.value.bundleBytes.value == wire, "detached source lifetime"
+
 proc cycle() =
   ## Release retained padded bytes, copied chunks and failed candidates every iteration.
   let done = prepareErasureLayout(bundle, ErasureShards(1023), ByteLimit(8892)).value

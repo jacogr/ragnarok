@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default current updates cannot install canonical/RPC state or acknowledge a fabricated child.
+
 import std/cmdline
 import ../../src/app/chain
 import ../../src/rpc/server

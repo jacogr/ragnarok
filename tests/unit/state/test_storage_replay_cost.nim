@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real closed/reopened journals of both schemas/layouts must hash each physical record exactly once.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
@@ -12,15 +13,19 @@ import ../../../src/storage/managed/[repository as managed_repository, manifest 
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the observer while preserving actual primitive output.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count all frame/record/identity checks performed by real-file strict open.
+
 proc payload(value: byte, size: int): seq[byte] =
   ## Authored repeated values cover both inline and hashed JAM leaf encodings.
   result = newSeq[byte](size)
   for index in 0..<size:
     result[index] = value # Distinct successor values force one changed leaf and branch each time.
+
 proc check(view: RepositoryView, root: StateRoot, size: int) =
   ## Compare all actual complete values and metadata after disk replay and explicit owner retirement.
   let entries = restoreStateEntries(view, root, storageLimits().codec.trie).value
@@ -29,6 +34,7 @@ proc check(view: RepositoryView, root: StateRoot, size: int) =
   assert entries[0].value == payload(16, size)
   assert array[31, byte](entries[1].key) == array[31, byte](storageKey(128))
   assert entries[1].value.len == 0
+
 proc scenario(managed: bool, schema: StorageSchema, size, sample: int) {.raises.} =
   ## Strict reopen includes real identity/snapshot/frame checks but no record is hashed again by admission.
   let path = "storage-replay-cost-" & $managed & "-" & $ord(schema) & "-" & $size & "-" & $sample

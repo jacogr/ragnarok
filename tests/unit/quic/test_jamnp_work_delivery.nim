@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A fourth real validator is dialed only from verified metadata; managed acceptance precedes FIN and exact demand ownership retires after delivery.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options, startup, work_distribution as distribution_host]
 import ../../../src/app/proof/worker
@@ -14,32 +15,38 @@ import ../../../src/codec/state/safrole
 import ../../../src/chain/[provider, genesis]
 import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_report_fixture,
   jamnp_managed_work_context, jamnp_topology_fixture, jamnp_read_validation_context, pvm_input_refinement]
+
 proc settings(): Options =
   ## Each Services lifetime independently decodes the selected complete file; no canonical map is shared with the structural native role fixture.
   var selected = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", "delivery-chain.json"], selected)
   selected
+
 proc startState(services: var Services, name: string) {.raises.} =
   ## Native connectivity uses the explicit trusted finalized selection, independently from the later current-source worker qualification.
   assert services.start(settings(), name), "delivery: services.start(settings(), name)"
   assert services.publishFinalized(services.chainView.bestBlock.value.blockHash) ==
       ViewFinalizeError.None, "delivery: services.publishFinalized(services.chainView.bestBlock.value.blockHash) =="
+
 proc save(fixture: GuaranteeFixture) {.raises.} =
   ## Fixture authority is explicitly a complete trusted snapshot, never a fabricated block-admission result.
   let parent = fixture.view.parentOf(fixture.view.bestBlock.value.blockHash)
   assert parent.error == GenesisError.None, "delivery: parent.error == GenesisError.None"
   writeFile("delivery-chain.json", workChainText(parent.value))
+
 proc sharing(raw: WorkFixture): WorkSharingLimits =
   ## All execution, report and independent bundle-copy bounds are explicit.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
         eligibility: guaranteeLimits(), retention: guarantorLimits())
+
 proc policy(outgoing: bool): WorkDistributionPolicy =
   ## Finish before the nonpreferred topology fallback; the positive real connection must therefore come from this delivery's exact demand dial.
   let limits = WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
       targets: ElementLimit(12))
   workDistributionPolicy(limits, 4, ByteLimit(80000), timeoutMs = 3000, peerTimeoutMs = 2000,
       parallel = 1, deliver = outgoing)
+
 proc recipient(local, b, c: StateEdKey, prefix = "delivery-recipient-"): tuple[key: StateEdKey,
     directory: string] {.raises.} =
   ## Select a real public identity for which the sender is not the preferred topology initiator; finite generation cannot turn into an unbounded setup loop.
@@ -54,6 +61,7 @@ proc recipient(local, b, c: StateEdKey, prefix = "delivery-recipient-"): tuple[k
     if unique and not preferredInitiator(local, key): return (key, directory)
   assert false, "bounded nonpreferred recipient generation"
   (default(StateEdKey), "")
+
 proc guaranteed(services: var Services, fixture: GuaranteeFixture, b,
     c: WorkSigner): WorkSessionToken {.raises.} =
   ## Real TLS header, managed execution/signing and independently recomputed peer signatures yield the original retained primary guarantee.
@@ -92,9 +100,11 @@ proc guaranteed(services: var Services, fixture: GuaranteeFixture, b,
   token
 type DeliveryCase {.pure.} = enum ## Real connections cover successful receipt, held CPU authority and a busy acknowledged connection at its concurrency ceiling.
   Deliver, ReceiverHeld, BusyAfterAck
+
 proc headHash(services: Services): BlockHash =
   ## Retire all temporary canonical aliases before another closed proof job is admitted.
   services.chainView.bestBlock.value.blockHash
+
 proc scenario(aKey: StateEdKey, b, c: WorkSigner,
     target: tuple[key: StateEdKey, directory: string], mode: DeliveryCase) {.raises.} =
   ## Keep the recipient's actual socket bound while rebuilding anchored inputs with its real metadata; never guess or release a port for later reuse.
@@ -228,6 +238,7 @@ proc scenario(aKey: StateEdKey, b, c: WorkSigner,
       assert queuedReverse and claimedReverse and busyAfterAck, "busy acknowledged connection witness"
       assert not sourceNode.readLive(claimed), "overall deadline retires the held reverse read"
       assert targetNode.takeReply(reverse).error != ReadError.None, "unanswered reverse request has no successful completion"
+
 proc main() {.raises.} =
   ## Maintained keys and finite recipient selection give each scenario genuine identities and independently prepared complete sources.
   let aKey = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv(

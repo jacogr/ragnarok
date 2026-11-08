@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Consecutive current commands persist every exact history map, with atomic retained-prefix refusal across both layouts and RPC modes.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/current/download/command as current_download_command

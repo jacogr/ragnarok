@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real same-source review evidence uses existing bounded factories, never private certificate construction.
+
 import ./[state_inventory_context, account_audit_plan_context, service_directory_context, economic_profile_context]
 import ../../src/chain/parameters
 import ../../src/state/inventory
@@ -15,6 +16,7 @@ type AccountReviewTestEvidence* = object ## Test-owned public factory outputs sh
   invariants*: CheckedAccountInvariants
   supervision*: StateSupervisionTable
   economics*: StateEconomicsTable
+
 proc accountReviewEvidence*(fixture: seq[seq[byte]], services: seq[
     StateService]): AccountReviewTestEvidence =
   ## Preserve exact owner identity through all independently bounded predicate and observation factories.

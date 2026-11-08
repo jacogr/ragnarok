@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_statistics_arc_release"}
 
 ## Actual finalized histories produce bounded accumulation-only service deltas, including skipped work-items.
@@ -35,6 +36,7 @@ import ../../support/[accumulation_reentry_context, accumulation_execution_conte
 
 # Statistics must perform no hashes after genuine signing, execution and private finalization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Complete only real guests or source-derived non-invoking skips.
@@ -149,7 +151,6 @@ proc checkCompositionHistory(source: PreparedAccumulationConsensus, empty = fals
       3))).value.bytes
   assert sameStateSnapshot(finalized.finalAccumulationState.value, prior)
   checkCompositionPublication(source, finalized)
-
 
 proc main() {.raises.} =
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

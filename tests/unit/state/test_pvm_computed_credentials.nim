@@ -19,12 +19,15 @@ import ../../support/[pvm_computed_credentials, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new Blake2b hashing after original computation, planning and test signatures complete.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual report rehash attempts rather than simulating crypto success.
+
 proc expect[T](outcome: ComputedCredentialResult[T], reason: ComputedCredentialError, label = "") =
   ## Compare precise successful/refused alternatives before extraction.
   assert outcome.error == reason, "computed credential " & label & " reason: " & $outcome.error &
       " expected: " & $reason
+
 proc assignment[T](outcome: ComputedCredentialResult[T], reason: ComputedGuarantorError) =
   ## Inspect a nested assignment cause only in its selected failure alternative.
   expect(outcome, ComputedCredentialError.AssignmentFailure)
@@ -146,6 +149,7 @@ assignment(verifyComputedCredentials(source, GuaranteeSlot(2), lateWrongCore),
     ComputedGuarantorError.WrongAssignment)
 assert hashes() == 0, "credential verification never rehashes the retained original report"
 reset(0)
+
 proc detached(): CredentialedComputedReport =
   ## Preserve full original context and fixed credential bytes after all source/signing inputs retire.
   let source = credentialFixture(shrink = true, core = 1)
@@ -153,6 +157,7 @@ proc detached(): CredentialedComputedReport =
   verifyComputedCredentials(source, GuaranteeSlot(8), records).value
 let retained = detached()
 assert uint16(retained.computedCredentialAt(ComputedCredentialIndex(1)).value.validator) == 8
+
 proc cycle(source: ComputedGuarantors, good, bad: openArray[GuaranteeCredential]) =
   ## Retire complete source-bound owners and a late cryptographic refusal without partial credential publication.
   let value = verifyComputedCredentials(source, GuaranteeSlot(2), good).value

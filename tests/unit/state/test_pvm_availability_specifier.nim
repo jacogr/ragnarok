@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_availability_specifier_arc_release"}
 
 ## Independent complete availability fields, raw-leaf trees, hash preflight and immutable original provenance.
@@ -17,20 +18,26 @@ import ../../support/[pvm_export_erasure, pvm_availability_vectors, arc_evidence
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset actual hash attempts and optionally refuse the backend after original source preparation.
+
 proc afterCalls(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Fail after a precise successful prefix, including during the final outer tree.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exact production calls rather than trusting descriptive work metadata alone.
+
 proc generous(): AvailabilityCommitmentLimits =
   ## Explicit local policies admit selected complete source-bound witnesses.
   AvailabilityCommitmentLimits(bytes: ByteLimit(1000000), hashBytes: ByteLimit(10000000),
       hashes: ElementLimit(100000))
+
 proc expect[T](outcome: AvailabilityCommitmentResult[T], reason: AvailabilityCommitmentError) =
   ## Check exact alternatives without extracting a refused root or validator prefix.
   assert outcome.error == reason, "availability commitment reason"
+
 proc source(kind: int, validators = 1023'u16): ExportErasure =
   ## Build genuine executed bundle and export erasure ownership before availability assembly.
   prepareExportErasure(exportBundle(kind, validators), exportErasureLimits()).value
+
 proc wire(specifier: AvailabilitySpecifier): array[104, byte] =
   ## Test-only explicit GP tuple encoding compares every nominal field with the independent literal reference.
   result = default(array[104, byte])
@@ -42,12 +49,14 @@ proc wire(specifier: AvailabilitySpecifier): array[104, byte] =
   for index in 0..<2:
     result[68+index] = byte((uint16(specifier.erasureShards) shr (index*8)) and 255)
     result[102+index] = byte((uint16(specifier.segmentCount) shr (index*8)) and 255)
+
 proc pair(info: AvailabilityShardInfo): array[64, byte] =
   ## Serialize copied fixed validator hash pairs without invoking any production Merkle helper.
   result = default(array[64, byte])
   for index in 0..<32:
     result[index] = array[32, byte](info.bundleHash)[index]
     result[32+index] = array[32, byte](info.exportRoot)[index]
+
 proc verify(original: ExportErasure, expectedBundle: openArray[byte], expectedWire: array[104,
     byte], first, last: array[64, byte], calls, hashBytes: uint64): AvailabilityCommitment =
   ## Compare independent source bytes, every final specifier field and first/last validator commitments.
@@ -130,10 +139,12 @@ for completed in [1'u64, 2, 2046, SingleCalls-1]:
       AvailabilityCommitmentError.BackendFailure)
   assert uint64(hashes()) == completed+1, "bounded actual late-backend failure"
 reset(0)
+
 proc detached(): AvailabilityCommitment =
   ## Retain complete availability and original execution after every local source handle retires.
   prepareAvailabilityCommitment(source(0, 6), generous()).value
 assert wire(detached().availabilityInfo.value.specifier) == EmptyWire, "detached complete source lifetime"
+
 proc cycle() =
   ## Release successful leaves and partially populated validator buffers on each ARC iteration.
   let done = prepareAvailabilityCommitment(emptySource, generous()).value

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole CE145 batches authenticate each original epoch/key and exact GP judgment message. A signed negative claim does not qualify its inline guarantees, establish report invalidity, or grant private evaluation/signing authority.
+
 import ./audits
 from ./assurance_store import AssuranceScanControl, stopped
 import ../chain/[genesis, provider, parameters]
@@ -44,25 +45,31 @@ type
     of StateFailure: stateReason: StateStoreError
     of ComponentFailure: componentReason: StateComponentError
     else: discard # A default/failure has no accepted record or unrelated child.
+
 func error*[T](outcome: JudgmentClaimResult[T]): JudgmentClaimError =
   ## Observe status before extracting any complete result or selected cause.
   outcome.status
+
 func value*[T](outcome: JudgmentClaimResult[T]): T {.requires: outcome.status ==
     JudgmentClaimError.None.} =
   ## Only complete success exposes fixed data or a source-free immutable batch.
   outcome.completed
+
 func decodeError*[T](outcome: JudgmentClaimResult[T]): AuditError {.requires: outcome.status ==
     JudgmentClaimError.DecodeFailure.} =
   ## Preserve the actual complete structural refusal without a parser offset or accepted prefix.
   outcome.decodeReason
+
 func stateError*[T](outcome: JudgmentClaimResult[T]): StateStoreError {.requires: outcome.status ==
     JudgmentClaimError.StateFailure.} =
   ## Missing full-state chapters cannot be replaced with fabricated empty rosters.
   outcome.stateReason
+
 func componentError*[T](outcome: JudgmentClaimResult[
     T]): StateComponentError {.requires: outcome.status == JudgmentClaimError.ComponentFailure.} =
   ## Preserve the actual original clock/validator decoder refusal.
   outcome.componentReason
+
 func valid*(limits: JudgmentClaimLimits): bool =
   ## Default or unbounded settings never activate CPU verification; the whole batch remains at most sixteen maximum-sized negative records.
   limits.message.valid and uint64(limits.message.records) <= 16 and
@@ -75,28 +82,35 @@ func valid*(limits: JudgmentClaimLimits): bool =
     uint64(limits.retainedBytes) > 0 and uint64(limits.retainedBytes) <= 1024'u64*1024 and
     uint64(limits.signatures) > 0 and uint64(limits.signatures) <= 64 and
     uint64(limits.signatureBytes) > 0 and uint64(limits.signatureBytes) <= 64'u64*43
+
 func valid*(claim: SignedJudgmentClaim): bool =
   ## Plain copied claim metadata cannot initialize this private success flag.
   claim.ready
+
 func valid*(batch: SignedJudgmentBatch): bool =
   ## Default ownership does not represent an authenticated empty message.
   batch.data != nil
+
 func claimInfo*(claim: SignedJudgmentClaim): JudgmentClaimInfo {.requires: claim.ready.} =
   ## Fixed original membership/source observations are detached from every full-state owner.
   claim.info
+
 func judgmentRecord*(claim: SignedJudgmentClaim): AuditJudgment {.requires: claim.ready.} =
   ## Negative credentials are still structural claims until report/guarantor qualification; this accessor never upgrades them.
   claim.record
+
 proc len*(batch: SignedJudgmentBatch): int =
   ## A default is unavailable, independently of a valid initialized empty batch.
   let data = batch.data
   if data == nil: return 0
   data.records.len
+
 proc retainedBytes*(batch: SignedJudgmentBatch): uint64 =
   ## Whole fixed-row accounting is safe while other actors lease their unrelated private state.
   let data = batch.data
   if data == nil: return 0
   data.retainedBytes
+
 proc claimAt*(batch: SignedJudgmentBatch, ordinal: int): JudgmentClaimResult[SignedJudgmentClaim] =
   ## Copy one fixed verified claim, without lending any batch sequence or canonical map to its consumer.
   let data = batch.data
@@ -105,6 +119,7 @@ proc claimAt*(batch: SignedJudgmentBatch, ordinal: int): JudgmentClaimResult[Sig
   if ordinal < 0 or ordinal >= data.records.len:
     return JudgmentClaimResult[SignedJudgmentClaim](status: JudgmentClaimError.InvalidIndex)
   JudgmentClaimResult[SignedJudgmentClaim](status: JudgmentClaimError.None, completed: data.records[ordinal])
+
 proc checkJudgmentRoster(source: BlockSnapshotResult, decoded: JudgmentBatch,
     claims: var seq[SignedJudgmentClaim], failures: var seq[JudgmentClaimError],
     limits: JudgmentClaimLimits, control: AssuranceScanControl, wireLength, retained,
@@ -197,10 +212,12 @@ proc checkJudgmentRoster(source: BlockSnapshotResult, decoded: JudgmentBatch,
         sourceTime: clock.value.value, epoch: record.epoch, validator: record.validator,
         population: population, auditor: auditor))
   JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.None)
+
 func complete(claims: openArray[SignedJudgmentClaim]): bool =
   for claim in claims:
     if not claim.valid: return false
   true
+
 proc verifyJudgmentClaims*(view: ChainView, wire: openArray[byte], limits: JudgmentClaimLimits,
     control: AssuranceScanControl = default(AssuranceScanControl),
     alternatives: openArray[ChainView] = [], history = false): JudgmentClaimResult[
@@ -277,12 +294,14 @@ proc verifyJudgmentClaims*(view: ChainView, wire: openArray[byte], limits: Judgm
       if reason == JudgmentClaimError.Uninitialized: JudgmentClaimError.UnknownEpoch else: reason)
   JudgmentClaimResult[SignedJudgmentBatch](status: JudgmentClaimError.None,
     completed: SignedJudgmentBatch(data: ClaimData(records: move(claims), retainedBytes: retained)))
+
 proc hasJudgmentAuthority(view: ChainView, facts: JudgmentClaimInfo): bool =
   if view.fuzzOnly: return false
   let source = view.blockAt(facts.sourceHead)
   source.error == GenesisError.None and
     array[32, byte](source.value.stateRoot) == array[32, byte](facts.sourceRoot) and
     source.value.slot == uint64(uint32(facts.sourceTime))
+
 proc judgmentAuthorityView*(view: ChainView, alternatives: openArray[ChainView],
     claim: SignedJudgmentClaim): ChainView =
   ## Follow the exact authenticated membership source through subsequent receipt stages.

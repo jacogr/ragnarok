@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Published Genesis ownership and independently supplied header/state/profile anchors govern new replay chains.
+
 import std/[assertions, envvars, syncio, parseutils]
 import ../../support/[trace_step_context, accumulation_current_chain_context]
 import ../../../src/state/trace/[genesis as trace_genesis, state as trace_state]
@@ -11,6 +12,7 @@ import ../../../src/app/chain
 import ../../../src/chain/[genesis, parameters, provider]
 import ../../../src/codec/[header, bounded, assurances]
 import ../../../src/codec/state/trie as state_trie
+
 proc word(text: string): array[32, byte] =
   ## Decode only frozen independently calculated trust literals, not roots or hashes read from the incoming Genesis file.
   assert text.len == 64
@@ -19,6 +21,7 @@ proc word(text: string): array[32, byte] =
     var octet: byte = 0
     assert parseHex(text.substr(index*2, index*2+1), octet) == 2
     result[index] = octet
+
 proc main() {.raises.} =
   ## Configured anchors and full Parameters remain separate from untrusted binary input throughout ownership capture.
   let missing = default(TraceBootstrapResult)

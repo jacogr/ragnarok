@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Historic complete roots reuse retained physical records without selecting another live revision.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -11,6 +12,7 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/database_identity
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc main() {.raises.} =
   ## Strict restart plus independent root/value witnesses covers old, empty and unknown complete roots.
   var path = "storage-historical-roots.db"

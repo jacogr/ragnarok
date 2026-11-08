@@ -21,6 +21,7 @@ type
     parameters*: Parameters
     package*: OwnedWorkPackage
     inputs*: VerifiedImportInputs
+
 proc executionLimits*(): InputRefinementLimits =
   ## Independent materialization/child/identity policies admit small fully owned witnesses.
   result = InputRefinementLimits(inputBytes: ByteLimit(65536), authorization: authorizationLimits(),
@@ -28,6 +29,7 @@ proc executionLimits*(): InputRefinementLimits =
   result.refinement.refinement.invocation.capture.inputs = FetchInputLimit(65536)
   result.identity.packageBytes = ByteLimit(4096)
   result.identity.authorizerBytes = ByteLimit(4096)
+
 proc executionFixture*(authCode: openArray[seq[byte]], guests: openArray[ReportGuest],
     external = true, authCodeSize = 0, missingAuth = false): InputFixture =
   ## Commit the final package before verifying extrinsics and binding independent import proof owners.
@@ -66,10 +68,12 @@ proc executionFixture*(authCode: openArray[seq[byte]], guests: openArray[ReportG
   result.package = decodeWorkPackage(wire.toOpenArray(0, size-1), config).value.owner
   let extrinsics = verifyExtrinsicInputs(result.package, rows, extrinsicLimits()).value
   result.inputs = bindImportInputs(extrinsics, imports, lookup, inputLimits()).value
+
 proc executionRun*(fixture: InputFixture, cap = executionLimits(),
     core = 0x1234'u64): InputRefinementResult[InputRefinement] =
   ## Accept no detached authorization/report/trace or replaceable package argument.
   runInputRefinement(fixture.state, fixture.inputs, CoreIndex(core), fixture.parameters, cap)
+
 proc fetchedGuest*(selector: uint64, otherItem = 0'u64): ReportGuest =
   ## Authored host-2 instructions fetch three bytes into writable stack memory and return that exact interval.
   reportGuest([refinementImmediate(7, 196608), refinementImmediate(8, 0),

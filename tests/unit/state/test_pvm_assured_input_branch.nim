@@ -28,6 +28,7 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives discarded writes; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, present: bool) =
   ## Check selected storage bytes and counters independently of the successful publication result.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -40,6 +41,7 @@ proc storage(state: StateStoreSnapshot, present: bool) =
     assert found.error == StateStoreError.MissingKey
     assert uint32(account.storageItems) == 0 and uint64(account.storageBytes) == 0
   assert uint64(account.balance) == 50
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute actual count fetch/load/write/branch instructions with the original source parameters and runner ceilings.
   let outcome = executeAssuredAccumulation(fixture.queue, assuredExecutionConfig(fixture.queue))
@@ -49,6 +51,7 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Compose the actually selected exceptional account without replaying initial guest work.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -138,6 +141,7 @@ for field in low(Parameter)..high(Parameter):
 assert sameStateSnapshot(fixture.state.snapshot.value, original) and sameChainView(fixture.view, oldView)
 storage(original, true)
 assert uint32(metadata(original).lastAccumulation) == 2
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Execute the real input branch, compose and publish retained exceptional storage, then release every successor owner.
   let source = compose(execute(fixture))

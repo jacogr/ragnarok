@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_ticket_admission_arc_release"}
 
 ## Real RingVRF positives bind independent exact packet transcripts to finalized epoch and authenticated recipient roles.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import ../../../src/jamnp-s/[ticket_packet, ticket_validation, ticket_pool]
 import ../../../src/app/[node as application_node, services, options]
@@ -17,6 +18,7 @@ import ../../../src/bandersnatch/bandersnatch
 import ../../../src/codec/state/safrole
 import ../../support/[jamnp_ticket_fixture, jamnp_topology_fixture, jamnp_node_probe,
     jamnp_read_validation_context, arc_evidence]
+
 proc pure() =
   ## Decoder boundaries never grant a proof prefix; source/clock/proxy checks retain genuine cryptographic causes.
   let local = topologyKey(9001)
@@ -97,11 +99,11 @@ proc pure() =
   assert verifyNetworkTicket(source.value, fixture.packet, unregistered).error ==
       NetworkTicketError.WrongRecipient
 
-
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -112,17 +114,20 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(saved.chainParameters.encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc wirePacket(packet: TicketPacket, distribution: bool): seq[byte] =
   ## Independent literal E4 length789 spans two nonzero octets; the proof remains exactly784 bytes.
   result = @[if distribution: 132'u8 else: 131'u8]
   for octet in [21'u8, 3, 0, 0]: result.add(octet)
   for octet in packet.packetBytes: result.add(octet)
+
 proc poll(host: var ApplicationNode, services: var Services, probe: var NodeProbe, now = StateTime(
     1)) {.raises.} =
   ## Only the managed actor can acquire the graph/CPU gate; the raw sender keeps an independent transcript.
   assert host.poll(getMonoTime(), now, 0)
   probe.poll()
   services.tick(uint32(host.peerCount))
+
 proc live(distribution = false, corrupt = false, late = false, closeDone = false,
     foreignReplacement = false, localNotValidator = false, included = false,
         cutoff = false) {.raises.} =
@@ -215,6 +220,7 @@ proc live(distribution = false, corrupt = false, late = false, closeDone = false
   assert host.pendingTicketCount == 1 and probe.bytes(duplicate).len == 0
   host.close()
   assert host.pendingTicketCount == 0 and services.stateProofAvailable
+
 proc observedReset() {.raises.} =
   ## Separate public transport and CPU collection phases make actual observed reset before Done collection deterministic.
   let localKey = certificateIdentity(getEnv("RAGNAROK_TEST_CERT")).value
@@ -279,6 +285,7 @@ proc observedReset() {.raises.} =
   assert reply.error == ReadError.None
   assert streams.respond(task.value.ticket, reply.value) == ReadError.InvalidStream
   assert not probe.flows[submitted].receivedFin and services.stateProofAvailable
+
 proc cycle(source: TicketSource, ticket: CheckedNetworkTicket) =
   ## One fixed proof-pool activation owns no source map, native handle or worker cancellation authority.
   var pool = default(PendingTicketPool)
@@ -287,6 +294,7 @@ proc cycle(source: TicketSource, ticket: CheckedNetworkTicket) =
   assert pool.ticketAt(0).valid
   pool.clear()
   assert pool.len == 0
+
 proc main() {.raises.} =
   ## Every scoped counterexample has an exact runtime rejection and successful ordinary-control witness.
   pure()

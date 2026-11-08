@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit current command policies and independent forked TLS responders preserve exact requests, scalar progress and joined cleanup.
+
 import ./chain_alpn
 
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
@@ -23,6 +24,7 @@ import ./[accumulation_current_chain_context, accumulation_current_candidate_con
 type CurrentDownloadExchange* = object ## Scalar outcomes retain no canonical map or live native owner.
   outcome*: CurrentDownloadCommandOutcome
   firstRequests*, secondRequests*: int
+
 proc currentCommandLimits*(discover = false): CurrentDownloadLoopLimits =
   ## Every current ceiling is explicit; callback/whole-attempt durations accommodate real TLS setup independently of GP slots.
   CurrentDownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,
@@ -32,6 +34,7 @@ proc currentCommandLimits*(discover = false): CurrentDownloadLoopLimits =
     candidate: currentCandidateLimits(), stream: CurrentDownloadStreamLimits(readBytes: ByteLimit(4096),
       writeBytes: ByteLimit(42), timeout: CurrentDownloadTimeout(5000)),
     attemptTimeout: CurrentDownloadAttemptTimeout(8000))
+
 proc currentCommandArguments*(port: uint16, count: int, chainPath, policyPath: string,
     extra: seq[string] = @[], timeout = "10000"): seq[string] =
   ## Public command shape remains explicit and the selected peer pin is never inferred from a remote certificate.
@@ -41,6 +44,7 @@ proc currentCommandArguments*(port: uint16, count: int, chainPath, policyPath: s
         "1000000",
     "--download-blocks", $count]
   for value in extra: result.add(value)
+
 proc currentResponseFrame*(context: CurrentChainFixture): seq[byte] =
   ## Independently encode E4 extent and exact signed body without a production download adapter.
   let body = context.currentDiskChildBytes
@@ -48,6 +52,7 @@ proc currentResponseFrame*(context: CurrentChainFixture): seq[byte] =
   result = newSeq[byte](body.len+4)
   for index in 0..<4: result[index] = byte((uint64(body.len) shr (8*index)) and 255)
   for index, octet in body: result[index+4] = octet
+
 proc currentExpectedRequest*(hash: array[32, byte]): array[42, byte] =
   ## Normative CE128 request is a full sealed-header identity, ascending direction and one-child maximum.
   result = default(array[42, byte])
@@ -55,6 +60,7 @@ proc currentExpectedRequest*(hash: array[32, byte]): array[42, byte] =
   result[1] = 37
   result[38] = 1
   for index, octet in hash: result[index+5] = octet
+
 proc exchangeCurrentDownloads*(context: CurrentChainFixture, responses: seq[seq[byte]],
     modes: seq[DownloadTransferMode], count: int, limits: CurrentDownloadLoopLimits,
     chainPath, policyPath, prefix: string, extra: seq[string] = @[], timeout = "10000",

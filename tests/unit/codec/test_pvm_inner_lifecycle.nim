@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_lifecycle_arc_release"}
 
 ## Current compile/instantiate/expunge equations preserve independent immutable catalogue and instance owners.
@@ -22,6 +23,7 @@ proc compile(map: InnerMachines, size = 6'u64, credit = 10000'u64,
   let source = if memory.pageImage(PageIndex(0)).error ==
       MachineError.None: memory else: fixtureMemory
   compileInnerModule(map, MachineGas(credit), regs, source)
+
 proc create(map: InnerMachines, handle = 0'u64, entry = 0'u64,
     credit = 10000'u64): InnerMachineResult[InnerMachineTransition] =
   ## Instance creation takes a catalogue handle and entry, never a memory pointer.
@@ -30,6 +32,7 @@ proc create(map: InnerMachines, handle = 0'u64, entry = 0'u64,
   regs[8] = RegisterValue(entry)
   let memory = fixtureMemory
   createInnerMachine(map, MachineGas(credit), regs, memory)
+
 proc remove(map: InnerMachines, id: uint64, mode = 0'u64,
     credit = 1000'u64): InnerMachineResult[InnerMachineTransition] =
   ## Mode zero removes instances; mode one removes only catalogue ownership.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime success/variant guards for global reads and planned partial-view outcomes.
+
 import std/[assertions, cmdline, syncio]
 import ../support/proof_global_helpers
 import ../../src/state/proof/[global as proof_global, plan as proof_plan]

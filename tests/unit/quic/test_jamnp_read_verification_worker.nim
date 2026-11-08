@@ -4,20 +4,24 @@
 # @@Verification={"arc": "jamnp_read_verification_worker_arc_release"}
 
 ## Detached trusted-root verification reuses one CPU thread, preserving cancellation/Done capacity and immutable output lifetime.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../../src/app/proof/[worker, read_validation as verification_job]
 import ../../../src/jamnp-s/[read_stream, read_validation, canonical_read]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/state/range_proof
 import ../../support/[jamnp_topology_fixture, jamnp_read_validation_context, arc_evidence]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield while polling synchronized worker scalars, never any captured input/output owner.
+
 proc waitDone(worker: var StateProofWorker) =
   ## Native generation completes under a bounded test deadline; Done still occupies the slot.
   let started = getMonoTime()
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime()-started < initDuration(seconds = 10)
     discard pauseMicros(1000)
+
 proc main() {.raises.} =
   ## One actual worker handles both successful verification and discarded results without leaking ARC graphs or admitting stale tickets.
   let saved = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])

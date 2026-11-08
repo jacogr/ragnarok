@@ -3,6 +3,7 @@
 
 ## Complete StateStore snapshot transport adopts the paged full backend with explicit resident/export budgets.
 ## Native owners remain caller-owned; no light evidence, application context or root trust is inferred.
+
 import std/[algorithm, assertions]
 import ../store
 import ../../storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,

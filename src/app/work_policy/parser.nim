@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private shared strict policy lexing and reviewed nominal scalar conversion; the common error and backend domains remain independently importable.
+
 import ./types
 import ../../pvm/backend
 
@@ -13,6 +14,7 @@ type
     values: seq[PolicyValue]
     error: WorkPolicyError
     field: string
+
 proc decimal(text: string, number: var uint64): bool =
   ## Canonical unsigned decimal accepts no signs, padding, spaces or wrapping multiplication.
   number = 0
@@ -24,6 +26,7 @@ proc decimal(text: string, number: var uint64): bool =
     if number > (high(uint64)-digit) div 10: return false
     number = number*10+digit
   true
+
 proc readField[T](input: var PolicyInput, name: string, field: var T) {.untyped.} =
   ## Only reviewed nominal unsigned widths and the closed backend enum can instantiate this schema.
   if input.error notin [WorkPolicyError.None, WorkPolicyError.MissingField]: return
@@ -56,13 +59,16 @@ proc readField[T](input: var PolicyInput, name: string, field: var T) {.untyped.
   if input.error == WorkPolicyError.None:
     input.error = WorkPolicyError.MissingField
     input.field = name
+
 proc writeField[T](text: var string, name: string, field: T) {.untyped.} =
   ## Emit every declared value without synthesizing execution budgets or serializing logging pointers.
   when T is PvmBackend: text.add(name & "=" & $field & "\n")
   else: text.add(name & "=" & $uint64(field) & "\n")
+
 func inputFailure(reason: WorkPolicyError, field = ""): PolicyInput =
   ## Lexical refusal contains no parsed field prefix or activation object.
   PolicyInput(values: @[], error: reason, field: field)
+
 proc parsePolicyInput(text, header: string, maximumBytes, maximumFields: int): PolicyInput =
   ## Both explicit policy versions share the same bounded lexical grammar without guessing headers, numbers or duplicate precedence.
   if text.len > maximumBytes: return inputFailure(WorkPolicyError.LimitExceeded)

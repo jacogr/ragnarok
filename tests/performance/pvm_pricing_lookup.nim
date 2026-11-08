@@ -3,6 +3,7 @@
 
 ## Measure exact-start pricing lookups with genuine owners, known prices and invalid-start controls.
 ## Samples include the cold first memo query; the Python runner retains all rows and summarizes warm samples separately.
+
 import std/[assertions, syncio, monotimes]
 import ../../src/pvm/program
 import ../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]

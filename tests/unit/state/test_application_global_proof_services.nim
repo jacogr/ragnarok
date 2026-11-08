@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Global plans execute through the same bounded native slot and exclusive Services lease.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../support/proof_query_context
 import ../../../src/app/[services, options]
@@ -14,12 +15,15 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/rpc/server
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded scalar worker polls.
+
 proc identity(owner: Services): tuple[hash: BlockHash, root: StateRoot] =
   ## Retire every temporary canonical ARC alias before the caller can queue proof work.
   let selected = owner.chainView.bestBlock.value
   (selected.blockHash, selected.stateRoot)
+
 proc main() {.raises.} =
   ## Independently verify generic output and preserve legacy error separation.
   let context = queryContext()

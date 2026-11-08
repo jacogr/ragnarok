@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Expected-root restoration exposes targeted account evidence only after each independently bounded phase completes.
+
 # @@Verification={"arc": "state_account_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_checkpoint_context, arc_evidence]
@@ -14,6 +15,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts,
     requests as state_requests, composition as state_composition]
 include ../../native/composition_fixture
+
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   ## Retire the entire restored graph and every joined certificate inside one activation.
   let result = decodeAccountCheckpoint(wire, root, services, inventoryProfile, accountCheckpointLimits)
@@ -21,11 +23,13 @@ proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   assert result.value.accountInvariantInfo.value.content.bytes == 3
   assert array[32, byte](result.value.accountInvariantInventory.value.inventorySource.value.manifestSource.value.commitment.root) ==
       array[32, byte](root)
+
 proc checkVariant(fixture: seq[seq[byte]], services: seq[StateService]): AccountCheckpointResult =
   ## Serialize an independently complete map around a selected semantic account fault.
   let source = inventoryManifest(fixture, services).manifestSource.value
   let wire = encodeFullCheckpoint(source, accountCheckpointLimits.serialization.checkpointBytes).value
   decodeAccountCheckpoint(wire, source.commitment.root, services, inventoryProfile, accountCheckpointLimits)
+
 proc main() {.raises.} =
   ## Separate trusted expected root selection from embedded checkpoint identity and restored source owners.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

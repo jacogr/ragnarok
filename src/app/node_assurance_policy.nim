@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict optional assurance startup profiles require explicit complete resource/chain geometry, storage mode and network policies; omitted files activate nothing and contain no private seed.
+
 import std/[strutils, syncio]
 import ./[assurance_broadcast, assurance_acquirer, assurance_distribution]
 import ./proof/[assurance_storage, assurance_acquisition, network_read]
@@ -45,6 +46,7 @@ type
 include ./work_policy/parser
 const AssurancePolicyHeader = "ragnarok-assurance-policy-v1"
 const AssurancePolicyBytes = 32768
+
 template assurancePolicyFields(values, context, visit: untyped) {.untyped.} =
   ## One declaration retains exact scalar names for complete parsing and independent operator-file emission.
   visit(context, "mode", values.mode)
@@ -98,48 +100,62 @@ template assurancePolicyFields(values, context, visit: untyped) {.untyped.} =
   visit(context, "broadcastParallel", values.broadcastParallel)
   visit(context, "broadcastPeerMs", values.broadcastPeerMs)
   visit(context, "broadcastJobMs", values.broadcastJobMs)
+
 func error*(outcome: NodeAssurancePolicyResult): WorkPolicyError =
   ## Inspect the selected failure before accessing a completed activation policy.
   outcome.status
+
 func value*(outcome: NodeAssurancePolicyResult): NodeAssurancePolicy {.requires: outcome.status ==
     WorkPolicyError.None.} =
   ## Only whole schema and child validation grants ready startup configuration.
   outcome.completed
+
 func fieldName*(outcome: NodeAssurancePolicyResult): string {.requires: outcome.status !=
     WorkPolicyError.None.} =
   ## Diagnostics never contain policy file contents or private credentials.
   outcome.field
+
 func valid*(policy: NodeAssurancePolicy): bool =
   ## Defaults enable neither disk I/O nor network/private-key operations.
   policy.ready
+
 func refused(reason: WorkPolicyError, field = ""): NodeAssurancePolicyResult =
   ## No refusal carries a partially constructed activation policy.
   NodeAssurancePolicyResult(status: reason, field: field)
+
 proc encodeNodeAssurancePolicy*(values: NodeAssuranceSettings): string =
   ## Emit explicit supplied scalars; no private key, inferred defaults or source root is serialized.
   result = AssurancePolicyHeader & "\n"
   assurancePolicyFields(values, result, writeField)
+
 func storageLimits*(policy: NodeAssurancePolicy): AssuranceStoreLimits {.requires: policy.ready.} =
   ## Independent namespace limits do not permit any opening by themselves.
   policy.storage
+
 func storageMode*(policy: NodeAssurancePolicy): AssuranceStorageMode {.requires: policy.ready.} =
   ## Only explicit zero/open or one/create survives parsing; no automatic existence fallback is used.
   if policy.settings.mode == 1: AssuranceStorageMode.Create else: AssuranceStorageMode.Open
+
 func startupTimeoutMs*(policy: NodeAssurancePolicy): uint64 {.requires: policy.ready.} =
   ## One finite namespace-startup deadline covers the bounded complete scan.
   policy.settings.startupMs
+
 func readLimits*(policy: NodeAssurancePolicy): AssuranceReadLimits {.requires: policy.ready.} =
   ## Durable serving has independently explicit whole-request restore and reply limits.
   policy.reads
+
 func acquisitionPolicy*(policy: NodeAssurancePolicy): AssuranceAcquisitionPolicy {.requires: policy.ready.} =
   ## CE137 acquisition uses the parsed whole-round reservations.
   policy.acquisition
+
 func receiptPolicy*(policy: NodeAssurancePolicy): AssuranceReceiptPolicy {.requires: policy.ready.} =
   ## Incoming candidates remain unadmitted, independently bounded objects.
   policy.receipt
+
 func broadcastPolicy*(policy: NodeAssurancePolicy): AssuranceBroadcastPolicy {.requires: policy.ready.} =
   ## Timed delivery cannot substitute a default signing or routing policy.
   policy.broadcast
+
 func matches*(policy: NodeAssurancePolicy, geometry: SafroleStateConfig, period: uint64): bool =
   ## An operator file cannot silently select a different chain profile than the actual complete Services source.
   policy.ready and policy.settings.period == period and
@@ -147,6 +163,7 @@ func matches*(policy: NodeAssurancePolicy, geometry: SafroleStateConfig, period:
     uint64(policy.settings.topology.validators.validators) == uint64(
         geometry.validators.validators) and
     uint64(policy.settings.topology.epochSlots) == uint64(geometry.epochSlots)
+
 proc decodeNodeAssurancePolicy*(text: string): NodeAssurancePolicyResult =
   ## Parse every scalar and reject duplicate/missing/unknown fields before constructing any ready child.
   var input = parsePolicyInput(text, AssurancePolicyHeader, AssurancePolicyBytes, 52)
@@ -222,6 +239,7 @@ proc decodeNodeAssurancePolicy*(text: string): NodeAssurancePolicyResult =
     ready: true,
     settings: values, storage: storage, reads: reads, acquisition: acquisition, receipt: receipt,
     broadcast: broadcast))
+
 proc loadNodeAssurancePolicy*(path: string): NodeAssurancePolicyResult {.raises.} =
   ## A bounded file read and complete close precede any Services, socket, archive or private-key activation.
   try:

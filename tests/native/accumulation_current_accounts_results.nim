@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Refused/default timestamp owners expose no selected state or mismatched reason.
+
 import std/cmdline
 import ../../src/state/accumulation/current/accounts as accumulation_current_accounts
 import ../../src/state/accumulation/accounts as accumulation_accounts

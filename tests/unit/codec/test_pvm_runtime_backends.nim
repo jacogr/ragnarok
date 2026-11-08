@@ -3,6 +3,7 @@
 
 ## Run real explicit engines through the same checked host continuation and immutable memory contract.
 ## Optional-runtime and standalone builds retain distinct refusal and execution witnesses.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas

@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_trust_arc_release"}
 
 ## Operator-selected metadata/header bytes are bounded, hash-bound and detached before checkpoint access.
+
 import std/[assertions, syncio]
 import ../../../src/app/chain
 import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
@@ -12,11 +13,13 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc cycle(metadata, wire, envelope: seq[byte], expected: ApplicationCheckpointIdentity) =
   ## Captured sealed bytes and complete restored graph release on the host at return.
   let trust = captureCheckpointTrust(metadata, wire, ByteLimit(high(uint64))).value
   let owner = decodeTrustedCheckpoint(envelope, trust, genesisStoreLimits(), ByteLimit(high(uint64))).value
   assert sameApplicationCheckpoint(captureApplicationCheckpointIdentity(owner).value, expected)
+
 proc main() {.raises.} =
   ## Independent fixed identity is an operator input; envelope contents never provide trust automatically.
   let source = checkpointFixture()

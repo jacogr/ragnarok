@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
+
 import std/[assertions, syncio, monotimes, envvars]
 import ./pvm_invocation_scope
 import ../../src/pvm/[artifact, program, machine]
@@ -349,7 +350,6 @@ when defined(pvmArmMacroReceipt):
   echo "ARM_MACRO_APPLICATION,", getEnv("RAGNAROK_PVM_GUEST"), ",", int(
       resident),
     ",", macroStats[0], ",", macroStats[1], ",", macroStats[5], ",", macroStats[6]
-
 
 when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.

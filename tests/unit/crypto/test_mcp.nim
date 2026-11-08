@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed MCP registry, stateless lifecycle, bounded HTTP framing and actual loopback request exchange.
+
 import std/[assertions, syncio, base64]
 import ../../../src/mcp/protocol
 import ../../../src/rpc/protocol as rpc
@@ -14,14 +15,17 @@ include ../../../src/mcp/server
 proc request(methodName: string, params = "{}", id = "1"): string =
   ## Independent wire authoring keeps malformed-envelope tests outside the production encoder.
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"method\":\"" & methodName & "\",\"params\":" & params & "}"
+
 proc call(name: string, arguments = "{}"): string =
   ## Author a fixed MCP tool call with explicit named arguments.
   request("tools/call", "{\"name\":\"" & name & "\",\"arguments\":" & arguments & "}")
+
 proc http(body: string, port = 14141'u16, extra = ""): string =
   ## Include both standard MCP response media types and exact byte framing.
   "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:" & $port &
     "\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n" &
     extra & "Content-Length: " & $body.len & "\r\n\r\n" & body
+
 proc processed(packet: string): string =
   ## Pure HTTP processing never opens a socket and returns the fully serialized response.
   var slot = Connection(input: packet)

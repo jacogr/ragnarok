@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine preimage extrinsics and storage/yield/checkpoint guests produce complete current STF observations.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/provider

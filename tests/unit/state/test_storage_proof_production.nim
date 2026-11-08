@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete revisions produce exact bounded detached paths that verify against independent full-map roots.
+
 # @@Verification={"arc": "storage_proof_production_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -9,24 +10,30 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/state_proof
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse real hashing to distinguish free cached branch encoding from long-leaf preimages.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## A terminal long leaf is the producer's only possible cryptographic operation.
+
 proc key(index: int): StateKey =
   ## Spread finite keys over both polarities and preserve every remaining serialized octet.
   var raw = default(array[31, byte])
   raw[0] = byte(index and 255)
   raw[30] = byte(index shr 8)
   StateKey(raw)
+
 proc policy(): FullStateTrieLimits =
   ## Complete maps and subsequent historical forks retain explicit independent batch ceilings.
   FullStateTrieLimits(trie: StateTrieLimits(items: ElementLimit(256), perValue: ByteLimit(256),
     totalValueBytes: ByteLimit(65536), nodes: TrieNodeLimit(10000)), writes: ElementLimit(256),
     writeValueBytes: ByteLimit(65536))
+
 proc limits(): StateProofLimits =
   ## Generation and verification use the same maximum path domain and copied-value budget.
   StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))
+
 proc allocated(nodes, bytes: int): int =
   ## Public allocator calibration bounds a held proof to its exact node buffer and present value bytes.
   let before = getOccupiedMem()
@@ -42,6 +49,7 @@ proc allocated(nodes, bytes: int): int =
     assert buffer.len == bytes
   assert getOccupiedMem() == before
   expected
+
 proc check(trie: FullStateTrie, root: StateRoot, query: StateKey, present: bool, bytes: seq[byte]) =
   ## Generation uses cached branch hashes; the independent trusted root validates every produced link.
   reset(0)
@@ -69,6 +77,7 @@ proc check(trie: FullStateTrie, root: StateRoot, query: StateKey, present: bool,
   proof.value.setLen(0)
   if present:
     assert verified.bytes == bytes and trie.lookup(query).value.bytes == bytes
+
 proc mappings() =
   ## Unsorted complete maps and present-empty/inline/long values agree with the independent root calculator.
   for count in [0, 1, 2, 65]:
@@ -83,6 +92,7 @@ proc mappings() =
     let trie = newFullStateTrie(entries, policy()).value
     for entry in entries: check(trie, expected.root, entry.key, true, entry.value)
     for query in [key(1), key(254), key(300)]: check(trie, expected.root, query, false, @[])
+
 proc boundaries() =
   ## All path/value ceilings refuse before hashing; absent long leaves require no copied-value allowance.
   reset(0)
@@ -122,6 +132,7 @@ proc boundaries() =
   reset(0)
   assert verifyStateProof(deep.commitment.root, key(128), zeroChild, limits()).value.kind ==
       StateLookupKind.Absent
+
 proc detached(): StateProof =
   ## Only detached proof bytes survive retirement of their source revision, entries and result wrapper.
   reset(0)
@@ -130,6 +141,7 @@ proc detached(): StateProof =
   entries[0].value[0] = 99
   var outcome = trie.prove(key(0), limits())
   outcome.takeValue
+
 proc history() =
   ## Old and new roots retain separate proofs after updates; mutation of a returned path cannot change either trie.
   reset(0)
@@ -140,6 +152,7 @@ proc history() =
   let proof = old.prove(key(0), limits()).value
   assert verifyStateProof(updated.commitment.root, key(0), proof, limits()).error ==
       StateProofError.InvalidProof
+
 proc refusedAndRecovered(trie: FullStateTrie) =
   ## Refusal after a branch descriptor is written retires private output, then the same source proves successfully.
   reset(1)

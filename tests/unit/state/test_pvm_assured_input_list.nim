@@ -28,11 +28,13 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode actual canonical account fields at each state owner rather than substitute copied observations.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Exact prefix bytes include the list count and first record tag; footprint remains one three-byte value.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
   assert state.lookup(key).value.bytes == @expected
   assert uint32(metadata(state).storageItems) == 1 and uint64(metadata(state).storageBytes) == 38
+
 proc listPrefix(completed: CompletedBlockAccumulation, count: byte): seq[byte] =
   ## Small counts are one literal compact byte, followed by operand tag0 then its actual package-hash byte.
   let inputs = completed.executionRound.value.roundProjection.value.roundInputs.value
@@ -41,12 +43,14 @@ proc listPrefix(completed: CompletedBlockAccumulation, count: byte): seq[byte] =
   let first = inputs.invocationInputAt(InvocationServiceIndex(0), InvocationInputIndex(0)).value
   assert first.kind == AccumulationKind.Operand
   @[count, 0'u8, first.operand.operandInfo.value.packageHash.bytes[0]]
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Run the actual list-fetch guest with retained inputs and unchanged original parameter authority.
   let outcome = executeAssuredAccumulation(fixture.queue, assuredExecutionConfig(fixture.queue))
   if outcome.error != AssuredExecutionError.None: echo "input-list execution ", outcome.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Stop and compose the real selected list-prefix write without replaying the initial guest.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -141,6 +145,7 @@ for field in low(Parameter)..high(Parameter):
 assert sameStateSnapshot(fixture.state.snapshot.value, original) and sameChainView(fixture.view, oldView)
 storage(original, expectedFirst)
 assert uint32(metadata(original).lastAccumulation) == 2
+
 proc detached(): AdvancedAssuredChain =
   ## Retain the actual guest-derived canonical child after fixture/source/caller handles retire.
   let fixture = assuredOutcomeFixture(ComputedStorageMode.FetchList)
@@ -151,6 +156,7 @@ proc detached(): AdvancedAssuredChain =
 let held = detached()
 assert held.assuredChainSnapshot.value.lookup(serviceStorageKey(ServiceIndex(42), @[11'u8],
     ByteLimit(1)).value).value.bytes[0] == 2
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Fetch a full actual report list, compose its storage prefix and release canonical/source owners every cycle.
   let source = compose(execute(fixture))

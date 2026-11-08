@@ -3,6 +3,7 @@
 
 ## Immutable admitted network read jobs. Moving a job to the CPU worker requires the same
 ## exclusive ARC graph lease as proof queries; cancellation releases it only on collection/join.
+
 import std/algorithm
 import ../../chain/[provider, genesis]
 import ../../codec/bounded
@@ -47,19 +48,24 @@ type
     case status: ReadError
     of None: completed: NetworkReadJob
     else: discard # Failed captures never retain an oversized graph.
+
 func error*(outcome: NetworkReadAdmission): ReadError =
   ## Inspect admission without accessing a partial source.
   outcome.status
+
 func value*(outcome: NetworkReadAdmission): NetworkReadJob {.requires: outcome.status ==
     ReadError.None.} =
   ## Extract only the complete immutable job.
   outcome.completed
+
 func valid*(job: NetworkReadJob): bool =
   ## Default jobs cannot claim a worker lease.
   job.data != nil
+
 func valid*(limits: AssuranceReadLimits): bool =
   ## Default policies cannot perform fixed-header IO or derive any reply.
   limits.restore.valid and limits.reply.valid and uint64(limits.batchSources) <= 6144
+
 proc captureAssuranceRead*(owner: var AssuranceStore, request: ReadRequest,
     limits: AssuranceReadLimits): NetworkReadAdmission =
   ## Borrow only this fixed owner address and copied bounded request; the caller freezes the namespace until exact collection or joined stop.
@@ -75,6 +81,7 @@ proc captureAssuranceRead*(owner: var AssuranceStore, request: ReadRequest,
     kind: NetworkSource.DurableAssured, archive: addr owner, restore: limits.restore,
     batchSources: limits.batchSources, request: detachedReadRequest(request),
         limits: limits.reply)))
+
 proc captureNetworkRead*(view: ChainView, request: ReadRequest): NetworkReadAdmission =
   ## Bound the retained view before copying its indexes; callers keep all aliases frozen until retirement.
   if view.fuzzOnly: return NetworkReadAdmission(status: ReadError.InvalidRequest) # Test-only origin never grants an ordinary network source.
@@ -92,6 +99,7 @@ proc captureNetworkRead*(view: ChainView, request: ReadRequest): NetworkReadAdmi
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     view: projected.value, request: detachedReadRequest(
         request)))) # The optional unbounded memory-history index is not retained.
+
 proc captureAvailabilityRead*(source: AvailabilityCommitment, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## The caller retires every temporary alias before submitting the existing exclusive canonical lease.
@@ -106,6 +114,7 @@ proc captureAvailabilityRead*(source: AvailabilityCommitment, request: ReadReque
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.Computed, source: source, request: detachedReadRequest(request),
         limits: limits)))
+
 proc captureAvailabilityRead*(source: GuarantorAvailability, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## Only a Services-owned retained root crosses this lease; no completed work session or canonical map is required.
@@ -119,6 +128,7 @@ proc captureAvailabilityRead*(source: GuarantorAvailability, request: ReadReques
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.Retained, retained: source, request: detachedReadRequest(request),
         limits: limits)))
+
 proc captureOriginalSegments*(original: AvailabilityCommitment,
     sources: openArray[GuarantorAvailability], request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
@@ -132,6 +142,7 @@ proc captureOriginalSegments*(original: AvailabilityCommitment,
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.OriginalSegments, source: original, retainedSources: retained,
     request: detachedReadRequest(request), limits: limits)))
+
 proc captureAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## Services keeps the private cache frozen through exact collection; no external caller alias is retained by the store.
@@ -143,6 +154,7 @@ proc captureAvailabilityAudit*(source: VerifiedAvailabilityTransfer, request: Re
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.Assured, stored: source, request: detachedReadRequest(request),
         limits: limits)))
+
 proc captureSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer],
     request: ReadRequest, limits: AvailabilityReadLimits): NetworkReadAdmission =
   ## Only Services-owned immutable cache entries cross the lease; external/native request bytes are detached before submission.
@@ -155,6 +167,7 @@ proc captureSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer],
   NetworkReadAdmission(status: ReadError.None, completed: NetworkReadJob(data: NetworkReadData(
     kind: NetworkSource.ShardBatch, snapshot: snapshot, request: detachedReadRequest(request),
         limits: limits)))
+
 proc restoreDistribution(archive: nil ptr AssuranceStore, selected: AvailabilityRequest,
     limits: AssuranceRestoreLimits): StoredRestore =
   ## The intermediate record owner retires before its detached source can participate in later reply allocations.
@@ -169,6 +182,7 @@ proc restoreDistribution(archive: nil ptr AssuranceStore, selected: Availability
   if copied.error != AvailabilityTransferError.None: return StoredRestore(
       status: ReadError.Unavailable)
   StoredRestore(status: ReadError.None, transfer: copied.value)
+
 func compareRestoreLocations(left, right: SegmentSelection): int =
   ## Sorting private copied coordinates restores each root/shard once without changing the original request or reply order.
   for index in 0..<32:
@@ -177,6 +191,7 @@ func compareRestoreLocations(left, right: SegmentSelection): int =
   if left.shard < right.shard: return -1
   if left.shard > right.shard: return 1
   0
+
 proc restoreShardSources(data: NetworkReadData, control: AssuranceScanControl): ShardRestore =
   ## Whole-request restore work and resident payloads remain bounded across every original record; a later refusal releases the entire private snapshot.
   let count = data.request.itemCount
@@ -228,6 +243,7 @@ proc restoreShardSources(data: NetworkReadData, control: AssuranceScanControl): 
   sources.setLen(used)
   ShardRestore(status: ReadError.None, sources: move(sources), payloadBytes: resident,
     metadataBytes: uint64(capacity)*16)
+
 proc serveDurableShards(data: NetworkReadData, control: AssuranceScanControl): ReadResult[ReadReply] =
   ## Only a whole restored snapshot reaches ordinary ordered row/proof construction; freshly allocated resident source graphs remain charged during the reply phase.
   let restored = restoreShardSources(data, control)
@@ -241,6 +257,7 @@ proc serveDurableShards(data: NetworkReadData, control: AssuranceScanControl): R
   let reply = serveSegmentShardBatch(restored.sources, data.request, limits)
   if control.stopped: return readFailure[ReadReply](ReadError.Unavailable)
   reply
+
 proc serveDurableAudit(data: NetworkReadData, control: AssuranceScanControl): ReadResult[ReadReply] =
   ## Full original-distribution verification and synchronization precede existing bounded two-frame audit derivation, with no namespace alias in the response.
   if control.stopped: return readFailure[ReadReply](ReadError.Unavailable)
@@ -254,6 +271,7 @@ proc serveDurableAudit(data: NetworkReadData, control: AssuranceScanControl): Re
   let reply = serveAvailabilityAudit(restored.transfer, data.request, data.limits)
   if control.stopped: return readFailure[ReadReply](ReadError.Unavailable)
   reply
+
 proc executeNetworkRead*(job: NetworkReadJob, control = default(AssuranceScanControl)): ReadResult[ReadReply] =
   ## Only the worker touches the admitted source graph during the exclusive lease.
   let data = job.data

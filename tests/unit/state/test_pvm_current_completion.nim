@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_completion_arc_release"}
 
 ## The complete current builder matches existing phase witnesses and preserves every actual failure without publication.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/state/accumulation/current/[statistics as accumulation_current_statistics,
     accounts as accumulation_current_accounts, finalization as accumulation_current_finalization,
@@ -25,9 +27,11 @@ import ../../../src/state/accumulation/[round as accumulation_round, queue as ac
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../support/[accumulation_current_chain_context, accumulation_current_completion_context,
     accumulation_current_round_context, pvm_accumulation_provision, arc_evidence]
+
 proc terminal(context: CurrentChainFixture): CompletedCurrentAccumulationSequence =
   ## Retain the genuine terminal input from the independently assembled current witness.
   context.source.currentConsensusSource.value.currentAuthorizationSource.value.currentPreimagesSource.value.currentActivitySource.value.currentValidatorsSource.value.currentRecentSource.value.currentReadySource.value.currentFinalizationAccounts.value.currentAccountsSource.value.currentStatisticsSource.value
+
 proc verify(context: CurrentChainFixture) =
   ## One builder must produce the same whole-map root as the existing manually assembled current state path.
   let completed = context.terminal
@@ -89,10 +93,12 @@ proc verify(context: CurrentChainFixture) =
   let consensus = prepareCurrentAccumulationComposition(completed, consensusLimits)
   assert consensus.error == CurrentAccumulationCompletionError.ConsensusFailure
   assert consensus.consensusFailure.error != CurrentAccumulationConsensusError.None
+
 proc cycle(context: CurrentChainFixture) =
   ## All state-only candidate handles retire in this activation without modifying the retained terminal input.
   let composed = prepareCurrentAccumulationComposition(context.terminal, currentCompositionLimits())
   assert composed.error == CurrentAccumulationCompletionError.None
+
 proc main() {.raises.} =
   ## Signed report inputs drive genuine current execution and the independently assembled expected state.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

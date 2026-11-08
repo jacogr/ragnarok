@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Invocation-local decoded operands and prices survive collisions, capacity pressure and host resumptions without crossing programs or callback nesting.
+
 # @@Verification={"arc": "pvm_execution_cache_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine]
@@ -16,6 +17,7 @@ type
     nested: Machine
     calls: int
     refuse: bool
+
 proc code(parts: openArray[seq[byte]]): Program =
   ## Independently frame original instruction partitions; literal bytes and explicit masks never come from the production decoder.
   var bytes: seq[byte] = @[]
@@ -42,6 +44,7 @@ proc code(parts: openArray[seq[byte]]): Program =
   let captured = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(131072), JumpCountLimit(0))
   assert captured.error == ProgramError.None
   captured.value
+
 proc input(program: Program, count: uint64, charged = false): Machine =
   ## Explicit CPU sentinels and a genuine empty memory owner distinguish valid execution from default handles.
   var registers = default(RegisterFile)
@@ -49,6 +52,7 @@ proc input(program: Program, count: uint64, charged = false): Machine =
   registers[2] = RegisterValue(0xffff0000'u64)
   captureMachine(program, captureMemory([], PageLimit(0)).value, MachineInfo(pc: CodeAddress(0),
       gas: MachineGas(high(uint64)), blockCharged: charged, registers: registers)).value
+
 proc same(actual, expected: MachineInfo) =
   ## Complete CPU parity includes every untouched register, unsigned gas and paid-block flag.
   assert uint64(actual.pc) == uint64(expected.pc)
@@ -56,6 +60,7 @@ proc same(actual, expected: MachineInfo) =
   assert uint64(actual.gasDeficit) == uint64(expected.gasDeficit)
   assert actual.blockCharged == expected.blockCharged
   for index in 0..<13: assert uint64(actual.registers[index]) == uint64(expected.registers[index])
+
 proc compareSteps(source: Machine, attempts: int, terminal = StepExit.Panic,
     cycles = GasCycleLimit(10000)): MachineInfo =
   ## Public single-step execution never uses the invocation cache; its complete trace independently checks composition and exit normalization.
@@ -75,6 +80,7 @@ proc compareSteps(source: Machine, attempts: int, terminal = StepExit.Panic,
     else:
       assert once.value.exit == StepExit.Continued
       current = once.value.machine
+
 proc collisions() =
   ## PCs0 and16 deliberately share a direct slot; later capacity pressure visits more distinct instructions than retained slots.
   var decrement = @[149'u8, 0, 255, 255, 255, 255]
@@ -101,6 +107,7 @@ proc collisions() =
   same(machineInfo(completed.value.machine).value, compareSteps(crowded, 118))
   assert uint64(machineInfo(completed.value.machine).value.registers[0]) == 0
   assert uint64(machineInfo(completed.value.machine).value.registers[1]) == 111
+
 proc threeWayPressure() =
   ## PCs0/16/32 share one bucket but have different mutations/control; rotating replacements must retain exact address tags.
   var decrement = @[149'u8, 0, 255, 255, 255, 255]
@@ -460,7 +467,6 @@ proc adaptiveArc(source: Machine, expected: MachineInfo) =
   assert done.error == StepError.None and done.value.exit == StepExit.Panic
   same(machineInfo(done.value.machine).value, expected)
 
-
 type DenseContext = object ## Expected CPU values and a separately owned nested source never grant access to either private decoder cache.
   expected: array[2, MachineInfo]
   nestedExpected: MachineInfo
@@ -576,11 +582,13 @@ proc respond(context: var Context, stopped: StepOutcome): HostResponse {.raises:
   inc context.calls
   HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers,
       memory: memoryOf(stopped.machine).value)
+
 proc respondFallible(context: var Context, stopped: StepOutcome): HostResult[Reason] {.raises: [].} =
   ## Successful and refusing host adapters share the same invocation cache lifetime without carrying a machine on local failure.
   let response = respond(context, stopped)
   if context.refuse and context.calls == 2: return hostFailure(Reason.Refused)
   hostSuccess[Reason](response)
+
 proc hosts() =
   ## Reentrant calls, ordinary/fallible host resumptions and separate cold invocations preserve exact literal program identities.
   let nested = input(code([@[2'u8], @[2'u8], @[2'u8], @[2'u8], @[2'u8], @[51'u8, 0, 99], @[0'u8]]), 0, true)
@@ -612,6 +620,7 @@ proc hosts() =
     let run = execute(fresh, ExecutionStepLimit(2), GasCycleLimit(0))
     assert run.error == StepError.None and uint64(machineInfo(run.value.machine).value.registers[
         0]) == uint64(literal)
+
 proc staticConditions() =
   ## Every conditional family must reject a bad destination even when its predicate would select the valid successor.
   for opcode in [81'u8, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 174, 175]:
@@ -781,7 +790,6 @@ proc dynamicTargets(count = 64, full = true) =
     HostCallLimit(uint64(count)), GasCycleLimit(102))
   assert refused.error == StepError.GasCycleLimitExceeded and context.calls == 0
 
-
 proc controlOwner(opcode: byte, alias = false, tableTarget = 7'u8): Program =
   ## Seven-byte literal partitions make all successful taken/fallthrough destinations PC7; table contents stay independently authored.
   if opcode == 50 or opcode == 180:
@@ -896,7 +904,6 @@ proc controlSuccessors() =
           let refused = controlRun(poor, mode, 1, plan, memo)
           assert refused.error == StepError.None and refused.value.exit == StepExit.OutOfGas
           same(machineInfo(refused.value.machine).value, shortage)
-
 
 proc absentControlSuccessors() =
   ## A valid taken target cannot authorize an absent conditional fallthrough; unconditional back edges remain executable.

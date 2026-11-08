@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_continuation_execution_arc_release"}
 
 ## Actual later-round CPU outcomes and certified skips retain complete coverage and canonical actual gas.
@@ -24,6 +25,7 @@ import ../../support/[accumulation_continuation_execution_context, accumulation_
 
 # Detect any hidden hashing during coverage/provenance preflight and no-op completion/application.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc main() {.raises.} =

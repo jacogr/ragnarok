@@ -14,6 +14,7 @@ proc forgotten() =
   var writer = default(AtomicFileWriter)
   assert writer.openAtomicFileWriter("build/state-atomic-file-writer-result.bin") ==
       AtomicFileError.None
+
 proc main() =
   ## Real binary/empty controls validate the same owner used by default, closed and failed-read probes.
   let mode = paramStr(1)

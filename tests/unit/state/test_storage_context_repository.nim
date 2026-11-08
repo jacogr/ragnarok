@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real kernel zero/partial writes require explicit exact-prefix recovery before append can resume.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -21,15 +22,19 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before selecting a smaller soft limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Change only the isolated child, never the native runner's resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep SIGXFSZ as a typed write error rather than accepting signal termination as evidence.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## Signal handling performs no allocation, output or storage operation.
   discard
@@ -38,15 +43,18 @@ proc contextInitialize(repository: var FileRepository, path: string, chain: Stor
     limits: JournalLimits): FileError =
   ## Select the contextual physical schema explicitly; node-only opens must refuse it.
   initializeFileRepository(repository, path, chain, limits, StorageSchema.FullStateV1)
+
 proc contextOpen(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits): FileError =
   ## Strict contextual reopen never guesses another frame format.
   openFileRepository(repository, path, chain, limits, StorageSchema.FullStateV1)
+
 proc contextRecover(repository: var FileRepository, path: string, chain: StorageChainId,
     limits: JournalLimits, generation: RepositoryGeneration, root: StateRoot): FileError =
   ## Recovery retains exactly the independently selected prefix and its context.
   recoverFileRepository(repository, path, chain, limits, generation, root,
       StorageSchema.FullStateV1)
+
 proc contextPublish(repository: var FileRepository, expected: RepositoryView,
     batch: TrieExport): FileResult[RepositoryView] =
   ## One authored byte identifies which generation supplied the selected application context.
@@ -205,7 +213,6 @@ proc contextBoundaries() {.raises.} =
   assert contextRecover(file, path, default(StorageChainId), limits,
     RepositoryGeneration(1), root) == FileError.InvalidJournal
   assert not file.opened and readFile(path) == impossible
-
 
 proc main() {.raises.} =
   ## Exact and ample kernel ceilings prove the same publisher succeeds without a refusal.

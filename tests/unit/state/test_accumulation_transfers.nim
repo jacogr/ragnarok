@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_transfers_arc_release"}
 
 ## Collect actual terminal-selected transfers with exact ordering, bounds, immutable provenance and ARC release.
@@ -16,6 +17,7 @@ import ../../support/[accumulation_transfers, arc_evidence]
 
 # Pure collection must succeed even when every new backend hash is disabled.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Observe that collection and value extraction never invoke the hashing backend.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

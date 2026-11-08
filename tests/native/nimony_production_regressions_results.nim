@@ -5,6 +5,7 @@
 
 ## Minimal compiler regressions and result-contract premises, qualified with and without ThinLTO.
 ## References: spec/compiler-issues.md NIM-001/NIM-003 and the October 21 #2737 reproduction.
+
 import std/[assertions, cmdline, syncio]
 import ../support/probe_cases
 import ./pvm_step_results
@@ -22,18 +23,23 @@ type VerificationProbe = enum
 
 type RegressionOwner = object ## Scalar-only exclusive ownership mirrors the original sequence-copy defect.
   token: int
+
 proc `=copy`(target: var RegressionOwner, source: RegressionOwner) {.error.}
   ## The positive move control must not silently fall back to a copy.
+
 proc `=dup`(source: RegressionOwner): RegressionOwner {.error.}
   ## Derived sequence duplication remains unavailable.
+
 proc transfer(): seq[RegressionOwner] =
   ## A legal explicit transfer must retain the actual payload under production optimization.
   var owner: seq[RegressionOwner] = @[]
   owner.add RegressionOwner(token: 7)
   result = move(owner)
+
 proc touch(value: var int) =
   ## Mutating a pointee cannot invalidate the pointer's presence proof.
   inc value
+
 proc receive(input: nil ptr int) =
   ## The original inferred-local second mutable call is the compiler regression witness.
   if input == nil: return

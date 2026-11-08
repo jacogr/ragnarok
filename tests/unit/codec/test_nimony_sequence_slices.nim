@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Sequence slicing retains exact ranges and independent mutable ownership after upstream #2782.
+
 import std/[assertions, syncio]
 let data = @[1, 2, 3]
 assert data[0..0] == @[1] # The original two-line reproducer must instantiate successfully.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine completed current logical parent and maintained signed in-epoch empty next child, with no legacy completion certificate.
+
 import std/assertions
 import ./[current_namespace_transition_context, current_namespace_execution_context,
     current_namespace_context, current_namespace_refresh_context, accumulation_execution_context,
@@ -15,6 +16,7 @@ type CurrentRepeatedLogicalFixture* = object ## Public test descriptors hold onl
   first*: CurrentNamespaceTransition
   logical*: CurrentLogicalState
   next*: PreparedCurrentChainUpdate
+
 proc nextLogicalEmpty*(source: PreparedCurrentChainUpdate): PreparedCurrentChainUpdate =
   ## The maintained author only signs a bounded in-epoch empty OwnedBlock; actual current candidate execution supplies all completion authority.
   let context = source.currentUpdateChildContext
@@ -28,6 +30,7 @@ proc nextLogicalEmpty*(source: PreparedCurrentChainUpdate): PreparedCurrentChain
   limits.completion.composition.validators.services = ElementLimit(
       2) # Real posterior C13 contains both executed services, rather than the original single stale row.
   prepareCurrentCandidate(application, child, [], limits).value
+
 proc repeatedLogicalFixture*(base: OwnedReport): CurrentRepeatedLogicalFixture =
   ## Original code and complete namespaces enter signatures; the first full logical result is the actual parent of the genuine next preparation.
   var options = executionFixtureConfig()

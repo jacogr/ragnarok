@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Six distinct native signing roles cross a Tiny epoch through ordinary candidate validation.
+
 import std/[assertions, syncio]
 import "../../../src/app/block/author" as block_author
 import ../../../src/app/[tiny_genesis, chain, candidate]

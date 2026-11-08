@@ -22,6 +22,7 @@ import ../../support/[application_candidate_context, accumulation_completion_con
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## A receiving/native callback cannot silently prepare or publish a block.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe zero hash work during catalog and native-only operations.
 
@@ -32,9 +33,11 @@ proc peerKey(name: string): DownloadPeerKey {.raises.} =
   var key = default(array[32, byte])
   for index in 0..<32: key[index] = byte(raw[index]) # Only the fixed Ed25519 SPKI payload is accepted by the fixture generator.
   DownloadPeerKey(key)
+
 proc limits(): DownloadStreamLimits =
   ## Explicit callback bounds and total bound-stream duration are unrelated to protocol block slots.
   DownloadStreamLimits(readBytes: ByteLimit(73), writeBytes: ByteLimit(3), timeout: DownloadTimeout(100))
+
 proc begin(session: var BlockDownloadSession, owner: Services,
     peer: DownloadPeerId): DownloadSessionAttempt =
   ## The scheduler authorizes one explicit registered peer; catalog identity proof remains independent.
@@ -45,15 +48,18 @@ proc begin(session: var BlockDownloadSession, owner: Services,
     preparationLimits(), DownloadScheduleTick(0))
   assert admitted.error == DownloadSessionError.None
   admitted.value
+
 proc open(catalog: var BlockDownloadPeers, id: uint64, key: DownloadPeerKey,
     port: uint16): DownloadPeerError =
   ## Production callbacks pin key; the test supplies only explicit local TLS/endpoint inputs.
   catalog.openPeer(DownloadPeerId(id), key, port, getEnv("RAGNAROK_TEST_CERT"),
     getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", remoteAddress = ipv4Address([127'u8, 0, 0, 1]))
+
 proc step(catalog: var BlockDownloadPeers, servers: var DownloadResponders) =
   ## Bound native work independently of any block producer or canonical service tick.
   assert servers.poll()
   assert catalog.poll() <= 2
+
 proc authenticate(catalog: var BlockDownloadPeers, servers: var DownloadResponders) =
   ## Wait a bounded number of native ticks for both actual peer handshakes.
   var ready = false

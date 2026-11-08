@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supplied raw-key retention is bounded before hashing and remains tied to the exact source through detachment and ARC retirement.
+
 # @@Verification={"arc": "state_supplied_logical_inventory_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, supplied_logical_context, arc_evidence]
@@ -11,15 +12,19 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     service_values as state_service_values]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Short extra-retention limits must refuse before mandatory complete matching hashes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Queries and detached key copies must perform no hashing.
+
 proc cycle(source: ValidatedStateManifest, services: openArray[StateService]) =
   ## Retire the full copied-key and compact fact graph on every cycle.
   let logical = captureSuppliedLogicalInventory(source, services, suppliedLogicalTestLimits).value
   assert logical.copySuppliedStorageKey(InventoryServiceIndex(0), InventoryStorageIndex(0),
       ByteLimit(2)).value.len == 2
+
 proc main() {.raises.} =
   ## Independent chapter bytes plus explicit service declarations construct genuine complete manifests.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

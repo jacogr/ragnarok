@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Services owns detached export lifetime, stable parent address and acknowledgement-gated joined publication receipts.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -10,6 +11,7 @@ import ../../../src/app/checkpoint/[identity as checkpoint_identity,
 import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 const FileName = "application-checkpoint-services-export"
+
 proc waitDone(owner: var Services) =
   ## Dispatcher-style scalar polling has a bounded test deadline and does not serialize or access canonical state.
   let started = getMonoTime()
@@ -19,6 +21,7 @@ proc waitDone(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield only in native verification.
+
 proc main() {.raises.} =
   ## Real publication survives aggregate close/restart while idle cleanup creates no fabricated duplicate receipt.
   defer:

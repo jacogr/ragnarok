@@ -61,6 +61,7 @@ proc finalizationFixture*(withReady = true, withComposition = false,
             runner.completionFailure.batchFailure.error
   assert executed.error == ComputedExecutionError.None
   executed.value
+
 proc computedFinalizationConfig*(): ComputedFinalizationConfig =
   ## Only an idle continuation is needed for this exhausted queue; retained history still counts both actual rounds.
   ComputedFinalizationConfig(driver: AccumulationDriverLimits(

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_sharing_arc_release"}
 
 ## Actual CE134 TLS/FIN, independent Services worker leases and genuine same-input signatures preserve waiting builder contexts.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[worker, work_submission as jobs]
@@ -21,17 +23,20 @@ import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_re
 type Variant {.pure.} = enum ## Each case changes one real wire, assignment, worker or lifecycle obligation.
   Success, Disabled, UnknownPeer, WithheldFin, Suffix, Truncated, InvalidShards,
     WrongCore, InvalidMappings, CorruptProof, CancelDone, RetirePrimary
+
 proc limits(): WorkSharingLimits =
   ## Local policy is explicit; consensus gas/profile remains derived from the actual canonical source.
   let raw = workFixture()
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
         eligibility: guaranteeLimits(), retention: guarantorLimits())
+
 proc frame(bytes: openArray[byte]): seq[byte] =
   ## Independent literal E4 framing detects wrong message grouping and response shape.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(bytes.len) shr (8*index)) and 255))
   for octet in bytes: result.add(octet)
+
 proc first(raw: WorkFixture, variant: Variant): seq[byte] =
   ## CE134 inserts E2 shards between core and mappings; this is not the CE146 first message.
   result = @[byte(if variant == Variant.WrongCore: 1 else: 0), 0, byte(if variant ==
@@ -40,6 +45,7 @@ proc first(raw: WorkFixture, variant: Variant): seq[byte] =
     result.add(9) # Nine mappings refuse before any refinement or signature.
   else:
     for index in 2..<raw.first.len: result.add(raw.first[index])
+
 proc bundle(fixture: GuaranteeFixture, raw: WorkFixture, corrupt = false): seq[byte] =
   ## Whole bundle includes exact original package, extrinsics, imported segments and canonical justifications.
   result = @[]
@@ -49,18 +55,21 @@ proc bundle(fixture: GuaranteeFixture, raw: WorkFixture, corrupt = false): seq[b
   var proofs = raw.proofs
   if corrupt: proofs[1] = proofs[1] xor 1
   for octet in proofs: result.add(octet)
+
 proc pump(server: var NodeService, probe: var NodeProbe, milliseconds = 1) =
   ## Native callbacks process bounded raw bytes while all canonical/private-key aliases remain exclusively worker-owned.
   let deadline = getMonoTime()+initDuration(milliseconds = milliseconds)
   while getMonoTime() < deadline:
     assert server.poll(getMonoTime(), 0)
     probe.poll()
+
 proc waitDone(services: var Services, server: var NodeService, probe: var NodeProbe) =
   ## Observe only synchronized scalar phase until exact collection; native transport stays live throughout.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while services.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "sharing CPU deadline"
     pump(server, probe)
+
 proc waitTask(server: var NodeService, probe: var NodeProbe): NodeSharingTask =
   ## Only two complete messages and exact request FIN create an authenticated native task.
   let deadline = getMonoTime()+initDuration(seconds = 8)
@@ -69,6 +78,7 @@ proc waitTask(server: var NodeService, probe: var NodeProbe): NodeSharingTask =
     if task.error == NodeError.None: return task.value
     assert getMonoTime() < deadline, "sharing request deadline"
     pump(server, probe)
+
 proc waitReset(server: var NodeService, probe: var NodeProbe, flow: int) =
   ## Refusals cannot masquerade as successful response FIN or return any hash/signature prefix.
   let deadline = getMonoTime()+initDuration(seconds = 8)
@@ -77,6 +87,7 @@ proc waitReset(server: var NodeService, probe: var NodeProbe, flow: int) =
     pump(server, probe)
   assert not probe.flows[flow].receivedFin
   assert probe.bytes(flow).len == 0
+
 proc live(variant: Variant, local, remoteKey: StateEdKey) {.raises.} =
   ## Real TLS packets reach the actual private Services signer through its separate managed sharing namespace.
   let fixture = guaranteeFixture(local, if variant == Variant.UnknownPeer: default(
@@ -221,6 +232,7 @@ proc live(variant: Variant, local, remoteKey: StateEdKey) {.raises.} =
   assert reply.kind == ProofWorkerCompletionKind.ReadCompleted
   assert reply.readValue.error == ReadError.None
   assert reply.readValue.value.bytes == frame(bundle(fixture, raw))
+
 proc cycle(request: SharedWorkRequest, fixture: GuaranteeFixture, peer: StateEdKey,
     signer: WorkSigner, bad: bool) =
   ## Full receive/refine/report/sign success and early proof refusal release every decoded/executed temporary owner.
@@ -232,6 +244,7 @@ proc cycle(request: SharedWorkRequest, fixture: GuaranteeFixture, peer: StateEdK
     assert received.error == WorkSharingError.None, "sharing computation: " & $received.error
     let encoded = received.value.sharingResponse
     assert encoded.error == WorkSharingError.None
+
 proc main() {.raises.} =
   ## Real fixture keys and original PVM sources remain untouched while any actual worker owns their aliases.
   let signer = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))

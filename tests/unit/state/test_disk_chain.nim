@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Disk creation/restart and genuine prepared publication remain atomic across canonical/RPC boundaries.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[disk_history_context, durable_chain_context, accumulation_completion_context, accumulation_provision_integration]
@@ -16,6 +17,7 @@ import ../../../src/codec/[block_codec, bounded]
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/report_owned
 import ../../../src/rpc/server
+
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.
   JournalLimits(repository: RepositoryLimits(codec: RecordLimits(trie: StateTrieLimits(
@@ -24,6 +26,7 @@ proc journalLimits(): JournalLimits =
       valueBytes: ByteLimit(16777216)), encoded: ByteLimit(33554432)),
     records: ElementLimit(2000000), valueBytes: ByteLimit(67108864)),
     bytes: ByteLimit(134217728), contextBytes: ByteLimit(1048576))
+
 proc historyWitness() {.raises.} =
   ## Bootstrap all required old roots; only the final bounded canonical context authorizes restart.
   let fixture = diskHistoryFixture()
@@ -56,6 +59,7 @@ proc historyWitness() {.raises.} =
   assert openDiskChain(disk, path, chain, fixture.view.bestBlock.value.chainParameters,
     fixture.policy, limits).error == DiskChainError.ContextFailure
   assert not disk.opened and readFile(path) == previous
+
 proc publicationWitness() {.raises.} =
   ## Use real signed execution, never the structural history fixture, for live successor publication.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

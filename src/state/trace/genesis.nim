@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Published Genesis wire owns a full header and one complete opaque RawState, without implicit trust.
+
 import std/assertions
 import ./state as trace_state
 import ../store

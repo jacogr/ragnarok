@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## An ordinary authenticated host probes genuinely retained canonical coordinates through production CPU arbitration; absent clocks, foreign Done leases and exact shutdown cannot manufacture possession or steal work.
+
 import std/[assertions, monotimes, times, dirs, paths, posix/posix]
 import ../../src/app/[services, options, node as application_node, assurance_acquirer]
 import ../../src/app/proof/[worker, assurance_storage, assurance_acquisition, network_read]
@@ -14,11 +15,13 @@ import ../../src/codec/work/report
 import ../../src/codec/state/[safrole, consensus]
 import ../../src/chain/[genesis, provider]
 import ./[jamnp_assurance_fixture, jamnp_topology_fixture, assurance_signer_context]
+
 proc waitDone(owner: var Services) =
   ## Poll only synchronized worker state while all canonical and archive graphs remain leased.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "acquirer managed completion deadline"
+
 proc assuranceAcquirerRuntime*(settings: Options, fixture: AssuranceAcquisitionFixture,
     certificate, privateKey, folder: string, acquisition: AssuranceAcquisitionLimits,
     storage: AssuranceStoreLimits) {.raises.} =
@@ -117,17 +120,20 @@ proc fixtureIdentity(marker: byte): StateEdKey =
   var seed = default(array[32, byte])
   seed[0] = marker
   StateEdKey(array[32, byte](importSeed(seed).value.publicKey.value))
+
 proc openGuarantor(owner: var NodeService, services: Services,
     certificate, privateKey: string, geometry: SafroleStateConfig): NodeError =
   ## Temporary complete-view aliases retire before either native worker can start.
   owner.open(initConnectionConfig(certificate, privateKey, services.nodeProtocol,
     streams = 512), services.chainView, geometry)
+
 proc stagedAvailability(fixture: AssuranceAcquisitionFixture, request: ReadRequest,
     limits: AvailabilityReadLimits): NetworkReadJob =
   ## A closed production read job owns the real original erasure graph; no peer-provided root can select a substitute fixture.
   let captured = captureAvailabilityRead(fixture.availability, request, limits)
   assert captured.error == ReadError.None, "actual original guarantor source capture"
   captured.value
+
 proc assuranceAcquirerNetworkRuntime*(settings: Options, fixture: AssuranceAcquisitionFixture,
     folder: string, acquisition: AssuranceAcquisitionLimits,
     storage: AssuranceStoreLimits) {.raises.} =

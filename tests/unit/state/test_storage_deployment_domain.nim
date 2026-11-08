@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Larger fixture identities remain unique across 16-bit boundaries and preserve complete revision payloads.
+
 import std/[assertions, syncio]
 import ../../support/storage_deployment_samples
 import ../../../src/codec/state/layout as state_layout

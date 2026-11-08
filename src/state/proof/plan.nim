@@ -3,6 +3,7 @@
 
 ## Root-free immutable global/service query identities, with bounded capture and exact union.
 ## A plan requests evidence; it is neither verified partial state nor a complete-map snapshot.
+
 import std/[algorithm, assertions]
 import ../../codec/bounded
 import ../../codec/state/layout as state_layout
@@ -72,6 +73,7 @@ proc captureStateProofPlan*(keys: openArray[StateKey], limit: ElementLimit): Pro
       return ProofPlanResult[StateProofPlan](status: ProofPlanError.InvalidInput)
   ProofPlanResult[StateProofPlan](status: ProofPlanError.None,
     completed: StateProofPlan(data: PlanData(keys: copied)))
+
 iterator items*(plan: StateProofPlan): StateKey =
   ## Yield copied fixed identities in canonical byte order, retaining the immutable owner for iteration.
   let data = plan.data

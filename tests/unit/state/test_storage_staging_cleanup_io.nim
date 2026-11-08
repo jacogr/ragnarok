@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit staging cleanup remains bounded after actual unlink or directory-sync refusal.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io, storage_bootstrap_faults]
@@ -11,6 +12,7 @@ import ../../../src/storage/file/repository as file_repository
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
+
 proc scenario(syncFault: bool, skip, failures: cint): uint64 {.raises.} =
   ## Build real unselected successor files, preserve a farther epoch, then refuse exact cleanup boundaries.
   resetIo()
@@ -80,6 +82,7 @@ proc scenario(syncFault: bool, skip, failures: cint): uint64 {.raises.} =
     var child = path & "/" & name
     assert posix.unlink(child.toCString()) == 0
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
+
 proc main() {.raises.} =
   ## Three explicit names each have one unlink and one namespace barrier; no directory scan is permitted.
   for syncFault in [false, true]:

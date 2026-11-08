@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real child-process exits and kernel-limited native writes verify the canonical durability boundary.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[durable_chain_context, accumulation_completion_context, accumulation_provision_integration]
@@ -25,15 +26,19 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before selecting a smaller soft limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Change only the isolated child, never the native runner's resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep SIGXFSZ as a typed write error rather than accepting signal termination as evidence.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## Signal handling performs no allocation, output or storage operation.
   discard
@@ -46,6 +51,7 @@ proc journalLimits(): JournalLimits =
       valueBytes: ByteLimit(16777216)), encoded: ByteLimit(33554432)),
     records: ElementLimit(2000000), valueBytes: ByteLimit(67108864)),
     bytes: ByteLimit(134217728), contextBytes: ByteLimit(1048576))
+
 proc waitDone(worker: var DiskPublicationWorker) =
   ## Only scalar worker state is touched while every leased ARC alias remains frozen.
   let started = getMonoTime()
@@ -54,6 +60,7 @@ proc waitDone(worker: var DiskPublicationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield under a monotonic bounded test deadline.
+
 proc attempt(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int) {.raises.} =
   ## No parent thread exists at fork; each child independently reopens its exclusive journal lock.
   let chain = default(StorageChainId)
@@ -152,6 +159,7 @@ proc attempt(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int) {
   assert restored.chainView.retainedCount == (if succeeds: 2 else: 1)
   assert uint64(disk.generation.value) == uint64(before)+(if succeeds: 1'u64 else: 0'u64)
   assert sameStateSnapshot(restored.stateSnapshot.value, disk.snapshot.value)
+
 proc main() {.raises.} =
   ## Native file limits are isolated to child processes; the runner's file and signal policies stay intact.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

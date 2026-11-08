@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Intentionally dishonest raw reports pass genuine signatures, current admission, assurances and whole-state publication before authenticated original bundle data demonstrates their invalidity. No computed-success or pending-assignment certificate is fabricated.
+
 import std/[assertions, syncio, monotimes, times, posix/posix]
 import ../../src/app/[chain, services, options, audit_state]
 import ../../src/app/proof/worker
@@ -34,6 +35,7 @@ type FaultAuditFixture = object ## The immutable view contains genuinely publish
   blockHash: genesis.BlockHash
   context: AuditContextLimits
   packets: seq[FaultPacket]
+
 proc malformedPadding(source: seq[FaultPacket], length: BundleLength): PaddingFault =
   ## Encode a genuinely consistent full codeword whose final declared padding byte is nonzero, then commit/prove every raw validator leaf before real guarantee signatures.
   result = default(PaddingFault)
@@ -77,6 +79,7 @@ proc malformedPadding(source: seq[FaultPacket], length: BundleLength): PaddingFa
     result.packets.add(FaultPacket(request: AvailabilityRequest(
       kind: AvailabilityTransferKind.Audit,
       root: result.root, shard: ErasureShardIndex(uint64(ordinal))), chunk: chunks[ordinal], proof: proof))
+
 proc dishonestAvailability(base: OwnedReport, root: ErasureRoot,
     length: BundleLength): OwnedReport =
   ## Alter raw unsigned report metadata before genuine credential signing/admission; no computed certificate is retagged.
@@ -89,6 +92,7 @@ proc dishonestAvailability(base: OwnedReport, root: ErasureRoot,
   let written = encodeReportBorrowed(report, bytes, 2, output)
   assert written.error == CompositeError.None
   decodeOwnedReport(output.toOpenArray(0, written.written-1), 2).value
+
 proc faultFixture(padding: bool, empty = false): FaultAuditFixture =
   ## A raw report may lie about its package hash while retaining valid erasure commitments; full node admission cannot replace private auditing.
   result = default(FaultAuditFixture)
@@ -163,11 +167,13 @@ proc faultFixture(padding: bool, empty = false): FaultAuditFixture =
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Test process paths belong to the native runner's private directory.
+
 proc waitOwner(owner: var Services) =
   ## Observe only synchronized scalar phase until Done, without touching canonical, key or origin aliases.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline
+
 proc authenticatedFaultCase(padding: bool) {.raises.} =
   ## A genuinely admitted/assured dishonest report remains undecided from unproved direct bytes; original-coordinate authenticated recovery creates its actual negative capability.
   let fixture = faultFixture(padding)
@@ -280,6 +286,7 @@ proc authenticatedFaultChecks*() {.raises.} =
 proc stopNow(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Execution-only cancellation wins even over an intrinsically invalid authenticated source.
   true
+
 proc intrinsicEmptyFaultChecks*() {.raises.} =
   ## Zero-byte bundles cannot enter CE138 verification; actual signed/admitted/assured metadata alone proves this intrinsic fault and cannot strand the audit.
   let fixture = faultFixture(false, true)

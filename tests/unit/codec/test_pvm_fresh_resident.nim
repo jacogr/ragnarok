@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## First-RW capture preserves literal bytes, dirty restore, transactional host refusal and exclusive release.
+
 # @@Verification={"arc": "pvm_fresh_resident_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine]

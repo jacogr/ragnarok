@@ -23,8 +23,10 @@ import ../../support/[report_context, arc_evidence]
 
 ## Refuse a precisely chosen hash after all independent fixture state is constructed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit namespace/code hashes, then fail a later complete-map leaf or branch hash.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Observe whether zero credit unnecessarily attempted state Merklization.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

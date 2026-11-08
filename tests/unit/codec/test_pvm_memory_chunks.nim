@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Persistent page storage preserves full-byte predecessor snapshots across scalar, host and permission updates.
+
 # @@Verification={"arc": "pvm_memory_chunks_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/pvm/machine
@@ -150,6 +151,7 @@ proc captureCycle() =
     for index in 0..<4096:
       assert prior.bytes[index] == byteAt(side*4096+index)
       assert next.bytes[index] == (if side == 1: 0'u8 else: byteAt(side*4096+index))
+
 proc temporaryImage(): PageImage =
   ## A copied observation remains valid after the temporary source image and final memory owner both retire.
   var image = PageImage(index: PageIndex(16), access: PageAccess.ReadOnly,
@@ -157,6 +159,7 @@ proc temporaryImage(): PageImage =
   for index in 0..<4096: image.bytes[index] = byteAt(index)
   let owner = captureMemory([image], PageLimit(1)).value
   pageImage(owner, PageIndex(16)).value
+
 proc observationCycle() =
   ## Exercise returned copied storage after its parent lifetime, including both end chunks.
   let observed = temporaryImage()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit logical startup policies, independent identity files and forked authenticated responders exercise the production command.
+
 import ./chain_alpn
 
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
@@ -23,6 +24,7 @@ import ../../src/chain/[provider, genesis]
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import "../../src/state/block/admission" as block_admission
 import ../../src/state/report/admission as report_admission
+
 proc logicalStartupTestLimits*(): CurrentLogicalStartupLimits =
   ## Startup source/profile/matching budgets remain independent of all later continuation ceilings.
   CurrentLogicalStartupLimits(projection: namespaceRefreshLimits.projection,
@@ -32,6 +34,7 @@ proc logicalStartupTestLimits*(): CurrentLogicalStartupLimits =
           requests: namespaceRequestLimits,
 
 reconstruction: namespaceRefreshLimits, logical: namespaceLogicalLimits()))
+
 proc logicalHex*(bytes: openArray[byte]): string =
   ## Independent lowercase serializer preserves empty original raw keys without a sentinel.
   const digits = "0123456789abcdef"
@@ -39,6 +42,7 @@ proc logicalHex*(bytes: openArray[byte]): string =
   for value in bytes:
     result.add(digits[int(value shr 4)])
     result.add(digits[int(value and 15)])
+
 proc logicalDeclarationText*(services: openArray[StateService]): string =
   ## File carries identities only; metadata, storage values, preimages and histories must come from the actual selected source.
   result = "ragnarok-current-logical-source-v1\n"
@@ -48,6 +52,7 @@ proc logicalDeclarationText*(services: openArray[StateService]): string =
     for item in service.preimages: result.add("p=" & logicalHex(array[32, byte](item.hash)) & "\n")
     for item in service.requests:
       result.add("r=" & logicalHex(array[32, byte](item.hash)) & ":" & $uint32(item.length) & "\n")
+
 proc logicalCommandExchange*(chainPath, policyPath, sourcePath, logicalPolicyPath: string,
     requests: seq[array[42, byte]], responses: seq[seq[byte]], count: int,
     extra: seq[string]): CurrentDownloadExchange {.raises.} =

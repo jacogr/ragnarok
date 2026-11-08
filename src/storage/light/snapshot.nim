@@ -3,6 +3,7 @@
 
 ## Canonical light proof-cache images bind explicit chain/root expectations and reverify every stored proof.
 ## Opaque prepared images retain immutable bytes/cache; file checksums never establish root trust.
+
 import std/[algorithm, assertions]
 import ./state_cache as light_state_cache
 import ../[state_proof, database_identity]

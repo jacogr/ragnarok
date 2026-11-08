@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine completed current logical state advances across three authenticated empty children with complete namespaces and original full-view provenance.
+
 # @@Verification={"arc":"state_current_refresh_repeated_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
@@ -17,10 +18,13 @@ import ../../../src/state/supplied/[logical_inventory as supplied_logical_invent
 import ../../../src/state/[inventory, manifest, store]
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Every actual child preparation and key derivation completes before its hash-free frozen-plan assertions.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Complete current matching deliberately hashes; fixed identity/frozen admission/projection cannot.
+
 proc verify(source: CurrentLogicalState, update: PreparedCurrentChainUpdate, slot: uint32) =
   ## Existing complete current/private profile and both compact captures remain tied to this exact actual producer at the new slot.
   let inventory = source.currentLogicalInventory.value.suppliedInventory.value
@@ -32,12 +36,14 @@ proc verify(source: CurrentLogicalState, update: PreparedCurrentChainUpdate, slo
     let row = inventory.inventoryServiceAt(InventoryServiceIndex(uint64(i))).value
     assert uint32(row.metadata.lastAccumulation) == slot and uint32(row.metadata.storageItems) == 8
     assert row.storage == 2 and row.preimages == 3 and row.requests == 3
+
 proc cycle(plan: CurrentLogicalRefreshPlan, update: PreparedCurrentChainUpdate) =
   ## Retire both new inventories and full detached code/raw-key arrays while preserving the genuine final child and previous owner graphs.
   let completed = executeCurrentLogicalRefresh(plan).value
   verify(completed, update, 5)
   assert copySuppliedServices(completed.currentLogicalInventory.value,
       suppliedServicesTestLimits).value.len == 2
+
 proc main() {.raises.} =
   ## The maintained signer only authors bounded first-epoch empty bodies; every child is actually prepared through the current pipeline.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

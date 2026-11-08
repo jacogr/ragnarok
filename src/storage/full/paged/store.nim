@@ -4,6 +4,7 @@
 ## Durable full-state paged writers, sealed candidates and readers require complete graph admission.
 ## Explicit close exposes retirement uncertainty; no reader owns a writer lease, callback or resident graph.
 ## One caller serializes operations per owner; independent readers have independent native seek cursors.
+
 import std/assertions
 import ./[codec as full_paged_codec, stream as full_paged_stream]
 import ../../paged/[io as paged_io, codec as paged_codec]

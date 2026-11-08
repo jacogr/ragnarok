@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque selections encode canonical independent bytes without transport copies or repeated integrity calls.
+
 # @@Verification={"arc": "storage_selection_encoding_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_snapshot_samples, storage_root_samples, arc_evidence]
@@ -12,6 +13,7 @@ import ../../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## An unavailable backend cannot affect already-admitted body serialization, but must refuse its new frame checksum.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Distinguish original local integrity from serialization of private immutable admitted records.
 

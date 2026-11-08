@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Calibrate diagnostic invocation boundaries, nested callbacks, terminal replies and pair-capacity refusal.
+
 import std/[assertions, syncio, envvars]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/step
+
 proc pureSource(): Machine =
   ## Two unlikely instructions and a trap have independently known opcode/pair counts with no gas work.
   let owner = decodeProgram([0'u8, 0, 3, 2, 2, 0, 7], CodeAddress(0), ProgramByteLimit(7),
@@ -13,6 +15,7 @@ proc pureSource(): Machine =
   captureMachine(owner, captureMemory([], PageLimit(0)).value, MachineInfo(pc: CodeAddress(0),
       gas: MachineGas(7),
     blockCharged: true, registers: default(RegisterFile))).value
+
 proc nested(calls: var int, stopped: StepOutcome): HostResponse {.raises: [].} =
   ## Nested execution owns its own census while the outer host/jump pair retains its previous opcode.
   inc calls
@@ -21,6 +24,7 @@ proc nested(calls: var int, stopped: StepOutcome): HostResponse {.raises: [].} =
   let cpu = machineInfo(stopped.machine).value
   HostResponse(action: HostAction.Continue, gas: cpu.gas, registers: cpu.registers,
       memory: memoryOf(stopped.machine).value)
+
 proc terminal(calls: var int, stopped: StepOutcome): HostResponse {.raises: [].} =
   ## A host terminal reply closes its one-opcode census without inventing another guest instruction.
   inc calls
@@ -29,9 +33,11 @@ proc terminal(calls: var int, stopped: StepOutcome): HostResponse {.raises: [].}
       stopped.machine).value)
 type Reason = enum ## The second callback API must close the same invocation-local census.
   Refused
+
 proc nestedFallible(calls: var int, stopped: StepOutcome): HostResult[Reason] {.raises: [].} =
   ## Select exactly the same nested continuation through the typed callback boundary.
   hostSuccess[Reason](nested(calls, stopped))
+
 proc terminalFallible(calls: var int, stopped: StepOutcome): HostResult[Reason] {.raises: [].} =
   ## Select exactly the same terminal reply through the typed callback boundary.
   hostSuccess[Reason](terminal(calls, stopped))

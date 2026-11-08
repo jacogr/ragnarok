@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_authorization_invoke_arc_release"}
 
 ## Genuine historical authorizers verify fixed invocation inputs, stateless host dispatch, gas and immutable provenance.
@@ -29,6 +30,7 @@ assert invocationDefault.error == AuthorizationInvocationError.Uninitialized
 
 let halt = @[50'u8, 0]
 let returning = @[refinementImmediate(7, 196608), refinementImmediate(8, 3), halt]
+
 proc check(invocation: AuthorizationInvocation, kind: WorkKind, used: uint64) =
   ## Assert exact consumed gas and source selection; work errors have no successful trace even if guest bytes existed.
   let info = invocation.authorizationInfo.value
@@ -83,6 +85,7 @@ assert authorizationRun(authorizationFixture([halt],
     anchor = 9)).value.authorizationInfo.value.kind == WorkKind.Bad
 assert authorizationRun(authorizationFixture([halt],
     anchor = 10)).value.authorizationInfo.value.kind == WorkKind.Success
+
 # Fetch exposes only parameters/package fields; configuration/token/payload distinguish all raw blob selections.
 proc fetchCode(selector: uint64, size: uint64): seq[seq[byte]] =
   ## Actual guest fetch calls use zero offset and item zero, returning only copied data from the original package.
@@ -258,6 +261,7 @@ assert default(AuthorizationInvocation).authorizationParameters.error ==
     AuthorizationInvocationError.Uninitialized
 assert default(AuthorizationInvocation).authorizationTrace.error ==
     AuthorizationInvocationError.Uninitialized
+
 proc detached(): AuthorizationInvocation =
   ## Retain complete source provenance after all original caller fixture handles leave scope.
   authorizationRun(authorizationFixture(returning)).value
@@ -268,6 +272,7 @@ assert runAuthorizationInvocation(retained.authorizationState.value,
   retained.authorizationPackage.value,
   retained.authorizationInfo.value.core, retained.authorizationParameters.value,
   authorizationLimits()).value.authorizationTrace.value == @[21'u8, 22, 23]
+
 proc cycle() =
   ## Fresh original maps/code/packages and success/local-refusal owners all retire before the next allocation observation.
   let source = authorizationFixture(returning)

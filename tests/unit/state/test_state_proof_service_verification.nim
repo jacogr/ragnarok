@@ -8,6 +8,7 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie]
+
 proc main() =
   ## Transport selectors and witnesses never grant authority without the independently chosen root.
   let service = ServiceIndex(7)

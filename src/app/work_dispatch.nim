@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Main-thread builder dispatch owns detached wire and exact tokens; canonical grants/results remain private in Services.
+
 import std/[monotimes, times, assertions]
 import ./services
 import ./work_policy/types as work_policy_types
@@ -37,10 +38,13 @@ type
     fetch: NodeRequestTicket
     fetchStarted: MonoTime
     fetching, requestPrepared, replyReady: bool
+
 proc `=copy`*(destination: var WorkDispatcher, source: WorkDispatcher) {.error.}
   ## A second controller must never retire this controller's exact session.
+
 proc `=dup`*(source: WorkDispatcher): WorkDispatcher {.error.}
   ## Default construction cannot duplicate live token ownership.
+
 proc `=wasMoved`*(owner: var WorkDispatcher) {.nodestroy, requires: owner.phase ==
     WorkDispatchPhase.Idle.} =
   ## Only a retired controller may move; delegate every owned child explicitly.
@@ -57,9 +61,11 @@ proc `=wasMoved`*(owner: var WorkDispatcher) {.nodestroy, requires: owner.phase 
   `=wasMoved`(owner.fetchReply)
   `=wasMoved`(owner.tried)
   `=wasMoved`(owner.fetch)
+
 proc requireClosed(owner: WorkDispatcher) {.requires: owner.phase == WorkDispatchPhase.Idle.} =
   ## Destruction cannot abandon a selected Services session.
   discard
+
 proc `=destroy`*(owner: WorkDispatcher) =
   ## Explicit close retires exact work before ordinary child destruction.
   requireClosed(owner)
@@ -76,16 +82,20 @@ proc `=destroy`*(owner: WorkDispatcher) =
   `=destroy`(owner.fetchReply)
   `=destroy`(owner.tried)
   `=destroy`(owner.fetch)
+
 func phase*(owner: WorkDispatcher): WorkDispatchPhase =
   ## Detached scalar state is safe during any foreign graph lease.
   owner.phase
+
 func accepted*(owner: WorkDispatcher): uint64 =
   ## Count genuine refined transport acknowledgments, without claiming report or inclusion authority.
   owner.accepted
+
 func completed*(owner: WorkDispatcher): WorkSessionToken {.requires: owner.phase ==
     WorkDispatchPhase.Ready.} =
   ## Downstream stages address the original retained result through Services rather than copying canonical ownership into this host.
   owner.session
+
 proc configure*(owner: var WorkDispatcher, streams: var NodeService,
     policy: WorkDispatchPolicy): bool =
   ## Native route activation occurs only after installing the real bounded dispatcher.
@@ -94,18 +104,21 @@ proc configure*(owner: var WorkDispatcher, streams: var NodeService,
   owner.policy = policy
   owner.accepted = 0
   true
+
 proc configureAcquisition*(owner: var WorkDispatcher, policy: WorkAcquisitionPolicy): bool =
   ## Optional acquisition can only be installed once, while no work session owns transport or CPU tokens.
   if not owner.policy.valid or not policy.valid or owner.acquisition.valid or owner.phase !=
       WorkDispatchPhase.Idle: return false
   owner.acquisition = policy
   true
+
 proc configureRecovery*(owner: var WorkDispatcher, policy: WorkRecoveryPolicy): bool =
   ## Fallback requires explicit policies and an idle configured acquisition owner; live source policy cannot be rebound.
   if not owner.acquisition.valid or not policy.valid or owner.recovery.valid: return false
   if owner.phase != WorkDispatchPhase.Idle: return false
   owner.recovery = policy
   true
+
 proc clear(owner: var WorkDispatcher) =
   ## Only detached buffers and host token namespaces retire here; Services controls source graph retirement.
   owner.session = default(WorkSessionToken)
@@ -128,11 +141,13 @@ proc clear(owner: var WorkDispatcher) =
   owner.requestPrepared = false
   owner.replyReady = false
   owner.phase = WorkDispatchPhase.Idle
+
 proc retireRecoveryDial(owner: var WorkDispatcher, streams: var NodeService) =
   ## Temporary connections belong to this exact slot generation; existing authenticated peers have no such lease.
   discard streams.cancelPeerConnection(owner.recoveryDial)
   owner.recoveryDial = default(DialTicket)
   owner.recoveryDialing = false
+
 proc retire(owner: var WorkDispatcher, services: var Services, streams: var NodeService) =
   ## A reset or deadline cancels only this session; exact collection still precedes graph retirement.
   if owner.fetching:
@@ -143,6 +158,7 @@ proc retire(owner: var WorkDispatcher, services: var Services, streams: var Node
   discard services.retireWorkSubmission(owner.session)
   owner.body = default(UntrustedWorkBody)
   owner.phase = WorkDispatchPhase.Retiring
+
 proc release*(owner: var WorkDispatcher, services: var Services): bool =
   ## Downstream consumption explicitly releases the retained completion; no native success is fabricated.
   if owner.phase != WorkDispatchPhase.Ready: return false
@@ -153,6 +169,7 @@ proc release*(owner: var WorkDispatcher, services: var Services): bool =
   else:
     owner.clear()
   true
+
 proc close*(owner: var WorkDispatcher, services: var Services, streams: var NodeService) =
   ## Joined stop is permitted only when this exact session still owns the active CPU job.
   if owner.phase != WorkDispatchPhase.Idle:
@@ -164,6 +181,7 @@ proc close*(owner: var WorkDispatcher, services: var Services, streams: var Node
   owner.policy = default(WorkDispatchPolicy)
   owner.acquisition = default(WorkAcquisitionPolicy)
   owner.recovery = default(WorkRecoveryPolicy)
+
 func currentDuty(services: Services, token: WorkSessionToken, now: StateTime): bool =
   ## Detached duty expiry never borrows selected state, even while a foreign worker owns it.
   services.workSubmissionDuty(token).activeAt(now)
@@ -173,6 +191,7 @@ proc alreadyTried(owner: WorkDispatcher, identity: StateEdKey): bool =
   for previous in owner.tried:
     if array[32, byte](previous) == array[32, byte](identity): return true
   false
+
 proc fallback(owner: var WorkDispatcher, services: var Services, streams: var NodeService) =
   ## Failed preferred data resumes only the retained original authorization; foreign leases cause a bounded wait.
   if not owner.recovery.valid or not services.workRecoveryEnabled(owner.session):
@@ -189,6 +208,7 @@ proc fallback(owner: var WorkDispatcher, services: var Services, streams: var No
   owner.replyReady = false
   owner.recoveryPrepared = false
   owner.phase = WorkDispatchPhase.Recovering
+
 proc recover(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime) =
   ## Main-thread work owns only raw bytes, exact tokens and copied original-assurer facts; proof checks run on the shared worker.
@@ -316,6 +336,7 @@ proc recover(owner: var WorkDispatcher, services: var Services, streams: var Nod
     owner.fetching = true
     inc owner.recoveryRequests
     return
+
 proc acquire(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime) =
   ## Host polling owns only detached request/reply bytes and exact tokens; roots and proof results remain inside Services.
@@ -384,6 +405,7 @@ proc acquire(owner: var WorkDispatcher, services: var Services, streams: var Nod
     owner.fetchStarted = clock
     owner.fetching = true
     return
+
 proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime, now: StateTime) =
   ## Bounded existing work advances independently of foreign CPU capacity; new header admission is a separate arbiter turn.
@@ -456,6 +478,7 @@ proc poll*(owner: var WorkDispatcher, services: var Services, streams: var NodeS
     owner.body = default(UntrustedWorkBody)
     owner.phase = WorkDispatchPhase.Ready
     if owner.accepted < high(uint64): inc owner.accepted
+
 proc submit*(owner: var WorkDispatcher, services: var Services, streams: var NodeService,
     clock: MonoTime, now: StateTime): bool {.raises.} =
   ## At most one new small header is claimed per arbiter turn, after every canonical staging alias has retired.

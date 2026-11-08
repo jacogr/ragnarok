@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real UP0 leaves and CE128 bytes feed current STF preparation without adopting the child.
+
 import std/[assertions, envvars, monotimes, times, syncio, posix/posix]
 import ../../src/app/[audit_branches, chain, node as application_node, options, services]
 import "../../src/app/current/block/input" as current_block_input
@@ -25,6 +26,7 @@ proc markerFor(identity: StateEdKey): byte =
     if array[32, byte](importSeed(seed).value.publicKey.value) == array[32, byte](identity):
       return byte(marker)
   0
+
 proc branchNetworkChecks*() {.raises.} =
   ## An authenticated peer offers a genuine child. The ordinary node loop retrieves, verifies and retains it as side history.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_transfer_publication_arc_release"}
 
 ## Genuine common-source transfers publish only selected own debits, preserve ordered outputs and roll back atomically.
@@ -23,7 +24,9 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Observe exact publication phases without replacing the maintained backend or outcome constructors.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 type
@@ -465,7 +468,6 @@ block deferred_funding_publication:
         assert uint64(credited.balance) == (if mode < 2: 25'u64 else: 20'u64) and
             uint64(credited.supervisorBalance) == (if mode < 2: 0'u64 else: 5'u64),
             "the produced record credits exactly its selected pool in the next invocation"
-
 
 block direct_cross_pool_publication:
   for foreign in [false, true]:

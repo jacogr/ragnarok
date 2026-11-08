@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_driver_arc_release"}
 
 ## Real signed report-only histories stop under an explicit cap and agree with manual guest/advance/finalization.
@@ -29,6 +30,7 @@ import ../../support/[accumulation_runner_context, accumulation_execution_contex
 
 # Preflight depth refusal and idle completion must not require any hashing.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc limits(depth = 4'u64): AccumulationDriverLimits =

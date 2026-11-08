@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact independent full-graph replay bounds partial epoch/staging cleanup and bootstrap resumption.
+
 # @@Verification={"arc":"storage_full_paged_recovery_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -12,9 +13,11 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/[repository as node_repository, records as node_records]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc path(label: string): string =
   ## Every scenario uses a fresh test-owned namespace, without database directory scans.
   "full-paged-recovery-" & $storageProcessId() & "-" & label
+
 proc writePrefix(path: string, bytes: openArray[byte], count: int) =
   ## Independent oracle prefixes stop inside headers, records, digests and manifest checksums.
   var text = newString(count)
@@ -23,21 +26,26 @@ proc writePrefix(path: string, bytes: openArray[byte], count: int) =
     writeFile(path, text)
   except:
     assert false, "write exact test prefix"
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Inspect one explicit test path; absence grants no namespace-wide cleanup authority.
+
 proc exists(path: string): bool =
   ## Keep missing files distinct from actual zero-byte prefixes.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc cut(directory: string, target: FullPagedFixture, count: int, pending = 73) =
   ## Source-independent complete fixture bytes define both exact cleanup targets.
   writePrefix(directory & "/" & epochName(target.header.epoch).value, target.io.bytes, count)
   writePrefix(directory & "/CURRENT.next", target.manifest.bytes.value, pending)
+
 proc replay(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     source: FullPagedManifest, target: FullPagedFixture): FullPagedNativeResult[bool] =
   ## Ordinary replacement reconstruction uses only caller-owned records and independent target metadata.
   prepareFullPagedCleanup(writer, candidate, source, target.header, target.records.producer)
+
 proc prefixes(old, target: FullPagedFixture) =
   ## Exact short/full prefixes qualify; altered bytes, overlong staging and missing authority never do.
   for count in [0, 1, 4095, 4096, target.io.bytes.len-17, target.io.bytes.len]:
@@ -60,6 +68,7 @@ proc prefixes(old, target: FullPagedFixture) =
     writer.prepare(candidate, target)
     assert writer.publish(candidate).error == FullPagedNativeError.None
     assert writer.close == FileError.None
+
 proc refusals(old, target: FullPagedFixture) =
   ## Prefix mismatch, producer failure, policy refusal and late-created paths preserve all forensic files.
   for mode in 0..<8:
@@ -116,6 +125,7 @@ proc refusals(old, target: FullPagedFixture) =
       writePrefix(directory & "/" & epochName(target.header.epoch).value, bytes, bytes.len)
       assert writer.replay(candidate, source, target).error != FullPagedNativeError.None
     assert writer.close == FileError.None
+
 proc sealed(old, target: FullPagedFixture) =
   ## Complete live seals need no replay; a mismatched staging retry must never turn into deletion permission.
   let directory = path("sealed")
@@ -139,6 +149,7 @@ proc sealed(old, target: FullPagedFixture) =
   assert writer.replay(candidate, source, target).error == FullPagedNativeError.None
   assert discardFullPagedCandidate(writer, candidate, source).error == FullPagedNativeError.None
   assert writer.close == FileError.None
+
 proc compaction(old: FullPagedFixture) =
   ## Source-derived same-generation cleanup accepts no caller graph substitution and consumes no producer calls.
   let directory = path("compact")
@@ -152,6 +163,7 @@ proc compaction(old: FullPagedFixture) =
       FullPagedNativeError.None
   assert discardFullPagedCandidate(writer, candidate, source).error == FullPagedNativeError.None
   assert writer.close == FileError.None
+
 proc faultTrial(old, target: FullPagedFixture, phase: int, operation: cint,
     skip: int): array[7, uint64] =
   ## Every observed preparation/removal fault fires; fresh strict reopen and replay finish only exact remaining prefixes.
@@ -195,6 +207,7 @@ proc faultTrial(old, target: FullPagedFixture, phase: int, operation: cint,
   assert discardFullPagedCandidate(writer, candidate, source).error == FullPagedNativeError.None
   assert not exists(directory & "/CURRENT.next")
   assert writer.close == FileError.None
+
 proc faults(old, target: FullPagedFixture) =
   ## Each syscall index is measured first; graph scratch and staging/epoch close failures are independently covered.
   let operations = [readIo, writeIo, lockIo, closeIo, syncIo, unlinkIo, truncateIo]
@@ -204,6 +217,7 @@ proc faults(old, target: FullPagedFixture) =
       # Absent operations are not fabricated; actual schedules remain finite and reproducible.
       assert counts[index] < 2000
       for skip in 0..<int(counts[index]): discard faultTrial(old, target, phase, operations[index], skip)
+
 proc bootstrap(old: FullPagedFixture) =
   ## Write/rename interruption resumes only an existing LOCK with absent CURRENT and exact fresh replay.
   for operation in [writeIo, renameIo]:
@@ -230,6 +244,7 @@ proc bootstrap(old: FullPagedFixture) =
     assert refused.error != FullPagedNativeError.None
     assert exists(directory & "/" & epochName(ManagedEpoch(1)).value)
     assert writer.close == FileError.None
+
 proc stale(old, target: FullPagedFixture) =
   ## Reopened writers cannot consume a prior incarnation's capability, even at the same exact source head.
   let directory = path("incarnation")
@@ -249,6 +264,7 @@ proc stale(old, target: FullPagedFixture) =
   assert writer.replay(candidate, source, target).error == FullPagedNativeError.None
   assert discardFullPagedCandidate(writer, candidate, source).error == FullPagedNativeError.None
   assert writer.close == FileError.None
+
 proc changedBootstrap(old: FullPagedFixture) =
   ## Fresh construction after successful replay may not publish a failed or changed producer stream.
   let directory = path("changed-bootstrap")
@@ -270,6 +286,7 @@ proc changedBootstrap(old: FullPagedFixture) =
   assert resumed.error != FullPagedNativeError.None and calls > (old.records.len+1)*2
   assert not exists(directory & "/CURRENT")
   assert writer.close == FileError.None
+
 proc main() =
   ## Independent roots/oracle bytes, real native faults and repeated retirements qualify explicit full recovery.
   let old = historySample(5, 7)

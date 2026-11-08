@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine exported distributions outside current pending assignments exercise ordered durable CE139/140 snapshots, whole-request budgets and restarted ordinary TLS serving without canonical or signing authority.
+
 import std/[assertions, monotimes, times, dirs, paths]
 import ../../src/app/[services, options]
 import ../../src/app/proof/[worker, network_read, assurance_storage]
@@ -19,10 +20,12 @@ type BatchFixture = object ## Original full erasure sources and expected bytes n
   packets: array[3, VerifiedAvailabilityTransfer]
   raw, proven: ReadRequest
   rawExpected, provenExpected: seq[byte]
+
 proc frame(output: var seq[byte], payload: openArray[byte]) =
   ## Independent literal E4 framing preserves message boundaries and requested duplicate rows.
   for index in 0..<4: output.add(byte((uint32(payload.len) shr (index*8)) and 255))
   for octet in payload: output.add(octet)
+
 proc policy(): AssuranceReadLimits =
   ## Restore totals apply to the whole request; the later output phase independently reserves its complete wire/proof workspace.
   let computation = AvailabilityMerkleLimits(bytes: ByteLimit(64000000), hashes: ElementLimit(100000),
@@ -31,11 +34,13 @@ proc policy(): AssuranceReadLimits =
     ioBytes: ByteLimit(64000000), workspaceBytes: ByteLimit(128000000)),
     reply: AvailabilityReadLimits(computation: computation, wireBytes: ByteLimit(16000000)),
     batchSources: ElementLimit(6144))
+
 proc storagePolicy(): AssuranceStoreLimits =
   ## Three persisted coordinates have no eviction path and startup scans only their fixed namespace headers.
   AssuranceStoreLimits(entries: ElementLimit(3), scanEntries: ElementLimit(262),
     bytes: ByteLimit(64000000), record: AssuranceRecordLimits(bytes: ByteLimit(16000000),
       verification: policy().restore.verification))
+
 proc batchFixture(): BatchFixture =
   ## Independently authored 65 exports make nonempty segment rows; original computation supplies each requested row and co-path.
   let source = computedAvailability(65)
@@ -76,16 +81,19 @@ proc batchFixture(): BatchFixture =
     raw: decodeReadRequest(ReadKind.SegmentShards, payload).value,
     proven: decodeReadRequest(ReadKind.ProvenSegmentShards, payload).value,
     rawExpected: move(rawExpected), provenExpected: move(provenExpected))
+
 proc waitDone(worker: var StateProofWorker) =
   ## Synchronized phase polling never observes or mutates leased archive graphs.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded durable batch completion"
+
 proc waitDone(services: var Services) =
   ## Cached host state remains available until exact archive operation collection.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while services.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded batch namespace operation"
+
 proc readBatch(worker: var StateProofWorker, store: var AssuranceStore,
     request: ReadRequest, limits: AssuranceReadLimits): ProofWorkerCompletion =
   ## Capture aliases retire before the existing worker owns its exact moved closed input.
@@ -94,6 +102,7 @@ proc readBatch(worker: var StateProofWorker, store: var AssuranceStore,
   assert admitted.error == ProofWorkerError.None and not job.valid, "moved durable batch input"
   worker.waitDone()
   worker.collect(admitted.value)
+
 proc direct(worker: var StateProofWorker, store: var AssuranceStore, fixture: BatchFixture) =
   ## Mixed shard order and duplicate rows survive one restore per distinct coordinate and ordinary proof derivation.
   let raw = readBatch(worker, store, fixture.raw, policy())
@@ -118,6 +127,7 @@ proc direct(worker: var StateProofWorker, store: var AssuranceStore, fixture: Ba
       ReadError.None and
     served.readValue.value.bytes == @[0'u8, 0, 0, 0] and ioCalls(readIo) == 0,
     "empty enabled durable batch has one empty frame and no record IO"
+
 proc exactPolicy(fixture: BatchFixture): AssuranceReadLimits =
   ## Independent total equations use real original geometry and the known three distinct sorted coordinates, including fixed206-byte header and174-byte checksum extents.
   result = policy()
@@ -139,6 +149,7 @@ proc exactPolicy(fixture: BatchFixture): AssuranceReadLimits =
   result.restore.verification.hashBytes = ByteLimit(hashBytes)
   result.restore.verification.bytes = ByteLimit(verification)
   result.restore.workspaceBytes = ByteLimit(peak+metadata)
+
 proc budgetChecks(worker: var StateProofWorker, store: var AssuranceStore,
     fixture: BatchFixture) =
   ## Exact totals accept a whole reply; each independent minus-one ceiling refuses the entire batch without faulting or evicting stored promises.
@@ -182,6 +193,7 @@ proc budgetChecks(worker: var StateProofWorker, store: var AssuranceStore,
   assert captureAssuranceRead(store, fixture.proven, captureLimit).error ==
       ReadError.LimitExceeded and
     ioCalls(readIo) == 0, "variable request pair is reserved before capture copying or record IO"
+
 proc cancellation(worker: var StateProofWorker, store: var AssuranceStore, fixture: BatchFixture) =
   ## An atomic test gate pauses a real second read after one genuine byte; cancellation is installed before release, so cooperative early retirement is causal.
   let exact = exactPolicy(fixture)
@@ -213,6 +225,7 @@ proc cancellation(worker: var StateProofWorker, store: var AssuranceStore, fixtu
   assert partial > 0 and partial < complete and store.len == 3 and not store.faulted,
     "cooperative cancellation stops before later records and preserves promises"
   resetIo()
+
 proc maximumBatch(worker: var StateProofWorker, store: var AssuranceStore, fixture: BatchFixture) =
   ## Full6144-item reply order uses one actual record, with restore work capped to exactly one coordinate despite repeated requested rows.
   let packet = fixture.packets[0]
@@ -248,6 +261,7 @@ proc maximumBatch(worker: var StateProofWorker, store: var AssuranceStore, fixtu
       $served.readValue.error
   assert served.readValue.value.bytes == expected,
     "maximum batch proof bytes: actual " & $served.readValue.value.byteLength & " expected " & $expected.len
+
 proc assuranceBatchRuntime*(settings: Options, canonical: AssuranceAcquisitionFixture,
     suffix: string) {.raises.} =
   ## An independently created namespace uses actual configured chain identity; public verified test roots need not appear among current pending reports.

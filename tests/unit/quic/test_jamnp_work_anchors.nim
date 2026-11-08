@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_anchors_arc_release"}
 
 ## Complete captured maps and real sealed parent links qualify contexts without fabricating authorizations or signatures.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[work_submission, work_anchors, work_population]
 import ../../../src/chain/[genesis, provider, parameters]
@@ -20,6 +22,7 @@ proc limits(cores = 2): WorkAnchorLimits =
     maxBytes: ByteLimit(4096)), ancestors: AncestorContextLimits(header: HeaderConfig(
       cores: CoreCount(uint64(cores)), authorValidators: ValidatorCount(6), epochSlots: EpochSlots(12),
       maxBytes: ByteLimit(4096)), headers: ElementLimit(8), maxBytes: ByteLimit(32768)))
+
 proc captured(slot: uint32, parent = unavailableGenesis(), suffix = false,
     cores = 2, active = 6, pending = 6, duration = 12,
     omitPending = false, pendingSuffix = false): BlockSnapshotResult =
@@ -54,6 +57,7 @@ proc captured(slot: uint32, parent = unavailableGenesis(), suffix = false,
   var wire = newSeq[byte](seed.value.header.headerInfo.value.consumed)
   assert seed.value.header.encodeOwnedHeader(wire).error == HeaderError.None
   captureBlockSnapshot(wire, entries, seed.value.chainParameters)
+
 proc context(source: BlockSnapshot): RefinementContext =
   ## The current head's actual complete posterior root replaces its zero pending C(3) root only during qualification.
   result = RefinementContext(anchor: report.BlockHash(bytes: array[32, byte](source.blockHash)),
@@ -64,6 +68,7 @@ proc context(source: BlockSnapshot): RefinementContext =
     lookupAnchor: report.BlockHash(bytes: array[32, byte](source.blockHash)),
         lookupSlot: LookupSlot(source.slot),
     lookupStateRoot: LookupStateRoot(bytes: array[32, byte](source.stateRoot)))
+
 proc submission(context: RefinementContext): WorkSubmissionHeader =
   ## A genuine bounded package decoder supplies original header identity; this fixture grants no authorization or credential.
   let package = WorkPackage(context: context, items: @[WorkItem(service: ServiceIndex(1),
@@ -77,6 +82,7 @@ proc submission(context: RefinementContext): WorkSubmissionHeader =
       ByteLimit(4096)))
   assert decoded.error == WorkSubmissionError.None
   decoded.value
+
 proc cycle(original: WorkSubmissionHeader, view: ChainView) =
   ## Complete and refused qualifications release the original header/map and bounded temporary ancestry/history owners.
   let outcome = captureWorkAnchors(original, view, StateTime(20), limits())
@@ -88,6 +94,7 @@ proc cycle(original: WorkSubmissionHeader, view: ChainView) =
   assert population.value.accepts(ErasureShards(6))
   let rejected = captureWorkAnchors(original, view, StateTime(19), limits())
   assert rejected.error == WorkAnchorError.InvalidSlot
+
 proc main() =
   ## Current-head roots, older child commitments, mixed tuples, exact source identity and every resource refusal are independent witnesses.
   let first = captured(18)

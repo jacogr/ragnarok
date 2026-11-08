@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual signed current sequences retain only selected storage identities and preserve bounded original history independently of caller scope.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[accumulation_execution_context, accumulation_current_round_context,
     accumulation_current_driver_context, pvm_accumulation_program, arc_evidence]
@@ -12,17 +13,21 @@ import ../../src/state/accumulation/current/[sequence as accumulation_current_se
     driver as accumulation_current_driver]
 import ../../src/state/accumulation/outcome as accumulation_outcome
 import ../../src/codec/[bounded, composite, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Pure selected history capture must remain usable while cryptographic backends refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Whole-capture policies precede output retention without hashing.
 const limits = StorageHistoryLimits(entries: ElementLimit(8), outcomes: ElementLimit(16),
     facts: ElementLimit(16), bytes: ByteLimit(65536))
+
 proc program(target: uint64): seq[byte] =
   ## A real write of one present byte uses a known raw key; both supervisor and junior target the same account.
   currentRoundServiceCode(@[registerImmediate(7, target), registerImmediate(8, 65536),
       registerImmediate(9, 1), registerImmediate(10, 196608), registerImmediate(11, 1),
       @[10'u8, 5], @[50'u8, 0]])
+
 proc completed(base: OwnedReport, capture = true, conflict = true): CompletedCurrentAccumulationSequence =
   ## Genuine parent signatures, actual current guests, annulment/account publication and terminal driving supply every opaque owner.
   var options = executionFixtureConfig()
@@ -39,6 +44,7 @@ proc completed(base: OwnedReport, capture = true, conflict = true): CompletedCur
   let done = runCurrentBlockAccumulationSequence(fixture.round, currentRoundParameters(), policy)
   assert done.error == CurrentSequenceDriverError.None, $done.error
   done.value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(StorageHistoryResult[StorageHistory])

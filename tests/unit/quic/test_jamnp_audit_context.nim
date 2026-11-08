@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_audit_context_arc_release"}
 
 ## Actual published available reports, header entropy and original prior-role credentials define audit context; absent bodies and assignment disappearance cannot substitute authority.
+
 import std/[assertions, syncio, monotimes, times, posix/posix]
 import ../../../src/app/[services, options, audit_state]
 import ../../../src/app/proof/[worker, work_submission, ticket_production]
@@ -27,6 +29,7 @@ import ../../support/[jamnp_audit_context, arc_evidence, current_application_con
     jamnp_audit_validation, jamnp_topology_fixture]
 import ../../support/jamnp_audit_branch_network
 import ../../support/jamnp_audit_participation
+
 proc checked(fixture: AuditContextFixture) =
   ## Canonical availability output selects cores0/1 and exact original credentials after genuine accumulated publication.
   let selected = captureAuditContext(fixture.view, fixture.blockHash, auditLimits())
@@ -106,6 +109,7 @@ proc branchPrefixChecks(fixture: AuditContextFixture) =
   assert finalized.retainedPrefix(parent.blockHash).error == ViewAdvanceError.NotChild
   assert fixture.view.retainedPrefix(default(genesis.BlockHash)).error ==
       ViewAdvanceError.InvalidSnapshot, "no independently retained parent"
+
 proc hostileBody(fixture: AuditContextFixture) =
   ## A structurally retained same-header/same-map body is not authenticated merely because its byte framing succeeds.
   let context = captureAuditContext(fixture.view, fixture.blockHash, auditLimits()).value
@@ -125,11 +129,14 @@ proc hostileBody(fixture: AuditContextFixture) =
   assert rejected.transitionError.error == BlockTransitionError.AdmissionFailure and
     rejected.transitionError.admissionError == BlockAdmissionError.InvalidExtrinsicHash,
     "actual committed-extrinsic mismatch remains selected"
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Test-owned startup files are independent from any other running suite.
+
 proc stopNow(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Immediate trusted cancellation has no external graph or callback lifetime.
   true
+
 proc cancellation(fixture: AuditContextFixture) =
   ## Execution-only control can stop both direct and closed captured operations without publishing accepted context storage.
   let control = assuranceScanControl(stopNow, nil)
@@ -142,6 +149,7 @@ proc cancellation(fixture: AuditContextFixture) =
   assert completed.kind == WorkJobResultKind.AuditPlanningFailure and
       completed.auditPlanningError.error == AuditContextError.Cancelled,
     "a queued input never stores a caller-supplied cancellation callback"
+
 proc originCycle(fixture: AuditContextFixture) =
   ## Actual complete predecessor ownership survives only through immutable origin/report capabilities and retires with the last target alias.
   let captured = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
@@ -163,6 +171,7 @@ proc originCycle(fixture: AuditContextFixture) =
       origin.originContext.value.auditReportHash(0).value), "report identity remains bound to its block and state"
   assert origin.reportAt(-1).error == AuditOriginError.InvalidIndex and origin.reportAt(2).error ==
       AuditOriginError.InvalidIndex, "origin target ordinals are checked before access"
+
 proc originChecks(fixture: AuditContextFixture) =
   ## Independent entry/node/value ceilings and cancellation cannot expose a partially retained execution source.
   originCycle(fixture)
@@ -186,16 +195,19 @@ proc originChecks(fixture: AuditContextFixture) =
       assuranceScanControl(stopNow, nil)).error == AuditOriginError.Cancelled, "execution-only cancellation grants no retained state"
   assert not default(AuditBlockOrigin).valid and default(AuditReportOrigin).originState.error ==
       AuditOriginError.Uninitialized, "default origin and target cannot supply a full-state source"
+
 proc waitDone(worker: var StateProofWorker) =
   ## Observe synchronized scalar state while immutable view/source aliases belong to the fixed native thread.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded native audit context"
+
 proc waitServices(owner: var Services) =
   ## No canonical or RPC source graph is inspected while the Services worker has its exact lease.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded managed audit planning"
+
 proc finalizedRetentionChecks() {.raises.} =
   ## A selected high-slot checkpoint gives no expiry authority until local finality is explicitly installed.
   let snapshot = topologyCaptured([topologyRecords(2, 9), topologyRecords(3, 9),
@@ -213,6 +225,7 @@ proc finalizedRetentionChecks() {.raises.} =
   assert owner.publishFinalized(snapshot.value.blockHash) == ViewFinalizeError.None
   assert owner.expireFinalizedAudits(0) == 2, "epoch three keeps its previous epoch eligible"
   assert owner.expireFinalizedAudits(2) == 2, "repeated finalized epoch is idempotent"
+
 proc detachedRouting(fixture: AuditContextFixture): AuditRoutingBasis =
   ## Capture a genuine original routing basis whose execution origin goes out of scope.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
@@ -220,6 +233,7 @@ proc detachedRouting(fixture: AuditContextFixture): AuditRoutingBasis =
   let member = origin.auditorAt(1).value.ed25519
   captureAuditParticipation(origin, fixture.view.bestBlock, member,
       participationLimits()).value.routingBasis
+
 proc managed(fixture: AuditContextFixture) {.raises.} =
   ## A genuine trusted complete header-only seed qualifies neither a body nor an audit; exact managed failure and foreign Done ownership still retire correctly.
   var file = "audit-context-services-" & $processId() & ".json"
@@ -269,10 +283,12 @@ proc managed(fixture: AuditContextFixture) {.raises.} =
   assert owner.stateProofAvailable and not owner.assuranceStorageInfo.opened and
       not owner.assuranceSigningConfigured,
     "planning imports neither an archive nor a private signer"
+
 func initialProofLimits(): AuditProofLimits =
   ## The production worker reserves a sign, a verification and both possible shuffle groups.
   AuditProofLimits(proofs: ElementLimit(2), hashes: ElementLimit(2),
       bytes: ByteLimit(4096), hashBytes: ByteLimit(72))
+
 proc managedEvaluation(fixture: AuditContextFixture) {.raises.} =
   ## A separately decoded trusted checkpoint can retain genuine authenticated archive material; only exact private evaluation crosses the managed native lease.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
@@ -422,6 +438,7 @@ proc native(worker: var StateProofWorker, fixture: AuditContextFixture, index: i
     assert planned.kind == WorkJobResultKind.AuditPlanned and
         planned.plannedAuditContext.contextInfo.value.reports == 2,
       "actual available reports survive only uncancelled exact collection"
+
 proc initialNative(worker: var StateProofWorker, fixture: AuditContextFixture) {.raises.} =
   ## An installed JIP-5 signer and genuine source cannot sign for a different original TLS identity.
   var job = captureInitialAuditJob(fixture.view, fixture.blockHash, auditLimits(),
@@ -457,6 +474,7 @@ proc initialNative(worker: var StateProofWorker, fixture: AuditContextFixture) {
   assert verified.error == AuditValidationError.None and
       uint16(verified.value.announcementInfo.value.validator) == 8,
       "the maintained receiver accepts the complete signed worker output"
+
 proc receiptNative(worker: var StateProofWorker, fixture: AuditContextFixture, wire: seq[
     byte]) {.raises.} =
   ## The real joined worker moves bounded bytes and discards all successful records on exact Done cancellation.
@@ -474,6 +492,7 @@ proc receiptNative(worker: var StateProofWorker, fixture: AuditContextFixture, w
       let value = completed.workSubmissionValue
       assert value.kind == WorkJobResultKind.AuditAnnouncementsQualified and
           value.qualifiedAuditAnnouncements.len == 2, "real shared-worker batch qualification"
+
 proc nativeEvaluation(worker: var StateProofWorker, fixture: AuditContextFixture,
     iteration: int) {.raises.} =
   ## Both private origin capture and full report comparison use real moved closed jobs; exact Done cancellation hides their entire source-bearing result.
@@ -508,11 +527,13 @@ proc nativeEvaluation(worker: var StateProofWorker, fixture: AuditContextFixture
     assert checked.kind == WorkJobResultKind.AuditEvaluated and
         checked.evaluatedAudit.matchesOrigin(target) and
         checked.evaluatedAudit.evaluationInfo.value.positive, "only whole original report equality grants the private native capability"
+
 proc cycle(fixture: AuditContextFixture) =
   ## Complete private consensus forks, decoders and detached outputs retire before the next observation.
   let selected = captureAuditContext(fixture.view, fixture.blockHash, auditLimits())
   assert selected.error == AuditContextError.None and selected.value.contextInfo.value.reports == 2,
     "repeat genuine context qualification"
+
 proc main() {.raises.} =
   ## One genuine positive source and repeated execution preserve source identity and release transient context graphs.
   let fixture = auditContextFixture()

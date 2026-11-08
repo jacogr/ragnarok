@@ -3,6 +3,7 @@
 
 ## Bounded whole-service economic observations retain certified footprints, exact directory and explicit valid parameters.
 ## Undercoverage is reported as an observation; no new global account funding or root-authority rule is inferred.
+
 import ../codec/bounded
 import ../codec/state/accounts as state_accounts
 import ./[inventory, footprint_audit]

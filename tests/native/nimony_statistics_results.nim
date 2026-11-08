@@ -40,6 +40,7 @@ duplicate.services = @[ServiceStatisticsEntry(service: ServiceIndex(1)), Service
 let encoded = activityStateEntry(original, policy)
 assert encoded.error == ActivityError.None
 let owner = decodeActivityState(encoded.value.value, policy).value.snapshot
+
 # Literal roster counts and canonical natural zero counters precede three eight-natural all-zero core tuples.
 proc prefix(): seq[byte] =
   result = @[6'u8]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed supplied qualification consumes the actual collected successor and remains separate from adoption and listener lifetime.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[collected_native_context, collected_supplied_context,
@@ -23,6 +24,7 @@ import ../../../src/state/current/logical as current_logical
 import ../../../src/state/supplied/[services as supplied_services,
     logical_inventory as supplied_logical_inventory]
 import ../../../src/state/store
+
 proc main() {.raises.} =
   ## Services owns a separately reparsed physical map; only its genuine worker receipt can qualify against that actual prior.
   let baseline = collectedNativeFixture()

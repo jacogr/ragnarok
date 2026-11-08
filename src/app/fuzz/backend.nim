@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fuzzer-owned ephemeral complete maps feed the ordinary current candidate pipeline without production bootstrap trust.
+
 import std/assertions
 import ../[chain, candidate]
 import ../../chain/[genesis, parameters, provider]

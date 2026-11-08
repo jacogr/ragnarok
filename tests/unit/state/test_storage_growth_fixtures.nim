@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently check sustained fixture revisions, generation256 wrap and complete retained maps.
+
 import std/[assertions, syncio]
 import ../../support/storage_growth_samples
 import ../../../src/storage/node/repository as node_repository

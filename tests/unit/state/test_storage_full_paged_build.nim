@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full artifact construction must match an independent byte/tree oracle and reject changed physical replay.
+
 # @@Verification={"arc":"storage_full_paged_build_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, full_paged_reference]
@@ -15,6 +16,7 @@ import ../../../src/codec/state/layout as state_layout
 type Producer = ref object ## Caller-owned transport fixture deliberately injects replay and end/failure changes.
   records: seq[TrieRecord]
   mode: int
+
 proc producer(source: Producer): FullPagedProducer =
   ## Two-pass callbacks borrow one caller-owned fixture without cycles or retained production callbacks.
   proc next(pass: int, ordinal: uint64, output: var TrieRecord): FullPagedProducerStep {.closure.} =
@@ -32,6 +34,7 @@ proc producer(source: Producer): FullPagedProducer =
       output.left = StateNodeHash(left)
     FullPagedProducerStep.Item
   next
+
 proc output(io: FullPagedTestIO): PagedOutput =
   ## Test-only resident output exposes complete writes and actual refused append boundaries.
   proc append(bytes: openArray[byte]): bool {.closure.} =
@@ -43,11 +46,13 @@ proc output(io: FullPagedTestIO): PagedOutput =
     for octet in bytes: io.bytes.add(octet) # Exact test append.
     true
   PagedOutput(source: io.input, append: append)
+
 func limits(): FullPagedBuildLimits =
   ## Construction and complete admission have distinct finite work policies.
   FullPagedBuildLimits(admission: policy(), producerCalls: ElementLimit(10000),
     ioCalls: ElementLimit(10000), hashes: ElementLimit(10000), readBytes: ByteLimit(1000000),
     writeBytes: ByteLimit(1000000))
+
 proc build(fixture: FullPagedFixture, source: Producer,
     selectedLimits: FullPagedBuildLimits): FullPagedBuildResult =
   ## Fresh output/scratch ensure each attempt has independent forensic and visited bytes.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Signed current sequence fixture excludes an available report initially and holds a supervised transfer for later execution.
+
 import std/assertions
 import ../../src/codec/[bounded, composite, report_owned]
 import ../../src/codec/work/digest as work_digest
@@ -10,6 +11,7 @@ import ../../src/state/accumulation/current/[sequence as accumulation_current_se
 import ../../src/state/accumulation/[round as accumulation_round,
     transfer_partition as accumulation_transfer_partition]
 import ./[accumulation_execution_context, accumulation_current_round_context]
+
 proc currentContinuationLimits*(): CurrentContinuationLimits =
   ## Small finite ceilings include the affordable report, its digest and one held transfer classification.
   let base = executionRoundConfig()
@@ -17,6 +19,7 @@ proc currentContinuationLimits*(): CurrentContinuationLimits =
       operands: base.operands,
     inputs: base.inputs, partition: TransferPartitionLimits(transfers: ElementLimit(2),
         services: ElementLimit(2), checks: ElementLimit(64)))
+
 proc currentSequenceInitialRound*(base: OwnedReport,
     empty = false, transferGas = 3'u64): PreparedCurrentAccumulationRound =
   ## Initial free allowances exhaust declared200000 gas; actual guests leave room for the previously available report.

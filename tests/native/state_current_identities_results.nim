@@ -2,18 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict guarded identity results/default owners with an actual selected parent/current successor control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, current_checkpoint_context,
     parent_logical_context, current_identity_context]
 import ../../src/state/current/identities as current_identities
 import ../../src/state/parent/logical as parent_logical
 import ../../src/codec/report_owned
+
 proc extract(value: CurrentIdentityResult[PreservedCurrentIdentities]) {.noinline.} =
   ## Defaults/refusals cannot expose a current preservation certificate.
   discard value.value
+
 proc reason(value: CurrentIdentityResult[PreservedCurrentIdentities]) {.noinline.} =
   ## Only an actual missing/new identity result exposes its physical key.
   discard value.refusedIdentity
+
 proc observe(mode: string, value: PreservedCurrentIdentities) {.noinline.} =
   ## Default owners cannot expose any original source, update or successful accounting.
   case mode
@@ -21,6 +25,7 @@ proc observe(mode: string, value: PreservedCurrentIdentities) {.noinline.} =
   of "update": discard value.identityUpdate.value
   of "logical": discard value.identityLogical.value
   else: discard value.identityInfo.value
+
 proc main() {.raises.} =
   ## Positive control derives both sources through real signed/current and exact full logical matching.
   case paramStr(1)

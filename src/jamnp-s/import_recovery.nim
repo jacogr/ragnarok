@@ -3,6 +3,7 @@
 
 ## Recover one original export and its GP paged-proof row, then authenticate against a source-bound canonical report.
 ## Detached erasure arithmetic alone never grants import authority; all proof work belongs on the managed CPU worker.
+
 import ../chain/import_catalog
 import ../codec/[bounded, natural]
 from ../codec/work/package import ImportIndex
@@ -28,30 +29,37 @@ type
     of ProofFailure: proofReason: ImportJustificationError
     of BackendFailure: cryptoReason: CryptoError
     else: discard # A reason alone cannot authorize any reconstructed byte prefix.
+
 func error*(outcome: ImportRecoveryResult): ImportRecoveryError =
   ## Inspect the selected stage without writable variant fields.
   outcome.status
+
 func value*(outcome: ImportRecoveryResult): VerifiedImport {.requires: outcome.status ==
     ImportRecoveryError.None.} =
   ## Extract only a complete segment/proof authenticated to the original canonical source.
   outcome.completed
+
 func recoveryError*(outcome: ImportRecoveryResult): ErasureWordError {.requires: outcome.status ==
     ImportRecoveryError.RecoveryFailure.} =
   ## Preserve the actual threshold decoder's cause rather than manufacturing a crypto failure.
   outcome.recoveryReason
+
 func proofError*(outcome: ImportRecoveryResult): ImportJustificationError {.requires: outcome.status ==
     ImportRecoveryError.ProofFailure.} =
   ## Preserve the genuine final GP verifier refusal.
   outcome.proofReason
+
 func cryptoError*(outcome: ImportRecoveryResult): CryptoError {.requires: outcome.status ==
     ImportRecoveryError.BackendFailure.} =
   ## Only an actual maintained primitive failure carries a backend child.
   outcome.cryptoReason
+
 func failure(reason: ImportRecoveryError): ImportRecoveryResult {.requires: reason notin {
     ImportRecoveryError.None, ImportRecoveryError.RecoveryFailure, ImportRecoveryError.ProofFailure,
     ImportRecoveryError.BackendFailure}.} =
   ## Local structural/resource refusal carries no unrelated child or successful prefix.
   ImportRecoveryResult(status: reason)
+
 proc recoverImport*(source: ReportedImport, index: ImportIndex, segmentChunks,
     pageChunks: openArray[byte], indices: openArray[ErasureShardIndex],
     limits: ImportRecoveryLimits): ImportRecoveryResult =

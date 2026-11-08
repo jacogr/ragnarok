@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real managed compaction preserves current Pending/Finished authority, publication receipts and exact RPC exclusion.
+
 import std/[assertions, envvars, syncio, base64, strutils]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -23,6 +24,7 @@ type MaintenanceOrder {.pure.} = enum ## Each explicit order owns one complete s
   Pending, Finished, Automatic, Joined
 const ChainPath = "pvm-current-services-maintenance-chain"
 const DiskPath = "pvm-current-services-maintenance-state"
+
 proc optionsFor(port: uint16, automatic: bool): Options =
   ## A one-byte automatic threshold is explicit local policy; ordinary cases disable background replacement.
   if not automatic: return currentDiskOptions(ChainPath, DiskPath, true, port)
@@ -34,6 +36,7 @@ proc optionsFor(port: uint16, automatic: bool): Options =
     args.add($port) # Reuse only a test-owned loopback reservation.
   result = default(Options)
   assert parseCanonicalOptions(args, result), "current maintenance: parseCanonicalOptions(args, result)"
+
 proc excluded(owner: var Services, update: PreparedCurrentChainUpdate) =
   ## During any native operation only synchronized/scalar observations and immediate Busy gates are permitted.
   assert owner.diskPublicationActive and owner.rpc.chainPaused, "current maintenance: owner.diskPublicationActive and owner.rpc.chainPaused"
@@ -41,6 +44,7 @@ proc excluded(owner: var Services, update: PreparedCurrentChainUpdate) =
   assert not owner.preparationAvailable and not owner.stateProofAvailable, "current maintenance: not owner.preparationAvailable and not owner.stateProofAvailable"
   assert not owner.cancelCurrentAccumulation() and not owner.beginDiskMaintenance(), "current maintenance: not owner.cancelCurrentAccumulation() and not owner.beginDiskMaintenance()"
   assert owner.enqueueCurrentAccumulation(update) == CurrentHandoffAdmission.Busy, "current maintenance: owner.enqueueCurrentAccumulation(update) == CurrentHandoffAdmission.Busy"
+
 proc scenario(context: CurrentChainFixture, order: MaintenanceOrder, network: bool) {.raises.} =
   ## Actual current execution feeds each ordering; strict reopen must retain the same complete child after physical replacement.
   var path = DiskPath
@@ -147,6 +151,7 @@ proc scenario(context: CurrentChainFixture, order: MaintenanceOrder, network: bo
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle, "current maintenance: owner.currentAccumulationPhase == CurrentHandoffPhase.Idle"
   assert owner.preparationAvailable and owner.stateProofAvailable, "fresh startup restores backend availability"
   owner.close()
+
 proc main() {.raises.} =
   ## Each current/maintenance ordering runs with both startup RPC policies and exact original complete state.
   var path = ChainPath

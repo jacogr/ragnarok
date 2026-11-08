@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current children bind structural profiles/full parameter tuples to exact source identity with bounded hash-free C9 decoding.
+
 # @@Verification={"arc": "state_current_profile_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, accumulation_current_chain_context, arc_evidence]
@@ -13,11 +14,14 @@ import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, composition as state_composition,
     safrole as state_safrole, consensus as state_consensus]
 import ../../../src/codec/assurances
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashes after genuine current preparation completes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Profile projection uses cached child facts and bounded typed decoding only.
 const limits = CurrentProfileLimits(validators: ElementLimit(6), bytes: ByteLimit(2017))
+
 proc verify(source: PreparedCurrentChainUpdate) =
   ## Compare every retained parameter and independently known six-record previous roster, then mutate only copied observations.
   let captured = captureCurrentProfile(source, limits).value
@@ -41,10 +45,12 @@ proc verify(source: PreparedCurrentChainUpdate) =
   profile = captured.derivedStateProfile.value
   profile.current = ValidatorCount(7)
   assert not profile.valid
+
 proc cycle(source: PreparedCurrentChainUpdate) =
   ## Retire temporary decoded roster storage and copied producer/profile owners every cycle.
   let captured = captureCurrentProfile(source, limits).value
   assert captured.derivedStateProfile.value.valid
+
 proc main() {.raises.} =
   ## Use actual current completion at ordinary and epoch-crossing children; no fabricated prepared owners.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

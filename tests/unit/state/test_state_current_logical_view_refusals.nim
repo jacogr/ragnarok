@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine next current preparations with the same exact parent map cannot replace original ordered history, finality or full economic configuration.
+
 # @@Verification={"arc":"state_current_logical_view_refusals_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_identity_context,
@@ -14,10 +15,13 @@ import ../../../src/state/store
 import ../../../src/chain/[provider, genesis, parameters]
 import ../../../src/app/[chain, candidate]
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Every alternative is genuinely prepared before hash-free original-view comparison.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Context/view rejection cannot rehash or infer a replacement root authority.
+
 proc prepare(source: PreparedCurrentChainUpdate, view: ChainView): PreparedCurrentChainUpdate =
   ## Only maintained signed empty block bytes are reused; actual current candidate owns each changed-prior-view preparation.
   let bounds = view.viewRetentionInfo
@@ -26,11 +30,13 @@ proc prepare(source: PreparedCurrentChainUpdate, view: ChainView): PreparedCurre
   var limits = currentCandidateLimits()
   limits.completion.composition.validators.services = ElementLimit(2)
   prepareCurrentCandidate(application, signedChild(source.currentUpdateChild), [], limits).value
+
 proc check(source: CurrentLogicalState, updates: openArray[PreparedCurrentChainUpdate]) =
   ## Actual same-map prepared parents with changed context must fail full-view provenance before any continuation prefix.
   for update in updates:
     assert preserveCurrentIdentities(source, update, currentIdentityTestLimits).error ==
         CurrentIdentityError.ViewMismatch
+
 proc main() {.raises.} =
   ## Original completed source has ordered1/2 history and explicit finalized1; all alternatives keep exact physical head2.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact current-profile refusals for the unchanged pinned historical block transport.
+
 import std/assertions
 import ../../src/state/safrole/[transition as safrole_transition,
     authentication as safrole_authentication]

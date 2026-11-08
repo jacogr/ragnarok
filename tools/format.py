@@ -12,14 +12,16 @@ import os
 from pathlib import Path
 import subprocess
 import tomllib
+from nim_spacing import normalize_spacing
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 # Format through stdin so check mode never edits the file being inspected.
 def format_source(path):
-    return subprocess.run([os.environ.get('NIMPRETTY', 'nimpretty'), '--stdin', '--indent:2', '--maxLineLen:100'],
-                          input=path.read_bytes(), capture_output=True, check=True).stdout
+    output = subprocess.run([os.environ.get('NIMPRETTY', 'nimpretty'), '--stdin', '--indent:2', '--maxLineLen:100'],
+                            input=path.read_bytes(), capture_output=True, check=True).stdout
+    return normalize_spacing(output.decode('utf-8')).encode('utf-8')
 
 
 # The optional ABI is formatted without resolving dependencies absent from minimal smoke setup.
@@ -44,7 +46,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
-    paths = sorted((ROOT/'src').rglob('*.nim'))+sorted((ROOT/'tests').rglob('*.nim'))
+    paths = sorted(path for directory in ('src', 'tests', 'spec', 'native', 'tools')
+                   for path in (ROOT/directory).rglob('*.nim'))
     changed = []
     # Preserve timestamps for files already matching the selected formatter output.
     for path in paths:

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Exclusive first-RW storage and one backend-neutral borrowed view.
 ## Foreign bytes are owner-accounted separately from managed heap telemetry; no quota or pool.
 
@@ -68,13 +69,16 @@ when defined(pvmResidentWitness):
 
 proc `=copy`*(destination: var ResidentBytes, source: ResidentBytes) {.error.}
   ## Ordinary borrowed copies cannot duplicate raw release authority.
+
 proc `=dup`*(source: ResidentBytes): ResidentBytes {.error.}
   ## Independent duplication refusal applies in every interpreter/JIT profile.
+
 proc `=wasMoved`*(owner: var ResidentBytes) {.nodestroy, inline.} =
   ## Disarm the source without retiring the destination's transferred extent.
   owner.data = nil
   owner.logical = 0
   owner.backing = 0
+
 proc `=destroy`*(owner: ResidentBytes) =
   ## Default, failed and moved owners release nothing; live owners release exactly once.
   let data = owner.data
@@ -98,11 +102,14 @@ proc `=destroy`*(owner: ResidentBytes) =
 
 proc `=copy`*(destination: var RWStorage, source: RWStorage) {.error.}
   ## The actual tagged aggregate is directly noncopyable, independently of its child hooks.
+
 proc `=dup`*(source: RWStorage): RWStorage {.error.}
   ## Neither managed payload cloning nor raw foreign duplication is implicit.
+
 proc `=wasMoved`*(storage: var RWStorage) {.nodestroy, inline.} =
   ## Fresh locals may be uninitialized; close ownership without inspecting the old tag or payload.
   storage.kind = RWStorageKind.Empty
+
 proc `=destroy`*(storage: RWStorage) =
   ## Exactly the selected live child owns bytes; no inactive variant is read.
   case storage.kind
@@ -113,11 +120,14 @@ proc `=destroy`*(storage: RWStorage) =
 proc `=copy`*(destination: var ResidentAllocationResult,
     source: ResidentAllocationResult) {.error.}
   ## Success authority cannot be copied through a result wrapper.
+
 proc `=dup`*(source: ResidentAllocationResult): ResidentAllocationResult {.error.}
   ## Refuse duplication on the actual result carrier as well as its owner child.
+
 proc `=wasMoved`*(allocation: var ResidentAllocationResult) {.nodestroy, inline.} =
   ## This also initializes fresh result storage; a closed tag grants no payload authority.
   allocation.status = ResidentAllocationError.Uninitialized
+
 proc `=destroy`*(allocation: ResidentAllocationResult) =
   ## Reason-only alternatives carry no resource.
   if allocation.status == ResidentAllocationError.None:

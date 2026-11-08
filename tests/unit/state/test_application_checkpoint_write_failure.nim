@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real child-only kernel refusals cannot splice application metadata and complete-map bytes or lose the old envelope.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -14,11 +15,13 @@ import ../../support/[application_checkpoint_context, file_size_ceiling]
 const
   Directory = "application-checkpoint-write-failure"
   FileName = Directory & "/checkpoint"
+
 proc clearFiles() =
   ## Only known suite-owned files are removed after every child and native owner retires.
   for suffix in ["", ".lock"]:
     var path = FileName & suffix
     discard posix.unlink(path.toCString()) # Final rmdir deliberately leaves unexpected operation temporaries observable.
+
 proc attempt(original, candidate: ApplicationChain, ceiling: uint64, succeeds: bool) {.raises.} =
   ## Soft limits differ from valid producer byte policy, so expected refusal must come from actual native writing.
   clearFiles()
@@ -64,6 +67,7 @@ proc attempt(original, candidate: ApplicationChain, ceiling: uint64, succeeds: b
   let wrong = if succeeds: expectedOld else: expectedNew
   assert loadApplicationCheckpoint(FileName, wrong, genesisStoreLimits(), ByteLimit(
       100000)).error == ApplicationCheckpointFileError.ContextMismatch
+
 proc main() {.raises.} =
   ## Header-only, profile-only and map-only changes all cross zero/partial kernel failures and exact/ample successes.
   var directory = Directory

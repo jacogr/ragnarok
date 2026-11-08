@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Requalify complete explicitly supplied successor namespaces on a frozen genuine collected target.
+
 import ../../chain
 import ./plan as collected_supplied_plan
 import ../../../state/current/[state as current_state, logical as current_logical]

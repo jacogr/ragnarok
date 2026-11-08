@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_outcome_coverage_arc_release"}
 
 ## Genuine mixed providers prove exact canonical coverage, original canceled gas and distinct immutable proof domains.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[coverage as accumulation_coverage,
     annulment as accumulation_annulment, outcome as accumulation_outcome,
@@ -17,8 +19,11 @@ import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,
   pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc mixedInputs(): PreparedAccumulationInputs =
   ## Offered budgets may sum beyond u64 even though actual consumed gas remains small and representable.
   prepareAccumulationInputs(batchInputSet(false).invocationOperands.value,
@@ -30,6 +35,7 @@ proc mixedInputs(): PreparedAccumulationInputs =
      AlwaysAccumulate(service: ServiceIndex(123), gas: PrivilegeGas(high(uint64)))],
     AccumulationInputConfig(inputs: ElementLimit(1), allowances: ElementLimit(3),
         services: ElementLimit(3))).value
+
 proc skip(fixture: BatchFixture, slot = HeaderSlot(128)): SkippedAccumulation =
   ## Real missing code for existing77 retains its initial protected credit and original source owners.
   let resolved = prepareAccumulationService(fixture.inputs, InvocationServiceIndex(1),
@@ -37,9 +43,11 @@ proc skip(fixture: BatchFixture, slot = HeaderSlot(128)): SkippedAccumulation =
       preimageBytes: ByteLimit(1024))).value
   assert resolved.serviceInfo.value.code == AccumulationCodeStatus.Missing
   finishUninvokedAccumulation(resolved).value
+
 proc absence(fixture: BatchFixture, slot = HeaderSlot(128)): AbsentAccumulation =
   ## Missing metadata for123 proves identity before any code resolution or credit.
   finishAbsentAccumulation(fixture.inputs, InvocationServiceIndex(2), fixture.state.snapshot.value, slot).value
+
 proc policy(): AccumulationCoverageLimits =
   ## Family caps and actual gas are independent of the complete canonical row limit.
   AccumulationCoverageLimits(services: ElementLimit(3), executed: ElementLimit(2),

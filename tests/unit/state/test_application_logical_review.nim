@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical review keeps original compact identity and full economic provenance distinct from the retained raw-key companion.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context, current_logical_review_context]
 import ../../../src/app/logical/review as logical_review
@@ -12,10 +13,13 @@ import ../../../src/state/inventory
 import ../../../src/state/account/review as account_review
 import ../../../src/state/account/review/plan as account_review_plan
 import ../../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fault actual content predicates only after real supplied qualification and original source capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Admission refusal must precede all content primitives.
+
 proc main() {.raises.} =
   ## Actual collected logical output supplies the original current inventory; no detached companion certificate is joined into its review.
   let fixture = collectedNativeFixture()

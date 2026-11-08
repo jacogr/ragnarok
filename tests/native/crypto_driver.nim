@@ -34,14 +34,17 @@ proc hex(bytes: openArray[byte]): string =
 proc output(value: CryptoResult[Blake2bHash]) =
   if value.error != CryptoError.None: echo "error" # No digest exists after backend failure.
   else: echo hex(array[32, byte](value.value)) # Hash output owns exactly 32 bytes.
+
 # Legacy Keccak output cannot be substituted for a Blake2b result.
 proc output(value: CryptoResult[KeccakHash]) =
   if value.error != CryptoError.None: echo "error" # Failed hashes have no output bytes.
   else: echo hex(array[32, byte](value.value)) # Preserve the complete legacy digest.
+
 # Public derivation/import publishes fixed copied key bytes only on success.
 proc output(value: CryptoResult[EdPublicKey]) =
   if value.error != CryptoError.None: echo "error" # Failed keys are not zero identities.
   else: echo hex(array[32, byte](value.value)) # No borrowed backend pointer escapes.
+
 # Ordinary signatures retain all 64 bytes and require successful signing/import.
 proc output(value: CryptoResult[EdSignature]) =
   if value.error != CryptoError.None: echo "error" # No signature is published after failure.

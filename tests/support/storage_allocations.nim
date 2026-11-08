@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only allocator observations distinguish live Nim heap bytes from whole-process peak RSS.
+
 import std/[assertions, syncio]
 
 proc occupiedStorageBytes*(): int =

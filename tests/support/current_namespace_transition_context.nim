@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine complete signed custom-code namespace transitions and explicit original declarations; no private current owner is fabricated.
+
 import std/[assertions, syncio]
 import ./[current_namespace_context, service_namespace_seed, current_namespace_execution_context,
     accumulation_activity_context, accumulation_execution_context,
@@ -27,6 +28,7 @@ type CurrentNamespaceTransition* = object ## Test descriptors retain actual sour
   parent*: SelectedLogicalParent
   update*: PreparedCurrentChainUpdate
   services*: seq[StateService]
+
 proc namespaceStorageCode*(value: seq[byte]): seq[byte] =
   ## Maintained host-write convention targets current service raw key7; zero length invokes actual deletion rather than storing present-empty.
   assert value.len <= 65
@@ -38,10 +40,12 @@ proc namespaceStorageCode*(value: seq[byte]): seq[byte] =
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable): result.add(
       octet) # Whole original code preimage uses existing execution framing.
+
 proc namespaceEjectCode*(): seq[byte] =
   ## Existing eject host authenticates the invoker's empty junior99; ordinary halt follows the charged response.
   result = @[0'u8]
   for octet in guestEnvelope([registerImmediate(7, 99), @[10'u8, 23], @[50'u8, 0]]): result.add(octet)
+
 proc namespaceTransitionFixture*(base: OwnedReport, options: ExecutionFixtureConfig,
     deleted = ElementLimit(0), policy = currentCandidateLimits(),
     parameters = currentChainSettings(),

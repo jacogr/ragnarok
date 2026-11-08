@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current Services refuses enabled RPC fallback, joins actual disk work and preserves kernel IO uncertainty through strict restart.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/services
@@ -28,20 +29,25 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Preserve the inherited hard ceiling when lowering only the child's soft file limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## The native runner and its parent keep their original resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Actual write refusal must surface as a typed error rather than signal termination.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## No allocation, output or ARC owner is reachable from this callback.
   discard
 const ChainPath = "pvm-current-services-boundaries-chain"
 const DiskPath = "pvm-current-services-boundaries-state"
+
 proc waitFinished(owner: var Services) =
   ## Dispatcher/scalar polling alone is allowed until the exact disk lease has been collected.
   let started = getMonoTime()
@@ -49,6 +55,7 @@ proc waitFinished(owner: var Services) =
     assert (getMonoTime()-started).inSeconds < 20
     owner.tick(0)
     yieldCurrentDiskThread()
+
 proc shutdown(context: CurrentChainFixture, managed, done: bool) {.raises.} =
   ## Both immediate and synchronized-Done shutdown authenticate any actual successor receipt before releasing aliases.
   var path = DiskPath
@@ -85,6 +92,7 @@ proc shutdown(context: CurrentChainFixture, managed, done: bool) {.raises.} =
     equalCurrentDiskMap(owner.stateSnapshot.value, context.parent.value.stateSnapshot)
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
   owner.close()
+
 proc refusedRpc(context: CurrentChainFixture) {.raises.} =
   ## An enabled listener closed before staging grants neither disk IO nor canonical-only fallback.
   var path = DiskPath
@@ -114,6 +122,7 @@ proc refusedRpc(context: CurrentChainFixture) {.raises.} =
   assert owner.start(options, "strict unchanged parent restart")
   equalCurrentDiskMap(owner.stateSnapshot.value, context.parent.value.stateSnapshot)
   owner.close()
+
 proc failedWrite(context: CurrentChainFixture) {.raises.} =
   ## Fork only after all earlier worker owners joined; actual partial journal failure must remain observable and frozen.
   let child = posix.fork()
@@ -169,6 +178,7 @@ proc failedWrite(context: CurrentChainFixture) {.raises.} =
   defer: owner.close()
   assert not owner.start(currentDiskOptions(ChainPath, DiskPath, false, 0), "strict partial-tail restart")
   assert readFile(DiskPath) == interrupted and owner.chainView.retainedCount == 0
+
 proc main() {.raises.} =
   ## Independent fixture decoding precedes sequential Service lifetimes and the isolated resource-failure child.
   var path = ChainPath

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_continuation_invocation_arc_release"}
 
 ## Genuine continuation bootstraps bind account/input identity and posterior block entropy through execution.

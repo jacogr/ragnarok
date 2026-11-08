@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque helpers require runtime result selection and also succeed on genuine encoded bytes and precise capture refusal.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/chain
 import ../../src/app/checkpoint/[codec as checkpoint_codec, identity as checkpoint_identity]
@@ -9,18 +10,23 @@ import ../../src/codec/bounded
 import ../../src/state/store
 import ../../src/chain/genesis
 import ../support/application_checkpoint_context
+
 proc extract(outcome: ApplicationCheckpointResult[seq[byte]]) =
   ## Failed/default bytes cannot escape through compile-time constant propagation or unguarded variant fields.
   discard outcome.value
+
 proc inspect(outcome: ApplicationCheckpointResult[seq[byte]]) =
   ## Only actual identity failure may expose its selected nested reason.
   discard outcome.identityError
+
 proc extractStore(outcome: ApplicationCheckpointResult[StateStore]) =
   ## Only a complete independently bound restored map can escape.
   discard outcome.value
+
 proc inspectCheckpoint(outcome: ApplicationCheckpointResult[StateStore]) =
   ## A complete-map reason is available only on its matching failed alternative.
   discard outcome.checkpointError
+
 proc main() {.raises.} =
   ## A genuine successful export and real missing-head refusal exercise both helpers used by misuse cases.
   let mode = paramStr(1)

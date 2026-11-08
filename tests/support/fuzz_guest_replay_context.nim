@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit finite host policy admits the known full authorization queue and code envelopes in fixed guest STF cases.
+
 import ./[fuzz_backend_context, trace_check_context]
 import ../../src/app/fuzz/backend as fuzz_backend
 import ../../src/codec/bounded
 import ../../src/pvm/[initialize, machine]
+
 proc fuzzGuestReplayConfig*(): FuzzBackendConfig =
   ## Host resource ceilings cover the independently authored2560-byte queue; consensus validation is unchanged.
   result = fuzzBackendTestConfig()

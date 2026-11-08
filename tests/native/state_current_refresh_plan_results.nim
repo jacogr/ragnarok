@@ -2,22 +2,27 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict frozen plan/default result guards with a genuine nonempty actual successor control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/current_refresh_context
 import ../../src/state/current/refresh/plan as current_refresh_plan
 import ../../src/codec/report_owned
+
 proc extract(value: CurrentRefreshPlanResult[CurrentRefreshPlan]) {.noinline.} =
   ## No default/refused result carries an executable admitted plan.
   discard value.value
+
 proc reason(value: CurrentRefreshPlanResult[CurrentRefreshPlan]) {.noinline.} =
   ## Defaults cannot fabricate a resource refusal boundary.
   discard value.refusedPhase
+
 proc observe(mode: string, value: CurrentRefreshPlan) {.noinline.} =
   ## Default plans expose no original source, frozen policies or successful copy accounting.
   case mode
   of "source": discard value.refreshPlanSource.value
   of "limits": discard value.refreshPlanLimits.value
   else: discard value.refreshPlanInfo.value
+
 proc main() {.raises.} =
   ## Positive control derives bounded cached keys and the plan from actual original/genuine update matching.
   case paramStr(1)

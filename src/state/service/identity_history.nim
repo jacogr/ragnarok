@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze selected creation and ejection membership from a genuine completed current sequence; separate fixed arrays preserve source positions without interpreting an operation log.
+
 import ../accumulation/current/[driver as accumulation_current_driver,
     sequence as accumulation_current_sequence]
 import ../accumulation/[coverage as accumulation_coverage, annulment as accumulation_annulment,

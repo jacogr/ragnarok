@@ -33,6 +33,7 @@ func initialStorage(mode: ComputedStorageMode): seq[byte] =
       ComputedStorageMode.CheckpointOutOfGas: @[21'u8, 22, 23]
   of ComputedStorageMode.CheckpointCommit: @[22'u8, 23]
   else: @[] # Panic, underfunded and uncheckpointed exhaustion retain absent storage.
+
 func successorStorage(mode: ComputedStorageMode): seq[byte] =
   ## Both formerly exhausted guests now afford the second write; an explicit panic still selects its real implication.
   case mode
@@ -40,14 +41,17 @@ func successorStorage(mode: ComputedStorageMode): seq[byte] =
   of ComputedStorageMode.CheckpointCommit, ComputedStorageMode.OutOfGas,
       ComputedStorageMode.CheckpointOutOfGas: @[22'u8, 23]
   else: @[] # Original funding and uncheckpointed panic do not change when gas credits aggregate.
+
 func originalCredit(mode: ComputedStorageMode): uint64 =
   ## Published digest gas is authored before first computation and never patched for successor execution.
   if mode in {ComputedStorageMode.OutOfGas, ComputedStorageMode.CheckpointOutOfGas}: 3500'u64
   else: 10000'u64 # Other original modes retain the ordinary declared credit.
+
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode exact canonical account metadata from each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Absence differs from a present empty value; footprint and item count follow the actual stored byte length.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -60,6 +64,7 @@ proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
     assert found.error == StateStoreError.None and found.value.bytes == @expected
     assert uint32(account.storageItems) == 1 and uint64(account.storageBytes) == uint64(
         35+expected.len)
+
 proc completed(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute both actual assured reports together; report precise local failures rather than replacing a guest verdict.
   let outcome = executeAssuredAccumulation(fixture.queue, assuredExecutionConfig(fixture.queue))
@@ -69,6 +74,7 @@ proc completed(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc composed(execution: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Drive genuine guest completion to actual terminal history and full maintained state composition.
   let outcome = composeAssuredState(execution, assuredCompositionConfig())
@@ -80,6 +86,7 @@ proc composed(execution: ExecutedAssuredAccumulation): ComposedAssuredState =
         outcome.compositionFailure.error
   assert outcome.error == AssuredCompositionError.None
   outcome.value
+
 proc witness(mode: ComputedStorageMode): AssuredOutcomeFixture =
   ## Compare original and successor real terminals, then publish the exact new selected implications with both handles updated together.
   let fixture = assuredOutcomeFixture(mode)
@@ -188,6 +195,7 @@ let modes = [ComputedStorageMode.Commit, ComputedStorageMode.Panic, ComputedStor
   ComputedStorageMode.OutOfGas, ComputedStorageMode.CheckpointOutOfGas]
 var fixtures: seq[AssuredOutcomeFixture] = @[]
 for mode in modes: fixtures.add(witness(mode)) # Every original mode is authored and computed independently before successor assurances.
+
 proc cycle(fixtures: openArray[AssuredOutcomeFixture]) =
   ## Execute, stop, compose, publish and release all seven actual guest modes using retained genuine input sources.
   for fixture in fixtures:

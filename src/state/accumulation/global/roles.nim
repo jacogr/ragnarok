@@ -3,6 +3,7 @@
 
 ## Current accpar global role merge and original queue/staging producer choice after conflict annulment.
 ## Immutable source/privilege certificates do not publish chapters or impersonate completed batch coverage.
+
 import ../../../codec/bounded
 import ../../../codec/state/[accounts as state_accounts, layout as state_layout, trie as state_trie,
     privileges as state_privileges]

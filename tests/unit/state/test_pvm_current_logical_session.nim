@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated logical sessions retain explicit sources through retries and advance only after real consumed adoption across all storage layouts.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[current_namespace_execution_context, current_application_context,
@@ -34,12 +35,14 @@ import ../../../src/storage/managed/manifest as managed_manifest
 
 type Mode {.pure.} = enum ## Success includes a real empty-response retry; refusals and joined closes publish no logical prefix.
   Consecutive, BudgetRefusal, IdentityRefusal, JoinDone, CancelQueued
+
 proc logicalLimits(): CurrentLogicalDownloadLimits =
   ## Original caller budgets are frozen once; subsequent children must not infer larger limits from actual successor sizes.
   CurrentLogicalDownloadLimits(identities: currentIdentityTestLimits,
       requests: namespaceRequestLimits,
 
 reconstruction: namespaceRefreshLimits, logical: namespaceLogicalLimits())
+
 proc key(): CurrentDownloadPeerKey {.raises.} =
   ## Pin the responder's independently generated fixture identity before opening any endpoint.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_B"))
@@ -47,12 +50,14 @@ proc key(): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for i in 0..<32: bytes[i] = byte(raw[i])
   CurrentDownloadPeerKey(bytes)
+
 proc parent(owner: Services, fixture: NamespaceExecutionFixture): SelectedLogicalParent =
   ## Supplied complete declarations are matched against the actual configured Services owner, never the fixture's equal-root owner.
   let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   captureLogicalParent(globals, fixture.executableNamespaceServices(owner.stateSnapshot.value),
       suppliedLogicalTestLimits).value
+
 proc probeSession(owner: Services, policy: CurrentLogicalDownloadPolicy,
     limits: CurrentDownloadLoopLimits) =
   ## Exact token and queued/native-close gates protect logical queries before any worker or native stream exists.
@@ -69,6 +74,7 @@ proc probeSession(owner: Services, policy: CurrentLogicalDownloadPolicy,
       0)).error == CurrentDownloadSessionError.None
   assert session.logicalCompletion(admitted.value).error ==
       CurrentDownloadSessionError.StaleAttempt
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage, now: var uint64) =
   ## Monotonic local ticks let real retry cooldowns expire without resetting any whole-attempt deadline.
@@ -79,6 +85,7 @@ proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponder
     inc now
     assert dispatcher.tick(CurrentDownloadLoopTick(now)) == CurrentDownloadLoopError.None
     yieldCurrentDiskThread() # Only scalar stages and endpoint polling occur throughout preparation/publication leases.
+
 proc scenario(fixture: NamespaceExecutionFixture, layout: int, mode: Mode) {.raises.} =
   ## Persistent authenticated endpoints deliver exact authored requests; strict reopens retain only actual successful adoption.
   var path = "pvm-logical-session-chain"
@@ -219,6 +226,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, mode: Mode) {.rai
       let actual = owner.chainView.retainedBlockAt(RetainedBlockIndex(uint64(index))).value
       equalCurrentDiskMap(actual.stateSnapshot, expected[index].stateSnapshot)
     owner.close()
+
 proc main() {.raises.} =
   ## Real complete code/request/storage namespaces feed successful and unsupported-identity authenticated transfers.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

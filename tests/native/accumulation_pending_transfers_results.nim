@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic strict guards for pending ownership, first-entry absence and selected nested partition reasons.
+
 import std/[cmdline, syncio]
 import ../../src/state/accumulation/[pending_transfers as accumulation_pending_transfers,
     transfer_partition as accumulation_transfer_partition, transfers as accumulation_transfers]
@@ -16,6 +17,7 @@ proc empty(): PreparedPendingTransfers =
   let prepared = prepareInitialPendingTransfers(source.value, Gas(0), default(PendingTransferLimits))
   if prepared.error != PendingTransferError.None: quit(4)
   prepared.value
+
 proc state(): StateStoreSnapshot =
   ## An unexpected fixture failure must never satisfy a selected-result guard.
   let created = newStateStore([], StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(16),

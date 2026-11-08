@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real light-file leases preserve root-bound evidence, atomic selection, explicit uncertainty and immutable readers.
+
 # @@Verification={"arc":"storage_light_file_cache_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -18,21 +19,26 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real provider refusal must release an acquired directory lease on unsuccessful reopen.
+
 proc renamePath(source, destination: cstring): cint {.importc: "rename", cdecl,
     header: "<stdio.h>".}
   ## Namespace relocation witnesses descriptor-relative publication without changing production IO.
+
 proc key(first: byte): StateKey =
   ## Two query identities suffice to distinguish a retained reader from its replacement.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc config(root: StateRoot): LightFileConfig =
   ## Complete restoration may contain more entries than the caller's ordinary zero-write allowance.
   LightFileConfig(root: root, limits: LightSnapshotLimits(bytes: ByteLimit(4096),
     cache: LightCacheLimits(items: ElementLimit(4), writes: ElementLimit(0), valueBytes: ByteLimit(64),
       proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(64)))))
+
 proc prepared(config: LightFileConfig, trie: FullStateTrie, both: bool): PreparedLightSnapshot =
   ## Evidence always comes from a complete trie; partial light-cache contents never calculate a root.
   var entries = @[LightStateProof(key: key(0), proof: trie.prove(key(0),
@@ -41,26 +47,31 @@ proc prepared(config: LightFileConfig, trie: FullStateTrie, both: bool): Prepare
     entries.add(LightStateProof(key: key(128), proof: trie.prove(key(128),
         config.limits.cache.proof).value))
   prepareLightSnapshot(config.chain, config.root, entries, config.limits).value
+
 proc text(bytes: openArray[byte]): string =
   ## Test fixture writes retain every binary octet, including zero-valued payloads.
   result = newString(bytes.len)
   for index, octet in bytes: result[index] = char(octet)
+
 proc unlink(path: string) =
   ## Cleanup owns only exact test fixture names, never recursive or production-selected paths.
   var name = path
   assert posix.unlink(name.toCString()) == 0
+
 proc remove(path: string) =
   ## Remove the retired selected file and persistent lock after all owners close.
   unlink(path & "/CURRENT")
   unlink(path & "/LOCK")
   var name = path
   assert posix.rmdir(name.toCString()) == 0
+
 proc cycle(path: string, policy: LightFileConfig) =
   ## Each iteration must release native leases and all decoded proof/cache scratch.
   var owner = default(LightFileCache)
   assert openLightFileCache(owner, path, policy) == FileError.None
   assert owner.snapshot.value.len == 2
   assert owner.close == FileError.None
+
 proc lifecycle(policy: LightFileConfig, first, second: PreparedLightSnapshot) {.raises.} =
   ## Root/chain/policy refusal precedes IO; only confirmed publication advances fresh immutable readers.
   let path = "storage-light-file-cache"
@@ -146,6 +157,7 @@ proc lifecycle(policy: LightFileConfig, first, second: PreparedLightSnapshot) {.
   assert openLightFileCache(owner, path, policy) == FileError.None
   assert owner.close == FileError.None
   remove(path)
+
 proc namespace(policy: LightFileConfig, first, second: PreparedLightSnapshot) {.raises.} =
   ## Refuse symlink cleanup and revalidate selected bytes before removing forensic staging evidence.
   var path = "storage-light-file-namespace"
@@ -188,6 +200,7 @@ proc namespace(policy: LightFileConfig, first, second: PreparedLightSnapshot) {.
   assert owner.discardPending == FileError.None
   assert owner.close == FileError.None
   remove(path)
+
 proc fault(policy: LightFileConfig, first, second: PreparedLightSnapshot, operation, skip: cint,
     uncertain: bool, number: int) {.raises.} =
   ## Test observers refuse actual syscall boundaries; restart selection is checked after every consumed fault.
@@ -215,6 +228,7 @@ proc fault(policy: LightFileConfig, first, second: PreparedLightSnapshot, operat
   assert owner.publish(second).value == StorageDurability.FileAndDirectorySynced
   assert owner.close == FileError.None
   remove(path)
+
 proc main() {.raises.} =
   ## A complete single-leaf trie supplies independently selected evidence for present-long and absent queries.
   resetIo()

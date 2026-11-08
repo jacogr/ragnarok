@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual current network downloads cross retry, managed execution, durable/RPC adoption, deadlines and proof exclusion in separate turns.
+
 import std/[assertions, envvars, syncio, monotimes, times, base64, strutils]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -29,6 +30,7 @@ import ../../support/[current_application_context, current_services_disk_samples
   proof_query_context, managed_storage_samples, rpc_socket]
 type LoopWitness {.pure.} = enum ## Explicit stages distinguish actual adoption from unwanted/lost execution or handoff.
   Adopt, CancelDone, Joined, LostHandoff
+
 proc limits(retry = false): CurrentDownloadLoopLimits =
   ## Every current network and execution ceiling is explicitly selected, with no legacy completion policy.
   CurrentDownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(2),
@@ -37,6 +39,7 @@ proc limits(retry = false): CurrentDownloadLoopLimits =
       ancestors: ElementLimit(4), discoverAncestors: true), candidate: currentCandidateLimits(),
     stream: CurrentDownloadStreamLimits(readBytes: ByteLimit(73), writeBytes: ByteLimit(3),
       timeout: CurrentDownloadTimeout(50)), attemptTimeout: CurrentDownloadAttemptTimeout(100))
+
 proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   ## Authenticated host identities come from the two independent local fixture certificates.
   let raw = readFile(getEnv(if second: "RAGNAROK_TEST_PEER_B" else: "RAGNAROK_TEST_PEER_A"))
@@ -44,6 +47,7 @@ proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   CurrentDownloadPeerKey(bytes)
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage, now = 0'u64) =
   ## Bounded native polling preserves the authored monotonic deadline until this exact stage is observed.
@@ -53,9 +57,11 @@ proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponder
     assert servers.poll()
     assert dispatcher.tick(CurrentDownloadLoopTick(now)) == CurrentDownloadLoopError.None
     yieldCurrentDiskThread() # Independent scheduler yield touches no leased canonical/input aliases.
+
 proc assertPreparationLease(owner: Services) =
   ## Observe the actual managed lease without teaching the compiler stale facts about pointer-owned dispatcher mutations.
   assert owner.preparationActive and owner.rpc.chainPaused
+
 proc transfer(context: CurrentChainFixture, witness = LoopWitness.Adopt,
     disk = false, managed = false, network = false, retry = false) {.raises.} =
   ## Real TLS/current execution reaches the requested producer stage before any host acknowledgment can authorize progress.
@@ -150,6 +156,7 @@ proc transfer(context: CurrentChainFixture, witness = LoopWitness.Adopt,
         owner.close()
         assert owner.start(options, "strict downloaded current restart")
         equalCurrentDiskMap(owner.stateSnapshot.value, context.source.currentConsensusState.value)
+
 proc proofs(context: CurrentChainFixture) {.raises.} =
   ## Actual selected-state native borrowing blocks configuration and pauses an existing dispatcher until collection/join.
   var path = "pvm-current-download-loop-proof-chain"
@@ -196,6 +203,7 @@ proc proofs(context: CurrentChainFixture) {.raises.} =
   assert not owner.stateProofActive and not owner.rpc.chainPaused
   assert owner.collectStateProof(closing.value).kind == ProofWorkerCompletionKind.Uninitialized
   assert sameStateSnapshot(parent, owner.stateSnapshot.value)
+
 proc main() {.raises.} =
   ## Genuine current roots qualify memory/durable/RPC selection, retry, deadline/cancel, shutdown and actual proof worker interaction.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

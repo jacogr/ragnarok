@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Separate candidate preparation reproduces every complete phase-composed successor of genuine consecutive signed blocks.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/chain/[genesis, provider]

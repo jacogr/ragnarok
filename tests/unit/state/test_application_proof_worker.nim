@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A single native proof slot retains capacity and state authority until exact collection or join.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../support/proof_query_context
 import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
@@ -10,14 +11,17 @@ import ../../../src/app/proof/network_read
 import ../../../src/jamnp-s/read_stream
 import ../../../src/state/proof/service as proof_service
 import ../../../src/codec/bounded
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield between scalar worker polls under a fixed test deadline.
+
 proc waitDone(worker: var StateProofWorker) =
   ## Poll no ARC query aliases while the native thread may still be using selected state.
   let start = getMonoTime()
   while worker.phase != ProofWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000)
+
 proc main() {.raises.} =
   ## Selected/plan aliases remain alive but untouched throughout every admitted native lease.
   let selected = querySelection(queryContext())

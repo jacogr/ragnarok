@@ -3,6 +3,7 @@
 
 ## Stable application node host manages inbound replies and bounded checked outbound reads through exact Services leases.
 ## Close this host before retiring Services storage; peer claims never select local finality.
+
 import std/[assertions, monotimes, times]
 import ./services
 import ./preimage_followup
@@ -136,10 +137,13 @@ type
     productionKeyVersion, generated: uint64
     productionAttempt, productionLimit: int
     lastProduced: NetworkTicketResult[CheckedNetworkTicket]
+
 proc `=copy`*(destination: var ApplicationNode, source: ApplicationNode) {.error.}
   ## Copying the host would duplicate a worker ticket and move nested native callback addresses.
+
 proc `=dup`*(source: ApplicationNode): ApplicationNode {.error.}
   ## Initialization cannot create another owner of the same borrowed Services/native lifetime.
+
 proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.opened.} =
   ## Only explicit joined/retired hosts may move their child storage.
   `=wasMoved`(owner.streams)
@@ -176,9 +180,11 @@ proc `=wasMoved`*(owner: var ApplicationNode) {.nodestroy, requires: not owner.o
   owner.services = nil
   owner.readTicket = default(NodeReadTicket)
   owner.stamp = default(SourceStamp)
+
 proc requireClosed(owner: ApplicationNode) {.requires: not owner.opened.} =
   ## Native contexts and borrowed Services storage must be retired before destruction.
   discard
+
 proc `=destroy`*(owner: ApplicationNode) =
   ## Destruction neither abandons an active CPU lease nor silently joins unrelated Services work.
   requireClosed(owner)
@@ -209,13 +215,16 @@ proc `=destroy`*(owner: ApplicationNode) =
   `=destroy`(owner.broadcaster)
   `=destroy`(owner.distribution)
   `=destroy`(owner.checkedPeer)
+
 func isOpen*(owner: ApplicationNode): bool =
   ## Default and explicitly closed hosts grant no peer/read authority.
   owner.opened
+
 proc configureWork*(owner: var ApplicationNode, policy: WorkDispatchPolicy): bool =
   ## Explicit activation installs bounded CPU dispatch before enabling native work selectors.
   if not owner.opened: return false
   owner.work.configure(owner.streams, policy)
+
 proc configureWorkExchange*(owner: var ApplicationNode, policy: WorkExchangePolicy,
     certificate, privateKey: string): bool =
   ## Signed sharing is separately optional; private setup is bound to this host's actual authenticated public identity before enabling CE134.
@@ -232,6 +241,7 @@ proc configureWorkExchange*(owner: var ApplicationNode, policy: WorkExchangePoli
   if not services[].availabilityReadsMatch(policy.servingLimits):
     if not services[].configureAvailabilityReads(policy.servingLimits): return false
   owner.exchange.configure(owner.streams, policy)
+
 proc configureAssuranceAcquisition*(owner: var ApplicationNode,
     policy: AssuranceAcquisitionPolicy): bool =
   ## Explicit activation requires an independently installed healthy archive; only polling with a supplied Common Era clock admits acquisition jobs.
@@ -239,24 +249,31 @@ proc configureAssuranceAcquisition*(owner: var ApplicationNode,
   let services = owner.services
   if services == nil: return false
   owner.acquisition.configure(services[], owner.streams, policy)
+
 func acquiredAssuranceShards*(owner: ApplicationNode): uint64 =
   ## Actual retained worker completions grant no signing or block-admission authority.
   owner.acquisition.acquired
+
 func probedAssuranceShards*(owner: ApplicationNode): uint64 =
   ## Count real collected existing-record proof and durability checks, independently of new acquisition or signing authority.
   owner.acquisition.probed
+
 func attemptedAssuranceRequests*(owner: ApplicationNode): uint64 =
   ## Count admitted remote requests, preserving observable default-off behavior.
   owner.acquisition.attempted
+
 func assuranceAcquisitionPhase*(owner: ApplicationNode): AssuranceAcquirerPhase =
   ## Detached progress remains available during another canonical worker lease.
   owner.acquisition.phase
+
 func assuranceDemandConnections*(owner: ApplicationNode): int =
   ## Closing owned acquisition dials remain charged until native retirement.
   owner.acquisition.demandConnections
+
 func isValidator*(owner: ApplicationNode): bool =
   ## Only the actual open native host's authenticated topology can select validator-only optional startup.
   owner.opened and owner.streams.isValidator
+
 proc configureAssuranceSigner*(owner: var ApplicationNode, certificate, privateKey: string): bool =
   ## Explicit startup imports a private signer only against this open host's actual bound TLS identity.
   if not owner.opened: return false
@@ -266,6 +283,7 @@ proc configureAssuranceSigner*(owner: var ApplicationNode, certificate, privateK
   if services[].assuranceSigningConfigured: return services[].assuranceSigningMatches(identity)
   services[].configureAssuranceSigner(certificate, privateKey, identity).error ==
       WorkSigningSetupError.None
+
 proc configureAssuranceBroadcast*(owner: var ApplicationNode,
     policy: AssuranceBroadcastPolicy): bool =
   ## Explicit outgoing setup requires the independently installed archive and actual TLS-matched signer.
@@ -273,35 +291,44 @@ proc configureAssuranceBroadcast*(owner: var ApplicationNode,
   let services = owner.services
   if services == nil: return false
   owner.broadcaster.configure(services[], owner.streams, policy)
+
 func assuranceBroadcastPhase*(owner: ApplicationNode): AssuranceBroadcastPhase =
   ## Detached scalar progress grants no signature or canonical inclusion authority.
   owner.broadcaster.phase
+
 func attemptedAssuranceBroadcasts*(owner: ApplicationNode): uint64 =
   ## Count actual queued CE141 requests independently from receipt and shard acquisition.
   owner.broadcaster.attempted
+
 func acknowledgedAssuranceBroadcasts*(owner: ApplicationNode): uint64 =
   ## Only complete remote FINs count as acknowledged delivery.
   owner.broadcaster.acknowledged
+
 proc beginAuditAcquisition*(owner: var ApplicationNode, policy: AuditAcquisitionPolicy,
     id: AuditOriginId, ordinal: int, clock: MonoTime): bool =
   ## Explicit optional foreground work uses a private Services selector; no caller report/state or validity bit enters this controller.
   if not owner.opened: return false
   if owner.forcedAudits.ownsAcquisition: return false
   owner.auditAcquirer.begin(policy, id, ordinal, clock)
+
 func auditAcquisitionBusy*(owner: ApplicationNode): bool =
   ## Native retirement remains observable after an evaluation completes; re-admission waits for every exact control to drain.
   owner.auditAcquirer.busy
+
 func auditAcquisitionPhase*(owner: ApplicationNode): AuditAcquisitionPhase =
   ## Fixed lifecycle observations remain available while the worker leases private full state.
   owner.auditAcquirer.phase
+
 func acquiredAuditInfo*(owner: ApplicationNode): AuditEvaluationInfo {.requires: owner.auditAcquirer.phase ==
     AuditAcquisitionPhase.Complete.} =
   ## Actual source-free observations grant no separate signing capability.
   owner.auditAcquirer.evaluationInfo
+
 proc cancelAuditAcquisition*(owner: var ApplicationNode) =
   ## Exact cancellation never interrupts an unrelated foreign worker lease.
   let services = owner.services
   if services != nil: owner.auditAcquirer.cancel(services[], owner.streams)
+
 proc configureForcedAudits*(owner: var ApplicationNode, policy: ForcedAuditPolicy): bool =
   ## Enable automatic original-key participation after receipt and signer setup.
   let services = owner.services
@@ -313,27 +340,34 @@ proc configureJudgmentReceipt*(owner: var ApplicationNode, policy: JudgmentRecei
   let services = owner.services
   if not owner.opened or services == nil or not services[].stateProofAvailable or not services[].auditRetentionConfigured: return false
   owner.judgments.configure(owner.streams, policy)
+
 func receivedJudgments*(owner: ApplicationNode): uint64 =
   ## Count whole acknowledged qualified uploads independently of their record count.
   owner.judgments.received
+
 func pendingForcedAudits*(owner: ApplicationNode): int =
   ## Negative receipt can require auditing a previously unseen report without a CE144 declaration.
   owner.judgments.pendingCount
+
 proc pendingForcedAudit*(owner: ApplicationNode, ordinal: int): RetainedJudgment {.requires: ordinal >=
     0 and ordinal < owner.judgments.pendingCount.} =
   ## Source-free original record and private host selector expose neither execution state nor report truth.
   owner.judgments.pendingAt(ordinal)
+
 func retainedJudgmentCount*(owner: ApplicationNode): int =
   ## Fixed ledger occupancy includes independently qualified conflicting original signed claims.
   owner.judgments.judgmentCount
+
 proc retainedJudgmentAt*(owner: ApplicationNode, ordinal: int): QualifiedJudgment {.requires: ordinal >=
     0 and ordinal < owner.judgments.judgmentCount.} =
   ## Return one immutable original signed record after whole receipt succeeded.
   owner.judgments.judgmentAt(ordinal)
+
 proc configureAuditReceipt*(owner: var ApplicationNode, policy: AuditReceiptPolicy): bool =
   ## A real bounded managed verifier and retained intent pool must exist before native CE144 selection is enabled.
   if not owner.opened: return false
   owner.audits.configure(owner.streams, policy)
+
 func auditBranchIngressPolicy*(verification: ReadVerificationLimits,
     input: CurrentBlockInputLimits, candidate: CurrentCandidateLimits,
     storage: AuditBranchLimits): AuditBranchIngressPolicy =
@@ -344,6 +378,7 @@ func auditBranchIngressPolicy*(verification: ReadVerificationLimits,
     return default(AuditBranchIngressPolicy)
   AuditBranchIngressPolicy(ready: true, verification: verification, input: input,
       candidate: candidate, storage: storage)
+
 proc configureAuditBranchIngress*(owner: var ApplicationNode,
     policy: AuditBranchIngressPolicy): bool =
   ## Keep this independent retention feature opt-in and bound to the opened Services lifetime.
@@ -353,107 +388,137 @@ proc configureAuditBranchIngress*(owner: var ApplicationNode,
   if not services[].configureAuditBranches(policy.storage): return false
   owner.branchIngress.policy = policy
   true
+
 proc configureInitialAudits*(owner: var ApplicationNode, policy: InitialAuditPolicy): bool =
   ## Enable automatic production only on an open validator with managed CE144 receipt.
   let services = owner.services
   if not owner.opened or services == nil or not owner.audits.configured or
       not owner.forcedAudits.configured: return false
   owner.initialAudits.configure(services[], owner.streams, policy)
+
 func initialAuditDeclarationCount*(owner: ApplicationNode): int =
   ## Count retained local obligations separately from incoming declarations.
   owner.initialAudits.declarationCount
+
 func initialAuditDeclaration*(owner: ApplicationNode,
     index: int): InitialAuditDeclaration {.requires:
     index >= 0 and index < owner.initialAudits.declarationCount.} =
   ## Return a detached copy of the signed local declaration and its selected cores.
   owner.initialAudits.declarationAt(index)
+
 func receivedAuditAnnouncements*(owner: ApplicationNode): uint64 =
   ## Count wholly authenticated uploads acknowledged through their original live native ticket.
   owner.audits.received
+
 func pendingAuditAnnouncements*(owner: ApplicationNode): int =
   ## Distinct original declarations retain their obligations across later positive information.
   owner.audits.pendingCount
+
 proc pendingAuditAnnouncement*(owner: ApplicationNode,
     ordinal: int): CheckedAuditAnnouncement {.requires: ordinal >= 0 and ordinal <
     owner.audits.pendingCount.} =
   ## Source-free immutable intent metadata grants neither private judgment nor finality authority.
   owner.audits.pendingAt(ordinal)
+
 proc configureAssuranceReceipt*(owner: var ApplicationNode, policy: AssuranceReceiptPolicy): bool =
   ## Independently optional bounded CE141 receipt enables no archive, private signer or outgoing assurance schedule.
   if not owner.opened: return false
   owner.assurances.configure(owner.streams, policy)
+
 func receivedAssurances*(owner: ApplicationNode): uint64 =
   ## Count real retained fresh incoming candidates whose native reply accepted FIN.
   owner.assurances.received
+
 func pendingAssurances*(owner: ApplicationNode): int =
   ## Expanded original validator positions remain unadmitted block candidates.
   owner.assurances.pendingCount
+
 proc pendingAssurance*(owner: ApplicationNode, ordinal: int): Assurance {.requires: ordinal >= 0 and
     ordinal < owner.assurances.pendingCount.} =
   ## Return an owned candidate only; block construction must sort and freshly apply its post-judgment rules.
   owner.assurances.pendingAt(ordinal)
+
 proc configureWorkDistribution*(owner: var ApplicationNode, policy: WorkDistributionPolicy): bool =
   ## Independently optional receipt/delivery installs bounded managed consumers before enabling CE135.
   if not owner.opened: return false
   owner.distribution.configure(owner.streams, policy)
+
 func workDeliveryPhase*(owner: ApplicationNode): WorkDeliveryPhase =
   ## Fixed delivery state grants no claim that every configured validator acknowledged.
   owner.distribution.deliveryPhase
+
 func workDeliveryAcknowledgments*(owner: ApplicationNode): uint64 =
   ## Actual remote FIN responses are separate from local credential collection and self-retention.
   owner.distribution.acknowledged
+
 func workDeliveryAttempts*(owner: ApplicationNode): uint64 =
   ## Observe admitted native requests independently from remote success.
   owner.distribution.attempted
+
 func workDeliveryRefusals*(owner: ApplicationNode): uint64 =
   ## Offline, invalid endpoint and transport refusals do not count as delivered reports.
   owner.distribution.refused
+
 func workDeliveryDemandConnections*(owner: ApplicationNode): int =
   ## Observe exact controller-owned dial reservations, including busy or closing connections.
   owner.distribution.demandConnections
+
 func workDeliveryRounds*(owner: ApplicationNode): uint64 =
   ## A finished bounded round may contain refused/unavailable recipients.
   owner.distribution.rounds
+
 func receivedWorkGuarantees*(owner: ApplicationNode): uint64 =
   ## Count actual fresh retained incoming CE135 acknowledgments, separately from locally collected credentials.
   owner.distribution.received
+
 func pendingWorkGuarantees*(owner: ApplicationNode): int =
   ## Detached candidates remain observable through foreign worker leases.
   owner.distribution.pendingCount
+
 func pendingWorkGuaranteeBytes*(owner: ApplicationNode): int =
   ## Exact retained payload bytes follow the explicitly configured local capacity.
   owner.distribution.pendingBytes
+
 proc pendingWorkGuarantee*(owner: ApplicationNode, ordinal: int): seq[byte] {.requires:
     ordinal >= 0 and ordinal < owner.distribution.pendingCount.} =
   ## Candidate bytes grant no fresh block/assurer admission authority.
   owner.distribution.pendingPayload(ordinal)
+
 func workExchangePhase*(owner: ApplicationNode): WorkExchangePhase =
   ## Fixed controller state remains observable through canonical/private-key worker leases.
   owner.exchange.phase
+
 func receivedWorkContributions*(owner: ApplicationNode): uint64 =
   ## Count independently computed incoming CE134 responses accepted by the live transport.
   owner.exchange.received
+
 func collectedWorkGuarantees*(owner: ApplicationNode): uint64 =
   ## A collected guarantee still requires fresh inclusion qualification and CE135 delivery.
   owner.exchange.collected
+
 proc configureWorkAcquisition*(owner: var ApplicationNode, policy: WorkAcquisitionPolicy): bool =
   ## Optional CE133 fetch participation requires an explicitly configured work dispatcher and independent network ceilings.
   if not owner.opened: return false
   owner.work.configureAcquisition(policy)
+
 proc configureWorkRecovery*(owner: var ApplicationNode, policy: WorkRecoveryPolicy): bool =
   ## Explicit original-assurer fallback policies are fixed before any work session is admitted.
   if not owner.opened: return false
   owner.work.configureRecovery(policy)
+
 func workPhase*(owner: ApplicationNode): WorkDispatchPhase =
   ## Observe detached lifecycle without borrowing the retained result.
   owner.work.phase
+
 func acceptedWork*(owner: ApplicationNode): uint64 =
   ## Successful refinement/transport acknowledgments are distinct from report inclusion.
   owner.work.accepted
+
 func completedWork*(owner: ApplicationNode): WorkSessionToken {.requires: owner.work.phase ==
     WorkDispatchPhase.Ready.} =
   ## Downstream report processing uses the original Services session.
   owner.work.completed
+
 proc releaseWork*(owner: var ApplicationNode): bool =
   ## Explicit downstream consumption allows the next bounded submission.
   let services = owner.services
@@ -461,119 +526,155 @@ proc releaseWork*(owner: var ApplicationNode): bool =
   if owner.exchange.phase != WorkExchangePhase.Idle:
     discard owner.exchange.release(services[], owner.streams)
   owner.work.release(services[])
+
 func ticketProductionActive*(owner: ApplicationNode): bool =
   ## Scalar observation grants no cancellation or key access.
   owner.producing
+
 func generatedTickets*(owner: ApplicationNode): uint64 =
   ## Count fresh checked candidates successfully retained for local proxy work or queued for remote first-step delivery.
   owner.generated
+
 func originatedTickets*(owner: ApplicationNode): uint64 =
   ## Observe complete CE131 transport acknowledgments without canonical inclusion authority.
   owner.origins.acknowledged
+
 func ticketOriginActive*(owner: ApplicationNode): int =
   ## At most two exact Native first-step requests are charged independently of CPU work.
   owner.origins.sending
+
 proc lastProducedTicket*(owner: ApplicationNode): NetworkTicketResult[CheckedNetworkTicket] =
   ## Return the last complete cryptographic outcome, which is separate from fresh-clock/pool/delivery admission and contains no secret or source owner.
   owner.lastProduced
+
 func ticketForwardingCount*(owner: ApplicationNode): int =
   ## Observe retained proxy intents without borrowing canonical state.
   owner.forwarding.len
+
 func ticketForwardingActive*(owner: ApplicationNode): int =
   ## Exact native requests remain separately bounded within the shared read quota.
   owner.forwarding.sending
+
 func forwardedTickets*(owner: ApplicationNode): uint64 =
   ## Count complete transport acknowledgments without claiming canonical inclusion.
   owner.forwarding.acknowledged
+
 func cachedReportCount*(owner: ApplicationNode): int =
   ## Detached cache statistics are safe while any canonical worker owns the graph.
   owner.reports.len
+
 func cachedReportBytes*(owner: ApplicationNode): int =
   ## Logical immutable cache wire bytes exclude native buffers and transient response copies.
   owner.reports.byteLength
+
 func cachedPreimageCount*(owner: ApplicationNode): int =
   ## Observe detached hash-checked blob count independently of canonical graph leases.
   owner.preimages.cachedCount
+
 func cachedPreimageBytes*(owner: ApplicationNode): int =
   ## Logical framed cache usage includes the four-byte CE143 prefix.
   owner.preimages.cachedBytes
+
 func pendingPreimageCount*(owner: ApplicationNode): int =
   ## Queued and active automatic retrievals have a separate fixed eight-intent capacity.
   owner.preimages.pendingCount
+
 func preimageGossipCount*(owner: ApplicationNode): int =
   ## Fixed detached possession intents do not imply inclusion or remote adoption.
   owner.gossip.len
+
 func preimageGossipSending*(owner: ApplicationNode): bool =
   ## Observe detached native announcement ownership without reading canonical state.
   owner.gossip.sending
+
 func deliveredPreimageGossip*(owner: ApplicationNode): uint64 =
   ## Count successful exact bare-FIN deliveries, independently of content/state authority.
   owner.gossip.deliveredCount
+
 func pendingTicketCount*(owner: ApplicationNode): int =
   ## Detached prospective GP ticket count grants no canonical inclusion authority.
   owner.tickets.len
+
 proc pendingTicketAt*(owner: ApplicationNode, ordinal: int): CheckedNetworkTicket {.requires: ordinal >=
     0 and ordinal < owner.tickets.len.} =
   ## Only complete sealed proof metadata leaves retention; no mutable pool row or worker ticket escapes.
   owner.tickets.ticketAt(ordinal)
+
 proc localPort*(owner: ApplicationNode): uint16 =
   ## Observe detached native listener state without a canonical graph alias.
   if owner.opened: owner.streams.localPort else: 0'u16
+
 proc peerCount*(owner: ApplicationNode): int =
   ## Expose authenticated logical reservations for ordinary service diagnostics.
   if owner.opened: owner.streams.peerCount else: 0
+
 proc peerAt*(owner: ApplicationNode, ordinal: int): NodeResult[NodePeer] =
   ## The nested actor's generation token still requires live-source checks.
   owner.streams.peerAt(ordinal)
+
 proc beginPeerConnection*(owner: var ApplicationNode, identity: StateEdKey,
     endpoint: NetworkEndpoint): DialResult =
   ## Explicit source-free connection demand keeps actual TLS identity pinning and the native node's fixed engine limits.
   owner.streams.beginPeerConnection(identity, endpoint)
+
 proc source*(owner: ApplicationNode, peer: NodePeer): NodeResult[NodeClaims] =
   ## Detached remote claims carry no canonical adoption or finality authority.
   owner.streams.source(peer)
+
 proc request*(owner: var ApplicationNode, peer: NodePeer, request: ReadRequest,
     maximum = ByteLimit(MaxReadReplyBytes)): NodeResult[NodeRequestTicket] =
   ## Fixed outbound request facts may be queued while a Services worker owns the unrelated canonical graph.
   owner.streams.request(peer, request, maximum)
+
 proc takeReply*(owner: var ApplicationNode, ticket: NodeRequestTicket): ReadClientResult =
   ## Complete detached bytes remain untrusted; the host must acquire any state/proof validation gate separately.
   owner.streams.takeReply(ticket)
+
 proc cancelRequest*(owner: var ApplicationNode, ticket: NodeRequestTicket): bool =
   ## Cancelling an outbound network stream never cancels a Services canonical worker lease.
   owner.streams.cancelRequest(ticket)
+
 proc requestLive*(owner: ApplicationNode, ticket: NodeRequestTicket): bool =
   ## Exact peer generation and serial bind outbound activity independently of canonical CPU ownership.
   owner.streams.requestLive(ticket)
+
 func error*(started: CheckedRequestStart): NodeError =
   ## Observe admission without granting a ticket from a failed/default start.
   started.status
+
 func value*(started: CheckedRequestStart): CheckedRequestTicket {.requires: started.status ==
     NodeError.None.} =
   ## Only accepted bounded network acquisition grants the exact host generation.
   started.ticket
+
 func kind*(completed: CheckedRequestCompletion): CheckedCompletionKind =
   ## Observe lifecycle failure without extracting any accepted body.
   completed.status
+
 func value*(completed: CheckedRequestCompletion): ReadVerificationResult[
     CheckedReadReply] {.requires: completed.status == CheckedCompletionKind.Completed.} =
   ## The inner verifier still distinguishes complete checked success from semantic/proof failure.
   completed.response
+
 func networkError*(completed: CheckedRequestCompletion): ReadError {.requires: completed.status ==
     CheckedCompletionKind.NetworkFailure.} =
   ## Transport failure reasons are carried only by an actual failed collection.
   completed.networkReason
+
 func admissionError*(completed: CheckedRequestCompletion): ReadVerificationError {.requires: completed.status ==
     CheckedCompletionKind.AdmissionFailure.} =
   ## Trusted-source capture refusals remain distinct from later cryptographic failures.
   completed.admissionReason
+
 func checkedLive*(owner: ApplicationNode, ticket: CheckedRequestTicket): bool =
   ## Complete uncollected operations occupy capacity; default, foreign, stale and reopened tickets cannot match.
   owner.opened and owner.checkedPhase != CheckedRequestPhase.Idle and ticket.owner != nil and
     ticket.owner == owner.checkedIdentity and ticket.serial == owner.checkedNext
+
 func checkedPhase*(owner: ApplicationNode, ticket: CheckedRequestTicket): CheckedRequestPhase =
   ## Phase is scalar and may be observed while a foreign worker owns canonical ARC graphs.
   if owner.checkedLive(ticket): owner.checkedPhase else: CheckedRequestPhase.Idle
+
 proc clearChecked(owner: var ApplicationNode) =
   ## Retire detached buffers and exact tickets only after matching worker collection/join or before admission.
   owner.checkedPhase = CheckedRequestPhase.Idle
@@ -586,6 +687,7 @@ proc clearChecked(owner: var ApplicationNode) =
   owner.checkedOutcome = default(CheckedRequestCompletion)
   owner.checkedCancel = CheckedCompletionKind.Uninitialized
   owner.checkedStarted = default(MonoTime)
+
 proc requestChecked*(owner: var ApplicationNode, peer: NodePeer, request: ReadRequest,
     limits: ReadVerificationLimits): CheckedRequestStart =
   ## Reserve one complete acquisition-to-verification operation; native framing applies the same hard byte ceiling.
@@ -608,6 +710,7 @@ proc requestChecked*(owner: var ApplicationNode, peer: NodePeer, request: ReadRe
   owner.checkedPhase = CheckedRequestPhase.Receiving
   CheckedRequestStart(status: NodeError.None, ticket: CheckedRequestTicket(
     owner: owner.checkedIdentity, serial: owner.checkedNext))
+
 proc announcePreimage*(owner: var ApplicationNode, peer: NodePeer, service: ServiceIndex,
     blob: CheckedReadReply, limits: ReadVerificationLimits): CheckedRequestStart =
   ## Publish only retained full-hash content requested in local canonical state, to an authenticated validator recipient.
@@ -630,6 +733,7 @@ proc announcePreimage*(owner: var ApplicationNode, peer: NodePeer, service: Serv
   if owner.preimages.retain(blob) != PreimageCacheError.None:
     return CheckedRequestStart(status: NodeError.LimitExceeded)
   owner.requestChecked(peer, notice.value.request, limits)
+
 proc cancelChecked(owner: var ApplicationNode, reason: CheckedCompletionKind) =
   ## Admitted CPU work keeps its exact lease until collection, even when cancellation follows Done.
   if owner.checkedPhase == CheckedRequestPhase.Verifying:
@@ -643,11 +747,13 @@ proc cancelChecked(owner: var ApplicationNode, reason: CheckedCompletionKind) =
     owner.checkedWire = @[]
     owner.checkedOutcome = CheckedRequestCompletion(status: reason)
     owner.checkedPhase = CheckedRequestPhase.Done
+
 proc cancelChecked*(owner: var ApplicationNode, ticket: CheckedRequestTicket): bool =
   ## Cancellation is scoped to this checked operation and never joins/cancels a foreign Services job.
   if not owner.checkedLive(ticket): return false
   owner.cancelChecked(CheckedCompletionKind.Cancelled)
   true
+
 proc takeChecked*(owner: var ApplicationNode, ticket: CheckedRequestTicket): CheckedRequestCompletion =
   ## A pending result grants no body and cannot retire an admitted lease; one terminal collection frees capacity.
   if not owner.checkedLive(ticket): return default(CheckedRequestCompletion)
@@ -655,6 +761,7 @@ proc takeChecked*(owner: var ApplicationNode, ticket: CheckedRequestTicket): Che
     return CheckedRequestCompletion(status: CheckedCompletionKind.Pending)
   result = move(owner.checkedOutcome)
   owner.clearChecked()
+
 proc stageBranchInput(ingress: var BranchIngress, services: Services,
     blockOwner: OwnedBlock, now: StateTime): bool =
   ## Detach one exact GP body, with independently retained older headers in descending order.
@@ -683,6 +790,7 @@ proc stageBranchInput(ingress: var BranchIngress, services: Services,
     return false
   ingress.parent = parent
   true
+
 proc pollBranchIngress(owner: var ApplicationNode, services: var Services) =
   ## Collect exact native ownership before retaining a certificate or advancing the detached batch.
   if not owner.branchIngress.policy.ready: return
@@ -710,6 +818,7 @@ proc pollBranchIngress(owner: var ApplicationNode, services: var Services) =
       owner.branchIngress.reply = completed.value.value
       owner.branchIngress.remaining = owner.branchIngress.reply.blockCount
       owner.branchIngress.anchored = false
+
 proc submitBranchIngress(owner: var ApplicationNode, services: var Services,
     clock: MonoTime, now: StateTime): bool {.raises.} =
   ## Schedule one native transition or one bounded CE128 retrieval per arbitration turn.
@@ -781,6 +890,7 @@ proc submitBranchIngress(owner: var ApplicationNode, services: var Services,
     owner.branchIngress.checking = true
     return true
   false
+
 proc receiveChecked(owner: var ApplicationNode, clock: MonoTime) =
   ## Bound detached waiting time even while an unrelated Services job holds the graph gate.
   if owner.checkedPhase in [CheckedRequestPhase.Receiving, CheckedRequestPhase.Waiting,
@@ -799,6 +909,7 @@ proc receiveChecked(owner: var ApplicationNode, clock: MonoTime) =
   owner.checkedWire = completed.value.bytes # Fresh detached bounded bytes outlive real native stream retirement.
   owner.checkedNetwork = default(NodeRequestTicket)
   owner.checkedPhase = CheckedRequestPhase.Waiting
+
 proc collectChecked(owner: var ApplicationNode) =
   ## Collect only this exact CPU generation; a foreign Done operation cannot be retired by this ticket.
   if owner.checkedPhase != CheckedRequestPhase.Verifying: return
@@ -827,6 +938,7 @@ proc collectChecked(owner: var ApplicationNode) =
     owner.checkedOutcome = CheckedRequestCompletion(status: CheckedCompletionKind.Interrupted)
   owner.checkedWorker = default(ProofWorkerTicket)
   owner.checkedPhase = CheckedRequestPhase.Done
+
 proc submitChecked(owner: var ApplicationNode): bool {.raises.} =
   ## Admit after temporary trusted-source capture retires; Busy leaves one bounded detached reply waiting.
   if owner.checkedPhase != CheckedRequestPhase.Waiting: return false
@@ -849,6 +961,7 @@ proc submitChecked(owner: var ApplicationNode): bool {.raises.} =
   owner.preferFetch = true
   owner.preferChecked = false # An inbound responder gets first opportunity after this verification turn.
   true
+
 proc stage(owner: var ApplicationNode, config: ConnectionConfig, limits: SafroleStateConfig,
     now: StateTime): NodeError =
   ## Every temporary Services view retires on return, before the host can submit native CPU work.
@@ -866,6 +979,7 @@ proc stage(owner: var ApplicationNode, config: ConnectionConfig, limits: Safrole
   owner.stamp = SourceStamp(head: array[32, byte](head.value.blockHash),
     finalized: array[32, byte](finalized.value.blockHash), now: now)
   NodeError.None
+
 proc open*(owner: var ApplicationNode, services: var Services, config: ConnectionConfig,
     limits: SafroleStateConfig, now: StateTime): NodeError =
   ## Bind exactly one stable full-state Services owner; missing finality never falls back to best.
@@ -907,6 +1021,7 @@ proc open*(owner: var ApplicationNode, services: var Services, config: Connectio
   owner.preferChecked = false
   owner.opened = true
   NodeError.None
+
 proc refresh(owner: var ApplicationNode, now: StateTime): NodeError =
   ## Capture changed source metadata only under the graph gate, without retaining any map/header owner.
   let services = owner.services
@@ -932,6 +1047,7 @@ proc refresh(owner: var ApplicationNode, now: StateTime): NodeError =
   owner.epochHeld = advanced.value == EpochUpdate.Held
   owner.stamp = SourceStamp(head: headHash, finalized: finalizedHash, now: now)
   NodeError.None
+
 proc clearJob(owner: var ApplicationNode) =
   ## Drop host-only tickets only after matching collection/join or confirmed stale retirement.
   owner.pending = false
@@ -939,6 +1055,7 @@ proc clearJob(owner: var ApplicationNode) =
   owner.workerTicket = default(ProofWorkerTicket)
   owner.readTicket = default(NodeReadTicket)
   owner.pendingRequest = default(ReadRequest)
+
 proc close*(owner: var ApplicationNode) =
   ## Cancel/join only this host's exact worker before retiring native callbacks and the Services borrow.
   owner.streams.stop()
@@ -996,6 +1113,7 @@ proc close*(owner: var ApplicationNode) =
   owner.epochHeld = false
   owner.services = nil
   owner.stamp = default(SourceStamp)
+
 proc serveCached(owner: var ApplicationNode, task: NodeReadTask): bool =
   ## A hit needs no canonical graph or worker, but still requires the native ticket's exact method/hash binding.
   case task.request.kind
@@ -1018,6 +1136,7 @@ proc serveCached(owner: var ApplicationNode, task: NodeReadTask): bool =
   else: return false # Other methods require their canonical backend, never guessed cached state.
   owner.preferChecked = true
   true
+
 proc serveDetached(owner: var ApplicationNode) =
   ## Inspect one cached kind per turn; alternate when both are populated and preserve original miss deadlines.
   let hasReports = owner.reports.len > 0 or owner.judgments.retainedReportCount > 0
@@ -1031,6 +1150,7 @@ proc serveDetached(owner: var ApplicationNode) =
   if owner.serveCached(task.value): return
   if not owner.streams.deferRead(task.value.ticket):
     discard owner.streams.reject(task.value.ticket) # Failed revocation never leaves taken work without an owner.
+
 proc dispatchGossip(owner: var ApplicationNode, clock: MonoTime) =
   ## Retire every temporary canonical request lookup in this activation before the host can admit its next CPU worker.
   let services = owner.services
@@ -1043,6 +1163,7 @@ proc dispatchGossip(owner: var ApplicationNode, clock: MonoTime) =
     else:
       discard owner.gossip.dispatch(owner.streams, candidate,
           clock) # Accepted topology and live recipient generation are checked at the actual send.
+
 proc refreshTickets(owner: var ApplicationNode, now: StateTime) =
   ## Source aliases retire here before another CPU job can borrow the shared ARC input context.
   if owner.tickets.len == 0: return
@@ -1051,6 +1172,7 @@ proc refreshTickets(owner: var ApplicationNode, now: StateTime) =
   let selected = services[].currentTicketSource()
   if selected.error == NetworkTicketError.None:
     discard owner.tickets.advance(selected.value, now)
+
 proc finishTicket(owner: var ApplicationNode,
     outcome: NetworkTicketResult[CheckedNetworkTicket], now: StateTime): bool =
   ## Completed proof work still needs fresh clock/context/stream eligibility before retention or acknowledgment.
@@ -1069,6 +1191,7 @@ proc finishTicket(owner: var ApplicationNode,
     if owner.forwarding.advance(owner.streams, source.value, now, owner.connectivityApplied):
       discard owner.forwarding.offer(outcome.value) # Admission after the forwarding window may still supply a valid pending block input.
   true
+
 proc dispatchTickets(owner: var ApplicationNode, now: StateTime, clock: MonoTime) =
   ## Retire all selected-source aliases before another canonical worker can be submitted.
   if owner.forwarding.len == 0: return
@@ -1080,6 +1203,7 @@ proc dispatchTickets(owner: var ApplicationNode, now: StateTime, clock: MonoTime
     return
   if owner.forwarding.advance(owner.streams, selected.value, now, owner.connectivityApplied):
     discard owner.forwarding.dispatch(owner.streams, now, clock)
+
 proc finishProduction(owner: var ApplicationNode, outcome: NetworkTicketResult[
     CheckedNetworkTicket], now: StateTime): bool =
   ## A genuine generated proof still needs current finalized context/inclusion and the original first-step window.
@@ -1102,6 +1226,7 @@ proc finishProduction(owner: var ApplicationNode, outcome: NetworkTicketResult[
       return owner.forwarding.offer(outcome.value) # Self-proxies skip CE131 and keep the independent later CE132 delay.
     return false
   owner.origins.offer(outcome.value)
+
 proc dispatchOrigins(owner: var ApplicationNode, now: StateTime, clock: MonoTime) =
   ## Fresh-source staging aliases retire before another shared CPU activation can borrow signer/source storage.
   if owner.origins.len == 0: return
@@ -1113,6 +1238,7 @@ proc dispatchOrigins(owner: var ApplicationNode, now: StateTime, clock: MonoTime
     return
   if owner.origins.advance(owner.streams, source.value, now, owner.connectivityApplied):
     discard owner.origins.dispatch(owner.streams, now, clock)
+
 proc prepareProduction(owner: var ApplicationNode, now: StateTime): bool =
   ## Only scalar scheduling decisions escape selected-source capture; no source or signer alias survives admission.
   let services = owner.services
@@ -1137,6 +1263,7 @@ proc prepareProduction(owner: var ApplicationNode, now: StateTime): bool =
     owner.productionLimit = source.value.networkAttempts
     owner.productionContextReady = true
   owner.productionAttempt < owner.productionLimit
+
 proc submitProduction(owner: var ApplicationNode, now: StateTime): bool {.raises.} =
   ## At most two epoch attempts share the existing worker; all staging activations retire before this exact submission.
   if owner.producing or not owner.prepareProduction(now): return false
@@ -1150,6 +1277,7 @@ proc submitProduction(owner: var ApplicationNode, now: StateTime): bool {.raises
   owner.producing = true
   inc owner.productionAttempt # Failed native signing still consumes its bounded local attempt for this context/key configuration.
   true
+
 proc beginIncoming(owner: var ApplicationNode, task: NodeReadTask,
     now: StateTime): bool {.raises.} =
   ## Each specialized admission retires staging aliases before its one exact worker can execute.
@@ -1177,6 +1305,7 @@ proc beginIncoming(owner: var ApplicationNode, task: NodeReadTask,
   owner.pending = true
   owner.cancelled = false
   true
+
 proc pollHost(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     maximumMs: range[0..1], assuranceClock: bool, assuranceNow: AssuranceTime): bool {.raises.} =
   ## Service detached native data during CPU work; capture/refresh only after the exclusive graph gate opens.
@@ -1367,6 +1496,7 @@ proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     maximumMs: range[0..1] = 1): bool {.raises.} =
   ## Existing hosts service transport and already-owned work without inventing Common Era retention time from a slot number.
   owner.pollHost(clock, now, maximumMs, false, AssuranceTime(0))
+
 proc poll*(owner: var ApplicationNode, clock: MonoTime, now: StateTime,
     assuranceNow: AssuranceTime, maximumMs: range[0..1] = 1): bool {.raises.} =
   ## Validator hosts explicitly supply whole Common Era seconds separately from slots before new durable acquisition jobs are admitted.

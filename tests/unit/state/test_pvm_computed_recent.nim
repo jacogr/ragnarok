@@ -16,11 +16,14 @@ import ../../support/[pvm_computed_recent, pvm_computed_state_vectors, pvm_compu
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashes after all genuine execution/admission fixtures have been prepared.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count primitive attempts without replacing successful provider behavior.
+
 proc expect[T](outcome: ComputedRecentResult[T], reason: ComputedRecentError) =
   ## Compare typed alternatives before any selected success extraction.
   assert outcome.error == reason, "computed recent reason"
+
 proc literalHistory(): seq[byte] =
   ## Independently spell E2-record-count, two E(header,superPeak,state,E4slot,empty pairs), empty belt.
   result = newSeq[byte](204)
@@ -108,6 +111,7 @@ expect(checkComputedRecentAnchor(source, short), ComputedRecentError.LimitExceed
 expect(checkComputedRecentAnchor(missing.source, recentConfig()), ComputedRecentError.MissingState)
 assert hashes() == 0, "recent correction and tuple checking perform no hashes"
 reset(0)
+
 proc detached(): RecentComputedReport =
   ## Retain exact source/state and corrected history after every temporary fixture handle retires.
   let fixture = recentFixture()
@@ -117,6 +121,7 @@ assert uint32(retained.computedRecentAnchor.value.slot) == 20, "detached anchor 
 assert historyInfo(retained.computedRecentHistory.value).value.blocks == 2, "detached history lifetime"
 assert array[32, byte](retained.computedRecentAnchor.value.state) ==
   array[32, byte](retained.computedRecentSource.value.computedStateSnapshot.value.commitment.root), "detached source/state lifetime"
+
 proc cycle(exact, short: HistoryConfig) =
   ## Release corrected C3 copies and acyclic source/history ownership on accepted and refused paths.
   let done = checkComputedRecentAnchor(source, exact).value

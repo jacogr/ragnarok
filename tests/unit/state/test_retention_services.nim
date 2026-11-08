@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real signed execution, startup policies and offline block/state queries agree across full backends and retention selections.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context,
@@ -17,8 +18,10 @@ import ../../../src/storage/history/index as history_index
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/[bounded, header, report_owned]
 import ../../../src/lib/json/writer as json_writer
+
 proc retentionPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each assertion/crash leaves only its own ignored process namespace for inspection.
+
 proc configured(chain, path, backend: string, selection: int): Options =
   ## Explicit policy values are parsed by the same service boundary as production startup.
   var args = @["server", "--with-state", "--chain", chain]
@@ -33,6 +36,7 @@ proc configured(chain, path, backend: string, selection: int): Options =
     args.add("--retain-blocks"); args.add("300")
   result = default(Options)
   assert parseCanonicalOptions(args, result)
+
 proc waitAdoption(owner: var Services) =
   ## Dispatcher polling observes only permitted scalars until collection installs the durable receipt.
   let start = getMonoTime()
@@ -42,6 +46,7 @@ proc waitAdoption(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining)
+
 proc offline(chain, path, backend, hash, output: string): Options =
   ## No retention override or listener is accepted by an offline query.
   var args = @["history", "--with-state", "--chain", chain, "--state-storage", "disk",
@@ -50,6 +55,7 @@ proc offline(chain, path, backend, hash, output: string): Options =
     args.add("--history-checkpoint"); args.add(output)
   result = default(Options)
   assert parseOptions(args, result)
+
 proc exportRefusals(chain, path, backend: string, hash: BlockHash) {.raises.} =
   ## Kernel no-clobber publication and canonical namespace guards preserve exact journal/manifest and historical bytes.
   let primary = if backend == "journal": path else: path & "/CURRENT"
@@ -198,6 +204,7 @@ proc cycle(fixture: RecoveryExecutionFixture, chain, backend: string, selection:
     var missing = path & "-absent"
     var metadata = default(Stat)
     assert posix.stat(missing.toCString(), metadata) != 0 and errno() == ENOENT
+
 proc main() {.raises.} =
   ## Every full backend executes the exact same admitted child under default, archive and bounded policies.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent child verification exits preserve exact file bytes and release locks without transferring any decoded graph.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -17,6 +18,7 @@ const
   FileName = Directory & "/checkpoint"
 type VerificationCase = enum ## Every refused verification remains an actual completed read operation, never a publication or cancellation.
   Valid, Context, ContextBeforeBudget, MapBudget, ByteBudget, IdentityDamage
+
 func wanted(mode: VerificationCase): ApplicationCheckpointFileError =
   ## Explicit expected reasons distinguish independent-context, resource and identity-format refusals.
   case mode
@@ -24,11 +26,13 @@ func wanted(mode: VerificationCase): ApplicationCheckpointFileError =
   of VerificationCase.Context, VerificationCase.ContextBeforeBudget: ApplicationCheckpointFileError.ContextMismatch
   of VerificationCase.MapBudget, VerificationCase.ByteBudget: ApplicationCheckpointFileError.LimitExceeded
   of VerificationCase.IdentityDamage: ApplicationCheckpointFileError.IdentityFailure
+
 proc clearFiles() =
   ## Known names retire only after children and native owners; final rmdir exposes unexpected temporary writes.
   for suffix in ["", ".lock"]:
     var path = FileName & suffix
     discard posix.unlink(path.toCString())
+
 proc attempt(original, candidate: ApplicationChain, mode: VerificationCase) {.raises.} =
   ## No live thread/lock crosses fork; the child exits with a retained Done receipt and its exclusive writer still active.
   clearFiles()
@@ -87,6 +91,7 @@ proc attempt(original, candidate: ApplicationChain, mode: VerificationCase) {.ra
     assert sameApplicationCheckpoint(verified.value,
         actual) # A fresh parent uses independent correct context and sufficient policy.
   assert reader.close() == ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Header/profile/map variants cross six actual verification outcomes and unacknowledged process exits each.
   var directory = Directory

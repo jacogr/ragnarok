@@ -1,11 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Checked-loop execution: literal byte effects and independent single-step CPU/accounting/fault outcomes.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))

@@ -118,7 +118,6 @@ proc main(): int =
       stdout.writeLine(report)
       return 0 # Standalone execution retires all prepared/native owners before process teardown.
 
-
     if options.argumentCount() == 1 and options.argument(1) == "history":
       let outcome = runHistoricalQuery(options)
       if outcome.error == HistoryError.None:

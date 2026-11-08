@@ -2,26 +2,32 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Direct complete-map construction preserves input ownership, error precedence and pre-hash ceilings.
+
 # @@Verification={"arc": "full_state_trie_construction_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Real primitive refusal detects accidental hashing during bounded preflight.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Exact calls distinguish final leaf hashing from temporary construction work.
+
 proc key(index: int): StateKey =
   ## Long shared prefixes exercise the constructor's deepest initial topology.
   var raw = default(array[31, byte])
   raw[29] = byte(index shr 8)
   raw[30] = byte(index and 255)
   StateKey(raw)
+
 proc policy(): FullStateTrieLimits =
   ## Complete-map ceilings permit construction while both mutation ceilings stay zero.
   FullStateTrieLimits(trie: StateTrieLimits(items: ElementLimit(65), perValue: ByteLimit(256),
     totalValueBytes: ByteLimit(16640), nodes: TrieNodeLimit(20000)))
+
 proc fixture(count, size: int): seq[StateEntry] =
   ## Reverse order separates borrowed source positions from sorted topology positions.
   result = newSeq[StateEntry](count)
@@ -29,6 +35,7 @@ proc fixture(count, size: int): seq[StateEntry] =
     var bytes = newSeq[byte](size)
     for offset in 0..<size: bytes[offset] = byte((index+offset) and 255)
     result[count-1-index] = StateEntry(key: key(index), value: bytes)
+
 proc construction(count, size: int) =
   ## Independent complete-map commitments precede the observed constructor and payload mutation.
   var entries = fixture(count, size)
@@ -50,10 +57,12 @@ proc construction(count, size: int) =
   assert trie.commitment.entries == count
   assert trie.apply([TrieWrite(key: key(0), kind: TrieWriteKind.Put)]).error ==
       TrieError.LimitExceeded
+
 proc refused(entries: openArray[StateEntry], limits: FullStateTrieLimits, reason: TrieError) =
   ## Every refused preflight owns no completed trie and makes zero primitive calls.
   reset(1)
   assert newFullStateTrie(entries, limits).error == reason and calls() == 0
+
 proc boundaries() =
   ## Combined invalidities preserve the original item, payload, duplicate then node ordering.
   let duplicate = [StateEntry(key: key(0), value: @[1'u8]), StateEntry(key: key(0), value: @[2'u8])]

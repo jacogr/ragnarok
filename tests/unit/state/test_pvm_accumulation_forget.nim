@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_forget_arc_release"}
 
 ## Authored forget programs project pinned empty deletion and verify every history transition, expiry and immutable checkpoint.
@@ -24,8 +25,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject primitive failure after genuine fixture preparation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Observe exact failure positions and no namespace work on preflight refusals.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Fail after bounded successful namespace/trie hashes.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
@@ -135,7 +138,6 @@ proc resultCode(done: AccumulationDispatchResult, code: uint64, second = 196608'
   assert uint64(cpu.registers[7]) == code and uint64(cpu.registers[8]) == second,
     "expected verdict/word " & $code & "/" & $second & " got " & $uint64(cpu.registers[7]) & "/" &
         $uint64(cpu.registers[8])
-
 
 # A removal drops its request and only the preimage selected by the current Omega_F row.
 proc removed(owner: AccumulationEffectContext, lookupHash = authoredHash(), length = 3'u32,
@@ -396,6 +398,7 @@ assert roundtripContext.effectAccountWriteCount.value == 1,
 assert array[32, byte](roundtripContext.effectAccounts.value.commitment.root) == array[32, byte](
     context(roundtrip, AccumulationDimension.Exceptional).effectAccounts.value.commitment.root),
     "solicit and forget restore the complete original map without deleting another length's blob"
+
 # Foreign request fixtures use the same hash but independent account, history and preimage namespaces.
 proc foreignRows(present = false, history = requestedHistory(), supervisor = 42'u32,
     incarnation = 0'u32, balance = 1000'u64, protected = 17'u64): seq[StateEntry] =

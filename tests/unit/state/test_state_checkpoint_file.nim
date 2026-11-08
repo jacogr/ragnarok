@@ -14,16 +14,19 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const FileName = "state-checkpoint-file.bin"
+
 proc policy(): StateStoreLimits =
   ## A value crossing one read chunk verifies chunk iteration without large fixtures.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(4100),
     totalValueBytes: ByteLimit(4100), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(4100))
+
 proc cycle() =
   ## Successful files and decoder failures retire both read buffers and map owners before observation.
   assert loadFullCheckpoint(FileName, policy(), ByteLimit(5000)).error == CheckpointFileError.None
   assert loadFullCheckpoint(FileName, policy(), ByteLimit(1)).error ==
       CheckpointFileError.LimitExceeded
+
 proc main() {.raises.} =
   ## Exercise exact and crossed chunk boundaries with real file bytes and independent output owners.
   var path = FileName

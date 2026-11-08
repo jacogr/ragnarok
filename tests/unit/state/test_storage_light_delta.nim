@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated light-delta framing preserves canonical edits, exact predecessors and atomic owned restoration.
+
 # @@Verification={"arc":"storage_light_delta_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -13,39 +14,49 @@ import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Invalid framing, identity and source-policy refusals must not reach the provider.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Every frame/proof/successor checksum boundary can independently refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Distinguish strict verification from merely accepting matching encoded bytes.
+
 proc key(first: byte): StateKey =
   ## Fixture queries separate retained presence, authenticated absence and unknown evidence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## Both initial and final knowledge fit exact independent mutation, image and proof ceilings.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(3),
     writes: ElementLimit(3), valueBytes: ByteLimit(66),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc limits(): LightDeltaLimits =
   ## One frame cannot widen the source cache's mutation or proof policy.
   LightDeltaLimits(items: ElementLimit(3), bytes: ByteLimit(4096))
+
 proc put(input: var seq[byte], offset: int, value: uint64) =
   ## Tests author exact little-endian malformed fields without native overflow or unchecked offsets.
   for index in 0..<8: input[offset+index] = byte((value shr (index*8)) and 255)
+
 proc seal(input: var seq[byte]) =
   ## A valid frame checksum cannot authorize an invalid transition, noncanonical body or bad proof.
   resetHash(0)
   let checksum = array[32, byte](blake2b256(input.toOpenArray(0, input.len-33)).value)
   for index in 0..<32: input[input.len-32+index] = checksum[index]
+
 proc checkError(before: PreparedLightSnapshot, input: seq[byte], reason: LightDeltaError) =
   ## Copying and consuming restoration share strict refusals; failed ownership transfer preserves every byte.
   assert decodeLightDelta(input, before, LightDeltaSequence(1), limits()).error == reason
   var owned = input
   assert takeLightDelta(owned, before, LightDeltaSequence(1), limits()).error == reason
   assert owned == input
+
 proc cycle(before: PreparedLightSnapshot, incoming: LightStateProof, encoded: seq[byte]) =
   ## Retire success, late provider refusal and retry, including all opaque transition/successor owners.
   resetHash(0)
@@ -62,6 +73,7 @@ proc cycle(before: PreparedLightSnapshot, incoming: LightStateProof, encoded: se
   resetHash(0)
   let prepared = prepareLightDelta(before, LightDeltaSequence(1), [incoming], [key(0)], limits()).value
   assert prepared.bytes == encoded
+
 proc golden() =
   ## Independent Python hashlib/struct construction fixes the complete empty-transition wire image.
   resetHash(0)
@@ -82,6 +94,7 @@ proc golden() =
   let frozen = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], readOnly).value
   assert prepareLightDelta(frozen, LightDeltaSequence(high(uint64)), [], [], limits()).error ==
       LightDeltaError.None
+
 proc exercise(before: PreparedLightSnapshot, incoming: LightStateProof) =
   ## Strict complete transitions match independent preparation and preserve original knowledge on every refusal.
   resetHash(0)
@@ -205,6 +218,7 @@ proc exercise(before: PreparedLightSnapshot, incoming: LightStateProof) =
   let retired = getOccupiedMem()
   assert baseline == retired
   recordArcRelease("storage_light_delta", 1000, baseline, retired)
+
 proc main() =
   ## Complete independent map hashing, rather than partial-cache serialization, fixes the trusted root.
   golden()

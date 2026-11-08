@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict runtime extraction, live-owner and managed selected-state access failures.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/[services, options]
 import ../../src/app/proof/[query as proof_query, worker as proof_worker]
@@ -9,6 +10,7 @@ import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, report_owned]
 import ../../src/state/proof/service as proof_service
 import ../support/[application_candidate_context, proof_query_context]
+
 proc main() {.raises.} =
   ## Every invalid case must fail at its exact guard; the control closes actual native work.
   let mode = paramStr(1)

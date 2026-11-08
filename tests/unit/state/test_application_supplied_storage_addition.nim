@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine new raw storage identities qualify from complete supplied successor declarations and authenticate under the actual posterior root.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_mutation_context,
     current_namespace_context, current_namespace_transition_context,
@@ -19,6 +20,7 @@ import ../../../src/state/store
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, accounts as state_accounts,
     composition as state_composition, service_values as state_service_values]
+
 proc main() {.raises.} =
   ## Service99 is funded before signatures; its real host write creates raw key7 while every untouched raw identity remains explicitly supplied.
   let value = @[91'u8, 92, 93]

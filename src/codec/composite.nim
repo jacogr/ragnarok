@@ -421,7 +421,6 @@ proc inspectPreimages*(input: openArray[byte], limits: PreimageLimits,
   var unused: array[0, Preimage] = default(array[0, Preimage])
   walk(input, int(prefix.consumed), int(count), limits, unused, false, wireLimit)
 
-
 proc inspectPreimageExtrinsic*(input: openArray[byte], limits: PreimageLimits,
     wireLimit: ByteLimit): PreimageResult {.raises: [].} =
   ## Enforce the protocol sequence bound before applying independent local capture policies.

@@ -2,24 +2,30 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trust extraction guards have genuine captured-input and actual decoder-error controls.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/chain
 import ../../src/app/checkpoint/[identity as checkpoint_identity, trust as checkpoint_trust]
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, header]
 import ../support/application_checkpoint_context
+
 proc extract(outcome: CheckpointTrustResult) =
   ## Opaque discriminator prevents replacing runtime evidence with static rejection.
   discard outcome.value
+
 proc inspect(trust: TrustedApplicationCheckpoint) =
   ## Fixed identity requires initialized operator inputs.
   discard trust.identity
+
 proc reason(outcome: CheckpointTrustResult) =
   ## Identity decoder reason requires that exact failure alternative.
   discard outcome.identityError
+
 proc fileReason(outcome: CheckpointTrustResult) =
   ## A native path reason requires an actual selected-file failure.
   discard outcome.fileError
+
 proc main() {.raises.} =
   ## Defaults/refusals and positive controls call the same helpers.
   case paramStr(1)

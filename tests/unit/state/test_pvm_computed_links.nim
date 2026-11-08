@@ -15,8 +15,10 @@ import ../../support/[pvm_computed_links, pvm_computed_report, pvm_computed_repo
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all new hashes only after real source preparation to prove the relation check repeats no work.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe actual primitive attempts rather than manufacturing successful commitments.
+
 proc expect[T](outcome: ComputedLinksResult[T], reason: ComputedLinksError) =
   ## Check the precise alternative without extracting a failed candidate or accepted prefix.
   assert outcome.error == reason, "computed links reason"
@@ -90,6 +92,7 @@ expect(prepareComputedLinks(wrongSource, exporters, ElementLimit(8)),
 expect(prepareComputedLinks(source, replaced, ElementLimit(8)), ComputedLinksError.PackageMismatch)
 assert hashes() == 0, "relation validation performs no new hashing"
 reset(0)
+
 proc detached(): ComputedReportLinks =
   ## Retain original importer transcript and exporter after every fixture-preparation local retires.
   let exporter = linksExporter(42)
@@ -100,6 +103,7 @@ assert retained.computedLinkCount.value == 1, "detached owner count"
 assert retained.computedLinkWitness(ReportLookupIndex(
     0)).value.computedReportInfo.value.header.segmentRoot.bytes == pairs[0].segmentRoot.bytes, "detached exporter lifetime"
 let rejected = replaced # Freeze caller replacements before repeated scoped validation.
+
 proc cycle() =
   ## Complete and retire fixed acyclic ownership, including candidates refused after a valid seven-entry prefix.
   let done = prepareComputedLinks(source, exporters, ElementLimit(8)).value

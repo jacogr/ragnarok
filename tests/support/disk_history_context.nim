@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Structurally captured linked histories exercise durable retention without fabricating execution certificates.
+
 import std/assertions
 import ./application_checkpoint_context
 import ../../src/app/chain
@@ -15,6 +16,7 @@ type DiskHistoryFixture* = object ## Every authored header has its exact complet
   view*: ChainView
   blocks*: seq[BlockSnapshotResult]
   policy*: StateStoreLimits
+
 proc diskHistoryFixture*(children = 12, withFinality = true,
     limit = ElementLimit(MaxRetainedBlocks)): DiskHistoryFixture {.raises.} =
   ## Only local history/capture contracts are tested; these modified seals are never execution certificates.

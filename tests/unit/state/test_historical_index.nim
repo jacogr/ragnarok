@@ -4,6 +4,7 @@
 # @@Verification={"arc": "historical_index_arc_release"}
 
 ## Fixed metadata and immutable memory archives preserve exact selection without widening protocol lookup history.
+
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, arc_evidence]
 import ../../../src/storage/history/index as history_index
@@ -68,6 +69,7 @@ proc codecWitness() =
   assert uint64(narrow.firstOrdinal) == 298 and narrow.len == 3
   let enlarged = narrow.withHistoryPolicy(archiveHistoryPolicy()).value
   assert enlarged.len == 3 and uint64(enlarged.firstOrdinal) == 298 # No implicit backfill after pruning.+
+
 proc memoryWitness() {.raises.} =
   ## Full history has a compressed immutable index; the protocol view keeps only its original bounded suffix.
   let fixture = diskHistoryFixture(96)
@@ -114,6 +116,7 @@ proc releaseCycle(blocks: openArray[BlockSnapshotResult]) =
   let held = view.historicalBlockAt(blocks[1].value.blockHash)
   let pruned = view.withHistoricalPolicy(boundedHistoryPolicy(3).value).value
   assert held.error == GenesisError.None and pruned.historicalCursor.len == 3
+
 proc arcWitness() {.raises.} =
   ## Fresh ARC evidence compares live bytes after identical complete immutable-index lifecycles.
   let fixture = diskHistoryFixture(16)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently signed raw CE145 messages use explicitly trusted genesis key-role seeds. These fixtures test original membership/signature claims, not block execution, guarantee qualification or report validity.
+
 import std/assertions
 import ../../src/jamnp-s/[audits, judgment_claim, assurance_store]
 import ../../src/codec/[bounded, disputes, guarantees, assurances]
@@ -9,6 +10,7 @@ import ../../src/codec/state/safrole
 import ../../src/chain/[genesis, provider]
 import ../../src/crypto/primitives
 import ./jamnp_topology_fixture
+
 proc claimLimits*(): JudgmentClaimLimits =
   ## One maximum mixed-epoch batch has independent finite whole-read, scratch, output and Ed25519 transcript credits.
   JudgmentClaimLimits(message: AuditLimits(validators: ValidatorCount(12), cores: CoreCount(4),
@@ -16,6 +18,7 @@ proc claimLimits*(): JudgmentClaimLimits =
     rosters: topologyLimits().validators, readBytes: ByteLimit(1000000),
     workspaceBytes: ByteLimit(16000000), retainedBytes: ByteLimit(64000),
     signatures: ElementLimit(16), signatureBytes: ByteLimit(688))
+
 proc claimRoster(first, count: int): seq[StateValidator] =
   ## Real test-owned Ed25519 seeds populate a trusted key-role source before any incoming claim is verified.
   result = newSeq[StateValidator](count)
@@ -24,6 +27,7 @@ proc claimRoster(first, count: int): seq[StateValidator] =
     seed[0] = byte(first+ordinal)
     result[ordinal] = StateValidator(ed25519: StateEdKey(array[32, byte](
       publicKey(importSeed(seed).value).value)))
+
 proc claimView*(repeated = false, nulled = false, atSlot = 13'u32): ChainView =
   ## A configured genesis key-role source explicitly has current six and previous nine validators; it makes no claim of a computed epoch transition.
   var current = claimRoster(21, 6)
@@ -34,14 +38,17 @@ proc claimView*(repeated = false, nulled = false, atSlot = 13'u32): ChainView =
   let source = topologyCaptured([previous, current, next], atSlot = atSlot)
   assert source.error == GenesisError.None
   genesisView(source)
+
 proc successorParent*(view: ChainView): BlockSnapshotResult =
   ## The epoch-two topology already names the known successors.
   topologyCaptured([claimRoster(21, 6), claimRoster(41, 6), claimRoster(51, 6)],
       atSlot = 24, parent = view.bestBlock)
+
 proc successorSnapshot*(view: ChainView): BlockSnapshotResult =
   ## Explicitly link a later role fixture to the exact retained epoch-one authority.
   topologyCaptured([claimRoster(41, 6), claimRoster(51, 6), claimRoster(61, 6)],
       atSlot = 36, parent = view.bestBlock)
+
 proc rawClaim*(epoch: uint32, validator: uint16, marker: byte, positive = true,
     hashMarker = 71'u8): AuditJudgment =
   ## Malicious or honest network records can be signed independently of evaluation; only the actual signature claim is certified by this test.
@@ -62,14 +69,17 @@ proc rawClaim*(epoch: uint32, validator: uint16, marker: byte, positive = true,
   for character in domain: message.add(byte(ord(character)))
   for octet in hash: message.add(octet)
   result.signature = DisputeSignature(array[64, byte](sign(importSeed(seed).value, message).value))
+
 proc claimWire*(records: openArray[AuditJudgment]): seq[byte] =
   ## Encode only structurally well-formed complete records; the codec never grants a cryptographic capability.
   let wire = encodeJudgments(records, claimLimits().message)
   assert wire.error == AuditError.None
   wire.value
+
 proc stopClaim(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Trusted execution-only cancellation retains no user callback graph.
   true
+
 proc judgmentClaimChecks*() =
   ## Different original populations, exact GP domains, unqualified negative credentials, repeated/null positions and late failure all use actual Ed25519 verification.
   let view = claimView()
@@ -162,7 +172,6 @@ proc judgmentClaimChecks*() =
   let finalized = advanced.finalizeView(later.value.blockHash).value
   assert verifyJudgmentClaims(finalized, historical, claimLimits(), history = true).error ==
       JudgmentClaimError.UnknownEpoch, "independent finality retires the older authority"
-
 
 proc judgmentClaimCycle*(view: ChainView, wire: seq[byte]) =
   ## Whole checked batches and their fixed records release without retaining canonical state between iterations.

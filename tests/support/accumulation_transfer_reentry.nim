@@ -35,7 +35,9 @@ import ./[accumulation_execution_context, accumulation_reentry_context,
 
 # Observe preparation's private account phase without replacing guest execution, source certificates or backend verdicts.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 type

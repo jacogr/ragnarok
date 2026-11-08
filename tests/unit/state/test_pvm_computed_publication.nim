@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_publication_arc_release"}
 
 ## Exact computed report successors preserve all posterior chapters and publish only to their original parent handles.
@@ -17,8 +18,10 @@ import ../../support/[pvm_computed_publication, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force the maintained hash backend to refuse during successor preparation, after real admission completes.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe whether final publication performs any new hashing.
+
 proc expect[T](outcome: ComputedPublicationResult[T], reason: ComputedPublicationError) =
   ## Check exact alternative before extracting a completed map or selected store cause.
   assert outcome.error == reason, "computed publication reason"
@@ -75,11 +78,13 @@ expect(default(ComputedReportSuccessor).computedSuccessorSource,
     ComputedPublicationError.Uninitialized)
 expect(default(ComputedReportSuccessor).computedSuccessorSnapshot,
     ComputedPublicationError.Uninitialized)
+
 proc detached(): ComputedReportSuccessor =
   ## Retain complete provenance and final map after all original mutable handles retire.
   prepareComputedPublication(publicationFixture(), ByteLimit(100000)).value
 let retained = detached()
 assert retained.computedSuccessorSnapshot.error == ComputedPublicationError.None
+
 proc cycle(source: AdmittedComputedReports, parent: StateStoreSnapshot, bytes: ByteLimit) =
   ## Hash a private successor, publish a local parent handle and release every new map/source/copy.
   let successor = prepareComputedPublication(source, bytes).value

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque runtime result helpers reject default/refused payloads with genuine success controls.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/chain
 import ../../src/app/checkpoint/[identity as checkpoint_identity, recovery as checkpoint_recovery,
@@ -11,18 +12,23 @@ import ../../src/chain/[genesis, provider]
 import ../../src/codec/header
 import ../../src/state/store
 import ../support/application_checkpoint_context
+
 proc extract(outcome: ApplicationRecoveryResult) =
   ## The helper cannot prove a caller discriminator at compile time.
   discard outcome.value
+
 proc inspectState(outcome: ApplicationRecoveryResult) =
   ## Nested error access requires the actual matching refusal.
   discard outcome.stateError
+
 proc inspectEnvelope(outcome: ApplicationRecoveryResult) =
   ## Envelope reasons are inaccessible on default or successful recovery.
   discard outcome.envelopeFailure
+
 proc inspectFile(outcome: ApplicationRecoveryResult) =
   ## A file failure reason requires that exact alternative.
   discard outcome.fileFailure
+
 proc main() {.raises.} =
   ## Genuine binding and missing-map controls exercise both guarded helpers.
   let mode = paramStr(1)

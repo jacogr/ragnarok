@@ -3,6 +3,7 @@
 
 ## Bounded GP N/T/WB trace construction and exact NP node representation support for availability data.
 ## These computations authenticate only against a caller-selected root; canonical report authority is a separate boundary.
+
 import ../codec/bounded
 import ../crypto/primitives
 
@@ -42,21 +43,26 @@ type
   TraceShape = object ## Fixed path capacity follows the public hard leaf-count bound.
     steps: array[AvailabilityTraceDepth, TraceStep]
     count, bytes: int
+
 func error*[T](outcome: AvailabilityMerkleResult[T]): AvailabilityMerkleError =
   ## Inspect a reason without exposing writable result storage.
   outcome.status
+
 func value*[T](outcome: AvailabilityMerkleResult[T]): T {.requires: outcome.status ==
     AvailabilityMerkleError.None.} =
   ## Only complete success exposes its payload.
   outcome.completed
+
 func cryptoError*[T](outcome: AvailabilityMerkleResult[
     T]): CryptoError {.requires: outcome.status == AvailabilityMerkleError.BackendFailure.} =
   ## Preserve only a genuine failed maintained Blake2b call.
   outcome.cryptoReason
+
 func failed[T](reason: AvailabilityMerkleError): AvailabilityMerkleResult[T] {.requires:
     reason notin {AvailabilityMerkleError.None, AvailabilityMerkleError.BackendFailure}.} =
   ## Construct simple/default reason-only alternatives, never a success or invented crypto child.
   AvailabilityMerkleResult[T](status: reason)
+
 func propagated[T, U](outcome: AvailabilityMerkleResult[U]): AvailabilityMerkleResult[T] {.requires:
     outcome.status != AvailabilityMerkleError.None.} =
   ## Converting failed scratch/result types preserves the selected cause without retaining successful data.
@@ -64,16 +70,20 @@ func propagated[T, U](outcome: AvailabilityMerkleResult[U]): AvailabilityMerkleR
     return AvailabilityMerkleResult[T](status: AvailabilityMerkleError.BackendFailure,
         cryptoReason: outcome.cryptoReason)
   failed[T](outcome.status)
+
 func valid*(trace: AvailabilityTrace): bool =
   ## A default trace is distinct from a genuine singleton's successful empty proof.
   trace.ready
+
 func root*(trace: AvailabilityTrace): Blake2bHash {.requires: trace.ready.} =
   ## A copied computed root is a commitment, not canonical availability authority.
   trace.root
+
 proc bytes*(trace: AvailabilityTrace): seq[byte] {.requires: trace.ready.} =
   ## Returned proof bytes are independent of retained trace storage.
   result = newSeq[byte](trace.wire.len)
   for index in 0..<result.len: result[index] = trace.wire[index]
+
 proc hashed(bytes: openArray[byte], budget: var HashBudget): AvailabilityMerkleResult[Blake2bHash] =
   ## Charge before the call and before addition, retaining the exact backend refusal on failure.
   if budget.calls >= uint64(budget.maximum.hashes): return failed[Blake2bHash](
@@ -88,9 +98,11 @@ proc hashed(bytes: openArray[byte], budget: var HashBudget): AvailabilityMerkleR
         cryptoReason: digest.error)
   AvailabilityMerkleResult[Blake2bHash](status: AvailabilityMerkleError.None,
       completed: digest.value)
+
 func validShape(width, count: int): bool =
   ## Bound factors independently before any caller forms their native product.
   width > 0 and width <= AvailabilityLeafBytes and count >= 0 and count <= AvailabilityTreeLeaves
+
 proc shape(width, count, index: int, leafTag: byte): AvailabilityMerkleResult[TraceShape] =
   ## Derive ceil/floor siblings, raw-versus-hash tags and offsets without reading any peer bytes.
   if not validShape(width, count): return failed[TraceShape](AvailabilityMerkleError.InvalidInput)
@@ -122,12 +134,14 @@ proc shape(width, count, index: int, leafTag: byte): AvailabilityMerkleResult[Tr
       selected -= left
       remaining -= left
   AvailabilityMerkleResult[TraceShape](status: AvailabilityMerkleError.None, completed: path)
+
 proc rawLeaf(flat: openArray[byte], width, index: int): NodeValue =
   ## Callers proved the complete flat extent and coordinate before forming this bounded offset.
   result = default(NodeValue)
   result.length = width
   let first = index*width
   for position in 0..<width: result.bytes[position] = flat[first+position]
+
 proc node(flat: openArray[byte], width, first, count: int,
     budget: var HashBudget): AvailabilityMerkleResult[NodeValue] =
   ## GP N returns a raw singleton child; only non-singleton subtrees hash the node-prefixed concatenation.
@@ -160,6 +174,7 @@ proc node(flat: openArray[byte], width, first, count: int,
   let bytes = array[32, byte](digest.value)
   for position in 0..<32: completed.bytes[position] = bytes[position]
   AvailabilityMerkleResult[NodeValue](status: AvailabilityMerkleError.None, completed: completed)
+
 proc fold(leaf: openArray[byte], proof: openArray[byte], path: TraceShape,
     budget: var HashBudget): AvailabilityMerkleResult[Blake2bHash] =
   ## Validate every expected tag/extent first, then reconstruct from the raw leaf upward through root-first trace storage.
@@ -197,6 +212,7 @@ proc fold(leaf: openArray[byte], proof: openArray[byte], path: TraceShape,
   for position in 0..<32: bytes[position] = current.bytes[position]
   AvailabilityMerkleResult[Blake2bHash](status: AvailabilityMerkleError.None,
       completed: Blake2bHash(bytes))
+
 proc prepareAvailabilityTrace*(flat: openArray[byte], width, count, index: int,
     leafTag: byte, limits: AvailabilityMerkleLimits): AvailabilityMerkleResult[AvailabilityTrace] =
   ## Exact flat geometry and complete input/output charge precede extraction; tracing never trusts peer-supplied node tags.
@@ -225,6 +241,7 @@ proc prepareAvailabilityTrace*(flat: openArray[byte], width, count, index: int,
       Blake2bHash](computed)
   AvailabilityMerkleResult[AvailabilityTrace](status: AvailabilityMerkleError.None,
     completed: AvailabilityTrace(ready: true, root: computed.value, wire: wire))
+
 proc reconstructAvailabilityTrace*(leaf, proof: openArray[byte], width, count, index: int,
     leafTag: byte, limits: AvailabilityMerkleLimits): AvailabilityMerkleResult[Blake2bHash] =
   ## Reconstruct a root proposal from exact structure; only a later comparison with independently selected authority authenticates it.
@@ -235,6 +252,7 @@ proc reconstructAvailabilityTrace*(leaf, proof: openArray[byte], width, count, i
       AvailabilityMerkleError.LimitExceeded)
   var budget = HashBudget(maximum: limits, calls: 0, bytes: 0)
   fold(leaf, proof, planned.value, budget)
+
 proc verifyAvailabilityTrace*(expected: Blake2bHash, leaf, proof: openArray[byte],
     width, count, index: int, leafTag: byte,
     limits: AvailabilityMerkleLimits): AvailabilityMerkleResult[Blake2bHash] =
@@ -280,6 +298,7 @@ proc availabilityTreeWork*(width, count: int): AvailabilityMerkleResult[Availabi
     work.hashBytes = n*w+4*(n-1)+32*(n-2)
   AvailabilityMerkleResult[AvailabilityMerkleWork](status: AvailabilityMerkleError.None,
       completed: work)
+
 proc availabilityTraceWork*(width, count, index: int,
     leafTag: byte): AvailabilityMerkleResult[AvailabilityMerkleWork] =
   ## Verification work follows the selected path only; construction additionally hashes opposite subtrees using whole-tree work.
@@ -310,6 +329,7 @@ type
     root: Blake2bHash
   AvailabilityMerkleTree* = object ## No default tree can issue a completed trace.
     data: nil MerkleTreeData
+
 proc indexedNode(flat: openArray[byte], width, first, count: int,
     budget: var HashBudget, position: int, hashes: var seq[Blake2bHash]): AvailabilityMerkleResult[NodeValue] =
   ## GP N returns a raw singleton child; only non-singleton subtrees hash the node-prefixed concatenation.
@@ -375,6 +395,7 @@ proc prepareAvailabilityMerkleTree*(flat: openArray[byte], width, count: int,
   AvailabilityMerkleResult[AvailabilityMerkleTree](status: AvailabilityMerkleError.None,
     completed: AvailabilityMerkleTree(data: MerkleTreeData(width: width, count: count,
       flat: retained, hashes: hashes, root: root)))
+
 proc indexedAvailabilityTrace*(tree: AvailabilityMerkleTree, index: int, leafTag: byte,
     maximum: ByteLimit): AvailabilityMerkleResult[AvailabilityTrace] =
   ## Exact root-first GP sibling nodes are copied from a private indexed tree without rehashing any subtree.

@@ -368,7 +368,6 @@ proc newFullStateTrie*(entries: openArray[StateEntry],
   TrieResult[FullStateTrie](status: TrieError.None,
     completed: FullStateTrie(data: RevisionData(root: candidate, limits: limits)))
 
-
 proc prove*(trie: FullStateTrie, key: StateKey,
     limits: StateProofLimits): TrieResult[StateProof] =
   ## Copy one bounded canonical root-to-terminal path from an immutable complete revision.

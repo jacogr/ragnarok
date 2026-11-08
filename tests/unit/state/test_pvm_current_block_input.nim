@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_block_input_arc_release"}
 
 ## Genuine signed bytes retain current-only authority through fragmented reception, lookup suspension and deferred installation.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/[chain, candidate]
 import "../../../src/app/current/block/input" as current_block_input
@@ -16,19 +18,24 @@ import ../../../src/state/accumulation/current/[consensus as accumulation_curren
     update as accumulation_current_update]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fault injection detects unexpected reception or backpressure hashing.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Native observer counts actual primitive calls.
+
 proc resources(size: int, discover = false): CurrentBlockInputLimits =
   ## Raw storage and ancestor handles have independent explicit bounds.
   CurrentBlockInputLimits(blockBytes: ByteLimit(uint64(size)), ancestorBytes: ByteLimit(10000),
     ancestors: ElementLimit(4), discoverAncestors: discover)
+
 proc encoded(context: CurrentChainFixture): seq[byte] =
   ## Serialize the actual authenticated child, without a synthetic certificate.
   let owner = context.source.currentChainAdmission.reportBlockStage.value.value.admitted.admittedBlock
   result = newSeq[byte](owner.blockInfo.value.consumed)
   assert owner.encodeOwnedBlock(result).error == FrameError.None
+
 proc receive(input: var CurrentBlockInput, owner: ApplicationChain, wire: openArray[byte],
     limits: CurrentCandidateLimits, discover = false): CurrentBlockInputId =
   ## Admit an exact payload and complete it using the public callback surface.
@@ -36,6 +43,7 @@ proc receive(input: var CurrentBlockInput, owner: ApplicationChain, wire: openAr
   assert admitted.error == CurrentBlockInputError.None
   result = admitted.value
   assert input.append(result, wire, true) == CurrentBlockInputError.None
+
 proc fragments(context: CurrentChainFixture, wire: seq[byte]) =
   ## Boundary splits copy caller bytes; mutation after append cannot alter the authenticated current child.
   let owner = initApplicationChain(context.currentChainSeeded).value
@@ -63,6 +71,7 @@ proc fragments(context: CurrentChainFixture, wire: seq[byte]) =
     assert input.stage == CurrentBlockInputStage.Idle
     assert input.prepare(id, owner).error == CurrentBlockInputError.StaleInput
     assert sameStateSnapshot(owner.stateSnapshot.value, context.parent.value.stateSnapshot)
+
 proc refusals(context: CurrentChainFixture, wire: seq[byte]) =
   ## Invalid limits, generations, decoding and actual pipeline errors never expose a successful prefix.
   let owner = initApplicationChain(context.currentChainSeeded).value
@@ -114,6 +123,7 @@ proc refusals(context: CurrentChainFixture, wire: seq[byte]) =
   let failed = input.prepare(tiny, owner)
   assert failed.error == CurrentBlockInputError.PreparationFailure
   assert failed.preparationFailure.error == CurrentCandidateError.PreparationFailure
+
 proc ancestry(context: CurrentChainFixture, wire: seq[byte]) =
   ## Suspended discovery retains original current policies and generation, and resumes without repeating the prefix.
   let owner = initApplicationChain(context.currentChainSeeded).value
@@ -137,6 +147,7 @@ proc ancestry(context: CurrentChainFixture, wire: seq[byte]) =
   assert completed.error == CurrentBlockInputError.None
   assert array[32, byte](completed.value.currentUpdateState.commitment.root) ==
     array[32, byte](context.source.currentConsensusState.value.commitment.root)
+
 proc handoff(context: CurrentChainFixture, wire: seq[byte]) =
   ## Both Pending and unacknowledged Finished impose backpressure before input decoding or graph access.
   var owner = initApplicationChain(context.currentChainSeeded).value
@@ -154,12 +165,14 @@ proc handoff(context: CurrentChainFixture, wire: seq[byte]) =
   assert slot.take.error == CurrentHandoffError.None
   assert second.enqueue(next, owner, slot).error == CurrentBlockInputError.StateChanged
   failHash(0)
+
 proc cycle(context: CurrentChainFixture, wire: seq[byte]) =
   ## Complete raw preparation releases every source, prefix and captured update without installation.
   let owner = initApplicationChain(context.currentChainSeeded).value
   var input = default(CurrentBlockInput)
   let id = input.receive(owner, wire, currentCandidateLimits())
   assert input.prepare(id, owner).error == CurrentBlockInputError.None
+
 proc main() {.raises.} =
   ## Actual signatures and current effects provide independent complete-map and ownership witnesses.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

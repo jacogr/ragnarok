@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Thin machine lowering and OS executable-memory mechanics. Admission/lifecycle policy lives in native_pipeline.
 
 import std/assertions
@@ -54,14 +55,17 @@ type NativeImage* = object ## Exclusive published image with its exact call ABI.
 
 proc `=copy`*(destination: var NativeImage, source: NativeImage) {.error.}
   ## Executable authority cannot be duplicated by copying its POD handle.
+
 proc `=dup`*(source: NativeImage): NativeImage {.error.}
   ## Exactly one image owner releases the mapping.
+
 proc `=wasMoved`*(image: var NativeImage) {.nodestroy, inline.} =
   ## Primitive move hooks do not clear raw pointers; disarm explicitly.
   image.handle = nil
   image.offset = 0
   image.bytesValue = 0
   image.kindValue = NativeKind.PurePrefix
+
 proc `=destroy`*(image: NativeImage) =
   ## Default, failed and moved-from images own no executable storage.
   when defined(pvmX86Jit) or defined(pvmArm64Jit):

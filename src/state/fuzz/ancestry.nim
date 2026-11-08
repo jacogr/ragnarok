@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fuzzer initial hash/slot facts remain distinct from actual child-header lookup-root evidence and production ancestry.
+
 import std/assertions
 import ./protocol as fuzz_protocol
 import ../../codec/[bounded, header]

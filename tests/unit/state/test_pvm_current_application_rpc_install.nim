@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_application_rpc_install_arc_release"}
 
 ## Genuine current prepared updates join canonical/RPC ownership under exact leases and deliver actual WebSocket best-head events.
+
 import std/[assertions, envvars, syncio, base64, strutils]
 import std/posix/posix
 import ../../../src/app/chain
@@ -13,10 +15,13 @@ import ../../../src/state/accumulation/current/[update as accumulation_current_u
     consensus as accumulation_current_consensus, chain as accumulation_current_chain]
 import ../../../src/state/store
 import ../../support/[accumulation_current_chain_context, rpc_socket, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 const Subscribe = """{"jsonrpc":"2.0","method":"subscribeBestBlock","params":[],"id":2}"""
 const Best = """{"jsonrpc":"2.0","method":"bestBlock","id":1}"""
+
 proc listener(rpc: var Server, view: ChainView): uint16 =
   ## Retry only the bounded ephemeral reservation/start race; never use fixed ports or private server fields.
   let parameters = decodeParameters(currentChainSettings().encodeParameters)
@@ -26,6 +31,7 @@ proc listener(rpc: var Server, view: ChainView): uint16 =
     if rpc.start(selected.port, "current-pvm-test", parameters, view): return selected.port
   assert false, "current RPC ephemeral startup failed"
   0
+
 proc canonical(context: CurrentChainFixture) =
   ## Canonical-only preparation stays private; install/ack retain the exact child without hashing or replay.
   var owner = initApplicationChain(context.currentChainSeeded).value
@@ -45,6 +51,7 @@ proc canonical(context: CurrentChainFixture) =
   assert hashCalls() == 0
   assert not owner.canInstallPrepared(update), "replay retains original-parent refusal"
   failHash(0)
+
 proc joint(context, foreign: CurrentChainFixture) =
   ## Real subscription frames observe the current child only after canonical/RPC ownership joins under its exact lease.
   let original = context.currentChainSeeded
@@ -95,12 +102,14 @@ proc joint(context, foreign: CurrentChainFixture) =
   sendText(peer, Best)
   assert identity in readPacket(rpc, peer, pending), "RPC selected head agrees with canonical current state"
   rpc.close()
+
 proc cycle(context: CurrentChainFixture) =
   ## Scoped canonical preparation/install/acknowledgment releases every new immutable child and view.
   var owner = initApplicationChain(context.currentChainSeeded).value
   let update = owner.prepareAccumulation(context.source, ByteLimit(100000)).value
   owner.installPrepared(update)
   assert owner.installedPrepared(update).error == ApplicationChainError.None
+
 proc main() {.raises.} =
   ## The launcher supplies signed report bytes; every child uses genuine current execution and composition.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

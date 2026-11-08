@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_invoke_dispatch_arc_release"}
 
 ## Genuine refinement bootstraps compose creation/invoke/frame return and preserve exact nested engine refusal reasons.
@@ -18,9 +19,11 @@ proc limits(): RefinementInvocationLimits =
   ## Inner segment work is independently finite; the outer instruction/call policies remain unchanged.
   result = refinementLimits()
   result.inner = innerLimits()
+
 proc code(): seq[byte] =
   ## Authored inner load_imm r7=42 followed by jump_ind r0 proves executed register mutation in the returned frame.
   invokeBlob([@[51'u8, 7, 42], @[50'u8, 0]])
+
 proc fixture(blob = code(), fuel = 100'u64, frameOutput = true,
     twice = false): PreparedRefinementBootstrap =
   ## A distinct embedded program and frame travel through genuine standard initialization and source capture.
@@ -41,10 +44,12 @@ proc fixture(blob = code(), fuel = 100'u64, frameOutput = true,
     instructions.add(refinementImmediate(8, 112)) # Return the updated frame at its exact caller address.
   instructions.add(@[50'u8, 0])
   refinementFixture(instructions, writable = writable)
+
 proc run(source: PreparedRefinementBootstrap, cap = limits()): RefinementInvocationResult[
     RefinementInvocation] =
   ## Only the original bootstrap owner authorizes complete execution and normalized output.
   runRefinementInvocation(source, [], refinementInputs(), ExportOffset(7), cap)
+
 proc raw(source: PreparedRefinementBootstrap, cap = limits()): RefinementDispatchResult[
     RefinementOutcome] =
   ## Inspect host return codes using that same bootstrap's own captured immutable execution environment.
@@ -87,6 +92,7 @@ for policy in 0..<2:
 var noCopy = limits()
 noCopy.copy = MemoryByteLimit(0)
 assert run(source, noCopy).error == RefinementInvocationError.None # Invoke has a fixed 112-byte protocol frame, not a variable transfer payload.
+
 # Fresh captured sources, inner CPU/RAM/frame owners, normalized output and failed scratch runs release together.
 proc cycle() =
   ## No genuine bootstrap, frame or inner segment generation is retained between isolated lifetime iterations.

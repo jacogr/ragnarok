@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_report_results_arc_release"}
 
 ## Original multi-item guests verify ordered report I, protocol precedence, source ownership and atomic local refusal.
@@ -19,6 +20,7 @@ let halt = @[50'u8, 0]
 let returning = @[refinementImmediate(7, 196608), refinementImmediate(8, 3), halt]
 let exporting = @[refinementImmediate(7, 65536), refinementImmediate(8, 3), @[10'u8, 8],
   refinementImmediate(7, 196608), refinementImmediate(8, 3), halt]
+
 proc check(report: RefinedPackage, index: uint64, kind: WorkKind, offset,
     declared: uint64): RefinedWorkItem =
   ## Assert independently expected selection/source identity and every replacement segment's full content.
@@ -187,6 +189,7 @@ var extracted = saved.reportTrace.value
 extracted[1] = 255
 assert saved.reportTrace.value == @[1'u8, 2, 3]
 assert uint64(saved.reportPackage.value.workItemAt(1).value.workItemInfo.value.exports) == 1
+
 proc detachedItem(): RefinedWorkItem =
   ## Drop all original caller/map/report handles while retaining an extracted source-bound item.
   let fixture = reportFixture([reportGuest(exporting, 1)])
@@ -196,6 +199,7 @@ assert detached.refinedOutput.value == @[21'u8, 22, 23]
 assert uint32(detached.refinedSource.value.workItemInfo.value.service) == 42
 discard check(reportRun(pair, []).value, 1, WorkKind.Success, 0,
     1) # Replaying original sources remains deterministic.
+
 proc cycle() =
   ## Release new source maps, package/code CPUs, successful/exported and rejected private-prefix results each time.
   let fresh = reportFixture([reportGuest(returning, 1), reportGuest(exporting, 1)])

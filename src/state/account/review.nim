@@ -3,6 +3,7 @@
 
 ## Constant-work same-source account review joins targeted invariants with complete supervisor/economic observations.
 ## Review success preserves each evidence scope; undercoverage does not become an unstated global invalid-state rule.
+
 import ../inventory
 import ./invariants as account_invariants
 import ../service/directory as service_directory

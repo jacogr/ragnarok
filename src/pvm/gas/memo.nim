@@ -3,6 +3,7 @@
 
 ## Bounded reusable pricing learns successful facts lazily for one immutable program and cycle policy.
 ## Handles share a private mutable memo identity; use exclusively, including synchronous nested calls.
+
 import ../program
 import ./gas
 

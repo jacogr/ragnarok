@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime guards reject default values and inactive nested chapter reasons with a genuine positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/state/[global_snapshot, store]
 import ../../src/codec/state/[composition as state_composition, layout as state_layout,
@@ -9,12 +10,15 @@ import ../../src/codec/state/[composition as state_composition, layout as state_
 import ../../src/codec/[bounded, assurances]
 import ../../src/codec/state/consensus as state_consensus
 include ./composition_fixture
+
 proc extract(outcome: GlobalStateResult[ValidatedGlobalState]): ValidatedGlobalState {.noinline.} =
   ## Preserve a dynamic successful-payload guard instead of constant-folding a default variant.
   outcome.value
+
 proc failed(outcome: GlobalStateResult[ValidatedGlobalState]): StateChapterId {.noinline.} =
   ## Exercise the chapter-specific alternative check in the linked runtime.
   outcome.failedChapter
+
 proc reason(outcome: GlobalStateResult[ValidatedGlobalState]): StateCompositionError {.noinline.} =
   ## Exercise the nested reason check in the linked runtime.
   outcome.chapterError

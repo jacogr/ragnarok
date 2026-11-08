@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Run a bounded continuing DOOM sequence through the real CLI-selected prepared backend and host API.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../../src/app/options
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan]
 import ../../src/pvm/[step, artifact]
-
 
 type
   OutputEvent = object ## Captured payload ownership moves into one bounded host record without serialization.

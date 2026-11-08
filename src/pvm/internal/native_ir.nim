@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Bounded copied register IR shared by every native lowerer. No invocation state is retained.
 
 import std/assertions

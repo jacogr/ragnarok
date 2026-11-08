@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent gas prices, complete execution parity, policy ownership, host replies and paid retries.
+
 # @@Verification={"arc": "pvm_gas_memo_arc_release"}
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine]
@@ -13,6 +14,7 @@ proc limits(): GasMemoLimits =
   ## Explicit generous test policy remains distinct from guest gas and every source's byte limits.
   GasMemoLimits(bytes: GasMemoByteLimit(8*1024*1024),
     cycles: GasCycleLimit(1000000))
+
 proc code(parts: openArray[seq[byte]]): Program =
   ## Independently frame short original instruction partitions with explicit marker bytes.
   var bytes: seq[byte] = @[]
@@ -29,12 +31,14 @@ proc code(parts: openArray[seq[byte]]): Program =
   let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(256), JumpCountLimit(0))
   assert decoded.error == ProgramError.None
   decoded.value
+
 proc input(owner: Program, fuel: uint64, memory: Memory, pc = CodeAddress(0)): Machine =
   ## Own copied CPU sentinels and immutable children; no prepared memo can choose guest state.
   var registers = default(RegisterFile)
   registers[0] = RegisterValue(0xffff0000'u64)
   captureMachine(owner, memory, MachineInfo(pc: pc, gas: MachineGas(fuel),
     gasDeficit: GasDeficit(0), blockCharged: false, registers: registers)).value
+
 proc same(left, right: StepResult) =
   ## Compare every CPU/outcome field and the unchanged empty-memory owner for corpus first steps.
   assert left.error == right.error
@@ -54,6 +58,7 @@ proc same(left, right: StepResult) =
     elif a.exit == StepExit.Host:
       assert b.exit == StepExit.Host
       assert uint64(a.hostCall) == uint64(b.hostCall)
+
 proc word(data: string, at, width: int): uint64 =
   ## Parse only fixed fixture fields after their containing record extent is established.
   assert at >= 0 and width in 1..8 and at <= data.len-width
@@ -161,10 +166,12 @@ type
     memo, replacement: GasMemo
     nestedSource: Machine
     nested, drop, refuse: bool
+
 proc context(source: Machine, memo: GasMemo): Context =
   ## Explicitly initialize every flag and retain only caller-owned immutable handles.
   Context(calls: 0, memo: memo, replacement: default(GasMemo), nestedSource: source,
     nested: false, drop: false, refuse: false)
+
 proc effects(ctx: var Context) {.raises: [].} =
   ## Nested guest-only execution and context replacement must not disturb the outer immutable pricing policy.
   inc ctx.calls
@@ -172,6 +179,7 @@ proc effects(ctx: var Context) {.raises: [].} =
     let nested = execute(ctx.nestedSource, ExecutionStepLimit(1), ctx.memo)
     assert nested.error == StepError.None and nested.value.exit == StepExit.Host
   if ctx.drop and ctx.calls == 1: ctx.memo = ctx.replacement
+
 proc reply(suspension: StepOutcome): HostResponse {.raises: [].} =
   ## Return only the host-permitted posterior fields; code, PC and charged state stay engine-owned.
   let cpu = machineInfo(suspension.machine).value
@@ -179,10 +187,12 @@ proc reply(suspension: StepOutcome): HostResponse {.raises: [].} =
   registers[7] = RegisterValue(uint64(registers[7])+10)
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: registers, memory: memoryOf(suspension.machine).value)
+
 proc respond(ctx: var Context, suspension: StepOutcome): HostResponse {.raises: [].} =
   ## Response-only callers exercise the same scheduler and budget boundaries as fallible handlers.
   effects(ctx)
   reply(suspension)
+
 proc fallible(ctx: var Context, suspension: StepOutcome): HostResult[Reason] {.raises: [].} =
   ## Refuse before applying a second response while preserving already-performed caller side effects.
   effects(ctx)

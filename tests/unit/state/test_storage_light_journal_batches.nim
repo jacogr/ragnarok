@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded multi-update preparation keeps one final candidate; one-barrier append preserves exact prefix recovery and immutable readers.
+
 # @@Verification={"arc":"storage_light_journal_batches_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,12 +15,16 @@ import ../../../src/storage/managed/[io as managed_io, manifest as managed_manif
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Preparation failures are independent from actual append IO and cannot poison an unchanged owner.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Every observed preparation provider boundary receives its own exact refusal.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Prepared append performs no proof, image or frame hashing.
+
 proc edits(fixture: LightJournalFixture): array[2, LightJournalEdit] =
   ## Independent ordinary frame fixtures supply the exact two consecutive proof updates.
   result = default(array[2, LightJournalEdit])
@@ -31,6 +36,7 @@ proc edits(fixture: LightJournalFixture): array[2, LightJournalEdit] =
         proof: fixture.config.snapshot.cache.proof)).value)
   result[0] = LightJournalEdit(proofs: @[absent], forgotten: @[lightKey(0)])
   result[1] = LightJournalEdit(proofs: @[known], forgotten: @[lightKey(255)])
+
 proc candidateCycle(owner: LightJournalCache, changes: openArray[LightJournalEdit], hashes: cint) =
   ## All intermediate images, proof outcomes and aggregate transport retire before the caller samples ARC.
   refuseAfter(hashes-1)
@@ -39,6 +45,7 @@ proc candidateCycle(owner: LightJournalCache, changes: openArray[LightJournalEdi
   let prepared = prepareLightJournalBatch(owner, changes).value
   let copied = prepared
   assert copied.frameCount == 2 and uint64(copied.sequence) == 2, "exact immutable copied batch"
+
 proc normal(fixture: LightJournalFixture, changes: openArray[LightJournalEdit]) {.raises.} =
   ## Prepare privately, append once, strictly reopen exact bytes and reject both logical and physical stale candidates.
   let path = "light-batch-normal-" & $storageProcessId()
@@ -111,6 +118,7 @@ proc normal(fixture: LightJournalFixture, changes: openArray[LightJournalEdit]) 
     var filename = lightChild(path, kind, ManagedEpoch(2))
     assert posix.unlink(filename.toCString()) == 0, "retire exact owned epoch-two fixture"
   retireLightJournal(path)
+
 proc bounded(fixture: LightJournalFixture, changes: openArray[LightJournalEdit],
     mode: int) {.raises.} =
   ## Frame, aggregate bytes, per-frame bytes, nonempty input and sequence capacity all refuse without publication or poison.
@@ -147,6 +155,7 @@ proc bounded(fixture: LightJournalFixture, changes: openArray[LightJournalEdit],
   assert owner.preparedSnapshot.value.bytes == fixture.initial.bytes, "bounded refusal preserves confirmed image"
   assert owner.close == FileError.None
   retireLightJournal(path)
+
 proc interrupted(fixture: LightJournalFixture, changes: openArray[LightJournalEdit],
     skip: int) {.raises.} =
   ## A real partial grouped write or failed barrier can leave complete earlier frames; explicit recovery retains exactly that prefix.
@@ -204,6 +213,7 @@ proc interrupted(fixture: LightJournalFixture, changes: openArray[LightJournalEd
   assert readFile(path & "/KEEP") == "preserve grouped-append sibling", "recovery preserves unknown sibling"
   assert owner.close == FileError.None
   retireLightJournal(path)
+
 proc main() {.raises.} =
   ## Group related preparation, publication, limit and recovery witnesses around one complete batch feature.
   let fixture = lightFixture()

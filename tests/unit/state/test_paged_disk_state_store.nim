@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The complete disk facade preserves exact owned state/context, retained application history and native uncertainty on paged storage.
+
 # @@Verification={"arc":"paged_disk_state_store_arc_release"}
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
@@ -25,16 +26,20 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/[durability, database_identity]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 func statePolicy(): StateStoreLimits =
   ## Full-map limits remain separate from native context, export and physical working policies.
   StateStoreLimits(trie: policy().trie, writes: ElementLimit(10), writeValueBytes: ByteLimit(10000))
+
 proc state(value: byte): StateStoreSnapshot =
   ## Independent ordinary complete maps contain one changed value and a present-empty value.
   newStateStore(@[StateEntry(key: key(0), value: @[value]), StateEntry(key: key(128), value: @[])],
       statePolicy()).value.snapshot.value
+
 proc path(label: string): string =
   ## Every native workload owns its exact test namespace without a cleanup sweep.
   "paged-disk-state-" & $storageProcessId() & "-" & label
+
 proc configuration(source: StateStoreSnapshot, stateLimits: StateStoreLimits): FullPagedNativeConfig =
   ## Finite application-sized policies admit nine retained roots and independently bounded opaque history context.
   result = sample(5).config
@@ -53,11 +58,13 @@ proc configuration(source: StateStoreSnapshot, stateLimits: StateStoreLimits): F
   result.construction = FullPagedConstructionLimits(producerCalls: ElementLimit(10000000),
     ioCalls: ElementLimit(10000000), hashes: ElementLimit(10000000),
     readBytes: ByteLimit(1000000000), writeBytes: ByteLimit(64000000))
+
 proc transport(config: FullPagedNativeConfig): PagedStateLimits =
   ## Aggregate staging charges every retained map before physical record deduplication.
   PagedStateLimits(roots: ElementLimit(9), staging: TrieExportLimits(records: TrieNodeLimit(
       10000000),
     valueBytes: ByteLimit(64000000)), dataset: config.limits.dataset)
+
 proc normal() =
   ## Successful publication adopts the exact target owner only after one durable complete-root/context selection.
   let source = state(5)
@@ -111,6 +118,7 @@ proc normal() =
   assert before == after
   recordArcRelease("paged_disk_state_store", 1000, before, after)
   assert disk.close == FileError.None
+
 proc history() {.raises.} =
   ## Existing application restoration binds rolling headers, nine complete roots and older explicit finality on the paged facade.
   let fixture = diskHistoryFixture()
@@ -143,6 +151,7 @@ proc history() {.raises.} =
   assert array[32, byte](restored.value.chainView.finalizedBlock.value.blockHash) == array[32,
       byte](fixture.view.finalizedBlock.value.blockHash)
   assert disk.close == FileError.None
+
 proc faults() =
   ## Real publication rename and fresh durability failures retain old owned memory without claiming a successful writable head.
   let source = state(5)
@@ -173,6 +182,7 @@ proc faults() =
     assert disk.snapshot.value.lookup(key(0)).value.bytes == @[5'u8]
     assert disk.snapshotContext.value == @[7'u8] and uint64(disk.generation.value) == 1
     assert disk.close == FileError.None
+
 proc lateBarrier() =
   ## A failed final directory barrier leaves old memory private while fresh recovery resolves the actual new CURRENT/context pair.
   let source = state(5)
@@ -205,6 +215,7 @@ proc lateBarrier() =
   assert disk.snapshot.value.lookup(key(0)).value.bytes == @[9'u8]
   assert disk.snapshotContext.value == @[9'u8] and uint64(disk.generation.value) == 2
   assert disk.close == FileError.None
+
 proc cachedMetadata() =
   ## Dispatcher metadata never consumes a native read fault; the excluded commit must still fence the actual disk source.
   let source = state(5)
@@ -237,6 +248,7 @@ proc cachedMetadata() =
       limits).error == DiskStoreError.None
   assert disk.snapshotContext.value == @[7'u8] and uint64(disk.generation.value) == 1
   assert disk.close == FileError.None
+
 proc contextEnvelope(context: seq[byte], previous: string): seq[byte] =
   ## Independent application-envelope bytes use only literal framing and captured actual old CURRENT bytes.
   result = @[]
@@ -245,6 +257,7 @@ proc contextEnvelope(context: seq[byte], previous: string): seq[byte] =
   for index in 0..<8: result.add(byte((uint64(context.len) shr (8*index)) and 255)) # Exact E8 inner extent.
   for character in previous: result.add(byte(character)) # Every old manifest octet must remain bound, including its tree digest.
   for octet in context: result.add(octet) # Unwrapped public context remains caller-owned metadata.
+
 proc envelopeWitness() {.raises.} =
   ## Actual native V2 context contains the exact authenticated previous descriptor, while facade callers receive detached inner bytes.
   let source = state(5)
@@ -271,6 +284,7 @@ proc envelopeWitness() {.raises.} =
   assert disk.snapshotContext.value == @[9'u8]
   assert reader.close == FileError.None
   assert disk.close == FileError.None
+
 proc malformedEnvelope() {.raises.} =
   ## Fully valid storage-only V2 artifacts cannot bypass the explicit application schema, tagged source identity or bounded inner length.
   let source = state(5)
@@ -303,6 +317,7 @@ proc malformedEnvelope() {.raises.} =
     assert rejected.error == DiskStoreError.FileFailure and rejected.fileError ==
         FileError.WrongIdentity
     assert not disk.opened and readFile(directory & "/CURRENT") == before
+
 proc retirementBackpressure() =
   ## Pending retirement blocks the next artifact; stale and reopened jobs cannot mutate a valid later incarnation.
   let source = state(5)
@@ -343,6 +358,7 @@ proc retirementBackpressure() =
   let absent = disk.commitPagedRetirement(preparePagedRetirement(disk).value)
   assert absent.error == DiskStoreError.None and absent.value.alreadyAbsent
   assert not disk.pagedRetirementPending and disk.snapshot.value.lookup(key(0)).value.bytes == @[11'u8]
+
 proc waitRetirement(worker: var DiskPublicationWorker) =
   ## The host observes only synchronized scalars while the worker borrows every store/job alias.
   let started = getMonoTime()
@@ -351,6 +367,7 @@ proc waitRetirement(worker: var DiskPublicationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield under a bounded monotonic test deadline.
+
 proc retirementWorker(mode, failure: int) {.raises.} =
   ## Collect/join/immediate shutdown preserve a typed retirement receipt for success, Busy and actual IO failure.
   let source = state(5)
@@ -415,16 +432,20 @@ proc retirementWorker(mode, failure: int) {.raises.} =
       transport(config)).error == DiskStoreError.None
   assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
   assert disk.snapshot.value.lookup(key(0)).value.bytes == @[9'u8]
+
 proc presentNative(name: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Independent fixture metadata never scans a directory or supplies production cleanup authority.
+
 proc present(path: string): bool =
   ## Distinguish an absent forensic path from an existing zero-byte prefix.
   var owned = path
   presentNative(owned.toCString(), 0) == 0
+
 proc forensic(path: string): string {.raises.} =
   ## Preserve independently observed bytes when a known fixture path exists; absence has a separate metadata assertion.
   if present(path): readFile(path) else: ""
+
 proc replayAttempt(operation: cint, skip: int) {.raises.} =
   ## Reopen resolves a late successful selection or explicitly replays the independently chosen old-source target once.
   let source = state(5)
@@ -472,6 +493,7 @@ proc replayAttempt(operation: cint, skip: int) {.raises.} =
   assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
   assert disk.restoreDiskSnapshot(source.commitment.root, statePolicy()).value.lookup(key(
       0)).value.bytes == @[5'u8]
+
 proc replayFaults() {.raises.} =
   ## All observed write, file/directory barrier and rename ordinals include absent, partial and full forensic candidates.
   let source = state(5)
@@ -490,6 +512,7 @@ proc replayFaults() {.raises.} =
     # Every armed ordinal must be consumed by real native publication, not by fixture reads or setup.
     assert counts[index] > 0 and counts[index] < 1000
     for skip in 0..<int(counts[index]): replayAttempt(operations[index], skip)
+
 proc replayAuthority(mode: int) {.raises.} =
   ## Wrong target/root history/context or denied replay budget preserve both forensic children before correct retry.
   let source = state(5)
@@ -535,6 +558,7 @@ proc replayAuthority(mode: int) {.raises.} =
       transport(config)).error == DiskStoreError.None
   assert disk.retryPagedCommit(disk.snapshot.value, target, [9'u8], [source]).error ==
       DiskStoreError.None
+
 proc replayAfterRetirement() {.raises.} =
   ## After restart, an already removed predecessor must not block explicit cleanup of a matching CURRENT.next candidate.
   let source = state(5)
@@ -563,6 +587,7 @@ proc replayAfterRetirement() {.raises.} =
       DiskStoreError.None
   assert uint64(disk.generation.value) == 3 and disk.snapshotContext.value == @[11'u8]
   assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error == DiskStoreError.None
+
 proc bootstrapReplay() {.raises.} =
   ## An explicit independently supplied complete genesis can resume a full failed bootstrap; normal initialization cannot overwrite it.
   let source = state(5)
@@ -596,6 +621,7 @@ proc bootstrapReplay() {.raises.} =
   assert resumePagedDiskStateStore(disk, directory, source, config, transport(config), [
       7'u8]).error != DiskStoreError.None
   assert not disk.opened # Existing CURRENT can only be opened strictly, never replaced through bootstrap recovery.
+
 proc crashCapture(directory: string): seq[string] {.raises.} =
   ## Strict startup preserves every independently named forensic child; no namespace scan supplies recovery authority.
   result = @[]
@@ -603,6 +629,7 @@ proc crashCapture(directory: string): seq[string] {.raises.} =
       "paged-0000000000000002.bin", "paged-0000000000000003.bin", "KEEP"]:
     let child = directory & "/" & name
     result.add(if present(child): "present:" & readFile(child) else: "absent")
+
 proc replayCrash(mode: int, operation: cint, skip: int): uint64 {.raises.} =
   ## One exact child stops only after a witnessed successful native syscall; parent verifies SIGKILL and the matching selected pair.
   let source = state(5)
@@ -698,6 +725,7 @@ proc replayCrash(mode: int, operation: cint, skip: int): uint64 {.raises.} =
     assert disk.commitPagedRetirement(preparePagedRetirement(disk).value).error ==
         DiskStoreError.None
   assert readFile(directory & "/KEEP") == "unrelated replay sibling"
+
 proc replayCrashes() {.raises.} =
   ## Measured successful write/barrier/rename/unlink boundaries cover ordinary publication, replay and bootstrap resume.
   for mode in 0..2:
@@ -706,6 +734,7 @@ proc replayCrashes() {.raises.} =
       # Positive completion controls and witnessed exact-child kills are distinct verdicts at every actual ordinal.
       let count = replayCrash(mode, operation, 4096)
       for skip in 0..<int(count): discard replayCrash(mode, operation, skip)
+
 proc main() {.raises.} =
   ## Native facade behavior and complete application context restoration share one supported runner and exact fixture contract.
   normal()

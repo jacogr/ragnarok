@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real guest values remain supplied at slot2 across duplicate calls; mixed body refusal and a short local union budget preserve exact prefixes.
+
 import std/[assertions, syncio, envvars, monotimes]
 import std/posix/posix
 import ../../../src/app/[chain, candidate, services]

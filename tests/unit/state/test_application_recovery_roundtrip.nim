@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_roundtrip_arc_release"}
 
 ## Exact checkpoint roundtrips preserve complete state while importing no producer history, finality or mutation policy.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/[chain, candidate]
 import ../../../src/app/checkpoint/[identity as checkpoint_identity, codec as checkpoint_codec,
@@ -15,6 +16,7 @@ import ../../../src/state/store
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/[application_recovery_execution, arc_evidence]
+
 proc cycle(envelope, sealed: seq[byte], expected: ApplicationCheckpointIdentity) =
   ## All restored graph and re-encoded byte owners retire before the next memory observation.
   let restored = decodeRecoveryCheckpoint(envelope, sealed, expected, genesisStoreLimits(),
@@ -23,6 +25,7 @@ proc cycle(envelope, sealed: seq[byte], expected: ApplicationCheckpointIdentity)
   assert restored.chainView.finalizedBlock.error != GenesisError.None
   assert sameApplicationCheckpoint(captureApplicationCheckpointIdentity(restored).value, expected)
   assert encodeApplicationCheckpoint(restored, ByteLimit(high(uint64))).value == envelope
+
 proc main() {.raises.} =
   ## Genuine execution creates two retained blocks before caller-certified finality is selected solely for this local serialization witness.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

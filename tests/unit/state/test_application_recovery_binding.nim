@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_binding_arc_release"}
 
 ## Exact trusted recovery retains one head and immutable policy without fabricating ancestors or finality.
+
 import std/[assertions, syncio]
 import ../../../src/app/chain
 import ../../../src/app/checkpoint/[identity as checkpoint_identity,
@@ -14,17 +15,20 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/state/[store, checkpoint]
 import ../../../src/crypto/primitives
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc headerBytes(owner: ApplicationChain): seq[byte] =
   ## Copy canonical sealed bytes so input mutation cannot modify the recovered owner.
   let header = owner.chainView.bestBlock.value.header
   result = newSeq[byte](header.headerInfo.value.consumed)
   assert encodeOwnedHeader(header, result).error == HeaderError.None
+
 proc cycle(state: StateStoreSnapshot, wire: seq[byte], expected: ApplicationCheckpointIdentity) =
   ## Temporary application forks release all retained aliases on return.
   let recovered = recoverApplicationChain(state, wire, expected).value
   assert sameStateSnapshot(recovered.stateSnapshot.value, state)
   assert recovered.chainView.retainedCount == 1
   assert recovered.chainView.finalizedBlock.error != GenesisError.None
+
 proc main() {.raises.} =
   ## Trust is captured independently of supplied bytes and defaults cannot authorize recovery.
   let original = checkpointFixture()

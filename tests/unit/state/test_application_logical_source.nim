@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed logical source observations retain the actual collected producer and full original Parameters without hashing or heavy view copies.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context]
 import ../../../src/state/current/logical as current_logical
@@ -10,10 +11,13 @@ import ../../../src/state/store
 import ../../../src/chain/parameters
 import ../../../src/app/preparation_worker
 import "../../../src/app/current/block/input" as current_block_input
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fixed source observation must not invoke any content primitive.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe hash calls only after genuine preparation and complete supplied matching have finished.
+
 proc main() {.raises.} =
   ## The public source surface replaces consumer traversal through private qualification layers.
   let fixture = collectedNativeFixture()

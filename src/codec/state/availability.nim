@@ -180,6 +180,7 @@ proc inspectAvailabilityState*(input: openArray[byte],
   AvailabilityResult[AvailabilityInspection](status: AvailabilityError.None,
     completed: AvailabilityInspection(consumed: checked.value.consumed,
       cores: int(uint64(config.guarantee.cores)), present: checked.value.present))
+
 proc decodeAvailabilityState*(input: openArray[byte],
     config: AvailabilityConfig): AvailabilityResult[AvailabilityRead] =
   ## Decode complete fixed-core state into private immutable parent/child storage only after full preflight.

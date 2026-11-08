@@ -30,22 +30,33 @@ import ../../support/application_candidate_context
 
 # Backend faults begin after all authored source/context bytes are independently retained.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
+
 proc openSocket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
+
 proc bindPort(fd: cint, address: pointer, length: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
+
 proc socketName(fd: cint, address: pointer, length: ptr SockLen): cint {.importc: "getsockname",
     header: "<sys/socket.h>".}
+
 proc connectPort(fd: cint, address: pointer, length: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
+
 proc hostPort(port: uint16): uint16 {.importc: "ntohs", header: "<netinet/in.h>".}
+
 proc ipv4(text: cstring): uint32 {.importc: "inet_addr", header: "<arpa/inet.h>".}
+
 proc sendBytes(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
+
 proc receive(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
 
@@ -149,8 +160,6 @@ proc listener(owner: var Services, viaCli = false): uint16 {.raises.} =
     if started: return reserved.port # Return only the port owned by the successful startup path.
   assert false, "ephemeral Services startup failed"
   0'u16
-
-
 
 proc witness(context: SeedFixture) =
   ## Manual lower-level stage execution and the producer agree without publishing either private prefix.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## An independent complete-root small-map model checks quota eviction, protected queries and atomic immutable admission.
+
 # @@Verification={"arc":"storage_light_retention_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_light_root, storage_light_journal]
@@ -10,10 +11,13 @@ import ../../../src/storage/state_proof
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Clear provider observations independently of source/model construction.
+
 proc refuseAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse each actual proof/checksum hash without inventing a completed proof.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## A planner and all pure quota refusals must remain crypto-free.
 type
@@ -21,6 +25,7 @@ type
     fits: bool
     kept: seq[LightStateProof]
     removed: seq[StateKey]
+
 func sameKeys(left, right: openArray[StateKey]): bool =
   ## Compare all serialized octets explicitly, independently of generic container equality for nominal keys.
   if left.len != right.len: return false
@@ -30,6 +35,7 @@ func sameKeys(left, right: openArray[StateKey]): bool =
     for octet in 0..<31:
       if a[octet] != b[octet]: return false
   true
+
 proc inputs(fixture: LightRootFixture): array[5, LightStateProof] =
   ## Rebuild the complete source map independently to obtain a previously unknown query's authenticated absence.
   var long = newSeq[byte](33)
@@ -43,6 +49,7 @@ proc inputs(fixture: LightRootFixture): array[5, LightStateProof] =
     LightStateProof(key: lightKey(64), proof: trie.prove(lightKey(64),
         fixture.oldConfig.snapshot.cache.proof).value),
     fixture.sourceProofs[2], fixture.sourceProofs[3]]
+
 proc oracle(evidence: array[5, LightStateProof], mask: int, limits: LightRetentionLimits,
     writes: uint64, overhead: int): Model =
   ## Independently charge five explicit slots, then drop unprotected original slots in ascending identity order.
@@ -80,6 +87,7 @@ proc oracle(evidence: array[5, LightStateProof], mask: int, limits: LightRetenti
     uint64(incoming+result.removed.len) <= writes and uint64(limits.entries) >= 4
   for index in 0..<5:
     if keep[index]: result.kept.add(evidence[index])
+
 proc modelCases(fixture: LightRootFixture, evidence: array[5, LightStateProof]) =
   ## Every incoming subset crosses independent item/value/image ceilings and compares exact canonical output with fresh preparation.
   let empty = prepareLightSnapshot(fixture.oldConfig.chain, fixture.oldConfig.root, [],
@@ -112,6 +120,7 @@ proc modelCases(fixture: LightRootFixture, evidence: array[5, LightStateProof]) 
             assert planned.error == LightSnapshotError.LimitExceeded and updated.error ==
                 LightSnapshotError.LimitExceeded, "model refusal mask=" & $mask
             assert calls() == 0, "impossible retention refuses before crypto"
+
 proc cycle(fixture: LightRootFixture, evidence: LightStateProof, limits: LightRetentionLimits) =
   ## Success, copied plans and late checksum refusal retire all scratch before the ARC observer samples live memory.
   let planned = planLightRetention(fixture.source, [evidence], limits).value
@@ -124,6 +133,7 @@ proc cycle(fixture: LightRootFixture, evidence: LightStateProof, limits: LightRe
   let failed = fixture.source.admitRetained([evidence], limits)
   assert failed.error == LightSnapshotError.BackendFailure, "retention witness 111"
   resetHash(0)
+
 proc boundaries(fixture: LightRootFixture, evidence: array[5, LightStateProof]) =
   ## Exact work caps, source/default refusals and proof/backend failures preserve every retained source reader and byte.
   let limits = LightRetentionLimits(items: ElementLimit(4), valueBytes: ByteLimit(128),

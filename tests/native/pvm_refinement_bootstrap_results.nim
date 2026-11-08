@@ -19,6 +19,7 @@ proc parameters(): Parameters =
   var wire = default(array[122, byte])
   for index in 0..<122: wire[index] = 255
   decodeParameters(wire).value
+
 proc checkRefusal(outcome: RefinementBootstrapResult[PreparedRefinementBootstrap]) =
   ## Default package ownership selects a local refusal before any machine or arguments exist.
   assert outcome.error == RefinementBootstrapError.InvalidSelection

@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -59,7 +62,6 @@ proc memory(): Memory =
     for at in 0..<4096:
       pages[index].bytes[at] = byte((at*17+index*31+3) mod 256)
   captureMemory(pages, PageLimit(2)).value
-
 
 proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
@@ -145,7 +147,6 @@ proc firstMemoryPart(code: byte, address: uint64): seq[byte] =
     result.add(if code < 120: 1'u8 else: 17'u8)
     immediate(result, if code < 120: address else: 0'u64)
 
-
 let mapped = memory()
 var registers = default(RegisterFile)
 registers[0] = RegisterValue(0xffff0000'u64)
@@ -176,7 +177,6 @@ for noops in [0, 1, 2, 7]:
 assert cases == 10560
 echo "PASS direct entry /", cases, "/ full and partial reservations / leading noops / first host-fault-panic-halt / unsigned gas / paid suffix / failed prices / restored barriers"
 
-
 var branchCases = 0
 for mode in [0, 1, 2]:
   # Forward, backward-loop and invalid-arm programs keep both taken and untaken branch behavior observable.
@@ -206,7 +206,6 @@ for mode in [0, 1, 2]:
 assert branchCases == 4320
 echo "PASS register-branch /4320cases / alias-saturation-signed-wrap / both arms-invalid targets / cold+cached / exact quota CPU"
 
-
 var shapeCases = 0
 for family in [0, 1]:
   for mode in [0, 1, 2]:
@@ -235,7 +234,6 @@ for family in [0, 1]:
             inc shapeCases
 assert shapeCases == 3888
 echo "PASS charged shapes /3888cases / cold+warm partial fallback / both comparison forms / gas and prefix CPU"
-
 
 proc compareCycle(source: Program, mapped: Memory, registers: RegisterFile): int =
   ## Every concrete cycle graph sees the same gas/quota cross-check, including a warm stream before short prefixes.
@@ -298,7 +296,6 @@ cycleCases+=compareCycle(diamond, mapped, registers)
 assert cycleCases == 12096
 echo "PASS charged cycles /12096cases / concrete rotations-wrong edges-two-block exits / different records-same shape / every gas and quota boundary"
 
-
 var predicateCases = 0
 let branchBits = [0'u64, 1'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64,
   0x100000000'u64, 0x7fffffffffffffff'u64, 0x8000000000000000'u64, high(uint64)]
@@ -324,7 +321,6 @@ for opcode in [81'u8, 82, 83, 84, 85, 86, 87, 88, 89, 90, 170, 171, 172, 173, 17
             inc predicateCases
 assert predicateCases == 51840
 echo "PASS all16conditional comparisons /51840boundary cases / signed-unsigned-immediate-register / full CPU and source quotas"
-
 
 var suffixCases = 0
 for family in [0, 1, 2]:

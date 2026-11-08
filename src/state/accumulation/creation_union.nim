@@ -3,6 +3,7 @@
 
 ## Current accpar n: immutable final prior-absent accounts from genuine nonannulled producers.
 ## This certificate selects logical accounts; physical publication and complete block coverage remain separate.
+
 import std/[algorithm, assertions]
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, layout as state_layout]

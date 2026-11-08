@@ -42,6 +42,7 @@ let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
 let policy = StateChapterPolicy(items: ElementLimit(1000000), maxBytes: ByteLimit(8000000))
 let limits = StateTrieLimits(items: ElementLimit(1000), perValue: ByteLimit(8000000),
     totalValueBytes: ByteLimit(16000000), nodes: TrieNodeLimit(250000))
+
 # Refusals apply only to the separately linked test observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 fail(0)

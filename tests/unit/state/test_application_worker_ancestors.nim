@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_worker_ancestors_arc_release"}
 
 ## Actual native worker leases span signed report discovery and resumed execution with explicit cancellation/collection barriers.
+
 import ../../../src/state/accumulation/residency
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
@@ -24,6 +25,7 @@ proc waitDone(worker: var PreparationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Actual work runs on the single fixed-address native worker.
+
 proc scenario(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader],
     cancel: int) {.raises.} =
   ## Late cancellation at either stage never publishes or exposes a complete unwanted successor.
@@ -72,10 +74,12 @@ proc scenario(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader],
         $completed.value.error
     assert completed.value.value.finalAccumulationInfo.value.outputs.executions == 2
   assert input.stage == BlockInputStage.Idle
+
 proc cycle(context: SeedFixture, wire: seq[byte], older: seq[OwnedHeader]) {.raises.} =
   ## Each measured cycle covers success and both cancellations, keeping deferred-free accounting at the same phase.
   for cancel in 0..2:
     scenario(context, wire, older, cancel) # Every alternative joins before the next lease starts.
+
 proc main() {.raises.} =
   ## Retain immutable signed fixture inputs across leases, touching them again only after each cycle joins.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

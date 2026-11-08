@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current round owners expose neither partial success nor inactive nested parent results.
+
 import std/cmdline
 import ../../src/chain/parameters
 import ../../src/state/accumulation/current/round as accumulation_current_round

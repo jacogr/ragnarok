@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_assured_execution_arc_release"}
 
 ## Genuine assured inputs execute together under original gas while complete source and selected storage authority survive.
@@ -42,10 +43,12 @@ proc expect[T](outcome: AssuredExecutionResult[T], reason: AssuredExecutionError
       if runner.error == AccumulationRunnerError.CompletionFailure: echo "completion ",
           runner.completionFailure.error
   assert outcome.error == reason, "assured execution reason"
+
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode the exact account rather than inferring storage effects from equal roots.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot) =
   ## Independently check guest bytes and the existing single-key footprint.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -177,6 +180,7 @@ var copiedParams = done.assuredExecutionParameters.value
 copiedParams = default(Parameters)
 assert done.assuredExecutionCompleted.value.executionInfo.value.batch.executions == 1
 assert done.assuredExecutionParameters.value == source.assuredQueueParameters.value
+
 proc detached(): ExecutedAssuredAccumulation =
   ## Retain source, actual round and complete engine owner after all caller fixture/policy handles retire.
   let source = assuredExecutionFixture()
@@ -184,6 +188,7 @@ proc detached(): ExecutedAssuredAccumulation =
 let held = detached()
 storage(held.assuredExecutionCompleted.value.executionBatch.value.batchOutcomeAt(
     AccumulationProvisionSourceIndex(0)).value.outcomeContext.value.effectAccounts.value)
+
 proc cycle(source: AssuredAccumulationQueue, config: AssuredExecutionConfig) =
   ## Release real successful execution and a late completion refusal after all guest work has run.
   let done = executeAssuredAccumulation(source, config).value

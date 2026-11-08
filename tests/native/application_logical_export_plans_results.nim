@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen export admits exact whole-output resources, survives source retirement and preserves original complete matching after caller mutation.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
 import "../../src/app/logical/export" as logical_export
@@ -11,15 +12,19 @@ import ../../src/state/supplied/[services as supplied_services,
     logical_inventory as supplied_logical_inventory]
 import ../../src/codec/bounded
 import ../../src/codec/state/composition as state_composition
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Projection must remain hash-free after complete logical qualification has finished.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe primitive work independently of the frozen output ledger.
+
 proc escaped(): LogicalExportPlan {.raises.} =
   ## Retire all fixture/current/logical activation aliases while preserving only the admitted export owner.
   let fixture = collectedNativeFixture()
   planLogicalExport(suppliedNativeState(fixture), SuppliedServicesLimits(services: ElementLimit(8),
       facts: ElementLimit(128), perValue: ByteLimit(65536), bytes: ByteLimit(1048576))).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(LogicalExportResult[LogicalExportPlan])

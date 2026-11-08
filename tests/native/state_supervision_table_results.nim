@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic whole-table guards retain a real complete-source positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, service_directory_context]
 import ../../src/state/supervision_table
@@ -9,9 +10,11 @@ import ../../src/state/service/directory as service_directory
 import ../../src/state/inventory
 import ../../src/codec/bounded
 include ./composition_fixture
+
 proc extract(outcome: SupervisionTableResult[StateSupervisionTable]): StateSupervisionTable {.noinline.} =
   ## Default and bounded construction failure never expose table authority.
   outcome.value
+
 proc reason(outcome: SupervisionTableResult[StateSupervisionTable]) {.noinline.} =
   ## Defaults do not invent a row-resolution error.
   discard outcome.resolutionError

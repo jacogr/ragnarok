@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Capture unchanged-format complete checkpoints only from the original producer retained by complete logical qualification.
+
 import ../../state/current/[logical as current_logical, checkpoint as current_checkpoint]
 import ../../codec/bounded
 type

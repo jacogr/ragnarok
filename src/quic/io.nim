@@ -132,6 +132,7 @@ proc newDispatcher*(capacity: DispatcherCapacity = 2): Dispatcher =
 func capacity*(dispatcher: Dispatcher): int =
   ## Closed metadata has no registration capacity; live storage never grows during dispatch.
   dispatcher.descriptors.len
+
 func registrationCount*(dispatcher: Dispatcher): int =
   ## Observe copied registration occupancy without exporting descriptor storage.
   dispatcher.count

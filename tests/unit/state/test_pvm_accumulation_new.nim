@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_new_arc_release"}
 
 ## Authored new-service programs verify exact funding, bounded IDs and atomic account/cursor versions.
@@ -24,8 +25,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject refusal after authentic bootstrap construction, without replacing the maintained crypto backend.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Count hashes to distinguish request-key derivation from complete-map publication work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Refuse after successful child hashes to exercise cleanup of a partial candidate tree.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
@@ -435,12 +438,14 @@ failHash(1)
 assert uint64(machineInfo(run(noAuthority).value.machine).value.registers[7]) == high(uint64)-8 and
     hashCalls() == 0, "authority refusal does no hashing"
 failHash(0)
+
 # Funding modes choose source and destination independently; the invoker always owns the new service.
 proc fundedActor(supervisor = 42'u32, incarnation = 43'u32): ServiceMetadata =
   ## Distinct current creation identity detects accidental use of the foreign payer's incarnation.
   ServiceMetadata(balance: AccountBalance(1000), supervisorBalance: AccountBalance(1000),
       supervisor: ServiceIndex(supervisor), supervisorCreated: AccountSlot(incarnation),
           created: AccountSlot(43))
+
 proc payer(balance = 1000'u64, protected = 1000'u64, supervisor = 42'u32,
     incarnation = 43'u32): StateEntry =
   ## Foreign source has different lifetime metadata and two independently bounded pools.

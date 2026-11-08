@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent singleton historical maps form large complete root unions without quadratic publication setup.
+
 import std/[algorithm, assertions]
 import ../../src/storage/node/records as node_records
 import ../../src/storage/record_codec

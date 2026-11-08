@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_block_download_arc_release"}
 
 ## Current-only CE128 framing, exact worker handoff, ancestry suspension and stable receiver retirement use genuine signed children.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../../src/app/services
@@ -27,10 +29,13 @@ import ../../support/[current_services_disk_samples, current_application_context
   accumulation_current_chain_context, accumulation_current_candidate_context, arc_evidence,
   current_consecutive_context, accumulation_current_round_context, pvm_accumulation_program,
   current_preimage_sequence_context, accumulation_execution_context, accumulation_activity_context]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Native reception and resumption must do no hashing or execution.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count primitive work independently of receiver status.
+
 proc frame(context: CurrentChainFixture): seq[byte] =
   ## Independent E4 framing retains exactly one signed current block without an element-count prefix.
   let wire = context.currentDiskChildBytes
@@ -38,16 +43,19 @@ proc frame(context: CurrentChainFixture): seq[byte] =
   result = newSeq[byte](wire.len+4)
   for index in 0..<4: result[index] = byte((uint64(wire.len) shr (8*index)) and 255)
   for index, octet in wire: result[index+4] = octet
+
 proc resources(size: int, discover = false): CurrentBlockInputLimits =
   ## All retained payload and ancestor ceilings are explicit local choices.
   CurrentBlockInputLimits(blockBytes: ByteLimit(uint64(size)), ancestorBytes: ByteLimit(10000),
     ancestors: ElementLimit(4), discoverAncestors: discover)
+
 proc begin(download: var CurrentBlockDownload, owner: Services, wire: seq[byte],
     discover = false): CurrentBlockDownloadId =
   ## Admit the current policy against the exact captured complete canonical parent.
   let admitted = download.begin(owner, [], resources(wire.len, discover), currentCandidateLimits())
   assert admitted.error == CurrentBlockDownloadError.None
   admitted.value
+
 proc ready(download: var CurrentBlockDownload, owner: Services, wire: seq[byte],
     discover = false): CurrentBlockDownloadId =
   ## Both actual FIN observations are required before lending stable raw storage to a worker.
@@ -56,6 +64,7 @@ proc ready(download: var CurrentBlockDownload, owner: Services, wire: seq[byte],
   assert download.stage == CurrentBlockDownloadStage.Receiving
   assert download.requestFinished(result) == CurrentBlockDownloadError.None
   assert download.stage == CurrentBlockDownloadStage.Ready
+
 proc waitDone(owner: var Services) =
   ## Only scalar/dispatcher operations run while the current worker owns its exact RPC/graph lease.
   let started = getMonoTime()
@@ -63,6 +72,7 @@ proc waitDone(owner: var Services) =
     assert (getMonoTime()-started).inSeconds < 20
     owner.tick(0)
     yieldCurrentDiskThread() # The shared wait helper retains no canonical/raw aliases.
+
 proc framing(owner: Services, wire: seq[byte]) =
   ## Every split, defensive request copy, both FIN orders and malformed E4 outcomes are checked without guest work.
   var download = default(CurrentBlockDownload)
@@ -106,6 +116,7 @@ proc framing(owner: Services, wire: seq[byte]) =
   assert download.cancel(extra)
   assert hashCalls() == 0
   failHash(0)
+
 proc jobs(owner: var Services, wire: seq[byte], executed: bool) =
   ## Completed cancellation and joined retirement retain stable input/parent ownership and never enqueue unwanted work.
   var download = default(CurrentBlockDownload)
@@ -143,6 +154,7 @@ proc jobs(owner: var Services, wire: seq[byte], executed: bool) =
   assert not owner.preparationActive and download.stage == CurrentBlockDownloadStage.Idle
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
   assert owner.residentServiceCount == retained # retirePreparation joined the worker without closing Services.
+
 proc scenario(context: CurrentChainFixture, ancestry = false, executed = false) {.raises.} =
   ## Complete independent parent startup supplies real current execution and original-history ancestry resumption.
   var path = "pvm-current-block-download-chain"
@@ -196,6 +208,7 @@ proc scenario(context: CurrentChainFixture, ancestry = false, executed = false) 
   assert download.stage == CurrentBlockDownloadStage.Idle
   owner.close()
   assert owner.residentServiceCount == 0 # Full close releases code after joined preparation.
+
 proc cycle(context: CurrentChainFixture, wire: seq[byte]) =
   ## Isolated reception-only cycles release their bounded raw bytes and captured immutable owners without worker allocator claims.
   var download = default(CurrentBlockDownload)
@@ -205,6 +218,7 @@ proc cycle(context: CurrentChainFixture, wire: seq[byte]) =
   assert download.requestFinished(admitted.value) == CurrentBlockDownloadError.None
   assert download.append(admitted.value, wire, true) == CurrentBlockDownloadError.None
   assert download.cancel(admitted.value)
+
 proc slotOutput(state: StateStoreSnapshot): array[32, byte] =
   ## Decode the real published output; this guest yields its current compact slot byte and31 zeros.
   let read = decodeOutputLog(state.lookup(chapterKey(StateChapter(16))).value.bytes,

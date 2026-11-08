@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real historical files preserve exact records, ignore unselected tails and reclaim only a confirmed retained suffix.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/disk_history_context
@@ -16,6 +17,7 @@ import ../../../src/codec/[bounded, header]
 
 proc historyPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Failed assertion artifacts never collide with a later process-owned witness.
+
 func hashName(hash: BlockHash): string =
   ## Test-owned filenames use all 256 header bits and no directory traversal bytes.
   const digits = "0123456789abcdef"
@@ -24,6 +26,7 @@ func hashName(hash: BlockHash): string =
   for index, octet in source:
     result[index*2] = digits[int(octet shr 4)]
     result[index*2+1] = digits[int(octet and 15)]
+
 proc cleanup(folder: string, blocks: openArray[BlockSnapshotResult]) =
   ## Remove only this test's exact ordinal/hash inventory; no production directory scan or broad deletion.
   for index, saved in blocks:
@@ -39,6 +42,7 @@ proc cleanup(folder: string, blocks: openArray[BlockSnapshotResult]) =
   var path = folder
   discard posix.unlink(identity.toCString())
   assert posix.rmdir(path.toCString()) == 0
+
 proc main() {.raises.} =
   ## Structural bodies exercise exact byte/storage contracts; genuine accepted execution is qualified by disk_chain.
   let fixture = diskHistoryFixture(16)

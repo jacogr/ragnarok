@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Typed local preparation limits, exact cache admission and repairable host refusals.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -49,7 +52,6 @@ proc sameCpu(left, right: MachineInfo) =
   for index in 0..<13:
     # Compare every register, including operands intentionally aliased by a witness.
     assert uint64(left.registers[index]) == uint64(right.registers[index])
-
 
 # A genuine Program already requires a terminating final instruction, so folded noops always have a physical successor.
 let noTerminator = decodeProgram(@[0'u8, 0, 1, 2, 1], CodeAddress(0),

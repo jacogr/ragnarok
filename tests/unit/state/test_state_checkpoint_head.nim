@@ -16,6 +16,7 @@ proc cycle(head: CheckpointHead) =
   let bytes = encodeCheckpointHead(head, ByteLimit(CheckpointHeadBytes)).value
   assert decodeCheckpointHead(bytes, ByteLimit(CheckpointHeadBytes)).error ==
       CheckpointHeadError.None
+
 proc main() =
   ## Verify exact canonical layout, corruption refusal, owned output and checked generation exhaustion.
   let absent = default(CheckpointHeadResult[CheckpointHead])

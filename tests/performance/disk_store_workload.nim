@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed real-file sparse-update workload reports deterministic bytes, crypto work and live ARC memory.
+
 import std/[assertions, syncio, monotimes]
 import std/posix/posix
 import ../../src/state/[store, disk_store]
@@ -10,18 +11,23 @@ import ../../src/storage/node/[repository as node_repository, records as node_re
 import ../../src/storage/[record_codec, journal_codec, database_identity]
 import ../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Delimit measured update work without counting fixture and independent reference hashing.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Include real graph/codec/frame integrity hashing as well as changed-path commitment work.
+
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Give independent measurement processes private fixture names without touching old failure artifacts.
+
 proc key(index: int): StateKey =
   ## Deterministically distribute complete identities across early serialized key bits.
   var raw = default(array[31, byte])
   raw[0] = byte(index mod 256)
   raw[1] = byte(index div 256)
   StateKey(raw)
+
 proc sample(count, retained: int) {.raises.} =
   ## Compare 64 one-key updates with equivalent fully encoded frames, retaining one/eight snapshots.
   reset(0)

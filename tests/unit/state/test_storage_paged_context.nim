@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent V2 bytes and native fault/replay controls bind light context without granting complete-map authority.
+
 # @@Verification={"arc":"storage_paged_context_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, paged_reference, paged_native_fixture]
@@ -20,18 +21,22 @@ import ../../../src/state/proof/view as partial
 type Memory = ref object ## Only the independent test transport retains a resident artifact and fault counters.
   bytes: seq[byte]
   calls, failAt: int
+
 proc path(label: string): string =
   ## Every native trial owns its namespace under the ignored runner directory.
   "paged-context-" & $storageProcessId() & "-" & label
+
 proc body(size: int, first = 7): seq[byte] =
   ## Fixture bytes cross page boundaries independently of proof payloads.
   result = newSeq[byte](size)
   for index in 0..<size: result[index] = byte((index+first) mod 251) # Bounded test-only arithmetic.
+
 proc config(source: PagedNativeFixture, maximum = 65537'u64): PagedNativeConfig =
   ## Opaque context, total artifact, scratch and proof policies remain separate finite channels.
   result = source.config
   result.limits.contextBytes = ByteLimit(maximum)
   result.limits.workingBytes = ByteLimit(32000000)
+
 proc input(memory: Memory): PagedInput =
   ## Exact synchronous callbacks never retain the supplied mutable output buffer.
   proc read(offset: PagedOffset, output: var openArray[byte]): bool {.closure.} =
@@ -49,6 +54,7 @@ proc input(memory: Memory): PagedInput =
     output = uint64(memory.bytes.len)
     memory.calls != memory.failAt
   PagedInput(read: read, extent: extent)
+
 proc output(memory: Memory): PagedOutput =
   ## The test sink permits only exact sequential appends, matching the production transport boundary.
   proc append(bytes: openArray[byte]): bool {.closure.} =
@@ -56,6 +62,7 @@ proc output(memory: Memory): PagedOutput =
     for octet in bytes: memory.bytes.add(octet) # Owned test-only artifact.
     true
   PagedOutput(source: memory.input, append: append)
+
 proc manifest(reference: PagedReference, source: PagedNativeFixture,
     limits: PagedStreamLimits): PagedManifest =
   ## Independent CURRENT bytes are decoded under explicit chain, root and V2 format policy.
@@ -63,17 +70,20 @@ proc manifest(reference: PagedReference, source: PagedNativeFixture,
     limits.dataset, ByteLimit(PagedManifestBytes), true)
   assert decoded.error == PagedCodecError.None
   decoded.value
+
 proc header(source: PagedNativeFixture, selected: PagedNativeConfig, size: int, epoch = 1'u64,
     sequence = 0'u64): PagedHeader =
   ## Native target metadata comes only from independently supplied fixture expectations.
   initPagedHeader(selected.chain, selected.root, ManagedEpoch(epoch), LightDeltaSequence(sequence),
     uint64(source.records.len), source.payload, selected.limits.dataset, uint64(size)).value
+
 proc write(path: string, bytes: seq[byte]) =
   ## Only explicitly owned fixture names are replaced for corruption and interrupted-prefix controls.
   var text = newString(bytes.len)
   for index in 0..<bytes.len: text[index] = char(bytes[index]) # Exact byte transport.
   try: writeFile(path, text)
   except: assert false # Fixture IO failure invalidates the trial.
+
 proc initialize(writer: var PagedWriter, directory: string, source: PagedNativeFixture,
     selected: PagedNativeConfig, context: seq[byte]) =
   ## No ordinary consumer starts until both native durability barriers report success.
@@ -83,6 +93,7 @@ proc initialize(writer: var PagedWriter, directory: string, source: PagedNativeF
   assert initialized.error == PagedNativeError.None
   assert initialized.value.durability == StorageDurability.FileAndDirectorySynced
   assert initialized.value.writerUsable and initialized.value.retirementError == FileError.None
+
 proc lowLevel(source: PagedNativeFixture) =
   ## Whole-artifact oracle comparisons qualify both caches, empty knowledge and maximum context transport.
   for size in [1, 31, 4095, 4096, 4097, 65537, 4194304]:
@@ -163,6 +174,7 @@ proc lowLevel(source: PagedNativeFixture) =
   assert lookupPaged(builtEmpty, memoryEmpty.input, pagedKey(0), limits.work).error ==
       PagedStreamError.UnknownKey
   assert readPagedContext(memoryEmpty.input, builtEmpty, limits.work).value.bytes == body(1)
+
 proc normal(old, fresh: PagedNativeFixture) =
   ## One CURRENT binds exact context, proof availability and explicit root advancement while old pins remain immutable.
   let directory = path("normal")
@@ -229,6 +241,7 @@ proc normal(old, fresh: PagedNativeFixture) =
   assert openPagedReader(reader, directory, destination).error == PagedNativeError.None
   assert reader.readContext(destination.limits.work).value.bytes == before
   assert reader.close == FileError.None
+
 proc replay(source: PagedNativeFixture) =
   ## Same-root compaction cleanup also binds opaque context, including prefixes that contain no context page yet.
   let selected = config(source)
@@ -258,6 +271,7 @@ proc replay(source: PagedNativeFixture) =
     assert discardPagedCandidate(writer, candidate, sourceHead).error == PagedNativeError.None
     assert writer.readContext(selected.limits.work).value.bytes == context
     assert writer.close == FileError.None
+
 proc corruption(source: PagedNativeFixture) =
   ## Authentication and canonical padding checks reject both unrecommitted and independently recommitted tampering.
   let selected = config(source)
@@ -279,6 +293,7 @@ proc corruption(source: PagedNativeFixture) =
       reference.manifest(source, selected.limits), selected.limits)
     if kind == 0: assert checked.error == PagedStreamError.ChecksumMismatch # Actual context bytes are authenticated.
     else: assert checked.error == PagedStreamError.InvalidFormat # Rehashed noncanonical suffixes remain forbidden.
+
 proc faults(source: PagedNativeFixture) =
   ## Every actually observed native context read and candidate write boundary is exercised with fresh owners.
   let selected = config(source)
@@ -322,6 +337,7 @@ proc faults(source: PagedNativeFixture) =
     assert writer.readContext(selected.limits.work).value.bytes == context
     if candidate.opened: assert candidate.close == FileError.None
     assert writer.close == FileError.None
+
 proc refusals(source: PagedNativeFixture) =
   ## Presence/cap policy refuses bootstrap before namespace creation; V1 cannot open a selected V2 artifact.
   let selected = config(source)
@@ -350,6 +366,7 @@ proc refusals(source: PagedNativeFixture) =
   assert ioCalls(readIo) == 0
   assert reader.close == FileError.None
   assert reader.readContext(selected.limits.work).error == PagedNativeError.Uninitialized
+
 proc bootstrap(source: PagedNativeFixture) =
   ## Explicit initial replay requires the same independent context after a real interrupted append.
   let selected = config(source)
@@ -368,6 +385,7 @@ proc bootstrap(source: PagedNativeFixture) =
   assert resumed.error == PagedNativeError.None
   assert writer.readContext(selected.limits.work).value.bytes == context
   assert writer.close == FileError.None
+
 proc cycle(reader: var PagedReader, directory: string, selected: PagedNativeConfig,
     context: seq[byte], late: cint) =
   ## Repeated success, detached getter mutation and late failed-prefix allocation all release before fresh reopen.
@@ -382,6 +400,7 @@ proc cycle(reader: var PagedReader, directory: string, selected: PagedNativeConf
   assert reader.close == FileError.None
   assert captured.bytes == context
   assert openPagedReader(reader, directory, selected).error == PagedNativeError.None
+
 proc main() =
   ## Checked native ARC evidence includes allocations released after partially copied context failures.
   let old = nativeFixture(7)

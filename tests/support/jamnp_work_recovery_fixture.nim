@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine original exports become builder imports and independently selected canonical availability descriptors.
+
 import std/assertions
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/[bounded, composite, header, guarantees, report_owned, owned, assurances]
@@ -24,6 +25,7 @@ type WorkRecoveryFixture* = object ## Source bytes, canonical state and typed bu
   work*: WorkFixture
   available*: AvailabilityCommitment
   snapshot*: BlockSnapshot
+
 proc recoveryPolicy*(): WorkRecoveryPolicy =
   ## Explicit whole-session reservations cover both imports, both trust rounds and all declared packet checks.
   workRecoveryPolicy(WorkRecoveryLimits(catalog: importCatalogLimits(), pair: importRecoveryLimits(),
@@ -34,6 +36,7 @@ proc recoveryPolicy*(): WorkRecoveryPolicy =
     bytes: ByteLimit(16000000), hashBytes: ByteLimit(1000000000), products: FieldProductLimit(
         1000000000),
     replyBytes: ByteLimit(8192), timeoutMs: 1000))
+
 proc workRecoveryFixture*(local, peer: StateEdKey, invalidRoot = false): WorkRecoveryFixture =
   ## Actual authorization/refinement and erasure coding supply every imported byte; no fabricated proof or success bit enters the fixture.
   result = default(WorkRecoveryFixture)
@@ -147,16 +150,19 @@ proc workRecoveryFixture*(local, peer: StateEdKey, invalidRoot = false): WorkRec
   let captured = captureBlockSnapshot(header, entries, result.work.input.parameters)
   assert captured.error == GenesisError.None, "canonical work recovery fixture"
   result.snapshot = captured.value
+
 proc recoveryHeader*(fixture: WorkRecoveryFixture): WorkSubmissionHeader =
   ## Independent CE133 framing binds the final original package before actual authorizer execution.
   var first = @[0'u8, 0]
   for octet in fixture.work.package: first.add(octet)
   decodeWorkSubmission(WorkSubmissionKind.Package, first, [], fullPackageConfig(ByteLimit(204800))).value
+
 proc recoveryFrame*(payload: openArray[byte]): seq[byte] =
   ## Literal E4 framing independently checks the production request/reply boundaries.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(payload.len) shr (index*8)) and 255))
   for octet in payload: result.add(octet)
+
 proc recoveryWire*(fixture: WorkRecoveryFixture): seq[byte] =
   ## Builder input contains the original package and exact committed extrinsic bytes only.
   var header = @[0'u8, 0]
@@ -164,6 +170,7 @@ proc recoveryWire*(fixture: WorkRecoveryFixture): seq[byte] =
   result = @[133'u8]
   for octet in recoveryFrame(header): result.add(octet)
   for octet in recoveryFrame(fixture.work.extrinsics): result.add(octet)
+
 proc shardRequestWire*(fixture: WorkRecoveryFixture, item, shard: int, proven: bool): seq[byte] =
   ## Independent singleton group requests exactly one export and its distinct combined proof-page row.
   let specifier = fixture.available.availabilityInfo.value.specifier
@@ -178,6 +185,7 @@ proc shardRequestWire*(fixture: WorkRecoveryFixture, item, shard: int, proven: b
   payload.add(0)
   result = @[if proven: 140'u8 else: 139'u8]
   for octet in recoveryFrame(payload): result.add(octet)
+
 proc shardReplyWire*(fixture: WorkRecoveryFixture, item, shard: int, proven: bool): seq[byte] =
   ## Genuine original transfer proofs, not test-issued verification flags, supply both response pieces.
   let source = fixture.available.availabilitySource.value

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_managed_work_signing_arc_release"}
 
 ## Actual Services keeps private TLS signing keys frozen through exact CPU collection/cancellation and joined close.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[worker, network_read, work_submission as work_jobs]
@@ -22,12 +24,14 @@ import ../../../src/state/availability/specifier
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield between scalar polls without reading any signer/source owner held by the CPU.
+
 proc waitDone(worker: var StateProofWorker) =
   ## All source/key aliases remain frozen while polling only the synchronized phase.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "signing worker deadline"
     discard pauseMicros(1000)
+
 proc verifyContribution(contribution: SignedWorkContribution, expected: StateEdKey, slot: uint32) =
   ## Genuine collected signatures authenticate the exact retained transcript and actual original roster ordinal.
   let facts = contribution.contributionInfo.value
@@ -37,11 +41,13 @@ proc verifyContribution(contribution: SignedWorkContribution, expected: StateEdK
   let message = array[45, byte](contribution.contributionTranscript.value.computedGuaranteeMessage.value)
   assert verify(EdPublicKey(array[32, byte](expected)), EdSignature(array[64, byte](
       credential.signature)), message)
+
 proc collected(services: Services, token: WorkSessionToken, expected: StateEdKey) =
   ## Every extracted ARC alias retires before this helper returns and another worker may be admitted.
   let outcome = services.workSubmissionOutcome(token)
   assert outcome.kind == WorkJobResultKind.Contributed
   verifyContribution(outcome.signedContribution, expected, 20)
+
 proc managed(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   ## Configuration imports from paths privately and only while the full-state worker/session is idle.
   let head = fixture.view.bestBlock.value
@@ -141,6 +147,7 @@ proc managed(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   services.close()
   assert not services.workSigningConfigured
   assert services.workSessionPhase(closing) == WorkSessionPhase.Empty
+
 proc capacity(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   ## Real signing refuses inadequate capture and a full retained store before disclosing another signature; old roots survive primary release.
   var settings = default(Options)
@@ -223,6 +230,7 @@ proc capacity(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
         assert reply.value.bytes == frame(expected)
   assert services.retireWorkSubmission(next)
   assert services.retainedWorkBundles == 1 and services.retainedWorkBytes == bytes
+
 proc retainedRoot(services: var Services, fixture: GuaranteeFixture, raw: WorkFixture,
     cert, key: string): array[32, byte] {.raises.} =
   ## Independent genuine builder headers produce signatures and then retire every session-owned source before returning only fixed root bytes.
@@ -236,6 +244,7 @@ proc retainedRoot(services: var Services, fixture: GuaranteeFixture, raw: WorkFi
   result = services.workSubmissionReportInfo(token).header.erasureRoot.bytes
   assert services.retireWorkSubmission(token)
   assert services.workSessionPhase(token) == WorkSessionPhase.Empty
+
 proc multiple(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
   ## Two actual packages share one canonical source but distinct authorization bytes; later signatures cannot replace earlier serving roots.
   let changed = guaranteeFixture(fixture.local, authorizationSalt = 1)
@@ -283,6 +292,7 @@ proc multiple(fixture: GuaranteeFixture, cert, key: string) {.raises.} =
         assert completed.readValue.error == ReadError.None
         assert completed.readValue.value.bytes == expected.value.bytes
   assert services.retainedWorkBundles == 2
+
 proc segments(local: StateEdKey, cert, key: string) {.raises.} =
   ## A real exporting signature remains queryable after retirement while a distinct unsigned report supplies another root in the same batch.
   let fixture = guaranteeFixture(local, exported = true)
@@ -346,6 +356,7 @@ proc segments(local: StateEdKey, cert, key: string) {.raises.} =
     assert segmentMessages(completed.readValue.value.bytes) == @[data, proofs]
   assert services.reapWorkSubmission()
   assert services.retainedWorkBundles == 1
+
 proc cycle(worker: var StateProofWorker, context: AuthorizedWorkContext, fixture: GuaranteeFixture,
     signer: WorkSigner, mode: int) =
   ## Shared worker ownership covers real success, Done cancellation and a late mismatched-private-key refusal.
@@ -377,6 +388,7 @@ proc cycle(worker: var StateProofWorker, context: AuthorizedWorkContext, fixture
     else:
       verifyContribution(outcome.signedContribution, expected, 21)
   assert worker.phase == ProofWorkerPhase.Idle
+
 proc readSource(local: StateEdKey, signer: WorkSigner): GuarantorAvailability =
   ## Every temporary qualification/signature alias retires before the source-free archive is handed to the worker stress loop.
   let fixture = guaranteeFixture(local, exported = true)
@@ -385,12 +397,14 @@ proc readSource(local: StateEdKey, signer: WorkSigner): GuarantorAvailability =
   let contributed = signer.signWorkContribution(qualified.value, guarantorLimits())
   assert contributed.error == WorkSignerError.None
   contributed.value.contributionAvailability.value
+
 proc readJob(source: GuarantorAvailability, request: ReadRequest): NetworkReadJob =
   ## Array/admission temporaries leave this staging activation before submit transfers the only job owner to the worker.
   let captured = captureOriginalSegments(default(AvailabilityCommitment), [source], request,
       guarantorReadLimits())
   assert captured.error == ReadError.None
   captured.value
+
 proc readCycle(worker: var StateProofWorker, source: GuarantorAvailability, cancel: bool) =
   ## Actual immutable archive/table/tree lifetimes survive handoff, foreign collection and Done cancellation without leaking across cycles.
   let info = source.guarantorInfo.value.specifier
@@ -410,6 +424,7 @@ proc readCycle(worker: var StateProofWorker, source: GuarantorAvailability, canc
     assert completed.readValue.error == ReadError.None
     verifyOriginalSegments(info, [0'u16, 0], segmentMessages(completed.readValue.value.bytes))
   assert worker.phase == ProofWorkerPhase.Idle
+
 proc main() {.raises.} =
   ## Test-only TLS fixtures are read privately; no key material is printed or installed by mutable alias.
   let cert = getEnv("RAGNAROK_TEST_CERT")

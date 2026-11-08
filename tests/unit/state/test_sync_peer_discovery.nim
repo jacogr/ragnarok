@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real pinned TLS peers exchange independently framed UP0 bytes; retired sources cannot retain targets.
+
 import std/[assertions, envvars, monotimes, times, syncio]
 import std/posix/posix
 import "../../../src/jamnp-s/announcements"
@@ -30,13 +31,17 @@ type RawAnnouncer = object ## Stable test listener deliberately avoids the produ
   ceInput: seq[byte]
   ceWritten: int
   ceExpected: array[42, byte]
+
 proc `=copy`(destination: var RawAnnouncer, source: RawAnnouncer) {.error.}
   ## Listener callbacks cannot survive a copied or relocated owner.
+
 proc `=dup`(source: RawAnnouncer): RawAnnouncer {.error.}
   ## Composite fixture ownership is exclusive too.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Use ordinary JAM certificate/SAN checks; the client separately pins the exact server key.
   cint(validPeer(cast[ptr byte](der), length, []))
+
 proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Independent responder sends single-octet fragments and never treats an idle queue as FIN.
   let server = cast[ptr RawAnnouncer](user)
@@ -116,6 +121,7 @@ proc event(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: []
     wantRead(stream, 0)
     wantWrite(stream, 0)
   else: discard # Native lifecycle events outside this fixture's protocol grant no progress.
+
 proc claim(marker: byte, slot: uint32): AnnouncedBlock =
   ## Deliberately separated slots prove progress is not an inferred adopted-block count.
   result = default(AnnouncedBlock)
@@ -123,22 +129,26 @@ proc claim(marker: byte, slot: uint32): AnnouncedBlock =
   hash[0] = marker
   result.hash = AnnouncedHeaderHash(hash)
   result.slot = HeaderSlot(slot)
+
 proc record(value: AnnouncedBlock): seq[byte] =
   ## Independent fixed wire layout for hash and little-endian E4 slot.
   result = @[]
   for value in array[32, byte](value.hash): result.add(value)
   for index in 0..<4: result.add(byte((uint32(value.slot) shr (index * 8)) and 255))
+
 proc framed(body: seq[byte], kind = false): seq[byte] =
   ## Native tests author their framing independently of the production route.
   result = @[]
   if kind: result.add(0)
   for index in 0..<4: result.add(byte((uint64(body.len) shr (index * 8)) and 255))
   for value in body: result.add(value)
+
 proc handshake(finalized, leaf: AnnouncedBlock): seq[byte] =
   ## One leaf has a literal compact count byte, not an E4 sequence count.
   result = record(finalized)
   result.add(1)
   for value in record(leaf): result.add(value)
+
 proc peerKey(second = false): CurrentDownloadPeerKey {.raises.} =
   ## Fixture provider owns exact generated identity files, independent of application claims.
   let text = readFile(getEnv(if second: "RAGNAROK_TEST_PEER_B" else: "RAGNAROK_TEST_PEER_A"))
@@ -146,16 +156,19 @@ proc peerKey(second = false): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(text[index])
   CurrentDownloadPeerKey(bytes)
+
 proc open(server: var RawAnnouncer, expected, response: seq[byte]): bool =
   ## Store callback bytes before the native listener can deliver any read/write event.
   server.expected = expected
   server.output = response
   server.transport.openTransport(true, false, 0, getEnv("RAGNAROK_TEST_CERT"),
     getEnv("RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", addr server, verify, event)
+
 proc tick(server: var RawAnnouncer, peers: var CurrentDownloadPeers) =
   ## Bound work to one poll per independent endpoint; no execution happens in these callbacks.
   assert server.transport.pollTransport(0), "independent listener poll"
   discard peers.poll()
+
 proc awaitView(server: var RawAnnouncer, peers: var CurrentDownloadPeers,
     sequence: uint64): PeerAnnouncementSnapshot =
   ## Real monotonic deadline bounds handshake and every intentionally fragmented follow-up.
@@ -170,6 +183,7 @@ proc awaitView(server: var RawAnnouncer, peers: var CurrentDownloadPeers,
     " identity_rejected=", peers.identityRejected(DownloadPeerId(1))
   assert false, "UP0 observation deadline"
   default(PeerAnnouncementSnapshot)
+
 proc main() {.raises.} =
   ## Exact key pinning, live generation changes, updates, malformed frames and native retirement are distinct checks.
   var config = fullHeaderConfig(ByteLimit(4096))

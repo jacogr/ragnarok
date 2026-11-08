@@ -3,6 +3,7 @@
 
 ## Bounded local restart context retains exact headers, full profiles, roots and explicit finality.
 ## Root hints route historical reads; restoreDiskHead validates every hint against the enclosed identity.
+
 import ../chain
 import ./head as disk_head
 import ../historical/context as historical_context

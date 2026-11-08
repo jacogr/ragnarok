@@ -3,6 +3,7 @@
 
 ## Authenticate a contiguous serialized-state page against an independent complete root.
 ## Page evidence retains copied values, never a complete-map owner or adoption/finality authority.
+
 import std/assertions
 import ./trie_proof
 import ../codec/bounded
@@ -37,41 +38,52 @@ type
     left, right: Edge
   Match {.pure.} = enum ## Unknown opaque boundaries can never prove requested-end completeness.
     Equal, Different, Unknown
+
 func error*(outcome: RangeProofResult): RangeProofError =
   ## Inspect only the private failure/success tag.
   outcome.status
+
 func value*(outcome: RangeProofResult): VerifiedStateRange {.requires: outcome.status ==
     RangeProofError.None.} =
   ## Extract a whole immutable verified page, not a successful prefix from a later failure.
   outcome.completed
+
 func valid*(page: VerifiedStateRange): bool =
   ## Default pages contain neither root authority nor values.
   page.data != nil
+
 func len*(page: VerifiedStateRange): int =
   ## An authenticated empty page differs from the default through valid, not count alone.
   let data = page.data
   if data == nil: 0 else: data.entries.len
+
 proc checkedData(page: VerifiedStateRange): RangeData {.requires: page.valid.} =
   ## Refine one stable borrowed reference after its public validity guard.
   let data = page.data
   assert data != nil
   data
+
 proc root*(page: VerifiedStateRange): StateRoot {.requires: page.valid.} =
   ## This independent complete root authenticates partial evidence; it is never recomputed from this page.
   page.checkedData.root
+
 proc start*(page: VerifiedStateRange): StateKey {.requires: page.valid.} =
   ## Root and query bounds remain bound to the same immutable page owner.
   page.checkedData.start
+
 proc finish*(page: VerifiedStateRange): StateKey {.requires: page.valid.} =
   ## Completion refers only to this requested end, never the entire key space implicitly.
   page.checkedData.finish
+
 proc complete*(page: VerifiedStateRange): bool {.requires: page.valid.} =
   ## True only when the boundary evidence proves no omitted keys through the requested end.
   page.checkedData.complete
+
 proc keyAt*(page: VerifiedStateRange, index: int): StateKey {.requires: page.valid and index >=
     0 and index < page.len.} =
   ## Owner-bound ordinals return fixed copied serialized keys.
   page.checkedData.entries[index].key
+
 proc valueAt*(page: VerifiedStateRange, index: int): seq[byte] {.requires: page.valid and index >=
     0 and index < page.len.} =
   ## Copies cannot mutate the page's privately retained values.
@@ -79,6 +91,7 @@ proc valueAt*(page: VerifiedStateRange, index: int): seq[byte] {.requires: page.
   result = @[]
   for offset in 0..<data.entries[index].value.len:
     result.add(data.entries[index].value[offset]) # Index the immutable owner; do not take an iterator borrow through a ref.
+
 func compare(left, right: StateKey): int =
   ## MSB-first lexicographic order is the trie partition order.
   let a = array[31, byte](left)
@@ -87,9 +100,11 @@ func compare(left, right: StateKey): int =
     if a[index] < b[index]: return -1
     if a[index] > b[index]: return 1
   0
+
 func bit(key: StateKey, depth: int): bool {.requires: depth >= 0 and depth < 248.} =
   ## Callers prove the maximum serialized-key depth before accessing a byte or shift.
   (array[31, byte](key)[depth div 8] and byte(128 shr (depth mod 8))) != 0
+
 func matches(left, right: Edge): bool =
   ## Compare exactly the committed width, including when the other tree has a virtual singleton leaf.
   var a = left.digest
@@ -98,6 +113,7 @@ func matches(left, right: Edge): bool =
     a[0] = a[0] and 127
     b[0] = b[0] and 127
   a == b
+
 proc add(map: var NodeMap, wire: EncodedStateNode, strict: bool): RangeProofError =
   ## Protocol witnesses forbid duplicates; internally generated intersecting paths coalesce exact bytes.
   for fact in map.facts:
@@ -112,6 +128,7 @@ proc add(map: var NodeMap, wire: EncodedStateNode, strict: bool): RangeProofErro
       info: decoded.value.node))
   map.used.add(false)
   RangeProofError.None
+
 proc find(map: NodeMap, edge: Edge): int =
   ## Zero is an empty subtree; ambiguous masked matches are rejected without reconstructing a lost bit.
   if edge.digest == default(array[32, byte]): return -2
@@ -122,6 +139,7 @@ proc find(map: NodeMap, edge: Edge): int =
     if actual == edge.digest:
       if result >= 0: return -3
       result = index
+
 proc boundary(map: var NodeMap, expected: StateRoot, query: StateKey,
     supplied: openArray[byte], present: bool, perValue: ByteLimit): RangeProofError =
   ## Resolve one root-first path, then reuse the existing independent-root GP lookup verifier.
@@ -154,6 +172,7 @@ proc boundary(map: var NodeMap, expected: StateRoot, query: StateKey,
   if checked.error != StateProofError.None: return RangeProofError.InvalidProof
   if checked.value.present != present: return RangeProofError.InvalidRange
   RangeProofError.None
+
 proc children(map: NodeMap, edge: Edge, depth: int, output: var Children): bool =
   ## A singleton's depth-independent leaf hash follows its own key through virtual comparison branches only.
   output = default(Children)
@@ -171,6 +190,7 @@ proc children(map: NodeMap, edge: Edge, depth: int, output: var Children): bool 
     if key.bit(depth): output.right = child
     else: output.left = child
   true
+
 proc covered(auth, page: NodeMap, a, b: Edge, lower, upper, start, finish: StateKey,
     depth: int): Match =
   ## Only two boundary prefixes remain partial at each depth; wholly covered subtrees compare commitments directly.
@@ -192,6 +212,7 @@ proc covered(auth, page: NodeMap, a, b: Edge, lower, upper, start, finish: State
       finish, depth+1)
   if second == Match.Different: return second
   if first == Match.Unknown or second == Match.Unknown: Match.Unknown else: Match.Equal
+
 func validRangeLimits*(limits: StateTrieLimits): bool =
   ## Small independent comparisons keep every work/byte ceiling explicit before hashing or allocation.
   if uint64(limits.items) == 0: return false
@@ -200,6 +221,7 @@ func validRangeLimits*(limits: StateTrieLimits): bool =
   if uint64(limits.totalValueBytes) > 8388608: return false
   if uint64(limits.nodes) == 0: return false
   uint64(limits.nodes) <= 1048576
+
 proc verifyStateRange*(entries: openArray[StateEntry], nodes: openArray[EncodedStateNode],
     expected: StateRoot, start, finish: StateKey, limits: StateTrieLimits): RangeProofResult =
   ## Authenticate boundary membership/absence and every covered interior subtree before freezing a private page.

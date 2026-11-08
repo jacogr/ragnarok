@@ -4,6 +4,7 @@
 # @@Verification={"arc":"service_logical_continuation_arc_release"}
 
 ## Real native service creation/ejection continues complete logical state without supplied successor declarations, while missing evidence and unsupported generations remain closed.
+
 import std/[assertions, syncio, envvars]
 import ../../support/[collected_native_context, collected_logical_context,
   current_namespace_transition_context, current_namespace_execution_context,
@@ -33,13 +34,16 @@ import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     requests as state_requests, service_values as state_service_values]
 import ../../../src/chain/[provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Early planning ceilings must refuse independently of crypto availability.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Exact whole service/resource preflight cannot spend a request hash first.
 type Fixture = object ## Only genuine original parents and matching worker-collected successors feed continuation.
   origin: CurrentNamespaceTransition
   update: PreparedCurrentChainUpdate
+
 proc candidatePolicy(members = true): CurrentCandidateLimits =
   ## Independent host raw identities and all selected histories are frozen before actual guest execution.
   result = currentCandidateLimits()
@@ -59,6 +63,7 @@ proc candidatePolicy(members = true): CurrentCandidateLimits =
   result.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
   result.completion.execution.initial.guests.deletedAccounts = ElementLimit(4)
   result.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(4)
+
 proc policy(): LogicalContinuationLimits =
   ## Explicit projection covers up to four whole services; original qualification policies remain independent.
   let logical = namespaceLogicalLimits()
@@ -66,6 +71,7 @@ proc policy(): LogicalContinuationLimits =
       8192), scratchBytes: ByteLimit(262144), projection: namespaceRefreshLimits.projection,
       profile: logical.profile, globals: logical.globals, logical: logical.logical)
   result.projection.services = ElementLimit(4)
+
 proc program(checkpoint = false, panic = false): seq[byte] =
   ## Actual new seeds a one-byte requested code hash, with a real optional checkpoint before the actual selected terminal instruction.
   var payload = newSeq[byte](60)
@@ -76,6 +82,7 @@ proc program(checkpoint = false, panic = false): seq[byte] =
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+
 proc prepare(origin: CurrentNamespaceTransition, members = true): PreparedCurrentChainUpdate {.raises.} =
   ## Collection and joined shutdown release native graph borrowing before any immutable current evidence is inspected.
   var owner = initApplicationChain(origin.update.currentUpdatePriorView).value
@@ -84,6 +91,7 @@ proc prepare(origin: CurrentNamespaceTransition, members = true): PreparedCurren
   assert receipt.kind == PreparationCompletionKind.CurrentCompleted and
       receipt.currentValue.error == CurrentBlockInputError.None
   receipt.currentValue.value
+
 proc fixture(eject = false, checkpoint = false, panic = false,
     replace = false): Fixture {.raises.} =
   ## Author complete original namespaces and programs before roots/signatures, including a genuinely empty eligible ejection target.
@@ -101,6 +109,7 @@ proc fixture(eject = false, checkpoint = false, panic = false,
     options.signed.serviceNamespaces[1].requests = @[]
   let origin = namespaceTransitionFixture(nativeBase(), options, ElementLimit(4), candidatePolicy())
   Fixture(origin: origin, update: prepare(origin))
+
 proc check(source: Fixture, count: int): CurrentLogicalState =
   ## Entire actual-map matching and independent raw-key capture are mandatory for every returned logical successor.
   let continued = continueCurrentNamespaces(source.origin.parent, source.update, policy())
@@ -113,6 +122,7 @@ proc check(source: Fixture, count: int): CurrentLogicalState =
   let services = copySuppliedServices(logical.currentLogicalInventory.value, policy().projection).value
   assert services.len == count, "continued services expected=" & $count & " actual=" & $services.len
   logical
+
 proc main() {.raises.} =
   if getEnv("RAGNAROK_STATE_REPORT").len == 0:
     putEnv("RAGNAROK_STATE_REPORT", "tests/fixtures/state-report.bin") # Supported unit runs retain an explicit absolute fixture binding.

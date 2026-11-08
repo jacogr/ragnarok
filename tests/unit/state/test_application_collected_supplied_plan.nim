@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen plans bind exact actual native receipts, original child profiles and policies before supplied namespace matching.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, current_namespace_refresh_context]
 import ../../../src/app/collected/supplied/plan as collected_supplied_plan
@@ -12,6 +13,7 @@ import ../../../src/state/current/[profile as current_profile, globals as curren
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/state/store
 import ../../../src/codec/bounded
+
 proc main() {.raises.} =
   ## Actual collected execution is the only target; caller policy mutation and default sources grant no substitute.
   let fixture = collectedNativeFixture()

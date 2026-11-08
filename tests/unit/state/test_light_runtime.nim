@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real light Services use independent current trust, asynchronous proof enrichment and selected paged restart without a complete state owner.
+
 import std/[assertions, syncio, envvars, strutils, base64, monotimes, times]
 import std/posix/posix
 import ../../support/[application_checkpoint_context, rpc_socket, storage_io]
@@ -30,6 +31,7 @@ import ../../support/mcp_socket
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded native scalar polls.
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Each owned ignored fixture namespace survives without colliding with another invocation.
 type Fixture = object ## Only fixed identities, detached proof bytes and independent authority paths survive fixture construction.
@@ -38,12 +40,14 @@ type Fixture = object ## Only fixed identities, detached proof bytes and indepen
   wire: seq[byte]
   trust, header, foreignTrust, foreignHeader: string
   policy: LightRuntimePolicy
+
 proc putBytes(path: string, bytes: openArray[byte]) {.raises.} =
   ## Persist initialized independent fixture authority before runtime startup.
   var text = newString(bytes.len)
   for index in 0..<bytes.len: text[index] = char(bytes[
       index]) # Binary fixture files contain no implicit text conversion.
   writeFile(path, text)
+
 proc fixture(): Fixture {.raises.} =
   ## The complete fixture map authors genuine selected witnesses and immediately retires every full-state alias.
   let owner = checkpointFixture()
@@ -87,6 +91,7 @@ proc fixture(): Fixture {.raises.} =
   let view = captureProofView(checked, source.stateRoot, result.policy.query.view).value
   result.wire = encodeProofView(view, result.policy.query.view, result.policy.query.proof,
       result.policy.ingestion.wireBytes).value
+
 proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false,
     mcpPort = 0'u16): Options =
   ## Real CLI parsing selects memory or explicit paged disk independently of current checkpoint authority.
@@ -104,9 +109,11 @@ proc configured(fixed: Fixture, directory: string, port: uint16, foreign = false
     for value in ["--with-mcp", "--mcp-port", $mcpPort]: arguments.add(value)
   result = default(Options)
   assert parseCanonicalOptions(arguments, result)
+
 proc idle(owner: Services): bool =
   ## Scalar exclusion observation never copies a partial graph during CPU/IO borrowing.
   not owner.stateProofActive and not owner.lightDiskActive
+
 proc settle(owner: var Services) =
   ## Dispatcher collection ends each exact graph lease before any selected source can be inspected.
   let start = getMonoTime()
@@ -116,6 +123,7 @@ proc settle(owner: var Services) =
     owner.tick(0)
     discard pauseMicros(1000) # CPU and disk work share one serialized actor gate.
   assert not owner.rpc.chainPaused
+
 proc claim(owner: var Services, peer: cint, call: string) =
   ## Transport parsing precedes staging, and the observed native lease remains held through Done.
   sendText(peer, call)
@@ -125,20 +133,24 @@ proc claim(owner: var Services, peer: cint, call: string) =
     owner.tick(0)
     discard pauseMicros(1000) # Socket delivery may follow the first dispatcher turn.
   assert owner.rpc.chainPaused
+
 proc request(methodName: string, parameters = "[]"): string =
   ## Test calls use a stable JSON identity; connection-local native request IDs remain independently allocated.
   "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":" & quote(methodName) & ",\"params\":" & parameters & "}"
+
 proc proofCall(fixed: Fixture): string =
   ## Exact current-header selection requests one present and one genuinely absent witness.
   request("ragnarok_requestStateProof", "[" & quote(base64.encode(array[32, byte](fixed.hash))) & ",[" &
     quote(base64.encode(array[31, byte](chapterKey(StateChapter(11))))) & "," & quote(base64.encode(
         default(array[31, byte]))) & "]]")
+
 proc importCall(fixed: Fixture, corrupt = false): string =
   ## One same-length corrupt witness tests whole-batch authentication beyond framing admission.
   var wire = fixed.wire
   if corrupt: wire[wire.high] = wire[wire.high] xor 1 # No valid prefix may be adopted from a failed batch.
   request("ragnarok_importStateProof", "[" & quote(base64.encode(array[32, byte](fixed.hash))) &
       "," & quote(base64.encode(wire)) & "]")
+
 proc roundtrip(owner: var Services, peer: cint, pending: var string, call: string): string =
   ## Acknowledgement reserves intent; only a later terminal message reports actual authenticated adoption/publication.
   owner.claim(peer, call)
@@ -146,6 +158,7 @@ proc roundtrip(owner: var Services, peer: cint, pending: var string, call: strin
   let acknowledgement = readPacket(owner.rpc, peer, pending)
   assert "\"id\":7" in acknowledgement and "\"error\"" notin acknowledgement
   readPacket(owner.rpc, peer, pending)
+
 proc checkHead(owner: Services, count: int) =
   ## The full canonical provider remains unavailable in light mode; partial knowledge has its own guarded source.
   assert owner.lightMode and owner.chainView.bestBlock.error != GenesisError.None
@@ -155,6 +168,7 @@ proc checkHead(owner: Services, count: int) =
   var unknown = default(array[31, byte])
   unknown[0] = 254
   assert head.proofView.lookup(StateKey(unknown)).error == ProofViewError.MissingWitness
+
 proc metadata(owner: var Services, peer: cint, pending: var string, fixed: Fixture) =
   ## Detached RPC metadata exposes configured geometry and trusted root without complete-state/finality capabilities.
   for methodName in ["ragnarok_clientInfo", "ragnarok_lightHead", "bestBlock"]:
@@ -170,6 +184,7 @@ proc metadata(owner: var Services, peer: cint, pending: var string, fixed: Fixtu
   assert base64.encode(array[32, byte](fixed.root)) in readPacket(owner.rpc, peer, pending)
   sendText(peer, request("finalizedBlock"))
   assert "\"error\"" in readPacket(owner.rpc, peer, pending)
+
 proc knownSdkQuery(owner: var Services, fixed: Fixture) {.raises.} =
   ## An explicit SDK lease excludes automatic retirement throughout this IO observation, independently of scheduler delays.
   let plan = captureStateProofPlan([chapterKey(StateChapter(11)), default(StateKey)], ElementLimit(2)).value
@@ -193,6 +208,7 @@ proc knownSdkQuery(owner: var Services, fixed: Fixture) {.raises.} =
   assert not verified.lookup(default(StateKey)).value.present
   for operation in [readIo, writeIo, syncIo, lockIo, closeIo, renameIo, unlinkIo]:
     assert ioCalls(operation) == 0 # Cached query work performs no physical IO; no unrelated retirement turn was admitted.
+
 proc scenario(fixed: Fixture, disk: bool) {.raises.} =
   ## Memory/paged modes share asynchronous CPU semantics; only disk adopts after a genuine native publication.
   let directory = if disk: "light-runtime-db-" & $processId() else: ""
@@ -284,6 +300,7 @@ proc scenario(fixed: Fixture, disk: bool) {.raises.} =
     assert owner.start(configured(fixed, "", 0), "light memory restart")
     checkHead(owner, 0) # Memory selection intentionally retains no disk evidence across lifetimes.
     owner.close()
+
 proc waitDiskDone(owner: var Services) =
   ## Native Done retains every graph/RPC lease until an explicit collection or joined stop.
   let start = getMonoTime()
@@ -291,6 +308,7 @@ proc waitDiskDone(owner: var Services) =
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000) # No dispatcher source access occurs during the native borrow.
   assert owner.lightDiskActive and owner.rpc.chainPaused
+
 proc joinedDisk(fixed: Fixture, mode: int) {.raises.} =
   ## Deterministic Done/join controls preserve actual publication, cleanup and failed-IO receipts across close.
   let directory = "light-runtime-joined-" & $processId() & "-" & $mode
@@ -342,6 +360,7 @@ proc joinedDisk(fixed: Fixture, mode: int) {.raises.} =
   else: assert "\"knownFacts\":2" in terminal # Publication/cleanup receipt kinds remain separate from query wire.
   owner.close()
   assert owner.lightDiskCompletion.kind == receipt.kind # Repeated joined close retains the actual last entered operation.
+
 proc sdkLease(fixed: Fixture) {.raises.} =
   ## SDK queries preserve Busy through cancellation/Done, reject foreign collection and never start complete-state preparation.
   var owner = default(Services)
@@ -367,6 +386,7 @@ proc sdkLease(fixed: Fixture) {.raises.} =
   let next = owner.beginStateProof(fixed.hash, plan, fixed.policy.query).value
   owner.close() # Joined close wins the queued/running/Done race before its partial source is dropped.
   assert owner.collectStateProof(next).kind == ProofWorkerCompletionKind.Uninitialized
+
 proc main() {.raises.} =
   ## Both selected backends use real Services and sockets; the configured full fixture retires before native borrowers start.
   let fixed = fixture()

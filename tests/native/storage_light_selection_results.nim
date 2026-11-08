@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic selected-metadata guards have independent successful controls.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/storage/light/journal/manifest as light_journal_manifest
 import ../../src/storage/light/[snapshot as light_snapshot, delta as light_delta]
@@ -10,6 +11,7 @@ import ../../src/storage/light/state_cache as light_state_cache
 import ../../src/storage/[state_proof, database_identity]
 import ../../src/codec/bounded
 import ../../src/codec/state/trie as state_trie
+
 proc main() =
   ## Dynamic command input keeps invalid accesses as real runtime guard probes.
   let member = paramStr(1)

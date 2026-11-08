@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Consuming failed results must stop before payload access; each child supplies a causal start witness.
+
 import std/[assertions, syncio, strutils]
 import std/posix/posix
 import ../../../src/storage/managed/io as managed_io
@@ -15,12 +16,15 @@ const ApiFiles = ["managed/io.nim", "record_codec.nim", "snapshot_codec.nim", "j
 proc consumeIo(outcome: var ManagedIoResult[seq[byte]]) =
   ## Unknown incoming status retains the real API runtime guard rather than a compiler-constant error.
   discard outcome.takeValue
+
 proc consumeRecords(outcome: var RecordResult[seq[byte]]) =
   ## Failed record transports must expose no default byte payload through consumption.
   discard outcome.takeValue
+
 proc consumeSnapshot(outcome: var SnapshotResult[SnapshotEncoding]) =
   ## A consumed/default snapshot cannot regain an encoded owner through its success alternative.
   discard outcome.takeValue
+
 proc consumeFrame(outcome: var FrameResult[seq[byte]]) =
   ## Failed frames cannot bypass their checked success precondition through the moving accessor.
   discard outcome.takeValue

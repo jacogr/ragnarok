@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent RPC and TLS processes observe confirmed current adoption before a later gated refusal.
+
 import ../../support/chain_alpn
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix

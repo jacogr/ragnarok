@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_account_timestamps_arc_release"}
 
 ## Real current statistics authorize exact final-present metadata timestamps, never account resurrection.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout]
@@ -12,15 +14,20 @@ import ../../../src/state/accumulation/current/[statistics as accumulation_curre
     driver as accumulation_current_driver]
 import ../../../src/state/store
 import ../../support/[accumulation_current_statistics_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(): AccumulationAccountConfig =
   ## Two fixed metadata records suffice for every ordinary final-present participant.
   AccumulationAccountConfig(services: ElementLimit(2), metadataBytes: ByteLimit(210))
+
 proc metadata(state: StateStoreSnapshot, id: uint32): ServiceMetadata =
   ## Observe exact selected metadata through the public complete-map interface.
   let wire = state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(id))).value.bytes
   decodeServiceMetadata(wire, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc main() {.raises.} =
   ## All source graphs pass real signature/admission and current guest/selection constructors.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

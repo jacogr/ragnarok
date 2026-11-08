@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real complete-source economic fixtures retain independently checked footprint and directory evidence.
+
 import ./[state_inventory_context, account_invariant_context, service_directory_context]
 import ../../src/state/[inventory, footprint_audit]
 import ../../src/state/service/directory as service_directory
@@ -12,6 +13,7 @@ type ServiceDepositTestSource* = object ## Tests retain matching genuine source-
   directory*: StateServiceDirectory
 const depositTestSchedule* = AccountDepositSchedule(base: AccountBalance(100), item: AccountBalance(
     2), octet: AccountBalance(3))
+
 proc depositTestSource*(fixture: seq[seq[byte]], services: seq[
     StateService]): ServiceDepositTestSource =
   ## Use existing complete source capture and each bounded factory for every test variant.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded foreign-write code provision supports actual supervisor retirement and recreation.
+
 import ./[current_stf_rotation_requests_context, pvm_accumulation_provision]
 import ../../src/app/candidate
 import ../../src/codec/[bounded, composite]

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Local lowering witness: exclusive frame/stream owners can move but cannot be duplicated for a later read.
+
 import std/[assertions, syncio]
 import ../../src/pvm/internal/handler_stream
 import ../../src/pvm/program

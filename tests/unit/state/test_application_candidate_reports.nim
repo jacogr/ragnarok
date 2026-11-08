@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine signed guaranteed reports can suspend before guest execution, discover missing context and complete against the exact parent.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/[candidate, chain]
 import ../../../src/chain/[genesis, provider]

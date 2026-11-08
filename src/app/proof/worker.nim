@@ -200,15 +200,18 @@ func assuranceStorageValue*(completion: ProofWorkerCompletion): AssuranceStoreRe
     bool] {.requires: completion.status == ProofWorkerCompletionKind.AssuranceCompleted.} =
   ## Exact uncancelled collection alone exposes the completed namespace I/O outcome.
   completion.assuranceResponse
+
 func assuranceAcquisitionValue*(completion: ProofWorkerCompletion): AssuranceAcquisitionResult[
     AssuranceAcquisitionInfo] {.requires: completion.status ==
     ProofWorkerCompletionKind.AssuranceAcquired.} =
   ## Only exact uncancelled collection exposes persisted progress; no completion grants a possession bit or signing capability.
   completion.acquisitionResponse
+
 func assuranceSigningValue*(completion: ProofWorkerCompletion): AssuranceSigningResult[
     SignedAssurance] {.requires: completion.status == ProofWorkerCompletionKind.AssuranceSigned.} =
   ## Only exact uncancelled collection exposes the source-bound signature after all key/source/native aliases retire.
   completion.signingResponse
+
 proc stopAssuranceScan(context: nil pointer): bool {.nimcall, raises: [].} =
   ## Execution holds no worker mutex; close/cancel release it before waiting so a scan can observe the stop without deadlocking.
   let worker = cast[ptr StateProofWorker](context)
@@ -216,6 +219,7 @@ proc stopAssuranceScan(context: nil pointer): bool {.nimcall, raises: [].} =
   acquire(worker.lock)
   result = worker.cancelled or worker.stopping
   release(worker.lock)
+
 proc execute(worker: ptr StateProofWorker) =
   ## All selected-state aliases and generation scratch retire before run publishes Done.
   case worker.operation
@@ -688,7 +692,6 @@ func matches(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
   ticket.owner == worker.identity and ticket.generation != 0 and ticket.generation ==
       worker.next and
     worker.phase != ProofWorkerPhase.Idle
-
 
 proc active*(worker: var StateProofWorker, ticket: ProofWorkerTicket): bool =
   ## Exact synchronized membership covers Queued, Running and uncollected Done without accessing shared job graphs.

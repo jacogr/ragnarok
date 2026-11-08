@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
+
 import std/[algorithm, assertions]
 when defined(pvmArmMixedGroupReceipt):
   import std/syncio
@@ -175,13 +177,12 @@ type
         armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
     rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
 
-
-
-
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
+
 proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
   ## Interpreted execution carries the same exclusive resident-owner contract as native execution.
+
 proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   ## Delegate every owning child and remove source views without retiring transferred storage.
   `=wasMoved`(frame.plan)
@@ -219,16 +220,20 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
 
 proc `=copy`*(destination: var FlatResult[FlatFrame], source: FlatResult[FlatFrame]) {.error.}
   ## The success wrapper is itself noncopyable, independently of its exclusive child.
+
 proc `=dup`*(source: FlatResult[FlatFrame]): FlatResult[FlatFrame] {.error.}
   ## Reject duplication of the actual successful frame result in every profile.
+
 proc `=wasMoved`*(outcome: var FlatResult[FlatFrame]) {.nodestroy, inline.} =
   ## Initialization also calls this hook: select the payload-free neutral state without reading old storage.
   outcome.status = FlatError.Uninitialized
 
 proc `=copy`*(destination: var FlatMemoryScratchData, source: FlatMemoryScratchData) {.error.}
   ## Reference-handle identity may be shared; the actual owning heap payload cannot be cloned.
+
 proc `=dup`*(source: FlatMemoryScratchData): FlatMemoryScratchData {.error.}
   ## Reject a second independent owner of a retained resident mapping.
+
 proc `=wasMoved`*(scratch: var FlatMemoryScratchData) {.nodestroy, inline.} =
   ## Disarm all moved children and the old view while preserving automatic complete destruction.
   `=wasMoved`(scratch.baseline)
@@ -2069,7 +2074,6 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
     result.armPreviousHeader = flatStop
     result.armPreviousNext = flatStop
     result.armPreviousValid = false
-
 
 proc flatRegionPast(images: openArray[PageDescription], first: int): int =
   ## Group only genuinely adjacent pages with equal permission before any region payload allocation.

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal account equations and full-width arithmetic boundaries refuse before Nimony can wrap.
+
 import std/[assertions, syncio]
 import ../../../src/state/account/footprint as account_footprint
 import ../../../src/codec/state/accounts as state_accounts
+
 proc main() =
   ## Independent literal observations distinguish request reservation from unrelated preimage payloads.
   let zero = calculateAccountFootprint(AccountFootprintShape()).value

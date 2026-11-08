@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen supplied input survives caller mutation/scope retirement and preserves actual qualification, resource and stale-source failures.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_supplied_context]
 import ../../src/app/frozen_supplied
@@ -15,10 +16,13 @@ import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/codec/state/[composition as state_composition,
     service_values as state_service_values]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject backend refusal only after source planning and detached input capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Freezing must neither hash nor qualify the borrowed declarations.
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(FrozenSuppliedResult[FrozenSuppliedInput])

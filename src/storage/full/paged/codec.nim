@@ -3,6 +3,7 @@
 
 ## Full-state paged metadata preserves complete physical identities and bounded retained-root claims.
 ## These codecs confer local shape/integrity only; complete graph admission and native pins are separate.
+
 import std/assertions
 import ../../paged/codec as paged_codec
 import ../../database_identity

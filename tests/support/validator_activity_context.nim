@@ -17,7 +17,9 @@ import ../../src/codec/[assurances, tickets, report_owned, block_codec, header]
 import ./report_admission_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc validatorPolicy*(): ValidatorActivityConfig =
   ## Bound original extrinsic populations, source captures and explicit posterior-key comparison work.
   ValidatorActivityConfig(validators: ElementLimit(9), services: ElementLimit(0),
@@ -26,18 +28,22 @@ proc validatorPolicy*(): ValidatorActivityConfig =
         reporterWork: ElementLimit(81),
     rosterBytes: ByteLimit(4096), statisticsBytes: ByteLimit(4096), preimageFrameBytes: ByteLimit(19),
     preimageBytes: ByteLimit(3), assuranceBytes: ByteLimit(4096))
+
 proc preimageWire(): seq[byte] =
   ## Literal three records include an empty blob and repeated service identity, totaling three payload octets.
   @[3'u8, 42, 0, 0, 0, 0, 42, 0, 0, 0, 2, 1, 2, 77, 0, 0, 0, 1, 3]
+
 proc provided(): OwnedFrame =
   ## Capture authored preimage framing independently of production statistics logic.
   decodeOwnedPreimages(preimageWire(), PreimageLimits(items: ElementLimit(3), perBlob: ByteLimit(2),
     totalBlobBytes: ByteLimit(3))).value
+
 proc statisticsPolicy(cores, current, previous: int): ActivityConfig =
   ## Supply independent current/previous roster cardinalities to the existing unchanged codec.
   ActivityConfig(cores: CoreCount(cores), current: ValidatorCount(current),
       previous: ValidatorCount(previous),
     maxServices: ElementLimit(0), maxBytes: ByteLimit(4096))
+
 proc seeded(cores = 3, current = 6, previous = 9): ActivityState =
   ## Distinct literal families make accidental reset, epoch swap and positional attribution observable.
   result = ActivityState(cores: newSeq[CoreActivity](cores))
@@ -48,12 +54,14 @@ proc seeded(cores = 3, current = 6, previous = 9): ActivityState =
       for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
         result.validators[epoch][index][measure] = ValidatorCounter(uint32(100*(ord(
             epoch)+1)+10*index+ord(measure)))
+
 proc captured(state: ActivityState): ActivitySnapshot =
   ## Canonical encoding captures independently authored rows, never a production-projected expected value.
   let policy = statisticsPolicy(state.cores.len, state.validators[StatisticsEpoch.Current].len,
     state.validators[StatisticsEpoch.Previous].len)
   let encoded = activityStateEntry(state, policy).value
   decodeActivityState(encoded.value, policy).value.snapshot
+
 proc active(count = 6): ValidatorStateSnapshot =
   ## Stable nontrivial key identities permit reporter membership by key instead of credential ordinal.
   var values = newSeq[StateValidator](count)
@@ -65,10 +73,12 @@ proc active(count = 6): ValidatorStateSnapshot =
       maxBytes: ByteLimit(4096))
   let encoded = validatorEntry(ValidatorChapter.Active, values, policy).value
   decodeStateValidators(encoded.value, policy).value.value
+
 proc sameValidator(left, right: ValidatorActivity) =
   ## Compare all six full-width natural counters without depending on array equality for nominal values.
   for measure in low(ValidatorMeasure)..high(ValidatorMeasure):
     assert uint64(left[measure]) == uint64(right[measure])
+
 proc context(target = 2'u32, author = 2'u64): ValidatorActivityContext =
   ## Original block summary deliberately credits three tickets and preimages to one author.
   ValidatorActivityContext(previousTime: StateTime(1), target: StateTime(target),

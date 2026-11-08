@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit journal reclamation validates selected authority, preserves unknown candidates and synchronizes idempotent absence.
+
 # @@Verification={"arc":"storage_light_journal_reclamation_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -13,30 +14,39 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selected-head provider refusal must poison fresh authority before any namespace deletion.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Invalid retention positions refuse before hashing or IO.
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Test-only exact child presence observations never establish production selection.
+
 proc renameFile(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Equal-byte selected inode replacement deliberately bypasses the cooperative lease for a negative witness.
+
 proc linkFile(source, target: cstring): cint {.importc: "symlink", cdecl, header: "<unistd.h>".}
   ## Unselected symlinks must never satisfy regular-prefix preflight or be followed.
+
 proc exists(path: string): bool =
   ## Observe only exact owned fixture children.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc path(suffix: string): string =
   ## Native test fixtures live directly in Hastur's isolated ignored working directory.
   "light-reclamation-" & $storageProcessId() & "-" & suffix
+
 proc retireEpoch(path: string, epoch: ManagedEpoch) =
   ## Explicit test retirement names only known owned epoch files after every native owner closes.
   for kind in [ManagedFileKind.Snapshot, ManagedFileKind.Journal]:
     var file = lightChild(path, kind, epoch)
     let removed = posix.unlink(file.toCString())
     if removed != 0: assert posix.errno() == ENOENT, "only missing known fixture names are harmless"
+
 proc compacted(path: string, fixture: LightJournalFixture,
     following = false): PreparedLightCompaction =
   ## Build a genuine selected epoch two, retaining its old exact plan for selected-target refusal tests.
@@ -50,10 +60,12 @@ proc compacted(path: string, fixture: LightJournalFixture,
   assert owner.compact(result).error == FileError.None, "select epoch two"
   if following: assert owner.append(fixture.following).error == FileError.None, "selected journal has a genuine following frame"
   assert owner.close == FileError.None, "release fixture lease"
+
 proc cycle(owner: var LightJournalCache, expected: PreparedLightSnapshot) =
   ## Retire every bounded disk/replay scratch and compare the same confirmed immutable image before ARC sampling.
   assert owner.cleanupRetiredEpoch(ManagedEpoch(1)) == FileError.None, "idempotent known-old cleanup"
   assert owner.preparedSnapshot.value.bytes == expected.bytes, "cleanup never changes proof knowledge"
+
 proc normal(fixture: LightJournalFixture) {.raises.} =
   ## Past canonical epochs can be removed while selected and arbitrary future/unknown names remain byte-identical.
   let directory = path("normal")
@@ -114,6 +126,7 @@ proc normal(fixture: LightJournalFixture) {.raises.} =
   retireEpoch(directory, ManagedEpoch(2))
   retireEpoch(directory, ManagedEpoch(3))
   retireLightJournal(directory)
+
 proc failures(fixture: LightJournalFixture) =
   ## Cleanup-only namespace uncertainty leaves the already confirmed selected head readable and permits explicit idempotent retries.
   for mode in 0..<5:
@@ -140,6 +153,7 @@ proc failures(fixture: LightJournalFixture) =
     assert owner.close == FileError.None, "retire fault fixture owner"
     retireEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc changed(fixture: LightJournalFixture) {.raises.} =
   ## Changed selected authority poisons the owner before deleting even one retired byte or name.
   for mode in 0..<4:
@@ -179,6 +193,7 @@ proc changed(fixture: LightJournalFixture) {.raises.} =
     assert owner.close == FileError.None, "retire poisoned selected owner"
     retireEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc candidates(fixture: LightJournalFixture) {.raises.} =
   ## Opaque plans authorize only their matching immediate unselected prefixes, including interrupted checkpoint/staging writes.
   for mode in 0..<6:
@@ -245,6 +260,7 @@ proc candidates(fixture: LightJournalFixture) {.raises.} =
     retireEpoch(directory, ManagedEpoch(2))
     retireEpoch(directory, ManagedEpoch(3))
     retireLightJournal(directory)
+
 proc prefixChecks(fixture: LightJournalFixture) {.raises.} =
   ## Narrow managed prefix probes admit only bounded regular exact prefixes and never follow symlinks or accept CURRENT as a candidate.
   let directory = path("prefix")
@@ -271,6 +287,7 @@ proc prefixChecks(fixture: LightJournalFixture) {.raises.} =
   assert lease.close == FileError.None, "retire prefix lease"
   assert posix.unlink(target.toCString()) == 0, "retire only owned negative symlink"
   retireLightJournal(directory)
+
 proc main() {.raises.} =
   ## Independent complete-root fixtures qualify selected, unselected, failure, stale and bounded-file authority as one review unit.
   let fixture = lightFixture()

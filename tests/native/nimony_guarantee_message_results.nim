@@ -9,6 +9,7 @@
 
 import std/[assertions, cmdline, syncio]
 import ../../src/crypto/[primitives, guarantee]
+
 # Faults are available only in the test observer library; production callers cannot force provider outcomes.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 let useDefault = paramStr(2) == "default"

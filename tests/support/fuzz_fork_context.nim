@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored sibling headers vary only the eligible uniform-roster author and the genuine corresponding seal.
+
 import std/assertions
 import ./[current_consecutive_context, accumulation_current_chain_context]
 import ../../src/chain/genesis
@@ -9,6 +10,7 @@ import ../../src/codec/[bounded, header, block_codec]
 import ../../src/codec/state/[safrole as state_safrole, layout as state_layout]
 import ../../src/state/store
 import ../../src/bandersnatch/bandersnatch
+
 proc fuzzSiblingChild*(parent: BlockSnapshot, author: AuthorIndex): OwnedBlock =
   ## The maintained same-epoch scalar-one fixture has six eligible identical keys; author statistics still differ.
   assert uint16(author) < 6, "sibling author"

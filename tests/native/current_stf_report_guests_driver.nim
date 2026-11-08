@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immediate available reports drive genuine guests, grouped operands and complete current-state publication.
+
 import std/[assertions, cmdline, strutils, syncio, parseutils]
 import ../../src/codec/[header, assurances]
 import ../../src/codec/state/trie as state_trie
@@ -127,7 +128,6 @@ proc failure(outcome: CurrentCandidateResult): string =
             of AccumulationGuestError.ServiceFailure: result.add("/" & $guests.serviceFailure)
             else: discard # Other actual typed guest failures retain their direct reason.
 
-
 proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, staging: seq[
     byte] = @[]): array[2, seq[byte]] =
   ## Keep literal family selection explicit and independent of the growing original/namespace construction workflow.
@@ -199,7 +199,6 @@ proc fixtureCodes(mode: int, replacement: array[32, byte], codeLength: uint32, s
   of 5..19: second = transferCode(mode) # Initial transfer/forwarding/supervision families share literal source code.
   else: second = guest(mode) # Earlier storage/report guest originals retain their exact code bytes.
   result = [first, second]
-
 
 proc run(base: OwnedReport, mode: int, bodies: seq[seq[byte]], missingCode = false, slots: seq[
     uint32] = @[], reload = false, exchange = false, traceMode = false, fileMode = false,

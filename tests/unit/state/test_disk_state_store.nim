@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real durable StateStore publication retains public identity, fork, policy and trust contracts.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -11,6 +12,7 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/[database_identity, durability]
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc run() {.raises.} =
   ## Seed from an ordinary snapshot, publish sparse changes, then independently authorize reopen.
   var path = "disk-state-store.db"

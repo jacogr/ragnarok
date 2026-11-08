@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_provision_integration_arc_release"}
 
 ## Explicit context union and posterior fulfillment witnesses; no terminal-selection or whole-block certificate is fabricated.
@@ -19,6 +20,7 @@ import ../../../src/pvm/step
 
 ## Inject backend refusal only after source maps and expected keys have been prepared.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit bounded namespace work before a late key/root refusal.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
@@ -156,6 +158,7 @@ failHash(1)
 let failedPlan = prepareAccumulationProvisions(contexts, exact)
 failHash(0)
 assert failedPlan.error == AccumulationProvisionError.BackendFailure
+
 ## Return a plan after all temporary context handles are released, retaining exact source children privately.
 proc detached(): PreparedAccumulationProvisions =
   let sources = integrationContexts()

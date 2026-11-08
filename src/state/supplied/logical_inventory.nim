@@ -3,6 +3,7 @@
 
 ## Retain bounded supplied raw storage keys alongside an exact revalidated compact inventory.
 ## Payloads stay in the original immutable snapshot; supplied declarations are not a producer manifest or execution authority.
+
 import ../../codec/bounded
 import ../../codec/state/composition as state_composition
 import ../[manifest, inventory]

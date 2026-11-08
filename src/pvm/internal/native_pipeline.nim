@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## One shared compiler work slot, four exclusive completion credits, copied IR and a closed lifetime anchor.
 ## Host-side handle ownership follows the existing sequential execution-worker contract; the compiler
 ## touches only the locked mailbox/POD IR, never a session/Program/frame ARC graph.
@@ -97,19 +98,24 @@ type
     branchCalls*, headerCalls*: uint64
 
 proc `=copy`(destination: var Registration, source: Registration) {.error.}
+
 proc `=dup`(source: Registration): Registration {.error.}
+
 proc `=wasMoved`(row: var Registration) {.nodestroy, inline,
     requires: row.state == Free and row.generation == 0 and
       row.location == CompletionLocation.Empty.} =
   ## Only empty uninitialized rows move; never reset a live namespace's generation history.
   `=wasMoved`(row.completion)
+
 proc `=destroy`(row: Registration) =
   ## Proper retirement leaves no mapping; delegate the exclusive child rather than copying its handle.
   assert row.location == CompletionLocation.Empty, "destroy registration only after physical retirement"
   `=destroy`(row.completion)
 
 proc `=copy`(destination: var NativeRuntimeStorage, source: NativeRuntimeStorage) {.error.}
+
 proc `=dup`(source: NativeRuntimeStorage): NativeRuntimeStorage {.error.}
+
 proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
     requires: not runtime.initialized.} =
   ## Only uninitialized storage can move; even closed initialized mutexes remain at their anchor address.
@@ -119,6 +125,7 @@ proc `=wasMoved`(runtime: var NativeRuntimeStorage) {.nodestroy, inline,
   runtime.initialized = false
   runtime.started = false
   runtime.stopping = false
+
 proc `=destroy`(runtime: var NativeRuntimeStorage) =
   ## Last host anchor must be closed. Sessions retain the allocation/locks after an explicit close.
   assert not runtime.started, "close NativeRuntime before releasing its last anchor"
@@ -224,7 +231,9 @@ proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint6
     return NoWork
 
 proc `=copy`(destination: var NativeSessionStorage, source: NativeSessionStorage) {.error.}
+
 proc `=dup`(source: NativeSessionStorage): NativeSessionStorage {.error.}
+
 proc `=wasMoved`(session: var NativeSessionStorage) {.nodestroy, inline,
     requires: not session.invocation.} =
   ## Transfer children without decrementing them; the source can no longer retire a registration.
@@ -232,6 +241,7 @@ proc `=wasMoved`(session: var NativeSessionStorage) {.nodestroy, inline,
   `=wasMoved`(session.image)
   session.invocation = false
   session.allowed = false
+
 proc `=destroy`(session: NativeSessionStorage) =
   ## Native image release precedes freeing its bounded registration credit.
   assert not session.invocation

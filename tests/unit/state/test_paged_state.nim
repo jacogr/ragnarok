@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete StateStore maps retain ordinary memory semantics across explicit paged transport, publication and restoration.
+
 # @@Verification={"arc":"paged_state_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -14,20 +15,25 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 func stateLimits(): StateStoreLimits =
   ## Full-map and mutation ceilings stay independent of native streaming/construction work.
   StateStoreLimits(trie: policy().trie, writes: ElementLimit(10), writeValueBytes: ByteLimit(10000))
+
 func transportLimits(): PagedStateLimits =
   ## Root-input and aggregate staging quotas include shared records before physical deduplication.
   PagedStateLimits(roots: ElementLimit(64), staging: TrieExportLimits(records: TrieNodeLimit(1000),
     valueBytes: ByteLimit(100000)), dataset: policy().dataset)
+
 proc state(value: byte): StateStore =
   ## An ordinary complete map supplies trusted immutable transport input, including a present-empty value.
   newStateStore(@[StateEntry(key: key(0), value: @[value]),
     StateEntry(key: key(128), value: @[])], stateLimits()).value
+
 proc path(label: string): string =
   ## Caller-owned native namespaces are isolated without directory scans or implicit recovery.
   "paged-state-" & $storageProcessId() & "-" & label
+
 proc check(snapshot: StateStoreSnapshot, value: byte) =
   ## Restored stores expose the exact existing sorted-key, empty-value and retained lookup contracts.
   assert snapshot.commitment.entries == 2
@@ -35,6 +41,7 @@ proc check(snapshot: StateStoreSnapshot, value: byte) =
   assert snapshot.lookup(key(128)).value.bytes.len == 0
   assert array[31, byte](snapshot.keyAt(StateEntryIndex(0)).value) == array[31, byte](key(0))
   assert array[31, byte](snapshot.keyAt(StateEntryIndex(1)).value) == array[31, byte](key(128))
+
 proc limitsAndCopies(source: StateStoreSnapshot) =
   ## Staging is bounded before export; mutable producer/claim outputs cannot alter opaque prepared backing.
   let prepared = preparePagedState(source, [], transportLimits()).value
@@ -74,6 +81,7 @@ proc limitsAndCopies(source: StateStoreSnapshot) =
   let different = newStateStore([], other).value.snapshot.value
   assert preparePagedState(source, [different], transportLimits()).error ==
       PagedStateError.PolicyMismatch
+
 proc normal(source: StateStoreSnapshot) =
   ## Private memory updates and complete root unions publish only through the ordinary explicit native protocol.
   let directory = path("normal")
@@ -138,6 +146,7 @@ proc normal(source: StateStoreSnapshot) =
   assert reader.close == FileError.None and old.close == FileError.None and writer.close == FileError.None
   current.check(9)
   source.check(5)
+
 proc emptyWithHistory(source: StateStoreSnapshot) =
   ## Selecting an empty map while retaining nonempty history must not restore unrelated physical leaves.
   let directory = path("empty")
@@ -156,6 +165,7 @@ proc emptyWithHistory(source: StateStoreSnapshot) =
       restored.value.snapshot.value.commitment.entries == 0
   restorePagedStateStore(reader, source.commitment.root, stateLimits()).value.snapshot.value.check(5)
   assert reader.close == FileError.None
+
 proc closeDiagnostics(prepared: PreparedPagedState) =
   ## Composite initialization must never erase an already confirmed native receipt after retirement uncertainty.
   var count = 0'u64
@@ -182,6 +192,7 @@ proc closeDiagnostics(prepared: PreparedPagedState) =
       resetIo()
       if writer.opened: assert writer.close == FileError.None
   assert confirmed > 0
+
 proc readFailures(prepared: PreparedPagedState) =
   ## Every observed consumer read failure exposes no partially restored StateStore; a fresh owner recovers normally.
   let directory = path("reads")
@@ -205,11 +216,13 @@ proc readFailures(prepared: PreparedPagedState) =
     assert reader.close == FileError.None
     assert openFullPagedReader(reader, directory, config).error == FullPagedNativeError.None
   assert reader.close == FileError.None
+
 proc cycle(reader: var FullPagedReader, source: StateStoreSnapshot) =
   ## All transport records, callbacks, ordinary reconstructed maps and temporary exports retire before sampling.
   let prepared = preparePagedState(source, [source], transportLimits()).value
   assert prepared.recordCount == 3
   restorePagedStateStore(reader, source.commitment.root, stateLimits()).value.snapshot.value.check(5)
+
 proc main() =
   ## New transport preserves complete-map roots, policy, history, independent forks and explicit native ownership.
   let source = state(5).snapshot.value

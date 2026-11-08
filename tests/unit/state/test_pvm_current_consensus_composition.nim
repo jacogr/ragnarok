@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_consensus_composition_arc_release"}
 
 ## Real block prefixes and completed accumulation compose exact seven-chapter state without losing either source's effects.
@@ -35,7 +36,9 @@ import ../../support/[accumulation_current_activity_context, accumulation_provis
 
 # Inject only after genuine signed stages, report planning, guests and bookkeeping are complete.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc limits(): AccumulationConsensusLimits =

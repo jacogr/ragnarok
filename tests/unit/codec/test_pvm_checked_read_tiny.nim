@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Run one genuine read candidate with a large quota and tiny actual work.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[machine, program, step]
 import ../../../src/pvm/gas/gas

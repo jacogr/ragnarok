@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Proof-backed reads retain exact old revisions after complete-map publication and owner release.
+
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/[store, snapshot_proof]
@@ -10,6 +11,7 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values]
+
 proc verified(snapshot: StateStoreSnapshot, plan: ServiceProofPlan): ProofView =
   ## Generate from a complete owner and independently authenticate every response under its retained root.
   let proofs = generateServiceProofs(snapshot, plan, mapLimits, proofLimits, batchLimits).value
@@ -17,6 +19,7 @@ proc verified(snapshot: StateStoreSnapshot, plan: ServiceProofPlan): ProofView =
   for i in 0..<proofs.len: queries.add(proofs.queryAt(i).value)
   verifyServiceProofs(plan, queries, snapshot.commitment.root, proofLimits, batchLimits,
       viewLimits).value
+
 proc main() =
   ## A changed/deleted successor must neither rewrite old facts nor authenticate them under its new root.
   let service = ServiceIndex(7)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed creation admits all bounded local history and separated finality before publishing a single selected epoch.
+
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, managed_storage_samples]
 import ../../../src/app/chain
@@ -14,6 +15,7 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/[record_codec, database_identity]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc main() {.raises.} =
   ## Structural history fixtures test local full-map ownership; their seals are never execution certificates.
   let fixture = diskHistoryFixture()

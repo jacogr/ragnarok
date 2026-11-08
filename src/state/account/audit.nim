@@ -3,6 +3,7 @@
 
 ## Execute a frozen complete-source account audit plan without accepting substituted sources or policies.
 ## Successful targeted predicates remain distinct from global validity, application installation or trusted-root authority.
+
 import ./audit/plan as account_audit_plan
 import ./invariants as account_invariants
 import ../footprint_audit

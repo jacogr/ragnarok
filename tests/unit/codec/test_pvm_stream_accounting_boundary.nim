@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -59,7 +62,6 @@ proc memory(): Memory =
     for at in 0..<4096:
       pages[index].bytes[at] = byte((at*17+index*31+3) mod 256)
   captureMemory(pages, PageLimit(2)).value
-
 
 proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
@@ -118,7 +120,6 @@ proc firstMemoryPart(code: byte, address: uint64): seq[byte] =
     # Absolute forms select A1; indirect register forms alias source/destination/base1.
     result.add(if code < 120: 1'u8 else: 17'u8)
     immediate(result, if code < 120: address else: 0'u64)
-
 
 proc countAttempts(source: Machine, budget, cycles: uint64): uint64 =
   ## The independent public single-step API counts only actually attempted instructions; failed pricing/out-of-gas are not attempts.

@@ -111,6 +111,7 @@ let exhausted = run(prepared(1, knownPrice))
 assert exhausted.error == AccumulationDispatchError.None and exhausted.value.exit ==
     StepExit.OutOfGas
 assert uint64(machineInfo(exhausted.value.machine).value.gasDeficit) == 0
+
 ## Fund a bounded actual engine run; copy policy is independent of gas and memory accessibility.
 proc runEffects(source: PreparedAccumulationMachine, copyLimit = 32'u64,
     steps = 100'u64, calls = 10'u64): AccumulationDispatchResult =

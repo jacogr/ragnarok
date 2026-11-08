@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real ordinary application nodes serve bounded assurance reads from the caller's durable namespace through managed proof work and both native FINs, without a guarantor session or private signer.
+
 import std/[assertions, monotimes, times, posix/posix]
 import ../../src/app/[services, options, node as application_node]
 import ../../src/jamnp-s/[node as node_streams, connections, endpoints, read_stream]
@@ -10,6 +11,7 @@ import ../../src/codec/[bounded, assurances]
 import ../../src/codec/state/safrole
 import ../../src/quic/address
 import ./[jamnp_assurance_fixture, jamnp_topology_fixture, assurance_signer_context]
+
 proc assuranceReadRuntime*(server: var Services, settings: Options,
     fixture: AssuranceAcquisitionFixture, request: ReadRequest, expected: seq[byte],
     suffix: string, records = 1'u64) {.raises.} =

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored canonical sealed chains exercise capture, profile limits and immutable retained ownership.
+
 import std/[assertions, syncio]
 import ../../../src/state/ancestor_context
 import ../../../src/codec/[bounded, header, assurances, tickets]
@@ -11,6 +12,7 @@ proc profile(): HeaderConfig =
   ## Explicit tiny profile; no production or fixture default is inferred.
   HeaderConfig(cores: CoreCount(2), authorValidators: ValidatorCount(6),
     epochSlots: EpochSlots(12), maxBytes: ByteLimit(10000))
+
 proc header(slot: uint32, parent: HeaderParent = default(HeaderParent)): OwnedHeader =
   ## Independently serialize a full sealed structural header with no transition authority.
   var source = default(Header)
@@ -20,11 +22,13 @@ proc header(slot: uint32, parent: HeaderParent = default(HeaderParent)): OwnedHe
   let encoded = encodeHeader(source, profile(), wire)
   assert encoded.error == HeaderError.None
   decodeHeader(wire.toOpenArray(0, encoded.value - 1), profile()).value.owner
+
 proc digest(owner: OwnedHeader): HeaderParent =
   ## Hash actual complete canonical bytes independently of the context's stored identities.
   var wire = newSeq[byte](owner.headerInfo.value.consumed)
   assert encodeOwnedHeader(owner, wire).error == HeaderError.None
   HeaderParent(array[32, byte](blake2b256(wire).value))
+
 proc main() =
   ## Every refusal must discard progress and leave independently retained contexts usable.
   let oldest = header(3)

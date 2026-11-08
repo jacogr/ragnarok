@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Terminal current accseq output-pair union with explicit bounded C16 encoding and history-root derivation.
+
 import std/algorithm
 import ../../../codec/[bounded, natural]
 import ../../../codec/state/[outputs as state_outputs, trie as state_trie]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual forget/restore execution qualifies the exact three-slot retained request history.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_mutation_context,
     current_namespace_context, current_namespace_transition_context,
@@ -21,6 +22,7 @@ import ../../../src/codec/state/[layout as state_layout, accounts as state_accou
     composition as state_composition, service_values as state_service_values,
     requests as state_requests]
 import ../../../src/crypto/primitives
+
 proc main() {.raises.} =
   ## Real signed inputs and the fixed-address native preparation worker choose all actual regular/exceptional effects.
   var options = executionFixtureConfig()

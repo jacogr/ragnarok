@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current activity fixtures share exact signed inputs with legacy witnesses and retain real current completion.
+
 import ./service_namespace_seed
 import ../../src/codec/[bounded, header, composite, report_owned]
 import ../../src/codec/state/[authorization as state_authorization, trie as state_trie]
@@ -18,6 +19,7 @@ type CurrentActivityFixture* = object ## Full authored parent keys support indep
   source*: PreparedCurrentAccumulationValidators
   entries*: seq[StateEntry]
   older*: seq[OwnedHeader] ## Original genuine lookup headers support full candidate consumers.
+
 proc currentActivityFixture*(base: OwnedReport, available = false, guarantees = 0, blobs = false,
     requested = true, missingLast = false, disordered = false, slot = 2'u32,
     maximumRefinement = false, executed = false, provided = false, parentPools: seq[

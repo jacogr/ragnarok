@@ -163,6 +163,7 @@ proc prepareExportCommitment*(source: ReportIdentity,
       tree: tree, info: ExportCommitmentInfo(root: root, exports: SegmentCount(uint16(count)),
         pages: (count+63) div 64, nodes: nodes, hashBytes: hashBytes))))
 type ExportSegmentIndex* = distinct uint64 ## Original final-export ordinal is separate from proof-page and erasure-row coordinates.
+
 proc commitmentSegment*(commitment: ExportCommitment,
     index: ExportSegmentIndex): ExportCommitmentResult[FetchSegment] =
   ## Extract a final normalized export from the same original execution whose private tree committed it.
@@ -182,6 +183,7 @@ proc commitmentSegment*(commitment: ExportCommitment,
       completed: item.refinedSegment(ExportCount(ordinal)).value)
     ordinal -= count
   ExportCommitmentResult[FetchSegment](status: ExportCommitmentError.InvalidSource) # A genuine retained commitment cannot lose a previously counted export.
+
 proc commitmentPath*(commitment: ExportCommitment,
     index: ExportSegmentIndex): ExportCommitmentResult[seq[SegmentRoot]] =
   ## Root-first constant-depth GP siblings authenticate only real exports, never padding or proof-page rows.

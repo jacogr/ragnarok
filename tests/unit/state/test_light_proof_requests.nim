@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted partial query projection and bounded proof ingestion preserve exact identities, unknown facts and whole-request authentication.
+
 # @@Verification={"arc":"light_proof_requests_arc_release"}
 import std/[assertions, syncio, monotimes, times]
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context]
@@ -17,11 +18,13 @@ import ../../../src/crypto/primitives
 import ../../../src/state/[store, trie_proof]
 import ../../../src/state/proof/[view as proof_view, service as proof_service, plan as proof_plan]
 import ../../../src/state/planned/proof as planned_proof
+
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header
   result = newSeq[byte](selected.headerInfo.value.consumed)
   assert encodeOwnedHeader(selected, result).error == HeaderError.None
+
 proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   ## Caller-selected identity/header inputs are captured before the light owner sees proof evidence.
   let owner = initApplicationChain(genesisView(sourceBlock)).value
@@ -30,18 +33,21 @@ proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   let captured = captureCheckpointTrust(encoded, sourceBlock.headerWire, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc policy(sourceBlock: BlockSnapshotResult): LightHeadLimits =
   ## Active validator geometry is selected independently from complete genesis context, never inferred from fetch parameters or partial facts.
   LightHeadLimits(header: HeaderConfig(cores: sourceBlock.value.cores,
     authorValidators: sourceBlock.value.activeValidators, epochSlots: sourceBlock.value.epochSlots,
     maxBytes: ByteLimit(262144)), headers: ElementLimit(3), headerBytes: ByteLimit(1048576),
     view: ProofViewLimits(items: ElementLimit(16), valueBytes: ByteLimit(4194304)))
+
 proc entries(snapshot: StateStoreSnapshot): seq[StateEntry] =
   ## An independent complete fixture map is used only to author genuine membership/absence proofs.
   result = @[]
   for index in 0..<snapshot.commitment.entries:
     let key = snapshot.keyAt(StateEntryIndex(index)).value
     result.add(StateEntry(key: key, value: snapshot.lookup(key).value.bytes))
+
 proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
     limits: StateStoreLimits): VerifiedStateProofBatch =
   ## Full fixture generation and exact-root verification precede every partial view used by the application API.
@@ -56,11 +62,13 @@ proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
   let checked = verifyStateProofs(queries, snapshot.commitment.root, perProof, aggregate)
   assert checked.error == StateProofError.None
   checked.value
+
 func key(value: byte): StateKey =
   ## High-byte fixture keys distinguish genuine absent witnesses from unrequested unknown facts.
   var bytes = default(array[31, byte])
   for index in 0..<bytes.len: bytes[index] = value
   StateKey(bytes)
+
 proc checksum(bytes: var seq[byte]) =
   ## Independent identity-frame oracle rehashes the documented fixed 206-byte payload after one deliberate scalar change.
   assert bytes.len == 238
@@ -68,6 +76,7 @@ proc checksum(bytes: var seq[byte]) =
   assert hashed.error == CryptoError.None
   let digest = array[32, byte](hashed.value)
   for index in 0..<32: bytes[206+index] = digest[index]
+
 proc rootTrust(original: TrustedApplicationCheckpoint,
     root: StateRoot): TrustedApplicationCheckpoint =
   ## Test-only operator posterior-root choice remains independent of the sealed header's prior root; no consensus certificate is claimed.
@@ -80,6 +89,7 @@ proc rootTrust(original: TrustedApplicationCheckpoint,
   let captured = captureCheckpointTrust(identity, header, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc queryPolicy(): ProofQueryLimits =
   ## Zero complete-map/hash allowances prove a partial request never enters complete-state generation.
   ProofQueryLimits(proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(
@@ -88,11 +98,13 @@ proc queryPolicy(): ProofQueryLimits =
         valueBytes: ByteLimit(4194304)),
     view: ProofViewLimits(items: ElementLimit(16), valueBytes: ByteLimit(4194304)),
     wireBytes: ByteLimit(1048576), hashes: ProofHashLimit(0))
+
 proc importPolicy(): LightProofImportLimits =
   ## Two independent verification passes fit a finite primitive-call cap, separate from wire/node/value retention.
   let selected = queryPolicy()
   LightProofImportLimits(proof: selected.proof, aggregate: selected.aggregate, view: selected.view,
     wireBytes: selected.wireBytes, hashes: ElementLimit(8192))
+
 proc known(fixture: DiskHistoryFixture): LightApplicationHead =
   ## The complete fixture only authors genuine evidence; production owners retain two selected partial facts.
   let source = fixture.blocks[0]
@@ -100,13 +112,17 @@ proc known(fixture: DiskHistoryFixture): LightApplicationHead =
       fixture.policy)
   let view = captureProofView(checked, source.trust.identity.stateRoot, source.policy.view).value
   captureLightHead(source.trust, view, source.policy).value
+
 proc plan(): StateProofPlan =
   ## Canonical generic planning sorts independent present/absent requests without inspecting values or hashing.
   captureStateProofPlan([key(255), chapterKey(StateChapter(11))], ElementLimit(16)).value
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive invocations independently of request estimates.
+
 proc resetHashes(flags: cint) {.importc: "ro_fail", cdecl.}
   ## The existing test observer resets counts before a bounded workload and can refuse hashing.
+
 proc projection(fixture: DiskHistoryFixture) =
   ## Root/block selection stays independent of response bytes, while unknown evidence is refused atomically.
   let head = fixture.known
@@ -160,9 +176,11 @@ proc projection(fixture: DiskHistoryFixture) =
   exact.wireBytes = ByteLimit(uint64(wire.len-1))
   assert executeProofQuery(captureProofQuery(head, plan(), exact).value).error !=
       ProofQueryError.None
+
 proc importedWire(head: LightApplicationHead): seq[byte] =
   ## The same canonical existing proof transport is independent of importer implementation.
   executeProofQuery(captureProofQuery(head, plan(), queryPolicy()).value).value.bytes(queryPolicy().wireBytes).value
+
 proc ingestion(fixture: DiskHistoryFixture) =
   ## Host capture copies stable bytes without crypto; worker execution verifies the exact whole batch and checkpoint identity.
   let head = fixture.known
@@ -214,14 +232,17 @@ proc ingestion(fixture: DiskHistoryFixture) =
   let foreign = captureLightHead(fixture.blocks[1].trust, fixture.blocks[1].policy).value
   assert executeLightProofImport(captureLightProofImport(foreign, original,
       selected).value).error == LightImportError.ProofFailure
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Test-only scalar polling never owns or mutates a proof graph.
+
 proc waitDone(worker: var StateProofWorker) =
   ## Only locked scalar state is observed while admitted request aliases remain frozen.
   let started = getMonoTime()
   while worker.phase != ProofWorkerPhase.Done:
     assert (getMonoTime()-started).inSeconds < 30 # Bound every native thread test wait by monotonic time.
     discard pauseMicros(1000) # Yield without touching canonical/request ARC aliases.
+
 proc workers(fixture: DiskHistoryFixture) {.raises.} =
   ## One existing CPU slot reuses query/ingestion payloads without mixing completion types or losing cancellation retirement.
   let head = fixture.known
@@ -290,6 +311,7 @@ proc workers(fixture: DiskHistoryFixture) {.raises.} =
   assert worker.cancel(restarted)
   worker.close() # Joined cancellation drops CPU-only evidence, never a native publication receipt.
   assert worker.collect(restarted).kind == ProofWorkerCompletionKind.Uninitialized
+
 proc cycle(head: LightApplicationHead, request: LightProofImport) =
   ## Direct checked execution makes whole-activation ARC accounting meaningful without summing thread-local allocator counters.
   let response = executeProofQuery(captureProofQuery(head, plan(), queryPolicy()).value).value
@@ -297,6 +319,7 @@ proc cycle(head: LightApplicationHead, request: LightProofImport) =
   let imported = executeLightProofImport(request).value
   assert imported.batch.len == 2 and sameApplicationCheckpoint(imported.identity,
       head.current.value.identity)
+
 proc main() {.raises.} =
   ## Independent complete fixtures author proofs; production requests retain only trusted fixed metadata and partial evidence.
   let fixture = diskHistoryFixture(1, false)

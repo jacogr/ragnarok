@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Source-derived ARM macro backend and capacity fixtures shared by native qualification witnesses.
+
 import std/[assertions, syncio]
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]

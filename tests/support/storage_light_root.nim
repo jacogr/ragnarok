@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete-map roots and detached proof knowledge qualify storage-only root replacement without application state.
+
 import std/assertions
 import std/posix/posix
 import ./storage_light_journal
@@ -21,6 +22,7 @@ type
     oldConfig*, newConfig*: LightJournalConfig
     sourceProofs*, destinationProofs*: seq[LightStateProof]
     following*: LightStateProof
+
 proc rootFixture*(writes = ElementLimit(4)): LightRootFixture =
   ## Two independent maps change a positive and negative lookup, retain an unchanged value and change empty presence to absence.
   var oldValue = newSeq[byte](33)
@@ -65,6 +67,7 @@ proc rootFixture*(writes = ElementLimit(4)): LightRootFixture =
     sourceProofs: oldProofs, destinationProofs: newProofs,
     following: LightStateProof(key: lightKey(32), proof: newTrie.prove(lightKey(32),
         policy.cache.proof).value))
+
 proc retireRootEpoch*(path: string, epoch: ManagedEpoch) =
   ## Test retirement addresses only exact known owned snapshot/journal names; unknown directories are never scanned.
   for kind in [ManagedFileKind.Snapshot, ManagedFileKind.Journal]:

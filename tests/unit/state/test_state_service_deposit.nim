@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-source certified footprints bind economic observations without treating uncovered accounts as invalid state.
+
 # @@Verification={"arc": "state_service_deposit_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_deposit_context, arc_evidence]
@@ -12,14 +13,18 @@ import ../../../src/state/service/directory as service_directory
 import ../../../src/state/inventory
 import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after all real independent test certificates are built.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observation must read only fixed source-bound metadata and checked equations.
+
 proc cycle(source: ServiceDepositTestSource) =
   ## Retire one fixed observation and both retained evidence owners each cycle.
   let result = observeServiceDeposit(source.footprints, source.directory, ServiceIndex(7), depositTestSchedule)
   assert uint64(result.value.serviceDepositInfo.value.minimum) == 469
+
 proc main() {.raises.} =
   ## Distinct complete maps independently vary pool coverage and gratis while keeping correct footprint metadata.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

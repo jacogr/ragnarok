@@ -15,6 +15,7 @@ proc batchLimits*(): ComputedBatchLimits =
   ## Broad independent policies cover three configured cores and at most nine reporters.
   ComputedBatchLimits(guarantees: ElementLimit(3), reporters: ElementLimit(9),
     bytes: ByteLimit(100000), headerBytes: ByteLimit(4096))
+
 proc batchEnvelopes*(repeatReporter = false, distinctPackages = false, withReady = false,
     withRound = false, withExecution = false, invalidEntry = false, withComposition = false,
         withChain = false, storage = ComputedStorageMode.Disabled): seq[ComputedGuaranteeEnvelope] =

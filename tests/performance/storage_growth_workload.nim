@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Sustained public repository operations retain exact complete maps across restart and reclamation.
+
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
 import ../support/[storage_growth_samples, managed_storage_samples, storage_growth_io, storage_allocations]
@@ -17,6 +18,7 @@ import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 proc elapsed(start: MonoTime): int64 =
   ## Positive monotonic nanoseconds describe only the requested public API operation batch.
   (getMonoTime()-start).inNanoseconds
+
 proc main() {.raises.} =
   ## The orchestrator supplies fixed axes and thirteen samples; one-sample runs only check execution.
   assert paramCount() == 6

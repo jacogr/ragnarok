@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Collect bounded producer-owned storage identities from every selected invocation in a genuine completed current sequence, preserving actual entry provenance and annulment decisions.
+
 import ./current/[driver as accumulation_current_driver, sequence as accumulation_current_sequence]
 import ./[coverage as accumulation_coverage, annulment as accumulation_annulment,
     effects as accumulation_effects]

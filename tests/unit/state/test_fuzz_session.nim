@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Session order, unique request tickets, exact negotiation and every frame split are native boundary witnesses.
+
 import std/[assertions, syncio]
 import ../../support/fuzz_protocol_context
 import ../../../src/state/fuzz/[protocol as fuzz_protocol, session as fuzz_session]
 import ../../../src/state/store
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc peer(): FuzzPeer =
   ## The host explicitly advertises current GP and implemented features.
   FuzzPeer(protocol: 1, features: 3, jam: FuzzVersion(major: 0, minor: 8, patch: 0), name: "test")
+
 proc readySession(): FuzzSession =
   ## Complete the real handshake but leave the required initialization pending.
   let limits = fuzzProtocolTestLimits()
@@ -19,6 +22,7 @@ proc readySession(): FuzzSession =
   assert hello.error == FuzzSessionError.None
   assert hello.value.kind == FuzzDispatchKind.Reply
   assert hello.value.reply.fuzzPeer.value.protocol == 1
+
 proc initialization(): FuzzMessage =
   ## Independently authored Tiny header plus empty map and ancestry exercises the current layout.
   var wire = newSeq[byte](300)
@@ -26,6 +30,7 @@ proc initialization(): FuzzMessage =
   let decoded = decodeFuzzMessage(wire, fuzzProtocolTestLimits())
   assert decoded.error == FuzzError.None
   decoded.value
+
 proc main() =
   ## No test backend fabricates STF success: these witnesses exercise only protocol scheduling and transport.
   let limits = fuzzProtocolTestLimits()

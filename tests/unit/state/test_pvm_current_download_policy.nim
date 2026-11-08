@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_download_policy_arc_release"}
 
 ## Every current resource leaf is mandatory; canonical numeric/boolean decoding stays atomic and decoded policies drive genuine current preparation.
+
 import std/[assertions, syncio, envvars, strutils]
 import std/posix/posix
 import ../../../src/app/current/download/policy as current_download_policy
@@ -17,6 +19,7 @@ import ../../../src/state/accumulation/current/[update as accumulation_current_u
     consensus as accumulation_current_consensus]
 import ../../support/[current_services_disk_samples, accumulation_current_chain_context,
   accumulation_current_candidate_context, arc_evidence]
+
 proc policy(): CurrentDownloadLoopLimits =
   ## Authored stage policies are independent caller choices, including explicit discovery permission.
   CurrentDownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,
@@ -26,6 +29,7 @@ proc policy(): CurrentDownloadLoopLimits =
     candidate: currentCandidateLimits(), stream: CurrentDownloadStreamLimits(readBytes: ByteLimit(73),
       writeBytes: ByteLimit(3), timeout: CurrentDownloadTimeout(5000)),
     attemptTimeout: CurrentDownloadAttemptTimeout(10000))
+
 proc replaceField(text, name, value: string): string =
   ## The independent test scanner replaces exactly one authored complete row without production parsing or schema visitors.
   result = ""
@@ -40,6 +44,7 @@ proc replaceField(text, name, value: string): string =
     else:
       result.add(row & "\n") # Preserve the independent header and every other explicit row.
   assert changed, "actual authored current policy row " & name
+
 proc parser(text: string) =
   ## Every missing leaf and malformed document must fail without exposing any parsed prefix.
   let good = decodeCurrentDownloadPolicy(text)
@@ -100,6 +105,7 @@ proc parser(text: string) =
   let legacy = text.replace("ragnarok-current-download-policy-v2", "ragnarok-download-policy-v2")
   assert decodeCurrentDownloadPolicy(legacy).error == CurrentDownloadPolicyError.WrongVersion
   assert decodeDownloadPolicy(text).error == DownloadPolicyError.WrongVersion
+
 proc files(text: string) {.raises.} =
   ## Bounded file loading preserves typed IO/size/version failures and never falls back to old policies.
   var path = "pvm-current-download-policy.conf"
@@ -113,6 +119,7 @@ proc files(text: string) {.raises.} =
   assert loadCurrentDownloadPolicy(path).error == CurrentDownloadPolicyError.WrongVersion
   assert posix.unlink(path.toCString()) == 0
   assert loadCurrentDownloadPolicy(path).error == CurrentDownloadPolicyError.FileFailure
+
 proc execute(context: CurrentChainFixture, text: string, tiny: bool) =
   ## Decoded independent policies govern actual signed current execution and sealed-child capture, not just round-trip text.
   let parsed = decodeCurrentDownloadPolicy(if tiny: replaceField(text, "candidate.headerBytes",
@@ -134,6 +141,7 @@ proc execute(context: CurrentChainFixture, text: string, tiny: bool) =
     assert completed.error == CurrentBlockInputError.None
     equalCurrentDiskMap(completed.value.currentUpdateState,
         context.source.currentConsensusState.value)
+
 proc cycle(text: string) =
   ## Plain policy copies cannot mutate a parsed snapshot; failure retains only bounded diagnostics.
   let parsed = decodeCurrentDownloadPolicy(text)
@@ -144,6 +152,7 @@ proc cycle(text: string) =
   assert parsed.value.schedule.attempts == 1 and parsed.value.input.discoverAncestors
   assert decodeCurrentDownloadPolicy(text & "schedule.peers=1\n").error ==
       CurrentDownloadPolicyError.DuplicateField
+
 proc main() {.raises.} =
   # The shipped devnet file must pass the same decoder used before actual listener startup.
   let shipped = loadCurrentDownloadPolicy(getEnv("RAGNAROK_TINY_DEVNET_POLICY"))

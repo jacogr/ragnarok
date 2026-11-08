@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The maintained signed rotation at slot12 feeds genuine slot13/14 successors under the exact rotated selected state.
+
 import std/assertions
 import ../../src/app/chain
 import ../../src/chain/[genesis, provider]
@@ -12,6 +13,7 @@ import ../../src/state/report/admission as report_admission
 import "../../src/state/block/transition" as block_transition
 import "../../src/state/block/admission" as block_admission
 import ./[current_consecutive_context, accumulation_current_chain_context]
+
 proc currentRotatedSequenceFixture*(base: OwnedReport,
     count: Positive = 3): CurrentConsecutiveFixture =
   ## Rotation signatures/markers are authored by the existing fixture before any root; later bodies stay in that second epoch.

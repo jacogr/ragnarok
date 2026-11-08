@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Snapshot exports and trusted leaf extraction avoid hash work and isolate mutable transport bytes.
+
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/state/store
@@ -9,10 +10,13 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/[records as node_records, repository as node_repository]
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashing while observing transport-only calls.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count cryptographic work independently of serialized record counts.
+
 proc run() =
   ## Only independently trusted roots may extract full mappings; callers own every returned byte.
   let limits = storageLimits()

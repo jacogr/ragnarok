@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Repeated real Services children continue complete logical provenance after a guest overwrites an existing service99 storage identity.
+
 import std/[assertions, envvars, syncio, strutils, base64]
 import std/posix/posix
 import ../../support/rpc_socket
@@ -28,6 +29,7 @@ import ../../../src/state/report/admission as report_admission
 import ../../../src/state/supplied/services as supplied_services
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/rpc/server
+
 proc overwriteCode(): seq[byte] =
   ## Actual write host targets the existing raw key5 of funded service99; the original present-empty value grows without creating a namespace identity.
   let instructions = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608),
@@ -35,6 +37,7 @@ proc overwriteCode(): seq[byte] =
       @[10'u8, 5], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, @[5'u8, 17, 18, 19]): result.add(octet)
+
 proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
     network: bool) {.raises.} =
   ## Each matching native collection precedes logical continuation; each explicit adoption precedes signing/preparing the following child.
@@ -214,6 +217,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, joinAfterDone,
       equalCurrentDiskMap(actual.stateSnapshot, heads[index].stateSnapshot)
     assert owner.chainView.finalizedBlock.error != GenesisError.None
     owner.close()
+
 proc main() {.raises.} =
   ## Complete original code namespaces and actual funded overwrite feed three independent native preparation/adoption lifetimes.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

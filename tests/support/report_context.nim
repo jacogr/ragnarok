@@ -28,7 +28,6 @@ proc unhex*(text: string): seq[byte] =
   for i in 0..<result.len:
     assert parseHex(text[i*2..i*2+1], result[i]) == 2 # Require complete octets.
 
-
 proc credentialConfig*(cores: uint64): GuaranteeCredentialConfig =
   ## Configure both published populations without conflating roster size and active core count.
   GuaranteeCredentialConfig(assignments: GuarantorConfig(roster: ValidatorStateConfig(
@@ -38,7 +37,6 @@ proc credentialConfig*(cores: uint64): GuaranteeCredentialConfig =
         cores*3)),
     maxBytes: ByteLimit(10000000), reporters: ElementLimit(cores*3))
 
-
 proc policy*(cores: uint64, gas = 10000000'u64): ReportPolicyConfig =
   ## Keep gas limits per report, with independent pool/account byte ceilings.
   ReportPolicyConfig(pools: AuthorizationConfig(cores: CoreCount(cores), maxHashes: ElementLimit(cores*8),
@@ -46,13 +44,11 @@ proc policy*(cores: uint64, gas = 10000000'u64): ReportPolicyConfig =
         reportGas: ReportGasLimit(gas),
         refinementGas: RefinementGasLimit(if cores == 2: 1_000_000_000'u64 else: 5_000_000_000'u64))
 
-
 proc limits*(): StateStoreLimits =
   ## Bound sparse authored/projection maps used by tests; these are not a full-chain parent-state claim.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1000), perValue: ByteLimit(100000),
     totalValueBytes: ByteLimit(1000000), nodes: TrieNodeLimit(100000)),
     writes: ElementLimit(1000), writeValueBytes: ByteLimit(1000000))
-
 
 proc records*(owner: GuaranteesRead): seq[Guarantee] =
   ## Preserve each owned report when recovering a completely decoded extrinsic.
@@ -60,12 +56,10 @@ proc records*(owner: GuaranteesRead): seq[Guarantee] =
   for i in 0..<result.len:
     result[i] = guaranteeAt(owner.owner, i).value # Child retains its original bytes.
 
-
 proc reportBytes*(owner: OwnedReport): seq[byte] =
   ## Copy canonical bytes while the original report owner remains alive.
   result = newSeq[byte](ownedReportInfo(owner).value.consumed)
   assert encodeOwnedReport(owner, result).error == OwnershipError.None
-
 
 proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service = 42'u32,
     failed = false, refinement = default(RefineLoad)): OwnedReport =
@@ -91,7 +85,6 @@ proc reportFor*(base: OwnedReport, core: int, gases: openArray[uint64], service 
   let encoded = encodeReportBorrowed(report, raw, 2, output)
   assert encoded.error == CompositeError.None
   decodeOwnedReport(output.toOpenArray(0, encoded.written-1), 2).value
-
 
 proc certify*(reports: openArray[OwnedReport], slot = 12'u32, offenders: openArray[OffenderKey] = []): VerifiedGuaranteeCredentials =
   ## Sign authored reports with deterministic test keys and real assignments/transcripts, excluding supplied offenders.
@@ -127,7 +120,6 @@ proc certify*(reports: openArray[OwnedReport], slot = 12'u32, offenders: openArr
     records.add(record)
   verifyGuaranteeCredentials(records, roster, roster, default(StateEntropy), StateTime(slot),
       offenders, config).value
-
 
 proc entriesFor*(reports: openArray[OwnedReport], minimum = 10'u64, transferMinimum = high(
     uint64), supervisor = 0'u32, supervisorCreated = 0'u32, balance = 0'u64,

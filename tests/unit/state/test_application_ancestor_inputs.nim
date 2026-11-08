@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_ancestor_inputs_arc_release"}
 
 ## Exact file capture is bounded and atomic; structural headers never imply ancestry authority.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/ancestor/inputs as ancestor_inputs

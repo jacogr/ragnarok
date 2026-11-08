@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_ticket_forwarding_arc_release"}
 
 ## Real proxy proofs are scheduled across all current validators, independent of the UP0 grid and CPU lease ownership.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import ../../../src/jamnp-s/[ticket_packet, ticket_validation, ticket_forwarding]
 import ../../../src/app/[node as application_node, services, options, startup]
@@ -16,10 +17,12 @@ import ../../../src/codec/[header, tickets]
 import ../../../src/codec/state/safrole
 import ../../support/[jamnp_ticket_fixture, jamnp_topology_fixture, jamnp_node_probe,
     jamnp_read_validation_context, arc_evidence]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -30,11 +33,13 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(saved.chainParameters.encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc wirePacket(packet: TicketPacket, distribution: bool): seq[byte] =
   ## Independent literal E4 length789 spans two nonzero octets; the proof remains exactly784 bytes.
   result = @[if distribution: 132'u8 else: 131'u8]
   for octet in [21'u8, 3, 0, 0]: result.add(octet)
   for octet in packet.packetBytes: result.add(octet)
+
 proc cycle(streams: var NodeService, source: TicketSource, proof: CheckedNetworkTicket) =
   ## A detached scheduler retains one immutable proof and no canonical graph or active Native exchange.
   var owner = default(TicketForwarding)
@@ -42,6 +47,7 @@ proc cycle(streams: var NodeService, source: TicketSource, proof: CheckedNetwork
   assert owner.offer(proof) and owner.offer(proof) and owner.len == 1
   owner.close(streams)
   assert owner.len == 0 and owner.sending == 0
+
 proc pure() {.raises.} =
   ## Selected-source retirement and kind separation are independent from Native handshake timing.
   let local = certificateIdentity(getEnv("RAGNAROK_TEST_CERT")).value
@@ -89,6 +95,7 @@ proc pure() {.raises.} =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("jamnp_ticket_forwarding", 1000, before, after)
+
 proc poll(host: var ApplicationNode, services: var Services, source, neighbour: var NodeProbe,
     slot: StateTime) {.raises.} =
   ## All endpoints progress on one thread; source aliases retire before shared proof admission.
@@ -96,6 +103,7 @@ proc poll(host: var ApplicationNode, services: var Services, source, neighbour: 
   source.poll()
   neighbour.poll()
   services.tick(uint32(host.peerCount))
+
 proc live(distribution = false, rejectAck = false, holdFin = false) {.raises.} =
   ## B is a grid neighbour; C occupies a current index outside A's accepted announcement grid and must still receive CE132.
   var diagnostic = ""
@@ -194,6 +202,7 @@ proc live(distribution = false, rejectAck = false, holdFin = false) {.raises.} =
   assert source.served == expected and neighbour.served == 1
   poll(host, services, source, neighbour, StateTime(5))
   assert host.ticketForwardingCount == 0 and host.ticketForwardingActive == 0
+
 proc main() {.raises.} =
   ## Timed real-network positives accompany source retirement, finite invalid-ACK retries and exact joined shutdown.
   assert sizeof(ApplicationNode) <= 128*1024, "bounded protocol owners must fit ordinary foreground thread stacks"

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic default/refused extraction must trip the actual optimized runtime contract.
+
 import std/cmdline
 import ../../src/app/download/schedule as download_schedule
 import ../../src/codec/bounded

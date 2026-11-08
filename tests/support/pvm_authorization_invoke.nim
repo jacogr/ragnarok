@@ -33,6 +33,7 @@ proc authorizationLimits*(): AuthorizationInvocationLimits =
     pages: PageLimit(64)), package: FetchPackageLimit(16), encoding: FetchEncodingLimit(4096),
     copy: MemoryByteLimit(512), steps: ExecutionStepLimit(64), calls: HostCallLimit(8),
     cycles: GasCycleLimit(1000), output: OutputByteLimit(65536))
+
 proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byte] = @[],
     codeSize = 0, missing = false, anchor = 20'u32, host = 77'u32,
     malformedState = false, wrongHash = false, overrideBytes: seq[byte] = @[]): AuthorizationFixture =
@@ -96,11 +97,13 @@ proc authorizationFixture*(instructions: openArray[seq[byte]], metadata: seq[byt
   var parameterBytes = default(array[122, byte])
   for index in 0..<122: parameterBytes[index] = 255 # Full E2 core domain with valid fixed parameter fields.
   result.parameters = decodeParameters(parameterBytes).value
+
 proc authorizationRun*(fixture: AuthorizationFixture, cap = authorizationLimits(),
     core = 0x1234'u64):
     AuthorizationInvocationResult[AuthorizationInvocation] =
   ## Only original immutable inputs enter the production API; gas, code, CPU and trace cannot be supplied separately.
   runAuthorizationInvocation(fixture.state, fixture.package, CoreIndex(core), fixture.parameters, cap)
+
 proc authorizationPrice*(fixture: AuthorizationFixture): uint64 =
   ## The separately verified gas component prices entry block structure; protocol host prices remain literal expectations.
   let cpu = initializeMachine(fixture.envelope, [0x34'u8, 0x12], CodeAddress(0), MachineGas(

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic light-journal result and retirement guards require successful native builds and genuine positive controls.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/storage/light/journal/cache as light_journal_cache
@@ -14,8 +15,10 @@ import ../../src/storage/light/delta as light_delta
 import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../src/codec/bounded
 import ../../src/codec/state/trie as state_trie
+
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Match the supported SDK pid_t ABI without assuming an unported stdlib export.
+
 proc main() {.raises.} =
   ## Default/failed extraction and unclosed retirement fail only at the selected runtime contract.
   let member = paramStr(1)

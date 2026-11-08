@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_service_residency_arc_release"}
 
 ## Resident A/B/A code keeps fresh arguments/gas/memory; eviction and refusals preserve old immutable outputs.

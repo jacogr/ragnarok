@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine slot3 report guarantees follow an empty slot2 child and retain exact original lookup owners.
+
 import std/assertions
 import ../../src/app/chain
 import ../../src/chain/[genesis, provider]

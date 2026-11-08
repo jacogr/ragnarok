@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuinely computed, assured, accumulated and published successor state retains its original admitted body for audit-context qualification; no pending report or availability vote is fabricated.
+
 import std/assertions
 import ../../src/jamnp-s/[audit_context, audit_origin, availability_proof, availability_merkle]
 import ../../src/state/erasure/words
@@ -31,6 +32,7 @@ type AuditContextFixture* = object ## Test-owned retained views contain actual c
   blockHash*: genesis.BlockHash
   candidate*: OwnedBlock
   bundles*: seq[OriginalAuditBundle]
+
 proc originalBundles(source: AssuredComputedReports): seq[OriginalAuditBundle] =
   ## Follow the exact admitted predecessor's computed batch back to every original availability commitment; no candidate bundle is independently fabricated.
   let composed = source.computedAssuranceSource.value.computedChainPublication.value.computedPublishedSource.value
@@ -75,6 +77,7 @@ proc auditContextFixture*(votes = 7): AuditContextFixture =
   assert final.error == ViewAdvanceError.None, "actual published successor with complete bytes"
   AuditContextFixture(view: final.value, prior: prior, blockHash: retained.blockHash,
       candidate: candidate, bundles: originalBundles(available))
+
 proc auditLimits*(): AuditContextLimits =
   ## Maintained three-core transition policies accompany literal independent capture, comparison and retention budgets.
   let source = computedAssuranceConfig()

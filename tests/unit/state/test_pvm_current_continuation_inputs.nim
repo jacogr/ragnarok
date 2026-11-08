@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_continuation_inputs_arc_release"}
 
 ## Genuine current completion selects next reports, holds supervised incoming credit and never repeats free allowances.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, composite, report_owned]
 import ../../../src/codec/work/digest as work_digest
@@ -15,8 +17,11 @@ import ../../../src/state/accumulation/[round as accumulation_round, queue as ac
 import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_current_round_context,
     accumulation_current_sequence_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc main() {.raises.} =
   ## Maintained cryptographic fixture admission supplies the original queue; no caller-supplied report/source map grants authority.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

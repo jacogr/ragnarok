@@ -3,6 +3,7 @@
 
 ## Join independent dependent-field/content/linkage certificates only for the exact same logical inventory.
 ## This targeted accounts certificate deliberately grants no trusted root or full STF validity.
+
 import ../[inventory, footprint_audit]
 import ../preimage/[content as preimage_content, linkage as preimage_linkage]
 

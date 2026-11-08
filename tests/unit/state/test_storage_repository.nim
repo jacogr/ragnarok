@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete graph admission and atomic publication preserve all historical immutable physical reads.
+
 # @@Verification={"arc": "storage_repository_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]

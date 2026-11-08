@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Grouped real-process journal bootstrap and append witnesses preserve exact namespace bytes, leases and explicit recovery.
+
 import std/[assertions, syncio]
 import ./[storage_io, storage_crash, storage_light_journal]
 import ../../src/storage/light/journal/[cache as light_journal_cache,
@@ -11,22 +12,27 @@ import ../../src/storage/light/[delta as light_delta, snapshot as light_snapshot
 import ../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Test-only exact presence observations never supply production file-selection authority.
+
 proc exists(path: string): bool =
   ## Observe only a known owned fixture child, with no directory scan or fallback selection.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc first(input: string, size: int): string =
   ## Independent exact prefix copying proves every observed completed write extent.
   assert size >= 0 and size <= input.len, "bounded crash fixture prefix"
   result = newString(size)
   for index in 0..<size: result[index] = input[index]
+
 proc checkPrefix(input, expected: string) =
   ## A surviving unselected file must contain only authored bytes, never zero padding or another generation.
   assert input.len <= expected.len, "unselected file cannot exceed its authored extent"
   for index in 0..<input.len: assert input[index] == expected[index], "exact authored prefix"
+
 proc supervise(path: string, fixture: LightJournalFixture, skip: cint,
     contender: var LightJournalCache): uint64 =
   ## Parent contention happens while the exact stopped child still owns its native lease; kill/reap requires its matching receipt.
@@ -42,6 +48,7 @@ proc supervise(path: string, fixture: LightJournalFixture, skip: cint,
   else:
     assert receipt == crashKilled and result == uint64(skip)+1, "exact stop kill reap receipt"
   resetIo()
+
 proc lightAppendCrash*(fixture: LightJournalFixture, following: bool,
     operation, skip: cint, shortWrites = false): uint64 {.raises.} =
   ## A sparse append changes only authored journal bytes; partial suffixes require explicit held-inode repair before retry.
@@ -111,6 +118,7 @@ proc lightAppendCrash*(fixture: LightJournalFixture, following: bool,
   assert retained.bytes == (if following: fixture.next.snapshot.bytes else: fixture.initial.bytes), "old readers remain immutable"
   assert readFile(path & "/KEEP") == "unselected forensic sentinel", "recovery preserves unknown forensic siblings"
   retireLightJournal(path)
+
 proc lightBootstrapCrash*(fixture: LightJournalFixture, operation, skip: cint,
     shortWrites = false): uint64 {.raises.} =
   ## Every bootstrap boundary either leaves an exact unselected forensic prefix or a fully verifiable selected checkpoint/anchor.

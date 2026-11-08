@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Finite light runtime retention, request, native IO and header policies remain independent.
+
 import ./[head as light_head, store as light_store]
 import ../proof/query as proof_query
 import ./proof_import as light_proof_import

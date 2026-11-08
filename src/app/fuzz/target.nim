@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit JAM_FUZZ startup runs only ephemeral full-state sessions with host-supplied Parameters and execution policy.
+
 import ../../lib/logging
 
 from ../cli/defaults as cli_defaults import DefaultFuzzWrites, DefaultFuzzWriteBytes

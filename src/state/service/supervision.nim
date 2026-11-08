@@ -3,6 +3,7 @@
 
 ## Resolve one effective supervisor from a complete immutable service directory under the pinned incarnation rule.
 ## This source-bound observation does not mutate privileges or replace runtime authorization checks.
+
 import ../../codec/state/accounts as state_accounts
 import ../inventory
 import ./directory as service_directory

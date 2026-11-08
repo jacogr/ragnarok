@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Private copied read-body IR and invocation-only extent ABI for both native lowerers.
 
 import std/assertions

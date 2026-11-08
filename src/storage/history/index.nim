@@ -3,6 +3,7 @@
 
 ## Constant-size historical selection and append-only index rows bind accepted block/state identities.
 ## The selected digest authenticates the retained row suffix; policy expansion never backfills pruned rows.
+
 import ../database_identity
 import ../../codec/state/trie as state_trie
 import ../../crypto/primitives

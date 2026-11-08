@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Pure GP opcode descriptions and the common scalar lowering subset used by native emitters.
 ## These copied values carry no backend, source owner, invocation state or machine encoding.
 

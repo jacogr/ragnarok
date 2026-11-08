@@ -28,10 +28,12 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Inspect actual canonical account fields at each full-state owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc rangeConfig(queue: AssuredAccumulationQueue): AssuredExecutionConfig =
   ## Authorize exactly the eleven real final bytes; original parameters and all other independent execution ceilings stay inherited.
   result = assuredExecutionConfig(queue)
   result.runner.completion.batch.selfValueBytes = ByteLimit(11)
+
 proc expectedBytes(completed: CompletedBlockAccumulation, mode: ComputedStorageMode,
     config: AssuredExecutionConfig): seq[byte] =
   ## Independently encode full LE64 canonical record length or NONE, preceded by the untouched original RW prefix.
@@ -45,6 +47,7 @@ proc expectedBytes(completed: CompletedBlockAccumulation, mode: ComputedStorageM
   result = @[21'u8, 22, 23]
   for index in 0..<8:
     result.add(byte((word shr (8*index)) and 255)) # Eight shifts at most56 preserve the entire unsigned return word without narrowing.
+
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Prefix preservation distinguishes true zero-copy clipping from a narrowed offset or index that would read the first record.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -53,6 +56,7 @@ proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   let account = metadata(state)
   assert uint32(account.storageItems) == 1 and uint64(account.storageBytes) == 46
   assert uint64(account.balance) == 58
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Run the actual full-width instructions and real store_u64 before any storage/outcome certificate is observed.
   let outcome = executeAssuredAccumulation(fixture.queue, rangeConfig(fixture.queue))
@@ -62,12 +66,14 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Drive genuine completed input work to terminal history and all maintained state phases without replay.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
   if outcome.error != AssuredCompositionError.None: echo "fetch-range composition ", outcome.error
   assert outcome.error == AssuredCompositionError.None
   outcome.value
+
 proc witness(mode: ComputedStorageMode): AssuredOutcomeFixture =
   ## Compare actual original and successor full return words, proving distinct present-empty and absent behavior through publication.
   let fixture = assuredOutcomeFixture(mode)
@@ -156,6 +162,7 @@ proc witness(mode: ComputedStorageMode): AssuredOutcomeFixture =
 let modes = [ComputedStorageMode.FetchWideOffset, ComputedStorageMode.FetchWideIndex]
 var fixtures: seq[AssuredOutcomeFixture] = @[]
 for mode in modes: fixtures.add(witness(mode)) # Both genuinely authored programmes exercise low32-zero natural values before any result is observed.
+
 proc cycle(fixtures: openArray[AssuredOutcomeFixture]) =
   ## Execute actual full-width fetch/store instructions, compose and publish both outcomes, then release every successor owner.
   for fixture in fixtures:

@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Checked default projections and genuine signed original/posterior positive controls.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, current_checkpoint_context]
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/chain/provider
 import ../../src/codec/report_owned
+
 proc extract(mode: string, update: PreparedCurrentChainUpdate) {.noinline.} =
   ## Dynamic noinline calls preserve actual runtime precondition evidence.
   case mode
@@ -14,6 +16,7 @@ proc extract(mode: string, update: PreparedCurrentChainUpdate) {.noinline.} =
   of "view": discard update.currentUpdatePriorView
   of "prior-info": discard update.currentUpdatePriorViewInfo
   else: discard update.currentUpdateViewInfo
+
 proc main() {.raises.} =
   ## Positive control retains actual full state/view completion rather than manufacturing readiness.
   if paramStr(1) == "ok":

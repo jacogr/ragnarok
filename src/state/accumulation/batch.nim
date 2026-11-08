@@ -250,7 +250,6 @@ func selectedRole(original, manager, owner: ServiceIndex): ServiceIndex =
   if uint32(manager) == uint32(original): owner
   else: manager # A changed manager choice wins independently of execution order.
 
-
 proc assignmentWrites(selected: PreparedTerminalAccumulationProvisions,
     initial: InitialAccumulationContext, limits: AccumulationBatchLimits): AccumulationBatchResult[
         seq[StateWrite]] =

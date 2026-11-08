@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real descriptor reuse witnesses one-shot ownership retirement even when close reports EINTR.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io]
@@ -11,6 +12,7 @@ import ../../../src/storage/file/repository as file_repository
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
+
 proc scenario(managed: bool, skip: cint) {.raises.} =
   ## Every repository-owned descriptor is retired once; a reused number belongs to another resource.
   resetIo()

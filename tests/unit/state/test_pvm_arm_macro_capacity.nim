@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Optional descriptor caching must retain resident admission when its larger image cannot fit.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/arm64_jit
 import ../../support/pvm_arm_macro_backend

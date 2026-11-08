@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_modified_accounts_arc_release"}
 
 ## Genuine host effects retain exact successful modification membership across equal roots and checkpoints.
+
 import std/[assertions, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, header]
@@ -25,6 +27,7 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program,
 
 # Inject backend refusal only after complete genuine source preparation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Zero deposits isolate membership from independent storage-price arithmetic.
@@ -39,6 +42,7 @@ proc parameters(): Parameters =
 
 let blob = @[4'u8, 5, 6]
 let hash = ServicePreimageHash(array[32, byte](blake2b256(blob).value))
+
 proc junior(service: uint32): StateEntry =
   ## Both juniors are currently supervised by the invoker's actual incarnation.
   serviceMetadataEntry(ServiceIndex(service), ServiceMetadata(balance: AccountBalance(100),
@@ -47,6 +51,7 @@ proc junior(service: uint32): StateEntry =
       storageItems: AccountStorageItems(if service == 99: 2'u32 else: 0'u32),
       storageBytes: AccountStorageBytes(if service == 99: 84'u64 else: 0'u64)), ByteLimit(
           ServiceMetadataBytes)).value
+
 proc source(code: seq[seq[byte]] = @[@[50'u8, 0]], data = newSeq[byte](128),
     history = requestedHistory(), retained = false, slot = HeaderSlot(
         128)): PreparedAccumulationMachine =
@@ -64,6 +69,7 @@ proc source(code: seq[seq[byte]] = @[@[50'u8, 0]], data = newSeq[byte](128),
           supervisorCreated: AccountSlot(43),
       created: AccountSlot(43)), extra = entries, writable = data,
       manager = 42, assigner = 42, delegator = 42, registrar = 42, writes = 4, spareEntries = 8, slot = slot)
+
 proc pair(prepared: PreparedAccumulationMachine, limit = 8'u64,
     facts = 12'u64): AccumulationEffects =
   ## Tracking capacity is explicit and separate from existing key/membership publication proofs.
@@ -71,6 +77,7 @@ proc pair(prepared: PreparedAccumulationMachine, limit = 8'u64,
   prepareAccumulationEffects(contexts, createdAccounts = ElementLimit(2),
       deletedAccounts = ElementLimit(2), modifiedAccounts = ElementLimit(limit),
           accountWriteFacts = ElementLimit(facts)).value
+
 proc run(prepared: PreparedAccumulationMachine, limit = 8'u64,
     facts = 12'u64): AccumulationDispatchResult =
   ## Execute current host IDs with finite capture, output, state and membership ceilings.
@@ -81,9 +88,11 @@ proc run(prepared: PreparedAccumulationMachine, limit = 8'u64,
           pvmContextConfig(),
       serviceProbes = ServiceProbeLimit(1), transferLimit = ElementLimit(2),
           modifiedAccounts = ElementLimit(limit), accountWriteFacts = ElementLimit(facts))
+
 proc context(effects: AccumulationEffects, dimension = AccumulationDimension.Regular): AccumulationEffectContext =
   ## Selected context retains both state and immutable successful-membership facts.
   effects.effectContext(dimension).value
+
 proc check(owner: AccumulationEffectContext, expected: openArray[uint32]) =
   ## First-touch order is deterministic; membership values are independent nominal copies.
   assert owner.effectModifiedAccountCount.value == expected.len, "exact unique membership size"
@@ -95,6 +104,7 @@ proc check(owner: AccumulationEffectContext, expected: openArray[uint32]) =
   assert not owner.effectAccountModified(ServiceIndex(12345)).value, "absent identity is false only with enabled tracking"
   let past = owner.effectModifiedAccountAt(AccumulationModifiedAccountIndex(high(uint64)))
   assert past.error == AccumulationEffectError.InvalidIndex, "full-width ordinal is bounded before native narrowing"
+
 proc root(owner: AccumulationEffectContext): array[32, byte] =
   ## Compare ordinary complete-state commitments without deriving modification membership from equality.
   array[32, byte](owner.effectAccounts.value.commitment.root)

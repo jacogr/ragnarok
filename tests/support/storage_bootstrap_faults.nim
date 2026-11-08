@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every initialization barrier preserves forensic bytes and grants ownership only after confirmation.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_samples, managed_storage_samples, storage_io]
@@ -11,13 +12,16 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/repository as managed_repository
 import ../../src/storage/database_identity
 import ../../src/codec/bounded
+
 proc accessNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Test-only namespace presence uses the SDK; production admission still validates held regular files.
+
 proc sampleExists*(path: string): bool =
   ## Distinguish absent partial-bootstrap files without treating them as storage authority.
   var nativePath = path
   accessNative(nativePath.toCString(), 0) == 0
+
 proc removeBootstrapSample*(path: string, managed: bool) =
   ## Delete only the exact test-owned bootstrap names after all native owners are retired.
   if managed:
@@ -30,6 +34,7 @@ proc removeBootstrapSample*(path: string, managed: bool) =
   else:
     var journal = path
     assert posix.unlink(journal.toCString()) == 0
+
 proc bootstrapCase*(label: string, managed: bool, skip, failures: cint,
     permanent = false): uint64 {.raises.} =
   ## Observe actual barriers from the first exclusive creation through final manifest confirmation.

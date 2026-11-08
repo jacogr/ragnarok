@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Initial membership never substitutes for missing actual child-root evidence; immutable contexts remain branch-local.
+
 import std/[assertions, syncio]
 import ../../support/fuzz_ancestry_context
 import ../../../src/state/fuzz/[ancestry as fuzz_ancestry, protocol as fuzz_protocol]
 import ../../../src/codec/[bounded, header, assurances]
+
 proc main() =
   ## Direct semantic witnesses cover exact budgets, sparse historical evidence and sibling restoration.
   let missing = default(FuzzAncestryResult[FuzzAncestry])

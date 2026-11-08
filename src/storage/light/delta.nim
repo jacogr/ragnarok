@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded local light-update frames bind canonical edits to one independently trusted root and exact predecessor.
+
 import std/[algorithm, assertions]
 import ./[snapshot as light_snapshot, state_cache as light_state_cache]
 import ../[state_proof, database_identity]

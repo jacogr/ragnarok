@@ -16,8 +16,10 @@ import ../../../src/codec/bounded
 
 ## Refuse all hashing or reset the existing deterministic observer state.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit some child hashes before refusing, so rollback covers a partly built candidate root.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Observe preflight/no-op behavior without inspecting a store's private state.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

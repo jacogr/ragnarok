@@ -3,6 +3,7 @@
 
 ## Exact explicit-input provider coverage preserves original gas through annulment and distinguishes both no-execution proofs.
 ## This immutable certificate neither authenticates caller parameters nor publishes a completed block/round.
+
 import ../../codec/[bounded, composite, header]
 import ../../codec/work/digest as work_digest
 import ./[annulment as accumulation_annulment, outcome as accumulation_outcome,

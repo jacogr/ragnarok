@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable light-image borrows allocate no payload copy, while mutable extraction remains independent and scoped.
+
 # @@Verification={"arc":"storage_light_borrowed_bytes_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -9,25 +10,30 @@ import ../../../src/storage/light/[snapshot as light_snapshot, state_cache as li
 import ../../../src/storage/[state_proof, database_identity]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc key(first: byte): StateKey =
   ## Two fixed query identities retain authenticated empty-root absence in a nonempty canonical image.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc image(): PreparedLightSnapshot =
   ## The independently selected empty complete root supports two negative lookups without invented partial roots.
   let policy = LightSnapshotLimits(bytes: ByteLimit(8192), cache: LightCacheLimits(
     items: ElementLimit(4), writes: ElementLimit(2)))
   prepareLightSnapshot(default(StorageChainId), default(StateRoot),
     [LightStateProof(key: key(128)), LightStateProof(key: key(0))], policy).value
+
 proc occupied(input: openArray[byte], expected: int): int =
   ## Sample live heap inside the borrowed consumer, after validating actual dynamic image bytes.
   assert input.len == expected and input[0] == byte('R')
   getOccupiedMem()
+
 proc copied(): seq[byte] =
   ## An owning return copies the read-only borrow before the local prepared owner retires.
   let local = image()
   local.encodedBytes
+
 proc cycle(snapshot: PreparedLightSnapshot) =
   ## Scoped views retain no extra allocation; independent mutable sequences never alter encoded bytes or cache readers.
   let expected = snapshot.byteLength
@@ -47,6 +53,7 @@ proc cycle(snapshot: PreparedLightSnapshot) =
   let edited = snapshot.forget([key(128)]).value
   assert edited.cache.len == 1 and snapshot.cache.len == 2
   assert snapshot.encodedBytes.len == expected and edited.encodedBytes.len < expected
+
 proc main() =
   ## Exact retirement covers copied extraction, immutable views, retained readers and image edits across1,000 cycles.
   let snapshot = image()

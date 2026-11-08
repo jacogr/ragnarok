@@ -155,6 +155,7 @@ func ancestorRefusal[T](reason: AncestorContextError): ReportAnchorResult[T] {.r
     of AncestorContextError.BackendFailure: ReportAnchorError.BackendFailure
     else: ReportAnchorError.InvalidHeader # Other child refusals expose no authenticated header context.
   ReportAnchorResult[T](status: selected)
+
 proc captureReportAncestorContext*(candidate, parent: OwnedHeader,
     older: openArray[OwnedHeader], config: AncestorConfig): ReportAnchorResult[AncestorContext] =
   ## The actual admitted candidate belongs to GP ancestors and can prove the parent's posterior root.
@@ -183,6 +184,7 @@ proc captureReportAncestorContext*(candidate, parent: OwnedHeader,
     header: config.header, headers: config.headers, maxBytes: config.maxBytes))
   if captured.error != AncestorContextError.None: return ancestorRefusal[AncestorContext](captured.error)
   ReportAnchorResult[AncestorContext](status: ReportAnchorError.None, completed: captured.value)
+
 proc checkReportLookupAnchors*(recent: RecentAnchoredReports,
     context: AncestorContext): ReportAnchorResult[AnchoredReports] =
   ## A trusted linked subset suffices for existential proofs; the actual candidate may be its newest member.

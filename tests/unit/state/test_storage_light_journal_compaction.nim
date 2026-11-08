@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Prepared light checkpoint compaction preserves global sequence and separates confirmed selection from old-handle retirement.
+
 # @@Verification={"arc":"storage_light_journal_compaction_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -15,29 +16,37 @@ import ../../../src/storage/managed/[io as managed_io, manifest as managed_manif
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Opaque compaction publication performs no provider work after private preparation.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Both manifest and anchor preparation hashes must refuse before IO without poisoning.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Stale/exhausted positions precede hashing, and preparation performs only fixed metadata hashes.
+
 proc renameFile(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only maximum-counter fixtures relocate only their exact owned epoch files before strict open.
+
 proc path(suffix: string): string =
   ## Native suites own their isolated ignored working directory.
   "light-compaction-" & $storageProcessId() & "-" & suffix
+
 proc retireEpoch(path: string, epoch: ManagedEpoch) =
   ## Retire only exact known fixture epoch children after all native owners close.
   for kind in [ManagedFileKind.Snapshot, ManagedFileKind.Journal]:
     var file = lightChild(path, kind, epoch)
     let removed = posix.unlink(file.toCString())
     if removed != 0: assert posix.errno() == ENOENT, "only an absent exact fixture child is harmless"
+
 proc cycle(owner: LightJournalCache, epoch: ManagedEpoch, sequence: LightDeltaSequence) =
   ## Candidate copies retain immutable proof images and tiny fixed metadata, never the native lease.
   let prepared = prepareLightCompaction(owner, epoch, sequence).value
   let copied = prepared
   assert copied.initialized and uint64(copied.epoch) == uint64(epoch)+1, "checked next physical epoch"
   assert uint64(copied.sequence) == uint64(sequence), "unchanged global sequence"
+
 proc normal(fixture: LightJournalFixture) {.raises.} =
   ## Reset a full frame budget with a new atomic checkpoint while preserving exact evidence, readers and global sequence.
   let directory = path("normal")
@@ -125,6 +134,7 @@ proc normal(fixture: LightJournalFixture) {.raises.} =
   assert owner.close == FileError.None, "explicit final retirement"
   retireEpoch(directory, ManagedEpoch(2))
   retireLightJournal(directory)
+
 proc failures(fixture: LightJournalFixture) {.raises.} =
   ## Preselection failures grant no receipt; confirmed selection with old-close failure still returns an explicit retirement diagnostic.
   for mode in 0..<10:
@@ -187,6 +197,7 @@ proc failures(fixture: LightJournalFixture) {.raises.} =
     assert owner.close == FileError.None, "retire strict reopened owner"
     retireEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc seedCounters(directory: string, fixture: LightJournalFixture, epoch: ManagedEpoch,
     sequence: LightDeltaSequence) {.raises.} =
   ## Construct exact maximum-counter local format fixtures under no live lease before strict admission.
@@ -202,6 +213,7 @@ proc seedCounters(directory: string, fixture: LightJournalFixture, epoch: Manage
   writeFile(directory & "/CURRENT", lightText(selected.bytes))
   writeFile(lightChild(directory, ManagedFileKind.Journal, epoch), lightText(
       encodeLightJournalAnchor(selected, ByteLimit(LightJournalAnchorBytes)).value))
+
 proc maxima(fixture: LightJournalFixture) {.raises.} =
   ## Physical epoch exhaustion refuses before arithmetic/IO, while maximum global sequence can still be checkpointed unchanged.
   for mode in 0..<2:
@@ -233,6 +245,7 @@ proc maxima(fixture: LightJournalFixture) {.raises.} =
     if mode == 0: retireEpoch(directory, epoch)
     else: retireEpoch(directory, ManagedEpoch(2))
     retireLightJournal(directory)
+
 proc main() {.raises.} =
   ## One independently rooted fixture covers physical replacement, all refusal phases and distinct counter boundaries.
   let fixture = lightFixture()

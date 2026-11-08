@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Certify standalone original-coordinate guarantee signatures under an actual guarantor plan. This nominal support capability excludes population, report-policy and inclusion admission; it cannot replace VerifiedGuaranteeCredentials in consensus consumers.
+
 import ./guarantors
 import ../codec/[bounded, guarantees, assurances, report_owned, owned, disputes]
 import ../codec/work/report
@@ -36,29 +37,36 @@ type
     of OwnershipFailure: ownerReason: OwnershipError
     of BackendFailure: cryptoReason: CryptoError
     else: discard # Ordinary/default failures expose no accepted source or partial output.
+
 func error*[T](outcome: GuaranteeSupportResult[T]): GuaranteeSupportError =
   ## Inspect status before extracting complete ownership or its selected child reason.
   outcome.status
+
 func value*[T](outcome: GuaranteeSupportResult[T]): T {.requires: outcome.status ==
     GuaranteeSupportError.None.} =
   ## Only complete report-bound signature support exposes an immutable owner or fixed facts.
   outcome.completed
+
 func structureError*[T](outcome: GuaranteeSupportResult[
     T]): GuaranteeError {.requires: outcome.status == GuaranteeSupportError.StructureFailure.} =
   ## Preserve count/order/ordinal/report-shape refusals from the maintained canonical guarantee codec.
   outcome.structureReason
+
 func assignmentError*[T](outcome: GuaranteeSupportResult[
     T]): GuarantorError {.requires: outcome.status == GuaranteeSupportError.AssignmentFailure.} =
   ## Missing, stale, future or out-of-roster original coordinates never become fabricated signer keys.
   outcome.assignmentReason
+
 func ownerError*[T](outcome: GuaranteeSupportResult[
     T]): OwnershipError {.requires: outcome.status == GuaranteeSupportError.OwnershipFailure.} =
   ## Keep actual canonical encoding/detachment failure distinct from report invalidity.
   outcome.ownerReason
+
 func cryptoError*[T](outcome: GuaranteeSupportResult[T]): CryptoError {.requires: outcome.status ==
     GuaranteeSupportError.BackendFailure.} =
   ## A failed message hash cannot expose a temporary zero transcript.
   outcome.cryptoReason
+
 func valid*(limits: GuaranteeSupportLimits): bool =
   ## The codec validates detailed chain geometry; these local maxima independently bound every allocation and hash/signature operation.
   uint64(limits.wire.cores) in 2'u64..341'u64 and uint64(limits.wire.validators) in
@@ -68,9 +76,11 @@ func valid*(limits: GuaranteeSupportLimits): bool =
     uint64(limits.workspaceBytes) > 0 and uint64(limits.workspaceBytes) <= 32'u64*1024*1024 and
     uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 8'u64*1024*1024 and
     uint64(limits.signatures) > 0 and uint64(limits.signatures) <= 3
+
 func valid*(support: VerifiedGuaranteeSupport): bool =
   ## Plain copied guarantee metadata cannot initialize a signature-support owner.
   support.data != nil
+
 proc supportInfo*(support: VerifiedGuaranteeSupport): GuaranteeSupportResult[GuaranteeSupportInfo] =
   ## Inspect detached fixed signed identity and accounting while retaining no mutable report storage.
   let data = support.data
@@ -78,12 +88,14 @@ proc supportInfo*(support: VerifiedGuaranteeSupport): GuaranteeSupportResult[Gua
       status: GuaranteeSupportError.Uninitialized)
   GuaranteeSupportResult[GuaranteeSupportInfo](status: GuaranteeSupportError.None,
       completed: data.info)
+
 proc supportedGuarantee*(support: VerifiedGuaranteeSupport): GuaranteeSupportResult[Guarantee] =
   ## The immutable exact detached report and original slot/credentials remain distinct from full consensus admission.
   let data = support.data
   if data == nil: return GuaranteeSupportResult[Guarantee](
       status: GuaranteeSupportError.Uninitialized)
   GuaranteeSupportResult[Guarantee](status: GuaranteeSupportError.None, completed: data.guarantee)
+
 proc supportValidator*(support: VerifiedGuaranteeSupport, ordinal: int): GuaranteeSupportResult[
     StateValidator] =
   ## Credential row ordinals return their original plan's full fixed public records, never shuffled or compressed replacement indices.
@@ -94,6 +106,7 @@ proc supportValidator*(support: VerifiedGuaranteeSupport, ordinal: int): Guarant
     return GuaranteeSupportResult[StateValidator](status: GuaranteeSupportError.InvalidIndex)
   GuaranteeSupportResult[StateValidator](status: GuaranteeSupportError.None,
       completed: data.validators[ordinal])
+
 proc verifyGuaranteeSupport*(value: Guarantee, plan: GuarantorPlan,
     limits: GuaranteeSupportLimits): GuaranteeSupportResult[VerifiedGuaranteeSupport] =
   ## The caller authenticates the actual plan/source. Whole shape/copy/hash/signature admission precedes key extraction, crypto and detached publication; this factory deliberately issues only the narrower support capability.

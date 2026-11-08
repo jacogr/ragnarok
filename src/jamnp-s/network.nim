@@ -3,6 +3,7 @@
 
 ## Address selection for explicitly configured JAM endpoints. Absent configuration preserves
 ## isolated proof defaults; a configured remote selects a matching-family wildcard local bind.
+
 import ../quic/address
 export address
 

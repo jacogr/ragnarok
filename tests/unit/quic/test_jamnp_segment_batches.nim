@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_segment_batches_arc_release"}
 
 ## Genuine roots, literal malformed groups and aggregate work ceilings exercise complete CE139/140/148 serving.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[read_stream, segment_request, availability_read, availability_proof,
     availability_merkle, guarantor_segments]
@@ -16,10 +18,12 @@ from ../../../src/codec/work/package import ImportIndex
 from ../../../src/codec/work/report import SegmentRoot
 from ../../../src/pvm/host/fetch import FetchSegment
 import ../../support/[pvm_computed_report, arc_evidence, jamnp_segment_batch_fixture]
+
 proc policy(): AvailabilityReadLimits =
   ## Independent explicit computation and wire ceilings admit the genuine bounded sources.
   AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
     hashes: ElementLimit(10000), hashBytes: ByteLimit(16000000)), wireBytes: ByteLimit(4000000))
+
 proc checked(source: AvailabilityCommitment, shard: uint64): VerifiedAvailabilityTransfer =
   ## Only an independently verified complete distribution can populate a source snapshot.
   let expected = source.availabilityInfo.value.specifier
@@ -28,11 +32,13 @@ proc checked(source: AvailabilityCommitment, shard: uint64): VerifiedAvailabilit
   let prepared = prepareAvailabilityTransfer(source, request, policy().computation).value
   verifyAvailabilityTransfer(expected, request, prepared.bundleShard, prepared.segmentShards,
     prepared.justification, policy().computation).value
+
 proc cycle(source: VerifiedAvailabilityTransfer) =
   ## Complete request copies, indexed proof contexts, payloads and replies retire on every ARC cycle.
   let payload = segmentGroup(ReadKind.ProvenSegmentShards, source.request.root.bytes, 0, [0'u16, 1, 0])
   let request = decodeReadRequest(ReadKind.ProvenSegmentShards, payload).value
   assert serveSegmentShardBatch([source], request, policy()).error == ReadError.None
+
 proc indexedSources(source: VerifiedAvailabilityTransfer) =
   ## The full NP source bound, default gaps and duplicate coordinates must retain exact replies without a quadratic payload scan or arbitrary 64-source ceiling.
   let payload = segmentGroup(ReadKind.ProvenSegmentShards, source.request.root.bytes,
@@ -49,6 +55,7 @@ proc indexedSources(source: VerifiedAvailabilityTransfer) =
   sources.add(source)
   assert serveSegmentShardBatch(sources, request, policy()).error == ReadError.LimitExceeded,
     "NP whole-source ceiling rejects 6145 slots before proof allocation"
+
 proc archive(source: AvailabilityCommitment): GuarantorAvailability =
   ## Explicit aggregate capture covers the real 1023-validator source; it grants no canonical report or signing authority.
   let limits = AvailabilityMerkleLimits(bytes: ByteLimit(128*1024*1024),
@@ -56,15 +63,18 @@ proc archive(source: AvailabilityCommitment): GuarantorAvailability =
   let retained = retainGuarantorAvailability(source, limits)
   assert retained.error == AvailabilityTransferError.None
   retained.value
+
 proc retainedCycle(source: GuarantorAvailability) =
   ## Every parsed selection, tree, reconstructed original, path and reply retires before the next ARC sample.
   let root = source.guarantorInfo.value.specifier.segmentRoot.bytes
   let request = decodeReadRequest(ReadKind.Segments, segmentGroup(ReadKind.Segments, root, 0, [
       0'u16, 64, 0])).value
   assert serveRetainedSegmentBatch([source], default(AvailabilityCommitment), request, policy()).error == ReadError.None
+
 proc detachedArchive(): GuarantorAvailability =
   ## Original execution and commitment aliases leave scope before the caller reconstructs exports or prepares paths.
   archive(computedAvailability(65))
+
 proc originals(source: AvailabilityCommitment, rows: openArray[uint16]) =
   ## Actual systematic recovery and root-first proofs must match the independent original export commitment byte for byte.
   let retained = archive(source)
@@ -104,6 +114,7 @@ proc originals(source: AvailabilityCommitment, rows: openArray[uint16]) =
   cap = policy().computation
   cap.hashBytes = ByteLimit(info.hashBytes-1)
   assert prepareGuarantorSegments(retained, cap).error == GuarantorSegmentError.LimitExceeded
+
 proc retainedBatch(first, second: AvailabilityCommitment) =
   ## A mixed-root batch preserves order and duplicates, builds each tree once, and rejects the whole request on missing or out-of-range data.
   let a = archive(first)
@@ -185,6 +196,7 @@ proc retainedBatch(first, second: AvailabilityCommitment) =
   cap.computation.hashes = ElementLimit(191)
   assert serveRetainedSegmentBatch([b], default(AvailabilityCommitment), maximum, cap).error ==
       ReadError.LimitExceeded
+
 proc main() =
   ## Incremental byte boundaries and canonical counts precede genuine proof/root and ownership witnesses.
   for kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments]:

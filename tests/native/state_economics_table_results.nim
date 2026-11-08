@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic report payload/failure guards preserve a genuine complete-source explicit-profile control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, service_deposit_context, economic_profile_context]
 import ../../src/chain/parameters
@@ -9,15 +10,19 @@ import ../../src/state/[economics_table, economic_profile, footprint_audit]
 import ../../src/state/service/directory as service_directory
 import ../../src/codec/bounded
 include ./composition_fixture
+
 proc extract(outcome: EconomicsTableResult[StateEconomicsTable]): StateEconomicsTable {.noinline.} =
   ## No default or failed report grants completed source-bearing observations.
   outcome.value
+
 proc guardreason(outcome: EconomicsTableResult[StateEconomicsTable]) {.noinline.} =
   ## Default reports do not invent a failed row reason.
   discard outcome.observationFailure
+
 proc guardservice(outcome: EconomicsTableResult[StateEconomicsTable]) {.noinline.} =
   ## Default reports do not invent a failed row service.
   discard outcome.failedService
+
 proc guardordinal(outcome: EconomicsTableResult[StateEconomicsTable]) {.noinline.} =
   ## Default reports do not invent a failed row ordinal.
   discard outcome.failedOrdinal

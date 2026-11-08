@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_finalization_arc_release"}
 
 ## Genuine stopped accseq histories retain service effects and privately replace only the output chapter.
@@ -21,6 +22,7 @@ import ../../support/[accumulation_reentry_context, accumulation_execution_conte
 
 # Fail only after genuine signed execution and stopped-source preparation have completed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Yield the actual 32-byte padded bootstrap tuple, then halt without overriding it.

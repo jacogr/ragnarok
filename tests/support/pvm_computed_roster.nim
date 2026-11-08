@@ -38,6 +38,7 @@ type
     source*: TransitionBoundComputedReport
     original*: StateStore
     siblings*: seq[TransitionBoundComputedReport] ## Optional additional cores reuse the exact original map and successful transition.
+
 proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedReportLinks =
   ## Compute actual availability with the independently selected structurally valid shard population before eligibility checking.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -49,6 +50,7 @@ proc rosterLinks(execution: InputRefinement, shards: ErasureShards): ComputedRep
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
+
 proc rosterTransitionConfig*(): BlockReportConfig =
   ## Share the genuine three-core prefix policies with guarantee-bearing candidate fixtures.
   var cfg = transitionConfig()
@@ -62,6 +64,7 @@ proc rosterTransitionConfig*(): BlockReportConfig =
   cfg.availability.rosters = cfg.disputes.rosters
   cfg.availability.assignments = cfg.disputes.availability
   cfg
+
 proc rosterFixture*(shrink = false, core = 0'u64, shards = 6'u16, rotation = 65535'u16,
     target = 0'u32, offender = false, repeatReporter = false,
     additionalCores: openArray[uint64] = [], distinctPackages = false,

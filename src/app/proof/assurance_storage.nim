@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Closed assurance-namespace I/O jobs borrow one fixed native owner until exact worker collection/join; capture owns independent bounded paths and never retains a cancellation callback.
+
 import ../../jamnp-s/[assurance_store, assurance_record]
 
 type
@@ -21,16 +22,20 @@ type
     case status: AssuranceStorageJobError
     of None: completed: AssuranceStorageJob
     else: discard # No default successful job is exposed.
+
 func error*(outcome: AssuranceStorageAdmission): AssuranceStorageJobError =
   ## Read the selected capture refusal before accessing a queued operation.
   outcome.status
+
 func value*(outcome: AssuranceStorageAdmission): AssuranceStorageJob {.requires: outcome.status ==
     AssuranceStorageJobError.None.} =
   ## Only a completely captured operation may enter the native worker lease.
   outcome.completed
+
 func valid*(job: AssuranceStorageJob): bool =
   ## Default jobs borrow no store and cannot execute an empty successful setup.
   job.data != nil
+
 proc captureAssuranceStorage*(owner: var AssuranceStore, folder: string, chain: AssuranceChainId,
     limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageAdmission =
   ## The caller keeps owner at its final address and freezes every alias until collection/join; capture performs no filesystem I/O.
@@ -48,6 +53,7 @@ proc captureAssuranceStorage*(owner: var AssuranceStore, folder: string, chain: 
   AssuranceStorageAdmission(status: AssuranceStorageJobError.None,
     completed: AssuranceStorageJob(data: StorageData(owner: addr owner, folder: path,
       chain: chain, limits: limits, mode: mode)))
+
 proc executeAssuranceStorage*(job: AssuranceStorageJob,
     control: AssuranceScanControl): AssuranceStoreResult[bool] =
   ## Only the reusable worker supplies its live cancellation view; no context outlives this synchronous operation.

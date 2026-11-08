@@ -3,6 +3,7 @@
 
 ## Canonical local context selects one scalar historical index alongside the bounded live chain view.
 ## The enclosing ordinary journal/paged publication supplies durable authority; nested wrappers are forbidden.
+
 import ../../storage/history/index as history_index
 import ../../storage/database_identity
 import ../../codec/bounded

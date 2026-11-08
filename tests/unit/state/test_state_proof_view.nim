@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Partial views retain verified facts under one root without pretending unknown keys are absent.
+
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
 import ../../../src/state/proof/view as proof_view
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc main() =
   ## Unsorted requests become deterministic exact-key evidence without widening root authority.
   let key = chapterKey(StateChapter(1))

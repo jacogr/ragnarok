@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete-source chapter validation preserves map authority, exact codec refusals and ARC ownership.
+
 # @@Verification={"arc": "state_global_snapshot_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[proof_global_helpers, arc_evidence]
@@ -10,8 +11,10 @@ import ../../../src/codec/[bounded, assurances, composite]
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     composition as state_composition, consensus as state_consensus]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after constructing the complete immutable test source.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe hashing attempts independently of validator results.
 const
@@ -21,12 +24,15 @@ const
     maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))
   stores = StateStoreLimits(trie: mapLimits, writes: ElementLimit(32),
     writeValueBytes: ByteLimit(262144))
+
 proc snapshotOf(entries: seq[StateEntry]): StateStoreSnapshot =
   ## Construct a genuine complete map; never fabricate a retained snapshot from raw payload fields.
   newStateStore(entries, stores).value.snapshot.value
+
 proc detached(entries: seq[StateEntry]): ValidatedGlobalState =
   ## Return only the certificate after temporary input-store and source handles have retired.
   validateGlobalState(snapshotOf(entries), profile, limits).value
+
 proc cycle(source: StateStoreSnapshot) =
   ## Success and refusal temporaries retire before allocator observations.
   let validated = validateGlobalState(source, profile, limits).value
@@ -36,6 +42,7 @@ proc cycle(source: StateStoreSnapshot) =
   assert validateGlobalState(source, profile, GlobalStateLimits()).error ==
     GlobalStateError.LimitExceeded
   assert validated.globalByteLength.value > 0
+
 proc main() {.raises.} =
   ## Use independent complete chapter bytes and retain an extra opaque row outside the validation claim.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

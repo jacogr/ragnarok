@@ -3,6 +3,7 @@
 
 ## Bounded physical writes for an exact-source selected prior-account subset M and new-account union n.
 ## Retained complete snapshots authorize only the selected logical accounts; this plan does not publish state.
+
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, layout as state_layout, trie as state_trie]
 import ./annulment as accumulation_annulment

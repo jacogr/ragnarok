@@ -22,6 +22,7 @@ import ../../support/[accumulation_activity_context, accumulation_completion_con
 
 # Resettable backend counters distinguish sealed-header hashing from unnecessary state Merklization.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc settings(): Parameters =

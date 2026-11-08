@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Actual scratch heap ownership cannot be cloned through an ordinary dereference.
+
 # @@Verification={"group":"ownership_compile","build_name":"pvm-resident-scratch-initialize","expected":"'=dup' is not available for type <FlatMemoryScratchData>","rationale":"The actual ARC scratch payload owns resident mapping retirement authority; borrowed initialize would duplicate that owner even though reference handles themselves may alias.","reference":"src/pvm/internal/handler_stream.nim"}
 import std/assertions
 import ../../../src/pvm/machine

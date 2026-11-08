@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently authored complete seeds and signed children execute through the actual ephemeral fuzzer backend.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, accumulation_current_chain_context,
     fuzz_guest_replay_context, fuzz_full_replay_context]
@@ -39,6 +40,7 @@ proc observe(backend: var FuzzBackend, header: OwnedHeader): StateStoreSnapshot 
   let reply = backend.executeFuzz(fuzzGetState(header))
   assert reply.error == FuzzBackendError.None
   reply.value.fuzzState.value
+
 proc reportRefusalReason[T](failure: ReportAdmissionResult[T]): string =
   ## Only a guarded actual credential-stage failure supplies this report rejection reason.
   if failure.error == ReportAdmissionError.CredentialFailure:

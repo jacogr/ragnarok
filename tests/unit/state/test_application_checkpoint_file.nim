@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_file_arc_release"}
 
 ## Single-file application envelopes preserve exact old bytes on refusal and restore only independently matched context.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -16,12 +17,14 @@ import ../../../src/codec/state/trie as state_trie
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-file"
+
 proc cycle(expected: ApplicationCheckpointIdentity) =
   ## Each bounded file/read/decode activation retires all temporary byte and complete-map owners.
   let loaded = loadApplicationCheckpoint(FileName, expected, genesisStoreLimits(), ByteLimit(100000))
   assert loaded.error == ApplicationCheckpointFileError.None
   assert array[32, byte](loaded.value.snapshot.value.commitment.root) == array[32, byte](
       expected.stateRoot)
+
 proc main() {.raises.} =
   ## Wrong/default context, limits, native paths and corrupt selected bytes never expose success or alter old data implicitly.
   var path = FileName

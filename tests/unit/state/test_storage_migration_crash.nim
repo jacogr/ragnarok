@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A killed destination copier never changes a live locked legacy source or grants trust to an incomplete target.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io, storage_crash,
@@ -12,6 +13,7 @@ import ../../../src/storage/file/repository as file_repository
 import ../../../src/storage/managed/repository as managed_repository
 import ../../../src/storage/file/migration as file_migration
 import ../../../src/storage/database_identity
+
 proc scenario(operation, skip: cint): uint64 {.raises.} =
   ## Parent intentionally retains the source lease across fork; child reads it only and never explicitly closes it.
   resetIo()
@@ -99,6 +101,7 @@ proc scenario(operation, skip: cint): uint64 {.raises.} =
   assert source.close == FileError.None
   removeBootstrapSample(path, true)
   assert posix.unlink(sourcePath.toCString()) == 0
+
 proc main() {.raises.} =
   ## Every actual destination write, barrier and CURRENT rename is independently stopped and killed.
   for operation in [writeIo, syncIo, renameIo]:

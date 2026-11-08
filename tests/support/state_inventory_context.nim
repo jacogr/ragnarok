@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently encoded complete chapter/service fixtures support compact provenance and consistency consumers.
+
 import ../../src/state/[manifest, global_snapshot, store, inventory]
 import ../../src/codec/[bounded, assurances]
 import ../../src/codec/state/[consensus as state_consensus, layout as state_layout,
@@ -17,6 +18,7 @@ const
     storageKeyBytes: ByteLimit(1024))
   inventoryCaptureLimits* = StateInventoryLimits(manifest: inventoryManifestLimits,
     facts: ElementLimit(128), bytes: ByteLimit(65536))
+
 proc inventoryServices*(): seq[StateService] =
   ## Literal Blake2b-256(abc), complete request linkage and independently calculated footprint are authored test facts.
   let hash = ServicePreimageHash([byte(0xbd), 0xdd, 0x81, 0x3c, 0x63, 0x42, 0x39, 0x72, 0x31, 0x71,
@@ -33,6 +35,7 @@ proc inventoryServices*(): seq[StateService] =
           RequestSlot(3)))]),
     StateService(service: ServiceIndex(8), metadata: ServiceMetadata(balance: AccountBalance(1000),
       supervisor: ServiceIndex(7), supervisorCreated: AccountSlot(2), created: AccountSlot(4)))]
+
 proc inventoryManifest*(chapters: seq[seq[byte]], services: openArray[
     StateService]): ValidatedStateManifest =
   ## Build the source through lower-level entry encoders, independently of whole composition's assembly loop.

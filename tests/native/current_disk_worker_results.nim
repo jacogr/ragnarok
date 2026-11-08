@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default worker receipts/admission cannot be mistaken for completed current disk IO or valid retirement authority.
+
 import std/cmdline
 import ../../src/app/disk/worker as disk_worker
 let completion = default(DiskPublicationCompletion)

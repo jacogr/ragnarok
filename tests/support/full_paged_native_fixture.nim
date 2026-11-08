@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared native full-paged fixtures preserve independent complete-map roots and finite caller-owned producers.
+
 import std/[assertions, syncio]
 import ./full_paged_reference
 import ../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
@@ -22,6 +23,7 @@ proc producer*(records: seq[TrieRecord]): FullPagedProducer =
     output = records[int(ordinal)]
     FullPagedProducerStep.Item
   next
+
 func config*(fixture: FullPagedFixture): FullPagedNativeConfig =
   ## Independent expected root and finite construction/admission policies never derive from CURRENT.
   FullPagedNativeConfig(chain: fixture.header.chainId, root: fixture.header.root, limits: policy(),
@@ -29,10 +31,12 @@ func config*(fixture: FullPagedFixture): FullPagedNativeConfig =
     construction: FullPagedConstructionLimits(producerCalls: ElementLimit(10000),
       ioCalls: ElementLimit(10000), hashes: ElementLimit(10000), readBytes: ByteLimit(1000000),
       writeBytes: ByteLimit(1000000)))
+
 proc roots*(fixture: FullPagedFixture): seq[FullPagedRoot] =
   ## Test-only inventory copy supplies bounded scalar untrusted root claims.
   result = @[]
   for index in 0..<fixture.header.len: result.add(fixture.header.retainedRoot(index)) # At most64 claims.
+
 proc seed*(writer: var FullPagedWriter, directory: string, fixture: FullPagedFixture) =
   ## Only successful file-and-directory-synchronized initialization supplies a durable baseline.
   let initialized = initializeFullPagedWriter(writer, directory, fixture.config, fixture.roots,
@@ -40,6 +44,7 @@ proc seed*(writer: var FullPagedWriter, directory: string, fixture: FullPagedFix
   assert initialized.error == FullPagedNativeError.None
   assert initialized.value.durability == StorageDurability.FileAndDirectorySynced
   assert initialized.value.writerUsable and initialized.value.retirementError == FileError.None
+
 proc prepare*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     fixture: FullPagedFixture) =
   ## Normal source-bound complete replacement includes all new root-union bytes and per-root counts.
@@ -47,6 +52,7 @@ proc prepare*(writer: var FullPagedWriter, candidate: var FullPagedCandidate,
     fixture.records.producer, fixture.header.geometry.entries, fixture.header.geometry.payloadBytes)
   assert prepared.error == FullPagedNativeError.None
   assert prepared.value == StorageDurability.FileAndDirectorySynced
+
 proc sample*(value: byte): FullPagedFixture =
   ## Independent complete graphs differ in one value and retain a present-empty right leaf.
   let left = leaf(0, @[value])
@@ -72,6 +78,7 @@ proc historySample*(prior, next: byte): FullPagedFixture =
   assert array[32, byte](after.header.root) == array[32, byte](newRoot.digest)
   fixture(@[a, b, right, oldRoot, newRoot], newRoot,
     @[claim(oldRoot, 2, 3, 1), claim(newRoot, 2, 3, 1)])
+
 proc reposition*(source: FullPagedFixture, epoch: ManagedEpoch,
     generation: RepositoryGeneration): FullPagedFixture =
   ## Independent oracle changes only scalar physical position before rebuilding the complete local tree.
@@ -84,6 +91,7 @@ proc reposition*(source: FullPagedFixture, epoch: ManagedEpoch,
       found = true
   assert found
   fixture(source.records, selected, source.roots, epoch, generation)
+
 proc seedOracle*(directory: string, source: FullPagedFixture) =
   ## Real locked namespace plus independent oracle bytes supports exact-counter fixtures without claiming a publication receipt.
   var owner = default(PagedDirectory)

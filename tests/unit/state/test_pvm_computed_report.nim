@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_report_arc_release"}
 
 ## Complete independent report wire, exact policy and original context/trace/digest provenance.
@@ -22,11 +23,14 @@ import ../../support/[pvm_computed_report, pvm_computed_report_vectors, arc_evid
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse new hashing after original execution/availability to prove assembly is pure serialization.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe actual primitive attempts without manufacturing a successful hash.
+
 proc expect[T](outcome: ComputedReportResult[T], reason: ComputedReportError) =
   ## Compare exact refusal alternatives without selecting any encoded prefix.
   assert outcome.error == reason, "computed report reason"
+
 proc sameWire(actual, expected: openArray[byte]) =
   ## Report the first independent literal mismatch precisely for gas/encoding/source diagnosis.
   if actual.len != expected.len:
@@ -36,6 +40,7 @@ proc sameWire(actual, expected: openArray[byte]) =
       echo "report byte ", index, " actual=", actual[index], " expected=", expected[index]
       assert false, "independent complete report byte"
   assert actual.len == expected.len, "complete report length"
+
 proc verify(source: AvailabilityCommitment, expected: openArray[byte], hash: array[32,
     byte]): ComputedWorkReport =
   ## Compare independent complete wire and re-encode through the established complete-report codec.
@@ -109,10 +114,12 @@ expect(prepareComputedReport(contextSource, ByteLimit(100000)), ComputedReportEr
 expect(prepareComputedReport(contextSource, ByteLimit(0)), ComputedReportError.LimitExceeded)
 assert hashes() == 0, "complete report assembly performs no hashes"
 reset(0)
+
 proc detached(): ComputedWorkReport =
   ## Retain complete wire and original execution after every temporary preparation handle retires.
   prepareComputedReport(computedAvailability(0), ByteLimit(100000)).value
 sameWire(detached().computedReportBytes.value, EmptyReport)
+
 proc cycle() =
   ## Release complete wire, trace/output pool, extracted copies and refused candidates every iteration.
   let done = prepareComputedReport(contextSource, ByteLimit(100000)).value

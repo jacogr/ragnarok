@@ -82,6 +82,7 @@ let shortCredentials = @[presentAssignment(shortChild, AssignmentSlot(0)), absen
 var wrongChild = child
 wrongChild.credentials[0].validator = GuarantorIndex(6)
 let badValidator = @[presentAssignment(wrongChild, AssignmentSlot(0)), absentAssignment()]
+
 # Author hostile children at independent fixture-based byte positions, not production scan offsets.
 proc broken(kind: string, reportBytes: int): seq[byte] =
   let wire = encoded.value.value

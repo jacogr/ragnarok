@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Equal-byte/root current states produced by the same authentic block still retain distinct physical predecessor authority.
+
 # @@Verification={"arc":"state_current_logical_physical_refusals_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_identity_context,
@@ -25,16 +26,20 @@ import "../../../src/state/block/admission" as block_admission
 import ../../../src/chain/[provider, genesis]
 import ../../../src/app/[chain, candidate]
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Honest original-map reconstruction and both actual current pipelines complete before physical identity comparison.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Physical/retained-view original binding never rehashes equal byte roots.
+
 proc check(first, second: CurrentLogicalState, firstNext, secondNext: PreparedCurrentChainUpdate) =
   ## Replayed genuine input under another full physical owner never grants continuation of the first owner's logical context.
   assert preserveCurrentIdentities(first, secondNext, currentIdentityTestLimits).error ==
       CurrentIdentityError.ParentMismatch
   assert preserveCurrentIdentities(second, firstNext, currentIdentityTestLimits).error ==
       CurrentIdentityError.ParentMismatch
+
 proc main() {.raises.} =
   ## Reuse the exact actually signed block bytes, not a forged successful update or substituted detached target.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_parallel_account_selection_arc_release"}
 
 ## Genuine annulment certificates bind M's logical account to the exact selected prior/invoker/supervisor snapshot.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/account/selection as accumulation_account_selection
 import ../../../src/state/accumulation/[annulment as accumulation_annulment,
@@ -15,11 +17,14 @@ import ../../support/[accumulation_annulment_context, accumulation_batch_context
 
 # Source selection performs no state hashes and publishes no replacement state store.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(): AccumulationAccountSelectionLimits =
   ## Explicit finite ceilings include all original outcome capture and per-row membership/identity work.
   AccumulationAccountSelectionLimits(accounts: ElementLimit(2), outcomes: ElementLimit(2),
       checks: ElementLimit(128))
+
 proc select(source: PreparedAccumulationAnnulment, services: openArray[
     ServiceIndex]): PreparedAccumulationAccountSelection =
   ## Complete only a requested prior-account subset from the actual immutable conflict certificate.

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_refinement_dispatch_arc_release"}
 
 ## Original real guests verify bound refinement host inputs, transactional exports and shared heap behavior.
@@ -24,6 +25,7 @@ proc parameters(): Parameters =
   var wire = default(array[122, byte])
   for index in 0..<122: wire[index] = 255
   decodeParameters(wire).value
+
 proc package(anchor = 20'u32): OwnedWorkPackage =
   ## Two distinguishable manifest rows select different services, payloads and external input lengths.
   let value = WorkPackage(context: RefinementContext(lookupSlot: LookupSlot(anchor)),
@@ -38,6 +40,7 @@ proc package(anchor = 20'u32): OwnedWorkPackage =
   let config = fullPackageConfig(ByteLimit(2048))
   let size = encodeWorkPackage(value, config, wire).value
   decodeWorkPackage(wire.toOpenArray(0, size-1), config).value.owner
+
 proc state(program: seq[byte] = @[]): StateStoreSnapshot =
   ## Retained complete maps supply independent histories and byte values for each package-selected self.
   var hash = default(array[32, byte])
@@ -56,6 +59,7 @@ proc state(program: seq[byte] = @[]): StateStoreSnapshot =
       perValue: ByteLimit(105),
     totalValueBytes: ByteLimit(1000), nodes: TrieNodeLimit(200)), writes: ElementLimit(8),
     writeValueBytes: ByteLimit(1000))).value.snapshot.value
+
 proc inputs(): RefinementInputs =
   ## Independent source octets need no production hash oracle to test owned selection and copy contracts.
   var first, second = default(array[4104, byte])
@@ -63,6 +67,7 @@ proc inputs(): RefinementInputs =
   second[0] = 22
   RefinementInputs(extrinsics: @[@[@[81'u8, 82]], @[@[91'u8, 92, 93]]],
     imports: @[@[FetchSegment(first)], @[FetchSegment(second)]])
+
 proc registers(): RegisterFile =
   ## A default real halt sentinel plus explicit lookup argument registers.
   result = default(RegisterFile)
@@ -71,10 +76,12 @@ proc registers(): RegisterFile =
   result[8] = RegisterValue(65536)
   result[9] = RegisterValue(196608)
   result[11] = RegisterValue(3)
+
 proc immediate(index: byte, value: uint64): seq[byte] =
   ## Authored full-width load_imm_64 bytes freeze every register bit independently.
   result = @[20'u8, index]
   for shift in 0..<8: result.add(byte((value shr (shift*8)) and 255))
+
 proc cpu(instructions: openArray[seq[byte]], regs: RegisterFile, credit = 100000'u64,
     pages = 4'u32): Machine =
   ## Frame short original instruction bytes and an exact opcode mask, with a prepaid first basic block.
@@ -100,10 +107,12 @@ proc cpu(instructions: openArray[seq[byte]], regs: RegisterFile, credit = 100000
       PageLimit(pages)).value
   captureMachine(program, memory, MachineInfo(pc: CodeAddress(0), gas: MachineGas(credit),
     registers: regs, blockCharged: true)).value
+
 proc caps(): RefinementCaptureLimits =
   ## Independent budgets are deliberately larger than these small authored captures.
   RefinementCaptureLimits(trace: FetchTraceLimit(3), package: FetchPackageLimit(64),
     encoding: FetchEncodingLimit(2048), inputs: FetchInputLimit(9000))
+
 proc prepare(machine: Machine, item = 0'u64, anchor = 20'u32,
     source = inputs(), cap = caps(), accounts: StateStoreSnapshot = state(
         )): RefinementDispatchResult[PreparedRefinementExecution] =
@@ -111,6 +120,7 @@ proc prepare(machine: Machine, item = 0'u64, anchor = 20'u32,
   prepareRefinementExecution(machine, accounts, package(anchor), FetchItemIndex(item), parameters(),
     [101'u8, 102, 103], source, RefinementHeapBounds(first: PageIndex(48), past: PageIndex(64)),
     ExportOffset(7), cap)
+
 proc run(prepared: PreparedRefinementExecution, steps = 100'u64, calls = 10'u64,
     cycles = 1000'u64, copy = 5000'u64, exports = 2'u64, inner: InnerMachineLimits = default(
         InnerMachineLimits)): RefinementDispatchResult[RefinementOutcome] =
@@ -233,6 +243,7 @@ for policy in 0..<4:
   else: cap.inputs = FetchInputLimit(1)
   assert prepare(lookup, cap = cap).error == RefinementDispatchError.LimitExceeded
 assert run(default(PreparedRefinementExecution)).error == RefinementDispatchError.InvalidContext
+
 # Repeated fresh complete environments and host successors release independently, including failed scratch runs.
 proc cycle() =
   ## No original mutable source or callback-local export accumulator survives a single iteration.
@@ -240,12 +251,14 @@ proc cycle() =
   assert uint64(run(captured).value.exports.count) == 1
   assert run(captured, exports = 0).error == RefinementDispatchError.LimitExceeded
 cycle()
+
 # Database compilation uses an independently framed program inside a historical preimage slice.
 proc compileLimits(program = 64'u64, total = 128'u64): InnerMachineLimits =
   ## Keep retained program limits independent of requested-length gas and exported-byte policy.
   InnerMachineLimits(items: InnerMachineLimit(63), program: ProgramByteLimit(program),
     total: InnerProgramLimit(total), jumps: JumpCountLimit(0), pages: PageLimit(4),
     steps: ExecutionStepLimit(20), cycles: GasCycleLimit(100))
+
 proc databaseRegisters(service = high(uint64), offset = 1'u64, length = 6'u64,
     pointer = 65536'u64): RegisterFile =
   ## Current compile arguments are mode, hash pointer, requested extent, offset and full-width service.
@@ -298,6 +311,7 @@ for credit in [databaseCost-1, databaseCost, databaseCost+1]:
 # A historical module is immediately usable by machine/expunge; each run starts with its own empty map.
 let lifecycle = @[@[10'u8, 9], immediate(8, 0), @[10'u8, 10], immediate(7, 0),
     immediate(8, 0), @[10'u8, 15], @[50'u8, 0]]
+
 proc databaseCycle() =
   ## Release the retained lookup owner, clipped program, catalogue, machine and host responses every iteration.
   let done = run(prepare(cpu(lifecycle, databaseRegisters()), accounts = databaseState).value,

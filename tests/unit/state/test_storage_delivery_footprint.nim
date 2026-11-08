@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Callback-live allocation witnesses reject hidden complete transport materialization on bounded delivery.
+
 import std/[algorithm, assertions, syncio]
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/records as node_records
@@ -17,12 +18,14 @@ type
   Footprint = object ## Explicit nonretaining consumer measures live bytes at synchronous delivery only.
     baseline, maximum, records, perValue: int
     valueBytes: uint64
+
 proc policy(): RecordLimits =
   ## Keep every native case bounded independently of count-derived allocations.
   RecordLimits(trie: StateTrieLimits(items: ElementLimit(1024), perValue: ByteLimit(257),
     totalValueBytes: ByteLimit(1048576), nodes: TrieNodeLimit(10000)),
     records: TrieExportLimits(records: TrieNodeLimit(10000), valueBytes: ByteLimit(1048576)),
     encoded: ByteLimit(1048576))
+
 proc compareRecord(a, b: TrieRecord): int =
   ## The fixture authors strict physical order independently of encoded inspection or delivery.
   let left = array[32, byte](a.digest)
@@ -31,6 +34,7 @@ proc compareRecord(a, b: TrieRecord): int =
     if left[index] < right[index]: return -1 # Lexical address order has one exact representation.
     if left[index] > right[index]: return 1
   0
+
 proc fixture(count, size: int): Fixture =
   ## Drop complete maps/transports before the observation; both closed encodings retain identical records.
   var entries = newSeq[StateEntry](count)
@@ -50,6 +54,7 @@ proc fixture(count, size: int): Fixture =
       limits).value,
     batch: encodeTrieExport(physical, limits).value, records: physical.records.len,
     valueBytes: uint64(count)*uint64(size))
+
 proc observe(state: var Footprint, record: var TrieRecord): bool =
   ## Never retain records; a full hidden decoded sequence would remain visible throughout these callbacks.
   let occupied = getOccupiedMem()
@@ -60,6 +65,7 @@ proc observe(state: var Footprint, record: var TrieRecord): bool =
   inc state.records
   state.valueBytes += uint64(record.payload.len)
   true
+
 proc cycle() =
   ## Reverse counts and delivery order while keeping fixtures alive and comparing only same-process boundaries.
   for turn in 0..1:

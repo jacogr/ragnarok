@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit test-only client verification policy and literal whole-state request construction.
+
 import std/assertions
 import ../../src/jamnp-s/[read_stream, read_validation]
 import ../../src/chain/genesis
 import ../../src/codec/[bounded, header, assurances, tickets, composite, block_codec]
+
 proc readVerificationLimits*(cores = 4, validators = 12, epoch = 12): ReadVerificationLimits =
   ## Structural geometry is caller-selected; trusted-root state verification uses independent full-map work ceilings.
   let maximum = ByteLimit(8388608)
@@ -14,6 +16,7 @@ proc readVerificationLimits*(cores = 4, validators = 12, epoch = 12): ReadVerifi
         validators)),
       epochSlots: EpochSlots(uint64(epoch)), ticketLimit: TicketLimit(16), maxBytes: maximum,
       preimages: PreimageLimits(items: ElementLimit(8), perBlob: maximum, totalBlobBytes: maximum)))
+
 proc readStateRequest*(hash: BlockHash): ReadRequest =
   ## Whole-keyspace bounds and8MiB protocol maximum are independent literal fixed request bytes.
   var payload: seq[byte] = @[]

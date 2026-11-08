@@ -22,6 +22,7 @@ proc reportAvailabilityLimits*(): AvailabilityCommitmentLimits =
   ## Finite assembly policies cover the existing independently authored source cases.
   AvailabilityCommitmentLimits(bytes: ByteLimit(1000000), hashBytes: ByteLimit(10000000),
       hashes: ElementLimit(100000))
+
 proc availabilityFromExecution(execution: InputRefinement, shards: uint16): AvailabilityCommitment =
   ## Complete all original bundle/export transformations before report assembly can consume the owner.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -30,6 +31,7 @@ proc availabilityFromExecution(execution: InputRefinement, shards: uint16): Avai
       products: FieldProductLimit(10000000))).value
   let exports = prepareExportErasure(encoded, exportErasureLimits()).value
   prepareAvailabilityCommitment(exports, reportAvailabilityLimits()).value
+
 proc contextExecution(): InputRefinement =
   ## Commit nonzero context/prerequisites before verifying original manifests and running genuine authorization/refinement.
   let halt = @[50'u8, 0]
@@ -80,12 +82,14 @@ proc contextExecution(): InputRefinement =
   fixture.inputs = bindImportInputs(verified, imports, fixture.inputs.importInputsLookup.value,
       inputLimits()).value
   executionRun(fixture).value
+
 proc computedAvailability*(kind: int): AvailabilityCommitment =
   ## Select either independently frozen export-only sources or the nonzero-context/trace/output/import source.
   if kind == 4: return availabilityFromExecution(contextExecution(), 6)
   let shards = if kind == 0 or kind == 65: 6'u16 else: 1023'u16
   let exports = prepareExportErasure(exportBundle(kind, shards), exportErasureLimits()).value
   prepareAvailabilityCommitment(exports, reportAvailabilityLimits()).value
+
 proc narrowReportSource*(): AvailabilityCommitment =
   ## Preserve an actual two-core parameter snapshot while selecting nine structurally allowed erasure shards upstream.
   let halt = @[50'u8, 0]

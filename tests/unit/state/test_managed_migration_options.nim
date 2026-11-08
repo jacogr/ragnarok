@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit local migration cannot be confused with layout inference, in-place conversion or checkpoint import intent.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
+
 proc main() =
   ## A distinct source and destination are both explicit; failed/default options grant no migration path.
   let base = @["server", "--with-state", "--chain", "chain.json", "--state-storage", "disk",

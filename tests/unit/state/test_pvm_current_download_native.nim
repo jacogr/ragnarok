@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual authenticated TLS callbacks feed distinct current sessions without hashing, with native close before genuine current execution.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -23,10 +24,13 @@ import ../../../src/state/accumulation/current/[update as accumulation_current_u
 import ../../../src/rpc/server
 import ../../support/[current_application_context, current_services_disk_samples,
   accumulation_current_chain_context, accumulation_current_candidate_context, block_download_transport]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Only native framing callbacks run while primitive hashing is refused.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe byte reception independently of any successful current preparation.
+
 proc key(second = true): CurrentDownloadPeerKey {.raises.} =
   ## Copy exactly the expected independently generated TLS identity, never a certificate supplied by the remote.
   let raw = readFile(getEnv(if second: "RAGNAROK_TEST_PEER_B" else: "RAGNAROK_TEST_PEER_A"))
@@ -34,6 +38,7 @@ proc key(second = true): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   CurrentDownloadPeerKey(bytes)
+
 proc scenario(context: CurrentChainFixture, mode: DownloadTransferMode, wrongKey = false,
     fragmented = false) {.raises.} =
   ## Each real connection owns its stable Services, session and peer catalog until exact native teardown.
@@ -142,6 +147,7 @@ proc scenario(context: CurrentChainFixture, mode: DownloadTransferMode, wrongKey
         CurrentDownloadSessionError.None
   assert session.request(token).error == CurrentDownloadSessionError.StaleAttempt
   assert not session.busy and not session.streamActive
+
 proc main() {.raises.} =
   ## Original complete parent and exact signed current effects remain independent of the wire responder implementation.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

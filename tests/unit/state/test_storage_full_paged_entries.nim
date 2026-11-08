@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete selected-root entry streams lend canonical sorted values under fixed inherited IO and native pin ownership.
+
 # @@Verification={"arc":"storage_full_paged_entries_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -17,6 +18,7 @@ type Capture = ref object ## Private consumer staging owns copies only; failed s
   keys: seq[StateKey]
   values: seq[seq[byte]]
   calls, stopAt: int
+
 proc visitor(owner: Capture): FullPagedEntryVisitor =
   ## Caller-owned state remains outside the storage engine and can outlive native reader retirement.
   proc receive(ordinal: uint64, key: StateKey, value: openArray[byte]): bool {.closure.} =
@@ -30,15 +32,18 @@ proc visitor(owner: Capture): FullPagedEntryVisitor =
     owner.values.add(copied)
     true
   receive
+
 proc path(label: string): string =
   ## Independent native namespaces keep tests isolated without scanning database directories.
   "full-paged-entries-" & $storageProcessId() & "-" & label
+
 proc check(owner: Capture, value: byte) =
   ## Both complete values and serialized key order are independent of physical hash ordering.
   assert owner.calls == 2 and owner.keys.len == 2 and owner.values.len == 2
   assert array[31, byte](owner.keys[0]) == array[31, byte](key(0))
   assert array[31, byte](owner.keys[1]) == array[31, byte](key(128))
   assert owner.values[0] == @[value] and owner.values[1].len == 0
+
 proc core(source: FullPagedFixture, root: StateRoot, value: byte, cache: int) =
   ## Independent retained maps, consumer refusal and every source callback failure exercise captured-root authority.
   let checked = source.check(policy(cache)).value
@@ -93,6 +98,7 @@ proc core(source: FullPagedFixture, root: StateRoot, value: byte, cache: int) =
       FullPagedStreamError.Uninitialized
   assert streamFullPagedEntries(source.io.input, default(CheckedFullPagedArtifact), root,
       owner.visitor, exact).error == FullPagedStreamError.Uninitialized
+
 proc native(source: FullPagedFixture, old: StateRoot) =
   ## Native streaming creates no scratch, writer lease or retained callback and reports consumer refusal without poisoning the reader.
   let directory = path("native")
@@ -131,11 +137,13 @@ proc native(source: FullPagedFixture, old: StateRoot) =
   owner.check(5)
   assert reader.visitEntries(old, Capture().visitor).error == FullPagedNativeError.Uninitialized
   assert reader.rootInfo(old).error == FullPagedNativeError.Uninitialized
+
 proc cycle(reader: var FullPagedReader, root: StateRoot) =
   ## All consumer copies and callback state retire before the next ownership sample.
   let owner = Capture()
   assert reader.visitEntries(root, owner.visitor).error == FullPagedNativeError.None
   owner.check(5)
+
 proc boundaryGraphs() =
   ## Empty maps, cross-page owned values and maximum-depth serialized keys cover all complete-root traversal shapes.
   let zero = default(TrieRecord)
@@ -180,6 +188,7 @@ proc boundaryGraphs() =
   assert streamed.error == FullPagedStreamError.None and streamed.value.visits == 250
   assert received.calls == 2 and received.values[0] == @[5'u8] and received.values[1].len == 0
   assert array[31, byte](received.keys[0]) == a and array[31, byte](received.keys[1]) == b
+
 proc main() =
   ## Complete historical roots remain distinct from the selected root; none of their physical ordinals become logical key order.
   let source = historySample(5, 9)

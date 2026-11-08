@@ -3,6 +3,7 @@
 
 ## Actual common-source parent/junior guest fixtures for accpar conflict and account-source witnesses.
 ## Independent pure plans retain these real normalized outcomes; no test-authored decision replaces execution.
+
 import std/assertions
 import ../../src/state/accumulation/[annulment as accumulation_annulment,
     outcome as accumulation_outcome, dispatch as accumulation_dispatch]
@@ -20,6 +21,7 @@ proc annulmentPolicy*(): AccumulationAnnulmentLimits =
   ## Small independent ceilings bound both original modifications and the complete pair scan.
   AccumulationAnnulmentLimits(outcomes: ElementLimit(2), modified: ElementLimit(8),
       checks: ElementLimit(128))
+
 proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject = false,
     emit = false, yieldOutput = false): seq[byte] =
   ## No-op supervisor calls still mark the junior; an optional genuine self upgrade tests mutually conflicting originals.
@@ -43,6 +45,7 @@ proc parentCode(target = 99'u64, supervisor = 42'u64, selfWrite = false, eject =
     code.add(@[10'u8, 27]) # A second actual producer may yield the same commitment without deduplicating service identity.
   code.add(@[50'u8, 0])
   guestEnvelope(code)
+
 proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = true,
     reciprocal = false, zeroYield = false): seq[byte] =
   ## Real provision/checkpoint/upgrade/transfer/yield effects distinguish original and annulled observations.
@@ -69,6 +72,7 @@ proc juniorCode(write = true, panic = false, checkpointAfter = false, emit = tru
   if panic: code.add(@[0'u8]) # Genuine guest panic chooses the exceptional context.
   code.add(@[50'u8, 0])
   guestEnvelope(code)
+
 proc annulmentFixture*(supervisor = 42'u32, incarnation = 0'u32, incoming = false,
     write = true, panic = false, checkpointAfter = false, emit = true,
         handoff = false, mutual = false, eject = false, parentTarget = 99'u64,
@@ -98,6 +102,7 @@ proc annulmentFixture*(supervisor = 42'u32, incarnation = 0'u32, incoming = fals
         ServiceMetadataBytes)).value
     assert result.state.apply([StateWrite(key: parentKey, kind: StateWriteKind.Put,
         value: entry.value)]).error == StateStoreError.None, "seed a real matching reverse supervisor before execution"
+
 proc profile(): Parameters =
   ## Tiny fixture balances have zero deposits; genuine deferred transfers still require the exact 128-byte memo profile.
   var wire = encodeParameters(pvmParameters())
@@ -105,6 +110,7 @@ proc profile(): Parameters =
   for index in 110..<114: wire[index] = 0 # Clear the complete E4 memo-width field.
   wire[110] = 128
   decodeParameters(wire).value
+
 proc annulmentOriginal*(source: BatchFixture, index: uint64, enabled = true,
     slot = HeaderSlot(128), entropy = default(StateEntropyWord)): AccumulationOutcome =
   ## Normalize actual terminal selection; no caller-authored state, gas or modification flag exists.
@@ -115,6 +121,7 @@ proc annulmentOriginal*(source: BatchFixture, index: uint64, enabled = true,
   assert execution.error == AccumulationDispatchError.None, "original dispatch service ordinal " &
       $index & ": " & $execution.error
   normalizeAccumulationOutcome(execution).value
+
 proc annulmentPrepared*(source: BatchFixture, first,
     second: AccumulationOutcome): PreparedAccumulationAnnulment =
   ## Only genuine common-source outcomes and their exact original input/map owners construct decisions.

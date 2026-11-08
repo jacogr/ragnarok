@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Populated actual production owners for ordinary-assignment rejection witnesses; never executed.
 
 import std/assertions

@@ -28,6 +28,7 @@ proc linksReport(execution: InputRefinement): ComputedWorkReport =
   let exported = prepareExportErasure(encoded, exportErasureLimits()).value
   let available = prepareAvailabilityCommitment(exported, reportAvailabilityLimits()).value
   prepareComputedReport(available, ByteLimit(100000)).value
+
 proc linksSegment*(zero = false): FetchSegment =
   ## Independent literal successful export bytes are 11/12/13 followed by 4101 zero bytes.
   var bytes = default(array[4104, byte])
@@ -36,6 +37,7 @@ proc linksSegment*(zero = false): FetchSegment =
     bytes[1] = 12
     bytes[2] = 13
   FetchSegment(bytes)
+
 proc linksPackage(exporter: bool, pairs: openArray[SegmentLookup], salt: byte,
     repeat: bool): ComputedWorkReport =
   ## Commit the complete final manifest before proving singleton imports or running original guests.
@@ -73,19 +75,23 @@ proc linksPackage(exporter: bool, pairs: openArray[SegmentLookup], salt: byte,
   let verified = verifyExtrinsicInputs(fixture.package, @[newSeq[seq[byte]](0)], extrinsicLimits()).value
   fixture.inputs = bindImportInputs(verified, @[proofs], pairs, inputLimits()).value
   linksReport(executionRun(fixture).value)
+
 proc linksExporter*(salt: byte): ComputedWorkReport =
   ## Distinct committed payloads produce distinct package hashes with the same independently frozen singleton root.
   result = linksPackage(true, [], salt, false)
   assert result.computedReportInfo.value.header.segmentRoot.bytes == SingleRoot, "independent singleton export root"
+
 proc linksPair*(report: ComputedWorkReport, wrongRoot = false): SegmentLookup =
   ## A wrong-root case deliberately claims another valid singleton root for the exact computed package key.
   let header = report.computedReportInfo.value.header
   SegmentLookup(packageHash: header.packageHash, segmentRoot: if wrongRoot: SegmentRoot(
       bytes: ZeroRoots[1]) else: header.segmentRoot)
+
 proc linksConsumer*(pairs: openArray[SegmentLookup], repeat = false): ComputedGuaranteeTranscript =
   ## Capture a complete source-bound transcript after valid inclusion, execution and report construction.
   let report = linksPackage(false, pairs, 99, repeat)
   prepareComputedGuarantee(report, ByteLimit(100000)).value
+
 proc linksLess*(left, right: ComputedWorkReport): bool =
   ## Sort test handles by original canonical hash bytes without changing production relation order.
   let a = left.computedReportInfo.value.header.packageHash.bytes
@@ -93,6 +99,7 @@ proc linksLess*(left, right: ComputedWorkReport): bool =
   for index in 0..<32:
     if a[index] != b[index]: return a[index] < b[index] # First differing octet decides.
   false
+
 proc linksExporters*(count: int): seq[ComputedWorkReport] =
   ## Prepare and insertion-sort up to eight genuine exporters before constructing their canonical consumer dictionary.
   result = @[]
@@ -105,6 +112,7 @@ proc linksExporters*(count: int): seq[ComputedWorkReport] =
       result[cursor-1] = current
       result[cursor] = prior
       dec cursor
+
 proc linksPairs*(reports: openArray[ComputedWorkReport]): seq[SegmentLookup] =
   ## Copy exact computed identities into the manifest before the consumer execution, never into the checked owner.
   result = @[]

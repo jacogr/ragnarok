@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Human-readable node lifecycle observations use the existing application-owned async writer.
+
 import std/strutils
 import ./options
 import ../lib/logging

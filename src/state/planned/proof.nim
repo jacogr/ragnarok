@@ -3,6 +3,7 @@
 
 ## Exact generic plan authentication and existing RPV1 transport under independent root authority.
 ## No encoded root, service selector or partial map can substitute for caller-selected trust.
+
 import std/assertions
 import ../proof/[plan as proof_plan, view as proof_view]
 import ../trie_proof

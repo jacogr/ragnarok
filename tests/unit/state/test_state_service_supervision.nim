@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal incarnation cases prove complete-source one-hop supervisor selection and detached decision ownership.
+
 # @@Verification={"arc": "state_service_supervision_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_directory_context, arc_evidence]
@@ -10,18 +11,23 @@ import ../../../src/state/service/[supervision as service_supervision,
 import ../../../src/state/inventory
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after fixtures and complete directory construction.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Supervision decisions must use only fixed complete-source observations.
+
 proc directory(fixture: seq[seq[byte]], services: seq[StateService]): StateServiceDirectory =
   ## Construct a real bounded source for each independently varied metadata case.
   buildStateServiceDirectory(captureStateInventory(inventoryManifest(fixture, services), services,
       inventoryCaptureLimits).value, directoryTestLimits).value
+
 proc cycle(source: StateServiceDirectory) =
   ## Retire a successful selected-source graph and copied observation each iteration.
   let chosen = resolveServiceSupervision(source, ServiceIndex(8)).value
   assert uint32(chosen.supervisionInfo.value.effective) == 7
+
 proc main() {.raises.} =
   ## Source fixtures preserve complete metadata provenance independently of expected selection literals.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

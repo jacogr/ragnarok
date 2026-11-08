@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent RPC and TLS processes observe each real canonical adoption while a later response remains explicitly gated.
+
 import ../../support/chain_alpn
 
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]

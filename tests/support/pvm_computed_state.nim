@@ -28,12 +28,14 @@ type
     source*: ComputedReportLinks
     state*: StateStore
     admission*: BlockAdmissionResult
+
 proc stateFrame*(): BlockAdmissionConfig =
   ## Small explicit structural domains and independent resource limits cover only the authored commitment boundary.
   BlockAdmissionConfig(frame: FrameConfig(cores: CoreCount(2), validators: ValidatorCount(6),
     epochSlots: EpochSlots(12), ticketLimit: TicketLimit(3), maxBytes: ByteLimit(100000),
     preimages: PreimageLimits(items: ElementLimit(100), perBlob: ByteLimit(100000),
       totalBlobBytes: ByteLimit(100000))), maxParentHeaderBytes: ByteLimit(100000))
+
 proc stateHeader(value: Header): seq[byte] =
   ## Capture every canonical full-header byte, including the opaque unverified seal.
   result = newSeq[byte](4096)
@@ -41,6 +43,7 @@ proc stateHeader(value: Header): seq[byte] =
     epochSlots: EpochSlots(12), maxBytes: ByteLimit(4096))
   let written = encodeHeader(value, config, result).value
   result.setLen(written)
+
 proc stateAdmission*(state: StateStoreSnapshot, wrongRoot = false): BlockAdmissionResult =
   ## Construct and actually validate a sealed-child parent/state/extrinsic commitment binding; no consensus signature claim.
   var parent = Header(unsigned: UnsignedHeader(slot: HeaderSlot(20)))
@@ -66,6 +69,7 @@ proc stateAdmission*(state: StateStoreSnapshot, wrongRoot = false): BlockAdmissi
   for index in 0..<7: wire.add(0)
   let candidate = decodeBlock(wire, cfg.frame).value.owner
   validateBlockCommitments(candidate, parentOwner, state, cfg)
+
 proc stateReport(execution: InputRefinement): ComputedReportLinks =
   ## Complete the original zero-lookup computation and source-bound transcript before state binding is possible.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -77,6 +81,7 @@ proc stateReport(execution: InputRefinement): ComputedReportLinks =
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
+
 proc stateFixture*(): ComputedStateFixture =
   ## Add exact C11 before execution, preserving all original code/preimage/history mappings in a private complete store.
   let halt = @[50'u8, 0]
@@ -98,6 +103,7 @@ proc stateFixture*(): ComputedStateFixture =
   let admitted = stateAdmission(fixture.state)
   assert admitted.error == BlockAdmissionError.None, "real full-state commitment admission"
   ComputedStateFixture(source: source, state: store, admission: admitted)
+
 proc clonedState*(original: StateStoreSnapshot): StateStore =
   ## Rebuild the same complete mappings under a distinct owner to witness equal-root substitution refusal.
   var entries: seq[StateEntry] = @[]
@@ -108,6 +114,7 @@ proc clonedState*(original: StateStoreSnapshot): StateStore =
     perValue: ByteLimit(100000), totalValueBytes: ByteLimit(1000000), nodes: TrieNodeLimit(100000)),
     writes: ElementLimit(100), writeValueBytes: ByteLimit(1000000))
   newStateStore(entries, limits).value
+
 proc changeState*(store: var StateStore) =
   ## Publish an unrelated new version only in test-owned storage, preserving every prior snapshot.
   assert store.apply([StateWrite(kind: StateWriteKind.Put, key: chapterKey(StateChapter(199)),

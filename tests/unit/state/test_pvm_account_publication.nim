@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_account_publication_arc_release"}
 
 ## Genuine upgrade executions publish only selected self metadata across common-source service views.
@@ -20,7 +21,9 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Count and inject actual root failures after a genuine guest execution, never replace the production verdict.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Allow all metadata-root hashes before refusing the subsequent provision phase.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
@@ -30,6 +33,7 @@ proc targetDigest(): array[32, byte] =
   for i in 0..<32:
     result[i] = byte(i+1) # Every digest byte participates in the canonical metadata comparison.
 let digest = targetDigest()
+
 # Copy fixed guest input without exposing mutable global state to helper routines.
 proc targetInput(): seq[byte] =
   result = newSeq[byte](32)

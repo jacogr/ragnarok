@@ -3,6 +3,7 @@
 
 ## Explicit source-preserving migration copies a locked legacy revision into a new managed directory.
 ## This operation grants no checkpoint import trust and never overwrites or renames the source database.
+
 import ./repository as file_repository
 import ../managed/repository as managed_repository
 import ../node/repository as node_repository

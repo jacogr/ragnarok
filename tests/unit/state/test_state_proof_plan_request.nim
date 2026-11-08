@@ -6,6 +6,7 @@ import ../../../src/state/proof/service as proof_service
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     service_values as state_service_values, requests as state_requests]
+
 proc main() =
   ## Semantic selectors must request the account plus their exact namespace identity.
   let service = ServiceIndex(7)

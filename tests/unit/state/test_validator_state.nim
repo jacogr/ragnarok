@@ -16,14 +16,19 @@ import ../../../src/codec/state/[consensus as state_consensus, trie as state_tri
 
 ## Refuse only test-library hashes; production ABI and protocol behavior remain unchanged.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Refuse a selected private candidate-root hash after earlier hashes have succeeded.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count attempted hashes to prove invalid/same-epoch paths perform none.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 ## Refuse setup (bit 2) or ring commitment (bit 4), retaining real destruction.
 proc failRing(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Inspect live native setup owners without resetting their count.
 proc liveSetups(): cint {.importc: "bo_live_setups", cdecl.}
+
 ## Count setup attempts independently of ring commitment.
 proc setupCalls(): cint {.importc: "bo_setup_news", cdecl.}
 
