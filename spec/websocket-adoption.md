@@ -81,3 +81,32 @@ before implementing it; then run real subscription, lease and service-lifecycle 
 scenarios on the supported hosts. Replacing the RPC transport is a separate decision after
 those gates pass. A model of a hypothetical bridge would not prove the current implementation,
 so this evaluation does not substitute a model for the missing integration.
+
+## RPC subscription acceptance audit
+
+The baseline is the existing dispatcher transport, independent of the stock WebSocket experiment.
+The current coverage is concentrated in
+[`test_rpc.nim`](../tests/unit/crypto/test_rpc.nim), with process/browser startup checks in
+[`rpc_checks.py`](../tests/rpc_checks.py). Preserve these observable contracts when evaluating a
+replacement; the library's literal `update` frame probe does not exercise them.
+
+| Contract | Current witness | Replacement acceptance criterion |
+| --- | --- | --- |
+| Reply and event ordering | `publicationLifecycle` reads the subscribe reply before its initial notification and receives subsequent publications without a new client request. Its partial-output fixture preserves an existing reply's remaining bytes across publication. Session capacity checks drain exact initial-then-publication FIFO envelopes. | Keep an existing partial frame intact; send the subscribe reply before the initial event and preserve notification FIFO order. A reply takes priority over a queued event, not over bytes of a frame already being sent. |
+| Cancellation | Session assertions cover invalid and wrong-family cancellation, repeated cancellation, notification-form calls, sequential batches, independent IDs and released queue bytes. The connected fixture now sends unsubscribe after its subscribe reply while its initial event is still queued, checks zero active/pending usage and observes no frame on the following turn. | An acknowledged cancellation removes only that connection's matching ID and its unsent queued events. A newly created subscription gets a fresh ID. Specify and test cancellation during a partially sent notification; the queued-event regression does not prove that race for a future task bridge. |
+| Count and byte overflow | `capacitySession` fills sixteen messages and verifies refusal preserves the full prior sequence. `byteLimited` uses valid large statistics to cross the serialized byte ceiling and checks cancellation returns capacity. Publication fixtures cover both best and finalized overflow. | Keep count and serialized-byte bounds, preflight publication batches, and retire only the overflowing connection without rolling back accepted chain state. |
+| Active-peer isolation | The connected publication fixture now fills an unread peer's real nonblocking kernel send buffer until even a one-byte send would block. Its RPC output remains pending while a separate subscribed peer receives each of sixteen exact publication frames, including publications after the slow connection overflows. An independent query client remains usable. | A stalled writer cannot prevent another connection from receiving notifications or processing requests. Retain fixed per-turn dispatcher work; this finite witness is not proof of starvation freedom under arbitrary request traffic. |
+| Stream and selector isolation | Finalized-family assertions and connected publication checks distinguish best/finalized sources, suppress repeated finality, retain independent service selectors and isolate terminal errors. | Preserve source routing, terminal-error scope and connection-local diagnostics without retaining canonical owners in transport tasks. |
+| Ownership and cleanup | Existing disconnect/ARC checks retire sessions and pending text. The proof-transport suite exercises `pauseChain`/`resumeChain`; this audit does not extend it. | Separately prove local reader/writer cancellation, stale-completion rejection and joined shutdown around real canonical leases. Existing synchronous session tests do not qualify asynchronous ownership. |
+
+Run `make unit SUITE=rpc` for the audited native subscription baseline. The added socket cases
+reuse this suite and its existing expected output/link profile; no parallel RPC harness or new
+production policy is introduced. The unread peer's padding and small socket buffer arrange test
+backpressure only. Healthy notifications are asserted on the actual wire while the dispatcher
+continues ticking, rather than draining a session queue to make the test pass.
+
+Remaining integration gaps are cancellation after a notification has begun writing, starvation
+behavior under sustained identified requests, asynchronous shutdown/cancellation and stale
+completion authority across lease transitions. Keep those distinct from already-covered FIFO,
+queue cancellation and overflow isolation. Revisit the stock-library failure after the planned
+Nimony upgrade; keep this evaluation PR draft until that qualification is available.

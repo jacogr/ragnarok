@@ -1875,6 +1875,29 @@ proc publicationReply(fd: cint): string =
   for index in 0..<count:
     result.add(bytes[index]) # Copy only the initialized native receive prefix.
 
+let SendBuffer {.importc: "SO_SNDBUF", header: "<sys/socket.h>".}: cint
+
+proc backpressureSubscriber(fd: cint) =
+  ## Fill only the synthetic slow peer's kernel buffer before publishing real subscription frames.
+  var capacity = 4096.cint
+  assert setOption(fd, SocketLevel, SendBuffer, addr capacity, SockLen(sizeof(capacity))) == 0
+  var padding = repeat('x', 4096)
+  for attempt in 0..<1024:
+    # The unread peer retains fixture padding; observing would-block proves actual backpressure.
+    let written = sendBytes(fd, padding.toCString(), csize_t(padding.len), 0)
+    if written < 0:
+      let reason = osLastError()
+      if reason == OSErrorCode(EAGAIN) or reason == OSErrorCode(EWOULDBLOCK):
+        if padding.len > 1:
+          # A large-send refusal can leave space for a small update; exhaust that remainder too.
+          padding = "x"
+          continue
+        return
+      assert reason == OSErrorCode(EINTR), "slow-peer fixture failed before backpressure"
+    else:
+      assert written > 0
+  assert false, "slow-peer fixture reaches kernel backpressure within its finite allowance"
+
 ## Own an ephemeral listener and connected WS transport while publishing between dispatcher turns.
 ## Synthetic snapshots establish handoff behavior only, not execution/signature validity.
 proc publicationLifecycle() =
@@ -1979,6 +2002,11 @@ proc publicationLifecycle() =
   assert publicationReply(pair[1]) == frame(UnsubscribedBest)
   assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
     owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":2")
+  for identity in 3..4:
+    # Several selectors let the existing bounded publication run overflow a genuinely blocked writer.
+    assert respond(SubscribeBest, ClientInfo(chain: owner.chain, parameters: genesisParameters),
+      owner.connections[0].session) == SubscribedBest.replace("\"result\":1", "\"result\":" & $identity)
+  backpressureSubscriber(pair[0])
   var survivor = default(array[2, cint])
   assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
     0, addr survivor[0]) == 0
@@ -1988,11 +2016,54 @@ proc publicationLifecycle() =
   assert nonblocking(survivor[0]) and nonblocking(survivor[1])
   owner.connections[1].upgraded = true
   owner.connections[1].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  var fast = default(array[2, cint])
+  assert rpcSocketPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+    0, addr fast[0]) == 0
+  owner.connections[2].fd = fast[0]
+  owner.connections[2].opened = true
+  defer: discard posix.close(fast[1])
+  assert nonblocking(fast[0]) and nonblocking(fast[1])
+  owner.connections[2].upgraded = true
+  owner.connections[2].deadline = getMonoTime().ticks div 1_000_000 + 30000
+  assert sendBytes(fast[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+      subscribePacket.len
+  owner.tick(0)
+  assert publicationReply(fast[1]) == frame(SubscribedBest)
+  assertUsage(owner.connections[2].session, current, 1, 1, 0, 1,
+    initialBestUpdate.replace(genesisHash, base64.encode(array[32, byte](
+        published.value.blockHash))).replace(
+      "\"slot\":7", "\"slot\":11").len)
+  assert sendBytes(fast[1], cancelPacket.toCString(), csize_t(cancelPacket.len), 0) ==
+      cancelPacket.len
+  owner.tick(0)
+  assert publicationReply(fast[1]) == frame(UnsubscribedBest)
+  assertUsage(owner.connections[2].session, current, 0, 0, 0, 0, 0)
+  owner.tick(0)
+  var silent = default(array[1, char])
+  assert receive(fast[1], addr silent[0], 1, 0) < 0
+  assert osLastError() in [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK)]
+  assert sendBytes(fast[1], subscribePacket.toCString(), csize_t(subscribePacket.len), 0) ==
+      subscribePacket.len
+  owner.tick(0)
+  assert publicationReply(fast[1]) == frame(SubscribedBest.replace("\"result\":1", "\"result\":2"))
+  owner.tick(0)
+  let fastInitial = initialBestUpdate.replace("\"subscription\":1", "\"subscription\":2")
+  assert publicationReply(fast[1]) == frame(fastInitial.replace(genesisHash,
+    base64.encode(array[32, byte](published.value.blockHash))).replace("\"slot\":7", "\"slot\":11"))
+  assert owner.connections[0].output.len > owner.connections[0].offset
+  var overflowed = false
   for atSlot in 12'u32..27'u32:
     let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
+    let wasOpen = owner.connections[0].opened
     assert owner.publishBlock(child) == ViewAdvanceError.None # A stalled consumer cannot stall head publication.
+    if wasOpen and not owner.connections[0].opened:
+      overflowed = true # Publication itself must retire the full queue; a tick timeout cannot substitute.
+    owner.tick(0)
+    assert publicationReply(fast[1]) == frame(fastInitial.replace(genesisHash,
+      base64.encode(array[32, byte](child.value.blockHash))).replace("\"slot\":7", "\"slot\":" & $atSlot))
+    assert owner.connections[2].opened # Every publication reaches the active reader across slow-peer overflow.
   assert owner.opened and owner.chain.bestBlock.value.slot == 27
-  assert not owner.connections[0].opened # Initial plus sixteen undelivered updates exceeds the bounded FIFO.
+  assert overflowed and not owner.connections[0].opened # Undelivered updates exceed the bounded FIFO.
   assert owner.connections[0].session.nextUpdate() == ""
   var survivorRequest = masked(bestRequest)
   assert sendBytes(survivor[1], survivorRequest.toCString(), csize_t(survivorRequest.len), 0) ==
@@ -2001,6 +2072,7 @@ proc publicationLifecycle() =
   let survivingInfo = ClientInfo(chain: owner.chain, parameters: genesisParameters)
   assert publicationReply(survivor[1]) == frame(respond(bestRequest, survivingInfo))
   assert owner.connections[1].opened # The overflowing subscriber cannot disconnect another client.
+  owner.connections[2].close() # Retire the independent subscription before the remaining family fixtures.
   let rawActivity = base64.decode(activityBlob[1..^2])
   var activityBytes = newSeq[byte](rawActivity.len)
   for index in 0..<rawActivity.len:
