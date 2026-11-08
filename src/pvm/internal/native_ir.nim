@@ -15,6 +15,9 @@ const
   NativeInvocationFloor* = 4096'u64 ## Initial shared coarse policy; deliberately not a measured break-even.
 
 type
+  ## Shared migration gap: general connected control flow and mixed stores still need copied IR
+  ## and exact side exits on both ISAs. Legacy ARM cycles and x86 regions are porting references;
+  ## see spec/pvm-async-migration.md before retiring their remaining mechanical helpers.
   NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
     PurePrefix, ClosedRegisterLoop, CheckedReadBody
   NativeLoopRightKind* {.pure.} = enum ## Right operand of the certified unsigned comparison.
