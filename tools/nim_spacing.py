@@ -30,8 +30,8 @@ def source_lines(source):
                 else:
                     index += 1
             elif triple:
-                # The entire triple-quoted value, including blank lines, belongs to the program.
-                if line.startswith('"""', index):
+                # Nim closes at the last three quotes of a run; preceding quotes are literal content.
+                if line.startswith('"""', index) and not line.startswith('""""', index):
                     triple = False
                     index += 3
                 else:

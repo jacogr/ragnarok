@@ -64,6 +64,17 @@ class NimSpacingTests(unittest.TestCase):
                   '# """ in a line comment\n\n\nproc real() = discard\n')
         self.assertEqual(normalize_spacing(source), source.replace('\n\n\n', '\n\n'))
 
+    def test_multiline_quote_run_endings(self):
+        """Four or more closing quotes must not expose the next literal to whitespace rewriting."""
+        for count in range(4, 13):
+            with self.subTest(quotes=count):
+                source = ('let first = """x' + '"' * count + '\n'
+                          'let second = """\n\n\npayload\nproc fake()\n"""\n')
+                self.assertEqual(normalize_spacing(source), source)
+                # The scanner must also leave the literal and resume normal section formatting.
+                self.assertEqual(normalize_spacing(source + '\n\n\nproc real()\n'),
+                                 source + '\nproc real()\n')
+
     def test_pinned_formatter_output_is_normalized(self):
         """The production formatter applies the spacing pass after nimpretty."""
         with tempfile.TemporaryDirectory() as folder:
