@@ -30,7 +30,7 @@ Use `make UI_MINIFY=1 ui-assets` (or `make UI_MINIFY=1`) to opt in locally;
 
 Minified builds use the standalone native [esbuild](https://esbuild.github.io/getting-started/#download-a-build)
 executable pinned in `spec/ui-tools.json`, with archive and executable SHA-256 verification for
-Linux amd64 and macOS arm64. It is downloaded directly from official platform packages into
+Linux amd64/arm64 and macOS arm64. It is downloaded directly from official platform packages into
 `build/ui-minifier/`; no Node, npm install or Go compiler is needed for application builds.
 `tools/setup_minifier.py` provisions it through Make only when requested. Transform mode
 minifies generated `app.js` and static `.js`/`.css` assets before gzip/embedding, preserving
@@ -38,6 +38,14 @@ separate asset names, URLs and script globals. HTML and other assets retain thei
 Parser errors fail the build before replacing staged assets; no unminified release fallback is used.
 Both modes retain deterministic gzip metadata, and switching modes replaces the staged/embedded
 bytes without changing public filenames. Browser verification in CI exercises minified output.
+
+Linux ARM64 uses the official `@esbuild/linux-arm64` package at the same pinned version.
+Both `aarch64` and `arm64` host spellings select its archive and executable checksums.
+This closes the ordinary minified `make setup`/`make unit` failure on ARM CI; it does not
+disable minification or skip setup prerequisites. Host-selection coverage follows every
+supported application-toolchain host and alias, so a new native platform requires matching
+minifier support. The package SHA-512 registry integrity and archive/executable SHA-256 values
+were independently checked; actual Linux ARM installation and setup qualification are pending.
 
 `--with-ui` also enables the WebSocket RPC listener, default `ws://127.0.0.1:19800/`;
 `--rpc-port NUMBER` selects its port. `--with-rpc` enables RPC independently.
