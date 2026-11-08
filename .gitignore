@@ -4,6 +4,7 @@
 
 # Generated build output, dependency sources, test keys and logs.
 /build/
+/build-tools/
 
 # Default runtime state and private transport identity.
 /data/

@@ -22,6 +22,7 @@ import struct
 import sys
 import tomllib
 
+from download_retry import run as acquire
 from fuzz_pvm_program import campaign_observation, run_group
 from native_checks import NativeChecks, ROOT
 from setup_nimony import installed
@@ -146,8 +147,11 @@ def run():
                      or name not in LINUX_ONLY]
         if os.environ.get('CI') and len(supported) != len(report['inventory']['targets']):
             raise ValueError('CI requires the complete Linux x86_64 upstream inventory')
+        # Acquire the pinned closure separately; compilation and fuzz verdicts never retry.
+        acquire(['rustup', 'run', NIGHTLY, 'cargo', 'fetch', '--locked', '--manifest-path',
+                 str(manifest), '--target', host], env=instrumented)
         target_dir = BUILD/('original-'+sanitizer)
-        command(['rustup', 'run', NIGHTLY, 'cargo', 'build', '--release', '--locked',
+        command(['rustup', 'run', NIGHTLY, 'cargo', 'build', '--release', '--locked', '--offline',
                  '--manifest-path', manifest, '--target', host, '--target-dir', target_dir,
                  *[part for name in supported for part in ('--bin', name)]], 'upstream-build', instrumented)
         seeds = seed_inputs(BUILD/'seeds')
@@ -176,7 +180,7 @@ def run():
             save()
             print(name+': '+str(observed), flush=True)
         # The adapter uses only public APIs and original generator bytes, with a separate non-fuzz build.
-        command(['rustup', 'run', NIGHTLY, 'cargo', 'build', '--release', '--locked',
+        command(['rustup', 'run', NIGHTLY, 'cargo', 'build', '--release', '--locked', '--offline',
                  '--manifest-path', manifest, '--target-dir', BUILD/'bridge-target', '--bin', 'ragnarok-jam-bridge'],
                 'bridge-build', environment)
         inputs = BUILD/'bridge-inputs'
