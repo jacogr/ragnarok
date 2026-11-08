@@ -473,6 +473,9 @@ proc x86LoopEdge(fragment: var X86Block, fixes: var seq[X86LoopFixup],
 
 proc encodeX86Loop*(span: NativeSpan, control: LoopControl): seq[byte] =
   ## Lower the shared actions with canonical scalar loads/stores and SysV caller-saved lanes.
+  # ARM/x86 gap: encodeArmLoop retains guest lanes across loop iterations; this emitter
+  # accesses their array for each operation. Revisit loop residency while preserving the
+  # shared LoopControl guard, debit, continuation and final register-publication ordering.
   let loop = span.loopInfo
   let immediateWord = uint32(loop.rightImmediate and 0xffffffff'u64)
   if loop.rightKind == NativeLoopRightKind.Immediate and
@@ -894,6 +897,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
       assert body.complete and sizeof(RegisterFile) == 104
+      # ARM/x86 allocation gap: this bank selects dirty lanes only; read-only live-ins
+      # reload canonical slots. Above six dirty lanes we copy all thirteen slots to the stack.
+      # ARM retains live-ins and writes in ArmReadSpan's bank. Revisit live-in allocation and
+      # sparse/hybrid staging, preserving delayed publication and unchanged-register refusal.
+      # Both x86 choices execute native read code.
       let dirty = readBodyDirty(body)
       var count = 0
       for slot in 0..12:
