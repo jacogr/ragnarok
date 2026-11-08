@@ -24,6 +24,10 @@ a separately qualified image. That report must independently pass the current
 canonical matrix and retain the same source revision, compiler/build recipe and
 input bytes. Its binary hash and report identity remain distinct from the
 original image; no original executable is required for this explicit mode.
+The live imported project-tool closure and calibration C source have separate
+diagnostic seals, checked with the report, image and inputs before and after
+every tool command. These live tooling identities do not replace the product
+Git source/tree identity.
 
 Collection remains native Linux x86_64 CI only, with the existing selected,
 absent, repeated and last-return calibration controls and 1,200-second per-process

@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 
 from native_checks import NativeChecks, ROOT
@@ -28,6 +29,17 @@ from pvm_performance_report import validate_current_report
 
 BUILD = ROOT/'build/tests/pvm-x86-profiles'
 COHORT = ROOT/'build/tests/pvm-x86-applications'
+
+
+def canonical_tooling_seals():
+    """Bind the live imported project helpers and calibration source independently of the product tree."""
+    paths = {Path(__file__).resolve(), ROOT/'tests/support/pvm_profile_control.c'}
+    for module in tuple(sys.modules.values()):
+        # The loaded project-tool closure includes transitive parsers/collectors, not just this CLI.
+        name = getattr(module, '__file__', None)
+        if name and Path(name).suffix == '.py' and Path(name).resolve().is_relative_to(ROOT/'tools'):
+            paths.add(Path(name).resolve())
+    return {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(paths)}
 
 
 def canonical_doom_plan(cohort, revision):
@@ -160,6 +172,8 @@ def canonical_doom_profile(cohort_path, revision, rebuilt_path=None, folder=None
             raise ValueError('Canonical DOOM profiles require native Linux x86_64')
         documents = [Path(cohort_path), *([Path(rebuilt_path)] if rebuilt_path else [])]
         seals = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in documents}
+        tooling = canonical_tooling_seals()
+        seals.update(tooling)
         cohorts = [json.loads(path.read_text()) for path in documents]
         plans = [canonical_doom_plan(value, revision) for value in cohorts]
         sources = [canonical_source_identity(value, plan) for value, plan in zip(cohorts, plans)]
@@ -183,6 +197,7 @@ def canonical_doom_profile(cohort_path, revision, rebuilt_path=None, folder=None
             toolchain=plan['toolchain'], build_environment=plan['build_environment'],
             image=dict(path=str(binary), sha256=build['binary_sha256'], build=build),
             cohorts={str(path): seals[path] for path in documents},
+            tooling_files={str(path): value for path, value in tooling.items()},
             profiler_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
         checks = NativeChecks(folder)
         raw_command = checks.command

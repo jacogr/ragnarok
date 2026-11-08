@@ -102,6 +102,7 @@ class InertProfileChecks:
         self.missing_part = None
         self.symbols = '100 t runPreparedDoom_17_test\n'
         self.change_input = False
+        self.change_tooling = None
 
     def command(self, arguments, name, environment=None, **options):
         """Emulate observable external-tool outcomes, preserving the production collector's dump validation."""
@@ -128,6 +129,9 @@ class InertProfileChecks:
             raise AssertionError('Unexpected process attempt: '+str(args))
         log = self.folder/(name+'.log')
         log.write_text(output)
+        if self.change_tooling:
+            # A tool may not alter diagnostic code and retain a passed receipt under the old seal.
+            self.change_tooling.write_bytes(b'changed live diagnostic helper')
         return dict(command=args, exit_code=0, output=output, log=str(log), elapsed_seconds=99999)
 
 
@@ -304,6 +308,24 @@ class CanonicalDoomProfileTests(unittest.TestCase):
         ):
             with self.subTest(receipt=bad), self.assertRaises(ValueError):
                 profile.canonical_doom_observation(bad, 'tick', 8)
+
+    def test_actual_tooling_closure_and_changed_helper_refuse(self):
+        """Collector, parser and control identities accompany product seals and cannot drift during tools."""
+        tooling = profile.canonical_tooling_seals()
+        for name in ('tools/pvm_x86_jit_profile.py', 'tools/pvm_instruction_profile.py',
+                     'tools/pvm_ci_performance.py', 'tools/pvm_invocation_scope.py',
+                     'tools/pvm_arm64_jit_applications.py', 'tools/native_checks.py',
+                     'tests/support/pvm_profile_control.c'):
+            self.assertIn(profile.ROOT/name, tooling)
+        copied_helper = self.root/'diagnostic-control.c'
+        copied_helper.write_bytes(b'independent control source')
+        tooling[copied_helper] = digest(copied_helper.read_bytes())
+        self.checks.change_tooling = copied_helper
+        with patch.object(profile, 'canonical_tooling_seals', return_value=tooling):
+            with self.assertRaisesRegex(ValueError, 'changed during run'):
+                self.execute()
+        self.assertEqual(json.loads((self.folder/'results.json').read_text())['status'], 'failed')
+        self.assertEqual([args for args, _, _ in self.checks.trace], [['valgrind', '--version']])
 
     def test_non_ci_refusal_happens_before_tools(self):
         """Observing or running pure tests locally never authorizes a profiler process."""
