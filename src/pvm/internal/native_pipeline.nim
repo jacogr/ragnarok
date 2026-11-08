@@ -642,44 +642,43 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   else:
     false
   let candidate = data.span.len >= NativeMinimumOperations or selectRead
-  if tryAcquire(runtime.lock):
-    if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
-        runtime.slots[data.slot].state == Live and
-        runtime.slots[data.slot].generation == data.generation and
-        runtime.slots[data.slot].location == CompletionLocation.Empty and
-        data.state == NativeState.Deferred and candidate and
-        completedWork > 0 and data.provenWork >= NativeInvocationFloor and
-        runtime.nextTicket < high(uint64):
-      inc runtime.nextTicket
-      assert not data.image.ready and not runtime.slots[data.slot].completion.ready
-      # selectRead already excludes a certified closed loop. Write only the selected payload.
-      let kind = if selectRead: NativeKind.CheckedReadBody else: data.span.kind
-      let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
-        epoch: data.epoch, kind: kind)
-      when NativeCheckedReadEnabled:
-        if selectRead:
-          runtime.request.body = data.readBody
-        else:
-          runtime.request.span = data.span
+  # Check admission under the mutex already required to release this invocation's lease.
+  acquire(runtime.lock)
+  if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
+      runtime.slots[data.slot].state == Live and
+      runtime.slots[data.slot].generation == data.generation and
+      runtime.slots[data.slot].location == CompletionLocation.Empty and
+      data.state == NativeState.Deferred and candidate and
+      completedWork > 0 and data.provenWork >= NativeInvocationFloor and
+      runtime.nextTicket < high(uint64):
+    inc runtime.nextTicket
+    assert not data.image.ready and not runtime.slots[data.slot].completion.ready
+    # selectRead already excludes a certified closed loop. Write only the selected payload.
+    let kind = if selectRead: NativeKind.CheckedReadBody else: data.span.kind
+    let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
+      epoch: data.epoch, kind: kind)
+    when NativeCheckedReadEnabled:
+      if selectRead:
+        runtime.request.body = data.readBody
       else:
         runtime.request.span = data.span
-      assert requestMatches(runtime.request, key)
-      runtime.key = key
-      runtime.slots[data.slot].key = key
-      runtime.slots[data.slot].cancelled = false
-      runtime.slots[data.slot].location = CompletionLocation.Queued
-      runtime.work = WorkPhase.Queued
-      data.ticket = key.ticket
-      data.state = NativeState.Pending
-      if runtime.submitted < high(uint64): inc runtime.submitted
-      signal(runtime.changed)
-    release(runtime.lock)
+    else:
+      runtime.request.span = data.span
+    assert requestMatches(runtime.request, key)
+    runtime.key = key
+    runtime.slots[data.slot].key = key
+    runtime.slots[data.slot].cancelled = false
+    runtime.slots[data.slot].location = CompletionLocation.Queued
+    runtime.work = WorkPhase.Queued
+    data.ticket = key.ticket
+    data.state = NativeState.Pending
+    if runtime.submitted < high(uint64): inc runtime.submitted
+    signal(runtime.changed)
   when NativeCheckedReadEnabled:
     if data.readNominated:
       # Only the accepted read ticket keeps its copied certificate.
       if data.ticket == 0 or not selectRead: data.readBody = default(NativeReadBody)
       data.readNominated = false
-  acquire(runtime.lock)
   assert runtime.active > 0
   dec runtime.active
   data.invocation = false
