@@ -45,7 +45,9 @@ This closes the ordinary minified `make setup`/`make unit` failure on ARM CI; it
 disable minification or skip setup prerequisites. Host-selection coverage follows every
 supported application-toolchain host and alias, so a new native platform requires matching
 minifier support. The package SHA-512 registry integrity and archive/executable SHA-256 values
-were independently checked; actual Linux ARM installation and setup qualification are pending.
+were independently checked. Native Linux ARM64 [qualification](https://github.com/jacogr/ragnarok/actions/runs/42459287541)
+passed on 2026-11-08: ordinary minified `make unit SUITE=pvm_artifact`, cached native tool reuse,
+production JS/CSS/gzip byte checks and malformed-JavaScript refusal all succeeded.
 
 `--with-ui` also enables the WebSocket RPC listener, default `ws://127.0.0.1:19800/`;
 `--rpc-port NUMBER` selects its port. `--with-rpc` enables RPC independently.
