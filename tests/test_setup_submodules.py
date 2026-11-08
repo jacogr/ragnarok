@@ -358,6 +358,25 @@ class PinnedCheckoutTests(unittest.TestCase):
         self.assertEqual(self.git('--git-dir', metadata, 'show', ':codec/payload'), 'staged caller bytes')
         self.assertFalse((path/'.git').exists())
 
+    def test_linked_parent_preserves_its_own_retained_source_index(self):
+        """A linked checkout must resolve its own submodule metadata without disturbing the original source."""
+        linked = self.base/'linked-parent'
+        self.git('-C', self.root, 'worktree', 'add', '-q', '--detach', linked, 'HEAD')
+        with patch.object(setup_submodules, 'ROOT', linked):
+            # First initialization in the linked parent materializes its exact pin independently.
+            self.checkout([self.relative])
+            path = linked/self.relative
+            self.assertEqual((path/'codec/payload').read_text(), 'second\n')
+            (path/'codec/payload').write_text('linked staged bytes\n')
+            self.git('-C', path, 'add', 'codec/payload')
+            metadata = self.git('-C', path, 'rev-parse', '--absolute-git-dir')
+            self.git('-C', linked, 'submodule', 'deinit', '--force', '--', self.relative)
+            with self.assertRaisesRegex(AssertionError, 'Modified source checkout'):
+                self.checkout([self.relative])
+            self.assertEqual(self.git('--git-dir', metadata, 'show', ':codec/payload'), 'linked staged bytes')
+        self.assertEqual(self.git('-C', self.root/self.relative, 'rev-parse', 'HEAD'), self.first)
+        self.assertEqual((self.root/self.relative/'codec/payload').read_text(), 'first\n')
+
     # Nested tracked edits remain a refusal even when local ignore preferences would hide them from an ordinary status.
     def test_nested_edits_are_preserved(self):
         nested = self.base/'nested'
