@@ -96,3 +96,9 @@ Local macOS ARM64 qualification before integrating the latest master's unused-en
 
 Full CI is explicitly requested on the published PR. Its exact-head outcome, native Linux runtime
 and post-merge master verification remain separate from this local record.
+
+The upgrade also integrates master `898c0a2d` (removal of unused native preparation entry points).
+The merged complete application build and its help command pass. The optimized source graph
+again passes all 610 modules and peer main; three browser
+bootstrap tests pass. The removed entry points do not overlap the equality or guard changes.
+Final native Linux/runtime qualification belongs to the authorized full-CI run on the PR head.
