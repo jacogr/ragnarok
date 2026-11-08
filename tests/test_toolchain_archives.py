@@ -84,7 +84,7 @@ class ArchiveDownloads(unittest.TestCase):
         request = second.args[0]
         self.assertEqual(request.full_url, self.pin['api_url'])
         self.assertEqual(request.get_header('Accept'), 'application/octet-stream')
-        self.sleep.assert_called_once_with(5)
+        self.sleep.assert_not_called()
 
     def test_asset_api_cannot_authorize_different_bytes(self):
         """An API metadata response or replaced asset fails the same checksum before caching."""
@@ -93,21 +93,51 @@ class ArchiveDownloads(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.fetch()
         self.assertEqual(self.open.call_count, 2)
-        self.sleep.assert_called_once_with(5)
+        self.sleep.assert_not_called()
         self.assertFalse(self.archive.exists())
 
-    def test_routes_share_one_attempt_budget(self):
-        """Two delivery routes still permit only five requests and retain the final failure."""
+    def test_api_rate_limit_backs_off_after_both_routes(self):
+        """GitHub quota refusals retry the whole pair without treating ordinary forbidden responses as transient."""
         self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
-        errors = [self.http_error(504) for _ in range(5)]
+        limited = urllib.error.HTTPError(self.pin['api_url'], 403, 'rate limit exceeded',
+                                        {'X-RateLimit-Remaining': '0'}, None)
+        self.open.side_effect = [self.http_error(504), limited, self.http_error(504), io.BytesIO(self.data)]
+        self.sleep.side_effect = lambda delay: self.assertEqual(self.open.call_count, 2)
+        self.assertEqual(self.fetch(), self.data)
+        self.sleep.assert_called_once_with(5)
+        self.assertEqual(self.open.call_count, 4)
+
+    def test_api_token_is_not_forwarded_to_asset_host(self):
+        """Only the initial GitHub API request receives the read token, never its signed redirect."""
+        with patch.dict(toolchain_archives.os.environ, {'GH_TOKEN': 'fixture-token'}, clear=True):
+            request = toolchain_archives.asset_request('https://api.github.com/repos/owner/repo/releases/assets/123')
+            foreign = toolchain_archives.asset_request('https://example.invalid/archive')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer fixture-token')
+        self.assertIsNone(foreign.get_header('Authorization'))
+        redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+            request, None, 302, 'Found', {}, 'https://release-assets.githubusercontent.com/archive')
+        self.assertIsNone(redirected.get_header('Authorization'))
+
+    def test_api_reads_ephemeral_docker_secret(self):
+        """Docker downloads can authenticate through a mounted file without an image environment token."""
+        secret = self.folder/'github-token'
+        secret.write_text('fixture-buildkit-token\n')
+        with patch.dict(toolchain_archives.os.environ, {}, clear=True), patch.object(
+                toolchain_archives, 'GITHUB_TOKEN_FILE', secret):
+            request = toolchain_archives.asset_request('https://api.github.com/repos/owner/repo/releases/assets/123')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer fixture-buildkit-token')
+
+    def test_routes_share_one_attempt_budget(self):
+        """Two delivery routes still permit only five request pairs and retain the final failure."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        errors = [self.http_error(504) for _ in range(10)]
         self.open.side_effect = errors
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.fetch()
         self.assertIs(caught.exception, errors[-1])
         addresses = [request.args[0].full_url if isinstance(request.args[0], urllib.request.Request)
                      else request.args[0] for request in self.open.call_args_list]
-        self.assertEqual(addresses, [self.pin['url'], self.pin['api_url'], self.pin['url'],
-                                     self.pin['api_url'], self.pin['url']])
+        self.assertEqual(addresses, [self.pin['url'], self.pin['api_url']]*5)
         self.assertEqual(self.sleep.call_args_list, [call(5), call(15), call(45), call(90)])
         self.assertFalse(self.archive.exists())
 

@@ -12,6 +12,6 @@ RUN sh /usr/local/bin/download-retry apt-get -o Acquire::Retries=3 -o Acquire::h
 WORKDIR /src
 COPY . .
 # Host-staged official archives are hash-verified by the ordinary installer before execution.
-RUN make compiler-tools
+RUN --mount=type=secret,id=github_token make compiler-tools
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 CMD ["make", "check-pvm-arm64-jit-linux"]

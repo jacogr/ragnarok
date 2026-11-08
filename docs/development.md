@@ -20,7 +20,8 @@ make
 The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
 select exact official archives and SHA-256 checksums; no upstream installer runs. Record the
 matching GitHub release asset API URL when updating a release archive pin, so transient browser
-download failures can use the same pinned bytes through the API. Both local
+download failures can use the same pinned bytes through the API. API requests use available
+`GH_TOKEN`/`GITHUB_TOKEN` credentials; Docker Make targets pass them through a BuildKit secret. Both local
 setup and CI use the same host/identity/version checks. Compilers, model tools and native libraries
 stay under ignored `build-tools/`.
 

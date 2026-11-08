@@ -481,7 +481,7 @@ build logs remain under `build/ci/native/`, and transport fixtures under `build/
 Successful preparation retires the corresponding legacy `build/<component>/` directory so
 updaters retain a single installation. Failed migrations preserve the original directory.
 
-Project-owned downloads use five attempts with waits of 5, 15, 45 and 90 seconds. Pinned HTTP
+Project-owned acquisition commands use five attempts with waits of 5, 15, 45 and 90 seconds. Pinned HTTP
 archives retain their sixty-second request timeout and retry only transient HTTP/transport
 failures. Checksum errors and permanent HTTP refusals still stop immediately. Git acquisition,
 GitHub artifact downloads, Cargo fetch, rustup installation, pip/npm provisioning, browser downloads and host APT setup
@@ -496,6 +496,12 @@ was resolved to `2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed
 `spec/toolchain.json`. Setup follows the recorded release; upgrades require an explicit pin edit.
 
 GitHub release archives can record the exact asset's `api_url` alongside its browser URL and
-SHA-256 pin. Transient failures alternate between these delivery routes within the same five
-attempts. API requests ask for binary content; returned metadata or different archive bytes still
+SHA-256 pin. Each of five rounds tries the browser URL and then the asset API immediately after a route
+failure. Backoff follows a failed pair, for at most ten requests with both routes configured. API requests ask for binary content; returned metadata or different archive bytes still
 fail the pinned checksum before caching or extraction. Setup uses the recorded asset ID and fixed checksum.
+
+CI authenticates release asset API requests with the workflow's contents-read token. Make passes
+available `GH_TOKEN` or `GITHUB_TOKEN` credentials into Docker through an optional BuildKit secret;
+the downloader reads `/run/secrets/github_token` during provisioning. Authorization is attached
+only to the initial HTTPS `api.github.com` request and omitted from signed asset redirects.
+GitHub quota refusals (403 with rate-limit evidence, or 429) use the bounded retry policy.

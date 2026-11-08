@@ -27,15 +27,15 @@ COPY . .
 
 # Optional storage-only resource probe: provision and compile before enforcing run-time RAM limits.
 FROM sources AS paged-resources
-RUN make build-storage-paged-resources
+RUN --mount=type=secret,id=github_token make build-storage-paged-resources
 
 # Full graphs use independent outside-pressure fixture maps and fresh bounded native execs.
 FROM sources AS full-paged-resources
-RUN make build-storage-full-paged-resources
+RUN --mount=type=secret,id=github_token make build-storage-full-paged-resources
 
 # The ordinary peer builder retains its complete transport and packaging preparation.
 FROM sources AS builder
-RUN git rev-parse --verify HEAD && make build
+RUN --mount=type=secret,id=github_token git rev-parse --verify HEAD && make build
 # C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
 RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y patchelf \
     && mkdir /out && cp /src/build/ragnarok /out/ragnarok \

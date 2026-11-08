@@ -53,6 +53,8 @@ defaults:
     shell: bash
 
 env:
+  # Authenticated public asset downloads use this workflow's contents-read quota.
+  GH_TOKEN: ${{ github.token }}
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
   # Exercise the shipped minified JS/CSS in every native/browser verification job.

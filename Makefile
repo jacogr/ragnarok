@@ -58,9 +58,20 @@ package-binary: build
 
 # Docker owns an isolated setup/build; do not provision host compilers or reuse host artifacts.
 .PHONY: docker-build check-docker
+# BuildKit receives only the credential's environment name; the image consumes an ephemeral mount.
+define docker_download_secret
+secret_args=(); \
+if [ -n "$${GH_TOKEN:-}" ]; then \
+  secret_args=(--secret id=github_token,env=GH_TOKEN); \
+elif [ -n "$${GITHUB_TOKEN:-}" ]; then \
+  secret_args=(--secret id=github_token,env=GITHUB_TOKEN); \
+fi
+endef
+
 docker-build:
 	mkdir -p build/ci
-	$(DOCKER) build --platform "$(DOCKER_PLATFORM)" --tag "$(DOCKER_IMAGE)" . 2>&1 | tee build/ci/docker-build.log
+	@$(docker_download_secret); \
+	$(DOCKER) build $${secret_args[@]+"$${secret_args[@]}"} --platform "$(DOCKER_PLATFORM)" --tag "$(DOCKER_IMAGE)" . 2>&1 | tee build/ci/docker-build.log
 
 # Exercise the packaged ABI closure and checked peer selftests as its non-root runtime user.
 check-docker: docker-build
@@ -289,7 +300,8 @@ check-jam-network: setup check-inventory
 	$(PYTHON) tools/check_jam_network.py
 
 docker-build-jam-fuzz:
-	$(DOCKER) build --platform "$(DOCKER_PLATFORM)" --target fuzz-target --tag "$(DOCKER_IMAGE)-jam-fuzz" .
+	@$(docker_download_secret); \
+	$(DOCKER) build $${secret_args[@]+"$${secret_args[@]}"} --platform "$(DOCKER_PLATFORM)" --target fuzz-target --tag "$(DOCKER_IMAGE)-jam-fuzz" .
 
 # Python zipimport runs exact pure-Python codecs without upstream installers or global packages.
 .PHONY: minifuzz-tools
@@ -666,7 +678,8 @@ check-pvm-arm64-jit-linux: compiler-tools
 # Provision privately, then retain the network-isolated container's exact native evidence on the host.
 .PHONY: check-pvm-arm64-jit-docker
 check-pvm-arm64-jit-docker: stage-pvm-arm64-jit-linux
-	$(DOCKER) build --platform linux/arm64 --progress plain -f tools/docker/pvm-arm64-jit.Dockerfile -t ragnarok:pvm-arm64-jit-local build/pvm-arm64-jit/linux/context > build/pvm-arm64-jit/linux/docker-build.log 2>&1
+	@$(docker_download_secret); \
+	$(DOCKER) build $${secret_args[@]+"$${secret_args[@]}"} --platform linux/arm64 --progress plain -f tools/docker/pvm-arm64-jit.Dockerfile -t ragnarok:pvm-arm64-jit-local build/pvm-arm64-jit/linux/context > build/pvm-arm64-jit/linux/docker-build.log 2>&1
 	$(PYTHON) tools/pvm_arm64_jit_linux.py --docker
 
 # Optional runtime ABI shares pristine source/tool provisioning without affecting normal application linking.
