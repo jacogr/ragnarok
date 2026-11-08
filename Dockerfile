@@ -39,9 +39,9 @@ RUN git rev-parse --verify HEAD && make build
 RUN apt-get update && apt-get install --no-install-recommends -y patchelf \
     && mkdir /out && cp /src/build/ragnarok /out/ragnarok \
     && patchelf \
-      --replace-needed /src/build/crypto/libragnarok_crypto.so libragnarok_crypto.so \
-      --replace-needed /src/build/bandersnatch/target/release/libragnarok_bandersnatch.so libragnarok_bandersnatch.so \
-      --replace-needed /src/build/quic/libquic_proof.so libquic_proof.so \
+      --replace-needed /src/build-tools/crypto/libragnarok_crypto.so libragnarok_crypto.so \
+      --replace-needed /src/build-tools/bandersnatch/target/release/libragnarok_bandersnatch.so libragnarok_bandersnatch.so \
+      --replace-needed /src/build-tools/quic/libquic_proof.so libquic_proof.so \
       --set-rpath '$ORIGIN/../lib/ragnarok' /out/ragnarok \
     && rm -rf /var/lib/apt/lists/*
 
@@ -55,9 +55,9 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     && mkdir /data && chown 10001:10001 /data
 COPY LICENSE-APACHE LICENSE-MIT /usr/share/doc/ragnarok/
 COPY --from=builder /out/ragnarok /usr/local/bin/ragnarok
-COPY --from=builder /src/build/crypto/libragnarok_crypto.so /usr/local/lib/ragnarok/
-COPY --from=builder /src/build/bandersnatch/target/release/libragnarok_bandersnatch.so /usr/local/lib/ragnarok/
-COPY --from=builder /src/build/quic/libquic_proof.so /usr/local/lib/ragnarok/
+COPY --from=builder /src/build-tools/crypto/libragnarok_crypto.so /usr/local/lib/ragnarok/
+COPY --from=builder /src/build-tools/bandersnatch/target/release/libragnarok_bandersnatch.so /usr/local/lib/ragnarok/
+COPY --from=builder /src/build-tools/quic/libquic_proof.so /usr/local/lib/ragnarok/
 LABEL org.opencontainers.image.source="https://github.com/jacogr/ragnarok" \
     org.opencontainers.image.licenses="MIT OR Apache-2.0"
 WORKDIR /data

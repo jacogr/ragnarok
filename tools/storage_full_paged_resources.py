@@ -120,7 +120,7 @@ def verify_frozen():
     """Provenance/version inspection runs only outside pressure and rejects any post-build source/provider drift."""
     frozen = json.loads((BUILD/'build.json').read_text())
     compiler, _ = installed()
-    library = ROOT/'build/crypto'/('libragnarok_crypto.dylib' if platform.system() == 'Darwin' else 'libragnarok_crypto.so')
+    library = ROOT/'build-tools/crypto'/('libragnarok_crypto.dylib' if platform.system() == 'Darwin' else 'libragnarok_crypto.so')
     binary = BUILD/'full-paged-native'
     if [frozen['compiler'], frozen['library'], frozen['binary']] != list(map(str, (compiler, library, binary))):
         raise ValueError('Foreign full paged build paths')

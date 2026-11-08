@@ -15,7 +15,7 @@ proc lifecycle(mode: string) =
   assert catalog.configure(ElementLimit(1)) == DownloadPeerError.None
   let key = DownloadPeerKey(default(array[32, byte]))
   let opened = catalog.openPeer(DownloadPeerId(1), key, 1,
-    "build/quic/nimony-fixtures/a.cert.pem", "build/quic/nimony-fixtures/a.key.pem", "jamnp-s/1/00000000")
+    "build/tests/quic/nimony-fixtures/a.cert.pem", "build/tests/quic/nimony-fixtures/a.key.pem", "jamnp-s/1/00000000")
   assert opened == DownloadPeerError.None
   if mode == "positive": catalog.close() # A real endpoint's valid explicit retirement must exit successfully.
   # The unclosed alternative deliberately reaches the destructor with actual retained native resources.

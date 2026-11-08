@@ -154,9 +154,14 @@ model-tools: toolchain
 check-models: check-inventory model-tools
 	$(PYTHON) tools/test_models.py 2>&1 | tee build/ci/models.log
 
-# Remove all generated artifacts, including the local compiler and downloaded archives.
+# Remove project outputs while retaining the verified development tools.
 clean:
 	rm -rf -- build
+
+# Retire provisioned tools explicitly, serialized with their installers.
+.PHONY: clean-tools
+clean-tools:
+	$(PYTHON) tools/managed_tools.py clean
 
 # Local complete verification runs the same independent groups scheduled concurrently by CI.
 check: check-models check-python check-modules check-unit check-failures check-guards check-e2e check-jam-fuzzer-interface check-jam-network
@@ -165,18 +170,18 @@ test: check
 # The source-only gate needs only the compiler; runtime checks provision all native dependencies.
 modules: check-modules
 check-modules: check-inventory compiler-tools ui-assets build-info
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" 2>&1 | tee build/ci/modules.log
 runtime: check-unit
 .PHONY: check-corpus summary-corpus
 check-corpus: override UNIT_SCOPE := corpus
 check-corpus: check-unit
 check-unit: setup format-check
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" 2>&1 | tee build/ci/runtime.log
 
 # Fast PR gate checks all formatting and every production source with an unoptimized semantic profile.
 .PHONY: check-smoke
 check-smoke: check-inventory format-check ui-assets build-info
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" --smoke --output build/tests/smoke 2>&1 | tee build/ci/smoke.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_modules.py --compiler "$$NIMONY" --smoke --output build/tests/smoke 2>&1 | tee build/ci/smoke.log
 
 # Optional differential verification owns Rust setup; ordinary native tests retain frozen inputs.
 check-pvm-reference: setup
@@ -307,11 +312,11 @@ failure-setup:
 	$(PYTHON) tools/prepare_failures.py --make "$(MAKE)"
 
 check-failures: failure-setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_runtime.py --compiler "$$NIMONY" --group failures 2>&1 | tee build/ci/failures.log
 
 # Compiler rejection checks retain their own logs/caches and do not execute the unit/corpus workload.
 check-guards: setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_guards.py --compiler "$$NIMONY" 2>&1 | tee build/ci/guards.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_guards.py --compiler "$$NIMONY" 2>&1 | tee build/ci/guards.log
 
 # Inventory validation runs before provisioning and is independently usable on a fresh checkout.
 check-inventory:
@@ -328,7 +333,7 @@ check-python: check-inventory sources python-test-tools
 	$(PYTHON) tools/setup_submodules.py --prefetch-blobs vendor/jamtestvectors 2>&1 | tee build/ci/python-sources.log
 	build/python-tests/bin/python tools/test_python.py 2>&1 | tee build/ci/python.log
 check-e2e: setup browser-tools
-	. ./build/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/test_e2e.py --compiler "$$NIMONY" 2>&1 | tee build/ci/e2e.log
 
 # CI builds the pristine gitlink with the shared Rust pin and keeps Cargo output under build/.
 telemetry-interop-collector: host-tools rust-tools
@@ -368,7 +373,7 @@ unit: setup
 
 # Apply both pinned language formatters; check mode must leave source files untouched.
 format: compiler-tools rust-tools
-	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/format.py
 # Storage measures matching public operations; Make provisions the checked native crypto toolchain first.
 # Separate whole-process resource observations never contribute speed samples to Perf Storage.
 probe-storage-resident-pressure:
@@ -439,7 +444,7 @@ bench-storage: setup
 	$(PYTHON) tools/storage_benchmark.py --panel comparison
 
 format-check: compiler-tools rust-tools
-	. ./build/toolchain/env.sh; $(PYTHON) tools/format.py --check
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/format.py --check
 
 # Summaries can run after a failed job; do not trigger setup or disguise a missing report.
 summary-storage-memory-ceilings:
@@ -524,6 +529,7 @@ help:
 	  'make bench-pvm      Measure validated PVM workloads against PolkaVM backends' \
 	  'make bench-pvm-guests  Compare frozen checked indirect-call and memory-fill guests' \
 	  'make check-pvm-reference  Run pinned PolkaVM probes and matching native suites' \
+	  'make clean-tools   Remove retained tools and native library caches' \
 	  'make model-tools   Build the pinned verification-only tlanif' \
 	  'make check-models  Check bounded models, mutants and reachability' \
 	  'make check-python  Run Python reference/tooling/provenance tests' \
@@ -542,12 +548,12 @@ help:
 # Repeat fixed crypto-work/live-memory observations; an optional baseline is supplied via the environment.
 .PHONY: measure-state-store
 measure-state-store: setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_state_store.py --compiler "$$NIMONY"
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/measure_state_store.py --compiler "$$NIMONY"
 
 # Repeat real-file state workloads; compare only an explicitly supplied compatible prior report.
 .PHONY: measure-disk-store
 measure-disk-store: setup
-	. ./build/toolchain/env.sh; $(PYTHON) tools/measure_disk_store.py --compiler "$$NIMONY" $(if $(DISK_STORE_BASELINE),--baseline "$(DISK_STORE_BASELINE)",)
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/measure_disk_store.py --compiler "$$NIMONY" $(if $(DISK_STORE_BASELINE),--baseline "$(DISK_STORE_BASELINE)",)
 
 # Bounded pinned DOOM correctness and opt-in Linux instruction attribution; no local guest timings.
 PVM_DOOM_WARMUP ?= 1320
@@ -643,7 +649,7 @@ calibrate-pvm-arm64-linux:
 
 .PHONY: profile-pvm-arm64-linux
 profile-pvm-arm64-linux:
-	. ./build/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64 --include-minimal
+	. ./build-tools/toolchain/env.sh; $(PYTHON) tools/pvm_x86_jit_profile.py --architecture arm64 --include-minimal
 
 .PHONY: profile-pvm-arm64-jit
 profile-pvm-arm64-jit: bench-pvm-arm64-applications

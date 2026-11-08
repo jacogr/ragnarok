@@ -160,8 +160,8 @@ jobs:
             build/ci/*.log
             build/tests/guards/*.log
             build/tests/guards/results.json
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
       - name: Build, package and smoke-test relocated peer
         if: ${{ matrix.family.group == 'binary' }}
         run: make package-binary
@@ -184,10 +184,10 @@ jobs:
           if-no-files-found: ignore
           path: |
             build/ci/*.log
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/quic/build.log
+            build/ci/native/crypto/build.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
+            build/ci/native/quic/build.log
       - name: Check every production module in release mode
         if: ${{ !cancelled() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         run: make check-modules
@@ -272,10 +272,10 @@ jobs:
             build/tests/pvm-asan/*.log
             build/tests/pvm-asan/results.json
             build/tests/pvm-asan/evidence/*.json
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/quic/build.log
+            build/ci/native/crypto/build.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
+            build/ci/native/quic/build.log
 
   # Retain one stable PR gate; failed, cancelled or skipped shards must never look successful.
   # Contract group: named workloads report their own results.
@@ -319,10 +319,10 @@ jobs:
             build/tests/failures/results.json
             build/tests/failures/bundle-measurement/**/*.log
             build/ci/failure-setup.json
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/quic/build.log
+            build/ci/native/crypto/build.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
+            build/ci/native/quic/build.log
 
   # Preserve the stable contract gate and require every partition, including specialized controls.
   # E2E group: named workloads report their own results.
@@ -414,10 +414,10 @@ jobs:
             build/tests/e2e/rpc/browser/*.log
             build/tests/e2e/rpc/browser/*.json
             build/tests/e2e/rpc/browser/*.png
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/quic/build.log
+            build/ci/native/crypto/build.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
+            build/ci/native/quic/build.log
 
   # Interop group: named workloads report their own results.
   interop:
@@ -477,10 +477,10 @@ jobs:
             build/ci/*.log
             build/tests/telemetry-interop/**/*.log
             build/tests/telemetry-interop/results.json
-            build/crypto/build.log
-            build/bandersnatch/build.log
-            build/bandersnatch/cargo-features.log
-            build/quic/build.log
+            build/ci/native/crypto/build.log
+            build/ci/native/bandersnatch/build.log
+            build/ci/native/bandersnatch/cargo-features.log
+            build/ci/native/quic/build.log
 
   # Real shared-adapter gameplay parity belongs to Interop; each native architecture must execute DOOM.
   pvm-doom-backends:

@@ -466,3 +466,17 @@ CPU's actual PVM attempt; unrelated job failures are shown separately from valid
 It does not conceal a newer pending or failed cohort behind old successful reports.
 Emulated correctness evidence and
 historical wall-only synthetic timings cannot supply native CPU comparison cells.
+
+Provisioned Nimony/formatter, tlanif, browser-backend and production native library caches live
+under `build-tools/`, separate from project outputs and verification evidence under `build/`. `make clean` retains these
+tools; `make clean-tools` retires them explicitly. Setup and tool cleanup share an exclusive lock.
+Replacements build at stable absolute paths, validate before retiring the previous installation,
+and restore the preceding installation on failure or on the next setup after interruption.
+Only the current pins' archives and source/bootstrap directories survive successful replacement.
+Tool-dependent checks still validate current pins and executable integrity before reuse.
+Native library reuse additionally binds source/bridge bytes, pin files, compiler versions/paths,
+host and build environment, and output library hashes. Existing Cargo tests and native validation
+still run on each preparation. Changed identities replace the prior incremental cache. Native
+build logs remain under `build/ci/native/`, and transport fixtures under `build/tests/quic/`.
+Successful preparation retires the corresponding legacy `build/<component>/` directory so
+updaters retain a single installation. Failed migrations preserve the original directory.

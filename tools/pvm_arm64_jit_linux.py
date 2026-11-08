@@ -71,7 +71,7 @@ def stage():
     pins=json.loads((ROOT/'spec/toolchain.json').read_text())
     for field,prefix in (('download','nimony'),('formatter_download','formatter')):
         entry=pins['platforms']['linux_arm64'][field]
-        archive=CONTEXT/'build/toolchain'/(prefix+'-'+entry['sha256']+'.archive')
+        archive=CONTEXT/'build-tools/toolchain'/(prefix+'-'+entry['sha256']+'.archive')
         archive.parent.mkdir(parents=True,exist_ok=True)
         cached=BUILD/'archives'/archive.name
         cached.parent.mkdir(parents=True,exist_ok=True)
