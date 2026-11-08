@@ -79,8 +79,7 @@ only regular files can be served. Select a directory containing only public deve
 Release requests look up immutable embedded paths and send their bytes in bounded chunks.
 
 Both peer shapes own one non-copyable UI server and service it on the existing dispatcher.
-Eight connections, the stock Nimony header limit (currently 16 KiB), 16384-byte file chunks,
-one accept/read/write per
+Eight connections, 4096-byte headers, 16384-byte file chunks, one accept/read/write per
 slot per tick and an absolute five-second request deadline bound work and memory. Development file IO
 uses bounded regular-file reads on the dispatcher; slow filesystem storage can delay a turn.
 Growing files stop at the initial length; truncation closes an incomplete response.

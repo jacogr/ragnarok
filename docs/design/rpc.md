@@ -7,10 +7,6 @@ update their feature contract rather than appending progress here.
 shapes. The `src/ragnarok.nim` entry point parses flags once; feature modules do not read
 process arguments. A single bounded startup chain snapshot feeds RPC and telemetry.
 
-RPC upgrades and the UI, MCP and management listeners use Nimony's stock HTTP head scanner
-and parser without its I/O runtime. Each service retains routing, access and body policy.
-See [parser scope and behavior](../../spec/http-parser-adoption.md).
-
 An independently optional `src/mcp/` Streamable HTTP listener exposes a fixed read-only tool catalog
 through the existing synchronous RPC query implementation. Services passes one temporary selected
 query context; the MCP owner retains only bounded socket bytes. Canonical worker leases return
