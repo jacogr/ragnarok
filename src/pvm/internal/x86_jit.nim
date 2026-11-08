@@ -811,9 +811,6 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
     proc checkedReadStackInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
       ## Stage the certified body on the stack, then commit only its written slots.
-      # ARM/x86 gap: ARM stages these writes in its ArmReadSpan register bank. Above six
-      # dirty lanes, x86 copies all thirteen slots here. Revisit sparse or hybrid staging
-      # while retaining delayed publication and a complete unchanged-register refusal.
       assert body.complete and sizeof(RegisterFile) == 104
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
@@ -896,6 +893,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
       assert body.complete and sizeof(RegisterFile) == 104
+      # ARM/x86 allocation gap: this bank selects dirty lanes only; read-only live-ins
+      # reload canonical slots. Above six dirty lanes we copy all thirteen slots to the stack.
+      # ARM retains live-ins and writes in ArmReadSpan's bank. Revisit live-in allocation and
+      # sparse/hybrid staging, preserving delayed publication and unchanged-register refusal.
+      # Both x86 choices execute native read code.
       let dirty = readBodyDirty(body)
       var count = 0
       for slot in 0..12:
