@@ -73,6 +73,44 @@ class ArchiveDownloads(unittest.TestCase):
         self.assertEqual(self.open.call_count, 5)
         self.assertEqual(self.sleep.call_args_list, [call(5), call(15), call(45), call(90)])
 
+    def test_asset_api_recovers_same_pinned_archive(self):
+        """A failed browser route can use the recorded release asset without selecting another version."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        self.open.side_effect = [self.http_error(504), io.BytesIO(self.data)]
+        self.assertEqual(self.fetch(), self.data)
+        self.assertEqual(self.archive.read_bytes(), self.data)
+        first, second = self.open.call_args_list
+        self.assertEqual(first, call(self.pin['url'], timeout=60))
+        request = second.args[0]
+        self.assertEqual(request.full_url, self.pin['api_url'])
+        self.assertEqual(request.get_header('Accept'), 'application/octet-stream')
+        self.sleep.assert_called_once_with(5)
+
+    def test_asset_api_cannot_authorize_different_bytes(self):
+        """An API metadata response or replaced asset fails the same checksum before caching."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        self.open.side_effect = [self.http_error(504), io.BytesIO(b'{"metadata":"not the archive"}')]
+        with self.assertRaises(AssertionError):
+            self.fetch()
+        self.assertEqual(self.open.call_count, 2)
+        self.sleep.assert_called_once_with(5)
+        self.assertFalse(self.archive.exists())
+
+    def test_routes_share_one_attempt_budget(self):
+        """Two delivery routes still permit only five requests and retain the final failure."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        errors = [self.http_error(504) for _ in range(5)]
+        self.open.side_effect = errors
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.fetch()
+        self.assertIs(caught.exception, errors[-1])
+        addresses = [request.args[0].full_url if isinstance(request.args[0], urllib.request.Request)
+                     else request.args[0] for request in self.open.call_args_list]
+        self.assertEqual(addresses, [self.pin['url'], self.pin['api_url'], self.pin['url'],
+                                     self.pin['api_url'], self.pin['url']])
+        self.assertEqual(self.sleep.call_args_list, [call(5), call(15), call(45), call(90)])
+        self.assertFalse(self.archive.exists())
+
     def test_transport_failures_retry_without_retaining_partial_response(self):
         """Timeouts, refused connections and interrupted body reads discard the whole failed attempt."""
         errors = (urllib.error.URLError('temporary name resolution failure'),

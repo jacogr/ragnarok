@@ -22,17 +22,25 @@ RETRY_DELAYS = (5, 15, 45, 90)
 TRANSIENT_HTTP = (408, 429, 500, 502, 503, 504)
 
 
-def download_bytes(url):
+def download_bytes(url, api_url=None):
     """Fetch at most five times with bounded delays and the existing sixty-second request timeout.
 
     Only HTTP timeouts/rate limits/temporary server failures and transport failures retry.
-    Integrity checks and cache writes belong to the caller, outside this retry boundary.
+    Alternate routes share the five-attempt budget. Integrity checks and cache writes belong
+    to the caller, outside this retry boundary.
     """
+    urls = (url, api_url) if api_url else (url,)
     attempts = len(RETRY_DELAYS)+1
     for attempt in range(attempts):
         # A failed or truncated response is closed and discarded before another complete request.
+        selected = urls[attempt % len(urls)]
+        # The pinned asset API provides the same release bytes through a separate GitHub route.
+        request = selected
+        if selected == api_url:
+            request = urllib.request.Request(selected, headers={
+                'Accept': 'application/octet-stream', 'User-Agent': 'ragnarok-ci'})
         try:
-            with urllib.request.urlopen(url, timeout=60) as response:
+            with urllib.request.urlopen(request, timeout=60) as response:
                 return response.read()
         except (urllib.error.URLError, TimeoutError, ConnectionError,
                 http.client.IncompleteRead) as error:
@@ -42,12 +50,12 @@ def download_bytes(url):
                 error.close()
             if not transient or attempt == attempts-1:
                 # Preserve the original failure and traceback after a permanent error or exhausted budget.
-                print(f'Download failed (attempt {attempt+1}/{attempts}): {url}: {error}',
+                print(f'Download failed (attempt {attempt+1}/{attempts}): {selected}: {error}',
                       file=sys.stderr, flush=True)
                 raise
             delay = RETRY_DELAYS[attempt]
             print(f'Transient download failure (attempt {attempt+1}/{attempts}); '
-                  f'retrying in {delay}s: {url}: {error}', file=sys.stderr, flush=True)
+                  f'retrying in {delay}s: {selected}: {error}', file=sys.stderr, flush=True)
             time.sleep(delay)
 
 
@@ -71,7 +79,7 @@ def cache_archive(archive, data):
 def download(entry, archive):
     # Fetch only missing assets; retained assets still undergo verification below.
     if not archive.exists():
-        data = download_bytes(entry['url'])
+        data = download_bytes(entry['url'], entry.get('api_url'))
         assert hashlib.sha256(data).hexdigest() == entry['sha256'], entry['url']
         cache_archive(archive, data)
     data = archive.read_bytes()

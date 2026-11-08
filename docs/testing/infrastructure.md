@@ -494,3 +494,8 @@ The Nim 2.4 formatter/bootstrap selection is revision-pinned. The `latest-versio
 was resolved to `2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed`
 (Nim 2.4.1), and all three platform archives retain the release's published SHA-256 digests in
 `spec/toolchain.json`. Setup follows the recorded release; upgrades require an explicit pin edit.
+
+GitHub release archives can record the exact asset's `api_url` alongside its browser URL and
+SHA-256 pin. Transient failures alternate between these delivery routes within the same five
+attempts. API requests ask for binary content; returned metadata or different archive bytes still
+fail the pinned checksum before caching or extraction. Setup uses the recorded asset ID and fixed checksum.
