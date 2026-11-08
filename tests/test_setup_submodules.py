@@ -276,6 +276,107 @@ class PinnedCheckoutTests(unittest.TestCase):
         self.checkout()
         self.assertEqual(self.git('-C', self.root/self.relative, 'rev-parse', 'HEAD'), self.second)
 
+    def fresh_source(self):
+        """Record a never-initialized local source without invoking its first checkout."""
+        relative = 'vendor/fresh'
+        self.git('-C', self.root, 'config', '--file', '.gitmodules',
+                 'submodule.'+relative+'.path', relative)
+        self.git('-C', self.root, 'config', '--file', '.gitmodules',
+                 'submodule.'+relative+'.url', 'https://github.com/fixture/static-sources.git')
+        self.git('-C', self.root, 'config', 'submodule.'+relative+'.url', self.upstream.as_uri())
+        self.git('-C', self.root, 'update-index', '--add', '--cacheinfo',
+                 '160000', self.second, relative)
+        return relative
+
+    def test_interrupted_first_checkout_retry_materializes_sources(self):
+        """A retry at the pinned HEAD must restore the missing index/files, then be reusable offline."""
+        relative = self.fresh_source()
+
+        def retry_after_checkout_failure(command, **options):
+            # Reproduce the real failed-checkout state, then execute the actual unchanged acquisition retry.
+            self.git('clone', '-q', '--no-checkout', self.upstream.as_uri(), self.root/relative)
+            try:
+                raise subprocess.CalledProcessError(128, command)
+            except subprocess.CalledProcessError:
+                return subprocess.run(command, check=True, **options)
+
+        with patch.object(setup_submodules, 'acquire', side_effect=retry_after_checkout_failure):
+            self.checkout([relative])
+        self.assertEqual((self.root/relative/'codec/payload').read_text(), 'second\n')
+        self.assertEqual(self.git('-C', self.root/relative, 'rev-parse', 'HEAD'), self.second)
+        self.assertEqual(self.git('-C', self.root/relative, 'status', '--porcelain'), '')
+        self.checkout([relative])
+
+    def test_incomplete_first_checkout_cannot_report_success(self):
+        """A successful child status with missing files is not a ready pinned dependency."""
+        relative = self.fresh_source()
+
+        def incomplete_checkout(command, **options):
+            # A faulty acquisition result must still fail the source postcondition.
+            self.git('clone', '-q', '--no-checkout', self.upstream.as_uri(), self.root/relative)
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch.object(setup_submodules, 'acquire', side_effect=incomplete_checkout):
+            with self.assertRaisesRegex(AssertionError, 'Modified source checkout'):
+                self.checkout([relative])
+        self.assertFalse((self.root/relative/'codec/payload').exists())
+
+    def test_nonempty_uninitialized_source_preserves_local_files(self):
+        """An uninitialized path with caller data must refuse before any selected source moves."""
+        relative = self.fresh_source()
+        path = self.root/relative/'codec/payload'
+        path.parent.mkdir(parents=True)
+        path.write_text('keep caller bytes\n')
+        with self.assertRaisesRegex(AssertionError, 'Nonempty uninitialized source checkout'):
+            self.checkout()
+        self.assertEqual(path.read_text(), 'keep caller bytes\n')
+        self.assertFalse((self.root/relative/'.git').exists())
+        self.assertEqual(self.git('-C', self.root/self.relative, 'rev-parse', 'HEAD'), self.first)
+
+    def test_uninitialized_symlink_is_not_an_owned_empty_checkout(self):
+        """An empty caller-owned symlink target cannot grant first-checkout replacement authority."""
+        relative = self.fresh_source()
+        target = self.base/'caller-directory'
+        target.mkdir()
+        (self.root/relative).symlink_to(target, target_is_directory=True)
+        with self.assertRaisesRegex(AssertionError, 'Symlink source checkout'):
+            self.checkout([relative])
+        self.assertTrue((self.root/relative).is_symlink())
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_deinitialized_source_preserves_retained_staged_bytes(self):
+        """An empty worktree path must not discard edits retained in the submodule index."""
+        self.checkout([self.relative])
+        path = self.root/self.relative
+        (path/'codec/payload').write_text('staged caller bytes\n')
+        self.git('-C', path, 'add', 'codec/payload')
+        metadata = self.git('-C', path, 'rev-parse', '--absolute-git-dir')
+        self.git('-C', self.root, 'submodule', 'deinit', '--force', '--', self.relative)
+        self.assertEqual(self.git('--git-dir', metadata, 'show', ':codec/payload'), 'staged caller bytes')
+        with self.assertRaisesRegex(AssertionError, 'Modified source checkout'):
+            self.checkout([self.relative])
+        self.assertEqual(self.git('--git-dir', metadata, 'show', ':codec/payload'), 'staged caller bytes')
+        self.assertFalse((path/'.git').exists())
+
+    def test_linked_parent_preserves_its_own_retained_source_index(self):
+        """A linked checkout must resolve its own submodule metadata without disturbing the original source."""
+        linked = self.base/'linked-parent'
+        self.git('-C', self.root, 'worktree', 'add', '-q', '--detach', linked, 'HEAD')
+        with patch.object(setup_submodules, 'ROOT', linked):
+            # First initialization in the linked parent materializes its exact pin independently.
+            self.checkout([self.relative])
+            path = linked/self.relative
+            self.assertEqual((path/'codec/payload').read_text(), 'second\n')
+            (path/'codec/payload').write_text('linked staged bytes\n')
+            self.git('-C', path, 'add', 'codec/payload')
+            metadata = self.git('-C', path, 'rev-parse', '--absolute-git-dir')
+            self.git('-C', linked, 'submodule', 'deinit', '--force', '--', self.relative)
+            with self.assertRaisesRegex(AssertionError, 'Modified source checkout'):
+                self.checkout([self.relative])
+            self.assertEqual(self.git('--git-dir', metadata, 'show', ':codec/payload'), 'linked staged bytes')
+        self.assertEqual(self.git('-C', self.root/self.relative, 'rev-parse', 'HEAD'), self.first)
+        self.assertEqual((self.root/self.relative/'codec/payload').read_text(), 'first\n')
+
     # Nested tracked edits remain a refusal even when local ignore preferences would hide them from an ordinary status.
     def test_nested_edits_are_preserved(self):
         nested = self.base/'nested'
