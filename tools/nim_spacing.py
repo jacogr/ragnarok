@@ -12,21 +12,24 @@ def source_lines(source):
     """Yield each line, its code-only mask and whether it starts inside a multiline token."""
     triple = False
     comments = 0
+    comment_open = '#['
+    comment_close = ']#'
     # Keep state across lines so embedded snippets never become formatting instructions.
-    for line in source.splitlines(keepends=True):
+    # Nim recognizes CR/LF boundaries; Unicode separators remain literal UTF-8 contents.
+    for line in re.findall(r'[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$', source):
         protected = triple or comments > 0
         mask = [' '] * len(line)
         index = 0
         # Only code outside comments and literals may identify a declaration boundary.
         while index < len(line):
             if comments:
-                # Nim block comments nest, including documentation block comments.
-                if line.startswith(('##[', '#['), index):
+                # Nested delimiters follow the outer comment's mode, including overlapping markers.
+                if line.startswith(comment_open, index):
                     comments += 1
-                    index += 3 if line.startswith('##[', index) else 2
-                elif line.startswith((']##', ']#'), index):
+                    index += 1
+                elif line.startswith(comment_close, index):
                     comments -= 1
-                    index += 3 if line.startswith(']##', index) else 2
+                    index += len(comment_close) if comments == 0 else 1
                 else:
                     index += 1
             elif triple:
@@ -38,7 +41,11 @@ def source_lines(source):
                     index += 1
             elif line.startswith(('##[', '#['), index):
                 comments = 1
-                index += 3 if line.startswith('##[', index) else 2
+                # Documentation comments treat plain ]# and #[ as text; ordinary comments do not.
+                documentation = line.startswith('##[', index)
+                comment_open = '##[' if documentation else '#['
+                comment_close = ']##' if documentation else ']#'
+                index += len(comment_open)
             elif line[index] == '#':
                 break
             elif line.startswith('"""', index):

@@ -75,6 +75,31 @@ class NimSpacingTests(unittest.TestCase):
                 self.assertEqual(normalize_spacing(source + '\n\n\nproc real()\n'),
                                  source + '\nproc real()\n')
 
+    def test_mixed_comment_delimiters(self):
+        """The outer comment mode determines which nested and closing markers are meaningful."""
+        comments = [
+            '##[\nDocumentation contains ]# as ordinary text.\n\n\nproc example()\n]##\n',
+            '##[\nPlain #[ never opens a nested doc comment.\n]##\n',
+            '##[\n##[ nested ]# still inside nested docs\n\n\n]##\n]##\n',
+            '#[\n##[ nests an ordinary comment too\n]#\n\n\nproc example()\n]#\n',
+            '#[\n#[ nested ]#[ overlaps a new opener\n]#\n\n\nproc example()\n]#\n',
+        ]
+        for source in comments:
+            with self.subTest(source=source):
+                self.assertEqual(normalize_spacing(source), source)
+                self.assertEqual(normalize_spacing(source + '\n\n\nproc real()\n'),
+                                 source + '\nproc real()\n')
+
+    def test_unicode_separators_in_literals(self):
+        """Unicode separators are string contents, rather than physical Nim line boundaries."""
+        for separator in ('\u2028', '\u2029', '\u0085', '\v', '\f'):
+            for prefix in ('', 'r', 'custom'):
+                with self.subTest(separator=repr(separator), prefix=prefix):
+                    source = f'let text = {prefix}"a{separator}{separator}b"\n'
+                    self.assertEqual(normalize_spacing(source), source)
+                    self.assertEqual(normalize_spacing(source + '\n\n\nproc real()\n'),
+                                     source + '\nproc real()\n')
+
     def test_pinned_formatter_output_is_normalized(self):
         """The production formatter applies the spacing pass after nimpretty."""
         with tempfile.TemporaryDirectory() as folder:
