@@ -1,0 +1,58 @@
+{
+  "cases": [
+    {
+      "name": "base",
+      "role": "base",
+      "assignments": {},
+      "expected": "pass"
+    },
+    {
+      "name": "unregistered-call-loses-close-lease",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "1"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "credit-returned-before-image-disposal",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "2"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "failed-image-keeps-empty-credit",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "3"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "fifth-image-exceeds-real-cap",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "4"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "old-cold-registration-starves-fifth",
+      "role": "mutant",
+      "assignments": {
+        "Mut": "5"
+      },
+      "expected": "violated"
+    },
+    {
+      "name": "fifth-source-installs-after-four-cold-owners",
+      "role": "witness",
+      "assignments": {
+        "Witness": "(true)"
+      },
+      "expected": "violated"
+    }
+  ]
+}
