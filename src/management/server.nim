@@ -7,6 +7,7 @@
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
+import ../lib/socket_io
 import ./[protocol, file_status, resources]
 import ../lib/utf8
 
@@ -39,45 +40,11 @@ type
     resources: ResourceSampler
     connections: array[MaxConnections, Connection]
 
-proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
-  ## Open only a local-domain stream descriptor.
-
-proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
-    header: "<sys/socket.h>".}
-  ## Native bind borrows the initialized pathname only during this syscall.
-
-proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
-  ## Listen only after the private socket permissions have been installed.
-
-proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
-    header: "<sys/socket.h>".}
-  ## Admit at most one connection per dispatcher turn.
-
-proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
-    header: "<sys/socket.h>".}
-  ## Read at most the remaining bounded request capacity.
-
-proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
-    header: "<sys/socket.h>".}
-  ## Preserve partial write offsets until the one response drains.
-
 proc effectiveUid(): uint32 {.importc: "geteuid", header: "<unistd.h>".}
   ## The parent directory must belong to this effective OS user.
 
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Process identity is available only through the management schema.
-let
-  GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
-  SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
-  CloseExec {.importc: "FD_CLOEXEC", header: "<fcntl.h>".}: cint
-when defined(macosx):
-  proc setOption(fd, level, option: cint, value: pointer,
-      size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-    ## Darwin suppresses SIGPIPE per descriptor.
-  let SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
-  let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint
-else:
-  let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint
 
 proc removeSocket(server: ManagementServer) =
   ## Never delete an existing or replacement pathname that this lifetime did not bind.
@@ -87,6 +54,7 @@ proc removeSocket(server: ManagementServer) =
     if readStatus(path.toCString(), current) == 0 and S_ISSOCK(Mode(current.st_mode)) and
         current.st_dev == server.identity.st_dev and current.st_ino == server.identity.st_ino:
       discard unlink(path.toCString()) # Device/inode equality confines cleanup to the owned socket.
+
 
 proc `=copy`*(destination: var ManagementServer, source: ManagementServer) {.error: "ManagementServer owns sockets".}
   ## Copying an aggregate must not duplicate native ownership.
@@ -135,18 +103,6 @@ proc close*(server: var ManagementServer) =
   server.path = ""
   server.resources.close()
   server.info = default(ManagementInfo)
-
-proc nonblocking(fd: cint): bool =
-  ## Install nonblocking and close-on-exec before any IO can become visible.
-  let flags = fcntl(fd, F_GETFL, 0)
-  let descriptorFlags = fcntl(fd, GetFd, 0)
-  if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or
-      fcntl(fd, SetFd, descriptorFlags or CloseExec) < 0: return false
-  when defined(macosx):
-    var enabled = 1.cint
-    if setOption(fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
-      return false # Signal suppression is part of successful socket configuration.
-  true
 
 proc start*(server: var ManagementServer, path: string, info: ManagementInfo): bool =
   ## Empty disables management. Otherwise require an absolute path in a private existing directory.
@@ -275,16 +231,10 @@ proc tick*(server: var ManagementServer) =
         for index in 0..<count: slot.input.add(bytes[index]) # Only initialized receive bytes enter owned storage.
         slot.process(server.info)
       elif count == 0: slot.close()
-      elif osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(
-          EINTR)]: slot.close()
+      elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len > 0:
-      var flags = 0.cint
-      when not defined(macosx): flags = NoSignal # Linux suppression applies per send.
-      let bytes = slot.output.toCString()
-      let sent = sendBytes(slot.fd, cast[pointer](cast[uint](bytes) + uint(slot.offset)),
-        csize_t(slot.output.len - slot.offset), flags)
-      if sent > 0:
-        slot.offset += sent
-        if slot.offset == slot.output.len: slot.close() # One complete reply retires the connection.
-      elif sent == 0 or osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK),
-          OSErrorCode(EINTR)]: slot.close()
+      let written = writePending(slot.fd, slot.output, slot.offset)
+      if written == WriteComplete:
+        slot.close() # One complete reply retires the connection.
+      elif written == WriteFailed:
+        slot.close() # Permanent errors retire only this service's connection.
