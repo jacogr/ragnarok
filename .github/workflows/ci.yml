@@ -71,10 +71,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - &ubuntu-x86-version ubuntu-26.04
-        family: ${{ fromJSON(inputs.suite == 'tooling' && '[{"name":"Tooling","group":"python","platform":""}]' || (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]' || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]' || inputs.suite == 'build' && '[{"name":"Linux & Docker","group":"binary","platform":"linux-amd64"},{"name":"macOS","group":"binary","os":"macos-15","platform":"macos-arm64"}]' || '[{"name":"Smoke","group":"smoke","platform":""}]') }}
-    runs-on: ${{ matrix.family.os || matrix.os }}
+        runner:
+          - x86: &ubuntu-x86-version ubuntu-26.04
+            arm: &ubuntu-arm-version ubuntu-26.04-arm
+        family: >-
+          ${{ fromJSON(
+            inputs.suite == 'tooling' && '[{"name":"Tooling","group":"python","platform":""}]'
+            || (inputs.suite == 'docker' || github.event.label.name == 'ci:docker') && '[{"name":"Docker","group":"docker","platform":""}]'
+            || (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'full') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:full')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
+            || ((github.event_name == 'workflow_dispatch' && inputs.suite == 'unit') || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && github.event.label.name == 'ci:unit')) && '[{"name":"Smoke","group":"smoke","platform":""},{"name":"Tooling","group":"python","platform":""},{"name":"Linux Checks","group":"checks","platform":"linux-amd64"}]'
+            || inputs.suite == 'build' && '[{"name":"Linux x86-64","group":"binary","platform":"linux-amd64"},{"name":"Linux ARM64","group":"binary","platform":"linux-arm64"},{"name":"macOS ARM64","group":"binary","os":"macos-15","platform":"macos-arm64"},{"name":"Docker","group":"docker","platform":""}]'
+            || '[{"name":"Smoke","group":"smoke","platform":""}]'
+          ) }}
+    runs-on: ${{ matrix.family.os || (matrix.family.platform == 'linux-arm64' && matrix.runner.arm || matrix.runner.x86) }}
     steps:
       - &checkout
         name: Checkout
@@ -114,7 +123,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-python-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-python-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -133,7 +142,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-models-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-models-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -155,7 +164,7 @@ jobs:
         if: ${{ always() && matrix.family.group == 'python' }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-guards-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-guards-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
@@ -201,19 +210,19 @@ jobs:
         if: ${{ always() && (matrix.family.group == 'checks' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
         uses: *upload-artifact
         with:
-          name: ${{ matrix.family.os || matrix.os }}-modules-${{ github.run_attempt }}
+          name: ${{ matrix.family.os || matrix.runner.x86 }}-modules-${{ github.run_attempt }}
           retention-days: 7
           if-no-files-found: ignore
           path: |
             build/ci/*.log
             build/tests/modules/*.log
             build/tests/modules/results.json
-      # The image keeps its isolated build and still runs after a native archive failure.
+      # The container owns an independent image build and runtime smoke checks.
       - name: Build and smoke-test Docker image
-        if: ${{ !cancelled() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        if: ${{ !cancelled() && matrix.family.group == 'docker' }}
         run: make check-docker
       - name: Retain Docker build diagnostics
-        if: ${{ always() && (matrix.family.group == 'docker' || (matrix.family.group == 'binary' && matrix.family.platform == 'linux-amd64')) }}
+        if: ${{ always() && matrix.family.group == 'docker' }}
         uses: *upload-artifact
         with:
           name: docker-${{ github.run_attempt }}
@@ -495,7 +504,7 @@ jobs:
         family:
           - name: Linux ARM64
             arch: arm64
-            os: &ubuntu-arm-version ubuntu-26.04-arm
+            os: *ubuntu-arm-version
           - name: Linux x86-64
             arch: x86_64
             os: *ubuntu-x86-version
