@@ -12,6 +12,18 @@
       ],
       "system": "Linux"
     },
+    "linux_arm64": {
+      "binary_sha256": "90bd269553d258e80b19e3ccab4f98f0831f87442a2f056510ce24fd1b425fc2",
+      "download": {
+        "sha256": "a96dbfa41d3ef5dbd1ef22b1c10d5187be9267e86093a870f06402a7ec931596",
+        "url": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz"
+      },
+      "machines": [
+        "aarch64",
+        "arm64"
+      ],
+      "system": "Linux"
+    },
     "macos_arm64": {
       "binary_sha256": "10b6243df618d374bb2d5c9cfbe7052e1405f6aa4e53a6164f11a91b9f2e1384",
       "download": {
