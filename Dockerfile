@@ -9,7 +9,8 @@ FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f57
 # The production image is qualified on Linux x86-64; other architectures use separate local trials.
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64
-RUN apt-get update && apt-get install --no-install-recommends -y \
+COPY tools/download_retry.sh /usr/local/bin/download-retry
+RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
     build-essential ca-certificates clang cmake git lld make openssl python3 xz-utils zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -26,17 +27,17 @@ COPY . .
 
 # Optional storage-only resource probe: provision and compile before enforcing run-time RAM limits.
 FROM sources AS paged-resources
-RUN make build-storage-paged-resources
+RUN --mount=type=secret,id=github_token make build-storage-paged-resources
 
 # Full graphs use independent outside-pressure fixture maps and fresh bounded native execs.
 FROM sources AS full-paged-resources
-RUN make build-storage-full-paged-resources
+RUN --mount=type=secret,id=github_token make build-storage-full-paged-resources
 
 # The ordinary peer builder retains its complete transport and packaging preparation.
 FROM sources AS builder
-RUN git rev-parse --verify HEAD && make build
+RUN --mount=type=secret,id=github_token git rev-parse --verify HEAD && make build
 # C ABI libraries have absolute DT_NEEDED entries; package names and a binary-relative runpath.
-RUN apt-get update && apt-get install --no-install-recommends -y patchelf \
+RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y patchelf \
     && mkdir /out && cp /src/build/ragnarok /out/ragnarok \
     && patchelf \
       --replace-needed /src/build-tools/crypto/libragnarok_crypto.so libragnarok_crypto.so \
@@ -47,9 +48,11 @@ RUN apt-get update && apt-get install --no-install-recommends -y patchelf \
 
 # Ship only the peer, its maintained native ABIs and the required system runtime libraries.
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac AS runtime
-RUN apt-get update && apt-get install --no-install-recommends -y \
+COPY --from=sources /usr/local/bin/download-retry /usr/local/bin/download-retry
+RUN sh /usr/local/bin/download-retry apt-get update && sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
     ca-certificates libgcc-s1 libstdc++6 zlib1g \
     && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/local/bin/download-retry \
     && groupadd --gid 10001 ragnarok \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home ragnarok \
     && mkdir /data && chown 10001:10001 /data

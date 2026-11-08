@@ -27,10 +27,15 @@ import setup_nimony
 class MakeHarness(unittest.TestCase):
     def test_docker_build_and_smoke_failures_remain_authoritative(self):
         """The isolated image path never provisions the host or hides build/runtime failure behind tee."""
-        for failure in ('', 'build', '--selftest'):
-            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+        for failure, token_name in (('', None), ('', 'GH_TOKEN'), ('', 'GITHUB_TOKEN'),
+                                    ('build', 'GH_TOKEN'), ('--selftest', 'GH_TOKEN')):
+            with self.subTest(failure=failure, token_name=token_name), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+                (folder/'tools').mkdir()
+                for helper in ('download_retry.py', 'toolchain_archives.py'):
+                    shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
+                (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
                 (folder/'spec').mkdir()
                 shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
                 docker = folder/'docker'
@@ -44,11 +49,21 @@ sys.exit(7 if failure and failure in sys.argv[1:] else 0)
 """)
                 docker.chmod(0o755)
                 environment = dict(os.environ, FAIL_DOCKER=failure)
+                environment.pop('GH_TOKEN', None)
+                environment.pop('GITHUB_TOKEN', None)
+                if token_name:
+                    # Credential values stay in the parent environment; only the variable name enters argv.
+                    environment[token_name] = 'fixture-download-token'
                 result = subprocess.run(['make', 'check-docker', 'DOCKER='+str(docker)],
                                         cwd=folder, env=environment, capture_output=True, text=True)
                 calls = [json.loads(line) for line in (folder/'calls').read_text().splitlines()]
                 self.assertEqual(result.returncode == 0, not failure, result.stdout+result.stderr)
                 self.assertEqual(calls[0][0], 'build')
+                if token_name:
+                    self.assertIn('id=github_token,env='+token_name, calls[0])
+                else:
+                    self.assertNotIn('--secret', calls[0])
+                self.assertNotIn('fixture-download-token', json.dumps(calls)+result.stdout+result.stderr)
                 self.assertEqual(calls[0][calls[0].index('--platform')+1], 'linux/amd64')
                 image = calls[0][calls[0].index('--tag')+1]
                 if failure == 'build':
@@ -129,6 +144,10 @@ assert not any(name.startswith('test_') for name in sys.modules)
             with self.subTest(system=system, ready=ready, failure=failure, timeout=timeout), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+                (folder/'tools').mkdir()
+                for helper in ('download_retry.py', 'toolchain_archives.py'):
+                    shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
+                (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
                 (folder/'spec').mkdir()
                 shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
                 binary = folder/'bin'
@@ -166,6 +185,7 @@ if os.environ['FIXTURE_FAILURE'] == stage:
                     command.write_text(stub)
                     command.chmod(0o755)
                 environment = dict(os.environ, PATH=str(binary)+os.pathsep+os.environ['PATH'],
+                    PYTHONPATH=str(folder),
                     FIXTURE_SYSTEM=system, FIXTURE_READY=str(int(ready)),
                     FIXTURE_FAILURE=failure, FIXTURE_TIMEOUT=str(int(timeout)))
                 result = subprocess.run(['make', 'host-tools', 'PYTHON='+sys.executable], cwd=folder,
@@ -206,6 +226,8 @@ if os.environ['FIXTURE_FAILURE'] == stage:
             (folder/'spec').mkdir()
             shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
             (folder/'tools').mkdir()
+            for helper in ('download_retry.py', 'toolchain_archives.py'):
+                shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
             shutil.copyfile(ROOT/'tools/python-test-requirements.txt', folder/'tools/python-test-requirements.txt')
             (folder/'tests').mkdir()
             (folder/'bin').mkdir()
@@ -263,7 +285,9 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 'class Fixture(unittest.TestCase):\n'
                 '    # Discovery itself is the behavior exercised by this fixture.\n'
                 '    def test_discovery(self): pass\n')
-            environment = {**os.environ, 'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
+            (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
+            environment = {**os.environ, 'PYTHONPATH': str(folder),
+                           'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
                            'CI': '', 'UI_MINIFY': '0'}
             # The Python environment installer is an external boundary: never run pip/network here.
             python = folder/'bin/python'

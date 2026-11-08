@@ -18,7 +18,10 @@ make
 ```
 
 The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
-select exact official archives and SHA-256 checksums; no upstream installer runs. Both local
+select exact official archives and SHA-256 checksums; no upstream installer runs. Record the
+matching GitHub release asset API URL when updating a release archive pin, so transient browser
+download failures can use the same pinned bytes through the API. API requests use available
+`GH_TOKEN`/`GITHUB_TOKEN` credentials; Docker Make targets pass them through a BuildKit secret. Both local
 setup and CI use the same host/identity/version checks. Compilers, model tools and native libraries
 stay under ignored `build-tools/`.
 
@@ -47,7 +50,7 @@ or use force/reset to discard local source work.
 
 `source build-tools/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
 PATH entries. Make activates this managed environment for compiler/formatter commands. Nimpretty comes from
-pinned Nim 2.2.12, but its compiler is not exported or supported as a production target. Its generic
+pinned Nim 2.4.1, but its compiler is not exported or supported as a production target. Its generic
 banner is 0.2; archive and installed binary hashes retain its provenance.
 
 ## Verification and formatting

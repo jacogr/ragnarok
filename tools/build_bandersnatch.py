@@ -12,6 +12,7 @@ import platform
 import subprocess
 from native_dependencies import ROOT, require_submodule, run
 from managed_tools import native_cache
+from download_retry import run as acquire
 
 BUILD = ROOT/'build-tools/bandersnatch'
 LOGS = ROOT/'build/ci/native/bandersnatch'
@@ -55,7 +56,7 @@ def build_native(fetch):
     with native_cache(BUILD, inputs, [['rustc', '-vV'], ['cargo', '--version']], (library,)):
         with (LOGS / 'build.log').open('w') as log:
             if fetch:
-                run(['cargo','fetch','--locked','--manifest-path',manifest],log)
+                acquire(['cargo','fetch','--locked','--manifest-path',manifest], stdout=log, stderr=log)
             features = subprocess.check_output(['cargo','tree','--locked','--offline','--manifest-path',str(manifest),'-e','features'],text=True)
             assert 'test-vectors' not in features, 'Unsafe deterministic/non-ZK ring features must never build'
             assert 'secret-split' in features

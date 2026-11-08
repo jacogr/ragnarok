@@ -15,6 +15,7 @@ import subprocess
 import tomllib
 from native_dependencies import ROOT, require_submodule
 from managed_tools import native_cache
+from download_retry import run as acquire
 
 
 def build_native():
@@ -31,7 +32,7 @@ def build_native():
     rust = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
     target = ROOT/'build-tools/polkavm'
     target.mkdir(parents=True, exist_ok=True)
-    command = ['rustup', 'run', rust, 'cargo', 'build', '--release', '--locked',
+    command = ['rustup', 'run', rust, 'cargo', 'build', '--release', '--locked', '--offline',
                '--manifest-path', str(ROOT/'native/polkavm/Cargo.toml'), '--target-dir', str(target)]
     logs = ROOT/'build/ci/native/polkavm'
     logs.mkdir(parents=True, exist_ok=True)
@@ -42,6 +43,9 @@ def build_native():
     tools = [['rustup', 'run', rust, 'rustc', '-vV'], ['rustup', 'run', rust, 'cargo', '--version']]
     with native_cache(target, inputs, tools, (library,)):
         with (logs/'build.log').open('w') as log:
+            # Retry acquisition independently before either native compilation or tests.
+            acquire(['rustup', 'run', rust, 'cargo', 'fetch', '--locked', '--manifest-path',
+                     str(ROOT/'native/polkavm/Cargo.toml')], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
             # ABI trust-boundary and reset/ownership tests run before a library can enter the application.
             tests = command.copy()
             tests[4] = 'test'

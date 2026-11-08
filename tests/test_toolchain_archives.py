@@ -59,11 +59,87 @@ class ArchiveDownloads(unittest.TestCase):
                 self.assertEqual(self.archive.read_bytes(), self.data)
                 self.assertEqual(self.open.call_args_list,
                                  [call(self.pin['url'], timeout=60)]*2)
-                self.sleep.assert_called_once_with(1)
+                self.sleep.assert_called_once_with(5)
                 self.assertTrue(response.closed)
                 self.assertTrue(failure.closed)
-        self.assertIn('attempt 1/3', self.diagnostics.getvalue())
+        self.assertIn('attempt 1/5', self.diagnostics.getvalue())
         self.assertIn(self.pin['url'], self.diagnostics.getvalue())
+
+    def test_gateway_recovers_on_fifth_attempt(self):
+        """A gateway can recover after all four waits without publishing earlier failed responses."""
+        self.open.side_effect = [*[self.http_error(504) for _ in range(4)], io.BytesIO(self.data)]
+        self.assertEqual(self.fetch(), self.data)
+        self.assertEqual(self.archive.read_bytes(), self.data)
+        self.assertEqual(self.open.call_count, 5)
+        self.assertEqual(self.sleep.call_args_list, [call(5), call(15), call(45), call(90)])
+
+    def test_asset_api_recovers_same_pinned_archive(self):
+        """A failed browser route can use the recorded release asset without selecting another version."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        self.open.side_effect = [self.http_error(504), io.BytesIO(self.data)]
+        self.assertEqual(self.fetch(), self.data)
+        self.assertEqual(self.archive.read_bytes(), self.data)
+        first, second = self.open.call_args_list
+        self.assertEqual(first, call(self.pin['url'], timeout=60))
+        request = second.args[0]
+        self.assertEqual(request.full_url, self.pin['api_url'])
+        self.assertEqual(request.get_header('Accept'), 'application/octet-stream')
+        self.sleep.assert_not_called()
+
+    def test_asset_api_cannot_authorize_different_bytes(self):
+        """An API metadata response or replaced asset fails the same checksum before caching."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        self.open.side_effect = [self.http_error(504), io.BytesIO(b'{"metadata":"not the archive"}')]
+        with self.assertRaises(AssertionError):
+            self.fetch()
+        self.assertEqual(self.open.call_count, 2)
+        self.sleep.assert_not_called()
+        self.assertFalse(self.archive.exists())
+
+    def test_api_rate_limit_backs_off_after_both_routes(self):
+        """GitHub quota refusals retry the whole pair without treating ordinary forbidden responses as transient."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        limited = urllib.error.HTTPError(self.pin['api_url'], 403, 'rate limit exceeded',
+                                        {'X-RateLimit-Remaining': '0'}, None)
+        self.open.side_effect = [self.http_error(504), limited, self.http_error(504), io.BytesIO(self.data)]
+        self.sleep.side_effect = lambda delay: self.assertEqual(self.open.call_count, 2)
+        self.assertEqual(self.fetch(), self.data)
+        self.sleep.assert_called_once_with(5)
+        self.assertEqual(self.open.call_count, 4)
+
+    def test_api_token_is_not_forwarded_to_asset_host(self):
+        """Only the initial GitHub API request receives the read token, never its signed redirect."""
+        with patch.dict(toolchain_archives.os.environ, {'GH_TOKEN': 'fixture-token'}, clear=True):
+            request = toolchain_archives.asset_request('https://api.github.com/repos/owner/repo/releases/assets/123')
+            foreign = toolchain_archives.asset_request('https://example.invalid/archive')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer fixture-token')
+        self.assertIsNone(foreign.get_header('Authorization'))
+        redirected = urllib.request.HTTPRedirectHandler().redirect_request(
+            request, None, 302, 'Found', {}, 'https://release-assets.githubusercontent.com/archive')
+        self.assertIsNone(redirected.get_header('Authorization'))
+
+    def test_api_reads_ephemeral_docker_secret(self):
+        """Docker downloads can authenticate through a mounted file without an image environment token."""
+        secret = self.folder/'github-token'
+        secret.write_text('fixture-buildkit-token\n')
+        with patch.dict(toolchain_archives.os.environ, {}, clear=True), patch.object(
+                toolchain_archives, 'GITHUB_TOKEN_FILE', secret):
+            request = toolchain_archives.asset_request('https://api.github.com/repos/owner/repo/releases/assets/123')
+        self.assertEqual(request.get_header('Authorization'), 'Bearer fixture-buildkit-token')
+
+    def test_routes_share_one_attempt_budget(self):
+        """Two delivery routes still permit only five request pairs and retain the final failure."""
+        self.pin['api_url'] = 'https://api.github.com/repos/owner/repo/releases/assets/123'
+        errors = [self.http_error(504) for _ in range(10)]
+        self.open.side_effect = errors
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.fetch()
+        self.assertIs(caught.exception, errors[-1])
+        addresses = [request.args[0].full_url if isinstance(request.args[0], urllib.request.Request)
+                     else request.args[0] for request in self.open.call_args_list]
+        self.assertEqual(addresses, [self.pin['url'], self.pin['api_url']]*5)
+        self.assertEqual(self.sleep.call_args_list, [call(5), call(15), call(45), call(90)])
+        self.assertFalse(self.archive.exists())
 
     def test_transport_failures_retry_without_retaining_partial_response(self):
         """Timeouts, refused connections and interrupted body reads discard the whole failed attempt."""
@@ -77,7 +153,7 @@ class ArchiveDownloads(unittest.TestCase):
                 self.open.side_effect = [error, io.BytesIO(self.data)]
                 self.assertEqual(self.fetch(), self.data)
                 self.assertEqual(self.open.call_count, 2)
-                self.sleep.assert_called_once_with(1)
+                self.sleep.assert_called_once_with(5)
         self.archive.unlink()
         partial = io.BytesIO(b'unverified partial body')
         with patch.object(partial, 'read', side_effect=http.client.IncompleteRead(b'partial', 20)):
@@ -88,16 +164,16 @@ class ArchiveDownloads(unittest.TestCase):
         self.assertEqual(self.archive.read_bytes(), self.data)
 
     def test_exhaustion_raises_original_error_and_leaves_no_cache(self):
-        """Repeated gateway failures stop after three requests and two short waits."""
-        failures = [self.http_error(504) for _ in range(3)]
+        """Repeated gateway failures stop after five requests and all four configured waits."""
+        failures = [self.http_error(504) for _ in range(5)]
         self.open.side_effect = failures
         with self.assertRaises(urllib.error.HTTPError) as caught:
             self.fetch()
         self.assertIs(caught.exception, failures[-1])
-        self.assertEqual(self.open.call_count, 3)
-        self.assertEqual(self.sleep.call_args_list, [call(1), call(2)])
+        self.assertEqual(self.open.call_count, 5)
+        self.assertEqual(self.sleep.call_args_list, [call(5), call(15), call(45), call(90)])
         self.assertEqual(list(self.folder.iterdir()), [])
-        self.assertIn('attempt 3/3', self.diagnostics.getvalue())
+        self.assertIn('attempt 5/5', self.diagnostics.getvalue())
 
     def test_permanent_http_errors_never_retry(self):
         """Missing/forbidden assets and unsupported HTTP services remain immediate source/setup failures."""
@@ -145,7 +221,7 @@ class ArchiveDownloads(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.fetch()
         self.assertEqual(self.open.call_count, 2)
-        self.sleep.assert_called_once_with(1)
+        self.sleep.assert_called_once_with(5)
         self.assertEqual(list(self.folder.iterdir()), [])
 
     def test_local_cache_publication_failure_is_not_a_network_retry(self):

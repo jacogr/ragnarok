@@ -13,8 +13,10 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import shutil
 import tempfile
 
+from download_retry import run as acquire
 from pvm_performance_report import (ARCHITECTURES, SCHEMA, _atomic_text, validate_current_report,
                                     publish_report, render_summary, validate_report)
 
@@ -36,8 +38,22 @@ def _repository(repo):
 
 def _gh(arguments):
     """Use only authenticated GitHub CLI reads; do not implement credential or HTTP handling."""
-    result = subprocess.run(['gh', *arguments], check=False, capture_output=True, text=True,
-                            timeout=180)
+    if arguments[:2] == ['run', 'download']:
+        destination = Path(arguments[arguments.index('--dir')+1])
+        def discard_partial():
+            """Only the caller-owned temporary architecture directory is retired on a failed attempt."""
+            if destination.exists():
+                shutil.rmtree(destination)
+            destination.mkdir()
+        try:
+            result = acquire(['gh', *arguments], capture_output=True, text=True, timeout=180,
+                             before_retry=discard_partial)
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError('gh read failed: '+error.stderr[-2000:]) from error
+    else:
+        # Metadata reads retain their own validation; download retries never substitute older evidence.
+        result = subprocess.run(['gh', *arguments], check=False, capture_output=True, text=True,
+                                timeout=180)
     if result.returncode:
         raise RuntimeError('gh read failed: '+result.stderr[-2000:])
     return result.stdout

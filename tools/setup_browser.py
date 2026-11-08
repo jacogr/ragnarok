@@ -11,8 +11,8 @@ import os
 from pathlib import Path
 import platform
 import shutil
-import subprocess
 from toolchain_archives import ROOT
+from download_retry import run as acquire
 
 DESTINATION = ROOT/'build/browser'
 
@@ -47,7 +47,7 @@ def prepare():
             target.write_bytes(data)
             changed = True
     if changed or not (DESTINATION/'node_modules/playwright/package.json').exists():
-        subprocess.run(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'],
+        acquire(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'],
                        cwd=DESTINATION, check=True)
     selected = system_browser()
     if not selected:
@@ -55,7 +55,7 @@ def prepare():
                    '--only-shell', 'chromium']
         if platform.system() == 'Linux':
             command.insert(-1, '--with-deps') # Clean Linux hosts receive browser OS libraries too.
-        subprocess.run(command, env=browser_environment(), check=True)
+        acquire(command, env=browser_environment())
     (DESTINATION/'chrome-path.txt').write_text(selected)
     print('Browser UI test tools ready')
 
