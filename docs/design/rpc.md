@@ -92,3 +92,16 @@ An independently optional `src/management/` HTTP listener serves privileged loca
 methods over a permission-controlled Unix domain socket. Its registry has no overlap with WS
 RPC. Only strict JSON/UTF-8 utilities are shared; neither management transport nor its startup
 metadata retains canonical graph owners. See [management RPC](../../spec/management-rpc.md).
+
+
+The stock WebSocket implementation draft adds a detached transport mode to the same RPC owner.
+Eight per-connection byte mailboxes reserve output credit before canonical dispatch and retain it
+through writer completion. Generation checks bind each reservation to its own session and make
+late completion inert after slot reuse. Transport tasks own split socket halves and serialized
+bytes; the dispatcher alone constructs `ClientInfo`, mutates sessions and touches canonical views.
+Chain leases refuse dispatch before those operations. Passive callbacks can execute on the caller
+thread, so thread identity grants no canonical authority; the owner polls IO before dispatcher
+entry. Stop freezes admission and retires mailboxes, while joining socket tasks and managing the
+process-wide runtime remain the caller's responsibility. The default Services listener has not
+switched; cancellation, deadline/error parity and library retirement gates are recorded in the
+[implementation contract](../../spec/websocket-adoption.md).

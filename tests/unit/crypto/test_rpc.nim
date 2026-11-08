@@ -2316,6 +2316,87 @@ proc publicationLifecycle() =
   owner.close() # Shutdown remains idempotent after successful publications.
 
 publicationLifecycle()
+
+block reservationGeneration:
+  # A transport can reuse a slot after snapshot and before the dispatcher reserves its input.
+  var bridge = default(transport.RpcTransportBridge)
+  var original, replacement = default(transport.BridgeTicket)
+  assert bridge.open(0, original) == transport.Ready
+  var slot = default(Connection)
+  slot.bindTransportSlot(original)
+  assert respond(SubscribeBest, withGenesis, slot.session) == SubscribedBest
+  assert bridge.close(original) == transport.Ready
+  assert bridge.open(0, replacement) == transport.Ready
+  var grant = default(transport.BridgeDispatch)
+  var incoming = default(transport.BridgeMessage)
+  assert bridge.reserve(0, grant, incoming) == transport.Ready
+  slot.bindTransportSlot(grant.ticket)
+  assert slot.session.nextUpdate() == "", "new reservation cannot inherit an earlier generation's subscription"
+  assert respond(UnsubscribeBest, withGenesis, slot.session) == UnsubscribedBest.replace("true", "false")
+  assert bridge.close(replacement) == transport.Ready
+  slot.close()
+
+block detachedTransport:
+  # Exercise the real RPC/session/publication owner through detached transport bytes.
+  var owner = default(Server)
+  var bridge = default(transport.RpcTransportBridge)
+  assert owner.startTransport(9944, "bridge", genesisParameters, capturedGenesis)
+  var first, slow = default(transport.BridgeTicket)
+  assert bridge.open(0, first) == transport.Ready
+  assert bridge.open(1, slow) == transport.Ready
+  var firstCall = transport.BridgeMessage(kind: transport.Text, payload: SubscribeBest)
+  var slowCall = transport.BridgeMessage(kind: transport.Text, payload: SubscribeBest)
+  assert bridge.publish(first, firstCall) == transport.Ready
+  assert bridge.publish(slow, slowCall) == transport.Ready
+  let pause = owner.pauseChain()
+  assert pause != nil
+  assert owner.dispatchTransport(bridge, 0) == 0
+  assert not owner.closeTransport(bridge)
+  assert owner.resumeChain(pause)
+  assert owner.dispatchTransport(bridge, 0) == 2
+  var firstWrite, slowWrite = default(transport.BridgeWrite)
+  var reply = default(transport.BridgeMessage)
+  assert bridge.take(first, firstWrite, reply) == transport.Ready
+  assert reply.kind == transport.Text and reply.payload == SubscribedBest
+  assert bridge.take(slow, slowWrite, reply) == transport.Ready
+  assert reply.payload == SubscribedBest
+  assert owner.publishBlock(historyChild) == ViewAdvanceError.None
+  assert owner.dispatchTransport(bridge, 0) == 0 # In-flight replies retain their output credit.
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  assert owner.dispatchTransport(bridge, 0) == 1
+  assert bridge.take(first, firstWrite, reply) == transport.Ready
+  assert reply.payload == initialBestUpdate # Initial event precedes the queued publication.
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  assert owner.dispatchTransport(bridge, 0) == 1
+  assert bridge.take(first, firstWrite, reply) == transport.Ready
+  assert reply.payload == initialBestUpdate.replace(genesisHash, childHashText).replace(
+    "\"slot\":7", "\"slot\":9")
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  assert bridge.close(first) == transport.Ready
+  var replacement = default(transport.BridgeTicket)
+  assert bridge.open(0, replacement) == transport.Ready
+  var query = transport.BridgeMessage(kind: transport.Text, payload: request)
+  assert bridge.publish(replacement, query) == transport.Ready
+  discard owner.dispatchTransport(bridge, 0)
+  assert bridge.complete(firstWrite, false) == transport.Stale
+  assert bridge.take(replacement, firstWrite, reply) == transport.Ready
+  assert "\"subscriptionState\":{\"active\":0" in reply.payload
+  assert bridge.complete(firstWrite, true) == transport.Ready
+  var overflowed = false
+  for atSlot in 10'u32..26'u32:
+    # The healthy replacement remains usable while the stalled subscriber exhausts its FIFO.
+    let child = childSnapshot(owner.chain.bestBlock.value, atSlot, genesisParameters.value)
+    let wasOpen = owner.connections[1].opened
+    assert owner.publishBlock(child) == ViewAdvanceError.None
+    if wasOpen and not owner.connections[1].opened: overflowed = true
+    discard owner.dispatchTransport(bridge, 0)
+  assert overflowed and owner.connections[0].opened
+  assert bridge.snapshot(1, slow) == transport.Empty
+  assert bridge.complete(slowWrite, false) == transport.Stale
+  assert owner.closeTransport(bridge)
+  assert bridge.open(0, replacement) == transport.Closed
+  owner.close() # Native-style idempotent close is safe after detached retirement.
+
 echo "rpc ok"
 
 # Moving the listener also transfers every accepted connection cleanup obligation.
