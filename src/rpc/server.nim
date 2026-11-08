@@ -8,6 +8,7 @@
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
+import ../lib/socket_io
 import ./[wire, protocol, proof_requests]
 import ./light_source
 from ../codec/state/trie as state_trie import StateRoot
@@ -82,49 +83,6 @@ func chainFailure*(outcome: RpcAccumulationResult): AccumulationChainResult {.in
     requires: outcome.status == RpcAccumulationError.ChainFailure.} =
   ## Inspect only an actual failed state/chain adoption, preserving its nested guarded causes.
   outcome.chainReason
-
-proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
-  ## POSIX APIs borrow bounded stack values only for their synchronous nonblocking syscall.
-
-proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
-    header: "<sys/socket.h>".}
-  ## Bind the descriptor to the borrowed socket address, returning the native status.
-
-proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
-  ## Enable incoming connections with the requested native listen backlog.
-
-proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
-    header: "<sys/socket.h>".}
-  ## Accept one incoming connection without retaining the optional peer-address pointers.
-
-proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
-    header: "<sys/socket.h>".}
-  ## Read socket bytes into the caller-owned buffer and return the native byte count or error.
-
-proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
-    header: "<sys/socket.h>".}
-  ## Send from a borrowed byte buffer and return the native byte count or error.
-
-proc setOption(fd, level, option: cint, value: pointer,
-    size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-  ## Apply one native socket option from the borrowed option-value buffer.
-
-proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
-    header: "<arpa/inet.h>".}
-  ## Parse an IP address into caller-owned native storage using the selected address family.
-
-proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
-  ## Convert a host-order port to the native network byte order.
-let
-  GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
-  SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
-  CloseExec {.importc: "FD_CLOEXEC", header: "<fcntl.h>".}: cint
-  SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
-  ReuseAddress {.importc: "SO_REUSEADDR", header: "<sys/socket.h>".}: cint
-when defined(macosx):
-  let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint # Per-descriptor SIGPIPE suppression.
-else:
-  let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint # Per-send Linux suppression.
 
 proc `=copy`*(destination: var Server, source: Server) {.error: "RPC Server owns socket descriptors".}
   ## Composite owner is explicitly non-copyable: copying slots would duplicate native descriptor ownership.
@@ -256,18 +214,6 @@ proc finishStateProof*(server: var Server, dispatch: RpcProofDispatch, root: Sta
   if not server.connections[index].session.completeStateProof(dispatch.selection, root, wire, failure):
     server.connections[index].close() # Byte/count overflow retires only the slow originating consumer.
     return false
-  true
-
-proc nonblocking(fd: cint): bool =
-  ## Configure descriptor flags before any network operation; failed configuration leaves ownership with caller.
-  let flags = fcntl(fd, F_GETFL, 0)
-  let descriptorFlags = fcntl(fd, GetFd, 0)
-  if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or
-      fcntl(fd, SetFd, descriptorFlags or CloseExec) < 0: return false
-  when defined(macosx): # BSD requires an explicit socket option to avoid process termination on send.
-    var enabled = 1.cint
-    if setOption(fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) != 0:
-      return false
   true
 
 proc start*(server: var Server, port: uint16, role: string,
@@ -580,7 +526,7 @@ proc tick*(server: var Server, peers: uint32) =
         continue
       if count < 0:
         let error = osLastError()
-        if error notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(EINTR)]:
+        if not retryableSocketError(error):
           slot.close()
           continue
       else:
@@ -602,28 +548,16 @@ proc tick*(server: var Server, peers: uint32) =
         slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
     if not slot.opened or slot.output.len == 0:
       continue
-    var flags = 0.cint
-    when not defined(macosx):
-      # Linux protects each send independently.
-      flags = NoSignal
-    let data = slot.output.toCString()
-    let sent = sendBytes(slot.fd, cast[pointer](cast[uint](data) + uint(slot.offset)),
-        csize_t(slot.output.len - slot.offset), flags)
-    if sent > 0:
-      slot.offset += sent
-      if slot.offset == slot.output.len: # All response bytes were handed to the kernel.
-        slot.output = ""; slot.offset = 0
-        if slot.closing:
-          slot.close()
-        elif slot.input.len == 0 and not slot.fragmented:
-          slot.deadline = now + 30000
-    elif sent == 0:
-      # A zero-progress send cannot spin indefinitely.
-      slot.close()
-    else:
-      let error = osLastError()
-      if error notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(EINTR)]:
+    let written = writePending(slot.fd, slot.output, slot.offset)
+    if written == WriteComplete: # All response bytes were handed to the kernel.
+      slot.output = ""; slot.offset = 0
+      if slot.closing:
         slot.close()
+      elif slot.input.len == 0 and not slot.fragmented:
+        slot.deadline = now + 30000
+    elif written == WriteFailed:
+      # A zero-progress or permanently failed send cannot spin indefinitely.
+      slot.close()
 
 proc startLight*(server: var Server, port: uint16, role: string, parameters: ParameterResult,
     head: RpcLightHead, disk: bool, uiPort: uint16 = 0,

@@ -9,6 +9,7 @@
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
+import ../lib/socket_io
 
 # Make generates immutable path/data arrays from the staged UI; no runtime asset files are read.
 include ../../build/ui_assets
@@ -30,55 +31,13 @@ type
     fd, root: cint
     connections: array[MaxConnections, Connection]
 
-proc socket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
-  ## Synchronous POSIX calls borrow only bounded storage; accepted sockets are always nonblocking.
-
-proc bindSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "bind",
-    header: "<sys/socket.h>".}
-  ## Bind the descriptor to the borrowed socket address, returning the native status.
-
-proc listenSocket(fd, backlog: cint): cint {.importc: "listen", header: "<sys/socket.h>".}
-  ## Enable incoming connections with the requested native listen backlog.
-
-proc acceptSocket(fd: cint, address, size: nil pointer): cint {.importc: "accept",
-    header: "<sys/socket.h>".}
-  ## Accept one incoming connection without retaining the optional peer-address pointers.
-
-proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
-    header: "<sys/socket.h>".}
-  ## Read socket bytes into the caller-owned buffer and return the native byte count or error.
-
-proc sendBytes(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "send",
-    header: "<sys/socket.h>".}
-  ## Send from a borrowed byte buffer and return the native byte count or error.
-
-proc setOption(fd, level, option: cint, value: pointer,
-    size: SockLen): cint {.importc: "setsockopt", header: "<sys/socket.h>".}
-  ## Apply one native socket option from the borrowed option-value buffer.
-
-proc parseAddress(family: cint, text: cstring, output: pointer): cint {.importc: "inet_pton",
-    header: "<arpa/inet.h>".}
-  ## Parse an IP address into caller-owned native storage using the selected address family.
-
-proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
-  ## Convert a host-order port to the native network byte order.
-
 proc openRelative(fd: cint, path: cstring, flags: cint): cint {.importc: "openat",
     header: "<fcntl.h>".}
   ## Open a path relative to the supplied directory descriptor using the selected flags.
 let
-  GetFd {.importc: "F_GETFD", header: "<fcntl.h>".}: cint
-  SetFd {.importc: "F_SETFD", header: "<fcntl.h>".}: cint
-  CloseExec {.importc: "FD_CLOEXEC", header: "<fcntl.h>".}: cint
   Directory {.importc: "O_DIRECTORY", header: "<fcntl.h>".}: cint
   NoFollow {.importc: "O_NOFOLLOW", header: "<fcntl.h>".}: cint
   OpenCloseExec {.importc: "O_CLOEXEC", header: "<fcntl.h>".}: cint
-  SocketLevel {.importc: "SOL_SOCKET", header: "<sys/socket.h>".}: cint
-  ReuseAddress {.importc: "SO_REUSEADDR", header: "<sys/socket.h>".}: cint
-when defined(macosx):
-  let NoSigpipe {.importc: "SO_NOSIGPIPE", header: "<sys/socket.h>".}: cint # Prevent process-wide SIGPIPE.
-else:
-  let NoSignal {.importc: "MSG_NOSIGNAL", header: "<sys/socket.h>".}: cint # Protect each Linux send.
 
 proc `=copy`*(destination: var UiServer, source: UiServer) {.error: "UI Server owns descriptors".}
   ## Copying a composite owner would duplicate root, socket and streaming-file ownership.
@@ -123,18 +82,6 @@ proc close*(server: var UiServer) =
   if server.rootOpened: discard posix.close(server.root)
   server.opened = false
   server.rootOpened = false
-
-proc nonblocking(fd: cint): bool =
-  ## Configure socket ownership flags before accepting or writing any bytes.
-  let flags = fcntl(fd, F_GETFL, 0)
-  let descriptorFlags = fcntl(fd, GetFd, 0)
-  if flags < 0 or descriptorFlags < 0 or fcntl(fd, F_SETFL, flags or O_NONBLOCK) < 0 or
-      fcntl(fd, SetFd, descriptorFlags or CloseExec) < 0: return false
-  when defined(macosx): # Darwin suppresses SIGPIPE per socket rather than per send.
-    var enabled = 1.cint
-    if setOption(fd, SocketLevel, NoSigpipe, addr enabled, SockLen(sizeof(enabled))) !=
-        0: return false
-  true
 
 proc start*(server: var UiServer, port: uint16, directory = ""): bool =
   ## Port zero disables IO. Empty directory serves embedded assets; a development root pins disk files.
@@ -379,8 +326,7 @@ proc tick*(server: var UiServer) =
         for i in 0..<count: slot.input.add(bytes[i]) # Copy only initialized bytes.
         slot.process(server.root)
       elif count == 0: slot.close()
-      elif osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK), OSErrorCode(
-          EINTR)]: slot.close()
+      elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len == 0 and slot.embedded:
       slot.readEmbedded() # Static data uses the same bounded write buffer and partial-send handling.
     if slot.opened and slot.output.len == 0 and slot.fileOpened:
@@ -391,15 +337,9 @@ proc tick*(server: var UiServer) =
         slot.remaining -= count
       elif count == 0 or osLastError() != OSErrorCode(EINTR): slot.close()
     if slot.opened and slot.output.len > 0:
-      var flags = 0.cint
-      when not defined(macosx): flags = NoSignal # Avoid a process-wide signal policy.
-      let bytes = slot.output.toCString()
-      let sent = sendBytes(slot.fd, cast[pointer](cast[uint](bytes) + uint(slot.offset)),
-          csize_t(slot.output.len - slot.offset), flags)
-      if sent > 0:
-        slot.offset += sent
-        if slot.offset == slot.output.len:
-          slot.output = ""; slot.offset = 0
-          if (not slot.fileOpened and not slot.embedded) or slot.remaining == 0: slot.close() # Last response byte retires both owners.
-      elif sent == 0 or osLastError() notin [OSErrorCode(EAGAIN), OSErrorCode(EWOULDBLOCK),
-          OSErrorCode(EINTR)]: slot.close()
+      let written = writePending(slot.fd, slot.output, slot.offset)
+      if written == WriteComplete:
+        slot.output = ""; slot.offset = 0
+        if (not slot.fileOpened and not slot.embedded) or slot.remaining == 0: slot.close() # Last response byte retires both owners.
+      elif written == WriteFailed:
+        slot.close() # Permanent errors retire only this service's connection.

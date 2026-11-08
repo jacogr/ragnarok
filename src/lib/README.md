@@ -8,6 +8,7 @@ Callers retain their own domain validation, scheduling and resource policy.
 | Module | Contents |
 | --- | --- |
 | [`logging.nim`](logging.nim) | Explicit bounded background diagnostics, lazy level/target filters and counted overload drops |
+| [`socket_io.nim`](socket_io.nim) | Borrowed POSIX stream calls, nonblocking/close-on-exec setup, SIGPIPE suppression and one-send partial-write progress |
 | [`json/writer.nim`](json/writer.nim) | Owned structured JSON values, escaping, object/array separators and full-width integer output |
 | [`atomic/file.nim`](atomic/file.nim) | Bounded regular-file reads and atomic whole-file byte publication with explicit durability outcomes |
 | [`atomic/file/writer.nim`](atomic/file/writer.nim) | Exclusive publication ownership, stable advisory lock files and explicit retirement |

@@ -160,6 +160,37 @@ class NimonyCISafeguards(unittest.TestCase):
                 if step.get('uses', '').startswith('actions/checkout@'):
                     self.assertIs(step.get('with', {}).get('persist-credentials'), False)
 
+    def test_native_archives_and_docker_have_independent_builds(self):
+        """Every supported native platform produces one archive, with container checks on their own runner."""
+        from collections import Counter
+        text = (ROOT/'.github/workflows/ci.yml').read_text()
+        section = job_section(text, 'build')
+        supported = json.loads((ROOT/'spec/toolchain.json').read_text())['platforms']
+        for event in (event_context(), event_context('workflow_dispatch', suite='full'),
+                      event_context('workflow_dispatch', suite='build'),
+                      event_context('pull_request', 'labeled', 'ci:full')):
+            # Scheduling must cover each artifact once and keep Docker independent of native failures.
+            families = selected_families(text, 'build', event)
+            native = [row for row in families if row['group'] == 'binary']
+            self.assertEqual(Counter(row['platform'].replace('-', '_') for row in native),
+                             Counter(supported.keys()))
+            containers = [row for row in families if row['group'] == 'docker']
+            self.assertEqual(len(containers), 1)
+            for family in native+containers:
+                selected = commands(dict(steps=selected_steps(section, family, event)))
+                self.assertEqual(selected.count('make package-binary'), int(family['group'] == 'binary'))
+                self.assertEqual(selected.count('make check-docker'), int(family['group'] == 'docker'))
+            for family in native:
+                # A mislabeled host could publish a valid archive containing the wrong architecture.
+                pin = supported[family['platform'].replace('-', '_')]
+                for runner in section['strategy']['matrix']['runner']:
+                    host = expression(section['runs-on'], dict(event, matrix=dict(family=family, runner=runner)))
+                    if pin['system'] == 'Darwin':
+                        self.assertTrue(host.startswith('macos-'), host)
+                    else:
+                        self.assertTrue(host.startswith('ubuntu-'), host)
+                        self.assertEqual(host.endswith('-arm'), family['platform'] == 'linux-arm64', host)
+
     def test_configured_partitions_cover_inventory_once(self):
         """Changing runner counts cannot lose or duplicate units, corpora or Contract probes."""
         from collections import Counter
@@ -194,7 +225,10 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertGreater(bound, 0)
             self.assertLessEqual(bound, 60) # Deliberate repository execution limit.
             self.assertFalse(section.get('continue-on-error', False))
-            self.assertFalse(any(step.get('continue-on-error', False) for step in section['steps']))
+            # Optional cache transport may fail; every setup/check/evidence step stays authoritative.
+            self.assertFalse(any(step.get('continue-on-error', False)
+                                 for step in section['steps']
+                                 if not step.get('uses', '').startswith('actions/cache@')))
 
     def test_independent_checks_and_diagnostics_survive_prior_failure(self):
         """Explicit status conditions keep independent checks and failed-run logs observable."""

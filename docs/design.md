@@ -29,6 +29,9 @@ in the corresponding `spec/<feature>.md`, not this index or an unrelated module'
 ## Shared boundaries
 
 Shared utilities live in `src/lib/`, including the [JSON writer](../src/lib/json/writer.nim).
+RPC, UI, MCP, management and telemetry share [POSIX socket mechanics](../src/lib/socket_io.nim).
+Services retain descriptor ownership, admission, protocol parsing, deadlines and queue policy;
+the shared module performs no scheduling and each pending-write call sends at most once.
 
 Protocol logic remains native Nim. Private acyclic ARC owners retain immutable snapshots;
 borrowed operations have explicit lifetimes, and failed/default results expose no success payload.

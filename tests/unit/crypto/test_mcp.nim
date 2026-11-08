@@ -154,6 +154,8 @@ block boundedConnections:
   var byteBuffer = default(array[1, char])
   var refused = false
   for attempt in 0..<200:
+    # A client connect can finish before accept is observable; keep driving the real dispatcher.
+    server.tick(context)
     if receive(clients[4], addr byteBuffer[0], 1, 0) == 0:
       refused = true
       break # The local FIN may become observable after the close syscall returns.

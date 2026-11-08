@@ -29,11 +29,12 @@ and restart/replay behavior; see [telemetry verification](../spec/telemetry.md).
 `check-mcp-interop` runs a hash-locked official SDK against the real peer and retains wire
 transcripts; see [MCP verification](../spec/mcp.md#official-sdk-interoperability).
 
-The **Build / Linux & Docker** job packages the Linux x86-64 [binary archive](binaries.md) and
-then builds/smoke-tests the [container image](containers.md) on one `ubuntu-26.04` runner.
-**Build / macOS** packages the ARM64 archive separately. Master pushes, full requests and manual
-`build` requests run both jobs. `ci:docker` and manual `docker` requests run only the container
-check. Separate archives and native/Docker diagnostics are retained; no image is published.
+The **Build / Linux x86-64**, **Build / Linux ARM64** and **Build / macOS ARM64** jobs each
+package and smoke-test their own [native archive](binaries.md). **Build / Docker** independently
+builds and smoke-tests the [container image](containers.md) on the x86-64 Linux runner.
+Master pushes, full requests and manual `build` requests run all four jobs. `ci:docker` and
+manual `docker` requests run only the container check. Each job retains its own diagnostics;
+the native jobs also retain their archive and checksum artifacts.
 
 Each group writes `results.json` and diagnostic logs in its evidence directory. Use
 `make summary-unit`, `make summary-failures`, `make summary-guards`, `make summary-python`,
@@ -47,11 +48,11 @@ complete Nim/Rust formatting and unoptimized semantic compilation of every produ
 import graph, plus the real peer main with integration/offload enabled. Run `make check-smoke`
 locally. Each named workload reports its own result, without separate aggregate jobs.
 Automatic PR updates and manual
-`smoke` requests run Smoke alone. Master/full requests add Tooling, Linux & Docker and macOS.
-Linux & Docker reuses native packaging setup for the checked-release every-source audit. Tooling
+`smoke` requests run Smoke alone. Master/full requests add Tooling and all four platform/container builds.
+Linux x86-64 reuses native packaging setup for the checked-release every-source audit. Tooling
 runs Python references, lifecycle model verification and compiler rejection guards, retaining separate
 summaries/artifacts and independent failures. Smoke remains unchanged. Source audits apply no formatting and link no native libraries. `unit` / `ci:unit` requests select Smoke, Tooling and Linux Checks, preserving source/guard
-coverage without adding binary packaging or Docker. Manual `build` selects Linux & Docker and macOS.
+coverage without adding binary packaging or Docker. Manual `build` selects Linux x86-64, Linux ARM64, macOS ARM64 and Docker.
 
 In the PR sidebar, add one label to request heavier verification of the current PR merge revision:
 
