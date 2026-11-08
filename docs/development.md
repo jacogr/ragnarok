@@ -19,7 +19,23 @@ make
 
 The installer supports Linux x86-64 and macOS ARM64. [Toolchain pins](../spec/toolchain.json)
 select exact official archives and SHA-256 checksums; no upstream installer runs. Both local
-setup and CI use the same host/identity/version checks. Tools stay under ignored `build/toolchain/`.
+setup and CI use the same host/identity/version checks. Compilers, model tools and native libraries
+stay under ignored `build-tools/`.
+
+`make clean` removes project outputs under `build/` and retains the provisioned tools. Use
+`make clean-tools` to remove the retained compiler, formatter, model checker, browser backend
+and native library caches.
+The next setup provisions them again. Pin changes replace each installation and retire obsolete
+archives, source versions and bootstrap caches after successful validation. Failed replacements
+restore the previous installation; its old pins must still pass the usual checks before use.
+Native library caches also track bridge sources, pins, compiler identity and build environment.
+Cargo tests and native source checks still execute on every preparation. Logs stay under
+`build/ci/native/`; test certificates and scenarios stay under `build/tests/`.
+Setup, library preparation and tool cleanup share a lock. Let running builds finish before
+cleaning their inputs.
+After each successful tool or library preparation, its original directory under `build/` is
+removed automatically. Failed migrations retain the original directory.
+
 Repeated setup verifies retained archives; unknown hosts fail before executing mismatched tools.
 Upstream source submodules remain pristine. After pulling or switching a parent revision,
 run `make sources` to check out its recorded source pins. Normal `make setup`, build and check
@@ -29,7 +45,7 @@ edits and ordinary untracked files stop the selected batch before any checkout m
 `vendor/jamtestvectors` retains its focused sparse checkout. The command does not change pins
 or use force/reset to discard local source work.
 
-`source build/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
+`source build-tools/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
 PATH entries. Make activates this managed environment for compiler/formatter commands. Nimpretty comes from
 pinned Nim 2.2.12, but its compiler is not exported or supported as a production target. Its generic
 banner is 0.2; archive and installed binary hashes retain its provenance.

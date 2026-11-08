@@ -62,7 +62,7 @@ class WebToolchain(unittest.TestCase):
             formatter.write_bytes(b'formatter fixture')
             raw = archive({'bin/nim': compiler.read_bytes()})
             pin = {'sha256': hashlib.sha256(raw).hexdigest(), 'url': 'https://example.invalid/archive'}
-            archives = root/'build/toolchain'
+            archives = root/'build-tools/toolchain'
             archives.mkdir(parents=True)
             (archives/('formatter-'+pin['sha256']+'.archive')).write_bytes(raw)
             (root/'spec').mkdir()

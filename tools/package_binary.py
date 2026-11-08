@@ -131,13 +131,13 @@ def package(root=ROOT):
         library_dir.mkdir(parents=True)
         binary = stage/'bin/ragnarok'
         shutil.copy2(root/'build/ragnarok', binary)
-        sources = (root/'build/crypto'/(LIBRARIES[0]+suffix),
-                   root/'build/bandersnatch/target/release'/(LIBRARIES[1]+suffix),
-                   root/'build/quic'/(LIBRARIES[2]+suffix))
+        sources = (root/'build-tools/crypto'/(LIBRARIES[0]+suffix),
+                   root/'build-tools/bandersnatch/target/release'/(LIBRARIES[1]+suffix),
+                   root/'build-tools/quic'/(LIBRARIES[2]+suffix))
         # Include the optional ABI only when the actual executable depends on it.
         checks = Package(system, log)
         if any('libragnarok_polkavm' in value for value in checks.dependencies(binary)):
-            sources += (root/'build/polkavm/release'/('libragnarok_polkavm'+suffix),)
+            sources += (root/'build-tools/polkavm/release'/('libragnarok_polkavm'+suffix),)
             licenses = stage/'licenses/polkavm'
             licenses.mkdir(parents=True)
             for name in ('LICENSE-MIT', 'LICENSE-APACHE'):

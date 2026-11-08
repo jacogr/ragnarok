@@ -232,8 +232,8 @@ if name == 'check_inventory.py' and os.environ.get('FAIL_INVENTORY'):
     sys.exit(7)
 # Model the installer output contract without downloading or executing native tools.
 if name == 'setup_nimony.py':
-    Path('build/toolchain').mkdir(parents=True, exist_ok=True)
-    Path('build/toolchain/env.sh').write_text('export NIMONY=/fixture/nimony\\n')
+    Path('build-tools/toolchain').mkdir(parents=True, exist_ok=True)
+    Path('build-tools/toolchain/env.sh').write_text('export NIMONY=/fixture/nimony\\n')
 # Smoke must stop before compilation on bad formatting and propagate a failed compiler through tee.
 if (name == 'format.py' and os.environ.get('FAIL_FORMAT')) or (name == 'test_modules.py' and '--smoke' in sys.argv and os.environ.get('FAIL_SMOKE')):
     sys.exit(7)

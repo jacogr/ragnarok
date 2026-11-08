@@ -14,6 +14,7 @@ import platform
 import subprocess
 import tomllib
 from native_dependencies import ROOT, require_submodule
+from managed_tools import native_cache
 
 
 def build_native():
@@ -28,18 +29,24 @@ def build_native():
         if package['name'] != 'ragnarok-polkavm' and tuple(package.get(key) for key in fields) not in known:
             raise ValueError('Unpinned runtime dependency: '+package['name'])
     rust = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())['rust']
-    target = ROOT/'build/polkavm'
+    target = ROOT/'build-tools/polkavm'
     target.mkdir(parents=True, exist_ok=True)
     command = ['rustup', 'run', rust, 'cargo', 'build', '--release', '--locked',
                '--manifest-path', str(ROOT/'native/polkavm/Cargo.toml'), '--target-dir', str(target)]
-    with (target/'build.log').open('w') as log:
-        # ABI trust-boundary and reset/ownership tests run before a library can enter the application.
-        tests = command.copy()
-        tests[4] = 'test'
-        subprocess.run(tests, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
-        subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
+    logs = ROOT/'build/ci/native/polkavm'
+    logs.mkdir(parents=True, exist_ok=True)
     suffix = '.dylib' if platform.system() == 'Darwin' else '.so'
     library = target/'release'/('libragnarok_polkavm'+suffix)
+    inputs = [ROOT/'spec/polkavm-pins.json', ROOT/'spec/bandersnatch-pins.json',
+              ROOT/'native/polkavm', ROOT/'tools/build_polkavm.py']
+    tools = [['rustup', 'run', rust, 'rustc', '-vV'], ['rustup', 'run', rust, 'cargo', '--version']]
+    with native_cache(target, inputs, tools, (library,)):
+        with (logs/'build.log').open('w') as log:
+            # ABI trust-boundary and reset/ownership tests run before a library can enter the application.
+            tests = command.copy()
+            tests[4] = 'test'
+            subprocess.run(tests, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
+            subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
     if not library.is_file():
         raise FileNotFoundError('Missing optional PolkaVM ABI: '+str(library))
     return library
@@ -51,7 +58,7 @@ def prepare(folder):
     evidence = dict(pins=json.loads((ROOT/'spec/polkavm-pins.json').read_text()), patches=[],
                     library_sha256=hashlib.sha256(library.read_bytes()).hexdigest(),
                     lock_sha256=hashlib.sha256((ROOT/'native/polkavm/Cargo.lock').read_bytes()).hexdigest(),
-                    log='build/polkavm/build.log')
+                    log='build/ci/native/polkavm/build.log')
     return library, evidence
 
 

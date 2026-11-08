@@ -11,8 +11,10 @@ import json
 import platform
 import subprocess
 from native_dependencies import ROOT, require_submodule, run
+from managed_tools import native_cache
 
-BUILD = ROOT/'build/bandersnatch'
+BUILD = ROOT/'build-tools/bandersnatch'
+LOGS = ROOT/'build/ci/native/bandersnatch'
 PINS = json.loads((ROOT/'spec/bandersnatch-pins.json').read_text())
 
 
@@ -40,6 +42,7 @@ def sources(fetch):
 def build_native(fetch):
     # Every caller, including the Nimony runner on a clean checkout, needs the native log/target directory.
     BUILD.mkdir(parents=True, exist_ok=True)
+    LOGS.mkdir(parents=True, exist_ok=True)
     assert subprocess.check_output(['rustc','--version'],text=True).startswith('rustc '+PINS['rust']+' ')
     assert subprocess.check_output(['cargo','--version'],text=True).startswith('cargo '+PINS['rust']+' ')
     manifest = ROOT / 'native/bandersnatch/Cargo.toml'
@@ -47,16 +50,19 @@ def build_native(fetch):
     assert system in ('Darwin','Linux')
     library = BUILD / 'target/release' / ('libragnarok_bandersnatch.dylib' if system=='Darwin' else 'libragnarok_bandersnatch.so')
     # Only --fetch allows registry downloads; build/tests subsequently run locked and offline.
-    with (BUILD / 'build.log').open('w') as log:
-        if fetch:
-            run(['cargo','fetch','--locked','--manifest-path',manifest],log)
-        features = subprocess.check_output(['cargo','tree','--locked','--offline','--manifest-path',str(manifest),'-e','features'],text=True)
-        assert 'test-vectors' not in features, 'Unsafe deterministic/non-ZK ring features must never build'
-        assert 'secret-split' in features
-        (BUILD / 'cargo-features.log').write_text(features)
-        run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
-        # Run our adapter regressions in the production profile; dependencies share release artifacts.
-        run(['cargo','test','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
-        run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
+    inputs = [ROOT/'spec/bandersnatch-pins.json', ROOT/'native/bandersnatch',
+              ROOT/'tools/build_bandersnatch.py']
+    with native_cache(BUILD, inputs, [['rustc', '-vV'], ['cargo', '--version']], (library,)):
+        with (LOGS / 'build.log').open('w') as log:
+            if fetch:
+                run(['cargo','fetch','--locked','--manifest-path',manifest],log)
+            features = subprocess.check_output(['cargo','tree','--locked','--offline','--manifest-path',str(manifest),'-e','features'],text=True)
+            assert 'test-vectors' not in features, 'Unsafe deterministic/non-ZK ring features must never build'
+            assert 'secret-split' in features
+            (LOGS / 'cargo-features.log').write_text(features)
+            run(['cargo','fmt','--manifest-path',manifest,'--','--check'],log)
+            # Run our adapter regressions in the production profile; dependencies share release artifacts.
+            run(['cargo','test','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
+            run(['cargo','build','--release','--locked','--offline','--manifest-path',manifest,'--target-dir',BUILD / 'target'],log)
     return library
 

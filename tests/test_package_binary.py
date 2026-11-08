@@ -33,7 +33,7 @@ class BinaryPackaging(unittest.TestCase):
         suffix = '.so' if system == 'Linux' else '.dylib'
         for directory, name in zip(('crypto', 'bandersnatch/target/release', 'quic'), packaging.LIBRARIES):
             # Only these explicit native ABIs belong in the archive, even with other build files present.
-            folder = root/'build'/directory
+            folder = root/'build-tools'/directory
             folder.mkdir(parents=True)
             (folder/(name+suffix)).write_bytes(name.encode())
         (root/'build/private-key').write_text('must stay outside the archive')
@@ -78,7 +78,7 @@ class BinaryPackaging(unittest.TestCase):
         """A linked optional executor ships with its licenses; default archives retain their smaller closure."""
         with temporary_folder() as root:
             host = self.fixture(root, 'Linux')
-            library = root/'build/polkavm/release/libragnarok_polkavm.so'
+            library = root/'build-tools/polkavm/release/libragnarok_polkavm.so'
             library.parent.mkdir(parents=True)
             library.write_bytes(b'optional guest executor')
             upstream = root/'vendor/polkavm'

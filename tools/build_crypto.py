@@ -13,8 +13,10 @@ import shutil
 import tomllib
 from build_bandersnatch import sources as rust_sources, build_native as build_rust
 from native_dependencies import ROOT, require_submodule, run
+from managed_tools import native_cache
 
-BUILD = ROOT/'build/crypto'
+BUILD = ROOT/'build-tools/crypto'
+LOGS = ROOT/'build/ci/native/crypto'
 PINS = json.loads((ROOT/'spec/crypto-pins.json').read_text())
 
 
@@ -45,22 +47,26 @@ def build_native(paths):
     assert system in ('Darwin', 'Linux')
     library = BUILD / ('libragnarok_crypto.dylib' if system == 'Darwin' else 'libragnarok_crypto.so')
     BUILD.mkdir(parents=True, exist_ok=True)
+    LOGS.mkdir(parents=True, exist_ok=True)
     rust_sources(False)
     backend = build_rust(False)
-    # The provider is already needed for VRFs; colocate a byte-identical copy for crypto-only users.
-    shutil.copy2(backend, BUILD / backend.name)
-    include = [ROOT / 'native/crypto']
-    # Retain the complete configure/compiler output for Linux CI diagnosis.
-    with (BUILD / 'build.log').open('w') as log:
-        obj = BUILD / 'native-0.o'
-        run(['clang', '-O2', '-fPIC', '-Wall', '-Wextra', '-Werror',
-             *[f'-I{p}' for p in include], '-c', ROOT / 'native/crypto/primitive_bridge.c',
-             '-o', obj], log)
-        # Resolve the Rust provider beside this bridge, independently of the build-machine path.
-        origin = '@loader_path' if system == 'Darwin' else '$ORIGIN'
-        identity = ['-Wl,-install_name,@rpath/' + library.name] if system == 'Darwin' else ['-Wl,-soname,' + library.name]
-        run(['clang++', '-dynamiclib' if system == 'Darwin' else '-shared', obj,
-             backend, '-Wl,-rpath,' + origin, *identity,
-             '-pthread', '-o', library], log)
+    inputs = [ROOT/'spec/crypto-pins.json', ROOT/'native/crypto', ROOT/'tools/build_crypto.py', backend]
+    with native_cache(BUILD, inputs, [['clang', '--version'], ['clang++', '--version']],
+                      (library, BUILD/backend.name)):
+        # The provider is already needed for VRFs; colocate a byte-identical copy for crypto-only users.
+        shutil.copy2(backend, BUILD / backend.name)
+        include = [ROOT / 'native/crypto']
+        # Retain the complete configure/compiler output for Linux CI diagnosis.
+        with (LOGS / 'build.log').open('w') as log:
+            obj = BUILD / 'native-0.o'
+            run(['clang', '-O2', '-fPIC', '-Wall', '-Wextra', '-Werror',
+                 *[f'-I{p}' for p in include], '-c', ROOT / 'native/crypto/primitive_bridge.c',
+                 '-o', obj], log)
+            # Resolve the Rust provider beside this bridge, independently of the build-machine path.
+            origin = '@loader_path' if system == 'Darwin' else '$ORIGIN'
+            identity = ['-Wl,-install_name,@rpath/' + library.name] if system == 'Darwin' else ['-Wl,-soname,' + library.name]
+            run(['clang++', '-dynamiclib' if system == 'Darwin' else '-shared', obj,
+                 backend, '-Wl,-rpath,' + origin, *identity,
+                 '-pthread', '-o', library], log)
     return library
 
