@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-owner loop/read arbitration and checked successor reservation boundaries.
-import std/[assertions, syncio]
+import std/[assertions, envvars, syncio]
 import ../../../src/pvm/[machine, program, step]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/internal/[native_pipeline, native_platform]
@@ -241,6 +241,29 @@ for closed in [true, false]:
   prepared = default(PreparedProgram)
   assert runtimeInfo(runtime).registered == 0 and close(runtime)
 when NativeCheckedReadEnabled:
+  proc continuationCertificate(code: Program, info: NativeReadBodyInfo,
+      continuation: NativeReadContinuation, changedOperand = false): NativeReadBody =
+    ## Rebuild the literal request from genuine decoded operands, permitting one deliberate stale scalar.
+    result = initNativeReadBody(info.header, info.terminal, info.first, info.last, info.epoch)
+    for index, pc in [1'u64, 4, 7]:
+      # Each original read has its own ordered node/fact coordinate and signed immediate bits.
+      let decoded = instruction(code, CodeAddress(pc))
+      assert decoded.error == ProgramError.None, "decode original continuation read"
+      assert addReadBodyOperation(result, info.header+1+uint32(index), info.first+1+uint32(index),
+        NativeOperation(opcode: decoded.value.opcode, slots: instructionRegisters(decoded),
+          immediate: uint64(decoded.value.x))), "rebuild original continuation read"
+    var operations = default(array[3, NativeOperation])
+    for index, pc in [11'u64, 14, 17]:
+      # The final ADD immediate supplies a valid but source-inconsistent negative certificate.
+      let decoded = instruction(code, CodeAddress(pc))
+      assert decoded.error == ProgramError.None, "decode original pure continuation"
+      operations[index] = NativeOperation(opcode: decoded.value.opcode,
+        slots: instructionRegisters(decoded), immediate: uint64(decoded.value.x))
+    if changedOperand:
+      assert operations[2].immediate < high(uint64), "bound the deliberate stale immediate"
+      inc operations[2].immediate
+    assert addNativeReadContinuation(result, continuation, operations), "rebuild complete continuation"
+
   proc verifyContinuationSegment(frame: var FlatFrame, plan: FlatPlan, page: PageImage,
       cpu: MachineInfo, attempts, commits: uint64, reason: StepError, exit: StepExit,
       pc: uint32) =
@@ -319,9 +342,18 @@ when NativeCheckedReadEnabled:
     # Train through the production probe with enough visits after its initial work floor.
     var trainingCpu = cpu
     trainingCpu.registers[8] = RegisterValue(ReadTrips)
+    pauseNativeCompiler(runtime, true)
+    let blockerMemory = captureMemory([page], PageLimit(1)).value
+    let blockerSource = captureMachine(code, blockerMemory, trainingCpu).value
+    var blocker = newPreparedProgram(code, defaultPreparedLimits(cycles), PvmBackend.Jit, runtime).value
+    var called = false
+    let blocked = executeWithHost(blockerSource, called, noHost, ExecutionStepLimit(TrainBudget),
+      HostCallLimit(0), blocker)
+    assert not called and blocked.error == StepError.None and blocked.value.exit ==
+        StepExit.Halt and
+      runtimeInfo(runtime).submitted == 1, "occupy compiler before extended read nomination"
     var training = newFlatFrame(plan, [page], trainingCpu)
     training.nativeSession = session
-    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
     beginNativeInvocation(session, TrainBudget)
     beginReadProbe(training, TrainBudget)
     runFlat(training, TrainBudget)
@@ -330,13 +362,45 @@ when NativeCheckedReadEnabled:
     endReadProbeSegment(training)
     recordNativeWork(session, settledNativeWork(training, TrainBudget))
     finishReadProbe(training, true)
+    assert nativeReadContinuation(session).terminal != 0, "nominate the complete optional continuation"
     var stream = takeFlatStream(training)
     finishNativeInvocation(session, observedNativeWork(session))
-    assert runtimeInfo(runtime).submitted == 1, "request one continuation image"
+    assert runtimeInfo(runtime).submitted == 1 and nativeState(session) == NativeState.Deferred,
+      "retain the extended read while compiler work is occupied"
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+    beginNativeInvocation(session, TrainBudget)
+    var retry = newFlatFrame(plan, [page], trainingCpu)
+    retry.nativeSession = session
+    restoreFlatStream(retry, stream)
+    assert deferredNativeReadInfo(session).epoch != 0 and
+      nativeReadContinuation(session).terminal != 0, "restore the saved extended read geometry"
+    let retained = deferredNativeReadInfo(session)
+    let savedContinuation = nativeReadContinuation(session)
+    assert validateNativeRead(session, continuationCertificate(code, retained, savedContinuation)),
+      "exact decoded continuation certificate validates"
+    var changedPrice = savedContinuation
+    assert changedPrice.price < high(uint64), "bound the deliberate stale continuation price"
+    inc changedPrice.price
+    assert not validateNativeRead(session, continuationCertificate(code, retained, changedPrice)),
+      "same epoch and geometry cannot authorize a stale continuation price"
+    assert not validateNativeRead(session, continuationCertificate(code, retained,
+        savedContinuation, true)),
+      "same epoch and geometry cannot authorize a stale continuation operand"
+    stream = takeFlatStream(retry)
+    restoreFlatStream(retry, stream) # Only genuine restored source facts restore this invocation's validation.
+    runFlat(retry, TrainBudget)
+    assert retry.reason == StepError.None and retry.exit == StepExit.Halt and retry.remaining == 0,
+      "complete checked retry of the extended read"
+    recordNativeWork(session, settledNativeWork(retry, TrainBudget))
+    stream = takeFlatStream(retry)
+    finishNativeInvocation(session, observedNativeWork(session))
+    assert runtimeInfo(runtime).submitted == 2, "request one retained continuation image"
     let parked = waitNativeCompilerGate(runtime)
+    releaseNativeCompilerGate(runtime)
     assert parked.hasImage and parked.kind == NativeKind.CheckedReadBody,
       "worker must publish the checked read kind"
-    releaseNativeCompilerGate(runtime)
 
     # Segment budgets may be shorter than the invocation lease after a checked host boundary.
     var frame = newFlatFrame(plan, [page], cpu)
@@ -381,5 +445,262 @@ when NativeCheckedReadEnabled:
         StepError.None, StepExit.Halt, 0)
     finishNativeInvocation(session, 0)
     assert close(runtime), "close the continuation compiler after the invocation"
+    blocker = default(PreparedProgram)
+
+when NativeCheckedReadEnabled:
+  proc startRetryCompiler(runtime: NativeRuntime) =
+    ## Thread startup failure is a qualification failure, never an unsupported-host skip.
+    try:
+      assert start(runtime), "retry compiler startup"
+    except:
+      assert false, "retry compiler thread could not start"
+
+  proc retrySource(closed = false): Machine =
+    ## Reuse the literal fixture with an equivalent prefix predicate, optionally eligible for loop promotion.
+    var wire = Wire
+    wire[9] = if closed: 172'u8 else: 171'u8
+    let decoded = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(64), JumpCountLimit(0))
+    assert decoded.error == ProgramError.None, "retry source decode"
+    var registers = default(RegisterFile)
+    registers[0] = RegisterValue(0xffff0000)
+    registers[5] = RegisterValue(0x20000)
+    registers[8] = RegisterValue(0x20000)
+    registers[9] = RegisterValue(ReadTrips)
+    registers[11] = RegisterValue(LoopTrips)
+    var page = PageImage(index: PageIndex(32), access: PageAccess.ReadOnly)
+    for index, value in [0x10'u8, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]:
+      # A complete known qword also supplies the independent narrower read literals.
+      page.bytes[index] = value
+    let memory = captureMemory([page], PageLimit(1))
+    assert memory.error == MachineError.None, "retry source memory"
+    let made = captureMachine(decoded.value, memory.value, MachineInfo(pc: CodeAddress(0),
+      gas: MachineGas(GasStart), registers: registers))
+    assert made.error == MachineError.None, "retry source machine"
+    made.value
+
+  proc retryPrepared(source: Machine, runtime: NativeRuntime): PreparedProgram =
+    ## Independent prepared identities share immutable code but never a native ticket or stream lease.
+    let made = newPreparedProgram(source.programOf.value, defaultPreparedLimits(GasCycleLimit(1000)),
+      PvmBackend.Jit, runtime)
+    assert made.error == PreparationError.None, "retry prepared owner"
+    made.value
+
+  proc compareRetry(actual, expected, source: Machine) =
+    ## Preserve complete observable CPU, code identity, bytes and permissions across every retry history.
+    let a = actual.machineInfo.value
+    let b = expected.machineInfo.value
+    assert uint64(a.pc) == uint64(b.pc) and uint64(a.gas) == uint64(b.gas) and
+      uint64(a.gasDeficit) == uint64(b.gasDeficit) and a.blockCharged == b.blockCharged,
+      "retry complete CPU"
+    for slot in 0..<13:
+      # Every register participates even when the native read body writes only three lanes.
+      assert uint64(a.registers[slot]) == uint64(b.registers[slot]), "retry all registers"
+    assert actual.programOf.value == source.programOf.value, "retry source identity"
+    let original = source.memoryOf.value.pageImage(PageIndex(32)).value
+    for snapshot in [actual.memoryOf.value, expected.memoryOf.value]:
+      # The read program has exactly one immutable page; no descriptor can manufacture another mapping.
+      let indices = pageIndices(snapshot).value
+      assert indices.len == 1 and uint32(indices[0]) == 32, "retry complete mapping"
+      let page = pageImage(snapshot, PageIndex(32)).value
+      assert page.access == original.access and page.bytes == original.bytes, "retry complete RAM"
+
+  proc runRetry(source: Machine, code: PreparedProgram, budget = Quota): StepResult =
+    ## Public host execution never waits for compilation; the literal fixture must not call its host.
+    var called = false
+    result = executeWithHost(source, called, noHost, budget, HostCallLimit(0), code)
+    assert not called, "retry empty host history"
+
+  proc trainRetryFrame(frame: var FlatFrame, session: NativeSession) =
+    ## Obtain a genuine nomination from the existing bounded production probe before retaining its stream.
+    frame.nativeSession = session
+    beginNativeInvocation(session, uint64(Quota))
+    beginReadProbe(frame, uint64(Quota))
+    runFlat(frame, uint64(Quota))
+    assert frame.reason == StepError.None and frame.exit == StepExit.Halt,
+      "retry checked training frame"
+    endReadProbeSegment(frame)
+    recordNativeWork(session, settledNativeWork(frame, uint64(Quota)))
+    finishReadProbe(frame, true)
+    assert deferredNativeReadInfo(session).epoch == nativeEpoch(session),
+      "retry genuine source-bound read nomination"
+
+  block retainedReadContention:
+    # An unrelated queued read occupies the only work slot while the second source qualifies.
+    if nativePlatformSupported():
+      let runtime = newNativeRuntime()
+      startRetryCompiler(runtime)
+      pauseNativeCompiler(runtime, true)
+      let source = retrySource()
+      let page = source.memoryOf.value.pageImage(PageIndex(32)).value
+      var blocker = retryPrepared(source, runtime)
+      let blocked = runRetry(source, blocker)
+      verifyOutcome(blocked, source, page)
+      assert runtimeInfo(runtime).submitted == 1, "retry occupied work slot"
+      var owner = retryPrepared(source, runtime)
+      for attempt in 0..<2:
+        # Only the first call discovers candidates; the second must restore the nonempty stream.
+        let done = runRetry(source, owner)
+        verifyOutcome(done, source, page)
+        assert done.value.backend == PvmBackend.Interpreted and
+          runtimeInfo(runtime).submitted == 1, "retry defers while compiler is occupied"
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime) # Existing deterministic barrier, outside public invocation clocks.
+      let short = withRegister(withRegister(source, RegisterIndex(9), RegisterValue(1)).value,
+        RegisterIndex(11), RegisterValue(1)).value
+      let checked = newPreparedProgram(source.programOf.value, defaultPreparedLimits(GasCycleLimit(
+          1000)),
+        PvmBackend.Interpreted).value
+      let shortExpected = runRetry(short, checked)
+      let shortActual = runRetry(short, owner)
+      assert shortExpected.error == StepError.None and shortActual.error == StepError.None,
+        "retry short successful public calls"
+      compareRetry(shortActual.value.machine, shortExpected.value.machine, short)
+      assert uint64(shortActual.value.machine.machineInfo.value.registers[6]) == 1 and
+        runtimeInfo(runtime).submitted == 1, "short work must not replace the retained read with pure"
+      let failed = runRetry(source, owner, ExecutionStepLimit(4096))
+      assert failed.error == StepError.StepLimitExceeded and runtimeInfo(runtime).submitted == 1,
+        "failed public call cannot submit the retained read or its weaker pure prefix"
+      armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+      let retried = runRetry(source, owner)
+      verifyOutcome(retried, source, page)
+      assert runtimeInfo(runtime).submitted == 2, "one retained read retry request"
+      let parked = waitNativeCompilerGate(runtime)
+      releaseNativeCompilerGate(runtime)
+      assert parked.hasImage and parked.kind == NativeKind.CheckedReadBody,
+        "retry must publish the retained read rather than its pure prefix"
+      let ready = runRetry(source, owner)
+      verifyOutcome(ready, source, page)
+      assert ready.value.backend == PvmBackend.Jit, "retry real public native read"
+      let info = preparedInfo(owner).value
+      assert info.nativeFragments == 1 and info.nativeCalls == ReadTrips and
+        info.nativeOperations == 3*ReadTrips, "retry exact completed native activity"
+      let evidence = getEnv("RAGNAROK_TEST_EVIDENCE")
+      if evidence.len > 0:
+        # Only a supported actual native public path writes this numeric proof.
+        let isa = when defined(pvmX86Jit): "x86_64" else: "arm64"
+        try:
+          writeFile(evidence & "/pvm_read_retry_" & isa & ".json",
+            "{\"schema\":1,\"isa\":\"" & isa & "\",\"fragments\":" & $info.nativeFragments &
+            ",\"calls\":" & $info.nativeCalls & ",\"operations\":" & $info.nativeOperations & "}\n")
+        except:
+          assert false, "retry native evidence could not be written"
+      owner = default(PreparedProgram)
+      blocker = default(PreparedProgram)
+      assert runtimeInfo(runtime).registered == 0 and close(runtime), "retry owner retirement"
+
+  block retainedReadLoopPrecedence:
+    # A retained read must never displace a certified closed loop once the shared slot becomes available.
+    if nativePlatformSupported():
+      let runtime = newNativeRuntime()
+      startRetryCompiler(runtime)
+      pauseNativeCompiler(runtime, true)
+      let source = retrySource(true)
+      let page = source.memoryOf.value.pageImage(PageIndex(32)).value
+      var blocker = retryPrepared(source, runtime)
+      verifyOutcome(runRetry(source, blocker), source, page)
+      var owner = retryPrepared(source, runtime)
+      verifyOutcome(runRetry(source, owner), source, page)
+      assert runtimeInfo(runtime).submitted == 1, "loop/read retry retains its nominations"
+      pauseNativeCompiler(runtime, false)
+      waitNativeCompiler(runtime)
+      armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+      verifyOutcome(runRetry(source, owner), source, page)
+      assert runtimeInfo(runtime).submitted == 2, "loop/read retry has one selected request"
+      let parked = waitNativeCompilerGate(runtime)
+      releaseNativeCompilerGate(runtime)
+      assert parked.hasImage and parked.kind == NativeKind.ClosedRegisterLoop,
+        "certified closed loop retains priority over a deferred read"
+      let ready = runRetry(source, owner)
+      verifyOutcome(ready, source, page)
+      let info = preparedInfo(owner).value
+      assert ready.value.backend == PvmBackend.Jit and info.nativeFragments == 1 and
+        info.nativeCalls == 1 and info.nativeOperations == 3*LoopTrips,
+        "loop/read retry enters the actual selected native loop"
+      owner = default(PreparedProgram)
+      blocker = default(PreparedProgram)
+      assert close(runtime) and runtimeInfo(runtime).registered == 0, "loop/read retry retirement"
+
+  block retainedReadLifecycle:
+    # Explicit invalidation, deferred drop/close and a cancelled real image cover distinct ownership states.
+    if nativePlatformSupported():
+      for mode in 0..<4:
+        let runtime = newNativeRuntime()
+        startRetryCompiler(runtime)
+        pauseNativeCompiler(runtime, true)
+        let source = retrySource()
+        var blocker = retryPrepared(source, runtime)
+        verifyOutcome(runRetry(source, blocker), source,
+          source.memoryOf.value.pageImage(PageIndex(32)).value)
+        var admitted = prepareFlatPlan(source.programOf.value, GasCycleLimit(1000),
+          defaultFlatLimits(), false)
+        assert admitted.error == FlatError.None, "retry lifecycle source plan"
+        let plan = takeValue(admitted)
+        var made = prepareFlatMemoryFrame(plan, source.memoryOf.value, source.machineInfo.value)
+        assert made.error == FlatError.None, "retry lifecycle training memory"
+        var frame = takeValue(made)
+        var session = newNativeSession(runtime)
+        trainRetryFrame(frame, session)
+        var stream = takeFlatStream(frame)
+        frame.nativeSession = default(NativeSession)
+        finishNativeInvocation(session, observedNativeWork(session))
+        assert nativeState(session) == NativeState.Deferred and runtimeInfo(runtime).submitted == 1,
+          "retry lifecycle deferred nomination is not a compiler request"
+        if mode == 0 or mode == 3:
+          # Reset invalidates the old read; the cancellation case first queues its exact retained request.
+          let oldEpoch = nativeEpoch(session)
+          if mode == 0:
+            invalidateNativeStream(session)
+            assert nativeEpoch(session) == oldEpoch+1, "retry source epoch advances"
+          pauseNativeCompiler(runtime, false)
+          waitNativeCompiler(runtime)
+          armNativeCompilerGate(runtime, (if mode == 0: NativeCompilerPoint.AfterPublish else:
+            NativeCompilerPoint.BeforePublish))
+          beginNativeInvocation(session, uint64(Quota))
+          var fresh = prepareFlatMemoryFrame(plan, source.memoryOf.value, source.machineInfo.value)
+          assert fresh.error == FlatError.None, "retry lifecycle fresh frame"
+          var current = takeValue(fresh)
+          current.nativeSession = session
+          restoreFlatStream(current, stream)
+          assert deferredNativeReadInfo(session).epoch == (if mode == 0: 0'u64 else: oldEpoch),
+            "retry source epoch determines retained nomination"
+          beginReadProbe(current, uint64(Quota)) # Restored nodes must not trigger discovery.
+          runFlat(current, uint64(Quota))
+          assert current.reason == StepError.None and current.exit == StepExit.Halt,
+            "retry lifecycle complete checked output"
+          endReadProbeSegment(current)
+          recordNativeWork(session, settledNativeWork(current, uint64(Quota)))
+          finishReadProbe(current, true)
+          stream = takeFlatStream(current)
+          current.nativeSession = default(NativeSession)
+          finishNativeInvocation(session, observedNativeWork(session))
+          assert runtimeInfo(runtime).submitted == 2, "retry lifecycle sole replacement request"
+          let parked = waitNativeCompilerGate(runtime)
+          let expectedEpoch = nativeEpoch(session)
+          if mode == 3:
+            # Cancellation sees a real worker-local read image, which must never be collected.
+            invalidateNativeStream(session)
+            session = default(NativeSession)
+          releaseNativeCompilerGate(runtime)
+          waitNativeCompiler(runtime)
+          assert parked.hasImage and parked.epoch == expectedEpoch and
+            parked.kind == (if mode == 0: NativeKind.PurePrefix else: NativeKind.CheckedReadBody),
+            "retry exact queued epoch and image kind"
+          if mode == 3:
+            assert runtimeInfo(runtime).completed == 1 and runtimeInfo(runtime).registered == 1,
+              "retry cancelled image retires without disturbing the unrelated completion"
+        elif mode == 2:
+          # A closed anchor cannot submit a retained nomination, even if its caller returns a work receipt.
+          assert close(runtime) and nativeState(session) == NativeState.Closed, "retry deferred close"
+          beginNativeInvocation(session, uint64(Quota))
+          finishNativeInvocation(session, uint64(Quota))
+          assert runtimeInfo(runtime).submitted == 1, "retry closed source cannot submit"
+        else:
+          # No read ticket exists: last-drop releases its credit without waiting for the unrelated job.
+          session = default(NativeSession)
+          assert runtimeInfo(runtime).registered == 1 and runtimeInfo(runtime).submitted == 1,
+            "retry deferred drop releases exactly its own registration"
+        session = default(NativeSession)
+        blocker = default(PreparedProgram)
+        assert close(runtime) and runtimeInfo(runtime).registered == 0, "retry lifecycle retirement"
 
 echo "PVM read arbitration and quota passed"

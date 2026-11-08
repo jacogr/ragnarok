@@ -136,6 +136,20 @@ when declared(FlatFrame):
     f.reservation = continuation.header or flatReservationHeaderFlag
     continuation.terminal
 
+  proc validateFlatReadNomination(f: var FlatFrame) =
+    ## Reconstruct every original operand and optional continuation at the saved coordinates after restoration.
+    let info = deferredNativeReadInfo(f.nativeSession)
+    if info.epoch == 0: return
+    if int(info.first) >= f.plan.facts.len:
+      invalidateNativeStream(f.nativeSession)
+      return
+    var body = buildFlatReadBody(f, f.plan.facts[int(info.first)].pc, info.epoch)
+    let extended = nativeReadContinuation(f.nativeSession).terminal != 0
+    if (extended and not extendFlatReadBody(f, body)) or
+        not validateNativeRead(f.nativeSession, body):
+      # Changed geometry or operands revoke the nomination rather than authorizing stale code.
+      invalidateNativeStream(f.nativeSession)
+
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo) =
     ## Rebuild the typed certificate before installing a body-only stream patch.
     assert f.nativeOriginal == nil
