@@ -225,7 +225,10 @@ class NimonyCISafeguards(unittest.TestCase):
             self.assertGreater(bound, 0)
             self.assertLessEqual(bound, 60) # Deliberate repository execution limit.
             self.assertFalse(section.get('continue-on-error', False))
-            self.assertFalse(any(step.get('continue-on-error', False) for step in section['steps']))
+            # Optional cache transport may fail; every setup/check/evidence step stays authoritative.
+            self.assertFalse(any(step.get('continue-on-error', False)
+                                 for step in section['steps']
+                                 if not step.get('uses', '').startswith('actions/cache@')))
 
     def test_independent_checks_and_diagnostics_survive_prior_failure(self):
         """Explicit status conditions keep independent checks and failed-run logs observable."""

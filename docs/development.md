@@ -25,6 +25,16 @@ download failures can use the same pinned bytes through the API. API requests us
 setup and CI use the same host/identity/version checks. Compilers, model tools and native libraries
 stay under ignored `build-tools/`.
 
+GitHub Actions restores public compiler/model-tool archives and Cargo registry/Git downloads
+before normal Make setup. Cache keys separate operating systems and architectures and include
+the relevant committed pins/lockfiles. Restored tool archives still require their pinned SHA-256;
+Cargo retains its locked fetch and offline build checks. Installed tools, native/application build
+outputs, test evidence and Cargo credentials are excluded. Docker retains its isolated setup.
+A cache miss, eviction or cache-service failure uses normal setup; caching does not replace the
+browser/API download fallback. Cache entries are immutable, so pin changes create new keys;
+GitHub eventually evicts unused entries. To compare cold and warm runs, compare the cache-step
+restore/transfer durations with setup-step durations on the same commit and runner architecture.
+
 `make clean` removes project outputs under `build/` and retains the provisioned tools. Use
 `make clean-tools` to remove the retained compiler, formatter, model checker, browser backend
 and native library caches.

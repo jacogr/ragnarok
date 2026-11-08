@@ -95,6 +95,40 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      # Cache only public download inputs; normal Make setup still verifies and prepares them.
+      - &tool-download-cache
+        name: Cache pinned compiler archives
+        if: ${{ matrix.family.group != 'docker' }}
+        continue-on-error: true
+        uses: &cache-action actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        env: &cache-timeout
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: "2"
+        with:
+          path: |
+            build-tools/toolchain/*.archive
+          key: compiler-archives-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('spec/toolchain.json') }}
+      - &model-download-cache
+        name: Cache pinned model-tool sources
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          path: build-tools/model-tools/*.archive
+          key: model-archives-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('spec/model-tools.json') }}
+      - &cargo-download-cache
+        name: Cache Cargo dependency downloads
+        if: ${{ matrix.family.group != 'docker' && matrix.family.group != 'smoke' }}
+        continue-on-error: true
+        uses: *cache-action
+        env: *cache-timeout
+        with:
+          # Do not cache Cargo credentials/configuration, installed executables or target outputs.
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/**/Cargo.lock', 'spec/bandersnatch-pins.json', 'spec/polkavm-pins.json', '.gitmodules') }}
       - name: Validate verification inventory
         if: ${{ matrix.family.group != 'smoke' }}
         run: &inventory-run make check-inventory
@@ -252,6 +286,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Native unit or corpus tests
@@ -308,6 +345,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Runtime failure and contract tests
@@ -357,6 +397,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: E2E Networking
@@ -444,6 +487,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Compare pinned PolkaVM and native PVM fixtures
@@ -516,6 +562,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Install DOOM asset decompressor
         run: |
           sudo apt-get update
@@ -558,6 +607,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Compare validated memory and durable storage workloads
@@ -667,6 +719,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Install pinned asset decompression prerequisite
         run: |
           sudo apt-get update
@@ -715,6 +770,9 @@ jobs:
     steps:
       - *checkout
       - *python
+      - *tool-download-cache
+      - *model-download-cache
+      - *cargo-download-cache
       - name: Validate verification inventory
         run: *inventory-run
       - name: Run pinned upstream campaigns and JAM bridge
