@@ -20,6 +20,7 @@ import ../../support/arc_evidence
 
 ## Refuse native hashing independently of signature/codec validation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Count observed hash calls so unchanged/no-op publication requires no hidden rehash.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

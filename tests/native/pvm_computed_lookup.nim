@@ -10,6 +10,7 @@ import ../support/[pvm_computed_lookup, pvm_computed_lookup_vectors]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse only after genuine source and chain fixture construction.
+
 proc check[T](outcome: ComputedLookupResult[T], reason: ComputedLookupError) =
   ## Confirm selected alternatives before deliberate unsuccessful extraction.
   assert outcome.error == reason, "computed lookup guard control"

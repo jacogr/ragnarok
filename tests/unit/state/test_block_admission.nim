@@ -29,18 +29,25 @@ import ../../support/[validator_rotation_fixture, arc_evidence, safrole_historic
 
 ## Reset exact ordinary/ring/setup counters between fully retired invocations.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Refuse an ordinary proof after an exact completed prefix.
 proc refuseVerification(successful: cint) {.importc: "bo_ietf_after", cdecl.}
+
 ## Binding failures cannot reach seal/entropy verification.
 proc verifications(): cint {.importc: "bo_ietf_calls", cdecl.}
+
 ## Binding failures cannot create RingVRF setup owners either.
 proc setups(): cint {.importc: "bo_setup_news", cdecl.}
+
 ## All native setup owners must retire even after later commitment or signature refusal.
 proc liveSetups(): cint {.importc: "bo_live_setups", cdecl.}
+
 ## Reset or immediately refuse the native Blake2b primitive.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Refuse after admission or at the final stage publication digest.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count exact commitment work independently of fixture-map construction.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

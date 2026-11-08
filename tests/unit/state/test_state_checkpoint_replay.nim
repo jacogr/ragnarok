@@ -39,6 +39,7 @@ proc replay(expected: Mapping) =
   var prepared = prepareFullCheckpoint(source, exact)
   assert prepared.error == CheckpointError.None and uint64(prepared.byteLength) == uint64(encoded.len)
   assert array[32, byte](prepared.root) == array[32, byte](expected.root)
+
 proc main() {.raises.} =
   ## The existing provider checks pinned blobs and independent roots before either native consumer receives trusted text.
   let mappings = publishedMappings()

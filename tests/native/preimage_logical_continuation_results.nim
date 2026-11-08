@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine extrinsic/host preimage fulfillment and expired forget continue complete logical state from original or selected request hashes without supplied successor declarations.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context,
   current_namespace_transition_context, current_namespace_execution_context,
@@ -30,10 +31,13 @@ import ../../src/codec/state/[accounts as state_accounts, requests as state_requ
 import ../../src/codec/composite
 import ../../src/crypto/primitives
 import ../../src/chain/[parameters, provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Mandatory namespace derivation must preserve genuine backend refusal.
+
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse the first preimage-key hash only after all original request derivations succeeded.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Planning ceilings refuse before any namespace hashes.
 type Fixture = object ## Source descriptors contain only real original logical parents and matching native updates.
@@ -41,6 +45,7 @@ type Fixture = object ## Source descriptors contain only real original logical p
   update: PreparedCurrentChainUpdate
   hash: ServicePreimageHash
   value: seq[byte]
+
 proc candidatePolicy(): CurrentCandidateLimits =
   ## Original/selected request hashes and raw storage are frozen independently of complete output budgets.
   result = currentCandidateLimits()
@@ -61,12 +66,14 @@ proc candidatePolicy(): CurrentCandidateLimits =
       perBlob: ByteLimit(32), totalBlobBytes: ByteLimit(128))
   result.completion.execution.initial.provisions.encodedBytes = ByteLimit(256)
   result.completion.execution.execution.round.provisions = result.completion.execution.initial.provisions
+
 proc policy(): LogicalContinuationLimits =
   ## Whole payload reconstruction remains separately bounded from original hash identity planning.
   let logical = namespaceLogicalLimits()
   LogicalContinuationLimits(identity: currentIdentityTestLimits, checks: ElementLimit(16384),
       scratchBytes: ByteLimit(262144), projection: namespaceRefreshLimits.projection,
       profile: logical.profile, globals: logical.globals, logical: logical.logical)
+
 proc program(hash: ServicePreimageHash, blob: seq[byte], solicit = false, panic = false,
     checkpoint = false, forget = false, annul = false): seq[byte] =
   ## Authored full hash and payload enter actual guest memory; optional host paths use only real checked runtime operations.
@@ -89,6 +96,7 @@ proc program(hash: ServicePreimageHash, blob: seq[byte], solicit = false, panic 
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = memory): result.add(octet)
+
 proc fixture(kind: int): Fixture {.raises.} =
   ## Complete original declarations and explicit profile/slot enter roots, signatures and snapshot binding before candidate execution.
   var options = executionFixtureConfig()
@@ -134,6 +142,7 @@ proc fixture(kind: int): Fixture {.raises.} =
   assert receipt.kind == PreparationCompletionKind.CurrentCompleted and
       receipt.currentValue.error == CurrentBlockInputError.None
   Fixture(origin: origin, update: receipt.currentValue.value, hash: hash, value: value)
+
 proc check(source: Fixture, present: bool): CurrentLogicalState =
   ## Only whole actual-map and independent raw qualification grants a complete logical owner, including unchanged original preimage identities.
   let outcome = continueCurrentNamespaces(source.origin.parent, source.update, policy())
@@ -151,6 +160,7 @@ proc check(source: Fixture, present: bool): CurrentLogicalState =
   assert sameStateSnapshot(outcome.value.currentLogicalUpdate.value.currentUpdateState,
       source.update.currentUpdateState)
   outcome.value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(LogicalContinuationResult)

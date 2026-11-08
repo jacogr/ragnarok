@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded local restoration preserves evicted and in-window finality under exact map ownership.
+
 import std/[assertions, syncio]
 import ../../support/disk_history_context
 import ../../../src/chain/[genesis, provider]
@@ -9,6 +10,7 @@ import ../../../src/state/store
 import ../../../src/codec/header
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/bounded
+
 proc main() {.raises.} =
   ## Restore the exact newest suffix plus an older finalized anchor without silently dropping either.
   let fixture = diskHistoryFixture()
@@ -51,6 +53,7 @@ proc main() {.raises.} =
   let foreign = captureBlockSnapshot(wire, detached, original.chainParameters)
   assert restoreLocalChainView(retained, foreign).error == ViewAdvanceError.InvalidSnapshot
   assert sameChainView(fixture.view, restored)
+
 proc policyWitness() {.raises.} =
   ## Count accepted owners rather than slots; windows and immutable finality survive independent forks.
   let fixture = diskHistoryFixture(16, true, ElementLimit(32))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Typed chapter captures, planned projections and refusal paths release every derived ARC owner.
+
 # @@Verification={"arc": "state_global_read_lifecycle_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[proof_global_helpers, arc_evidence]
@@ -16,6 +17,7 @@ import ../../../src/codec/guarantees
 import ../../../src/codec/state/[privileges as state_privileges, statistics as state_statistics,
     workqueues as state_workqueues, outputs as state_outputs]
 include ../../native/composition_fixture
+
 proc cycle(source: ProofView) =
   ## Every temporary plan, partial owner and typed chapter dies before the allocator is sampled.
   let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
@@ -65,6 +67,7 @@ proc cycle(source: ProofView) =
       maxBytes: policy.maxBytes)).error == GlobalProofError.None
   assert view.readGlobalEntropy(ByteLimit(0)).error == GlobalProofError.LimitExceeded
   assert projectPlannedProofs(source, plan, ProofViewLimits()).error == ProofViewError.LimitExceeded
+
 proc main() {.raises.} =
   ## Authenticate the independent chapter fixture once, then measure only derived owner lifetimes.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

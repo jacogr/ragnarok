@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_export_erasure_arc_release"}
 
 ## Independent complete export/page erasure bytes, original provenance, budget preflight and ownership.
@@ -17,11 +18,14 @@ import ../../support/[pvm_export_erasure, pvm_export_erasure_vectors, arc_eviden
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after original execution to verify preflight and commitment failure boundaries.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Inspect actual primitive calls; coding itself must add none to the export-tree work.
+
 proc expect[T](outcome: ExportErasureResult[T], reason: ExportErasureError) =
   ## Compare exact reasons without selecting incomplete output or source owners.
   assert outcome.error == reason, "export erasure reason"
+
 proc verify(source: BundleErasure, kind: int, root, expected: array[32, byte]): ExportErasure =
   ## Compare the complete validator-major combined sequence with independent full-wire witnesses.
   reset(0)
@@ -144,11 +148,13 @@ assert hashes() == 0, "all preflight refusals precede hashing"
 expect(prepareExportErasure(singleSource, exportErasureLimits()),
     ExportErasureError.CommitmentFailure)
 reset(0)
+
 proc detached(): ExportErasure =
   ## Retain export encoding and original executed source after local construction handles retire.
   prepareExportErasure(exportBundle(0, 6), exportErasureLimits()).value
 assert detached().exportErasureInfo.value.root.bytes == EmptyRoot, "detached source lifetime"
 let cycleSource = exportBundle(1, 6)
+
 proc cycle() =
   ## Release encoded data/pages, scalar workspaces, derived trees and refused candidates every iteration.
   let done = prepareExportErasure(cycleSource, exportErasureLimits()).value

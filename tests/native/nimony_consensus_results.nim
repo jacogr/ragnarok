@@ -35,6 +35,7 @@ let fallback = SafroleState(pending: newSeq[StateValidator](6), schedule: keySch
     StateBsKey](2)))
 let keysOwner = decodeSafroleState(safroleStateEntry(fallback, policy).value.value,
     policy).value.snapshot
+
 # Author late failures at exact specification offsets, never from production decoder metadata.
 proc broken(kind: string): seq[byte] =
   let full = encoded.value.value

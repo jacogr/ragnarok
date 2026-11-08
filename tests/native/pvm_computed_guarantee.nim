@@ -11,6 +11,7 @@ import ../support/[pvm_computed_report, pvm_computed_report_vectors, pvm_compute
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after completing and independently validating the original report.
+
 proc check[T](outcome: ComputedGuaranteeResult[T], reason: ComputedGuaranteeError) =
   ## Validate the selected alternative before deliberate unsuccessful extraction.
   assert outcome.error == reason, "computed guarantee guard control"

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently resealed complete physical graphs distinguish graph authority from page/record integrity.
+
 # @@Verification={"arc":"storage_full_paged_graph_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, full_paged_reference]

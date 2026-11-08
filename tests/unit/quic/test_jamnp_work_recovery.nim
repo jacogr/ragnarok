@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_recovery_arc_release"}
 
 ## Real managed Services and TLS CE139/140 progression finish original CE133 packages after preferred replies fail.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/app/[node as application_node, services, options, work_dispatch]
 import ../../../src/app/proof/[worker, work_submission as work_jobs]
@@ -20,6 +22,7 @@ import ../../support/[jamnp_work_fixture, jamnp_work_recovery_fixture, jamnp_top
 
 type Variant {.pure.} = enum ## One exact source and literal script isolate each protocol trust/lifetime boundary.
   Unproven, ProvenRetry, BadProven, InvalidRoot, Reset, Close, ForeignDone, ResetDone, CloseDone
+
 proc publicKey(name: string): StateEdKey {.raises.} =
   ## Only actual native fixture certificate public identities enter the selected canonical roster.
   let raw = readFile(getEnv(name))
@@ -27,16 +30,19 @@ proc publicKey(name: string): StateEdKey {.raises.} =
   var key = default(array[32, byte])
   for index in 0..<32: key[index] = byte(raw[index])
   StateEdKey(key)
+
 proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProbe) {.raises.} =
   ## Ordinary poll-loop turns own all progress; no test-specific protocol dispatcher enters production internals.
   assert host.poll(getMonoTime(), StateTime(20), 0)
   probe.poll()
   services.tick(uint32(host.peerCount))
+
 proc wrapped(fixture: WorkRecoveryFixture): BlockSnapshotResult =
   ## Recapture the same immutable posterior owner; a new header wrapper must not clone or substitute that map.
   var header = newSeq[byte](fixture.snapshot.header.headerInfo.value.consumed)
   assert fixture.snapshot.header.encodeOwnedHeader(header).error == HeaderError.None
   captureBlockSnapshot(header, fixture.snapshot.stateSnapshot, fixture.work.input.parameters)
+
 proc recoveryCycle(fixture: WorkRecoveryFixture, original: WorkImportPlan,
     grant: AuthorizedWorkSubmission, view: ChainView) =
   ## Immutable packet/import progress releases both completed children and rejected raw prefixes on every complete session.
@@ -55,6 +61,7 @@ proc recoveryCycle(fixture: WorkRecoveryFixture, original: WorkImportPlan,
       fixture.work.limits)
   assert completed.error == WorkRecoveryError.None
   assert completed.value.importInputsInfo.value.entries == 2
+
 proc sourceChecks(fixture: WorkRecoveryFixture) =
   ## Same sealed headers cannot authorize a different posterior map, and no truncated packet may publish a prefix.
   let grant = authorizeWorkSubmission(fixture.recoveryHeader, fixture.snapshot.stateSnapshot,
@@ -89,6 +96,7 @@ proc sourceChecks(fixture: WorkRecoveryFixture) =
   let after = getOccupiedMem()
   assert before == after, "work recovery progress ARC release"
   recordArcRelease("jamnp_work_recovery", 1000, before, after)
+
 proc scenario(variant: Variant) {.raises.} =
   ## Real TLS failure, immutable proof turns and final genuine refinement share the same private source and worker namespace.
   let fixture = workRecoveryFixture(publicKey("RAGNAROK_TEST_PEER_A"), publicKey(
@@ -211,6 +219,7 @@ proc scenario(variant: Variant) {.raises.} =
     assert outcome.kind == WorkJobResultKind.Refined
     assert outcome.execution.inputRefinementSource.value.importInputsInfo.value.entries == 2
   assert host.releaseWork()
+
 proc main() {.raises.} =
   ## Each independent native lifetime case closes its exact owner tree before the next one starts.
   let fixture = workRecoveryFixture(publicKey("RAGNAROK_TEST_PEER_A"), publicKey("RAGNAROK_TEST_PEER_B"))

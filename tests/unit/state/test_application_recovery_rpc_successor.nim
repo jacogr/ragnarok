@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Recovered canonical/RPC owners publish one freshly executed child and one matching notification together.
+
 import std/[assertions, syncio, envvars, strutils, base64]
 import std/posix/posix
 import ../../../src/app/[services, chain, candidate, handoff]
@@ -11,10 +12,12 @@ import ../../../src/state/store
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/[application_recovery_execution, rpc_socket]
+
 proc request(owner: var Services, peer: cint, pending: var string, text: string): string =
   ## Raw RPC ticks cannot consume pending application adoption, so pre-publication reads remain meaningful.
   sendText(peer, text)
   readPacket(owner.rpc, peer, pending)
+
 proc main() {.raises.} =
   ## A genuine signed child is queued against the newly restored snapshot, independently of its original source graph.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

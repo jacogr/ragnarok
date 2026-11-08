@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_continuation_execution_arc_release"}
 
 ## Current report-only and held-transfer-only entries use frozen parameters/frame and consume gas without restoring old queued reservations.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, report_owned, header, assurances]
@@ -27,9 +29,11 @@ import ../../../src/state/accumulation/[annulled_outputs as accumulation_annulle
     inputs as accumulation_inputs, dispatch as accumulation_dispatch]
 import ../../../src/state/store
 import ../../support/[accumulation_current_round_context, accumulation_current_sequence_context, arc_evidence]
+
 proc policy(): CurrentContinuationExecutionLimits =
   ## Three facts include the initial entry, report-only execution and eventual held-transfer delivery.
   CurrentContinuationExecutionLimits(entries: ElementLimit(3), round: currentRoundLimits())
+
 proc frame(sequence: CurrentAccumulationSequence, index: uint64) =
   ## Every actual later bootstrap retains the original admitted header slot and posterior C6 word, not selected-map entropy.
   let anchor = sequence.currentSequenceInitial.value.currentRoundGuests.value.guestRound.value.roundBlockQueue.value.accumulationAdmission.value.reportBlockStage.value.value
@@ -42,6 +46,7 @@ proc frame(sequence: CurrentAccumulationSequence, index: uint64) =
   assert uint32(actual.slot) == uint32(expectedSlot), "actual continuation uses admitted header slot"
   assert uint32(actual.slot) == uint32(coverage.coverageInfo.value.slot), "continuation check: uint32(actual.slot) == uint32(coverage.coverageInfo.value.slot)"
   assert array[32, byte](actual.entropy) == array[32, byte](expected), "actual continuation uses posterior entropy authority"
+
 proc main() {.raises.} =
   ## Maintained fixture admission provides a real original queue and immutable chain configuration.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

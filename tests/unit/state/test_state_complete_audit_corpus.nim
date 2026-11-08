@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently rooted complete sources qualify exact audit budgets, no-hash refusal and targeted predicate execution.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/[state_complete_serialization_context, state_inventory_context]
 import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint, inventory]
@@ -12,8 +13,10 @@ import ../../../src/state/preimage/[content as preimage_content, linkage as prei
 import ../../../src/codec/[bounded, assurances]
 import ../../../src/codec/state/[consensus as state_consensus, layout as state_layout,
     trie as state_trie, composition as state_composition]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observed hash work and optionally force backend refusal after source capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Separate account content hashing from mandatory earlier restoration/capture work.
 const
@@ -26,6 +29,7 @@ const
         maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)),
     manifest: StateManifestLimits(services: ElementLimit(4), serialized: mapLimits,
         storageKeyBytes: ByteLimit(65)))
+
 proc check(input: seq[byte], services: seq[StateService]) =
   ## Admit the whole exact policy before content work, then require the declared account facts and immutable source identity.
   var root = default(array[32, byte])
@@ -74,6 +78,7 @@ proc check(input: seq[byte], services: seq[StateService]) =
   assert observations.linkage.preimages == count and observations.linkage.comparisons == count
   assert sameStateInventory(completed.value.accountInvariantInventory.value, source)
   assert encodeFullCheckpoint(restored.manifestSource.value, limits.checkpointBytes).value == input
+
 proc main() {.raises.} =
   ## Replay both independently authored complete fixtures, restoring backend availability before each new source.
   var row = 0

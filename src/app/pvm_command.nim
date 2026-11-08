@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Standalone artifact file IO and bounded host-free execution; caller owns diagnostics and process lifetime.
+
 import ./options
 import ../pvm/[artifact, machine, step]
 import ../pvm/gas/gas

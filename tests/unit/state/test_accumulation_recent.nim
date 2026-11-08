@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_recent_arc_release"}
 
 ## Signed stopped accumulation binds complete sealed headers, guarantee packages and selected outputs to private C(3).
@@ -26,7 +27,9 @@ import ../../support/[accumulation_reentry_context, accumulation_execution_conte
 
 # Fault injection begins only after real signed certificates have been constructed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # All inherited queue work is finite; this slice adds independent header, output and C(3) bounds.

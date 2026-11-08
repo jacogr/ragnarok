@@ -3,6 +3,7 @@
 
 ## Replay-bound full-state artifact construction uses one record, fixed pages and a bounded digest stack.
 ## Successful construction includes complete graph admission; borrowed producer/output/scratch never escape.
+
 import std/assertions
 import ./[codec as full_paged_codec, stream as full_paged_stream]
 import ../../paged/[codec as paged_codec, stream as paged_stream]

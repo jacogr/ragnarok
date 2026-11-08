@@ -20,8 +20,10 @@ import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Refuse test-library Blake hashes without changing production primitives.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Refuse a selected hash after a successful private candidate prefix.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count hashes to distinguish preflight/no-op paths from candidate commitment work.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

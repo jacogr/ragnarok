@@ -16,6 +16,7 @@ import ../../support/arc_evidence
 
 ## Reject/count maintained provider hashes after actual fixtures have been constructed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Allow exact namespace work before rejecting a later key/root operation.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

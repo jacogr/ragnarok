@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Direct complete-state restoration covers unordered overlapping pages, exact admission, empty facts, failure recovery and retired source ownership.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/arc_evidence
 import ../../src/state/proof/[state_import as proof_state_import, view as proof_view]
 import ../../src/state/[trie_proof, store]
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force genuine complete-root backend refusal after local admission has completed.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Prove whole-union resource refusal precedes commitment hashing.
 const
@@ -21,6 +24,7 @@ const
   limits = ProofPageImportLimits(pages: ElementLimit(128), lookups: ElementLimit(1024),
       scratchBytes: ByteLimit(4096), copyBytes: ByteLimit(65536), store: StateStoreLimits(
       trie: mapLimits, writes: ElementLimit(64), writeValueBytes: ByteLimit(8192)))
+
 proc evidence(entries: seq[StateEntry], keys: seq[StateKey], root: StateRoot): ProofView =
   ## Generate independently verified page inputs with no importer construction shortcuts.
   let proofs = generateStateProofs(entries, keys, mapLimits, proofLimits, batchLimits).value
@@ -29,6 +33,7 @@ proc evidence(entries: seq[StateEntry], keys: seq[StateKey], root: StateRoot): P
       i).value # Preserve exact query identities and immutable witnesses.
   captureProofView(verifyStateProofs(queries, root, proofLimits, batchLimits).value, root,
     ProofViewLimits(items: ElementLimit(128), valueBytes: ByteLimit(16384))).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(ProofStateImportResult)

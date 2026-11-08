@@ -3,6 +3,7 @@
 
 ## Actual application invocations use the selected guest engine and ordinary Nim host dispatch.
 ## Each alternative preserves normalized outputs, gas, inner frame publication and immutable sources.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
 import ../../../src/state/authorization/invocation as authorization_invocation

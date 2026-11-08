@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable untrusted CE134 messages carry no sender, assignment, authorization or signature authority.
+
 import std/assertions
 import ../codec/bounded
 from ../codec/work/package import MaxBundleBytes
@@ -23,34 +24,41 @@ type
     case status: SharingWireError
     of None: completed: T
     else: discard                # No partial/default transcript escapes.
+
 func error*[T](outcome: SharingWireResult[T]): SharingWireError =
   ## Observe framing/ownership refusal without writable status access.
   outcome.status
+
 func value*[T](outcome: SharingWireResult[T]): T {.requires: outcome.status ==
     SharingWireError.None.} =
   ## Only complete wire capture grants byte ownership, never semantic authority.
   outcome.completed
+
 func valid*(request: SharedWorkRequest): bool =
   ## Defaults contain no complete pair of messages.
   request.data != nil
+
 proc sharingInfo*(request: SharedWorkRequest): SharingWireResult[SharingWireInfo] =
   ## Inspect fixed extents before allocating detached message scratch.
   let data = request.data
   if data == nil: return SharingWireResult[SharingWireInfo](status: SharingWireError.InvalidOwner)
   SharingWireResult[SharingWireInfo](status: SharingWireError.None,
     completed: SharingWireInfo(headerBytes: data.first.len, bundleBytes: data.bundle.len))
+
 proc firstMessage*(request: SharedWorkRequest): seq[byte] {.requires: request.data != nil.} =
   ## Return independent small header bytes; caller mutation cannot change the immutable request.
   let data = request.data
   assert data != nil
   result = newSeq[byte](data.first.len)
   for index in 0..<result.len: result[index] = data.first[index]
+
 proc bundleMessage*(request: SharedWorkRequest): seq[byte] {.requires: request.data != nil.} =
   ## Copy only after the receiving worker has preflighted the actual independent local bundle ceiling.
   let data = request.data
   assert data != nil
   result = newSeq[byte](data.bundle.len)
   for index in 0..<result.len: result[index] = data.bundle[index]
+
 proc captureSharedWork*(first, bundle: openArray[byte]): SharingWireResult[SharedWorkRequest] =
   ## Preflight both complete messages before copying any prefix; exact E4/FIN handling belongs to the native route.
   if first.len > MaxSharingHeaderBytes or bundle.len > MaxSharingBundleBytes:

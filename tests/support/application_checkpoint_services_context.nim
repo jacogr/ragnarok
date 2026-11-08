@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared real service/preparation lifetimes retain no fixture graph alias when leasing canonical state.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../src/app/[services, options]
@@ -10,11 +11,13 @@ import ../../src/app/preparation_worker
 import ../../src/app/checkpoint/worker as checkpoint_worker
 import ../../src/codec/[bounded, report_owned]
 import ./application_candidate_context as candidate_context
+
 proc checkpointServicesOptions*(path: string): Options =
   ## Service state mutation ceilings are explicit; listeners remain disabled in component verification.
   result = default(Options)
   assert parseCanonicalOptions(@["server", "--chain", path, "--with-state", "--state-writes", "1000",
     "--state-write-bytes", "1000000"], result)
+
 proc startCheckpointServices*(owner: var Services, path: string) {.raises.} =
   ## Author seed text from the pinned signed-block fixture, then retire that unrelated graph before any canonical lease.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))
@@ -23,6 +26,7 @@ proc startCheckpointServices*(owner: var Services, path: string) {.raises.} =
   let context = candidate_context.fixture(decodeOwnedReport(bytes, 2).value)
   writeFile(path, context.text)
   assert owner.start(checkpointServicesOptions(path), "checkpoint lease")
+
 proc beginCheckpointLease*(owner: var Services, input: var BlockInput): PreparationTicket {.raises.} =
   ## A genuine managed execution lease remains held through Done until explicit collection/join, even for malformed block bytes.
   let admitted = owner.beginBlockInput(input, ByteLimit(1), [], BlockInputLimits(
@@ -32,6 +36,7 @@ proc beginCheckpointLease*(owner: var Services, input: var BlockInput): Preparat
   let job = owner.beginPreparation(input, admitted.value)
   assert job.error == PreparationError.None
   job.value
+
 proc waitCheckpointServices*(owner: var Services) =
   ## Scalar export polling and ordinary service ticks stay available while canonical/RPC aliases are leased.
   let started = getMonoTime()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Only an independently exact complete prefix permits truncation before a real recovery process dies.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_samples, managed_storage_samples, storage_io, storage_crash, storage_crash_appends]
@@ -11,6 +12,7 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../src/storage/database_identity
 import ../../src/codec/bounded
+
 proc repairCrashCase*(label: string, managed: bool, operation, skip: cint): uint64 {.raises.} =
   ## A genuine short failed append creates the tail; child recovery receives a caller-selected exact token.
   resetIo()

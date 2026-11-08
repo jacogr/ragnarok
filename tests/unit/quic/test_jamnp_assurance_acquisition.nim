@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_acquisition_arc_release"}
 
 ## Actual computed-chain pending guarantees select canonical CE137 shards before real durable retention; native Services/worker leases preserve unpublished results, counters and promises through cancellation and join.
+
 import std/[assertions, syncio, dirs, paths, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -18,31 +20,39 @@ import ../../../src/rpc/server
 import ../../support/[jamnp_assurance_fixture, jamnp_assurance_read_runtime,
     jamnp_assurance_batch_runtime, jamnp_assurance_broadcast_runtime, current_application_context,
     storage_io, arc_evidence]
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count actual crypto attempts and inject only explicitly selected maintained-backend failure.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observations are read only after synchronous execution or exact native retirement.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield under bounded monotonic deadlines without touching leased graphs or mutable IO observers.
+
 proc limits(): AssuranceAcquisitionLimits =
   ## Full source qualification and incoming proof work are independent of raw-wire and worst-case duplicate-restore/encoding workspace ceilings.
   AssuranceAcquisitionLimits(duty: AssuranceDutyLimits(chapterBytes: ByteLimit(1000000),
     readBytes: ByteLimit(4000000), reports: ElementLimit(341), requests: ElementLimit(341*1023)),
     verification: AvailabilityMerkleLimits(bytes: ByteLimit(64000000), hashes: ElementLimit(100000),
       hashBytes: ByteLimit(64000000)), wireBytes: ByteLimit(16000000), workspaceBytes: ByteLimit(128000000))
+
 proc storageLimits(): AssuranceStoreLimits =
   ## One retained coordinate covers duplicate renewal and exposes accidental extra publication without evicting a promise.
   AssuranceStoreLimits(entries: ElementLimit(1), scanEntries: ElementLimit(260), bytes: ByteLimit(
       64000000),
     record: AssuranceRecordLimits(bytes: ByteLimit(16000000), verification: limits().verification))
+
 proc clean(folder: string) =
   ## Only exact test-owned folders are removed after every borrower and descriptor has retired.
   try: removeDir(path(folder))
   except: assert false, "acquisition fixture cleanup"
+
 proc frame(output: var seq[byte], payload: openArray[byte]) =
   ## Independent literal E4 framing witnesses the complete message order and empty export-list representation.
   for index in 0..<4: output.add(byte((uint32(payload.len) shr (8*index)) and 255))
   for octet in payload: output.add(octet)
+
 proc wire(fixture: AssuranceAcquisitionFixture): seq[byte] =
   ## Retain availability only from the original genuinely admitted computation; expected request comes from the actual published parent.
   let duty = captureAssuranceDuty(fixture.source, fixture.local, limits().duty)
@@ -58,11 +68,13 @@ proc wire(fixture: AssuranceAcquisitionFixture): seq[byte] =
 type AuditFixture = object ## Independently framed expected original audit bytes are never supplied to the serving worker.
   request: ReadRequest
   expected: seq[byte]
+
 proc servingLimits(): AssuranceReadLimits =
   ## Restore and later audit derivation have independent finite budgets; neither policy loads a key or opens storage.
   AssuranceReadLimits(restore: AssuranceRestoreLimits(verification: limits().verification,
     ioBytes: ByteLimit(64000000), workspaceBytes: ByteLimit(128000000)),
     reply: AvailabilityReadLimits(computation: limits().verification, wireBytes: ByteLimit(8000000)))
+
 proc auditFixture(fixture: AssuranceAcquisitionFixture): AuditFixture =
   ## Select an original canonical coordinate, then independently compute its two-frame audit response from the genuine original guarantor erasure source.
   var selected = captureAssuranceDuty(fixture.source, fixture.local,
@@ -78,6 +90,7 @@ proc auditFixture(fixture: AssuranceAcquisitionFixture): AuditFixture =
   frame(expected, prepared.value.bundleShard)
   frame(expected, prepared.value.justification)
   AuditFixture(request: decodeReadRequest(ReadKind.Audit, request).value, expected: expected)
+
 proc captured(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     input: openArray[byte], now: uint64, policy: AssuranceAcquisitionLimits): AssuranceAcquisitionJob =
   ## Temporary factory/result and source aliases retire before native submit moves this final private input.
@@ -85,12 +98,14 @@ proc captured(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     CoreIndex(0), 0, input, AssuranceTime(now), policy)
   assert admitted.error == AssuranceAcquisitionError.None, "complete acquisition capture"
   admitted.value
+
 proc execute(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     input: openArray[byte], now = 1000'u64, policy = limits()): AssuranceAcquisitionResult[
         AssuranceAcquisitionInfo] =
   ## Synchronous boundary tests never have a second thread touching any retained source, result or native owner.
   let job = captured(owner, fixture, input, now, policy)
   executeAssuranceAcquisition(job, default(AssuranceScanControl))
+
 proc capturedProbe(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     now: uint64, policy: AssuranceAcquisitionLimits): AssuranceAcquisitionJob =
   ## Retire every source/capture wrapper before the native owner may execute a closed existing-coordinate lookup.
@@ -98,18 +113,21 @@ proc capturedProbe(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixtu
     CoreIndex(0), 0, AssuranceTime(now), policy)
   assert staged.error == AssuranceAcquisitionError.None, "complete canonical probe capture"
   staged.value
+
 proc probe(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture,
     now: uint64, policy: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
         AssuranceAcquisitionInfo] =
   ## Direct checks execute the same closed operation used by the managed worker, with no substitute storage or possession marker.
   let job = capturedProbe(owner, fixture, now, policy)
   executeAssuranceAcquisition(job, default(AssuranceScanControl))
+
 proc waitDone(worker: var StateProofWorker) =
   ## Only the synchronized phase is polled while the native worker owns all canonical/record aliases.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded acquisition completion"
     discard pauseMicros(100)
+
 proc waitDone(owner: var Services) =
   ## Cached scalar status and unrelated host ticks remain safe while the namespace/canonical lease is held.
   let deadline = getMonoTime()+initDuration(seconds = 20)
@@ -117,9 +135,11 @@ proc waitDone(owner: var Services) =
     assert getMonoTime() < deadline, "bounded managed acquisition completion"
     owner.tick(0)
     discard pauseMicros(100)
+
 proc stopping(context: nil pointer): bool {.nimcall, raises: [].} =
   ## An explicitly stopped synchronous control cannot publish data or return partial possession.
   true
+
 proc ordinary(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, input: seq[byte]) =
   ## Deep raw input ownership, exact complete framing, whole preflight and actual proof refusal all precede publication.
   var copyBudget = limits()
@@ -225,6 +245,7 @@ proc ordinary(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, i
   assert full.error == AssuranceAcquisitionError.StorageFailure, "a different genuine assigned coordinate cannot evict the old promise"
   assert full.storageError.error == AssuranceStoreError.LimitExceeded, "actual store capacity refusal preserved"
   assert owner.len == 1 and not owner.faulted, "all late refusals preserve the original promise"
+
 proc failures(fixture: AssuranceAcquisitionFixture, input: seq[byte], folder: string) =
   ## Real data/directory synchronization refusal cannot be converted into successful acquisition facts.
   clean(folder)
@@ -251,6 +272,7 @@ proc failures(fixture: AssuranceAcquisitionFixture, input: seq[byte], folder: st
       AssuranceStoreError.None, "restart counts the actual visible record"
   assert owner.len == 1 and execute(owner, fixture, input, 1001).error ==
       AssuranceAcquisitionError.None, "full re-verification and resync recover retained acquisition"
+
 proc probeFaults(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture, folder: string) =
   ## A real restore sync failure faults the owner; only exact close/reopen and full verification permit another fixed observation.
   resetIo()
@@ -264,6 +286,7 @@ proc probeFaults(owner: var AssuranceStore, fixture: AssuranceAcquisitionFixture
   assert owner.openAssuranceStore(folder, fixture.chain, storageLimits()).error ==
       AssuranceStoreError.None, "verified namespace restart after failed probe"
   assert probe(owner, fixture, 9000, limits()).error == AssuranceAcquisitionError.None, "actual record proof and sync recovery"
+
 proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
     fixture: AssuranceAcquisitionFixture, input: seq[byte], index: int) =
   ## Native source/frame/record owners retire before the next capture; completed cancellation retains stored data without exposing a result.
@@ -309,6 +332,7 @@ proc cycle(worker: var StateProofWorker, owner: var AssuranceStore,
         completedRead.readValue.error == ReadError.None and
         completedRead.readValue.value.bytes == audit.expected, "actual durable audit matches original two-frame proof"
   assert owner.len == 1 and not owner.faulted, "inspect namespace only after exact retirement"
+
 proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: string) {.raises.} =
   ## An independently configured trusted seed is the actual complete computed child; Services must select its own head and namespace identity rather than peer-provided facts.
   var chainFile = "assurance-acquisition-chain-" & suffix & ".json"
@@ -441,6 +465,7 @@ proc managed(fixture: AssuranceAcquisitionFixture, input: seq[byte], suffix: str
   broadcastStorage.entries = ElementLimit(16)
   broadcastStorage.scanEntries = ElementLimit(400)
   assuranceBroadcastRuntime(options, fixture, suffix, limits(), broadcastStorage)
+
 proc main() {.raises.} =
   ## Original reports and pending assignments are genuinely executed/admitted/published before any network-like response is constructed.
   reset(0)

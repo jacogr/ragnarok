@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real RPC exposes exactly the recovered head/map/header while absent ancestors and finality remain unavailable.
+
 import std/[assertions, syncio, envvars, strutils, base64]
 import std/posix/posix
 import ../../../src/app/[services, options, chain]
@@ -11,10 +12,12 @@ import ../../../src/chain/[genesis, provider]
 import ../../../src/codec/[bounded, header]
 import ../../../src/state/store
 import ../../support/[application_checkpoint_context, rpc_socket]
+
 proc request(owner: var Services, peer: cint, pending: var string, text: string): string =
   ## One real masked request receives exactly one bounded response.
   sendText(peer, text)
   readPacket(owner.rpc, peer, pending)
+
 proc main() {.raises.} =
   ## A different independently trusted sealed head rules out accidentally reseeding RPC from configured genesis.
   let source = checkpointFixture(CheckpointFixtureVariant.Header)

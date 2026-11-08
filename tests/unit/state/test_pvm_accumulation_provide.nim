@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_provide_arc_release"}
 
 ## Authored provide guest programs verify charging, exact row ordering, requested capture and checkpoint rollback.
@@ -24,8 +25,10 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_ev
 
 ## Inject payload-hash and namespace-hash refusal independently after immutable fixture preparation.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Restore real hashing and reset the observer counters.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Count calls to prove underfunded/invalid-memory/unknown-target preflight never reaches hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fuzzer-v1 session ordering and bounded incremental frames are independent of sockets and STF execution.
+
 import std/assertions
 import ./protocol as fuzz_protocol
 import ../../codec/bounded

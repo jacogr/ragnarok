@@ -55,7 +55,6 @@ proc removeSocket(server: ManagementServer) =
         current.st_dev == server.identity.st_dev and current.st_ino == server.identity.st_ino:
       discard unlink(path.toCString()) # Device/inode equality confines cleanup to the owned socket.
 
-
 proc `=copy`*(destination: var ManagementServer, source: ManagementServer) {.error: "ManagementServer owns sockets".}
   ## Copying an aggregate must not duplicate native ownership.
 

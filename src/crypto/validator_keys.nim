@@ -4,6 +4,7 @@
 ## JIP-5 validator key derivation from an exact borrowed 32-byte master seed.
 ## Development indices expand to repeated little-endian uint32 seeds; arbitrary seeds use the same
 ## domain-separated BLAKE2b-256 derivation. Returned signing owners are opaque and explicitly clearable.
+
 import ./primitives
 import ../bandersnatch/bandersnatch
 

@@ -3,6 +3,7 @@
 
 ## Fixed-size paged-light metadata and digest paths, without files, resident indexes or proof authority.
 ## Successful codecs establish shape/integrity only. Strict proof verification and native ownership are separate.
+
 import std/assertions
 import ../database_identity
 import ../managed/manifest as managed_manifest

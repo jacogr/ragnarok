@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent exact CE128 request order and E4 historical framing qualify remote lookup after an actual predecessor.
+
 import std/assertions
 import ../../src/chain/genesis
 import ../../src/codec/header

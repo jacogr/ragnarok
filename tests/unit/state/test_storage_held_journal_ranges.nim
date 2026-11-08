@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded caller-owned windows preserve held-inode identity, exact EOF, observable retirement and allocation independence.
+
 # @@Verification={"arc":"storage_held_journal_ranges_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -9,8 +10,10 @@ import ../../support/[arc_evidence, storage_io]
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only equal-byte inode replacement cannot become selected-file authority.
+
 proc seed(directory: var ManagedDirectory, path: string): seq[byte] =
   ## An independently authored multi-window payload crosses 4096-byte native chunk boundaries.
   assert initializeManagedDirectory(directory, path) == FileError.None, "initialize owned range fixture"
@@ -18,6 +21,7 @@ proc seed(directory: var ManagedDirectory, path: string): seq[byte] =
   for index in 0..<result.len: result[index] = byte(index mod 251)
   assert createManagedFile(directory, ManagedFileKind.Journal, ManagedEpoch(1), result,
       ByteLimit(8193)) == FileError.None, "create exact payload"
+
 proc retire(path: string) =
   ## Remove only known fixture files after every journal and directory owner closes.
   for suffix in ["/journal-0000000000000001.wal", "/REPLACEMENT", "/LOCK"]:
@@ -26,12 +30,14 @@ proc retire(path: string) =
     if removed != 0: assert posix.errno() == ENOENT, "only absent owned fixture names allowed"
   var directory = path
   assert posix.rmdir(directory.toCString()) == 0, "retire exact fixture directory"
+
 proc readCycle(journal: var ManagedJournal, directory: ManagedDirectory) =
   ## Small stack windows and scalar results leave no retained whole-log allocation after returning.
   var bytes = default(array[257, byte])
   let read = readManagedJournalRange(journal, directory, ManagedEpoch(1), 4000, bytes)
   assert read.error == FileError.None and read.value == bytes.len, "read complete independent window"
   for index in 0..<bytes.len: assert bytes[index] == byte((4000+index) mod 251), "exact window payload"
+
 proc normal() {.raises.} =
   ## Validate lazy attachment, random windows, EOF, short/EINTR progress, no aliasing and unchanged allocation baseline.
   let path = "held-range-normal-" & $storageProcessId()
@@ -91,6 +97,7 @@ proc normal() {.raises.} =
   assert bytes[0] == 17 and managedJournalBytes(journal).value == 8194, "exact appended octet and size"
   assert journal.close == FileError.None and directory.close == FileError.None, "explicit resource retirement"
   retire(path)
+
 proc refused(mode: int) {.raises.} =
   ## Real IO failures and changed selected names/extents poison only the current held owner, never silently pad or restart it.
   let path = "held-range-refused-" & $storageProcessId() & "-" & $mode
@@ -138,6 +145,7 @@ proc refused(mode: int) {.raises.} =
       FileError.RecoveryRequired, "uncertainty refuses range retry"
   assert journal.close == FileError.None and directory.close == FileError.None, "poisoned owners still retire explicitly"
   retire(path)
+
 proc attachRefusal(skip: cint) {.raises.} =
   ## Each attachment durability barrier must fail without adopting a journal lease or preventing explicit retry.
   let path = "held-range-attach-refused-" & $storageProcessId() & "-" & $skip
@@ -160,6 +168,7 @@ proc attachRefusal(skip: cint) {.raises.} =
       FileError.None, "fresh attach after refused barrier"
   assert journal.close == FileError.None and directory.close == FileError.None, "retire successful retry"
   retire(path)
+
 proc main() {.raises.} =
   ## Defaults refuse without touching caller storage; coherent normal and refusal groups cover the complete bounded IO contract.
   var directory = default(ManagedDirectory)

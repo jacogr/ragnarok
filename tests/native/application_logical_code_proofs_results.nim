@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine original logical code dependencies produce four-key managed proofs; authenticated time and actual-length history drive the existing typed historical reader.
+
 import std/[assertions, syncio, envvars, cmdline, monotimes, times]
 import std/posix/posix
 import ../support/[collected_native_context, collected_logical_services_context,
@@ -33,18 +34,23 @@ import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie,
     requests as state_requests]
 import ../../src/chain/[provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selector/query admission remains hash-free after genuine execution and qualification finish.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe whole-selector refusal before any new primitive work.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar monotonic polling cannot observe or retire leased canonical graphs.
+
 proc waitProof(owner: var Services) =
   ## Actual Done remains leased until exact matching collection.
   let started = getMonoTime()
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert (getMonoTime()-started).inSeconds < 20
     discard pauseMicros(1000)
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(LogicalCodeProofResult[LogicalCodeProof])

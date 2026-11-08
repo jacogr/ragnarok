@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit managed DiskStateStore preserves ordinary snapshot identity, policies, context and trusted/local restart.
+
 # @@Verification={"arc":"managed_disk_state_store_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, managed_storage_samples, arc_evidence]
@@ -12,6 +13,7 @@ import ../../../src/storage/[database_identity, durability]
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc cycle(path: string, policy: StateStoreLimits, limits: ManagedLimits) =
   ## Composite native, trie and mutable-handle owners retire after each independent restart.
   var disk = default(DiskStateStore)
@@ -19,6 +21,7 @@ proc cycle(path: string, policy: StateStoreLimits, limits: ManagedLimits) =
       limits).error == DiskStoreError.None
   assert uint64(disk.generation.value) == 3
   assert disk.close == FileError.None
+
 proc main() {.raises.} =
   ## Maintenance changes only physical ownership; ordinary public snapshots retain exact commit identity.
   let limits = managedStorageLimits()

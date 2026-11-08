@@ -9,8 +9,10 @@
 
 import std/[assertions, cmdline, syncio]
 include ../../src/codec/state/requests
+
 # Faults apply to this test-only observer-linked adapter, never production corpus binaries.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Select source mode from runtime input so inactive-field checks execute rather than fold at compilation.
 proc selected(mode: string): RequestHistory =
   case mode
@@ -18,6 +20,7 @@ proc selected(mode: string): RequestHistory =
   of "2": unavailableHistory(RequestSlot(17), RequestSlot(18)) # Two ordered positions.
   of "3": reavailableHistory(RequestSlot(17), RequestSlot(18), RequestSlot(19)) # Three restoration positions.
   else: requestedHistory() # Explicit and default requested histories have no active timestamp.
+
 ## Decode a literal runtime-selected mode without using production encoding as a fixture generator.
 proc decoded(mode: string): RequestHistory =
   let bytes = case mode

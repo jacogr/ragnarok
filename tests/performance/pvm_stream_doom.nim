@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
+
 import std/[assertions, syncio, envvars, monotimes]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan]
@@ -77,7 +78,6 @@ proc respond(context: var HostContext, cpu: MachineInfo, supplied: Memory,
       registers[7] = RegisterValue(length)
   HostResponse(action: HostAction.Continue, gas: cpu.gas, gasDeficit: GasDeficit(0),
     registers: registers, memory: memory)
-
 
 if getEnv("RAGNAROK_PVM_DOOM_ASSERT") == "1":
   # Refusal controls prove assertions remain present in this optimized driver.

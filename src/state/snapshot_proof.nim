@@ -3,6 +3,7 @@
 
 ## Generate bounded witnesses from the existing complete immutable snapshot interface.
 ## No storage internals, database format or partial-state publication are involved.
+
 import ./[store, trie_proof]
 import ./proof/[service as proof_service, plan as proof_plan]
 import ../codec/bounded

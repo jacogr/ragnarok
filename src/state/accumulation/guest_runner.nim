@@ -3,6 +3,7 @@
 
 ## Run current explicit-input accumulation guests under one parameter/profile configuration, retaining exact provider coverage.
 ## Ready code executes; unavailable code and absent accounts keep distinct genuine no-execution proofs. No caller state is published.
+
 import ./residency
 import ../../pvm/worker
 

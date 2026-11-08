@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_parallel_annulment_arc_release"}
 
 ## Genuine common-source supervisor and junior executions prove the current accpar N selection boundary.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[annulment as accumulation_annulment,
     outcome as accumulation_outcome, effects as accumulation_effects,
@@ -18,6 +20,7 @@ import ../../support/[accumulation_batch_context, pvm_accumulation_program,
 
 # Annulment owns pure decisions and never recomputes or publishes a state root.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 let source = annulmentFixture()
 let first = annulmentOriginal(source, 0)

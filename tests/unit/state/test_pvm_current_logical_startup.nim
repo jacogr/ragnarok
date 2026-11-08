@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete explicit CLI logical files drive actual authenticated adoption and disk restart; malformed syntax and incomplete identities grant no source prefix.
+
 import std/[assertions, syncio, envvars, strutils, os]
 import std/posix/posix
 import ../../support/[current_logical_cli_context, current_namespace_policy_context,
@@ -31,10 +32,13 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/report/admission as report_admission
 import ../../../src/storage/managed/manifest as managed_manifest
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Canonical lexical failures must perform no primitive work.
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Native hash rejection makes accidental preflight hashing observable independently of return codes.
+
 proc parser() =
   ## Strict declarations and every mandatory scalar leaf reject malformed/partial input without source access.
   let limits = logicalStartupTestLimits()
@@ -95,6 +99,7 @@ proc parser() =
   assert decodeCurrentLogicalDeclarations(header & "s=42\n" & repeat("k=\n", 4096), many).error ==
       CurrentLogicalStartupError.LimitExceeded
   failHash(0)
+
 proc fileChecks() {.raises.} =
   ## File transport admits cap+1 only, rejects missing sources and shares the scalar policy reader without starting Services.
   var path = "pvm-logical-cli-file-boundary"
@@ -113,10 +118,12 @@ proc fileChecks() {.raises.} =
       CurrentLogicalStartupError.None
   writeFile(path, encodeCurrentLogicalPolicy(limits))
   assert loadCurrentLogicalPolicy(path).error == CurrentDownloadPolicyError.None
+
 proc joined(left, right: seq[string]): seq[string] =
   ## Pinned Nimony appends one explicit argument at a time; no sequence-concatenation API is assumed.
   result = left
   for value in right: result.add(value)
+
 proc optionChecks() =
   ## Paired command-specific paths are atomic; failed reparsing cannot retain a previous enabled logical request.
   let base = @["download-current", "--with-state", "--chain", "chain.json"]
@@ -134,6 +141,7 @@ proc optionChecks() =
     assert not parseCanonicalOptions(joined(@[command, "--with-state", "--chain", "chain.json"],
         pair), options)
   assert parseCanonicalOptions(base, options) and not options.logicalDownloadEnabled
+
 proc sourceChecks(fixture: NamespaceExecutionFixture) =
   ## Every declared payload comes from the actual complete source; omissions, duplicates, missing values and policy refusal retain exact failed stages.
   let services = fixture.executableNamespaceServices(fixture.parent.bestBlock.value.stateSnapshot)
@@ -170,6 +178,7 @@ proc sourceChecks(fixture: NamespaceExecutionFixture) =
   smaller.globals.totalBytes = ByteLimit(0)
   assert captureCurrentLogicalStartup(fixture.parent, declarations, smaller).error ==
       CurrentLogicalStartupError.GlobalsFailure
+
 proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false, omitted = false,
     refuse = false, namespaces = false, refresh = false, partial = false,
         unwritable = false, keyBytes = 0, replacement = false, omitMembership = false,
@@ -355,6 +364,7 @@ proc command(fixture: NamespaceExecutionFixture, layout: int, malformed = false,
       equalCurrentDiskMap(owner.chainView.retainedBlockAt(RetainedBlockIndex(uint64(
           i))).value.stateSnapshot, heads[i].stateSnapshot)
     owner.close()
+
 proc longKeyFixture(base: OwnedReport, length: int): NamespaceExecutionFixture =
   ## A real host reads a long initialized-zero writable/heap span; the compact program and original signed profile remain unchanged.
   var code = @[0'u8]
@@ -370,6 +380,7 @@ proc longKeyFixture(base: OwnedReport, length: int): NamespaceExecutionFixture =
   let physical = serviceStorageKey(ServiceIndex(99), key, ByteLimit(8192)).value
   assert result.update.currentUpdateState.lookup(physical).value.bytes == @[
       9'u8] # Actual PVM execution must create the claimed long identity before any export witness runs.
+
 proc main() {.raises.} =
   ## Source preflight is independent of primitive availability; actual command witnesses then bind complete signed namespaces and durable histories.
   parser()

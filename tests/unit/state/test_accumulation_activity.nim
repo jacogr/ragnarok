@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_activity_arc_release"}
 
 ## Literal signed C(13) bytes, exact parent/body binding, independent full-map roots and atomic publication refusals.
@@ -27,7 +28,9 @@ import ../../support/[accumulation_activity_context, accumulation_provision_inte
 
 # Backend faults begin only after all real signatures, guests and immutable source candidates exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # Chain domains are absent: the adapter derives them from the actual validator candidate.
@@ -43,6 +46,7 @@ proc config(): AccumulationActivityConfig =
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   let encoded = natural.encode(JamNatural(value))
   for index in 0..<encoded.len: bytes.add(encoded.bytes[index])
+
 proc appendFixed(bytes: var seq[byte], value: uint32) =
   for shift in 0..<4: bytes.add(byte((value shr (8*shift)) and 255))
 

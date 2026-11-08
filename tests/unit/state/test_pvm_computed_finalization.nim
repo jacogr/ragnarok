@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_finalization_arc_release"}
 
 ## Genuine n=0 continuation finalizes actual computed execution without replaying initial guests or losing pending-report provenance.
@@ -22,6 +23,7 @@ import ../../support/[pvm_computed_finalization, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force genuine private map/root work to fail after actual service execution completes.
+
 proc expect[T](outcome: ComputedFinalizationResult[T], reason: ComputedFinalizationError) =
   ## Print the exact selected originating stage on unexpected refusal before enforcing application extraction contracts.
   if outcome.error != reason:
@@ -92,11 +94,13 @@ expect(default(FinalizedComputedAccumulation).computedFinalizationStopped,
     ComputedFinalizationError.Uninitialized)
 expect(default(FinalizedComputedAccumulation).computedFinalizationPlan,
     ComputedFinalizationError.Uninitialized)
+
 proc detached(): FinalizedComputedAccumulation =
   ## Retain all actual execution/stop/final-map authority after caller fixture owners retire.
   finalizeComputedAccumulation(finalizationFixture(), computedFinalizationConfig()).value
 let held = detached()
 assert held.computedFinalizationPlan.value.finalAccumulationInfo.value.pendingReports == 0
+
 proc cycle(source: ExecutedComputedAccumulation, config: ComputedFinalizationConfig) =
   ## Prepare and release genuine idle continuation, output history and private C(16) successor every iteration.
   let final = finalizeComputedAccumulation(source, config).value

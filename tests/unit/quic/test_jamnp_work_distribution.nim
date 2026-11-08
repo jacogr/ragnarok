@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_distribution_arc_release"}
 
 ## Genuine independent CE134 computation/signatures feed source-bound CE135 checks, fresh policy failures and deduplicated current/next recipients.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/startup
 import ../../../src/jamnp-s/[work_distribution, work_guarantee, work_signer, work_eligibility,
@@ -16,15 +18,18 @@ import ../../../src/state/[store, guarantee_credentials, guarantors]
 import ../../../src/state/report/[policy, packages]
 import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_report_fixture,
     jamnp_topology_fixture, pvm_input_refinement, arc_evidence]
+
 proc limits(): WorkDistributionLimits =
   ## Current source/GP parameters remain authoritative; all copy/recipient budgets are independently explicit.
   WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
       targets: ElementLimit(12))
+
 proc shares(raw: WorkFixture): WorkSharingLimits =
   ## Independent guarantors execute the real package rather than signing a caller-selected report digest.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
       submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
       eligibility: guaranteeLimits(), retention: guarantorLimits())
+
 proc epochHead(fixture: GuaranteeFixture, atSlot: uint8 = 24): ChainView =
   ## A trusted complete fixture selects a slot in the next epoch and copies the genuine prior roster into C9.
   ## The snapshot remains test authority and grants no block admission certificate.
@@ -47,6 +52,7 @@ proc epochHead(fixture: GuaranteeFixture, atSlot: uint8 = 24): ChainView =
   let view = advanceView(genesisView(parent), saved)
   assert view.error == ViewAdvanceError.None
   view.value
+
 proc verifyTargets(checked: CheckedWorkDistribution, a, b, c: StateEdKey) =
   ## Literal fixture identities make last-rotation union/dedup observable without reproducing the implementation's set builder.
   assert checked.distributionInfo.value.targets == 12
@@ -61,11 +67,13 @@ proc verifyTargets(checked: CheckedWorkDistribution, a, b, c: StateEdKey) =
         topologyKey(60+index))
   assert checked.distributionTarget(-1).error == WorkDistributionError.InvalidIndex
   assert checked.distributionTarget(12).error == WorkDistributionError.InvalidIndex
+
 proc cycle(bytes: seq[byte], view: ChainView) =
   ## Repeated private source/credential/anchor/wire owners must all retire at this call boundary.
   let checked = qualifyWorkDistribution(bytes, view, StateTime(20), limits())
   assert checked.error == WorkDistributionError.None
   assert checked.value.distributionInfo.value.targets == 12
+
 proc main() {.raises.} =
   ## Maintained signing uses three independent actual keys; every report was computed under its original complete execution map.
   let a = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")).value

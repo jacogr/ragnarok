@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_managed_work_submission_arc_release"}
 
 ## Real managed work turns keep canonical ARC owners private through authorization, body waits and unrelated Done leases.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[worker, work_submission as work_jobs]
@@ -23,11 +25,13 @@ proc waitDone(services: var Services) =
   let deadline = getMonoTime()+initDuration(seconds = 8)
   while services.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "managed work CPU deadline"
+
 proc checkExecution(services: Services, token: WorkSessionToken) =
   ## Every extracted source-bearing alias retires before another CPU turn can be admitted.
   let outcome = services.workSubmissionOutcome(token)
   assert outcome.kind == WorkJobResultKind.Refined
   assert outcome.execution.inputRefinementSource.value.importInputsInfo.value.entries == 2
+
 proc managed(f: WorkFixture) {.raises.} =
   ## Actual Services owns session artifacts; native frame simulation receives only opaque control tokens and copied geometry.
   writeFile("managed-work-chain.json", f.workChainText)
@@ -167,6 +171,7 @@ proc managed(f: WorkFixture) {.raises.} =
   services.waitDone()
   services.close() # Joined close drops private source-bearing artifacts only after all borrowers retire.
   assert services.workSessionPhase(closing) == WorkSessionPhase.Empty
+
 proc cycle(f: WorkFixture) =
   ## Private synchronous job execution releases original-source contexts and complete refinement on every success cycle.
   let admission = captureWorkAuthorization(f.workHeader, f.input.state, f.input.parameters,
@@ -179,6 +184,7 @@ proc cycle(f: WorkFixture) =
   let completed = executeWorkSubmission(body.value)
   assert completed.kind == WorkJobResultKind.Refined
   assert completed.execution.inputRefinementSource.value.importInputsInfo.value.entries == 2
+
 proc reportBinding(f: WorkFixture) =
   ## Session identity gates report staging even when another genuine authorization used exactly equal package bytes.
   let original = executeWorkSubmission(captureWorkAuthorization(f.workHeader, f.input.state,

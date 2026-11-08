@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded larger synthetic fixtures use distinct four-byte key/value identities without changing runtime policy.
+
 import std/assertions
 import ../../src/storage/node/repository as node_repository
 import ../../src/storage/record_codec

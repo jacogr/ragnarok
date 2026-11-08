@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restored checkpoints must rebuild mutation-capable incremental stores under original trusted roots.
+
 import std/[assertions, syncio]
 import ../../support/published_state
 import ../../../src/state/[store, checkpoint]

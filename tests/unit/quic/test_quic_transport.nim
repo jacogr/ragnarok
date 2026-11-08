@@ -12,6 +12,7 @@ include ../../../src/quic/transport
 
 # The real transport invokes identity validation only while the stack owner remains alive.
 proc rejectFixtureIdentity(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl.} = 0
+
 # Setup/teardown should create no application streams, but preserve a valid synchronous callback.
 proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl.} = discard
 
@@ -183,6 +184,7 @@ proc admissionRefusal(cert, key: string, ipv6: bool) =
 type IdleStream = object ## One open bidirectional stream confirms the handshake before transport-only idle observation.
   handle: NativeStream
   sent, got, failed: bool
+
 proc idleStream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Exchange exactly one byte each way, then leave the stream open without application traffic.
   let flow = cast[ptr IdleStream](user)

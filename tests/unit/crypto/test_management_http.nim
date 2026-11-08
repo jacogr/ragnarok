@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent registry, strict HTTP boundaries and real private local-socket lifecycle checks.
+
 import std/[assertions, syncio]
 import ../../../src/rpc/protocol as public_protocol
 include ../../../src/management/server
@@ -9,6 +10,7 @@ include ../../../src/management/server
 proc connectSocket(fd: cint, address: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## The test connects a real AF_UNIX consumer rather than bypassing listener admission.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound native scheduling waits without an unbounded blocking receive.
 

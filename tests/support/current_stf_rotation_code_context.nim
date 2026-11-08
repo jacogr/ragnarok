@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact one-halt-code provision budget extends lifecycle qualification without changing its prior profile.
+
 import ./[current_stf_rotation_lifecycle_context, pvm_accumulation_provision]
 import ../../src/app/candidate
 import ../../src/codec/[bounded, composite]

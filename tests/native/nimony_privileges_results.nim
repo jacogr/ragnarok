@@ -30,6 +30,7 @@ let duplicate = PrivilegeState(assigners: @[ServiceIndex(0), ServiceIndex(0)], a
 let encoded = privilegeStateEntry(original, policy)
 assert encoded.error == PrivilegeError.None
 let owner = decodePrivilegeState(encoded.value.value, policy).value.snapshot
+
 # Each hostile count follows exactly twenty fixed E4 role/assigner bytes for two cores.
 proc prefix(): seq[byte] = newSeq[byte](20)
 var framing = prefix()

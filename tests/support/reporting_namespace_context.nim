@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Qualify actual values at explicitly declared logical identities; unknown entries still fail exact-map inventory.
+
 import std/assertions
 import ./current_typed_context
 import ../../src/state/store

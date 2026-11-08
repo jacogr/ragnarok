@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Small authored complete-root unions support independent staged-admission refusal and ownership checks.
+
 import ./storage_samples
 import ../../src/storage/full/state_trie as full_state_trie
 import ../../src/storage/node/records as node_records
@@ -13,6 +14,7 @@ import ../../src/codec/bounded
 type AdmissionFixture* = object ## Detached test image retains no live mutable repository or private-cell authority.
   image*: RepositoryImage
   limits*: RepositoryLimits
+
 proc admissionFixture*(): AdmissionFixture =
   ## Retain the first and third roots while excluding the intermediate branch/value records from the image.
   let limits = storageLimits()
@@ -29,14 +31,17 @@ proc admissionFixture*(): AdmissionFixture =
   AdmissionFixture(image: exportRepositoryImage(selected, limits.codec.records, ElementLimit(
       2)).value,
     limits: limits)
+
 proc admissionBody*(source: AdmissionFixture): seq[byte] =
   ## Serialization proves local physical integrity only; complete image admission remains independent.
   encodeRecordCollection(source.image.collection, source.limits.codec).value
+
 proc decodeAdmission*(source: AdmissionFixture, input: openArray[byte]): RepositoryResult[
     NodeRepository] =
   ## Bind every checked root/generation claim to the same finite authored image and inherited policy.
   decodeRepositoryImage(input, source.image.generation, source.image.commitment, source.image.roots,
     source.limits, ElementLimit(2), ByteLimit(500000))
+
 proc compareAdmissionRecords*(a, b: TrieRecord): int =
   ## Author canonical physical order without importing private codec comparators or trusted tokens.
   let left = array[32, byte](a.digest)

@@ -3,6 +3,7 @@
 
 ## Published vector RawState wire: root, compact record count, then31-byte keys and compact blobs.
 ## Opaque complete maps are root-checked, never promoted to logical identities or selected-chain authority.
+
 import ../store
 import ../../codec/[bounded, natural]
 import ../../codec/state/[trie as state_trie, layout as state_layout]

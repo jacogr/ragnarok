@@ -15,6 +15,7 @@ proc exportErasureLimits*(): ExportErasureLimits =
   ## Separate finite output/work caps from the original tree/hash budgets.
   ExportErasureLimits(bytes: ByteLimit(1000000), products: FieldProductLimit(20000000),
       commitment: commitmentLimits())
+
 proc exportBundle*(kind: int, shards = 1023'u16, core = 0x1234'u64): BundleErasure =
   ## Select genuine successful, missing-code and panic executions; kind 65 crosses the proof-page boundary.
   let halt = @[50'u8, 0]

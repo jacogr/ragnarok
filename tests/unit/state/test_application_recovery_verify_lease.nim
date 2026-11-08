@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Read-only verification after recovery preserves distinct actual outcomes while canonical execution exclusion remains held.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[services, chain]
@@ -17,6 +18,7 @@ import ../../support/application_candidate_context as candidate_context
 import ../../support/[application_recovery_execution, application_checkpoint_context]
 const ChainPath = "application-recovery-verify-chain"
 const FileName = "application-recovery-verify"
+
 proc main() {.raises.} =
   ## Verification never substitutes for publication, adopts its temporary map or relaxes another native worker's lease.
   defer:

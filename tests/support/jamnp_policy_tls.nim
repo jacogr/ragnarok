@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real TLS witness binds validator reservations to authenticated certificate identity and ALPN.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ./jamnp_topology_fixture
 import ../../src/jamnp-s/[admission, topology, protocol, alpn]
@@ -16,24 +17,30 @@ type Party = object ## Stable native callback owner explicitly retires every eng
   server, opened, invalid: bool
   admitted, rejected, closed: int
   refusal: AdmissionError
+
 proc `=copy`(destination: var Party, source: Party) {.error.}
   ## Copying cannot relocate a live native callback context.
+
 proc `=dup`(source: Party): Party {.error.}
   ## Duplicating its foreign retirement authority is also forbidden.
+
 proc key(path: string): array[32, byte] {.raises.} =
   ## Public fixture keys have exact32-byte identity width.
   let raw = readFile(path)
   assert raw.len == 32
   result = default(array[32, byte])
   for index in 0..<32: result[index] = byte(raw[index])
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Certificate/SAN checks precede TLS proof of possession and the later policy decision.
   let owner = cast[ptr Party](user)
   if owner.server: return cint(validPeer(cast[ptr byte](der), length, []))
   cint(validPeer(cast[ptr byte](der), length, owner.pin))
+
 proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## No application streams are needed to prove authenticated capacity classification.
   if event == 0: streamAbort(handle)
+
 proc matches(bytes: ptr ConstByte, length: csize_t, expected: string): bool =
   ## Compare only a fully bounded exact negotiated protocol span.
   if bytes == nil or length != csize_t(expected.len): return false
@@ -41,6 +48,7 @@ proc matches(bytes: ptr ConstByte, length: csize_t, expected: string): bool =
   for index in 0..<expected.len:
     if raw[index] != byte(expected[index]): return false
   true
+
 proc admit(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
     protocol: ptr ConstByte, protocolLength: csize_t): cint {.cdecl, raises: [].} =
   ## Copy Ed25519 identity from authenticated DER, never trust a separately supplied network key.
@@ -62,6 +70,7 @@ proc admit(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
     inc owner.rejected
     return 0 # Failure leaves policy ownership/counts unchanged before native refusal.
   1
+
 proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   ## Native closure, rather than a logical rejection or client TLS flag, releases the reservation.
@@ -72,6 +81,7 @@ proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     if not owner.policy.release(PeerSlot(uint64(slot))): owner.invalid = true
     inc owner.closed
   else: owner.invalid = true # Unknown primitive observations cannot alter role ownership.
+
 proc connect(client: var Party, port: uint16, builder: bool) {.raises.} =
   ## Same authenticated peer deliberately requests different reservation classes over time.
   client.pin = key(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -80,6 +90,7 @@ proc connect(client: var Party, port: uint16, builder: bool) {.raises.} =
     getEnv("RAGNAROK_TEST_KEY_B"), protocol, addr client, verify, stream)
   client.opened = true
   assert client.transport.connectTransport(port)
+
 proc pump(server: var Party, clients: var array[2, Party], accepted, rejected, closed: int) =
   ## Observe exact server policy/native milestones with a finite wall-clock deadline.
   let deadline = getMonoTime()+initDuration(seconds = 3)
@@ -90,6 +101,7 @@ proc pump(server: var Party, clients: var array[2, Party], accepted, rejected, c
     assert not server.invalid
     if server.admitted == accepted and server.rejected == rejected and server.closed == closed: return
   assert false, "validator TLS policy milestones timed out"
+
 proc policyTls*() {.raises.} =
   ## Validator identity overrides builder ALPN; after finalized removal, only the builder reserve fits.
   var server = Party(server: true)

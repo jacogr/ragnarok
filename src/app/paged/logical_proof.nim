@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze deterministic complete-map proof pages on one original logical source; page responses remain partial until independently checked reconstruction succeeds.
+
 import ../full_logical_proof
 import ../logical/proof as logical_proof
 import ../proof/query as proof_query

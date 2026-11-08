@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional bounded CE147-to-CE138 acquisition owns one original report obligation, exact native tickets and private Services jobs. Callbacks retain bytes only; timeouts and exhausted peers never produce invalid judgments.
+
 import std/[monotimes, times]
 import ./[services, audit_state]
 import ./proof/worker
@@ -46,6 +47,7 @@ type
     started, peerStarted: MonoTime
     facts: AuditEvaluationInfo
     attempts: int
+
 func auditAcquisitionPolicy*(limits: AuditAcquisitionLimits): AuditAcquisitionPolicy =
   ## Finite explicit caps leave defaults inactive; full-source registry admission remains an independent Services prerequisite.
   if not limits.fetch.valid or not limits.evaluation.valid or not limits.recovery.valid:
@@ -66,16 +68,20 @@ func auditAcquisitionPolicy*(limits: AuditAcquisitionLimits): AuditAcquisitionPo
           128'u64*1024*1024:
     return default(AuditAcquisitionPolicy)
   AuditAcquisitionPolicy(ready: true, limits: limits)
+
 func valid*(policy: AuditAcquisitionPolicy): bool =
   ## A default policy confers no network or execution admission.
   policy.ready
+
 func phase*(owner: AuditAcquisition): AuditAcquisitionPhase =
   ## Fixed host state is safe during unrelated canonical leases.
   owner.phase
+
 func acquisitionInfo*(owner: AuditAcquisition): AuditAcquisitionInfo =
   ## Host-only counters stay independent of leased private source and proof payloads.
   AuditAcquisitionInfo(phase: owner.phase, target: owner.target, attempts: owner.attempts,
     shards: owner.packets.len, recovery: owner.recovery)
+
 func inProgress(owner: AuditAcquisition): bool =
   ## A completed evaluation remains completed while native retirement drains; cleanup deadlines cannot change its actual validity observation.
   owner.phase in {AuditAcquisitionPhase.PlanReady, AuditAcquisitionPhase.Planning,
@@ -83,20 +89,26 @@ func inProgress(owner: AuditAcquisition): bool =
     AuditAcquisitionPhase.Verifying,
     AuditAcquisitionPhase.EvaluateReady, AuditAcquisitionPhase.Evaluating,
     AuditAcquisitionPhase.RecoverReady, AuditAcquisitionPhase.Recovering}
+
 func busy*(owner: AuditAcquisition): bool =
   ## Exact native and managed controls must retire even after an unavailable terminal result.
   owner.active or owner.requested or owner.dialing or owner.inProgress
+
 func evaluationInfo*(owner: AuditAcquisition): AuditEvaluationInfo {.requires: owner.phase ==
     AuditAcquisitionPhase.Complete.} =
   ## Actual completed evaluation facts are observations only; Services retains the private signing capability.
   owner.facts
+
 proc `=copy`*(destination: var AuditAcquisition, source: AuditAcquisition) {.error.}
   ## Exact managed/native controls must never acquire a second cancelling owner.
+
 proc `=dup`*(source: AuditAcquisition): AuditAcquisition {.error.}
   ## Construction cannot duplicate active or completed-uncollected controls.
+
 proc requireClosed(owner: AuditAcquisition) {.requires: not owner.busy.} =
   ## Joined retirement precedes release of callback/controller storage.
   discard
+
 proc `=wasMoved`*(owner: var AuditAcquisition) {.nodestroy, requires: not owner.busy.} =
   ## Delegate all owned children only after exact native/worker retirement.
   `=wasMoved`(owner.policy)
@@ -109,6 +121,7 @@ proc `=wasMoved`*(owner: var AuditAcquisition) {.nodestroy, requires: not owner.
   `=wasMoved`(owner.dial)
   `=wasMoved`(owner.dialIdentity)
   `=wasMoved`(owner.facts)
+
 proc `=destroy`*(owner: AuditAcquisition) =
   ## Shutdown must retire every exact borrowed operation before destroying source-free child owners.
   requireClosed(owner)
@@ -122,6 +135,7 @@ proc `=destroy`*(owner: AuditAcquisition) =
   `=destroy`(owner.dial)
   `=destroy`(owner.dialIdentity)
   `=destroy`(owner.facts)
+
 proc begin*(owner: var AuditAcquisition, policy: AuditAcquisitionPolicy,
     id: AuditOriginId, ordinal: int, clock: MonoTime): bool =
   ## Host selectors grant no source authority; private lookup and full caps are checked during actual managed planning.
@@ -148,6 +162,7 @@ proc begin*(owner: var AuditAcquisition, policy: AuditAcquisitionPolicy,
   owner.peerStarted = clock
   owner.phase = AuditAcquisitionPhase.EvaluateReady
   true
+
 proc retireNetwork(owner: var AuditAcquisition, streams: var NodeService, force: bool) =
   ## Cancel only this exact request/dial; established connections owned by other controllers remain live.
   if owner.requested:
@@ -162,6 +177,7 @@ proc retireNetwork(owner: var AuditAcquisition, streams: var NodeService, force:
     elif not owner.closingDial and (force or not streams.peerBusy(
         owner.dialIdentity)):
       owner.closingDial = streams.cancelPeerConnection(owner.dial)
+
 proc reservePlan(owner: AuditAcquisition): bool =
   ## Reserve worst-case retained packets, raw replies, proof work and reconstruction before the first network attempt.
   let info = owner.plan.fetchInfo.value
@@ -176,6 +192,7 @@ proc reservePlan(owner: AuditAcquisition): bool =
   let scratch = uint64(limits.recovery.bytes)+uint64(limits.transfer.bytes)+3*uint64(
       limits.fetch.replyBytes)
   retained+scratch <= uint64(limits.bytes)
+
 proc advanceTarget(owner: var AuditAcquisition, clock: MonoTime) =
   ## One peer failure advances an original row once; exhausting direct guarantors switches to independently proven shards.
   inc owner.target
@@ -189,12 +206,14 @@ proc advanceTarget(owner: var AuditAcquisition, clock: MonoTime) =
     owner.phase = AuditAcquisitionPhase.Unavailable
   else:
     owner.phase = AuditAcquisitionPhase.Network
+
 proc cancel*(owner: var AuditAcquisition, services: var Services, streams: var NodeService) =
   ## Cancellation withholds every successful prefix and keeps a live exact worker lease until collection or joined stop.
   owner.cancelling = true
   if owner.active: discard services.cancelStateProof(owner.proof)
   owner.retireNetwork(streams, true)
   if not owner.active: owner.phase = AuditAcquisitionPhase.Cancelled
+
 proc collectWork(owner: var AuditAcquisition, services: var Services, clock: MonoTime) =
   ## Consume only this exact private managed completion; no generic collection can expose source-bearing evaluation owners.
   if not owner.active: return
@@ -255,6 +274,7 @@ proc collectWork(owner: var AuditAcquisition, services: var Services, clock: Mon
       owner.phase = AuditAcquisitionPhase.Unavailable # Local quotas/history/backend failures and exhausted recovery are not negative judgments.
   else:
     owner.phase = AuditAcquisitionPhase.Unavailable # A foreign result kind never advances this acquisition.
+
 proc poll*(owner: var AuditAcquisition, services: var Services,
     streams: var NodeService, clock: MonoTime) =
   ## Harvest exact completions and deadlines only; submit is a separate foreground arbitration step.
@@ -309,6 +329,7 @@ proc poll*(owner: var AuditAcquisition, services: var Services,
   elif not owner.dialing and (clock-owner.peerStarted).inMilliseconds >=
       owner.policy.limits.peerTimeoutMs:
     owner.advanceTarget(clock) # A busy native pool or an unavailable dial cannot strand one original target until the whole round expires.
+
 proc submit*(owner: var AuditAcquisition, services: var Services,
     streams: var NodeService, clock: MonoTime): bool {.raises.} =
   ## Admit at most one fixed CPU turn or native attempt; unrelated actor leases remain untouched.
@@ -378,6 +399,7 @@ proc submit*(owner: var AuditAcquisition, services: var Services,
   of AuditAcquisitionPhase.EvaluateReady: owner.phase = AuditAcquisitionPhase.Evaluating
   else: owner.phase = AuditAcquisitionPhase.Recovering # Admission above proves RecoverReady is the sole remaining case.
   true
+
 proc close*(owner: var AuditAcquisition, services: var Services, streams: var NodeService) =
   ## Successful exact cancellation authorizes joined retirement of this job; stale controls cannot stop another actor's lease.
   if owner.active:

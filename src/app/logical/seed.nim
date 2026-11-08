@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Capture a complete supplied configured logical seed from the actual application chain on the stable host.
+
 import ../chain
 import ../../state/parent/[profile as parent_profile, globals as parent_globals,
     logical as parent_logical]

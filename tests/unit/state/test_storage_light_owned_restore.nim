@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Owned light restore consumes only validated buffers, preserves every refusal and isolates safe aliases/readers.
+
 # @@Verification={"arc":"storage_light_owned_restore_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -12,22 +13,28 @@ import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Resource/shape refusal and provider recovery retain the same original owned input.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Exercise partial checksum/proof admission without consuming caller ownership.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Adoption retains the existing eight checksum/proof attempts without skipping validation.
+
 proc key(first: byte): StateKey =
   ## Fixed queries cover long and empty present values plus authenticated absence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc limits(): LightSnapshotLimits =
   ## Preserve future mutation and all logical/image ceilings exactly after adoption.
   LightSnapshotLimits(bytes: ByteLimit(8192), cache: LightCacheLimits(items: ElementLimit(4),
     writes: ElementLimit(2), valueBytes: ByteLimit(33),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc image(): PreparedLightSnapshot =
   ## A separate flat-map calculator supplies the root before complete-trie proofs are retained.
   let entries = [StateEntry(key: key(0), value: newSeq[byte](33)), StateEntry(key: key(128))]
@@ -39,6 +46,7 @@ proc image(): PreparedLightSnapshot =
   for number in [255'u8, 128, 0]:
     proofs.add(LightStateProof(key: key(number), proof: trie.prove(key(number), limits().cache.proof).value))
   prepareLightSnapshot(default(StorageChainId), expected, proofs, limits()).value
+
 proc unchanged(input: var seq[byte], expected: LightSnapshotError, root: StateRoot,
     chain: StorageChainId, policy: LightSnapshotLimits) =
   ## Every non-success leaves all input octets and length available for independent retry or inspection.
@@ -46,6 +54,7 @@ proc unchanged(input: var seq[byte], expected: LightSnapshotError, root: StateRo
   let failed = takeLightSnapshot(input, chain, root, policy)
   assert failed.error == expected
   assert input == original
+
 proc success(prepared: PreparedLightSnapshot) =
   ## Consumed slots and safe independent aliases cannot mutate the resulting opaque image or retained cache readers.
   resetHash(0)
@@ -71,6 +80,7 @@ proc success(prepared: PreparedLightSnapshot) =
   assert copiedInput == prepared.bytes
   copiedInput[0] = 0
   assert copied.bytes == prepared.bytes # Borrowed restore continues to copy rather than taking its caller's buffer.
+
 proc failures(prepared: PreparedLightSnapshot) =
   ## Truncation, identity, quota, checksum, proof and backend refusal must never consume untrusted input.
   resetHash(0)
@@ -119,6 +129,7 @@ proc failures(prepared: PreparedLightSnapshot) =
   corrupt = prepared.bytes
   assert takeLightSnapshot(corrupt, prepared.chainId, prepared.root, limits()).value.bytes == complete
   assert corrupt.len == 0
+
 proc cycle(prepared: PreparedLightSnapshot) =
   ## Successful take, partial failure, retry and immutable extraction release all input/result/cache owners.
   resetHash(0)
@@ -132,6 +143,7 @@ proc cycle(prepared: PreparedLightSnapshot) =
   resetHash(0)
   assert takeLightSnapshot(input, prepared.chainId, prepared.root, limits()).value.cache.len == 3
   assert input.len == 0
+
 proc main() =
   ## The supported runner records exact release after a warmed success/partial-refusal/retry path.
   resetHash(0)

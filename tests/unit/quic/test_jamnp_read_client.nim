@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal raw TLS responses test exact outbound framing; bytes remain explicitly untrusted, not proof/adoption authority.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[read_stream, read_client]
 import ../../../src/quic/transport
 import ../../../src/codec/bounded
 import ../../support/jamnp_read_client_exchange
+
 proc main() {.raises.} =
   ## Default/invalid requests grant no stream; malformed/truncated responses grant no completed owner.
   var route = default(ReadClientRoute)

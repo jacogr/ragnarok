@@ -4,6 +4,7 @@
 # @@Verification={"arc":"request_logical_continuation_arc_release"}
 
 ## Actual native request addition/removal/restoration and rollback continue from original identities with no supplied successor declarations; storage-only compatibility remains strict.
+
 import std/[assertions, syncio, envvars]
 import ../../support/[collected_native_context, collected_logical_context,
     current_namespace_transition_context, current_namespace_execution_context,
@@ -29,8 +30,10 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, composition as state_composition,
     requests as state_requests, accounts as state_accounts]
 import ../../../src/chain/[provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual mandatory request namespace failures cannot masquerade as source or quota refusal.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## These selected early resource policies refuse before cryptographic work.
 type Fixture = object ## Only real original logical parents and matching native producer updates enter tests.
@@ -38,6 +41,7 @@ type Fixture = object ## Only real original logical parents and matching native 
   update: PreparedCurrentChainUpdate
   hash: ServicePreimageHash
   length: RequestLength
+
 proc candidatePolicy(requests = true): CurrentCandidateLimits =
   ## Independent producer host facts and final selected histories remain frozen through native input.
   result = currentCandidateLimits()
@@ -51,12 +55,14 @@ proc candidatePolicy(requests = true): CurrentCandidateLimits =
   result.completion.execution.execution.round.guests.storageFacts = result.completion.execution.initial.guests.storageFacts
   result.completion.execution.initial.guests.requestFacts = ElementLimit(4)
   result.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
+
 proc policy(): LogicalContinuationLimits =
   ## Existing storage policy is an exact compatibility alias of the common source/projection/qualification policy.
   let logical = namespaceLogicalLimits()
   LogicalContinuationLimits(identity: currentIdentityTestLimits, checks: ElementLimit(8192),
       scratchBytes: ByteLimit(262144), projection: namespaceRefreshLimits.projection,
       profile: logical.profile, globals: logical.globals, logical: logical.logical)
+
 proc program(hash: ServicePreimageHash, length: RequestLength,
     operations: openArray[byte], checkpoint = false, panic = false): seq[byte] =
   ## Original digest bytes and real host operations enter parent code/signatures before execution; selected checkpoint/panic is genuine.
@@ -72,6 +78,7 @@ proc program(hash: ServicePreimageHash, length: RequestLength,
   instructions.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable): result.add(octet)
+
 proc prepare(origin: CurrentNamespaceTransition, requests = true): PreparedCurrentChainUpdate {.raises.} =
   ## Only matching actual collection/join releases native graph borrowing before any logical observation.
   var owner = initApplicationChain(origin.update.currentUpdatePriorView).value
@@ -80,6 +87,7 @@ proc prepare(origin: CurrentNamespaceTransition, requests = true): PreparedCurre
   assert receipt.kind == PreparationCompletionKind.CurrentCompleted and
       receipt.currentValue.error == CurrentBlockInputError.None
   receipt.currentValue.value
+
 proc fixture(kind: int): Fixture {.raises.} =
   ## Exact original identities, histories and programs are authored before complete roots/signatures; no map/result repair occurs.
   var options = executionFixtureConfig()
@@ -111,6 +119,7 @@ proc fixture(kind: int): Fixture {.raises.} =
     options.secondProgram = program(hash, length, [25'u8]) # Introduce a new genuine request identity.
   let origin = namespaceTransitionFixture(nativeBase(), options)
   Fixture(origin: origin, update: prepare(origin), hash: hash, length: length)
+
 proc check(fixture: Fixture, expected: bool): CurrentLogicalState =
   ## Producer raw identities alone choose new declarations; complete actual-map/current matching must reproduce the genuine source owner.
   let done = continueCurrentNamespaces(fixture.origin.parent, fixture.update, policy())
@@ -127,6 +136,7 @@ proc check(fixture: Fixture, expected: bool): CurrentLogicalState =
           fixture.hash) and uint32(request.length) == uint32(fixture.length): found = true
   assert found == expected
   logical
+
 proc main() {.raises.} =
   let grown = fixture(0)
   let continued = check(grown, true)

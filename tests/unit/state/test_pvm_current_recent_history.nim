@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_recent_history_arc_release"}
 
 ## Current C3 derives sealed header, output root and guarantee dictionary from one genuine terminal source.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, assurances, header, report_owned]
 import ../../../src/codec/state/[history as state_history, layout as state_layout]
@@ -21,8 +23,11 @@ import "../../../src/state/block/transition" as block_transition
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/[history, store]
 import ../../support/[accumulation_current_recent_context, accumulation_recent_witnesses, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc checkSource(source: PreparedCurrentAccumulationReady,
     incoming: bool): PreparedCurrentAccumulationRecent =
   ## Observe original admission independently and compare exact current history fields and signed-header identity.
@@ -80,6 +85,7 @@ proc checkSource(source: PreparedCurrentAccumulationReady,
   detached.value[0] = 77
   assert recent.currentRecentEntry.value.value[0] == 2, "entry extraction owns fresh bytes"
   recent
+
 proc main() {.raises.} =
   ## Real signed predecessors exercise both report roles without synthetic sources or detached roots.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

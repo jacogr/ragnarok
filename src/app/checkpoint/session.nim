@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed export lifetimes retain an unacknowledged joined publication receipt across repeated shutdown and restart attempts.
+
 import ./[worker as checkpoint_worker, file as checkpoint_file, transfer as checkpoint_transfer]
 import ../../codec/bounded
 import ../../state/store

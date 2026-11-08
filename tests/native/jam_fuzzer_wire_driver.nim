@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Inspect pinned upstream session messages through the native owned protocol, never through an STF substitute.
+
 import std/[assertions, cmdline, parseutils, strutils, syncio]
 import ../support/fuzz_protocol_context
 import ../../src/state/fuzz/protocol as fuzz_protocol
 import ../../src/state/[store, checkpoint]
 import ../../src/codec/[bounded, header, block_codec]
 import ../../src/codec/state/trie as state_trie
+
 proc hex(input: openArray[byte]): string =
   ## Output copied bytes in one exact lowercase representation.
   const digits = "0123456789abcdef"
@@ -15,9 +17,11 @@ proc hex(input: openArray[byte]): string =
   for octet in input:
     result.add(digits[int(octet shr 4)])
     result.add(digits[int(octet and 15)])
+
 proc version(source: FuzzVersion): string =
   ## Retain all three fixed version octets without inventing semver compatibility.
   hex([source.major, source.minor, source.patch])
+
 proc state(source: FuzzMessage): string =
   ## Emit the entire canonically serialized opaque map for independent key/value comparison, not just a matching root.
   let snapshot = source.fuzzState.value
@@ -29,6 +33,7 @@ proc state(source: FuzzMessage): string =
   assert array[32, byte](response.value.fuzzState.value.commitment.root) == array[32, byte](
       commitment.root)
   $commitment.entries & " " & hex(array[32, byte](commitment.root)) & " " & hex(encoded.value)
+
 proc main() {.raises.} =
   ## Source fixtures are bounded hexadecimal transport only; every protocol assertion lives in Nim.
   let limits = fuzzProtocolTestLimits()

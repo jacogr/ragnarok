@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native light application ownership keeps trusted metadata, partial proofs and bounded retirement coherent across restart.
+
 # @@Verification={"arc":"light_paged_store_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context, storage_io]
@@ -20,11 +21,13 @@ import ../../../src/storage/paged/[store as paged_store, codec as paged_codec,
     stream as paged_stream, io as paged_io]
 import ../../../src/storage/durability
 import ../../../src/storage/file/errors as file_errors
+
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header
   result = newSeq[byte](selected.headerInfo.value.consumed)
   assert encodeOwnedHeader(selected, result).error == HeaderError.None
+
 proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   ## Caller-selected identity/header inputs are captured before the light owner sees proof evidence.
   let owner = initApplicationChain(genesisView(sourceBlock)).value
@@ -33,18 +36,21 @@ proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   let captured = captureCheckpointTrust(encoded, sourceBlock.headerWire, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc policy(sourceBlock: BlockSnapshotResult): LightHeadLimits =
   ## Active validator geometry is selected independently from complete genesis context, never inferred from fetch parameters or partial facts.
   LightHeadLimits(header: HeaderConfig(cores: sourceBlock.value.cores,
     authorValidators: sourceBlock.value.activeValidators, epochSlots: sourceBlock.value.epochSlots,
     maxBytes: ByteLimit(262144)), headers: ElementLimit(3), headerBytes: ByteLimit(1048576),
     view: ProofViewLimits(items: ElementLimit(16), valueBytes: ByteLimit(4194304)))
+
 proc entries(snapshot: StateStoreSnapshot): seq[StateEntry] =
   ## An independent complete fixture map is used only to author genuine membership/absence proofs.
   result = @[]
   for index in 0..<snapshot.commitment.entries:
     let key = snapshot.keyAt(StateEntryIndex(index)).value
     result.add(StateEntry(key: key, value: snapshot.lookup(key).value.bytes))
+
 proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
     limits: StateStoreLimits): VerifiedStateProofBatch =
   ## Full fixture generation and exact-root verification precede every partial view used by the application API.
@@ -59,11 +65,13 @@ proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
   let checked = verifyStateProofs(queries, snapshot.commitment.root, perProof, aggregate)
   assert checked.error == StateProofError.None
   checked.value
+
 func key(value: byte): StateKey =
   ## High-byte fixture keys distinguish genuine absent witnesses from unrequested unknown facts.
   var bytes = default(array[31, byte])
   for index in 0..<bytes.len: bytes[index] = value
   StateKey(bytes)
+
 proc checksum(bytes: var seq[byte]) =
   ## Independent identity-frame oracle rehashes the documented fixed 206-byte payload after one deliberate scalar change.
   assert bytes.len == 238
@@ -71,6 +79,7 @@ proc checksum(bytes: var seq[byte]) =
   assert hashed.error == CryptoError.None
   let digest = array[32, byte](hashed.value)
   for index in 0..<32: bytes[206+index] = digest[index]
+
 proc rootTrust(original: TrustedApplicationCheckpoint,
     root: StateRoot): TrustedApplicationCheckpoint =
   ## Test-only operator posterior-root choice remains independent of the sealed header's prior root; no consensus certificate is claimed.
@@ -83,9 +92,11 @@ proc rootTrust(original: TrustedApplicationCheckpoint,
   let captured = captureCheckpointTrust(identity, header, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc path(label: string): string =
   ## Every trial owns a fresh ignored process namespace.
   "light-paged-store-" & $storageProcessId() & "-" & label
+
 proc limits(source: BlockSnapshotResult): LightPagedLimits =
   ## Finite native stream work and retention ceilings are independent from logical header/proof policy.
   let elements = ElementLimit(1000000)
@@ -108,17 +119,21 @@ proc limits(source: BlockSnapshotResult): LightPagedLimits =
   result.proofs.view = source.policy.view
   result.proofs.work = work
   result.inventory = work
+
 proc facts(fixture: DiskHistoryFixture, ordinal: int): VerifiedStateProofBatch =
   ## Only independent complete fixture snapshots author raw evidence; the light owner retains no complete store.
   batch(fixture.blocks[ordinal].value.stateSnapshot, [chapterKey(StateChapter(11)), key(255)],
       fixture.policy)
+
 proc empty(source: BlockSnapshotResult): LightApplicationHead =
   ## Bootstrap knows no state facts until independently verified evidence is supplied.
   captureLightHead(source.trust, source.policy).value
+
 proc noIo() =
   ## Passive dispatcher operations must not hide synchronous native work.
   for operation in [readIo, writeIo, syncIo, lockIo, closeIo, renameIo, unlinkIo]:
     assert ioCalls(operation) == 0 # Each syscall family remains independently observable.
+
 proc check(snapshot: LightStorageSnapshot, count: int) =
   ## Missing witnesses never turn into authenticated absence, including after native close.
   assert snapshot.valid and snapshot.head.valid
@@ -128,6 +143,7 @@ proc check(snapshot: LightStorageSnapshot, count: int) =
     # A successful absent lookup is available only after that exact query was supplied and verified.
     assert snapshot.head.proofView.lookup(chapterKey(StateChapter(11))).value.present
     assert not snapshot.head.proofView.lookup(key(255)).value.present
+
 proc normal(fixture: DiskHistoryFixture) =
   ## Same-root enrichment and different-root header advancement publish coherent metadata/proof pairs with one bounded predecessor.
   let directory = path("normal")
@@ -202,6 +218,7 @@ proc normal(fixture: DiskHistoryFixture) =
   assert disk.retire(disk.prepareLightRetirement.value).error == LightStoreError.None
   assert disk.close == FileError.None
   check(restored, 2)
+
 proc refusals(fixture: DiskHistoryFixture) =
   ## Default/policy/trust failures precede native mutation; exclusive initialization never silently opens an existing database.
   let source = fixture.blocks[0]
@@ -240,6 +257,7 @@ proc refusals(fixture: DiskHistoryFixture) =
   let restored = openLightPagedStore(disk, directory, source.trust, selected).value
   assert restored.manifest.bytes == first.manifest.bytes
   assert disk.close == FileError.None
+
 proc publicationFaults(fixture: DiskHistoryFixture) =
   ## Every observed write/barrier/rename/close ordinal preserves a coherent old or new pair after fresh independent-root admission.
   let source = fixture.blocks[0]
@@ -274,6 +292,7 @@ proc publicationFaults(fixture: DiskHistoryFixture) =
       check(restored, count)
       assert uint64(restored.manifest.sequence) == uint64(if count == 0: 0 else: 1)
       assert disk.close == FileError.None
+
 proc sameRootAdvance(fixture: DiskHistoryFixture) =
   ## Independent operator trust may select a successor posterior root equal to its parent; the native operation must then increment sequence.
   let source = fixture.blocks[0]
@@ -296,6 +315,7 @@ proc sameRootAdvance(fixture: DiskHistoryFixture) =
   assert restored.head.len == 2 and disk.retirementPending
   assert disk.retire(disk.prepareLightRetirement.value).error == LightStoreError.None
   assert disk.close == FileError.None
+
 proc startupFaults(fixture: DiskHistoryFixture) =
   ## Every observed startup read failure retires both owners; independent reopen admits the exact original metadata/proof pair.
   let source = fixture.blocks[0]
@@ -333,6 +353,7 @@ proc startupFaults(fixture: DiskHistoryFixture) =
     assert disk.snapshot.error == LightStoreError.RecoveryRequired
     check(retained, 2)
     discard disk.close
+
 proc bounds(fixture: DiskHistoryFixture) =
   ## Retention, proof, context and workspace refusals precede native dispatch under independently tightened policy.
   let source = fixture.blocks[0]
@@ -356,12 +377,14 @@ proc bounds(fixture: DiskHistoryFixture) =
         LightStoreError.None
     assert not disk.opened
     noIo()
+
 proc emptyProducer(): PagedProducer =
   ## A valid empty knowledge set under an independently selected root does not mean a complete empty map.
   proc next(pass: int, ordinal: uint64, output: var nativecache.LightStateProof): PagedProducerStep {.closure.} =
     ## Every pass consistently reports no stored queries.
     PagedProducerStep.End
   next
+
 proc frame(inner: seq[byte], tag: byte): seq[byte] =
   ## Independent local-envelope oracle owns explicit E1/E8 widths rather than calling production framing.
   const magic = "RAGNAROK-LIGHT-PAGED-CONTEXT-V1\n"
@@ -371,6 +394,7 @@ proc frame(inner: seq[byte], tag: byte): seq[byte] =
   for index in 0..<8: result[magic.len+1+index] = byte((uint64(inner.len) shr (8*index)) and
       255) # Independent fixed-width little endian.
   for index in 0..<inner.len: result[magic.len+9+index] = inner[index] # Detached body transport.
+
 proc malformedContext(fixture: DiskHistoryFixture) =
   ## Fully native-authenticated bytes still cannot grant a light application owner with wrong framing, trust or predecessor semantics.
   let source = fixture.blocks[0]
@@ -401,6 +425,7 @@ proc malformedContext(fixture: DiskHistoryFixture) =
     assert refused.error == LightStoreError.InvalidFormat or refused.error ==
         LightStoreError.HeadFailure
     assert not disk.opened
+
 proc cycle(directory: string, source: BlockSnapshotResult, added: VerifiedStateProofBatch) =
   ## Fresh native ownership and every restored proof/context allocation retire within each activation.
   var disk = default(LightPagedStore)
@@ -409,6 +434,7 @@ proc cycle(directory: string, source: BlockSnapshotResult, added: VerifiedStateP
   assert prepareLightProofMerge(retained, added).error == LightStoreError.None
   assert disk.close == FileError.None
   check(retained, 2)
+
 proc main() {.raises.} =
   ## Independent complete fixtures only author evidence; the production light facade retains partial owners exclusively.
   let fixture = diskHistoryFixture(3, false)

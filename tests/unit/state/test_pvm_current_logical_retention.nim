@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact-wire admitted plans from real Services collection retain original logical provenance beyond joined close and release every repeated ARC result.
+
 # @@Verification={"arc":"pvm_current_logical_retention_arc_release"}
 import std/[assertions, envvars, syncio]
 import std/posix/posix
@@ -31,6 +32,7 @@ type RetainedHistoryPlan = object ## Only actual successful opaque plan construc
   state: StateStoreSnapshot
   hash: ServicePreimageHash
   restored: bool
+
 proc collectRetainedHistory(base: OwnedReport, restore: bool): RetainedHistoryPlan {.raises.} =
   ## Build/collect genuine native execution, admit its changed history at the exact wire boundary, then join Services before returning the retained immutable plan.
   let fixture = logicalHistoryFixture(base, restore)
@@ -74,12 +76,14 @@ proc collectRetainedHistory(base: OwnedReport, restore: bool): RetainedHistoryPl
   assert plan.error == LogicalRefreshPlanError.None
   RetainedHistoryPlan(plan: plan.value, state: update.currentUpdateState,
       hash: fixture.seeds[1].preimages[1].hash, restored: restore)
+
 proc cycle(source: RetainedHistoryPlan) =
   ## Every complete result still names the exact real collected snapshot after its original Services lifetime; function exit retires all temporary capture/key owners.
   let logical = executeCurrentLogicalRefresh(source.plan)
   assert logical.error == LogicalRefreshError.None
   assert sameStateSnapshot(logical.value.logicalProducer.currentUpdateState, source.state)
   logical.value.checkCollectedHistory(source.hash, source.restored)
+
 proc main() {.raises.} =
   ## Both independently collected history branches survive their original native/application owners and repeated complete logical qualification under ARC.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

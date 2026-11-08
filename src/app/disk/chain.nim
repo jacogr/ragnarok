@@ -3,6 +3,7 @@
 
 ## Synchronous exclusive-owner disk coordination: publish nodes/context before canonical or RPC installation.
 ## Call only during startup or on an explicitly excluded native worker, never from dispatcher callbacks.
+
 import std/assertions
 import ../chain
 import ./[history as disk_history, sources as disk_sources]
@@ -532,7 +533,6 @@ proc publishDiskChain*(disk: var DiskStateStore, owner: var ApplicationChain,
   if committed.error != DiskChainError.None: return committed
   owner.installPrepared(rpc, prepared, lease) # Canonical/RPC visibility follows confirmed durability under exclusion.
   committed
-
 
 proc confirmsCurrentDiskPublication*(disk: DiskStateStore,
     publication: PreparedCurrentDiskPublication, generation: RepositoryGeneration): bool =

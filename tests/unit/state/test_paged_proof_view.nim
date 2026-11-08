@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native light witnesses become detached, root-bound partial state views without complete-map authority.
+
 # @@Verification={"arc":"paged_proof_view_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, paged_native_fixture]
@@ -13,15 +14,18 @@ import ../../../src/storage/paged/[store as paged_store, stream as paged_stream,
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc limits(): PagedProofViewLimits =
   ## Explicit independent batch retention and per-query native work policies bound the bridge.
   PagedProofViewLimits(proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(10000)),
     batch: StateProofBatchLimits(items: ElementLimit(3), nodes: ElementLimit(747),
         valueBytes: ByteLimit(10000)),
     view: ProofViewLimits(items: ElementLimit(3), valueBytes: ByteLimit(10000)), work: pagedPolicy().work)
+
 proc path(label: string): string =
   ## Each suite process owns its native namespaces under the ignored runner directory.
   "paged-proof-view-" & $storageProcessId() & "-" & label
+
 proc check(view: ProofView, first: byte) =
   ## Present-empty and authenticated absence remain different from unqueried evidence.
   assert view.valid and view.len == 3
@@ -31,12 +35,14 @@ proc check(view: ProofView, first: byte) =
   assert empty.present and empty.bytes.len == 0
   assert not view.lookup(pagedKey(255)).value.present
   assert view.lookup(pagedKey(32)).error == ProofViewError.MissingWitness
+
 proc extract(reader: var PagedReader, fixture: PagedNativeFixture): ProofView =
   ## Request deliberately unsorted identities; the normal immutable view provides sorted lookups.
   let captured = readPagedProofView(reader, fixture.config.root,
     [pagedKey(255), pagedKey(0), pagedKey(128)], limits())
   assert captured.error == PagedProofViewError.None
   captured.value
+
 proc policyChecks(reader: var PagedReader, fixture: PagedNativeFixture) =
   ## Exact ceilings succeed while one-short independent ceilings expose no partial collection.
   let root = fixture.config.root
@@ -89,6 +95,7 @@ proc policyChecks(reader: var PagedReader, fixture: PagedNativeFixture) =
   let empty = readPagedProofView(reader, root, [], limits())
   assert empty.error == PagedProofViewError.None and empty.value.valid and empty.value.len == 0
   assert array[32, byte](empty.value.root) == array[32, byte](root)
+
 proc sameNodes(left, right: openArray[EncodedStateNode]): bool =
   ## Compare canonical bytes explicitly across the nominal fixed-width node boundary.
   if left.len != right.len: return false # Different path lengths cannot encode the same witness.
@@ -96,6 +103,7 @@ proc sameNodes(left, right: openArray[EncodedStateNode]): bool =
     # Distinct node wrappers are compared through their complete canonical array representation.
     if array[64, byte](left[index]) != array[64, byte](right[index]): return false
   true
+
 proc detached(reader: var PagedReader, fixture: PagedNativeFixture) =
   ## The public raw transport getter owns independent node/value arrays even across repeated calls.
   let captured = reader.readProof(pagedKey(0), pagedPolicy().work)
@@ -110,6 +118,7 @@ proc detached(reader: var PagedReader, fixture: PagedNativeFixture) =
   assert captured.value.proof.proof.value[0] == 7, "value isolation"
   assert sameNodes(captured.value.proof.proof.nodes, fixture.records[0].proof.nodes), "node isolation"
   assert reader.readProof(pagedKey(32), pagedPolicy().work).error == PagedNativeError.UnknownKey
+
 proc normal(old, fresh: PagedNativeFixture) =
   ## A retained old reader and captured view survive root advancement and all native owners closing.
   let directory = path("normal")
@@ -149,6 +158,7 @@ proc normal(old, fresh: PagedNativeFixture) =
   let closed = readPagedProofView(reader, old.config.root, [pagedKey(0)], limits())
   assert closed.error == PagedProofViewError.NativeFailure
   assert closed.nativeFailure.error == PagedNativeError.Uninitialized
+
 proc faultsAndCycles(fixture: PagedNativeFixture) =
   ## Every observed source read refuses atomically; fresh reopen is mandatory after native IO poison.
   let directory = path("faults")
@@ -187,6 +197,7 @@ proc faultsAndCycles(fixture: PagedNativeFixture) =
   assert before == after
   recordArcRelease("paged_proof_view", 1000, before, after)
   assert reader.close == FileError.None
+
 proc main() =
   ## Checked ARC and genuine SDK calls cover partial authority, ownership, policies and poisoned-reader lifetimes.
   let old = nativeFixture(7)

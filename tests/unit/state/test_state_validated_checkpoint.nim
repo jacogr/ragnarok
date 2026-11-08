@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Existing checkpoint transport retains expected-root policy and precise typed serialization phases.
+
 # @@Verification={"arc": "state_validated_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/arc_evidence
@@ -11,10 +12,13 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     composition as state_composition, consensus as state_consensus, accounts as state_accounts,
     service_values as state_service_values, requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the observer and optionally refuse every attempted state hash.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Measure the existing restoration hash count separately from typed validation.
+
 proc after(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Permit a complete restoration, then refuse the first later manifest hash.
 const
@@ -28,14 +32,17 @@ const
       maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)),
     manifest: StateManifestLimits(services: ElementLimit(4), serialized: mapLimits,
       storageKeyBytes: ByteLimit(32)))
+
 proc snapshotOf(entries: seq[StateEntry]): StateStoreSnapshot =
   ## Produce an actual complete snapshot under the same independent restoration resource ceilings.
   newStateStore(entries, stores).value.snapshot.value
+
 proc fromEntries(entries: seq[StateEntry], services: seq[StateService]): ValidatedCheckpointResult =
   ## Encode deliberately valid envelopes around either valid or invalid typed state without bypassing root verification.
   let source = snapshotOf(entries)
   let wire = encodeFullCheckpoint(source, limits.checkpointBytes).value
   decodeValidatedCheckpoint(wire, source.commitment.root, services, profile, limits)
+
 proc checkDetached(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   ## Use an independently allocated input, overwrite every byte and release it before reading restored state.
   var disposable = newSeq[byte](wire.len)
@@ -46,6 +53,7 @@ proc checkDetached(wire: seq[byte], root: StateRoot, services: seq[StateService]
       index] xor 255 # Overwrite both values and framing before buffer release.
   disposable = @[]
   assert encodeFullCheckpoint(completed.manifestSource.value, limits.checkpointBytes).value == wire
+
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   ## Retire successful restored graphs and late manifest refusals inside one activation.
   let completed = decodeValidatedCheckpoint(wire, root, services, profile, limits).value
@@ -53,6 +61,7 @@ proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   let refused = decodeValidatedCheckpoint(wire, root, [], profile, limits)
   assert refused.error == ValidatedCheckpointError.ManifestFailure
   assert refused.manifestFailure.error == StateManifestError.MappingMismatch
+
 proc main() {.raises.} =
   ## Build original chapter bytes and independently encoded service rows before checkpoint serialization.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_reentry_cycle_arc_release"}
 
 ## Reuse the same genuine prepared/completed types through bounded repeated report-only accseq entries.
@@ -24,6 +25,7 @@ import ../../support/[accumulation_reentry_context, accumulation_continuation_ex
 
 # Verify shared selection/materialization/application performs no hidden hashes for no-op batches.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Complete every actual input through real dispatch or the genuine non-invoking code gate.

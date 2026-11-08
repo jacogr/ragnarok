@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Checked scalar/source histories plus direct legacy x86 literal/region/context and refusal controls.
+
 import std/[assertions, syncio]
 import ../../src/codec/natural
 import ../../src/pvm/[program, machine]
@@ -334,7 +336,6 @@ let retained = flatX86Statistics(second)
 assert retained == default(array[5, uint64]), "exact-plan checked stream reuse creates no native image"
 stdout.writeLine("X86_CHECKED_STREAM_REUSE_OK")
 
-
 var branchLiteralCases = 0
 let identityProgram = owner([@[100'u8, 0xcc], @[0'u8]])
 let identitySlots = instructionRegisters(instruction(identityProgram, CodeAddress(0)))
@@ -463,7 +464,6 @@ for initial in [0'u64, 1, 17, 30, 31, 32, 33]:
     inc signedBranchCases
 stdout.writeLine("X86_SIGNED_BRANCH_PREFIX_CASES," & $signedBranchCases)
 
-
 # Both charged blocks have positively cached scalar arms; the second returns to the first or exits to a real panic.
 let pairedProgram = owner([@[149'u8, 0, 1], @[172'u8, 0x10, 6, 0, 0, 0],
     @[149'u8, 2, 1], @[172'u8, 0x10, 0xf4, 0xff, 0xff, 0xff], @[0'u8]])
@@ -566,7 +566,6 @@ when not defined(pvmX86JitRefuse):
             inc contextCases
 stdout.writeLine("X86_RESIDENT_CONTEXT_CASES," & $contextCases)
 
-
 # Native-only full-bit literals cover every signed immediate encoding boundary and its mandatory fallback neighbors.
 var compactCases = 0
 when not defined(pvmX86JitRefuse):
@@ -639,7 +638,6 @@ when not defined(pvmX86JitRefuse):
         assert registers == original
         inc compactCases
 stdout.writeLine("X86_COMPACT_IMMEDIATE_CASES," & $compactCases)
-
 
 # The useful whole-region arithmetic/context matrix remains independent of the rejected resident-register policy.
 var regionArithmeticCases = 0

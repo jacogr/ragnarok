@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen original logical review admission remains hash-free, immutable and reusable after content failures, source retirement and managed shutdown.
+
 import std/[assertions, syncio, cmdline, envvars]
 import std/posix/posix
 import ../../src/app/services
@@ -17,19 +18,24 @@ import ../../src/state/preimage/content as preimage_content
 import ../../src/codec/bounded
 import ../support/[collected_native_context, collected_supplied_context,
     collected_logical_services_context, managed_supplied_context, current_logical_review_context, arc_evidence]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject only a primitive failure after genuine native source qualification has finished.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Hash-free planning is observed independently of later content execution.
+
 proc escapedPlan(): LogicalReviewPlan {.raises.} =
   ## All fixture/source activation aliases retire; only the immutable admitted plan retains original logical provenance.
   let fixture = collectedNativeFixture()
   let logical = suppliedNativeState(fixture)
   planLogicalReview(logical, logicalReviewTestLimits()).value
+
 proc cycle(plan: LogicalReviewPlan) =
   ## Retire each fully executed content report before the next source-bound retry.
   let pair = executeLogicalReview(plan).value
   assert pair.logicalCurrentReview.value.currentAccountReview.value.accountReviewInfo.value.invariants.content.preimages == 6
+
 proc main() {.raises.} =
   ## A strict negative mode can fail only at the new selected preparation-reason guard.
   let mode = if paramCount() > 0: paramStr(1) else: "control"

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real special inodes, incompatible identities, bounded files and partial tails refuse unchanged.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/storage_samples
@@ -13,6 +14,7 @@ import ../../../src/codec/bounded
 
 proc creationMask(value: uint32): uint32 {.importc: "umask", cdecl, header: "<sys/stat.h>".}
   ## The SDK controls/restores actual permission bits; the pinned POSIX module omits this binding.
+
 proc makeFifo(path: cstring, mode: uint32): cint {.importc: "mkfifo", cdecl,
     header: "<sys/stat.h>".}
   ## Create a real named pipe through the standard SDK, without adding production FFI.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Journal replay authenticates exact ordered transitions and gives explicit partial-tail plans no mutable authority.
+
 # @@Verification={"arc":"storage_light_journal_replay_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -14,40 +15,50 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## The provider observer isolates verification refusal and preflight work.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Every observed replay hash boundary must independently refuse without publication.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Structural and policy refusals are checked before provider calls where applicable.
+
 proc policy(): LightSnapshotLimits =
   ## An independently trusted empty complete root admits only genuine absence evidence.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(4),
     writes: ElementLimit(4), valueBytes: ByteLimit(128), proof: StateProofLimits(
         nodes: ElementLimit(249), valueBytes: ByteLimit(32))))
+
 proc bounds(): LightReplayLimits =
   ## Total bytes, frame count and per-frame limits each have distinct boundary witnesses.
   LightReplayLimits(bytes: ByteLimit(4096), frames: ElementLimit(4),
     frame: LightDeltaLimits(items: ElementLimit(4), bytes: ByteLimit(1024)))
+
 proc first(input: seq[byte], size: int): seq[byte] =
   ## Copy only a proved prefix; the pinned stdlib's sequence slicing helper is unsupported.
   assert size >= 0 and size <= input.len, "replay witness 29"
   result = newSeq[byte](size)
   for index in 0..<size: result[index] = input[index]
+
 proc join(left, right: seq[byte]): seq[byte] =
   ## Small fixed test fixtures prove native capacity before concatenation.
   assert right.len <= high(int)-left.len, "replay witness 34"
   result = newSeq[byte](left.len+right.len)
   for index in 0..<left.len: result[index] = left[index]
   for index in 0..<right.len: result[left.len+index] = right[index]
+
 proc put(input: var seq[byte], offset: int, value: uint64) =
   ## Independent malformed-fixture editing preserves exact known little-endian widths.
   for index in 0..<8: input[offset+index] = byte((value shr (8*index)) and 255)
+
 proc seal(input: var seq[byte]) =
   ## A valid local checksum cannot grant an invalid proof or transition authority.
   resetHash(0)
   let checksum = array[32, byte](blake2b256(input.toOpenArray(0, input.len-33)).value)
   for index in 0..<32: input[input.len-32+index] = checksum[index]
+
 proc cycle(image: PreparedLightSnapshot, manifest: LightJournalManifest, complete, partial: seq[byte]) =
   ## Retire complete and explicit-prefix readers, plans, provider failures and exact revalidation together.
   resetHash(0)
@@ -62,6 +73,7 @@ proc cycle(image: PreparedLightSnapshot, manifest: LightJournalManifest, complet
   resetHash(0)
   let retried = replayLightJournal(complete, manifest, image, bounds()).value
   assert retried.snapshot.bytes == replayed.snapshot.bytes, "replay witness 59"
+
 proc main() =
   ## Three genuine proof-cache transitions establish exact predecessor, ordering, suffix and plan boundaries.
   let image = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], policy()).value

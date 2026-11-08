@@ -3,6 +3,7 @@
 
 ## Current GP S(s)=(processed work-items, processed incoming transfers, original actual gas) from genuine terminal sequence coverage.
 ## Complete input groups partition the original contiguous report prefix and accepted transfers, including skipped/absent services.
+
 import std/algorithm
 import ../../../codec/bounded
 import ../../../codec/state/statistics as state_statistics

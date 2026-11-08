@@ -3,6 +3,7 @@
 
 ## Authenticated current accumulation sequence ownership and bounded continuation input planning.
 ## Flat per-entry facts avoid recursive certificate ownership; selected successor state governs pending partitioning.
+
 import ../residency
 import ../../../chain/parameters
 import ../../../codec/[bounded, composite]

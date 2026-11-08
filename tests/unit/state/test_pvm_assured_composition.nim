@@ -35,6 +35,7 @@ import ../../support/[pvm_assured_composition, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse real private root work only after genuine source execution and authentication have completed.
+
 proc expect[T](outcome: AssuredCompositionResult[T], reason: AssuredCompositionError) =
   ## Keep the originating selected phase visible on unexpected refusal without weakening exact assertions.
   if outcome.error != reason:
@@ -55,10 +56,12 @@ proc expect[T](outcome: AssuredCompositionResult[T], reason: AssuredCompositionE
       if child.error == AccumulationCompletionError.ConsensusFailure: echo "consensus ",
           child.consensusFailure.error
   assert outcome.error == reason, "assured composition reason"
+
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode exact canonical account fields at the actual source, final and composed maps.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot) =
   ## Preserve exact guest bytes and independently known one-key footprint through all private state phases.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -236,11 +239,13 @@ expect(default(ComposedAssuredState).assuredCompositionParameters,
 var copied = done.assuredCompositionPlan.value
 copied = default(PreparedAccumulationConsensus)
 assert done.assuredCompositionPlan.value.accumulationConsensusInfo.value.chapters == 7
+
 proc detached(): ComposedAssuredState =
   ## Preserve complete successor and original authenticated computation after caller-local fixture handles retire.
   composeAssuredState(assuredCompositionFixture(), assuredCompositionConfig()).value
 let held = detached()
 assert uint32(metadata(held.assuredCompositionPlan.value.accumulationConsensusState.value).lastAccumulation) == 3
+
 proc cycle(source: ExecutedAssuredAccumulation, config: AssuredCompositionConfig) =
   ## Release every successful private state phase plus a late refused composed prefix without replaying the initial guests.
   let done = composeAssuredState(source, config).value

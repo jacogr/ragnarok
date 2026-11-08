@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_info_arc_release"}
 
 ## Authored info programs verify the independent fixed wire record, slicing, current state and ownership.
@@ -22,6 +23,7 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 ## Info must neither hash the metadata nor derive any storage namespace.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Prove fixed metadata reads never invoke a backend hash.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

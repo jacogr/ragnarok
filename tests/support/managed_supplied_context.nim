@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Reusable actual managed current collection and complete supplied qualification for original logical consumers.
+
 import std/assertions
 import ./[current_repeated_logical_context, collected_native_context, collected_logical_context,
     collected_logical_services_context, collected_supplied_context, accumulation_current_candidate_context]
@@ -15,6 +16,7 @@ import ../../src/state/accumulation/[round as accumulation_round, queue as accum
 import ../../src/state/report/admission as report_admission
 import "../../src/state/block/transition" as block_transition
 import "../../src/state/block/admission" as block_admission
+
 proc collectManagedSupplied*(owner: var Services, input: var CurrentBlockInput,
     fixture: CurrentRepeatedLogicalFixture): CurrentLogicalState {.raises.} =
   ## All raw identities remain explicitly supplied; canonical owner and receipt come from actual Services execution and collection.

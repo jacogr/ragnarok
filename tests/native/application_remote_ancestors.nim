@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent TLS requests and complete durable-map witness for the actual executable's remote ancestry command.
+
 import ../support/chain_alpn
 
 import std/[assertions, syncio, envvars, monotimes, times, os]
@@ -24,6 +25,7 @@ proc frame(payload: seq[byte]): seq[byte] =
   result = newSeq[byte](payload.len + 4)
   for index in 0..<4: result[index] = byte((uint64(payload.len) shr (index * 8)) and 255)
   for index, octet in payload: result[index + 4] = octet
+
 proc request(hash: array[32, byte], direction: byte): array[42, byte] =
   ## Expected bytes have a fixed E4(37), exact header identity, direction and E4(1).
   result = default(array[42, byte])
@@ -32,6 +34,7 @@ proc request(hash: array[32, byte], direction: byte): array[42, byte] =
   for index, octet in hash: result[index + 5] = octet
   result[37] = direction
   result[38] = 1
+
 proc diskOptions(managed: bool): Options =
   ## Read the same explicit durable backend through normal startup, without remote context or trust inputs.
   var args = @["server", "--with-state", "--chain", "sequence-chain.json", "--state-writes", "1000",
@@ -41,11 +44,13 @@ proc diskOptions(managed: bool): Options =
     args.add("managed") # Physical layout never changes expected canonical history or complete-map semantics.
   result = default(Options)
   assert parseCanonicalOptions(args, result)
+
 proc pause() =
   ## Keep the independent responder nonblocking and bounded while the production process runs.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
   var remaining = default(Timespec)
   discard nanosleep(requested, remaining)
+
 proc main() {.raises.} =
   ## Genuine report/guest preparation defines expected state without using the production command's success status.
   let mode = getEnv("RAGNAROK_REMOTE_ANCESTOR_CASE")

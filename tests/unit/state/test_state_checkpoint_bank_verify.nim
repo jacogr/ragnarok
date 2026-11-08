@@ -16,22 +16,26 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-bank-verify"
+
 proc policy(): StateStoreLimits =
   ## Full-map restore policy remains separate from publication's explicit byte ceiling.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc detached(value: byte): PreparedCheckpoint =
   ## All original snapshot/store aliases retire before a prepared bank caller receives its sole buffer.
   var key = default(array[31, byte])
   key[0] = 1
   let snapshot = newStateStore([StateEntry(key: StateKey(key), value: @[value])], policy()).value.snapshot.value
   prepareFullCheckpoint(snapshot, ByteLimit(1000))
+
 proc cycle(bank: var CheckpointBank, root: StateRoot, head: CheckpointHead) =
   ## Verified scalar receipts retain no decoded map or transient file buffer between calls.
   let verified = bank.verify(root, policy(), ByteLimit(1000)).value
   assert verified.slot == head.slot and uint64(verified.generation) == uint64(head.generation)
   assert array[32, byte](verified.root) == array[32, byte](root)
+
 proc main() =
   ## Trust, format, byte/map limits and selected-slot availability all precede a usable verified receipt.
   for suffix in [".head", ".0", ".1"]:

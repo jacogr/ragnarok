@@ -3,6 +3,7 @@
 
 ## Preserve authenticated initial-round account ownership around the reusable explicit-input phase.
 ## Pure phase success cannot construct this bound owner or replace its admitted source chain.
+
 import ./phase as accumulation_account_phase
 import "../block/guests" as accumulation_block_guests
 import ../coverage as accumulation_coverage

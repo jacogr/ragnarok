@@ -28,7 +28,9 @@ import ../../support/report_admission_context as report_fixture
 
 # Backend faults begin after all authored source/context bytes are independently retained.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type SeedFixture = object ## Test text comes from a genuine signed original parent; its original certificate remains a separate owner.

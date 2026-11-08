@@ -17,10 +17,13 @@ let profile = StateProfile(cores: CoreCount(2), current: ValidatorCount(6),
 let policy = StateChapterPolicy(items: ElementLimit(1000000), maxBytes: ByteLimit(8000000))
 let limits = StateTrieLimits(items: ElementLimit(1000), perValue: ByteLimit(8000000),
     totalValueBytes: ByteLimit(16000000), nodes: TrieNodeLimit(250000))
+
 # Native faults are isolated to this observer-linked test binary.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Delayed refusal exercises cleanup after service-key work and completed child hashes.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 # Copied attempt counts prove complete parent preflight precedes key/root hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

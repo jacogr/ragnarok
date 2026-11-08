@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_node_connections_arc_release"}
 
 ## Real validator connection ownership, source-derived routing and duplicate arbitration witnesses.
+
 import std/[assertions, syncio, envvars, monotimes, times, strutils]
 import std/posix/posix
 import ../../support/[jamnp_topology_fixture, jamnp_connection_pair, arc_evidence]
@@ -19,12 +20,14 @@ proc key(path: string): StateEdKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   StateEdKey(bytes)
+
 proc records(left, right: StateEdKey): array[3, seq[StateValidator]] =
   ## Aliases preserve real population/grid ordinals without synthetic unreachable peer targets.
   result = [newSeq[StateValidator](6), newSeq[StateValidator](9), newSeq[StateValidator](12)]
   for epoch in 0..<3:
     for index in 0..<result[epoch].len:
       result[epoch][index] = StateValidator(ed25519: (if index mod 2 == 0: left else: right))
+
 proc startup() {.raises.} =
   ## Defaults/invalid startup grant no endpoint; actual public identity is copied from the leaf certificate.
   let left = key(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -77,6 +80,7 @@ proc identityBoundaries() {.raises.} =
   assert preferredInitiator(StateEdKey(left), StateEdKey(right)), "literal lexicographic preferred initiator"
   left[31] = 128
   assert not preferredInitiator(StateEdKey(left), StateEdKey(right)), "last-byte high bit reverses the literal preference"
+
 proc lifetime(source: BlockSnapshotResult, config: ConnectionConfig, refuse: bool) =
   ## Scope destruction retires every copied path/topology/dispatcher allocation after explicit native close.
   var node = default(NodeConnections)
@@ -86,6 +90,7 @@ proc lifetime(source: BlockSnapshotResult, config: ConnectionConfig, refuse: boo
   if refuse: assert opened == ConnectionError.BackendFailure and not node.isOpen
   else: assert opened == ConnectionError.None
   node.close()
+
 proc released() {.raises.} =
   ## Warm both successful and partial-failure paths before measuring complete owner destruction.
   let left = key(getEnv("RAGNAROK_TEST_PEER_A"))

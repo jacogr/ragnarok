@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real managed replacement process death preserves one complete selected epoch and independent held readers.
+
 import std/[assertions, syncio]
 import ./[storage_samples, managed_storage_samples, storage_io, storage_crash,
   storage_crash_appends, storage_bootstrap_faults]
@@ -11,6 +12,7 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../src/storage/[snapshot_codec, database_identity]
 import ../../src/codec/bounded
+
 proc compactionCrashCase*(label: string, operation, skip: cint,
     shortWrites = false, retainedContext = false): uint64 {.raises.} =
   ## Prepare a complete obsolete root, then observe only physical compaction after the child's strict open.

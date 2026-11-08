@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/missing actual-chain boundaries cannot turn valid published wire into installation authority.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[trace_step_context, current_consecutive_context]
 import "../../../src/app/trace/import" as trace_import
 import ../../../src/app/chain
 import ../../../src/state/trace/step as trace_step
+
 proc main() {.raises.} =
   ## Real independent trace framing still needs a configured selected application parent.
   let missing = default(TraceImportResult)

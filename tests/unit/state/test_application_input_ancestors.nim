@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Generation-safe input suspension releases raw bytes and resumes the exact prepared signed candidate after context acquisition.
+
 import std/[assertions, envvars, syncio]
 import "../../../src/app/block/input" as block_input
 import ../../../src/app/[candidate, chain]

@@ -35,6 +35,7 @@ proc computedAdmissionConfig*(source: IncludedComputedGuarantees): ReportAdmissi
   result.packages.queues.cores = CoreCount(3)
   result.ancestors.header.cores = CoreCount(3)
   result.ancestors.header.authorValidators = ValidatorCount(9)
+
 proc admissionFixture*(distinctPackages = true, withReady = false,
     withRound = false, withExecution = false, invalidEntry = false,
         withComposition = false, withChain = false,

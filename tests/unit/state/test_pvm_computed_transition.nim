@@ -19,8 +19,10 @@ import ../../support/[pvm_computed_transition, pvm_computed_profile, pvm_compute
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine signed authentication and original execution complete.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe real primitive attempts at the composition boundary.
+
 proc expect[T](outcome: ComputedTransitionResult[T], reason: ComputedTransitionError) =
   ## Compare precise selected reasons before application extraction.
   assert outcome.error == reason, "computed transition reason: " & $outcome.error
@@ -102,6 +104,7 @@ let beforeKeys = original.lookup(chapterKey(StateChapter(8))).value.bytes
 let afterKeys = crossing.computedTransitionStage.value.value.snapshot.lookup(chapterKey(
     StateChapter(8))).value.bytes
 assert beforeKeys != afterKeys, "genuine epoch-crossing posterior active roster differs"
+
 proc detached(): TransitionBoundComputedReport =
   ## Preserve original and posterior owners after all local mutable source handles retire.
   let fixture = transitionFixture()
@@ -111,6 +114,7 @@ assert uint32(headerInfo(retained.computedTransitionStage.value.value.admitted.a
 var caller = fixture.context.original
 changeState(caller)
 assert sameStateSnapshot(done.computedTransitionSource.value.computedProfileContext.value.state, original)
+
 proc cycle(source: ConfiguredComputedReport, staged, cloned: BlockTransitionResult,
     limit: ByteLimit) =
   ## Retire successful shared provenance and refused alternatives without replaying execution/authentication.

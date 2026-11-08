@@ -20,8 +20,10 @@ import ../../support/[accumulation_effect_context, arc_evidence]
 
 ## Refuse a specific hash after real source preparation; failures must never masquerade as HUH or successful capture.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit payload hashing, then refuse request-namespace derivation.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count hash attempts to prove per-blob policy and missing targets preflight cryptographic work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

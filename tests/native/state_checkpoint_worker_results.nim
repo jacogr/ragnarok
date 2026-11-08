@@ -14,16 +14,19 @@ import ../../src/codec/bounded
 proc extractCompletion(completion: CheckpointCompletion) =
   ## Preserve a runtime misuse witness after callers verify its cancellation kind; the accessor still enforces its own contract.
   discard completion.value
+
 proc prepared(): PreparedCheckpoint =
   ## A real initialized empty complete map supplies a small valid I/O buffer.
   let limits = StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(0), perValue: ByteLimit(0),
     totalValueBytes: ByteLimit(0), nodes: TrieNodeLimit(0)), writes: ElementLimit(0),
         writeValueBytes: ByteLimit(0))
   prepareFullCheckpoint(newStateStore([], limits).value.snapshot.value, ByteLimit(1000))
+
 proc forgotten() {.raises.} =
   ## Composite destruction cannot silently abandon a thread and a live bank descriptor.
   var worker = default(CheckpointWorker)
   assert worker.start("build/checkpoint-worker-unclosed") == CheckpointBankError.None
+
 proc main() {.raises.} =
   ## The genuine staged/cancelled close path retires every native resource before the guarded extraction.
   let mode = paramStr(1)

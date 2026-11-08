@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_execution_arc_release"}
 
 ## Real admitted initial rounds retain complete batches and canonical actual gas observations.
@@ -18,6 +19,7 @@ import ../../support/[accumulation_execution_context, report_context, arc_eviden
 
 # Prove gas collection, retained queries and empty state publication do not perform new hashes.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc main() {.raises.} =

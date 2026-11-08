@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real TLS ancestor-stream client reuses the independent finite responder and native transport policy.
+
 import std/[assertions, envvars]
 import ../../src/codec/bounded
 import ../../src/app/ancestor/receiver as ancestor_receiver
@@ -17,10 +18,13 @@ type AncestorClient = object ## Stable exclusive callback owner outlives every n
   stream: NativeStream
   route: AncestorStream
   reset, fragmented: bool
+
 proc `=copy`(destination: var AncestorClient, source: AncestorClient) {.error.}
   ## A transport and callback binding cannot be duplicated.
+
 proc `=dup`(source: AncestorClient): AncestorClient {.error.}
   ## Callback addresses remain stable through transport teardown.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Apply the unchanged JAM TLS certificate policy; explicit peer pinning belongs to the next owner layer.
   cint(validPeer(cast[ptr byte](der), length, []))

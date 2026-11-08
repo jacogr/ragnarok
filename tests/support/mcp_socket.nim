@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded independent HTTP client for live MCP application tests.
+
 import std/[assertions, strutils]
 import std/posix/posix
 import ../../src/app/services
@@ -10,8 +11,10 @@ import ./rpc_socket as sockets
 proc receive(fd: cint, data: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
   ## Receive only initialized bytes from a real local connection.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bounded polling never blocks indefinitely on local transport progress.
+
 proc mcpTool*(owner: var Services, port: uint16, tool: string, arguments = "{}"): string =
   ## Independent HTTP client exercises the dispatcher rather than direct protocol calls.
   let peer = sockets.client(port)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded public leaf-certificate identity and pinned JAMNP-S preferred-initiator selection.
+
 import std/[base64, assertions]
 import ../lib/atomic/file
 import ../codec/bounded
@@ -16,22 +17,27 @@ type
     case status: CertificateIdentityError
     of None: completed: StateEdKey
     else: discard # No private key material is read or retained.
+
 func error*(outcome: CertificateIdentityResult): CertificateIdentityError =
   ## Inspect failure before identity extraction.
   outcome.status
+
 func value*(outcome: CertificateIdentityResult): StateEdKey {.requires: outcome.status ==
     CertificateIdentityError.None.} =
   ## Extract only a complete validated public identity.
   outcome.completed
+
 func space(value: byte): bool =
   ## PEM whitespace is ASCII and has no locale-dependent interpretation.
   value in [byte(' '), byte('\t'), byte('\r'), byte('\n')]
+
 proc marker(bytes: seq[byte], position: int, expected: string): bool =
   ## Bound subtraction before comparing one fixed PEM delimiter.
   if position < 0 or position > bytes.len or expected.len > bytes.len-position: return false
   for index in 0..<expected.len:
     if bytes[position+index] != byte(expected[index]): return false # Exact delimiter only.
   true
+
 proc certificateIdentity*(path: string): CertificateIdentityResult =
   ## Read a bounded public chain file and validate its first leaf, matching SSL_CTX's leaf selection.
   let read = readBoundedFile(path, ByteLimit(128*1024))
@@ -69,6 +75,7 @@ proc certificateIdentity*(path: string): CertificateIdentityResult =
     CertificateIdentityResult(status: CertificateIdentityError.None, completed: StateEdKey(key))
   except:
     CertificateIdentityResult(status: CertificateIdentityError.InvalidPem) # Malformed public base64 cannot escape startup as an exception.
+
 func preferredInitiator*(local, remote: StateEdKey): bool =
   ## Full lexicographic key comparison plus the two final-byte high bits from required connectivity.
   let left = array[32, byte](local)

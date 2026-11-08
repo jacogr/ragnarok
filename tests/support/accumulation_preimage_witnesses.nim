@@ -16,14 +16,17 @@ proc blockPreimageWire*(provided = false): seq[byte] =
   ## Literal canonical service/blob pairs include an empty blob, or actual guest-provided values.
   if provided: return @[2'u8, 42, 0, 0, 0, 1, 73, 99, 0, 0, 0, 1, 81]
   @[3'u8, 42, 0, 0, 0, 0, 42, 0, 0, 0, 2, 1, 2, 99, 0, 0, 0, 1, 3]
+
 proc preimageRequests*(): seq[StateEntry] =
   ## All three requests enter the original signed parent, including the empty-blob request.
   @[provisionRequest(42, @[]), provisionRequest(42, @[1'u8, 2]), provisionRequest(99, @[3'u8])]
+
 proc valueEntry(service: uint32, blob: seq[byte]): StateEntry =
   ## Namespace primitives frame literal values; they do not execute the transition being tested.
   let hash = ServicePreimageHash(array[32, byte](blake2b256(blob).value))
   servicePreimageEntry(ServiceIndex(service), hash, blob,
     ServiceEntryLimits(keyBytes: ByteLimit(32), valueBytes: ByteLimit(uint64(blob.len)))).value
+
 proc checkBlockPreimages*(source: PreparedAccumulationPreimages,
     empty = false, provided = false) =
   ## Literal supplied timestamps and exact content cover empty values and genuine earlier guest fulfillment.

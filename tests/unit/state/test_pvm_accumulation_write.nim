@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_write_arc_release"}
 
 ## Authored writes exercise gas, memory, deposit accounting and immutable implication rollback.
@@ -23,8 +24,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 ## Fault only after authentic source preparation, preserving observer counter ordering.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit namespace derivation, then refuse the private candidate Merklization.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count exact backend work before a refusal.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
@@ -240,6 +243,7 @@ assert boundary.error == AccumulationDispatchError.None and boundary.value.exit 
 assert uint64(machineInfo(boundary.value.machine).value.gasDeficit) == 0
 assert run(source(keyLength = 3458764513820540928'u64, valueLength = 1152921504606846976'u64,
     credit = boundaryCredit-1), limit = 0).value.exit == StepExit.OutOfGas
+
 ## Prepare authentic effects for direct immutable API and malformed-footprint witnesses.
 proc initial(account: ServiceMetadata, extra: seq[StateEntry] = @[]): AccumulationEffects =
   let prepared = guestProgram([@[50'u8, 0]], account = account, extra = extra, spareEntries = 1)
@@ -295,6 +299,7 @@ assert recordAccumulationStorage(baseEffects, @[], @[], default(Parameters), Byt
   AccumulationEffectError.InvalidParameters
 assert recordAccumulationStorage(baseEffects, @[1'u8], @[], schedule(), ByteLimit(0)).error ==
   AccumulationEffectError.LimitExceeded
+
 # Foreign writes use only the selected target's counters, namespace, funding and current supervisor incarnation.
 proc foreignMetadata(existing = false, supervisor = 42'u32, incarnation = 0'u32,
     balance = 10000'u64, protected = 17'u64): StateEntry =

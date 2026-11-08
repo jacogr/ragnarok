@@ -3,6 +3,7 @@
 
 ## Detached finalized-epoch context and sealed network ticket verification retain no canonical graph or native key owner.
 ## Successful tickets are pending GP inputs; neither transport acknowledgment nor this proof check performs canonical adoption.
+
 import std/assertions
 import ./ticket_packet
 import ../chain/[genesis, parameters]
@@ -52,61 +53,77 @@ type
     source: genesis.BlockHash
   CheckedNetworkTicket* = object ## Only the complete RingVRF/epoch/recipient verifier constructs an accepted pending ticket.
     data: nil CheckedTicketData
+
 func error*[T](outcome: NetworkTicketResult[T]): NetworkTicketError =
   ## Inspect failure before any source or checked-ticket extraction.
   outcome.status
+
 func value*[T](outcome: NetworkTicketResult[T]): T {.requires: outcome.status ==
     NetworkTicketError.None.} =
   ## Only complete verified success carries its owner.
   outcome.completed
+
 func ticketFailure*[T](reason: NetworkTicketError): NetworkTicketResult[T] {.requires: reason notin
     [NetworkTicketError.None, NetworkTicketError.StateFailure, NetworkTicketError.RingFailure,
         NetworkTicketError.HashFailure].} =
   ## Ordinary lifecycle/capture failures cannot fabricate a child failure cause.
   NetworkTicketResult[T](status: reason)
+
 func stateError*[T](outcome: NetworkTicketResult[T]): StateComponentError {.requires: outcome.status ==
     NetworkTicketError.StateFailure.} =
   ## Preserve the actual failed exact chapter decoder's cause.
   outcome.stateReason
+
 func ringError*[T](outcome: NetworkTicketResult[T]): BsError {.requires: outcome.status ==
     NetworkTicketError.RingFailure.} =
   ## Invalid proof/encoding remains distinct from native backend/panic refusal.
   outcome.ringReason
+
 func hashError*[T](outcome: NetworkTicketResult[T]): CryptoError {.requires: outcome.status ==
     NetworkTicketError.HashFailure.} =
   ## A source fingerprint failure cannot be mistaken for cryptographic ticket rejection.
   outcome.hashReason
+
 func valid*(source: TicketSource): bool =
   ## Defaults confer no finalized epoch or ring commitment.
   source.data != nil
+
 func valid*(ticket: CheckedNetworkTicket): bool =
   ## Raw proof bytes and default handles cannot enter a pending pool as verified tickets.
   ticket.data != nil
+
 proc sourceData(source: TicketSource): TicketSourceData {.requires: source.valid.} =
   ## Bind private immutable storage before observing its fixed facts.
   let selected = source.data
   assert selected != nil
   selected
+
 proc checkedData(ticket: CheckedNetworkTicket): CheckedTicketData {.requires: ticket.valid.} =
   ## Retained immutable proof facts never grant Native cancellation or CPU collection authority.
   let selected = ticket.data
   assert selected != nil
   selected
+
 proc sourceBlock*(source: TicketSource): genesis.BlockHash {.requires: source.valid.} =
   ## Services compares both selected header identity and posterior state commitment before reuse.
   source.sourceData.source
+
 proc stateRoot*(source: TicketSource): StateRoot {.requires: source.valid.} =
   ## A header hash alone cannot bind a caller-provided posterior state map.
   source.sourceData.posterior
+
 proc epoch*(source: TicketSource): uint32 {.requires: source.valid.} =
   ## The finalized distribution epoch is separate from the packet's following use epoch.
   source.sourceData.epoch
+
 proc epochLength*(source: TicketSource): uint32 {.requires: source.valid.} =
   ## Fixed bounded profile geometry supports host-only stale-epoch retirement.
   source.sourceData.duration
+
 proc lotteryTail*(source: TicketSource): uint32 {.requires: source.valid.} =
   ## The source profile's GP ticket-admission cutoff remains separate from the earlier forwarding deadline.
   source.sourceData.tail
+
 proc allowsTime*(source: TicketSource, now: StateTime, connectivityEpoch: uint32): bool =
   ## Fresh collection/retention checks cannot inherit an older job's epoch or admission window.
   if not source.valid: return false
@@ -115,36 +132,47 @@ proc allowsTime*(source: TicketSource, now: StateTime, connectivityEpoch: uint32
   if selected.sourceSlot > uint32(now) or selected.epoch != epoch or connectivityEpoch !=
       epoch: return false
   uint32(now) mod selected.duration < selected.tail
+
 proc contextHash*(source: TicketSource): array[32, byte] {.requires: source.valid.} =
   ## Stable epoch/ring/entropy/role facts exclude the changing inclusion accumulator and finalized block identity.
   source.sourceData.fingerprint
+
 proc packet*(ticket: CheckedNetworkTicket): TicketPacket {.requires: ticket.valid.} =
   ## Copy complete accepted proof bytes without exporting mutable backing storage.
   ticket.checkedData.packet
+
 proc identifier*(ticket: CheckedNetworkTicket): WinningTicketId {.requires: ticket.valid.} =
   ## Identity is the full verified VRF output, not proof prefix or peer claim.
   ticket.checkedData.id
+
 proc contextHash*(ticket: CheckedNetworkTicket): array[32, byte] {.requires: ticket.valid.} =
   ## Bind pool retention to the exact finalized epoch/ring/entropy/roster context.
   ticket.checkedData.context
+
 proc distributionEpoch*(ticket: CheckedNetworkTicket): uint32 {.requires: ticket.valid.} =
   ## Host collection rechecks this epoch against freshly observed local time.
   ticket.checkedData.distributionEpoch
+
 proc epochLength*(ticket: CheckedNetworkTicket): uint32 {.requires: ticket.valid.} =
   ## Retention never infers geometry from an untrusted packet.
   ticket.checkedData.duration
+
 proc proxy*(ticket: CheckedNetworkTicket): StateEdKey {.requires: ticket.valid.} =
   ## This next-roster identity was selected from the verified full VRF output.
   ticket.checkedData.proxy
+
 proc delivery*(ticket: CheckedNetworkTicket): TicketDelivery {.requires: ticket.valid.} =
   ## Accepted proxy ingress and distribution ingress retain their different forwarding contracts.
   ticket.checkedData.delivery
+
 proc currentCount*(source: TicketSource): int {.requires: source.valid.} =
   ## Actual roster population, including vacant positions, controls distribution indexing.
   source.sourceData.current.len
+
 proc pendingCount*(source: TicketSource): int {.requires: source.valid.} =
   ## Network proof/attempt bounds use actual next population, not maximum3*cores.
   source.sourceData.pending.len
+
 proc networkAttempts*(source: TicketSource): int {.requires: source.valid.} =
   ## The pinned0/1 domain is further bounded by the GP ceiling for the actual next population.
   let selected = source.sourceData
@@ -152,15 +180,18 @@ proc networkAttempts*(source: TicketSource): int {.requires: source.valid.} =
   let ceiling = twice div uint64(selected.pending.len)+uint64(ord(twice mod uint64(
       selected.pending.len) != 0))
   int(min(2'u64, ceiling))
+
 proc currentAt*(source: TicketSource, index: int): StateEdKey {.requires: source.valid and index >=
     0 and index < source.currentCount.} =
   ## Copy an owner-bound current-roster recipient without exposing mutable sequence storage.
   source.sourceData.current[index]
+
 proc includedIdentifiers*(source: TicketSource): seq[WinningTicketId] {.requires: source.valid.} =
   ## Return a fresh bounded inclusion copy; callers never alias mutable storage or the worker-shared source owner.
   let selected = source.sourceData
   result = newSeq[WinningTicketId](selected.included.len)
   for index in 0..<result.len: result[index] = selected.included[index]
+
 proc includes*(source: TicketSource, id: WinningTicketId): bool {.requires: source.valid.} =
   ## Sorted finalized accumulator lookup never widens to best-head or untrusted peer hints.
   let selected = source.sourceData
@@ -182,15 +213,18 @@ proc includes*(source: TicketSource, id: WinningTicketId): bool {.requires: sour
     if order < 0: last = middle
     else: first = middle+1 # Strict sorted source preflight precedes binary search.
   false
+
 proc sameKey(left, right: StateEdKey): bool =
   ## Identity comparison never confuses Ed25519 transport keys with proof-output or Bandersnatch domains.
   array[32, byte](left) == array[32, byte](right)
+
 proc contains(keys: openArray[StateEdKey], key: StateEdKey): bool =
   ## Null identities confer no validator role even if an empty position appears in a roster.
   if sameKey(key, nullValidator().ed25519): return false
   for candidate in keys:
     if sameKey(candidate, key): return true
   false
+
 proc roster(snapshot: BlockSnapshot, chapter: ValidatorChapter,
     limits: ValidatorStateConfig): NetworkTicketResult[seq[StateEdKey]] =
   ## Copy only complete exact bounded role identities, not metadata/native endpoints or a source map alias.
@@ -211,9 +245,11 @@ proc roster(snapshot: BlockSnapshot, chapter: ValidatorChapter,
   for index in 0..<count: keys[index] = validatorAt(decoded.value.value, StateValidatorIndex(uint64(
       index))).value.ed25519
   NetworkTicketResult[seq[StateEdKey]](status: NetworkTicketError.None, completed: keys)
+
 proc appendU32(wire: var seq[byte], value: uint32) =
   ## Local fingerprint encoding has one explicit width and no ABI-dependent object serialization.
   for index in 0..<4: wire.add(byte((value shr (index*8)) and 255))
+
 proc captureTicketSource*(finalized: BlockSnapshotResult): NetworkTicketResult[TicketSource] =
   ## Caller selects actual canonical finality; all complete-map aliases retire before this detached source reaches a worker.
   if finalized.error != GenesisError.None: return ticketFailure[TicketSource](
@@ -308,6 +344,7 @@ proc captureTicketSource*(finalized: BlockSnapshotResult): NetworkTicketResult[T
           included: included, fingerprint: array[32, byte](hashed.value))
   NetworkTicketResult[TicketSource](status: NetworkTicketError.None, completed: TicketSource(
       data: selected))
+
 proc verifyNetworkTicket*(source: TicketSource, packet: TicketPacket,
     recipient: TicketRecipient): NetworkTicketResult[CheckedNetworkTicket] =
   ## A complete exact proof, current certainty/window and authenticated route contract precede all accepted output.

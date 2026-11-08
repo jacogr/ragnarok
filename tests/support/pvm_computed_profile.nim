@@ -36,6 +36,7 @@ type
     state*: StateStore
     parameters*: Parameters
     parent*: OwnedHeader
+
 proc changedParameter*(parameters: Parameters, field: Parameter): Parameters =
   ## Mutate one independent fetch-field low bit using the pinned tuple's explicit widths, preserving valid fixture invariants.
   const widths = [8, 8, 8, 2, 4, 4, 8, 8, 8, 8, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 4, 4, 4, 4, 4, 4, 4, 4]
@@ -46,6 +47,7 @@ proc changedParameter*(parameters: Parameters, field: Parameter): Parameters =
   let decoded = decodeParameters(wire)
   assert decoded.ok and decoded.value.valid, "valid independently changed configured parameter"
   decoded.value
+
 proc profileReport(execution: InputRefinement): ComputedReportLinks =
   ## Complete original bundle/availability/report/transcript provenance before any chain configuration binding.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -57,6 +59,7 @@ proc profileReport(execution: InputRefinement): ComputedReportLinks =
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
+
 proc profileFixture*(): ComputedProfileFixture =
   ## Add real encoded parent C8 before final package context capture, then execute and admit the exact new version.
   let base = lookupFixture()

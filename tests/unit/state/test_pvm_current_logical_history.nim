@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual Services native forget/restore execution refreshes complete logical request histories before host enqueue.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/current_consecutive_context
@@ -26,6 +27,7 @@ import ../../../src/state/store
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/report/admission as report_admission
 import ../../../src/state/current/logical as current_logical
+
 proc publishHistory(owner: var Services, update: PreparedCurrentChainUpdate, disk: bool) =
   ## All retained logical/current owners remain stable from enqueue through native disk Done and matching publication collection.
   assert owner.enqueueCurrentAccumulation(update) == CurrentHandoffAdmission.None
@@ -39,6 +41,7 @@ proc publishHistory(owner: var Services, update: PreparedCurrentChainUpdate, dis
     assert not owner.diskPublicationActive
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Finished
   assert owner.takeCurrentAccumulation().error == CurrentHandoffError.None
+
 proc scenario(fixture: NamespaceExecutionFixture, restore: bool, layout: int) {.raises.} =
   ## Seed the actual configured physical parent, collect a genuinely executed history update and qualify it while host access is open.
   var path = "pvm-current-logical-history-chain"
@@ -111,6 +114,7 @@ proc scenario(fixture: NamespaceExecutionFixture, restore: bool, layout: int) {.
     equalCurrentDiskMap(owner.stateSnapshot.value, logical.logicalProducer.currentUpdateState)
     assert owner.stateSnapshot.value.lookup(key).value.byteLength == (if restore: 13 else: 9)
     owner.close()
+
 proc main() {.raises.} =
   ## Available(1) becomes Unavailable(1,2) or Reavailable(1,2,2) through real native guest hosts, never caller-authored posterior histories.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

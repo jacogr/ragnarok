@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen mixed loops retain full CPU/memory snapshots through host replacement, permission faults and paid reentry.
+
 # @@Verification={"arc": "pvm_host_memory_reentry_reference_arc_release"}
 import std/[assertions, syncio, envvars]
 import ../../../src/pvm/[program, machine]

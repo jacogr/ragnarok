@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen actual successor copy admission is exact, independently bounded and hash-free before any payload allocation/decode.
+
 # @@Verification={"arc":"state_current_refresh_plan_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_refresh_context, arc_evidence]
@@ -9,18 +10,23 @@ import ../../../src/state/current/refresh/plan as current_refresh_plan
 import ../../../src/state/current/request_keys as current_request_keys
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/composition as state_composition
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Complete actual source/key derivation precedes hash-free planning observations.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Fixed inventory and actual cached extent planning invoke no primitive.
+
 proc cycle(source: CurrentRequestKeys) =
   ## Retire frozen fixed plans and source aliases without copying payloads.
   assert planCurrentRefresh(source, currentRefreshTestLimits).value.refreshPlanInfo.value.requests == 4
+
 proc refuse(source: CurrentRequestKeys, limits: CurrentRefreshLimits,
     phase: CurrentRefreshRefusal) =
   ## Original policy boundary remains guarded and typed for every one-short refusal.
   let result = planCurrentRefresh(source, limits)
   assert result.error == CurrentRefreshPlanError.LimitExceeded and result.refusedPhase == phase
+
 proc main() {.raises.} =
   ## Two original services have four storage/preimage/request rows and actual same-identity successor values.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

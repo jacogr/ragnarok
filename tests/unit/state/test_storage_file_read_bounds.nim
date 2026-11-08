@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Chunked physical loads preserve exact byte ceilings and one-byte overrun detection on real files.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
@@ -12,6 +13,7 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc raw() =
   ## Low-level managed reads cover empty/exact/excess limits around both4096-byte chunk boundaries.
   var path = "storage-read-bounds-managed"
@@ -38,6 +40,7 @@ proc raw() =
   assert directory.close == FileError.None
   var lock = path & "/LOCK"
   assert posix.unlink(lock.toCString()) == 0 and posix.rmdir(path.toCString()) == 0
+
 proc journal() {.raises.} =
   ## A complete real journal crossing two chunks must reopen only under a sufficient physical byte ceiling.
   var path = "storage-read-bounds-journal"

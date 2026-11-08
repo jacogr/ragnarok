@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_dispatch_arc_release"}
 
 ## Genuine bootstraps run lifecycle calls with replay isolation, exact provenance and atomic local refusal.
@@ -16,10 +17,12 @@ proc limits(): RefinementInvocationLimits =
   ## Enable finite inner storage without changing any independent capture/execution/output policy.
   result = refinementLimits()
   result.inner = innerLimits()
+
 proc run(source: PreparedRefinementBootstrap, cap = limits()): RefinementInvocationResult[
     RefinementInvocation] =
   ## Invoke the public source-bound runner; no independently replaceable CPU or terminal tuple is supplied.
   runRefinementInvocation(source, [], refinementInputs(), ExportOffset(7), cap)
+
 proc raw(source: PreparedRefinementBootstrap, cap = limits()): RefinementDispatchResult[
     RefinementOutcome] =
   ## Inspect actual host registers through the lower dispatcher, using that bootstrap's own captured environment.
@@ -72,6 +75,7 @@ assert run(panic).value.refinementInfo.value.kind == WorkKind.Panic
 let starved = refinementFixture([refinementImmediate(7, 0), refinementImmediate(8, 196608),
   refinementImmediate(9, 6), @[10'u8, 9], halt], credit = 100, writable = innerBlob())
 assert run(starved).value.refinementInfo.value.kind == WorkKind.OutOfGas
+
 # Fresh bootstraps, captured environments, inner maps and local-failure scratch runs all release under ARC.
 proc cycle() =
   ## Do not retain source or output handles across independent lifetime iterations.

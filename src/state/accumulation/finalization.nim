@@ -181,7 +181,6 @@ proc prepareFinalAccumulation*(source: CompletedAccumulationReentry,
   finalize(source.executionReentry.value.reentryState.value,
     prepareAccumulationOutputs(source, limits), round.completedPrefix, round.pendingReports, round.budget)
 
-
 proc prepareFinalAccumulation*(source: StoppedAccumulation,
     limits: AccumulationOutputHistoryLimits): AccumulationFinalizationResult[
         PreparedFinalAccumulation] =

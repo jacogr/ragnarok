@@ -3,6 +3,7 @@
 
 ## Bounded one-call admission through checked terminals on read-capable native backends.
 ## The owning handler include supplies the private frame and checked terminal operations.
+
 when declared(FlatFrame):
   const
     ReadProbeWalkLimit = 128        ## Each attempted certificate walks at most NativeReadFactLimit facts.

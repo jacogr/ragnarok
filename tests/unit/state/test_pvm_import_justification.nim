@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_import_justification_arc_release"}
 
 ## Independent inclusion witnesses, shape/work policy, tampering, canonical path bytes and immutable ownership.
@@ -133,10 +134,12 @@ assert default(VerifiedImport).verifiedImportInfo.error == ImportJustificationEr
 assert default(VerifiedImport).verifiedImportSegment.error == ImportJustificationError.Uninitialized
 assert default(VerifiedImport).verifiedImportPath.error == ImportJustificationError.Uninitialized
 assert default(VerifiedImport).verifiedImportProof.error == ImportJustificationError.Uninitialized
+
 proc detached(): VerifiedImport =
   ## Retire original temporary sibling/segment arguments while preserving verified owned extraction.
   verifyImportSegment(root, ImportIndex(2), importSegment(3), importPath(ThreePath2), importLimits()).value
 assert uint16(detached().verifiedImportInfo.value.index) == 2
+
 proc cycle() =
   ## Release fresh verified witnesses, proof copies and cryptographically refused candidates on every iteration.
   let done = detached()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real selected-state proof jobs hold the Services graph/RPC gate through cancellation and Done.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
@@ -11,8 +12,10 @@ import ../../../src/codec/bounded
 import ../../../src/rpc/server
 import ../../../src/jamnp-s/read_stream
 import ../../support/proof_query_context
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield to one native worker while the host polls only synchronized scalars.
+
 proc waitDone(owner: var Services) =
   ## Dispatcher ticks may service UI but cannot create canonical/RPC contexts during the lease.
   let start = getMonoTime()
@@ -20,6 +23,7 @@ proc waitDone(owner: var Services) =
     assert (getMonoTime()-start).inSeconds < 20
     owner.tick(0)
     discard pauseMicros(1000)
+
 proc main() {.raises.} =
   ## Keep all externally retained canonical aliases alive and untouched until collect/join.
   let context = queryContext()

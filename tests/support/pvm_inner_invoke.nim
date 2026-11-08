@@ -22,11 +22,13 @@ proc invokeBlob*(instructions: openArray[seq[byte]]): seq[byte] =
   for index, marked in starts:
     if marked: mask[index div 8] = mask[index div 8] or byte(1 shl (index mod 8))
   for octet in mask: result.add(octet)
+
 proc invokeRegisters*(): RegisterFile =
   ## Thirteen literal full-width patterns expose dropped bytes, wrong offsets or accidental register replacement.
   result = default(RegisterFile)
   for index in 0..<13: result[index] = RegisterValue(0x1020304050607000'u64+uint64(index))
   result[0] = RegisterValue(0xffff0000'u64) # The guest's jump_ind r0 reaches the real halt sentinel.
+
 proc invokeMemory*(blob = innerBlob(), fuel = 100'u64, regs = invokeRegisters(),
     address = 196608'u64): Memory =
   ## Copy one RO program page and two sentinel RW pages, placing all 112 frame bytes independently.
@@ -46,6 +48,7 @@ proc invokeMemory*(blob = innerBlob(), fuel = 100'u64, regs = invokeRegisters(),
       if offset < 4096: first.bytes[offset] = byteValue
       else: second.bytes[offset-4096] = byteValue
   captureMemory([code, first, second], PageLimit(3)).value
+
 proc invokeMachines*(blob = innerBlob(), cap = innerLimits()): InnerMachines =
   ## Only real machine creation authorizes program/PC/RAM ownership; frames cannot substitute it later.
   let memory = invokeMemory(blob)
@@ -58,6 +61,7 @@ proc invokeArgs*(id = 0'u64, address = 196608'u64): RegisterFile =
   result = innerRegisters()
   result[7] = RegisterValue(id)
   result[8] = RegisterValue(address)
+
 proc invokeFrame*(memory: Memory, address = 196608'u64): array[14, uint64] =
   ## Decode frame bytes independently for literal endian/word-position witnesses, never through the implementation helper.
   result = default(array[14, uint64])

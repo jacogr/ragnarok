@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent authenticated fallback is rearmed for every actual successor; insufficient attempts retain the exact original head.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/current/download/command as current_download_command

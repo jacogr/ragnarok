@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen complete current continuation admits every later capture/map quota, preserves typed backend refusal and produces existing full current logical provenance.
+
 # @@Verification={"arc":"state_current_refresh_logical_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_refresh_context, current_logical_refresh_context, arc_evidence]
@@ -17,17 +18,22 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/state/global_snapshot
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[trie as state_trie, composition as state_composition]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original/current/request/reconstruction preparation completes before zero-hash full planning or backend refusal observation.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Full plan admission is hash-free; whole matching deliberately uses maintained hashing under the frozen policies.
+
 proc refuse(source: CurrentRefreshPlan, limits: CurrentLogicalRefreshLimits,
     phase: LogicalRefreshRefusal) =
   ## An admitted source never turns one-short policy into an empty complete current state.
   let refused = planCurrentLogicalRefresh(source, limits)
   assert refused.error == LogicalRefreshPlanError.LimitExceeded and refused.refusedPhase == phase
+
 proc after(successes: cint) {.importc: "ro_blake_after", cdecl.}
   ## An independently measured maintained current qualification prefix selects the real later raw-key backend boundary.
+
 proc cycle(plan: CurrentLogicalRefreshPlan, prefix: cint) =
   ## Retire both complete captures and a real late backend refusal after the successful current prefix each cycle.
   fail(0)
@@ -37,6 +43,7 @@ proc cycle(plan: CurrentLogicalRefreshPlan, prefix: cint) =
   assert failed.error == LogicalRefreshError.LogicalFailure
   assert failed.logicalFailure.logicalFailure.inventoryFailure.manifestFailure.compositionError ==
       StateCompositionError.BackendFailure
+
 proc main() {.raises.} =
   ## All source identities and actual producer output come from genuine complete signed/current fixtures.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

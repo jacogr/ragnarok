@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent golden selections and anchors reject schema confusion, malformed metadata and provider failures.
+
 # @@Verification={"arc":"storage_light_journal_manifest_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -13,10 +14,13 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider refusal and no-provider preflight cases use the maintained observer.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Structural and identity refusals precede cryptographic work.
+
 proc hex(input: string): seq[byte] =
   ## Decode fixed independent Python hashlib/struct golden bytes without reusing production codecs.
   result = newSeq[byte](input.len div 2)
@@ -29,11 +33,13 @@ proc hex(input: string): seq[byte] =
       assert digit >= 0 and digit < 16
       number = number*16+digit
     result[index] = byte(number)
+
 proc first(input: seq[byte], size: int): seq[byte] =
   ## Copy a proved proper prefix without invoking the pinned compiler's unsupported sequence slicing helper.
   assert size >= 0 and size <= input.len
   result = newSeq[byte](size)
   for index in 0..<size: result[index] = input[index]
+
 proc cycle(image: PreparedLightSnapshot, golden, anchor: seq[byte]) =
   ## Retire detached bytes and scalar handles together, including failed and successful decode paths.
   let selected = prepareLightJournalManifest(image, ManagedEpoch(1), LightDeltaSequence(0),
@@ -48,6 +54,7 @@ proc cycle(image: PreparedLightSnapshot, golden, anchor: seq[byte]) =
   assert decoded.bytes == golden
   assert encodeLightJournalAnchor(decoded, ByteLimit(98)).value == anchor
   assert validateLightJournalAnchor(anchor, retained, ByteLimit(98)) == LightSelectionError.None
+
 proc main() =
   ## Exercise complete metadata, exact bounds, schema separation and every proper prefix before ARC stress.
   let policy = LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(

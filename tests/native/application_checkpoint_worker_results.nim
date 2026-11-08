@@ -2,26 +2,32 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A live worker address, unjoined native lifetime and unselected result alternatives enforce runtime contracts.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/app/checkpoint/[worker as checkpoint_worker, file as checkpoint_file,
     identity as checkpoint_identity]
 import ../../src/codec/bounded
 import ../support/application_checkpoint_worker_context
+
 proc extractAdmission(admission: ApplicationCheckpointAdmission) =
   ## Only actual admitted ownership grants a ticket.
   discard admission.value
+
 proc extractCompletion(completion: ApplicationCheckpointCompletion) =
   ## Only native operation completion carries a file outcome.
   discard completion.value
+
 proc inspectOperation(completion: ApplicationCheckpointCompletion) =
   ## Only actual completion supplies the performed publication/verification kind.
   discard completion.operation
+
 proc forgotten() {.raises.} =
   ## Start a genuine thread before witnessing required explicit joined destruction.
   var worker = default(ApplicationCheckpointWorker)
   assert worker.start("build/application-checkpoint-worker-unclosed") ==
       ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Genuine native publication and inactive relocation exercise the same selected access and lifecycle paths.
   let mode = paramStr(1)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused coverage alternatives cannot expose complete rows or inactive provider owners.
+
 import std/cmdline
 import ../../src/state/accumulation/[coverage as accumulation_coverage,
     annulment as accumulation_annulment]

@@ -15,10 +15,12 @@ proc makeFifo(path: cstring, mode: Mode): cint {.importc: "mkfifo", cdecl, heade
   ## A real FIFO with no writer proves path opening cannot block before regular-file validation.
 
 const FileName = "state-bounded-file-read.bin"
+
 proc cycle() =
   ## Read/close success and one-byte-short refusal retire every private buffer before observation.
   assert readBoundedFile(FileName, ByteLimit(5000)).error == AtomicFileError.None
   assert readBoundedFile(FileName, ByteLimit(4999)).error == AtomicFileError.LimitExceeded
+
 proc main() =
   ## Fixed chunks and ceiling-plus-one detection must preserve binary order, empty files and exact limits.
   var path = FileName

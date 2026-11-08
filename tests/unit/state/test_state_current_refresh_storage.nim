@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine funded current storage growth refreshes actual payload/footprint while preserving raw identities and refusing stale-length copy budgets.
+
 # @@Verification={"arc":"state_current_refresh_storage_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
@@ -20,10 +21,13 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     service_values as state_service_values]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## All actual code/parent/current execution and request-key derivation precede hash-free actual-extent policy checks.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Cached target extent planning and detached projection cannot hash.
+
 proc cycle(plan: CurrentLogicalRefreshPlan, expected: openArray[byte]) =
   ## Retire updated full inventories and complete detached payload copies after each genuine source-bound refresh.
   let logical = executeCurrentLogicalRefresh(plan).value
@@ -33,6 +37,7 @@ proc cycle(plan: CurrentLogicalRefreshPlan, expected: openArray[byte]) =
   for i in 0..<expected.len:
     assert services[1].storage[1].value[i] == expected[
         i] # Exact original actual target bytes survive every copied array lifetime.
+
 proc main() {.raises.} =
   ## Existing guest host-write convention executes only against funded99, with the original key and counters committed before signing.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

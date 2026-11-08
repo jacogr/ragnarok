@@ -46,6 +46,7 @@ proc unsigned(text: string): uint64 =
   var number: uint64 = 0
   assert text.len > 0 and parseBiggestUInt(text, number) == text.len
   number
+
 ## Trusted source cardinalities must fit native indexing before conversion or allocation.
 proc integer(text: string): int =
   let number = unsigned(text)

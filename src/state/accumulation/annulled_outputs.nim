@@ -3,6 +3,7 @@
 
 ## Current accpar service/yield pairs bound to genuine conflict-annulment decisions.
 ## This separate owner cannot impersonate a completed round/history or final block output certificate.
+
 import std/algorithm
 import ../../codec/[bounded, natural]
 import ../../codec/state/[outputs as state_outputs, trie as state_trie]

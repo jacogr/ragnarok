@@ -14,6 +14,7 @@ import ./[pvm_authorized_refinement, pvm_authorization_invoke, pvm_report_result
 proc identityLimits*(): ReportIdentityLimits =
   ## Finite independent hash/copy policies admit the small canonical test sources.
   ReportIdentityLimits(packageBytes: ByteLimit(4096), authorizerBytes: ByteLimit(4096))
+
 proc identityFixture*(imports: openArray[seq[ImportReference]], prerequisites = 0,
     configuration: seq[byte] = @[81'u8, 82]): AuthorizedRefinement =
   ## Capture new manifests before executing authorization, retaining real complete state/code provenance.
@@ -44,10 +45,12 @@ proc identityFixture*(imports: openArray[seq[ImportReference]], prerequisites = 
   let authorization = runAuthorizationInvocation(original.state, package, CoreIndex(0x1234),
     original.parameters, authorizationLimits()).value
   prepareAuthorizedRefinement(authorization, original.inputs, authorizedLimits()).value
+
 proc identityKey*(octet: byte): PackageHash =
   ## Deterministic distinct wire keys make canonical ordering explicit.
   result = PackageHash()
   result.bytes[0] = octet
+
 proc identityPair*(octet: byte): SegmentLookup =
   ## Pair a package key with a deliberately independent root; correspondence authentication is outside this gate.
   result = SegmentLookup(packageHash: identityKey(octet))

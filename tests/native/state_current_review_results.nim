@@ -2,29 +2,37 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict current-review guards use signed complete successor qualification as their genuine success control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, current_state_context,
     accumulation_current_chain_context, account_review_plan_context]
 import ../../src/state/current/[review as current_review, state as current_state]
 import ../../src/codec/report_owned
+
 proc extract(outcome: CurrentReviewResult[ReviewedCurrentState]) {.noinline.} =
   ## Failed/default alternatives grant no completed owner.
   discard outcome.value
+
 proc profile(outcome: CurrentReviewResult[ReviewedCurrentState]) {.noinline.} =
   ## No unrelated alternative invents a parameter refusal.
   discard outcome.profileError
+
 proc preparation(outcome: CurrentReviewResult[ReviewedCurrentState]) {.noinline.} =
   ## Only real failed preparation carries a nested reason.
   discard outcome.preparationFailure
+
 proc execution(outcome: CurrentReviewResult[ReviewedCurrentState]) {.noinline.} =
   ## Only real failed execution carries a nested reason.
   discard outcome.executionFailure
+
 proc source(owner: ReviewedCurrentState) {.noinline.} =
   ## Default owners grant no qualified source.
   discard owner.reviewedCurrentSource.value
+
 proc review(owner: ReviewedCurrentState) {.noinline.} =
   ## Default owners grant no completed targeted review.
   discard owner.currentAccountReview.value
+
 proc main() {.raises.} =
   ## Trusted fixture reads belong only to the genuine positive control.
   case paramStr(1)

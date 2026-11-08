@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fuzzer-v1 owner, exact boundary, UTF-8, compact-state and transport refusals retain no partial values.
+
 import std/[assertions, syncio]
 import ../../support/fuzz_protocol_context
 import ../../../src/state/fuzz/protocol as fuzz_protocol
@@ -11,6 +12,7 @@ import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/natural
 import ../../../src/codec/state/layout as state_layout
 import ../../../src/codec/header
+
 proc main() =
   ## Independently authored byte cases cover every discriminant without pretending to execute a JAM campaign.
   let limits = fuzzProtocolTestLimits()

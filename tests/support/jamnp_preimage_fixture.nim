@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete independent service/request maps bind announced content to exact canonical zero-slot histories.
+
 import std/[assertions, envvars, syncio]
 import ./jamnp_topology_fixture
 import ../../src/chain/genesis

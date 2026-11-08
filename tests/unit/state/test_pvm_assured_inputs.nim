@@ -31,11 +31,13 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Decode the actual account at the original, selected and published map owners.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Exact guest-derived bytes distinguish actual input consumption from the unchanged initial writable prefix.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
   assert state.lookup(key).value.bytes == @expected
   assert uint32(metadata(state).storageItems) == 1 and uint64(metadata(state).storageBytes) == 38
+
 proc hashPrefix(completed: CompletedBlockAccumulation, index: uint64): seq[byte] =
   ## Independent C.2 field oracle: tag0 is followed immediately by packageHash, so fetch offset1 selects its first three bytes.
   let inputs = completed.executionRound.value.roundProjection.value.roundInputs.value
@@ -43,6 +45,7 @@ proc hashPrefix(completed: CompletedBlockAccumulation, index: uint64): seq[byte]
   assert input.kind == AccumulationKind.Operand
   let hash = input.operand.operandInfo.value.packageHash.bytes
   @[hash[0], hash[1], hash[2]]
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute authentic prepared inputs under the inherited original parameters and unchanged independent runner ceilings.
   let outcome = executeAssuredAccumulation(fixture.queue, assuredExecutionConfig(fixture.queue))
@@ -52,6 +55,7 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Preserve actual input-derived guest effects through real stopped history and every maintained state phase.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -59,6 +63,7 @@ proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
     echo "input guest composition ", outcome.error
   assert outcome.error == AssuredCompositionError.None
   outcome.value
+
 proc witness(mode: ComputedStorageMode): AssuredOutcomeFixture =
   ## Compare historical single-input behavior with actual two-input successor behavior, then prove exact canonical installation.
   let fixture = assuredOutcomeFixture(mode)
@@ -161,6 +166,7 @@ let modes = [ComputedStorageMode.FetchFirst, ComputedStorageMode.FetchSecond,
     ComputedStorageMode.FetchMissing]
 var fixtures: seq[AssuredOutcomeFixture] = @[]
 for mode in modes: fixtures.add(witness(mode)) # Each distinct original guest is committed/refined/signed before its actual operands exist.
+
 proc cycle(fixtures: openArray[AssuredOutcomeFixture]) =
   ## Fetch real operands, execute, compose, publish and release every selected or absent-input guest per ownership cycle.
   for fixture in fixtures:

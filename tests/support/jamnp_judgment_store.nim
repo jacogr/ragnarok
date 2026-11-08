@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine opposite original Ed25519 claims test accountable conflict retention, idempotent retries and atomic bounded publication without treating a claimed validity bit as computed report truth.
+
 import std/assertions
 import ../../src/jamnp-s/[judgment_claim, judgment_receipt, judgment_store, audits]
 import ../../src/codec/[bounded, disputes, guarantees]
 import ../../src/crypto/primitives
 import ./[jamnp_audit_context, jamnp_guarantee_support, jamnp_judgment_support,
   jamnp_judgment_receipt]
+
 proc judgmentStoreChecks*(fixture: AuditContextFixture) =
   ## Distinct genuine report hashes exceed a one-row policy atomically, while opposite signed claims retain both sides under the same original epoch/index/report key.
   let source = supportFixture(fixture)

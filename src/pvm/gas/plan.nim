@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable complete block prices bound to one captured program and one local cycle policy.
+
 import ../program
 import ./gas
 

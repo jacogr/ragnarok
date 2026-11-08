@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact stopped-child deaths qualify root selection and both cleanup paths against independent authored old/new-root bytes.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[storage_io, storage_crash, storage_light_journal, storage_light_root]
 import ../../../src/storage/light/journal/[cache as light_journal_cache,
@@ -12,13 +13,16 @@ import ../../../src/storage/state_proof
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Only exact test-owned names are observed; directory scans never establish selection authority.
+
 proc exists(path: string): bool =
   ## Distinguish absent candidates from empty authored prefixes before any reopen.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc captured(path: string): seq[string] {.raises.} =
   ## Preserve existence as well as every byte of all known children during strict wrong-root refusal.
   result = @[]
@@ -27,6 +31,7 @@ proc captured(path: string): seq[string] {.raises.} =
       "snapshot-0000000000000002.bin", "journal-0000000000000002.wal"]:
     let child = path & "/" & name
     result.add(if exists(child): "present:" & readFile(child) else: "absent")
+
 proc authoredPrefix(path, authored: string) {.raises.} =
   ## An unselected candidate may be absent or an exact bounded prefix, never foreign or overlong bytes.
   if exists(path):
@@ -34,6 +39,7 @@ proc authoredPrefix(path, authored: string) {.raises.} =
     assert input.len <= authored.len, "candidate extent bounded by authored transport"
     for index in 0..<input.len:
       assert input[index] == authored[index], "candidate contains only authored prefix bytes"
+
 proc writeExtent(path, authored: string, calls: var int, chunk: int) {.raises.} =
   ## Independently account for every successful real write, including chunks that end at file boundaries.
   let steps = if chunk == 0: 1 else: (authored.len+chunk-1) div chunk
@@ -44,6 +50,7 @@ proc writeExtent(path, authored: string, calls: var int, chunk: int) {.raises.} 
   elif exists(path):
     assert readFile(path).len == 0, "unwritten candidate can only be empty"
   calls -= used
+
 proc scenario(fixture: LightRootFixture, mode: int, operation, skip: cint,
     chunk: int): uint64 {.raises.} =
   ## Each selection, candidate cleanup or retired cleanup control uses a fresh real namespace and exact child lease.
@@ -207,6 +214,7 @@ proc scenario(fixture: LightRootFixture, mode: int, operation, skip: cint,
   assert readFile(path & "/KEEP") == "preserve root-crash sibling"
   retireRootEpoch(path, ManagedEpoch(2))
   retireLightJournal(path)
+
 proc main() {.raises.} =
   ## Measure every operation independently with a completion control, then kill every actually witnessed successful boundary.
   let fixture = rootFixture()

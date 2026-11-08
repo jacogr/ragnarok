@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine package/body/PVM report execution uses an older complete map while fresh eligibility reads its actual child view.
+
 import std/assertions
 import ../../src/jamnp-s/[work_submission, work_report, work_anchors, work_duty, work_eligibility, work_signer]
 import ../../src/jamnp-s/[availability_proof, availability_read, guarantor_store]
@@ -27,17 +28,21 @@ type
     view*: ChainView
     transcript*: ComputedGuaranteeTranscript
     local*: StateEdKey
+
 proc guarantorLimits*(): AvailabilityMerkleLimits =
   ## Explicit whole-report serving capture covers real fixture data; no production policy is inferred from the test geometry.
   AvailabilityMerkleLimits(bytes: ByteLimit(64*1024*1024), hashBytes: ByteLimit(128*1024*1024),
     hashes: ElementLimit(2000000))
+
 proc guarantorReadLimits*(): AvailabilityReadLimits =
   ## Signed managed hosts explicitly enable finite retained-source responses with ordinary public framing ceilings.
   AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
     hashes: ElementLimit(10000), hashBytes: ByteLimit(16000000)), wireBytes: ByteLimit(16000000))
+
 proc guarantorStorageLimits*(): GuarantorStorageLimits =
   ## Every managed fixture installs finite retained entries and a whole-cache/capture byte ceiling before private signing.
   GuarantorStorageLimits(entries: ElementLimit(16), computation: guarantorLimits())
+
 proc guaranteeLimits*(): WorkEligibilityLimits =
   ## Actual Tiny consensus geometry and gas are separate from finite local copy/decoder policies.
   result = WorkEligibilityLimits(
@@ -63,11 +68,13 @@ proc guaranteeLimits*(): WorkEligibilityLimits =
         perDependencies: ElementLimit(8), totalDependencies: ElementLimit(256),
             reportBytes: ByteLimit(100000), maxBytes: ByteLimit(1000000)),
       indexItems: ElementLimit(1024)), reportBytes: ByteLimit(40000))
+
 proc peak(): HistorySuperPeak =
   ## One independent public accumulation-root value is reused by the fixture's actual recent-history entries.
   var raw = default(array[32, byte])
   raw[0] = 33
   HistorySuperPeak(raw)
+
 proc record(source: BlockSnapshot, pending: bool, mappings: bool): HistoryBlock =
   ## Only the newest C3 state commitment is pending; older complete roots and exact full-header hashes are preserved.
   result = HistoryBlock(header: HistoryHeaderHash(array[32, byte](source.blockHash)),
@@ -75,12 +82,14 @@ proc record(source: BlockSnapshot, pending: bool, mappings: bool): HistoryBlock 
   if not pending: result.state = HistoryStateRoot(array[32, byte](source.stateRoot))
   if mappings: result.packages = @[ReportedPackage(package: inputKey(1), segment: SegmentRoot(
       bytes: ThreeRoot))]
+
 proc captured(source: BlockSnapshot, state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
   ## Reuse the exact sealed header while capturing its supplied trusted complete posterior fixture map.
   var wire = newSeq[byte](source.header.headerInfo.value.consumed)
   assert source.header.encodeOwnedHeader(wire).error == HeaderError.None
   captureBlockSnapshot(wire, state, parameters)
+
 proc source(fixture: WorkFixture, local, peer, third: StateEdKey,
     recipient, additionalRecipient: StateValidator): BlockSnapshotResult =
   ## Populate all report-policy and pipeline chapters before binding the package anchor to this complete state root.
@@ -117,6 +126,7 @@ proc source(fixture: WorkFixture, local, peer, third: StateEdKey,
     writes.add(StateWrite(kind: StateWriteKind.Put, key: entry.key, value: entry.value))
   assert state.apply(writes).error == StateStoreError.None
   captured(seed, state.snapshot.value, seed.chainParameters)
+
 proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot,
     authorizationSalt: byte, declaredExports: uint64): seq[byte] =
   ## Re-encode every actual original item/commitment with the final context before authorization/body verification, never patch a completed report.
@@ -158,6 +168,7 @@ proc anchoredPackage(original: OwnedWorkPackage, anchor: BlockSnapshot,
   assert encoded.error == PackageError.None
   wire.setLen(encoded.value)
   wire
+
 proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotResult =
   ## The actual child header commits the parent's complete root and advances the canonical clock; execution still retains the parent.
   var current = topologyRecords(0, 6)
@@ -174,6 +185,7 @@ proc child(parent: BlockSnapshotResult, local, peer: StateEdKey): BlockSnapshotR
     StateWrite(kind: StateWriteKind.Put, key: time.key, value: time.value)]).error ==
         StateStoreError.None
   captured(seed.value, state.snapshot.value, parent.value.chainParameters)
+
 proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey), third = default(
     StateEdKey), recipient = default(StateValidator), additionalRecipient = default(
         StateValidator), authorizationSalt: byte = 0, exported = false,
@@ -203,11 +215,13 @@ proc guaranteeFixture*(local: StateEdKey, peer = default(StateEdKey), third = de
   assert view.error == ViewAdvanceError.None, "guarantee view: " & $view.error
   GuaranteeFixture(original: decoded.value, package: wire, execution: parent.value.stateSnapshot,
     view: view.value, transcript: computed.value, local: local)
+
 proc qualify*(fixture: GuaranteeFixture, limits: WorkEligibilityLimits): WorkEligibilityResult[
     EligibleWorkGuarantee] =
   ## Keep all provenance inputs fixed while individual negative cases change only the relevant policy or observed identity.
   qualifyWorkGuarantee(fixture.transcript, fixture.original, fixture.execution, fixture.view,
     fixture.local, StateTime(21), limits)
+
 proc guaranteeCycle*(fixture: GuaranteeFixture, signer: WorkSigner) =
   ## Successful source checks and a genuine private-key signature release all intermediate/retained owners on each cycle.
   let qualified = fixture.qualify(guaranteeLimits())
@@ -250,6 +264,7 @@ proc replacedHead*(fixture: GuaranteeFixture, entry: StateEntry): ChainView =
   let selected = advanceView(genesisView(parent), changed)
   assert selected.error == ViewAdvanceError.None
   selected.value
+
 proc guaranteeBoundaries*(fixture: GuaranteeFixture, signer, otherSigner: WorkSigner) =
   ## Existing real execution cannot bypass fresh policy/pipeline changes, source identity, explicit budgets or signer-key equality.
   let qualified = fixture.qualify(guaranteeLimits())

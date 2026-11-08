@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_managed_work_exchange_arc_release"}
 
 ## Actual managed preparation/peer verification/collection preserves original sessions and independent native bytes through Done, cancellation and joined shutdown.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[services, options, startup, work_guarantee_pool]
 import ../../../src/app/proof/[worker, work_submission as jobs]
@@ -17,13 +19,16 @@ import ../../../src/state/guarantee_credentials
 import ../../../src/chain/[provider, genesis]
 import ../../support/[jamnp_guarantee_fixture, jamnp_managed_work_context, jamnp_work_fixture,
   jamnp_work_report_fixture, jamnp_read_validation_context, pvm_input_refinement, arc_evidence]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield while observing only synchronized worker phase or independent raw bytes.
+
 proc policy(raw: WorkFixture): WorkSharingLimits =
   ## Resource budgets remain explicit and cannot replace consensus parameters obtained from the real canonical source.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
         eligibility: guaranteeLimits(), retention: guarantorLimits())
+
 proc session(services: var Services, fixture: GuaranteeFixture, raw: WorkFixture,
     header: UntrustedWorkHeader): WorkSessionToken {.raises.} =
   ## The existing real TLS header feeds actual Services authorization, refinement, report computation and private-key signing.
@@ -34,11 +39,13 @@ proc session(services: var Services, fixture: GuaranteeFixture, raw: WorkFixture
   services.waitDone()
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Contributed
   token
+
 proc peerFailure(services: Services, token: WorkSessionToken, reason: WorkGuaranteeError) =
   ## All extracted failure aliases retire inside this helper before any next worker admission.
   let outcome = services.workExchangeOutcome(token)
   assert outcome.kind == WorkJobResultKind.PeerResponseFailure
   assert outcome.peerResponseError.error == reason
+
 proc verifyPayload(bytes: seq[byte], expectedCount: int) =
   ## Exact standalone GP decoding independently verifies slot, canonical order and committed threshold.
   let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
@@ -50,6 +57,7 @@ proc verifyPayload(bytes: seq[byte], expectedCount: int) =
   assert uint16(value.credentials[0].validator) == 1
   assert uint16(value.credentials[1].validator) == 2
   if expectedCount == 3: assert uint16(value.credentials[2].validator) == 5
+
 proc prepared(services: var Services, token: WorkSessionToken) =
   ## Done reserves the exact source lease until matching primary collection commits the independently prepared caches.
   let admitted = services.beginWorkExchange(token, ByteLimit(20000))
@@ -60,6 +68,7 @@ proc prepared(services: var Services, token: WorkSessionToken) =
   assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
   let info = services.workExchangeInfo(token)
   assert info.targets == 2 and info.credentials == 1
+
 proc accept(services: var Services, token: WorkSessionToken, position: int,
     identity: StateEdKey, response: array[96, byte]) =
   ## Detached byte/target caches remain usable during queued/running/Done verification without touching its private round graph.
@@ -74,10 +83,12 @@ proc accept(services: var Services, token: WorkSessionToken, position: int,
   assert not services.stateProofAvailable
   assert services.workSharingRequest(token).sharingInfo.value.bundleBytes > 0
   assert services.collectWorkSubmission(token) == WorkSessionPhase.AwaitingContributions
+
 proc distributionPolicy(): WorkDistributionLimits =
   ## CPU report/source limits and recipient capacity are independent from native framing reservations.
   WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
       targets: ElementLimit(12))
+
 proc candidate(bytes: seq[byte], count: int, slot: uint32): seq[byte] =
   ## Derive canonical credential subsets/current-rotation slots from genuine signatures without fabricating credential authority.
   let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
@@ -86,6 +97,7 @@ proc candidate(bytes: seq[byte], count: int, slot: uint32): seq[byte] =
   value.credentialCount = count
   value.slot = GuaranteeSlot(slot)
   encodeGuaranteeValue(value, config).value
+
 proc qualifyCandidate(services: var Services, bytes: seq[
     byte], now = StateTime(20)): WorkDistributionCompletion {.raises.} =
   ## Raw/source staging aliases retire before returning only a source-free matching completion.
@@ -96,6 +108,7 @@ proc qualifyCandidate(services: var Services, bytes: seq[
   let completed = services.collectWorkDistribution(admitted.value)
   assert completed.kind == WorkDistributionCompletionKind.Completed, "fresh candidate must qualify at its observed slot"
   completed
+
 proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq[byte]) {.raises.} =
   ## Distinct incoming verification never consumes a waiting primary guarantee or an unrelated proof ticket.
   let hash = services.chainView.bestBlock.value.blockHash
@@ -211,6 +224,7 @@ proc distributions(services: var Services, primary: WorkSessionToken, bytes: seq
   assert services.collectWorkDistribution(restarted.value).kind ==
       WorkDistributionCompletionKind.Completed
   assert services.workSessionPhase(primary) == WorkSessionPhase.Guaranteed
+
 proc unsignedReceiver(settings: Options, bytes: seq[byte]) {.raises.} =
   ## A validator receiving CE135 needs no private report-signing key; only its actual complete source is captured.
   var services = default(Services)
@@ -224,6 +238,7 @@ proc unsignedReceiver(settings: Options, bytes: seq[byte]) {.raises.} =
   assert services.collectWorkDistribution(admitted.value).kind ==
       WorkDistributionCompletionKind.Completed
   assert not services.workSigningConfigured
+
 proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
   ## Private Services signing ownership never comes from an external signer alias; only actual certificate/key paths configure it.
   let raw = workFixture()
@@ -382,6 +397,7 @@ proc managed(fixture: GuaranteeFixture, b, c: WorkSigner) {.raises.} =
   services.close() # Joined shutdown owns all private round/input aliases before any enclosing fixture owner retires.
   assert services.workSessionPhase(closing) == WorkSessionPhase.Empty
   assert services.workExchangeInfo(closing).credentials == 0
+
 proc run(worker: var StateProofWorker, input: var WorkSubmissionJob,
     cancelDone = false): WorkJobResult =
   ## Only synchronized scalar polling occurs while any prepared/round/signer alias belongs to the fixed-address CPU.
@@ -401,6 +417,7 @@ proc run(worker: var StateProofWorker, input: var WorkSubmissionJob,
     return default(WorkJobResult)
   assert completed.kind == ProofWorkerCompletionKind.WorkSubmitted
   completed.workSubmissionValue
+
 proc cycle(worker: var StateProofWorker, local: SignedWorkContribution, targetB,
     targetC: WorkShareTarget, keyB, keyC: StateEdKey, responseB, responseC: array[96, byte], mode: int) =
   ## Real managed factories release successful, rejected, threshold-failed and Done-cancelled owners in every terminal path.
@@ -438,6 +455,7 @@ proc cycle(worker: var StateProofWorker, local: SignedWorkContribution, targetB,
     var input = captureWorkGuarantee(round, ByteLimit(20000)).value
     let completed = run(worker, input)
     assert completed.kind == WorkJobResultKind.GuaranteeCollected
+
 proc distributionCycle(worker: var StateProofWorker, bytes: seq[byte], view: ChainView, mode: int) =
   ## Native raw input may retire immediately after capture; every selected canonical/result alias remains untouched until matching collection.
   var payload = bytes
@@ -466,6 +484,7 @@ proc distributionCycle(worker: var StateProofWorker, bytes: seq[byte], view: Cha
     assert completed.qualifiedDistribution.distributionInfo.value.targets == 12
     assert completed.distributionReport.valid and completed.distributionReport.kind ==
         ReadKind.Report
+
 proc distributionWorkers(local: SignedWorkContribution, b: WorkShareTarget, keyB: StateEdKey,
     responseB: array[96, byte], view: ChainView) {.raises.} =
   ## A genuine two-credential guarantee drives repeated managed qualification, refusal and Done cancellation without retaining prior graphs.
@@ -479,6 +498,7 @@ proc distributionWorkers(local: SignedWorkContribution, b: WorkShareTarget, keyB
   for iteration in 0..<1000: distributionCycle(worker, bytes, view, iteration mod 3)
   let after = getOccupiedMem()
   assert before == after
+
 proc main() {.raises.} =
   ## Real independent fixture keys and sources remain untouched through every exact worker lease and joined close.
   let a = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY")).value

@@ -3,6 +3,7 @@
 
 ## GP 0.8.0 immutable stepping/execution and trusted host adapters over prepared engine boundaries.
 ## Local policy refusals publish no partial machine; all successful observations own immutable snapshots.
+
 import std/assertions
 import ./[program, machine, registers]
 import ./gas/[gas, plan as gas_plan, memo as gas_memo]
@@ -369,7 +370,6 @@ type
     nativeCodeBytes*, nativeCompilationNs*: uint64 ## Native occupancy and supplementary construction time.
     jitBuilt*, jitPlatformSupported*, checkedFallbackEnabled*: bool
     memoryReuses*, retainedMemoryPayloadBytes*: uint64 # Idle payload admission and cumulative actual buffer reuse.
-
 
 proc `=copy`(destination: var PreparedStorage, source: PreparedStorage) {.error.}
   ## Copying a handle retains identity; copying its composite storage would duplicate foreign/code ownership.

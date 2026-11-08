@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual Services startup seeds preserve physical source ownership, detached caller keys and exact stage refusals.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[current_repeated_logical_context, collected_logical_services_context,
@@ -15,6 +16,7 @@ import ../../../src/state/supplied/logical_inventory as supplied_logical_invento
 import ../../../src/state/[inventory, manifest, store, global_snapshot]
 import ../../../src/codec/[report_owned, bounded]
 import ../../../src/codec/state/composition as state_composition
+
 proc main() {.raises.} =
   ## The complete signed source is reparsed by Services before the new host API captures its own seed.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

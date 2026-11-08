@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine solicit/forget/new effects retain original request identities, expiry evidence and actual checkpoint/terminal selection under independent trace bounds.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
 import ../../src/state/accumulation/[effects as accumulation_effects,
@@ -18,10 +19,13 @@ import ../../src/pvm/[machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/host/fetch as host_fetch
 import ../../src/crypto/primitives
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine backend refusal cannot publish prepared request identities.
+
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Admit both request namespace hashes, then fail the private map after fact preparation.
+
 proc parameters(): Parameters =
   ## Independent fixed E8 deposits and E4 zero anchor age permit ordinary funded requests and expired removal at slot20000.
   var wire = encodeParameters(pvmParameters())
@@ -29,6 +33,7 @@ proc parameters(): Parameters =
     for i in 0..<8: wire[field*8+i] = byte((value shr (8*i)) and 255) # Exact existing deposit tuple order.
   for i in 74..<78: wire[i] = 0 # maxLookupAnchorAge retains its documented E4 position.
   decodeParameters(wire).value
+
 proc initial(hash: ServicePreimageHash, expired = false, capacity = 2'u64,
     lifecycle = false): AccumulationEffects =
   ## Authentic original bootstrap contains either no request or one coherent expired request/preimage pair.
@@ -47,6 +52,7 @@ proc initial(hash: ServicePreimageHash, expired = false, capacity = 2'u64,
       pvmContextConfig()).value, requestFacts = ElementLimit(capacity),
     createdAccounts = ElementLimit(if lifecycle: 2 else: 0),
     deletedAccounts = ElementLimit(if lifecycle: 2 else: 0)).value
+
 proc run(checkpoint, panic: bool, credit = 100000'u64): AccumulationOutcome =
   ## A real solicit of the literal zero digest tests selected regular/exceptional effects without a synthetic dispatch result.
   var code = @[registerImmediate(7, high(uint64)), registerImmediate(8, 196608), registerImmediate(
@@ -60,6 +66,7 @@ proc run(checkpoint, panic: bool, credit = 100000'u64): AccumulationOutcome =
       HostCallLimit(10), GasCycleLimit(1000), pvmContextConfig(), requestFacts = ElementLimit(2))
   assert done.error == AccumulationDispatchError.None
   normalizeAccumulationOutcome(done).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(AccumulationEffectResult[AccumulationRequestFact])

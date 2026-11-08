@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated certificate/ALPN correlation stays exact across concurrent same-key connections.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/quic/transport
 import ../../../src/jamnp-s/[protocol, alpn]
@@ -12,18 +13,23 @@ type Party = object ## Native callbacks borrow this stable address until explici
   pin: array[32, byte]
   live, proposed: array[2, bool]
   admitted, closed, baseQueries, builderQueries, refused: int
+
 proc `=copy`(destination: var Party, source: Party) {.error.}
   ## A copy cannot transfer the foreign callback address or its retirement authority.
+
 proc `=dup`(source: Party): Party {.error.}
   ## Last-use duplication is prohibited along with assignment.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Server checks complete certificate/SAN validity; clients pin the listener's fixture identity.
   let owner = cast[ptr Party](user)
   if owner.server: return cint(validPeer(cast[ptr byte](der), length, []))
   cint(validPeer(cast[ptr byte](der), length, owner.pin))
+
 proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## No application exchange is required for this admission boundary.
   if event == 0: streamAbort(handle)
+
 proc matches(bytes: ptr ConstByte, length: csize_t, expected: string): bool =
   ## Bound every borrowed byte comparison before reading the synchronous native span.
   if bytes == nil or length != csize_t(expected.len): return false
@@ -31,6 +37,7 @@ proc matches(bytes: ptr ConstByte, length: csize_t, expected: string): bool =
   for index in 0..<expected.len:
     if raw[index] != byte(expected[index]): return false # Exact ALPN, no suffix/prefix guessing.
   true
+
 proc admit(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
     protocol: ptr ConstByte, protocolLength: csize_t): cint {.cdecl, raises: [].} =
   ## A builder request has an independent policy decision despite presenting the same client key.
@@ -52,6 +59,7 @@ proc admit(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
     return 0 # The accepted protocol must be one of the actual configured alternatives.
   owner.proposed[index] = true
   1
+
 proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   ## Acceptance must follow a successful policy decision for this exact retained slot.
@@ -68,12 +76,14 @@ proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     owner.live[index] = false
     inc owner.closed
   else: owner.invalid = true # No other event grants or retires an admission.
+
 proc key(path: string): array[32, byte] {.raises.} =
   ## Copy exact generated fixture key bytes for the independent client pin.
   let raw = readFile(path)
   assert raw.len == 32
   result = default(array[32, byte])
   for index in 0..<32: result[index] = byte(raw[index])
+
 proc connect(client: var Party, port: uint16, builder, ipv6: bool) {.raises.} =
   ## All clients deliberately use one certificate; negotiated role remains per connection.
   client.pin = key(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -83,6 +93,7 @@ proc connect(client: var Party, port: uint16, builder, ipv6: bool) {.raises.} =
   client.opened = true
   assert not client.transport.admitPeers(admit) # Outgoing endpoints cannot install incoming policy.
   assert client.transport.connectTransport(port)
+
 proc pump(server: var Party, clients: var array[4, Party], admitted, refused, closed: int) =
   ## Wait for actual server observations, not the client's earlier TLS-success flag.
   let deadline = getMonoTime()+initDuration(seconds = 3)
@@ -94,6 +105,7 @@ proc pump(server: var Party, clients: var array[4, Party], admitted, refused, cl
     if server.admitted == admitted and server.refused == refused and server.closed == closed: return
   assert false, "admission observation timeout: accepted=" & $server.admitted & " refused=" &
       $server.refused & " closed=" & $server.closed
+
 proc scenario(ipv6: bool) {.raises.} =
   ## Same-key base/builder overlap, rejection, later permission and a genuine slot reuse.
   var server = Party(server: true)

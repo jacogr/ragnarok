@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_report_cache_arc_release"}
 
 ## Checked reports remain bounded and independently serviceable during foreign canonical graph leases.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/proof/worker
@@ -18,10 +19,12 @@ import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, rea
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_report_fixture, jamnp_topology_fixture, jamnp_node_probe,
     jamnp_read_validation_context, arc_evidence]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -32,18 +35,22 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc frame(body: seq[byte]): seq[byte] =
   ## Independent one-message E4 framing excludes any guarantee wrapper.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(body.len) shr (8*index)) and 255))
   for octet in body: result.add(octet)
+
 proc reportRequest(hash: WorkReportHash): ReadRequest =
   ## Exact32-byte content identity is separate from source block/state identities.
   decodeReadRequest(ReadKind.Report, array[32, byte](hash)).value
+
 proc wireRequest(request: ReadRequest): seq[byte] =
   ## Every report request uses the pinned selector and fixed E4 extent.
   result = @[136'u8, 32, 0, 0, 0]
   for octet in request.payload: result.add(octet)
+
 proc checked(body: seq[byte], source: ReadSource): CheckedReadReply =
   ## Only the actual full-hash/profile verifier creates the opaque cache input type.
   let hash = blake2b256(body).value
@@ -51,6 +58,7 @@ proc checked(body: seq[byte], source: ReadSource): CheckedReadReply =
   let verified = verifyReadReply(request, frame(body), source, readVerificationLimits())
   assert verified.error == ReadVerificationError.None
   verified.value
+
 proc variant(body: seq[byte], id: int, large = false): seq[byte] =
   ## Different complete reports retain valid encoding; large authorization traces exercise byte rather than count capacity.
   var report = report_codec.decodeReportBorrowed(body, 4).value
@@ -64,6 +72,7 @@ proc variant(body: seq[byte], id: int, large = false): seq[byte] =
   let encoded = report_codec.encodeReportBorrowed(report, pool, 4, result)
   assert encoded.error == CompositeError.None
   result.setLen(encoded.written)
+
 proc cycle(report: CheckedReadReply) =
   ## One isolated cache activation retires all copied wire owners before ARC sampling.
   var cache = default(ReportCache)
@@ -71,6 +80,7 @@ proc cycle(report: CheckedReadReply) =
   assert cache.find(report.request).error == ReportCacheError.None
   cache.clear()
   assert cache.len == 0 and cache.byteLength == 0
+
 proc pure(body: seq[byte], source: ReadSource) =
   ## Both independent capacities and replacement recency are observable through actual report lookups.
   var cache = default(ReportCache)
@@ -98,11 +108,13 @@ proc pure(body: seq[byte], source: ReadSource) =
   assert cache.len < MaxCachedReports, "the retained-byte bound evicts before count capacity is exhausted"
   assert cache.find(reports[0].request).error == ReportCacheError.Missing
   cache.clear()
+
 proc poll(host: var ApplicationNode, services: var Services, probe: var NodeProbe) {.raises.} =
   ## One host turn performs no canonical graph inspection in this test while a foreign worker owns its lease.
   assert host.poll(getMonoTime(), StateTime(7), 0)
   probe.poll()
   services.tick(uint32(host.peerCount))
+
 proc connect(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     protocol: string, hash: genesis.BlockHash) {.raises.} =
   ## Ready means both authenticated transport and admitted host-side UP0, not first response bytes alone.
@@ -119,6 +131,7 @@ proc connect(host: var ApplicationNode, services: var Services, probe: var NodeP
   while host.peerCount == 0 or host.source(host.peerAt(0).value).error != NodeError.None:
     assert getMonoTime() < deadline
     poll(host, services, probe)
+
 proc claim(saved: BlockSnapshotResult, body: seq[byte]) {.raises.} =
   ## Deferral revokes the old serial before re-admission and cannot reset a route already responding.
   var service = default(NodeService)
@@ -170,6 +183,7 @@ proc claim(saved: BlockSnapshotResult, body: seq[byte]) {.raises.} =
     assert service.poll(getMonoTime(), 0)
     probe.poll()
   assert probe.bytes(reading) == frame(body) and not probe.flows[reading].reset
+
 proc live(saved: BlockSnapshotResult, body: seq[byte]) {.raises.} =
   ## Fetched report retention serves peers even when canonical report lookup has no such content and its graph is leased.
   writeFile("report-cache-chain.json", chainText(saved.value))
@@ -246,6 +260,7 @@ proc live(saved: BlockSnapshotResult, body: seq[byte]) {.raises.} =
     assert getMonoTime() < deadline
     poll(host, services, probe)
   assert not probe.flows[fresh].receivedFin and host.cachedReportCount == 0
+
 proc main() {.raises.} =
   ## Pool math, claim ownership and actual graph-excluded service each have independent runtime witnesses.
   let body = reportBody()

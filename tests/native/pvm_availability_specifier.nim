@@ -12,8 +12,10 @@ import ../support/[pvm_export_erasure, pvm_availability_vectors]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse the real primitive backend after all original source construction.
+
 proc afterCalls(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse only after real successful validator hashing to test partial-prefix cleanup.
+
 proc check[T](outcome: AvailabilityCommitmentResult[T], reason: AvailabilityCommitmentError) =
   ## Observe the runtime alternative before deliberate failed extraction selected by a process argument.
   assert outcome.error == reason, "availability guard control"

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Direct bundle evaluation grants a positive audit capability only after actual authorization, refinement, availability reconstruction and complete canonical report equality. Failed direct candidates grant no negative capability and may require authenticated CE138 recovery.
+
 import ./[audit_origin, audit_context, work_report]
 from ./assurance_store import AssuranceScanControl, stopped
 import ./audit_recovery
@@ -43,35 +44,44 @@ type
     of ReportFailure: reportReason: WorkReportResult
     of EncodingFailure: encodingReason: OwnershipError
     else: discard # Defaults, cancellation, comparison/resource refusals expose no accepted prefix.
+
 func error*[T](outcome: AuditEvaluationResult[T]): AuditEvaluationError =
   ## Inspect the selected result before extracting metadata or actual child failures.
   outcome.status
+
 func value*[T](outcome: AuditEvaluationResult[T]): T {.requires: outcome.status ==
     AuditEvaluationError.None.} =
   ## Only a real complete computation/report equality grants a positive audit capability.
   outcome.completed
+
 func bundleError*[T](outcome: AuditEvaluationResult[T]): AuditBundleResult[
     DecodedAuditBundle] {.requires: outcome.status == AuditEvaluationError.BundleFailure.} =
   ## Format/commitment failure remains distinct from local input policy or backend refusal.
   outcome.bundleReason
+
 func executionError*[T](outcome: AuditEvaluationResult[T]): InputRefinementResult[
     InputRefinement] {.requires: outcome.status == AuditEvaluationError.ExecutionFailure.} =
   ## Preserve genuine authorizer/refiner diagnostics without retaining a successful execution prefix.
   outcome.executionReason
+
 func reportError*[T](outcome: AuditEvaluationResult[
     T]): WorkReportResult {.requires: outcome.status == AuditEvaluationError.ReportFailure.} =
   ## Whole original availability/report reconstruction retains its actual failed stage only.
   outcome.reportReason
+
 func encodingError*[T](outcome: AuditEvaluationResult[
     T]): OwnershipError {.requires: outcome.status == AuditEvaluationError.EncodingFailure.} =
   ## Failure to serialize the original retained canonical report grants no comparison success.
   outcome.encodingReason
+
 func hasAuditedBlock*(info: AuditEvaluationInfo): bool =
   ## Standalone disputed reports have no invented availability block; original available-report metadata retains its actual block.
   info.blockReference.present
+
 func blockHash*(info: AuditEvaluationInfo): genesis.BlockHash {.requires: info.blockReference.present.} =
   ## Existing available-report consumers must establish presence before reading the exact copied block identity.
   info.blockReference.value
+
 func valid*(limits: AuditEvaluationLimits): bool =
   ## Cover every possible package prefix within the permitted whole wire so a parser limit is distinguishable from a local prefix-byte refusal; all new copies stay finite.
   limits.bundle.valid and uint64(limits.bundle.package.maxBytes) >= uint64(limits.bundle.bytes) and
@@ -85,13 +95,16 @@ func valid*(limits: AuditEvaluationLimits): bool =
     uint64(limits.report.reportBytes) > 0 and uint64(limits.report.reportBytes) <= 1024'u64*1024 and
     uint64(limits.report.transcriptBytes) > 0 and uint64(limits.report.transcriptBytes) <=
         2'u64*1024*1024
+
 func valid*(evaluation: AuditEvaluation): bool =
   ## A default has no source, signed report identity or completed reproduction.
   evaluation.data != nil
+
 func matchesOrigin*(evaluation: AuditEvaluation, origin: AuditReportOrigin): bool =
   ## Services can require exact registered private source ownership before lending a signing key; copied public hashes/booleans cannot substitute.
   let data = evaluation.data
   data != nil and sameAuditOrigin(data.source, origin)
+
 proc evaluationInfo*(evaluation: AuditEvaluation): AuditEvaluationResult[AuditEvaluationInfo] =
   ## Copy fixed facts only after exact worker collection; source-bearing aliases remain frozen while another job borrows them.
   let data = evaluation.data
@@ -99,6 +112,7 @@ proc evaluationInfo*(evaluation: AuditEvaluation): AuditEvaluationResult[AuditEv
       status: AuditEvaluationError.Uninitialized)
   AuditEvaluationResult[AuditEvaluationInfo](status: AuditEvaluationError.None,
       completed: data.info)
+
 proc evaluationOrigin*(evaluation: AuditEvaluation): AuditEvaluationResult[AuditReportOrigin] =
   ## Only the leased signer/evaluator may follow original source provenance; no writable or replacement full-state view is exported.
   let data = evaluation.data
@@ -106,6 +120,7 @@ proc evaluationOrigin*(evaluation: AuditEvaluation): AuditEvaluationResult[Audit
       status: AuditEvaluationError.Uninitialized)
   AuditEvaluationResult[AuditReportOrigin](status: AuditEvaluationError.None,
       completed: data.source)
+
 func needsRecovery*(outcome: AuditEvaluationResult[AuditEvaluation]): bool =
   ## Invalid unproved direct bytes can trigger authenticated reconstruction, never a negative judgment. Local policy, missing code/history and backend failures remain unavailable evaluation.
   case outcome.status
@@ -138,6 +153,7 @@ func needsRecovery*(outcome: AuditEvaluationResult[AuditEvaluation]): bool =
     outcome.reportReason.error == WorkReportError.ReportFailure and
         outcome.reportReason.reportError == ComputedReportError.InvalidReport
   else: false # Default, cancellation, impossible source and local computation/copy refusals produce no negative evidence or spurious network retry.
+
 proc completedEvaluation(origin: AuditReportOrigin, positive: bool): AuditEvaluationResult[
     AuditEvaluation] =
   ## Private construction follows actual equality or exact authenticated reconstruction evidence, never a caller-selected validity flag.
@@ -147,6 +163,7 @@ proc completedEvaluation(origin: AuditReportOrigin, positive: bool): AuditEvalua
       info: AuditEvaluationInfo(blockReference: origin.auditedBlock,
         reportHash: origin.originReportHash.value, epoch: origin.auditEpoch.value,
         core: report.core, positive: positive))))
+
 proc evaluateDirectAudit*(origin: AuditReportOrigin, wire: openArray[byte],
     limits: AuditEvaluationLimits, control: AssuranceScanControl = default(
         AssuranceScanControl)): AuditEvaluationResult[AuditEvaluation] =

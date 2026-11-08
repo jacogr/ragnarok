@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Resolve every complete-inventory service's current code identity, content and historical availability under independent bounded work policies.
+
 import ../codec/bounded
 import ../codec/state/[accounts as state_accounts, layout as state_layout,
     requests as state_requests]

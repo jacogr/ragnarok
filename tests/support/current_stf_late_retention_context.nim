@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit bounded operand/history capacity for zero-gas skips draining deferred reports beside fresh work.
+
 import ./current_stf_rotation_incarnations_context
 import ../../src/app/candidate
 import ../../src/codec/bounded

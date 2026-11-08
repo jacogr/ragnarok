@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Isolated physical repository workloads measure retained table memory and checked shallow/deep graph walks.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/[repository as node_repository, records as node_records]
@@ -18,10 +19,13 @@ type
     withReaders, currentOnly, readersAfterClose, released: int
     publicationHashes, extractionHashes, cloneHashes, cloneBytes: int
     publicationNs, extractionNs, cloneNs: int64
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Observe genuine hashing while resetting the existing test-only primitive counter.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual attempts independently of graph/table ownership.
+
 proc key(index, offset: int): StateKey =
   ## Offset zero produces shallow routes; offset 29 exercises a 232-bit common prefix.
   assert index >= 0 and index < 65536 and offset in [0, 29]
@@ -29,12 +33,14 @@ proc key(index, offset: int): StateKey =
   bytes[offset] = byte(index shr 8)
   bytes[offset+1] = byte(index and 255)
   StateKey(bytes)
+
 proc payload(index, size, applied: int): seq[byte] =
   ## Authored deterministic values distinguish each changed key from its original mapping.
   result = newSeq[byte](size)
   let octet = if index < applied: byte(index+1) else: byte(index and 255)
   for position in 0..<size:
     result[position] = octet # Full bytes, including long payloads, participate in map checks.
+
 proc scenario(count, size, offset: int): Scenario =
   ## Populate a bounded independent repository, retaining the initial and last eight of sixteen successors.
   let trie = StateTrieLimits(items: ElementLimit(8192), perValue: ByteLimit(256),
@@ -60,6 +66,7 @@ proc scenario(count, size, offset: int): Scenario =
     if index >= 8:
       readers.add(view) # Exactly eight successive readers plus the separated initial reader.
   Scenario(repository: repository, views: readers, policy: trie)
+
 proc check(view: RepositoryView, policy: StateTrieLimits, count, size, offset, applied: int) =
   ## Compare every sorted key/value with an independently authored complete mapping.
   let entries = restoreStateEntries(view, view.commitment.root, policy).value
@@ -67,6 +74,7 @@ proc check(view: RepositoryView, policy: StateTrieLimits, count, size, offset, a
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](key(index, offset))
     assert entry.value == payload(index, size, applied)
+
 proc measure(count, size, offset: int): Measurement =
   ## Scoped owners let occupied bytes distinguish shared table storage from unrelated input/trie lifetimes.
   result = default(Measurement)
@@ -118,6 +126,7 @@ proc measure(count, size, offset: int): Measurement =
   latest = default(RepositoryView)
   result.released = getOccupiedMem()-before
   assert result.released == 0
+
 proc row(count, size, offset, sample: int, m: Measurement): string =
   ## Fixed decimal fields keep the evidence independent of any production JSON/parsing path.
   "{\"items\":" & $count & ",\"value_bytes\":" & $size & ",\"offset\":" & $offset &
@@ -128,6 +137,7 @@ proc row(count, size, offset, sample: int, m: Measurement): string =
     ",\"publication_ns\":" & $m.publicationNs & ",\"extraction_ns\":" & $m.extractionNs &
         ",\"clone_bytes\":" & $m.cloneBytes &
     ",\"clone_hashes\":" & $m.cloneHashes & ",\"clone_ns\":" & $m.cloneNs & "}"
+
 proc main() {.raises.} =
   ## Three repeated samples cover payload size and deep-prefix topology without changing production policies.
   var evidence = "["

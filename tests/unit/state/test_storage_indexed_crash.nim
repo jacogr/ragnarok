@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Large indexed repositories preserve exact full/torn append restart and independent recovery authority.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_growth_samples, managed_storage_samples, storage_io, storage_crash]
@@ -101,6 +102,7 @@ proc scenario(managed, torn: bool) {.raises.} =
     removeManagedSample(path, [ManagedEpoch(1)])
   else:
     assert posix.unlink(path.toCString()) == 0
+
 proc main() {.raises.} =
   ## Both physical layouts exercise indexed image/replay admission with complete and torn publications.
   for managed in [false, true]:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed state migration preserves source bytes/ownership, exact context and inherited snapshot policy.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
@@ -12,6 +13,7 @@ import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc main() {.raises.} =
   ## Independent source/destination stores share only immutable state data and can publish separate successors.
   let limits = managedStorageLimits()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Mixed global/service queries retain exact scope, independent root authority and legacy RPV1 bytes.
+
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/proof/plan as proof_plan
@@ -11,12 +12,16 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     safrole as state_safrole, accounts as state_accounts]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained actual hash observer and optionally fail the first backend attempt.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Measure real primitive calls for scope/budget preflight and backend failure prefixes.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse the next primitive after a measured successful prefix.
+
 proc main() =
   ## Establish independent complete-map commitments before any partial response exists.
   let service = ServiceIndex(7)

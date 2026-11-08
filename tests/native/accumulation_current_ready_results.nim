@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused ready owners cannot expose an earlier source, encoded ring or inactive child reasons.
+
 import std/cmdline
 import ../../src/state/accumulation/current/ready as accumulation_current_ready
 import ../../src/state/accumulation/ready as accumulation_ready

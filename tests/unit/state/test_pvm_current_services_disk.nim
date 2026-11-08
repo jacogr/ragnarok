@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real signed current preparation crosses native durable publication, exact RPC exclusion and strict complete-map reopen.
+
 import std/[assertions, syncio, envvars, monotimes, times, base64, strutils]
 import std/posix/posix
 import ../../../src/app/[services, options, preparation_worker, audit_branches]
@@ -22,10 +23,13 @@ import ../../../src/state/accumulation/[finalization as accumulation_finalizatio
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   current_application_context, current_services_disk_samples, managed_storage_samples, rpc_socket]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Enable failure only after synchronized Done, when the worker no longer calls hashing primitives.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe the post-collection host installation independently of status flags.
+
 proc prepareAuditChild(owner: var Services, input: var CurrentBlockInput,
     parent: genesis.BlockHash, wire: openArray[byte]): PreparedCurrentChainUpdate {.raises.} =
   ## Real bounded intake reaches the same current STF worker through an independently retained parent.
@@ -53,6 +57,7 @@ proc prepareAuditChild(owner: var Services, input: var CurrentBlockInput,
   assert finished.kind == PreparationCompletionKind.CurrentCompleted
   assert finished.currentValue.error == CurrentBlockInputError.None and not owner.rpc.chainPaused
   finished.currentValue.value
+
 proc scenario(context: CurrentChainFixture, managed, network: bool) {.raises.} =
   ## Each layout/RPC combination publishes once, acknowledges once, and strictly reopens its actual durable child.
   var path = "pvm-current-services-disk-chain"
@@ -162,6 +167,7 @@ proc scenario(context: CurrentChainFixture, managed, network: bool) {.raises.} =
   equalCurrentDiskMap(owner.stateSnapshot.value, context.source.currentConsensusState.value)
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
   owner.close() # Close joins before the deferred exact namespace cleanup runs.
+
 proc main() {.raises.} =
   ## Signed fixture execution and all four durable combinations must complete without fixture/runtime exceptions.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

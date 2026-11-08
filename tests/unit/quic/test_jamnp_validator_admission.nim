@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent role budgets and canonical epoch/finality witnesses for validator admission.
+
 import std/[assertions, syncio]
 import ../../support/[jamnp_topology_fixture, jamnp_policy_tls]
 import ../../../src/jamnp-s/[admission, topology]
@@ -17,11 +18,13 @@ proc selected(rosters: array[3, seq[StateValidator]], seed: BlockSnapshotResult,
   let advanced = advanceView(genesisView(seed), child)
   assert advanced.error == ViewAdvanceError.None, "advanced.error == ViewAdvanceError.None"
   advanced.value
+
 proc finalized(view: ChainView): ChainView =
   ## Supply explicit host finality for the retained canonical best, never derive it from progress.
   let reported = finalizeView(view, view.bestBlock.value.blockHash)
   assert reported.error == ViewFinalizeError.None, "reported.error == ViewFinalizeError.None"
   reported.value
+
 proc initialize(seed: BlockSnapshotResult): ValidatorAdmission =
   ## Small independent quotas expose improper borrowing of reserved capacity.
   let projected = captureValidatorTopology(seed, topologyLimits())
@@ -29,6 +32,7 @@ proc initialize(seed: BlockSnapshotResult): ValidatorAdmission =
   let made = initValidatorAdmission(projected.value, topologyKey(20), 2, 1, 1)
   assert made.error == AdmissionError.None, "made.error == AdmissionError.None"
   made.value
+
 proc reservations() =
   ## All rejected paths preserve independent desired counts and the exact native slot occupancy.
   let old = [topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)]
@@ -101,6 +105,7 @@ proc reservations() =
   var absent = default(ValidatorAdmission)
   assert absent.admitAuthenticated(PeerSlot(0), topologyKey(21), false).error ==
       AdmissionError.Uninitialized, "absent.admitAuthenticated(PeerSlot(0), topologyKey(21), false).error == AdmissionError.Uninitialized"
+
 proc delay() =
   ## Non-tiny E exercises E div30 rather than only the minimum one-slot delay.
   let rosters = [topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)]

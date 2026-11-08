@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## CE129 inclusive ranges and authentic boundary paths, plus canonical hash-checked CE143 reads.
+
 import std/[assertions, syncio]
 import ../../support/[jamnp_topology_fixture, jamnp_read_exchange]
 import ../../../src/jamnp-s/[read_stream, canonical_read]
@@ -16,6 +17,7 @@ proc key(id: byte): StateKey =
   var raw = default(array[31, byte])
   raw[0] = id
   StateKey(raw)
+
 proc source(extra: seq[StateEntry]): BlockSnapshotResult =
   ## Preserve full-map provenance while adding canonical service records to a structural fixture.
   let base = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])
@@ -31,6 +33,7 @@ proc source(extra: seq[StateEntry]): BlockSnapshotResult =
   assert encodeOwnedHeader(base.value.header, wire).error == HeaderError.None
   result = captureBlockSnapshot(wire, entries, topologySettings())
   assert result.error == GenesisError.None
+
 proc rangeRequest(hash: BlockHash, start, finish: StateKey, maximum: uint32): seq[byte] =
   ## Literal CE129 payload has two 31-byte inclusive keys and one E4 maximum, without a count.
   result = @[]
@@ -38,11 +41,13 @@ proc rangeRequest(hash: BlockHash, start, finish: StateKey, maximum: uint32): se
   for octet in array[31, byte](start): result.add(octet)
   for octet in array[31, byte](finish): result.add(octet)
   for index in 0..<4: result.add(byte((maximum shr (8*index)) and 255))
+
 proc request(kind: ReadKind, wire: seq[byte]): ReadRequest =
   ## Explicit successful admission precedes any request extraction.
   let decoded = decodeReadRequest(kind, wire)
   assert decoded.error == ReadError.None
   decoded.value
+
 proc frames(wire: seq[byte], count: int): seq[seq[byte]] =
   ## Independently decode an exact bounded E4 message sequence, checking all suffixes.
   result = @[]
@@ -58,6 +63,7 @@ proc frames(wire: seq[byte], count: int): seq[seq[byte]] =
     result.add(payload)
     cursor += payload.len
   assert cursor == wire.len, "no extra message/count/suffix is permitted"
+
 proc checkRange(snapshot: BlockSnapshot, wire: seq[byte], expected: seq[StateEntry],
     start: StateKey) =
   ## Exact KVs and independently authenticated paths constrain node membership, uniqueness and order.
@@ -97,6 +103,7 @@ proc checkRange(snapshot: BlockSnapshot, wire: seq[byte], expected: seq[StateEnt
       covered[position] = true
       previous = position
   for present in covered: assert present, "no off-path nodes are permitted"
+
 proc main() {.raises.} =
   ## Values straddle empty/small/natural-prefix boundaries; service lookup verifies full blob identity.
   let records = @[StateEntry(key: key(64), value: @[]), StateEntry(key: key(66), value: @[9'u8, 8]),

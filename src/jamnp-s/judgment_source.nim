@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded metadata-only selection names an actual retained reporting context for standalone negative support. It grants no signature, inclusion, execution or report-validity authority; the fixed worker independently qualifies the selected source.
+
 import ./judgment_claim
 import ../chain/[genesis, provider, parameters]
 import ../codec/disputes
@@ -17,21 +18,26 @@ type
       selected, membership: genesis.BlockHash
       slot: uint64
     else: discard                # No guessed source survives a history or profile refusal.
+
 func error*(outcome: JudgmentSourceResult): JudgmentSourceError =
   ## Observe the selected reason before extracting actual metadata.
   outcome.status
+
 func value*(outcome: JudgmentSourceResult): genesis.BlockHash {.requires: outcome.status ==
     JudgmentSourceError.None.} =
   ## This copied hash still needs actual worker-side role, signature and full execution-source qualification.
   outcome.selected
+
 func sourceSlot*(outcome: JudgmentSourceResult): uint64 {.requires:
     outcome.status == JudgmentSourceError.None.} =
   ## Retries continue below the original candidate even when a newer head arrives.
   outcome.slot
+
 func membershipSource*(outcome: JudgmentSourceResult): genesis.BlockHash {.requires:
     outcome.status == JudgmentSourceError.None.} =
   ## A zero value means the claim's original verified membership is used.
   outcome.membership
+
 proc eligible(candidate: BlockSnapshotResult, parameters: Parameters,
     guaranteeSlot, rotation: uint64): bool =
   ## Actual current/previous rotation is the maintained guarantee planner's window; availability's five-slot timeout is unrelated.
@@ -40,12 +46,14 @@ proc eligible(candidate: BlockSnapshotResult, parameters: Parameters,
   let sourceRotation = candidate.value.slot div rotation
   let guaranteeRotation = guaranteeSlot div rotation
   sourceRotation >= guaranteeRotation and sourceRotation-guaranteeRotation <= 1
+
 func containsSource(excluded: openArray[JudgmentSourceAttempt], source,
     membership: genesis.BlockHash): bool =
   for previous in excluded:
     if array[32, byte](previous.source) == array[32, byte](source) and
         array[32, byte](previous.membership) == array[32, byte](membership): return true
   false
+
 proc selectJudgmentSourceIn(view: ChainView, claim: SignedJudgmentClaim,
     receipt: BlockSnapshotResult, membership: genesis.BlockHash,
     excluded: openArray[JudgmentSourceAttempt], maximumSlot: uint64): JudgmentSourceResult =
@@ -78,6 +86,7 @@ proc selectJudgmentSourceIn(view: ChainView, claim: SignedJudgmentClaim,
     return JudgmentSourceResult(status: JudgmentSourceError.None,
         selected: finalized.value.blockHash, membership: membership, slot: finalized.value.slot)
   JudgmentSourceResult(status: JudgmentSourceError.HistoryUnavailable)
+
 proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
     excluded: openArray[JudgmentSourceAttempt] = [], maximumSlot = high(
         uint64)): JudgmentSourceResult =
@@ -89,6 +98,7 @@ proc selectJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
       array[32, byte](claim.claimInfo.sourceRoot):
     return JudgmentSourceResult(status: JudgmentSourceError.InvalidSource)
   selectJudgmentSourceIn(view, claim, receipt, default(genesis.BlockHash), excluded, maximumSlot)
+
 proc alternateJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
     excluded: openArray[JudgmentSourceAttempt]): JudgmentSourceResult =
   ## A retained alternative names a candidate only. The worker must prove the exact same auditor key at the original position.
@@ -104,6 +114,7 @@ proc alternateJudgmentSource*(view: ChainView, claim: SignedJudgmentClaim,
   if original > current or current-original > 1:
     return JudgmentSourceResult(status: JudgmentSourceError.HistoryUnavailable)
   selectJudgmentSourceIn(view, claim, receipt, receipt.value.blockHash, excluded, high(uint64))
+
 proc selectJudgmentSourceAcross*(primary: ChainView, alternatives: openArray[ChainView],
     claim: SignedJudgmentClaim, excluded: openArray[JudgmentSourceAttempt], maximumSlot: uint64,
     allowPrimary = true, allowAlternates = true): JudgmentSourceResult =

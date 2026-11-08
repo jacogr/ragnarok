@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_annulled_transfers_arc_release"}
 
 ## Real annulled producers retain actual gas/provisions while their outgoing transfers disappear from accpar delivery and refund.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[transfers as accumulation_transfers,
     annulment as accumulation_annulment, pending_transfers as accumulation_pending_transfers,
@@ -15,11 +17,14 @@ import ../../support/[accumulation_annulment_context, accumulation_batch_context
 
 # Collection/sort/projection and pending-budget accounting do not hash or publish state.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(transfers = 2'u64, memo = 256'u64, sources = 2'u64): AccumulationTransferCollectionLimits =
   ## Explicit independent caps count every original producer but only surviving transfer values.
   AccumulationTransferCollectionLimits(sources: ElementLimit(sources), transfers: ElementLimit(
       transfers), memoBytes: ByteLimit(memo))
+
 proc pendingPolicy(): PendingTransferLimits =
   ## Producer usage and fixed-value copies remain independently bounded after projection.
   PendingTransferLimits(sources: ElementLimit(2), transfers: ElementLimit(2), memoBytes: ByteLimit(256))

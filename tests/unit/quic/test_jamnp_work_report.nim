@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_report_arc_release"}
 
 ## Genuine original report pipeline preserves bundle bytes, population-dependent commitments and exact failed stages.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[work_report, work_submission]
 import ../../../src/codec/bounded
@@ -16,6 +18,7 @@ import ../../../src/state/computed/[report as computed_report, guarantee]
 import ../../../src/crypto/[primitives, guarantee as crypto_guarantee]
 import ../../support/[jamnp_work_fixture, jamnp_work_report_fixture, pvm_input_refinement,
   pvm_export_erasure, arc_evidence]
+
 proc original(transcript: ComputedGuaranteeTranscript): AuditableBundle =
   ## Traverse only the original immutable provenance; no detached replacement bytes are accepted by production factories.
   let computed = transcript.computedGuaranteeReport.value
@@ -23,11 +26,13 @@ proc original(transcript: ComputedGuaranteeTranscript): AuditableBundle =
   let exports = availability.availabilitySource.value
   let bundle = exports.exportErasureSource.value
   bundle.bundleErasureSource.value.layoutSource.value
+
 proc releaseCycle(source: InputRefinement) =
   ## Every newly encoded report, transcript and intermediate private owner retires before the next checked ARC cycle.
   let completed = prepareWorkReport(source, ErasureShards(6), workReportLimits())
   assert completed.error == WorkReportError.None, "report preparation: " & $completed.error
   assert completed.value.computedGuaranteeReport.value.computedReportInfo.value.items == 1
+
 proc main() =
   ## Complete PVM/import execution precedes all new report work; failed results never act as a source.
   let fixture = workFixture()

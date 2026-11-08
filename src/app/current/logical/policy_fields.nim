@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete explicit logical startup/continuation resource schema; every unsigned leaf is required, with no inferred defaults.
+
 template currentLogicalPolicyFields(policy, context, visit: untyped) {.untyped.} =
   ## Visit each reviewed nominal scalar exactly once; Nimony resolves only the substituted caller fields.
   visit(context, "projection.services", policy.projection.services)

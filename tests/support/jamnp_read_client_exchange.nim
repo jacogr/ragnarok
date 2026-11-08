@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent raw TLS responder checks client framing and completion after actual native retirement.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../src/quic/transport
 import ../../src/jamnp-s/[protocol, read_stream, read_client, sharing_client, sharing_wire]
@@ -22,21 +23,28 @@ type
     expected: array[32, byte]
     opened, closed: bool
     budget: uint64
+
 proc `=copy`(destination: var RawServer, source: RawServer) {.error.}
   ## Native callbacks cannot follow copied test storage.
+
 proc `=dup`(source: RawServer): RawServer {.error.}
   ## Initialization also preserves the one stable callback owner.
+
 proc `=copy`(destination: var RawClient, source: RawClient) {.error.}
   ## The client route and native transport retain their original enclosing address.
+
 proc `=dup`(source: RawClient): RawClient {.error.}
   ## Callback contexts may not be duplicated during ARC lowering.
+
 proc serverVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Both certificates still pass the ordinary Ed25519/SAN checks before application bytes are used.
   cint(validPeer(cast[ptr byte](der), length, []))
+
 proc clientVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Pin the raw fixture public identity independently of production certificate extraction.
   let client = cast[ptr RawClient](user)
   cint(validPeer(cast[ptr byte](der), length, client.expected))
+
 proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Read the entire literal request/FIN before sending the independently supplied response bytes.
   let server = cast[ptr RawServer](user)
@@ -79,6 +87,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     wantWrite(stream, 0)
     streamAbort(stream) # Explicitly retire our remaining direction after the client's rejection.
   else: discard # No other events imply transcript completion.
+
 proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Both production clients use the same independent native responder/retirement observations.
   let client = cast[ptr RawClient](user)
@@ -95,6 +104,7 @@ proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
   else:
     client.route.event(stream, event, ByteLimit(client.budget-owned))
   if event == 3: client.closed = true # Host extraction is delayed until actual native retirement.
+
 proc runExchange(server: var RawServer, client: var RawClient, holdFin: bool) {.raises.} =
   ## Reuse one actual TLS/FIN driver for both fixed reads and the independent bounded sharing client.
   server.finAllowed = not holdFin
@@ -122,6 +132,7 @@ proc runExchange(server: var RawServer, client: var RawClient, holdFin: bool) {.
       wantWrite(server.stream, 1)
     if client.closed: break
   assert issued and client.opened and client.closed, "response route reaches actual native retirement"
+
 proc exchangeClient*(kind: ReadKind, payload, response: seq[byte],
     failure = ReadError.None, holdFin = false, maximum = ByteLimit(MaxReadReplyBytes),
     budget = uint64(MaxReadReplyBytes)) {.raises.} =

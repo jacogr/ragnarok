@@ -12,10 +12,12 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const FileName = "state-atomic-file.bin"
+
 proc cycle(bytes: seq[byte]) =
   ## Each real synchronized replacement and refused short ceiling releases its temporary owners.
   assert replaceAtomicFile(FileName, bytes, ByteLimit(uint64(bytes.len))) == AtomicFileError.None
   assert replaceAtomicFile(FileName, bytes, ByteLimit(0)) == AtomicFileError.LimitExceeded
+
 proc main() {.raises.} =
   ## Exact and empty byte payloads remain distinct from any higher-level checkpoint/header interpretation.
   var path = FileName

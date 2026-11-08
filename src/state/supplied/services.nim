@@ -3,6 +3,7 @@
 
 ## Explicit bounded detached reconstruction of supplied service declarations from retained logical keys and original payloads.
 ## Projection hashes nothing and confers no authority on mutable output declarations.
+
 import ../../codec/bounded
 import ../../codec/state/composition as state_composition
 import ./logical_inventory as supplied_logical_inventory

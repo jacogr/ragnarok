@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Compose all current PVM state phases from a terminal sequence; failures retain no successful prefix.
+
 import ../residency
 import ./[statistics as accumulation_current_statistics, accounts as accumulation_current_accounts,
     finalization as accumulation_current_finalization, ready as accumulation_current_ready,

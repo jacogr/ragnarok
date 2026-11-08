@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque option helpers require complete active recovery with real successful parser controls.
+
 import std/[assertions, cmdline]
 import ../../src/app/options
+
 proc inspect(options: Options, field: string) =
   ## Each accessor is checked independently at runtime.
   case field
@@ -11,6 +13,7 @@ proc inspect(options: Options, field: string) =
   of "trust": discard options.recoveryTrustPath # Independent identity selection has the same gate.
   of "header": discard options.recoveryHeaderPath # Sealed bytes cannot be selected by default options.
   else: discard options.recoveryByteLimit # No inactive resource budget can authorize recovery.
+
 proc main() =
   ## Default and valid-but-disabled options must fail the same helpers used by complete active parsing.
   var options = default(Options)

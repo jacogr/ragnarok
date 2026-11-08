@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Checked source certificate and invocation bridge for a bounded native read body.
 
 when declared(FlatFrame):

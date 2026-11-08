@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Derive the transport domain only from a nominal configured-genesis header hash.
+
 import ../chain/genesis
 
 func genesisAlpn*(hash: BlockHash): string =

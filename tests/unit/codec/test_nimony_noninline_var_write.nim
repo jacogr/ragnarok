@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## NIM-008 regression: optimized reads must observe a non-inlined callee's write to a local.
+
 import std/[assertions, syncio]
 
 proc bump(value: var int) {.noinline.} =

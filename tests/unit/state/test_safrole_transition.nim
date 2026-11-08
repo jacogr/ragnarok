@@ -26,16 +26,22 @@ import ../../support/[validator_rotation_fixture, arc_evidence]
 
 ## Reset ordinary/ring/setup observation between fully retired calls.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Refuse the first or second ordinary verification after all preceding private stages.
 proc refuseVerification(successful: cint) {.importc: "bo_ietf_after", cdecl.}
+
 ## Prove both seal and entropy credentials ran on successful paths.
 proc verifications(): cint {.importc: "bo_ietf_calls", cdecl.}
+
 ## Native setups must be released after success and every refusal.
 proc liveSetups(): cint {.importc: "bo_live_setups", cdecl.}
+
 ## Reset/refuse Blake hashes independently of Bandersnatch verification.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Count hashing to target early and late atomic publication failure.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
+
 ## Refuse after a known successful hash prefix, without replacing any successful digest.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine erasure sources plus structural selected-chain registration snapshots isolate catalog and recovery provenance.
+
 import std/assertions
 import ../../src/chain/[genesis, provider, import_catalog]
 import ../../src/codec/[bounded, header, guarantees, report_owned, owned, assurances]
@@ -17,10 +18,12 @@ proc importCatalogLimits*(): ImportCatalogLimits =
   ## Explicit local metadata and retention ceilings cover current/previous rosters across the selected bounded chain.
   ImportCatalogLimits(blocks: ElementLimit(8), reports: ElementLimit(16), keys: ElementLimit(20000),
     chapterBytes: ByteLimit(1000000), readBytes: ByteLimit(8000000), retentionEpochs: ElementLimit(672))
+
 proc importRecoveryLimits*(): ImportRecoveryLimits =
   ## Independent aggregate arithmetic/hash/payload caps admit parity recovery and the complete two-level page witness.
   ImportRecoveryLimits(bytes: ByteLimit(2000000), products: FieldProductLimit(20000000),
     hashes: ElementLimit(100), hashBytes: ByteLimit(20000), proof: importLimits())
+
 proc registrationSnapshot*(source: AvailabilityCommitment, slot = 20'u32,
     parent = unavailableGenesis(), active = 6, previous = 9, registered = 20'u32,
     badSuffix = false, highCredentials = true, generation = 1): BlockSnapshotResult =
@@ -66,6 +69,7 @@ proc registrationSnapshot*(source: AvailabilityCommitment, slot = 20'u32,
   var header = newSeq[byte](base.header.headerInfo.value.consumed)
   assert base.header.encodeOwnedHeader(header).error == HeaderError.None, "registration header encoding"
   captureBlockSnapshot(header, entries, base.chainParameters)
+
 proc catalogSource*(availability: AvailabilityCommitment): ReportedImport =
   ## Only a selected-chain capture, never a caller-built descriptor, can supply the recovery capability under test.
   let count = int(uint16(availability.availabilityInfo.value.specifier.erasureShards))

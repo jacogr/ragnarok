@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real native growth, deletion and rollback continue from original raw identities without supplied successor declarations; all-stage refusal exposes no prefix.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context, collected_mutation_context,
     current_namespace_transition_context, current_namespace_execution_context,
@@ -25,13 +26,16 @@ import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, composition as state_composition,
     requests as state_requests, accounts as state_accounts]
 import ../../src/chain/[provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Bound refusal and genuine mandatory request-key hashing remain distinct.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Source/resource admission must precede namespace hashing on these selected early failures.
 type Fixture = object ## Actual original namespaces and native producer update are the only test-owned source descriptors.
   origin: CurrentNamespaceTransition
   update: PreparedCurrentChainUpdate
+
 proc candidatePolicy(): CurrentCandidateLimits =
   ## Both initial and later real cohorts capture bounded raw storage identities before whole-source history retention.
   result = currentCandidateLimits()
@@ -41,12 +45,14 @@ proc candidatePolicy(): CurrentCandidateLimits =
   result.completion.execution.initial.guests.storageFacts = AccumulationStorageFactLimits(
       items: ElementLimit(2), perKey: ByteLimit(2), totalKeyBytes: ByteLimit(2))
   result.completion.execution.execution.round.guests.storageFacts = result.completion.execution.initial.guests.storageFacts
+
 proc policy(): StorageContinuationLimits =
   ## Independent real-map reconstruction and current logical retention budgets stay explicit.
   let logical = namespaceLogicalLimits()
   StorageContinuationLimits(identity: currentIdentityTestLimits, checks: ElementLimit(4096),
       scratchBytes: ByteLimit(262144), projection: namespaceRefreshLimits.projection,
       profile: logical.profile, globals: logical.globals, logical: logical.logical)
+
 proc fixture(kind: int): Fixture {.raises.} =
   ## Every key and guest enters the parent commitment/signatures; no completed private map or result is repaired.
   var options = executionFixtureConfig()
@@ -73,6 +79,7 @@ proc fixture(kind: int): Fixture {.raises.} =
   assert receipt.kind == PreparationCompletionKind.CurrentCompleted and
       receipt.currentValue.error == CurrentBlockInputError.None
   Fixture(origin: origin, update: receipt.currentValue.value)
+
 proc check(fixture: Fixture, expected: bool): CurrentLogicalState =
   ## The new consumer discovers raw key7 only from genuine producer evidence, then matches every actual serialized entry.
   let done = continueCurrentStorage(fixture.origin.parent, fixture.update, policy())
@@ -89,6 +96,7 @@ proc check(fixture: Fixture, expected: bool): CurrentLogicalState =
           7'u8]: found = true # Compare explicit retained raw identities, never a physical hash inversion.
   assert found == expected
   logical
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(StorageContinuationResult)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Reconstruct complete current logical state across producer-proven storage/request/service identity changes while preserving exact original parent, selected rollback and genuine successor provenance.
+
 import ./parent/logical as parent_logical
 import ./current/[logical as current_logical, identities as current_identities]
 import ./accumulation/current/update as accumulation_current_update

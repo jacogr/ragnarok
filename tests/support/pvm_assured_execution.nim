@@ -13,6 +13,7 @@ proc assuredExecutionFixture*(votes = 7): AssuredAccumulationQueue =
   ## Derive the real next queue from authenticated availability, with no injected ready item.
   let source = assuredQueueFixture(votes)
   prepareAssuredQueue(source, assuredQueueConfig(source)).value
+
 proc assuredExecutionConfig*(source: AssuredAccumulationQueue): AssuredExecutionConfig =
   ## Match original semantic gas and actual three-core frame; bound two inputs and one supported storage key independently.
   let params = source.assuredQueueParameters.value

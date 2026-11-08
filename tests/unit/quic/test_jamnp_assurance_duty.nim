@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_duty_arc_release"}
 
 ## Actual executed erasure sources and independently trusted complete parent chapters exercise original-index assurance acquisition duties and whole-plan refusal.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[assurance_duty, availability_proof]
 import ../../../src/chain/genesis
@@ -13,10 +15,12 @@ import ../../../src/state/store
 import ../../../src/state/availability/specifier
 import ../../support/[pvm_computed_report, jamnp_import_recovery_fixture,
   jamnp_topology_fixture, arc_evidence]
+
 proc limits(): AssuranceDutyLimits =
   ## Explicit aggregate and plan limits cover the tested complete parent rather than inferring network or signing defaults.
   AssuranceDutyLimits(chapterBytes: ByteLimit(1000000), readBytes: ByteLimit(4000000),
     reports: ElementLimit(341), requests: ElementLimit(341*1023))
+
 proc replaceRoster(source: BlockSnapshotResult, roster: seq[StateValidator]): BlockSnapshotResult =
   ## Recommit a complete test-owned parent map while preserving its exact header; equal headers alone cannot authorize stale duties.
   let saved = source.value
@@ -33,6 +37,7 @@ proc replaceRoster(source: BlockSnapshotResult, roster: seq[StateValidator]): Bl
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
   assert saved.header.encodeOwnedHeader(wire).error == HeaderError.None, "encode exact fixture header"
   captureBlockSnapshot(wire, entries, saved.chainParameters)
+
 proc changed(source: AvailabilityCommitment, count: int): BlockSnapshotResult =
   ## One real local key owns three original positions; an unrelated position is GP-null and must keep its coordinate.
   let original = registrationSnapshot(source, active = count, previous = count)
@@ -42,6 +47,7 @@ proc changed(source: AvailabilityCommitment, count: int): BlockSnapshotResult =
   roster[2].ed25519 = roster[1].ed25519
   roster[count-1].ed25519 = roster[1].ed25519
   replaceRoster(original, roster)
+
 proc coordinates(source: AvailabilityCommitment, count: int, expected: array[3, uint64]) =
   ## Literal NP coordinates distinguish original roster ordinals and the non-optimal 12-validator recovery threshold (four, not five) from compressed or naive mappings.
   let saved = changed(source, count)
@@ -80,6 +86,7 @@ proc coordinates(source: AvailabilityCommitment, count: int, expected: array[3, 
   narrow.requests = ElementLimit(2)
   assert captureAssuranceDuty(saved, topologyKey(61), narrow).error ==
       AssuranceDutyError.LimitExceeded, "one missing request unit refuses whole plan"
+
 proc refuse(source: AvailabilityCommitment) =
   ## Missing authority, whole-chapter bounds and malformed actual parent chapters never publish a successful prefix.
   let saved = registrationSnapshot(source, active = 6, previous = 6)
@@ -122,6 +129,7 @@ proc refuse(source: AvailabilityCommitment) =
   let population = registrationSnapshot(source, active = 9, previous = 9)
   assert captureAssuranceDuty(population, topologyKey(61), limits()).error ==
       AssuranceDutyError.InvalidState, "report and active population mismatch refused"
+
 proc cycle(saved: BlockSnapshotResult) =
   ## Every scoped successful/late-refused plan and extracted assignment retires before ARC occupancy is compared.
   let planned = captureAssuranceDuty(saved, topologyKey(61), limits())
@@ -133,6 +141,7 @@ proc cycle(saved: BlockSnapshotResult) =
   narrow.requests = ElementLimit(2)
   assert captureAssuranceDuty(saved, topologyKey(61), narrow).error ==
       AssuranceDutyError.LimitExceeded, "ARC cycle late capacity refusal"
+
 proc main() =
   ## Genuine execution and real erasure geometry remain independent of the trusted structural registration fixture's placeholder credentials.
   let tiny = computedAvailabilityAtCore(0, 1, 6)

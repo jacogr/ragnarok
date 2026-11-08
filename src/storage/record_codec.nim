@@ -410,7 +410,6 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
   if validated != RecordError.None: return RecordResult[TrieExport](status: validated)
   RecordResult[TrieExport](status: RecordError.None, completed: batch)
 
-
 proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
   ## Preserve exact single-target metadata, record and complete-map byte ceilings.
   validateRecords(batch, batch.records, limits, false)

@@ -68,7 +68,6 @@ proc integrationContexts*(sameBytes = false): seq[AccumulationEffectContext] =
   let b = second.effectContext(AccumulationDimension.Regular).value
   @[a, b, a]
 
-
 proc integrationNumericContexts*(): seq[AccumulationEffectContext] =
   ## Targets 1/256 distinguish numeric service order from little-endian service transport order.
   var entries: seq[StateEntry] = @[]

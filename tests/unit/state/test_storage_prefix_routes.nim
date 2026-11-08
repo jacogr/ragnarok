@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored complete two-leaf graphs exercise every full-key route depth and masked byte boundary.
+
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/node/[records as node_records, repository as node_repository]

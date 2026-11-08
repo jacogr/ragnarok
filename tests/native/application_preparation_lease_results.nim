@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Checked canonical/lifecycle guards must reject access even after execution finishes but before collection.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/[services, options, preparation_worker]
 import "../../src/app/block/input" as block_input

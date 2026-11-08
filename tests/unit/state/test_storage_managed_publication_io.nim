@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed journal leases keep the stable lock alive across append, manifest replacement and descriptor transfer.
+
 # @@Verification={"arc":"storage_managed_publication_io_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -9,12 +10,14 @@ import std/posix/posix
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc cycle(directory: ManagedDirectory) =
   ## A complete journal lease and detached read buffer retire before the next isolated iteration.
   var journal = default(ManagedJournal)
   let loaded = openManagedJournal(journal, directory, ManagedEpoch(1), ByteLimit(4))
   assert loaded.error == FileError.None and loaded.value.len == 4
   assert journal.close == FileError.None
+
 proc main() {.raises.} =
   ## Atomic manifest replacement and append ownership retain exact bytes and refuse parent retirement.
   var path = "storage-managed-publication"

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_guest_runner_arc_release"}
 
 ## Actual current guests connect creation, skipped credit and absent identity to complete provider and selected-state proofs.
+
 import ../../../src/state/accumulation/residency
 import ../../../src/codec/state/service_values
 import std/[assertions, syncio]
@@ -30,8 +32,11 @@ import ../../../src/pvm/gas/gas
 import ../../../src/pvm/host/fetch as host_fetch
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,
   pvm_accumulation_context, pvm_accumulation_program, pvm_accumulation_provision, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc profile(): Parameters =
   ## The explicit caller profile matches the original two-core/eighty-queue context and zero fixture deposits.
   var wire = encodeParameters(pvmParameters())
@@ -43,6 +48,7 @@ proc profile(): Parameters =
   for index in 110..<114: wire[index] = 0 # Full current E4 memo extent.
   wire[110] = 128
   decodeParameters(wire).value
+
 proc policy(): AccumulationGuestLimits =
   ## Local runtime/proof ceilings are independent of protocol prices and code eligibility in Parameters.
   AccumulationGuestLimits(services: ElementLimit(3), preimageBytes: ByteLimit(1024),
@@ -63,6 +69,7 @@ proc policy(): AccumulationGuestLimits =
     coverage: AccumulationCoverageLimits(services: ElementLimit(3), executed: ElementLimit(3),
         skipped: ElementLimit(3),
       absent: ElementLimit(3), checks: ElementLimit(256), gas: Gas(300000)))
+
 proc mixedInputs(source: PreparedAccumulationInputs, executing = true): PreparedAccumulationInputs =
   ## The absent input has maximal offered gas; actual consumption still counts only real execution.
   var allowances: seq[AlwaysAccumulate] = @[]
@@ -75,6 +82,7 @@ proc mixedInputs(source: PreparedAccumulationInputs, executing = true): Prepared
         amount: TransferBalance(5), destinationSupervisor: true)],
     allowances, AccumulationInputConfig(inputs: ElementLimit(1), allowances: ElementLimit(3),
         services: ElementLimit(3))).value
+
 proc fixture(): BatchFixture =
   ## Genuine new allocates from the common prior while77 lacks code and123 lacks its account.
   var payload = newSeq[byte](60)
@@ -86,6 +94,7 @@ proc fixture(): BatchFixture =
       ByteLimit(ServiceMetadataBytes)).value
   result = batchFixture(incoming = false, firstEnvelope = code, extra = @[target])
   result.inputs = mixedInputs(result.inputs)
+
 proc run(source: BatchFixture, limits = policy(),
     residency: nil ptr ServiceExecutionContext = nil): AccumulationGuestResult =
   ## The pure runner receives explicit immutable source/profile choices; no block or completed publication owner is forged.

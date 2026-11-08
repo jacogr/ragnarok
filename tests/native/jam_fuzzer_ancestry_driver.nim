@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent reporting STF maps run through initial ancestry and exact-header backend queries.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_consecutive_context, accumulation_current_chain_context,

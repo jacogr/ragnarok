@@ -3,6 +3,7 @@
 
 ## One distinct light actor serializes bounded proof CPU work and paged publication/retirement without complete-state ownership.
 ## All staging activations retire before worker admission; the borrowed RPC owner and this actor remain at stable addresses until joined close.
+
 import std/[assertions, monotimes, times]
 import ./[head as light_head, store as light_store, policy as light_policy,
     proof_import as light_proof_import, rpc as light_rpc]

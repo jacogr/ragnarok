@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent creation observations cannot reveal payloads from default contexts.
+
 import std/cmdline
 import ../../src/state/accumulation/effects as accumulation_effects
 let owner = default(AccumulationEffectContext)

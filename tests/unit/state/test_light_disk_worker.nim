@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual shared disk-worker light operations retain exclusive graph leases, typed outcomes and joined native ownership.
+
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context, storage_io]
@@ -25,11 +26,13 @@ import ../../../src/storage/paged/[store as paged_store, codec as paged_codec,
 import ../../../src/storage/node/records as node_records
 import ../../../src/storage/durability
 import ../../../src/storage/file/errors as file_errors
+
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header
   result = newSeq[byte](selected.headerInfo.value.consumed)
   assert encodeOwnedHeader(selected, result).error == HeaderError.None
+
 proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   ## Caller-selected identity/header inputs are captured before the light owner sees proof evidence.
   let owner = initApplicationChain(genesisView(sourceBlock)).value
@@ -38,18 +41,21 @@ proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   let captured = captureCheckpointTrust(encoded, sourceBlock.headerWire, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc policy(sourceBlock: BlockSnapshotResult): LightHeadLimits =
   ## Active validator geometry is selected independently from complete genesis context, never inferred from fetch parameters or partial facts.
   LightHeadLimits(header: HeaderConfig(cores: sourceBlock.value.cores,
     authorValidators: sourceBlock.value.activeValidators, epochSlots: sourceBlock.value.epochSlots,
     maxBytes: ByteLimit(262144)), headers: ElementLimit(3), headerBytes: ByteLimit(1048576),
     view: ProofViewLimits(items: ElementLimit(16), valueBytes: ByteLimit(4194304)))
+
 proc entries(snapshot: StateStoreSnapshot): seq[StateEntry] =
   ## An independent complete fixture map is used only to author genuine membership/absence proofs.
   result = @[]
   for index in 0..<snapshot.commitment.entries:
     let key = snapshot.keyAt(StateEntryIndex(index)).value
     result.add(StateEntry(key: key, value: snapshot.lookup(key).value.bytes))
+
 proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
     limits: StateStoreLimits): VerifiedStateProofBatch =
   ## Full fixture generation and exact-root verification precede every partial view used by the application API.
@@ -64,14 +70,17 @@ proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
   let checked = verifyStateProofs(queries, snapshot.commitment.root, perProof, aggregate)
   assert checked.error == StateProofError.None
   checked.value
+
 func key(value: byte): StateKey =
   ## High-byte fixture keys distinguish genuine absent witnesses from unrequested unknown facts.
   var bytes = default(array[31, byte])
   for index in 0..<bytes.len: bytes[index] = value
   StateKey(bytes)
+
 proc path(label: string): string =
   ## Every trial owns a fresh ignored process namespace.
   "light-disk-worker-" & $storageProcessId() & "-" & label
+
 proc limits(source: BlockSnapshotResult): LightPagedLimits =
   ## Finite native stream work and retention ceilings are independent from logical header/proof policy.
   let elements = ElementLimit(1000000)
@@ -94,17 +103,21 @@ proc limits(source: BlockSnapshotResult): LightPagedLimits =
   result.proofs.view = source.policy.view
   result.proofs.work = work
   result.inventory = work
+
 proc facts(fixture: DiskHistoryFixture, ordinal: int): VerifiedStateProofBatch =
   ## Only independent complete fixture snapshots author raw evidence; the light owner retains no complete store.
   batch(fixture.blocks[ordinal].value.stateSnapshot, [chapterKey(StateChapter(11)), key(255)],
       fixture.policy)
+
 proc empty(source: BlockSnapshotResult): LightApplicationHead =
   ## Bootstrap knows no state facts until independently verified evidence is supplied.
   captureLightHead(source.trust, source.policy).value
+
 proc noIo() =
   ## Passive dispatcher operations must not hide synchronous native work.
   for operation in [readIo, writeIo, syncIo, lockIo, closeIo, renameIo, unlinkIo]:
     assert ioCalls(operation) == 0 # Each syscall family remains independently observable.
+
 proc check(snapshot: LightStorageSnapshot, count: int) =
   ## Missing witnesses never turn into authenticated absence, including after native close.
   assert snapshot.valid and snapshot.head.valid
@@ -114,6 +127,7 @@ proc check(snapshot: LightStorageSnapshot, count: int) =
     # A successful absent lookup is available only after that exact query was supplied and verified.
     assert snapshot.head.proofView.lookup(chapterKey(StateChapter(11))).value.present
     assert not snapshot.head.proofView.lookup(key(255)).value.present
+
 proc waitDone(worker: var DiskPublicationWorker) =
   ## Only synchronized scalar lifecycle state is touched while every borrowed ARC alias remains frozen.
   let started = getMonoTime()
@@ -122,6 +136,7 @@ proc waitDone(worker: var DiskPublicationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield without observing any leased application/native owner.
+
 proc publication(fixture: DiskHistoryFixture, mode: int, failure: bool, ordinal: int) {.raises.} =
   ## Normal collect, joined Done and immediate joined shutdown retain every actual light publication result.
   let source = fixture.blocks[0]
@@ -188,6 +203,7 @@ proc publication(fixture: DiskHistoryFixture, mode: int, failure: bool, ordinal:
   let restored = openLightPagedStore(disk, directory, source.trust, selected).value
   assert restored.head.proofView.len == 0 or restored.head.proofView.len == 2
   check(restored, restored.head.proofView.len)
+
 proc retirement(fixture: DiskHistoryFixture, mode, failure, ordinal: int) {.raises.} =
   ## Separate cleanup outcomes preserve Busy, actual IO failure and absence success without granting a core publication receipt.
   let source = fixture.blocks[0]
@@ -257,6 +273,7 @@ proc retirement(fixture: DiskHistoryFixture, mode, failure, ordinal: int) {.rais
   let restored = openLightPagedStore(disk, directory, source.trust, selected).value
   check(restored, 2)
   assert disk.retire(disk.prepareLightRetirement.value).error == LightStoreError.None
+
 proc mixedOperations(fixture: DiskHistoryFixture) {.raises.} =
   ## One fixed worker reuses its slot across light publication, full retirement, light retirement and a different-root light advance.
   let source = fixture.blocks[0]
@@ -317,6 +334,7 @@ proc mixedOperations(fixture: DiskHistoryFixture) {.raises.} =
   assert worker.close.kind == DiskCompletionKind.Uninitialized
   assert light.close == FileError.None
   check(openLightPagedStore(light, lightDirectory, nextTrust, fixture.blocks[1].limits).value, 2)
+
 proc main() {.raises.} =
   ## Repeated native start/operation/collect-or-join/reopen cycles exercise actual resource lifetimes, not per-thread ARC counter sums.
   let fixture = diskHistoryFixture(1, false)

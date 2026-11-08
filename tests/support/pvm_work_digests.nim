@@ -14,6 +14,7 @@ proc digestLimits*(): RefinementDigestLimits =
   ## Finite independent hashing and encoded-storage policies admit all authored boundary witnesses.
   RefinementDigestLimits(items: ElementLimit(16), payload: ByteLimit(4096),
     totalPayload: ByteLimit(65536), encoding: ByteLimit(65536), totalEncoding: ByteLimit(1048576))
+
 proc digestFixture*(guests: openArray[ReportGuest], payloads: openArray[seq[byte]],
     manifests = false, wide = false): ReportFixture =
   ## Replace only test input sources before executing them; the production constructor accepts no detached replacements.
@@ -41,6 +42,7 @@ proc digestFixture*(guests: openArray[ReportGuest], payloads: openArray[seq[byte
   let encoded = encodeWorkPackage(source, config, wire)
   assert encoded.error == PackageError.None
   result.package = decodeWorkPackage(wire.toOpenArray(0, encoded.value-1), config).value.owner
+
 proc digestReportFixture*(fixture: ReportFixture, trace: openArray[byte]): RefinedPackage =
   ## Manifest bytes are locally bounded; payload/code selection remains the original canonical captured package.
   var cap = reportLimits()

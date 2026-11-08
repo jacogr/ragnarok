@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only SDK counters use a separate build; ordinary performance runs compile these calls away.
+
 when defined(storageIoCounts):
   import std/syncio
   import ./storage_io
@@ -12,6 +13,7 @@ proc beginGrowthIo*() {.inline.} =
     resetIo()
   else:
     discard # Ordinary speed measurements link no observer and execute no SDK counting.
+
 proc endGrowthIo*(engine: string, count, publications: int, pattern: string, sample: int,
     phase: string) {.inline.} =
   ## Snapshot counters before output can perform IO; only the separate observed executable emits them.

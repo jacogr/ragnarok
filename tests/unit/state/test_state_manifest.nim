@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete-map service declarations require exact source bytes and preserve immutable provenance.
+
 # @@Verification={"arc": "state_manifest_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/arc_evidence
@@ -11,8 +12,10 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     composition as state_composition, consensus as state_consensus, accounts as state_accounts,
     service_values as state_service_values, requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing only for preflight or explicit backend rollback witnesses.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count every attempted backend hash independently of result classification.
 const
@@ -27,16 +30,19 @@ const
     nodes: TrieNodeLimit(1024), perValue: ByteLimit(65536),
     totalValueBytes: ByteLimit(262144)), writes: ElementLimit(64),
     writeValueBytes: ByteLimit(262144))
+
 proc globals(entries: seq[StateEntry]): ValidatedGlobalState =
   ## Retire temporary store/snapshot handles and return only genuinely validated complete-source globals.
   let source = newStateStore(entries, stores).value.snapshot.value
   validateGlobalState(source, profile, globalLimits).value
+
 proc cycle(source: ValidatedGlobalState, services: seq[StateService]) =
   ## Retire complete matching and refusal graphs inside one activation before observing allocator occupancy.
   let completed = validateStateManifest(source, services, limits).value
   assert sameStateSnapshot(completed.manifestSource.value, source.globalSource.value)
   assert completed.manifestInfo.value.services == 2
   assert validateStateManifest(source, [], limits).error == StateManifestError.MappingMismatch
+
 proc main() {.raises.} =
   ## Use independent global fixture bytes and lower-level service entry constructors as the source oracle.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

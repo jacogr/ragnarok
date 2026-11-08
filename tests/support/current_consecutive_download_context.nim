@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit consecutive current policies and independent signed-block framing serve real command workloads.
+
 import std/assertions
 import ../../src/app/candidate
 import "../../src/jamnp-s/current/block/download/loop" as current_block_download_loop

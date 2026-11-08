@@ -17,6 +17,7 @@ proc computedExecutionFixture*(withReady = true, withExecution = true,
       invalidEntry = invalidEntry, withComposition = withComposition, withChain = withChain,
       storage = storage)
   prepareComputedRound(source, computedRoundConfig(source)).value
+
 proc computedExecutionLimits*(): AccumulationRunnerLimits =
   ## Match authenticated three-core context while independently bounding service/input/engine capture.
   result = runnerLimits()

@@ -147,6 +147,7 @@ for op in 0..<256:
   # Only opcodes actually replayed contribute to coverage.
   if seen[op]: inc covered
 assert covered == 85
+
 proc unchangedFailure(decoded: ProgramResult[Instruction]) =
   ## Refused internal computations preserve both caller-owned output sentinels and every input register.
   let input = default(RegisterFile)

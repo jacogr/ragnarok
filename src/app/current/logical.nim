@@ -3,6 +3,7 @@
 
 ## Host-side complete logical qualification of genuine collected current preparation.
 ## The caller keeps every canonical ARC alias stable and touches this API only outside worker leases.
+
 import ../[chain, preparation_worker]
 import "./block/input" as current_block_input
 import ../collected/update as collected_update

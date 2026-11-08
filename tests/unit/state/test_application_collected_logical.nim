@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual preparation collection feeds bounded complete logical refresh; host installation stays explicit.
+
 # @@Verification={"arc":"application_collected_logical_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_transition_context,
@@ -25,8 +26,10 @@ import "../../../src/state/block/transition" as block_transition
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/store
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Backend failure injection is enabled only after actual worker collection, on the host.
+
 proc cycle(chain: ApplicationChain, completion: PreparationCompletion,
     source: SelectedLogicalParent) =
   ## Each temporary complete logical graph retires before the next measured cycle.
@@ -35,6 +38,7 @@ proc cycle(chain: ApplicationChain, completion: PreparationCompletion,
   let update = completion.currentValue.value
   assert sameStateSnapshot(refreshed.value.currentLogicalSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedUpdate.value.currentUpdateState,
       update.currentUpdateState)
+
 proc main() {.raises.} =
   ## Only the maintained signed complete namespace fixture supplies inputs; the real worker produces every receipt.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticated value slices admit only exact owner-bound ranges; overlapping view merges compare immutable facts without whole-payload copies.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/arc_evidence
 import ../../src/state/trie_proof
 import ../../src/state/proof/view as proof_view
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reading/comparing already authenticated immutable values needs no further crypto backend work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe zero crypto work across slice/range and duplicate-union operations.
 const mapLimits = StateTrieLimits(items: ElementLimit(8), nodes: TrieNodeLimit(1024),
@@ -18,6 +21,7 @@ const perProof = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimi
 const batchLimits = StateProofBatchLimits(items: ElementLimit(8), nodes: ElementLimit(1992),
     valueBytes: ByteLimit(262144))
 const viewLimits = ProofViewLimits(items: ElementLimit(8), valueBytes: ByteLimit(262144))
+
 proc viewOf(entries: seq[StateEntry], keys: seq[StateKey], root: StateRoot): ProofView =
   ## Authenticate independently captured immutable witnesses before testing value-copy or equality behavior.
   let proofs = generateStateProofs(entries, keys, mapLimits, perProof, batchLimits).value
@@ -25,11 +29,13 @@ proc viewOf(entries: seq[StateEntry], keys: seq[StateKey], root: StateRoot): Pro
   for i in 0..<queries.len: queries[i] = proofs.queryAt(i).value
   captureProofView(verifyStateProofs(queries, root, perProof, batchLimits).value, root,
       viewLimits).value
+
 proc escaped(): VerifiedStateLookup =
   ## Retain only a successful lookup after all original source/proof/view containers have left scope.
   let key = chapterKey(StateChapter(1))
   let entries = @[StateEntry(key: key, value: @[8'u8, 9, 10])]
   viewOf(entries, @[key], stateTrieRoot(entries, mapLimits).value.root).lookup(key).value
+
 proc cycle(a, b: ProofView, value: VerifiedStateLookup) =
   ## Each cycle releases detached interval bytes and a duplicate union while both immutable input owners remain unchanged.
   assert value.copySlice(65535, 4, ByteLimit(4)).value == @[255'u8, 0, 1, 2]
@@ -37,6 +43,7 @@ proc cycle(a, b: ProofView, value: VerifiedStateLookup) =
       StateProofError.InvalidRange
   assert sameVerifiedLookup(value, value).value
   assert mergeProofViews(a, b, viewLimits).value.len == 3
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(StateProofResult[seq[byte]])

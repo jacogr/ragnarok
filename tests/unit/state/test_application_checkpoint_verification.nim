@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_verification_arc_release"}
 
 ## Verification-only receipts preserve complete format/context checks while retiring every restored map on its allocating thread.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -15,6 +16,7 @@ import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-verification"
+
 proc cycle(writer: var ApplicationCheckpointWriter, expected: ApplicationCheckpointIdentity) =
   ## Alternating locked/path verification exposes fixed context and releases all temporary complete maps.
   let first = writer.verify(expected, genesisStoreLimits(), ByteLimit(100000))
@@ -23,6 +25,7 @@ proc cycle(writer: var ApplicationCheckpointWriter, expected: ApplicationCheckpo
   let second = verifyApplicationCheckpoint(FileName, expected, genesisStoreLimits(), ByteLimit(100000))
   assert second.error == ApplicationCheckpointFileError.None
   assert sameApplicationCheckpoint(second.value, expected)
+
 proc main() {.raises.} =
   ## Missing/default context, file/map limits, corruption and context mismatch never authorize a scalar success receipt.
   defer:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical proof capture admits full-view copies before hashing and authenticates all chapters plus present-empty and absent values on the actual target.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context, current_logical_proof_context]
 import ../../../src/app/logical/proof as logical_proof
@@ -13,10 +14,13 @@ import ../../../src/state/planned/proof as planned_proof
 import ../../../src/state/proof/view as proof_view
 import ../../../src/state/store
 import ../../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Capture must use cached extents without invoking cryptographic work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe primitive work only after genuine complete qualification has finished.
+
 proc main() {.raises.} =
   ## The actual original producer owns the selected posterior snapshot; header prior roots never substitute expected response roots.
   let fixture = collectedNativeFixture()

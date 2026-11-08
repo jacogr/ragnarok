@@ -3,6 +3,7 @@
 
 ## Prepare all bounded complete account reports before content hashing; execute only frozen same-source policies.
 ## Prepared reports and targeted invariants grant neither trusted-root authority nor full global/STF validity.
+
 import ../../inventory
 import ../audit/plan as account_audit_plan
 import ../../footprint_audit

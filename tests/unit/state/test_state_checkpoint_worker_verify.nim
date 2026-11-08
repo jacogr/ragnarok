@@ -16,15 +16,18 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-worker-verify"
+
 proc policy(): StateStoreLimits =
   ## Small complete maps make any unexpected publication visible through a different root.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc detached(value: byte): PreparedCheckpoint =
   ## Source maps retire before their independent exclusive buffers enter the worker.
   let snapshot = newStateStore([StateEntry(key: default(StateKey), value: @[value])], policy()).value.snapshot.value
   prepareFullCheckpoint(snapshot, ByteLimit(1000))
+
 proc waitDone(worker: var CheckpointWorker) =
   ## Test-only scalar polling yields to real I/O under an explicit monotonic deadline.
   let start = getMonoTime()
@@ -33,6 +36,7 @@ proc waitDone(worker: var CheckpointWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # No production polling/deadline is introduced.
+
 proc verify(worker: var CheckpointWorker, root: StateRoot, limits: StateStoreLimits,
     limit: ByteLimit): CheckpointCompletion =
   ## Only independent scalar trust and budgets cross into the native verifier.
@@ -42,6 +46,7 @@ proc verify(worker: var CheckpointWorker, root: StateRoot, limits: StateStoreLim
   assert worker.stageHead().error == CheckpointWorkerError.Busy
   assert worker.retry(ticket, default(CheckpointHead)).error == CheckpointWorkerError.NotReady
   worker.collect(ticket)
+
 proc cycle(worker: var CheckpointWorker, expected: CheckpointHead) =
   ## Matching root/slot/generation are fixed scalar receipts; no worker-created complete map is shared.
   let result = verify(worker, expected.root, policy(), ByteLimit(1000))
@@ -50,6 +55,7 @@ proc cycle(worker: var CheckpointWorker, expected: CheckpointHead) =
   let head = result.value.value
   assert uint64(head.generation) == uint64(expected.generation) and head.slot == expected.slot
   assert array[32, byte](head.root) == array[32, byte](expected.root)
+
 proc main() {.raises.} =
   ## Untrusted heads, malformed/missing selected bytes and independent resource ceilings remain distinct typed failures.
   for suffix in [".head", ".0", ".1"]:

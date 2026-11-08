@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen independent namespace identities, supervisor records and full-map roots exercise typed proof reads.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/proof/[service as proof_service, view as proof_view]
@@ -9,6 +10,7 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values, requests as state_requests]
+
 proc unhex(text: string): seq[byte] =
   ## Parse exact fixture bytes without invoking any production state codec.
   if text == "-": return @[]
@@ -18,6 +20,7 @@ proc unhex(text: string): seq[byte] =
     var value = 0'u8
     assert parseHex(text[2*i..2*i+1], value) == 2
     result[i] = value
+
 proc key(text: string): StateKey =
   ## Every fixture identity contains exactly all 248 committed key bits.
   let bytes = unhex(text)
@@ -25,6 +28,7 @@ proc key(text: string): StateKey =
   var raw = default(array[31, byte])
   for i in 0..<31: raw[i] = bytes[i]
   StateKey(raw)
+
 proc check(line: string) =
   ## Use literal independent complete maps and roots, then compare typed selector and content results.
   let fields = line.splitWhitespace()
@@ -60,6 +64,7 @@ proc check(line: string) =
   let b = planProofHistorical(service, hash, RequestLength(uint32(blob.len)), ElementLimit(3)).value
   let plan = mergeProofPlans(a, b, ElementLimit(4)).value
   assert view.matchesProofPlan(plan).value
+
 proc main() {.raises.} =
   ## Missing corpus input or skipped rows cannot silently pass an empty verification run.
   let lines = readFile(getEnv("RAGNAROK_STATE_SERVICE_REFERENCE")).splitLines()

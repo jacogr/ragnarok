@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## An originally unseen signed report uses actual standalone support and complete historical execution state; only root-authenticated recovery can justify its negative local judgment.
+
 import std/[assertions, syncio, posix/posix]
 import ../../src/jamnp-s/[audit_origin, audit_context, audit_evaluation, audit_recovery,
   judgment_support, work_signer, availability_proof, availability_merkle, audit_fetch]
@@ -14,11 +15,14 @@ import ../../src/chain/[genesis, provider, reports]
 import ../../src/crypto/primitives
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_guarantee_support,
   jamnp_judgment_support, assurance_signer_context]
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Native runner artifacts are process-private and explicitly removed after key owners retire.
+
 proc stopDispute(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## A trusted cancellation callback cannot fabricate execution evidence.
   true
+
 proc disputeEvaluationChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Original unknown report bytes are genuinely signed before qualification; an absent availability block stays absent through actual recovery, evaluation and signing.
   let guarantee = unseenGuarantee(supportFixture(fixture))

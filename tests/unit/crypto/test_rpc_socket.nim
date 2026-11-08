@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared RPC test reads tolerate a delayed producer and still reject an absent packet by deadline.
+
 import std/[assertions, syncio, monotimes, times, strutils]
 import std/posix/posix
 import ../../../src/rpc/server
@@ -10,8 +11,10 @@ import ../../support/rpc_socket
 proc socketPair(domain, kind, protocol: cint, descriptors: ptr cint): cint {.
     importc: "socketpair", header: "<sys/socket.h>".}
   ## Keep both real stream endpoints owned by this test without ephemeral TCP port races.
+
 proc armTimeout(seconds: cuint): cuint {.importc: "alarm", header: "<unistd.h>".}
   ## An independent process deadline prevents a broken packet deadline from hanging the suite.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield while the independent producer deliberately withholds its packet.
 

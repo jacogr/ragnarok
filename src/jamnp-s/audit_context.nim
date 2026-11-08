@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete retained block bodies and their real predecessors derive authenticated newly available audit duties through the existing consensus prefix; source-free output grants neither private signing nor finality authority.
+
 import std/assertions
 from ./assurance_store import AssuranceScanControl, stopped
 import ../chain/[genesis, provider, parameters, reports]
@@ -54,37 +55,46 @@ type
     of TransitionFailure: transitionReason: BlockTransitionResult
     of ComponentFailure: componentReason: StateComponentError
     else: discard # Simple source/policy/index refusals have no payload.
+
 func error*[T](outcome: AuditContextResult[T]): AuditContextError =
   ## Inspect the selected branch before extracting a context or child.
   outcome.status
+
 func value*[T](outcome: AuditContextResult[T]): T {.requires: outcome.status ==
     AuditContextError.None.} =
   ## Whole success alone grants detached immutable audit inputs.
   outcome.completed
+
 func transitionError*[T](outcome: AuditContextResult[
     T]): BlockTransitionResult {.requires: outcome.status == AuditContextError.TransitionFailure.} =
   ## Preserve the actual consensus-prefix authentication refusal.
   outcome.transitionReason
+
 func componentError*[T](outcome: AuditContextResult[
     T]): StateComponentError {.requires: outcome.status == AuditContextError.ComponentFailure.} =
   ## Keep actual public-roster decoder/index failures separate from source absence or a malformed report.
   outcome.componentReason
+
 func stateError*[T](outcome: AuditContextResult[T]): StateStoreError {.requires: outcome.status ==
     AuditContextError.StateFailure.} =
   ## Missing/invalid original state remains an actual selected failure.
   outcome.stateReason
+
 func bodyError*[T](outcome: AuditContextResult[T]): FrameResult[
     BlockRead] {.requires: outcome.status == AuditContextError.BodyFailure.} =
   ## Exact block decoding failure cannot expose a successful prefix.
   outcome.bodyReason
+
 func refused[T](reason: AuditContextError): AuditContextResult[T] {.requires: reason notin [
     AuditContextError.None, AuditContextError.StateFailure, AuditContextError.BodyFailure,
     AuditContextError.TransitionFailure, AuditContextError.ComponentFailure].} =
   ## Simple failures cannot manufacture guarded child success or a partially retained context.
   AuditContextResult[T](status: reason)
+
 func valid*(context: AuditContext): bool =
   ## Defaults are unavailable, independently of all-zero copied metadata.
   context.data != nil
+
 func valid*(limits: AuditContextLimits): bool =
   ## All new traversals and allocations have finite explicit bounds; child policies still validate their own exact semantics.
   uint64(limits.bodyBytes) > 0 and uint64(limits.bodyBytes) <= 32'u64*1024*1024 and
@@ -95,11 +105,13 @@ func valid*(limits: AuditContextLimits): bool =
     uint64(limits.reports) > 0 and uint64(limits.reports) <= 341 and
     uint64(limits.hashes) > 0 and uint64(limits.hashes) <= 1000000 and
     uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 128'u64*1024*1024
+
 proc contextInfo*(context: AuditContext): AuditContextResult[AuditContextInfo] =
   ## Fixed copied facts contain no current-canonical or audited/finality assertion.
   let data = context.data
   if data == nil: return refused[AuditContextInfo](AuditContextError.Uninitialized)
   AuditContextResult[AuditContextInfo](status: AuditContextError.None, completed: data.info)
+
 proc auditorAt*(context: AuditContext, ordinal: int): AuditContextResult[StateValidator] =
   ## Original prior-C8 ordinals, including null/repeated keys, remain independent authenticated proof domains.
   let data = context.data
@@ -110,6 +122,7 @@ proc auditorAt*(context: AuditContext, ordinal: int): AuditContextResult[StateVa
   if found.error != StateComponentError.None: return refused[StateValidator](
       AuditContextError.InvalidSource)
   AuditContextResult[StateValidator](status: AuditContextError.None, completed: found.value)
+
 proc availableCore*(context: AuditContext, ordinal: int): AuditContextResult[CoreIndex] =
   ## Dense audit report order retains the actual available core, never a shifted pending-report index.
   let data = context.data
@@ -117,6 +130,7 @@ proc availableCore*(context: AuditContext, ordinal: int): AuditContextResult[Cor
   if ordinal < 0 or ordinal >= data.available.len: return refused[CoreIndex](
       AuditContextError.InvalidIndex)
   AuditContextResult[CoreIndex](status: AuditContextError.None, completed: CoreIndex(data.available[ordinal]))
+
 proc auditReportHash*(context: AuditContext, ordinal: int): AuditContextResult[WorkReportHash] =
   ## Fixed already-computed canonical report identity is safe during a foreign source lease.
   let data = context.data
@@ -124,6 +138,7 @@ proc auditReportHash*(context: AuditContext, ordinal: int): AuditContextResult[W
   if ordinal < 0 or ordinal >= data.reports.len: return refused[WorkReportHash](
       AuditContextError.InvalidIndex)
   AuditContextResult[WorkReportHash](status: AuditContextError.None, completed: data.reports[ordinal])
+
 proc auditGuarantee*(context: AuditContext, ordinal: int): AuditContextResult[Guarantee] =
   ## Copy the full original report and its authentic evaluation slot/two-or-three credentials for an actually newly available report.
   let data = context.data
@@ -134,6 +149,7 @@ proc auditGuarantee*(context: AuditContext, ordinal: int): AuditContextResult[Gu
   if assigned.error != AvailabilityError.None or not assigned.value.present:
     return refused[Guarantee](AuditContextError.InvalidSource)
   AuditContextResult[Guarantee](status: AuditContextError.None, completed: assigned.value.guarantee)
+
 proc auditGuarantor*(context: AuditContext, ordinal, credential: int): AuditContextResult[
     StateValidator] =
   ## The original guarantee evaluation epoch chooses its own C8/C9 roster before any metadata route can be used.
@@ -160,6 +176,7 @@ proc auditGuarantor*(context: AuditContext, ordinal, credential: int): AuditCont
     return AuditContextResult[StateValidator](status: AuditContextError.ComponentFailure,
         componentReason: found.error)
   AuditContextResult[StateValidator](status: AuditContextError.None, completed: found.value)
+
 proc matches*(context: AuditContext, source: ChainView): bool =
   ## Real retained child/body and predecessor identities must still match; a header-only replacement never revives an obligation.
   let data = context.data
@@ -170,6 +187,7 @@ proc matches*(context: AuditContext, source: ChainView): bool =
   child.value.hasBlockBody and child.value.blockBodyDigest == data.info.bodyDigest and array[32,
       byte](child.value.stateRoot) == array[32, byte](data.info.blockRoot) and
     array[32, byte](parent.value.stateRoot) == array[32, byte](data.info.parentRoot)
+
 proc reportDigest(report: OwnedReport): AuditContextResult[Blake2bHash] =
   ## Independently retained decoder outputs are compared by the canonical full report hash, never just an availability root.
   let info = report.ownedReportInfo
@@ -181,6 +199,7 @@ proc reportDigest(report: OwnedReport): AuditContextResult[Blake2bHash] =
   let hashed = blake2b256(bytes)
   if hashed.error != CryptoError.None: return refused[Blake2bHash](AuditContextError.BackendFailure)
   AuditContextResult[Blake2bHash](status: AuditContextError.None, completed: hashed.value)
+
 proc captureAuditContext*(source: ChainView, blockHash: genesis.BlockHash,
     limits: AuditContextLimits, control: AssuranceScanControl = default(
         AssuranceScanControl)): AuditContextResult[AuditContext] =

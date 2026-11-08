@@ -18,6 +18,7 @@ proc assuredQueueFixture*(votes = 7): AssuredComputedReports =
   let prior = assurancePrior()
   prepareComputedAssurances(prior, assuranceCandidate(prior, votes = votes),
       computedAssuranceConfig()).value
+
 proc assuredQueueConfig*(source: AssuredComputedReports): AssuredQueueConfig =
   ## Match original semantic controls and real frame domains while retaining independent existing byte/work ceilings.
   let params = source.computedAssuranceParameters.value

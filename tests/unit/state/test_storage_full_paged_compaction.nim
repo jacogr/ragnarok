@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full physical compaction preserves exact complete-root history and ordinary generation without a caller producer.
+
 # @@Verification={"arc":"storage_full_paged_compaction_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -12,19 +13,23 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc path(label: string): string =
   ## Process-specific names isolate every authored artifact and forensic prefix beneath the ignored native runner.
   "full-paged-compaction-" & $storageProcessId() & "-" & label
+
 proc text(bytes: openArray[byte]): string =
   ## Independent full-file comparisons are test-only; production uses authenticated bounded pages.
   result = newString(bytes.len)
   for index in 0..<bytes.len: result[index] = char(bytes[index]) # Exact reference representation.
+
 proc read(path: string): string =
   ## Bounded fixture files can be inspected directly outside native fault observation.
   try:
     result = readFile(path)
   except:
     assert false, "compaction fixture read failed"
+
 proc output(io: FullPagedTestIO): PagedOutput =
   ## Resident output belongs only to the independent core compaction test fixture.
   proc append(bytes: openArray[byte]): bool {.closure.} =
@@ -32,10 +37,12 @@ proc output(io: FullPagedTestIO): PagedOutput =
     for octet in bytes: io.bytes.add(octet) # Test-only materialized artifact.
     true
   PagedOutput(source: io.input, append: append)
+
 func budget(): FullPagedCompactionLimits =
   ## Separate finite construction channels include all source-page authentication and target-tree work.
   FullPagedCompactionLimits(ioCalls: ElementLimit(100000), hashes: ElementLimit(100000),
     readBytes: ByteLimit(10000000), writeBytes: ByteLimit(1000000))
+
 proc core(source: FullPagedFixture, cache: int) =
   ## Complete independent source/target byte oracles constrain exact copied history and all work channels.
   let admitted = source.check(policy(cache))
@@ -83,6 +90,7 @@ proc core(source: FullPagedFixture, cache: int) =
   assert compactFullPaged(FullPagedTestIO().output, corrupt.input,
     FullPagedTestIO(bytes: newSeq[byte](source.records.len*2)).scratch,
     admitted.value, expected.header, budget()).error == FullPagedBuildError.GraphFailure
+
 proc normal(source: FullPagedFixture) =
   ## Published compaction matches every independent target byte while preserving retained roots and old pinned readers.
   let directory = path("normal")
@@ -114,6 +122,7 @@ proc normal(source: FullPagedFixture) =
   assert busy.error == FullPagedNativeError.FileFailure and busy.fileError == FileError.Busy
   assert reader.close == FileError.None
   assert writer.reclaim(receipt, writer.selected.value).error == FullPagedNativeError.None
+
 proc maxGeneration(source: FullPagedFixture) =
   ## Exhausted ordinary generation still permits exact compaction, including a zero producer allowance.
   let original = source.reposition(ManagedEpoch(1), RepositoryGeneration(high(uint64)))
@@ -132,6 +141,7 @@ proc maxGeneration(source: FullPagedFixture) =
   assert writer.publish(candidate).error == FullPagedNativeError.None
   assert uint64(writer.selected.value.generation) == high(uint64)
   assert read(directory & "/" & epochName(ManagedEpoch(2)).value) == text(expected.io.bytes)
+
 proc faultSchedule(source: FullPagedFixture) =
   ## Every preparation syscall refusal returns no sealed target authority and keeps strict selected-source recovery intact.
   let operations = [readIo, writeIo, syncIo, lockIo, truncateIo, closeIo]
@@ -170,6 +180,7 @@ proc faultSchedule(source: FullPagedFixture) =
           FullPagedNativeError.None
       assert uint64(reader.selected.value.epoch) == 1
       assert reader.close == FileError.None
+
 proc main() =
   ## Source-only authority, independent bytes and fixed-policy retirement are checked before publishing this feature.
   let source = historySample(7, 9)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Service-level native shutdown and real IO uncertainty preserve durable ownership and explicit restart refusals.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context]
@@ -24,27 +25,32 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before selecting a smaller soft limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Change only the isolated child, never the native runner's resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep SIGXFSZ as a typed write error rather than accepting signal termination as evidence.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## Signal handling performs no allocation, output or storage operation.
   discard
 
-
 const ChainPath = "disk-services-boundaries-chain"
 const DiskPath = "disk-services-boundaries.db"
+
 proc configured(): Options =
   ## CLI defaults supply mutation budgets while explicit controls select disk, with no listener or import fallback.
   result = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", ChainPath,
      "--state-storage", "disk", "--state-db", DiskPath], result)
+
 proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFinalAccumulation {.raises.} =
   ## Actual native guest preparation binds the certificate to this newly decoded canonical map owner.
   var input = default(BlockInput)
@@ -56,6 +62,7 @@ proc source(owner: var Services, fixture: RecoveryExecutionFixture): PreparedFin
   assert completion.kind == PreparationCompletionKind.Completed
   assert completion.value.error == BlockInputError.None
   completion.value.value
+
 proc waitFinished(owner: var Services) =
   ## Only scalar/dispatcher work touches Services while native disk IO holds every canonical alias exclusively.
   let started = getMonoTime()
@@ -65,6 +72,7 @@ proc waitFinished(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Bound waits without touching protected graph aliases.
+
 proc shutdown(fixture: RecoveryExecutionFixture) {.raises.} =
   ## Immediate close joins either queued or entered IO and leaves a strict resumable previous/successor database.
   writeFile(ChainPath, fixture.origin.text)
@@ -86,6 +94,7 @@ proc shutdown(fixture: RecoveryExecutionFixture) {.raises.} =
   assert owner.chainView.finalizedBlock.error == GenesisError.Unavailable
   assert not owner.diskPublicationActive
   owner.close()
+
 proc failedWrite(fixture: RecoveryExecutionFixture) {.raises.} =
   ## The parent's file/signal limits remain unchanged; all actual failures must be typed in the child.
   writeFile(ChainPath, fixture.origin.text)
@@ -141,6 +150,7 @@ proc failedWrite(fixture: RecoveryExecutionFixture) {.raises.} =
   defer: owner.close()
   assert not owner.start(configured(), "strict partial-tail restart")
   assert readFile(DiskPath) == interrupted and owner.chainView.retainedCount == 0
+
 proc main() {.raises.} =
   ## Child forks occur only after preceding service lifetimes have joined all disk/execution workers.
   var path = ChainPath

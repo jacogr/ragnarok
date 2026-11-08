@@ -4,11 +4,13 @@
 # @@Verification={"arc": "application_checkpoint_codec_arc_release"}
 
 ## Exact independently encoded metadata bytes, every cut/tamper and full profile invariants gate local checkpoint context.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/checkpoint/identity as checkpoint_identity
 import ../../../src/codec/bounded
 import ../../../src/crypto/primitives
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc fixtureBytes(): seq[byte] {.raises.} =
   ## A pinned byte fixture comes from Python hashlib plus the original independent RPC root/hash goldens.
   let path = getEnv("RAGNAROK_APPLICATION_CHECKPOINT_IDENTITY")
@@ -17,15 +19,18 @@ proc fixtureBytes(): seq[byte] {.raises.} =
   result = newSeq[byte](text.len)
   for index, octet in text:
     result[index] = byte(octet) # Preserve binary bytes without text/hex normalization.
+
 proc copied(bytes: seq[byte]): seq[byte] =
   ## Tampering never mutates a retained expected fixture through shared test storage.
   result = newSeq[byte](bytes.len)
   for index, octet in bytes:
     result[index] = octet # Start every malformed case from the independently supplied exact input.
+
 proc cycle(bytes: seq[byte], identity: ApplicationCheckpointIdentity) =
   ## Repeated local codecs retain neither temporary buffers nor source application graphs.
   assert encodeApplicationCheckpointIdentity(identity, ByteLimit(238)).value == bytes
   assert sameApplicationCheckpoint(decodeApplicationCheckpointIdentity(bytes, ByteLimit(238)).value, identity)
+
 proc main() {.raises.} =
   ## Initialized decoding establishes format only; a recomputed checksum cannot establish caller trust.
   let owner = checkpointFixture()

@@ -3,6 +3,7 @@
 
 ## Qualify one genuinely computed report against its original execution and a fresh canonical inclusion view before signing.
 ## The private capability binds exact provenance, anchor window, GP policy/pipeline, TLS identity and actual assigned roster index.
+
 import ./[work_submission, work_report, work_anchors, work_population, work_duty]
 import ../chain/[provider, genesis, parameters]
 import ../codec/[bounded, report_owned, owned, guarantees]
@@ -48,37 +49,46 @@ type
     of PolicyFailure: policyReason: ReportPolicyError
     of PipelineFailure: pipelineReason: ReportPackageError
     else: discard # Local refusals cannot synthesize a failed child or usable transcript.
+
 func error*[T](outcome: WorkEligibilityResult[T]): WorkEligibilityError =
   ## Read a refusal without permitting discriminator mutation.
   outcome.status
+
 func value*[T](outcome: WorkEligibilityResult[T]): T {.requires: outcome.status ==
     WorkEligibilityError.None.} =
   ## Extract only a fully qualified input or copied fact.
   outcome.completed
+
 func anchorError*[T](outcome: WorkEligibilityResult[T]): WorkAnchorResult[
     AnchoredWorkContext] {.requires: outcome.status == WorkEligibilityError.AnchorFailure.} =
   ## Preserve the original exact context qualification failure.
   outcome.anchorReason
+
 func populationError*[T](outcome: WorkEligibilityResult[T]): WorkPopulationResult[
     WorkShardWindow] {.requires: outcome.status == WorkEligibilityError.PopulationFailure.} =
   ## Preserve an unavailable or unestablished population window without guessing a roster.
   outcome.populationReason
+
 func dutyError*[T](outcome: WorkEligibilityResult[T]): WorkDutyResult[
     WorkDuty] {.requires: outcome.status == WorkEligibilityError.DutyFailure.} =
   ## Preserve the genuine assignment/TLS-key refusal.
   outcome.dutyReason
+
 func decodeError*[T](outcome: WorkEligibilityResult[
     T]): OwnershipError {.requires: outcome.status == WorkEligibilityError.DecodeFailure.} =
   ## Preserve only an actual canonical report decoder error.
   outcome.decodeReason
+
 func policyError*[T](outcome: WorkEligibilityResult[
     T]): ReportPolicyError {.requires: outcome.status == WorkEligibilityError.PolicyFailure.} =
   ## GP service/gas/authorizer refusals remain distinct from context and package relations.
   outcome.policyReason
+
 func pipelineError*[T](outcome: WorkEligibilityResult[
     T]): ReportPackageError {.requires: outcome.status == WorkEligibilityError.PipelineFailure.} =
   ## Preserve the actual state-backed uniqueness/dependency/root failure.
   outcome.pipelineReason
+
 proc eligibilityInfo*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[
     WorkEligibilityInfo] =
   ## Copy fixed checked facts only; defaults grant no all-zero credential identity.
@@ -87,11 +97,13 @@ proc eligibilityInfo*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[
       status: WorkEligibilityError.Uninitialized)
   WorkEligibilityResult[WorkEligibilityInfo](status: WorkEligibilityError.None,
       completed: data.info)
+
 proc eligibleDuty*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[WorkDuty] =
   ## The complete copied cohort belongs to the exact fresh-source qualification, not the older execution or packet claims.
   let data = qualified.data
   if data == nil: return default(WorkEligibilityResult[WorkDuty])
   WorkEligibilityResult[WorkDuty](status: WorkEligibilityError.None, completed: data.duty)
+
 proc eligibleTranscript*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[
     ComputedGuaranteeTranscript] =
   ## Retain the exact privately bound computed transcript; callers cannot replace any part of the capability.
@@ -100,12 +112,14 @@ proc eligibleTranscript*(qualified: EligibleWorkGuarantee): WorkEligibilityResul
       status: WorkEligibilityError.Uninitialized)
   WorkEligibilityResult[ComputedGuaranteeTranscript](status: WorkEligibilityError.None,
       completed: data.transcript)
+
 proc eligibleReport*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[OwnedReport] =
   ## Share the immutable report decoded from that transcript, never a caller-supplied substitute.
   let data = qualified.data
   if data == nil: return WorkEligibilityResult[OwnedReport](
       status: WorkEligibilityError.Uninitialized)
   WorkEligibilityResult[OwnedReport](status: WorkEligibilityError.None, completed: data.report)
+
 proc eligibleMessage*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[GuaranteeMessage] =
   ## Copy only the GP transcript of the fully checked report for the private signer.
   let data = qualified.data
@@ -113,6 +127,7 @@ proc eligibleMessage*(qualified: EligibleWorkGuarantee): WorkEligibilityResult[G
       status: WorkEligibilityError.Uninitialized)
   WorkEligibilityResult[GuaranteeMessage](status: WorkEligibilityError.None,
     completed: data.transcript.computedGuaranteeMessage.value)
+
 proc qualifyWorkGuarantee*(transcript: ComputedGuaranteeTranscript,
     original: WorkSubmissionHeader, executionState: StateStoreSnapshot, view: ChainView,
     local: StateEdKey, now: StateTime, limits: WorkEligibilityLimits): WorkEligibilityResult[

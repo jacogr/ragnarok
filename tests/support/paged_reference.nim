@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent resident TEST oracle for paged-light bytes; production codec/stream helpers are never used here.
+
 import std/assertions
 import ../../src/storage/light/state_cache as light_state_cache
 import ../../src/storage/database_identity
@@ -11,17 +12,21 @@ import ../../src/crypto/primitives
 type PagedReference* = object ## Explicit test-only complete artifacts make byte-for-byte and rehashed-corruption checks independent.
   bytes*, manifest*: seq[byte]
   pages*: int
+
 proc put*(output: var seq[byte], offset: int, number: uint64, width = 8) =
   ## Test literals/fixture lengths prove fixed-width little-endian writes.
   for index in 0..<width: output[offset+index] = byte((number shr (8*index)) and 255)
+
 proc text(output: var seq[byte], value: string) =
   ## Append exact ASCII domains, including the final LF byte.
   for c in value: output.add(byte(c))
+
 proc hash(input: seq[byte]): array[32, byte] =
   ## Only the maintained primitive is shared; no production layout or traversal code supplies oracle bytes.
   let checked = blake2b256(input)
   assert checked.error == CryptoError.None
   array[32, byte](checked.value)
+
 proc tree(output: var seq[byte], body: seq[byte], pages, first, count: int): array[32, byte] =
   ## Recursive complete left/right/parent emission is independent of production's iterative carry stack.
   var input: seq[byte] = @[]
@@ -41,6 +46,7 @@ proc tree(output: var seq[byte], body: seq[byte], pages, first, count: int): arr
     for octet in right: input.add(octet)
   result = hash(input)
   for octet in result: output.add(octet)
+
 proc recommit*(fixture: var PagedReference) =
   ## Rehash arbitrary body mutations so strict proof/shape checks cannot hide behind checksum failure.
   var body = newSeq[byte](fixture.pages*4096)
@@ -64,6 +70,7 @@ proc recommit*(fixture: var PagedReference) =
   for octet in checksum: selected.add(octet)
   assert selected.len == 193
   fixture.manifest = selected
+
 proc pagedReference*(chain: StorageChainId, root: StateRoot,
     records: seq[LightStateProof], context: seq[byte] = @[], epoch = 1'u64,
         sequence = 0'u64): PagedReference =

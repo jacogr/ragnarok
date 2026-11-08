@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit current completion policies match the signed two-core execution fixture and every current state phase.
+
 import ../../src/state/accumulation/current/completion as accumulation_current_completion
 import ../../src/state/accumulation/[accounts as accumulation_accounts,
     activity as accumulation_activity, preimages as accumulation_preimages,
@@ -11,6 +12,7 @@ import ../../src/codec/[bounded, composite]
 import ./[accumulation_current_statistics_context, accumulation_current_finalization_context,
   accumulation_ready_witnesses, accumulation_recent_witnesses, accumulation_activity_context,
   accumulation_current_driver_context]
+
 proc currentCompositionLimits*(): CurrentAccumulationCompositionLimits =
   ## Local ceilings match existing phase witnesses without constructing any production authority.
   CurrentAccumulationCompositionLimits(statistics: currentStatisticsLimits(),
@@ -27,6 +29,7 @@ proc currentCompositionLimits*(): CurrentAccumulationCompositionLimits =
       inputHashes: ElementLimit(160), inputBytes: ByteLimit(5120), outputHashes: ElementLimit(16),
       outputBytes: ByteLimit(514)),
     consensus: AccumulationConsensusLimits(chapterBytes: ByteLimit(10000), totalBytes: ByteLimit(50000)))
+
 proc currentCompletionLimits*(): CurrentAccumulationCompletionLimits =
   ## Initial/continuation execution remains independently capped from terminal state composition.
   CurrentAccumulationCompletionLimits(execution: currentSequenceDriverLimits(),

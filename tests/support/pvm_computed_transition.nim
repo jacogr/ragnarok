@@ -36,6 +36,7 @@ type
     execution*: InputFixture
     base*: OwnedReport
     options*: SignedBlockFixtureConfig
+
 proc transitionLinks(execution: InputRefinement): ComputedReportLinks =
   ## Complete the actual original computation/availability/transcript path without supplying observations separately.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -47,6 +48,7 @@ proc transitionLinks(execution: InputRefinement): ComputedReportLinks =
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
+
 proc transitionSource*(context: Context, original: InputFixture,
     candidate: OwnedBlock): ConfiguredComputedReport =
   ## Recapture original package context for this real parent/lookup chain before re-execution and every source binding.
@@ -82,6 +84,7 @@ proc transitionSource*(context: Context, original: InputFixture,
       fixture.parameters)
   assert configured.error == GenesisError.None, "genuine configured signed parent"
   bindComputedProfile(lookup, configured).value
+
 proc transitionFixture*(epoch = false, withReady = false,
     withExecution = false, invalidEntry = false, storage = ComputedStorageMode.Disabled): ComputedTransitionFixture =
   ## Preserve real signing and original map ownership; no fake keys or forged successful transition result.

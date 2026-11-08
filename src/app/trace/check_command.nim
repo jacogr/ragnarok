@@ -3,6 +3,7 @@
 
 ## Offline bounded checking of published Genesis and consecutive TraceStep files against explicitly configured trust/profile/policies.
 ## Only a private ephemeral chain advances; configured files, persistent storage and listeners are never opened for mutation.
+
 import ../options
 import ../current/download/policy as current_download_policy
 import ./bootstrap as trace_bootstrap

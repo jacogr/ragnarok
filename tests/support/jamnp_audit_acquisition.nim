@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine nonempty available reports cross real original-identity TLS peers through direct retrieval and authenticated threshold fallback. No caller-created proof or evaluation capability substitutes actual verification.
+
 import std/[assertions, monotimes, times, syncio, posix/posix]
 import ../../src/app/[audit_acquisition, audit_state, services, options, node as application_node,
     forced_audit, judgment_distribution, initial_audit, audit_distribution]
@@ -35,6 +36,7 @@ import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_topology_fixture,
   current_application_context, assurance_signer_context, jamnp_judgment_support,
   jamnp_judgment_receipt, jamnp_audit_participation, jamnp_read_validation_context]
 import ./jamnp_judgment_claim
+
 proc acquisitionLimits*(): AuditAcquisitionLimits =
   ## Whole round credit covers every possible original target's proof work before any peer request.
   AuditAcquisitionLimits(fetch: fetchLimits(), evaluation: evaluationLimits(),
@@ -44,6 +46,7 @@ proc acquisitionLimits*(): AuditAcquisitionLimits =
       hashBytes: ByteLimit(1000000)), bytes: ByteLimit(64000000),
     hashes: ElementLimit(20000), hashBytes: ByteLimit(20000000), requests: ElementLimit(12),
     timeoutMs: 10000, peerTimeoutMs: 500)
+
 proc keyMarker(identity: StateEdKey): int =
   ## Independently match only test-owned original roster keys; never alter canonical state to make a TLS identity eligible.
   for marker in 1..32:
@@ -52,10 +55,12 @@ proc keyMarker(identity: StateEdKey): int =
     let actual = importSeed(seed).value.publicKey.value
     if array[32, byte](actual) == array[32, byte](identity): return marker
   return -1
+
 proc appendMessage(wire: var seq[byte], bytes: openArray[byte]) =
   ## Test-owned actual prepared payloads fit the independently bounded E4 response layout.
   for index in 0..<4: wire.add(byte((uint32(bytes.len) shr (index*8)) and 255))
   for octet in bytes: wire.add(octet)
+
 proc originalBundle(fixture: AuditContextFixture, target: AuditReportOrigin): OriginalAuditBundle =
   ## Select the actual computation's original prepared proof set by the complete report identity.
   for bundle in fixture.bundles:
@@ -63,6 +68,7 @@ proc originalBundle(fixture: AuditContextFixture, target: AuditReportOrigin): Or
         target.originReportHash.value): return bundle
   assert false, "genuine original availability source"
   return default(OriginalAuditBundle)
+
 proc auditAcquisitionChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Managed private evaluation is driven by real FIN-complete native responses, including four distinct authenticated original coordinates for N=9.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
@@ -327,7 +333,9 @@ proc initializeAuditDisk(view: ChainView, database: string, managed = false) =
   assert initialized.error == DiskChainError.None, "audit disk initialization: " &
       $initialized.error
   discard disk.close()
+
 proc historicalProcessId(): cint {.importc: "getpid", header: "<unistd.h>".}
+
 proc historicalJudgmentTlsChecks*() {.raises.} =
   ## An epoch-three validator authenticates an epoch-one judgment from its real retained disk history.
   let original = claimView()
@@ -407,6 +415,7 @@ proc historicalJudgmentTlsChecks*() {.raises.} =
   assert receiver.receivedJudgments == 1 and receiver.retainedJudgmentCount == 1, "historical judgment retained before bare FIN"
   let judgment = receiver.retainedJudgmentAt(0).judgmentRecord
   assert uint32(judgment.epoch) == 1 and uint16(judgment.validator) == 0, "historical epoch and ordinal preserved"
+
 proc declaredAuditChecks*(fixture: AuditContextFixture) {.raises.} =
   ## A normal validator tick discovers the matching key, declares, recovers the two selected reports and publishes exact original-position judgments.
   let view = fixture.view.finalizeView(fixture.blockHash).value

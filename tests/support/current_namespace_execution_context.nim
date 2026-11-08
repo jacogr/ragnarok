@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine custom-code signed complete parents expose explicit auto-added code declarations without duplicate metadata/preimages.
+
 import std/assertions
 import ./[current_namespace_context, service_namespace_seed, accumulation_activity_context,
     accumulation_execution_context, accumulation_current_chain_context,
@@ -25,10 +26,12 @@ type NamespaceExecutionFixture* = object ## Explicit authored namespaces/code be
   codes*: array[2, seq[byte]]
   parent*: ChainView
   update*: PreparedCurrentChainUpdate
+
 proc namespaceHaltCode*(): seq[byte] =
   ## Existing whole-code framing prefixes maintained guestEnvelope with the single code metadata octet.
   result = @[0'u8]
   for octet in guestEnvelope([@[50'u8, 0]]): result.add(octet)
+
 proc executionNamespaceParent*(source: ExecutionFixture, parameters = currentChainSettings()): ChainView =
   ## Capture exact original signed parent/state/Parameters without inventing completion authority.
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
@@ -37,12 +40,14 @@ proc executionNamespaceParent*(source: ExecutionFixture, parameters = currentCha
       source.state.snapshot.value, parameters)
   assert captured.error == GenesisError.None
   genesisView(captured).finalizeView(captured.value.blockHash).value
+
 proc prepareNamespaceExecution*(source: ExecutionFixture, policies = currentCandidateLimits()): PreparedCurrentChainUpdate =
   ## Run actual current candidate preparation on the execution fixture's exact original state/full view.
   let admission = source.round.roundBlockQueue.value.accumulationAdmission.value
   let bound = admission.reportBlockStage.value.value.admitted
   let app = initApplicationChain(source.executionNamespaceParent).value
   prepareCurrentCandidate(app, bound.admittedBlock, source.older, policies).value
+
 proc namespaceExecutionFixture*(base: OwnedReport, first, second: seq[byte],
     secondBalance = 1000000'u64, policies = currentCandidateLimits()): NamespaceExecutionFixture =
   ## Code preimages are added by the maintained execution fixture; only their explicit request rows join our namespace seed.
@@ -67,6 +72,7 @@ proc namespaceExecutionFixture*(base: OwnedReport, first, second: seq[byte],
   let update = source.prepareNamespaceExecution(policies)
   NamespaceExecutionFixture(source: source, seeds: seeds, codes: codes, parent: parent,
       update: update)
+
 proc executableNamespaceServices*(fixture: NamespaceExecutionFixture,
     snapshot: StateStoreSnapshot): seq[StateService] =
   ## Complete supplied declarations explicitly add each actual code preimage already committed by ExecutionFixture.

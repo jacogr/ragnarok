@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine signed current statistics scenarios include unavailable work, original annulment and a deleted transfer recipient.
+
 import std/assertions
 import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/work/digest as work_digest
@@ -12,10 +13,12 @@ import ./[accumulation_execution_context, accumulation_current_round_context,
 
 type CurrentStatisticsScenario* {.pure.} = enum ## Each case uses actual admission/guest/collapse behavior, never synthetic providers.
   Transfers, ZeroParticipants, SkippedReport, EjectedTransfer, Annulled
+
 proc currentStatisticsLimits*(): CurrentAccumulationStatisticsLimits =
   ## Bound real history/provider work independently of the nonzero retained dictionary and gross counters.
   CurrentAccumulationStatisticsLimits(entries: ElementLimit(4), providers: ElementLimit(8),
     operands: ElementLimit(4), transfers: ElementLimit(4), services: ElementLimit(4), gas: Gas(1000000))
+
 proc currentStatisticsCompletion*(base: OwnedReport,
     scenario: CurrentStatisticsScenario): CompletedCurrentAccumulationSequence =
   ## Construct genuine terminal coverage from signed blocks and actual current guest execution.

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_bundle_erasure_arc_release"}
 
 ## Complete independent erasure bytes, exact aggregate caps and original executed-bundle provenance.
@@ -15,18 +16,23 @@ import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, pvm_bundle_erasu
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after original execution to demonstrate pure erasure preparation.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Inspect actual primitive calls without substituting successful hash results.
+
 proc generous(): BundleErasureLimits =
   ## Bound selected real-fixture work and storage explicitly.
   BundleErasureLimits(bytes: ByteLimit(1000000), products: FieldProductLimit(10000000))
+
 proc expect[T](outcome: BundleErasureResult[T], reason: BundleErasureError) =
   ## Check exact alternatives without reading refused encoded prefixes.
   assert outcome.error == reason, "bundle erasure reason"
+
 proc layout(rich = false, small = false, shards = 1023'u16): ErasureLayout =
   ## Execute genuine original inputs and retain only their completed auditable layout.
   let bundle = prepareAuditableBundle(bundleExecution(rich = rich, exports = small), ByteLimit(20000)).value
   prepareErasureLayout(bundle, ErasureShards(shards), ByteLimit(20000)).value
+
 proc verify(source: ErasureLayout, expected: array[32, byte]): BundleErasure =
   ## Compare every encoded chunk in validator order to an independently frozen full-buffer witness.
   let code = prepareBundleErasure(source, generous()).value
@@ -99,11 +105,13 @@ expect(prepareBundleErasure(small, generous()), BundleErasureError.None)
 expect(prepareBundleErasure(small, BundleErasureLimits()), BundleErasureError.LimitExceeded)
 assert hashes() == 0, "bundle encoding performs no hashes"
 reset(0)
+
 proc detached(): BundleErasure =
   ## Retain encoded bytes and original execution after all construction temporaries retire.
   prepareBundleErasure(layout(small = true, shards = 6), generous()).value
 assert detached().bundleErasureSource.value.layoutSource.value.bundleBytes.value ==
     small.layoutSource.value.bundleBytes.value, "detached source lifetime"
+
 proc cycle() =
   ## Release complete encoded buffers, scalar code owners, input/workspace and refused candidates.
   let done = prepareBundleErasure(small, generous()).value

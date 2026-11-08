@@ -3,6 +3,7 @@
 
 ## Capture explicitly trusted operator inputs once, independently of the checkpoint being restored.
 ## Checksums and sealed hashes bind bytes; the operator supplies authority, not this local decoder.
+
 import ./[identity as checkpoint_identity, recovery as checkpoint_recovery]
 import ../../codec/bounded
 import ../../crypto/primitives

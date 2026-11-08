@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic economic payload/reason guards preserve a genuine source-bound positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[state_inventory_context, service_deposit_context]
 import ../../src/state/service/deposit as service_deposit
@@ -9,9 +10,11 @@ import ../../src/state/footprint_audit
 import ../../src/state/service/directory as service_directory
 import ../../src/codec/state/accounts as state_accounts
 include ./composition_fixture
+
 proc extract(outcome: ServiceDepositResult[ServiceDepositObservation]): ServiceDepositObservation {.noinline.} =
   ## Default or failed queries never expose retained economic evidence.
   outcome.value
+
 proc reason(outcome: ServiceDepositResult[ServiceDepositObservation]) {.noinline.} =
   ## Defaults do not invent an arithmetic reason.
   discard outcome.arithmeticError

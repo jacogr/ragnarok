@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Contextual local restart restores independently recomputed complete maps under one exclusive writer lease.
+
 # @@Verification={"arc":"paged_state_context_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -15,29 +16,36 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 func statePolicy(): StateStoreLimits =
   ## Ordinary immutable map policy remains independent of paged context and physical IO work.
   StateStoreLimits(trie: policy().trie, writes: ElementLimit(10), writeValueBytes: ByteLimit(10000))
+
 func transportPolicy(): PagedStateLimits =
   ## Aggregate export counts all retained complete snapshots before physical record deduplication.
   PagedStateLimits(roots: ElementLimit(64), staging: TrieExportLimits(records: TrieNodeLimit(1000),
     valueBytes: ByteLimit(100000)), dataset: policy().dataset)
+
 proc state(first: byte): StateStoreSnapshot =
   ## Independently constructed complete maps include a present-empty value.
   newStateStore(@[StateEntry(key: key(0), value: @[first]), StateEntry(key: key(128), value: @[])],
     statePolicy()).value.snapshot.value
+
 proc path(label: string): string =
   ## Each test owns its namespace under the native runner's ignored directory.
   "paged-state-context-" & $storageProcessId() & "-" & label
+
 proc configuration(first: byte): FullPagedNativeConfig =
   ## Native and application input policies retain explicit independent finite ceilings.
   result = sample(first).config
   result.limits.contextBytes = ByteLimit(8192)
+
 proc localOpen(writer: var FullPagedWriter, directory: string,
     selected: FullPagedNativeConfig): FullPagedNativeResult[bool] =
   ## The local API accepts chain and policy, deliberately requiring no independently imported root.
   openLocalFullPagedWriter(writer, directory, selected.chain, selected.limits,
     selected.construction, selected.replayBytes)
+
 proc check(writer: FullPagedWriter, expected: StateStoreSnapshot, value: byte) =
   ## Native claims only preflight size; the existing state constructor recomputes every complete JAM root.
   let restored = restorePagedStateStore(writer, expected.commitment.root, statePolicy())
@@ -46,6 +54,7 @@ proc check(writer: FullPagedWriter, expected: StateStoreSnapshot, value: byte) =
   assert array[32, byte](snapshot.commitment.root) == array[32, byte](expected.commitment.root)
   assert snapshot.lookup(key(0)).value.bytes == @[value]
   assert snapshot.lookup(key(128)).value.bytes.len == 0
+
 proc main() =
   ## Local recovery never weakens independently expected opens, failure quarantine or ordinary owned snapshot semantics.
   let source = state(5)

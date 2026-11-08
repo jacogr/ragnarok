@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine reserved-ID replacement fixtures share signed original namespaces across state and application qualification.
+
 import std/assertions
 import ./[current_namespace_transition_context, current_namespace_execution_context,
   accumulation_execution_context, accumulation_current_candidate_context,
@@ -14,6 +15,7 @@ import ../../src/app/candidate
 import ../../src/chain/parameters
 import ./accumulation_current_chain_context
 import ../../src/state/accumulation/current/update as accumulation_current_update
+
 proc namespaceReplacementCode*(checkpoint = false, panic = false): seq[byte] =
   ## A genuine registrar ejects junior99, optionally checkpoints, then recreates the same reserved ID.
   var payload = newSeq[byte](60)
@@ -28,6 +30,7 @@ proc namespaceReplacementCode*(checkpoint = false, panic = false): seq[byte] =
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+
 proc toNamespaceExecutionFixture*(origin: CurrentNamespaceTransition): NamespaceExecutionFixture =
   ## Retain complete original declarations for real command fixtures without adding their existing code preimages twice.
   var seeds: seq[ServiceNamespaceSeed] = @[]
@@ -38,6 +41,7 @@ proc toNamespaceExecutionFixture*(origin: CurrentNamespaceTransition): Namespace
   NamespaceExecutionFixture(source: origin.source, seeds: seeds,
     codes: [newSeq[byte](0), newSeq[byte](0)], parent: origin.update.currentUpdatePriorView,
     update: origin.update)
+
 proc namespaceReplacementFixture*(base: OwnedReport): NamespaceExecutionFixture =
   ## Author an empty junior and real registrar before signing; declarations come from the already-qualified original parent.
   var options = executionFixtureConfig()
@@ -52,6 +56,7 @@ proc namespaceReplacementFixture*(base: OwnedReport): NamespaceExecutionFixture 
   options.signed.serviceNamespaces[1].requests = @[]
   let origin = namespaceTransitionFixture(base, options, ElementLimit(4), currentCandidateLimits())
   origin.toNamespaceExecutionFixture
+
 proc namespaceSequentialReplacementFixture*(base: OwnedReport,
     policy: CurrentCandidateLimits): CurrentNamespaceTransition =
   ## The first invocation ejects and upgrades itself; the originally queued report later invokes its new creator code.
@@ -84,11 +89,13 @@ proc namespaceSequentialReplacementFixture*(base: OwnedReport,
   options.signed.serviceNamespaces[0].requests.add(StateRequestItem(hash: hash,
     length: RequestLength(uint32(nextCode.len)), history: availableHistory(RequestSlot(1))))
   namespaceTransitionFixture(base, options, ElementLimit(4), policy)
+
 proc retirementImmediate(index: byte, value: uint64): seq[byte] =
   ## Fixed four-byte signed immediates keep multi-host fixtures bounded without self-referential code-length encodings.
   assert value <= 0x7fffffff'u64 or value == high(uint64)
   result = @[51'u8, index]
   for i in 0..<4: result.add(byte((value shr (8*i)) and 255)) # Sign-extension represents the exact self sentinel.
+
 proc retiringCode(length: uint64, hashes: array[2, ServicePreimageHash]): seq[byte] =
   ## Info supplies the executing code hash; expired forget removes that code while its machine retains the original program owner.
   var payload = newSeq[byte](128)
@@ -112,6 +119,7 @@ proc retiringCode(length: uint64, hashes: array[2, ServicePreimageHash]): seq[by
   code.add(@[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+
 proc retirementDriver(next: seq[byte], eject: bool, forward: uint64): seq[byte] =
   ## Upgrade and genuine self-transfer schedule the next entry after the currently selected namespace work.
   let hash = array[32, byte](blake2b256(next).value)
@@ -128,6 +136,7 @@ proc retirementDriver(next: seq[byte], eject: bool, forward: uint64): seq[byte] 
     retirementImmediate(12, 196640), @[10'u8, 22], @[50'u8, 0]]: code.add(instruction)
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+
 proc namespaceRetiredReplacementFixture*(base: OwnedReport,
     policy: CurrentCandidateLimits, reuse = false, orphan = false,
     postBirth = false): CurrentNamespaceTransition =
@@ -196,6 +205,7 @@ proc checkpointImmediate(index: byte, value: uint64): seq[byte] =
   if value <= 127 or value == high(uint64):
     return @[51'u8, index, byte(value and 255)] # One-byte sign extension represents the self sentinel exactly.
   retirementImmediate(index, value)
+
 proc namespaceAtomicReplacementFixture*(base: OwnedReport,
     policy: CurrentCandidateLimits, checkpoint = true, late = false,
     orphan = false, panic = false): CurrentNamespaceTransition =

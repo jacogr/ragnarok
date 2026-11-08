@@ -3,6 +3,7 @@
 
 ## Current GP accpar M(s): bind prior accounts to genuine annulment-selected source maps.
 ## A bounded subset certificate does not claim complete coverage, creation union or publication.
+
 import ../../../codec/bounded
 import ../../../codec/state/[accounts as state_accounts, layout as state_layout]
 import ../../../codec/header

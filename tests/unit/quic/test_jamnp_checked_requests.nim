@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_checked_requests_arc_release"}
 
 ## Real TLS checked acquisition retains exact worker leases through cancellation, buffering and shutdown.
+
 import std/[assertions, envvars, syncio, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/proof/worker
@@ -15,10 +16,12 @@ import ../../../src/state/[store, range_proof]
 import ../../../src/rpc/server
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_topology_fixture, jamnp_node_probe, jamnp_read_validation_context, arc_evidence]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -29,11 +32,13 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc step(host: var ApplicationNode, services: var Services, probe: var NodeProbe) {.raises.} =
   ## One bounded actor turn keeps unrelated sockets responsive while Services owns a CPU lease.
   assert host.poll(getMonoTime(), StateTime(7), 0)
   probe.poll()
   services.tick(uint32(host.peerCount))
+
 proc until(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     ticket: CheckedRequestTicket, phase: CheckedRequestPhase) {.raises.} =
   ## Phase observations are scalar and do not touch any worker-owned input/result graph.
@@ -41,12 +46,14 @@ proc until(host: var ApplicationNode, services: var Services, probe: var NodePro
   while host.checkedPhase(ticket) != phase:
     assert getMonoTime() < deadline, "checked lifecycle reaches its bounded expected phase"
     step(host, services, probe)
+
 proc done(services: var Services, probe: var NodeProbe) =
   ## Withhold host collection deliberately so Done must retain the canonical/RPC lease.
   let deadline = getMonoTime()+initDuration(seconds = 5)
   while services.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline
     probe.poll()
+
 proc connect(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     protocol: string, hash: BlockHash) {.raises.} =
   ## Repeated connections use fresh peer/native generations and an independent literal UP0 handshake.
@@ -67,6 +74,7 @@ proc connect(host: var ApplicationNode, services: var Services, probe: var NodeP
       let peer = host.peerAt(0)
       if peer.error == NodeError.None and host.source(peer.value).error == NodeError.None:
         break # TLS completion and first response bytes alone do not prove host-side UP0 readiness.
+
 proc cancellationRound(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     peer: NodePeer, request: ReadRequest, policy: ReadVerificationLimits) {.raises.} =
   ## Immediate cancellation removes the queued native intent before any raw peer stream can open.
@@ -76,6 +84,7 @@ proc cancellationRound(host: var ApplicationNode, services: var Services, probe:
   assert host.takeChecked(started.value).kind == CheckedCompletionKind.Cancelled
   assert not host.checkedLive(started.value)
   step(host, services, probe) # Drain bounded queue tombstones before admitting the next generation.
+
 proc main() {.raises.} =
   ## Full Services source and literal remote replies exercise complete acquisition-to-verification ownership.
   let saved = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])

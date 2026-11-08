@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Several completed publications before process death retain the exact independently authored visible prefix.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_samples, managed_storage_samples, storage_io, storage_crash, storage_crash_appends]
@@ -12,6 +13,7 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../src/storage/database_identity
 import ../../src/codec/bounded
+
 proc sequenceCrashCase*(label: string, managed: bool, operation, skip: cint): uint64 {.raises.} =
   ## Each full frame is independently encoded before fork; a child never sends a selected head to the parent.
   resetIo()

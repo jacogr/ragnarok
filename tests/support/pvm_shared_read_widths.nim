@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Literal scalar-read transactions and source-certified public native histories on either ISA.
 
 import std/[assertions, envvars, syncio]

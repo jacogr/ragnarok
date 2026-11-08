@@ -3,6 +3,7 @@
 
 ## Bounded canonical reads, opaque uploads and availability framing. Parent owns native retirement and deadlines;
 ## callbacks retain bytes only, and the host resolves canonical requests outside engine calls.
+
 import ../quic/transport
 import ./segment_request
 import ../codec/bounded
@@ -46,28 +47,36 @@ type
     cursor: SegmentRequestCursor
     declared: int
 const MaxReadReplyBytes* = 8*1024*1024 ## Aggregate framed reply ceiling, independent of untrusted u32 limits.
+
 func error*[T](outcome: ReadResult[T]): ReadError =
   ## Inspect the private discriminator.
   outcome.status
+
 func readFailure*[T](reason: ReadError): ReadResult[T] {.requires: reason != ReadError.None.} =
   ## Backends can report a reason without exposing result discriminators or success construction.
   ReadResult[T](status: reason)
+
 func value*[T](outcome: ReadResult[T]): T {.requires: outcome.status == ReadError.None.} =
   ## Extract only a complete successful owner.
   outcome.completed
+
 func valid*(request: ReadRequest): bool =
   ## Default requests confer no framing or reply authority.
   request.ready
+
 func kind*(request: ReadRequest): ReadKind {.requires: request.ready.} =
   ## Copy the exact admitted selector.
   request.selector
+
 func batch*(kind: ReadKind): bool =
   ## Variable grouped retrieval has a separate finite payload ceiling and incremental grammar.
   kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards, ReadKind.Segments]
+
 func variable*(kind: ReadKind): bool =
   ## Opaque guaranteed reports share bounded variable storage with grouped requests, without borrowing the grouped-request grammar.
   kind.batch or kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
       ReadKind.Judgment]
+
 func maximumRequestBytes(kind: ReadKind): int =
   ## CE135 has an independent local hard ceiling; grouped requests retain their exact existing grammar ceiling.
   if kind == ReadKind.Assurance: 139 # Anchor, largest fixed profile bitfield and Ed25519 signature.
@@ -75,12 +84,14 @@ func maximumRequestBytes(kind: ReadKind): int =
   elif kind == ReadKind.AuditAnnouncement: 16*133 # Whole batches have at most sixteen fixed initial/later records.
   elif kind == ReadKind.Judgment: 16*306 # Each maximum negative record has three inline credentials.
   else: kind.segmentKind.maximumPayload
+
 func segmentKind*(kind: ReadKind): SegmentRequestKind {.requires: kind.batch.} =
   ## Only declared batch selectors enter the matching protocol grammar.
   case kind
   of ReadKind.SegmentShards: SegmentRequestKind.Shards
   of ReadKind.ProvenSegmentShards: SegmentRequestKind.ProvenShards
   else: SegmentRequestKind.Segments # The checked precondition excludes all fixed selectors.
+
 func requestLength(kind: ReadKind): int =
   ## Pinned fixed payload extents exclude selector and E4 header.
   case kind
@@ -92,11 +103,13 @@ func requestLength(kind: ReadKind): int =
   of ReadKind.Availability, ReadKind.Audit: 34
   of ReadKind.PreimageAnnouncement: 40
   of ReadKind.TicketProxy, ReadKind.TicketDistribution: 789
+
 proc payload*(request: ReadRequest): seq[byte] {.requires: request.ready.} =
   ## Copy only complete admitted payload bytes; no mutable fixed backing array escapes.
   result = newSeq[byte](request.length)
   for index in 0..<request.length:
     result[index] = if request.selector.variable: request.variable[index] else: request.payload[index]
+
 proc decodeReadRequest*(kind: ReadKind, payload: openArray[byte]): ReadResult[ReadRequest] =
   ## Validate exact extents before retaining transport facts; method-specific semantics stay in services.
   if kind in [ReadKind.Guarantee, ReadKind.Assurance, ReadKind.AuditAnnouncement,
@@ -132,15 +145,18 @@ proc decodeReadRequest*(kind: ReadKind, payload: openArray[byte]): ReadResult[Re
   var captured = ReadRequest(ready: true, selector: kind, length: payload.len)
   for index in 0..<payload.len: captured.payload[index] = payload[index]
   ReadResult[ReadRequest](status: ReadError.None, completed: captured)
+
 proc detachedReadRequest*(request: ReadRequest): ReadRequest {.requires: request.valid.} =
   ## CPU capture receives independent variable storage before submission; native callbacks may then retire their own aliases.
   result = ReadRequest(ready: true, selector: request.selector, length: request.length,
     payload: request.payload, groups: request.groups, items: request.items)
   result.variable = newSeq[byte](request.variable.len)
   for index in 0..<request.variable.len: result.variable[index] = request.variable[index]
+
 func payloadLength*(request: ReadRequest): int {.requires: request.valid.} =
   ## Logical request copy admission uses scalar extent before allocating a detached payload view.
   request.length
+
 proc requestBytes*(request: ReadRequest): seq[byte] {.requires: request.valid.} =
   ## Serialize one exact selector/E4/body with a single exact-sized allocation after the parent reserves output credit.
   result = newSeq[byte](request.length+5)
@@ -148,23 +164,29 @@ proc requestBytes*(request: ReadRequest): seq[byte] {.requires: request.valid.} 
   for index in 0..<4: result[1+index] = byte((uint32(request.length) shr (8*index)) and 255)
   for index in 0..<request.length:
     result[5+index] = if request.selector.variable: request.variable[index] else: request.payload[index]
+
 func itemCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## Validated scalar counts determine exact response message arity without reparsing payloads in callbacks.
   request.items
+
 func sameRequest(left, right: ReadRequest): bool =
   ## Full fixed-array equality prevents foreign/stale work from targeting a different request.
   left.ready and right.ready and left.selector == right.selector and left.length == right.length and
       left.payload == right.payload and left.variable == right.variable
+
 func request*(reply: ReadReply): ReadRequest =
   ## A frozen reply retains its original request binding; defaults return an invalid request, never an initialized success.
   reply.request
+
 func matches*(reply: ReadReply, request: ReadRequest): bool =
   ## All exact method and payload facts must match before a retained detached reply can serve another physical stream.
   sameRequest(reply.request, request)
+
 proc forRequest*(reply: ReadReply, request: ReadRequest): ReadResult[ReadReply] =
   ## Reuse only an already frozen complete reply under its exact admitted binding; no caller bytes construct a successful prefix.
   if not reply.matches(request): return readFailure[ReadReply](ReadError.InvalidRequest)
   ReadResult[ReadReply](status: ReadError.None, completed: reply)
+
 func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
   ## CE142 acknowledges with FIN alone; ordinary content replies use one message and CE129 uses two.
   if request.selector == ReadKind.ProvenSegmentShards: request.items+1
@@ -175,17 +197,21 @@ func replyMessageCount*(request: ReadRequest): int {.requires: request.valid.} =
       ReadKind.Judgment, ReadKind.PreimageAnnouncement, ReadKind.TicketProxy,
           ReadKind.TicketDistribution]: 0
   else: 1
+
 func maximumReplyBytes*(request: ReadRequest): int {.requires: request.valid.} =
   ## Large original bundles and all-row distributions have their own hard ceiling; existing reads retain their prior bound.
   if request.kind in [ReadKind.SegmentShards, ReadKind.ProvenSegmentShards]: 32*1024*1024
   elif request.kind in [ReadKind.Availability, ReadKind.Bundle, ReadKind.Segments]: 16*1024*1024
   else: MaxReadReplyBytes
+
 func minimumReplyBytes*(request: ReadRequest): uint64 {.requires: request.valid.} =
   ## Framing minima include only actual E4 messages, never a fabricated acknowledgment prefix.
   uint64(request.replyMessageCount*4)
+
 func effect*(reply: ReadReply): ReadEffect =
   ## Only the host's own canonical worker output supplies this non-wire planning hint.
   reply.effect
+
 proc captureReadReply*(request: ReadRequest, wire: openArray[byte],
     effect = ReadEffect.None): ReadResult[ReadReply] =
   ## Freeze only an exact bounded sequence of E4 messages; this grants no state/consensus authority.
@@ -209,31 +235,39 @@ proc captureReadReply*(request: ReadRequest, wire: openArray[byte],
   for index in 0..<wire.len: copied[index] = wire[index]
   ReadResult[ReadReply](status: ReadError.None, completed: ReadReply(request: request, wire: copied,
       effect: effect))
+
 func byteLength*(reply: ReadReply): int =
   ## Inspect frozen wire extent before admitting a host-side output copy against aggregate credit.
   reply.wire.len
+
 proc bytes*(reply: ReadReply): seq[byte] =
   ## Copy the frozen transcript without exporting mutable storage.
   reply.wire
+
 func writtenBytes*(route: ReadRoute): int =
   ## Scalar progress lets the enclosing host enforce inactivity without inspecting or copying output.
   route.offset
+
 func receivedBytes*(route: ReadRoute): int =
   ## Fixed request progress is observable without exposing the partially filled request array.
   route.used
+
 func bufferedBytes*(route: ReadRoute): uint64 =
   ## Declared heap storage is charged immediately, even when a peer withholds the body or FIN.
   if route.selector.variable and route.used >= 5: uint64(route.declared)+5
   else: uint64(route.used)
+
 func handle*(route: ReadRoute): NativeStream =
   ## Parent compares the borrowed pointer only during its native lifetime.
   route.stream
+
 proc reject*(route: var ReadRoute) =
   ## Revoke pending work before resetting only this stream.
   route.failed = true
   route.pending = false
   route.output = @[]
   if route.stream != NativeStream(nil): streamAbort(route.stream)
+
 proc bindReadStream*(route: var ReadRoute, stream: NativeStream, kind: ReadKind,
     kindConsumed = false): ReadError =
   ## A multiplexer may consume the selector before binding; local initiation remains the parent's check.
@@ -247,21 +281,25 @@ proc bindReadStream*(route: var ReadRoute, stream: NativeStream, kind: ReadKind,
   if kind.batch: route.cursor = initSegmentRequestCursor(kind.segmentKind)
   wantRead(stream, 1)
   ReadError.None
+
 proc takeRequest*(route: var ReadRoute): ReadResult[ReadRequest] =
   ## Exactly one host job is released only after the complete request and FIN.
   if not route.pending or route.taken or route.failed: return ReadResult[ReadRequest](
       status: ReadError.Unavailable)
   route.taken = true
   ReadResult[ReadRequest](status: ReadError.None, completed: route.captured)
+
 proc selectedKind*(route: ReadRoute): ReadKind {.requires: route.stream != NativeStream(nil).} =
   ## A bound native route exposes its fixed selector without consuming an incomplete or already claimed request.
   route.selector
+
 proc deferRequest*(route: var ReadRoute): bool =
   ## Return a complete claim to admission; responding, reset and retired routes cannot be re-admitted.
   if route.stream == NativeStream(nil) or route.failed or not route.pending or not route.taken:
     return false
   route.taken = false
   true
+
 proc respond*(route: var ReadRoute, reply: ReadReply): ReadError =
   ## A reply for any different request cannot be sent through this borrowed stream.
   if route.stream == NativeStream(nil) or route.failed or not route.pending or
@@ -272,6 +310,7 @@ proc respond*(route: var ReadRoute, reply: ReadReply): ReadError =
   route.writing = true
   wantWrite(route.stream, 1)
   ReadError.None
+
 proc event*(route: var ReadRoute, stream: NativeStream, event: cint,
     inputBudget = ByteLimit(32*1024*1024)) =
   ## One bounded native read/write per callback; only native close releases the route slot.

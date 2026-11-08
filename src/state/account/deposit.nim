@@ -3,6 +3,7 @@
 
 ## Exact constant-work account deposit observations preserve gratis cancellation before representability refusal.
 ## Explicit arithmetic inputs are not authenticated state, protocol configuration or a global funding invariant.
+
 import ../../codec/state/accounts as state_accounts
 import ./footprint as account_footprint
 

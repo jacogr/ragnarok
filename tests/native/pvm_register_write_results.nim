@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime-selected failed scalar arithmetic results must reject payload accessors and direct application; valid mode is the positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/pvm/[program, machine, registers]
 let origin = paramStr(1)

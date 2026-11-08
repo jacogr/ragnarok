@@ -16,16 +16,19 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-bank"
+
 proc policy(): StateStoreLimits =
   ## Explicit complete-map construction and restoration ceilings stay independent of file metadata.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(4), writeValueBytes: ByteLimit(200))
+
 proc select(slot: CheckpointSlot, root: StateRoot) =
   ## Test setup writes independently encoded local metadata, including intentionally inconsistent selections.
   let head = newCheckpointHead(CheckpointGeneration(7), slot, root)
   assert replaceAtomicFile(Prefix & ".head", encodeCheckpointHead(head, ByteLimit(1000)).value,
     ByteLimit(1000)) == AtomicFileError.None
+
 proc cycle(expected: StateRoot) =
   ## Host-only lock/read/restore/refusal/retirement cycles drop all complete-map and native ownership.
   var bank = default(CheckpointBank)
@@ -34,6 +37,7 @@ proc cycle(expected: StateRoot) =
   assert bank.restore(expected, policy(), ByteLimit(1000)).error == CheckpointBankError.None
   assert bank.restore(expected, policy(), ByteLimit(0)).error == CheckpointBankError.LimitExceeded
   assert bank.close() == CheckpointBankError.None
+
 proc main() =
   ## Intact alternate files cannot authorize a different selection, repair corruption or replace external trust.
   for suffix in [".head", ".0", ".1", ".0.tmp.orphan"]:

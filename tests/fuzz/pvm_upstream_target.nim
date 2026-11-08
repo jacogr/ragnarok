@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Replay bounded public-API JamV1 observations from the pinned upstream VM generator.
+
 import std/[assertions, syncio]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas

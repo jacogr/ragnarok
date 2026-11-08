@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Differential prepared execution covers the complete opcode set, source snapshots, budgets, cache reuse and bounded segments.
+
 # @@Verification={"arc": "pvm_prepared_blocks_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -491,6 +492,7 @@ proc reply(context: var ReplyContext, stopped: StepOutcome): HostResponse {.rais
     registers: regs, memory: changed.value)
 
 type ReplyRefusal = enum Refused ## Enum ordinal zero remains a selected callback refusal.
+
 proc fallibleReply(context: var ReplyContext, stopped: StepOutcome): HostResult[
     ReplyRefusal] {.raises: [].} =
   ## A selected refusal and an unselected default result must remain separate from engine/guest outcomes.
@@ -537,6 +539,7 @@ for mode in 0..7:
 
 type MemoryPrefixContext = object ## Only callback progress escapes a successful checked load/host pair.
   calls: int
+
 proc memoryPrefixReply(context: var MemoryPrefixContext,
     stopped: StepOutcome): HostResponse {.raises: [].} =
   ## An independent byte-level expectation identifies the exact second source site and the first load's visible result.
@@ -592,6 +595,7 @@ proc positionPrefix(): seq[seq[byte]] =
 
 type PositionContext = object ## Callback observations depend on immutable fixture byte positions, not another interpreter.
   calls: int
+
 proc positionReply(context: var PositionContext, stopped: StepOutcome): HostResponse {.raises: [].} =
   ## Assert the causing byte PC after a segment split and again after a resumed ordinary prefix.
   let state = machineInfo(stopped.machine).value

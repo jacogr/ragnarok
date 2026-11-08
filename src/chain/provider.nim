@@ -251,7 +251,6 @@ proc reportAt*(view: ChainView, hash: WorkReportHash, limit: ByteLimit): ReportR
     return default(ReportReadResult) # The existing result marks default owners uninitialized.
   reports.workReport(head.value, hash, limit)
 
-
 proc finalizeView*(view: ChainView, hash: BlockHash): ViewFinalizeResult =
   ## Select a caller-certified finalized block on this retained linear chain; no consensus proof is checked.
   ## Reject unknown hashes and regressions; repeated selection is idempotent. Immutable old views survive.
@@ -303,6 +302,7 @@ proc retainedPrefix*(view: ChainView, hash: BlockHash): ViewAdvanceResult =
     validation.add(headerContext(saved[index].value))
   ViewAdvanceResult(status: ViewAdvanceError.None, completed: ChainView(capacity: view.capacity,
       validation: validation, snapshot: saved, finalized: view.finalized))
+
 proc restoreLocalChainView*(history: openArray[BlockSnapshotResult],
     finalized = unavailableGenesis(), limit = ElementLimit(MaxRetainedBlocks)): ViewAdvanceResult =
   ## Restore a previously validated local bounded history; this is not a consensus or import verifier.

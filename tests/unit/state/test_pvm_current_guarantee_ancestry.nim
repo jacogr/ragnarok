@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original report context after a real adoption resumes hash-free under the same clock/token, or preserves only the actually selected prefix.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options, chain]
@@ -23,12 +24,15 @@ import ../../support/[current_guarantee_sequence_context, current_consecutive_co
   current_consecutive_download_context, current_download_command_context,
   current_application_context,
   current_services_disk_samples, managed_storage_samples, block_download_transport]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Hash failures cover only synchronous resumption while every managed worker remains idle.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## The actual backend counter excludes a fabricated zero-work verdict.
 type LookupCase {.pure.} = enum ## Each explicit host action follows the first genuine consumed adoption.
   Resume, Expire, ChangedParent
+
 proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   ## Authenticated host identities come from the two independent local fixture certificates.
   let raw = readFile(getEnv(if second: "RAGNAROK_TEST_PEER_B" else: "RAGNAROK_TEST_PEER_A"))
@@ -36,6 +40,7 @@ proc key(second: bool): CurrentDownloadPeerKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   CurrentDownloadPeerKey(bytes)
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage, now = 0'u64) =
   ## Bounded native polling preserves the authored monotonic deadline until this exact stage is observed.

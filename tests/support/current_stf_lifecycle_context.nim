@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal lifecycle guests preserve real host calls, terminal selection and subsequent current-code lookup.
+
 import ./pvm_accumulation_program
 
 proc upgradeCode*(mode: int, replacement: array[32, byte]): seq[byte] =

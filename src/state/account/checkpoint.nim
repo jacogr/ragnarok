@@ -3,6 +3,7 @@
 
 ## Restore unchanged checkpoint bytes under an explicit expected root, then certify targeted account invariants.
 ## No raw restored source escapes failed serialization, capture or invariant checks; installation remains application-owned.
+
 import ../../codec/bounded
 import ../../codec/state/[trie as state_trie, composition as state_composition]
 import ../[validated_checkpoint, inventory]

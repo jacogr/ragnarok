@@ -3,6 +3,7 @@
 
 ## Immutable partial verified read evidence. Unknown keys never become absent state.
 ## These owners cannot substitute for complete StateStore snapshots or certify a new state root.
+
 import std/[algorithm, assertions]
 import ../trie_proof
 import ./plan as proof_plan

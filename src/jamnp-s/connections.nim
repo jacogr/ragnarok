@@ -3,6 +3,7 @@
 
 ## Stable bounded validator connection owner. Canonical topology is copied before callbacks;
 ## networking owns no complete state graph. Raw streams and peer lifecycle events remain synchronous.
+
 import std/[assertions, monotimes, times]
 import ./[admission, topology, identity, endpoints, protocol, alpn, network]
 import ../quic/[transport, address, io]
@@ -106,12 +107,16 @@ const CloseTimeoutMs = 1000
 
 proc `=copy`(destination: var Dialer, source: Dialer) {.error.}
   ## The enclosing stable-address contract is independent of the child's unavailable copy hooks.
+
 proc `=dup`(source: Dialer): Dialer {.error.}
   ## Native callbacks must never point into a duplicated outgoing owner.
+
 proc `=copy`*(destination: var NodeConnections, source: NodeConnections) {.error.}
   ## Copying would split teardown authority and invalidate every dialer's parent pointer.
+
 proc `=dup`*(source: NodeConnections): NodeConnections {.error.}
   ## Implicit duplication is forbidden along with assignment.
+
 proc `=wasMoved`*(owner: var NodeConnections) {.nodestroy, requires: not owner.opened.} =
   ## Only a fully retired owner may move; all foreign callbacks have ended before fields transfer.
   `=wasMoved`(owner.dialIssuer)
@@ -133,6 +138,7 @@ proc `=wasMoved`*(owner: var NodeConnections) {.nodestroy, requires: not owner.o
   owner.local = default(StateEdKey); owner.limits = default(SafroleStateConfig)
   owner.now = default(MonoTime); owner.user = nil
   owner.streamCallback = nil; owner.peerCallback = nil; owner.admissionCallback = nil
+
 proc `=destroy`*(owner: NodeConnections) =
   ## Explicit close retires C and stream callbacks before their enclosing contexts disappear.
   assert not owner.opened, "NodeConnections must close before callback storage retires"
@@ -147,53 +153,67 @@ proc `=destroy`*(owner: NodeConnections) =
   `=destroy`(owner.routes)
   `=destroy`(owner.targets)
   `=destroy`(owner.opens)
+
 func error*(outcome: DialResult): DialError =
   ## Observe why no cancellation authority was issued.
   outcome.status
+
 func value*(outcome: DialResult): DialTicket {.requires: outcome.status == DialError.None.} =
   ## Copy exact cancellation coordinates, never a native pointer.
   outcome.completed
+
 func initConnectionConfig*(certificate, privateKey, protocol: string, port = 0'u16,
     binding = default(NetworkAddress), builders: GuestConnectionBudget = 20,
     others: GuestConnectionBudget = 20, streams: range[1..16384] = 4096): ConnectionConfig =
   ## Preserve a compact default startup path; open validates path/domain/profile before resources exist.
   ConnectionConfig(certificate: certificate, privateKey: privateKey, protocol: protocol,
     port: port, binding: binding, builders: builders, others: others, streams: streams)
+
 func `==`*(left, right: NodePeer): bool =
   ## Compare copied channel generations; equality alone never grants current owner authority.
   left.kind == right.kind and left.position == right.position and left.handle == right.handle and
       array[32, byte](left.key) == array[32, byte](right.key)
+
 func initiated*(peer: NodePeer): bool =
   ## Record which side initiated the connection, independently from individual CE stream initiators.
   peer.kind == ConnectionKind.Outgoing
+
 func identity*(peer: NodePeer): StateEdKey =
   ## Copy historical identity facts; current operations must also validate the peer in its owner.
   peer.key
+
 func same(left, right: StateEdKey): bool =
   ## Keep Ed25519 byte identity distinct from metadata and routing candidates.
   array[32, byte](left) == array[32, byte](right)
+
 func state(owner: NodeConnections, kind: ConnectionKind, position: int): ConnectionState =
   ## Internal locations are created only from checked native/pool coordinates.
   if kind == ConnectionKind.Incoming: owner.incoming[position]
   else: owner.dialers[position].connection
+
 proc setState(owner: var NodeConnections, kind: ConnectionKind, position: int,
     value: ConnectionState) =
   ## Replace only fixed fields; no foreign callback retains a pointer into these records.
   if kind == ConnectionKind.Incoming: owner.incoming[position] = value
   else: owner.dialers[position].connection = value
+
 func token(kind: ConnectionKind, position: int, value: ConnectionState): NodePeer =
   ## Bind copied identity facts to the exact native owner/admission generation.
   NodePeer(kind: kind, position: position, key: value.key, handle: value.handle)
+
 func error*(owner: NodeConnections): ConnectionError =
   ## Distinguish requested stop from a fatal listener/dispatcher failure; defaults are uninitialized.
   owner.failure
+
 proc fail(owner: var NodeConnections) =
   ## Fail closed without destroying callback contexts on the active native stack.
   owner.failure = ConnectionError.BackendFailure
   owner.stopping = true
+
 func isOpen*(owner: NodeConnections): bool =
   ## Partial/refused/retired owners never grant network authority.
   owner.opened
+
 func active*(owner: NodeConnections, peer: NodePeer): bool =
   ## Reused slots, pending/closing peers and reopened owners all reject old copied facts.
   if not owner.opened or owner.stopping or peer.position < 0: return false
@@ -203,28 +223,35 @@ func active*(owner: NodeConnections, peer: NodePeer): bool =
   let current = state(owner, peer.kind, peer.position)
   current.phase == ConnectionPhase.Active and current.announced and current.handle ==
       peer.handle and same(current.key, peer.key)
+
 func peerCount*(owner: NodeConnections): int =
   ## Count current policy reservations; pending physical replacements own no duplicate reservation.
   owner.policy.count(PeerClass.Validator)+owner.policy.count(PeerClass.Builder)+owner.policy.count(
       PeerClass.Other)
+
 func localIdentity*(owner: NodeConnections): StateEdKey {.requires: owner.opened.} =
   ## Public identity comes from the validated local certificate; no private key bytes leave the transport.
   owner.local
+
 func connectivityEpoch*(owner: NodeConnections): uint32 {.requires: owner.opened.} =
   ## Return the accepted epoch after finality/delay gating, never a best-head or peer-announced epoch.
   let selected = owner.policy.topology
   selected.slot div selected.epochSlots
+
 func isValidator*(owner: NodeConnections): bool =
   ## Cached accepted topology determines local transport role without touching canonical state in callbacks.
   owner.opened and owner.localValidator
+
 proc isValidator*(owner: NodeConnections, peer: NodePeer): bool =
   ## Historical peer facts alone confer no role; require the live generation and accepted gated roster union.
   owner.active(peer) and owner.policy.topology.contains(peer.key)
+
 proc announcements*(owner: NodeConnections, peer: NodePeer): bool =
   ## Grid selection uses the accepted gated topology, never a copied capacity class as privilege.
   if not owner.active(peer): return false
   let current = state(owner, peer.kind, peer.position)
   owner.policy.announcements(PeerSlot(uint64(current.logical)))
+
 proc notify(owner: var NodeConnections, peer: NodePeer, event: NodePeerEvent) =
   ## Callers finish record mutation before exposing synchronous application hooks.
   let callback = owner.peerCallback
@@ -234,6 +261,7 @@ proc notify(owner: var NodeConnections, peer: NodePeer, event: NodePeerEvent) =
     inc owner.callbackDepth
     defer: dec owner.callbackDepth
     callback(context, peer, event) # Queue-only public operations prevent recursive engine driving.
+
 proc markClose(owner: var NodeConnections, kind: ConnectionKind, position: int) =
   ## Intent changes eligibility now; actual native closure/release happens outside the callback batch.
   var current = state(owner, kind, position)
@@ -242,11 +270,13 @@ proc markClose(owner: var NodeConnections, kind: ConnectionKind, position: int) 
   current.wantClose = true
   current.closingAt = owner.now
   setState(owner, kind, position, current)
+
 proc disconnect*(owner: var NodeConnections, peer: NodePeer): bool =
   ## Safe in callbacks: mark only, with no recursive native-engine calls.
   if not owner.active(peer): return false
   markClose(owner, peer.kind, peer.position)
   true
+
 proc queueStream*(owner: var NodeConnections, peer: NodePeer): bool =
   ## Queue bounded copied facts. Peer Closed/Retired cancels all caller pending opens for that peer.
   if not owner.active(peer) or owner.openCount >= owner.opens.len: return false
@@ -254,6 +284,7 @@ proc queueStream*(owner: var NodeConnections, peer: NodePeer): bool =
   owner.openWrite = (owner.openWrite+1) mod owner.opens.len # Nonzero configured stream budget bounds the ring.
   inc owner.openCount
   true
+
 proc cancelStreamOpens*(owner: var NodeConnections,
     peer: NodePeer): bool {.requires: owner.callbackDepth == 0.} =
   ## Cancel this caller-owned peer's queued and native-delayed opens, never another generation or existing stream.
@@ -267,6 +298,7 @@ proc cancelStreamOpens*(owner: var NodeConnections,
     else: owner.dialers[peer.position].transport.cancelPeerStreamOpens(peer.handle)
   if not cancelled: markClose(owner, peer.kind, peer.position) # A failed native mapping cannot later fulfill an app-cancelled intent.
   cancelled
+
 proc findIdentity(owner: NodeConnections, key: StateEdKey): int =
   ## Logical ownership includes closing peers until their native retirement is observed.
   for index in 0..<owner.locations.len:
@@ -274,6 +306,7 @@ proc findIdentity(owner: NodeConnections, key: StateEdKey): int =
     if location.occupied and same(state(owner, location.kind, location.position).key,
         key): return index
   -1
+
 proc pending(owner: NodeConnections, key: StateEdKey): bool =
   ## At most one preferred physical replacement can wait for an old identity's reservation.
   for index in 0..<owner.incoming.len:
@@ -283,6 +316,7 @@ proc pending(owner: NodeConnections, key: StateEdKey): bool =
     if owner.dialers[index].connection.phase == ConnectionPhase.Pending and same(owner.dialers[
         index].connection.key, key): return true
   false
+
 proc reserve(owner: var NodeConnections, kind: ConnectionKind, position: int,
     key: StateEdKey, builder: bool): int =
   ## Reserve a genuinely free logical slot; physical incoming and outgoing coordinates remain separate.
@@ -293,11 +327,13 @@ proc reserve(owner: var NodeConnections, kind: ConnectionKind, position: int,
       owner.locations[index] = Location(occupied: true, kind: kind, position: position)
       return index
   -1
+
 proc replacementAllowed(owner: NodeConnections, key: StateEdKey, incoming: bool): bool =
   ## Preference arbitration applies to required validator pairs, not arbitrary builder duplicate claims.
   let topology = owner.policy.topology
   if not topology.contains(owner.local) or not topology.contains(key): return false
   preferredInitiator(owner.local, key) != incoming
+
 proc release(owner: var NodeConnections, kind: ConnectionKind, position: int,
     observed: bool) =
   ## Call only after actual native close or final engine retirement; clear before notifying user code.
@@ -314,6 +350,7 @@ proc release(owner: var NodeConnections, kind: ConnectionKind, position: int,
       owner.targets[index].missing = owner.now
       owner.targets[index].nextAttempt = owner.now+initDuration(milliseconds = RetryMs)
       break # Retry clocks reset when a real connection ends, not when intent changes.
+
 proc promote(owner: var NodeConnections, kind: ConnectionKind, position: int) =
   ## Authenticate/hold/activate one bounded physical peer without releasing its old lease early.
   if owner.stopping: return # A legal stop request from an earlier Ready hook forbids later promotion.
@@ -347,6 +384,7 @@ proc promote(owner: var NodeConnections, kind: ConnectionKind, position: int) =
   current.announced = true
   setState(owner, kind, position, current)
   notify(owner, token(kind, position, current), NodePeerEvent.Ready)
+
 proc matches(bytes: ptr ConstByte, length: csize_t, expected: string): bool =
   ## Compare negotiated ALPN bytes only within the borrowed complete span.
   if bytes == nil or length != csize_t(expected.len): return false
@@ -354,14 +392,17 @@ proc matches(bytes: ptr ConstByte, length: csize_t, expected: string): bool =
   for index in 0..<expected.len:
     if raw[index] != byte(expected[index]): return false
   true
+
 proc incomingVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## TLS proves possession after maintained Ed25519/SAN identity validation.
   cint(validPeer(cast[ptr byte](der), length, []))
+
 proc outgoingVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Each stable dialer pins its copied roster key independently of endpoint metadata.
   let dialer = cast[ptr Dialer](user)
   let expected = array[32, byte](dialer.connection.key)
   cint(validPeer(cast[ptr byte](der), length, expected))
+
 proc incomingAdmit(user: pointer, slot: cuint, der: ptr ConstByte, length: csize_t,
     selected: ptr ConstByte, selectedLength: csize_t): cint {.cdecl, raises: [].} =
   ## Retain at most one preferred replacement while its older physical owner retires.
@@ -394,6 +435,7 @@ proc incomingAdmit(user: pointer, slot: cuint, der: ptr ConstByte, length: csize
   owner.incoming[position] = ConnectionState(phase: ConnectionPhase.Active, key: key,
     builder: builder, logical: logical, started: owner.now)
   1
+
 proc incomingPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   ## Native promotion mints a generation before Ready; actual close alone releases a live reservation.
@@ -415,6 +457,7 @@ proc incomingPeer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
   elif event == PeerClosed:
     release(owner[], ConnectionKind.Incoming, position, true)
   else: fail(owner[]) # A changed primitive event contract cannot silently mint authority.
+
 proc dispatch(owner: var NodeConnections, kind: ConnectionKind, position: int,
     stream: NativeStream, event: cint) =
   ## Keep owner-bound stream routes through reset/close, including engine destruction.
@@ -459,6 +502,7 @@ proc dispatch(owner: var NodeConnections, kind: ConnectionKind, position: int,
   inc owner.callbackDepth
   defer: dec owner.callbackDepth
   callback(context, peer, stream, event) # No route access follows a callback that may cancel it.
+
 proc incomingStream(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Resolve the current incoming owner once at open; later close uses retained copied route facts.
   let owner = cast[ptr NodeConnections](user)
@@ -472,12 +516,14 @@ proc incomingStream(user: pointer, stream: NativeStream, event: cint) {.cdecl, r
     streamAbort(stream) # Unknown ownership never falls back to a global current connection.
   else:
     dispatch(owner[], ConnectionKind.Incoming, 0, stream, event) # Existing routes retain exact peer coordinates.
+
 proc outgoingStream(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## The fixed dialer address remains valid until all engine stream-close callbacks finish.
   let dialer = cast[ptr Dialer](user)
   let owner = dialer.owner
   if owner == nil: streamAbort(stream); return
   dispatch(owner[], ConnectionKind.Outgoing, dialer.position, stream, event)
+
 proc dialAddress(endpoint: NetworkEndpoint): NetworkEndpoint =
   ## IPv4-mapped metadata denotes an IPv4 route while retaining the exact normalized16 bytes.
   let bytes = endpoint.address.bytes
@@ -487,6 +533,7 @@ proc dialAddress(endpoint: NetworkEndpoint): NetworkEndpoint =
   if mapped:
     return networkEndpoint(ipv4Address([bytes[12], bytes[13], bytes[14], bytes[15]]), endpoint.port)
   endpoint
+
 proc rebuild(owner: var NodeConnections) =
   ## Build owned bounded candidates current/next/previous, preserving retry clocks by identity only.
   let topology = owner.policy.topology
@@ -533,6 +580,7 @@ proc rebuild(owner: var NodeConnections) =
   owner.targets = prepared
   owner.localValidator = topology.contains(owner.local)
   owner.dialCursor = cursor
+
 proc advance*(owner: var NodeConnections, view: ChainView,
     now: StateTime): AdmissionResult[EpochUpdate] {.requires: owner.callbackDepth == 0.} =
   ## Main-loop canonical handoff never runs inside borrowed native callbacks or worker leases.
@@ -546,12 +594,14 @@ proc advance*(owner: var NodeConnections, view: ChainView,
         (not owner.localValidator and location.kind == ConnectionKind.Outgoing)):
       markClose(owner, location.kind, location.position) # Delay native close until the readiness batch ends.
   outcome
+
 proc retireDialer(owner: var NodeConnections, position: int, observed: bool) =
   ## Final engine destruction completes stream callbacks before its logical lease or stable pool slot reuses.
   owner.dialers[position].transport.closeTransport()
   owner.dialers[position].opened = false
   owner.dialers[position].failed = false
   release(owner, ConnectionKind.Outgoing, position, observed)
+
 proc close*(owner: var NodeConnections) {.requires: owner.callbackDepth == 0.} =
   ## Keep all enclosing callback contexts alive through stream closure and authoritative engine retirement.
   if not owner.opened: return
@@ -571,6 +621,7 @@ proc close*(owner: var NodeConnections) {.requires: owner.callbackDepth == 0.} =
   owner.openCount = 0
   owner.policy = default(ValidatorAdmission)
   owner.opened = false
+
 proc releaseClosedStorage*(owner: var NodeConnections) {.requires: not owner.opened.} =
   ## Reclaim retired callback pools while preserving non-recycled cancellation generations across reopen.
   let previousSerial = owner.dialSerial
@@ -578,22 +629,27 @@ proc releaseClosedStorage*(owner: var NodeConnections) {.requires: not owner.ope
   owner = NodeConnections()
   owner.dialSerial = previousSerial
   owner.dialIssuer = previousIssuer
+
 proc stop*(owner: var NodeConnections) =
   ## Safe in application callbacks; the outer loop subsequently calls explicit close outside callbacks.
   owner.stopping = true
+
 func stopped*(owner: NodeConnections): bool =
   ## A stopped owner admits no new streams or physical peers.
   owner.stopping
+
 proc localPort*(owner: NodeConnections): uint16 =
   ## Return the actual listener port after successful bind; defaults have no endpoint.
   if not owner.opened: return 0
   owner.listener.localPort
+
 func validPath(path: string): bool =
   ## Bound copied native path storage and reject C-string truncation before any credential lookup.
   if path.len == 0 or path.len > 4096: return false
   for character in path:
     if character == char(0): return false
   true
+
 proc open*(owner: var NodeConnections, config: ConnectionConfig,
     source: BlockSnapshotResult, limits: SafroleStateConfig,
     streamCallback: nil NodeStreamCallback = nil, peerCallback: nil NodePeerCallback = nil,
@@ -656,11 +712,13 @@ proc open*(owner: var NodeConnections, config: ConnectionConfig,
     return ConnectionError.BackendFailure
   rebuild(owner)
   ConnectionError.None
+
 proc outgoingExists(owner: NodeConnections, key: StateEdKey): bool =
   ## One physical outgoing slot per identity bounds both unauthenticated work and replacements.
   for index in 0..<owner.dialers.len:
     if owner.dialers[index].opened and same(owner.dialers[index].connection.key, key): return true
   false
+
 proc dialEndpoint(owner: var NodeConnections, key: StateEdKey, endpoint: NetworkEndpoint): int =
   ## Allocate at most one stable engine and never recycle its cancellation generation.
   if owner.dialSerial == high(uint64): return -1
@@ -687,6 +745,7 @@ proc dialEndpoint(owner: var NodeConnections, key: StateEdKey, endpoint: Network
     retireDialer(owner, position, false)
     return -1
   position
+
 proc dial(owner: var NodeConnections, target: int): bool =
   ## Automatic topology targets retain their own route rotation and retry clocks.
   let routes = owner.targets[target].routes.len
@@ -697,17 +756,20 @@ proc dial(owner: var NodeConnections, target: int): bool =
   owner.targets[target].route = (route+1) mod routes
   owner.targets[target].nextAttempt = owner.now+initDuration(milliseconds = RetryMs)
   owner.dialEndpoint(key, endpoint) >= 0
+
 proc dialLive*(owner: NodeConnections, ticket: DialTicket): bool =
   ## A later topology or demand dial in the same pool slot never inherits an older token.
   if not owner.opened or ticket.serial == 0: return false
   if ticket.issuer != owner.dialIssuer: return false
   if ticket.position < 0 or ticket.position >= owner.dialers.len: return false
   owner.dialers[ticket.position].opened and owner.dialers[ticket.position].serial == ticket.serial
+
 proc cancelDial*(owner: var NodeConnections, ticket: DialTicket): bool {.requires: owner.callbackDepth == 0.} =
   ## Only mark this exact demand owner; native callbacks and stream close retain storage until the ordinary poll retires it.
   if not owner.dialLive(ticket): return false
   markClose(owner, ConnectionKind.Outgoing, ticket.position)
   true
+
 proc beginDial*(owner: var NodeConnections, identity: StateEdKey,
     endpoint: NetworkEndpoint): DialResult {.requires: owner.callbackDepth == 0.} =
   ## Detached routing is untrusted; TLS must prove the independently pinned identity before any peer/stream authority exists.
@@ -734,6 +796,7 @@ proc beginDial*(owner: var NodeConnections, identity: StateEdKey,
   let ticket = DialTicket(issuer: owner.dialIssuer, position: position, serial: owner.dialers[
       position].serial)
   DialResult(status: DialError.None, completed: ticket)
+
 proc driveClose(owner: var NodeConnections, kind: ConnectionKind, position: int) =
   ## Request native close once; physical ownership stays until its observer or final engine retirement.
   var current = state(owner, kind, position)
@@ -744,6 +807,7 @@ proc driveClose(owner: var NodeConnections, kind: ConnectionKind, position: int)
     owner.dialers[position].transport.disconnectTransport() # Pending TLS still owns this sole outgoing connection.
   current.closeSent = true
   setState(owner, kind, position, current)
+
 proc poll*(owner: var NodeConnections, now: MonoTime, maximumMs: range[0..1] = 1): bool
     {.requires: owner.callbackDepth == 0.} =
   ## One bounded event-loop turn; all engine create/retire work follows the current readiness batch.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit managed cleanup removes only validated unselected epochs and never grants staged files authority.
+
 import std/[assertions, syncio]
 import ../../support/[storage_samples, managed_storage_samples]
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest,
@@ -11,6 +12,7 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc main() {.raises.} =
   ## A partial candidate and unrelated epoch survive strict reopen until bounded explicit cleanup.
   let limits = managedStorageLimits()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current results and unrelated selected failure payloads never grant successful authority.
+
 import std/cmdline
 import "../../src/app/current/block/download" as current_block_download
 import "../../src/app/current/block/input" as current_block_input

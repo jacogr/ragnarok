@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted light application heads retain partial facts and bounded linked headers without complete-map execution authority.
+
 # @@Verification={"arc":"light_application_head_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, disk_history_context, application_checkpoint_context]
@@ -14,11 +15,13 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
 import ../../../src/state/[store, trie_proof]
 import ../../../src/state/proof/view as proof_view
+
 proc headerWire(sourceBlock: BlockSnapshotResult): seq[byte] =
   ## Test-only complete snapshots supply independently chosen canonical header bytes, never partial-root inference.
   let selected = sourceBlock.value.header
   result = newSeq[byte](selected.headerInfo.value.consumed)
   assert encodeOwnedHeader(selected, result).error == HeaderError.None
+
 proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   ## Caller-selected identity/header inputs are captured before the light owner sees proof evidence.
   let owner = initApplicationChain(genesisView(sourceBlock)).value
@@ -27,18 +30,21 @@ proc trust(sourceBlock: BlockSnapshotResult): TrustedApplicationCheckpoint =
   let captured = captureCheckpointTrust(encoded, sourceBlock.headerWire, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc policy(sourceBlock: BlockSnapshotResult): LightHeadLimits =
   ## Active validator geometry is selected independently from complete genesis context, never inferred from fetch parameters or partial facts.
   LightHeadLimits(header: HeaderConfig(cores: sourceBlock.value.cores,
     authorValidators: sourceBlock.value.activeValidators, epochSlots: sourceBlock.value.epochSlots,
     maxBytes: ByteLimit(262144)), headers: ElementLimit(3), headerBytes: ByteLimit(1048576),
     view: ProofViewLimits(items: ElementLimit(16), valueBytes: ByteLimit(4194304)))
+
 proc entries(snapshot: StateStoreSnapshot): seq[StateEntry] =
   ## An independent complete fixture map is used only to author genuine membership/absence proofs.
   result = @[]
   for index in 0..<snapshot.commitment.entries:
     let key = snapshot.keyAt(StateEntryIndex(index)).value
     result.add(StateEntry(key: key, value: snapshot.lookup(key).value.bytes))
+
 proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
     limits: StateStoreLimits): VerifiedStateProofBatch =
   ## Full fixture generation and exact-root verification precede every partial view used by the application API.
@@ -53,11 +59,13 @@ proc batch(snapshot: StateStoreSnapshot, keys: openArray[StateKey],
   let checked = verifyStateProofs(queries, snapshot.commitment.root, perProof, aggregate)
   assert checked.error == StateProofError.None
   checked.value
+
 func key(value: byte): StateKey =
   ## High-byte fixture keys distinguish genuine absent witnesses from unrequested unknown facts.
   var bytes = default(array[31, byte])
   for index in 0..<bytes.len: bytes[index] = value
   StateKey(bytes)
+
 proc checksum(bytes: var seq[byte]) =
   ## Independent identity-frame oracle rehashes the documented fixed 206-byte payload after one deliberate scalar change.
   assert bytes.len == 238
@@ -65,6 +73,7 @@ proc checksum(bytes: var seq[byte]) =
   assert hashed.error == CryptoError.None
   let digest = array[32, byte](hashed.value)
   for index in 0..<32: bytes[206+index] = digest[index]
+
 proc rootTrust(original: TrustedApplicationCheckpoint,
     root: StateRoot): TrustedApplicationCheckpoint =
   ## Test-only operator posterior-root choice remains independent of the sealed header's prior root; no consensus certificate is claimed.
@@ -77,6 +86,7 @@ proc rootTrust(original: TrustedApplicationCheckpoint,
   let captured = captureCheckpointTrust(identity, header, ByteLimit(1048576))
   assert captured.error == CheckpointTrustError.None
   captured.value
+
 proc transport(sourceBlock: BlockSnapshotResult) =
   ## Captured trust and exported light header copies cannot alias the caller's mutable buffers.
   var source = sourceBlock.headerWire
@@ -103,6 +113,7 @@ proc transport(sourceBlock: BlockSnapshotResult) =
   copied[0] = copied[0] xor 1
   assert selected.copyHeader(copied) and copied[0] == original
   assert sameApplicationCheckpoint(selected.identity, identity)
+
 proc semanticFacts(fixture: DiskHistoryFixture) =
   ## Present, present-empty, proven absent and unknown remain different facts under an independently selected posterior root.
   let source = fixture.blocks[0].value.stateSnapshot
@@ -149,6 +160,7 @@ proc semanticFacts(fixture: DiskHistoryFixture) =
   assert emptyHead.proofView.lookup(unknown).error == ProofViewError.MissingWitness
   assert array[32, byte](emptyHead.stateRoot) != array[32, byte](
       emptyHead.current.value.headerInfo.unsigned.priorState)
+
 proc window(fixture: DiskHistoryFixture): LightApplicationHead =
   ## Fresh successor roots clear old evidence and retain only the configured newest directly linked headers.
   let limits = fixture.blocks[0].policy
@@ -169,6 +181,7 @@ proc window(fixture: DiskHistoryFixture): LightApplicationHead =
   assert retained.len == 1 and retained.proofView.len == 1
   assert retained.proofView.lookup(chapterKey(StateChapter(11))).value.present
   head
+
 proc refusals(fixture: DiskHistoryFixture) {.raises.} =
   ## Defaults, profile geometry, slot, direct parent and prior-root failures never publish a partially usable head.
   let limits = fixture.blocks[0].policy
@@ -224,6 +237,7 @@ proc refusals(fixture: DiskHistoryFixture) {.raises.} =
   checksum(identity)
   let wrongSlot = captureCheckpointTrust(identity, fixture.blocks[0].headerWire, ByteLimit(1048576)).value
   assert captureLightHead(wrongSlot, limits).error == LightHeadError.TrustMismatch
+
 proc codec(head: LightApplicationHead, fixture: DiskHistoryFixture) =
   ## Every retained header is hash/slot/profile/parent/prior-root checked, with independent current trust and exact framing.
   let limits = fixture.blocks[0].policy
@@ -257,6 +271,7 @@ proc codec(head: LightApplicationHead, fixture: DiskHistoryFixture) =
       for index in 0..<4: changed[26+238+index] = 255 # Huge first-header length refuses before narrowing or copying.
     assert restoreLightHead(changed, expected, head.proofView, limits, ByteLimit(4194304)).error !=
         LightHeadError.None
+
 proc cycle(fixture: DiskHistoryFixture) =
   ## All newly created immutable header/view/context owners must release after this isolated operation activation.
   let head = window(fixture)
@@ -267,6 +282,7 @@ proc cycle(fixture: DiskHistoryFixture) =
   let bytes = encodeLightHead(enriched, ByteLimit(4194304)).value
   let restored = restoreLightHead(bytes, selected.trust, enriched.proofView, limits, ByteLimit(4194304)).value
   assert restored.proofView.lookup(chapterKey(StateChapter(11))).value.present
+
 proc main() {.raises.} =
   ## The native suite uses genuine independently authored complete fixtures only as external proof/header oracles.
   let fixture = diskHistoryFixture(withFinality = false)

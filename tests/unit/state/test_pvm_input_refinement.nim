@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_input_refinement_arc_release"}
 
 ## Genuine owned-input execution binds fetched bytes, source identity and lookup; failures retain no completed prefix.
@@ -26,11 +27,14 @@ import ../../support/[pvm_input_refinement, pvm_report_results, pvm_refinement_o
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Controlled hashing failure proves invalid source refusal precedes execution.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe copied counters without relying on a successful fabricated backend result.
+
 proc expect[T](outcome: InputRefinementResult[T], reason: InputRefinementError) =
   ## Inspect exact alternatives without extracting failed payloads.
   assert outcome.error == reason, "input execution reason mismatch"
+
 proc output(done: InputRefinement, item: uint64): seq[byte] =
   ## Walk only immutable retained execution provenance to inspect actual normalized guest bytes.
   done.inputRefinementIdentity.value.identitySource.value.authorizedDigests.value.digestAt(
@@ -169,10 +173,12 @@ assert replay.inputRefinementIdentity.value.identityInfo.value.packageHash.bytes
 assert replay.output(1) == done.output(1), "owned input check: replay.output(1)"
 expect(default(InputRefinement).inputRefinementSource, InputRefinementError.Uninitialized)
 expect(default(InputRefinement).inputRefinementIdentity, InputRefinementError.Uninitialized)
+
 proc detached(): InputRefinement =
   ## Retire the original complete state, parameters, package and verified tables before result extraction.
   executionRun(executionFixture(authCode, [fetchedGuest(4)])).value
 assert detached().output(0) == @[97'u8, 98, 99], "owned input check: detached().output(0)"
+
 proc cycle() =
   ## Release final identity/input ownership and late-failed execution prefixes on every iteration.
   let completed = executionRun(current).value

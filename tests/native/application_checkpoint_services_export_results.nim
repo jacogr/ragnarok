@@ -2,19 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Service parent relocation and forgotten export shutdown enforce actual native child lifetimes.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/[services, options]
 import ../../src/app/checkpoint/file as checkpoint_file
+
 proc started(): Options =
   ## No listeners, chain or fixtures are needed to test a genuine stable service lifecycle.
   result = default(Options)
   assert parseCanonicalOptions(@["server"], result)
+
 proc forgotten() {.raises.} =
   ## An actual native export worker must not outlive aggregate destruction.
   var owner = default(Services)
   assert owner.start(started(), "guard")
   assert owner.startCheckpointExport("build/application-checkpoint-services-unclosed") ==
       ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Genuine inactive moves and explicit joined aggregate close are positive controls.
   let mode = paramStr(1)

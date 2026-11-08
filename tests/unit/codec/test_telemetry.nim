@@ -134,9 +134,11 @@ queued.lost = 8
 queued.failed(20)
 assert queued.length == 0 and queued.offset == 0 and queued.lost == 0
 assert queued.retryAt == 5020
+
 # A Unix stream pair gives deterministic backpressure without a collector process or network race.
 proc socketPair(domain, kind, protocol: cint, descriptors: ptr cint): cint {.importc: "socketpair",
     header: "<sys/socket.h>".}
+
 # Receive consumes only a caller-owned bounded buffer and never retains it.
 proc receive(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}

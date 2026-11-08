@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused prepared current updates expose no immutable candidate or inactive child failure.
+
 import std/cmdline
 import ../../src/chain/provider
 import ../../src/codec/bounded

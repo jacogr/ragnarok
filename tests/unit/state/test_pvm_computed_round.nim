@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_round_arc_release"}
 
 ## Original computed gas and exact parent privileges bind real initial accumulation inputs without guest execution.
@@ -21,8 +22,10 @@ import ../../support/[pvm_computed_round, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reject unexpected hashing after the real computed/signed source pipeline finishes.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Inspect actual backend activity without substituting successful results.
+
 proc expect[T](outcome: ComputedRoundResult[T], reason: ComputedRoundError) =
   ## Check exact refusal alternative before extracting application data or selected child reasons.
   assert outcome.error == reason, "computed round reason"
@@ -84,12 +87,14 @@ reset(0)
 expect(default(ComputedAccumulationRound).computedRoundSource, ComputedRoundError.Uninitialized)
 expect(default(ComputedAccumulationRound).computedRoundPlan, ComputedRoundError.Uninitialized)
 expect(default(ComputedAccumulationRound).computedRoundParameters, ComputedRoundError.Uninitialized)
+
 proc detached(): ComputedAccumulationRound =
   ## Retain actual source, original parameters, privilege snapshot and service inputs after caller owners retire.
   let source = roundFixture()
   prepareComputedRound(source, computedRoundConfig(source)).value
 let retained = detached()
 assert retained.computedRoundPlan.value.roundProjection.value.roundInputs.value.invocationServiceCount.value == 1
+
 proc cycle(source: ComputedReportSuccessor, config: ComputedRoundConfig) =
   ## Release complete queue/privilege/operand/service preparation and copied original parameters each iteration.
   let round = prepareComputedRound(source, config).value

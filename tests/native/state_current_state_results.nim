@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict result and source guards use a real signed complete successor as positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, current_typed_context,
     accumulation_current_chain_context, state_inventory_context]
@@ -11,21 +12,27 @@ import ../../src/state/global_snapshot
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/codec/[bounded, report_owned]
 import ../../src/codec/state/composition as state_composition
+
 proc extract(outcome: CurrentStateResult[CurrentStateSerialization]) {.noinline.} =
   ## Failed/default alternatives cannot expose payloads.
   discard outcome.value
+
 proc manifest(outcome: CurrentStateResult[CurrentStateSerialization]) {.noinline.} =
   ## Only genuinely failed matching supplies this reason.
   discard outcome.manifestFailure
+
 proc inventory(outcome: CurrentStateResult[CurrentStateSerialization]) {.noinline.} =
   ## Only genuinely failed fact capture supplies this reason.
   discard outcome.inventoryFailure
+
 proc globals(source: CurrentStateSerialization) {.noinline.} =
   ## Default wrappers cannot grant producer identity.
   discard source.currentStateGlobals.value
+
 proc facts(source: CurrentStateSerialization) {.noinline.} =
   ## Default wrappers cannot grant logical inventory.
   discard source.currentStateInventory.value
+
 proc main() {.raises.} =
   ## Trusted fixture I/O is separate from intentional guard failures.
   case paramStr(1)

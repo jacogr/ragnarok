@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_lookup_arc_release"}
 
 ## Authored lookup programs verify exact namespace selection, bounded suffix copying and atomic guest writes.
@@ -22,6 +23,7 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_ev
 
 ## Refuse namespace hashing only after authentic fixture preparation has completed.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Prove affordability/memory/account checks precede cryptographic namespace work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

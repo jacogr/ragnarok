@@ -3,6 +3,7 @@
 
 ## Immutable source-bound CE139/140 progress authenticates each proven packet before threshold reconstruction.
 ## Only detached request facts leave the shared graph; all packet/import owners remain under the managed worker lease.
+
 import ./[work_submission, import_recovery, availability_proof, availability_merkle, read_stream]
 import ./endpoints
 import ../chain/[provider, genesis, import_catalog]
@@ -67,37 +68,45 @@ type
     endpoint*: EndpointResult
     request*: ReadRequest
     maximum*: ByteLimit
+
 func error*[T](outcome: WorkRecoveryResult[T]): WorkRecoveryError =
   ## Inspect a selected reason without a writable discriminator.
   outcome.status
+
 func value*[T](outcome: WorkRecoveryResult[T]): T {.requires: outcome.status ==
     WorkRecoveryError.None.} =
   ## Extract only a completely selected source, progress or input table.
   outcome.completed
+
 func catalogError*[T](outcome: WorkRecoveryResult[
     T]): ImportCatalogError {.requires: outcome.status == WorkRecoveryError.CatalogFailure.} =
   ## Preserve the exact original selected-chain catalog refusal.
   outcome.catalogReason
+
 func transferError*[T](outcome: WorkRecoveryResult[T]): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] {.requires: outcome.status ==
     WorkRecoveryError.TransferFailure.} =
   ## Preserve the genuine failed independent-coordinate verifier, with its original backend/Merkle cause.
   outcome.transferReason
+
 func reconstructionError*[T](outcome: WorkRecoveryResult[
     T]): ImportRecoveryResult {.requires: outcome.status in {
     WorkRecoveryError.ReconstructionFailure, WorkRecoveryError.InvalidErasureRoot}.} =
   ## Only a genuine reconstruction refusal can be extracted; invalid-root classification additionally requires proven packets.
   outcome.recoveryReason
+
 func bindingError*[T](outcome: WorkRecoveryResult[T]): WorkSubmissionResult[
     VerifiedImportInputs] {.requires: outcome.status == WorkRecoveryError.BindingFailure.} =
   ## Complete package binding retains its real original verifier cause.
   outcome.bindingReason
+
 func failure[T](reason: WorkRecoveryError): WorkRecoveryResult[T] {.requires: reason in {
     WorkRecoveryError.Uninitialized, WorkRecoveryError.InvalidSource,
         WorkRecoveryError.InvalidIndex,
     WorkRecoveryError.InvalidPacket, WorkRecoveryError.LimitExceeded}.} =
   ## A local refusal cannot fabricate a child result or progress owner.
   WorkRecoveryResult[T](status: reason)
+
 func workRecoveryPolicy*(limits: WorkRecoveryLimits): WorkRecoveryPolicy =
   ## Activation requires explicit finite network and computation ceilings; no guessed defaults enable recovery.
   if uint64(limits.items) == 0 or uint64(limits.items) > 3072: return default(WorkRecoveryPolicy)
@@ -109,18 +118,22 @@ func workRecoveryPolicy*(limits: WorkRecoveryLimits): WorkRecoveryPolicy =
   if uint64(limits.bytes) == 0 or uint64(limits.hashes) == 0 or uint64(limits.hashBytes) == 0:
     return default(WorkRecoveryPolicy)
   WorkRecoveryPolicy(ready: true, limits: limits)
+
 func valid*(policy: WorkRecoveryPolicy): bool =
   ## A default value confers no recovery admission authority.
   policy.ready
+
 func limits*(policy: WorkRecoveryPolicy): WorkRecoveryLimits {.requires: policy.ready.} =
   ## Copy fixed independent local caps while retaining no canonical or logging alias.
   policy.limits
+
 func reserve(total: var uint64, count, each, maximum: uint64): bool =
   ## Check multiplication and aggregate addition before doing either operation.
   if total > maximum: return false
   if count != 0 and each > (maximum-total) div count: return false
   total += count*each
   true
+
 proc beginWorkRecovery*(original: WorkImportPlan, view: ChainView,
     policy: WorkRecoveryPolicy): WorkRecoveryResult[WorkRecovery] =
   ## Bind the exact original authorization map before any catalog capture, allocation or source selection.
@@ -199,16 +212,19 @@ proc beginWorkRecovery*(original: WorkImportPlan, view: ChainView,
     plan: RecoveryPlan(original: original, entries: entries.value, sources: sources,
         policy: policy),
     cursor: 0, version: 1, packets: @[], imports: @[])))
+
 proc recoveryMatches*(recovery: WorkRecovery, grant: AuthorizedWorkSubmission): bool =
   ## An exact grant, not a replacement source with identical bytes, owns every later packet and completion job.
   let data = recovery.data
   if data == nil: return false
   data.plan.original.importPlanMatches(grant)
+
 proc recoveryPolicy*(recovery: WorkRecovery): WorkRecoveryPolicy =
   ## Copy only immutable numeric policies while the caller owns canonical graph access.
   let data = recovery.data
   if data == nil: return default(WorkRecoveryPolicy)
   data.plan.policy
+
 func peerRejected*(outcome: WorkRecoveryResult[WorkRecovery]): bool =
   ## Only malformed or cryptographically incorrect remote data is retryable; local budget/backend/source failures are fatal.
   if outcome.status == WorkRecoveryError.InvalidPacket: return true
@@ -218,6 +234,7 @@ func peerRejected*(outcome: WorkRecoveryResult[WorkRecovery]): bool =
         AvailabilityMerkleError.RootMismatch]
   outcome.transferReason.error in [AvailabilityTransferError.InvalidPayload,
     AvailabilityTransferError.InvalidProof, AvailabilityTransferError.RootMismatch]
+
 proc recoveryInfo*(recovery: WorkRecovery): WorkRecoveryResult[WorkRecoveryInfo] =
   ## Fixed copied geometry does not expose packet bytes, original grants or source-bearing handles.
   let data = recovery.data
@@ -231,6 +248,7 @@ proc recoveryInfo*(recovery: WorkRecovery): WorkRecoveryResult[WorkRecoveryInfo]
     info.threshold = int(erasureGeometry(BundleLength(4104),
         source.erasureShards).value.originalShards)
   WorkRecoveryResult[WorkRecoveryInfo](status: WorkRecoveryError.None, completed: info)
+
 proc recoveryRequest*(recovery: WorkRecovery, validator: StateValidatorIndex): WorkRecoveryResult[
     WorkRecoveryRequest] =
   ## Select one original assurer and its exact two-row coordinates; callbacks receive only copied raw selector bytes.
@@ -267,10 +285,12 @@ proc recoveryRequest*(recovery: WorkRecovery, validator: StateValidatorIndex): W
     version: data.version, validator: validator, identity: assigned.value.identity,
     endpoint: validatorEndpoint(array[128, byte](assigned.value.metadata)),
     request: request.value, maximum: data.plan.policy.limits.replyBytes))
+
 proc messageLength(wire: openArray[byte], offset: int): uint64 {.requires: offset >= 0 and offset <= wire.len-4.} =
   ## Read E4 only after the complete prefix extent has been proved.
   uint64(wire[offset]) or (uint64(wire[offset+1]) shl 8) or (uint64(wire[offset+2]) shl 16) or (
       uint64(wire[offset+3]) shl 24)
+
 proc acceptRecoveryPacket*(recovery: WorkRecovery, version: uint64, validator: StateValidatorIndex,
     wire: openArray[byte]): WorkRecoveryResult[WorkRecovery] =
   ## Validate one complete response against the original private source and append immutable chunks only after full success.
@@ -360,6 +380,7 @@ proc acceptRecoveryPacket*(recovery: WorkRecovery, version: uint64, validator: S
     data: RecoveryData(
     plan: data.plan, cursor: cursorImport, version: data.version+1, proven: proven,
     packets: packets, imports: imports)))
+
 proc retryRecoveryProven*(recovery: WorkRecovery): WorkRecoveryResult[WorkRecovery] =
   ## Exhausted unproven responders can retry the same original occurrence with proofs; no unproven packet crosses this boundary.
   let data = recovery.data
@@ -372,6 +393,7 @@ proc retryRecoveryProven*(recovery: WorkRecovery): WorkRecoveryResult[WorkRecove
     data: RecoveryData(
     plan: data.plan, cursor: data.cursor, version: data.version+1, proven: true, packets: @[],
         imports: imports)))
+
 proc completeRecoveredWork*(recovery: WorkRecovery, grant: AuthorizedWorkSubmission,
     extrinsics: openArray[byte], limits: WorkSubmissionLimits): WorkRecoveryResult[
         VerifiedImportInputs] =

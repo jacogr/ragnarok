@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_disk_publication_arc_release"}
 
 ## Genuine current PVM successors commit before canonical/RPC visibility and reopen with exact state/history.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[accumulation_current_chain_context, accumulation_provision_integration,
@@ -20,6 +22,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/report_owned
 import ../../../src/rpc/server
+
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.
   JournalLimits(repository: RepositoryLimits(codec: RecordLimits(trie: StateTrieLimits(
@@ -37,6 +40,7 @@ proc listener(rpc: var Server, view: ChainView) =
     discard posix.close(selected.fd)
     if rpc.start(selected.port, "current-disk-test", parameters, view): return
   assert false, "current disk RPC startup failed"
+
 proc witness(context: CurrentChainFixture, managed, enabled: bool) {.raises.} =
   ## Both physical backends retain the exact prepared child; refusal never writes or installs a prefix.
   let original = initApplicationChain(context.currentChainSeeded).value
@@ -110,11 +114,13 @@ proc witness(context: CurrentChainFixture, managed, enabled: bool) {.raises.} =
     removeManagedSample(path, [ManagedEpoch(1)]) # The test creates one managed epoch and no compaction.
   else:
     assert posix.unlink(path.toCString()) == 0 # Each repeated witness starts with an absent database.
+
 proc cycle(context: CurrentChainFixture, disk: DiskStateStore, owner: ApplicationChain) =
   ## Context encoding and retained current update copies release their immutable graph without journal mutation.
   let prepared = owner.prepareAccumulation(context.source, ByteLimit(100000)).value
   let staged = prepareDiskPublication(disk, owner, prepared, default(StorageChainId), ByteLimit(1048576)).value
   assert staged.ready
+
 proc main() {.raises.} =
   ## Use signed report data and the complete current production chain for every durable successor.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

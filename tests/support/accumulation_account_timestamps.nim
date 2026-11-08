@@ -13,7 +13,9 @@ import ../../src/state/store
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc accountPolicy*(services = 4'u64, bytes = 420'u64): AccumulationAccountConfig =

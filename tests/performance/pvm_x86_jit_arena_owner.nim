@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Exercise the real private arena owner after publication, including moved-source observation.
+
 import std/syncio
 include ../../src/pvm/internal/x86_jit
 

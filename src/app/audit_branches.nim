@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Side-branch sources retain only fully prepared children of independently trusted views.
+
 import ../chain/[genesis, provider]
 import ../codec/bounded
 import ../state/store
@@ -28,27 +29,33 @@ type
 func valid*(limits: AuditBranchLimits): bool =
   ## Bounded policy leaves omission inactive and caps whole-map reservations independently.
   uint64(limits.branches) in 1'u64..64'u64 and uint64(limits.bytes) in 1'u64..16'u64*1024*1024*1024
+
 proc configure*(owner: var AuditBranches, limits: AuditBranchLimits): bool =
   ## Retention cannot be reconfigured over an existing branch authority.
   if owner.limits.valid or not limits.valid: return false
   owner.limits = limits
   true
+
 proc at*(owner: AuditBranches, hash: genesis.BlockHash): ChainView =
   ## Resolve only an independently admitted exact branch child.
   for row in owner.rows:
     if array[32, byte](row.candidate.hash) == array[32, byte](hash): return row.view
   default(ChainView)
+
 func len*(owner: AuditBranches): int =
   ## Fixed count exposes neither map nor mutable queue storage.
   owner.rows.len
+
 func nextAfter*(owner: AuditBranches, after: uint64): AuditBranchCandidate =
   ## Stable monotonic positions permit compaction without skipping an unprocessed sibling.
   for row in owner.rows:
     if row.candidate.serial > after: return row.candidate
   default(AuditBranchCandidate)
+
 proc clear*(owner: var AuditBranches) =
   ## Joined Services teardown retires every independently retained view.
   owner = default(AuditBranches)
+
 proc parentView*(owner: AuditBranches, selected: ChainView, parent: genesis.BlockHash): ChainView =
   ## An older selected parent must still be on the finalized branch; a side parent must still name actual installed finality.
   let canonical = selected.retainedPrefix(parent)
@@ -65,6 +72,7 @@ proc parentView*(owner: AuditBranches, selected: ChainView, parent: genesis.Bloc
     if anchored.error != ViewFinalizeError.None: return default(ChainView)
     return anchored.value
   branch
+
 proc retire*(owner: var AuditBranches, selected: ChainView) =
   ## Reclaim branches already selected or that diverge before independently installed finality.
   let finalized = selected.finalizedBlock
@@ -81,6 +89,7 @@ proc retire*(owner: var AuditBranches, selected: ChainView) =
       if kept != index: owner.rows[kept] = move(owner.rows[index])
       inc kept
   owner.rows.setLen(kept)
+
 proc liveViews*(owner: AuditBranches, selected: ChainView): seq[ChainView] =
   ## Capture only independently retained alternatives that still descend from actual installed finality.
   result = @[]
@@ -88,6 +97,7 @@ proc liveViews*(owner: AuditBranches, selected: ChainView): seq[ChainView] =
     # Use the same current finality boundary as local source resolution.
     let branch = owner.parentView(selected, row.candidate.hash)
     if branch.bestBlock.error == GenesisError.None: result.add(branch)
+
 proc chargeBlock(selected: BlockSnapshot, used: var uint64, limit: uint64): bool =
   ## Reserve the inherited map ceiling, committed entries/nodes and the exact optional block body.
   let state = selected.stateSnapshot
@@ -103,6 +113,7 @@ proc chargeBlock(selected: BlockSnapshot, used: var uint64, limit: uint64): bool
   if uint64(counts.entries) > (limit-used) div 128: return false
   used += uint64(counts.entries)*128
   true
+
 proc reservation(view: ChainView, limit: uint64): uint64 =
   ## Conservatively count each retained owner including separately pinned finality and header-only anchors.
   result = view.viewRetentionInfo.bytes
@@ -117,6 +128,7 @@ proc reservation(view: ChainView, limit: uint64): uint64 =
   let finalized = view.finalizedBlock
   if finalized.error == GenesisError.None and not chargeBlock(finalized.value, result, limit):
     return high(uint64)
+
 proc retain*(owner: var AuditBranches, selected: ChainView,
     prepared: PreparedCurrentChainUpdate): AuditBranchError =
   ## Compare the certificate's entire prior view against independently retained state before granting side-branch authority.

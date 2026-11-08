@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit independently stated CLI producer/continuation policies supplement existing source qualification and execution configuration.
+
 import ./[current_identity_context, current_namespace_refresh_context]
 import ../../src/app/current/download/policy as current_download_policy
 import ../../src/state/logical_continuation
@@ -9,6 +10,7 @@ import ../../src/state/accumulation/[effects as accumulation_effects,
     storage_history as accumulation_storage_history]
 import ../../src/state/request_identity_history
 import ../../src/codec/bounded
+
 proc namespacePolicyTestLimits*(): CurrentNamespacePolicy =
   ## Complete reviewed policy values permit two service namespaces while leaving service membership tracing explicitly disabled.
   let logical = namespaceLogicalLimits()

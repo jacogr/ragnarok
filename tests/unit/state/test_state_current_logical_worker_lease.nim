@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen logical plans sharing the actual proof worker's canonical graph remain untouched until exact collection or joined shutdown.
+
 # @@Verification={"arc":"state_current_logical_worker_lease_arc_release"}
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
@@ -16,14 +17,17 @@ import ../../../src/state/[trie_proof, store]
 import ../../../src/app/proof/[query as proof_query, worker as proof_worker]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/layout as state_layout
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar-only deadline polling never retains, drops or copies a canonical alias while the worker leases it.
+
 proc waitDone(worker: var StateProofWorker) =
   ## Done still owns the graph; only a matching collection or joined close below reopens host access.
   let start = getMonoTime()
   while worker.phase != ProofWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000)
+
 proc cancelledCycle(worker: var StateProofWorker, plan: CurrentLogicalRefreshPlan,
     selection: StateProofPlan, stale: ProofWorkerTicket) =
   ## Construct every shared graph alias before submission and keep all such owners completely untouched until actual collection.
@@ -41,6 +45,7 @@ proc cancelledCycle(worker: var StateProofWorker, plan: CurrentLogicalRefreshPla
   let refreshed = executeCurrentLogicalRefresh(plan).value
   assert sameStateSnapshot(logical.logicalProducer.currentUpdateState,
       refreshed.logicalProducer.currentUpdateState)
+
 proc main() {.raises.} =
   ## Genuine source/plan construction and independent root expectations finish before starting the fixed-address worker lease.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

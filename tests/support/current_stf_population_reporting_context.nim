@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared three-core/nine-validator reporting budgets and exact nested scenario failures; no executable entry point.
+
 import ../../src/app/[chain, candidate]
 import ../../src/codec/bounded
 import ../../src/state/accumulation/current/[completion as accumulation_current_completion,

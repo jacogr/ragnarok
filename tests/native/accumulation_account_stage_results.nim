@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Inactive account phase owners and reasons remain guarded at runtime.
+
 import std/cmdline
 import ../../src/state/accumulation/account/stage as accumulation_account_stage
 import "../../src/state/accumulation/block/guests" as accumulation_block_guests

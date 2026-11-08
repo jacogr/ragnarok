@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restart-safe expected-manifest retirement requires complete old content and never guesses an epoch from names.
+
 # @@Verification={"arc":"storage_full_paged_expected_retirement_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference, full_paged_native_fixture]
@@ -12,21 +13,25 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc path(label: string): string =
   ## Every destructive/fault scenario owns a fresh process-private namespace.
   "full-expected-retirement-" & $storageProcessId() & "-" & label
+
 proc read(path: string): string =
   ## Fixture IO is separate from observed native calls and cannot silently substitute missing data.
   try:
     result = readFile(path)
   except:
     assert false, "retirement fixture read failed"
+
 proc write(path, bytes: string) =
   ## Fixture corruption and replacement are explicit test-only mutations of a closed old artifact.
   try:
     writeFile(path, bytes)
   except:
     assert false, "retirement fixture write failed"
+
 proc seed(directory: string, old, target: FullPagedFixture, contextual: bool): FullPagedManifest =
   ## All original owners retire before a new writer uses independently retained old selection authority.
   var config = old.config
@@ -43,10 +48,12 @@ proc seed(directory: string, old, target: FullPagedFixture, contextual: bool): F
     context).error == FullPagedNativeError.None
   assert writer.publish(candidate).error == FullPagedNativeError.None
   assert writer.close == FileError.None
+
 proc configuration(target: FullPagedFixture, contextual: bool): FullPagedNativeConfig =
   ## Reopen policy is independently selected; full admission never inherits limits from old metadata.
   result = target.config
   if contextual: result.limits.contextBytes = ByteLimit(4096) # Same finite V2 context ceiling as bootstrap.
+
 proc normal(old, target: FullPagedFixture, contextual: bool) =
   ## Current/new/default/wrong-content refusals, foreign pin backpressure and restart idempotence constrain deletion.
   let directory = path("normal-" & $contextual)
@@ -86,6 +93,7 @@ proc normal(old, target: FullPagedFixture, contextual: bool) =
   assert reader.lookup(target.header.root, key(0)).value.bytes[0] == 9
   assert reader.close == FileError.None
   assert writer.close == FileError.None
+
 proc faults(old, target: FullPagedFixture) =
   ## Every observed read/scratch/lock/close/unlink/barrier failure preserves CURRENT and resolves by exact reopen/retry.
   let directory = path("count")
@@ -124,8 +132,10 @@ proc faults(old, target: FullPagedFixture) =
       assert openFullPagedWriter(writer, attempt, config).error == FullPagedNativeError.None
       assert writer.reclaimExpectedEpoch(oldManifest, selected).error == FullPagedNativeError.None
       assert writer.close == FileError.None
+
 proc renameNative(source, target: cstring): cint {.importc: "rename", cdecl, header: "<stdio.h>".}
   ## Test-only replacement creates a new inode with equal bytes; production never mutates an admitted artifact.
+
 proc identities(old, target: FullPagedFixture) =
   ## Content authority survives restart and equal-byte inode replacement; captured receipts deliberately do not.
   let directory = path("identity")
@@ -148,6 +158,7 @@ proc identities(old, target: FullPagedFixture) =
       FileError.RecoveryMismatch
   assert writer.reclaimExpectedEpoch(previous, current).error == FullPagedNativeError.None
   assert writer.close == FileError.None
+
 proc corruption(old, target: FullPagedFixture) =
   ## A correct old header/manifest cannot hide changed payload pages from complete admission before deletion.
   let directory = path("corruption")
@@ -164,6 +175,7 @@ proc corruption(old, target: FullPagedFixture) =
   assert refused.error != FullPagedNativeError.None
   assert read(name) == bytes and read(directory & "/CURRENT") == current
   assert writer.close == FileError.None
+
 proc main() =
   ## V1/V2 share guarded retirement; repeated confirmed absence owns no leaked descriptor, graph or scratch allocation.
   let old = sample(5)

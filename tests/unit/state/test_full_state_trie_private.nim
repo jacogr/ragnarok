@@ -11,8 +11,10 @@ include ../../../src/storage/full/state_trie
 
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observation and optionally refuse every hash.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse after an exact successful hash prefix, including long-value encoding hashes.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive attempts rather than inferred cached metadata.
 

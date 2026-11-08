@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent sixteen-chapter fixtures and service evidence roundtrip through exact planned projections.
+
 import std/[assertions, envvars, syncio]
 import ../../support/proof_global_helpers
 import ../../../src/state/proof/[global as proof_global, plan as proof_plan, view as proof_view,
@@ -13,10 +14,13 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     accounts as state_accounts, safrole as state_safrole, consensus as state_consensus,
     composition as state_composition]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained backend observer to prove projection never rehashes already verified facts.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Measure every attempted hash after source authentication.
+
 proc main() {.raises.} =
   ## Exercise mixed scope under one independently computed root without complete-state conversion.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

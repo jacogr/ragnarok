@@ -3,9 +3,9 @@
 
 ## Bounded main-thread retention of complete hash-checked preimages, independent of canonical state graphs.
 ## Cached content has no guarantee, execution, availability or judgment authority.
+
 import std/assertions
 import ./[read_stream, read_validation]
-
 
 const MaxCachedPreimages* = 8 ## Fixed row capacity, independent of untrusted peer/preimage counts.
 const MaxPreimageCacheBytes* = 32*1024*1024 ## Logical framed bytes retained after insertion; allocator/transient copies are separate.
@@ -31,25 +31,31 @@ type
 func error*(outcome: PreimageCacheResult): PreimageCacheError =
   ## Observe a miss without extracting an empty successful reply.
   outcome.status
+
 func value*(outcome: PreimageCacheResult): ReadReply {.requires: outcome.status ==
     PreimageCacheError.None.} =
   ## Frozen request facts still require a live exact node read ticket before sending.
   outcome.completed
+
 func len*(cache: PreimageCache): int =
   ## Scalar capacity observation never accesses a worker-owned graph.
   cache.count
+
 func byteLength*(cache: PreimageCache): int =
   ## Count logical framed bytes, including each E4 prefix.
   cache.bytes
+
 proc clear*(cache: var PreimageCache) =
   ## Retire all detached owners; replacement generations have no externally exposed ticket authority.
   cache = default(PreimageCache)
+
 proc identity(request: ReadRequest): array[32, byte] {.requires: request.valid and request.kind ==
     ReadKind.Preimage.} =
   ## Complete fixed requests provide exactly one full preimage hash.
   let payload = request.payload
   result = default(array[32, byte])
   for index in 0..<32: result[index] = payload[index]
+
 proc removeOldest(cache: var PreimageCache) =
   ## One bounded scan removes the least recently inserted/accessed owner before retaining the replacement.
   var oldest = -1
@@ -60,6 +66,7 @@ proc removeOldest(cache: var PreimageCache) =
   cache.bytes -= cache.entries[oldest].reply.byteLength
   dec cache.count
   cache.entries[oldest] = default(CacheEntry)
+
 proc remember*(cache: var PreimageCache, checked: CheckedReadReply): PreimageCacheError =
   ## Only a complete sealed verifier result can enter retention; peer bytes and guessed hashes cannot populate it directly.
   if not checked.valid: return PreimageCacheError.InvalidPreimage
@@ -93,6 +100,7 @@ proc remember*(cache: var PreimageCache, checked: CheckedReadReply): PreimageCac
   inc cache.count
   cache.bytes += wire.len
   PreimageCacheError.None
+
 proc find*(cache: var PreimageCache, request: ReadRequest): PreimageCacheResult =
   ## Full method/hash binding protects both lookup and later native response matching.
   if not request.valid: return PreimageCacheResult(status: PreimageCacheError.InvalidPreimage)

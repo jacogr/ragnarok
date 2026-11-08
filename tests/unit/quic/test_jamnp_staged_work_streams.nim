@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_staged_work_streams_arc_release"}
 
 ## Actual authenticated builder streams pause at headers and acknowledge only genuinely collected source-bound work.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/app/[services, options, startup]
 import ../../../src/app/proof/[worker, work_submission as work_jobs]
@@ -23,6 +25,7 @@ type
   Detached = object ## Completed source-free transcripts survive all native/Services lifetimes for independent ownership checks.
     header: UntrustedWorkHeader
     body: UntrustedWorkBody
+
 proc publicKey(): StateEdKey {.raises.} =
   ## Only the actual fixture's public TLS identity enters the validator roster; no private bytes escape setup.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -30,11 +33,13 @@ proc publicKey(): StateEdKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   StateEdKey(bytes)
+
 proc frame(payload: openArray[byte]): seq[byte] =
   ## Independent literal E4 framing never calls the production route or message encoder.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(payload.len) shr (index*8)) and 255))
   for octet in payload: result.add(octet)
+
 proc wire(f: WorkFixture, variant: Variant): seq[byte] =
   ## Independently authored selectors and separate payloads exercise header/body boundaries over actual TLS.
   result = @[if variant in [Variant.Package, Variant.LargePackage]: 133'u8 else: 146'u8]
@@ -60,18 +65,21 @@ proc wire(f: WorkFixture, variant: Variant): seq[byte] =
     if variant == Variant.CorruptProof: proofs[1] = proofs[1] xor 1
     for octet in frame(proofs): result.add(octet)
   if variant == Variant.Suffix: result.add(0) # One trailing octet cannot become an accepted extra message.
+
 proc pump(server: var NodeService, probe: var NodeProbe, milliseconds = 1) =
   ## Native callbacks copy only bounded detached bytes while a Services CPU job owns all canonical aliases.
   let until = getMonoTime()+initDuration(milliseconds = milliseconds)
   while getMonoTime() < until:
     assert server.poll(getMonoTime(), 0)
     probe.poll()
+
 proc waitDone(services: var Services, server: var NodeService, probe: var NodeProbe) =
   ## Transport remains nonblocking through Queued, Running and Done; no canonical alias is read during this wait.
   let deadline = getMonoTime()+initDuration(seconds = 8)
   while services.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "staged work CPU deadline"
     pump(server, probe)
+
 proc waitHeader(server: var NodeService, probe: var NodeProbe): NodeWorkTask =
   ## Only a complete small header creates one exact host claim.
   let deadline = getMonoTime()+initDuration(seconds = 5)
@@ -80,6 +88,7 @@ proc waitHeader(server: var NodeService, probe: var NodeProbe): NodeWorkTask =
     if task.error == NodeError.None: return task.value
     assert getMonoTime() < deadline, "staged work header deadline"
     pump(server, probe)
+
 proc waitBody(server: var NodeService, probe: var NodeProbe,
     ticket: NodeWorkTicket): UntrustedWorkBody =
   ## Exact request FIN and bounded messages precede raw body handoff.
@@ -89,6 +98,7 @@ proc waitBody(server: var NodeService, probe: var NodeProbe,
     if body.error == NodeError.None: return body.value
     assert getMonoTime() < deadline, "staged work body deadline"
     pump(server, probe)
+
 proc settleReset(server: var NodeService, probe: var NodeProbe, flow: int,
     locallyCancelled = false) =
   ## Observe actual reset and native physical retirement before testing released quota.
@@ -100,6 +110,7 @@ proc settleReset(server: var NodeService, probe: var NodeProbe, flow: int,
         flow].reset & ",closed=" & $probe.flows[flow].closed & ",physical=" &
         $server.workStreamCount
     pump(server, probe)
+
 proc live(variant: Variant): Detached {.raises.} =
   ## Actual Services owns grants/refinement; the native owner and simulated dispatcher retain only opaque tokens and raw transcripts.
   result = default(Detached)
@@ -378,6 +389,7 @@ for variant in low(Variant)..high(Variant):
     if variant == Variant.Success: retained = completed
   except:
     assert false, "staged work fixture setup: " & $variant
+
 proc releaseCycle(f: Detached) =
   ## Copy/release genuine complete transcripts and detached byte outputs after every native/Services owner has closed.
   let header = f.header

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Logical checkpoints preserve exact prior/posterior/finality provenance and detached byte ownership after original fixture scopes retire.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context]
 import ../../../src/app/logical/checkpoint as logical_checkpoint
@@ -10,10 +11,12 @@ import ../../../src/state/checkpoint
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/state/store
 import ../../../src/codec/bounded
+
 proc scoped(): CurrentUpdateCheckpoint {.raises.} =
   ## All source fixtures retire before the caller reads the retained capsule.
   let fixture = collectedNativeFixture()
   captureLogicalCheckpoint(suppliedNativeState(fixture), ByteLimit(1048576)).value
+
 proc main() {.raises.} =
   ## Original completed full-map qualification grants serialization observations without installation or independent trust.
   let capsule = scoped()

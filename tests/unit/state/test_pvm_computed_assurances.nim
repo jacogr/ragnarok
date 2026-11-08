@@ -23,6 +23,7 @@ import ../../support/[pvm_computed_assurances, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force actual maintained admission hashing refusal after all genuine source/candidate construction.
+
 proc expect[T](outcome: ComputedAssuranceResult[T], reason: ComputedAssuranceError) =
   ## Identify the actual rejected maintained phase before asserting the exact expected selection.
   if outcome.error != reason:
@@ -38,6 +39,7 @@ proc expect[T](outcome: ComputedAssuranceResult[T], reason: ComputedAssuranceErr
       if child.error == BlockTransitionError.AvailabilityFailure: echo "availability ",
           child.availabilityError.error
   assert outcome.error == reason, "computed assurance reason"
+
 proc reportBytes(report: OwnedReport): seq[byte] =
   ## Independently compare the entire original pending assignment with each exposed computed availability output.
   result = newSeq[byte](report.ownedReportInfo.value.consumed)
@@ -163,6 +165,7 @@ expect(assured.computedAssuredReportAt(ComputedAvailableIndex(high(uint64))),
 var copied = assured.computedAssuranceSource.value
 copied = default(AdvancedComputedChain)
 assert sameStateSnapshot(assured.computedAssuranceSource.value.computedChainBlock.value.stateSnapshot, original)
+
 proc detached(): AssuredComputedReports =
   ## Retain real source, signed successor and report views after every local preparation handle retires.
   let prior = assurancePrior()
@@ -171,6 +174,7 @@ let held = detached()
 assert held.computedAssuranceInfo.value.computed == 2
 assert uint64(held.computedAssuredReportAt(ComputedAvailableIndex(
     1)).value.ownedReportInfo.value.core) == 1
+
 proc cycle(prior: AdvancedComputedChain, candidate: OwnedBlock,
     config: ComputedAssuranceConfig, requiredBytes: uint64) =
   ## Release successful state and a later refused prefix after its first computed report index has been prepared.

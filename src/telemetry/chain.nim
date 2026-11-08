@@ -3,6 +3,7 @@
 
 ## JIP-4 registration projects bounded operator network identity into owned telemetry fields.
 ## It does not validate or initialize a canonical state snapshot.
+
 import ../chain/network_identity
 import ./wire
 

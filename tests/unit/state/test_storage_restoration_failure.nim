@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted-root refusal and narrower policies precede reconstruction crypto; backend refusal is typed.
+
 # @@Verification={"arc": "storage_restoration_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -9,10 +10,13 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse only after the original repository and complete graph are valid.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe that trust and policy refusal never reconstruct a root.
+
 proc cycle() =
   ## Restored tries and retained views survive source close and failed reconstruction attempts.
   fail(0)

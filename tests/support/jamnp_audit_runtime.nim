@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real ordinary application nodes authenticate CE144 against genuinely adopted current blocks; default refusal, duplicate retention, failed proofs and foreign worker retirement preserve exact native and managed ownership.
+
 import std/[assertions, monotimes, times, posix/posix]
 import ../../src/app/[services, options, node as application_node, audit_distribution]
 import ../../src/app/proof/[worker, work_submission]
@@ -15,6 +16,7 @@ import ../../src/crypto/primitives
 import ../../src/bandersnatch/bandersnatch
 import ../../src/quic/address
 import ./[assurance_signer_context, jamnp_topology_fixture]
+
 proc marker(context: AuditContext, skip: int): int =
   ## Find actual private test seeds in the original roster; never modify that roster to suit TLS.
   for candidate in 1..32:
@@ -27,10 +29,12 @@ proc marker(context: AuditContext, skip: int): int =
       if array[32, byte](key) == array[32, byte](context.auditorAt(ordinal).value.ed25519):
         return candidate
   return -1
+
 proc pump(a, b: var ApplicationNode, now: StateTime) {.raises.} =
   ## Production foreground polling alone selects, verifies, collects, retains and acknowledges an upload.
   assert a.poll(getMonoTime(), now, 0), "audit sender loop"
   assert b.poll(getMonoTime(), now, 0), "audit receiver loop"
+
 proc exchange(a, b: var ApplicationNode, target: NodePeer, wire: seq[byte], now: StateTime,
     success: bool) {.raises.} =
   ## Physical stream retirement precedes slot reuse; only the exact live request's bare response FIN grants transport completion.
@@ -53,6 +57,7 @@ proc exchange(a, b: var ApplicationNode, target: NodePeer, wire: seq[byte], now:
       else: assert reply.error != ReadError.None, "refused audit proof cannot acknowledge"
       return
     assert getMonoTime() < deadline, "audit response FIN deadline"
+
 proc auditReceiptRuntime*(receiver: var Services, settings: Options, context: AuditContext,
     contextLimits: AuditContextLimits) {.raises.} =
   ## Complete current publication supplies the receiver's real body/history; a separately decoded complete parent supplies only the sender's genuine TLS role.

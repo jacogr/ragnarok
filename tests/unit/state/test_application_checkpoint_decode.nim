@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_decode_arc_release"}
 
 ## Independent context gates complete-map allocation and every malformed envelope remains payload-free.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/chain
 import ../../../src/app/checkpoint/[codec as checkpoint_codec, identity as checkpoint_identity]
@@ -12,6 +13,7 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/state/[checkpoint, store]
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc matches(state, original: StateStoreSnapshot) =
   ## Full root/count and every original key/value exclude omitted or added entries in restored maps.
   assert state.commitment.entries == original.commitment.entries
@@ -21,12 +23,14 @@ proc matches(state, original: StateStoreSnapshot) =
     let key = original.keyAt(StateEntryIndex(index)).value
     assert state.lookup(key).value.bytes == original.lookup(
         key).value.bytes # Exact count equality also rules out extra restored keys.
+
 proc cycle(bytes: seq[byte], expected: ApplicationCheckpointIdentity,
     original: StateStoreSnapshot) =
   ## Complete temporary restored graphs retire on this synchronous caller thread.
   let restored = decodeApplicationCheckpoint(bytes, expected, genesisStoreLimits(), ByteLimit(
       uint64(bytes.len))).value
   matches(restored.snapshot.value, original)
+
 proc main() {.raises.} =
   ## Trust comes only from the separately captured application context, never from the envelope being loaded.
   let owner = checkpointFixture()

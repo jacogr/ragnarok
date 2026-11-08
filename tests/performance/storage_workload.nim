@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Correctness-validated equal physical-repository workloads compare memory, synced journal and managed IO.
+
 import std/[assertions, syncio, cmdline, monotimes, times]
 import std/posix/posix
 import ../support/managed_storage_samples
@@ -23,12 +24,14 @@ proc key(index: int, deep: bool): StateKey =
   raw[offset] = byte(index shr 8)
   raw[offset+1] = byte(index and 255)
   StateKey(raw)
+
 proc value(index, applied, valueBytes: int): seq[byte] =
   ## Inline and out-of-line payload sizes use the same sixteen deterministic successor updates.
   result = newSeq[byte](valueBytes)
   let octet = if index < applied: byte(index+1) else: byte(index and 255)
   for position in 0..<valueBytes:
     result[position] = octet # Full payload checks follow every timed operation group.
+
 proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: StateRoot, deep: bool,
     valueBytes, batchWidth: int) =
   ## Independently authored keys/values and the sealed fixture root must match after publication/reopen.
@@ -39,6 +42,7 @@ proc check(view: RepositoryView, trie: StateTrieLimits, count: int, expected: St
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
     assert entry.value == value(index, 16*batchWidth, valueBytes)
+
 proc checkHistory(view: RepositoryView, trie: StateTrieLimits, count: int,
     roots: openArray[StateRoot], deep: bool, valueBytes, batchWidth: int) =
   ## Nine authored complete historical maps remain distinct from block finality or checkpoint authority.
@@ -50,9 +54,11 @@ proc checkHistory(view: RepositoryView, trie: StateTrieLimits, count: int,
     for index, entry in entries:
       assert array[31, byte](entry.key) == array[31, byte](key(index, deep))
       assert entry.value == value(index, applied, valueBytes)
+
 proc elapsed(start: MonoTime): int64 =
   ## Monotonic positive nanoseconds describe one fixed public API operation batch.
   (getMonoTime()-start).inNanoseconds
+
 proc main() {.raises.} =
   ## Python selects only explicit engines/sizes and supplies one isolated owned directory per pass.
   assert paramCount() == 6

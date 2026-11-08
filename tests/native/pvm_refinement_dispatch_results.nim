@@ -17,6 +17,7 @@ import ../../src/codec/work/package as work_package
 proc checkPrepared(outcome: RefinementDispatchResult[PreparedRefinementExecution]) =
   ## Confirm the local invalid-machine alternative before attempting forbidden extraction.
   assert outcome.error == RefinementDispatchError.InvalidMachine
+
 proc checkRun(outcome: RefinementDispatchResult[RefinementOutcome]) =
   ## Confirm missing preparation remains a local refusal rather than a successful empty guest result.
   assert outcome.error == RefinementDispatchError.InvalidContext

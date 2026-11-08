@@ -24,6 +24,7 @@ import ./[accumulation_execution_context, pvm_accumulation_context, pvm_accumula
 
 # Collection/planning does no hashing; input binding's actual private state application may refuse atomically.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type

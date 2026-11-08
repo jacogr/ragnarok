@@ -3,6 +3,7 @@
 
 ## Bounded immutable path witnesses for the pinned state trie. Capture validates structure only;
 ## independently supplied roots and keys grant lookup authority through a separate verifier.
+
 import std/[algorithm, assertions]
 import ../codec/bounded
 import ../codec/state/[layout as state_layout, trie as state_trie]

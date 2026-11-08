@@ -108,6 +108,12 @@ reference, negative-probe and orchestration responsibilities.
 | `make format` / `make format-check` | Apply or check both pinned Nim and Rust formatters |
 | `make` / `make help` | List commands without provisioning/building |
 
+Nim formatting also separates the license header, module documentation and following code with
+one blank line, separates top-level routines (including their attached comments), and collapses
+multiple blank lines outside multiline strings and block comments. The same rules apply to owned
+Nim files in `src/`, `tests/`, `spec/`, `native/` and `tools/`. `make format-check`, included in the
+CI smoke gate, reports violations without editing files; `make format` fixes them.
+
 Make owns setup dependencies, logging and verification sequencing. `make clean` followed by
 `make check` needs no activation, manual directories, downloads or native-build pre-steps.
 `make build`, `make runtime` and `make unit` also provision their dependencies automatically.

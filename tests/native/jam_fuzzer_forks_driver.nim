@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual independent siblings, original-last imports and complete states are compared with a separate mathematical reference.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/[fuzz_backend_context, fuzz_fork_context, accumulation_current_chain_context]
 import ../../src/app/fuzz/backend as fuzz_backend
@@ -9,15 +10,18 @@ import ../../src/chain/genesis
 import ../../src/codec/[bounded, header, block_codec, report_owned]
 import ../../src/state/fuzz/protocol as fuzz_protocol
 import ../../src/state/[store, checkpoint]
+
 proc hex(bytes: openArray[byte]): string =
   ## Preserve exact sealed bytes and complete checkpoint representations.
   result = ""
   for octet in bytes: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc encoded(state: StateStoreSnapshot): string =
   ## Output the complete deterministic map, including empty values and unknown global keys.
   let wire = encodeFullCheckpoint(state, ByteLimit(100000))
   assert wire.error == CheckpointError.None
   hex(wire.value)
+
 proc imported(backend: var FuzzBackend, child: OwnedBlock): StateStoreSnapshot =
   ## Only actual successful execution followed by exact-header GetState can supply this complete observation.
   var wire = newSeq[byte](child.blockInfo.value.consumed)
@@ -30,6 +34,7 @@ proc imported(backend: var FuzzBackend, child: OwnedBlock): StateStoreSnapshot =
   assert state.error == FuzzBackendError.None
   result = state.value.fuzzState.value
   echo "O ", encoded(result)
+
 proc main() {.raises.} =
   ## Three independent sibling groups exercise bounded eviction, replay, failed attempts and parent-context switching.
   let raw = readFile(paramStr(1))

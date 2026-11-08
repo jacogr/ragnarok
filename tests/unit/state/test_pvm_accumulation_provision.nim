@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_provision_arc_release"}
 
 ## Real guest provide witnesses verify exact charging, protocol priorities and immutable implications.
@@ -19,6 +20,7 @@ import ../../support/[pvm_accumulation_provision, arc_evidence]
 
 ## Refuse payload hashing after genuine initialization, or the following canonical namespace hash.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Allow a fixed number of successful hashes before backend refusal.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

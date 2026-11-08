@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Trusted opt-in fixture namespaces enter complete original maps before roots and signatures.
+
 import std/assertions
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie,
@@ -12,6 +13,7 @@ type ServiceNamespaceSeed* = object ## Author only children; original executable
   storage*: seq[StateStorageItem]
   preimages*: seq[StatePreimageItem]
   requests*: seq[StateRequestItem]
+
 proc seedServiceNamespaces*(entries: var seq[StateEntry], seeds: openArray[ServiceNamespaceSeed],
     perValue = ByteLimit(65)) =
   ## Tiny trusted fixture bounds prove footprint arithmetic; duplicate physical keys still fail the real store constructor.

@@ -3,6 +3,7 @@
 
 ## Current GP accpar conflict annulment over genuine common-source normalized outcomes.
 ## Pure immutable certificates distinguish original effects from selected state/count observations.
+
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, layout as state_layout]
 import ../../codec/header

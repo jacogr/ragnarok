@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## All sixteen typed global chapters and mixed storage/absence proofs use the actual refreshed selected producer, unchanged RPV1 and independent roots.
+
 # @@Verification={"arc":"state_current_logical_proofs_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
@@ -17,14 +18,18 @@ import ../../../src/app/proof/query as proof_query
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     accounts as state_accounts]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## After authentication, typed reads and exact subset projection must perform no backend hashing.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe only while no worker is active.
+
 proc cycle(logical: CurrentLogicalState, view: ProofView, plan: StateProofPlan) =
   ## Repeated typed read captures/projection scratch retire while only already authenticated partial evidence survives.
   checkLogicalProof(logical, view, 3)
   assert projectPlannedProofs(view, plan, logicalProofLimits().view).error == ProofViewError.None
+
 proc main() {.raises.} =
   ## Authentic current execution and full logical matching precede any proof request or independent root selection.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -3,6 +3,7 @@
 
 ## Bind an original selected complete logical parent to a genuine update with unchanged physical namespace identities.
 ## This observation is not a producer mutation/event certificate, payload validity or installation authority.
+
 import ../parent/[logical as parent_logical, globals as parent_globals, profile as parent_profile]
 import ../supplied/logical_inventory as supplied_logical_inventory
 import ../[inventory, manifest, store]

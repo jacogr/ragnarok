@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared detached producers and bounded real-thread waits keep application worker tests independent of canonical graph lifetime.
+
 import std/[assertions, monotimes, times]
 import std/posix/posix
 import ../../src/app/checkpoint/[worker as checkpoint_worker, transfer as checkpoint_transfer]
 import ../../src/codec/bounded
 import ./application_checkpoint_context
+
 proc detachedApplicationCheckpoint*(variant = CheckpointFixtureVariant.Original): PreparedApplicationCheckpoint {.raises.} =
   ## Every source state/header/history owner retires before the sole encoded buffer returns.
   let owner = checkpointFixture(variant)
   prepareApplicationCheckpoint(owner, ByteLimit(100000))
+
 proc waitApplicationCheckpoint*(worker: var ApplicationCheckpointWorker) =
   ## Tests yield under a monotonic deadline while production uses a condition-driven native thread.
   let started = getMonoTime()

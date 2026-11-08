@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_outputs_arc_release"}
 
 ## Real terminal yields become immutable single-round output pairs and explicit history roots.

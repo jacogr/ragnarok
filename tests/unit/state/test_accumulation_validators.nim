@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_validators_arc_release"}
 
 ## Signed block observations, inherited full-map identity, codec/policy refusals and immutable validator candidates.
@@ -29,6 +30,7 @@ import ../../support/[accumulation_execution_context, report_context, arc_eviden
 
 # Fault injection starts only after real signatures, accumulation and complete-map construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Exact chain domains are inherited; these values bound only local resource use.

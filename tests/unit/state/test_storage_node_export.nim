@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full/delta exports detach exact physical nodes, reuse cached identities and bound output.
+
 # @@Verification={"arc": "storage_node_export_arc_release"}
 
 import std/[assertions, syncio]
@@ -13,13 +14,16 @@ import ../../../src/codec/bounded
 
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Existing observer proves detachment needs no fresh crypto work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count primitive attempts independently of cached metadata.
+
 proc key(number: byte): StateKey =
   ## Select the two root branches with authored full identities.
   var bytes = default(array[31, byte])
   bytes[0] = number
   StateKey(bytes)
+
 proc cycle() =
   ## Detached exports survive all source graphs and mutable input/output isolation.
   fail(0)

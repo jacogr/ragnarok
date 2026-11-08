@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Unordered record delivery preserves serialized order but grants no root, dependency, reachability or no-op authority.
+
 # @@Verification={"arc": "storage_admission_graph_authority_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -13,14 +14,18 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
 type LocalRecords = object ## A locally valid transport summary is independent of complete graph admission.
   digests: seq[StateNodeHash]
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Observe genuine local record hashes separately from repository validation.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Keep full-integrity attempt counts explicit for success and graph refusals.
+
 proc consume(state: var LocalRecords, record: var TrieRecord): bool =
   ## Retain only copied fixed identities to verify the serialized transport order.
   state.digests.add(record.digest)
   true
+
 proc locallyValid(wire: seq[byte], batch: TrieExport, policy: RecordLimits): RecordBatchInfo =
   ## Every locally valid ordered sequence of physical records can still contain false target claims.
   var state = LocalRecords(digests: @[])
@@ -31,12 +36,14 @@ proc locallyValid(wire: seq[byte], batch: TrieExport, policy: RecordLimits): Rec
   for index in 0..<state.digests.len:
     assert array[32, byte](state.digests[index]) == array[32, byte](batch.records[index].digest)
   delivered.value
+
 proc unchanged(owner: NodeRepository, expected: RepositoryView) =
   ## Failed graph admission cannot install a different table, root or generation.
   let head = owner.snapshot.value
   assert head.storedNodes == expected.storedNodes and uint64(head.generation) == uint64(
       expected.generation)
   assert array[32, byte](head.commitment.root) == array[32, byte](expected.commitment.root)
+
 proc reject(owner: var NodeRepository, wire: seq[byte], expected: RepositoryError, hashes: int) =
   ## Verify complete integrity before graph refusal and immediate release of all private candidate owners.
   let prior = owner.snapshot.value
@@ -45,6 +52,7 @@ proc reject(owner: var NodeRepository, wire: seq[byte], expected: RepositoryErro
   assert owner.publishEncoded(prior, wire).error == expected
   assert int(calls()) == hashes and getOccupiedMem() == before
   unchanged(owner, prior)
+
 proc cycle() =
   ## All full/delta permutations agree with raw admission, while valid local bytes cannot forge graph truth.
   let limits = storageLimits()

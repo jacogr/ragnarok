@@ -2,16 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Declared complete-map snapshot limits refuse before outer hashing, with genuine integrity controls.
+
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/[repository as node_repository, records as node_records]
 import ../../../src/storage/[snapshot_codec, database_identity]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset actual primitive counters without substituting hash results.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe whether header quota refusal reaches any integrity operation.
+
 proc put(bytes: var seq[byte], offset: int, value: uint64) =
   ## Authored little-endian header fields deliberately leave the outer checksum invalid.
   for index in 0..<8:

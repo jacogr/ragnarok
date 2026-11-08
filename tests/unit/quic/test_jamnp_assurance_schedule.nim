@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_schedule_arc_release"}
 
 ## Independent absolute timing edges and genuine pending work distinguish parent C8 assurers from current/pending-C4 authors without granting possession or private signing authority.
+
 import std/[assertions, syncio, monotimes, times, posix/posix]
 import ../../../src/app/[services, options]
 import ../../../src/app/proof/[worker, work_submission]
@@ -13,13 +15,16 @@ import ../../../src/codec/[bounded, header, assurances]
 import ../../../src/codec/state/[safrole, consensus, layout, trie]
 import ../../../src/state/store
 import ../../support/[jamnp_assurance_fixture, jamnp_topology_fixture, current_application_context, arc_evidence]
+
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## The public OS ABI gives this process a distinct test-owned chain-file path without package globals.
+
 proc limits(source: BlockSnapshotResult): AssuranceScheduleLimits =
   ## Independent chapter, full duty, topology and all-three-roster output reservations are explicit.
   AssuranceScheduleLimits(duty: AssuranceDutyLimits(chapterBytes: ByteLimit(1000000),
     readBytes: ByteLimit(4000000), reports: ElementLimit(341), requests: ElementLimit(341*1023)),
     topology: topologyLimits(3, int(uint64(source.value.epochSlots))), plannedBytes: ByteLimit(1000000))
+
 proc changedStaging(source: BlockSnapshotResult): BlockSnapshotResult =
   ## Explicitly structural same-header/different-map data poisons C7; it does not claim a GP-valid transition or admitted block.
   let saved = source.value
@@ -34,6 +39,7 @@ proc changedStaging(source: BlockSnapshotResult): BlockSnapshotResult =
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
   assert saved.header.encodeOwnedHeader(wire).error == HeaderError.None, "unchanged structural header"
   captureBlockSnapshot(wire, entries, saved.chainParameters)
+
 proc timing() =
   ## Literal six-second slots have preparation at2, distribution at4 and expiry at6; epoch-boundary deadlines remain in absolute Common Era seconds.
   assert assuranceWindow(AssuranceTime(0), 6).error == AssuranceScheduleError.Unavailable
@@ -54,6 +60,7 @@ proc timing() =
   assert assuranceWindow(AssuranceTime(high(uint64)), 6).error ==
       AssuranceScheduleError.InvalidTime,
     "unrepresentable E4 slot never wraps into a valid opportunity"
+
 proc genuine(fixture: AssuranceAcquisitionFixture) =
   ## Actual complete-parent C8/C10 data selects requested cores; existing topology independently supplies C4 future authors.
   let source = fixture.source
@@ -120,6 +127,7 @@ proc genuine(fixture: AssuranceAcquisitionFixture) =
   assert captureAssuranceSchedule(source, fixture.local, window, exact).error ==
       AssuranceScheduleError.LimitExceeded,
     "minus-one output refuses before topology publication"
+
 proc opportunity(fixture: AssuranceAcquisitionFixture): AssuranceWindow =
   ## Synthetic fixture parameters use their actual configured period, independently of the normative six-second edge witnesses.
   let period = fixture.source.value.chainParameters.get(slotPeriodSec)
@@ -127,16 +135,19 @@ proc opportunity(fixture: AssuranceAcquisitionFixture): AssuranceWindow =
   let epoch = uint64(fixture.source.value.epochSlots)
   let target = max(slot+1, slot div epoch*epoch+(6+period-1) div period)
   assuranceWindow(AssuranceTime(target*period-min(4'u64, period)), period).value
+
 proc waitDone(worker: var StateProofWorker) =
   ## Only synchronized worker phase is sampled while native execution owns the complete source aliases.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded native schedule completion"
+
 proc waitDone(owner: var Services) =
   ## Host callers inspect no canonical map through an outstanding or completed lease.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded managed schedule completion"
+
 proc managed(fixture: AssuranceAcquisitionFixture) {.raises.} =
   ## An independently decoded trusted source exercises real Services capture/collection without an archive or private signer.
   var filename = "assurance-schedule-chain-" & $processId() & ".json"
@@ -172,6 +183,7 @@ proc managed(fixture: AssuranceAcquisitionFixture) {.raises.} =
     "cancelled plan exposes no targets or selection prefix"
   assert not owner.assuranceStorageInfo.opened and not owner.assuranceSigningConfigured,
     "planning never imports private signing or opens storage"
+
 proc cycle(worker: var StateProofWorker, fixture: AssuranceAcquisitionFixture, index: int) =
   ## Synchronous and moved native plan graphs retire completely before each allocation comparison.
   let policy = limits(fixture.source)
@@ -190,6 +202,7 @@ proc cycle(worker: var StateProofWorker, fixture: AssuranceAcquisitionFixture, i
     assert completed.kind == ProofWorkerCompletionKind.WorkSubmitted and
       completed.workSubmissionValue.kind == WorkJobResultKind.AssuranceScheduled,
       "native complete original source/role plan"
+
 proc main() {.raises.} =
   ## Literal timing, genuine/structural keyset boundaries and actual managed lifetime precede repeated native ARC checks.
   timing()

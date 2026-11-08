@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full-width duplicate oracles protect compact uniqueness proofs, hostile prefix fallback and mandatory integrity.
+
 # @@Verification={"arc": "storage_duplicate_preflight_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_samples]
@@ -12,15 +13,19 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
 type Stage = object ## Preparation/delivery observations never grant integrity to provisional callback prefixes.
   prepared, delivered: int
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual primitive refusal must remain observable after any mathematical uniqueness proof.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Duplicate preflight is hash-free; a distinct nonempty raw batch still reaches its first real hash.
+
 proc policy(): RecordLimits =
   ## Fixed finite synthetic inventories contain no values and make no complete-graph authority claim.
   RecordLimits(trie: StateTrieLimits(items: ElementLimit(8192), perValue: ByteLimit(0),
     totalValueBytes: ByteLimit(0), nodes: TrieNodeLimit(200000)), records: TrieExportLimits(
     records: TrieNodeLimit(8192), valueBytes: ByteLimit(0)), encoded: ByteLimit(1048576))
+
 proc records(count, mode: int, duplicate: bool): seq[TrieRecord] =
   ## Deliberately untrusted digests cover distinct/high-bit prefixes, collisions and a final-byte-only discriminator.
   result = newSeq[TrieRecord](count)
@@ -46,6 +51,7 @@ proc records(count, mode: int, duplicate: bool): seq[TrieRecord] =
   if duplicate and result.len > 0:
     let first = result[0]
     result.add(first) # Duplicate the whole physical address, not merely its compact scratch key.
+
 proc duplicates(input: seq[TrieRecord]): bool =
   ## Independent quadratic comparison examines every byte and never relies on sorting or prefix extraction.
   for index in 0..<input.len:
@@ -57,15 +63,18 @@ proc duplicates(input: seq[TrieRecord]): bool =
         if a[octet] != b[octet]: equal = false
       if equal: return true
   false
+
 proc metadata(input: seq[TrieRecord]): TrieExport =
   ## Local nonzero target/count claims are shape-valid; only later complete admission could grant graph authority.
   var root = default(array[32, byte])
   if input.len > 0: root[0] = 1
   TrieExport(root: StateRoot(root), entries: uint64(input.len), nodes: uint64(input.len),
       records: input)
+
 proc put(output: var seq[byte], offset: int, value: uint64) =
   ## The finite authored wire builder proves every E8 field inside its exact checked test-owned extent.
   for index in 0..<8: output[offset+index] = byte((value shr (index*8)) and 255)
+
 proc wire(input: seq[TrieRecord], collection: bool): seq[byte] =
   ## Independently author malformed-hash transport; production writers correctly refuse these synthetic identities.
   let magic = if collection: "RAGNAROK-RECORDS-V1\n" else: "RAGNAROK-TRIE-V1\n"
@@ -83,13 +92,16 @@ proc wire(input: seq[TrieRecord], collection: bool): seq[byte] =
     let digest = array[32, byte](record.digest)
     for index in 0..<32: result[offset+1+index] = digest[index]
     offset+=72 # Zero tag/key/E8 length describe a canonical empty-value leaf with an untrusted digest.
+
 proc prepare(stage: var Stage, info: RecordCollectionInfo) =
   ## Preparation may occur only after successful complete structural and duplicate preflight.
   inc stage.prepared
+
 proc accept(stage: var Stage, record: var TrieRecord): bool =
   ## No synthetic nonempty record may reach this callback while the real provider refuses its local integrity.
   inc stage.delivered
   true
+
 proc exercise(count, mode: int, duplicate: bool) =
   ## Exact full-width duplicate reasons precede hashes/callbacks; all nonempty unique sources still need integrity.
   let input = records(count, mode, duplicate)
@@ -124,6 +136,7 @@ proc exercise(count, mode: int, duplicate: bool) =
     assert inspectTrieExport(malformed, policy()).error == RecordError.NonCanonical
     assert calls() == 0 # Whole-input canonical shape still precedes duplicate and integrity checks.
   reset(0)
+
 proc realControl() =
   ## The real complete fixture must preserve exact strict codec hashes, bytes and successful decoding.
   let limits = storageLimits().codec

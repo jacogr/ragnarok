@@ -17,26 +17,35 @@ import ../../support/[application_candidate_context, accumulation_completion_con
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded nonblocking test polls.
+
 proc openSocket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
   ## Create a native loopback test socket with explicit descriptor ownership.
+
 proc bindPort(fd: cint, address: pointer, length: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
   ## Reserve the requested native endpoint for ephemeral port selection.
+
 proc socketName(fd: cint, address: pointer, length: ptr SockLen): cint {.importc: "getsockname",
     header: "<sys/socket.h>".}
   ## Read the exact OS-selected initialized socket address.
+
 proc connectPort(fd: cint, address: pointer, length: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## Connect the independent test client to the selected local listener.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
   ## Convert an explicitly bounded host port into native network byte order.
+
 proc hostPort(port: uint16): uint16 {.importc: "ntohs", header: "<netinet/in.h>".}
   ## Convert the OS-selected network port back into a bounded host port.
+
 proc ipv4(text: cstring): uint32 {.importc: "inet_addr", header: "<arpa/inet.h>".}
   ## Parse the literal loopback address for independent native clients.
+
 proc sendBytes(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
   ## Send initialized independent HTTP/WebSocket test bytes.
+
 proc receive(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
   ## Read initialized native bytes without inspecting server-owned buffers.
@@ -103,7 +112,6 @@ proc readPacket(rpc: var Server, peer: cint, pending: var string, upgrade = fals
       discard pauseMicros(1000) # Bound local transport scheduling without an unbounded blocking receive.
   assert false, "RPC packet did not arrive"
   ""
-
 
 const SeedPath = "application-preparation-lease-chain.json"
 

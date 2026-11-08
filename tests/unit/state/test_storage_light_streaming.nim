@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Canonical proof readers are bounded before invocation, never retained and publish only complete authenticated caches.
+
 # @@Verification={"arc":"storage_light_streaming_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -10,21 +11,27 @@ import ../../../src/storage/state_proof
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Stream source failures must retain exact proof-attempt and private-prefix retirement evidence.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse a later proof after earlier immutable lookups were privately constructed.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Streaming never skips hashes, even when a source supplies previously seen transport.
+
 proc key(first: byte): StateKey =
   ## Three canonical query identities distinguish long/empty presence and authenticated absence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc limits(): LightCacheLimits =
   ## Complete restoration retains the exact zero-write future mutation policy.
   LightCacheLimits(items: ElementLimit(3), writes: ElementLimit(0), valueBytes: ByteLimit(33),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33)))
+
 proc fixture(): FullStateTrie =
   ## A separate flat-map calculator establishes the complete root before any proof reader is invoked.
   let entries = [StateEntry(key: key(0), value: newSeq[byte](33)), StateEntry(key: key(128))]
@@ -34,11 +41,13 @@ proc fixture(): FullStateTrie =
   let trie = newFullStateTrie(entries, FullStateTrieLimits(trie: policy)).value
   assert array[32, byte](trie.commitment.root) == array[32, byte](expected)
   trie
+
 proc proofs(trie: FullStateTrie): seq[LightStateProof] =
   ## Detached source transport follows canonical order and remains caller-owned after restoration.
   result = @[]
   for number in [0'u8, 128, 255]:
     result.add(LightStateProof(key: key(number), proof: trie.prove(key(number), limits().proof).value))
+
 proc success(trie: FullStateTrie) =
   ## The source is called once per increasing index, and retained results cannot alias its mutable payloads.
   resetHash(0)
@@ -68,6 +77,7 @@ proc success(trie: FullStateTrie) =
   let empty = restoreLightStateCache(trie.commitment.root, 0, read, limits()).value
   assert empty.len == 0 and readCount == 0 and calls() == 0
   resetHash(0)
+
 proc refusals(trie: FullStateTrie) =
   ## Count/native limits precede allocation/callbacks; each later source refusal discards private completed lookups.
   resetHash(0)
@@ -158,6 +168,7 @@ proc refusals(trie: FullStateTrie) =
       LightCacheError.LimitExceeded
   assert readCount == 2 and calls() == 3
   resetHash(0)
+
 proc emptyRoot() =
   ## Empty-root absence requires no hashes but remains authenticated evidence at that explicit complete root.
   var reads = 0
@@ -174,6 +185,7 @@ proc emptyRoot() =
   assert cache.lookup(key(128)).value.kind == StateLookupKind.Absent
   assert cache.lookup(key(64)).error == LightCacheError.UnknownKey
   resetHash(0)
+
 proc cycle(trie: FullStateTrie, input: openArray[LightStateProof]) =
   ## Callback environments and private partial cache owners retire at each constructor return/scope boundary.
   var reads = 0
@@ -194,6 +206,7 @@ proc cycle(trie: FullStateTrie, input: openArray[LightStateProof]) =
   resetHash(0)
   assert restoreLightStateCache(trie.commitment.root, 3, read, limits()).value.len == 3
   assert reads == 3 and complete.lookup(key(0)).value.bytes.len == 33
+
 proc main() =
   ## Exact ARC steady state includes successful, partial-failure and retry paths with scoped closure environments.
   resetHash(0)

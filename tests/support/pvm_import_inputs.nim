@@ -14,18 +14,22 @@ import ./[pvm_extrinsic_inputs, pvm_import_justification, pvm_import_vectors]
 proc inputLimits*(): ImportInputsLimits =
   ## Admit the protocol maximum with separately counted logical leaf/proof bytes.
   ImportInputsLimits(entries: ElementLimit(3072), witnessBytes: ByteLimit(3072*4488))
+
 proc inputKey*(first: byte): PackageHash =
   ## Fixed distinct keys make dictionary ordering explicit in tests.
   result = PackageHash()
   result.bytes[0] = first
+
 proc inputPair*(first: byte): SegmentLookup =
   ## Explicit caller-provided package/root correspondence is deliberately not a root freshness certificate.
   SegmentLookup(packageHash: inputKey(first), segmentRoot: SegmentRoot(bytes: ThreeRoot))
+
 proc inputProof*(index: int): VerifiedImport =
   ## Verify frozen independent three-leaf paths before using these immutable owners as inputs.
   let paths = [ThreePath0, ThreePath1, ThreePath2]
   verifyImportSegment(SegmentRoot(bytes: ThreeRoot), ImportIndex(uint16(index)),
     importSegment(byte(index+1)), importPath(paths[index]), importLimits()).value
+
 proc inputSource*(imports: openArray[seq[ImportReference]], prerequisites = 0): VerifiedExtrinsics =
   ## Commit imports before verifying each item's independent literal abc preimage; retire temporary package bytes on return.
   var source = WorkPackage(context: RefinementContext(prerequisiteCount: prerequisites))

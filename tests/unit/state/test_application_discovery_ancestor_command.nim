@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Production command receives a signed two-guest child before fetching only certified missing lookup context through independent TLS processes.
+
 import ../../support/chain_alpn
 
 import std/[assertions, syncio, envvars, monotimes, times, os]
@@ -22,16 +23,19 @@ import ../../support/report_admission_context as report_context
 type Scenario = enum ## Each run starts a fresh bounded command and independent finite responder process.
   Healthy, Empty, WrongParent, Suffix, MissingFin, WrongPin, CountRefusal, ByteRefusal, Fallback,
     Available, InvalidChild, Durable
+
 proc pause() =
   ## Bounded native polling yields without creating a thread or changing any protocol clock.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
   var remaining = default(Timespec)
   discard nanosleep(requested, remaining)
+
 proc frame(payload: seq[byte]): seq[byte] =
   ## Independently frame an uncounted complete GP block sequence using literal E4 bytes.
   result = newSeq[byte](payload.len + 4)
   for index in 0..<4: result[index] = byte((uint64(payload.len) shr (8 * index)) and 255)
   for index, octet in payload: result[index + 4] = octet
+
 proc request(hash: array[32, byte], descending: bool): array[42, byte] =
   ## Expected bytes are literal, independent of both production request producers.
   result = default(array[42, byte])
@@ -40,6 +44,7 @@ proc request(hash: array[32, byte], descending: bool): array[42, byte] =
   for index, octet in hash: result[index + 5] = octet
   result[37] = if descending: 1'u8 else: 0'u8
   result[38] = 1
+
 proc policy(): DownloadLoopLimits =
   ## Explicit retained-header budgets are distinct from whole response and child codec ceilings.
   DownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,
@@ -48,6 +53,7 @@ proc policy(): DownloadLoopLimits =
     candidate: preparationLimits(), composition: completionLimits().composition,
     stream: DownloadStreamLimits(readBytes: ByteLimit(4096), writeBytes: ByteLimit(42),
       timeout: DownloadTimeout(5000)), attemptTimeout: DownloadAttemptTimeout(8000))
+
 proc scenario(remote, child: seq[byte], remoteRequest, childRequest: array[42, byte],
     which: Scenario) {.raises.} =
   ## The responder checks child-then-remote ordering; the original child is never requested a second time.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The production dispatcher retires child connections before demand and resumes the original prepared input without another request.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import "../../../src/app/block/input" as block_input
@@ -19,6 +20,7 @@ import ../../support/report_admission_context as report_context
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded host turns, without accessing a leased ARC graph.
+
 proc advance(dispatcher: var BlockDownloadLoop, servers: var DownloadResponders,
     target: DownloadLoopStage) =
   ## Fixed host time isolates stage barriers; a separate explicit deadline case verifies expiration.
@@ -32,6 +34,7 @@ proc advance(dispatcher: var BlockDownloadLoop, servers: var DownloadResponders,
     if dispatcher.stage in [DownloadLoopStage.Preparing, DownloadLoopStage.Cancelling]:
       discard pauseMicros(1000) # Only synchronized scalar dispatcher state is inspected while work runs.
   assert reached, "dispatcher did not reach ancestor stage"
+
 proc scenario(context: SeedFixture, frame: seq[byte], older: seq[OwnedHeader], key: DownloadPeerKey,
     expire: bool) {.raises.} =
   ## Native sockets, worker leases and canonical Services all retain stable addresses through explicit shutdown.
@@ -87,6 +90,7 @@ proc scenario(context: SeedFixture, frame: seq[byte], older: seq[OwnedHeader], k
   assert dispatcher.adoption.error == ApplicationChainError.None and
       owner.chainView.retainedCount == 2
   assert servers.requestCount(false) == 1 # The original signed child was neither fetched nor prepared from bytes again.
+
 proc main() {.raises.} =
   ## Independently author a signed guaranteed child and retain its exact historical lookup header.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

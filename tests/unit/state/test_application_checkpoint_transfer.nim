@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_transfer_arc_release"}
 
 ## Detached envelopes preserve sole ownership, explicit moved-source reset and exact publication after source retirement.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -13,10 +14,12 @@ import ../../../src/codec/bounded
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-transfer"
+
 proc detached(): PreparedApplicationCheckpoint {.raises.} =
   ## All originating application/map/header/history aliases retire before this sole encoded owner escapes.
   let owner = checkpointFixture()
   prepareApplicationCheckpoint(owner, ByteLimit(high(uint64)))
+
 proc cycle(owner: ApplicationChain, expected: ApplicationCheckpointIdentity) =
   ## Transfer and destruction leave source uninitialized without freeing destination bytes early.
   var source = prepareApplicationCheckpoint(owner, ByteLimit(high(uint64)))
@@ -24,6 +27,7 @@ proc cycle(owner: ApplicationChain, expected: ApplicationCheckpointIdentity) =
   assert source.error == ApplicationCheckpointError.Uninitialized
   assert sameApplicationCheckpoint(destination.identity, expected)
   assert destination.byteLength > 238
+
 proc main() {.raises.} =
   ## Failed/moved/narrowed owners cannot replace a previously complete file.
   var path = FileName

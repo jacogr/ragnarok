@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_complete_batch_arc_release"}
 
 ## Complete input coverage merges certified skipped credits and actual execution effects atomically.
@@ -20,7 +21,9 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Inject failures after genuine resolution and observe hash-free early coverage/provenance checks.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # Choose an independently authored missing or malformed code preimage; oversized uses the original code.

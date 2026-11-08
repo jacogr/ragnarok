@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real process stops qualify compaction selection and both cleanup paths against exact authored file bytes.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_io, storage_crash, storage_light_journal]
@@ -13,17 +14,21 @@ import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 type LightReplacementAction* = enum ## One coherent namespace transition is observed after its setup completes.
   ReplaceCheckpoint, RetirePrevious, DiscardCandidate
+
 proc accessNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe exact fixture presence through the supported platform ABI.
+
 proc exists(path: string): bool =
   ## Inspect only known owned fixture names; directory contents never establish selection.
   var name = path
   accessNative(name.toCString(), 0) == 0
+
 proc checkPrefix(input, expected: string) =
   ## Incomplete unselected output must be an exact authored prefix with no invented padding.
   assert input.len <= expected.len, "candidate extent bounded by authored bytes"
   for index in 0..<input.len: assert input[index] == expected[index], "exact candidate prefix"
+
 proc lightReplacementCrash*(fixture: LightJournalFixture, action: LightReplacementAction,
     operation, skip: cint, shortWrites = false): uint64 {.raises.} =
   ## Every killed boundary preserves the old/new selected image and permits a fresh explicit cleanup/retry.

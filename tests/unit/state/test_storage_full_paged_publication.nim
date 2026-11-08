@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native full-state selection binds sealed artifacts to exact writer/source incarnations and confirmed barriers.
+
 # @@Verification={"arc":"storage_full_paged_publication_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, full_paged_reference, full_paged_native_fixture, storage_io]
@@ -14,13 +15,17 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/durability
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive work counters distinguish integer-exhaustion preflight from attempted cryptography.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe real provider calls rather than interpreting a generic refusal as early validation.
+
 proc path(label: string): string =
   ## Process-specific names confine all native namespaces to this suite's ignored working directory.
   "full-paged-publication-" & $storageProcessId() & "-" & label
+
 proc normal(old, fresh: FullPagedFixture) =
   ## Readers survive writer replacement/close; ordinary generations advance exactly once per confirmed replacement.
   let directory = path("normal")
@@ -62,6 +67,7 @@ proc normal(old, fresh: FullPagedFixture) =
   assert writer.close == FileError.None
   assert openFullPagedWriter(writer, directory, old.config).error != FullPagedNativeError.None
   assert not writer.opened
+
 proc incarnation(fixture: FullPagedFixture) =
   ## Descriptor-number reuse cannot revive a sealed candidate after its original writer lease is retired.
   let directory = path("incarnation")
@@ -77,6 +83,7 @@ proc incarnation(fixture: FullPagedFixture) =
   assert writer.publish(candidate).error == FullPagedNativeError.StaleView
   assert uint64(writer.selected.value.epoch) == 1
   assert candidate.close == FileError.None and writer.close == FileError.None
+
 proc faultSchedule(old, fresh: FullPagedFixture) =
   ## Every observed publication fault preserves either no new receipt or a separate confirmed retirement diagnostic.
   let operations = [readIo, writeIo, syncIo, renameIo, closeIo, lockIo, truncateIo]
@@ -127,6 +134,7 @@ proc faultSchedule(old, fresh: FullPagedFixture) =
             FullPagedNativeError.None
         assert reader.lookup(fresh.header.root, key(0)).value.bytes == @[9'u8]
         assert reader.close == FileError.None
+
 proc counterExhaustion(source: FullPagedFixture) =
   ## Positive physical/generation maxima refuse a successor before hashing, allocation or candidate creation.
   for exhausted in 0..1:
@@ -150,6 +158,7 @@ proc counterExhaustion(source: FullPagedFixture) =
     assert refused.error == FullPagedNativeError.CounterExhausted and not candidate.opened
     assert hashCalls() == 0
     assert writer.close == FileError.None
+
 proc bootstrapFaults(fixture: FullPagedFixture) =
   ## Initial creation is qualified separately from replacement so partial namespace/epoch prefixes remain forensic.
   let operations = [readIo, writeIo, syncIo, renameIo, closeIo, lockIo, truncateIo]
@@ -186,6 +195,7 @@ proc bootstrapFaults(fixture: FullPagedFixture) =
       if opened.error == FullPagedNativeError.None:
         assert reader.lookup(fixture.header.root, key(0)).value.bytes == @[7'u8]
         assert reader.close == FileError.None
+
 proc lifecycle(directory: string, fixture: FullPagedFixture) =
   ## Repeated strict writer open and independent reader lifetime retain no process-native owner or graph.
   var writer = default(FullPagedWriter)
@@ -195,6 +205,7 @@ proc lifecycle(directory: string, fixture: FullPagedFixture) =
   assert writer.close == FileError.None
   assert reader.lookup(fixture.header.root, key(0)).value.bytes.len == 1
   assert reader.close == FileError.None
+
 proc main() =
   ## Checked native publication tests preserve all forensic files under the isolated runner directory.
   let old = sample(7)

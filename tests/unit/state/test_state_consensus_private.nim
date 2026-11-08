@@ -18,6 +18,7 @@ proc policy(): SafroleStateConfig =
   SafroleStateConfig(validators: ValidatorStateConfig(cores: CoreCount(2), validators: ElementLimit(6),
     maxBytes: ByteLimit(2017)), epochSlots: EpochSlots(2), maxAccumulator: ElementLimit(2),
         maxBytes: ByteLimit(10000))
+
 # Construct borrowed sources directly; no decoder supplies their expected field values.
 proc source(kind: SealerKind, marker: byte): SafroleState =
   var word = default(array[32, byte])
@@ -36,6 +37,7 @@ proc source(kind: SealerKind, marker: byte): SafroleState =
   of Keys:
     # Fallback sources preserve opaque repeated keys.
     result.schedule = keySchedule(@[StateBsKey(word), StateBsKey(word)])
+
 # Return a complete parent after local typed sources, entry and mutable wire aliases retire.
 proc escaped(kind: SealerKind, marker: byte): SafroleStateSnapshot =
   var original = source(kind, marker)
@@ -48,12 +50,14 @@ proc escaped(kind: SealerKind, marker: byte): SafroleStateSnapshot =
   original = default(SafroleState)
   # Private capture must survive destructive mutation of all original wire bytes.
   for i in 0..<wire.len: wire[i] = 0
+
 # Retain only the child roster after the callee-local parent and every schedule/accumulator field are released.
 proc escapedChild(): ValidatorStateSnapshot =
   let parent = escaped(SealerKind.Tickets, 61)
   let data = parent.data
   assert data != nil
   data.pending
+
 # Every scope releases both parent modes, replaced handles, child aliases and all failed/extracted temporaries.
 proc cycle() =
   var parent = escaped(SealerKind.Tickets, 17)

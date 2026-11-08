@@ -3,6 +3,7 @@
 
 ## Explicit offline full-state queries use the ordinary exclusive database lease and return independently owned bytes.
 ## A query opens only an existing database, never listens, changes retention or falls back to genesis.
+
 import ../[options, services, chain]
 import ./disk as historical_disk
 import ../checkpoint/codec as checkpoint_codec

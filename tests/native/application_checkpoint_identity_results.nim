@@ -2,17 +2,21 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime guards use opaque extraction helpers, with the same helpers exercised on genuine captured context.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/checkpoint/identity as checkpoint_identity
 import ../../src/app/chain
 import ../../src/codec/bounded
 import ../support/application_checkpoint_context
+
 proc extract(outcome: ApplicationCheckpointIdentityResult) =
   ## Prevent compile-time propagation of an intentionally invalid discriminator from replacing the runtime witness.
   discard outcome.value
+
 proc extractEncoding(outcome: ApplicationCheckpointEncodingResult) =
   ## Failed/default encoding cannot expose partial output; the same helper succeeds in the positive control.
   discard outcome.value
+
 proc inspect(identity: ApplicationCheckpointIdentity, field: string) =
   ## Each branch reaches one real checked getter without knowing the caller's initialization state.
   case field
@@ -20,6 +24,7 @@ proc inspect(identity: ApplicationCheckpointIdentity, field: string) =
   of "root": discard identity.stateRoot # Complete-root authority requires initialized metadata.
   of "slot": discard identity.slot # A time value must belong to initialized metadata.
   else: discard identity.parameters # Complete profiles have the same initialization gate.
+
 proc main() {.raises.} =
   ## Positive mode reads an explicit hash-checked fixture; malformed/default cases do not depend on file availability.
   let mode = paramStr(1)

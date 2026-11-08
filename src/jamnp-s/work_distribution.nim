@@ -3,6 +3,7 @@
 
 ## CE135 complete-state qualification is distinct from actual block admission and from proof of execution or retained availability.
 ## Managed callers freeze the selected view and input through verification; only successful private owners expose guarantees and recipient facts.
+
 import ./[work_anchors, work_eligibility]
 import ../chain/[provider, genesis, parameters]
 import ../codec/[bounded, guarantees, assurances, report_owned, owned, header, disputes]
@@ -55,13 +56,16 @@ type
     of PolicyFailure: policyReason: ReportPolicyError
     of PipelineFailure: pipelineReason: ReportPackageError
     else: discard # Local/default refusals contain no payload or invented child outcome.
+
 func error*[T](outcome: WorkDistributionResult[T]): WorkDistributionError =
   ## Observe refusal without granting mutable tag access.
   outcome.status
+
 func value*[T](outcome: WorkDistributionResult[T]): T {.requires: outcome.status ==
     WorkDistributionError.None.} =
   ## Only fully qualified results expose owned evidence or fixed copies.
   outcome.completed
+
 func chapter*[T](outcome: WorkDistributionResult[T]): StateChapter {.requires: outcome.status in {
     WorkDistributionError.InvalidState, WorkDistributionError.StateFailure,
     WorkDistributionError.ComponentFailure}.} =
@@ -70,40 +74,49 @@ func chapter*[T](outcome: WorkDistributionResult[T]): StateChapter {.requires: o
   of WorkDistributionError.InvalidState: outcome.invalidChapter
   of WorkDistributionError.StateFailure: outcome.stateChapter
   else: outcome.componentChapter
+
 func stateError*[T](outcome: WorkDistributionResult[
     T]): StateStoreError {.requires: outcome.status == WorkDistributionError.StateFailure.} =
   ## Preserve only actual failed complete-store lookups.
   outcome.stateReason
+
 func componentError*[T](outcome: WorkDistributionResult[
     T]): StateComponentError {.requires: outcome.status ==
     WorkDistributionError.ComponentFailure.} =
   ## Preserve the actual time/entropy/roster codec refusal.
   outcome.componentReason
+
 func disputeError*[T](outcome: WorkDistributionResult[
     T]): DisputeStateError {.requires: outcome.status == WorkDistributionError.DisputeFailure.} =
   ## C5 decoding remains distinct from ordinary state components.
   outcome.disputeReason
+
 func decodeError*[T](outcome: WorkDistributionResult[
     T]): GuaranteeError {.requires: outcome.status == WorkDistributionError.DecodeFailure.} =
   ## Expose only a genuine canonical standalone guarantee decoder failure.
   outcome.decodeReason
+
 func credentialError*[T](outcome: WorkDistributionResult[T]): GuaranteeCredentialResult[
     VerifiedGuaranteeCredentials] {.requires: outcome.status ==
     WorkDistributionError.CredentialFailure.} =
   ## Preserve exact assignment/signature/population refusals without a certified prefix.
   outcome.credentialReason
+
 func anchorError*[T](outcome: WorkDistributionResult[T]): WorkAnchorResult[
     RefinementAnchors] {.requires: outcome.status == WorkDistributionError.AnchorFailure.} =
   ## Keep complete recent/lookup-context causes selected by their actual failed stage.
   outcome.anchorReason
+
 func policyError*[T](outcome: WorkDistributionResult[
     T]): ReportPolicyError {.requires: outcome.status == WorkDistributionError.PolicyFailure.} =
   ## The source-bound service/authorization/gas refusal is not a signature failure.
   outcome.policyReason
+
 func pipelineError*[T](outcome: WorkDistributionResult[
     T]): ReportPackageError {.requires: outcome.status == WorkDistributionError.PipelineFailure.} =
   ## Retain actual package uniqueness/dependency/root reasons.
   outcome.pipelineReason
+
 proc distributionInfo*(owner: CheckedWorkDistribution): WorkDistributionResult[
     WorkDistributionInfo] =
   ## Read copied source facts only under the managed graph gate.
@@ -111,12 +124,14 @@ proc distributionInfo*(owner: CheckedWorkDistribution): WorkDistributionResult[
   if data == nil: return default(WorkDistributionResult[WorkDistributionInfo])
   WorkDistributionResult[WorkDistributionInfo](status: WorkDistributionError.None,
       completed: data.info)
+
 proc distributionGuarantee*(owner: CheckedWorkDistribution): WorkDistributionResult[Guarantee] =
   ## A copied record retains only the exact report whose credentials were verified; it does not permit modifying this owner.
   let data = owner.data
   if data == nil: return default(WorkDistributionResult[Guarantee])
   WorkDistributionResult[Guarantee](status: WorkDistributionError.None,
       completed: data.credentials.verifiedGuaranteeAt(0).value)
+
 proc distributionTarget*(owner: CheckedWorkDistribution, index: int): WorkDistributionResult[
     StateValidator] =
   ## Copy one actual current/required-next record, never an index into a substitute roster.
@@ -126,6 +141,7 @@ proc distributionTarget*(owner: CheckedWorkDistribution, index: int): WorkDistri
     return WorkDistributionResult[StateValidator](status: WorkDistributionError.InvalidIndex)
   WorkDistributionResult[StateValidator](status: WorkDistributionError.None,
       completed: data.recipients[index])
+
 proc distributionPayload*(owner: CheckedWorkDistribution): WorkDistributionResult[seq[byte]] =
   ## Produce detached canonical transport bytes before this owner's graphs are frozen by another worker.
   let data = owner.data
@@ -133,6 +149,7 @@ proc distributionPayload*(owner: CheckedWorkDistribution): WorkDistributionResul
   var bytes = newSeq[byte](data.wire.len)
   for index in 0..<bytes.len: bytes[index] = data.wire[index]
   WorkDistributionResult[seq[byte]](status: WorkDistributionError.None, completed: bytes)
+
 proc readChapter(source: StateStoreSnapshot, chapter: StateChapter, limit: ByteLimit,
     bytes: var seq[byte], failure: var WorkDistributionResult[CheckedWorkDistribution]): bool =
   ## Bound the original complete-state extent before copying and preserve genuine lookup failures.
@@ -148,6 +165,7 @@ proc readChapter(source: StateStoreSnapshot, chapter: StateChapter, limit: ByteL
     return false
   bytes = entry.value.bytes
   true
+
 proc includeTarget(values: var seq[StateValidator], candidate: StateValidator,
     limit: ElementLimit): bool =
   ## Current/next overlap consumes one identity; vacant GP records are not network recipients.
@@ -158,9 +176,11 @@ proc includeTarget(values: var seq[StateValidator], candidate: StateValidator,
   if uint64(values.len) >= uint64(limit): return false
   values.add(candidate)
   true
+
 func withinCredentialWindow*(info: WorkDistributionInfo): bool =
   ## Potential next inclusion must precede fixed GP expiry; this scalar check alone grants no source, credential or delivery authority.
   uint32(info.inclusion) <= uint32(info.lastSlot)
+
 proc qualifyWorkDistribution*(wire: openArray[byte], view: ChainView, now: StateTime,
     limits: WorkDistributionLimits): WorkDistributionResult[CheckedWorkDistribution] =
   ## Verify under one managed exclusive lease against actual current complete state; later block admission must still use its own posterior context.

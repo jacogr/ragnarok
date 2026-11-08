@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_transfer_dispatch_arc_release"}
 
 ## Genuine refinement guests compose creation/pages/poke/peek with normalized bytes, gas and typed local refusals.
@@ -17,6 +18,7 @@ proc limits(): RefinementInvocationLimits =
   result = refinementLimits()
   result.inner = innerLimits()
   result.calls = HostCallLimit(5) # Compile and instantiate are now distinct calls before pages/poke/peek.
+
 proc fixture(credit = 10000'u64): PreparedRefinementBootstrap =
   ## Authored compact compile/instantiate arguments keep this real guest below the small fixture's 128-byte code bound.
   ## The final host copies into a distinct caller address, so returning original input cannot satisfy the witness.
@@ -26,10 +28,12 @@ proc fixture(credit = 10000'u64): PreparedRefinementBootstrap =
     refinementImmediate(10, 6), @[10'u8, 12], refinementImmediate(8, 196672), @[10'u8, 11],
     refinementImmediate(7, 196672), refinementImmediate(8, 6), @[50'u8, 0]]),
     credit = credit, writable = innerBlob())
+
 proc run(source: PreparedRefinementBootstrap, cap = limits()): RefinementInvocationResult[
     RefinementInvocation] =
   ## Execute the exact bootstrap source; callers supply no independent terminal machine or gas/export tuples.
   runRefinementInvocation(source, [], refinementInputs(), ExportOffset(7), cap)
+
 proc raw(source: PreparedRefinementBootstrap, cap = limits()): RefinementDispatchResult[
     RefinementOutcome] =
   ## Inspect actual stopped gas/registers while retaining that same source's captured host environment.
@@ -70,6 +74,7 @@ let who = refinementFixture([refinementImmediate(7, high(uint64)), refinementImm
   refinementImmediate(9, high(uint64)), refinementImmediate(10, 1), @[10'u8, 12], @[50'u8, 0]])
 assert uint64(raw(who).value.outcome.machine.machineInfo.value.registers[7]) == high(uint64)-3
 assert run(who).value.refinementInfo.value.kind == WorkKind.Success
+
 # Invocation-local maps and all page/output generations disappear after each independent real-bootstrap run.
 proc cycle() =
   ## Fresh source captures and local-refusal scratch owners must both release before the next ARC measurement.

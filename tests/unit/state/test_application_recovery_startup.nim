@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_startup_arc_release"}
 
 ## Parsed external recovery opens independent inputs once, preserves explicit policies and never falls back on refusal.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[services, options, chain]
@@ -18,6 +19,7 @@ import ../../support/[application_checkpoint_context, arc_evidence]
 const CheckpointPath = "application-recovery-startup-map"
 const TrustPath = "application-recovery-startup-identity"
 const HeaderPath = "application-recovery-startup-header"
+
 proc selectedOptions(limit = "100000"): Options =
   ## File and mutation policies remain separate explicit controls; no listeners are implied.
   result = default(Options)
@@ -25,6 +27,7 @@ proc selectedOptions(limit = "100000"): Options =
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-writes", "0", "--state-write-bytes", "0", "--state-checkpoint", CheckpointPath,
     "--state-trust", TrustPath, "--state-header", HeaderPath, "--state-checkpoint-bytes", limit], result)
+
 proc publishInputs(variant = CheckpointFixtureVariant.Header): ApplicationCheckpointIdentity {.raises.} =
   ## Trusted operator material and the checkpoint remain separate selected files throughout startup.
   let source = checkpointFixture(variant)
@@ -37,6 +40,7 @@ proc publishInputs(variant = CheckpointFixtureVariant.Header): ApplicationCheckp
   assert replaceAtomicFile(HeaderPath, wire, ByteLimit(300000)) == AtomicFileError.None
   assert saveApplicationCheckpoint(CheckpointPath, source, ByteLimit(100000)).error ==
       ApplicationCheckpointFileError.None
+
 proc cycle(options: Options, expected: ApplicationCheckpointIdentity) {.raises.} =
   ## Every configured startup owns fresh restored graphs and retires all service aliases on close.
   var owner = default(Services)
@@ -53,6 +57,7 @@ proc cycle(options: Options, expected: ApplicationCheckpointIdentity) {.raises.}
       GenesisError.None
   owner.close()
   assert not owner.startupBlockAnchor.available # Closed owners retain no live startup authority.
+
 proc main() {.raises.} =
   ## Invalid trust, profile, byte/map limits and native files never activate configured genesis instead.
   defer:

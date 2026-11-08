@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_duty_arc_release"}
 
 ## Actual source chapters bind GP core assignments to local identity/time; failures never expose duty authority.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/work_duty
 import ../../../src/codec/[bounded, assurances]
@@ -12,22 +14,27 @@ from ../../../src/codec/work/report import CoreIndex
 import ../../../src/chain/[parameters, presets]
 import ../../../src/state/[store, guarantors]
 import ../../support/arc_evidence
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## The existing observer refuses the real hash primitive without replacing assignment or protocol logic.
+
 proc key(index: int): StateEdKey =
   ## Fixed distinct identities select actual original roster positions, not a test-provided success bit.
   var bytes = default(array[32, byte])
   bytes[0] = byte(index+10) # Avoid the reserved GP null-validator Ed encoding02 followed by zeros.
   StateEdKey(bytes)
+
 proc parameters(cores = 3): Parameters =
   ## Actual Tiny epoch/rotation timing with an explicit configured core ceiling permits smaller active populations.
   var wire = presetParameters(ChainPreset.Tiny).value.encodeParameters
   wire[24] = byte(cores)
   wire[25] = 0
   decodeParameters(wire).value
+
 proc limits(): WorkDutyLimits =
   ## Exact source copying and cumulative dispute work remain independently bounded.
   WorkDutyLimits(chapterBytes: ByteLimit(10000), disputeItems: ElementLimit(128))
+
 proc state(current = 6, previous = 9, slot = 16'u32, offender = false): StateStoreSnapshot =
   ## Test-only source maps contain genuine canonical encodings for every chapter this projection requires; no adoption certificate is asserted.
   let roster = ValidatorStateConfig(cores: CoreCount(3), validators: ElementLimit(9),
@@ -60,6 +67,7 @@ proc state(current = 6, previous = 9, slot = 16'u32, offender = false): StateSto
       writes: ElementLimit(16), writeValueBytes: ByteLimit(50000)))
   assert built.error == StateStoreError.None, "duty state construction: " & $built.error
   built.value.snapshot.value
+
 proc changed(source: StateStoreSnapshot, chapter: uint8, bytes: seq[byte],
     remove = false): StateStoreSnapshot =
   ## Replace/delete only one original chapter on a private test branch, keeping the parent immutable.
@@ -198,6 +206,7 @@ let backend = captureWorkDuty(source, profile, workRecipient(key(2), StateTime(2
 assert backend.error == WorkDutyError.AssignmentFailure and backend.assignmentError ==
     GuarantorError.BackendFailure
 failHash(0)
+
 proc cycle() =
   ## All copied chapter bytes, decoded rosters/offenders and both assignment tables retire before detached facts return.
   let selected = captureWorkDuty(source, profile, workRecipient(key(2), StateTime(20)), CoreIndex(0), cap)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic default/refused repository accesses require exact optimized public contracts.
+
 import std/[assertions, cmdline, syncio]
 import ../support/storage_samples
 import ../../src/storage/node/[repository as node_repository, records as node_records]

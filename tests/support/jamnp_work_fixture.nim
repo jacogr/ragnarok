@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only actual PVM/proof fixture extended with a captured source for managed Services admission.
+
 import std/[assertions, syncio]
 import ../../src/jamnp-s/work_submission
 import ../../src/codec/[bounded, composite, assurances]
@@ -26,6 +27,7 @@ type
     input*: InputFixture
     package*, first*, extrinsics*, segments*, proofs*: seq[byte]
     limits*: WorkSubmissionLimits
+
 proc workFixture*(external = true, rejected = false, wrongPool = false,
     wrongMapping = false, exported = false): WorkFixture =
   ## Commit genuine PVM code, selected C(1) authorizer and C(3) package mapping into a private original source.
@@ -82,6 +84,7 @@ import ../../src/codec/state/disputes as state_disputes
 import ../../src/lib/json/writer as json_writer
 import std/strutils
 import ./jamnp_topology_fixture
+
 proc workSnapshot*(f: WorkFixture, local = default(StateEdKey), remote = default(
     StateEdKey), neighbour = false, third = default(StateEdKey)): BlockSnapshot =
   ## Merge actual code and commitments with explicit canonical roster/time context; no consensus certificate is invented.
@@ -112,10 +115,12 @@ proc workSnapshot*(f: WorkFixture, local = default(StateEdKey), remote = default
   let saved = captureBlockSnapshot(wire, state.snapshot.value, f.input.parameters)
   assert saved.error == GenesisError.None
   saved.value
+
 proc hexBytes(input: openArray[byte]): string =
   ## Independent test chainspec spelling exposes no private-key data.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc workChainText*(saved: BlockSnapshot): string =
   ## Serialize only the actual captured source's public complete state and exact profile/header.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -126,9 +131,11 @@ proc workChainText*(saved: BlockSnapshot): string =
     entries.add(hexBytes(array[31, byte](key)), json(hexBytes(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hexBytes(saved.chainParameters.encodeParameters))),
     ("genesis_header", json(hexBytes(wire))), ("genesis_state", json(entries))])
+
 proc workChainText*(f: WorkFixture): string =
   ## Existing managed witnesses retain their source fixture while live tests may supply an actual TLS-bound snapshot.
   workChainText(f.workSnapshot)
+
 proc workHeader*(f: WorkFixture): WorkSubmissionHeader =
   ## Prepare actual separate CE146 payloads for managed staging under the shared lease.
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, f.first, f.package,

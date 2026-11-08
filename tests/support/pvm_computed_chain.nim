@@ -21,6 +21,7 @@ proc chainHeaderBytes*(header: OwnedHeader): seq[byte] =
   ## Re-encode the actual owner-bound sealed header without modifying its signed bytes.
   result = newSeq[byte](header.headerInfo.value.consumed)
   assert encodeOwnedHeader(header, result).error == HeaderError.None
+
 proc chainFixture*(coherent = true, storage = ComputedStorageMode.Disabled): ComposedComputedState =
   ## Author actual original nine-active keys/statistics/shards before signing; existing bounded defaults remain separately testable.
   let final = compositionFixture(withChain = coherent, storage = storage)
@@ -33,9 +34,11 @@ proc chainFixture*(coherent = true, storage = ComputedStorageMode.Disabled): Com
         composed.compositionFailure.error
   assert composed.error == ComputedCompositionError.None
   composed.value
+
 proc chainFixtureParameters*(source: ComposedComputedState): Parameters =
   ## Derive complete original chain settings through actual computed round provenance.
   source.computedCompositionSource.value.computedFinalizationSource.value.computedExecutionSource.value.computedRoundParameters.value
+
 proc chainFixtureParent*(source: ComposedComputedState, settings: Parameters): BlockSnapshotResult =
   ## Capture the real admitted parent header with its exact original map and explicitly selected parameters.
   let final = source.computedCompositionSource.value.computedFinalizationPlan.value

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_availability_proofs_arc_release"}
 
 ## Genuine independent availability commitments authenticate NP distribution/audit/segment data with exact coordinates and bounded work.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[availability_proof, availability_merkle, availability_read,
     availability_store, guarantor_store, read_stream]
@@ -12,15 +14,18 @@ import "../../../src/state/export/erasure" as export_erasure
 import ../../../src/codec/bounded
 from ../../../src/codec/work/report import BundleLength, ErasureShards, SegmentCount
 import ../../support/[pvm_computed_report, arc_evidence]
+
 proc limits(): AvailabilityMerkleLimits =
   ## Explicit source/verification ceilings cover real fixture rows and the full validator leaf set.
   AvailabilityMerkleLimits(bytes: ByteLimit(500000), hashBytes: ByteLimit(16000000),
       hashes: ElementLimit(10000))
+
 proc requested(source: AvailabilityCommitment, kind: AvailabilityTransferKind,
     shard, row: uint64): AvailabilityRequest =
   ## Only test-owned genuine source facts select the expected commitment; no response-supplied root becomes authority.
   AvailabilityRequest(kind: kind, root: source.availabilityInfo.value.specifier.erasureRoot,
     shard: ErasureShardIndex(shard), row: ExportErasureIndex(row))
+
 proc check(source: AvailabilityCommitment, kind: AvailabilityTransferKind, shard, row: uint64) =
   ## Existing component commitments are computed independently of the new trace/reconstruction implementation.
   let request = requested(source, kind, shard, row)
@@ -50,6 +55,7 @@ proc check(source: AvailabilityCommitment, kind: AvailabilityTransferKind, shard
   proof[0] = proof[0] xor 1
   assert checked.value.bundleShard == beforeBundle and checked.value.segmentShards == beforeSegments
   assert checked.value.justification == beforeProof and packet.justification == beforeProof
+
 proc retained(): PreparedAvailabilityTransfer =
   ## Return only source-free proof/data; every original execution/state/commitment alias retires before the caller uses it.
   let source = computedAvailability(0)
@@ -57,20 +63,24 @@ proc retained(): PreparedAvailabilityTransfer =
       AvailabilityTransferKind.Audit, 0, 0), limits())
   assert prepared.error == AvailabilityTransferError.None
   prepared.value
+
 proc retentionLimits(): AvailabilityMerkleLimits =
   ## Whole-report retention budgets cover all 1023 real validator coordinates and their complete independent proofs.
   AvailabilityMerkleLimits(bytes: ByteLimit(128*1024*1024),
     hashBytes: ByteLimit(512*1024*1024), hashes: ElementLimit(8000000))
+
 proc retainedGuarantor(): GuarantorAvailability =
   ## Return serving data only after all original execution, canonical map and erasure commitment aliases retire.
   let source = computedAvailability(0)
   let retained = retainGuarantorAvailability(source, retentionLimits())
   assert retained.error == AvailabilityTransferError.None
   retained.value
+
 proc retainedReadLimits(): AvailabilityReadLimits =
   ## Bounded detached response copies do not need fresh hashes, but ordinary serving policy remains explicit and independently valid.
   AvailabilityReadLimits(computation: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
     hashBytes: ByteLimit(16000000), hashes: ElementLimit(10000)), wireBytes: ByteLimit(16000000))
+
 proc retainedRequest(owner: GuarantorAvailability, kind: ReadKind,
     shard: uint64 = 0): ReadRequest =
   ## Only immutable captured commitment facts select the original root; query parsing still validates exact NP framing.
@@ -80,6 +90,7 @@ proc retainedRequest(owner: GuarantorAvailability, kind: ReadKind,
     payload.add(byte(shard and 255))
     payload.add(byte((shard shr 8) and 255))
   decodeReadRequest(kind, payload).value
+
 proc checkRetention(owner: GuarantorAvailability, shard: uint64) =
   ## Independently verify an archived full distribution against its original computed specifier and exact coordinate.
   let info = owner.guarantorInfo.value
@@ -95,6 +106,7 @@ proc checkRetention(owner: GuarantorAvailability, shard: uint64) =
   assert serveAvailabilityRead(owner, retainedRequest(owner, ReadKind.Availability, shard),
       retainedReadLimits()).error == ReadError.None
   assert serveAvailabilityRead(owner, retainedRequest(owner, ReadKind.Bundle), retainedReadLimits()).error == ReadError.None
+
 proc retention(source: AvailabilityCommitment) =
   ## Exact aggregate resource boundaries and detached mutations must not alter later shard or bundle serving.
   let readLimits = retainedReadLimits()
@@ -175,6 +187,7 @@ proc retention(source: AvailabilityCommitment) =
   cap = AvailabilityMerkleLimits(bytes: ByteLimit(info.retainedBytes+info.workspaceBytes),
     hashes: ElementLimit(info.hashes), hashBytes: ByteLimit(info.hashBytes))
   assert retainGuarantorAvailability(source, cap).error == AvailabilityTransferError.None
+
 proc retainedStorage(first, second: AvailabilityCommitment) =
   ## Distinct signed-source commitments coexist without LRU replacement; full entry or byte capacity preserves every earlier source.
   let a = retainGuarantorAvailability(first, retentionLimits()).value
@@ -235,6 +248,7 @@ proc retainedStorage(first, second: AvailabilityCommitment) =
   checkRetention(one.find(ai.specifier.erasureRoot).value, 0)
   one.clear() # Only this test owns the store; no worker borrow survives explicit shutdown.
   assert not one.configured and one.len == 0 and one.byteLength == 0
+
 proc releaseCycle(source: AvailabilityCommitment) =
   ## Every new prepared/verified owner and independent byte copy retires before the next ARC sample.
   let retained = retainGuarantorAvailability(source, retentionLimits())
@@ -262,6 +276,7 @@ proc releaseCycle(source: AvailabilityCommitment) =
   assert store.remember(verified) == AvailabilityStoreError.None
   assert prepareAvailabilityAudit(store.find(distributionRequest).value, request, limits()).error ==
       AvailabilityTransferError.None
+
 proc serving(source: AvailabilityCommitment) =
   ## Exact wire framing and existing method ceilings remain independent of proof construction.
   let expected = source.availabilityInfo.value.specifier
@@ -307,6 +322,7 @@ proc serving(source: AvailabilityCommitment) =
   assert captureReadReply(bundle, oversized).error == ReadError.None
   let ordinary = decodeReadRequest(ReadKind.Report, expected.erasureRoot.bytes).value
   assert captureReadReply(ordinary, oversized).error == ReadError.LimitExceeded
+
 proc distribution(source: AvailabilityCommitment, shard: uint64): VerifiedAvailabilityTransfer =
   ## Genuine preparation is independently checked before any cache admission can occur.
   let request = requested(source, AvailabilityTransferKind.Distribution, shard, 0)
@@ -315,6 +331,7 @@ proc distribution(source: AvailabilityCommitment, shard: uint64): VerifiedAvaila
     prepared.segmentShards, prepared.justification, limits())
   assert checked.error == AvailabilityTransferError.None
   checked.value
+
 proc audit(source: AvailabilityCommitment) =
   ## Derived audit traces match genuine original construction for empty, odd and proof-page geometries.
   let checked = distribution(source, 0)
@@ -338,6 +355,7 @@ proc audit(source: AvailabilityCommitment) =
       AvailabilityTransferError.LimitExceeded
   assert detachVerifiedAvailability(checked, ByteLimit(0)).error ==
       AvailabilityTransferError.LimitExceeded
+
 proc storage(source: AvailabilityCommitment) =
   ## Count and byte pressure evict only complete oldest entries; refused inserts preserve previous data.
   let first = distribution(source, 0)
@@ -382,6 +400,7 @@ proc storage(source: AvailabilityCommitment) =
   assert store.configure(AvailabilityStoreLimits(entries: ElementLimit(2), bytes: ByteLimit(
       first.payloadBytes-1)))
   assert store.remember(first) == AvailabilityStoreError.LimitExceeded and store.len == 0
+
 proc main() =
   ## Exercise empty segment trees, odd populations and both export/proof-page row boundaries with genuine PVM/erasure sources.
   let empty = computedAvailability(0)

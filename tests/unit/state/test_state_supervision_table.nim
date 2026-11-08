@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole-source supervisor batches preserve all decisions, complete absence, bounded allocation and retired owners.
+
 # @@Verification={"arc": "state_supervision_table_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_directory_context, arc_evidence]
@@ -12,15 +13,19 @@ import ../../../src/state/inventory
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing after complete directory fixture construction.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Verify batch construction and queries never hash payloads.
 const limits = SupervisionTableLimits(services: ElementLimit(3), bytes: ByteLimit(4096))
+
 proc cycle(source: StateServiceDirectory) =
   ## Retire the complete batch's array and retained directory each cycle.
   let table = buildSupervisionTable(source, limits).value
   assert table.supervisionTableInfo.value.services == 3
+
 proc main() {.raises.} =
   ## Build one complete source carrying all three independently specified selection reasons.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

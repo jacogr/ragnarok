@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit legacy migration preserves source bytes, chain/schema, generation, retained roots and selected context.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
@@ -11,6 +12,7 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/database_identity
 import ../../../src/codec/state/trie as state_trie
+
 proc main() {.raises.} =
   ## Two independent owners continue after a bounded copy; failed identity/existing-target attempts preserve both.
   let limits = managedStorageLimits()

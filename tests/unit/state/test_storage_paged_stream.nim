@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent byte/proof oracles exercise streamed construction, strict admission and bounded authenticated search.
+
 # @@Verification={"arc":"storage_paged_stream_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, paged_reference]
@@ -14,10 +15,13 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/light/delta as light_delta
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Independent primitive failure controls leave production IO/proof algorithms intact.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse each actual hash invocation in an otherwise successful operation.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Distinguish structural/resource preflight from attempted primitive work.
 
@@ -36,25 +40,30 @@ type
   Fixture = object ## Independent full-map state/proof evidence includes presence, empty presence and retained absence.
     root: StateRoot
     records: seq[LightStateProof]
+
 proc copy(input: seq[byte]): seq[byte] =
   ## Explicitly detach mutable test sources so one corruption cannot change a reference fixture.
   result = newSeq[byte](input.len)
   for index in 0..<input.len: result[index] = input[index]
+
 func key(first: byte): StateKey =
   ## Sorted fixture identities differ in their most significant serialized octet.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 func workLimits(): PagedWorkLimits =
   ## Generous finite controls permit exact observed-budget replay without hidden unlimited sentinels.
   PagedWorkLimits(ioCalls: ElementLimit(1000000), producerCalls: ElementLimit(1000000),
     pageHashes: ElementLimit(1000000), proofs: ElementLimit(1000000), nodes: ElementLimit(1000000),
     readBytes: ByteLimit(100000000), writeBytes: ByteLimit(100000000), valueBytes: ByteLimit(100000000))
+
 func policy(cache = 1): PagedStreamLimits =
   ## Dataset totals, one-record payloads and aggregate work are independent explicit policies.
   PagedStreamLimits(dataset: PagedLimits(entries: ElementLimit(10000), bytes: ByteLimit(10000000)),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(10000)),
     workingBytes: ByteLimit(100000), cachePages: ElementLimit(cache), work: workLimits())
+
 proc input(memory: Memory): PagedInput =
   ## Each callback is synchronous and captures a test owner without forming an ownership cycle.
   proc read(offset: PagedOffset, output: var openArray[byte]): bool {.closure.} =
@@ -75,6 +84,7 @@ proc input(memory: Memory): PagedInput =
     output = uint64(memory.bytes.len)
     memory.extents != memory.failExtent
   PagedInput(read: read, extent: extent)
+
 proc output(memory: Memory): PagedOutput =
   ## Appending is the only available mutation; short failures preserve the exact emitted canonical prefix.
   proc append(bytes: openArray[byte]): bool {.closure.} =
@@ -91,6 +101,7 @@ proc output(memory: Memory): PagedOutput =
       memory.bytes[start] = 1
     true
   PagedOutput(source: memory.input, append: append)
+
 proc producer(source: Producer): PagedProducer =
   ## Caller fixtures are resident only in tests; production consumes one bounded item at a time.
   proc next(pass: int, ordinal: uint64, record: var LightStateProof): PagedProducerStep {.closure.} =
@@ -107,10 +118,12 @@ proc producer(source: Producer): PagedProducer =
     if source.mode == "changed" and pass == 1 and ordinal == 0: record.key = key(1)
     PagedProducerStep.Item
   next
+
 proc selected(reference: PagedReference, root: StateRoot): PagedManifest =
   ## Manifest decoding starts from independent oracle transport and independently expected chain/root.
   decodePagedManifest(reference.manifest, default(StorageChainId), root, policy().dataset,
       ByteLimit(193)).value
+
 proc fixture(): Fixture =
   ## The independent complete-map calculator anchors production-generated query proof transport.
   let entries = @[StateEntry(key: key(0), value: newSeq[byte](4097)),
@@ -123,10 +136,12 @@ proc fixture(): Fixture =
   result = Fixture(root: root, records: @[])
   for first in [0'u8, 64, 128, 255]:
     result.records.add(LightStateProof(key: key(first), proof: trie.prove(key(first), policy().proof).value))
+
 proc emptyRecords(): seq[LightStateProof] =
   ## Independent empty-root absence evidence remains distinct from any query not retained in the index.
   @[LightStateProof(key: key(0), proof: StateProof()), LightStateProof(key: key(128),
       proof: StateProof())]
+
 proc build(source: Producer, memory: Memory, root: StateRoot,
     limits: PagedStreamLimits): PagedStreamResult[CheckedPagedArtifact] =
   ## Test-size count/extent declaration is independent of the builder's proof sizing/encoding code.
@@ -137,12 +152,14 @@ proc build(source: Producer, memory: Memory, root: StateRoot,
   let header = initPagedHeader(default(StorageChainId), root, ManagedEpoch(1), LightDeltaSequence(0),
     uint64(source.records.len), extent, limits.dataset).value
   buildPagedArtifact(memory.output, source.producer, header, limits)
+
 proc matches(left, right: VerifiedStateLookup) =
   ## Existing verified-cache results independently constrain new source-backed query semantics.
   assert left.kind == right.kind
   assert array[32, byte](left.root) == array[32, byte](right.root)
   assert array[31, byte](left.key) == array[31, byte](right.key)
   if left.kind == StateLookupKind.Present: assert left.bytes == right.bytes
+
 proc success(data: Fixture) =
   ## Both cache modes produce exact independent bytes and agree with the existing resident cache/image contracts.
   let reference = pagedReference(default(StorageChainId), data.root, data.records)
@@ -184,6 +201,7 @@ proc success(data: Fixture) =
     var detached = owned.bytes
     detached[0] = 99
     assert owned.bytes[0] == 0
+
 proc emptyAndReplay() =
   ## Empty roots keep local UnknownKey distinct from retained authenticated absence; builds are never implicit conversions.
   for records in [newSeq[LightStateProof](0), emptyRecords()]:
@@ -215,6 +233,7 @@ proc emptyAndReplay() =
       else: PagedStreamError.InvalidFormat
     assert build(Producer(records: emptyRecords(), mode: mode), memory, default(StateRoot), policy()).error == reason
     assert memory.bytes.len >= 4096
+
 proc copyRecords(input: seq[LightStateProof]): seq[LightStateProof] =
   ## Deep test detachment prevents false-proof mutations from changing later positive-control evidence.
   result = newSeq[LightStateProof](input.len)
@@ -223,6 +242,7 @@ proc copyRecords(input: seq[LightStateProof]): seq[LightStateProof] =
     for slot in 0..<nodes.len: nodes[slot] = input[index].proof.nodes[slot]
     result[index] = LightStateProof(key: input[index].key,
       proof: StateProof(nodes: nodes, value: copy(input[index].proof.value)))
+
 proc strictCorruption(data: Fixture) =
   ## Correctly recomputed file hashes never authenticate false query proofs, bad index shape or noncanonical padding.
   let absent = emptyRecords()
@@ -292,6 +312,7 @@ proc strictCorruption(data: Fixture) =
       data.root), policy())
   assert failed.error == PagedStreamError.ProofFailure and failed.proofError ==
       StateProofError.IncompleteProof
+
 proc lookupCorruption(data: Fixture) =
   ## Captured digest roots survive transport replacement; local cache misses never turn read faults into UnknownKey.
   let reference = pagedReference(default(StorageChainId), data.root, data.records)
@@ -320,6 +341,7 @@ proc lookupCorruption(data: Fixture) =
       let bad = Memory(bytes: reference.bytes, failExtent: call)
       assert lookupPaged(checked, bad.input, query, workLimits()).error ==
           PagedStreamError.IOFailure
+
 func budget(counts: PagedStreamCounts): PagedWorkLimits =
   ## Replay successful observed work with exact ceilings rather than implementation-derived guesses.
   PagedWorkLimits(ioCalls: ElementLimit(counts.ioCalls), producerCalls: ElementLimit(
@@ -328,6 +350,7 @@ func budget(counts: PagedStreamCounts): PagedWorkLimits =
         nodes: ElementLimit(counts.nodes),
     readBytes: ByteLimit(counts.readBytes), writeBytes: ByteLimit(counts.writeBytes),
         valueBytes: ByteLimit(counts.valueBytes))
+
 proc reduce(limits: var PagedWorkLimits, field: int): bool =
   ## Tighten exactly one positive observed channel; absent work channels remain explicit zero allowances.
   result = true
@@ -357,6 +380,7 @@ proc reduce(limits: var PagedWorkLimits, field: int): bool =
   else:
     if uint64(limits.valueBytes) > 0: limits.valueBytes = ByteLimit(uint64(limits.valueBytes)-1)
     else: result = false
+
 proc budgets(data: Fixture) =
   ## Each operation succeeds at every exact observed budget and refuses one short in each positive channel.
   let reference = pagedReference(default(StorageChainId), data.root, data.records)
@@ -437,12 +461,14 @@ proc budgets(data: Fixture) =
   var noProducer: nil PagedProducer = nil
   assert buildPagedArtifact(memory.output, noProducer, header, policy()).error ==
       PagedStreamError.Uninitialized
+
 proc prefixOf(input, complete: seq[byte]): bool =
   ## Failure tests preserve every existing emitted byte rather than silently truncate or repair candidates.
   if input.len > complete.len: return false
   for index in 0..<input.len:
     if input[index] != complete[index]: return false
   true
+
 proc ioFaults(data: Fixture) =
   ## Every actual append/read/EOF boundary has a passing control and a typed-failure witness.
   let reference = pagedReference(default(StorageChainId), data.root, data.records)
@@ -480,6 +506,7 @@ proc ioFaults(data: Fixture) =
         PagedStreamError.IOFailure
   assert validatePagedArtifact(Memory(bytes: copy(reference.bytes), growExtent: 2).input, selected,
       policy()).error == PagedStreamError.ChangedInput
+
 proc providerFaults(data: Fixture) =
   ## Provider refusal at every observed hash stage never grants a proof, UnknownKey or completed artifact.
   let reference = pagedReference(default(StorageChainId), data.root, data.records)
@@ -506,6 +533,7 @@ proc providerFaults(data: Fixture) =
       assert reason == PagedStreamError.BackendFailure
       assert hashCalls() == cint(successful+1)
     resetHash(0)
+
 proc deepestProof() =
   ## Two keys differing only at bit 247 force all 248 branches plus one terminal leaf through the streaming path.
   var other = default(array[31, byte])
@@ -553,6 +581,7 @@ proc growth() =
     for index in [0, size div 2, size-1]:
       let found = lookupPaged(built, memory.input, records[index].key, workLimits()).value
       assert found.verified.kind == StateLookupKind.Absent
+
 proc cycle() =
   ## All source owners, callbacks, scratch, metadata and owned lookup temporaries retire before the next ARC sample.
   let records = emptyRecords()
@@ -563,6 +592,7 @@ proc cycle() =
       StateLookupKind.Absent
   assert lookupPaged(checked, memory.input, key(64), workLimits()).error ==
       PagedStreamError.UnknownKey
+
 proc compaction() =
   ## Complete source bytes determine compaction; an independently valid same-root target knowledge change is refused.
   let original = Memory(bytes: @[])

@@ -3,6 +3,7 @@
 
 ## Exact managed manifests select one snapshot/journal epoch without pathname or fallback authority.
 ## Epochs identify files independently of durable state generations; journal headers bind the manifest checksum.
+
 import std/assertions
 import ../database_identity
 import ../node/repository as node_repository

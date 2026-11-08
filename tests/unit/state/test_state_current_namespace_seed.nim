@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real signed original and successor maps preserve authored untouched namespaces and exact account footprints.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_context, service_namespace_seed,
     accumulation_current_chain_context, current_checkpoint_context, parent_profile_context,
@@ -16,6 +17,7 @@ import ../../../src/state/[global_snapshot, store, inventory, manifest]
 import ../../../src/state/supplied/logical_inventory as supplied_logical_inventory
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
+
 proc verify(view: ChainView, seeds: openArray[ServiceNamespaceSeed]) =
   ## Only the original selected complete snapshot may match supplied namespaces.
   let profile = captureParentProfile(view, parentProfileTestLimits).value
@@ -28,6 +30,7 @@ proc verify(view: ChainView, seeds: openArray[ServiceNamespaceSeed]) =
     assert uint64(services[i].metadata.storageBytes) == (if i == 0: 236'u64 else: 233'u64)
     assert services[i].storage.len == 2 and services[i].preimages.len == 2 and services[
         i].requests.len == 2
+
 proc main() {.raises.} =
   ## Roots and every block/report signature are authored with the new namespaces already present.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

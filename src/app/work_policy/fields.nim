@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen work-policy v1 schema visits explicit scalar resource ceilings and named backends; logging is a separate host borrow.
+
 template workPolicyFields(policy, context, visit: untyped) {.untyped.} =
   ## One private schema defines complete typed reading and canonical serialization without runtime reflection or inferred defaults.
   visit(context, "admission.pools.cores", policy.admission.pools.cores)

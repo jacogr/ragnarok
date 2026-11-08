@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal fetch(0) offsets construct independent valid parameter inputs for economic consumers.
+
 import ../../src/chain/parameters
+
 proc economicTestWire*(base = 100'u64, item = 2'u64, octet = 3'u64): array[ParameterBytes, byte] =
   ## Encode three E8 rates plus the existing minimum population/clock validity fields without production profile capture.
   result = default(array[ParameterBytes, byte])

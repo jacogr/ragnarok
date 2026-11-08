@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete sources distinguish mismatched dependent metadata from bounded refusal and ownership.
+
 # @@Verification={"arc": "state_footprint_audit_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
@@ -9,16 +10,20 @@ import ../../../src/state/[footprint_audit, inventory, manifest, store]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force hash refusal to prove this audit consumes only already captured facts.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count hash calls independently of success reasons.
 const limits = FootprintAuditLimits(services: ElementLimit(2), checks: ElementLimit(4))
+
 proc cycle(source: StateInventory) =
   ## Retire a complete audit result and its retained source before allocator observation.
   let checked = auditAccountFootprints(source, limits).value
   assert checked.footprintInfo.value.checks == 4
   assert checked.checkedFootprintAt(InventoryServiceIndex(0)).value.bytes.uint64 == 121
+
 proc main() {.raises.} =
   ## Build structurally valid independent fixtures before disabling all hashing.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_query_arc_release"}
 
 ## Authored query programs verify exact packed history words, row ordering and immutable current-state reads.
@@ -23,6 +24,7 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject primitive failure only after constructing genuine complete-map and CPU fixtures.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Observe absence of namespace/state hashes on OOG or invalid-length paths.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

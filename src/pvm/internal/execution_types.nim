@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared execution domains; private interpreter workers never import public snapshot adapters.
+
 import ../machine
 
 type

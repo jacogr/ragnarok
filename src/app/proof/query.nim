@@ -3,6 +3,7 @@
 
 ## A bounded proof request retains one explicitly selected posterior state and detached semantic plan.
 ## Capturing is host-side admission only; generation and authentication belong outside callbacks.
+
 import std/assertions
 import ../light/head as light_head
 import ../checkpoint/identity as checkpoint_identity

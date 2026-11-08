@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real TLS discovery and complete-state current admission catch up beyond finite command limits.
+
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils]
 import std/posix/posix
 import ../../../src/app/current/download/[command as current_download_command,
@@ -94,6 +95,7 @@ proc claim(head: BlockSnapshot): AnnouncedBlock =
   ## Only real independently installed fixture heads become advertised target scalars.
   AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.blockHash)),
     slot: HeaderSlot(head.slot))
+
 proc peerKey(): CurrentDownloadPeerKey {.raises.} =
   ## The client pins the actual second fixture principal, independently of server-side validation.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_B"))
@@ -101,6 +103,7 @@ proc peerKey(): CurrentDownloadPeerKey {.raises.} =
   var key = default(array[32, byte])
   for index in 0..<32: key[index] = byte(raw[index])
   CurrentDownloadPeerKey(key)
+
 proc limits(): CurrentSyncLimits =
   ## Keep a tiny rolling ancestry window while allowing arbitrarily many actual imports.
   CurrentSyncLimits(download: CurrentDownloadLoopLimits(
@@ -114,6 +117,7 @@ proc limits(): CurrentSyncLimits =
       header: HeaderConfig(cores: CoreCount(2), authorValidators: ValidatorCount(6),
         epochSlots: EpochSlots(12), maxBytes: ByteLimit(4096))),
     sourceAgeMs: 300000, reconnectMs: 1000)
+
 proc advance(host: var CurrentSync, server: var SyncResponder, target: CurrentSyncStage,
     now: var uint64) =
   ## Native and worker scheduling use a real bounded deadline; logical time is independently controlled.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Late image failures must release private prefix cells while preserving every independent admitted owner.
+
 # @@Verification={"arc": "storage_image_staging_failures_arc_release"}
 import std/[algorithm, assertions, syncio]
 import ../../support/[admission_samples, storage_samples, arc_evidence]
@@ -11,10 +12,13 @@ import ../../../src/storage/record_codec
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Count genuine local hashes across staged-prefix and complete graph refusal boundaries.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Keep physical integrity evidence independent of returned graph metadata.
+
 proc rejected(source: AdmissionFixture, wire: seq[byte], expected: RepositoryError, hashes: int) =
   ## Each failure exposes only its reason and retires all privately allocated cells/table/scratch immediately.
   reset(0)
@@ -24,6 +28,7 @@ proc rejected(source: AdmissionFixture, wire: seq[byte], expected: RepositoryErr
   if expected == RepositoryError.InvalidRecords:
     assert failed.recordError == RecordError.HashMismatch # This case reaches the final local record hash.
   assert int(calls()) == hashes and getOccupiedMem() == before
+
 proc cycle() =
   ## Keep valid independent views alive across late hash, orphan, missing-node and masked-edge failures.
   let source = admissionFixture()

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_store_arc_release"}
 
 ## Real private directories, synchronized records and observed OS failures exercise durable assurance storage without fabricating canonical duty or signing authority.
+
 import std/[assertions, syncio, dirs, paths, strutils]
 import std/posix/posix
 import ../../../src/jamnp-s/[assurance_store, assurance_record, availability_proof]
@@ -11,24 +13,29 @@ import ../../../src/codec/bounded
 import ../../../src/state/availability/specifier
 import ../../../src/state/erasure/words
 import ../../support/[pvm_computed_report, storage_io, storage_crash, arc_evidence]
+
 proc limits(): AssuranceStoreLimits =
   ## Explicit storage can scale on disk while resident metadata and every record's working set remain independent of archive size.
   AssuranceStoreLimits(entries: ElementLimit(4), scanEntries: ElementLimit(1000),
     bytes: ByteLimit(64000000), record: AssuranceRecordLimits(bytes: ByteLimit(16000000),
       verification: AvailabilityMerkleLimits(bytes: ByteLimit(64000000), hashes: ElementLimit(
           10000), hashBytes: ByteLimit(64000000))))
+
 proc chain(): AssuranceChainId =
   ## Independently selected chain identity cannot come from a stored record or incoming shard.
   var bytes = default(array[32, byte])
   bytes[0] = 37
   AssuranceChainId(bytes)
+
 proc name(suffix: string): string =
   ## Every test owns a process-specific dedicated namespace under the runner's ignored working directory.
   "assurance-store-" & $storageProcessId() & "-" & suffix
+
 proc clean(folder: string) =
   ## Only test-generated private paths are recursively removed, after explicit owner retirement.
   try: removeDir(path(folder))
   except: assert false, "test namespace cleanup"
+
 proc shard(source: AvailabilityCommitment, index: uint64): VerifiedAvailabilityTransfer =
   ## Genuine original computation/erasure and actual proof verification supply the complete detached distribution.
   let spec = source.availabilityInfo.value.specifier
@@ -39,12 +46,14 @@ proc shard(source: AvailabilityCommitment, index: uint64): VerifiedAvailabilityT
     prepared.segmentShards, prepared.justification, limits().record.verification)
   assert verified.error == AvailabilityTransferError.None, "genuine source proof"
   verified.value
+
 proc location(folder: string, transfer: VerifiedAvailabilityTransfer): string =
   ## Independent fixture naming follows the documented full-root/E2 coordinate spelling, not a production path getter.
   var text = ""
   for octet in transfer.specifier.erasureRoot.bytes: text.add(toHex(int(octet), 2).toLowerAscii())
   folder & "/" & text.substr(0, 1) & "/" & text & "-" & toHex(int(uint64(transfer.request.shard)),
       4).toLowerAscii() & ".shard"
+
 proc restoreLimits(first: VerifiedAvailabilityTransfer): AssuranceRestoreLimits =
   ## Literal total equations include two metadata hashes, the EOF probe and bounded live restore buffers.
   let described = availabilityVerificationInfo(first.specifier, first.request).value
@@ -54,6 +63,7 @@ proc restoreLimits(first: VerifiedAvailabilityTransfer): AssuranceRestoreLimits 
     hashBytes: ByteLimit(described.hashBytes+348)),
     ioBytes: ByteLimit(described.payloadBytes+header*2+1),
     workspaceBytes: ByteLimit(described.payloadBytes*3+header*3))
+
 proc servingRestore(owner: var AssuranceStore, first: VerifiedAvailabilityTransfer) =
   ## A request knows only root and shard after restart; exact total budgets still precede complete payload reads.
   let exact = restoreLimits(first)
@@ -90,6 +100,7 @@ proc servingRestore(owner: var AssuranceStore, first: VerifiedAvailabilityTransf
   assert owner.restoreAssuranceShard(invalid, exact).error == AssuranceStoreError.InvalidRequest and
     ioCalls(readIo) == 0, "stored full-distribution lookup never reinterprets another proof shape"
   resetIo()
+
 proc ordinary(first, second, third: VerifiedAvailabilityTransfer) =
   ## Successful publication, duplicate extension and actual close/reopen preserve all promises, exact bytes and fixed scalar accounting.
   let folder = name("ordinary")
@@ -159,6 +170,7 @@ proc ordinary(first, second, third: VerifiedAvailabilityTransfer) =
   assert owner.loadAssuranceShard(first.specifier, first.request).error ==
       AssuranceStoreError.Missing, "refused record was never published"
   assert owner.close().error == AssuranceStoreError.None, "retire small-capacity namespace before cleanup"
+
 proc conflicts(first: VerifiedAvailabilityTransfer) =
   ## An independently verified same-root/different-package descriptor cannot overwrite an earlier canonical-context promise.
   let folder = name("conflict")
@@ -179,6 +191,7 @@ proc conflicts(first: VerifiedAvailabilityTransfer) =
   assert owner.byteLength == bytes and owner.len == 1, "conflict preserved original"
   assert uint64(owner.loadAssuranceShard(first.specifier,
       first.request).value.storedInfo.value.promisedAt) == 1000, "conflict cannot advance promise clock"
+
 proc failures(first, second: VerifiedAvailabilityTransfer) =
   ## Real prepublication and visible-but-unsynced OS failures cannot manufacture successful receipts or damage older committed files.
   let folder = name("faults")
@@ -224,6 +237,7 @@ proc failures(first, second: VerifiedAvailabilityTransfer) =
   assert owner.openAssuranceStore(folder, chain(), limits()).error == AssuranceStoreError.None, "second recovery"
   assert owner.loadAssuranceShard(second.specifier, second.request).error ==
       AssuranceStoreError.None, "full verified synced receipt after recovery"
+
 proc restartDamage(first: VerifiedAvailabilityTransfer) =
   ## Header accounting is deliberately weaker than possession: corrupted payloads can never return stored-data success after restart.
   let folder = name("damage")
@@ -259,6 +273,7 @@ proc restartDamage(first: VerifiedAvailabilityTransfer) =
   assert posix.lstat(raw.toCString(), metadata) != 0 and posix.errno() == ENOENT, "only unpublished sibling removed"
   assert owner.len == 1 and owner.loadAssuranceShard(first.specifier, first.request).error ==
       AssuranceStoreError.None, "published promise preserved"
+
 proc crashes(first, second: VerifiedAvailabilityTransfer) =
   ## Exact child-process stops and SIGKILL distinguish durable prefixes from a returned error or a simulated restart.
   for boundary in [4096, 0, 1]:
@@ -299,6 +314,7 @@ proc crashes(first, second: VerifiedAvailabilityTransfer) =
       assert owner.len == 2, "directory-synced complete record survives even before a receipt returned"
       assert owner.loadAssuranceShard(second.specifier, second.request).error ==
           AssuranceStoreError.None, "restored complete bytes verified and resynchronized"
+
 proc namespaceBounds(first: VerifiedAvailabilityTransfer) =
   ## Scan-work refusal and a missing directory cannot discard an older promise or become a valid empty archive.
   let folder = name("scan")
@@ -341,6 +357,7 @@ proc namespaceBounds(first: VerifiedAvailabilityTransfer) =
   assert posix.mkdir(absent.toCString(), Mode(0o700)) == 0, "repair empty bucket"
   assert owner.openAssuranceStore(folder, chain(), policy).error == AssuranceStoreError.None, "reopen exact repaired namespace"
   assert owner.loadAssuranceShard(first.specifier, first.request).error == AssuranceStoreError.None, "original promise after repair"
+
 proc rootDamage(first: VerifiedAvailabilityTransfer) =
   ## Startup accepts fixed intact metadata, but root-only serving must reverify corrupted payload bytes instead of trusting startup counts.
   let folder = name("root-damage")
@@ -363,6 +380,7 @@ proc rootDamage(first: VerifiedAvailabilityTransfer) =
   let failed = owner.restoreAssuranceShard(first.request, restoreLimits(first))
   assert failed.error == AssuranceStoreError.RecordFailure and owner.faulted,
     "root-only restore rejects actual corrupted proof and faults retained storage"
+
 proc cycle(owner: var AssuranceStore, first: VerifiedAvailabilityTransfer) =
   ## Every full file read, proof owner, synchronization path and detached serving copy retires before allocation comparison.
   let restored = owner.loadAssuranceShard(first.specifier, first.request)
@@ -370,6 +388,7 @@ proc cycle(owner: var AssuranceStore, first: VerifiedAvailabilityTransfer) =
   assert restored.value.storedTransfer(ByteLimit(16000000)).error == AvailabilityTransferError.None, "ARC serving copy"
   assert owner.restoreAssuranceShard(first.request, restoreLimits(first)).error ==
     AssuranceStoreError.None, "ARC root-only full verified restore"
+
 proc main() =
   ## Native IO observer retains real files and barriers except for the exact explicitly armed failure.
   resetIo()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current native receipts retain only selected request identities, preserve exact producer history, and refuse disabled/short evidence atomically.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context,
     current_namespace_transition_context, current_namespace_execution_context,
@@ -24,18 +25,22 @@ import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, requests as state_requests]
 import ../../src/chain/[provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Pure selected history capture must remain available without cryptographic work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Complete descriptor admission precedes output allocation and requires no hashes.
 const historyLimits = RequestIdentityHistoryLimits(entries: ElementLimit(8), outcomes: ElementLimit(
     16), facts: ElementLimit(16), bytes: ByteLimit(65536))
+
 proc requestCode(target: uint64): seq[byte] =
   ## Both genuine guests request the literal zero digest/length17 for junior99, with supervisor authority from the original parent.
   result = @[0'u8]
   let code = guestEnvelope([registerImmediate(7, target), registerImmediate(8, 196608),
       registerImmediate(9, 17), @[10'u8, 25], @[50'u8, 0]], writable = newSeq[byte](32))
   for octet in code: result.add(octet) # Existing current service framing owns the authored program.
+
 proc origin(empty = false): CurrentNamespaceTransition {.raises.} =
   ## Original complete namespaces/code enter signatures before actual preparation; no completed result is forged.
   var options = executionFixtureConfig()
@@ -45,12 +50,14 @@ proc origin(empty = false): CurrentNamespaceTransition {.raises.} =
   options.secondBalance = 1000000
   options.signed.serviceNamespaces = namespaceSeeds()
   namespaceTransitionFixture(nativeBase(), options)
+
 proc candidatePolicy(): CurrentCandidateLimits =
   ## Original host request capture and complete selected retention are independently frozen on the native input.
   result = currentCandidateLimits()
   result.requests = historyLimits
   result.completion.execution.initial.guests.requestFacts = ElementLimit(4)
   result.completion.execution.execution.round.guests.requestFacts = ElementLimit(4)
+
 proc capture(source: CurrentNamespaceTransition): PreparedCurrentChainUpdate {.raises.} =
   ## Matching collection and joined shutdown retire the fixed-address worker lease before any captured history alias is read.
   var owner = initApplicationChain(source.update.currentUpdatePriorView).value
@@ -63,6 +70,7 @@ proc capture(source: CurrentNamespaceTransition): PreparedCurrentChainUpdate {.r
   assert not sameStateSnapshot(update.currentUpdateState,
       owner.chainView.bestBlock.value.stateSnapshot)
   update
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(CurrentChainPreparationResult)

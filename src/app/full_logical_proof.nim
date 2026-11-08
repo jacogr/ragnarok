@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Select every serialized key of the original qualified logical successor for existing bounded proof generation and independently checked complete import.
+
 import ./logical/proof as logical_proof
 import ./proof/query as proof_query
 import ../state/current/logical as current_logical

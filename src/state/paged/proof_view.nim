@@ -3,6 +3,7 @@
 
 ## Bounded paged light evidence becomes an ordinary immutable ProofView only after state-layer recapture and verification.
 ## Unknown stored queries remain missing witnesses; no partial evidence becomes a complete StateStore.
+
 import std/algorithm
 import ../trie_proof
 import ../proof/view as proof_view

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed checked compaction workloads record actual hash attempts and retained bytes before/after trusted-path changes.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/managed_storage_samples
 import ../../../src/state/store
@@ -11,22 +12,27 @@ import ../../../src/storage/[database_identity, record_codec]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Existing observer restores real primitive behavior and resets counters, without replacing runtime implementations.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive attempts independently of source-level measurement claims.
+
 proc key(number: int): StateKey =
   ## Authored workloads bound the two nonzero prefix bytes before conversion.
   var raw = default(array[31, byte])
   raw[0] = byte(number shr 8)
   raw[1] = byte(number and 255)
   StateKey(raw)
+
 proc hex(bytes: array[32, byte]): string =
   ## Fixed public digests produce deterministic evidence without another hash operation.
   const digits = "0123456789abcdef"
   result = ""
   for octet in bytes:
     result.add(digits[int(octet shr 4)]); result.add(digits[int(octet and 15)])
+
 proc workload(count, iteration: int): string {.raises.} =
   ## Each isolated file receives 64 sparse commits then retains the last eight roots plus the initial root.
   assert count in [128, 1024]
@@ -97,6 +103,7 @@ proc workload(count, iteration: int): string {.raises.} =
     ",\"before_nodes\":" & $before.storedNodes & ",\"after_nodes\":" & $after.storedNodes &
     ",\"snapshot_bytes\":" & $after.snapshotBytes & ",\"journal_bytes\":" & $after.journalBytes &
     ",\"root\":\"" & hex(array[32, byte](after.root)) & "\",\"checksum\":\"" & hex(checksum) & "\"}"
+
 proc main() {.raises.} =
   ## Ten identical repeats per size record deterministic counters/bytes and descriptive timing, never a speed threshold.
   var evidence = "["

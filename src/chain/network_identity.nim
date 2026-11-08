@@ -3,6 +3,7 @@
 
 ## Bounded operator-supplied network identity: opaque fetch bytes and the complete serialized
 ## genesis-header hash. This projection does not validate a state snapshot or grant consensus authority.
+
 import std/[parsejson, streams, strutils, parseutils]
 import ../crypto/primitives
 import ./genesis
@@ -26,17 +27,21 @@ type
 func error*(outcome: NetworkIdentityResult): NetworkIdentityError =
   ## Inspect parsing failure without accessing any partially initialized identity.
   outcome.status
+
 func value*(outcome: NetworkIdentityResult): NetworkIdentity {.requires: outcome.status ==
     NetworkIdentityError.None.} =
   ## Copy only a complete fixed network identity.
   outcome.completed
+
 func ready*(identity: NetworkIdentity): bool =
   ## A default fixed value cannot publish an operator-selected network identity.
   identity.initialized
+
 func parametersBytes*(identity: NetworkIdentity): array[122,
     byte] {.requires: identity.initialized.} =
   ## Fetch bytes remain uninterpreted; consumers validate their own parameter or telemetry geometry.
   identity.encoded
+
 func genesisHash*(identity: NetworkIdentity): BlockHash {.requires: identity.initialized.} =
   ## This is the configured original header, never a best-head or state-root replacement.
   identity.genesis

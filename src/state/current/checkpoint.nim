@@ -3,6 +3,7 @@
 
 ## Bounded unchanged-format checkpoint qualification retains one genuine authenticated current update.
 ## Child prior commitment, computed posterior commitment and explicitly retained finality remain separate facts.
+
 import ../accumulation/current/update as accumulation_current_update
 import ../[checkpoint, store]
 import ../../chain/[genesis, provider]

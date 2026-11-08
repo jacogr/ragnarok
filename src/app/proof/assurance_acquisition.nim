@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Closed canonical CE137 acquisition and existing-coordinate probes verify exact assigned data before synchronized retention or restoration; fixed completion facts grant no signing capability.
+
 import std/assertions
 import ../../jamnp-s/[assurance_duty, assurance_store, assurance_record, availability_proof]
 import ../../chain/genesis
@@ -45,32 +46,39 @@ type
     else: discard # Simple/default refusals retain no successful input, receipt or unrelated child reason.
   FrameParts = object ## Borrowed extents stay inside the synchronous native operation and never escape their raw input owner.
     starts, lengths: array[3, int]
+
 func error*[T](outcome: AssuranceAcquisitionResult[T]): AssuranceAcquisitionError =
   ## Inspect the selected failure before extracting its guarded payload or child.
   outcome.status
+
 func value*[T](outcome: AssuranceAcquisitionResult[T]): T {.requires: outcome.status ==
     AssuranceAcquisitionError.None.} =
   ## Only completely admitted jobs or completely persisted progress facts are extractable.
   outcome.completed
+
 func dutyError*[T](outcome: AssuranceAcquisitionResult[T]): AssuranceDutyResult[
     AssuranceDuty] {.requires: outcome.status == AssuranceAcquisitionError.DutyFailure.} =
   ## Preserve the actual selected canonical-source qualification failure.
   outcome.dutyReason
+
 func transferError*[T](outcome: AssuranceAcquisitionResult[T]): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] {.requires: outcome.status ==
     AssuranceAcquisitionError.TransferFailure.} =
   ## Preserve real expected-geometry, proof or maintained-primitive failure.
   outcome.transferReason
+
 func storageError*[T](outcome: AssuranceAcquisitionResult[T]): AssuranceStoreResult[
     StoredAssuranceShard] {.requires: outcome.status == AssuranceAcquisitionError.StorageFailure.} =
   ## A failed durability boundary cannot be replaced with successful acquisition metadata.
   outcome.storageReason
+
 func refused[T](reason: AssuranceAcquisitionError): AssuranceAcquisitionResult[
     T] {.requires: reason notin {AssuranceAcquisitionError.None,
     AssuranceAcquisitionError.DutyFailure, AssuranceAcquisitionError.TransferFailure,
     AssuranceAcquisitionError.StorageFailure}.} =
   ## Simple refusal owns no partially initialized child or accepted payload.
   AssuranceAcquisitionResult[T](status: reason)
+
 func valid*(limits: AssuranceAcquisitionLimits): bool =
   ## Existing public CE137 framing stays within 16MiB; checked logical buffer accounting remains bounded independently of archive size.
   uint64(limits.duty.chapterBytes) > 0 and uint64(limits.duty.readBytes) > 0 and
@@ -82,9 +90,11 @@ func valid*(limits: AssuranceAcquisitionLimits): bool =
     uint64(limits.verification.hashes) > 0 and uint64(limits.verification.hashes) <= 1000000 and
     uint64(limits.verification.hashBytes) > 0 and uint64(limits.verification.hashBytes) <=
         128'u64*1024*1024
+
 func valid*(job: AssuranceAcquisitionJob): bool =
   ## Default jobs retain no source, path, native owner or input bytes.
   job.data != nil
+
 proc captureAcquisition(owner: var AssuranceStore, source: BlockSnapshotResult,
     chain: AssuranceChainId, local: StateEdKey, core: CoreIndex, ordinal: int,
     wire: openArray[byte], now: AssuranceTime, limits: AssuranceAcquisitionLimits,
@@ -111,18 +121,21 @@ proc captureAcquisition(owner: var AssuranceStore, source: BlockSnapshotResult,
       chain: chain, local: local, core: core, ordinal: ordinal, wire: move(copied),
           existingOnly: existingOnly, now: now,
       limits: limits)))
+
 proc captureAssuranceAcquisition*(owner: var AssuranceStore, source: BlockSnapshotResult,
     chain: AssuranceChainId, local: StateEdKey, core: CoreIndex, ordinal: int,
     wire: openArray[byte], now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
         AssuranceAcquisitionJob] =
   ## Both original and private raw transcript storage are admitted before cloning; this closed mode always requires the three actual network frames.
   captureAcquisition(owner, source, chain, local, core, ordinal, wire, now, limits, false)
+
 proc captureAssuranceProbe*(owner: var AssuranceStore, source: BlockSnapshotResult,
     chain: AssuranceChainId, local: StateEdKey, core: CoreIndex, ordinal: int,
     now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionResult[
         AssuranceAcquisitionJob] =
   ## Existing-coordinate lookup derives its expected root from fresh canonical duty on the worker; a caller cannot supply a purported possession flag or stored receipt.
   captureAcquisition(owner, source, chain, local, core, ordinal, [], now, limits, true)
+
 func frames(wire: openArray[byte], lengths: array[3, uint64], parts: var FrameParts): bool =
   ## Exact E4 extents come from the canonical report geometry, never peer-selected counts; reject every truncated prefix, body or suffix before hashing.
   parts = default(FrameParts)
@@ -138,6 +151,7 @@ func frames(wire: openArray[byte], lengths: array[3, uint64], parts: var FramePa
     parts.lengths[index] = int(count)
     offset += int(count)
   offset == wire.len
+
 proc verify(data: AcquisitionData, expected: AvailabilitySpecifier, request: AvailabilityRequest,
     parts: FrameParts): AvailabilityTransferResult[VerifiedAvailabilityTransfer] =
   ## Empty export or singleton-proof extents use genuine empty views, never invalid negative array slices.
@@ -159,6 +173,7 @@ proc verify(data: AcquisitionData, expected: AvailabilitySpecifier, request: Ava
     data.wire.toOpenArray(bundle, bundle+parts.lengths[0]-1),
     data.wire.toOpenArray(segments, segments+parts.lengths[1]-1),
     data.wire.toOpenArray(proof, proof+parts.lengths[2]-1), data.limits.verification)
+
 proc executeAssuranceAcquisition*(job: AssuranceAcquisitionJob,
     control: AssuranceScanControl): AssuranceAcquisitionResult[AssuranceAcquisitionInfo] =
   ## One native lease qualifies the selected parent, verifies every CE137 byte and crosses the real durability boundary before returning fixed progress metadata.

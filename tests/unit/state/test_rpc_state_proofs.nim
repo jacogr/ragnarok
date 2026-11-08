@@ -4,6 +4,7 @@
 # @@Verification={"arc": "rpc_state_proofs_arc_release"}
 
 ## Real WebSocket proof admission, native offload, exact receive verification, refusal, cancellation and joined retirement.
+
 import std/[assertions, syncio, strutils, base64, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -22,13 +23,16 @@ from ../../support/application_candidate_context import SeedFixture
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between bounded synchronized worker polls.
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Inject maintained native hash refusal before submission, never concurrently with host flag mutation.
+
 proc selection(context: SeedFixture): tuple[hash: BlockHash, root: StateRoot,
     service: ServiceIndex] {.raises.} =
   ## Retire independent fixture/canonical aliases before returning only fixed expected identities.
   let selected = querySelection(context).value
   (selected.blockHash, selected.stateRoot, selected.serviceAt(ServiceListIndex(0)))
+
 proc listener(owner: var Services, path: string, command = "server",
     management = ""): uint16 {.raises.} =
   ## Bind a real ephemeral RPC listener; bounded retries cover only the reservation/rebind race.
@@ -44,6 +48,7 @@ proc listener(owner: var Services, path: string, command = "server",
     if owner.start(options, command): return reserved.port
   assert false, "proof RPC listener startup"
   0'u16
+
 proc settle(owner: var Services) =
   ## RPC-owned jobs auto-collect; direct RPC polling is forbidden while its canonical lease is active.
   let start = getMonoTime()
@@ -53,6 +58,7 @@ proc settle(owner: var Services) =
     owner.tick(0)
     discard pauseMicros(1000)
   assert not owner.rpc.chainPaused
+
 proc proofBytes(message: string): seq[byte] =
   ## Read only the Base64 alphabet inside the already schema-checked server notification.
   const prefix = "\"proof\":\""
@@ -65,6 +71,7 @@ proc proofBytes(message: string): seq[byte] =
   assert base64.encode(decoded) == encoded
   result = newSeq[byte](decoded.len)
   for index in 0..<decoded.len: result[index] = byte(decoded[index]) # Copy only fully decoded initialized bytes.
+
 proc roundtrip(owner: var Services, peer: cint, pending: var string, call: string,
     management = ""): string =
   ## Admit after parsing, observe the exclusive lease, collect, then consume acknowledgement before terminal output.
@@ -86,12 +93,15 @@ proc roundtrip(owner: var Services, peer: cint, pending: var string, call: strin
   assert "\"id\":7" in acknowledged and "\"error\"" notin acknowledged
   result = readPacket(owner.rpc, peer, pending)
   assert "\"method\":\"ragnarok_stateProof\"" in result
+
 proc cycle(owner: var Services, peer: cint, pending: var string, call: string) =
   ## All response/decoder temporaries retire before the next ownership observation.
   let message = owner.roundtrip(peer, pending, call)
   assert "\"format\":\"RPV1\"" in message and "\"error\"" notin message
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Private management fixture names do not collide across test processes.
+
 proc main() {.raises.} =
   ## Freeze root authority independently; no externally retained canonical owner enters native execution.
   failHash(0)

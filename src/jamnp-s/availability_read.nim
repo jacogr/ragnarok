@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original and retained guarantor CE137/147 sources produce detached exact-framed replies for managed CPU dispatch.
+
 import std/algorithm
 import ./[availability_proof, availability_merkle, guarantor_segments, read_stream, segment_request]
 import ../codec/natural
@@ -17,6 +18,7 @@ import "../state/export/erasure" as export_erasure
 type AvailabilityReadLimits* = object ## Explicit computation and final-wire ceilings keep optional serving disabled by default.
   computation*: AvailabilityMerkleLimits
   wireBytes*: ByteLimit
+
 func valid*(limits: AvailabilityReadLimits): bool =
   ## Local policy is finite independently of request counts and source metadata; no zero field acquires a guessed default.
   uint64(limits.wireBytes) >= 4 and uint64(limits.wireBytes) <= 32'u64*1024*1024 and
@@ -25,9 +27,11 @@ func valid*(limits: AvailabilityReadLimits): bool =
     uint64(limits.computation.hashBytes) > 0 and uint64(limits.computation.hashBytes) <=
         128'u64*1024*1024 and
     uint64(limits.computation.hashes) > 0 and uint64(limits.computation.hashes) <= 1000000
+
 func availabilityRead*(request: ReadRequest): bool =
   ## This source family never handles ordinary canonical content or upload acknowledgments.
   request.valid and request.kind in [ReadKind.Availability, ReadKind.Bundle]
+
 proc matchesAvailability*(request: ReadRequest, expected: AvailabilitySpecifier): bool =
   ## Compare fixed root bytes before retaining any source-bearing owner; shard range remains a computation check.
   if not request.availabilityRead: return false
@@ -35,10 +39,12 @@ proc matchesAvailability*(request: ReadRequest, expected: AvailabilitySpecifier)
   for index in 0..<32:
     if payload[index] != expected.erasureRoot.bytes[index]: return false
   true
+
 proc appendMessage(output: var seq[byte], payload: openArray[byte]) =
   ## Callers precharge every output byte and only pass hard-bounded complete payloads.
   for index in 0..<4: output.add(byte((uint32(payload.len) shr (8*index)) and 255))
   for octet in payload: output.add(octet)
+
 proc serveAvailabilityRead*(source: AvailabilityCommitment, request: ReadRequest,
     limits: AvailabilityReadLimits): ReadResult[ReadReply] =
   ## Only the CPU worker accesses source aliases; the returned reply owns bytes and no canonical graph.
@@ -175,6 +181,7 @@ func compareLocationKey(left, right: SegmentSelection): int =
   if left.shard < right.shard: return -1
   if left.shard > right.shard: return 1
   0
+
 func compareLocations(left, right: SegmentSelection): int =
   ## Original source position breaks ties so duplicate verified coordinates preserve the former first-source behavior.
   let compared = compareLocationKey(left, right)
@@ -182,6 +189,7 @@ func compareLocations(left, right: SegmentSelection): int =
   if left.index < right.index: return -1
   if left.index > right.index: return 1
   0
+
 func batchSource(locations: openArray[SegmentSelection], item: SegmentSelection): int =
   ## Lower-bound lookup is logarithmic in the bounded source count and never reorders requested reply items.
   var first = 0
@@ -193,6 +201,7 @@ func batchSource(locations: openArray[SegmentSelection], item: SegmentSelection)
   if first < locations.len and compareLocationKey(locations[first], item) == 0:
     return int(locations[first].index)
   -1
+
 proc serveSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer], request: ReadRequest,
     limits: AvailabilityReadLimits): ReadResult[ReadReply] =
   ## One managed turn precharges the entire ordered batch and indexes each selected verified distribution once.
@@ -296,6 +305,7 @@ proc serveSegmentShardBatch*(sources: openArray[VerifiedAvailabilityTransfer], r
   appendMessage(wire, data)
   for proof in proofs: appendMessage(wire, proof)
   captureReadReply(request, wire)
+
 proc serveOriginalSegmentBatch*(source: AvailabilityCommitment, request: ReadRequest,
     limits: AvailabilityReadLimits): ReadResult[ReadReply] =
   ## CE148 returns actual final normalized exports and constant-depth proofs from the original computed report.
@@ -351,6 +361,7 @@ proc retainedSegmentSource(sources: openArray[GuarantorAvailability], root: arra
     if info.error == AvailabilityTransferError.None:
       if info.value.specifier.segmentRoot.bytes == root: return index
   -1
+
 proc serveRetainedSegmentBatch*(sources: openArray[GuarantorAvailability],
     original: AvailabilityCommitment, request: ReadRequest,
     limits: AvailabilityReadLimits): ReadResult[ReadReply] =

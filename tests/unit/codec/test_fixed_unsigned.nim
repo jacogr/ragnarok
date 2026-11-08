@@ -15,6 +15,7 @@ let defaultEncoding = default(FixedEncodeResult)
 let defaultDecoding = default(FixedDecodeResult)
 assert not defaultEncoding.ok and defaultEncoding.error == FixedError.InvalidWidth
 assert not defaultDecoding.ok and defaultDecoding.error == FixedError.InvalidWidth
+
 # Check the value, exact byte count, all shorter prefixes and preservation of the next field.
 proc checkFixed(x: uint64, count: int) =
   let encoded = encodeFixed(FixedUnsigned(x), ByteWidth(count))

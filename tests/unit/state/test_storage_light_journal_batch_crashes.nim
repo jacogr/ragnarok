@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real process deaths during grouped append preserve exact authenticated prefixes and retry only uncommitted edits.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[storage_io, storage_crash, storage_light_journal]
 import ../../../src/storage/light/journal/[cache as light_journal_cache,
@@ -11,13 +12,16 @@ import ../../../src/storage/light/[delta as light_delta, snapshot as light_snaps
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only exact test-owned paths without scanning or granting selection authority.
+
 proc exists(path: string): bool =
   ## Missing staging is a forensic assertion, independent of any fallback recovery path.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc changes(fixture: LightJournalFixture): array[2, LightJournalEdit] =
   ## Ordinary independently prepared transitions supply borrowed proof transport for a forward/reverse group.
   result = default(array[2, LightJournalEdit])
@@ -30,11 +34,13 @@ proc changes(fixture: LightJournalFixture): array[2, LightJournalEdit] =
       forgotten: @[lightKey(0)])
   result[1] = LightJournalEdit(proofs: @[LightStateProof(key: lightKey(0), proof: known)],
       forgotten: @[lightKey(255)])
+
 proc prefix(input: string, extent: int): string =
   ## Copy an independently authored bounded prefix without granting any production repair authority.
   assert extent >= 0 and extent <= input.len, "bounded batch forensic prefix"
   result = newString(extent)
   for index in 0..<extent: result[index] = input[index]
+
 proc batchCrash(fixture: LightJournalFixture, previous: bool, operation, skip: cint,
     chunk: int): uint64 {.raises.} =
   ## Every completed control or exact stopped child receives a fresh namespace and independent expected frame bytes.
@@ -154,6 +160,7 @@ proc batchCrash(fixture: LightJournalFixture, previous: bool, operation, skip: c
       ManagedFileKind.Snapshot)) == checkpoint, "recovery and retry preserve checkpoint selection"
   assert readFile(path & "/KEEP") == "preserve grouped-process sibling", "unknown sibling survives group recovery"
   retireLightJournal(path)
+
 proc main() {.raises.} =
   ## Qualify a fresh group and one after two committed frames; aligned chunks witness strict prefix success separately from tail repair.
   let fixture = lightFixture()

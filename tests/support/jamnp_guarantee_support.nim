@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original genuinely admitted credentials and separately signed unpublished reports exercise the narrower guarantee-support boundary without constructing inclusion, availability or computed-success capabilities.
+
 import std/assertions
 import ../../src/state/[guarantee_support, guarantors, guarantee_credentials, store]
 import ../../src/codec/[bounded, assurances, guarantees, report_owned, owned, disputes]
@@ -20,11 +21,13 @@ type SupportFixture* = object ## Only real complete predecessor chapters supply 
   clock*: StateTime
   offenders*: seq[OffenderKey]
   config*: GuarantorConfig
+
 proc supportLimits*(): GuaranteeSupportLimits =
   ## Complete standalone report/signatures, copied canonical storage and one whole report hash have independent finite credit.
   GuaranteeSupportLimits(wire: GuaranteeConfig(cores: CoreCount(3), validators: ValidatorCount(9),
     maxBytes: ByteLimit(1000000)), workspaceBytes: ByteLimit(8000000),
     hashBytes: ByteLimit(1000000), signatures: ElementLimit(3))
+
 proc supportFixture*(fixture: AuditContextFixture): SupportFixture =
   ## Decode only the actual already published guarantee-inclusion source, without replacing its key tables, entropy or clock.
   let context = captureAuditContext(fixture.view, fixture.blockHash, auditLimits()).value
@@ -53,6 +56,7 @@ proc supportFixture*(fixture: AuditContextFixture): SupportFixture =
   SupportFixture(original: context.auditGuarantee(0).value, plan: planned.value,
     active: active, previous: previous, entropy: entropy, clock: clock, offenders: move(offenders),
         config: config)
+
 proc actualSeed(record: StateValidator): EdSeed =
   ## Match only test-owned private seeds to the actual independently decoded original assigned public key.
   for marker in 1..40:
@@ -62,6 +66,7 @@ proc actualSeed(record: StateValidator): EdSeed =
     if array[32, byte](seed.publicKey.value) == array[32, byte](record.ed25519): return seed
   assert false, "actual original fixture key has no test-owned seed"
   return importSeed(default(array[32, byte])).value
+
 proc unseenGuarantee*(source: SupportFixture, wrongPopulation = false, mutation = 1'u8): Guarantee =
   ## Change raw canonical report bytes before genuine original-key signatures. No report admission, C10 mutation or computed-success owner is fabricated.
   let original = source.original.report
@@ -85,6 +90,7 @@ proc unseenGuarantee*(source: SupportFixture, wrongPopulation = false, mutation 
     let assigned = source.plan.guarantorAt(result.slot, result.credentials[ordinal].validator).value
     let signed = sign(actualSeed(assigned.validator), message).value
     result.credentials[ordinal].signature = GuaranteeSignature(array[64, byte](signed))
+
 proc guaranteeSupportChecks*(fixture: AuditContextFixture) =
   ## Actual original support, canonical detachment, stale coordinates and a population-mismatched report distinguish signature support from consensus admission.
   let source = supportFixture(fixture)

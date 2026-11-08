@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Attach complete code availability to original qualified logical provenance at its own selected child's slot.
+
 import ../../state/current/[logical as current_logical, state as current_state]
 import ../../state/code_availability
 import ../../codec/state/requests as state_requests

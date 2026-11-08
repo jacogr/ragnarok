@@ -14,11 +14,13 @@ import ../../../src/codec/bounded
 import ../../support/published_state
 
 const Prefix = "state-bank-replay"
+
 proc clearFiles() =
   ## Only known suite-owned canonical files and the stable lock are removed after every descriptor retires.
   for suffix in [".head", ".head.lock", ".0", ".1"]:
     var path = Prefix & suffix
     discard posix.unlink(path.toCString()) # No live bank or worker owns this namespace at cleanup boundaries.
+
 proc replay(before, after: Mapping) =
   ## Published pre/post roots authorize recovery independently from all locally written selectors.
   clearFiles()
@@ -61,6 +63,7 @@ proc replay(before, after: Mapping) =
   assert replaceAtomicFile(Prefix & ".1", nextBytes, maximum) == AtomicFileError.None
   matches(bank.restore(after.root, limits, maximum).value.snapshot.value, after)
   assert bank.close() == CheckpointBankError.None
+
 proc main() {.raises.} =
   ## Existing independent fixture preparation preserves all seven source pairs and their original serialized mappings.
   let mappings = publishedMappings()

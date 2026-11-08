@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual collected refresh plans preserve both source alternatives, original failures, bounded retry and stale-parent refusal.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context, current_consecutive_context,
     accumulation_current_candidate_context]
@@ -14,8 +15,10 @@ import ../../src/state/current/logical/refresh as current_logical_refresh
 import ../../src/state/accumulation/current/update as accumulation_current_update
 import ../../src/state/store
 import ../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Primitive refusal occurs after preparation has completed, without replacing source or policy.
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(CollectedLogicalPlanResult)

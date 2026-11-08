@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Detached export remains available through a real canonical execution lease and joined aggregate shutdown.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/services
@@ -15,6 +16,7 @@ import ../../support/application_checkpoint_services_context
 const
   SeedPath = "application-checkpoint-services-lease-chain.json"
   FileName = "application-checkpoint-services-lease"
+
 proc scenario(acknowledge: bool) {.raises.} =
   ## Original canonical context is captured before the lease; no state/header/history alias crosses into I/O.
   var input = default(BlockInput)
@@ -60,6 +62,7 @@ proc scenario(acknowledge: bool) {.raises.} =
     assert not transferred.checkpointShutdownPending
   assert loadApplicationCheckpoint(FileName, expected, genesisStoreLimits(), ByteLimit(
       1000000)).error == ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Both acknowledged and joined-only publication preserve the independent preparation gate and actual disk outcome.
   defer:

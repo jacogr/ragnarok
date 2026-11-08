@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_skipped_credit_selection_arc_release"}
 
 ## Genuine unavailable-code certificates preserve liquid/protected/zero credits and common-frame ownership in M selection.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/annulment as accumulation_annulment
 import ../../../src/state/accumulation/account/selection as accumulation_account_selection
@@ -18,11 +20,14 @@ import ../../support/[accumulation_annulment_context, accumulation_batch_context
 
 # Account-source selection must retain precredited maps, never recompute or publish their roots.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc policy(skips = 1'u64): AccumulationAccountSelectionLimits =
   ## Independent producer/skip/account/work ceilings count even unrequested certified participants.
   AccumulationAccountSelectionLimits(outcomes: ElementLimit(2), skipped: ElementLimit(skips),
     accounts: ElementLimit(2), checks: ElementLimit(256))
+
 proc removeCode(source: var BatchFixture, service: uint32) =
   ## Remove an actual code preimage before either execution or code-unavailable preparation captures the common prior.
   let accountKey = chapterServiceKey(StateChapter(255), ServiceIndex(service))
@@ -32,6 +37,7 @@ proc removeCode(source: var BatchFixture, service: uint32) =
       account.codeHash)), ByteLimit(32)).value
   let removed = source.state.apply([StateWrite(key: key, kind: StateWriteKind.Delete)])
   assert removed.error == StateStoreError.None, "remove the actual original code key before source capture"
+
 proc creditFixture(amount = 11'u64, protected = false, supervisor = 99'u32,
     incarnation = 0'u32, nominee = false): BatchFixture =
   ## Author one incoming record for99 and independent always groups before preparing any genuine source.
@@ -54,6 +60,7 @@ proc creditFixture(amount = 11'u64, protected = false, supervisor = 99'u32,
         value: entry.value)])
     assert added.error == StateStoreError.None, "seed a matching inactive supervisor before common-source capture"
   removeCode(result, 99)
+
 proc skipped(source: BatchFixture, index = 1'u64, slot = HeaderSlot(128)): SkippedAccumulation =
   ## Only actual code-unavailable preparation creates this certified zero-execution alternative.
   let service = prepareAccumulationService(source.inputs, InvocationServiceIndex(index),
@@ -61,6 +68,7 @@ proc skipped(source: BatchFixture, index = 1'u64, slot = HeaderSlot(128)): Skipp
     AccumulationServiceConfig(codeLimit: ServiceCodeLimit(512), preimageBytes: ByteLimit(1024))).value
   assert service.serviceInfo.value.code == AccumulationCodeStatus.Missing, "the original code preimage is genuinely absent"
   finishUninvokedAccumulation(service).value
+
 proc executedSource(source: BatchFixture): PreparedAccumulationAnnulment =
   ## One real parent execution and its exact input/map owners leave the second participant to a certified skip.
   prepareAccumulationAnnulment(source.inputs, source.state.snapshot.value,

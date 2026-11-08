@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen full-state identity bytes reject every prefix, octet mutation and foreign chain.
+
 import std/[assertions, syncio]
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded

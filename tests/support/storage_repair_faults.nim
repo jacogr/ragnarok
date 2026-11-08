@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real torn-tail repair fixtures bind destructive truncation to an independently exact complete prefix.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_samples, managed_storage_samples, storage_io]
@@ -11,6 +12,7 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../src/storage/database_identity
 import ../../src/codec/bounded
+
 proc repairCase*(label: string, managed: bool, skip, failures: cint,
     permanent = false, truncateFault = false): uint64 {.raises.} =
   ## Genuine eight-byte partial appends precede independently authorized repair and complete-map checks.

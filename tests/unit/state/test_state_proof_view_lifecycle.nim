@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Repeated partial-view capture, union, projection and transport release every immutable ARC owner.
+
 # @@Verification={"arc": "state_proof_view_lifecycle_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
@@ -10,10 +11,13 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     safrole as state_safrole]
 import ../../support/arc_evidence
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing while immutable read composition and encoding operate on retained facts.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive attempts instead of inferring hash-free behavior from results.
+
 proc cycle() =
   ## All derived collections and detached export records leave scope before the next allocator observation.
   let key = chapterKey(StateChapter(11))

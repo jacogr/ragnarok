@@ -2,13 +2,16 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Generic plans normalize requested identities without granting root or complete-state authority.
+
 import std/[assertions, syncio]
 import ../../../src/state/proof/plan as proof_plan
 import ../../../src/codec/bounded
 import ../../../src/codec/state/layout as state_layout
+
 proc same(left, right: StateKey): bool =
   ## Compare fixed copied identities independently of internal plan layout.
   array[31, byte](left) == array[31, byte](right)
+
 proc main() =
   ## Check unordered capture, caller independence, exact union budgets and default/empty distinction.
   let first = chapterKey(StateChapter(1))

@@ -4,6 +4,7 @@
 ## Bounded standalone JamV1 PolkaVM containers; see spec/pvm-artifacts.md.
 ## Section bytes are borrowed until capture into immutable program/memory owners; symbols are copied.
 ## File loading is explicit; no application host ABI is inferred.
+
 import std/syncio
 import ../codec/natural
 import ./[program, machine]

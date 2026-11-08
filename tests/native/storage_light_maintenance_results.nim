@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic missing maintenance authority guards have genuine idle-plan and confirmed no-op receipt controls.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/storage/light/snapshot as light_snapshot
@@ -13,8 +14,10 @@ import ../../src/storage/managed/manifest as managed_manifest
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 import ../../src/codec/state/trie as state_trie
+
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Controls use one exact process-owned fixture namespace.
+
 proc main() {.raises.} =
   ## Select default/failed authority before constructing any successful source, then exercise every public plan payload getter.
   let member = paramStr(1)

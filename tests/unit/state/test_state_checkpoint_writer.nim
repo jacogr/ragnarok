@@ -17,6 +17,7 @@ proc setMask(mask: Mode): Mode {.importc: "umask", cdecl, header: "<sys/stat.h>"
   ## The test chooses and restores its process-local creation mask for an exact permission witness.
 
 const FileName = "state-checkpoint-writer.bin"
+
 proc cycle() =
   ## Each isolated ownership cycle opens, contends, retires and reacquires the same persistent lock inode.
   var first = default(CheckpointWriter)
@@ -31,6 +32,7 @@ proc cycle() =
   assert second.openCheckpointWriter(FileName) == CheckpointFileError.None
   assert second.close() == CheckpointFileError.None
   assert second.close() == CheckpointFileError.None
+
 proc contention() =
   ## A separately opened child descriptor must not acquire the parent's inherited locked inode.
   var writer = default(CheckpointWriter)
@@ -61,6 +63,7 @@ proc contention() =
   assert waiting.openCheckpointWriter(FileName) == CheckpointFileError.Busy
   assert writer.close() == CheckpointFileError.None
   assert waiting.openCheckpointWriter(FileName) == CheckpointFileError.None
+
 proc main() =
   ## Verify path ownership, guarded delegation, nonblocking contention, reopen and parent-only ARC release.
   let previousMask = setMask(Mode(0o077))

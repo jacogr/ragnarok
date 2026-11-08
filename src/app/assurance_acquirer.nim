@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional source-free CE137 acquisition serializes canonical planning, existing-record probes, actual guarantor requests and verified durable retention through exact shared leases.
+
 import std/[monotimes, times]
 import ./services
 import ./proof/[worker, work_submission, assurance_acquisition]
@@ -40,6 +41,7 @@ type
     dialing, closingDial: bool
     usedRequests, usedDials, usedBytes: uint64
     attempted, retained, probed, failed, passes: uint64
+
 func assuranceAcquisitionPolicy*(planning: AssuranceFetchLimits,
     acquisition: AssuranceAcquisitionLimits, requests, dials: ElementLimit, bytes: ByteLimit,
     peerTimeoutMs: range[1..120000] = 5000, jobTimeoutMs: range[1..120000] = 30000,
@@ -55,17 +57,22 @@ func assuranceAcquisitionPolicy*(planning: AssuranceFetchLimits,
     requests: uint64(requests), dials: uint64(dials), bytes: uint64(bytes),
     peerTimeout: peerTimeoutMs, jobTimeout: jobTimeoutMs, roundTimeout: roundTimeoutMs,
     retry: retryMs, attempts: attempts)
+
 func valid*(policy: AssuranceAcquisitionPolicy): bool =
   ## A default cannot start jobs, dials or data acquisition.
   policy.ready
+
 proc `=copy`*(destination: var AssuranceAcquirer, source: AssuranceAcquirer) {.error.}
   ## A copied controller could cancel or collect another owner's native/source lease.
+
 proc `=dup`*(source: AssuranceAcquirer): AssuranceAcquirer {.error.}
   ## Initialization cannot duplicate live exact tokens.
+
 proc requireClosed(owner: AssuranceAcquirer) {.requires: not owner.active and not owner.fetching and
     not owner.dialing.} =
   ## Explicit close retires host token ownership before destruction of any managed/raw children.
   discard
+
 proc `=wasMoved`*(owner: var AssuranceAcquirer) {.nodestroy, requires: not owner.active and
     not owner.fetching and not owner.dialing.} =
   ## Only an inactive owner moves; delegate every owned child and opaque token namespace.
@@ -77,6 +84,7 @@ proc `=wasMoved`*(owner: var AssuranceAcquirer) {.nodestroy, requires: not owner
   `=wasMoved`(owner.raw)
   `=wasMoved`(owner.network)
   `=wasMoved`(owner.dial)
+
 proc `=destroy`*(owner: AssuranceAcquirer) =
   ## The foreground host joins owned work and requests native retirement before this storage disappears.
   requireClosed(owner)
@@ -88,30 +96,39 @@ proc `=destroy`*(owner: AssuranceAcquirer) =
   `=destroy`(owner.raw)
   `=destroy`(owner.network)
   `=destroy`(owner.dial)
+
 func phase*(owner: AssuranceAcquirer): AssuranceAcquirerPhase =
   ## Detached scalar progress is safe while a worker owns canonical/namespace graphs.
   owner.phase
+
 func acquired*(owner: AssuranceAcquirer): uint64 =
   ## Count actual uncancelled synchronized retention results, never cached possession or signed cores.
   owner.retained
+
 func probed*(owner: AssuranceAcquirer): uint64 =
   ## Count only uncancelled actual stored-proof and restore-sync completions; these observations never renew a promise.
   owner.probed
+
 func attempted*(owner: AssuranceAcquirer): uint64 =
   ## Count only admitted remote CE137 requests, including later transport/proof refusal.
   owner.attempted
+
 func failures*(owner: AssuranceAcquirer): uint64 =
   ## Refusal counts grant no partial data or canonical authority.
   owner.failed
+
 func passes*(owner: AssuranceAcquirer): uint64 =
   ## A complete pass can include unavailable coordinates; only fresh private signing may claim possession.
   owner.passes
+
 func demandConnections*(owner: AssuranceAcquirer): int =
   ## Ordinary active/closing dial ownership remains charged until exact native retirement.
   if owner.dialing: 1 else: 0
+
 proc bump(value: var uint64) =
   ## Diagnostic lifetime counters saturate rather than wrap.
   if value < high(uint64): inc value
+
 proc configure*(owner: var AssuranceAcquirer, services: Services, streams: NodeService,
     policy: AssuranceAcquisitionPolicy): bool =
   ## Explicit full-state healthy storage and an actual validator transport are required; configuration opens no namespace and loads no key.
@@ -128,6 +145,7 @@ proc configure*(owner: var AssuranceAcquirer, services: Services, streams: NodeS
   owner.failed = 0
   owner.passes = 0
   true
+
 proc resetRound(owner: var AssuranceAcquirer, clock: MonoTime) =
   ## New reservation windows do not reset the current core/local cursor or discard previously retained data.
   owner.usedRequests = 0
@@ -135,11 +153,13 @@ proc resetRound(owner: var AssuranceAcquirer, clock: MonoTime) =
   owner.usedBytes = 0
   owner.roundStarted = clock
   owner.targetStarted = clock
+
 proc cancelNetwork(owner: var AssuranceAcquirer, streams: var NodeService) =
   ## The native parent retains physical frame credit until close even after this exact logical token is cancelled.
   if owner.fetching: discard streams.cancelRequest(owner.network)
   owner.fetching = false
   owner.network = default(NodeRequestTicket)
+
 proc retireDial(owner: var AssuranceAcquirer, streams: var NodeService, force = false) =
   ## Closing intent does not release normal demand; pre-existing connections never acquire an owned token here.
   if not owner.dialing: return
@@ -150,6 +170,7 @@ proc retireDial(owner: var AssuranceAcquirer, streams: var NodeService, force = 
     return
   if not owner.closingDial and (force or not streams.peerBusy(owner.dialKey)):
     owner.closingDial = streams.cancelPeerConnection(owner.dial)
+
 proc transition(owner: var AssuranceAcquirer, streams: var NodeService,
     next: AssuranceAcquirerPhase) =
   ## Only detached state moves while an owned dial retires; no replacement dial can overtake its still-charged engine.
@@ -159,12 +180,14 @@ proc transition(owner: var AssuranceAcquirer, streams: var NodeService,
     owner.retireNext = next
     owner.phase = AssuranceAcquirerPhase.Retiring
   else: owner.phase = next
+
 proc pause(owner: var AssuranceAcquirer, streams: var NodeService, clock: MonoTime,
     resume: AssuranceAcquirerPhase) =
   ## Budget/time backoff preserves coordinate progress and starts a fresh reservation window only after its configured delay.
   owner.afterBackoff = resume
   owner.wake = clock+initDuration(milliseconds = owner.policy.retry)
   owner.transition(streams, AssuranceAcquirerPhase.Backoff)
+
 proc clearCoordinate(owner: var AssuranceAcquirer) =
   ## No canonical graph is retained by the request, selected coordinate or detached raw transcript.
   owner.prepared = false
@@ -173,6 +196,7 @@ proc clearCoordinate(owner: var AssuranceAcquirer) =
   owner.selected = default(AssuranceFetchRequest)
   owner.replyLimit = ByteLimit(0)
   owner.target = 0
+
 proc dropPlan(owner: var AssuranceAcquirer, streams: var NodeService) =
   ## Source refresh discards only source-free request metadata; durable promises remain in Services.
   owner.plan = default(AssuranceFetchPlan)
@@ -180,6 +204,7 @@ proc dropPlan(owner: var AssuranceAcquirer, streams: var NodeService) =
   owner.local = 0
   owner.clearCoordinate()
   owner.transition(streams, AssuranceAcquirerPhase.Idle)
+
 proc advance(owner: var AssuranceAcquirer, streams: var NodeService, clock: MonoTime,
     stored: bool) =
   ## Independent original local indices advance before original core rows; no metadata prefix grants an assurance bit.
@@ -202,6 +227,7 @@ proc advance(owner: var AssuranceAcquirer, streams: var NodeService, clock: Mono
   else:
     owner.targetStarted = clock
     owner.transition(streams, AssuranceAcquirerPhase.ProbeReady)
+
 proc nextTarget(owner: var AssuranceAcquirer, streams: var NodeService, clock: MonoTime) =
   ## At most the actual two/three original credential targets are attempted; no random peer or self-claimed root substitutes.
   owner.raw = @[]
@@ -211,6 +237,7 @@ proc nextTarget(owner: var AssuranceAcquirer, streams: var NodeService, clock: M
   if owner.target >= count or owner.target >= owner.policy.attempts:
     owner.advance(streams, clock, false)
   else: owner.transition(streams, AssuranceAcquirerPhase.Choosing)
+
 proc prepare(owner: var AssuranceAcquirer): bool =
   ## Exact reply extent and fixed CE137 bytes derive solely from the independent canonical plan before any native input allocation.
   let selected = owner.plan.requestAt(owner.core, owner.local)
@@ -234,6 +261,7 @@ proc prepare(owner: var AssuranceAcquirer): bool =
   owner.replyLimit = ByteLimit(ceiling)
   owner.prepared = true
   true
+
 proc collect(owner: var AssuranceAcquirer, services: var Services,
     streams: var NodeService, clock: MonoTime) =
   ## Exact collection or proven joined revocation precedes every input/raw/token retirement; foreign jobs are untouched.
@@ -323,6 +351,7 @@ proc collect(owner: var AssuranceAcquirer, services: var Services,
       AssuranceAcquisitionError.TransferFailure:
     owner.nextTarget(streams, clock)
   else: owner.advance(streams, clock, false)
+
 proc poll*(owner: var AssuranceAcquirer, services: var Services,
     streams: var NodeService, clock: MonoTime) =
   ## Source-free transport progress continues while unrelated workers run; all canonical comparisons first require actual host availability.
@@ -438,6 +467,7 @@ proc poll*(owner: var AssuranceAcquirer, services: var Services,
   owner.dialing = true
   owner.closingDial = false
   owner.phase = AssuranceAcquirerPhase.Connecting
+
 proc submit*(owner: var AssuranceAcquirer, services: var Services,
     streams: var NodeService, clock: MonoTime, now: AssuranceTime): bool {.raises.} =
   ## CPU arbitration admits at most one closed job; staging aliases and detached input wrappers retire inside Services before publication.
@@ -500,6 +530,7 @@ proc submit*(owner: var AssuranceAcquirer, services: var Services,
   owner.active = true
   owner.cancelled = false
   true
+
 proc close*(owner: var AssuranceAcquirer, services: var Services, streams: var NodeService) =
   ## Only an exact owned CPU lease may be joined; the native parent retains requested physical dial/frame retirement after logical teardown.
   if owner.active and services.stateProofActive(owner.proof): services.stopStateProofs()

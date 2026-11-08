@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Worker-specific failure extraction and input-owner destruction remain checked runtime contracts.
+
 import std/[assertions, cmdline, syncio]
 import "../../src/app/block/download" as block_download
 import "../../src/app/block/input" as block_input

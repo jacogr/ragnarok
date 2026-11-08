@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Source-bound package anchor validation precedes guarantee eligibility; no signature or admission authority is produced here.
+
 import ./work_submission
 import ../chain/[provider, genesis, parameters]
 import ../codec/[bounded, header]
@@ -43,53 +44,65 @@ type
     of RecentFailure: recentReason: ReportAnchorError
     of AncestryFailure, LookupFailure: ancestorReason: AncestorContextError
     else: discard # Local policy/source refusals retain only their reason.
+
 func error*[T](outcome: WorkAnchorResult[T]): WorkAnchorError =
   ## Inspect failure without allowing a caller to retag an owner.
   outcome.status
+
 func value*[T](outcome: WorkAnchorResult[T]): T {.requires: outcome.status ==
     WorkAnchorError.None.} =
   ## Only complete source/context qualification exposes a capability.
   outcome.completed
+
 func historyError*[T](outcome: WorkAnchorResult[T]): HistoryError {.requires: outcome.status ==
     WorkAnchorError.HistoryFailure.} =
   ## Retain the actual exact-history decoder refusal.
   outcome.historyReason
+
 func correctionFailed[T](outcome: WorkAnchorResult[T]): bool =
   ## Keep the selected correction alternative explicit for contracts and the pinned formatter.
   outcome.status == WorkAnchorError.CorrectionFailure
+
 func correctionError*[T](outcome: WorkAnchorResult[
     T]): HistoryTransitionError {.requires: correctionFailed(outcome).} =
   ## Retain the actual bounded history-correction refusal.
   outcome.correctionReason
+
 func recentError*[T](outcome: WorkAnchorResult[T]): ReportAnchorError {.requires: outcome.status ==
     WorkAnchorError.RecentFailure.} =
   ## Retain the shared GP tuple/age refusal.
   outcome.recentReason
+
 func ancestorError*[T](outcome: WorkAnchorResult[T]): AncestorContextError {.requires: outcome.status in
     {WorkAnchorError.AncestryFailure, WorkAnchorError.LookupFailure}.} =
   ## Retain actual retained-header ancestry or lookup-root refusal.
   outcome.ancestorReason
+
 func failure[T](reason: WorkAnchorError): WorkAnchorResult[T] {.requires: reason in {
     WorkAnchorError.InvalidSource, WorkAnchorError.InvalidPolicy, WorkAnchorError.InvalidSlot,
     WorkAnchorError.LimitExceeded}.} =
   ## Local refusals cannot fabricate a successful context or child failure.
   WorkAnchorResult[T](status: reason)
+
 proc anchorInfo*(context: AnchoredWorkContext): WorkAnchorResult[WorkAnchorInfo] =
   ## Copy fixed facts only while the caller owns graph access; a default context exposes no fabricated head or slot.
   let data = context.data
   if data == nil: return WorkAnchorResult[WorkAnchorInfo](status: WorkAnchorError.Uninitialized)
   WorkAnchorResult[WorkAnchorInfo](status: WorkAnchorError.None, completed: data.info)
+
 proc workAnchorHistory*(context: AnchoredWorkContext): WorkAnchorResult[HistorySnapshot] =
   ## Share only the exact bounded corrected C3 used to qualify this original header and source map.
   let data = context.data
   if data == nil: return WorkAnchorResult[HistorySnapshot](status: WorkAnchorError.Uninitialized)
   WorkAnchorResult[HistorySnapshot](status: WorkAnchorError.None, completed: data.history)
+
 proc anchoredWorkMatches*(context: AnchoredWorkContext, header: WorkSubmissionHeader,
     state: StateStoreSnapshot): bool =
   ## Byte-identical independently decoded headers or substituted posterior maps cannot borrow this capability.
   let data = context.data
   if data == nil: return false
   data.header.sameSubmissionHeader(header) and sameStateSnapshot(data.source, state)
+
 func anchorFailureAs[T, U](outcome: WorkAnchorResult[T]): WorkAnchorResult[U] {.requires:
     outcome.status != WorkAnchorError.None.} =
   ## Preserve the actual selected failure while adapting context-only evidence to original-header evidence; no success can be retagged.
@@ -110,16 +123,19 @@ func anchorFailureAs[T, U](outcome: WorkAnchorResult[T]): WorkAnchorResult[U] {.
         ancestorReason: outcome.ancestorReason)
   else:
     WorkAnchorResult[U](status: outcome.status) # Local/default refusals have no selected child.
+
 proc anchorInfo*(context: RefinementAnchors): WorkAnchorResult[WorkAnchorInfo] =
   ## Fixed checked head/candidate facts remain inseparable from the completed context owner.
   let data = context.data
   if data == nil: return default(WorkAnchorResult[WorkAnchorInfo])
   WorkAnchorResult[WorkAnchorInfo](status: WorkAnchorError.None, completed: data.info)
+
 proc refinementHistory*(context: RefinementAnchors): WorkAnchorResult[HistorySnapshot] =
   ## Share exactly the corrected complete-source history used by recent/lookup checks, not arbitrary peer-supplied history.
   let data = context.data
   if data == nil: return default(WorkAnchorResult[HistorySnapshot])
   WorkAnchorResult[HistorySnapshot](status: WorkAnchorError.None, completed: data.history)
+
 proc captureRefinementAnchors*(context: RefinementContext, view: ChainView, now: StateTime,
     limits: WorkAnchorLimits): WorkAnchorResult[RefinementAnchors] =
   ## Check possible next-block context against actual complete state and linked retained headers, under one private graph lease.

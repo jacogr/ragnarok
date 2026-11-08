@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact selected inventories preserve disjoint historical roots, empty maps, permutations and independent ownership.
+
 # @@Verification={"arc": "storage_selection_compaction_arc_release"}
 import std/[algorithm, assertions, syncio]
 import ../../support/[arc_evidence, storage_snapshot_samples]

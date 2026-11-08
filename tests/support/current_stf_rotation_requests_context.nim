@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit regular/exceptional request-fact capture supports reservation cleanup and incarnation replacement.
+
 import ./current_stf_rotation_code_context
 import ../../src/app/candidate
 import ../../src/codec/bounded

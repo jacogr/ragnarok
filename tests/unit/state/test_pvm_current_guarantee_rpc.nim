@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real RPC remains available during original-context acquisition, then publishes the actual guaranteed successor and complete history.
+
 import ../../support/chain_alpn
 import std/[assertions, syncio, envvars, monotimes, times, os, strutils, base64]
 import std/posix/posix

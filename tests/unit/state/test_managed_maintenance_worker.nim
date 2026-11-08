@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## One native slot serializes managed maintenance with publication and retains every entered IO receipt through shutdown.
+
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[disk_history_context, managed_storage_samples, managed_disk_history_context]
@@ -13,6 +14,7 @@ import ../../../src/storage/file/repository as file_repository
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/database_identity
+
 proc waitDone(worker: var DiskPublicationWorker) =
   ## Only scalar state is observed until collection or joined shutdown ends every exclusive graph borrow.
   let started = getMonoTime()
@@ -21,6 +23,7 @@ proc waitDone(worker: var DiskPublicationWorker) =
     var request = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(request, remaining)
+
 proc cycle(mode: int) {.raises.} =
   ## Modes cover explicit collection, completed joined close, and a queued/executing shutdown race.
   let fixture = diskHistoryFixture()
@@ -77,6 +80,7 @@ proc cycle(mode: int) {.raises.} =
       fixture.view.finalizedBlock.value.blockHash)
   assert disk.close == FileError.None
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
+
 proc main() {.raises.} =
   ## Each isolated lifecycle owns one stable worker address and one managed directory lock.
   for mode in 0..2: cycle(mode)

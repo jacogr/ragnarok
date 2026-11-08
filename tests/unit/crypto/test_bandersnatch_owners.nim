@@ -16,16 +16,22 @@ import ../../../src/bandersnatch/bandersnatch
 
 # Reset attempt/free counters and failure flags without erasing the number of still-live native allocations.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
+
 # Each counter reports an actual call through the original Rust allocator/destructor.
 proc keyNews(): cint {.importc: "bo_key_news", cdecl.}
+
 # Key frees must occur once at explicit close or final ARC release, never both.
 proc keyFrees(): cint {.importc: "bo_key_frees", cdecl.}
+
 # Setup constructors use the real pinned embedded SRS.
 proc setupNews(): cint {.importc: "bo_setup_news", cdecl.}
+
 # Setup frees must pair with their original allocator.
 proc setupFrees(): cint {.importc: "bo_setup_frees", cdecl.}
+
 # Live counts remain observable across resets, so tests cannot conceal a leaked native allocation.
 proc liveKeys(): cint {.importc: "bo_live_keys", cdecl.}
+
 # No native address or freed/secret memory is exposed to this observer.
 proc liveSetups(): cint {.importc: "bo_live_setups", cdecl.}
 

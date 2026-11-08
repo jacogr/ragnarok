@@ -12,6 +12,7 @@ include ../../src/codec/state/trie
 
 # Sequential test-only backend refusal is absent from the production-linked root corpus.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Delayed refusal tests a failure after a complete child hash already exists.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Literal GP store/load widths and grouped pointer choices stay checked until shared memory lowering exists.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine, step]
 import ../../../src/pvm/gas/gas

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real native mutation receipts retain explicit known successor declarations and independently selected proof expectations.
+
 import std/assertions
 import ../../src/codec/state/[accounts as state_accounts, requests as state_requests]
 import ./pvm_accumulation_program
@@ -32,6 +33,7 @@ type CollectedMutationFixture* = object ## Test-only descriptors retain genuine 
   receipt*: PreparationCompletion
   declarations*: seq[StateService]
   key*: StateKey
+
 proc collectMutation*(origin: CurrentNamespaceTransition, declarations: openArray[StateService],
     key: StateKey, deleted = ElementLimit(0)): CollectedMutationFixture {.raises.} =
   ## Original code/namespaces entered roots and signatures; execute again on the fixed-address native worker without patching a completed map.
@@ -45,12 +47,15 @@ proc collectMutation*(origin: CurrentNamespaceTransition, declarations: openArra
       receipt.currentValue.error == CurrentBlockInputError.None
   CollectedMutationFixture(origin: origin, chain: chain, receipt: receipt,
     declarations: successorDeclarations(receipt.currentValue.value, declarations), key: key)
+
 proc mutationPlan*(fixture: CollectedMutationFixture): CollectedSuppliedPlan =
   ## Only the actual collected successor on the original prior can freeze supplied matching.
   planCollectedSupplied(fixture.chain, fixture.receipt, collectedSuppliedTestLimits()).value
+
 proc qualifyMutation*(fixture: CollectedMutationFixture): CurrentLogicalState =
   ## Full supplied matching and independently retained raw identities remain required for each genuine operation.
   executeCollectedSupplied(fixture.chain, mutationPlan(fixture), fixture.declarations).value
+
 proc checkMutationProof*(fixture: CollectedMutationFixture, present: bool, payload: seq[byte]) =
   ## Fix actual posterior and prior roots before capture; exact-plan proof validation must distinguish present bytes, proven absence and crossed roots.
   let update = fixture.receipt.currentValue.value
@@ -70,6 +75,7 @@ proc checkMutationProof*(fixture: CollectedMutationFixture, present: bool, paylo
   else: assert payload.len == 0 # An authenticated absent key exposes no invented bytes.
   assert decodePlannedProofs(wire, plan, oldRoot, limits.view, limits.proof, limits.aggregate,
     limits.wireBytes).error != ProofViewError.None
+
 proc writeMutationCode*(value: seq[byte], ending: openArray[seq[byte]]): seq[byte] =
   ## Author a real funded key7 host write followed by explicit opcode boundaries for selected terminal behavior.
   assert value.len > 0 and value.len <= 65
@@ -81,6 +87,7 @@ proc writeMutationCode*(value: seq[byte], ending: openArray[seq[byte]]): seq[byt
   for instruction in ending: instructions.add(instruction) # Terminal operations execute after the actual successful write.
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable): result.add(octet)
+
 proc requestMutationCode*(hash: ServicePreimageHash, length: RequestLength,
     operations: openArray[uint8]): seq[byte] =
   ## The known request hash is initialized before each actual solicit/forget host invocation; caller supplies exact operation order.

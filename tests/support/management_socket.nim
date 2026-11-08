@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real local HTTP client with independent framing and bounded nonblocking receive polling.
+
 import std/[assertions, strutils, nativesocket]
 import std/posix/posix
 import ../../src/management/server
@@ -15,15 +16,19 @@ type LocalEndpoint = object ## POSIX local-address prefix with a bounded pathnam
 
 proc openSocket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
   ## Test clients use an actual local stream socket.
+
 proc connectSocket(fd: cint, endpoint: pointer, size: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## Connect to the explicitly enabled management pathname.
+
 proc sendBytes(fd: cint, bytes: pointer, size: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
   ## Send the initialized HTTP request once, independently of the server parser.
+
 proc receive(fd: cint, bytes: pointer, size: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
   ## Copy no more than one bounded native response chunk.
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound retries without a blocking read or indefinite test deadline.
 

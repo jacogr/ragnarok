@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete current request key derivation is bounded upfront; cached physical identities and aliases remain private/hash-free.
+
 # @@Verification={"arc":"state_current_request_keys_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_request_keys_context, arc_evidence]
@@ -11,13 +12,17 @@ import ../../../src/state/supplied/logical_inventory as supplied_logical_invento
 import ../../../src/state/[inventory, manifest, store]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, requests as state_requests]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observation and optionally refuse key derivation after complete source qualification.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Exactly one maintained key derivation per request belongs to capture; subsequent queries hash nothing.
+
 proc cycle(source: PreservedCurrentIdentities) =
   ## Retire every new native row/key array and source alias without retaining a mutable copy.
   assert captureCurrentRequestKeys(source, currentRequestKeyTestLimits).value.requestKeysInfo.value.requests == 4
+
 proc main() {.raises.} =
   ## Original actual mapping and full current preservation precede primitive/resource observations.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

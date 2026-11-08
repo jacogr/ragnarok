@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine original report execution, credential admission, full computed-chain publication and exact retained availability provenance supply canonical assurance acquisition fixtures.
+
 import std/assertions
 import ../../src/chain/[genesis, provider]
 import ../../src/state/store
@@ -19,6 +20,7 @@ type AssuranceAcquisitionFixture* = object ## Complete post-publication state an
   availability*: AvailabilityCommitment
   local*, other*: StateEdKey
   chain*: AssuranceChainId
+
 proc assuranceAcquisitionFixture*(): AssuranceAcquisitionFixture =
   ## Recover the source only through sealed computation getters, then publish its real pending report before selecting the local parent's roster identity.
   let composed = chainFixture(storage = ComputedStorageMode.Commit)

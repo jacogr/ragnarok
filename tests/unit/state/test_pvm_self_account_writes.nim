@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_self_account_writes_arc_release"}
 
 ## Actual PVM self writes publish bounded terminal-selected data with exact common-source roots and rollback.
@@ -20,10 +21,13 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Observe actual backend work and place a refusal after complete account publication has been computed privately.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 let digest = ServicePreimageHash(array[32, byte](blake2b256([81'u8]).value))
+
 # Immutable input supplies a real provision digest and independent one-byte values after the hash.
 proc guestInput(): seq[byte] =
   result = newSeq[byte](34)

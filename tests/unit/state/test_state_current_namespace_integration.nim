@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Nonempty supplied namespaces retain genuine current provenance, detached copy isolation and independently bounded account audits.
+
 # @@Verification={"arc":"state_current_namespace_integration_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_context, service_namespace_seed,
@@ -23,10 +24,13 @@ import ../../../src/state/footprint_audit
 import ../../../src/state/preimage/[content as preimage_content, linkage as preimage_linkage]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Exact map matching happens before hash-free audit planning and observational projections.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Only admitted preimage content validation invokes content hashing.
+
 proc qualified(update: PreparedCurrentChainUpdate, seeds: openArray[
     ServiceNamespaceSeed]): CurrentLogicalState =
   ## Always derive profile/globals and supplied declarations from the actual captured current successor.
@@ -36,6 +40,7 @@ proc qualified(update: PreparedCurrentChainUpdate, seeds: openArray[
   let services = currentNamespaceServices(update.currentUpdateState, seeds)
   let state = qualifyCurrentState(globals, services, inventoryCaptureLimits).value
   captureCurrentLogicalState(state, services, suppliedLogicalTestLimits).value
+
 proc policy(): AccountAuditLimits =
   ## Independent exact work:2 rows*2 passes+4 preimages,2 accounts+4 storage+4 requests,4 bytes and8 comparisons.
   AccountAuditLimits(planning: ElementLimit(8), footprints: FootprintAuditLimits(
@@ -44,6 +49,7 @@ proc policy(): AccountAuditLimits =
         perValue: ByteLimit(3), totalBytes: ByteLimit(4)),
     linkage: PreimageLinkageLimits(services: ElementLimit(2), preimages: ElementLimit(4),
         comparisons: ElementLimit(8)))
+
 proc verify(owner: CurrentLogicalState) =
   ## Plan/query/detached projection cannot replace the exact original full-source/current provenance.
   let logical = owner.currentLogicalInventory.value
@@ -79,11 +85,13 @@ proc verify(owner: CurrentLogicalState) =
   let audit = executeAccountAudit(plan)
   assert audit.error == AccountAuditError.None and calls() == 4
   assert sameStateInventory(audit.value.accountInvariantInventory.value, inventory)
+
 proc cycle(source: CurrentStateSerialization, services: openArray[StateService]) =
   ## Retire complete logical/raw-key capture and detached empty/nonempty payload arrays each cycle.
   let logical = captureCurrentLogicalState(source, services, suppliedLogicalTestLimits).value
   assert copySuppliedServices(logical.currentLogicalInventory.value,
       suppliedServicesTestLimits).value.len == 2
+
 proc main() {.raises.} =
   ## All ordinary/assured/disputed/ticketed/epoch fixtures run actual current candidate preparation.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

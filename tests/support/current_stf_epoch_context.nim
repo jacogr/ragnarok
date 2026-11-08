@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared complete-state fixture construction, attributed Ring inputs and signed epoch/dispute children; no process entry point.
+
 import std/[assertions, strutils, parseutils, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

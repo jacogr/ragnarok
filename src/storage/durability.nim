@@ -3,6 +3,7 @@
 
 ## Explicit synchronization receipts separate process-only ownership from a successful file barrier.
 ## Receipts describe the selected operation, not proof against hardware failure or chain authority.
+
 type
   StorageDurability* {.pure.} = enum ## Default values make no persistence claim.
     Uninitialized, ProcessLifetime, FileAndDirectorySynced

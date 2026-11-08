@@ -3,6 +3,7 @@
 
 ## Review one qualified current successor using only its original full child parameter tuple.
 ## Targeted account observations remain separate from full semantic validity, installation and root/finality policy.
+
 import std/assertions
 import ./[state as current_state, globals as current_globals, profile as current_profile]
 import ../economic_profile

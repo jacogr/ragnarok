@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete-source economic reports preserve explicit policy, uncovered observations, late failure rollback and retired graphs.
+
 # @@Verification={"arc": "state_economics_table_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, service_deposit_context, economic_profile_context, arc_evidence]
@@ -15,15 +16,19 @@ import ../../../src/state/inventory
 import ../../../src/codec/bounded
 import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all hashes after real source/evidence construction.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Reports must use only fixed certified observations.
 const limits = EconomicsTableLimits(services: ElementLimit(2), bytes: ByteLimit(4096))
+
 proc cycle(source: ServiceDepositTestSource, profile: StateEconomicProfile) =
   ## Retire a whole fixed-row report and its evidence/configuration owners each cycle.
   let table = buildEconomicsTable(source.footprints, source.directory, profile, limits).value
   assert table.economicTableInfo.value.uncovered == 1
+
 proc main() {.raises.} =
   ## Keep valid footprint fields while varying balances and declaration order independently.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

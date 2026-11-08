@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A configured Services parent and genuinely collected native current successor qualify complete logical continuation before enqueue.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[current_namespace_execution_context, current_application_context,
@@ -24,6 +25,7 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/state/store
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/report/admission as report_admission
+
 proc waitDone(owner: var Services) =
   ## Only synchronized scalar worker observations and independent service ticks occur during the exclusive canonical graph lease.
   let started = getMonoTime()
@@ -33,6 +35,7 @@ proc waitDone(owner: var Services) =
     var delay = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(delay, remaining)
+
 proc scenario(fixture: NamespaceExecutionFixture) {.raises.} =
   ## Startup creates the physical parent that must seed logical qualification; the fixture's equal-root parent cannot substitute for it.
   var path = "pvm-current-logical-collection-chain"
@@ -141,6 +144,7 @@ proc scenario(fixture: NamespaceExecutionFixture) {.raises.} =
   assert sameStateSnapshot(owner.stateSnapshot.value,
       logical.value.logicalProducer.currentUpdateState)
   assert owner.preparationAvailable and owner.stateProofAvailable
+
 proc main() {.raises.} =
   ## Real complete signed code/request/storage namespaces survive native HALT execution and bounded exact-current matching.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

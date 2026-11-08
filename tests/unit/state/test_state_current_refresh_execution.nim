@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen actual successor reconstruction preserves namespace identities, detached output isolation and complete current matching.
+
 # @@Verification={"arc":"state_current_refresh_execution_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_refresh_context, parent_globals_context, state_inventory_context,
@@ -17,13 +18,17 @@ import ../../../src/state/[inventory, manifest, store]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
     composition as state_composition]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Source and request-key derivation finish before observing hash-free execution.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Metadata/history decoding and admitted detached copy-out require no primitive.
+
 proc cycle(plan: CurrentRefreshPlan) =
   ## Retire native output descriptors, empty/nonempty raw keys/payloads and temporary exact codec wires each cycle.
   assert executeCurrentRefresh(plan).value.len == 2
+
 proc main() {.raises.} =
   ## The original complete selected logical parent and actual same-key successor are genuine signed/current outputs.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

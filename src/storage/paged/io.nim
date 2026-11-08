@@ -3,6 +3,7 @@
 
 ## Directory-relative bounded paged IO with separate writer leases and immutable-epoch flock pins.
 ## Resources are explicit-close/move-only. Independent epoch directory descriptors survive writer retirement.
+
 import std/assertions
 import std/posix/posix
 import ./[codec as paged_codec, stream as paged_stream]

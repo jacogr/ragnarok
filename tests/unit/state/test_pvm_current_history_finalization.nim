@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_history_finalization_arc_release"}
 
 ## Same-source C15 and C16 publish together after admitted-time metadata updates, retaining exact terminal progress.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, assurances, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
@@ -16,7 +18,9 @@ import ../../support/[accumulation_current_finalization_context,
   accumulation_current_outputs_context,
   accumulation_current_statistics_context, accumulation_current_sequence_context,
   accumulation_current_driver_context, report_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc main() {.raises.} =
   ## Sources are real signed terminal current sequences; expected C15 framing is authored independently.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## CE141 receipt binds exact detached wire to the selected complete parent, actual authenticated peer key and every matching original roster position; qualification is not block inclusion.
+
 import ./assurance_duty
 import ./read_stream
 import ../chain/[genesis, parameters]
@@ -33,35 +34,43 @@ type
     of DutyFailure: dutyReason: AssuranceDutyResult[AssuranceDuty]
     of ContextFailure: contextReason: AssuranceContextError
     else: discard # Simple refusal contains no partial ownership or unrelated child cause.
+
 func error*[T](outcome: AssuranceDistributionResult[T]): AssuranceDistributionError =
   ## Inspect the immutable discriminator before guarded extraction.
   outcome.status
+
 func value*[T](outcome: AssuranceDistributionResult[T]): T {.requires: outcome.status ==
     AssuranceDistributionError.None.} =
   ## Only full canonical and cryptographic qualification exposes a capability or copied record.
   outcome.completed
+
 func dutyError*[T](outcome: AssuranceDistributionResult[T]): AssuranceDutyResult[
     AssuranceDuty] {.requires: outcome.status == AssuranceDistributionError.DutyFailure.} =
   ## Preserve actual canonical chapter/roster/geometry refusal.
   outcome.dutyReason
+
 func contextError*[T](outcome: AssuranceDistributionResult[
     T]): AssuranceContextError {.requires: outcome.status ==
     AssuranceDistributionError.ContextFailure.} =
   ## Preserve actual transcript backend/configuration refusal.
   outcome.contextReason
+
 func refused[T](reason: AssuranceDistributionError): AssuranceDistributionResult[
     T] {.requires: reason notin {AssuranceDistributionError.None,
     AssuranceDistributionError.DutyFailure, AssuranceDistributionError.ContextFailure}.} =
   ## A simple failure cannot manufacture a successful child.
   AssuranceDistributionResult[T](status: reason)
+
 func valid*(limits: AssuranceDistributionLimits): bool =
   ## Omission cannot activate receipt or guess canonical read budgets.
   uint64(limits.wireBytes) >= 97 and uint64(limits.wireBytes) <= 139 and
     uint64(limits.duty.chapterBytes) > 0 and uint64(limits.duty.readBytes) > 0 and
     uint64(limits.duty.reports) > 0 and uint64(limits.duty.requests) > 0
+
 func valid*(checked: CheckedAssurance): bool =
   ## A default cannot grant even an empty candidate.
   checked.data != nil
+
 proc distributionInfo*(checked: CheckedAssurance): AssuranceDistributionResult[
     AssuranceDistributionInfo] =
   ## Detached copied facts never expose the private index sequence.
@@ -70,12 +79,14 @@ proc distributionInfo*(checked: CheckedAssurance): AssuranceDistributionResult[
       AssuranceDistributionError.Uninitialized)
   AssuranceDistributionResult[AssuranceDistributionInfo](status: AssuranceDistributionError.None,
       completed: data.info)
+
 proc matches*(checked: CheckedAssurance, source: BlockSnapshotResult): bool =
   ## An identical header with a different complete posterior map still revokes qualification.
   let data = checked.data
   if data == nil or source.error != GenesisError.None: return false
   array[32, byte](data.info.duty.anchor) == array[32, byte](source.value.blockHash) and
     array[32, byte](data.info.duty.root) == array[32, byte](source.value.stateRoot)
+
 proc assuranceAt*(checked: CheckedAssurance, ordinal: int): AssuranceDistributionResult[Assurance] =
   ## One signature represents every actual original position of the same authenticated roster key; callers sort and freshly requalify block candidates.
   let data = checked.data
@@ -84,6 +95,7 @@ proc assuranceAt*(checked: CheckedAssurance, ordinal: int): AssuranceDistributio
       AssuranceDistributionError.InvalidIndex)
   AssuranceDistributionResult[Assurance](status: AssuranceDistributionError.None,
     completed: Assurance(bits: data.bits, signature: data.signature, validator: data.indices[ordinal]))
+
 proc qualifyAssuranceDistribution*(request: ReadRequest, source: BlockSnapshotResult,
     peer: StateEdKey, limits: AssuranceDistributionLimits): AssuranceDistributionResult[
         CheckedAssurance] =

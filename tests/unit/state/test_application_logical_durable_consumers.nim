@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Three genuine durable children compose supplied identity creation, preserved continuation, checkpoint, original review and managed/direct mixed proofs in both layouts.
+
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[collected_native_context, collected_logical_context,
@@ -44,20 +45,24 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     trie as state_trie]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Scalar native scheduling never retains, drops or reads a leased canonical owner.
+
 proc waitDisk(owner: var Services) =
   ## Publication Done retains exclusion until the following host tick performs actual receipt collection.
   let start = getMonoTime()
   while owner.diskPublicationPhase != DiskWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000)
+
 proc waitProof(owner: var Services) =
   ## Proof Done retains the graph until matching managed collection.
   let start = getMonoTime()
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert (getMonoTime()-start).inSeconds < 20
     discard pauseMicros(1000)
+
 proc run(managed: bool) {.raises.} =
   ## All original namespaces/code enter signed roots; actual Services preparation and disk receipts supply every successor/adoption authority.
   let value = @[91'u8, 92, 93]
@@ -149,6 +154,7 @@ proc run(managed: bool) {.raises.} =
   checkLogicalProof(logical, detached, 4)
   let restored = decodeFullCheckpoint(lastCheckpoint, lastRoot, genesisStoreLimits(), ByteLimit(1048576)).value
   assert array[32, byte](restored.snapshot.value.commitment.root) == array[32, byte](lastRoot)
+
 proc main() {.raises.} =
   ## Both existing durable layouts use the same actual complete-source and native lease contracts.
   run(false)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real pinned TLS acquisition executes/adopts a signed child only after independently trusted checkpoint startup succeeds.
+
 import ../../support/chain_alpn
 
 import std/[assertions, syncio, envvars, monotimes, times, os]
@@ -30,11 +31,13 @@ const CountPath = "application-recovery-download-count"
 const DiskPath = "application-recovery-download.db" # Import creates this exclusively; later runs resume it without trust files.
 type Scenario = enum ## Each case changes only import validity or actual guest preparation budget.
   Valid, InvalidImport, GuestRefusal, DiskInvalidImport, DiskValid, DiskExistingImport
+
 proc pause() =
   ## Yield between bounded real responder polls without introducing a background thread.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
   var remaining = default(Timespec)
   discard nanosleep(requested, remaining)
+
 proc limits(): DownloadLoopLimits =
   ## Match existing explicit signed-child policies while independently bounding native and whole-attempt scheduling.
   DownloadLoopLimits(schedule: DownloadScheduleLimits(peers: ElementLimit(1), attempts: 1,
@@ -43,6 +46,7 @@ proc limits(): DownloadLoopLimits =
     stream: DownloadStreamLimits(readBytes: ByteLimit(4096), writeBytes: ByteLimit(42),
         timeout: DownloadTimeout(5000)),
     attemptTimeout: DownloadAttemptTimeout(8000))
+
 proc selectedOptions(port: uint16, disk = false): Options =
   ## The production command receives the same complete atomic import group as the executable entry.
   result = default(Options)
@@ -56,6 +60,7 @@ proc selectedOptions(port: uint16, disk = false): Options =
   if disk:
     for value in ["--state-storage", "disk", "--state-db", DiskPath]: arguments.add(value)
   assert parseCanonicalOptions(arguments, result)
+
 proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExecutionFixture,
     mode: Scenario) {.raises.} =
   ## Each fork starts before parent command workers exist; command teardown joins them before the next fork.
@@ -124,6 +129,7 @@ proc scenario(expected: array[42, byte], frame: seq[byte], fixture: RecoveryExec
     assert array[32, byte](owner.chainView.parentOf(childHash).value.blockHash) ==
       array[32, byte](fixture.expected.blockHash)
     assert owner.chainView.finalizedBlock.error == GenesisError.Unavailable
+
 proc main() {.raises.} =
   ## A genuine signed child and independently captured import context drive all three production command outcomes.
   defer:

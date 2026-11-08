@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_runner_arc_release"}
 
 ## Genuine initial-round orchestration agrees with manual PVM completion and refuses atomically.
@@ -22,6 +23,7 @@ import ../../support/[accumulation_execution_context, accumulation_runner_contex
 
 # Backend refusal must retain a local typed error, never become a protocol guest panic.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 proc parity(fixture: ExecutionFixture, first, second: ExecutionEnding) =

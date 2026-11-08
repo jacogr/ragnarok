@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## ARM64 scalar, guarded-memory and connected-block lowering with prepared source proofs.
 ## Code borrows invocation registers and guarded private memory; no invocation/source pointer is retained.
+
 import std/assertions
 import ../[program, machine]
 import ./jit_rules
@@ -239,7 +241,6 @@ proc armCompactImmediate(words: var seq[uint32], destination: uint32, value: uin
   if not initialized:
     # Zero and all-ones still require one defining instruction, regardless of the incoming host register.
     words.add((if inverted: 0x92800000'u32 else: 0xd2800000'u32) or destination)
-
 
 proc armOperandImmediate(fragment: var ArmBlock, destination: uint32, value: uint64) =
   ## Arithmetic constants define all bits independently of the fixed conditional return selector.
@@ -1032,7 +1033,6 @@ proc armReadInstructionsForOwner*(jit: ArmJit, span: ArmReadSpan, ending: uint32
   assert jit != nil and (not span.clippedReads or jit.clippedReads)
   result = armReadImage(span, ending, conditional, false).words
 
-
 proc armMemoryInstructionsImpl(fragment: var ArmBlock, slots: RegisterSlots,
     displacement, ending: uint32, opcode: range[124..130],
     clippedReads: bool): seq[uint32] =
@@ -1322,7 +1322,6 @@ func armMixedGroupStatistics*(jit: ArmJit): array[3, uint64] =
 
 func armMixedOperationCount*(jit: ArmJit, header: uint32): uint32 =
   jit.entries[int(header)].operations
-
 
 type
   ArmDirtyWordShape* = object ## Frozen role coordinates only; every invocation rechecks values and memory.
@@ -2469,7 +2468,6 @@ proc publishArmResidentMemoryCycle*(jit: ArmJit, item: ArmMemoryCycleBlock): boo
   jit.memoryCycle.status = 2
   true
 
-
 proc callArmMemoryCycleCore(jit: ArmJit, registers: var RegisterFile,
     descriptorPointer: pointer, dirtyWords: var seq[uint64],
     state: var array[14, uint64]): uint32 =
@@ -3181,6 +3179,7 @@ proc callArmMacroCore(jit: ArmJit, registers: var RegisterFile,
   jit.dirtyLoop.blocks+=dirty
   jit.dirtyLoop.wordGroups+=wordGroups
   if result == jit.memoryCycle.dirtyHeader: inc jit.dirtyLoop.declines
+
 proc callArmMacro*(jit: ArmJit, registers: var RegisterFile,
     regions: var array[3, array[3, uint64]], dirtyWords: var seq[uint64],
     state: var ArmMacroState): uint32 =

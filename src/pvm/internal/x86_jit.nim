@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Independent Linux x86-64 arithmetic lowering; source charging and every observable boundary stay in the interpreter.
 ## The canonical SysV leaf borrows one register array in RDI and touches only caller-saved registers.
 ## A separate default-off proof may preserve a bounded resident bank; neither path retains input pointers.
+
 import std/assertions
 import ../[program, machine]
 import ./jit_rules
@@ -335,7 +337,6 @@ proc x86Ending*(jit: X86Jit, offset: uint32): uint32 =
   assert int(offset) < jit.entries.len
   jit.entries[int(offset)].ending
 
-
 proc x86Entry*(jit: X86Jit, offset, nodes: uint32): uint32 =
   ## The coordinate map and physical publications have independent finite ceilings.
   if jit.unavailable or nodes > 262144 or offset >= nodes: return 1
@@ -393,7 +394,6 @@ proc callX86Entry*(jit: X86Jit, offset: uint32, registers: var RegisterFile): ui
   jit.operations += uint64(entry.operations)
   entry.ending
 
-
 proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): uint32 =
   ## The exclusive source record selects only its two checked scalar destinations; invocation registers are borrowed afresh.
   assert int(offset) < jit.entries.len
@@ -404,7 +404,6 @@ proc callX86Branch*(jit: X86Jit, offset: uint32, registers: var RegisterFile): u
   inc jit.calls
   inc jit.branchCalls
   jit.operations += uint64(entry.operations)
-
 
 type
   X86RegionBlock* = object ## Captured pure source block and its already-checked scalar successors.

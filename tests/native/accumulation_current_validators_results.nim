@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current validator owners expose no observations, projection, source or inactive nested cause.
+
 import std/cmdline
 import ../../src/state/accumulation/current/validators as accumulation_current_validators
 import ../../src/state/accumulation/validators as accumulation_validators

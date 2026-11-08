@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_ancestor_response_arc_release"}
 
 ## Genuine composed parents witness complete descending responses, quotas, linkage and immutable observations.
+
 import std/[assertions, syncio, envvars]
 import ../../../src/app/ancestor/response as ancestor_response
 import ../../../src/chain/genesis

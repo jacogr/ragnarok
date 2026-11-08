@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private audit execution origins pin the actual complete predecessor and its parameters alongside authenticated available work. They are source-bearing worker objects: all aliases remain frozen through exact collection or joined cancellation.
+
 import ./[audit_context, judgment_support]
 import ../codec/state/[safrole, consensus, layout]
 from ./assurance_store import AssuranceScanControl, stopped
@@ -60,47 +61,59 @@ type
     of ContextFailure: contextReason: AuditContextResult[AuditContext]
     of StateFailure: stateReason: StateStoreError
     else: discard # Ordinary refusals contain no usable origin or unrelated child.
+
 func error*[T](outcome: AuditOriginResult[T]): AuditOriginError =
   ## Inspect the selected branch before extracting any source-bearing ownership.
   outcome.status
+
 func value*[T](outcome: AuditOriginResult[T]): T {.requires: outcome.status ==
     AuditOriginError.None.} =
   ## Successful access remains confined to an idle owner or the actual managed worker's exclusive lease.
   outcome.completed
+
 func contextError*[T](outcome: AuditOriginResult[T]): AuditContextResult[
     AuditContext] {.requires: outcome.status == AuditOriginError.ContextFailure.} =
   ## Preserve the actual complete-body, prior-state or consensus-prefix refusal.
   outcome.contextReason
+
 func stateError*[T](outcome: AuditOriginResult[T]): StateStoreError {.requires: outcome.status ==
     AuditOriginError.StateFailure.} =
   ## Retention scans never replace a failed full-map lookup with an empty value.
   outcome.stateReason
+
 func valid*(limits: AuditOriginLimits): bool =
   ## Missing bounds cannot retain any source; entry/node counts and logical values have independent finite ceilings.
   uint64(limits.entries) > 0 and uint64(limits.entries) <= 1000000 and
     uint64(limits.nodes) > 0 and uint64(limits.nodes) <= 256'u64*1024*1024 and
     uint64(limits.valueBytes) > 0 and uint64(limits.valueBytes) <= 8'u64*1024*1024*1024
+
 func valid*(origin: AuditBlockOrigin): bool =
   ## A default cannot masquerade as an empty initialized full-state source.
   origin.data != nil
+
 func valid*(origin: AuditDisputeOrigin): bool =
   ## Defaults contain no trusted report, original auditor set or complete execution state.
   origin.data != nil
+
 func valid*(origin: AuditReportOrigin): bool =
   ## Private construction binds either one actual available ordinal or the single separately qualified disputed report.
   if origin.dispute.valid: return not origin.source.valid and origin.ordinal == 0
   origin.source.valid
+
 func present*(reference: AuditBlockReference): bool =
   ## A disputed-only report has no audited availability-block identity.
   reference.present
+
 func value*(reference: AuditBlockReference): genesis.BlockHash {.requires: reference.present.} =
   ## Only an actual available-report origin can provide this copied identity.
   reference.hash
+
 func sourceKind*(origin: AuditReportOrigin): AuditReportSourceKind =
   ## This fixed discriminator grants no replacement full-state or report authority.
   if origin.dispute.valid: AuditReportSourceKind.Disputed
   elif origin.source.valid: AuditReportSourceKind.Available
   else: AuditReportSourceKind.Uninitialized
+
 proc auditedBlock*(origin: AuditReportOrigin): AuditBlockReference =
   ## Genuine available reports identify their actual block; disputed-only sources return an explicitly absent reference.
   let data = origin.source.data
@@ -112,11 +125,13 @@ proc originInfo*(origin: AuditBlockOrigin): AuditOriginResult[AuditOriginInfo] =
   let data = origin.data
   if data == nil: return AuditOriginResult[AuditOriginInfo](status: AuditOriginError.Uninitialized)
   AuditOriginResult[AuditOriginInfo](status: AuditOriginError.None, completed: data.info)
+
 proc originContext*(origin: AuditBlockOrigin): AuditOriginResult[AuditContext] =
   ## Extract source-free role/report facts under the same exclusive lease; this does not release the pinned execution source.
   let data = origin.data
   if data == nil: return AuditOriginResult[AuditContext](status: AuditOriginError.Uninitialized)
   AuditOriginResult[AuditContext](status: AuditOriginError.None, completed: data.context)
+
 proc reportAt*(origin: AuditBlockOrigin, ordinal: int): AuditOriginResult[AuditReportOrigin] =
   ## Dense original available-report ordinals remain bound to this exact block and complete predecessor.
   let data = origin.data
@@ -127,12 +142,14 @@ proc reportAt*(origin: AuditBlockOrigin, ordinal: int): AuditOriginResult[AuditR
   AuditOriginResult[AuditReportOrigin](status: AuditOriginError.None,
     completed: AuditReportOrigin(source: origin, dispute: default(AuditDisputeOrigin),
         ordinal: ordinal))
+
 proc disputeInfo*(origin: AuditDisputeOrigin): AuditOriginResult[AuditDisputeOriginInfo] =
   ## Fixed accounting/source facts stay separate from the original complete execution map.
   let data = origin.data
   if data == nil: return AuditOriginResult[AuditDisputeOriginInfo](
       status: AuditOriginError.Uninitialized)
   AuditOriginResult[AuditDisputeOriginInfo](status: AuditOriginError.None, completed: data.info)
+
 proc reportAt*(origin: AuditDisputeOrigin, ordinal: int): AuditOriginResult[AuditReportOrigin] =
   ## Standalone supported reports occupy one private original target, with no constructed availability block or assignment.
   if not origin.valid: return AuditOriginResult[AuditReportOrigin](
@@ -141,22 +158,26 @@ proc reportAt*(origin: AuditDisputeOrigin, ordinal: int): AuditOriginResult[Audi
       status: AuditOriginError.InvalidIndex)
   AuditOriginResult[AuditReportOrigin](status: AuditOriginError.None,
     completed: AuditReportOrigin(source: default(AuditBlockOrigin), dispute: origin, ordinal: 0))
+
 func sameAuditOrigin*(left, right: AuditReportOrigin): bool =
   ## Exact private owner identity and original report ordinal bind evaluation/signing to a registered source, independently of copied public metadata.
   if not left.valid or not right.valid: return false
   if left.dispute.valid or right.dispute.valid:
     return left.dispute.valid and right.dispute.valid and left.dispute.data == right.dispute.data
   left.source.data == right.source.data and left.ordinal == right.ordinal
+
 proc originInfo*(origin: AuditReportOrigin): AuditOriginResult[AuditOriginInfo] =
   ## Read a target's actual source facts only under its exclusive worker lease.
   if origin.dispute.valid: return AuditOriginResult[AuditOriginInfo](
       status: AuditOriginError.InvalidSource)
   origin.source.originInfo
+
 proc originContext*(origin: AuditReportOrigin): AuditOriginResult[AuditContext] =
   ## Retain original auditor/guarantor role facts without accepting a caller-replacement key table.
   if origin.dispute.valid: return AuditOriginResult[AuditContext](
       status: AuditOriginError.InvalidSource)
   origin.source.originContext
+
 proc originState*(origin: AuditReportOrigin): AuditOriginResult[StateStoreSnapshot] =
   ## Only immutable original full state is exposed to the leased evaluator; a replacement or partial light map is never accepted.
   let disputed = origin.dispute.data
@@ -166,6 +187,7 @@ proc originState*(origin: AuditReportOrigin): AuditOriginResult[StateStoreSnapsh
   if data == nil: return AuditOriginResult[StateStoreSnapshot](
       status: AuditOriginError.Uninitialized)
   AuditOriginResult[StateStoreSnapshot](status: AuditOriginError.None, completed: data.state)
+
 proc originParameters*(origin: AuditReportOrigin): AuditOriginResult[Parameters] =
   ## Report computation uses the exact source profile, independently of later head changes or caller limits.
   let disputed = origin.dispute.data
@@ -174,6 +196,7 @@ proc originParameters*(origin: AuditReportOrigin): AuditOriginResult[Parameters]
   let data = origin.source.data
   if data == nil: return AuditOriginResult[Parameters](status: AuditOriginError.Uninitialized)
   AuditOriginResult[Parameters](status: AuditOriginError.None, completed: data.parameters)
+
 proc originReport*(origin: AuditReportOrigin): AuditOriginResult[OwnedReport] =
   ## The full original guarantee report cannot be replaced by separately decoded caller bytes.
   let disputed = origin.dispute.data
@@ -185,6 +208,7 @@ proc originReport*(origin: AuditReportOrigin): AuditOriginResult[OwnedReport] =
   if selected.error != AuditContextError.None:
     return AuditOriginResult[OwnedReport](status: AuditOriginError.InvalidSource)
   AuditOriginResult[OwnedReport](status: AuditOriginError.None, completed: selected.value.report)
+
 proc originGuarantee*(origin: AuditReportOrigin): AuditOriginResult[Guarantee] =
   ## Negative judgments carry the exact originally admitted slot and distinct qualified credentials, never a caller replacement certificate.
   let disputed = origin.dispute.data
@@ -196,6 +220,7 @@ proc originGuarantee*(origin: AuditReportOrigin): AuditOriginResult[Guarantee] =
   if selected.error != AuditContextError.None: return AuditOriginResult[Guarantee](
       status: AuditOriginError.InvalidSource)
   AuditOriginResult[Guarantee](status: AuditOriginError.None, completed: selected.value)
+
 proc originReportHash*(origin: AuditReportOrigin): AuditOriginResult[WorkReportHash] =
   ## Cached canonical identity belongs to the original available report and exact parent state.
   let disputed = origin.dispute.data
@@ -207,6 +232,7 @@ proc originReportHash*(origin: AuditReportOrigin): AuditOriginResult[WorkReportH
   if selected.error != AuditContextError.None:
     return AuditOriginResult[WorkReportHash](status: AuditOriginError.InvalidSource)
   AuditOriginResult[WorkReportHash](status: AuditOriginError.None, completed: selected.value)
+
 proc auditEpoch*(origin: AuditReportOrigin): AuditOriginResult[uint64] =
   ## A disputed judgment's independently authenticated original epoch is not replaced by the report's availability or guarantee epoch.
   let disputed = origin.dispute.data
@@ -216,6 +242,7 @@ proc auditEpoch*(origin: AuditReportOrigin): AuditOriginResult[uint64] =
   if context.error != AuditOriginError.None: return AuditOriginResult[uint64](status: context.error)
   AuditOriginResult[uint64](status: AuditOriginError.None,
       completed: context.value.contextInfo.value.epoch)
+
 proc auditorCount*(origin: AuditReportOrigin): AuditOriginResult[int] =
   ## Preserve every original ordinal of the actual independently selected auditor roster.
   let disputed = origin.dispute.data
@@ -225,6 +252,7 @@ proc auditorCount*(origin: AuditReportOrigin): AuditOriginResult[int] =
   if context.error != AuditOriginError.None: return AuditOriginResult[int](status: context.error)
   AuditOriginResult[int](status: AuditOriginError.None,
       completed: context.value.contextInfo.value.auditors)
+
 proc auditorAt*(origin: AuditReportOrigin, ordinal: int): AuditOriginResult[StateValidator] =
   ## Signing uses the source's actual original epoch/index, including repeated and null positions.
   let disputed = origin.dispute.data
@@ -241,6 +269,7 @@ proc auditorAt*(origin: AuditReportOrigin, ordinal: int): AuditOriginResult[Stat
   if selected.error != AuditContextError.None: return AuditOriginResult[StateValidator](
       status: AuditOriginError.InvalidIndex)
   AuditOriginResult[StateValidator](status: AuditOriginError.None, completed: selected.value)
+
 proc originGuarantor*(origin: AuditReportOrigin, ordinal: int): AuditOriginResult[StateValidator] =
   ## Exact original slot/core credential qualification supplies direct-fetch identities independently of any availability or audit epoch.
   let disputed = origin.dispute.data
@@ -256,6 +285,7 @@ proc originGuarantor*(origin: AuditReportOrigin, ordinal: int): AuditOriginResul
   if selected.error != AuditContextError.None:
     return AuditOriginResult[StateValidator](status: AuditOriginError.InvalidIndex)
   AuditOriginResult[StateValidator](status: AuditOriginError.None, completed: selected.value)
+
 proc routingRosterCount*(origin: AuditReportOrigin): int =
   ## Available reports have one actual original assurer roster. Disputed-only reports retain explicitly named candidate epochs, never choose an assurer epoch by matching population alone.
   let disputed = origin.dispute.data
@@ -264,6 +294,7 @@ proc routingRosterCount*(origin: AuditReportOrigin): int =
     return 2 # Epoch-zero C9 is not an invented epoch minus one.
   if origin.source.valid: return 1
   0
+
 proc routingRosterEpoch*(origin: AuditReportOrigin, roster: int): AuditOriginResult[uint64] =
   ## Reporting-current, reporting-previous and independently selected original auditor epochs stay explicit even when their populations happen to agree.
   if roster < 0 or roster >= origin.routingRosterCount:
@@ -276,6 +307,7 @@ proc routingRosterEpoch*(origin: AuditReportOrigin, roster: int): AuditOriginRes
   if facts.sourceEpoch > 0 and roster == 1:
     return AuditOriginResult[uint64](status: AuditOriginError.None, completed: facts.sourceEpoch-1)
   AuditOriginResult[uint64](status: AuditOriginError.None, completed: facts.auditEpoch)
+
 proc routingPopulation*(origin: AuditReportOrigin, roster: int): AuditOriginResult[int] =
   ## Population validates shard-coordinate geometry only; it does not authenticate which epoch actually assured an unseen report.
   if roster < 0 or roster >= origin.routingRosterCount:
@@ -287,6 +319,7 @@ proc routingPopulation*(origin: AuditReportOrigin, roster: int): AuditOriginResu
     elif facts.sourceEpoch > 0 and roster == 1: facts.previous
     else: facts.auditors
   AuditOriginResult[int](status: AuditOriginError.None, completed: count)
+
 proc routingValidator*(origin: AuditReportOrigin, roster, ordinal: int): AuditOriginResult[
     StateValidator] =
   ## Return one fixed copied original-position key from an explicitly selected actual candidate roster, without exporting any mutable roster storage.
@@ -301,6 +334,7 @@ proc routingValidator*(origin: AuditReportOrigin, roster, ordinal: int): AuditOr
     else: disputed.support.supportAuditors.value
   AuditOriginResult[StateValidator](status: AuditOriginError.None,
     completed: selected.validatorAt(StateValidatorIndex(uint64(ordinal))).value)
+
 proc executionTime*(origin: AuditReportOrigin): AuditOriginResult[StateTime] =
   ## Historical lookup's validity domain uses the pinned execution snapshot's actual clock, not receipt time or an unsigned guarantee label.
   let disputed = origin.dispute.data
@@ -318,11 +352,13 @@ proc executionTime*(origin: AuditReportOrigin): AuditOriginResult[StateTime] =
   if decoded.error != StateComponentError.None:
     return AuditOriginResult[StateTime](status: AuditOriginError.InvalidSource)
   AuditOriginResult[StateTime](status: AuditOriginError.None, completed: decoded.value.value)
+
 proc originParameters*(origin: AuditBlockOrigin): AuditOriginResult[Parameters] =
   ## Whole source profile participates in checkpoint/registry binding rather than a caller's copied public identity fields.
   let data = origin.data
   if data == nil: return AuditOriginResult[Parameters](status: AuditOriginError.Uninitialized)
   AuditOriginResult[Parameters](status: AuditOriginError.None, completed: data.parameters)
+
 proc matchesTrustedBlock*(origin: AuditBlockOrigin, trusted: BlockSnapshotResult): bool =
   ## An independently trusted complete block/checkpoint can bind an already authenticated body/prior origin, including when its own body is unavailable. A bare header alone never creates this origin capability.
   let data = origin.data
@@ -341,6 +377,7 @@ proc matchesTrustedBlock*(origin: AuditBlockOrigin, trusted: BlockSnapshotResult
   if not data.parameters.sameParameterProfile(selected.chainParameters): return false
   if selected.hasBlockBody and selected.blockBodyDigest != facts.bodyDigest: return false
   true
+
 proc captureAuditOrigin*(source: ChainView, blockHash: genesis.BlockHash,
     contextLimits: AuditContextLimits, limits: AuditOriginLimits,
     control: AssuranceScanControl = default(AssuranceScanControl)): AuditOriginResult[
@@ -389,6 +426,7 @@ proc captureAuditOrigin*(source: ChainView, blockHash: genesis.BlockHash,
       info: AuditOriginInfo(blockHash: info.blockHash, parentHash: info.parentHash,
         parentRoot: info.parentRoot, entries: counts.entries, reports: info.reports,
         nodes: counts.nodes, valueBytes: bytes))))
+
 proc historicalExecution(view: ChainView, minimum, maximum: uint64): BlockSnapshotResult =
   ## Search only actual ordered retained full snapshots plus the separately trusted finalized snapshot; no fabricated clock/header fills a history gap.
   var first = 0
@@ -411,6 +449,7 @@ proc historicalExecution(view: ChainView, minimum, maximum: uint64): BlockSnapsh
     if selected.error != GenesisError.None or finalized.value.slot > selected.value.slot:
       selected = finalized
   selected
+
 proc matchesTrustedDispute*(origin: AuditDisputeOrigin, view: ChainView): bool =
   ## Independent Services trust binds all three actual contexts: original judge membership, guarantor support and complete historical execution state.
   let data = origin.data
@@ -431,6 +470,7 @@ proc matchesTrustedDispute*(origin: AuditDisputeOrigin, view: ChainView): bool =
     array[32, byte](data.state.commitment.root) == array[32, byte](data.info.executionRoot) and
     execution.value.slot == uint64(uint32(data.info.executionTime)) and
     data.parameters.sameParameterProfile(execution.value.chainParameters)
+
 proc captureAuditDisputeOrigin*(view: ChainView, support: VerifiedJudgmentSupport,
     limits: AuditOriginLimits, control: AssuranceScanControl = default(AssuranceScanControl)):
     AuditOriginResult[AuditDisputeOrigin] =

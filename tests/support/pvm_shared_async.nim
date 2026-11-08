@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Real bounded compiler barrier, complete literal CPU/RAM histories, checked work receipts and final-drop cleanup.
 
 import std/[assertions, syncio, envvars]
@@ -355,7 +356,6 @@ when defined(pvmSharedAsyncWitness):
       "supported common qualification requires real publication and entry"
     recordNativeQualification("positive", runtime, observed)
 
-
   proc cancelledFinalDrop() =
     ## Retained output keeps only immutable guest state; it cannot pin a cancelled prepared/native owner.
     let runtime = newNativeRuntime()
@@ -524,7 +524,6 @@ when defined(pvmSharedAsyncWitness):
       checkedStream = takeFlatStream(checked)
     assert runtime.close(), "readyReservations: compiler shutdown"
 
-
   proc immediateLoopOwner(immediate: array[4, byte]): Program =
     ## The canonical arithmetic wire has ADDs at PC0/3, opcode 83 at PC6 and halt at PC16.
     let wire = @[0'u8, 0, 18, 131, 0x77, 3, 131, 0xaa, 1, 83, 0x4a,
@@ -692,7 +691,6 @@ when defined(pvmSharedAsyncWitness):
     assert runtime.runtimeInfo.phase == NativePhase.Idle and runtime.runtimeInfo.registered == 0, "doneFinalDrop.4: runtime.runtimeInfo.phase == NativePhase.Idle and runtime.runtimeInfo.registered == 0"
     verify(history, source, 2048)
     assert runtime.close(), "doneFinalDrop.5: runtime.close()"
-
 
 when defined(pvmSharedAsyncWitness):
   proc runSharedAsyncRefusal*() =

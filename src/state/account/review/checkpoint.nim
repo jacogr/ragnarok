@@ -3,6 +3,7 @@
 
 ## Explicit-root unchanged checkpoint restoration produces a same-source account review under caller-selected economic parameters.
 ## This synchronous consumer performs no I/O/installation, root discovery or universal funding/STF acceptance.
+
 import ../../../codec/state/[trie as state_trie, composition as state_composition]
 import ../../planned/account_checkpoint as planned_account_checkpoint
 import ../[invariants as account_invariants, review as account_review]

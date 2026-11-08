@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Validated managed startup retires only adjacent unselected files; disabled maintenance preserves forensic staging.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/managed_storage_samples
@@ -10,8 +11,10 @@ import ../../../src/app/disk/[worker as disk_worker, chain as disk_chain]
 import ../../../src/storage/managed/[manifest as managed_manifest, io as managed_io]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc pathExists(path: cstring, mode: cint): cint {.importc: "access", header: "<unistd.h>".}
   ## Native zero-mode existence checks witness the absent pending entry without reading it.
+
 proc configured(path: string, threshold: string): Options =
   ## Explicit zero preserves forensic staging; a positive threshold authorizes bounded startup retirement.
   result = default(Options)
@@ -19,10 +22,12 @@ proc configured(path: string, threshold: string): Options =
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-storage", "disk", "--state-db", path, "--state-layout", "managed",
     "--state-compact-bytes", threshold], result)
+
 proc stagePair(directory: ManagedDirectory, epoch: uint64) =
   ## Unselected bytes intentionally need not be a valid image: selection is the sole authority.
   for kind in [ManagedFileKind.Snapshot, ManagedFileKind.Journal]:
     assert createManagedFile(directory, kind, ManagedEpoch(epoch), [byte(99)], ByteLimit(1)) == FileError.None
+
 proc inspect(path: string, epoch: uint64, present: bool) =
   ## Inspect exact fixture-owned names only after the Services lease has been retired.
   var directory = default(ManagedDirectory)
@@ -34,6 +39,7 @@ proc inspect(path: string, epoch: uint64, present: bool) =
       assert loaded.error == FileError.None and loaded.value == @[byte(99)]
     else:
       assert loaded.error == FileError.IoFailure
+
 proc waitFinished(owner: var Services) =
   ## The dispatcher polls scalar completion while the worker retains the canonical graph aliases.
   let started = getMonoTime()
@@ -43,6 +49,7 @@ proc waitFinished(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining)
+
 proc main() {.raises.} =
   ## Startup validates the selected pair before cleanup, refuses aliases, and never scans farther epochs.
   let path = "managed-startup-cleanup"

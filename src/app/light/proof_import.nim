@@ -3,6 +3,7 @@
 
 ## Detached bounded light proof ingestion authenticates existing RPV1 transport against independently trusted current metadata.
 ## Capture does fixed framing/count admission and copying only; cryptographic work belongs on the bounded proof worker.
+
 import std/assertions
 import ./head as light_head
 import ../checkpoint/identity as checkpoint_identity

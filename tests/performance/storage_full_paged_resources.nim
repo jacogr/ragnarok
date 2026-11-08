@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete fixtures are prepared outside pressure; fresh bounded writers/readers retain no resident graph or index.
+
 import std/[algorithm, assertions, cmdline, syncio]
 import ../support/[storage_io, storage_allocations, full_paged_reference]
 import ../../src/storage/full/paged/[codec as full_paged_codec, stream as full_paged_stream,
@@ -16,19 +17,25 @@ import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
 const ValueBytes = 1048576 ## Identical per-value policy for shallow small/large and maximum-depth cases.
+
 proc descriptors(): cint {.importc: "ragnarok_paged_descriptors",
     header: "storage_paged_resources.h".}
   ## Reuse SDK descriptor observations; the observation directory handle is excluded.
+
 proc usage(selector: cint): clonglong {.importc: "ragnarok_paged_usage",
     header: "storage_paged_resources.h".}
   ## Native process peak RSS/faults use actual platform units, including runtime/provider/translator allocations.
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters without provider failure injection or changing hash semantics.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## The finite case plan stays below the observer's signed counter ceiling.
+
 func valueSize(count: int): int =
   ## A cardinality panel complements long-value pressure while inheriting the identical1MiB per-value policy.
   if count == 2048: 36864 else: ValueBytes
+
 func key(ordinal: uint64, count: int): StateKey =
   ## Two-entry fixtures split at bit247; other fixtures spread complete keys over a bounded integer prefix.
   var raw = default(array[31, byte])
@@ -37,6 +44,7 @@ func key(ordinal: uint64, count: int): StateKey =
   else:
     for index in 0..<8: raw[index] = byte((ordinal shr ((7-index)*8)) and 255) # MSB key order.
   StateKey(raw)
+
 func limits(cache: int): FullPagedStreamLimits =
   ## Dataset scaling never changes per-value, history, workspace, scratch or finite work policy.
   let calls = ElementLimit(1000000000)
@@ -49,12 +57,14 @@ func limits(cache: int): FullPagedStreamLimits =
         16777216),
     scratchBytes: ByteLimit(32768), work: FullPagedWorkLimits(ioCalls: calls, hashes: calls,
       visits: calls, readBytes: bytes, writeBytes: bytes))
+
 func config(root: StateRoot, cache: int): FullPagedNativeConfig =
   ## Measured construction uses a bounded source-file callback and never retains the fixture's complete map.
   FullPagedNativeConfig(root: root, limits: limits(cache),
     construction: FullPagedConstructionLimits(producerCalls: ElementLimit(10000),
       ioCalls: ElementLimit(1000000000), hashes: ElementLimit(1000000000),
       readBytes: ByteLimit(1000000000000'u64), writeBytes: ByteLimit(1000000000000'u64)))
+
 func rootHex(root: StateRoot): string =
   ## Cross-process identity uses exactly64 lowercase hex digits, independent of selected disk metadata.
   const digits = "0123456789abcdef"
@@ -62,6 +72,7 @@ func rootHex(root: StateRoot): string =
   for octet in array[32, byte](root):
     result.add(digits[int(octet shr 4)]) # High nibble precedes low nibble.
     result.add(digits[int(octet and 15)])
+
 proc number(text: string, maximum: uint64): uint64 =
   ## Finite trusted case arguments still prove every decimal multiply/add before narrowing or allocation.
   result = 0
@@ -71,6 +82,7 @@ proc number(text: string, maximum: uint64): uint64 =
     let digit = uint64(ord(character)-ord('0'))
     assert digit <= maximum and result <= (maximum-digit) div 10
     result = result*10+digit
+
 proc parseRoot(text: string): StateRoot =
   ## Expected full-map root arrives independently from the outside-pressure complete-map fixture producer.
   assert text.len == 64
@@ -84,6 +96,7 @@ proc parseRoot(text: string): StateRoot =
     assert a >= 0 and b >= 0
     raw[index] = byte(a*16+b)
   StateRoot(raw)
+
 proc prepareFixture(path: string, count: int) {.raises.} =
   ## Resident map/export/reference tree intentionally run in a separate unconstrained process, never in measured storage execs.
   var entries = newSeq[StateEntry](count)
@@ -132,6 +145,7 @@ proc prepareFixture(path: string, count: int) {.raises.} =
   echo count, "\t", rootHex(root), "\t", records.len, "\t", payload, "\t",
       header.geometry.dataPages,
     "\t", header.geometry.byteLength
+
 proc producer(file: File, header: FullPagedHeader, perValue: ByteLimit): FullPagedProducer =
   ## Synchronous callback reads only one fixed descriptor and one bounded canonical record from an immutable source file.
   proc next(pass: int, ordinal: uint64, output: var TrieRecord): FullPagedProducerStep {.closure.} =
@@ -158,6 +172,7 @@ proc producer(file: File, header: FullPagedHeader, perValue: ByteLimit): FullPag
   next
 type StreamCheck = ref object ## Private bounded callback state retains no value bytes, physical records or native owner.
   next: int
+
 proc entryVisitor(owner: StreamCheck, count: int): FullPagedEntryVisitor =
   ## Verify every complete-root key/value in sorted order without materializing any map inside pressure.
   proc visit(ordinal: uint64, selected: StateKey, value: openArray[byte]): bool {.closure.} =
@@ -170,6 +185,7 @@ proc entryVisitor(owner: StreamCheck, count: int): FullPagedEntryVisitor =
     inc owner.next
     true
   visit
+
 proc run(mode, path, source: string, count, cache: int, root: StateRoot, records, payload: uint64) =
   ## One fresh native exec measures authoring or strict admission; all source/target descriptors and heap retire before receipt formatting.
   let policy = config(root, cache)
@@ -247,6 +263,7 @@ proc run(mode, path, source: string, count, cache: int, root: StateRoot, records
     "\t", handles, "\t", openHandles, "\t", finalHandles, "\t", ioCalls(readIo), "\t", ioCalls(
         writeIo),
     "\t", hashCalls(), "\t", queries, "\t", rss, "\t", minor, "\t", major, "\t", streamedEntries
+
 proc main() {.raises.} =
   ## Finite shallow/deep cases prove all argument conversions and derived extents before native IO.
   assert paramCount() in [4, 8]

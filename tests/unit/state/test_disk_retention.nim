@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Configured disk history preserves exact state/body records, header-only validation anchors and honest policy transitions.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../support/[disk_history_context, historical_samples, managed_storage_samples,
@@ -23,6 +24,7 @@ import ../../../src/codec/[bounded, header, report_owned]
 
 proc retentionPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private paged fixtures never reuse another invocation's files.
+
 proc bodies(source: seq[BlockSnapshotResult]): seq[BlockSnapshotResult] =
   ## Storage fixtures use structural empty extrinsics; genuine producer bytes are exercised separately below.
   result = source
@@ -32,10 +34,12 @@ proc bodies(source: seq[BlockSnapshotResult]): seq[BlockSnapshotResult] =
     assert encodeOwnedHeader(snapshot.header, wire).error == HeaderError.None
     result[index] = withBlockBody(snapshot, wire)
     assert result[index].error == GenesisError.None
+
 proc retainedView(blocks: openArray[BlockSnapshotResult]): ChainView =
   ## Build an authentic linked local suffix while keeping the first structural snapshot as an explicit old anchor.
   result = genesisView(blocks[0]).finalizeView(blocks[0].value.blockHash).value
   for index in 1..<blocks.len: result = result.advanceView(blocks[index]).value
+
 proc compareHeaders(left, right: ChainView) =
   ## User retention cannot change the local ancestor input bytes used by report validation.
   assert left.validationHeaderCount == right.validationHeaderCount
@@ -55,6 +59,7 @@ proc compareHeaders(left, right: ChainView) =
     assert encodeOwnedHeader(first[index], x).error == HeaderError.None
     assert encodeOwnedHeader(second[index], y).error == HeaderError.None
     assert x == y
+
 proc policyWitness(layout: int) {.raises.} =
   ## Shrink to one complete state while retaining only bounded header inputs and explicit finality outside the window.
   let fixture = diskHistoryFixture(16)
@@ -126,6 +131,7 @@ proc policyWitness(layout: int) {.raises.} =
   assert owner.chainView.retainedCount == 1 # Capacity expansion does not fabricate pruned complete states.
   assert held.chainView.bestBlock.value.blockBody == heldBody
   assert disk.close == FileError.None
+
 proc publicationWitness() {.raises.} =
   ## A genuine signed opaque producer publishes its original complete body and exact state through indexed canonical IO.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

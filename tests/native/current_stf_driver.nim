@@ -3,6 +3,7 @@
 
 ## Emit original complete inputs and actual candidate successors for an independent whole-map STF oracle.
 ## Every child is genuinely signed; supplied raw service identities must match the complete current map.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen upstream-generated JAM cases replay in ordinary tests without Rust, libFuzzer or network.
+
 import std/[assertions, syncio, envvars]
 import ../../fuzz/pvm_upstream_target
 

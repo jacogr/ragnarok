@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Translate only explicitly recognized consensus import refusals; unknown/resource/context failures close locally.
+
 import ../candidate
 import "../../state/block/transition" as block_transition
 import "../../state/block/admission" as block_admission

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_times_arc_release"}
 
 ## Literal account timestamps and certified S membership preserve complete maps and atomic rollback.
@@ -24,7 +25,9 @@ import ../../support/[accumulation_reentry_context, accumulation_execution_conte
 
 # Disable hashing only after real complete maps and signed certificates exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 
 # Small explicit work and rewrite policies never allocate from their maxima.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
+
 import std/[assertions, syncio, envvars, monotimes]
 import ./pvm_invocation_scope
 import ../../src/pvm/[program, machine]
@@ -317,7 +318,6 @@ when defined(pvmArmMacroReceipt):
   let resident = preparedArmMacroResidentActive(prepared).value
   echo "ARM_MACRO_APPLICATION,", phase, ",", int(resident), ",", macroStats[0], ",",
     macroStats[1], ",", macroStats[5], ",", macroStats[6]
-
 
 when defined(pvmArm64JitOwnerReceipt):
   # Genuine host callbacks and immutable publication finish before copied cache diagnostics are emitted.

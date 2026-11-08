@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit startup policies and real candidate failures distinguish consensus Error replies from local faults.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[fuzz_backend_context, accumulation_current_chain_context, current_consecutive_context]
 import ../../support/[fuzz_fork_context, fuzz_full_replay_context]
@@ -23,6 +24,7 @@ import ../../../src/state/accumulation/round as accumulation_round
 import ../../../src/state/accumulation/current/[completion as accumulation_current_completion,
     update as accumulation_current_update, chain as accumulation_current_chain]
 import ../../../src/chain/[provider, genesis, parameters, presets]
+
 proc main() {.raises.} =
   ## Pure startup selection opens no listeners and cannot derive Parameters from seed bytes.
   for preset in [ChainPreset.Tiny, ChainPreset.Full, ChainPreset.Fuzz]:
