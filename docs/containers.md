@@ -64,15 +64,16 @@ select its required instrumented compiler/linker profile when added.
 
 ## CI
 
-The canonical workflow's **Build / Linux & Docker** job packages the Linux archive and then
-runs `make check-docker` on the same `ubuntu-latest` runner. Master pushes, `ci:full` PR requests
-and manual `build`/`full` requests run this combined job beside **Build / macOS**. The Docker
+The canonical workflow's **Build / Docker** job runs `make check-docker` independently of
+**Build / Linux x86-64**, **Build / Linux ARM64** and **Build / macOS ARM64**, which package
+the native archives. Master pushes, `ci:full` PR requests and manual `build`/`full` requests
+select all four jobs. Docker uses the shared pinned Ubuntu x86 runner selection. Its image
 build keeps its pinned Ubuntu base, pristine dependencies and isolated compiler outputs; host
-build products never enter the context. Docker still runs after an earlier archive failure unless
-the job is cancelled, and either failure keeps the complete Build gate red.
+build products never enter the context. Each job reports its own failure independently, so an
+archive failure does not prevent the Docker check and a Docker failure does not prevent packaging.
 
 The `ci:docker` label and manual `docker` scope select just the image check, without native
-packaging or macOS. Image selftests run without networking as the non-root runtime user. Only
+packaging on any platform. Image selftests run without networking as the non-root runtime user. Only
 diagnostics are uploaded; no image is pushed to a registry. To request this scope on a branch:
 
 ```sh
