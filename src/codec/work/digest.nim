@@ -40,6 +40,10 @@ type
       # Default/failure alternatives expose only a typed reason.
       discard
 
+func `==`*(left, right: Gas): bool {.inline.} =
+  ## Compare work gas units only within their nominal domain.
+  uint64(left) == uint64(right)
+
 func error*(value: DigestResult): CompositeError =
   ## Read the reason without permitting callers to retag a failure as success.
   value.status

@@ -50,6 +50,10 @@ type
     node*: StateNodeInfo
     consumed*: int
 
+func `==`*(left, right: StateChapter): bool {.inline.} =
+  ## Compare state chapter namespace octets without admitting service identifiers or raw bytes.
+  uint8(left) == uint8(right)
+
 func error*[T](value: StateLayoutResult[T]): StateLayoutError =
   ## Failure reasons remain readable without authorizing any completed key, node, metadata or progress.
   value.status

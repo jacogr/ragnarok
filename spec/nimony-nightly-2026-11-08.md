@@ -40,7 +40,7 @@ checked/ThinLTO production-regression driver is unchanged.
 
 The newer comparison rules require explicit same-domain equality for service IDs, header slots,
 register words, spendable gas, terminal deficits, fault addresses, page counts, mapping slots,
-assignment registration slots, activity counts/gas, validator identities, state timeslots and host-call IDs.
+assignment registration slots, activity counts/gas, work gas, validator identities/counters, state timeslots/chapters and host-call IDs.
 Each overload compares its own underlying representation and accepts no other nominal domain.
 Existing CodeAddress/PageIndex equality and all ownership exclusions remain. This repairs the
 comparison instantiations missed by the November 7 selected local run, including arrays of register
@@ -109,9 +109,10 @@ Final native Linux/runtime qualification belongs to the authorized full-CI run o
 The first full run on `a2d3d0aa` exposed additional comparison instantiations in
 `pvm_memory_chunks`, `pvm_memory_page_slots`, `disputes_transition`,
 `core_service_activity`, `assurance_context`, `jamnp_assurance_signing` and
-`jamnp_work_anchors`. Same-domain scalar equality now covers
+`jamnp_work_anchors`, `pvm_current_guest_runner`, `jamnp_work_distribution` and
+`validator_projection`. Same-domain scalar equality now covers
 `MemoryPageSlot`, `AssignmentSlot`, `ActivityNatural`, `ActivityGas`, `ValidatorIndex` and
-`StateTime`, retaining the original sequence, array and aggregate assertions. The QUIC peer-control fixture also
+`StateTime`, work-digest `Gas`, `StateChapter` and `ValidatorCounter`, retaining the original sequence, array and aggregate assertions. The QUIC peer-control fixture also
 checks the converted callback index against its existing two-peer bound before the bounded
 `peerAt` call. The foreign unsigned-slot rejection remains in place.
 
@@ -119,7 +120,12 @@ The QUIC transport refusal loop retains the exact `1` and `16383` receive-window
 with their common bound checked before the ranged public calls. Both remain below the valid
 window minimum; the original rejection and resource-retirement assertions are unchanged.
 
-All nine affected suites pass locally through `make unit SUITE=...` on macOS ARM64,
+All twelve affected suites pass locally through `make unit SUITE=...` on macOS ARM64,
 including their registered ARC evidence where applicable. Pinned formatting also passes.
 The repaired head still requires a new full-CI run; these local results do not replace native
 Linux, browser or remaining verification groups.
+
+The first full run completed with 40 jobs passed and nine unit shards failed. Every retained
+failure is a comparison instantiation or a test-fixture range proof at compilation; none of
+those affected suites reached runtime in that run. Full logs are under ignored
+`build/ci/nimony-upgrade-2026-11-08/`.

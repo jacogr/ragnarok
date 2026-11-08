@@ -72,6 +72,10 @@ type
     starts: array[StatisticsEpoch, int]
     coreStart, serviceStart, services, consumed: int
 
+func `==`*(left, right: ValidatorCounter): bool {.inline.} =
+  ## Compare validator activity counters without accepting natural activity or gas values.
+  uint64(left) == uint64(right)
+
 func `==`*(left, right: ActivityNatural): bool {.inline.} =
   ## Compare natural activity counts without accepting gas or validator counters.
   uint64(left) == uint64(right)
