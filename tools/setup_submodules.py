@@ -13,6 +13,7 @@ import os
 import re
 from pathlib import Path
 import subprocess
+from download_retry import run as acquire
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -24,7 +25,11 @@ def git(*args,cwd=None,output=False):
     command=['git','-C',str(cwd),*args]
     if output:
         return subprocess.check_output(command,text=True).strip()
-    subprocess.run(command,check=True)
+    if args[0] in ('clone', 'fetch', 'checkout', 'sparse-checkout') or args[:2] == ('submodule', 'update'):
+        # Sparse checkout can lazily fetch missing blobs; status and integrity queries remain local.
+        acquire(command)
+    else:
+        subprocess.run(command,check=True)
 
 
 # Keep the large trace/STF corpus out of the working tree while retaining its exact upstream Git revision.
@@ -97,7 +102,7 @@ def prefetch_blobs(path, revision, names):
     missing = sorted(set(objects.values()).difference(local_ids.splitlines()))
     if missing:
         # Explicit blob wants retain the pinned commit, sparse checkout and all existing refs unchanged.
-        subprocess.run(['git', '-C', str(path), '-c', 'fetch.negotiationAlgorithm=noop',
+        acquire(['git', '-C', str(path), '-c', 'fetch.negotiationAlgorithm=noop',
                         'fetch', 'origin', '--no-tags', '--no-write-fetch-head',
                         '--recurse-submodules=no', '--filter=blob:none', '--stdin'],
                        input='\n'.join(missing)+'\n', text=True, check=True)

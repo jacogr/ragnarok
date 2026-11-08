@@ -18,12 +18,12 @@ import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-RETRY_DELAYS = (1, 2)
+RETRY_DELAYS = (5, 15, 45, 90)
 TRANSIENT_HTTP = (408, 429, 500, 502, 503, 504)
 
 
 def download_bytes(url):
-    """Fetch at most three times with bounded delays and the existing sixty-second request timeout.
+    """Fetch at most five times with bounded delays and the existing sixty-second request timeout.
 
     Only HTTP timeouts/rate limits/temporary server failures and transport failures retry.
     Integrity checks and cache writes belong to the caller, outside this retry boundary.

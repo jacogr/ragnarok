@@ -480,3 +480,17 @@ still run on each preparation. Changed identities replace the prior incremental 
 build logs remain under `build/ci/native/`, and transport fixtures under `build/tests/quic/`.
 Successful preparation retires the corresponding legacy `build/<component>/` directory so
 updaters retain a single installation. Failed migrations preserve the original directory.
+
+Project-owned downloads use five attempts with waits of 5, 15, 45 and 90 seconds. Pinned HTTP
+archives retain their sixty-second request timeout and retry only transient HTTP/transport
+failures. Checksum errors and permanent HTTP refusals still stop immediately. Git acquisition,
+GitHub artifact downloads, Cargo fetch, rustup installation, pip/npm provisioning, browser downloads and host APT setup
+use the same bounded backoff around their existing acquisition commands. Each attempt retains
+its pin/lock/integrity checks and the final failure remains authoritative. Docker's initial APT
+bootstrap uses the matching shell wrapper before Python is available. Compiler and test commands
+keep their existing execution behavior. Native package-manager retries can also occur within an
+individual acquisition attempt.
+The Nim 2.4 formatter/bootstrap selection is revision-pinned. The `latest-version-2-4` alias
+was resolved to `2026-11-07-version-2-4-f46e4c13526e3770d7655dc10fdf73a024f2a1ed`
+(Nim 2.4.1), and all three platform archives retain the release's published SHA-256 digests in
+`spec/toolchain.json`. Setup follows the recorded release; upgrades require an explicit pin edit.

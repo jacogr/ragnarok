@@ -31,6 +31,10 @@ class MakeHarness(unittest.TestCase):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+                (folder/'tools').mkdir()
+                for helper in ('download_retry.py', 'toolchain_archives.py'):
+                    shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
+                (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
                 (folder/'spec').mkdir()
                 shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
                 docker = folder/'docker'
@@ -129,6 +133,10 @@ assert not any(name.startswith('test_') for name in sys.modules)
             with self.subTest(system=system, ready=ready, failure=failure, timeout=timeout), tempfile.TemporaryDirectory() as temporary:
                 folder = Path(temporary)
                 shutil.copyfile(ROOT/'Makefile', folder/'Makefile')
+                (folder/'tools').mkdir()
+                for helper in ('download_retry.py', 'toolchain_archives.py'):
+                    shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
+                (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
                 (folder/'spec').mkdir()
                 shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
                 binary = folder/'bin'
@@ -166,6 +174,7 @@ if os.environ['FIXTURE_FAILURE'] == stage:
                     command.write_text(stub)
                     command.chmod(0o755)
                 environment = dict(os.environ, PATH=str(binary)+os.pathsep+os.environ['PATH'],
+                    PYTHONPATH=str(folder),
                     FIXTURE_SYSTEM=system, FIXTURE_READY=str(int(ready)),
                     FIXTURE_FAILURE=failure, FIXTURE_TIMEOUT=str(int(timeout)))
                 result = subprocess.run(['make', 'host-tools', 'PYTHON='+sys.executable], cwd=folder,
@@ -206,6 +215,8 @@ if os.environ['FIXTURE_FAILURE'] == stage:
             (folder/'spec').mkdir()
             shutil.copyfile(ROOT/'spec/bandersnatch-pins.json', folder/'spec/bandersnatch-pins.json')
             (folder/'tools').mkdir()
+            for helper in ('download_retry.py', 'toolchain_archives.py'):
+                shutil.copyfile(ROOT/'tools'/helper, folder/'tools'/helper)
             shutil.copyfile(ROOT/'tools/python-test-requirements.txt', folder/'tools/python-test-requirements.txt')
             (folder/'tests').mkdir()
             (folder/'bin').mkdir()
@@ -263,7 +274,9 @@ if name == 'test_runtime.py' and (os.environ.get('FAIL_RUNTIME') or ('--group' i
                 'class Fixture(unittest.TestCase):\n'
                 '    # Discovery itself is the behavior exercised by this fixture.\n'
                 '    def test_discovery(self): pass\n')
-            environment = {**os.environ, 'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
+            (folder/'sitecustomize.py').write_text('import time\ntime.sleep = lambda delay: None\n')
+            environment = {**os.environ, 'PYTHONPATH': str(folder),
+                           'PATH': str(folder/'bin')+os.pathsep+os.environ['PATH'],
                            'CI': '', 'UI_MINIFY': '0'}
             # The Python environment installer is an external boundary: never run pip/network here.
             python = folder/'bin/python'

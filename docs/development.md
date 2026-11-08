@@ -47,7 +47,7 @@ or use force/reset to discard local source work.
 
 `source build-tools/toolchain/env.sh` optionally exports NIMONY, NIMPRETTY and compiler/formatter-only
 PATH entries. Make activates this managed environment for compiler/formatter commands. Nimpretty comes from
-pinned Nim 2.2.12, but its compiler is not exported or supported as a production target. Its generic
+pinned Nim 2.4.1, but its compiler is not exported or supported as a production target. Its generic
 banner is 0.2; archive and installed binary hashes retain its provenance.
 
 ## Verification and formatting

@@ -4,8 +4,9 @@
 FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 ARG TARGETARCH
 RUN test "$TARGETARCH" = arm64
-RUN apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && \
-    apt-get install --no-install-recommends -y \
+COPY tools/download_retry.sh /usr/local/bin/download-retry
+RUN sh /usr/local/bin/download-retry apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && \
+    sh /usr/local/bin/download-retry apt-get install --no-install-recommends -y \
     build-essential ca-certificates clang lld make python3 xz-utils && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /src
