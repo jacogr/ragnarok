@@ -15,7 +15,8 @@ mechanics only. They contain no independent hotness, minimum-span, probe or retr
 The first supported item is one non-exiting pure register span per prepared identity, at most64
 original source operations/coordinates and4096bytes of complete code. Each image uses the
 maintained1MiB arena; installed, queued/running, parked and reclaiming owners consume the same four
-credits. These bound backing owners, not resident memory usage.
+credits. Deferred source identities and failed owners without images do not consume a credit.
+These bound backing image owners, not checked prepared owners or resident memory usage.
 This first slice does not claim the previous8192-fragment or connected/memory/macro coverage.
 Unported features remain checked; they do not invoke legacy eager preparation to satisfy receipts.
 
@@ -39,6 +40,14 @@ restoration and immutable result publication retain their normal APIs and real c
 Services starts one runtime at full-state Jit startup, binds its context, joins preparation before
 retiring context registrations, then closes/joins the compiler. `stopPreparation` alone preserves it.
 Standalone callers must explicitly close their runtime; sessions may safely survive its closed anchor.
+
+Every open runtime-bound public invocation holds close exclusion even before it has an image
+credit. Source epochs, checked work proof and copied nominations belong to that independent
+invocation/source lifetime. A nonzero source epoch is not registration, publication or native-entry
+authority. The finish lock acquires one of the four credits only after a real eligible candidate
+and an idle compiler request can queue atomically. Capacity refusal retains the source proof and
+nomination for a later ordinary invocation. No compiler readiness wait or fairness promise against
+four legitimate queued/installed images is introduced.
 
 One shared initial policy requires a structural span of at least2supported operations, at least4096
 conservatively completed nonterminal source instructions in ONE public invocation before scheduling,
@@ -86,8 +95,11 @@ stays worker-owned even if stream invalidation cleared the session ticket. Close
 unlocks/joins, then detaches at most four parked images and destroys them outside the mutex.
 Worker-owned Reclaiming is recognized by the still-Running global work slot and exact row key:
 another serialized host invalidation or final drop may occur during its unlocked image disposal.
-It leaves cleanup to the worker, with final drop marking Retiring so credit returns only after
-physical destruction. Only an actual overlapping host-owned retirement violates the host contract.
+It leaves cleanup to the worker. Invalidation detaches the old session registration and marks
+Retiring immediately, so the credit returns only after physical destruction; a new source epoch
+cannot reuse an old pending key. Empty failed completions use this same exact retirement path and
+release their credit while their retained source remains Unavailable without automatic retry.
+Only an actual overlapping host-owned retirement violates the host contract.
 Installed images remain in closed surviving sessions; those registrations prevent restart until
 final drop. Registration has explicit noncopyable/move/destruction hooks; no owning row is copied
 for observation or reset as an array. The compiler holds
@@ -142,8 +154,8 @@ shared worker. On a supported selected ISA, the existing matching `pvmArm64JitRe
 `pvmX86JitRefuse` define returns nil at the worker's arena-allocation boundary, preserving platform
 capability and successful startup. Exactly one queued job finishes with an empty image; its owner
 collects Unavailable, returns full literal checked CPU/gas/RAM/source/history, and never requeues
-across three further eligible calls. All native counters/occupancy remain zero; final owner drop
-returns its credit before close/join. Normal profiles call the same maintained C constructor.
+across three further eligible calls. All native counters/occupancy remain zero; exact empty
+collection returns its credit before final owner drop. Normal profiles call the same maintained C constructor.
 Unsupported hosts retain checked/start-refusal controls and are not allocation-refusal qualification.
 This injection proves allocation refusal only, not publication failure or all resource-failure paths.
 
@@ -319,9 +331,29 @@ nor replaces it with the weaker pure prefix. Retry still requires the existing s
 work floor, current invocation horizon and idle compiler work slot. A certified closed loop keeps
 its existing higher priority. Submission fixes the request ABI and copied payload; pending and
 ready jobs remain immutable. Epoch invalidation clears the deferred certificate. Close prevents
-another invocation/submission, and final drop returns a nomination-only registration without
-waiting for unrelated work. Queued/running read images retain normal cancellation and physical
+another invocation/submission, and a nomination-only source owns no image registration to return
+or wait for. Queued/running read images retain normal cancellation and physical
 retirement rules.
+
+## Image-credit admission regression
+
+The shared ARM/x86 lifecycle suite retains four independent sources, each making two calls that
+settle3000 facts. Those calls cannot aggregate into the4096 proof or reserve image credits. A
+fifth source settling6144 facts must queue through the real compiler and later enter native code,
+with unchanged literal CPU/gas/RAM histories. Four real parked images still block a fifth until
+physical retirement; the cancellation witness uses real parked filler images rather than cold
+source registrations. The forced-allocation-refusal profile retains five Unavailable owners and
+requires every next source to queue, while preserving no retry through explicit close/restart.
+Independent controls cover a creditless active call refusing close, source-epoch invalidation
+without registration and generation/ticket exhaustion without wrap or stranded credits.
+
+`tests/models/pvm_native_credit_lease.nif` isolates lease versus credit ownership with the real
+four-credit cap. Its original-admission variant exposes four cold registrations starving the
+fifth eligible request. Guard mutants cover missing creditless close exclusion, premature credit
+return before disposal, failed-empty-credit retention and a fifth image exceeding capacity; a
+reachability witness requires actual fifth-source installation. Numeric work/gas and full
+namespace/close windows remain source-confirmed by the native suite, not claims of the small
+model. This is correctness/admission evidence, not timing or caller-wiring qualification.
 
 The read arbitration suite covers occupied-slot retention, repeated restored-stream calls,
 short/failed non-admission, loop precedence, retained optional continuations, source-epoch reset,

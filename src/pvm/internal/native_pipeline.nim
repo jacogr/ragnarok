@@ -71,7 +71,7 @@ type
     storage: NativeRuntimeStorage
   NativeRuntime* = object ## Copyable host-side closed lifetime anchor; no worker refcount access.
     data: nil NativeRuntimeData
-  NativeSessionStorage = object ## Exactly one registered source-policy identity; only its caller mutates it.
+  NativeSessionStorage = object ## One source-policy identity; an image credit is owned only after submission.
     runtime: nil NativeRuntimeData
     slot: int
     generation, epoch, ticket: uint64
@@ -91,7 +91,8 @@ type
     data: nil NativeSessionData
   NativeRuntimeInfo* = object ## Copied work and parked-result activity, never a borrowed session/cache view.
     phase*: NativePhase
-    registered*, active*: int
+    registered*: int ## Image credits held by live/retiring requests, not cold prepared identities.
+    active*: int     ## Whole public invocation leases, including calls with no image credit.
     completions*: int ## Uncollected Complete rows, including empty failed images; independent of work phase.
     submitted*, completed*: uint64
   NativeControlStatistics* = object ## Cumulative physical calls with branch or backedge activity.
@@ -178,7 +179,7 @@ proc finishRetirement(runtime: ptr NativeRuntimeStorage, key: JobKey) =
   runtime.slots[index].key = default(JobKey)
   runtime.slots[index].cancelled = false
   if runtime.slots[index].state == Retiring:
-    # A final drop's credit becomes reusable only after the detached/worker local was destroyed.
+    # A detached registration becomes reusable only after its host/worker image was destroyed.
     runtime.slots[index].state = Free
 
 proc retireOwner(runtime: ptr NativeRuntimeStorage, slot: int, generation: uint64,
@@ -440,16 +441,10 @@ proc runtimeInfo*(runtime: NativeRuntime): NativeRuntimeInfo =
     completions: completions, submitted: data.submitted, completed: data.completed)
   release(data.lock)
 
-proc registerSession(data: NativeSessionData): bool =
-  ## Capacity is reversible: an unregistered source can retry next invocation after orphan retirement.
-  let anchor {.cursor.} = data.runtime
-  if anchor == nil: return false
-  let runtime = addr anchor.storage
-  acquire(runtime.lock)
-  defer: release(runtime.lock)
-  if not runtime.started or runtime.stopping:
-    data.state = NativeState.Closed
-    return false
+proc registerSession(runtime: ptr NativeRuntimeStorage, data: NativeSessionData): bool =
+  ## The finish lock already proves an eligible request can queue; claim only its image credit.
+  assert runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle
+  assert data.slot < 0 and data.ticket == 0 and not data.image.ready
   for index in 0..<runtime.slots.len:
     if runtime.slots[index].state == Free:
       assert runtime.slots[index].location == CompletionLocation.Empty
@@ -461,12 +456,11 @@ proc registerSession(data: NativeSessionData): bool =
         runtime.slots[index].state = Live
         data.slot = index
         data.generation = runtime.slots[index].generation
-        data.state = NativeState.Deferred
         return true
   false
 
 proc newNativeSession*(runtime: NativeRuntime): NativeSession =
-  ## Retain a safe anchor, not a dangling registration; native capacity is acquired only at an invocation.
+  ## Retain source identity and a safe anchor; proof and nomination do not consume image capacity.
   let anchor {.cursor.} = runtime.data
   if anchor == nil: return default(NativeSession)
   NativeSession(data: NativeSessionData(runtime: anchor, slot: -1, epoch: 1,
@@ -476,16 +470,15 @@ proc collectNative(session: NativeSession)
   ## Exact nonblocking collection is legal only at an exclusive invocation boundary.
 
 proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
-  ## Whole-public-call lease prevents runtime close while a callable image/register borrow is active.
+  ## Even an unregistered checked call holds the whole-public-call lease against runtime close.
   let data {.cursor.} = session.data
   if data == nil: return
   assert not data.invocation
-  if data.slot < 0 and not registerSession(data): return
   let anchor {.cursor.} = data.runtime
   if anchor == nil: return
   let runtime = addr anchor.storage
   acquire(runtime.lock)
-  if runtime.started and not runtime.stopping:
+  if runtime.started and not runtime.stopping and runtime.active < high(int):
     inc runtime.active
     data.invocation = true
     data.invocationWork = 0
@@ -496,8 +489,8 @@ proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
       data.readValidated = false
     # Coarse shared horizon is necessary, not a claim of candidate-specific measured profitability.
     data.allowed = budget >= NativeInvocationFloor and data.provenWork >= NativeInvocationFloor
-  else:
-    data.state = NativeState.Closed
+  # Closed observation must not erase terminal Unavailable state or implicitly retry failed lowering
+  # when an explicitly restarted empty runtime later accepts this still-unregistered source.
   release(runtime.lock)
   if data.invocation: collectNative(session)
 
@@ -570,10 +563,19 @@ proc completeNativeScan*(session: NativeSession, past: uint32) =
   if data != nil and past > data.nextScan: data.nextScan = past
 
 func nativeEpoch*(session: NativeSession): uint64 =
-  ## Zero has no registration or publication authority.
+  ## This source certificate exists before registration; it grants no publication or entry authority.
   let data {.cursor.} = session.data
-  if data == nil or data.slot < 0: return 0'u64
+  if data == nil: return 0'u64
   data.epoch
+
+proc releaseNativeCredit(data: NativeSessionData) =
+  ## Detach the host's credit; cancelled worker-owned images keep their row until physical retirement.
+  let anchor {.cursor.} = data.runtime
+  if anchor != nil:
+    discard retireOwner(addr anchor.storage, data.slot, data.generation, true, data.image)
+  data.slot = -1
+  data.generation = 0
+  data.ticket = 0
 
 proc invalidateNativeStream*(session: NativeSession) =
   ## Destructive same-plan repricing/rebuild invalidates a pending image without waiting for its worker.
@@ -581,7 +583,7 @@ proc invalidateNativeStream*(session: NativeSession) =
   if data == nil: return
   let anchor {.cursor.} = data.runtime
   if anchor == nil: return
-  discard retireOwner(addr anchor.storage, data.slot, data.generation, false, data.image)
+  releaseNativeCredit(data)
   data.span = default(NativeSpan)
   when NativeCheckedReadEnabled:
     data.readBody = default(NativeReadBody)
@@ -599,32 +601,38 @@ proc invalidateNativeStream*(session: NativeSession) =
 proc collectNative(session: NativeSession) =
   ## Exact ticket/source epoch only, at caller-side quiescence. No wait for unfinished compilation.
   let data {.cursor.} = session.data
-  if data == nil or data.ticket == 0: return
+  if data == nil or data.ticket == 0 or data.slot < 0: return
   let anchor {.cursor.} = data.runtime
   if anchor == nil: return
   let runtime = addr anchor.storage
   if not tryAcquire(runtime.lock): return
-  defer: release(runtime.lock)
   let key = JobKey(slot: data.slot, generation: data.generation, ticket: data.ticket,
     epoch: data.epoch, kind: acceptedKind(data))
   if not matchesRow(runtime, key) or runtime.slots[data.slot].state != Live or
       runtime.slots[data.slot].location != CompletionLocation.Complete or
-      runtime.slots[data.slot].cancelled: return
+      runtime.slots[data.slot].cancelled:
+    release(runtime.lock)
+    return
   assert not data.image.ready
   # A wrong ready ABI leaves the image with its registration until retirement.
   if runtime.slots[data.slot].completion.ready and
-      runtime.slots[data.slot].completion.kind != key.kind: return
-  data.image = move(runtime.slots[data.slot].completion)
-  data.state = if data.image.ready: NativeState.Ready else: NativeState.Unavailable
-  if data.image.ready:
+      runtime.slots[data.slot].completion.kind != key.kind:
+    release(runtime.lock)
+    return
+  if runtime.slots[data.slot].completion.ready:
     # Keep the exact key until installed-image retirement; the row cannot submit another job.
+    data.image = move(runtime.slots[data.slot].completion)
+    data.state = NativeState.Ready
     runtime.slots[data.slot].location = CompletionLocation.Installed
     if data.publications < high(uint64): inc data.publications
+    data.ticket = 0
+    release(runtime.lock)
   else:
-    # Failed lowering consumes one completion but never a publication or automatic retry.
-    runtime.slots[data.slot].location = CompletionLocation.Empty
-    runtime.slots[data.slot].key = default(JobKey)
-  data.ticket = 0
+    # No automatic retry. The exact failed completion releases its credit via ordinary retirement,
+    # outside this mutex, so a retained Unavailable owner cannot strand unused image capacity.
+    data.state = NativeState.Unavailable
+    release(runtime.lock)
+    releaseNativeCredit(data)
 
 proc recordNativeWork*(session: NativeSession, completed: uint64) =
   ## Add disjoint settled checked segment receipts, never the public initial budget at every host resume.
@@ -680,12 +688,9 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   # Check admission under the mutex already required to release this invocation's lease.
   acquire(runtime.lock)
   if runtime.started and not runtime.stopping and runtime.work == WorkPhase.Idle and
-      runtime.slots[data.slot].state == Live and
-      runtime.slots[data.slot].generation == data.generation and
-      runtime.slots[data.slot].location == CompletionLocation.Empty and
       data.state == NativeState.Deferred and candidate and
       completedWork > 0 and data.provenWork >= NativeInvocationFloor and
-      runtime.nextTicket < high(uint64):
+      runtime.nextTicket < high(uint64) and registerSession(runtime, data):
     inc runtime.nextTicket
     assert not data.image.ready and not runtime.slots[data.slot].completion.ready
     # selectRead already excludes a certified closed loop. Write only the selected payload.
@@ -852,6 +857,22 @@ when defined(pvmSharedAsyncWitness):
     release(data.lock)
 
 when defined(pvmSharedAsyncWitness):
+  proc exhaustNativeNamespace*(runtime: NativeRuntime, tickets: bool) =
+    ## Qualification-only finite-counter boundary; an idle empty namespace may never wrap IDs.
+    let anchor {.cursor.} = runtime.data
+    assert anchor != nil
+    let data = addr anchor.storage
+    acquire(data.lock)
+    assert data.started and not data.stopping and data.active == 0 and data.work == WorkPhase.Idle
+    for index in 0..<data.slots.len:
+      assert data.slots[index].state == Free and
+        data.slots[index].location == CompletionLocation.Empty
+    if tickets:
+      data.nextTicket = high(uint64)
+    else:
+      for index in 0..<data.slots.len: data.slots[index].generation = high(uint64)
+    release(data.lock)
+
   proc waitNativeCompiler*(runtime: NativeRuntime) =
     ## Explicit qualification synchronization OUTSIDE invocation clocks; production never waits for readiness.
     let anchor {.cursor.} = runtime.data
