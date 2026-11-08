@@ -63,8 +63,8 @@ development improvements; no controlled compilation speedup is claimed here.
 - NIM-007 still hits the same nifcore bounds assertion when checking the CLI catalog for Linux
   AMD64 from macOS ARM64. This is a bounded cross-target failure, not a native Linux result.
 - NIM-009 still retains 20,800 bytes after 100 retired HTTP messages under checked ThinLTO;
-  preserve the HTTP adoption rollback and unchanged cleanup allowance. No upstream issue is filed
-  or marked fixed for this ownership investigation.
+  preserve the HTTP adoption rollback and unchanged cleanup allowance. The maintainer submitted
+  [Nimony #2940](https://github.com/nim-lang/nimony/issues/2940); it is not marked fixed locally.
 
 See the [stable issue register](compiler-issues.md) for statuses and historical evidence.
 

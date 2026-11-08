@@ -1,7 +1,11 @@
 # NIM-009: retained storage after retiring HTTP messages
 
-Status: draft investigation, pending retest on the planned newer Nimony. No issue filed.
-Last tested: November 8, 2026; official Nimony 0.6.3 archive at
+Status: submitted by the maintainer as [Nimony #2940](https://github.com/nim-lang/nimony/issues/2940).
+The original October 28-pin investigation is retained below. A November 8 official-archive retest
+on `ad334fb80c031da5b9932e3f254c23b6dd5ccbe1` also retains 20,800 bytes per 100 retired
+messages and exits with the same assertion under checked ARC/Clang/ThinLTO.
+Latest retest receipts: ignored `build/upstream-watch/nimony/2026-11-08/probes.json`.
+Original qualification: November 8, 2026; official Nimony 0.6.3 archive at
 `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, macOS ARM64, `nimony c`, checked release,
 ARC/Clang/ThinLTO. No compiler or library files were modified.
 
@@ -63,7 +67,7 @@ vocabulary initialized and shared by the application. That usage was inefficient
 reproducer retained 227,200 bytes per hundred requests. The source above corrects that usage;
 20,800 bytes still remain after message retirement.
 
-Additional same-pin controls recorded in `build/probes/http-cleanup/`:
+Additional October 28-pin controls recorded in `build/probes/http-cleanup/`:
 
 - Creating and retiring 100 tag spaces alone retains 0 bytes.
 - With one shared vocabulary, constructing and retiring 100 empty `HttpMsg` owners retains
@@ -88,7 +92,8 @@ retains the traceback at `tests/rpc_checks.py`'s zero-exit assertion and peer/br
 The repair temporarily rolls back stock HTTP adoption without changing the cleanup allowance.
 A normal UI test now requires flat memory across repeated request-owner retirement.
 
-The upstream issue search `TokenBuf leak` found no match on November 8. Current upstream source
-at `ad334fb80c031da5b9932e3f254c23b6dd5ccbe1` was inspected; its runtime/compiler was **not run**.
-Retest the standalone source and complete consumer lifecycle after the planned upgrade, search
-again, and file upstream only if the problem persists. This draft is not ready for submission.
+The original upstream issue search `TokenBuf leak` found no match on November 8. At that point,
+source `ad334fb80c031da5b9932e3f254c23b6dd5ccbe1` had been inspected without execution.
+The later official-archive retest above confirms that the standalone problem persists. Keep the
+application rollback until a fix passes the original source, controls and complete owner lifecycle;
+upstream filing does not itself establish the owning compiler/library stage.
