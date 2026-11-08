@@ -77,8 +77,9 @@ separate proof graph and trust boundary. Existing light RPC semantics determine 
 queries and explicit refusals for complete-state/service reads. Light state is never presented as a
 complete state map, nor is its partial root recomputed as a complete JAM root.
 
-There are four nonblocking connection slots, a five-second absolute connection deadline, at most
-4096 header bytes, 16384 body bytes, 2048 JSON tokens, 16 parser levels and 131072 reply bytes.
+There are four nonblocking connection slots and a five-second absolute connection deadline.
+Header limits come from stock Nimony (currently 16 KiB); body/JSON limits are 16384 body bytes,
+2048 JSON tokens, 16 parser levels and 131072 reply bytes.
 Each tick accepts at most one connection and performs one bounded read/write per slot. Duplicate
 JSON fields, malformed UTF-8, ambiguous framing, transfer encodings and pipelined suffixes are refused.
 Host must exactly match the selected loopback endpoint (`127.0.0.1:PORT` or `localhost:PORT`). All

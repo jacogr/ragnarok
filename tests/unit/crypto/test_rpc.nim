@@ -342,6 +342,11 @@ assert upgrade(upgradeHeader.replace("13\r\n", "12\r\n")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Origin: http://example.com")).len == 0
 assert upgrade(upgradeHeader.replace("Host: localhost", "Host: a\r\nHost: b")).len == 0
 assert upgrade(upgradeHeader.replace("dGhlIHNhbXBsZSBub25jZQ==", "!!!!!!!!!!!!!!!!!!!!!!!!")).len == 0
+# Stock HTTP syntax precedes the WebSocket-specific challenge policy.
+for extra in ["X-Client: a\tb\r\n",
+    "Content-Length: 000000\r\n"]:
+  assert upgrade(upgradeHeader.replace("Host: localhost\r\n", "Host: localhost\r\n" & extra)).len == 0
+assert upgrade(upgradeHeader.replace("\r\n", "\n")).len > 0 # Stock framing accepts LF.
 let encoded = masked(request)
 # Every proper prefix is incomplete and has no success-only payload or consumption fields.
 for n in 0..<encoded.len: assert decodeFrame(encoded[0..<n]).status == incomplete
