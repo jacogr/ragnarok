@@ -4,6 +4,55 @@ Current CI: historical experiment workflow choices described below were retired 
 regular PVM/DOOM interpreted monitoring. Make diagnostics and historical measured evidence
 remain unchanged; see [the current monitoring contract](pvm-ci-performance.md).
 
+## Current full-invocation host diagnostic adapter
+
+`tools/pvm_x86_jit_profile.py --canonical-doom-report <results.json>
+--canonical-source-revision <40-character-product-revision>` selects only the
+forced-interpreted initialization and tick processes from one complete passed
+current canonical cohort. Historical profiler commands retain their existing
+cohorts and parsers. This adapter is source/test qualified only; no native
+diagnostic execution or new performance evidence is claimed.
+
+The source revision is explicit and may differ from the profiling controller.
+Recorded source seals must match its Git archive and tree. The adapter requires
+the recorded checked ARC/Clang ThinLTO build recipe, compiler identity, complete
+state/refusal qualification, exact prepared inputs and ROM, and the live sealed
+executable. Canonical artifacts promise source/input/build evidence; they need
+not contain executable bytes. A missing executable fails without rebuilding.
+An optional `--rebuilt-doom-report <independent-results.json>` explicitly selects
+a separately qualified image. That report must independently pass the current
+canonical matrix and retain the same source revision, compiler/build recipe and
+input bytes. Its binary hash and report identity remain distinct from the
+original image; no original executable is required for this explicit mode.
+
+Collection remains native Linux x86_64 CI only, with the existing selected,
+absent, repeated and last-return calibration controls and 1,200-second per-process
+collector timeout. Exactly one `runPreparedDoom` text definition and all original
+13 complete return dumps are required. Both profiled processes must pass the
+full-invocation parser, complete state/output oracles, explicit absent compiler
+runtime receipt and zero native counters. There are no readiness waits or
+measured/profiled native-counter equality assumptions.
+
+`build/tests/pvm-canonical-doom-profile/results.json` uses a separate diagnostic
+schema. It retains cold call 1 and final reused call 13 host Ir/Bc/Bcm/Bi/Bim,
+exclusive function costs, raw call-edge profiles/annotations and source, build,
+image and input seals. Normal full-call clocks are parsed for correctness and
+discarded from derived results; raw correctness logs remain provenance. The
+selected function includes restoration, execution, in-memory host callbacks and
+publication, and excludes constructor/runtime startup and outside driver oracles.
+These counters are host attribution, not canonical full-request timings, guest
+PC/opcode counts or evidence of exact hot guest blocks.
+
+The first proposed execution is one same-job current-source DOOM-only cohort:
+`make bench-pvm-performance PVM_PERF_SCOPE=doom` (which already owns
+`make check-pvm-native`), followed by the command above against its live image.
+Use the canonical CI job identity without fabricating a qualification under a
+foreign job. Root must authorize and schedule this diagnostic CPU window before
+any execution. ARM requests and exact guest-region nomination remain outside
+this increment. Pure/mocked adapter coverage lives in
+`tests/test_pvm_canonical_doom_profile.py`; the existing collector/calibration
+tests continue to own raw dump and scope controls.
+
 ## Scope and correctness
 
 Current runs use the exact [PolkaVM pin](polkavm-pins.json) and its
