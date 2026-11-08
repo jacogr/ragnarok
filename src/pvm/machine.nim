@@ -136,7 +136,9 @@ template `[]`(pages: PageDirectory, index: int): untyped =
 proc pageDirectory(pages: sink seq[PageData]): PageDirectory =
   ## Transfer an admitted sorted vector into immutable blocks without another per-page retain/release pass.
   var owned = move(pages)
-  result = PageDirectory(len: owned.len, blocks: @[])
+  # Quotient and remainder count the last partial block without adding to the admitted page count.
+  let blockCount = owned.len div 64 + int(owned.len mod 64 != 0)
+  result = PageDirectory(len: owned.len, blocks: newSeqOfCap[PageBlock](blockCount))
   var first = 0
   while first < owned.len:
     # The final block contains only its initialized references.

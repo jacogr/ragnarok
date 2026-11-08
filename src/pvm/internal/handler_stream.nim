@@ -2109,7 +2109,8 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       lastRW = ordinal
     first = flatRegionPast(images, first)
     inc ordinal
-  var regions: seq[FlatRegion] = @[]
+  # Classification already counted every accessible run; reserve only their reference slots.
+  var regions = newSeqOfCap[FlatRegion](ordinal)
   var residentRW = false
   first = 0
   while first < images.len:
@@ -2157,6 +2158,10 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
     regions.add(region)
     first = after
   frame.sourcePages = move(images)
+  # A sole writable run fills RW only; count its last-RW role once before reserving extra references.
+  let primaryCount = int(firstRO >= 0) + int(firstRW >= 0) +
+    int(lastRW >= 0 and lastRW != firstRW)
+  frame.extra = newSeqOfCap[FlatRegion](ordinal-primaryCount)
   for i in 0..<regions.len:
     # Preserve firstRO/firstRW/lastRW precedence, including a sole writable run remaining RW.
     let region {.cursor.} = regions[i]
