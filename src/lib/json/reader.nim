@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded strict JSON tokens shared by independent method registries. Callers bound input bytes
-## and validate raw UTF-8 before parsing; decoded strings are checked again after unescaping.
+## Bounded strict JSON tokens shared by independent method registries.
+##
+## Streaming numeric lexemes preserve request IDs beyond host integer or float
+## precision. The adapter rejects permissive JSON extensions before handing
+## tokens to dispatch. Callers bound raw bytes and validate UTF-8. The reader
+## checks decoded strings again after unescaping.
 
 import std/[parsejson, streams]
 import ../utf8

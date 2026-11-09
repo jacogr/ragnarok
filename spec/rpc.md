@@ -526,20 +526,9 @@ Compiler probes protect the append discriminator and failed-result extraction.
 
 ## Dispatcher publication handoff
 
-`Server.publishBlock(child)` installs a new bounded history between dispatcher ticks. The caller
-must run it on the listener's dispatcher thread and supply an execution-validated snapshot; the
-method performs only the existing `advanceView` linkage/configuration checks described above.
-This is an internal application API, not a JSON-RPC method or a claim of block-import validation.
-No JIP-2 wire method or result shape changes.
-
-Default, disabled, closed and unseeded servers return `ViewAdvanceError.Uninitialized`. Other
-rejections forward the provider's reason and leave the selected view intact. Successful publication
-copies at most eight snapshot handles, replaces the server's chain view and preserves listener,
-connections, startup parameters and queued response bytes/offsets, except when the subscription
-queue overflow policy below disconnects a slow consumer. Each following tick captures
-the new view once for all its request contexts. Already serialized replies keep their original
-bytes; incomplete incoming requests use the view of the tick that completes their processing.
-There are no cross-thread calls, locks or callbacks. Best-block subscription delivery is described below.
+The [dispatcher publication boundary](../src/rpc/server.nim) installs a validated child
+between ticks and preserves pending serialized replies. [The provider](../src/chain/provider.nim)
+owns linkage validation and exact history selection.
 
 Native tests use a real ephemeral listener and connected nonblocking sockets carrying masked WS
 frames to check publication while a reply is partly written, subsequent batch queries on the same
@@ -555,42 +544,11 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request methods are enabled; finalized subscriptions use explicitly published finality as described below.
-`ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
-The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
-`respond(text, info, session)` with its connection-owned `RpcSession`.
-
-Each connection owns at most eight subscriptions across supported families. IDs are increasing uint32 integers starting at
-one, never reused within that connection; exhaustion returns JIP-2 error 0 without wrapping.
-Unsubscribe accepts exactly one nonnegative integer lexeme within uint32 range, returns `true` if
-that connection owned the ID and `false` otherwise. Default/unconfigured chain views cannot be
-subscribed to and return error 0. Invalid positional arguments return `-32602`. A connection with
-configured genesis can subscribe immediately, even though the current CLI has no live importer.
-
-JIP-2 does not specify an initial update or unsubscribe result. This implementation queues the
-current head immediately after subscription, and uses the boolean cancellation result above.
-The subscription response (or whole batch response) is written before its initial update. Batch
-members execute in order, so subscribe followed by unsubscribe can cancel that initial update.
-Valid JSON-RPC notifications execute subscription/cancellation changes without replying; a
-notification-form subscribe identifies its subscription through the initial update. Invalid JSON,
-oversized batches and malformed envelopes cannot create subscriptions. Changes are committed only
-if their response fits the existing aggregate output budget.
-
-Successful `publishBlock` enqueues the new descriptor for every active subscriber. Rejected
-publication emits nothing. Each connection owns a FIFO of at most sixteen serialized updates and 65,535 queued bytes;
-these retain no state maps or views. The byte ceiling was added with statistics subscriptions below. One dispatcher tick still writes at most one frame per slot,
-servicing request replies before queued updates. Already queued transport bytes and partial-write
-offsets remain intact. Cancellation removes pending updates for that ID but cannot retract a frame
-already handed to the transport buffer. Closing/reusing a connection releases its subscriptions,
-notifications and ID namespace. Each notification frame gets the existing five-second write
-budget without extending an earlier partial-input deadline.
-
-Publication preflights queue capacity per connection. A consumer that cannot hold all its updates
-is disconnected immediately, releasing its FIFO; publication and other connections continue.
-No updates are silently coalesced or dropped on a surviving connection. Immediate socket closure
-also avoids splicing an error/close frame into a partly written response. Capacity exhaustion when
-creating an additional subscription instead returns error 0 and preserves existing subscriptions.
-These limits are local resource policies, not JIP-2 constants or claims of finality.
+The [session registry](../src/rpc/protocol.nim) owns IDs, initial updates, cancellation,
+and publication queue limits. JIP-2 leaves the initial update and unsubscribe result
+unspecified. The implementation queues an initial snapshot and uses a Boolean cancellation
+result. The [dispatcher](../src/rpc/server.nim) delivers replies before queued updates and
+disconnects overflowing consumers independently of publication.
 
 Native tests cover exact envelopes, initial/current-head updates, per-connection ID isolation,
 monotonic reuse prevention, invalid arguments/envelopes, parse/batch atomicity, notification-form
