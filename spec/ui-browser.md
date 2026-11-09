@@ -1,46 +1,8 @@
 # Nimony browser prototype
 
-This increment proves the existing pinned Nimony compiler can produce a shipped browser UI.
-It changes no JAM protocol semantics or RPC method contracts. The page opens a WebSocket and
-calls only `ragnarok_clientInfo` with empty positional parameters. Connect sends the first
-request; Refresh sends another. Implementation, connected peers, uptime, response count and
-the JSON response update through Nim callbacks and DOM bindings. Disconnect and reconnect
-retire the old socket callbacks, pending calls and active subscriptions. Refresh stays usable
-while previous calls are pending; every accepted call has its own five-second deadline.
-Replies route by request ID, so out-of-order completions cannot settle another call.
-Stale/unsolicited IDs cannot update the page. Backend text is assigned
-through `textContent`, never interpreted as HTML.
-
-`src/ui/rpc.nim` is the reusable browser RPC transport. One page-owned WebSocket supports up to
-16 pending requests (including subscribe/unsubscribe ACKs) and 8 active or pending subscriptions. `call`, `subscribe` and `unsubscribe`
-accept capture-free completion/update callbacks and positional JSON argument arrays. A positive
-return value accepts the request and settles its completion once; callbacks always carry the
-request ID or subscription ID, including local timeouts/disconnects without a JSON envelope.
-This supports one shared handler for many concurrent calls or streams. Zero rejects disconnected,
-invalid or full submissions. IDs are monotonic and never reused during the page lifetime.
-The UI currently uses only `call("ragnarok_clientInfo", "[]", ...)`; subscriptions have no new
-console controls yet, but are exercised through this same public API in compiled browser tests.
-
-Subscription ACKs install independent server uint32 selectors before invoking their completion.
-Updates route by both `params.subscription` and the exact JIP-2 notification method, independently
-of request IDs (even if the numbers coincide). Multiple streams may use the same method.
-A stream can receive updates while ordinary calls or unsubscribe ACKs are pending. Successful
-boolean unsubscribe ACKs retire only that stream and report `Unsubscribed`; RPC errors preserve
-it. Terminal notification errors retire before invoking the final update callback.
-
-One bounded timer sweep serves independent request deadlines. A timed-out ordinary call leaves
-other calls/streams intact; a lost subscribe/unsubscribe ACK retires the connection because its
-remote subscription ownership is ambiguous. Socket close/error/replacement resolves pending
-calls and active stream callbacks once and detaches old event handlers/timers. Malformed or
-duplicate subscription ACKs close the connection; unknown/stale reply and notification selectors
-have no effects. Frames are bounded to 65,535 characters; requests to 16,384 UTF-8 bytes, matching
-the current server. No batch-request API or automatic subscription replay is introduced.
-
-Start an existing peer command with `--with-ui`, then open `http://127.0.0.1:8888/` (or the
-selected `--ui-port`). The editable RPC URL defaults to `ws://<page hostname>:19800/`; set its
-port explicitly when using `--rpc-port`. This prototype does not discover port configuration,
-auto-connect, poll, subscribe or reconnect automatically. The existing UI Origin policy applies.
-It is a diagnostic UI, without a wallet, authentication or validator controls.
+The [browser console](../src/ui/client.nim) owns presentation and the
+[browser RPC client](../src/ui/rpc.nim) owns calls and subscription lifetimes.
+See the [UI source guide](../src/ui/README.md) for setup.
 
 ## Compiler and build
 

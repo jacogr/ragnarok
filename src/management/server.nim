@@ -1,9 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Optional HTTP management listener over a permission-controlled Unix domain socket.
-## Four nonblocking slots, fixed request budgets and deadlines bound dispatcher work.
-## This listener never imports the public WS method registry or canonical state.
+## Local HTTP management over a permission-controlled Unix domain socket.
+##
+## The owned private parent directory and mode-0600 socket form the authorization
+## boundary. Existing paths are refused, and cleanup compares device and inode before
+## unlinking so a replacement endpoint survives. The operator supplies trusted ancestry.
+##
+## One request per connection, fixed byte ceilings, and absolute deadlines bound
+## dispatcher work. Reject ambiguous framing before entering the private registry.
+## Only copied startup and resource observations cross into management dispatch.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
