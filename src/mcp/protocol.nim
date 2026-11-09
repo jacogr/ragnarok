@@ -1,8 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Stateless MCP 2025-11-25 tools over a synchronously borrowed RPC query context.
-## Only the fixed read registry below reaches RPC. No session, subscription or graph survives dispatch.
+## Read-only chain queries over MCP 2025-11-25.
+##
+## The fixed catalog adapts named tool arguments to the existing synchronous RPC reads.
+## Sharing the implementation keeps validation, retained-block selection and query budgets
+## consistent across MCP and WebSocket RPC. Calls borrow one query context for their duration.
+##
+## State tools select an exact block and echo its hash and chain identity. Their values keep
+## the RPC distinction between absent data and present empty bytes. Hashes and bytes use padded
+## Base64. Tool discovery exposes the argument and result shapes from the registry below.
+##
+## See spec/mcp.md for the pinned protocol references and interoperability evidence.
 
 import std/strutils
 import ../lib/json/[reader as json_reader, writer as json_writer]
@@ -54,7 +63,8 @@ proc uniqueObjects(values: seq[JsonToken]): bool =
   true
 
 proc encode(values: seq[JsonToken], index: int, decimalStrings = false): JsonValue =
-  ## Re-encode parsed values without numeric conversion; query payload integers become decimal strings.
+  # Encode query payload integers as decimal strings so clients using floating-point JSON numbers
+  # retain full precision. Envelope IDs and schema limits still use JSON numbers.
   case values[index].kind
   of stringValue: json(values[index].text)
   of numberValue:
@@ -134,7 +144,10 @@ proc query(methodName: string, arguments: JsonArray, info: rpc.ClientInfo): seq[
   if not parseValues(answer, result, 32768, 16): result = @[]
 
 proc callTool(values: seq[JsonToken], params: int, id: JsonValue, context: QueryContext): string =
-  ## Validate the fixed named argument surface before obtaining any state observation.
+  # Validate the named argument surface before touching state. A busy context carries no
+  # canonical graph aliases, so a valid request can ask the client to retry during a worker lease.
+  # JSON-RPC errors describe invalid calls. isError results describe valid calls the query
+  # layer refused, such as a missing retained block or an unavailable complete state read.
   let name = member(values, params, "name")
   let arguments = member(values, params, "arguments")
   if name < 0 or values[name].kind != stringValue or
@@ -196,8 +209,13 @@ proc callTool(values: seq[JsonToken], params: int, id: JsonValue, context: Query
   response
 
 proc respond*(text: string, context: QueryContext): string =
-  ## Stateless HTTP requests retain no client lifecycle or query handles between calls.
-  ## Empty replies acknowledge valid notifications; malformed envelopes still receive protocol errors.
+  ## Handle initialize, ping, tool discovery and tool calls for one stateless request.
+  ## Clients initialize and send notifications/initialized before ordinary work. The server
+  ## keeps no session ID or per-client lifecycle record. An empty reply acknowledges a
+  ## valid notification. Malformed envelopes receive JSON-RPC errors.
+  ##
+  ## Discovery accepts an optional _meta object with a string or numeric progressToken and
+  ## inert extension fields. The whole catalog fits in one response, so a cursor is invalid.
   if text.len == 0 or text.len > MaxMcpBody or not validUtf8(text):
     return failure(jsonNull(), -32700, "Parse error")
   var values: seq[JsonToken] = @[]
