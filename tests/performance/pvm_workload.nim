@@ -157,12 +157,20 @@ for row in 0..<11:
     # Aligned/crossing guests touch the same first pair; sparse cases retain additional mapped canaries.
     assert address in [0x10000'u64, 0x10fff'u64]
     # Sparse cases admit 64 two-page pairs separated by unmapped holes; all retained bytes validate.
-    for page in 0..<(if kind == 4: 128 else: 2):
-      let offset = if kind == 4: (page div 2)*4 + page mod 2 else: page
-      var image = PageImage(index: PageIndex(uint32(16 + offset)), access: PageAccess.ReadWrite,
-        bytes: default(array[4096, byte]))
-      for i in 0..<4096: image.bytes[i] = 33
-      images.add(image)
+    if kind == 4:
+      # The exact sparse count is known before staging. Fill the final input slots in order.
+      images = newSeq[PageImage](128)
+      for page in 0..<images.len:
+        let offset = (page div 2)*4 + page mod 2
+        images[page].index = PageIndex(uint32(16 + offset))
+        images[page].access = PageAccess.ReadWrite
+        for i in 0..<4096: images[page].bytes[i] = 33
+    else:
+      for page in 0..<2:
+        var image = PageImage(index: PageIndex(uint32(16 + page)), access: PageAccess.ReadWrite,
+          bytes: default(array[4096, byte]))
+        for i in 0..<4096: image.bytes[i] = 33
+        images.add(image)
     for i in 0..<8:
       # Initial scalar bytes are copied from the independent fixture before execution begins.
       let offset = int(address - 0x10000) + i
