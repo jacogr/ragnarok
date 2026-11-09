@@ -118,6 +118,8 @@ type
     count: uint8
     probes: array[16, FlatX86WideProbe]
     seen: seq[byte]             # One lazy bit per source byte prevents repeat enrollment after refusal.
+  FlatDynamicOffsets = ref object ## Invocation-owned positive ordinal tags and stable offsets.
+    slots: array[256, uint64]
   FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
     plan: FlatPlan
     info*: MachineInfo
@@ -143,7 +145,7 @@ type
     barrier: uint32
     barrierFact: uint32
     savedHandler: nil FlatHandler
-    dynamicOffsets: array[256, uint64] # Full positive ordinal tag plus stable offset; no invocation state is retained.
+    dynamicOffsets: nil FlatDynamicOffsets
     hostSnapshot: Memory
     hostReady: bool
     hostSnapshotPc: CodeAddress
@@ -198,6 +200,7 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.ro)
   `=wasMoved`(frame.stack)
   `=wasMoved`(frame.extra)
+  `=wasMoved`(frame.dynamicOffsets)
   `=wasMoved`(frame.hostSnapshot)
   `=wasMoved`(frame.dirtyPages)
   `=wasMoved`(frame.dirtyIndices)
@@ -1124,10 +1127,14 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   if address == 0 or (address and 1) != 0: return flatStopExit(f, off, oracle.StepExit.Panic)
   let index = address div 2-1
   let slot = int(index and 255'u64)
-  let known = f.dynamicOffsets[slot]
-  if (known shr 32) == index+1:
-    f.info.blockCharged = false
-    return uint32(known and 0xffffffff'u64)-1
+  when not Single:
+    # A one-step frame cannot reuse a cached target.
+    let cache {.cursor.} = f.dynamicOffsets
+    if cache != nil:
+      let known = cache.slots[slot]
+      if (known shr 32) == index+1:
+        f.info.blockCharged = false
+        return uint32(known and 0xffffffff'u64)-1
   var target = FlatTarget(pc: 0, valid: false)
   when Single:
     # A single instruction checks only its chosen original table ordinal; it never decodes the full table.
@@ -1143,7 +1150,16 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   if not target.valid: return flatStopExit(f, off, oracle.StepExit.Panic)
   let resolved = flatResolve(f, target.pc)
   if resolved == flatStop: return flatResolutionFailure(f, off)
-  f.dynamicOffsets[slot] = ((index+1) shl 32) or uint64(resolved+1)
+  when not Single:
+    # A refusal or halt never allocates. Only successful resolution can install a tag.
+    let cache {.cursor.} = f.dynamicOffsets
+    let tag = ((index+1) shl 32) or uint64(resolved+1)
+    if cache == nil:
+      let fresh = FlatDynamicOffsets(slots: default(array[256, uint64]))
+      fresh.slots[slot] = tag
+      f.dynamicOffsets = fresh
+    else:
+      cache.slots[slot] = tag
   f.info.blockCharged = false
   resolved
 
@@ -2088,7 +2104,6 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
         RWView), stack: @[], extra: @[], rwStorage: initRWStorage(),
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
-  result.dynamicOffsets = default(array[256, uint64])
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     result.armPreviousHeader = flatStop
     result.armPreviousNext = flatStop
@@ -4021,9 +4036,10 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # A reset or same-plan stream lease supplies an uncharged cold boundary after warmup.
     flatX86ColdWideAdmission(f, flatStop)
-  if f.plan.jumps.len > 0:
-    # Only table-bearing plans can populate the cache; tableless frames retain their initialized zeros.
-    f.dynamicOffsets = default(array[256, uint64])
+  let cache {.cursor.} = f.dynamicOffsets
+  if cache != nil:
+    # A resumed segment starts with empty tags and may reuse its existing private allocation.
+    cache.slots = default(array[256, uint64])
   let pc = uint32(uint64(f.info.pc) and 0xffffffff'u64)
   var offset = flatStop
   if f.info.blockCharged and uint64(pc) < uint64(f.plan.factAt.len) and f.compiledForPc.len > 0:
