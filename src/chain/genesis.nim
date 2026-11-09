@@ -377,7 +377,11 @@ func fuzzSeedOnly*(value: BlockSnapshot): bool =
 
 proc captureBlockSnapshot*(wire: openArray[byte], state: StateStoreSnapshot,
     parameters: Parameters): BlockSnapshotResult =
-  ## Ordinary snapshots require exact equality between header slot and posterior state clock.
+  ## Bind a sealed header to the exact initialized immutable state version.
+  ## Capture checks its own ceilings even when the source store permits more. Retaining
+  ## the version preserves its inherited policy without copying values or rehashing its trie.
+  ## Header slot and posterior state clock must agree. Signature and execution validity
+  ## are established by the caller before publication.
   captureSnapshot(wire, state, parameters, false)
 
 proc withBlockBody*(snapshot: BlockSnapshot, wire: openArray[byte]): BlockSnapshotResult =

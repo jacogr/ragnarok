@@ -9,19 +9,8 @@ Execution/finalization remains PVM-owned; state composition/application remains 
 
 ## Contract and completion tests
 
-Overload `captureBlockSnapshot` for a StateStoreSnapshot. Preserve the exact initialized
-owner and its inherited store policies without copying the complete value map or recomputing
-its trie root. Retain the existing 16,384-entry, 4 MiB aggregate/per-value and 1,048,576-node
-capture ceilings even when the source store permits more. Check required C(8)/C(11), exact
-header consumption, author domain and matching header/state time. Hash the sealed header once;
-backend refusal publishes no block owner. Default snapshots are invalid.
-
-Expose the exact retained map through guarded `stateSnapshot`. Add nominal StateEntryIndex
-and fallible read-only `keyAt` to enumerate the store's sorted keys; defaults and invalid
-ordinals contain reasons alone. Chain indices and store ordinals remain distinct domains.
-Keep sorted key pagination, service discovery, cached roster-derived metadata and legacy raw
-capture behavior. Raw capture commits once under its original read-only store policy, then
-uses the same structural path. Its map validation now precedes header decoding.
+The [snapshot adapter](../src/chain/genesis.nim) owns capture, retention, and structural
+validation. [The provider](../src/chain/provider.nim) owns admission into the selected view.
 
 Test genuinely signed applied accumulation successors, raw-adapter parity of roots, block
 identities, every key/value and metadata, detached header input and exact retained map identity.
