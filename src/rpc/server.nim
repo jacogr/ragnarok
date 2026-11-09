@@ -294,7 +294,8 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
   ## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
   ## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
   ## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
-  ## This is not a thread-safe import/validation API.
+  ## Serialized replies keep their original view's bytes. Incomplete incoming
+  ## requests observe the view of the tick that finishes processing them.
   if not server.opened or server.lease != nil:
     return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
   let update = server.chain.advanceView(child)
