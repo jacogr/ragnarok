@@ -217,6 +217,7 @@ proc normalizeRing*(input: openArray[byte]): BsResult[seq[byte]] {.raises: [], g
   ## Identity survives normalization as a valid encoding and is rejected at the ring
   ## operation boundary, as it is for public keys, inputs and outputs. Thin R and
   ## Pedersen R and O_k may be identity. Backend failures abort the normalization.
+
   # Complete encoded members and a bounded count are required before allocating/copying.
   if input.len == 0 or input.len mod 32 != 0 or input.len > 1023*32:
     return BsResult[seq[byte]](status: BsError.InvalidLength)

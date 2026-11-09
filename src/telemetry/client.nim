@@ -272,6 +272,7 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
   ## Caller-provided monotonic time controls retry, status and connect/write deadlines.
   ## Partial writes resume at the exact suffix, and queued events share the batch deadline
   ## so fresh observations cannot keep a stalled collector alive.
+
   # Disabled telemetry has no socket, clock, allocation or network work.
   if not client.enabled: return
   if not client.opened:
