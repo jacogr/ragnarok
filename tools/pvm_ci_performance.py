@@ -30,7 +30,8 @@ from pvm_jit_platform import native_defines
 from pvm_native_ci import host_identity
 from pvm_performance_report import SCHEMA, case_inventory, publish_report
 from pvm_performance_synthetic import parse_synthetic
-from pvm_invocation_scope import invocation_scope, scope_diagnostics, full_parsed, measurement_identity
+from pvm_invocation_scope import (PRESTARTED, invocation_scope, scope_diagnostics, full_parsed,
+                                  measurement_identity)
 from pvm_reference_lifetime import CODE_LIFETIME, reference_instances, invocation_reference_instances
 from setup_nimony import installed
 
@@ -246,7 +247,7 @@ class PerformanceRunner:
                 'GITHUB_EVENT_NAME', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_REPOSITORY',
                 'GITHUB_JOB', 'PVM_CI_JOB_NAME')},
             doom_warmup_ticks=DOOM_WARMUP, native_build_defines=defines, code_lifetime=CODE_LIFETIME,
-            measurement=measurement_identity(),
+            measurement=dict(measurement_identity(), jit_runtime_start=PRESTARTED),
             toolchain=json.loads((ROOT/'spec/toolchain.json').read_text()),
             build_environment={key: os.environ[key] for key in
                 ('RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CFLAGS', 'LDFLAGS') if key in os.environ})

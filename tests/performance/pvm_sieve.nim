@@ -163,10 +163,10 @@ for page in 0..<pageCount:
   indices.add(PageIndex(uint32(word(data, at, 4))))
   access.add(if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite)
   originalBytes.add(data[at+5..<at+4101])
-let coldCall = if fullInvocation: beginInvocation() else: default(
-    InvocationClock)
-var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
-    ) else: default(InvocationRuntime)
+let ownerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit":
+    startInvocationRuntime() else: default(InvocationRuntime)
+let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
 var owner = default(Program)
 var memory = default(Memory)
 if artifactAdmission:
@@ -365,6 +365,6 @@ when defined(pvmArm64JitOwnerReceipt):
 if fullInvocation:
   prepared = default(reference.PreparedProgram)
   if requestedBackend == "jit":
-    closeInvocationRuntime(invocationRuntime, "guest-process", coldCall)
+    closeInvocationRuntime(invocationRuntime, "guest-process", ownerStart)
   else:
-    finishInterpretedOwner("guest-process", coldCall)
+    finishInterpretedOwner("guest-process", ownerStart)

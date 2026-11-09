@@ -10,7 +10,7 @@ import unittest
 from pvm_invocation_scope import SCOPE_HEADER, invocation_scope
 from pvm_performance_synthetic import parse_synthetic
 from pvm_performance_report import (validate_current_report, validate_report, statistics_rows,
-                                    cumulative_rows, render_samples_csv)
+                                    cumulative_rows, render_samples_csv, render_summary)
 from pvm_performance_latest import retrieve
 from pvm_ci_performance import parse_application
 from test_pvm_prepared_blocks import observed as prepared_guest_wire
@@ -64,6 +64,27 @@ class FullInvocationTests(unittest.TestCase):
                     flags = value['diagnostics']['scope_observations']['native_compilation']
                     self.assertEqual(next(iter(flags.values()))['measured'], role == 'jit')
                     self.assertNotIn('compilation_ns', value['native'])
+
+    def test_prestarted_runtime_is_bound_to_the_report_and_exports(self):
+        """Startup policy is explicit for new runs and preserves the historic cold boundary."""
+        wire = full_cohort('jit')
+        parsed = parse_synthetic(wire.replace('demand-started', 'prestarted'), 'jit', require_full=True)
+        for value in parsed.values():
+            owner = value['diagnostics']['scope_observations']['runtime_owner']['synthetic-process']
+            self.assertEqual(owner['creation'], 'prestarted')
+
+        report = invocation_observations('doom')
+        self.assertIn('includes runtime startup', render_summary(report))
+        report['identity']['measurement']['jit_runtime_start'] = 'prestarted'
+        with self.assertRaisesRegex(ValueError, 'runtime start disagrees'):
+            validate_current_report(report)
+        for row in report['runs']:
+            observed = row['parsed']['diagnostics']['scope_observations']
+            for owner in observed.get('runtime_owner', {}).values():
+                owner['creation'] = 'prestarted'
+        self.assertIn('starts before the first call', render_summary(report))
+        self.assertEqual({row['jit_runtime_start'] for row in
+                          csv.DictReader(io.StringIO(render_samples_csv(report)))}, {'prestarted'})
 
     def test_interpreted_has_no_runtime_lifecycle_and_jit_cannot_claim_none(self):
         """Requested policy binds lifecycle, independently of whether JIT completed native work."""
