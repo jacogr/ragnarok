@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JAMNP-S unique-persistent stream admission and replacement policy. QUIC supplies copied
-## stream numbers; connection-initiator and greatest-ID requirements remain Nim decisions.
+## JAMNP-S unique persistent stream admission and replacement.
+##
+## The transport supplies copied QUIC IDs. The two low bits distinguish initiator
+## and direction, so zero in both identifies a client-initiated bidirectional stream.
+## Comparison is meaningful only for the same authenticated connection and UP kind.
+## Keep the greatest ID because arrival and parsing order can differ from open order.
 
 import ../quic/transport
 

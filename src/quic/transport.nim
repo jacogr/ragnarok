@@ -617,7 +617,10 @@ proc streamPeer*(owner: Transport, stream: NativeStream): PeerResult =
   PeerResult(status: PeerError.None, completed: PeerHandle(native: raw))
 
 proc live*(owner: Transport, peer: PeerHandle): bool =
-  ## Defaults, foreign owners, reused slots and reopened transports all fail closed.
+  ## Validate an opaque reference against the live owner, slot and admission generation.
+  ## The native slot alone can be reused. Its owner and generation prevent stale
+  ## references from controlling a later admission. Copied references retain no native
+  ## connection lifetime. Default, foreign and retired references fail closed.
   var raw = peer.native
   nativePeerLive(owner.engine, addr raw) == 1
 
@@ -632,6 +635,8 @@ proc cancelPeerStreamOpens*(owner: var Transport, peer: PeerHandle): bool =
   nativeCancelPeerOpens(owner.engine, addr raw) == 1
 
 proc disconnectPeer*(owner: var Transport, peer: PeerHandle): bool =
-  ## Ownership remains until a real close event; copied old references cannot close replacements.
+  ## Request closure of the exact live admission.
+  ## Application ownership lasts until its native close callback. A successful request
+  ## alone does not release the slot or its stream state.
   var raw = peer.native
   nativeClosePeer(owner.engine, addr raw) == 1
