@@ -26,8 +26,9 @@ The suite records 1,000 complete lifetimes through the normal ARC evidence valid
 Compiler probes enforce nominal gas/action types and private causing-PC metadata;
 isolated runtime probes enforce failed-result and exit-metadata selection.
 
-This composes initialization, bounded execution, host-response application and output
-capture. A [bounded host dispatcher](pvm-host-execution.md) composes trusted handlers
-and caller-owned context. Concrete host functions, complete invocation wrappers and
-gas-used accounting remain separate work. [Gas and unknown-call responses](pvm-host-gas.md)
-implement exact fixed-charge terminal deficits; existing PVM specification gates remain.
+The original adapter composed initialization, bounded execution, host-response
+application and output capture. The [bounded host dispatcher](pvm-host-execution.md)
+composes trusted handlers and caller-owned context. Under the current
+[host gas contract](pvm-host-gas.md), fixed gas and unknown-call charges use
+saturating unsigned subtraction. Insufficient credit yields OutOfGas with zero
+posterior gas.
