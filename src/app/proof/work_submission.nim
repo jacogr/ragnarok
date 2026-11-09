@@ -34,6 +34,7 @@ import "../../state/import/inputs" as import_inputs
 import "../../state/import/justification" as import_justification
 import ../../codec/work/report as work_report
 import ../../chain/parameters
+from ../../pvm/step import NativeRuntime
 
 type
   WorkJobError* {.pure.} = enum ## Local capture refusals contain no source-bearing input capability.
@@ -155,9 +156,12 @@ type
     ## Closed capability is bound only to the actual implementation in this module.
   CancellableWorkRunner = proc(data: WorkJobData, control: AssuranceScanControl): WorkJobResult {.nimcall.}
     ## Only private closed factories select this runner; live cancellation control is supplied at execution and is never stored in a queued job.
+  RefinementWorkRunner = proc(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult {.nimcall.}
+    ## Receives the optional runtime only on the exclusive execution lease.
   WorkJobData = ref object ## Detached bounded bytes accompany immutable selected-state owners; no stream pointer crosses the CPU boundary.
     run: nil WorkRunner
     cancellable: nil CancellableWorkRunner
+    refinement: nil RefinementWorkRunner
     auditBandersnatch: TicketSigner
     auditInitialOrdinal: JudgeIndex
     auditDiscoverOrdinal: bool
@@ -540,8 +544,9 @@ func valid*(job: WorkSubmissionJob): bool =
   ## Exactly one private closed runner selects the operation; defaults or ambiguous dispatch grant no execution capability.
   let data = job.data
   if data == nil: return false
-  if data.run != nil: return data.cancellable == nil
-  data.cancellable != nil
+  if data.run != nil: return data.cancellable == nil and data.refinement == nil
+  if data.cancellable != nil: return data.refinement == nil
+  data.refinement != nil
 
 func valid*(context: AuthorizedWorkContext): bool =
   ## Default contexts never grant body CPU admission.
@@ -626,12 +631,13 @@ proc authorize(data: WorkJobData): WorkJobResult =
     context: AuthorizedWorkContext(data: WorkContextData(source: retained, grant: outcome.value,
         duty: duty, imports: imports, recovery: recovered)))
 
-proc refine(context: WorkContextData, inputs: VerifiedImportInputs): WorkJobResult =
+proc refine(context: WorkContextData, inputs: VerifiedImportInputs,
+    nativeRuntime: NativeRuntime): WorkJobResult =
   ## Every path executes the same original source, core and immutable refinement policy after complete input binding.
   let source = context.source
   let described = context.grant.submissionInfo.value
   let executed = runInputRefinement(source.state, inputs, described.core, source.parameters,
-      source.execution)
+      source.execution, nativeRuntime)
   if executed.error != InputRefinementError.None:
     return WorkJobResult(status: WorkJobResultKind.RefinementFailure, refinementReason: executed)
   WorkJobResult(status: WorkJobResultKind.Refined, execution: executed.value)
@@ -650,7 +656,7 @@ proc retryRecovery(data: WorkJobData): WorkJobResult =
     return WorkJobResult(status: WorkJobResultKind.RecoveryFailure, recoveryReason: completed)
   WorkJobResult(status: WorkJobResultKind.RecoveryUpdated, recovered: completed.value)
 
-proc completeRecovered(data: WorkJobData): WorkJobResult =
+proc completeRecovered(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult =
   ## The exact original grant owns both recovery and complete binding before real source-bound execution.
   let context = data.context.data
   if context == nil: return default(WorkJobResult)
@@ -659,9 +665,9 @@ proc completeRecovered(data: WorkJobData): WorkJobResult =
   if completed.error != WorkRecoveryError.None:
     return WorkJobResult(status: WorkJobResultKind.RecoveryCompletionFailure,
         recoveryCompletionReason: completed)
-  refine(context, completed.value)
+  refine(context, completed.value, nativeRuntime)
 
-proc complete(data: WorkJobData): WorkJobResult =
+proc complete(data: WorkJobData, nativeRuntime: NativeRuntime): WorkJobResult =
   ## Validate only the original grant's body, then execute from the same immutable source and fixed original policy.
   let context = data.context.data
   if context == nil: return default(WorkJobResult)
@@ -675,7 +681,7 @@ proc complete(data: WorkJobData): WorkJobResult =
     completePackageSubmission(context.grant, data.extrinsics, data.imports, data.lookup, source.limits)
   if inputs.error != WorkSubmissionError.None:
     return WorkJobResult(status: WorkJobResultKind.BodyFailure, bodyReason: inputs)
-  refine(context, inputs.value)
+  refine(context, inputs.value, nativeRuntime)
 
 proc report(data: WorkJobData): WorkJobResult =
   ## Original refinement stays under the same graph lease through every bounded encoding/hash stage.
@@ -1434,7 +1440,7 @@ proc captureRecoveredWorkPackage*(context: AuthorizedWorkContext, recovery: Work
   if extrinsics.len != data.grant.submissionInfo.value.extrinsicBytes: return WorkJobAdmission(
       status: WorkJobError.InvalidInput)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
-    run: completeRecovered, context: context, recovery: recovery, extrinsics: copied(extrinsics))))
+    refinement: completeRecovered, context: context, recovery: recovery, extrinsics: copied(extrinsics))))
 
 proc captureWorkBundle*(context: AuthorizedWorkContext, extrinsics, segments,
     proofs: openArray[byte]): WorkJobAdmission =
@@ -1450,7 +1456,7 @@ proc captureWorkBundle*(context: AuthorizedWorkContext, extrinsics, segments,
   if info.packageBytes+extrinsics.len+segments.len+proofs.len > 13904950:
     return WorkJobAdmission(status: WorkJobError.LimitExceeded)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
-    run: complete, source: data.source, context: context,
+    refinement: complete, source: data.source, context: context,
     extrinsics: copied(extrinsics), segments: copied(segments), proofs: copied(proofs))))
 
 proc captureFetchedWorkPackage*(context: AuthorizedWorkContext, extrinsics,
@@ -1464,7 +1470,7 @@ proc captureFetchedWorkPackage*(context: AuthorizedWorkContext, extrinsics,
   if reply.len > 8+info.segmentBytes+info.importCount*385:
     return WorkJobAdmission(status: WorkJobError.LimitExceeded)
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
-    run: complete, source: data.source, context: context, fetched: true,
+    refinement: complete, source: data.source, context: context, fetched: true,
     extrinsics: copied(extrinsics), segments: copied(reply))))
 
 proc captureWorkPackage*(context: AuthorizedWorkContext, extrinsics: openArray[byte],
@@ -1488,16 +1494,18 @@ proc captureWorkPackage*(context: AuthorizedWorkContext, extrinsics: openArray[b
   var dictionary = newSeq[SegmentLookup](lookup.len)
   for index in 0..<lookup.len: dictionary[index] = lookup[index]
   WorkJobAdmission(status: WorkJobError.None, completed: WorkSubmissionJob(data: WorkJobData(
-    run: complete, source: data.source, context: context,
+    refinement: complete, source: data.source, context: context,
     extrinsics: copied(extrinsics), imports: rows, lookup: dictionary)))
 
 proc executeWorkSubmission*(job: WorkSubmissionJob, control: AssuranceScanControl = default(
-    AssuranceScanControl)): WorkJobResult =
+    AssuranceScanControl), nativeRuntime: NativeRuntime = default(NativeRuntime)): WorkJobResult =
   ## The worker invokes a private genuine capability outside native callbacks and retires all activation aliases before Done.
   let data = job.data
   if data == nil: return default(WorkJobResult)
   let cancellable = data.cancellable
   if cancellable != nil: return cancellable(data, control)
+  let refinement = data.refinement
+  if refinement != nil: return refinement(data, nativeRuntime)
   let run = data.run
   if run == nil: return default(WorkJobResult)
   run(data)

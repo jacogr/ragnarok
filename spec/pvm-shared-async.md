@@ -37,9 +37,16 @@ cannot physically move, including after close; only the uninitialized storage se
 No runtime means checked execution even for requested Jit. There is no new CLI/JIT mode or hidden
 per-Program worker. Program decoding/initialization, prepared-fact construction, input CPU/RAM
 restoration and immutable result publication retain their normal APIs and real costs.
-Services starts one runtime at full-state Jit startup, binds its context, joins preparation before
-retiring context registrations, then closes/joins the compiler. `stopPreparation` alone preserves it.
-Standalone callers must explicitly close their runtime; sessions may safely survive its closed anchor.
+Services starts one runtime at full-state Jit startup and binds its accumulation context.
+The managed work-submission completion turn also lends this runtime to the outer package worker.
+Proof and preparation turns exclude each other until collection or joined stop. The package worker
+reuses one prepared source across items and retires it before the proof worker publishes Done.
+The shared compiler queue and four image credits apply to both routes. A full queue or all credits
+in use leaves package execution on the checked path. Authorization and inner machine execution
+use their separate invocation lifetimes.
+Services joins both workers and retires retained accumulation code before closing the compiler.
+`stopPreparation` alone preserves it. Standalone callers explicitly close their runtime.
+Session handles can safely outlive the closed runtime anchor.
 
 The [shared scheduler](../src/pvm/internal/native_pipeline.nim) owns the public
 invocation lease, exact source epoch, image credit and nonblocking queue admission.

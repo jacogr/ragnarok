@@ -7,6 +7,7 @@
 import ../codec/[bounded, composite]
 import ../codec/work/[package as work_package, report as work_report]
 import ../pvm/host/fetch as host_fetch
+from ../pvm/step import NativeRuntime
 import ../chain/parameters
 import ./store
 import "./import/inputs" as import_inputs
@@ -92,8 +93,9 @@ proc inputRefinementIdentity*(completed: InputRefinement): InputRefinementResult
   InputRefinementResult[ReportIdentity](status: InputRefinementError.None, completed: data.identity)
 
 proc runInputRefinement*(state: StateStoreSnapshot, inputs: VerifiedImportInputs, core: CoreIndex,
-    parameters: Parameters, limits: InputRefinementLimits): InputRefinementResult[InputRefinement] =
-  ## Execute synchronously from immutable original sources; no detached execution artifact can be attached afterward.
+    parameters: Parameters, limits: InputRefinementLimits, nativeRuntime: NativeRuntime = default(
+        NativeRuntime)): InputRefinementResult[InputRefinement] =
+  ## Execute synchronously from immutable original sources. Only package refinement borrows the runtime.
   template fail(reason: InputRefinementError) =
     return InputRefinementResult[InputRefinement](status: reason)
   let described = inputs.importInputsInfo
@@ -131,7 +133,8 @@ proc runInputRefinement*(state: StateStoreSnapshot, inputs: VerifiedImportInputs
     for index in 0..<selected.imports:
       materialized.imports[item][index] = inputs.importInput(FetchItemIndex(uint64(item)),
         ImportInputIndex(uint64(index))).value.verifiedImportSegment.value
-  let refined = prepareAuthorizedRefinement(authorized.value, materialized, limits.refinement)
+  let refined = prepareAuthorizedRefinement(authorized.value, materialized, limits.refinement,
+      nativeRuntime)
   if refined.error != AuthorizedRefinementError.None:
     return InputRefinementResult[InputRefinement](status: InputRefinementError.RefinementFailure,
       refinementReason: refined) # Late local failure cannot expose earlier successful item output.

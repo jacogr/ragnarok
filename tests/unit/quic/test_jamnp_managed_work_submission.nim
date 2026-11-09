@@ -82,7 +82,12 @@ proc managed(f: WorkFixture) {.raises.} =
   assert services.collectWorkSubmission(token) == WorkSessionPhase.Empty
   assert not services.retireWorkSubmission(token)
   services.waitDone()
+  assert services.collectWorkSubmission(next) == WorkSessionPhase.Authorized
+  assert services.beginWorkBundle(next, f.extrinsics, f.segments, f.proofs).error ==
+      StateProofAdmissionError.None
+  services.waitDone()
   assert services.retireWorkSubmission(next)
+  assert not services.preparationAvailable
   assert not services.reapWorkSubmission(), "cancelled Done still retains its exact CPU lease"
   assert services.collectWorkSubmission(next) == WorkSessionPhase.Retired
   assert services.reapWorkSubmission()
