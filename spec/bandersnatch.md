@@ -16,35 +16,12 @@ and both ring fixture domains.
 
 ## Maintained ABI and policy
 
-| Primitive | Contract |
-| --- | --- |
-| Seed import | Exactly 32 bytes, Draft 35 A.3 under the pinned v1 suite; distinct from scalar import |
-| Scalar import | Exactly 32 canonical little-endian bytes, nonzero scalar, never a seed |
-| Public key | 32-byte compressed Edwards prime-subgroup encoding |
-| Ordinary signature | `output(32) || R(32) || response(32)`, Thin, no serialized challenge |
-| Verified output | First 32 bytes of v1 transcript-based output derivation |
-| Ring proof | Output + Pedersen + membership, exactly 784 bytes |
-| Ring commitment | Ordered normalized keys, 144 compressed bytes |
-| Setup | Immutable opaque owner; explicit requested capacity 1..1023 and public SRS |
-
-Nim owns raw context, separate additional data, protocol signing domains, exact
-encodings, invalid-member substitution and retained ARC ownership. Rust owns only
-primitive key/setup allocations and equations. Buffers are synchronously borrowed;
-outputs are published only after complete success. The 131072-byte input/AD cap is
-an adapter resource budget, not a JAM wire rule. It covers full epoch/ticket/offender
-header envelopes, including the reproduced65547/65739-byte unsigned epoch headers.
-Exact-limit success, changed-AD refusal and over-limit untouched outputs are tested
-through the maintained ABI. Reason codes and owner ABI are
-unchanged. All decoded composites undergo validity checks and canonical
-re-serialization comparison; suffixes, off-curve/subgroup points and invalid scalars
-fail. Verification exposes no output on failure.
-
-Identity is a valid subgroup point during ring normalization and is never silently
-replaced by padding. It is rejected as a public key, input, output or ring member
-at the operation boundary. Thin R and Pedersen R/O_k may legally be identity.
-Invalid encodings alone become the v1 padding point
+The [typed adapter](../src/bandersnatch/bandersnatch.nim) owns input and output contracts,
+including ring normalization and the native ownership boundary. The adapter's input budget
+covers the reproduced 65547/65739-byte unsigned epoch headers. Exact-limit success,
+changed-AD refusal and untouched outputs on over-limit calls are covered by the ABI tests.
+The v1 padding point used by the normalization fixtures is
 `da5ca18e76fbd5467319795e26fd80f0b9cf7fc888d995348b7ff299197a42c4`.
-Backend failures/panics remain typed failures and do not become padding.
 
 ## Ring and dependency provenance
 

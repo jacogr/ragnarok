@@ -4,38 +4,9 @@ Target GP `fad0ded4a433052397bf7234352a57fe491883f7`,
 `reporting_assurance.tex` equation `assurancesig`, anchors/order preceding it, and Appendix C.1/C.2.
 The existing source SHA pins in `spec/pins.json` cover these definitions.
 
-The signing message is exactly the 45-byte owned value
-`ASCII("jam_available") || Blake2b-256(parent_hash32 || fixed_profile_bitfield)`.
-The bitfield has `ceil(cores/8)` bytes, LSB-first, with no length or record-count prefix. The
-validator index and signature are not included in the hash. Blake2b-256 is the 32-byte output
-parameterization, not a truncation of Blake2b-512. A parent hash is a nominal domain distinct
-from a cryptographic digest; no parent is present in the current wire record. Core counts are 1..341, with the
-existing 43-byte native bitset storage and canonical padding rules.
+The [assurance context module](../src/crypto/assurance_context.nim) owns the transcript,
+input validation order and verification result contract.
 
-Expose a message builder accepting parent, bits and core count, and a batch verifier accepting
-owned assurance records, explicit codec configuration, expected parent and an ordered borrowed
-array of existing Ed25519 public-key values. Neither operation mutates its inputs, retains a
-pointer, allocates protocol storage or owns keys. Their success-only payloads are an owned signing
-message and verified record count respectively; defaults/failures contain only their reason.
-The count certifies this stateless context check, not successful state transition or availability.
-
-The verifier checks in this precedence: valid configuration (2..341 cores, 6..3*cores validators in multiples of three);
-exact key-set length matching the
-configured validator count; count ceiling; each record's validator bounds, strict order, canonical
-bitfield padding, in record order; then each signature against the actual parent in order.
-All structural/context checks finish before any signature verification. Empty records succeed
-with zero count only after configuration and exact key-set checks. For each record, select the
-public key by its validator index, build the normative message, import its fixed signature bytes
-and call the existing provider verifier. Hash/import failure maps to backendfailure; rejected
-signatures map to invalidsignature. No fallback accepts a rejected signature.
-
-Reasons are uninitialized, invalidconfig, invalidkeyset, limitexceeded, invalidvalidator,
-noncanonical, invalidsignature and backendfailure. A credential made for a different parent fails cryptographic verification. Message construction checks only
-core configuration and bitset padding before hashing; it cannot authorize an assurance by itself.
-
-This bounded M2 composition slice does not implement pending-report eligibility,
-availability thresholds, validator-set selection, block import, state mutation or new primitives.
-The caller supplies the correct active validator set and post-judgement state remains external.
 The provider follows the existing [ZIP215 contract](crypto-zip215-upgrade.md). This encoding
 upgrade preserves that primitive implementation and its pins. Ordinary RFC8032-derived keys and
 independent OpenSSL signatures qualify these transcripts; exceptional-point coverage belongs to

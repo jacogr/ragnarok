@@ -5,6 +5,12 @@
 ## profile. Inputs are borrowed for one call. No implicit protocol domains or codec
 ## serialization.
 ##
+## Seed and canonical nonzero scalar imports are separate entry points. The native
+## backend owns primitive equations and key/setup allocations. Nim owns validation
+## at the adapter boundary, transcript inputs, retained handles and complete results.
+## The input and additional-data ceilings bound local work. Protocol sizing remains
+## the responsibility of callers.
+##
 ## Exposes owned scalar/setup handles, fixed signature/proof types, signing, verification and
 ## ring commitments through the maintained native ABI.
 
@@ -207,7 +213,9 @@ proc importPublicKey*(input: openArray[byte]): BsResult[BsPublicKey] {.raises: [
   BsResult[BsPublicKey](status: BsError.None, completed: BsPublicKey(output))
 
 proc normalizeRing*(input: openArray[byte]): BsResult[seq[byte]] {.raises: [], gcsafe.} =
-  ## Copy a bounded member sequence with the existing explicit invalid-encoding padding policy.
+  ## Copy a bounded member sequence and replace invalid encodings with the v1 padding point.
+  ## Identity survives normalization as a valid encoding and is rejected at the ring
+  ## operation boundary. A backend failure aborts the result so it cannot become padding.
   # Complete encoded members and a bounded count are required before allocating/copying.
   if input.len == 0 or input.len mod 32 != 0 or input.len > 1023*32:
     return BsResult[seq[byte]](status: BsError.InvalidLength)
