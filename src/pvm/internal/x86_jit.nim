@@ -10,6 +10,8 @@ import ../[program, machine]
 import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
+when defined(pvmX86Jit) and NativeReadCycleEnabled:
+  import ./native_read_cycle
 
 proc x86Clock*(): uint64 {.cdecl, importc: "pvm_x86_cpu_ns", header: "x86_memory.h".}
   ## Read the native CPU-time counter used to measure x86 JIT work.
@@ -711,10 +713,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(code, [0x48'u8, 0x83, 0xc4, 0x68]) # ADD RSP,104 releases the private register stage.
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
-    func readBodyDirty(body: NativeReadBody): uint32 =
+    func readBodyDirty(body: NativeReadBody, count: int): uint32 =
       ## Select only the destinations the existing checked-read certificate can write.
       result = 0
-      for index in 0..<body.len:
+      for index in 0..<count:
         let op = body.operation(index)
         let slot = if nativeReadOpcode(nativeReadEncodingOpcode(op.opcode)): op.slots.aIndex
           else: op.slots.destinationIndex
@@ -742,9 +744,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       writeAccess(code, access.bank, slot)
       access.written = access.written or (1'u32 shl int(slot))
 
-    proc readBodyBase(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
-      readBodyLiveIn(access, slot)
-      let encoded = access.bank.registers[slot]
+    proc readBodyBase(code: var X86Block, access: X86ResidentAccess, slot: range[0..12]) =
+      ## Address arithmetic starts with the low word of the current logical lane.
+      let encoded = access.registers[slot]
       if encoded == 0:
         readBodyBase(code, X86CanonicalAccess(), slot)
       else:
@@ -752,13 +754,29 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         if hardware >= 8: put(code, [0x41'u8]) # REX.B selects R12–R15D when required.
         put(code, [0x8b'u8, byte(0xd0 or (hardware and 7))]) # MOV EDX,resident32.
 
+    proc readBodyBase(code: var X86Block, access: var X86CheckedReadAccess, slot: range[0..12]) =
+      ## Track read-before-write only when building a transactional Read stage.
+      readBodyLiveIn(access, slot)
+      readBodyBase(code, access.bank, slot)
+
+    proc emitCheckedExtent(code: var X86Block, fixes: var seq[X86CycleFixup],
+        base, width, miss, accepted: byte) =
+      ## Use the complete width before exposing a pointer. RDX is the zero-extended address.
+      put(code, [0x49'u8, 0x8b, 0x4a, base+8]) # MOV RCX,[R10+extent.length].
+      put(code, [0x48'u8, 0x83, 0xe9, width]) # SUB RCX,width gives the final legal offset.
+      cycleEdge(code, fixes, 0x82, miss) # JB rel32 on length underflow.
+      put(code, [0x48'u8, 0x89, 0xd0]) # MOV RAX,RDX.
+      put(code, [0x49'u8, 0x2b, 0x42, base]) # SUB RAX,[R10+extent.first].
+      put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX also rejects a wrapped below-base offset.
+      cycleEdge(code, fixes, 0x87, miss) # JA rel32 when the complete access cannot fit.
+      put(code, [0x49'u8, 0x8b, 0x4a, base+16]) # MOV RCX,[R10+extent.data].
+      cycleEdge(code, fixes, 0, accepted) # JMP rel32 with the proved pointer and offset.
+
     template emitCheckedReadOperations(code: var X86Block, fixes: var seq[X86CycleFixup],
-        labels: var array[1+4*int(NativeReadFactLimit), int], body: NativeReadBody,
-            access: untyped) =
-      ## Preserve one guard and load emitter for the stack and resident access policies.
-      var nextLabel = 1
-      const refusal = 0'u8
-      for index in 0..<body.len:
+        labels: untyped, body: NativeReadBody, access: untyped,
+        count: int, refusal: byte, nextLabel: var byte) =
+      ## Preserve one guard and load emitter for standalone and transactional cycle reads.
+      for index in 0..<count:
         let op = body.operation(index)
         let encoding = nativeReadEncodingOpcode(op.opcode)
         if not nativeReadOpcode(encoding):
@@ -779,19 +797,9 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           let accepted = uint8(nextLabel)
           inc nextLabel
           for region in 0..<3:
-            # A short extent or unsigned out-of-range offset skips its pointer entirely.
-            let nextRegion = uint8(nextLabel)
+            let nextRegion = nextLabel
             inc nextLabel
-            let base = byte(region*24) # first/length/data occupy three consecutive 64-bit fields.
-            put(code, [0x49'u8, 0x8b, 0x4a, base+8]) # MOV RCX,[R10+extent.length].
-            put(code, [0x48'u8, 0x83, 0xe9, width]) # SUB RCX,width gives the final legal offset.
-            cycleEdge(code, fixes, 0x82, nextRegion) # JB rel32 on length underflow.
-            put(code, [0x48'u8, 0x89, 0xd0]) # MOV RAX,RDX copies the zero-extended address.
-            put(code, [0x49'u8, 0x2b, 0x42, base]) # SUB RAX,[R10+extent.first].
-            put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX rejects a wrapped below-base offset too.
-            cycleEdge(code, fixes, 0x87, nextRegion) # JA rel32 when the complete load cannot fit.
-            put(code, [0x49'u8, 0x8b, 0x4a, base+16]) # MOV RCX,[R10+extent.data].
-            cycleEdge(code, fixes, 0, accepted) # JMP rel32 with the proved pointer and offset.
+            emitCheckedExtent(code, fixes, byte(region*24), width, nextRegion, accepted)
             labels[int(nextRegion)] = code.bytes.len
           cycleEdge(code, fixes, 0, refusal) # JMP rel32 when all three extents miss.
           labels[int(accepted)] = code.bytes.len
@@ -837,7 +845,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(code, [0xf3'u8, 0x48, 0xa5]) # REP MOVSQ copies forward with SysV's clear direction flag.
       put(code, [0x48'u8, 0x89, 0xe7]) # MOV RDI,RSP points canonical emission at the stage.
 
-      emitCheckedReadOperations(code, fixes, labels, body, access)
+      var nextLabel = 1'u8
+      emitCheckedReadOperations(code, fixes, labels, body, access, body.len, 0, nextLabel)
 
       for slot in 0..12:
         # Only the success epilogue can publish guest registers after all guards pass.
@@ -851,29 +860,60 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       readBodyReturn(code, NativeReadRefusal)
       sealCheckedRead(code, fixes, labels)
 
+    proc saveCheckedReadRegister(code: var X86Block, hardware: uint8) =
+      ## Save one selected SysV register before changing it.
+      if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the PUSH register.
+      put(code, [byte(0x50 or (hardware and 7))]) # PUSH resident64.
+
+    proc loadCheckedReadRegister(code: var X86Block, bank: X86ResidentAccess,
+        slot: range[0..12]) =
+      ## Load one mapped lane from the current canonical file or Read checkpoint.
+      let encoded = bank.registers[slot]
+      assert encoded != 0
+      let hardware = encoded-1
+      put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x8b,
+        byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV resident64,[RDI+slot*8].
+
+    proc loadCheckedReadLiveIn(code: var X86Block, access: X86CheckedReadAccess,
+        slot: range[0..12]) =
+      ## Initialize a mapped read-before-write lane from the current canonical file.
+      if (access.liveIns and (1'u32 shl int(slot))) != 0:
+        loadCheckedReadRegister(code, access.bank, slot)
+
+    proc restoreCheckedReadRegisters(code: var X86Block, bank: X86ResidentAccess) =
+      ## Restore every selected SysV register in reverse save order.
+      for index in 0..12:
+        let encoded = bank.registers[12-index]
+        if encoded != 0:
+          let hardware = encoded-1
+          if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the POP register.
+          put(code, [byte(0x58 or (hardware and 7))]) # POP resident64.
+
+    proc commitCheckedReadRegisters(code: var X86Block, bank: X86ResidentAccess,
+        mask = 0x1fff'u32) =
+      ## Publish the selected mapped lanes after all guards, or save a pre-Read checkpoint.
+      for slot in 0..12:
+        let encoded = bank.registers[slot]
+        if encoded != 0 and (mask and (1'u32 shl slot)) != 0:
+          let hardware = encoded-1
+          put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x89,
+            byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV [RDI+slot*8],resident64.
+
     proc emitCheckedReadResidentEntry(code: var X86Block, access: X86CheckedReadAccess) =
       ## Save exactly the selected hardware lanes and initialize mapped reads before first write.
       for slot in 0..12:
         let encoded = access.bank.registers[slot]
         if encoded != 0:
-          let hardware = encoded-1
-          if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the PUSH register.
-          put(code, [byte(0x50 or (hardware and 7))]) # PUSH resident64.
-          if (access.liveIns and (1'u32 shl slot)) != 0:
-            put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x8b,
-              byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV resident64,[RDI+slot*8].
+          saveCheckedReadRegister(code, encoded-1)
+          loadCheckedReadLiveIn(code, access, slot)
       put(code, [0x49'u8, 0x89, 0xf2]) # MOV R10,RSI saves the extent table.
 
     proc emitCheckedReadResidentReturn(code: var X86Block, access: X86CheckedReadAccess,
         status: uint32) =
+      ## Publish the scalar status and restore the caller's saved registers.
       put(code, [0xb8'u8]) # MOV EAX,status defines the full scalar result.
       cycleWord(code, status)
-      for index in 0..12:
-        let encoded = access.bank.registers[12-index]
-        if encoded != 0:
-          let hardware = encoded-1
-          if hardware >= 8: put(code, [0x41'u8]) # REX.B extends the POP register.
-          put(code, [byte(0x58 or (hardware and 7))]) # POP resident64.
+      restoreCheckedReadRegisters(code, access.bank)
       put(code, [0xc3'u8]) # RET consumes the original caller return RIP.
 
     proc checkedReadResidentInstructions(body: NativeReadBody, dirty: uint32): seq[byte] =
@@ -881,14 +921,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       var code = default(X86Block)
       var fixes: seq[X86CycleFixup] = @[]
       var labels = default(array[1+4*int(NativeReadFactLimit), int])
-      emitCheckedReadOperations(code, fixes, labels, body, access)
+      var nextLabel = 1'u8
+      emitCheckedReadOperations(code, fixes, labels, body, access, body.len, 0, nextLabel)
       assert access.written == dirty
-      for slot in 0..12:
-        let encoded = access.bank.registers[slot]
-        if encoded != 0:
-          let hardware = encoded-1
-          put(code, [byte(if hardware >= 8: 0x4c else: 0x48), 0x89,
-            byte(0x47 or ((hardware and 7) shl 3)), byte(slot*8)]) # MOV [RDI+slot*8],resident64.
+      commitCheckedReadRegisters(code, access.bank)
       emitCheckedReadResidentReturn(code, access, NativeReadSuccess)
       labels[0] = code.bytes.len # Late refusal skips every guest-file store.
       emitCheckedReadResidentReturn(code, access, NativeReadRefusal)
@@ -900,6 +936,13 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       put(entry, sealCheckedRead(code, fixes, labels))
       takeX86Instructions(entry)
 
+    func fitsCheckedReadBank(dirty: uint32): bool =
+      ## Select the resident path only when all prospective writes fit the bank.
+      var count = 0
+      for slot in 0..12:
+        if (dirty and (1'u32 shl slot)) != 0: inc count
+      count <= X86ResidentHardware.len
+
     proc x86CheckedReadInstructions*(body: NativeReadBody): seq[byte] =
       assert body.complete and sizeof(RegisterFile) == 104
       # ARM/x86 allocation gap: this bank selects dirty lanes only; read-only live-ins
@@ -907,13 +950,360 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       # ARM retains live-ins and writes in ArmReadSpan's bank. Revisit live-in allocation and
       # sparse/hybrid staging, preserving delayed publication and unchanged-register refusal.
       # Both x86 choices execute native read code.
-      let dirty = readBodyDirty(body)
-      var count = 0
-      for slot in 0..12:
-        if (dirty and (1'u32 shl slot)) != 0: inc count
-      if count <= X86ResidentHardware.len:
+      let dirty = readBodyDirty(body, body.len)
+      if fitsCheckedReadBank(dirty):
         return checkedReadResidentInstructions(body, dirty)
       checkedReadStackInstructions(body, dirty)
+
+    when NativeReadCycleEnabled:
+      const
+        readCyclePrepaid = 7'u8
+        readCycleUnpaid = 8'u8 # One return label per role in enum order.
+        readCyclePaidMiss = 15'u8
+        readCycleOutside = 16'u8
+        readCycleReturn = 17'u8
+        readCycleLocal = 18'u8
+        readCycleBodyOps = 22
+        readCycleSetupOps = 3
+
+      proc readCycleContextOp(code: var X86Block, encoding: openArray[byte], offset: int) =
+        ## Context operations use disp32 because the accounting fields follow the extent table.
+        put(code, encoding)
+        cycleWord(code, uint32(offset))
+
+      proc readCycleSet(code: var X86Block, offset: int, value: uint32) =
+        ## The receipt constants fit positive sign-extended imm32 values.
+        readCycleContextOp(code, [0x49'u8, 0xc7, 0x82], offset) # MOV qword [R10+offset],imm32.
+        cycleWord(code, value)
+
+      proc readCycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
+          span: byte, price: uint64, unpaid: byte, budgetRegisters: bool) =
+        ## Leave the complete original header unpaid if either full reservation cannot fit.
+        immediate(code, 0xb8, price)
+        if budgetRegisters:
+          put(code, [0x49'u8, 0x39, 0xc1]) # CMP R9,RAX.
+        else:
+          readCycleContextOp(code, [0x49'u8, 0x39, 0x82], NativeCycleGasOffset) # CMP [R10+gas],RAX.
+        cycleEdge(code, fixes, 0x82, unpaid)
+        if budgetRegisters:
+          put(code, [0x49'u8, 0x83, 0xfb, span]) # CMP R11,span.
+        else:
+          readCycleContextOp(code, [0x49'u8, 0x83, 0xba], NativeCycleRemainingOffset)
+          put(code, [span]) # CMP qword [R10+remaining],span.
+        cycleEdge(code, fixes, 0x82, unpaid)
+
+      proc readCycleDebit(code: var X86Block, span: byte, price: uint64, budgetRegisters: bool) =
+        ## Debit one already-proved complete unit, including an admitted later Read before its guards.
+        immediate(code, 0xb8, price)
+        if budgetRegisters:
+          put(code, [0x49'u8, 0x29, 0xc1, 0x49, 0x83, 0xeb, span]) # SUB R9,RAX; SUB R11,span.
+        else:
+          readCycleContextOp(code, [0x49'u8, 0x29, 0x82], NativeCycleGasOffset) # SUB [R10+gas],RAX.
+          readCycleContextOp(code, [0x49'u8, 0x83, 0xaa], NativeCycleRemainingOffset)
+          put(code, [span]) # SUB qword [R10+remaining],span.
+
+      proc readCycleComplete(code: var X86Block, role: NativeCycleRole) =
+        ## Record one completed role, or one four-visit Store group.
+        readCycleContextOp(code, [0x49'u8, 0xff, 0x82], NativeCycleVisitsOffset+8*ord(role))
+        readCycleSet(code, NativeCycleLastOffset, uint32(ord(role)))
+
+      proc readCycleSelect(code: var X86Block, fixes: var seq[X86CycleFixup], header: uint32) =
+        ## Every exit supplies the checked header through a common stack epilogue.
+        put(code, [0xb8'u8]) # MOV EAX,header.
+        cycleWord(code, header)
+        cycleEdge(code, fixes, 0, readCycleReturn)
+
+      proc readCycleCompare(code: var X86Block, access: X86ResidentAccess,
+          operation: NativeOperation) =
+        ## Capture both original operands for the certified signed or equality branch.
+        readAccess(code, access, operation.slots.aIndex, false)
+        if operation.opcode <= 90: immediate(code, 0xb9, operation.immediate)
+        else: readAccess(code, access, operation.slots.bIndex, true)
+        put(code, [0x48'u8, 0x39, 0xc8]) # CMP RAX,RCX.
+
+      proc readCycleCopySlots(code: var X86Block) =
+        ## Copy the complete 13-slot register file between the canonical array and private stack.
+        put(code, [0xb9'u8]) # MOV ECX,13.
+        cycleWord(code, 13)
+        put(code, [0xf3'u8, 0x48, 0xa5]) # REP MOVSQ, with SysV's clear direction flag.
+
+      proc readCycleDirtyPage(code: var X86Block, fixes: var seq[X86CycleFixup], unpaid: byte,
+          last: bool) =
+        ## BT uses the full page index after bounding its containing bitmap word.
+        if last: put(code, [0x8d'u8, 0x42, 0x03]) # LEA EAX,[RDX+3]; the end was range-checked.
+        else: put(code, [0x89'u8, 0xd0]) # MOV EAX,EDX.
+        put(code, [0xc1'u8, 0xe8, 0x0c, 0x89, 0xc1, 0xc1, 0xe9, 0x06]) # page, then word index.
+        readCycleContextOp(code, [0x49'u8, 0x3b, 0x8a], NativeCycleDirtyWordsOffset) # CMP RCX,[R10+words].
+        cycleEdge(code, fixes, 0x83, unpaid)
+        put(code, [0x48'u8, 0x0f, 0xa3, 0x06]) # BT [RSI],RAX.
+        cycleEdge(code, fixes, 0x83, unpaid) # JNC when the page is not already dirty.
+
+      proc readCycleAdvance(code: var X86Block, access: X86ResidentAccess,
+          slot: range[0..12], delta: byte) =
+        ## Apply the original full-width wrapping Store increment to the current lane.
+        let encoded = access.registers[slot]
+        if encoded == 0:
+          put(code, [0x48'u8, 0x83, 0x47, byte(slot*8), delta]) # ADD qword [RDI+slot*8],delta.
+        else:
+          let hardware = encoded-1
+          put(code, [byte(if hardware >= 8: 0x49 else: 0x48), 0x83,
+            byte(0xc0 or (hardware and 7)), delta]) # ADD resident64,delta.
+
+      template emitReadCycleStore(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: untyped, word: NativeCycleWord, span, unpaid: byte, price: uint64,
+          nextLabel: var byte, budgetRegisters: bool, access: X86ResidentAccess) =
+        ## Preflight the existing checked word projection, then commit exactly one group.
+        readAccess(code, access, word.shiftLane, false)
+        put(code, [0xa8'u8, 0x1f]) # TEST AL,31: the first extraction must start at bit zero.
+        cycleEdge(code, fixes, 0x85, unpaid)
+        readAccess(code, access, word.baseLane, false)
+        put(code, [0x48'u8, 0x83, 0xc0, 0x04]) # ADD RAX,4 rejects wrapped host-width bases.
+        cycleEdge(code, fixes, 0x82, unpaid)
+        readAccess(code, access, word.boundLane, true)
+        put(code, [0x48'u8, 0x39, 0xc8]) # CMP nextBase,bound; none of the earlier visits can exit.
+        cycleEdge(code, fixes, 0x87, unpaid)
+        readBodyBase(code, access, word.baseLane)
+        put(code, [0x81'u8, 0xc2]) # ADD EDX,disp32 after capturing the old low word.
+        cycleWord(code, uint32(word.displacement and 0xffffffff'u64))
+        put(code, [0x81'u8, 0xfa]) # CMP EDX,65536.
+        cycleWord(code, 65536)
+        cycleEdge(code, fixes, 0x82, unpaid)
+        put(code, [0x83'u8, 0xfa, 0xfb]) # CMP EDX,0xfffffffb, the checked word upper bound.
+        cycleEdge(code, fixes, 0x87, unpaid)
+
+        let accepted = nextLabel
+        let rw = nextLabel+1
+        nextLabel += 2
+        # An address at or above the stack base follows the checked worker's stack priority.
+        const stackOffset = byte(NativeCycleWritableOffset)
+        const rwOffset = stackOffset+24
+        put(code, [0x49'u8, 0x3b, 0x52, stackOffset]) # CMP RDX,[R10+stack.first].
+        cycleEdge(code, fixes, 0x82, rw)
+        emitCheckedExtent(code, fixes, stackOffset, 4, unpaid, accepted)
+        labels[int(rw)] = code.bytes.len
+        emitCheckedExtent(code, fixes, rwOffset, 4, unpaid, accepted)
+        labels[int(accepted)] = code.bytes.len
+        put(code, [0x48'u8, 0x85, 0xc9]) # TEST RCX,RCX: the writable pointer must exist.
+        cycleEdge(code, fixes, 0x84, unpaid)
+        put(code, [0x4c'u8, 0x8d, 0x04, 0x01]) # LEA R8,[RCX+RAX] retains the proved writable address.
+        readCycleContextOp(code, [0x49'u8, 0x8b, 0xb2], NativeCycleDirtyOffset) # MOV RSI,[R10+dirty].
+        put(code, [0x48'u8, 0x85, 0xf6]) # TEST RSI,RSI.
+        cycleEdge(code, fixes, 0x84, unpaid)
+        readCycleDirtyPage(code, fixes, unpaid, false)
+        readCycleDirtyPage(code, fixes, unpaid, true)
+
+        readCycleDebit(code, span, price, budgetRegisters)
+        readAccess(code, access, word.valueLane, false)
+        put(code, [0x41'u8, 0x89, 0x00, 0xc1, 0xe8, 0x18]) # MOV [R8],EAX; SHR EAX,24.
+        writeAccess(code, access, word.byteLane)
+        readCycleAdvance(code, access, word.baseLane, 4)
+        readCycleAdvance(code, access, word.shiftLane, 32)
+        readCycleComplete(code, NativeCycleRole.Store)
+        readAccess(code, access, word.baseLane, false)
+        readAccess(code, access, word.boundLane, true)
+        put(code, [0x48'u8, 0x39, 0xc8]) # Preserve the original != backedge after the fourth visit.
+        cycleEdge(code, fixes, 0x85, byte(ord(NativeCycleRole.Store)))
+
+      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+6, int]
+
+      proc emitResidentCycleRead(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: var X86ReadCycleLabels, body: NativeReadBody, bank: X86ResidentAccess,
+          dirty: uint32, nextLabel: var byte) =
+        ## Derive live-ins while emitting the guarded body, then prepend each Read's reloads.
+        var access = X86CheckedReadAccess(bank: bank)
+        var read = default(X86Block)
+        var readFixes: seq[X86CycleFixup] = @[]
+        let firstLabel = nextLabel
+        emitCheckedReadOperations(read, readFixes, labels, body, access, readCycleBodyOps,
+          readCyclePaidMiss, nextLabel)
+        assert access.written == dirty
+        for slot in 0..12:
+          # A later Read must observe the canonical state left by the previous roles.
+          loadCheckedReadLiveIn(code, access, slot)
+        let bodyStart = code.bytes.len
+        put(code, read.bytes)
+        for label in int(firstLabel)..<int(nextLabel):
+          # The other labels, including the common paid-miss edge, are image-relative already.
+          labels[label] += bodyStart
+        for fix in readFixes:
+          fixes.add(X86CycleFixup(at: bodyStart+fix.at, target: fix.target))
+        commitCheckedReadRegisters(code, bank)
+
+      proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] =
+        ## Lower the certified seven-role graph with a private checkpoint for each transactional Read.
+        ## ARM retains all guest lanes across roles. The x86 role bank retains only the Read
+        ## writes and Store base. Other lanes stay canonical, including writes outside Read.
+        ## The synchronous leaf owns the canonical file until return. Its mapped Read slots
+        ## hold the pre-Read checkpoint while the hardware bank holds current guest state.
+        assert sizeof(RegisterFile) == 104 and sizeof(NativeCycleContext) == NativeCycleContextBytes
+        if not cycle.read.complete or cycle.read.continuationInfo.terminal == 0 or
+            cycle.read.len != readCycleBodyOps+readCycleSetupOps or
+            cycle.tailLoad.opcode != 57 or cycle.tailStep.opcode != 131 or
+                cycle.tailBranch.opcode != 173 or
+            cycle.outer[0].opcode != 131 or cycle.outer[1].opcode != 149 or cycle.outer[2].opcode !=
+                81 or
+            cycle.gate.opcode != 88: return @[]
+        let word = cycle.word
+        let lanes = [word.valueLane, word.shiftLane, word.byteLane, word.baseLane, word.boundLane]
+        for i in 0..<lanes.len:
+          for j in 0..<i:
+            if lanes[i] == lanes[j]: return @[]
+        if cycle.layout.sites[NativeCycleRole.Store].price > high(
+            uint64) div NativeCycleGroupVisits:
+          return @[]
+        for index in 0..<readCycleBodyOps:
+          # Standalone certificates now admit absolute loads. The connected Read stays relative.
+          let opcode = cycle.read.operation(index).opcode
+          if nativeReadEncodingOpcode(opcode) != opcode: return @[]
+
+        let dirty = readBodyDirty(cycle.read, readCycleBodyOps)
+        let resident = defined(pvmX86ReadCycleResident) and fitsCheckedReadBank(dirty)
+        let budgetRegisters = resident and defined(pvmX86ReadCycleBudgetRegisters)
+        let roleMask = dirty or (1'u32 shl int(word.baseLane))
+        let roleRegisters = budgetRegisters and defined(pvmX86ReadCycleRoleRegisters) and
+          fitsCheckedReadBank(roleMask)
+        let bank = if roleRegisters: x86ResidentAccess(roleMask)
+          elif resident: x86ResidentAccess(dirty) else: default(X86ResidentAccess)
+        let roleAccess = if roleRegisters: bank else: default(X86ResidentAccess)
+        var code = default(X86Block)
+        var fixes: seq[X86CycleFixup] = @[]
+        var labels = default(X86ReadCycleLabels)
+        var nextLabel = readCycleLocal
+        if resident:
+          for slot in 0..12:
+            let encoded = bank.registers[slot]
+            if encoded != 0:
+              # Save each selected SysV lane once. Prepaid Read already has a checkpoint.
+              saveCheckedReadRegister(code, encoded-1)
+              if roleRegisters: loadCheckedReadRegister(code, bank, slot)
+          put(code, [0x49'u8, 0x89, 0xf2]) # R10=RSI holds the context, RDI stays canonical.
+        else:
+          # R11 retains the canonical pointer while RDI addresses the private stack stage.
+          put(code, [0x48'u8, 0x83, 0xec, 0x68, 0x49, 0x89, 0xf2, 0x49, 0x89, 0xfb])
+        if budgetRegisters:
+          # R9/R11 belong to the resident ledger across all roles. Keep scalar and guard scratch
+          # out of them. The stack path needs R11 for its canonical pointer.
+          readCycleContextOp(code, [0x4d'u8, 0x8b, 0x8a], NativeCycleGasOffset) # MOV R9,[R10+gas].
+          readCycleContextOp(code, [0x4d'u8, 0x8b, 0x9a], NativeCycleRemainingOffset) # MOV R11,[R10+remaining].
+        put(code, [0x31'u8, 0xc0]) # XOR EAX,EAX initializes the receipt.
+        for role in NativeCycleRole:
+          readCycleContextOp(code, [0x49'u8, 0x89, 0x82], NativeCycleVisitsOffset+8*ord(role))
+        readCycleContextOp(code, [0x49'u8, 0x89, 0x82], NativeCyclePaidReadOffset)
+        readCycleSet(code, NativeCycleLastOffset, uint32(NativeCycleNoCompleted))
+        cycleEdge(code, fixes, 0, readCyclePrepaid)
+
+        for role in NativeCycleRole:
+          let label = byte(ord(role))
+          let unpaid = readCycleUnpaid+label
+          labels[int(label)] = code.bytes.len
+          let group = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
+          let span = byte(NativeCycleSpans[role]*group)
+          let price = cycle.layout.sites[role].price*group
+          readCycleBudget(code, fixes, span, price, unpaid, budgetRegisters)
+          case role
+          of NativeCycleRole.Read:
+            readCycleDebit(code, span, price, budgetRegisters)
+            if roleRegisters:
+              # Save only the lanes this paid Read can replace. Earlier stores survive a miss.
+              commitCheckedReadRegisters(code, bank, dirty)
+            labels[int(readCyclePrepaid)] = code.bytes.len # The checked entry already reserved the first Read.
+            if roleRegisters:
+              emitCheckedReadOperations(code, fixes, labels, cycle.read, roleAccess,
+                readCycleBodyOps, readCyclePaidMiss, nextLabel)
+            elif resident:
+              emitResidentCycleRead(code, fixes, labels, cycle.read, bank, dirty, nextLabel)
+            else:
+              put(code, [0x4c'u8, 0x89, 0xde, 0x48, 0x89, 0xe7]) # RSI=R11, RDI=RSP.
+              readCycleCopySlots(code)
+              put(code, [0x48'u8, 0x89, 0xe7]) # RDI=RSP for all scalar and load writes in the stage.
+              emitCheckedReadOperations(code, fixes, labels, cycle.read, X86CanonicalAccess(),
+                readCycleBodyOps, readCyclePaidMiss, nextLabel)
+              put(code, [0x48'u8, 0x89, 0xe6, 0x4c, 0x89, 0xdf]) # RSI=RSP, RDI=R11.
+              readCycleCopySlots(code)
+              put(code, [0x4c'u8, 0x89, 0xdf]) # RDI=R11 resumes canonical writes at the role boundary.
+            readCycleComplete(code, role)
+          of NativeCycleRole.StoreSetup:
+            readCycleDebit(code, span, price, budgetRegisters)
+            for index in readCycleBodyOps..<readCycleBodyOps+readCycleSetupOps:
+              let op = cycle.read.operation(index)
+              emitX86OperationAccess(code, roleAccess, op.opcode, op.slots, op.immediate)
+            readCycleComplete(code, role)
+          of NativeCycleRole.Store:
+            emitReadCycleStore(code, fixes, labels, word, span, unpaid, price, nextLabel,
+              budgetRegisters, roleAccess)
+          of NativeCycleRole.Tail:
+            # Probe the clipped readable extents before any Tail effects or debit.
+            put(code, [0xba'u8]) # MOV EDX,absolute32.
+            cycleWord(code, uint32(cycle.tailLoad.immediate and 0xffffffff'u64))
+            let accepted = nextLabel
+            inc nextLabel
+            for region in 0..<3:
+              let nextRegion = nextLabel
+              inc nextLabel
+              emitCheckedExtent(code, fixes, byte(region*24), 4, nextRegion, accepted)
+              labels[int(nextRegion)] = code.bytes.len
+            cycleEdge(code, fixes, 0, unpaid)
+            labels[int(accepted)] = code.bytes.len
+            put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
+            writeAccess(code, roleAccess, cycle.tailLoad.slots.aIndex)
+            readCycleDebit(code, span, price, budgetRegisters)
+            let step = cycle.tailStep
+            emitX86OperationAccess(code, roleAccess, step.opcode, step.slots, step.immediate)
+            readCycleComplete(code, role)
+            readCycleCompare(code, roleAccess, cycle.tailBranch)
+            cycleEdge(code, fixes, 0x8c, byte(ord(NativeCycleRole.StoreSetup))) # JL signed.
+          of NativeCycleRole.Jump:
+            readCycleDebit(code, span, price, budgetRegisters)
+            readCycleComplete(code, role)
+          of NativeCycleRole.Outer:
+            readCycleDebit(code, span, price, budgetRegisters)
+            for index in 0..1:
+              let op = cycle.outer[index]
+              emitX86OperationAccess(code, roleAccess, op.opcode, op.slots, op.immediate)
+            readCycleComplete(code, role)
+            readCycleCompare(code, roleAccess, cycle.outer[2])
+            cycleEdge(code, fixes, 0x84, readCycleOutside) # JE.
+          of NativeCycleRole.Gate:
+            readCycleDebit(code, span, price, budgetRegisters)
+            readCycleComplete(code, role)
+            readCycleCompare(code, roleAccess, cycle.gate)
+            cycleEdge(code, fixes, 0x8e, byte(ord(NativeCycleRole.Outer))) # JLE signed.
+            cycleEdge(code, fixes, 0, byte(ord(NativeCycleRole.Read)))
+
+        for role in NativeCycleRole:
+          labels[int(readCycleUnpaid)+ord(role)] = code.bytes.len
+          readCycleSelect(code, fixes, cycle.layout.sites[role].header)
+        labels[int(readCyclePaidMiss)] = code.bytes.len
+        if roleRegisters:
+          # Discard only this Read's speculative writes before the common publication.
+          for slot in 0..12:
+            if (dirty and (1'u32 shl slot)) != 0:
+              loadCheckedReadRegister(code, bank, slot)
+        # The Read-only and stack banks discard their stage by skipping its commit.
+        readCycleSet(code, NativeCyclePaidReadOffset, 1)
+        readCycleSelect(code, fixes, cycle.layout.sites[NativeCycleRole.Read].header)
+        labels[int(readCycleOutside)] = code.bytes.len
+        readCycleSelect(code, fixes, cycle.layout.outsideHeader)
+        labels[int(readCycleReturn)] = code.bytes.len
+        if roleRegisters:
+          # Publish the completed prefix before the caller validates the last role's predicate.
+          commitCheckedReadRegisters(code, bank)
+        if budgetRegisters:
+          # All exits publish the same full-width budgets without clobbering the header in EAX.
+          readCycleContextOp(code, [0x4d'u8, 0x89, 0x8a], NativeCycleGasOffset) # MOV [R10+gas],R9.
+          readCycleContextOp(code, [0x4d'u8, 0x89, 0x9a], NativeCycleRemainingOffset) # MOV [R10+remaining],R11.
+        if resident:
+          restoreCheckedReadRegisters(code, bank)
+        else:
+          put(code, [0x48'u8, 0x83, 0xc4, 0x68]) # ADD RSP,104 releases the stage.
+        put(code, [0xc3'u8]) # RET preserves the checked header in EAX.
+        if code.bytes.len > NativeImageByteLimit: return @[]
+        for fix in fixes:
+          # The complete image ceiling proves signed rel32 for both forward and backward edges.
+          let delta = cast[uint32](int32(labels[int(fix.target)]-(fix.at+4)))
+          for shift in 0..<4:
+            code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
+        takeX86Instructions(code)
 
   proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
       price: uint64, span: byte, guard: uint8) =

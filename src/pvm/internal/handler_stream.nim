@@ -19,7 +19,9 @@ when defined(pvmX86Jit):
   import ./x86_jit
 
 when NativeCheckedReadEnabled:
-  const ReadProbeSlots = 4 ## Fixed call-local candidate capacity.
+  const
+    ReadProbeSlots = 4 ## Fixed ordinary call-local candidate capacity.
+    ReadProbeCapacity = when NativeReadCycleEnabled: ReadProbeSlots+1 else: ReadProbeSlots
   type
     ReadProbeCandidate = object ## Exact sealed terminal and its invocation-local evidence.
       pc, header, terminal, sourceFacts: uint32
@@ -27,10 +29,12 @@ when NativeCheckedReadEnabled:
       eligible: uint64
       resolved: bool
     ReadProbeState = object ## Scalar-only state carried across validated memory replacements.
-      candidates: array[ReadProbeSlots, ReadProbeCandidate]
+      candidates: array[ReadProbeCapacity, ReadProbeCandidate]
       count, inspected: int
       epoch, segmentBudget: uint64
       observing: bool
+      when NativeReadCycleEnabled:
+        protectedTried, protectedInstalled: bool
 
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
@@ -1869,10 +1873,17 @@ proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
 
 when NativeCheckedReadEnabled:
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo)
+when NativeReadCycleEnabled:
+  proc installFlatReadCycle(f: var FlatFrame, info: NativeReadBodyInfo)
 
 proc installNative(f: var FlatFrame) =
   ## Only the caller mutates its exclusively held stream; each image uses its own certificate.
   if f.pricingKind != 0 or f.nativeOriginal != nil: return
+  when NativeReadCycleEnabled:
+    let cycle = nativeReadCycleInfo(f.nativeSession)
+    if cycle.epoch != 0:
+      installFlatReadCycle(f, cycle)
+      return
   when NativeCheckedReadEnabled:
     let read = nativeReadInfo(f.nativeSession)
     if read.epoch != 0:
@@ -2220,7 +2231,11 @@ func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
 
 include ./handler_trace_source
 when NativeCheckedReadEnabled:
+  when NativeReadCycleEnabled:
+    proc buildFlatReadCycle(f: FlatFrame, read: NativeReadBody): NativeReadCycle
   include ./handler_read_body
+  when NativeReadCycleEnabled:
+    include ./handler_read_cycle
   include ./read_admission_probe
 
 when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):

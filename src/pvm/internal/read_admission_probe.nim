@@ -9,12 +9,24 @@ when declared(FlatFrame):
     ReadProbeWalkLimit = 128        ## Each attempted certificate walks at most NativeReadFactLimit facts.
     ReadProbeVisitFloor = 32768'u64 ## Minimum eligible complete visits in one invocation.
 
+  template activeReadProbeCount(state: ReadProbeState): int =
+    ## A protected terminal extends the active range only after all ordinary slots are full.
+    when NativeReadCycleEnabled:
+      state.count+ord(state.protectedInstalled)
+    else:
+      state.count
+
   proc readProbeTerminal(f: var FlatFrame, off: uint32): uint32 =
     ## Execute the original terminal first. Only a selected candidate incurs an observation.
+    when NativeReadCycleEnabled:
+      let active = activeReadProbeCount(f.readProbe)
+    else:
+      # The stock range is the original four-record counter.
+      template active: untyped = f.readProbe.count
     var slot = 0
-    while slot < f.readProbe.count and f.readProbe.candidates[slot].terminal != off:
+    while slot < active and f.readProbe.candidates[slot].terminal != off:
       inc slot
-    assert slot < f.readProbe.count and f.readProbe.observing
+    assert slot < active and f.readProbe.observing
     let header = f.readProbe.candidates[slot].header
     let full = f.barrier == flatStop and f.info.blockCharged and
       f.reservation == (header or flatReservationHeaderFlag)
@@ -35,8 +47,39 @@ when declared(FlatFrame):
     if f.readProbe.candidates[slot].eligible < maximum:
       inc f.readProbe.candidates[slot].eligible
 
+  when NativeReadCycleEnabled:
+    proc discoverProtectedRead(f: var FlatFrame, header, pc: uint32) =
+      ## Give one exact-length, source-matched Read a spare observation after saturation.
+      assert f.readProbe.count == ReadProbeSlots
+      if f.readProbe.protectedTried or f.readProbe.inspected == ReadProbeWalkLimit: return
+      let first = int(f.sites[int(header)])
+      if first > f.plan.facts.len-ConnectedReadOpcodes.len or
+          f.plan.facts[first].sourceCount != uint32(ConnectedReadOpcodes.len): return
+      inc f.readProbe.inspected
+      for index, opcode in ConnectedReadOpcodes:
+        # Immutable opcodes filter discovery; the full route is certified after observation.
+        if f.plan.facts[first+index].opcode != opcode: return
+      f.readProbe.protectedTried = true
+      if f.readProbe.inspected == ReadProbeWalkLimit: return
+      inc f.readProbe.inspected
+      let body = buildFlatReadBody(f, pc, f.readProbe.epoch)
+      if not body.complete or body.info.header != header: return
+      let info = body.info
+      for index in 0..<ReadProbeSlots:
+        # A cold resolver can reach this branch while an ordinary wrapper is settling.
+        if f.readProbe.candidates[index].terminal == info.terminal: return
+      f.readProbe.candidates[ReadProbeSlots] = ReadProbeCandidate(pc: pc, header: header,
+        terminal: info.terminal, sourceFacts: info.last-info.first+1, operations: body.len,
+        resolved: f.handlers[int(info.terminal)] == flatCachedJump[1])
+      f.readProbe.protectedInstalled = true
+      f.handlers[int(info.terminal)] = readProbeTerminal
+
   proc discoverReadProbe(f: var FlatFrame, header, pc: uint32) =
-    ## Bound full certificate work and retain at most four temporary terminal probes.
+    ## Keep the four ordinary probes independent of the optional protected observation.
+    when NativeReadCycleEnabled:
+      if f.readProbe.count == ReadProbeSlots:
+        discoverProtectedRead(f, header, pc)
+        return
     if f.readProbe.count == ReadProbeSlots or f.readProbe.inspected == ReadProbeWalkLimit: return
     inc f.readProbe.inspected
     let body = buildFlatReadBody(f, pc, f.readProbe.epoch)
@@ -60,7 +103,7 @@ when declared(FlatFrame):
   proc endReadProbeSegment*(f: var FlatFrame) =
     ## Restore each original terminal before callbacks, replacement, exit or stream retention.
     if not f.readProbe.observing: return
-    for index in 0..<f.readProbe.count:
+    for index in 0..<activeReadProbeCount(f.readProbe):
       # runFlat has already restored its temporary step barrier on the terminal slot.
       let terminal = f.readProbe.candidates[index].terminal
       assert f.handlers[int(terminal)] == readProbeTerminal
@@ -69,6 +112,24 @@ when declared(FlatFrame):
       else:
         f.handlers[int(terminal)] = flatJump[1]
     f.readProbe.observing = false
+
+  when NativeReadCycleEnabled:
+    proc nominateProtectedRead(f: FlatFrame, share: uint64): bool =
+      ## Only a fully certified protected route can displace ordinary nomination.
+      if not f.readProbe.protectedInstalled: return false
+      let candidate = f.readProbe.candidates[ReadProbeSlots]
+      if candidate.eligible < ReadProbeVisitFloor or
+          candidate.eligible*uint64(candidate.sourceFacts) < share: return false
+      var body = buildFlatReadBody(f, candidate.pc, f.readProbe.epoch)
+      if not body.complete or body.len != candidate.operations: return false
+      let info = body.info
+      if info.header != candidate.header or info.terminal != candidate.terminal or
+          f.handlers[int(candidate.terminal)] != flatCachedJump[1]: return false
+      if not extendFlatReadBody(f, body): return false
+      let cycle = buildFlatReadCycle(f, body)
+      if not cycle.read.complete: return false
+      nominateNativeReadCycle(f.nativeSession, cycle)
+      true
 
   proc finishReadProbe*(f: FlatFrame, success: bool) =
     ## Revalidate and nominate only the best qualified candidate after a full checked halt.
@@ -90,6 +151,8 @@ when declared(FlatFrame):
           candidate.pc < f.readProbe.candidates[best].pc):
         best = index
         bestScore = score
+    when NativeReadCycleEnabled:
+      if nominateProtectedRead(f, share): return
     if best < 0: return
     let winner = f.readProbe.candidates[best]
     var body = buildFlatReadBody(f, winner.pc, f.readProbe.epoch)
@@ -98,4 +161,9 @@ when declared(FlatFrame):
     if info.header != winner.header or info.terminal != winner.terminal: return
     if f.handlers[int(winner.terminal)] != flatCachedJump[1]: return
     discard extendFlatReadBody(f, body)
+    when NativeReadCycleEnabled:
+      let cycle = buildFlatReadCycle(f, body)
+      if cycle.read.complete:
+        nominateNativeReadCycle(f.nativeSession, cycle)
+        return
     nominateNativeRead(f.nativeSession, body)

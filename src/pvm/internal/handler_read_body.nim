@@ -150,6 +150,11 @@ when declared(FlatFrame):
         not validateNativeRead(f.nativeSession, body):
       # Changed geometry or operands revoke the nomination rather than authorizing stale code.
       invalidateNativeStream(f.nativeSession)
+      when NativeReadCycleEnabled:
+        return
+    when NativeReadCycleEnabled:
+      if nativeCycleNominated(f.nativeSession):
+        validateNativeCycleNomination(f.nativeSession, buildFlatReadCycle(f, body))
 
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo) =
     ## Rebuild the typed certificate before installing a body-only stream patch.
