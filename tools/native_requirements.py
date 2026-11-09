@@ -17,11 +17,11 @@ from native_fixtures import PROVIDERS
 # Require complete, typed records so misspelled fields cannot silently weaken a native profile.
 CREDIT_WITNESS_SUITE = 'pvm_read_cycle_credits_x86'
 CREDIT_WITNESS_FLAGS = frozenset({
-    'pvmX86Jit', 'pvmSharedReadCycle', 'pvmX86ResidentProof', 'pvmReadCycleBudgetWitness',
+    'pvmX86Jit', 'pvmX86ResidentProof', 'pvmReadCycleBudgetWitness',
     'pvmReadCycleRoleWitness', 'pvmReadCycleCreditWitness', 'pvmX86ReadCycleResident',
     'pvmX86ReadCycleBudgetRegisters', 'pvmX86ReadCycleRoleRegisters', 'pvmX86ReadCycleCredits',
 })
-CREDIT_ONLY_FLAGS = CREDIT_WITNESS_FLAGS - {'pvmX86Jit', 'pvmSharedReadCycle', 'pvmX86ResidentProof'}
+CREDIT_ONLY_FLAGS = CREDIT_WITNESS_FLAGS - {'pvmX86Jit', 'pvmX86ResidentProof'}
 
 
 def validate_requirements(records):
@@ -37,8 +37,7 @@ def validate_requirements(records):
         'defines': {'integration', 'nimMaxHeap=1', 'polkavmRuntime', 'pvmArm64Jit', 'pvmArm64JitRefuse',
                     'pvmX86Jit', 'pvmX86JitRefuse', 'pvmX86MemoryCycleSealWitness',
                     'pvmX86ResidentProof', 'pvmX86WideParentRefusalWitness',
-                    'pvmInnerPreparedReceipt', 'pvmResidentWitness', 'pvmSharedAsyncWitness',
-                    'pvmSharedReadCycle'} | CREDIT_ONLY_FLAGS,
+                    'pvmInnerPreparedReceipt', 'pvmResidentWitness', 'pvmSharedAsyncWitness'} | CREDIT_ONLY_FLAGS,
     }
     for name, record in records.items():
         # Every suite explicitly declares its source family, linking and fresh-fixture requirements.

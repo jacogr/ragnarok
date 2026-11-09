@@ -6,8 +6,8 @@
 import ../../support/pvm_read_cycle_execution
 
 runReadCycleExecution()
-when defined(pvmSharedReadCycle) and defined(pvmSharedAsyncWitness) and
+when not defined(pvmSharedReadCycleOff) and defined(pvmSharedAsyncWitness) and
     defined(pvmX86Jit) and defined(amd64) and defined(linux):
-  # Keep the handoff dependency within the profile that can publish a real image.
+  # A lexical guard keeps Nimony from loading this enabled-only dependency in off builds.
   import ../../support/pvm_connected_read_handoff
   runConnectedReadHandoff(false)

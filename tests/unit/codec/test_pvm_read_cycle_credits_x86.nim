@@ -4,7 +4,7 @@
 ## Run the dedicated connected Read credit witness against actual x86 Linux RX bytes.
 
 when not (defined(linux) and defined(amd64) and defined(pvmX86Jit) and
-    not defined(pvmArm64Jit) and defined(pvmSharedReadCycle) and
+    not defined(pvmArm64Jit) and not defined(pvmSharedReadCycleOff) and
     defined(pvmX86ResidentProof) and defined(pvmReadCycleBudgetWitness) and
     defined(pvmReadCycleRoleWitness) and defined(pvmReadCycleCreditWitness) and
     defined(pvmX86ReadCycleResident) and defined(pvmX86ReadCycleBudgetRegisters) and

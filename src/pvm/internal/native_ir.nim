@@ -13,8 +13,8 @@ const
     (defined(pvmArm64Jit) and not defined(pvmX86Jit) and
       defined(arm64) and (defined(linux) or defined(macosx)))
     ## Checked read admission requires a supported native lowerer.
-  NativeReadCycleEnabled* = NativeCheckedReadEnabled and defined(pvmSharedReadCycle)
-    ## The connected ABI shares the checked-read host selection and requires an explicit opt-in.
+  NativeReadCycleEnabled* = NativeCheckedReadEnabled and not defined(pvmSharedReadCycleOff)
+    ## Use the connected ABI on supported native hosts, with an explicit feature-off control.
   NativeSpanOperations* = 64   ## One independently compiled non-exiting span, not a profitability floor.
   NativeMinimumOperations* = 2 ## Structural span floor shared by both lowerers.
   NativeEntryLimit* = 262144'u32 ## Existing native-coordinate ceiling, with an exclusive past endpoint.
