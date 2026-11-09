@@ -72,7 +72,7 @@ proc nativePadding(output: nil pointer): uint32 {.importc: "bs_padding", header:
 
 type
   BsPublicKey* = distinct array[32, byte] ## Encoded public key, distinct from output hashes and other primitive keys.
-  BsSignature* = distinct array[96, byte] ## Owned complete output||c||s signature; not a newer Tiny/Thin VRF proof.
+  BsSignature* = distinct array[96, byte] ## Thin output, R and response in order, 32 bytes each, with no serialized challenge.
   BsRingProof* = distinct array[784, byte] ## Owned complete output/Pedersen/membership proof bundle.
   BsRingRoot* = distinct array[144, byte] ## Owned compressed ring commitment, bound to its setup domain and SRS.
   BsOutput* = distinct array[32, byte] ## Only a successful verification operation exposes this nominal 32-byte VRF output hash.
@@ -215,7 +215,8 @@ proc importPublicKey*(input: openArray[byte]): BsResult[BsPublicKey] {.raises: [
 proc normalizeRing*(input: openArray[byte]): BsResult[seq[byte]] {.raises: [], gcsafe.} =
   ## Copy a bounded member sequence and replace invalid encodings with the v1 padding point.
   ## Identity survives normalization as a valid encoding and is rejected at the ring
-  ## operation boundary. A backend failure aborts the result so it cannot become padding.
+  ## operation boundary, as it is for public keys, inputs and outputs. Thin R and
+  ## Pedersen R and O_k may be identity. Backend failures abort the normalization.
   # Complete encoded members and a bounded count are required before allocating/copying.
   if input.len == 0 or input.len mod 32 != 0 or input.len > 1023*32:
     return BsResult[seq[byte]](status: BsError.InvalidLength)
