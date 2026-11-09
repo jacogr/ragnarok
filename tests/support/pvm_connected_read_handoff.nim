@@ -53,7 +53,8 @@ type HandoffCase {.pure.} = enum
 
 proc handoffProgram(): Program =
   ## Verify key instruction labels through the original decoder before public preparation.
-  let decoded = decodeProgram(Wire, CodeAddress(0), ProgramByteLimit(uint64(Wire.len)), JumpCountLimit(0))
+  let decoded = decodeProgram(Wire, CodeAddress(0), ProgramByteLimit(uint64(Wire.len)),
+      JumpCountLimit(0))
   assert decoded.error == ProgramError.None, "compact handoff wire must decode"
   let owner = decoded.value
   for start in [0'u64, PreludeBlockBytes, 2 * PreludeBlockBytes, 3 * PreludeBlockBytes]:
@@ -126,7 +127,8 @@ proc noHandoffHost(called: var bool, suspension: StepOutcome): HostResponse {.ra
   called = true
   default(HostResponse)
 
-proc runHandoff(source: Machine, prepared: PreparedProgram, attempts: ExecutionStepLimit): StepOutcome =
+proc runHandoff(source: Machine, prepared: PreparedProgram,
+    attempts: ExecutionStepLimit): StepOutcome =
   ## Use the ordinary public prepared host entry, including the checked/native frame bridge.
   var called = false
   let done = executeWithHost(source, called, noHandoffHost, attempts, HostCallLimit(0), prepared)
@@ -138,9 +140,11 @@ proc sameMachine(actual, expected: Machine) =
   let left = machineInfo(actual).value
   let right = machineInfo(expected).value
   assert uint64(left.pc) == uint64(right.pc) and uint64(left.gas) == uint64(right.gas)
-  assert uint64(left.gasDeficit) == uint64(right.gasDeficit) and left.blockCharged == right.blockCharged
+  assert uint64(left.gasDeficit) == uint64(right.gasDeficit) and left.blockCharged ==
+      right.blockCharged
   assert left.registers == right.registers
-  assert programBytes(programOf(actual).value).value == programBytes(programOf(expected).value).value
+  assert programBytes(programOf(actual).value).value == programBytes(programOf(
+      expected).value).value
   let leftMemory = memoryOf(actual).value
   let rightMemory = memoryOf(expected).value
   let leftIndices = pageIndices(leftMemory).value

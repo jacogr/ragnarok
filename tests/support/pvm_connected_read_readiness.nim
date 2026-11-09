@@ -70,7 +70,8 @@ proc checkConnectedReadiness*(runtime: NativeRuntime, prepared: PreparedProgram,
     # Work is held until after the same owner has completed a second checked call.
     pauseNativeCompiler(runtime, false)
     let image = waitNativeCompilerGate(runtime)
-    assert image.point == NativeCompilerPoint.BeforePublish and image.kind == NativeKind.ConnectedReadCycle
+    assert image.point == NativeCompilerPoint.BeforePublish and image.kind ==
+        NativeKind.ConnectedReadCycle
     assert image.hasImage == (not ConnectedReadinessRefused)
     assert image.slot == 0 and image.generation == 1 and image.ticket == 1 and image.epoch == 1
     echo "CONNECTED_READINESS_GATE,ConnectedReadCycle,", ord(image.hasImage), ",", image.slot,

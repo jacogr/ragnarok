@@ -182,7 +182,7 @@ when NativeReadCycleEnabled:
       result.read = initNativeReadBody(readHeader, 33, 1, 24, 1)
       for index in 0..<22:
         let op = case index
-          of 0: operation(124, 0x36) # r6 = byte[r3], including the mapped base.
+          of 0: operation(124, 0x36)  # r6 = byte[r3], including the mapped base.
           of 1: operation(51, 9, 17)
           of 2: operation(51, if extraWrites >= 1: 0'u8 else: 7'u8, 23)
           of 3: operation(51, if extraWrites == 2: 8'u8 else: 7'u8, 29)
