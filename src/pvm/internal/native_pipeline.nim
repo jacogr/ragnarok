@@ -12,11 +12,28 @@ import ../[machine, program]
 import ./[native_ir, native_platform, native_read_body]
 export native_ir, native_read_body
 
+when NativeReadCycleEnabled:
+  import ./native_read_cycle
+  export native_read_cycle
+
+when NativeCheckedReadEnabled:
+  when NativeReadCycleEnabled:
+    type NativeReadStorage = NativeReadCycle ## One embedded body for either checked read ABI.
+  else:
+    type NativeReadStorage = NativeReadBody ## Leaf-only builds retain just the checked body.
+
+  template readCertificate(proof: NativeReadStorage): untyped =
+    ## Select the existing body field without copying the retained proof.
+    when NativeReadCycleEnabled:
+      proof.read
+    else:
+      proof
+
 type NativeRequest = object
   ## The locked job key selects the sole live payload in this mailbox.
   span: NativeSpan
   when NativeCheckedReadEnabled:
-    body: NativeReadBody
+    readProof: NativeReadStorage
 
 when defined(pvmSharedAsyncWitness):
   type
@@ -80,8 +97,10 @@ type
     state: NativeState
     span: NativeSpan
     when NativeCheckedReadEnabled:
-      readBody: NativeReadBody # Retained deferred nomination, then the immutable accepted certificate.
-      readNominated, readValidated: bool # Source validation belongs to this invocation, not a prior stream lease.
+      readProof: NativeReadStorage
+      readNominated, readValidated: bool # Validation belongs to this invocation's restored stream.
+    when NativeReadCycleEnabled:
+      readRouteValid: bool
     image: NativeImage
     invocation, allowed: bool
     provenWork, invocationWork, invocationBudget, calls, operations, publications: uint64
@@ -139,6 +158,13 @@ proc `=destroy`(runtime: var NativeRuntimeStorage) =
     deinitCond(runtime.changed)
     deinitLock(runtime.lock)
 
+when NativeCheckedReadEnabled:
+  proc clearReadCertificate(data: NativeSessionData) =
+    ## Clear leaf authority and retire the route. Inactive POD bytes need no reset.
+    readCertificate(data.readProof) = default(NativeReadBody)
+    when NativeReadCycleEnabled:
+      data.readRouteValid = false
+
 func sameKey(left, right: JobKey): bool =
   ## Compare copied scalar authority without copying an owning registration row.
   if left.kind != right.kind: return false
@@ -154,15 +180,26 @@ func requestMatches(request: NativeRequest, key: JobKey): bool =
       request.span.kind == key.kind
   of NativeKind.CheckedReadBody:
     when NativeCheckedReadEnabled:
-      request.body.complete and request.body.info.epoch == key.epoch
+      readCertificate(request.readProof).complete and
+        readCertificate(request.readProof).info.epoch == key.epoch
+    else:
+      false
+  else:
+    when NativeReadCycleEnabled:
+      # Nimony case arms cannot be conditional. Reject every other kind before using the ABI.
+      key.kind == NativeKind.ConnectedReadCycle and request.readProof.read.complete and
+        request.readProof.read.info.epoch == key.epoch
     else:
       false
 
 func acceptedKind(data: NativeSessionData): NativeKind =
   ## A nonzero ticket binds one immutable caller-side certificate until collection.
   assert data.ticket != 0
+  when NativeReadCycleEnabled:
+    if data.readRouteValid and readCertificate(data.readProof).complete:
+      return NativeKind.ConnectedReadCycle
   when NativeCheckedReadEnabled:
-    if data.readBody.complete: return NativeKind.CheckedReadBody
+    if readCertificate(data.readProof).complete: return NativeKind.CheckedReadBody
   data.span.kind
 
 func matchesRow(runtime: ptr NativeRuntimeStorage, key: JobKey): bool =
@@ -319,9 +356,18 @@ proc compilerRun(raw: pointer) =
     of NativeKind.CheckedReadBody:
       when NativeCheckedReadEnabled:
         # Only read-capable builds own this payload, with no invocation memory borrow.
-        let body = runtime.request.body
+        let body = readCertificate(runtime.request.readProof)
         if releaseCompilerClaim(runtime, key):
           image = lowerNativeReadBody(body)
+      else:
+        abortNativeReceipt()
+    else:
+      when NativeReadCycleEnabled:
+        # Fail closed before copying the region or releasing its exact mailbox claim.
+        if key.kind != NativeKind.ConnectedReadCycle: abortNativeReceipt()
+        let cycle = runtime.request.readProof
+        if releaseCompilerClaim(runtime, key):
+          image = lowerNativeReadCycle(cycle)
       else:
         abortNativeReceipt()
     assert not image.ready or image.kind == key.kind
@@ -528,7 +574,7 @@ when NativeCheckedReadEnabled:
     let data {.cursor.} = session.data
     if data == nil or not data.invocation or data.state != NativeState.Deferred or
         data.ticket != 0 or data.image.ready or data.invocationBudget < NativeInvocationFloor or
-        data.readBody.complete: return 0'u64
+        readCertificate(data.readProof).complete: return 0'u64
     data.epoch
 
   proc nominateNativeRead*(session: NativeSession, body: NativeReadBody) =
@@ -536,7 +582,9 @@ when NativeCheckedReadEnabled:
     let data {.cursor.} = session.data
     if data == nil or not body.complete or nativeReadAdmissionEpoch(session) != body.info.epoch:
       return
-    data.readBody = body
+    readCertificate(data.readProof) = body
+    when NativeReadCycleEnabled:
+      data.readRouteValid = false
     data.readNominated = true
     data.readValidated = true
 
@@ -546,14 +594,39 @@ when NativeCheckedReadEnabled:
     if data == nil or not data.invocation or data.state != NativeState.Deferred or
         not data.readNominated or data.ticket != 0 or data.image.ready or
         data.invocationBudget < NativeInvocationFloor: return default(NativeReadBodyInfo)
-    data.readBody.info
+    readCertificate(data.readProof).info
 
   proc validateNativeRead*(session: NativeSession, body: NativeReadBody): bool =
     ## Only an exact current source/epoch certificate permits this invocation to retry the retained read.
     let data {.cursor.} = session.data
     if data == nil or deferredNativeReadInfo(session).epoch == 0: return false
-    result = body.info.epoch == data.epoch and data.readBody.sameReadBody(body)
+    result = body.info.epoch == data.epoch and readCertificate(data.readProof).sameReadBody(body)
     data.readValidated = result
+
+when NativeReadCycleEnabled:
+  proc nominateNativeReadCycle*(session: NativeSession, cycle: NativeReadCycle) =
+    ## Retain a complete connected extension under the same deferred read admission gate.
+    let data {.cursor.} = session.data
+    let epoch = nativeReadAdmissionEpoch(session)
+    if data == nil or epoch == 0 or not cycle.read.complete or cycle.read.info.epoch != epoch: return
+    data.readProof = cycle
+    data.readRouteValid = true
+    data.readNominated = true
+    data.readValidated = true
+
+  func nativeCycleNominated*(session: NativeSession): bool =
+    ## Reconstruct the extended proof only while its ordinary read remains deferred.
+    let data {.cursor.} = session.data
+    if data == nil: return false
+    data.readNominated and data.readRouteValid and readCertificate(data.readProof).complete
+
+  proc validateNativeCycleNomination*(session: NativeSession, cycle: NativeReadCycle) =
+    ## Loss of the extra geometry leaves the separately revalidated read leaf eligible.
+    let data {.cursor.} = session.data
+    if data == nil or not data.readNominated or not data.readValidated or
+        not data.readRouteValid or data.ticket != 0: return
+    if not sameNativeReadCycle(data.readProof, cycle):
+      data.readRouteValid = false
 
 func nativeScanStart*(session: NativeSession): uint32 =
   ## One monotone classification cursor prevents rescanning structurally unsupported cached nodes each call.
@@ -590,7 +663,7 @@ proc invalidateNativeStream*(session: NativeSession) =
   releaseNativeCredit(data)
   data.span = default(NativeSpan)
   when NativeCheckedReadEnabled:
-    data.readBody = default(NativeReadBody)
+    clearReadCertificate(data)
     data.readNominated = false
     data.readValidated = false
   data.nextScan = 0
@@ -702,12 +775,23 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
     inc runtime.nextTicket
     assert not data.image.ready and not runtime.slots[data.slot].completion.ready
     # selectRead already excludes a certified closed loop. Write only the selected payload.
-    let kind = if selectRead: NativeKind.CheckedReadBody else: data.span.kind
+    template stockKind(): NativeKind =
+      if selectRead: NativeKind.CheckedReadBody else: data.span.kind
+    when NativeReadCycleEnabled:
+      let selectCycle = selectRead and data.readRouteValid and readCertificate(
+          data.readProof).complete
+      let kind = if selectCycle: NativeKind.ConnectedReadCycle else: stockKind()
+    else:
+      let kind = stockKind()
     let key = JobKey(slot: data.slot, generation: data.generation, ticket: runtime.nextTicket,
       epoch: data.epoch, kind: kind)
     when NativeCheckedReadEnabled:
       if selectRead:
-        runtime.request.body = data.readBody
+        when NativeReadCycleEnabled:
+          if selectCycle: runtime.request.readProof = data.readProof
+          else: readCertificate(runtime.request.readProof) = readCertificate(data.readProof)
+        else:
+          readCertificate(runtime.request.readProof) = readCertificate(data.readProof)
       else:
         runtime.request.span = data.span
     else:
@@ -725,7 +809,8 @@ proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
   when NativeCheckedReadEnabled:
     if data.readNominated and data.ticket != 0:
       # Submission fixes the selected ABI; occupied work slots retain the qualified copied nomination.
-      if not selectRead: data.readBody = default(NativeReadBody)
+      if not selectRead:
+        clearReadCertificate(data)
       data.readNominated = false
     data.readValidated = false
   assert runtime.active > 0
@@ -823,18 +908,18 @@ when NativeCheckedReadEnabled:
     if data == nil or not data.invocation or not data.allowed or data.state != NativeState.Ready or
         not data.image.isReadBody:
       return default(NativeReadBodyInfo)
-    data.readBody.info
+    readCertificate(data.readProof).info
 
   func nativeReadContinuation*(session: NativeSession): NativeReadContinuation {.inline.} =
     ## The caller has already verified the ready read image through nativeReadInfo.
     let data {.cursor.} = session.data
     assert data != nil
-    data.readBody.continuationInfo
+    readCertificate(data.readProof).continuationInfo
 
   func matchesNativeReadBody*(session: NativeSession, body: NativeReadBody): bool =
     ## Install compares the rebuilt source certificate and every copied operand.
     let data {.cursor.} = session.data
-    data != nil and data.readBody.sameReadBody(body)
+    data != nil and readCertificate(data.readProof).sameReadBody(body)
 
   proc runNativeReadBody*(session: NativeSession, registers: var RegisterFile,
       context: var NativeReadContext): bool =
@@ -843,9 +928,50 @@ when NativeCheckedReadEnabled:
     assert data != nil and nativeReadInfo(session).epoch != 0
     if not enterNativeReadBody(data.image, registers, context): return false
     if data.calls < high(uint64): inc data.calls
-    let count = uint64(data.readBody.len)
+    let count = uint64(readCertificate(data.readProof).len)
     if data.operations <= high(uint64)-count: data.operations += count
     true
+
+when NativeReadCycleEnabled:
+  func nativeReadCycleInfo*(session: NativeSession): NativeReadBodyInfo =
+    ## Expose only the first paid entry of a ready and permitted connected image.
+    let data {.cursor.} = session.data
+    if data == nil or not data.invocation or not data.allowed or data.state != NativeState.Ready or
+        not data.readRouteValid or data.image.kind != NativeKind.ConnectedReadCycle:
+      return default(NativeReadBodyInfo)
+    data.readProof.read.info
+
+  func matchesNativeReadCycle*(session: NativeSession, cycle: NativeReadCycle): bool =
+    ## Install authority requires the complete copied certificate from this source epoch.
+    let data {.cursor.} = session.data
+    if data == nil: return false
+    data.readRouteValid and sameNativeReadCycle(data.readProof, cycle)
+
+  proc runNativeCycle*(session: NativeSession, registers: var RegisterFile,
+      context: var NativeCycleContext, lastHeader: var uint32): uint32 =
+    ## Validate the entered receipt before exposing its budgets and exact continuation.
+    let data {.cursor.} = session.data
+    assert data != nil and nativeReadCycleInfo(session).epoch != 0
+    let gas = context.gas
+    let remaining = context.remaining
+    result = enterNativeReadCycle(data.image, registers, context)
+    if not validNativeCycleReceipt(data.readProof.layout, result, gas, remaining, context):
+      abortNativeReceipt()
+    if context.lastCompleted == NativeCycleNoCompleted: return
+    let role = NativeCycleRole(context.lastCompleted)
+    if nativeCycleSuccessor(data.readProof, role, registers) != result: abortNativeReceipt()
+    lastHeader = data.readProof.layout.sites[role].header
+    let readSpan = NativeCycleSpans[NativeCycleRole.Read]
+    let spent = remaining - context.remaining
+    if context.paidRead == 0 and spent > high(uint64) - readSpan: abortNativeReceipt()
+    let operations = if context.paidRead == 1: spent else: spent + readSpan
+    if data.calls < high(uint64): inc data.calls
+    if data.operations <= high(uint64) - operations: data.operations += operations
+    if (context.visits[NativeCycleRole.Store] != 0 or context.visits[NativeCycleRole.Tail] != 0 or
+        context.visits[NativeCycleRole.Outer] != 0 or context.visits[NativeCycleRole.Gate] != 0):
+      if data.branchCalls < high(uint64): inc data.branchCalls
+      if hasNativeCycleBackedge(context.visits) and data.headerCalls < high(uint64):
+        inc data.headerCalls
 
 proc nativeStatistics*(session: NativeSession): array[5, uint64] =
   ## Copy quiescent shared image/activity counters; compilation CPU is not fabricated from a process clock.

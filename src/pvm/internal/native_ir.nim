@@ -8,6 +8,13 @@ import ../program
 import ./jit_rules
 
 const
+  NativeCheckedReadEnabled* =
+    (defined(pvmX86Jit) and defined(amd64) and defined(linux)) or
+    (defined(pvmArm64Jit) and not defined(pvmX86Jit) and
+      defined(arm64) and (defined(linux) or defined(macosx)))
+    ## Checked read admission requires a supported native lowerer.
+  NativeReadCycleEnabled* = NativeCheckedReadEnabled and defined(pvmSharedReadCycle)
+    ## The connected ABI shares the checked-read host selection and requires an explicit opt-in.
   NativeSpanOperations* = 64   ## One independently compiled non-exiting span, not a profitability floor.
   NativeMinimumOperations* = 2 ## Structural span floor shared by both lowerers.
   NativeEntryLimit* = 262144'u32 ## Existing native-coordinate ceiling, with an exclusive past endpoint.
@@ -15,12 +22,15 @@ const
   NativeSessionLimit* = 4      ## Live, installed and retiring code registrations share these credits.
   NativeInvocationFloor* = 4096'u64 ## Initial shared coarse policy; deliberately not a measured break-even.
 
-type
-  ## Shared migration gap: general connected control flow and mixed stores still need copied IR
-  ## and exact side exits on both ISAs. Legacy ARM cycles and x86 regions are porting references;
-  ## see spec/pvm-async-migration.md before retiring their remaining mechanical helpers.
-  NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
+# See spec/pvm-async-migration.md for the retained ARM and x86 mechanical helpers.
+when NativeReadCycleEnabled:
+  type NativeKind* {.pure.} = enum ## The image kind selects its exact call ABI.
+    PurePrefix, ClosedRegisterLoop, CheckedReadBody, ConnectedReadCycle
+else:
+  type NativeKind* {.pure.} = enum ## Stock kinds retain their original ordinals.
     PurePrefix, ClosedRegisterLoop, CheckedReadBody
+
+type
   NativeLoopRightKind* {.pure.} = enum ## Right operand of the certified unsigned comparison.
     Register, Immediate
   NativeLoopInfo* = object  ## Copied source certificate for one resolved whole block.
