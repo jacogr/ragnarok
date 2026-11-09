@@ -1,0 +1,21 @@
+{
+  "defines": [
+    "pvmX86Jit",
+    "pvmSharedReadCycle",
+    "pvmX86ResidentProof",
+    "pvmReadCycleBudgetWitness",
+    "pvmReadCycleRoleWitness",
+    "pvmReadCycleCreditWitness",
+    "pvmX86ReadCycleResident",
+    "pvmX86ReadCycleBudgetRegisters",
+    "pvmX86ReadCycleRoleRegisters",
+    "pvmX86ReadCycleCredits"
+  ],
+  "directory": "codec",
+  "includes": [
+    "pvm_jit"
+  ],
+  "libraries": [],
+  "observers": [],
+  "prepared": false
+}

@@ -257,3 +257,22 @@ when NativeReadCycleEnabled:
       let tagged = checkedReadAbiNative(image.handle, image.offset, addr registers[0], addr context)
       assert tagged shr 32 == 1
       uint32(tagged and 0xffffffff'u64)
+
+    when defined(pvmReadCycleCreditWitness):
+      proc copyReadCycleRx(handle: nil pointer, offset: uint32,
+          output: ptr byte, count: uint32): cint {.cdecl,
+          importc: "pvm_x86_resident_copy_proof", header: "x86_resident_access_proof.h".}
+        ## Reuse the existing checked copy from the published executable alias.
+
+      proc enterNativeReadCycleAbiProof*(image: NativeImage, registers: var RegisterFile,
+          context: var NativeCycleContext, expected: openArray[byte]): uint32 =
+        ## Verify the exact published bytes before entering that same owner with the SysV sentinel.
+        assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+        assert expected.len > 0 and expected.len <= NativeImageByteLimit
+        assert uint64(expected.len) == image.codeBytes
+        var actual = default(array[NativeImageByteLimit, byte])
+        assert copyReadCycleRx(image.handle, image.offset, addr actual[0], uint32(expected.len)) == 1
+        for index in 0..<expected.len:
+          # No native call happens until the complete executable extent matches the emission.
+          assert actual[index] == expected[index]
+        enterNativeReadCycleAbiProof(image, registers, context)
