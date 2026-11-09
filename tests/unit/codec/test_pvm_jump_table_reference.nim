@@ -94,6 +94,62 @@ proc qualify(owner: Program, reachesHost: bool) =
       assert gasMemoInfo(learned.value).value.pricedBlocks == (if mode < 2 or (prepaid and
           not reachesHost): 0'u64 else: 1'u64)
 
+proc qualifyHotOrdinals() =
+  ## Repeated jumps within one segment exercise both resident hits and full-tag replacement.
+  # The left block increments r1 then jumps via r3. The right block decrements r2 and
+  # jumps back via r0 while work remains. The last lap reaches the halt sentinel via r4.
+  let code = [149'u8, 17, 1, 50, 3, 149, 34, 255, 82, 18, 0, 6, 50, 4, 50, 0]
+  var wire = @[129'u8, 1, 1, byte(code.len)] # 257 one-byte jump-table entries.
+  for ordinal in 0..256:
+    # Ordinals 0/1 occupy different slots. Ordinals 0/256 share the low eight bits.
+    wire.add(if ordinal == 0: 0'u8 elif ordinal in [1, 256]: 5'u8 else: 1'u8)
+  for octet in code: wire.add(octet)
+  for mask in [41'u8, 81]: wire.add(mask)
+  let parsed = decodeProgram(wire, CodeAddress(0), ProgramByteLimit(512), JumpCountLimit(257))
+  assert parsed.error == ProgramError.None
+  let owner = parsed.value
+  assert uint64(jumpTarget(owner, JumpIndex(0)).value) == 0
+  for ordinal in [1'u64, 256]:
+    assert uint64(jumpTarget(owner, JumpIndex(ordinal)).value) == 5
+  let memory = captureMemory([], PageLimit(0)).value
+  let prepared = newPreparedProgram(owner, defaultPreparedLimits()).value
+  for (address, terminal, attempts) in [
+      (0x100000004'u64, StepExit.Halt, 35),
+      (0x100000202'u64, StepExit.Halt, 35),
+      (6'u64, StepExit.Panic, 2),
+      (1026'u64, StepExit.Panic, 2),
+      (0'u64, StepExit.Panic, 2),
+      (513'u64, StepExit.Panic, 2)]:
+    # The wrapped valid addresses run seven laps. Invalid addresses stop at the first jump.
+    var registers = default(RegisterFile)
+    registers[0] = RegisterValue(0x100000002'u64)
+    registers[2] = RegisterValue(7)
+    registers[3] = RegisterValue(address)
+    registers[4] = RegisterValue(0x1ffff0000'u64)
+    let original = MachineInfo(pc: CodeAddress(0), gas: MachineGas(10000), registers: registers)
+    let source = captureMachine(owner, memory, original).value
+    var stepped = source
+    for index in 0..<attempts:
+      # The public one-step path checks the chosen ordinal independently on every jump.
+      let once = stepOnce(stepped, GasCycleLimit(1000))
+      assert once.error == StepError.None
+      assert once.value.exit == (if index + 1 == attempts: terminal else: StepExit.Continued)
+      stepped = once.value.machine
+    var expected = machineInfo(stepped).value
+    expected.pc = CodeAddress(0)
+    assert uint64(expected.registers[1]) == (if terminal == StepExit.Halt: 7'u64 else: 1'u64)
+    for repeat in 0..<3:
+      # Repeated whole calls reuse the code owner and restore the original CPU and cache scope.
+      let actual = execute(source, ExecutionStepLimit(uint64(attempts)), prepared)
+      assert actual.error == StepError.None and actual.value.exit == terminal
+      assert machineInfo(actual.value.machine).value == expected
+      assert memoryOf(actual.value.machine).value == memory
+      assert machineInfo(source).value == original
+    assert execute(source, ExecutionStepLimit(uint64(attempts - 1)), prepared).error ==
+      StepError.StepLimitExceeded
+
+qualifyHotOrdinals()
+
 for width in 0..255:
   for count in 0..1:
     # Literal host0 at PC0, jump_ind r8 at PC2; E_z zero entries require no encoder.
