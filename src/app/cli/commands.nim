@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Normalize named command inputs into the existing private command-handler representation.
-## Positional command values and unknown/duplicate flags are refused before startup.
+## Normalize named process arguments for the private command handlers.
+##
+## The catalog and typed defaults are shared with help. Strict named admission
+## runs before file access or service startup, so a malformed or duplicate
+## option cannot trigger a partially configured command. Only the internal
+## handler representation uses positional values.
 
 import std/[strutils, os]
 import ./catalog as cli_catalog
