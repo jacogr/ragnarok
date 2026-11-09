@@ -23,7 +23,7 @@ from nim_dependencies import transitive_dependencies
 
 # Share directory-discovered suite identities with selection, cumulative reports and provenance.
 from verification_inventory import UNIT_SOURCES, UNIT_SUITES, ARC_SUITES
-from native_requirements import NATIVE_REQUIREMENTS, UNIT_LINKS
+from native_requirements import CREDIT_WITNESS_SUITE, NATIVE_REQUIREMENTS, UNIT_LINKS
 from native_fixture_contracts import FIXTURE_CONTRACTS
 # Keep the runtime-fixture helper available to existing launcher consumers.
 from native_fixtures import PROVIDERS, unit_runtime_fixtures
@@ -55,7 +55,15 @@ def unit_jobs():
 
 
 # Assemble a native runner invocation; Python supplies paths/flags, never test assertions or verdict parsing.
+def supports_unit(name):
+    """Keep the actual SysV credit witness out of an unsupported host plan."""
+    return name != CREDIT_WITNESS_SUITE or (
+        platform.system() == 'Linux' and platform.machine().lower() in ('x86_64', 'amd64'))
+
+
 def unit_command(compiler, name=None, libraries=None):
+    if not supports_unit(name):
+        raise ValueError('x86 credit witness requires native Linux x86-64')
     compiler = Path(compiler).resolve()
     runner = compiler.parent/'hastur'
     if not runner.is_file():
@@ -129,8 +137,9 @@ def unit_command(compiler, name=None, libraries=None):
             '--cachedir:'+str(cache_directory(compiler, ROOT/'build/tests/native', cache_name)),
             '--jobs:'+str(unit_jobs() if name is None else 1),
             '--joined:off', *('--forward:'+flag for flag in flags), 'test', str(target)]
-    if name is None and unit_jobs() > 1:
-        # Private serial workers reuse imports across codec mains; the parent retains the global cache lock.
+    if name is None:
+        # The adapter executes the filtered codec inventory for every worker count.
+        # Private serial workers reuse imports while the parent owns the global cache lock.
         return [sys.executable, str(ROOT/'tools/native_codec.py'), *arguments]
     return arguments
 
@@ -220,10 +229,10 @@ def unit_fixture_sources():
 def unit_batches():
     pure = tuple(name for name in UNIT_SUITES if name not in UNIT_LINKS)
     actual = set(UNIT_ROOT.glob('*.nim'))
-    if actual != {unit_source(name) for name in pure}:
+    if actual != {unit_source(name) for name in (*pure, CREDIT_WITNESS_SUITE)}:
         # Extra/missing directory members cannot silently change the group covered by one verdict.
         raise ValueError('Native codec directory changed after suite discovery')
-    return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS]
+    return [('codec', pure, None)]+[(name, (name,), name) for name in UNIT_LINKS if supports_unit(name)]
 
 
 # Sources are immutable during one verification invocation; reuse the graph for preparation and verdict checks.
@@ -352,6 +361,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--suite', choices=UNIT_SUITES, help='Run one discovered native suite only')
     arguments = parser.parse_args()
+    if not supports_unit(arguments.suite):
+        parser.error('x86 credit witness requires native Linux x86-64')
     from setup_nimony import installed
     compiler, _ = installed()
     if arguments.suite is not None:
