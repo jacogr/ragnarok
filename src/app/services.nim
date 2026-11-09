@@ -1,10 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One non-copyable owner for telemetry, RPC, UI and optional explicitly configured canonical state.
-## The peer dispatcher borrows individual fields only while this stack owner remains stable;
-## transport callbacks must retire before close/destruction. A bounded chain snapshot is shared once.
-## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
+## Stable owner for optional listeners, telemetry and the configured canonical chain.
+##
+## Startup captures bounded chain input for the enabled consumers. Canonical startup
+## shares the selected head with RPC so the listener and application begin from the
+## same retained state version. A failed listener start rolls back earlier owners.
+##
+## The dispatcher borrows fields while this owner stays stable. Native callbacks must
+## retire before listener destruction. After starting preparation, explicitly close
+## to join before borrowed input or shared aliases retire. Detached reader snapshots
+## retain their immutable state independently.
 
 import ../state/accumulation/residency
 import ../codec/composite
