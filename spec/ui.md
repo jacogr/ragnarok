@@ -1,17 +1,5 @@
 # Static UI server
 
-Append `--with-ui` to an existing `build/ragnarok server`, `client` or `mesh` command.
-The independent HTTP listener serves assets embedded in the client binary at
-`http://127.0.0.1:8888/`; `--ui-port NUMBER` changes the port (decimal 1–65535).
-It requires no runtime asset directory, extraction or working-directory convention.
-The embedded browser prototype is compiled from Nimony; see [the browser contract](ui-browser.md).
-
-For development, append `--ui-dev-dir /path/to/static` alongside `--with-ui`.
-This replaces the embedded asset source with precompressed `.gz` files from that directory;
-rebuilt files are visible on the next request. Use `build/ui` after `make ui-assets`.
-Missing development files return 404 without falling back to the bundle.
-The old `--ui-dir` spelling is removed. The development flag alone never starts the listener.
-
 `make ui-assets` compiles `src/ui/client.nim` to JavaScript, combines it with the static
 assets in `src/ui/static/`, optionally minifies JS/CSS, gzips each asset into `<filename>.<ext>.gz` under `build/ui/`
 and generates `build/ui_assets.nim`, containing immutable sorted URL paths and byte-exact asset constants.
@@ -49,41 +37,12 @@ were independently checked. Native Linux ARM64 [qualification](https://github.co
 passed on 2026-11-08: ordinary minified `make unit SUITE=pvm_artifact`, cached native tool reuse,
 production JS/CSS/gzip byte checks and malformed-JavaScript refusal all succeeded.
 
-`--with-ui` also enables the WebSocket RPC listener, default `ws://127.0.0.1:19800/`;
-`--rpc-port NUMBER` selects its port. `--with-rpc` enables RPC independently.
-UI and RPC ports must differ. `--with-telemetry` independently enables telemetry and
-requires both `--telemetry-endpoint HOST:PORT` and `--chain FILE`. Endpoint configuration alone
-never enables a service. Duplicate switches, malformed ports and enabled listener/root
-failures fail startup. Controls are trailing and may be ordered freely.
+Content-coding negotiation follows [RFC 9110 §12.5.3](https://www.rfc-editor.org/rfc/rfc9110.html#section-12.5.3).
+The UI requires explicit gzip acceptance even when the request omits Accept-Encoding.
 
-RPC browser access accepts only `http://127.0.0.1:<ui-port>` and
-`http://localhost:<ui-port>` when UI is enabled (port 80 uses the standard origin without an explicit port). The WebSocket handshake validates Origin
-and returns an exact `Access-Control-Allow-Origin` plus `Vary: Origin`; RFC 6455 connections
-do not use an HTTP OPTIONS preflight. Other browser origins, null origins and duplicates
-are rejected. Nonbrowser RPC clients may omit Origin. RPC remains WebSocket only.
-
-The HTTP listener supports GET/HEAD, query strings, percent-encoded paths and `index.html`
-for directory targets ending in `/`. Common web assets have explicit MIME types. File responses have Content-Length,
-Connection: close and X-Content-Type-Options: nosniff.
-Requests retain normal URLs: `/app.js` serves `app.js.gz` with the original JavaScript MIME
-type, `Content-Encoding: gzip`, compressed `Content-Length` and `Vary: Accept-Encoding`.
-HEAD returns the same metadata without a body. The server performs no compression or
-uncompressed fallback. Requests must advertise gzip acceptance; missing/empty Accept-Encoding,
-unsupported codings and explicit `gzip;q=0` exclusions return 406. Quality weights, wildcard
-acceptance and explicit overrides follow [HTTP content-coding negotiation](https://www.rfc-editor.org/rfc/rfc9110.html#section-12.5.3),
-with this service deliberately requiring opt-in even when the header is absent.
-Missing gzip files return 404 even if the original file exists; malformed requests/traversal
-return 400, and other methods return 405. There is no directory listing, SPA fallback, write endpoint or request body support.
-Development paths open relative to the pinned root descriptor without following symlinks;
-only regular files can be served. Select a directory containing only public development UI assets.
-Release requests look up immutable embedded paths and send their bytes in bounded chunks.
-
-Both peer shapes own one non-copyable UI server and service it on the existing dispatcher.
-Eight connections, 4096-byte headers, 16384-byte file chunks, one accept/read/write per
-slot per tick and an absolute five-second request deadline bound work and memory. Development file IO
-uses bounded regular-file reads on the dispatcher; slow filesystem storage can delay a turn.
-Growing files stop at the initial length; truncation closes an incomplete response.
-All sockets/root/file descriptors retire on failure, shutdown or ARC destruction.
+The [UI source guide](../src/ui/README.md) covers activation and the
+[listener](../src/ui/server.nim) owns HTTP delivery and development root rules.
+The [WebSocket server](../src/rpc/server.nim) owns browser Origin checks.
 
 Verification: `make unit SUITE=ui`, `make unit SUITE=rpc`, `make check-inventory` and the
 RPC E2E workload cover paths, symlink rejection, HTTP metadata/errors, multi-chunk streaming,

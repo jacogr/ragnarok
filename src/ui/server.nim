@@ -1,11 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded static HTTP server with a separate loopback listener, driven by the peer dispatcher.
-## UiServer owns eight connections and optional development root/file descriptors; release assets
-## are immutable gzip data embedded by the build. Requests must accept gzip; no runtime compression
-## or uncompressed fallback is provided. Only GET
-## and HEAD are supported; paths cannot traverse parents or follow symlinks. No directory listing.
+## Dispatcher-driven loopback HTTP delivery for the browser console.
+##
+## Release assets are immutable gzip bytes embedded at build time. Development selects
+## a separate root of precompressed sidecars, so a missing sidecar returns 404 instead
+## of hiding an incomplete build with an embedded asset. Both sources keep the same URL
+## and MIME type. Clients must accept gzip to use either source.
+##
+## Fixed connection slots, bounded reads and writes, and absolute request deadlines
+## constrain work per turn. The owner holds the listener, connections and optional
+## development descriptors until close. Development reads are synchronous regular-file
+## reads, so storage latency can still delay the dispatcher.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -144,6 +150,8 @@ proc staticPath(target: string): string =
   decoded[1..^1]
 
 proc openFile(root: cint, path: string): cint =
+  # Walk from the held root descriptor and refuse symlinks at every step. Resolving
+  # a path in a separate check would let a concurrent rename change the file we serve.
   ## Walk descriptor-relative components with O_NOFOLLOW to prevent symlink and rename escapes.
   var parent = root
   var owned = false

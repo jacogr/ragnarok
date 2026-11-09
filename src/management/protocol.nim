@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Private management JSON-RPC registry, deliberately independent of the public WS dispatcher.
-## Input/output, nesting, tokens and batch count are bounded. No key material is serialized.
+## Private JSON-RPC registry for local process observations.
+##
+## Management shares neutral UTF-8 and JSON plumbing with public RPC. It owns its own
+## method allowlist and bounds so access to one transport grants only that registry's
+## methods. Client info exposes copied startup and resource fields. Administrative
+## paths are visible to the authorized local user, and the schema excludes key material.
 
 import ../lib/json/[reader as json_reader, writer as json_writer]
 import ../lib/utf8

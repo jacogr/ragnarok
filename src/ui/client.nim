@@ -1,9 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Browser console compiled by the pinned Nimony JS backend. rpc.nim owns multiplexed transport
-## state; this module owns clientInfo presentation and DOM updates; importjs bindings bridge browser events, timers and JSON values. The native
-## source checker skips this target-specific body; make ui-assets compiles it with ragnarokBrowser.
+## Browser console compiled by the pinned Nimony JS backend.
+##
+## The page calls ragnarok_clientInfo on connect and on manual refresh. Each accepted
+## request has its own completion, so out-of-order replies can still be routed by ID.
+## The DOM writes response text via textContent because RPC values are untrusted.
+##
+## rpc.nim owns socket, request and subscription lifetimes. This module owns the
+## controls and presentation. make ui-assets compiles the ragnarokBrowser target.
 
 when defined(ragnarokBrowser):
   import ./rpc
