@@ -156,10 +156,10 @@ let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
 assert requestedPreparation in ["", "0", "1"]
 let performance = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
 
-let coldCall = if fullInvocation: beginInvocation() else: default(
-    InvocationClock)
-var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
-    ) else: default(InvocationRuntime)
+let ownerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit":
+    startInvocationRuntime() else: default(InvocationRuntime)
+let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
 var context = HostContext(rom: newSeq[byte](rom.len), events: @[],
     outputBytes: 0, hosts: default(array[5, uint64]))
 # Deliver the checked, nonempty WAD to the host owner within the enclosing cold call.
@@ -331,6 +331,6 @@ when defined(pvmArm64JitOwnerReceipt):
 if fullInvocation:
   prepared = default(PreparedProgram)
   if requestedBackend == "jit":
-    closeInvocationRuntime(invocationRuntime, "doom-process", coldCall)
+    closeInvocationRuntime(invocationRuntime, "doom-process", ownerStart)
   else:
-    finishInterpretedOwner("doom-process", coldCall)
+    finishInterpretedOwner("doom-process", ownerStart)

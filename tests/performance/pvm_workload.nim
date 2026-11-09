@@ -100,8 +100,9 @@ except:
   quit 2
 assert data.len >= 12 and data[0..7] == "PVMBEN01" and word(data, 8, 4) == 11
 var cursor = 12
-var invocationRuntime = default(InvocationRuntime)
-var processOwnerStart = default(InvocationClock)
+let processOwnerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit":
+    startInvocationRuntime() else: default(InvocationRuntime)
 for row in 0..<11:
   # Bound guest inputs before timing or narrowing; malformed corpora cannot create measurements.
   assert data.len - cursor >= 273
@@ -143,9 +144,6 @@ for row in 0..<11:
       originalLayout.add(PageDescription(index: PageIndex(uint32(16 + offset)),
           access: PageAccess.ReadWrite))
   let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
-  if fullInvocation and row == 0:
-    processOwnerStart = coldCall
-    if requestedBackend == "jit": invocationRuntime = startInvocationRuntime()
   let preparation = getMonoTime().ticks
   var wire: seq[byte] = @[]
   for i in 0..<int(length):

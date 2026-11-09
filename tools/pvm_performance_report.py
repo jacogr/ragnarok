@@ -19,7 +19,8 @@ import tempfile
 from pvm_benchmark_report import NAMES
 from pvm_sieve_report import limits_for_guest
 from pvm_reference_lifetime import CODE_LIFETIME, validate_invocation_instance
-from pvm_invocation_scope import measurement_identity, validate_scope_observations
+from pvm_invocation_scope import (DEMAND_STARTED, PRESTARTED, measurement_identity,
+                                  validate_scope_observations)
 import pvm_performance_history_v1 as history_v1
 import pvm_performance_history_v2 as history_v2
 
@@ -272,8 +273,11 @@ def validate_report(report):
     inventory = case_inventory(report.get('scope'))
     cases = {row['case_id']: row for row in inventory}
     identity = _identity(report)
-    if identity.get('measurement') != measurement_identity():
+    measurement = identity.get('measurement')
+    if measurement not in (measurement_identity(),
+                           dict(measurement_identity(), jit_runtime_start=PRESTARTED)):
         raise ValueError('Missing full-invocation cohort identity')
+    runtime_start = measurement.get('jit_runtime_start', DEMAND_STARTED)
     files = identity['files']
     expected = {(case, role, order) for case in cases for role in ROLES for order in (0, 1)}
     seen, images, role_orders = set(), {}, {}
@@ -310,6 +314,8 @@ def validate_report(report):
                     _integer(value, clock, 0, (1 << 63)-1)
 
         observed = validate_scope_observations(diagnostics.get('scope_observations'), key[1])
+        if any(owner['creation'] != runtime_start for owner in observed.get('runtime_owner', {}).values()):
+            raise ValueError('JIT runtime start disagrees with measurement cohort')
         if 'native_compilation_accounting_raw_ns' in diagnostics:
             raw = _integer(diagnostics['native_compilation_accounting_raw_ns'],
                            'native compilation accounting', 0, (1 << 63)-1)
@@ -449,11 +455,15 @@ def render_summary(report):
     validate_report(report)
     rows = _rows(report)
     observations = statistics_rows(report)
+    prestarted = report['identity']['measurement'].get('jit_runtime_start') == PRESTARTED
+    startup = ('The JIT runtime starts before the first call. The separate owner window includes startup.'
+               if prestarted else 'The first JIT call in each process also includes runtime startup.')
     lines = ['# PVM full-invocation performance ('+report['architecture']+')', '',
              'Source `'+report['revision']+'`; cohort full-invocation-v1 / '+CODE_LIFETIME+'.',
-             'Cold sample0 encloses code admission, runtime startup, restoration, execution and output publication. '
+             'Cold sample0 encloses code admission, restoration, execution and output publication. '
              'Resident samples1–12 include restoration and output collection/publication. '
              'Final RAM is consumed before reuse; no artificial reference RAM freeze is added.',
+             startup,
              'Primary process CPU includes all in-process threads; wall is elapsed time. '
              'Fixture IO and independent state/event oracle scans are outside each call.',
              'Thirteen raw calls; reused statistics use samples3–12, without native-readiness filtering. '
@@ -521,7 +531,9 @@ def render_samples_csv(report):
     writer.writerow(('revision', 'architecture', 'scope', 'measurement_boundary', 'output_contract',
                      'cpu_clock', 'case_id', 'role', 'order', 'sample', 'cold', 'reused',
                      'cpu_ns', 'wall_ns', 'reference_cache_before_reset_bytes',
-                     'reference_cache_after_reset_bytes', 'reference_cache_after_run_bytes'))
+                     'reference_cache_after_reset_bytes', 'reference_cache_after_run_bytes',
+                     'jit_runtime_start'))
+    runtime_start = report['identity']['measurement'].get('jit_runtime_start', DEMAND_STARTED)
     for row in report['runs']:
         invocation = row['parsed']['invocation']
         for sample in invocation['samples']:
@@ -533,7 +545,7 @@ def render_samples_csv(report):
             writer.writerow((report['revision'], report['architecture'], report['scope'],
                 'full-invocation-v1', 'consume-before-reuse-v1', 'process-cpu', row['case_id'],
                 row['role'], row['order'], index, int(index == 0), int(index >= 3),
-                sample['cpu_ns'], sample['wall_ns'], *extra))
+                sample['cpu_ns'], sample['wall_ns'], *extra, runtime_start))
     return output.getvalue()
 
 

@@ -330,6 +330,9 @@ proc compilerRun(raw: pointer) =
   ## Only the worker lowers copied POD requests; completions park in their own bounded credit rows.
   let runtime = cast[ptr NativeRuntimeStorage](raw)
   acquire(runtime.lock)
+  # The starter can proceed once this worker reaches the idle mailbox wait.
+  runtime.started = true
+  broadcast(runtime.changed)
   while true:
     var runnable = runtime.work == WorkPhase.Queued
     when defined(pvmSharedAsyncWitness): runnable = runnable and not runtime.paused
@@ -404,7 +407,7 @@ proc compilerRun(raw: pointer) =
           runtime.slots[key.slot].completion.ready)
 
 proc start*(runtime: NativeRuntime): bool {.raises.} =
-  ## Start at the stable anchor address, not implicitly in a guest/source constructor.
+  ## Start at the stable anchor address and wait for the worker to enter its mailbox loop.
   let anchor {.cursor.} = runtime.data
   if anchor == nil or not nativePlatformSupported(): return false
   let data = addr anchor.storage
@@ -420,7 +423,10 @@ proc start*(runtime: NativeRuntime): bool {.raises.} =
     data.gateReached = false
     data.gateReleased = false
   data.thread.create(compilerRun, data)
-  data.started = true
+  acquire(data.lock)
+  while not data.started:
+    wait(data.changed, data.lock)
+  release(data.lock)
   true
 
 proc close*(runtime: NativeRuntime): bool =
