@@ -9,13 +9,6 @@ when declared(FlatFrame):
     ReadProbeWalkLimit = 128        ## Each attempted certificate walks at most NativeReadFactLimit facts.
     ReadProbeVisitFloor = 32768'u64 ## Minimum eligible complete visits in one invocation.
 
-  template activeReadProbeCount(state: ReadProbeState): int =
-    ## A protected terminal extends the active range only after all ordinary slots are full.
-    when NativeReadCycleEnabled:
-      state.count+ord(state.protectedInstalled)
-    else:
-      state.count
-
   template observeReadProbeTerminal(f: var FlatFrame, off: uint32, slot: int,
       observer: FlatHandler, destination: var uint32) =
     ## Settle the checked terminal and count only complete eligible visits for this exact slot.
@@ -49,10 +42,31 @@ when declared(FlatFrame):
     observeReadProbeTerminal(f, off, slot, readProbeTerminal, result)
 
   when NativeReadCycleEnabled:
-    proc protectedReadProbeTerminal(f: var FlatFrame, off: uint32): uint32 =
-      ## The protected wrapper names the one spare slot directly.
-      assert f.readProbe.protectedInstalled and f.readProbe.candidates[ReadProbeSlots].terminal == off
-      observeReadProbeTerminal(f, off, ReadProbeSlots, protectedReadProbeTerminal, result)
+    proc protectedReadProbeCharge(f: var FlatFrame, off: uint32): uint32 =
+      ## Use the original reservation and body dispatch. Only complete attempts can count.
+      flatReserveImpl(f, off, true)
+      let next = off+1
+      let selected = f.handlers[int(next)]
+      selected(f, next)
+
+    proc settleProtectedReadSegment(f: var FlatFrame) =
+      ## Restore the original header before classifiers and retain only settled first-segment visits.
+      ## The sealed straight-line Read contains no Host or Halt. A fully reserved Read can reach
+      ## either exit only after its own fallthrough has completed. An interruption inside Read
+      ## ends the segment with a refusal and cannot contribute nomination evidence.
+      if not f.readProbe.observing or not f.readProbe.protectedInstalled: return
+      let header = f.readProbe.candidates[ReadProbeSlots].header
+      assert f.handlers[int(header)] == protectedReadProbeCharge
+      f.handlers[int(header)] = flatCharge
+      if f.reason == oracle.StepError.None and f.attemptedExit and
+          f.exit in {oracle.StepExit.Halt, oracle.StepExit.Host}:
+        # Full reservations spend disjoint source attempts, so the raw count cannot overflow.
+        let ceiling = high(uint64) div uint64(NativeReadFactLimit)
+        f.readProbe.candidates[ReadProbeSlots].eligible = min(
+          f.readProbe.candidates[ReadProbeSlots].eligible, ceiling)
+      else:
+        # A failed segment cannot nominate, including a partially executed Read.
+        f.readProbe.candidates[ReadProbeSlots].eligible = 0
 
     proc discoverProtectedRead(f: var FlatFrame, header, pc: uint32) =
       ## Give one exact-length, source-matched Read a spare observation after saturation.
@@ -75,10 +89,11 @@ when declared(FlatFrame):
         # A cold resolver can reach this branch while an ordinary wrapper is settling.
         if f.readProbe.candidates[index].terminal == info.terminal: return
       f.readProbe.candidates[ReadProbeSlots] = ReadProbeCandidate(pc: pc, header: header,
-        terminal: info.terminal, sourceFacts: info.last-info.first+1, operations: body.len,
-        resolved: f.handlers[int(info.terminal)] == flatCachedJump[1])
+        terminal: info.terminal, sourceFacts: info.last-info.first+1, operations: body.len)
       f.readProbe.protectedInstalled = true
-      f.handlers[int(info.terminal)] = protectedReadProbeTerminal
+      assert f.readProbe.segmentBudget >= NativeInvocationFloor
+      f.readProbe.protectedRemainingLimit = f.readProbe.segmentBudget-NativeInvocationFloor
+      f.handlers[int(header)] = protectedReadProbeCharge
 
   proc discoverReadProbe(f: var FlatFrame, header, pc: uint32) =
     ## Keep the four ordinary probes independent of the optional protected observation.
@@ -109,17 +124,11 @@ when declared(FlatFrame):
   proc endReadProbeSegment*(f: var FlatFrame) =
     ## Restore each original terminal before callbacks, replacement, exit or stream retention.
     if not f.readProbe.observing: return
-    for index in 0..<activeReadProbeCount(f.readProbe):
+    for index in 0..<f.readProbe.count:
       # runFlat has already restored its temporary step barrier on the terminal slot.
       let terminal = f.readProbe.candidates[index].terminal
       let handler = f.handlers[int(terminal)]
-      when NativeReadCycleEnabled:
-        if index == ReadProbeSlots:
-          assert handler == protectedReadProbeTerminal
-        else:
-          assert handler == readProbeTerminal
-      else:
-        assert handler == readProbeTerminal
+      assert handler == readProbeTerminal
       if f.readProbe.candidates[index].resolved:
         f.handlers[int(terminal)] = flatCachedJump[1]
       else:

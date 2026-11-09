@@ -35,6 +35,7 @@ when NativeCheckedReadEnabled:
       observing: bool
       when NativeReadCycleEnabled:
         protectedTried, protectedInstalled: bool
+        protectedRemainingLimit: uint64
 
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
@@ -341,7 +342,7 @@ proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
-template flatReserve(f: var FlatFrame, off: uint32) =
+template flatReserveImpl(f: var FlatFrame, off: uint32, observeProtected: static[bool]) =
   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
   if f.remaining == 0:
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
@@ -356,6 +357,11 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     # Whole-block exits are rare: retain its stable header instead of reading the source index on every entry.
     # Emitted offsets are below2^31; raw source ends are at most the four-MiB fact ceiling.
     f.reservation = off or flatReservationHeaderFlag
+    when NativeReadCycleEnabled:
+      when observeProtected:
+        # This header owns disjoint complete reservations in one checked segment.
+        if f.remaining <= f.readProbe.protectedRemainingLimit:
+          inc f.readProbe.candidates[ReadProbeSlots].eligible
   else:
     let reserved = f.remaining
     f.remaining = 0
@@ -371,6 +377,10 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     f.barrier = boundary
     f.savedHandler = f.handlers[int(f.barrier)]
     f.handlers[int(f.barrier)] = flatBudget
+
+template flatReserve(f: var FlatFrame, off: uint32) =
+  ## Ordinary headers reserve without read observation.
+  flatReserveImpl(f, off, false)
 
 proc flatReserveHeader(f: var FlatFrame, off: uint32): uint32 {.alwaysInline.} =
   ## The dispatch loop reserves ordinary headers with the exact shared checks, then selects the patched body.
@@ -4272,6 +4282,9 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
       reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
     if reservedEnd > sourceFact+1:
       f.remaining+=uint64(reservedEnd-sourceFact-1)
+  when NativeReadCycleEnabled:
+    # Boundary classifiers require the original handler identity, including on exit edges.
+    settleProtectedReadSegment(f)
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # A restored partial barrier or final cached jump can make a pending graph admissible.
     flatX86ColdWideAdmission(f, flatStop)
