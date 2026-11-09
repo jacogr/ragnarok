@@ -16,29 +16,22 @@ when declared(FlatFrame):
     else:
       state.count
 
-  proc readProbeTerminal(f: var FlatFrame, off: uint32): uint32 =
-    ## Execute the original terminal first. Only a selected candidate incurs an observation.
-    when NativeReadCycleEnabled:
-      let active = activeReadProbeCount(f.readProbe)
-    else:
-      # The stock range is the original four-record counter.
-      template active: untyped = f.readProbe.count
-    var slot = 0
-    while slot < active and f.readProbe.candidates[slot].terminal != off:
-      inc slot
-    assert slot < active and f.readProbe.observing
+  template observeReadProbeTerminal(f: var FlatFrame, off: uint32, slot: int,
+      observer: FlatHandler, destination: var uint32) =
+    ## Settle the checked terminal and count only complete eligible visits for this exact slot.
+    assert f.readProbe.observing
     let header = f.readProbe.candidates[slot].header
     let full = f.barrier == flatStop and f.info.blockCharged and
       f.reservation == (header or flatReservationHeaderFlag)
     if f.readProbe.candidates[slot].resolved:
-      result = flatCachedJump[1](f, off)
+      destination = flatCachedJump[1](f, off)
     else:
       # The cold resolver can append more candidates and self-patches only on success.
-      result = flatJump[1](f, off)
-      if result != flatStop:
+      destination = flatJump[1](f, off)
+      if destination != flatStop:
         f.readProbe.candidates[slot].resolved = true
-        f.handlers[int(off)] = readProbeTerminal
-    if not full or result == flatStop: return
+        f.handlers[int(off)] = observer
+    if not full or destination == flatStop: return
     assert f.remaining <= f.readProbe.segmentBudget
     # Only the first segment is observed. The complete reservation has now settled.
     let work = f.readProbe.segmentBudget-f.remaining
@@ -47,7 +40,20 @@ when declared(FlatFrame):
     if f.readProbe.candidates[slot].eligible < maximum:
       inc f.readProbe.candidates[slot].eligible
 
+  proc readProbeTerminal(f: var FlatFrame, off: uint32): uint32 =
+    ## Ordinary observations search only the ordinary candidate range.
+    var slot = 0
+    while slot < f.readProbe.count and f.readProbe.candidates[slot].terminal != off:
+      inc slot
+    assert slot < f.readProbe.count
+    observeReadProbeTerminal(f, off, slot, readProbeTerminal, result)
+
   when NativeReadCycleEnabled:
+    proc protectedReadProbeTerminal(f: var FlatFrame, off: uint32): uint32 =
+      ## The protected wrapper names the one spare slot directly.
+      assert f.readProbe.protectedInstalled and f.readProbe.candidates[ReadProbeSlots].terminal == off
+      observeReadProbeTerminal(f, off, ReadProbeSlots, protectedReadProbeTerminal, result)
+
     proc discoverProtectedRead(f: var FlatFrame, header, pc: uint32) =
       ## Give one exact-length, source-matched Read a spare observation after saturation.
       assert f.readProbe.count == ReadProbeSlots
@@ -72,7 +78,7 @@ when declared(FlatFrame):
         terminal: info.terminal, sourceFacts: info.last-info.first+1, operations: body.len,
         resolved: f.handlers[int(info.terminal)] == flatCachedJump[1])
       f.readProbe.protectedInstalled = true
-      f.handlers[int(info.terminal)] = readProbeTerminal
+      f.handlers[int(info.terminal)] = protectedReadProbeTerminal
 
   proc discoverReadProbe(f: var FlatFrame, header, pc: uint32) =
     ## Keep the four ordinary probes independent of the optional protected observation.
@@ -106,7 +112,14 @@ when declared(FlatFrame):
     for index in 0..<activeReadProbeCount(f.readProbe):
       # runFlat has already restored its temporary step barrier on the terminal slot.
       let terminal = f.readProbe.candidates[index].terminal
-      assert f.handlers[int(terminal)] == readProbeTerminal
+      let handler = f.handlers[int(terminal)]
+      when NativeReadCycleEnabled:
+        if index == ReadProbeSlots:
+          assert handler == protectedReadProbeTerminal
+        else:
+          assert handler == readProbeTerminal
+      else:
+        assert handler == readProbeTerminal
       if f.readProbe.candidates[index].resolved:
         f.handlers[int(terminal)] = flatCachedJump[1]
       else:

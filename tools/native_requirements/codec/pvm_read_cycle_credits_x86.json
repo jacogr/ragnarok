@@ -1,7 +1,6 @@
 {
   "defines": [
     "pvmX86Jit",
-    "pvmSharedReadCycle",
     "pvmX86ResidentProof",
     "pvmReadCycleBudgetWitness",
     "pvmReadCycleRoleWitness",

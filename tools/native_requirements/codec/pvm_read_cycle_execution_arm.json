@@ -1,8 +1,7 @@
 {
   "defines": [
     "pvmArm64Jit",
-    "pvmSharedAsyncWitness",
-    "pvmSharedReadCycle"
+    "pvmSharedAsyncWitness"
   ],
   "directory": "codec",
   "includes": [

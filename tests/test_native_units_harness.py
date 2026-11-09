@@ -51,7 +51,7 @@ class NativeUnitHarness(unittest.TestCase):
         original = native_tests.NATIVE_REQUIREMENTS
         self.assertEqual(set(original[name]['defines']), CREDIT_WITNESS_FLAGS)
         self.assertEqual(original['pvm_read_cycle_execution_x86']['defines'],
-                         ['pvmX86Jit', 'pvmSharedAsyncWitness', 'pvmSharedReadCycle'])
+                         ['pvmX86Jit', 'pvmSharedAsyncWitness'])
         for flags in (CREDIT_WITNESS_FLAGS - {'pvmX86ReadCycleRoleRegisters'},
                       CREDIT_WITNESS_FLAGS | {'pvmArm64Jit'}):
             records = deepcopy(original)
