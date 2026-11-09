@@ -98,25 +98,25 @@ extra decode or code owner is warmed before the clock.
 Independent read-only input compatibility checks run after sample0's clock,
 while read-only state is still unchanged, before accepting any observation.
 
-The standalone production JIT process demand-starts one application-owned compiler
-runtime inside its first cold request, then supplies it to its code owners. The
-forced-interpreted process uses the default/no runtime, creates no compiler thread
-or synchronization owner, and emits `PVM_RUNTIME_NONE` with reason interpreted-policy
-and its code-owner count. It observes a genuine prepared-owner retirement window,
-without fabricated runtime startup/close clocks or dependency on runtime availability.
-The JIT request retains demand-startup cost even when its actual outcome is checked
-fallback. This preserves the real startup difference in JIT/interpreted comparisons. The
-synthetic process shares that one runtime across all eleven owners. Each selected
-guest/DOOM process currently has one code owner. This is an adapter choice, not a
-worker-per-Program API contract. An application may supply its genuinely existing
-runtime; moving guest-specific work before the cold clock is not permitted.
-Runtime creation/startup is included where it actually happens. Closing/joining is
-observed separately after the final output is consumed. `PVM_RUNTIME_OWNER` records
-actual ownership/creation/count; `PVM_RUNTIME_CLOSE` records genuine CPU/wall deltas.
-`PVM_OWNER_WINDOW` is an additional actual process CPU/wall observation explicitly
-labelled `includes-driver-oracles`, through teardown/close. It includes inter-call
-work, assertions and output-driver overhead, and is never presented as PVM-only
-CPU, added to primary clocks, or compared as an equivalent owner granularity.
+The standalone production JIT process starts one application-owned compiler
+runtime and waits for its worker to enter the idle mailbox loop before the first
+cold request. The synthetic process shares that runtime across all eleven code
+owners. Each selected guest or DOOM process currently has one code owner.
+Guest-specific admission stays inside the cold clock.
+
+The forced-interpreted process uses the default runtime handle and creates no
+compiler thread or synchronization owner. It emits `PVM_RUNTIME_NONE` with reason
+`interpreted-policy` and its code-owner count. The JIT process reports
+`prestarted` creation in `PVM_RUNTIME_OWNER` alongside ownership and code-owner
+count. The report binds that receipt to `identity.measurement.jit_runtime_start`.
+Historical full-invocation reports with `demand-started` receipts include startup
+in the first JIT call of each process.
+
+Closing and joining follow the final output consumption. `PVM_RUNTIME_CLOSE`
+records the closing CPU and wall deltas. `PVM_OWNER_WINDOW`, marked
+`includes-driver-oracles`, includes startup, close and driver work for JIT.
+The interpreted owner window includes its actual prepared-owner retirement.
+Keep these process windows as separate diagnostics with their own granularity.
 Reference instance and module teardown occurs before its owner-window observation.
 Native compiler clock availability is explicit in `PVM_NATIVE_COMPILATION`; an
 unmeasured accounting zero never becomes worker CPU or a measured zero duration.
@@ -135,7 +135,8 @@ readiness, no hidden warmup/wait is introduced and no minimum native work or
 profitability threshold is imposed by Perf. Incomplete shared async coverage and
 checked fallback remain valid observations. Requested policy, availability and
 actual counters must agree; native capability correctness is qualified separately.
-The first invocation is interpreted and pending work never waits for the compiler.
+The first invocation runs checked. After worker startup, invocations use checked execution
+while any generated code they need is pending.
 
 Primary CPU is process CPU including all in-process threads. Worker/thread and
 lifecycle observations remain diagnostics; none is added to or subtracted from
@@ -143,8 +144,9 @@ primary CPU. Sum/prefix tables use the thirteen actual enclosing windows, includ
 samples1/2 and delayed costs. They are not owner-lifetime totals: an async worker can
 run between windows. The first observed JIT/interpreted break-even call includes
 equality, may reverse, and predicts no future crossover. Reuse count is call count
-minus one; an absent crossing remains unobserved. Demand startup may itself cost
-more than interpretation; these scopes establish no speed or near-parity claim.
+minus one. A crossing can remain unobserved. Historical demand startup could itself
+cost more than interpretation. Pending compilation can still contribute process CPU
+when it overlaps a measured invocation.
 
 Reference receipts are clock-free version2:
 `REFERENCE_INSTANCE,2,label,0`, thirteen ordered
