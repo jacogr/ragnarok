@@ -22,10 +22,11 @@ layouts, overflow refusal and 1000 abandoned scans with unchanged live ARC alloc
 
 Add `--with-management` to a server/client/mesh/download command. The default socket is
 `<data-dir>/management/admin.sock`. Use `--management-socket /absolute/private-directory/admin.sock`
-to override it. The resolved path still requires an existing private parent directory owned
-by the effective process user. A path supplied alone does not activate the listener.
-Invalid paths, duplicate controls and activation on non-service commands are rejected.
-Startup never creates/chmods an operator directory or overwrites an existing endpoint.
+to override it. Public startup creates a missing parent and sets its mode to 0700.
+An existing parent must already be owned by the effective user and private. Startup leaves
+its permissions intact. The listener refuses existing endpoint paths. A path supplied alone
+does not activate the listener. Invalid paths, duplicate controls and activation on non-service
+commands are rejected.
 Management startup failure rolls back already-started listeners and state through joined Services
 cleanup. Normal close/destruction removes its own socket; a fresh start may reuse the path.
 
