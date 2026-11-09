@@ -468,9 +468,9 @@ def render_summary(report):
                 values = [observation[role] for role in ROLES]
                 lines.append('| '+observation['case_id']+' | '+str(observation['order'])+' | '+
                     observation['clock'][:-3]+' | '+' | '.join(f'{v/1e6:.6f}' for v in values)+
-                    f' | {observation["jit_over_interpreted"]:.6f} | '+
-                    f'{observation["interpreted_over_reference"]:.6f} | '+
-                    f'{observation["jit_over_reference"]:.6f} |')
+                    f' | {observation["jit_over_interpreted"]:.3f} | '+
+                    f'{observation["interpreted_over_reference"]:.3f} | '+
+                    f'{observation["jit_over_reference"]:.3f} |')
         lines.append('')
     lines += ['Sum of thirteen full-call windows (samples0–12)', '',
               'This sums actual enclosing windows, not owner-lifetime CPU/wall: asynchronous work can run between calls. '
@@ -488,7 +488,7 @@ def render_summary(report):
         lines.append('| '+observation['case_id']+' | '+str(observation['order'])+' | '+
             observation['clock'][:-3]+' | '+
             ' | '.join(f'{total[role]/1e6:.6f}' for role in ROLES)+' | '+
-            ' | '.join(f'{total[key]:.6f}' for key in ('jit_over_interpreted',
+            ' | '.join(f'{total[key]:.3f}' for key in ('jit_over_interpreted',
                 'interpreted_over_reference', 'jit_over_reference'))+' | '+
             (str(first) if first is not None else 'not observed')+' | '+
             ('not observed' if holds is None else 'yes' if holds else 'no')+' | '+
