@@ -21,7 +21,7 @@ views and bounded owner-bound byte slices. Incremental commitments were adopted 
 [the separately authorized integration contract](state-store-incremental.md).
 
 The [PVM lookup host](pvm-accumulation-lookup.md) clips protocol offsets first,
-then uses this operation to bound work by selected bytes rather than total
+then uses `copySlice` to bound work by selected bytes rather than total
 preimage size. Unit witnesses exhaust small intervals, exact/short ceilings,
 full-width invalid ranges and source/output mutation. A strict byte-result probe
 and privacy check preserve the generic store-result contract.

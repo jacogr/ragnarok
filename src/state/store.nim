@@ -10,7 +10,9 @@
 ##
 ## The store accepts already serialized state and commits the complete map.
 ## Partial light-state observations require separate proof-backed storage.
-## Policy ceilings apply to each map and batch. Callers bound retained history.
+## Borrowed initial entries and writes must remain stable for the entire call.
+## Construction and mutation can reread payloads while preparing the matching map
+## and trie. Policy ceilings apply per map and batch. Callers bound retained history.
 
 import std/[algorithm, assertions]
 import ../codec/state/[trie as state_trie, layout as state_layout]
