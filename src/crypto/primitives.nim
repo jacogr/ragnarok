@@ -1,12 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP v0.8.0 Cryptography: raw-byte Blake2b-256, legacy Keccak-256 and ordinary RFC 8032
-## Ed25519. Inputs are borrowed synchronously; outputs own bytes. Domain/codec composition
-## belongs to callers.
+## Raw-byte hashing and Ed25519 for the Gray Paper cryptography boundary.
 ##
-## Exposes typed seeds, public keys and signatures, explicit seed clearing, hashing, key
-## derivation, signing and verification.
+## Nominal types distinguish digests, public keys, signatures and seed owners.
+## Native calls borrow inputs synchronously and publish owned results on success.
+## Seed import accepts an explicitly supplied zero seed, while a default or cleared
+## owner fails. Domain construction and message serialization belong to the caller.
+##
+## See spec/crypto.md for pinned references, backend provenance and qualification.
 
 const Header = "primitive_bridge.h"
 
@@ -193,7 +195,10 @@ proc sign*(seed: EdSeed, message: openArray[byte]): CryptoResult[EdSignature] {.
   CryptoResult[EdSignature](status: CryptoError.None, completed: EdSignature(output))
 
 proc verify*(key: EdPublicKey, signature: EdSignature, message: openArray[byte]): bool {.raises: [], gcsafe.} =
-  ## Apply ZIP215 to exact copied key/signature encodings and a borrowed raw message.
+  ## Apply ZIP215 to exact copied encodings and a borrowed raw message.
+  ## Verification uses the maintained Zebra backend's cofactored equation, scalar-order
+  ## check and acceptance of noncanonical point encodings. Fixed-width public key import
+  ## establishes width and ownership, while signature validity is decided here.
   var publicBytes = array[32, byte](key)
   var signatureBytes = array[64, byte](signature)
   nativeVerify(addr publicBytes[0], addr signatureBytes[0], dataPointer(message), csize_t(

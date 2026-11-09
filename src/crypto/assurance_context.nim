@@ -51,7 +51,9 @@ proc canonicalBits(bits: AssuranceBits, cores: CoreCount): bool {.raises: [].} =
 proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
                        cores: CoreCount): AssuranceContextResult[
                            AssuranceSigningMessage] {.raises: [].} =
-  ## Build exactly jam_available || Blake2b-256(parent || fixed bits), without retaining any input.
+  ## Build the owned 45-byte message jam_available || Blake2b-256(parent || fixed bits).
+  ## The hash uses the external parent and exactly ceil(cores/8) LSB-first bytes,
+  ## with no length or record prefix. The parent is not part of the current wire record.
   # Validate the unsigned profile before narrowing or indexing the final bitfield byte.
   if uint64(cores) < 1 or uint64(cores) > 341:
     return AssuranceContextResult[AssuranceSigningMessage](
@@ -85,7 +87,11 @@ proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
 proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
                        parent: AssuranceParent, keys: openArray[EdPublicKey]):
                        AssuranceContextResult[VerifiedAssuranceCount] {.raises: [].} =
-  ## Verify stable borrowed records and key mapping without allocations, mutation or retained pointers.
+  ## Verify stable borrowed records against the caller's active validator keys and parent.
+  ## Check configuration, exact key-set length, count and all records before any signature
+  ## work. This gives structural errors precedence and makes an empty batch depend on
+  ## valid context. The returned count certifies this check, with eligibility and state
+  ## transition handled by the caller.
   # Configuration has precedence over empty input and absent validator keys.
   if not validConfig(config):
     return AssuranceContextResult[VerifiedAssuranceCount](
