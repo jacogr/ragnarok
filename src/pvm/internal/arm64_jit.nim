@@ -1125,13 +1125,6 @@ proc refuseArmEntry*(jit: ArmJit, offset: uint32) =
     # An unsuccessful replacement never disturbs a previously published tuple.
     jit.entries[int(offset)].code = 1
 
-proc armPendingMemoryEnding*(jit: ArmJit, offset, ending: uint32) =
-  ## A deferred read/branch fragment occupies no executable slot until both original branch arms are cached.
-  assert int(offset) < jit.entries.len and jit.entries[int(offset)].code == 0
-  assert ending > offset
-  jit.entries[int(offset)].code = 1
-  jit.entries[int(offset)].ending = ending
-
 proc armStartProbe*(jit: ArmJit, header: uint32) =
   ## Only non-executable header records borrow the operation lane for eight cold discovery visits.
   assert int(header) < jit.entries.len
@@ -1248,12 +1241,6 @@ proc callArmMemoryBranch*(jit: ArmJit, offset, yes, no: uint32,
   ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
   assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
   callArmMemoryBranchCore(jit, offset, yes, no, registers, addr regions)
-
-proc callArmMemoryBranchContext*(jit: ArmJit, offset, yes, no: uint32,
-    registers: var RegisterFile, context: var ArmReadContext): uint32 =
-  ## Borrow the complete 144-byte frame context for one full-mode native entry.
-  assert jit != nil and jit.clippedReads and sizeof(context) == 144
-  callArmMemoryBranchCore(jit, offset, yes, no, registers, addr context)
 
 proc armEnding*(jit: ArmJit, offset: uint32): uint32 =
   ## The original fragment's scalar successor identifies the genuine branch node for deferred capability checks.
@@ -2072,14 +2059,6 @@ func armResidentMemoryCycleActive*(jit: ArmJit): bool =
   ## Report whether the published cycle uses semantic inline dirty/read entries instead of child BLs.
   jit.memoryCycle.status == 2 and jit.memoryCycle.residentMode
 
-func armMemoryCycleHeader*(jit: ArmJit, index: range[0..2]): uint32 =
-  ## The checked adapter can identify every genuinely unstarted source header.
-  assert jit.memoryCycle.status == 2
-  case index
-  of 0: jit.memoryCycle.prefixHeader
-  of 1: jit.memoryCycle.dirtyHeader
-  else: jit.memoryCycle.tailHeader
-
 func armMemoryCycleChargeMatches*(jit: ArmJit, index: range[0..1], header,
     span: uint32, price: uint64): bool =
   ## Every invocation checks sealed default-pricing coordinates before borrowing this driver.
@@ -2538,13 +2517,6 @@ proc callArmMemoryCycle*(jit: ArmJit, registers: var RegisterFile,
   ## Preserve the legacy 72-byte direct-witness ABI for a raw-only code owner.
   assert jit != nil and not jit.clippedReads and sizeof(regions) == 72
   callArmMemoryCycleCore(jit, registers, addr regions, dirtyWords, state)
-
-proc callArmMemoryCycleContext*(jit: ArmJit, registers: var RegisterFile,
-    context: var ArmReadContext, dirtyWords: var seq[uint64],
-    state: var array[14, uint64]): uint32 =
-  ## Borrow the complete 144-byte frame context for one full-mode native entry.
-  assert jit != nil and jit.clippedReads and sizeof(context) == 144
-  callArmMemoryCycleCore(jit, registers, addr context, dirtyWords, state)
 
 func armMacroStatus*(jit: ArmJit): uint8 =
   ## The separate macro owner is untried, retired, or completely published.
