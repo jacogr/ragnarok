@@ -120,8 +120,9 @@ proc response(status: string, body = "", extra = ""): string =
         extra & "\r\n" & body
 
 proc process(slot: var Connection, port: uint16, context: QueryContext) =
-  # Resolve framing before dispatch. Duplicate headers, transfer encoding and pipelined
-  # bytes could otherwise give the parser and the caller different request boundaries.
+  ## Validate and dispatch one framed HTTP request.
+  ## Resolve framing before dispatch. Duplicate headers, transfer encoding and pipelined
+  ## bytes could otherwise give the parser and the caller different request boundaries.
   let ending = slot.input.find("\r\n\r\n")
   if ending < 0:
     if slot.input.len >= MaxHeader: slot.output = response("431 Request Header Fields Too Large")

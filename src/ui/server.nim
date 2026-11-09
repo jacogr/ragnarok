@@ -150,9 +150,9 @@ proc staticPath(target: string): string =
   decoded[1..^1]
 
 proc openFile(root: cint, path: string): cint =
-  # Walk from the held root descriptor and refuse symlinks at every step. Resolving
-  # a path in a separate check would let a concurrent rename change the file we serve.
-  ## Walk descriptor-relative components with O_NOFOLLOW to prevent symlink and rename escapes.
+  ## Open the asset relative to the held root with O_NOFOLLOW at each component.
+  ## Checking a path separately from opening it would let a concurrent rename
+  ## change the file served.
   var parent = root
   var owned = false
   defer:
