@@ -506,64 +506,23 @@ after chainspec mutation and independently hash its bytes to the advertised bloc
 
 ## Immutable chain-view boundary
 
-RPC selects blocks through `ChainView` (`src/chain/provider.nim`) rather than comparing each
-request with the configured genesis hash itself. `bestBlock`, exact `blockAt`, `parentOf` and
-bounded `reportAt` form the typed read interface. The initial `genesisView` adapter owns the
-existing genesis snapshot. Empty/invalid configuration supplies no block; unknown hashes never
-fall back to the best block, and raw parent-header bytes never invent a parent descriptor.
+The [provider](../src/chain/provider.nim) owns exact retained identities and immutable
+views. RPC owns JSON/Base64 parsing and JIP-2 error mapping.
 
-The provider accepts nominal binary hashes; JSON/Base64 parsing and JIP-2 error mapping stay in
-RPC. Successful block and report results retain immutable owners after the originating view is
-released. Each dispatcher tick captures one `ClientInfo` read view, and a batch uses that same
-view throughout. Copies have acyclic ARC ownership; private provider storage cannot be mutated
-by consumers. Parameters remain the separately captured startup configuration.
-
-This is an internal boundary refactor with unchanged WS methods, result/error shapes, response
-budgets and genesis-only scope under the pinned JIP-2 references above. It does not introduce a
-live importer, persistent historical storage, finality or subscriptions.
-The bounded history and dispatcher handoff below extend this initial boundary.
 Native tests cover empty/invalid/unknown lookup, unavailable parents, report-budget propagation,
 retained-result lifetime and copied request/batch isolation. Existing native and live WS suites
 remain regression coverage; a compiler rejection probe protects private provider storage.
 
 ## Bounded block-snapshot history
 
-`BlockSnapshot` is the immutable header/posterior-map owner previously named `Genesis`.
-`Genesis` and `GenesisResult` remain compatibility names; `BlockSnapshotResult` and
-`captureBlockSnapshot` support non-genesis capture with the same framing, roster/time checks,
-map completeness assumption and existing resource ceilings. Capture copies the parent hash,
-header prior-state root and complete 29-field protocol tuple alongside the existing metadata.
-No execution or consensus validity follows from structural capture.
+[Snapshot capture](../src/chain/genesis.nim) and [view advancement](../src/chain/provider.nim)
+own history policy. Linkage and time-order checks follow GP 0.8.0 revision
+`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/header.tex` parent linkage, time-slot
+ordering and prior-state-root definitions. Full parameter tuple equality is a local policy.
 
-`advanceView(view, child)` returns a guarded success containing a **new** `ChainView`, or a
-failure reason without a replacement view. It requires an initialized view and successful child
-capture, rejects retained duplicate identities, and checks that the child names the selected head,
-has a strictly greater slot, commits to the head’s posterior state as its prior root, and uses the
-same complete protocol tuple. Slot gaps are allowed. This follows GP 0.8.0 revision
-`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/header.tex` parent linkage, time-slot ordering
-and prior-state-root definitions. Tuple equality is this adapter’s policy, not a protocol-upgrade
-mechanism. It performs no wall-clock, signature, execution or fork-choice validation.
-
-A view retains at most eight snapshots, oldest to newest. Appending the ninth evicts exactly the
-oldest from the new view. Exact block lookup and parent resolution scan at most eight identities;
-a parent is available only while both the child and parent are retained. Historical state/header
-queries continue through the existing RPC paths; unknown or evicted hashes keep JIP-2 error 1.
-The selected head supplies `bestBlock` and the state-derived parameter fields. Retained-report
-lookup stays head-only, preserving its existing decoder-work bound rather than searching all eight
-maps. No persistent block or report archive is introduced.
-
-Each view owns a separate private sequence of immutable owner handles. Prior views, batch contexts
-and extracted results survive subsequent append/eviction. Eight is a **per-view** retention limit:
-callers that keep old views also keep their state, so future import integration must bound outstanding
-readers. Each snapshot retains the existing map/header/trie resource ceilings. The append API copies
-at most eight handles and does not duplicate maps, decode chapters or run consensus.
-
-The CLI still initializes a genesis-only view; no RPC method accepts arbitrary blocks. The
-dispatcher handoff below provides publication, while a future importer must supply execution-validated
-snapshots and manage head selection/events. Tests exercise two-block best/parent/state/header/raw-value reads,
-slot gaps, every rejection reason, full-tuple mismatch beyond core/epoch fields, eight-block capacity,
-eviction, unavailable evicted parents, and retained old-view/result/batch lifetime. Compiler probes
-protect the append discriminator and reject extracting a known failed result.
+Original tests exercise two-block best/parent/state/header/raw-value reads, slot gaps,
+full-tuple mismatch, bounded eviction and retained old-view/result/batch lifetime.
+Compiler probes protect the append discriminator and failed-result extraction.
 
 ## Dispatcher publication handoff
 
