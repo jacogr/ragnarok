@@ -9,7 +9,7 @@ import ../[program, machine]
 import ./jit_rules
 import ./[native_control, native_ir]
 import ./native_read_body
-when NativeCheckedReadEnabled and defined(pvmSharedReadCycle):
+when NativeReadCycleEnabled:
   import ./native_read_cycle
 
 when defined(pvmArmMixedGroupReceipt):
@@ -2670,7 +2670,7 @@ proc armMacroPatch(words: var seq[uint32], fixes: seq[ArmMemoryCycleFixup],
       words[fix.at] = 0x14000000'u32 or (uint32(relative) and 0x3ffffff'u32)
   true
 
-when NativeCheckedReadEnabled and defined(pvmSharedReadCycle):
+when NativeReadCycleEnabled:
   proc appendArmCycleRead(words: var seq[uint32], fixes: var seq[ArmMemoryCycleFixup],
       span: ArmReadSpan, refusal: int) =
     ## Inline a true-length read bank with a caller-owned paid or unpaid refusal.

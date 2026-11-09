@@ -1426,7 +1426,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
         ## Temporarily only opt-in x86 uses credits. ARM uses exact per-role budgets.
         ## Both lower all seven roles natively and publish the same checked receipt.
-        ## Credits require Linux x86-64, pvmX86Jit, and pvmSharedReadCycle.
+        ## Credits require the enabled connected Read profile on Linux x86-64.
         ## Enable pvmX86ReadCycleResident, pvmX86ReadCycleBudgetRegisters, and
         ## pvmX86ReadCycleRoleRegisters. The Read and role masks must fit the bank.
         when defined(pvmX86ReadCycleCredits):
