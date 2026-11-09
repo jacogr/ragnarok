@@ -286,56 +286,11 @@ service map after startup file mutation. A `rpc_` compiler probe protects the pr
 
 ## Protocol and bounds
 
-Only WebSocket version 13 is supported; HTTP is used solely for the RFC 6455 upgrade handshake.
-POST bodies are never dispatched as RPC. Non-browser tooling may omit Origin. With `--with-ui`,
-only the enabled UI origins described in [UI scope](ui.md) are accepted for browser upgrades.
-Other Origin-bearing requests are rejected. TLS, remote binding, arbitrary browser origins,
-compression, binary messages and subprotocol negotiation are outside this increment.
-
-Input JSON is validated strictly before dispatch, including number spelling, object keys,
-escapes, surrogate pairs, trailing data and duplicate envelope members. Parameters are positional
-arrays or omitted. IDs preserve their numeric lexemes or decoded string values without machine
-integer/float narrowing. Parse errors use `-32700`, invalid envelopes/batches `-32600`, unavailable
-methods `-32601`, and invalid parameters `-32602`. Valid notifications never receive replies,
-including errors and notification-only batches.
-
-Parsing uses the pinned Nimony `std/parsejson` streaming API, which also underlies `std/json`.
-The tree API converts numbers to integers/floats (including a lossy float fallback for large
-integers), so RPC uses streaming numeric lexemes to preserve IDs. The stdlib owns structural
-parsing and string decoding; a lexical policy rejects its non-JSON extensions (comments,
-trailing commas, permissive escapes/numbers). The event adapter enforces string object keys,
-a single root and resource limits before retaining each event. Decoded strings are checked
-for valid UTF-8, and stdlib error state is checked even when it emits a string event.
-
-Output uses [`src/lib/json/writer.nim`](../src/lib/json/writer.nim) to build typed values,
-ordered objects and arrays. String escaping and punctuation belong to that module; integer
-serialization keeps the original
-signed/unsigned width. `trustedJson` embeds only parser-validated IDs or complete internally
-serialized replies/notification payloads. RPC retains its existing pre-allocation blob limits,
-list/page budgets, final response bounds and subscription commit checks. The pinned Nimony
-`std/json` typed writer lacks full-width unsigned and raw-number support, so it cannot replace
-this boundary without narrowing values or normalizing request IDs. Browser requests use native
-`JSON.stringify`. Telemetry reads chainspec JSON with `std/parsejson`; JIP-3 output is binary.
-
-The server accepts masked client frames, fragmented text with interleaved ping/pong, and valid
-close handshakes. UTF-8 validation covers the complete reassembled text, so a fragment may split
-one Unicode scalar. Server frames are unmasked. Framing violations close with 1002, binary data
-with 1003, invalid UTF-8 with 1007, and cumulative oversized messages with 1009. Extended 64-bit
-frame lengths are rejected because their canonical minimum exceeds the configured limit.
-
-Resource limits are eight connections, 4 KiB upgrade headers, 16 KiB messages, 16 nesting levels,
-2048 JSON values and 16 requests per batch. Input/output is owned per connection. Each dispatcher
-turn performs at most one accept and one read (4 KiB), frame dispatch and write per slot. Responses
-share a 65,535-byte budget, including escaped request IDs, envelopes and batch punctuation.
-Responses that exceed their remaining allowance return a reserved error envelope.
-Backpressure pauses reads until the outstanding response is delivered. Handshakes, partial
-messages, fragmented messages and queued writes have five-second budgets; idle upgraded
-connections expire after thirty seconds. Ping/pong cannot extend a fragmented message's budget.
-
-The listener/connection composite is explicitly non-copyable. ARC destruction and explicit close
-retire native descriptors and owned strings; no foreign callback borrows RPC data. Mesh borrows
-one stable stack owner only during its synchronous dispatcher loop. All sockets are nonblocking
-and close-on-exec, and SIGPIPE is suppressed per socket/send.
+The [wire decoder](../src/rpc/wire.nim) owns RFC 6455 framing and browser Origin checks.
+The [dispatcher](../src/rpc/server.nim) owns per-slot lifetimes and backpressure.
+The [JSON-RPC registry](../src/rpc/protocol.nim) owns request validation and response limits.
+Shared [JSON reading](../src/lib/json/reader.nim) and [writing](../src/lib/json/writer.nim)
+preserve the numeric and UTF-8 representation at those boundaries.
 
 ## Verification
 
