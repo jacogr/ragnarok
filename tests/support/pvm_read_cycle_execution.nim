@@ -345,6 +345,68 @@ when NativeReadCycleEnabled:
           else:
             checkRoleEntry(cycle, image, extra, exit)
 
+when NativeReadCycleEnabled and defined(pvmX86Jit):
+  proc tailPointerFixture(): NativeReadCycle =
+    ## Each setup resets the Store base and advances the word that the next Tail will read.
+    result = cycleFixture(outside = true)
+    result.read = readFixture(false, 1)
+    let setup = [operation(51, 3, uint32(wordAddress)), operation(200, 0xb9, 9),
+      operation(149, 0x00, 0x40000000)]
+    assert addNativeReadContinuation(result.read,
+      NativeReadContinuation(header: setupHeader, terminal: 44, price: 3), setup)
+    result.tailLoad = operation(57, 5, uint32(wordAddress))
+
+  proc checkTailPointerEntry(image: NativeImage, writable: var array[8, byte],
+      firstExtent: bool, lowByte: byte) =
+    ## Force two overlapping Stores through one image and vary its live byte borrow on each entry.
+    var registers = default(RegisterFile)
+    registers[0] = RegisterValue(0x80000000'u64+uint64(lowByte))
+    registers[3] = RegisterValue(wordAddress)
+    registers[4] = RegisterValue(wordAddress+4)
+    registers[10] = RegisterValue(tailAddress+4)
+    let readOnly = [0xfe'u8, 0xff, 0xff, 0xff, 0x80, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87]
+    let decoy = [0xa1'u8, 0, 0, 0, 0, 0, 0, 0]
+    var dirty = 1'u64 shl (wordAddress shr 12)
+    let live = initNativeReadRegion(wordAddress, writable)
+    var context = NativeCycleContext(
+      read: [default(NativeReadRegion), live, initNativeReadRegion(tailAddress, readOnly)],
+      writable: [NativeCycleWritable(first: 0x13000),
+        NativeCycleWritable(first: wordAddress, length: uint64(writable.len),
+          data: cast[pointer](addr writable[0]))],
+      dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: 1000, remaining: 1000)
+    if firstExtent:
+      # The first matching readable extent must win over an overlapping readable decoy.
+      context.read[0] = live
+      context.read[1] = initNativeReadRegion(wordAddress, decoy)
+    let destination =
+      when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+        enterNativeReadCycleAbiProof(image, registers, context)
+      else:
+        enterNativeReadCycle(image, registers, context)
+    assert destination == layout.outsideHeader
+    assert context.visits == [1'u64, 2, 2, 2, 1, 1, 0]
+    assert context.gas == 900 and context.remaining == 940
+    assert context.lastCompleted == uint64(ord(NativeCycleRole.Outer)) and context.paidRead == 0
+    assert validNativeCycleReceipt(layout, destination, 1000, 1000, context)
+    assert registers[5] == RegisterValue(uint64(lowByte)+1), "Tail must read the latest Store"
+    assert registers[0] == RegisterValue(0x100000000'u64+uint64(lowByte))
+    assert registers[1] == RegisterValue(64) and registers[3] == RegisterValue(wordAddress+4)
+    assert registers[6] == RegisterValue(0x19) and registers[8] == RegisterValue(3)
+    assert writable == [lowByte, 0, 0, 0, 0x6e, 0x7f, 0x80, 0x91]
+    assert dirty == 1'u64 shl (wordAddress shr 12)
+
+  proc checkTailPointerReuse() =
+    ## Keep both backing arrays live while one published image enters twice.
+    const original = [0x19'u8, 0x2a, 0x3b, 0x4c, 0x6e, 0x7f, 0x80, 0x91]
+    var first = original
+    var second = original
+    assert (addr first[0]) != (addr second[0])
+    var image = lowerNativeReadCycle(tailPointerFixture())
+    assert image.ready and image.kind == NativeKind.ConnectedReadCycle
+    checkTailPointerEntry(image, first, false, 1)
+    checkTailPointerEntry(image, second, true, 9)
+    assert first[0] == 1 and second[0] == 9
+
 proc runReadCycleExecution*() =
   ## Run the same checked entry witness for the selected host ISA.
   when defined(pvmReadCycleRoleWitness):
@@ -407,6 +469,7 @@ proc runReadCycleExecution*() =
         ReadExit.UnpaidTail, receiptLayout = wide, expectedImage = wideBytes)
     when defined(pvmReadCycleRoleWitness):
       runReadCycleRoleWitness()
+    when defined(pvmX86Jit): checkTailPointerReuse()
   echo "PASS shared native read cycle execution"
 
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
