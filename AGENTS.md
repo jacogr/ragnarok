@@ -62,6 +62,9 @@ implementation work. For unfamiliar pinned APIs, consult the short
 [Nimony compatibility reference](docs/nimony-compatibility.md).
 
 - Document every type/function and every control-flow block/alternative, including tests/tooling.
+  Put routine contracts in a contiguous `##` block immediately after the signature, including
+  private routines. Use `#` beside body statements for implementation notes and leave a blank
+  line when a body note immediately follows the routine docs.
   Explain purpose, checks, errors and ownership for the maintainer learning Nim.
 - Project-owned source/build files start with `Copyright (c) 2026 Ragnarök contributors` and
   `SPDX-License-Identifier: MIT OR Apache-2.0`, after shebangs. Preserve third-party attribution;

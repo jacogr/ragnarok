@@ -160,9 +160,10 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   true
 
 proc failed(client: var Client, now: int64) =
-  # A new stream needs fresh registration, but pending handshakes retain their attempt IDs.
-  # Keep the exporter position so reconnect can account for discarded frames.
-  # An established or in-progress descriptor has exactly one close on this path.
+  ## Retire a failed stream and schedule a retry.
+  ## A new stream needs fresh registration, but pending handshakes retain their attempt IDs.
+  ## Keep the exporter position so reconnect can account for discarded frames.
+  ## An established or in-progress descriptor has exactly one close on this path.
   if client.opened: discard posix.close(client.fd)
   client.opened = false
   client.connecting = false
@@ -271,6 +272,7 @@ proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) 
   ## Caller-provided monotonic time controls retry, status and connect/write deadlines.
   ## Partial writes resume at the exact suffix, and queued events share the batch deadline
   ## so fresh observations cannot keep a stalled collector alive.
+
   # Disabled telemetry has no socket, clock, allocation or network work.
   if not client.enabled: return
   if not client.opened:

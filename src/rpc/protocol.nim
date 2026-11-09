@@ -585,10 +585,11 @@ proc nextUpdate*(session: var RpcSession): string =
 
 proc chainSubscription(values: seq[JsonToken], parameters: int, methodName, id: string,
     info: ClientInfo, session: var RpcSession): string =
-  # Subscription IDs are connection-local and never reused. Initial updates and
-  # boolean cancellation are local policies. A successful cancellation removes
-  # pending updates for that family and ID, while a frame already handed to the
-  # transport can still finish writing.
+  ## Validate subscription calls and handle family-specific cancellation.
+  ## Subscription IDs are connection-local and never reused. Initial updates and
+  ## boolean cancellation are local policies. A successful cancellation removes
+  ## pending updates for that family and ID, while a frame already handed to the
+  ## transport can still finish writing.
   if parameters >= 0 and values[parameters].kind != arrayValue:
     return error(id, -32602, "Expected positional params") # Named arguments are not JIP-2 calls.
   let kind = if methodName in ["subscribeStatistics",
@@ -1133,9 +1134,10 @@ proc requestId(values: seq[JsonToken], start: int): string =
 
 proc dispatch(values: seq[JsonToken], start: int, info: ClientInfo, session: var RpcSession,
     stateful: bool, allowance = MaxReplyBytes): string =
-  # Stage session changes until the reply fits its allowance. This keeps a
-  # subscription from becoming active with an ID its caller cannot receive.
-  # Batch members observe the committed changes from earlier members.
+  ## Dispatch within the reply allowance and commit the session on success.
+  ## Stage session changes until the reply fits its allowance. This keeps a
+  ## subscription from becoming active with an ID its caller cannot receive.
+  ## Batch members observe the committed changes from earlier members.
   var candidate = session # Fixed arrays and immutable strings isolate tentative subscription changes.
   result = dispatchImpl(values, start, info, allowance, candidate, stateful)
   if result.len > allowance:

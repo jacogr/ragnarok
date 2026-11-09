@@ -54,6 +54,7 @@ proc assuranceMessage*(parent: AssuranceParent, bits: AssuranceBits,
   ## Build the owned 45-byte message jam_available || Blake2b-256(parent || fixed bits).
   ## The hash uses the external parent and exactly ceil(cores/8) LSB-first bytes,
   ## with no length or record prefix. The parent is not part of the current wire record.
+
   # Validate the unsigned profile before narrowing or indexing the final bitfield byte.
   if uint64(cores) < 1 or uint64(cores) > 341:
     return AssuranceContextResult[AssuranceSigningMessage](
@@ -92,6 +93,7 @@ proc verifyAssurances*(values: openArray[Assurance], config: AssuranceConfig,
   ## work. This gives structural errors precedence and makes an empty batch depend on
   ## valid context. The returned count certifies this check, with eligibility and state
   ## transition handled by the caller.
+
   # Configuration has precedence over empty input and absent validator keys.
   if not validConfig(config):
     return AssuranceContextResult[VerifiedAssuranceCount](

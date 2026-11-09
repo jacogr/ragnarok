@@ -64,8 +64,9 @@ proc uniqueObjects(values: seq[JsonToken]): bool =
   true
 
 proc encode(values: seq[JsonToken], index: int, decimalStrings = false): JsonValue =
-  # Encode query payload integers as decimal strings so clients using floating-point JSON numbers
-  # retain full precision. Envelope IDs and schema limits still use JSON numbers.
+  ## Re-encode parsed values without narrowing numbers.
+  ## Encode query payload integers as decimal strings so clients using floating-point JSON numbers
+  ## retain full precision. Envelope IDs and schema limits still use JSON numbers.
   case values[index].kind
   of stringValue: json(values[index].text)
   of numberValue:
@@ -145,11 +146,12 @@ proc query(methodName: string, arguments: JsonArray, info: rpc.ClientInfo): seq[
   if not parseValues(answer, result, 32768, 16): result = @[]
 
 proc callTool(values: seq[JsonToken], params: int, id: JsonValue, context: QueryContext): string =
-  # Validate the named argument surface before touching state. A busy context carries no
-  # canonical graph aliases, so a valid request can ask the client to retry during a worker lease.
-  # JSON-RPC errors cover malformed envelopes, unknown tools and wrong argument shapes.
-  # Tool errors include downstream validation failures such as malformed Base64, query
-  # refusals, and the adapter's busy and response-budget failures.
+  ## Validate and dispatch one call from the fixed tool catalog.
+  ## Validate the named argument surface before touching state. A busy context carries no
+  ## canonical graph aliases, so a valid request can ask the client to retry during a worker lease.
+  ## JSON-RPC errors cover malformed envelopes, unknown tools and wrong argument shapes.
+  ## Tool errors include downstream validation failures such as malformed Base64, query
+  ## refusals, and the adapter's busy and response-budget failures.
   let name = member(values, params, "name")
   let arguments = member(values, params, "arguments")
   if name < 0 or values[name].kind != stringValue or
