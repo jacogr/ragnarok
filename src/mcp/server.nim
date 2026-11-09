@@ -1,8 +1,20 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded loopback Streamable HTTP endpoint. One request per connection; no SSE or HTTP sessions.
-## Only serialized bytes survive a tick. Query contexts are borrowed synchronously and never retained.
+## Local Streamable HTTP transport for MCP chain queries.
+##
+## The listener trusts local processes and binds IPv4 loopback. The accepted Host names
+## are the configured loopback address and localhost with the selected port. Rejecting
+## Origin-bearing requests keeps browser traffic outside that trust boundary.
+##
+## POST carries one request per connection. Replies use JSON, with HTTP 202 for valid
+## notifications. Clients advertise both JSON and event-stream support for MCP negotiation.
+## Connections close after the response and clients can reconnect within the same logical
+## lifecycle. Explicit protocol-version headers must match the supported revision.
+##
+## Fixed slots, byte ceilings and absolute deadlines bound work by each dispatcher turn.
+## Only serialized bytes survive a turn, so slow clients cannot extend a query borrow.
+## See spec/mcp.md for protocol references and verification.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -108,7 +120,8 @@ proc response(status: string, body = "", extra = ""): string =
         extra & "\r\n" & body
 
 proc process(slot: var Connection, port: uint16, context: QueryContext) =
-  ## Strict single-message HTTP framing rejects ambiguous lengths, browser origins and upgrades.
+  # Resolve framing before dispatch. Duplicate headers, transfer encoding and pipelined
+  # bytes could otherwise give the parser and the caller different request boundaries.
   let ending = slot.input.find("\r\n\r\n")
   if ending < 0:
     if slot.input.len >= MaxHeader: slot.output = response("431 Request Header Fields Too Large")

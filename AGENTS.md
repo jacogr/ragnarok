@@ -33,6 +33,10 @@ scope, pinned specification and completion tests before changing protocol behavi
 feature status, evidence and next work belong in `spec/<feature>.md`; keep shared design pages
 stable unless architectural boundaries change.
 
+For MCP and telemetry, keep durable module contracts and implementation rationale in the owning
+source. Use `spec/` for pinned references, interpretations, and verification evidence. Link to
+the owning source when recording evidence that depends on an implementation contract.
+
 ## Safety and implementation
 
 - Use nominal protocol indices, hashes, signatures, roots, amounts and limits. Validate untrusted

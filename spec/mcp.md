@@ -10,88 +10,19 @@ This feature targets MCP **2025-11-25** [lifecycle](https://modelcontextprotocol
 It adds an observational interface; the repository's pinned JAM/Gray Paper interpretation and
 existing chain/RPC query contracts remain authoritative. MCP does not execute or finalize blocks.
 
-Append `--with-mcp` to a supported server/client/mesh/download invocation to enable
-`http://127.0.0.1:14141/mcp`; `--mcp-port NUMBER` overrides **14141**. Port configuration alone
-does not enable MCP. Activation enables neither WebSocket RPC, browser UI nor management.
-Invalid/duplicate settings and enabled port collisions fail parsing; bind failure rolls back startup.
-The endpoint follows the bounded lifetime of the underlying command, not a new node daemon.
+The [source guide](../src/mcp/README.md) covers setup. The
+[query adapter](../src/mcp/protocol.nim) owns tool behavior and the
+[HTTP listener](../src/mcp/server.nim) owns transport and access policy.
 
-## Protocol and tools
+Tool discovery metadata follows the pinned
+[MCP schema](https://modelcontextprotocol.io/specification/2025-11-25/schema#listtoolsrequest).
+The native and official SDK regressions exercise empty metadata, string/numeric progress tokens,
+and cursor rejection followed by successful requests.
 
-Tool discovery accepts standard request `_meta` objects, including string/numeric `progressToken`
-and inert extension fields, independently of pagination ([MCP 2025-11-25 schema](https://modelcontextprotocol.io/specification/2025-11-25/schema#listtoolsrequest)).
-The fixed catalog always returns all seven tools without `nextCursor`; an explicit `cursor` remains
-an invalid-params error. Malformed metadata and progress tokens are invalid parameters too.
-Native boundary cases and official SDK discovery with empty/string/numeric-token metadata cover
-this contract; SDK cursor rejection must leave subsequent requests usable.
 Observed on 2026-10-28 (macOS ARM64): the added official SDK regression first failed against the
 unchanged server with `This fixed catalog has no cursor`. After the fix, `make unit SUITE=mcp`,
 `make check-mcp-interop` (three scenarios, six sessions, 116 messages and 110 correlated replies),
 68 focused Python safeguards and pinned formatting passed locally. Linux CI remains separate.
-
-The server supports `initialize`, `ping`, `tools/list` and `tools/call`. Initialization negotiates
-2025-11-25, declares only tools, and returns shared build version metadata. It does not request
-sampling, roots or elicitation. Transport is stateless: no session IDs or per-client initialization
-records are allocated. Clients initialize and send `notifications/initialized` before ordinary work;
-valid notifications are acknowledged with HTTP 202. Requests receive one JSON response. GET and
-DELETE return 405 (Allow: POST); optional SSE, tasks, subscriptions, resources and prompts are absent.
-Each HTTP connection closes after its response; clients reconnect without repeating initialization.
-Subsequent requests should include `MCP-Protocol-Version: 2025-11-25`; explicit other revisions are
-rejected with HTTP 400. Missing version headers are accepted for initialization and stateless clients.
-
-| Tool | Named arguments | Value |
-| --- | --- | --- |
-| `get_chain_status` | none | Chain identity, best/finalized descriptors, state/retention observations and peer count |
-| `get_parameters` | none | Existing configured parameter object, including explicit zero derivation placeholders |
-| `get_block` | `block_hash` | Exact block's posterior state root; no full block-body claim |
-| `list_services` | `block_hash` | Bounded complete service-ID list; oversized results fail rather than truncate |
-| `get_service` | `block_hash`, `service_id` | Canonical encoded metadata, or null for absence |
-| `get_storage` | `block_hash`, `service_id`, `key` | Storage bytes, or null for absence |
-| `get_preimage` | `block_hash`, `service_id`, `preimage_hash` | Hash-verified preimage bytes, or null for absence |
-
-Hashes/bytes use canonical padded Base64. Service IDs are input JSON integers in 0..4294967295;
-storage keys are at most 4096 decoded bytes. All numeric query payload values are emitted as decimal
-**strings**, avoiding agent-side floating-point truncation. MCP envelope IDs and schema numeric limits
-remain ordinary JSON numbers. Text content repeats exactly the structuredContent object. Every state
-query echoes its explicit block hash and configured chain identity. Absent values remain distinct from
-present empty bytes. State lookup cannot silently switch to a different head. Query refusals return
-`isError: true`; invalid MCP envelopes/tool names/argument shapes use JSON-RPC errors.
-
-The fixed read-only adapter invokes the existing RPC query implementation synchronously, with no
-WebSocket hop, arbitrary method escape hatch or subscription state. It shares typed validation and
-query budgets. Tool metadata advertises read-only/idempotent behavior; no signing, private keys,
-filesystem access, management operations or state mutation is exposed. Returned chain bytes are
-untrusted data, never agent instructions.
-
-## Ownership, availability and limits
-
-Services retains fixed configuration and a configured seed only in listener-only operation. For
-canonical operation it borrows the actual selected ChainView during one dispatch activation; all
-aliases retire before publication or worker admission. MCP's native socket owner retains only bytes.
-During CPU/proof/disk leases it answers tool calls with a retryable busy error without copying or
-retiring any canonical graph alias. Initialize, ping and discovery remain available.
-
-Chain status explicitly identifies full/light mode; light finality remains null.
-Light mode borrows only the actor's already detached header metadata while idle, preserving the
-separate proof graph and trust boundary. Existing light RPC semantics determine supported metadata
-queries and explicit refusals for complete-state/service reads. Light state is never presented as a
-complete state map, nor is its partial root recomputed as a complete JAM root.
-
-There are four nonblocking connection slots, a five-second absolute connection deadline, at most
-4096 header bytes, 16384 body bytes, 2048 JSON tokens, 16 parser levels and 131072 reply bytes.
-Each tick accepts at most one connection and performs one bounded read/write per slot. Duplicate
-JSON fields, malformed UTF-8, ambiguous framing, transfer encodings and pipelined suffixes are refused.
-Host must exactly match the selected loopback endpoint (`127.0.0.1:PORT` or `localhost:PORT`). All
-Origin-bearing requests are refused with 403: this first local-agent endpoint has no browser origin
-allowlist or CORS. Both JSON and event-stream Accept types are required, even though replies use JSON.
-No authentication is added; access is trusted local-process access. No public bind or remote deployment
-is supported. Slow or disconnected clients cannot extend deadlines or retain graph handles.
-
-Peer connectivity is not proof of synchronization. Available state depends on the selected configured
-seed/import path; finality requires an explicit trusted source. Current bounded history and explicitly
-selected finalized anchors are queryable; unknown/evicted blocks remain unavailable.
-[#1731](https://github.com/jacogr/ragnarok/issues/1731) independently owns archive/configurable retention.
-MCP does not interpret journal leftovers as history, backfill blocks or retain an independent archive.
 
 ## Completion evidence
 
