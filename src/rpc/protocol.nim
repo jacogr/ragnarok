@@ -1,14 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JSON-RPC 2.0 dispatch for configured parameters and immutable provider-backed chain/service queries.
-## Bounds: 16 KiB input, 16 levels, 2048 values, 16 requests and 65,535 output bytes; no retained borrows.
+## JSON-RPC 2.0 dispatch for configured parameters and provider-backed queries.
 ##
-## Exposes JSON string quoting and respond for the supported JSON-RPC methods and protocol error
-## responses. configuredParameters and configuredGenesis validate bounded chainspec text into
-## owned parameter and genesis snapshots;
-## parameters() derives active-roster erasure geometry and pending-roster ticket limits;
-## missing state uses zero. RpcSession owns bounded chain subscriptions and serialized updates.
+## The shared JSON reader preserves numeric lexemes and decodes strings before envelope
+## validation. Request IDs keep their original precision across response encoding.
+## One ClientInfo view serves a request or batch, so exact block and service reads
+## share a consistent selection. The session owns subscriptions and serialized updates.
+##
+## Request and batch limits bound parsing and output. Trusted JSON values come from
+## validated IDs or complete internal serialization. Notifications suppress replies.
 
 import std/[strutils, base64]
 import ./wire

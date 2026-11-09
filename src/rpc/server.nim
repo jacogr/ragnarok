@@ -1,10 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
+## Dispatcher-owned loopback WebSocket connections and publication handoffs.
 ##
-## Exposes the Server owner, publishBlock/publishAccumulation/publishFinalized handoffs and start/tick/close lifecycle.
-## The caller services bounded connection slots and per-connection chain subscription queues.
+## Each slot owns its upgrade, message assembly, reply and subscription queue. Reads
+## pause while an output is pending so slow clients cannot accumulate replies. A
+## fragmented message keeps its original deadline across control frames, and a slow
+## write gets its own absolute deadline.
+##
+## A canonical worker lease pauses dispatch. The caller installs or resumes the
+## selected view before serving chain queries again. Destruction and close release
+## the socket owner and per-connection state.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
