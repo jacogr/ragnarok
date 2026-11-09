@@ -973,7 +973,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleCreditGasShift = 7'u8
         readCycleCreditSpanShift = 5'u8
 
-      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+6, int]
+      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+7, int]
 
       proc readCycleContextOp(code: var X86Block, encoding: openArray[byte], offset: int) =
         ## Context operations use disp32 because the accounting fields follow the extent table.
@@ -1192,6 +1192,28 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         put(code, [0x48'u8, 0x39, 0xc8]) # Preserve the original != backedge after the fourth visit.
         cycleEdge(code, fixes, 0x85, byte(ord(NativeCycleRole.Store)))
 
+      proc emitReadCycleTailPointer(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: var X86ReadCycleLabels, address: uint32, slot: byte, nextLabel: var byte) =
+        ## Resolve only metadata from this entry's immutable clipped descriptors.
+        ## Both a proved pointer and a miss stay local to the leaf's stack frame.
+        put(code, [0xba'u8]) # MOV EDX,absolute32.
+        cycleWord(code, address)
+        let accepted = nextLabel
+        let saved = nextLabel+1
+        nextLabel += 2
+        for region in 0..<3:
+          # Preserve the original extent order and require the whole signed word in one extent.
+          let nextRegion = nextLabel
+          inc nextLabel
+          emitCheckedExtent(code, fixes, byte(region*24), 4, nextRegion, accepted)
+          labels[int(nextRegion)] = code.bytes.len
+        put(code, [0x45'u8, 0x31, 0xc0]) # XOR R8D,R8D records a miss without exiting.
+        cycleEdge(code, fixes, 0, saved)
+        labels[int(accepted)] = code.bytes.len
+        put(code, [0x4c'u8, 0x8d, 0x04, 0x01]) # LEA R8,[RCX+RAX] forms the proved byte address.
+        labels[int(saved)] = code.bytes.len
+        put(code, [0x4c'u8, 0x89, 0x44, 0x24, slot]) # MOV [RSP+slot],R8.
+
       proc emitResidentCycleRead(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: var X86ReadCycleLabels, body: NativeReadBody, bank: X86ResidentAccess,
           dirty: uint32, nextLabel: var byte) =
@@ -1257,6 +1279,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         let bank = if roleRegisters: x86ResidentAccess(roleMask)
           elif resident: x86ResidentAccess(dirty) else: default(X86ResidentAccess)
         let roleAccess = if roleRegisters: bank else: default(X86ResidentAccess)
+        # Keep the entry-local borrow outside the 104-byte stack checkpoint.
+        # Both allocations preserve the original alignment and fit a signed immediate.
+        let tailSlot = if resident: 0'u8 else: byte(sizeof(RegisterFile))
+        let stackBytes = tailSlot+16'u8
         var code = default(X86Block)
         var fixes: seq[X86CycleFixup] = @[]
         var labels = default(X86ReadCycleLabels)
@@ -1268,10 +1294,14 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
               # Save each selected SysV lane once. Prepaid Read already has a checkpoint.
               saveCheckedReadRegister(code, encoded-1)
               if roleRegisters: loadCheckedReadRegister(code, bank, slot)
-          put(code, [0x49'u8, 0x89, 0xf2]) # R10=RSI holds the context, RDI stays canonical.
         else:
           # R11 retains the canonical pointer while RDI addresses the private stack stage.
-          put(code, [0x48'u8, 0x83, 0xec, 0x68, 0x49, 0x89, 0xf2, 0x49, 0x89, 0xfb])
+          put(code, [0x49'u8, 0x89, 0xfb]) # MOV R11,RDI.
+        put(code, [0x48'u8, 0x83, 0xec, stackBytes]) # SUB RSP,stackBytes.
+        put(code, [0x49'u8, 0x89, 0xf2]) # R10=RSI holds the context, RDI stays canonical.
+        # Extent checks use RCX/RDX before either live budget ledger is loaded.
+        emitReadCycleTailPointer(code, fixes, labels,
+          uint32(cycle.tailLoad.immediate and 0xffffffff'u64), tailSlot, nextLabel)
         if credits:
           # R9 funds paid roles. The first Read bypasses it because the checked header paid.
           readCycleLoadBudgets(code)
@@ -1335,19 +1365,12 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             emitReadCycleStore(code, fixes, labels, word, span, unpaid, price, nextLabel,
               budgetRegisters, credits, roleAccess)
           of NativeCycleRole.Tail:
-            # Probe the clipped readable extents before any Tail effects or debit.
-            put(code, [0xba'u8]) # MOV EDX,absolute32.
-            cycleWord(code, uint32(cycle.tailLoad.immediate and 0xffffffff'u64))
-            let accepted = nextLabel
-            inc nextLabel
-            for region in 0..<3:
-              let nextRegion = nextLabel
-              inc nextLabel
-              emitCheckedExtent(code, fixes, byte(region*24), 4, nextRegion, accepted)
-              labels[int(nextRegion)] = code.bytes.len
-            cycleEdge(code, fixes, 0, unpaid)
-            labels[int(accepted)] = code.bytes.len
-            put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
+            # A missing pointer leaves this affordable role unpaid. Load fresh bytes
+            # on every visit so earlier Stores remain visible, including aliases.
+            put(code, [0x4c'u8, 0x8b, 0x44, 0x24, tailSlot]) # MOV R8,[RSP+slot].
+            put(code, [0x4d'u8, 0x85, 0xc0]) # TEST R8,R8.
+            cycleEdge(code, fixes, 0x84, unpaid)
+            put(code, [0x49'u8, 0x63, 0x00]) # MOVSXD RAX,dword [R8].
             writeAccess(code, roleAccess, cycle.tailLoad.slots.aIndex)
             if not credits: readCycleDebit(code, span, price, budgetRegisters)
             let step = cycle.tailStep
@@ -1404,10 +1427,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           # All exits publish the same full-width budgets without clobbering the header in EAX.
           readCycleContextOp(code, [0x4d'u8, 0x89, 0x8a], NativeCycleGasOffset) # MOV [R10+gas],R9.
           readCycleContextOp(code, [0x4d'u8, 0x89, 0x9a], NativeCycleRemainingOffset) # MOV [R10+remaining],R11.
-        if resident:
-          restoreCheckedReadRegisters(code, bank)
-        else:
-          put(code, [0x48'u8, 0x83, 0xc4, 0x68]) # ADD RSP,104 releases the stage.
+        put(code, [0x48'u8, 0x83, 0xc4, stackBytes]) # ADD RSP,stackBytes releases the borrow.
+        if resident: restoreCheckedReadRegisters(code, bank)
         put(code, [0xc3'u8]) # RET preserves the checked header in EAX.
         if credits: emitReadCycleCreditSlow(code, fixes, labels, cycle.layout)
         if code.bytes.len > NativeImageByteLimit: return @[]
