@@ -4529,9 +4529,8 @@ proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
       return true
   false
 
-func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile,
-    info: var MachineInfo): oracle.StepError =
-  ## Both observation capabilities bind the same stopped PC and derive its successor from immutable facts.
+template requireFlatHostFact(f: FlatFrame, fact: var int) =
+  ## Bind both host observations to the stopped PC and resolve its immutable fact.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or not f.hostReady or
       f.info.pc != f.hostSnapshotPc or not f.info.blockCharged or uint64(f.info.gasDeficit) != 0:
     return oracle.StepError.InvalidHostSuspension
@@ -4539,16 +4538,21 @@ func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile
   if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
   let packed = f.plan.factAt[int(pc)]
   if packed == 0: return oracle.StepError.InvalidHostSuspension
-  let fact = int(packed - 1)
+  fact = int(packed - 1)
+
+func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile,
+    info: var MachineInfo): oracle.StepError {.noinline.} =
+  ## Keep the owned CPU stage separate from the mutable memory transaction.
+  var fact = 0
+  requireFlatHostFact(f, fact)
   info = f.info
   info.pc = CodeAddress(f.plan.facts[fact].next)
   info.gas = gas
   info.registers = registers
   oracle.StepError.None
 
-proc flatCommitHostContinuation(f: var FlatFrame, info: MachineInfo) =
-  ## Reset segment controls only after complete validation; memory rebasing is the owned caller's duty.
-  f.info = info
+template resetFlatHostSegment(f: var FlatFrame) =
+  ## Finish the validated continuation and retire its stopped observation.
   f.reason = oracle.StepError.None
   f.exit = oracle.StepExit.Continued
   f.faultPage = PageAddress(0)
@@ -4565,13 +4569,21 @@ proc flatCommitHostContinuation(f: var FlatFrame, info: MachineInfo) =
   f.hostSnapshot = default(Memory)
   inc f.fastResumes
 
+proc flatCommitHostContinuation(f: var FlatFrame, info: MachineInfo) =
+  ## Publish the CPU state staged for the completed owned-memory transaction.
+  f.info = info
+  resetFlatHostSegment(f)
+
 proc resumeFlatHostScalars*(f: var FlatFrame, gas: MachineGas,
     registers: RegisterFile): oracle.StepError =
-  ## Scalar replies cannot change mappings or bytes; retain all dirty membership against the old baseline.
-  var info = default(MachineInfo)
-  let checked = flatHostContinuation(f, gas, registers, info)
-  if checked != oracle.StepError.None: return checked
-  flatCommitHostContinuation(f, info)
+  ## Commit the scalar reply while retaining dirty membership against the old baseline.
+  var fact = 0
+  requireFlatHostFact(f, fact)
+  let nextPc = CodeAddress(f.plan.facts[fact].next)
+  f.info.pc = nextPc
+  f.info.gas = gas
+  f.info.registers = registers
+  resetFlatHostSegment(f)
   oracle.StepError.None
 
 proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
