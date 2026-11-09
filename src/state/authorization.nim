@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 authorization pool transition, authorization.tex and notation.tex sequence
-## operators. Queue inputs must already reflect accumulation; guarantee core/hash projections
-## are caller-validated.
+## Gray Paper authorization pool transition over caller-validated guarantee projections.
 ##
-## Exposes advanceAuthorization for immutable planning and advanceAuthorizationState for atomic
-## full-state publication.
+## The queue input must already reflect accumulation. The transition removes the oldest
+## matching used authorizer, adds the queue item selected by slot modulo the queue
+## length and retains the newest pool entries. Order and duplicate hashes matter.
+##
+## The store adapter reads exact C(1) and C(2), then publishes only C(1). This keeps
+## queue changes with accumulation and lets the caller publish the completed block
+## only after its other stages succeed.
 
 import ../codec/state/[authorization as state_authorization, layout as state_layout,
     trie as state_trie]

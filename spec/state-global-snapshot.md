@@ -18,22 +18,9 @@ reported no state-side API/format adaptation requirement for this increment.
 
 ## Bounded contract
 
-`validateGlobalState` accepts only an initialized complete `StateStoreSnapshot`,
-an explicit shared `StateProfile` and independent chapter/aggregate byte policies.
-Preflight all sixteen required chapter identities and cached lengths before copying
-or decoding input values. Missing chapters refuse; subtract before aggregate addition.
-Then reuse `captureStateChapter` for exact typed validation, preserving its precise
-configuration, resource, malformed, canonicality and trailing-byte reasons with the
-failed chapter. Failure grants no source certificate or validated prefix.
-
-Success retains immutable typed chapter captures and the exact original complete
-map, including opaque service rows. Caller slot replacement cannot mutate retained
-chapters. Return the same complete source owner without hashes or reconstruction.
-There is no partial-proof input, promotion of evidence to completeness, service-map
-classification, valid-state consistency claim, signature/STF validation or root-trust
-selection. Arbitrary service keys cannot be reverse-classified from their hashes.
-This is a serialization adapter for full-state consumers, not full T(state) parity.
-No Services, RPC, storage API/format or protocol/toolchain pin changes are needed.
+The [global snapshot validator](../src/state/global_snapshot.nim) owns exact chapter capture,
+resource bounds and retained source identity. Its serialization certificate does not confer
+complete T(state) parity or validate consensus.
 
 ## Completion tests
 
