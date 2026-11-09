@@ -1732,6 +1732,11 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             elif fact.opcode == 200 and second == 139: selected = flatFusedRegisters[200, 139]
             elif fact.opcode == 149 and second == 149: selected = flatFusedRegisters[149, 149]
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
+            elif fact.opcode == 131 and second == 83 and not f.plan.allowNative and
+                nativeEpoch(f.nativeSession) == 0:
+              # Only session-free checked streams, including unbound requested JIT, use this pair.
+              # Bound sources keep a positive epoch before image registration; native fallback layouts stay original.
+              selected = flatRegisterBranchCold[131, 83]
           inc continuations
         else: continuations = 0
       else: continuations = 0

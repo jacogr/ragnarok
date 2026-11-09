@@ -206,6 +206,47 @@ for mode in [0, 1, 2]:
 assert branchCases == 4320
 echo "PASS register-branch /4320cases / alias-saturation-signed-wrap / both arms-invalid targets / cold+cached / exact quota CPU"
 
+var immediateBranchCases = 0
+for mode in [0, 1, 2]:
+  # A real forward arm, backward edge and operand-byte target distinguish validation from comparison.
+  for descriptor in [0x11'u8, 0x21'u8, 0xff'u8]:
+    let destination = min(12, int(descriptor mod 16))
+    for word in [3'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64]:
+      # Encode four comparison bytes, independently of the four-byte relative destination.
+      var branch = @[83'u8, byte(64+destination)]
+      immediate(branch, word)
+      immediate(branch, if mode == 0: 15'u64 elif mode == 1: 0xfffffffd'u64 else: 1'u64)
+      let source = owner([@[131'u8, descriptor, 1'u8], branch,
+        @[51'u8, 7'u8, 17'u8], @[50'u8, 0'u8], @[51'u8, 7'u8, 34'u8], @[50'u8, 0'u8]])
+      # The existing convenience cache permits legacy native handlers and would miss this checked selector.
+      var admitted = prepareFlatPlan(source, GasCycleLimit(100000), defaultFlatLimits(),
+        allowNative = false)
+      assert admitted.error == FlatError.None
+      let plan = takeValue(admitted)
+      let priced = blockGas(source, CodeAddress(0), GasCycleLimit(100000))
+      assert priced.error == GasError.None
+      let charge = uint64(priced.value)
+      assert charge > 0 and charge < high(uint64)
+      for bits in [0'u64, 2'u64, 0x7fffffff'u64, 0x80000000'u64, 0xffffffff'u64, high(uint64)]:
+        var selected = registers
+        selected[1] = RegisterValue(bits)
+        selected[2] = RegisterValue(bits xor 0xffffffff'u64)
+        selected[12] = RegisterValue(bits)
+        for pc in [0'u64, 3'u64]:
+          # Independent second entry must not repeat the arithmetic, even after a fused first entry warmed the stream.
+          for paid in [false, true]:
+            for gas in [0'u64, charge-1, charge, charge+1, high(uint64)]:
+              let input = captureMachine(source, mapped, MachineInfo(pc: CodeAddress(pc),
+                gas: MachineGas(gas), blockCharged: paid, registers: selected)).value
+              for quota in [0'u64, 1, 2, 3, 7, 16, high(uint64)]:
+                # Negative comparison words can keep the backward edge live for billions of iterations.
+                let budget = if mode == 1 and quota == high(uint64): 17'u64 else: quota
+                compare(input, plan, budget, 100000)
+                compare(input, plan, budget, 100000, true)
+                inc immediateBranchCases
+assert immediateBranchCases == 30240
+echo "PASS checked immediate branch /30240cases / encoded signed32 words / aliases / independent entry / paid gas-quota / cold+cached invalid arms"
+
 var shapeCases = 0
 for family in [0, 1]:
   for mode in [0, 1, 2]:
