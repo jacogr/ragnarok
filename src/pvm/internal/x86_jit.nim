@@ -716,7 +716,8 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       result = 0
       for index in 0..<body.len:
         let op = body.operation(index)
-        let slot = if nativeReadOpcode(op.opcode): op.slots.aIndex else: op.slots.destinationIndex
+        let slot = if nativeReadOpcode(nativeReadEncodingOpcode(op.opcode)): op.slots.aIndex
+          else: op.slots.destinationIndex
         result = result or (1'u32 shl int(slot))
 
     proc readBodyBase(code: var X86Block, access: X86CanonicalAccess, slot: range[0..12]) =
@@ -759,15 +760,20 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
       const refusal = 0'u8
       for index in 0..<body.len:
         let op = body.operation(index)
-        if not nativeReadOpcode(op.opcode):
+        let encoding = nativeReadEncodingOpcode(op.opcode)
+        if not nativeReadOpcode(encoding):
           emitX86OperationAccess(code, access, op.opcode, op.slots, op.immediate)
         else:
-          # Address formation consumes the old base even when the load replaces that lane.
-          let opcode = int(op.opcode)
+          let opcode = int(encoding)
           assert opcode >= 124 and opcode <= 130 # Prove the local width-table conversion.
           let width = byte(indirectMemoryAccess(range[120..130](opcode)).width)
-          readBodyBase(code, access, op.slots.bIndex)
-          put(code, [0x81'u8, 0xc2]) # ADD EDX,imm32 wraps modulo 2^32.
+          if encoding != op.opcode:
+            # MOV EDX,imm32 zero-extends the absolute address without a guest live-in.
+            put(code, [0xba'u8])
+          else:
+            # Read the old base even when this load replaces that lane.
+            readBodyBase(code, access, op.slots.bIndex)
+            put(code, [0x81'u8, 0xc2]) # ADD EDX,imm32 wraps modulo 2^32.
           cycleWord(code, uint32(op.immediate and 0xffffffff'u64))
           # One accept label and three skip labels per load fit the fact-bounded table.
           let accepted = uint8(nextLabel)
@@ -789,7 +795,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             labels[int(nextRegion)] = code.bytes.len
           cycleEdge(code, fixes, 0, refusal) # JMP rel32 when all three extents miss.
           labels[int(accepted)] = code.bytes.len
-          case op.opcode
+          case encoding
           of 124: put(code, [0x0f'u8, 0xb6, 0x04, 0x01]) # MOVZX EAX,byte [RCX+RAX].
           of 125: put(code, [0x48'u8, 0x0f, 0xbe, 0x04, 0x01]) # MOVSX RAX,byte [RCX+RAX].
           of 126: put(code, [0x0f'u8, 0xb7, 0x04, 0x01]) # MOVZX EAX,word [RCX+RAX] clears upper32.
@@ -797,7 +803,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           of 128: put(code, [0x8b'u8, 0x04, 0x01]) # MOV EAX,dword [RCX+RAX] clears upper32.
           of 129: put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
           of 130: put(code, [0x48'u8, 0x8b, 0x04, 0x01]) # MOV RAX,qword [RCX+RAX].
-          else: assert false # The common certificate admits only these seven relative load forms.
+          else: assert false # The common certificate admits only these seven load encodings.
           writeAccess(code, access, op.slots.aIndex)
 
     proc sealCheckedRead(code: var X86Block, fixes: seq[X86CycleFixup],

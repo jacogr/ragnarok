@@ -958,16 +958,21 @@ proc armReadImage(span: ArmReadSpan, ending: uint32,
 
 when NativeCheckedReadEnabled:
   proc emitArmCheckedRead(span: var ArmReadSpan, slots: RegisterSlots, displacement: uint32,
-      opcode: range[124..130]) =
+      opcode: range[124..130], absolute: bool) =
     ## Reuse the staged register bank while checking the true width of each positive extent.
     assert nativeReadOpcode(byte(opcode))
     let width = indirectMemoryAccess(opcode).width
-    let source = armRead(span.body, slots.bIndex)
+    if absolute:
+      # X3 receives the zero-extended source address without reserving a guest base lane.
+      armCompactImmediate(span.body.words, 3, uint64(displacement))
+    else:
+      # Read the old base before claiming the destination, including when they alias.
+      let source = armRead(span.body, slots.bIndex)
+      if not armSmallIndirectAddress(span.body.words, source, displacement, false):
+        # The 32-bit ADD wraps even when the captured immediate used a wide encoding.
+        armCompactImmediate(span.body.words, 2, uint64(displacement))
+        span.body.words.add(0x0b020003'u32 or (source shl 5)) # ADD W3,Wsource,W2.
     let destination = armWrite(span.body, slots.aIndex)
-    if not armSmallIndirectAddress(span.body.words, source, displacement, false):
-      # The 32-bit ADD wraps even when the captured immediate used a wide encoding.
-      armCompactImmediate(span.body.words, 2, uint64(displacement))
-      span.body.words.add(0x0b020003'u32 or (source shl 5)) # ADD W3,Wsource,W2.
     var accepted = default(array[3, int])
     for region in 0..<3:
       # X3 is the wrapped address. X17 keeps the borrowed context across every arithmetic operation.
@@ -996,11 +1001,12 @@ when NativeCheckedReadEnabled:
     var span = default(ArmReadSpan)
     for index in 0..<body.len:
       let op = body.operation(index)
-      if nativeReadOpcode(op.opcode):
-        let opcode = int(op.opcode)
+      let encoding = nativeReadEncodingOpcode(op.opcode)
+      if nativeReadOpcode(encoding):
+        let opcode = int(encoding)
         assert opcode >= 124 and opcode <= 130
         emitArmCheckedRead(span, op.slots, uint32(op.immediate and 0xffffffff'u64),
-          range[124..130](opcode))
+          range[124..130](opcode), encoding != op.opcode)
       else:
         emitArmReadArithmetic(span, op.opcode, op.slots, op.immediate)
     result = armReadImage(span, NativeReadSuccess, false, false).words
