@@ -7,9 +7,10 @@
 ## Sharing the implementation keeps validation, retained-block selection and query budgets
 ## consistent across MCP and WebSocket RPC. Calls borrow one query context for their duration.
 ##
-## State tools select an exact block and echo its hash and chain identity. Their values keep
-## the RPC distinction between absent data and present empty bytes. Hashes and bytes use padded
-## Base64. Tool discovery exposes the argument and result shapes from the registry below.
+## State tools select an exact block. Query results echo its hash and chain identity,
+## including refusals returned by RPC. The adapter's busy and response-budget errors
+## return only error details. Values keep the RPC distinction between absent data and
+## present empty bytes. Hashes and bytes use padded Base64.
 ##
 ## See spec/mcp.md for the pinned protocol references and interoperability evidence.
 
@@ -146,8 +147,9 @@ proc query(methodName: string, arguments: JsonArray, info: rpc.ClientInfo): seq[
 proc callTool(values: seq[JsonToken], params: int, id: JsonValue, context: QueryContext): string =
   # Validate the named argument surface before touching state. A busy context carries no
   # canonical graph aliases, so a valid request can ask the client to retry during a worker lease.
-  # JSON-RPC errors describe invalid calls. isError results describe valid calls the query
-  # layer refused, such as a missing retained block or an unavailable complete state read.
+  # JSON-RPC errors cover malformed envelopes, unknown tools and wrong argument shapes.
+  # Tool errors include downstream validation failures such as malformed Base64, query
+  # refusals, and the adapter's busy and response-budget failures.
   let name = member(values, params, "name")
   let arguments = member(values, params, "arguments")
   if name < 0 or values[name].kind != stringValue or
