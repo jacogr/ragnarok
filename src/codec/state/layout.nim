@@ -1,12 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## GP 0.8.0 state-key constructors and 64-byte trie-node layout, not trie construction/state
-## serialization. See spec/state-layout.md; all outputs are fixed independent value copies with
-## no caller-buffer mutation.
+## Gray Paper state-key and 64-byte trie-node layout.
 ##
-## Exposes nominal state keys, chapter/service key constructors, typed trie-node metadata and
-## node encoding, decoding and hashing.
+## Layout operations return fixed owned values. Node tags use the most-significant
+## bit convention. A branch spends the left hash's high bit on the discriminator,
+## so decoding yields a partial commitment and callers must resolve it as such.
+## Hashed leaves retain a value digest, while inline leaves require canonical zero
+## padding. Raw node hashing validates the layout first.
+##
+## A zero root for an empty trie is a construction rule. Hashing a zero-filled
+## branch computes an ordinary node digest. See spec/state-layout.md for pinned equations.
 
 import ../[bounded, composite]
 import ../../crypto/primitives
