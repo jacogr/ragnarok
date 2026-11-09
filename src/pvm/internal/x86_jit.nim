@@ -943,6 +943,15 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
     when NativeReadCycleEnabled:
       const
+        # Explicit register profiles and the SysV stack witness keep their original lowering.
+        readCycleDefaultProfile = not (defined(pvmX86ResidentProof) or
+          defined(pvmX86ReadCycleResident) or defined(pvmX86ReadCycleBudgetRegisters) or
+          defined(pvmX86ReadCycleRoleRegisters) or defined(pvmX86ReadCycleCredits))
+        readCycleUsesResident = readCycleDefaultProfile or defined(pvmX86ReadCycleResident)
+        readCycleUsesBudgetRegisters = readCycleDefaultProfile or
+          defined(pvmX86ReadCycleBudgetRegisters)
+        readCycleUsesRoleRegisters = readCycleDefaultProfile or defined(pvmX86ReadCycleRoleRegisters)
+        readCycleUsesCredits = readCycleDefaultProfile or defined(pvmX86ReadCycleCredits)
         readCyclePrepaid = 7'u8
         readCycleUnpaid = 8'u8        # One return label per role in enum order.
         readCyclePaidMiss = 15'u8
@@ -957,7 +966,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleCreditPublish = 41'u8
         readCycleCreditLocal = 42'u8
         readCycleLocal =
-          when defined(pvmX86ReadCycleCredits): readCycleCreditLocal
+          when readCycleUsesCredits: readCycleCreditLocal
           else: readCycleExactLocal
         readCycleBodyOps = 22
         readCycleSetupOps = 3
@@ -1234,14 +1243,14 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           if nativeReadEncodingOpcode(opcode) != opcode: return @[]
 
         let dirty = readBodyDirty(cycle.read, readCycleBodyOps)
-        let resident = defined(pvmX86ReadCycleResident) and fitsCheckedReadBank(dirty)
-        let budgetRegisters = resident and defined(pvmX86ReadCycleBudgetRegisters)
+        let resident = readCycleUsesResident and fitsCheckedReadBank(dirty)
+        let budgetRegisters = resident and readCycleUsesBudgetRegisters
         let roleMask = dirty or (1'u32 shl int(word.baseLane))
-        let roleRegisters = budgetRegisters and defined(pvmX86ReadCycleRoleRegisters) and
+        let roleRegisters = budgetRegisters and readCycleUsesRoleRegisters and
           fitsCheckedReadBank(roleMask)
         # The opt-off build retains the original label array and reservation emitter.
         let credits =
-          when defined(pvmX86ReadCycleCredits):
+          when readCycleUsesCredits:
             allowCredits and roleRegisters and readCycleFitsCredits(cycle.layout)
           else:
             false
@@ -1410,12 +1419,10 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         takeX86Instructions(code)
 
       proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
-        ## Temporarily only opt-in x86 uses credits. ARM uses exact per-role budgets.
-        ## Both lower all seven roles natively and publish the same checked receipt.
-        ## Credits require the enabled connected Read profile on Linux x86-64.
-        ## Enable pvmX86ReadCycleResident, pvmX86ReadCycleBudgetRegisters, and
-        ## pvmX86ReadCycleRoleRegisters. The Read and role masks must fit the bank.
-        when defined(pvmX86ReadCycleCredits):
+        ## Ordinary x86 uses register budgets and credits for eligible connected cycles.
+        ## The Read and role masks must fit the bank, and every role must fit one credit.
+        ## Both x86 and ARM publish the same checked receipt for all seven roles.
+        when readCycleUsesCredits:
           result = emitX86ReadCycle(cycle, true)
           if result.len != 0: return
         # Retry the exact emitter if the credit image could not fit the native image limit.

@@ -53,7 +53,7 @@ proc checkConnectedReadiness*(runtime: NativeRuntime, prepared: PreparedProgram,
     assert observed.nativeBranchCalls == 0 and observed.nativeHeaderCalls == 0
   else:
     assert backend == PvmBackend.Jit and observed.nativeFragments == 1
-    let extent = when defined(pvmX86Jit): 2641'u64 else: 2116'u64
+    let extent = when defined(pvmX86Jit): 2918'u64 else: 2116'u64
     let resident = uint64(sample - 1)
     assert observed.nativeCodeBytes == extent
     assert observed.nativeCalls == 651'u64 * resident
