@@ -69,7 +69,8 @@ proc strictNumber(token: string): bool =
   i == token.len
 
 proc parseValues*(text: string, values: var seq[JsonToken], maxValues = 2048, maxDepth = 16): bool =
-  ## Adapt standard streaming events to owned dispatch values; failure discards all partial output.
+  ## Adapt standard streaming events to owned dispatch values.
+  ## A false return may leave a partial token sequence. Callers must discard it.
   ## The stdlib handles delimiters, separators, decoding and syntax errors. We cap its stack growth
   ## between events, enforce string object keys and preserve numeric text rather than using getInt/getFloat.
   if not strictLexemes(text): return false

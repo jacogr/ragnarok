@@ -534,8 +534,9 @@ Native tests use a real ephemeral listener and connected nonblocking sockets car
 frames to check publication while a reply is partly written, subsequent batch queries on the same
 connection, historical lookup, old-context lifetime, all append rejection reasons, repeated
 publication, incomplete input across an update and default/disabled/unseeded/closed lifecycle behavior.
-The complete importer must still call this boundary after successful execution and head selection; CLI startup remains
-genesis-only until that integration exists. Finality and reorgs remain separate work.
+These original checks used genesis-only startup. Current Services can also restore retained
+history and start RPC with the complete selected view, including explicit finality. See
+[finalized-head publication](#explicit-finalized-head-publication) for its separate evidence.
 
 
 ## Best-block WebSocket subscriptions
