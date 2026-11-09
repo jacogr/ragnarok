@@ -161,8 +161,6 @@ type
       x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
       x86Jit: nil X86Jit          # Exclusive code-only owner; never contains an invocation address.
       x86WideAdmission: FlatX86WideAdmission # Source PCs and retry counts persist with the exact code owner.
-      x86PreviousHeader, x86PreviousNext: uint32 # Observed invocation-local edges discover only closed pure loops.
-      x86PreviousValid: bool
       when defined(pvmX86CheckedStoreReceipt):
         x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
@@ -2091,10 +2089,6 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
   result.dynamicOffsets = default(array[256, uint64])
-  when defined(pvmX86Jit):
-    result.x86PreviousHeader = flatStop
-    result.x86PreviousNext = flatStop
-    result.x86PreviousValid = false
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     result.armPreviousHeader = flatStop
     result.armPreviousNext = flatStop
@@ -2264,100 +2258,6 @@ when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
     true
 
 when defined(pvmX86Jit):
-  proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool
-    ## Cold admission is defined after exact branch-capability checking.
-
-  proc flatX86Execute(f: var FlatFrame, offset: uint32): uint32 =
-    ## Partial attempt prefixes always use the original checked node; native arithmetic has no intermediate exit.
-    if f.barrier == flatStop:
-      block:
-        # Release the disjoint register borrow before any original fallback can mutate the frame.
-        let jit {.cursor.} = f.x86Jit
-        assert jit != nil
-        if jit != nil:
-          let ending = callX86Entry(jit, offset, f.info.registers)
-          if ending != flatStop: return ending
-    let original = f.x86Original[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatX86RunNext[ClearPaid: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
-    ## Only complete reserved pure prefixes enter native control; the cache borrow ends before an error can materialize frame state.
-    var destination = flatStop
-    block:
-      let jit {.cursor.} = f.x86Jit
-      assert jit != nil
-      if jit != nil: destination = callX86Branch(jit, offset, f.info.registers)
-    if destination == flatStop or int(destination) >= f.handlers.len:
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    when ClearPaid: f.info.blockCharged = false
-    destination
-
-  proc flatX86Branch(f: var FlatFrame, offset: uint32): uint32 =
-    ## A partial source reservation must stop through original handlers, including its exact temporary barrier.
-    if f.barrier != flatStop:
-      let original = f.x86Original[int(offset)]
-      assert original != nil
-      if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    flatX86RunNext[true](f, offset)
-
-  proc flatX86Enter(f: var FlatFrame, offset: uint32): uint32 =
-    ## Preserve canonical zero-budget, gas, resumed-block and partial-prefix ordering before the native handoff.
-    flatReserve(f, offset)
-    if f.barrier != flatStop:
-      let selected = f.handlers[int(offset+1)]
-      return selected(f, offset+1)
-    block:
-      let jit {.cursor.} = f.x86Jit
-      assert jit != nil
-      if jit != nil: inc jit.headerCalls
-    flatX86RunNext[true](f, offset+1)
-
-  proc flatX86Whole(f: var FlatFrame, offset: uint32): uint32 =
-    ## A complete pure block observes neither intermediate paid state nor a source PC; every partial/resumed/error path stays checked.
-    let args = f.arguments[int(offset)]
-    if f.barrier != flatStop or f.info.blockCharged or f.remaining < uint64(args.y) or
-        uint64(f.info.gas) < args.x:
-      return flatX86Enter(f, offset)
-    f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
-    f.remaining -= uint64(args.y)
-    f.reservation = offset or flatReservationHeaderFlag
-    block:
-      let jit {.cursor.} = f.x86Jit
-      assert jit != nil
-      if jit != nil: inc jit.headerCalls
-    flatX86RunNext[false](f, offset+1)
-
-  proc flatX86ProbeWhole(f: var FlatFrame, offset: uint32): uint32 =
-    ## At most eight complete visits discover an actual one/two-block round; exhaustion restores ordinary dispatch.
-    let jit = f.x86Jit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if f.pricingKind != 0 or x86RegionStatus(jit) != 0:
-      if f.handlers[int(offset)] == flatX86ProbeWhole: f.handlers[int(offset)] = flatX86Whole
-      return flatX86Whole(f, offset)
-    let args = f.arguments[int(offset)]
-    let complete = f.barrier == flatStop and not f.info.blockCharged and
-        f.remaining >= uint64(args.y) and uint64(f.info.gas) >= args.x
-    let destination = flatX86Whole(f, offset)
-    if not complete: return destination
-    let previous = f.x86PreviousHeader
-    let paired = f.x86PreviousValid and f.x86PreviousNext == offset and destination == previous and
-        previous != offset
-    f.x86PreviousHeader = offset
-    f.x86PreviousNext = destination
-    f.x86PreviousValid = true
-    if destination == offset or paired:
-      var connected = destination
-      let first = if paired: previous else: offset
-      let second = if paired: offset else: flatStop
-      if flatX86Cycle(f, first, second, connected): return connected
-    if x86RegionStatus(jit) != 0 or x86FinishProbe(jit, offset):
-      if f.handlers[int(offset)] == flatX86ProbeWhole: f.handlers[int(offset)] = flatX86Whole
-    destination
-
   func flatX86CachedBranch(f: FlatFrame, offset: uint32): bool =
     ## Exact original worker identity certifies that both scalar destinations passed checked source/target admission.
     let opcode = f.plan.facts[int(f.sites[int(offset)])].opcode
@@ -2380,90 +2280,8 @@ when defined(pvmX86Jit):
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
 
-  proc flatX86Region(f: var FlatFrame, offset: uint32): uint32 =
-    ## Every call borrows fresh state; a guard reenters the original header before that block has any effects.
-    let jit = f.x86Jit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let active = x86RegionCount(jit)
-    var headers = default(array[2, uint32])
-    var spans = default(array[2, uint32])
-    var prices = default(array[2, uint64])
-    for index in 0..<active:
-      headers[index] = x86RegionHeader(jit, range[0..1](index))
-      assert int(headers[index]) < f.arguments.len
-      spans[index] = f.arguments[int(headers[index])].y
-      prices[index] = f.arguments[int(headers[index])].x
-    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        offset != headers[0] or not x86RegionMatches(jit, headers, spans, prices):
-      return flatX86Whole(f, offset)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, uint64(flatStop)]
-    let destination = callX86Region(jit, f.info.registers, state)
-    f.info.gas = MachineGas(state[0])
-    f.remaining = state[1]
-    f.info.blockCharged = false
-    if state[4] != uint64(flatStop):
-      # Retain the last completed header even when the next entry returns on a quota/gas guard.
-      assert state[4] < uint64(f.arguments.len)
-      let last = uint32(state[4])
-      f.reservation = last or flatReservationHeaderFlag
-    assert int(destination) < f.handlers.len
-    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
-        oracle.StepError.InvalidPreparedProgram)
-    for index in 0..<active:
-      if destination == headers[index]: return flatX86Enter(f, destination)
-    destination
-
-  proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool =
-    ## Capture only complete positively resolved pure blocks; refusal retains every original source worker.
-    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
-    let jit = f.x86Jit
-    if jit == nil or x86RegionStatus(jit) == 1: return false
-    if x86RegionStatus(jit) == 2:
-      if x86RegionHeader(jit, 0) != first: return false
-      destination = flatX86Region(f, first)
-      return true
-    let active: range[1..2] = if second == flatStop: 1 else: 2
-    let headers = [first, second]
-    let before = x86Clock()
-    var blocks = default(array[2, X86RegionBlock])
-    for index in 0..<active:
-      let header = headers[index]
-      if int(header) >= f.handlers.len: return false
-      if f.handlers[int(header)] != flatX86Whole and f.handlers[int(header)] !=
-          flatX86ProbeWhole: return false
-      let charge = f.arguments[int(header)]
-      var native = default(X86Block)
-      var current = header+1
-      var terminal = false
-      while int(current) < f.handlers.len and current-header <= 65:
-        if int(current)+1 < f.sites.len and f.sites[int(current)] == f.sites[int(
-            current+1)]: return false
-        let fact = f.plan.facts[int(f.sites[int(current)])]
-        if fact.ending:
-          if not flatX86CachedBranch(f, current) or
-              f.sites[int(current)]+1 != f.sites[int(header)]+charge.y: return false
-          let args = f.arguments[int(current)]
-          emitX86Branch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and
-              0xffffffff'u64)), uint32(args.x shr 32), args.y)
-          blocks[index] = X86RegionBlock(header: header, span: charge.y, operations: current-header,
-              yes: uint32(args.x shr 32), no: args.y, price: charge.x, body: move(native))
-          terminal = true
-          break
-        if not fact.fallthrough or not supportedX86Opcode(fact.opcode): return false
-        let payload = flatSourcePayload(f.plan, fact)
-        emitX86Operation(native, fact.opcode, payload.args.slots, payload.args.x)
-        inc current
-      if not terminal: return false
-    let admitted = publishX86Region(jit, blocks, active)
-    jit.compilationNs += x86Clock()-before
-    if not admitted: return false
-    f.handlers[int(first)] = flatX86Region
-    destination = flatX86Region(f, first)
-    true
-
   proc flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
-    ## A witness requires real connected execution separately from normal arithmetic/conditional leaves.
+    ## Copy real region counters when a witness frame owns the legacy code cache.
     let jit = f.x86Jit
     if jit == nil: default(array[2, uint64])
     else: x86RegionStatistics(jit)
@@ -2483,9 +2301,6 @@ when defined(pvmX86Jit):
       let handler = f.handlers[int(header)]
       let kind = if handler == flatCharge: X86MemoryCycleHandlerKind.Ordinary
         elif handler == flatChargedWordLoop: X86MemoryCycleHandlerKind.CheckedWord
-        elif handler == flatX86Whole: X86MemoryCycleHandlerKind.NativeWhole
-        elif handler == flatX86ProbeWhole: X86MemoryCycleHandlerKind.NativeProbe
-        elif handler == flatX86Region: X86MemoryCycleHandlerKind.NativeRegion
         else: X86MemoryCycleHandlerKind.Other
       found = X86MemoryCycleHeader(pc: pc, header: header, ordinal: ordinal, span: source.span,
         terminal: summary.terminal, price: source.price,
@@ -2514,10 +2329,7 @@ when defined(pvmX86Jit):
         return false
       var prefix = default(X86MemoryCycleHeader)
       if not flatX86CompleteSource(f, prefixPc, prefix): return false
-      if prefix.kind notin {X86MemoryCycleHandlerKind.Ordinary,
-          X86MemoryCycleHandlerKind.NativeWhole, X86MemoryCycleHandlerKind.NativeProbe,
-          X86MemoryCycleHandlerKind.NativeRegion} or
-          prefix.opcode != 1 or
+      if prefix.kind != X86MemoryCycleHandlerKind.Ordinary or prefix.opcode != 1 or
           f.handlers[int(prefix.terminal)] != flatCachedJump[1]: return false
       var dirty = default(X86MemoryCycleHeader)
       if not flatX86CompleteTarget(f, f.arguments[int(prefix.terminal)].y, dirty): return false
@@ -2675,10 +2487,7 @@ when defined(pvmX86Jit):
         var guard = default(X86MemoryCycleHeader)
         if not flatX86CompleteTarget(f, f.arguments[int(outside.terminal)].y, guard) or
             guard.span != 3 or guard.opcode != 81 or
-            guard.kind notin {X86MemoryCycleHandlerKind.Ordinary,
-              X86MemoryCycleHandlerKind.NativeWhole,
-              X86MemoryCycleHandlerKind.NativeProbe,
-              X86MemoryCycleHandlerKind.NativeRegion} or
+            guard.kind != X86MemoryCycleHandlerKind.Ordinary or
             not flatX86CachedBranch(f, guard.terminal): return false
         for index, opcode in [131'u8, 149, 81]:
           if f.plan.facts[int(guard.ordinal)+index].opcode != opcode: return false
@@ -2785,16 +2594,10 @@ when defined(pvmX86Jit):
       ## An impossible post-native receipt cannot be rolled back or replayed through checked code.
 
     func flatX86CyclePrefixMatches(f: FlatFrame, candidate: X86MemoryCycleCandidate): bool =
-      ## A cheap exact handler-class check retires persistent pure promotions without rescanning source.
-      let header = candidate.prefix.header
-      if int(header) >= f.handlers.len: return false
-      let handler = f.handlers[int(header)]
-      case candidate.prefix.kind
-      of X86MemoryCycleHandlerKind.Ordinary: handler == flatCharge
-      of X86MemoryCycleHandlerKind.NativeWhole: handler == flatX86Whole
-      of X86MemoryCycleHandlerKind.NativeProbe: handler == flatX86ProbeWhole
-      of X86MemoryCycleHandlerKind.NativeRegion: handler == flatX86Region
-      else: false
+      ## Reuse the seal only while its prefix still has the exact checked charge handler.
+      let prefix = candidate.prefix
+      prefix.kind == X86MemoryCycleHandlerKind.Ordinary and
+        int(prefix.header) < f.handlers.len and f.handlers[int(prefix.header)] == flatCharge
 
     proc flatX86CycleReadRegionSpan(first: uint64, bytes: openArray[byte], address: uint64,
         width: uint8, memory: var X86CycleMemory) =
@@ -3113,17 +2916,8 @@ when defined(pvmX86Jit):
             f.handlers[int(candidate.loopBranch.terminal)] != flatBranch[88] or
             f.handlers[int(candidate.readBlock.terminal)] != flatCachedJump[1]:
           return false
-        let guard = f.handlers[int(candidate.loopGuard.header)]
-        case candidate.loopGuard.kind
-        of X86MemoryCycleHandlerKind.Ordinary:
-          if guard != flatCharge: return false
-        of X86MemoryCycleHandlerKind.NativeWhole:
-          if guard != flatX86Whole: return false
-        of X86MemoryCycleHandlerKind.NativeProbe:
-          if guard != flatX86ProbeWhole: return false
-        of X86MemoryCycleHandlerKind.NativeRegion:
-          if guard != flatX86Region: return false
-        else: return false
+        if candidate.loopGuard.kind != X86MemoryCycleHandlerKind.Ordinary or
+            f.handlers[int(candidate.loopGuard.header)] != flatCharge: return false
         let outside = f.arguments[int(cycle.outside.terminal)]
         let guardArms = f.arguments[int(candidate.loopGuard.terminal)]
         let branchArms = f.arguments[int(candidate.loopBranch.terminal)]
@@ -3351,10 +3145,7 @@ when defined(pvmX86Jit):
         var prefix = default(X86MemoryCycleHeader)
         let target = uint32(f.arguments[int(tail)].x shr 32)
         if not flatX86CompleteTarget(f, target, prefix) or prefix.opcode != 1 or
-            prefix.span < 4 or prefix.kind notin {X86MemoryCycleHandlerKind.Ordinary,
-              X86MemoryCycleHandlerKind.NativeWhole,
-              X86MemoryCycleHandlerKind.NativeProbe,
-              X86MemoryCycleHandlerKind.NativeRegion}: return
+            prefix.span < 4 or prefix.kind != X86MemoryCycleHandlerKind.Ordinary: return
         var opcodes = default(array[4, byte])
         var operations = 0
         for ordinal in prefix.ordinal..<prefix.ordinal+prefix.span:
@@ -4211,8 +4002,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   f.barrier = flatStop
   f.savedHandler = nil
   f.attemptedExit = false
-  when defined(pvmX86Jit):
-    f.x86PreviousValid = false
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # No observed edge can bridge an invocation or host stop; cached code itself remains source-owned.
     f.armPreviousValid = false

@@ -39,7 +39,7 @@ when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
   type
     X86MemoryCycleHandlerKind* {.pure.} = enum
       ## Only copied identity classes are retained; a callable handler pointer never escapes.
-      Other, Ordinary, CheckedWord, NativeWhole, NativeProbe, NativeRegion
+      Other, Ordinary, CheckedWord
     X86MemoryCycleHeader* = object
       ## Copied source and cached-arm coordinates contain no invocation pointer or guest value.
       pc*, header*, ordinal*, span*, terminal*, yes*, no*: uint32
@@ -144,8 +144,7 @@ type
     status: uint8
     count: uint32
     code: uint32
-    headers, spans, operations: array[2, uint32]
-    prices: array[2, uint64]
+    spans, operations: array[2, uint32]
     calls, blocks: uint64
   X86Arena = object ## Exclusive OS resource; the containing reference never escapes the leased frame/stream.
     handle: nil pointer
@@ -438,17 +437,6 @@ func x86RegionCount*(jit: X86Jit): range[1..2] =
   assert jit.region.status == 2 and count >= 1 and count <= 2
   range[1..2](count)
 
-func x86RegionHeader*(jit: X86Jit, index: range[0..1]): uint32 =
-  ## The region retains exact-source headers rather than host-code addresses.
-  assert jit.region.status == 2 and uint32(index) < jit.region.count
-  jit.region.headers[index]
-
-func x86RegionMatches*(jit: X86Jit, headers, spans: array[2, uint32],
-    prices: array[2, uint64]): bool =
-  ## Every fresh invocation must match the captured charge context, including inactive zero slots.
-  jit.region.status == 2 and jit.region.headers == headers and jit.region.spans == spans and
-      jit.region.prices == prices
-
 proc regionWord(fragment: var X86Block, value: uint32) =
   ## Emit a complete little-endian rel32/immediate without native host-endian assumptions.
   for shift in 0..<4: fragment.bytes.add(byte((value shr (shift*8)) and 255))
@@ -630,9 +618,7 @@ proc publishX86Region*(jit: X86Jit, blocks: array[2, X86RegionBlock], count: ran
   if published < 0: return false
   jit.region.code = uint32(published)
   for index in 0..<count:
-    jit.region.headers[index] = blocks[index].header
     jit.region.spans[index] = blocks[index].span
-    jit.region.prices[index] = blocks[index].price
     jit.region.operations[index] = blocks[index].operations
   jit.region.count = uint32(count)
   jit.region.status = 2
