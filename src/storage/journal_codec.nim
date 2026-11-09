@@ -69,7 +69,9 @@ proc journalFrameExtent*(input: openArray[byte], limit: ByteLimit): FrameResult[
 proc encodeFrame(generation: RepositoryGeneration, batch: TrieExport,
     context: openArray[byte], contextual: bool, contextLimit: ByteLimit,
     limits: RecordLimits, limit: ByteLimit): FrameResult[seq[byte]] =
-  ## Bound the inner codec before hashing/allocation, then checksum length, generation and body.
+  # Reserve the header/context prefix and checksum trailer while encoding the strict
+  # body into its final buffer. Inner record refusal remains distinct from failure
+  # of the outer checksum. Quotas are checked before either integrity operation.
   if uint64(generation) == 0: return FrameResult[seq[byte]](status: FrameError.InvalidFormat)
   let maximum = min(uint64(limit), uint64(high(int)))
   let overhead = if contextual: 56'u64 else: 48'u64
