@@ -2356,47 +2356,6 @@ when defined(pvmX86Jit):
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
 
-  proc flatX86Upgrade(f: var FlatFrame, offset: uint32): bool =
-    ## Promote one existing arithmetic leaf only after both original branch arms have positive cached capabilities.
-    let jit = f.x86Jit
-    if jit == nil: return false
-    let ending = x86Ending(jit, offset)
-    if not flatX86CachedBranch(f, ending): return false
-    let before = x86Clock()
-    var native = default(X86Block)
-    var current = offset
-    while current < ending:
-      # Rebuild only immutable pure facts already admitted by this exact source record.
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      let payload = flatSourcePayload(f.plan, fact)
-      emitX86Operation(native, fact.opcode, payload.args.slots, payload.args.x)
-      inc current
-    let args = f.arguments[int(ending)]
-    let branch = f.plan.facts[int(f.sites[int(ending)])]
-    emitX86Branch(native, branch.opcode, args.slots, flatSext32(uint32(args.x and 0xffffffff'u64)),
-        uint32(args.x shr 32), args.y)
-    let promoted = publishX86Entry(jit, offset, ending, ending-offset+1, native, conditional = true)
-    jit.compilationNs += x86Clock()-before
-    if not promoted:
-      # A full/refused arena preserves its already working arithmetic leaf and removes repeated promotion attempts.
-      f.handlers[int(offset)] = flatX86Execute
-      return false
-    f.handlers[int(offset)] = flatX86Branch
-    if offset > 0:
-      let header = offset-1
-      let plain: FlatHandler = flatCharge
-      if f.handlers[int(header)] == plain and
-          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
-        # Only an exact ordinary header owning this entire pure source suffix may fold its complete reservation.
-        f.x86Original[int(header)] = plain
-        assert f.arguments[int(header)].y > 0
-        if f.pricingKind == 0 and x86RegionStatus(jit) == 0:
-          x86StartProbe(jit, header)
-          f.handlers[int(header)] = flatX86ProbeWhole
-        else:
-          f.handlers[int(header)] = flatX86Whole
-    true
-
   proc flatX86Region(f: var FlatFrame, offset: uint32): uint32 =
     ## Every call borrows fresh state; a guard reenters the original header before that block has any effects.
     let jit = f.x86Jit
@@ -2484,11 +2443,6 @@ when defined(pvmX86Jit):
     let jit = f.x86Jit
     if jit == nil: default(array[2, uint64])
     else: x86RegionStatistics(jit)
-
-  proc flatX86Pending(f: var FlatFrame, offset: uint32): uint32 =
-    ## Original first execution admits both branch arms; only a later full reservation may promote native control.
-    if f.barrier == flatStop and flatX86Upgrade(f, offset): return flatX86Branch(f, offset)
-    flatX86Execute(f, offset)
 
   when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
     func flatX86CompleteSource(f: FlatFrame, pc: uint32,
@@ -3942,55 +3896,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       f.handlers[int(header)] = original
     original(f, header)
 
-  proc flatArmTryMixedProbe(f: var FlatFrame, terminal: uint32) =
-    ## Discover one general mixed source block when its terminal first enters the sealed stream.
-    if f.pricingKind != 0: return # Priced headers cannot promote; retain their ordinary checked dispatch.
-    if int(terminal) >= f.sites.len: return
-    let ending = f.plan.facts[int(f.sites[int(terminal)])]
-    if not ending.ending or ending.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
-      return
-    var header = flatStop
-    var candidate = terminal
-    while candidate > 0 and terminal-candidate < uint32(armMixedMaximumSourceSpan):
-      dec candidate
-      if f.handlers[int(candidate)] != flatCharge: continue
-      let charge = f.arguments[int(candidate)]
-      if charge.y == 0 or charge.y > uint32(armMixedMaximumSourceSpan): continue
-      let source = f.sites[int(candidate)]
-      let sourceEnd = uint64(source)+uint64(charge.y)
-      if sourceEnd != uint64(f.sites[int(terminal)])+1 or
-          sourceEnd > uint64(f.plan.facts.len) or sourceEnd > uint64(high(uint32)) or
-          f.plan.facts[int(source)].sourceCount != charge.y: continue
-      # A folded noop has no body node. Every remaining node must cover this exact
-      # ordinary header's ordered source facts, ending at the observed branch.
-      var node = candidate+1
-      var valid = true
-      for ordinal in source..<uint32(sourceEnd):
-        if f.plan.facts[int(ordinal)].opcode == 2: continue
-        if node > terminal or f.sites[int(node)] != ordinal:
-          valid = false
-          break
-        inc node
-      if valid and node == terminal+1:
-        header = candidate
-        break
-    if header == flatStop or terminal <= header+2: return
-    var loads = 0
-    var stores = 0
-    for current in header+1..<terminal:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      if fact.ending or not fact.fallthrough: return
-      if fact.opcode in 120'u8..123'u8: inc stores
-      elif fact.opcode in 124'u8..130'u8: inc loads
-      elif not supportedArmOpcode(fact.opcode): return
-    if loads < 1 or stores < 1 or loads+stores < 2 or loads+stores > 16: return
-    let jit = f.armJit
-    if jit == nil or not armStartMixedProbe(jit, header, uint32(f.handlers.len),
-        terminal): return
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(header)] = flatCharge
-    f.handlers[int(header)] = flatArmMixedProbe
-
   proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool =
     ## Rebuild immutable arithmetic facts only after both existing scalar branch arms are admitted; no pricing/resolve is moved.
     let jit = f.armJit
@@ -4944,50 +4849,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
     f.armOriginal[int(offset)] = f.handlers[int(offset)]
     f.handlers[int(offset)] = flatArmMemory
-    ending
-
-  proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
-    ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
-    if f.armJit == nil: f.armJit = newArmJit(clippedReads = true)
-    let jit = f.armJit
-    if jit == nil: return offset
-    let entry = armEntry(jit, offset, uint32(f.handlers.len))
-    if entry != 0: return offset
-    if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
-    if f.plan.facts[int(f.sites[int(offset)])].opcode in 52'u8..58'u8:
-      return flatArmCompileDirectReadBranch(f, offset)
-    if f.plan.facts[int(f.sites[int(offset)])].opcode in
-        124'u8..130'u8: return flatArmCompileMemory(f, offset)
-    var native = default(ArmBlock)
-    var ending = offset
-    var count = 0'u32
-    while int(ending) < f.handlers.len and count < 64:
-      # Headers share their source site with the immediately following operation; never bypass charging.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
-      inc ending
-      inc count
-    let terminal = if int(ending) < f.sites.len:
-        f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
-    if count > 0 and (terminal in 52'u8..58'u8 or terminal in 124'u8..130'u8):
-      # A failed speculative admission leaves the established pure leaf available below.
-      let combined = flatArmCompilePrefixReadSpan(f, offset)
-      if combined > offset: return combined
-    # Short conditional suffixes can fuse their checked header after genuine branch admission.
-    # Other short leaves retain the original floor; isolated calls would add an extra native transition.
-    if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
-      refuseArmEntry(jit, offset)
-      return offset
-    var words = armInstructions(native)
-    let published = publishArmEntry(jit, offset, ending, count, words)
-    if not published: return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
-        170'u8..175'u8}: flatArmPending else: flatArmExecute
     ending
 
   proc flatArmStatistics*(f: FlatFrame): array[5, uint64] =
