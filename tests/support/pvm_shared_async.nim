@@ -649,6 +649,35 @@ when defined(pvmSharedAsyncWitness):
       after.nativeHeaderCalls-before.nativeHeaderCalls == 1
     assert machineInfo(input).value == initial, "opcode 83: immutable input CPU"
 
+  proc checkedImmediateSuffix(source: Machine, code: PreparedProgram) =
+    ## Exercise the attempt boundary and each original interior entry of the bound checked pair.
+    let initial = machineInfo(source).value
+    let owner = programOf(source).value
+    let memory = memoryOf(source).value
+    assert execute(source, ExecutionStepLimit(2), code).error == StepError.StepLimitExceeded
+    for paid in [false, true]:
+      for pc in [3'u64, 6]:
+        # Finish the final visit from the ADD or from the independently addressable branch.
+        var cpu = initial
+        cpu.pc = CodeAddress(pc)
+        cpu.blockCharged = paid
+        cpu.gas = MachineGas(if paid: 29'u64 else: 51'u64)
+        cpu.registers[10] = RegisterValue(if pc == 3: 9999'u64 else: 10000'u64)
+        let suffix = captureMachine(owner, memory, cpu)
+        assert suffix.error == MachineError.None
+        let attempts = if pc == 3: 3'u64 else: 2'u64
+        assert execute(suffix.value, ExecutionStepLimit(attempts-1), code).error ==
+          StepError.StepLimitExceeded
+        var expected = cpu
+        expected.pc = CodeAddress(0)
+        expected.gas = MachineGas(7)
+        expected.blockCharged = true
+        expected.registers[10] = RegisterValue(10000)
+        checkImmediateResult(execute(suffix.value, ExecutionStepLimit(attempts), code), expected,
+          StepExit.Halt, PvmBackend.Interpreted)
+        assert machineInfo(suffix.value).value == cpu, "opcode 83: immutable suffix CPU"
+    assert machineInfo(source).value == initial, "opcode 83: immutable source CPU"
+
   proc immediateLoops() =
     ## Qualify the unchanged arithmetic-10000 fixture and a separate signed-word boundary.
     if not nativePlatformSupported(): return
@@ -689,6 +718,10 @@ when defined(pvmSharedAsyncWitness):
       expected.registers[10] = RegisterValue(if highBit: 0xffffffff80000800'u64 else: 10000'u64)
       checkImmediateResult(execute(source.value, budget, native.value), expected, StepExit.Halt,
         PvmBackend.Interpreted)
+      if not highBit:
+        # The queued image must survive reuse of the checked stream at both interior PCs.
+        checkedImmediateSuffix(source.value, native.value)
+        assert runtime.runtimeInfo.phase == NativePhase.Queued
       assert runtime.runtimeInfo.submitted == 1
       pauseNativeCompiler(runtime, false)
       waitNativeCompiler(runtime)
@@ -714,6 +747,9 @@ when defined(pvmSharedAsyncWitness):
       else:
         readyImmediate(source.value, budget, expected, StepExit.Halt, 30000, checked.value,
           native.value)
+        # A ready image cannot consume the short interior-entry budgets.
+        checkedImmediateSuffix(source.value, native.value)
+        assert preparedInfo(native.value).value.nativeOperations == 30000
       assert runtime.close()
 
   proc foldedLoopOwner(): Program =
