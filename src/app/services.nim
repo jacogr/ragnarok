@@ -3388,7 +3388,11 @@ proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmission
   if services.rpcLease == nil:
     services.workInput = default(WorkSubmissionJob)
     return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
-  let admitted = services.proofWorker.submit(services.workInput)
+  let admitted = if phase == WorkSessionPhase.Completing:
+    # The proof lease excludes preparation until collection or join, so package refinement can use its compiler.
+    services.proofWorker.submit(services.workInput, services.nativeRuntime)
+  else:
+    services.proofWorker.submit(services.workInput)
   if admitted.error == ProofWorkerError.None:
     services.proofing = true
     services.workActive = true
