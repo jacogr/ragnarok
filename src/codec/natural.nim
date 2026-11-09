@@ -3,9 +3,10 @@
 
 ## JAM general naturals over the complete uint64 domain.
 ##
-## Leading one bits in the header count little-endian tail bytes. Each added tail
-## byte leaves seven more value bits overall. The ff header carries eight payload
-## bytes and no value bits. A decoder rejects a value that fits in a shorter form
+## Leading one bits in the header count little-endian tail bytes. Forms with zero
+## through seven tail bytes gain seven value bits per added byte. The ff header
+## carries no value bits and its eight tail bytes carry the full 64-bit value.
+## A decoder rejects a value that fits in a shorter form
 ## so accepted bytes are exactly the image of the encoder.
 ##
 ## The input is borrowed for a single call. Failure returns a reason without
