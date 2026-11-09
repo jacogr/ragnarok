@@ -1,9 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Immutable complete GP 0.8.0 state tries with path-copying atomic batches and cached hashes.
-## Inputs are borrowed for synchronous calls; published nodes and owned values never mutate.
-## Exposes complete revisions, retained lookup values, explicit limits and guarded results.
+## Immutable complete-state trie revisions with path copying and cached commitments.
+##
+## An initialized empty revision has an owner and a zero root. A default handle has
+## no revision. Leaves own complete keys and copied values. Branches retain children
+## and cached summaries, including unary branches along a shared prefix. A singleton
+## collapses to a leaf at any depth. Retained lookup values keep their leaf alive.
+##
+## Updates share untouched immutable subtrees. Per-revision and per-batch ceilings
+## govern each operation. Callers control how many old revisions they retain.
 
 import std/[algorithm, assertions]
 import ../node/records as node_records
@@ -330,7 +336,11 @@ proc applyBatch(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult
     completed: FullStateTrie(data: RevisionData(root: candidate, limits: limits)))
 
 proc apply*(source: FullStateTrie, writes: openArray[TrieWrite]): TrieResult[FullStateTrie] =
-  ## Atomically path-copy validated writes, preserving all previous revisions even on hash refusal.
+  ## Publish a new revision only after complete preflight and hashing.
+  ## Duplicate keys and payload-bearing deletes fail. Final-map quotas account for
+  ## removals before insertions so batch order cannot change the verdict. Check the
+  ## complete final topology before hashing new nodes. Only private candidate nodes
+  ## can acquire new caches, so hash refusal preserves all previous revisions.
   applyBatch(source, writes)
 
 proc newFullStateTrie*(entries: openArray[StateEntry],
