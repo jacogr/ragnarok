@@ -6,10 +6,29 @@
 import std/[assertions, syncio]
 import ../../src/pvm/[machine, program]
 import ../../src/pvm/internal/[native_ir, native_platform, native_read_body, native_read_cycle]
+when defined(pvmReadCycleCreditWitness) and defined(pvmX86Jit) and NativeReadCycleEnabled:
+  import ../../src/pvm/internal/x86_jit
 when NativeReadCycleEnabled and defined(pvmSharedAsyncWitness):
   import ../../src/pvm/internal/native_pipeline
 
 when NativeReadCycleEnabled:
+  when defined(pvmReadCycleCreditWitness):
+    proc hasCreditReservation(image: openArray[byte]): bool =
+      ## Match the R9 minimum of the gas and quota credits in the emitted entry setup.
+      const signature = [0x49'u8, 0x89, 0xc9, 0x49, 0x89, 0xd0,
+        0x49, 0xc1, 0xe9, 7, 0x49, 0xc1, 0xe8, 5, 0x4d, 0x39, 0xc1,
+        0x4d, 0x0f, 0x47, 0xc8]
+      if image.len < signature.len: return false
+      for offset in 0..image.len-signature.len:
+        # A complete contiguous signature identifies the credit setup instead of a single opcode.
+        var equal = true
+        for index in 0..<signature.len:
+          if image[offset+index] != signature[index]:
+            equal = false
+            break
+        if equal: return true
+      false
+
   const
     wordAddress = 0x11000'u64
     tailAddress = 0x12000'u64
@@ -79,7 +98,7 @@ when NativeReadCycleEnabled:
 
   proc checkEntry(image: NativeImage, tailReadable: bool, gas, remaining: uint64,
       expectedHeader: uint32, expectedGas, expectedRemaining: uint64, exit: ReadExit,
-      receiptLayout = layout, pageDirty = true) =
+      receiptLayout = layout, pageDirty = true, expectedImage: openArray[byte] = []) =
     ## Compare each entire register/memory checkpoint and the receipt after real machine code.
     var registers = default(RegisterFile)
     for i in 0..<registers.len:
@@ -153,7 +172,13 @@ when NativeReadCycleEnabled:
       dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: gas, remaining: remaining,
       visits: [2'u64, 3, 4, 5, 6, 7, 8], lastCompleted: 9, paidRead: 9)
     let destination =
-      when defined(pvmX86Jit) and defined(pvmX86ResidentProof):
+      when defined(pvmReadCycleCreditWitness):
+        if expectedImage.len > 0:
+          enterNativeReadCycleAbiProof(image, registers, context, expectedImage)
+        else:
+          # Other shared entry cases keep their normal SysV witness.
+          enterNativeReadCycleAbiProof(image, registers, context)
+      elif defined(pvmX86Jit) and defined(pvmX86ResidentProof):
         enterNativeReadCycleAbiProof(image, registers, context)
       else:
         enterNativeReadCycle(image, registers, context)
@@ -168,7 +193,7 @@ when NativeReadCycleEnabled:
     assert registers == expected, "preserve each committed lane and discard speculative lanes"
     assert writable == expectedMemory, "publish only the committed Store bytes"
     assert dirty == initialDirty, "preserve the pre-existing dirty bitmap"
-    when defined(pvmReadCycleRoleWitness):
+    when defined(pvmReadCycleRoleWitness) and not defined(pvmReadCycleCreditWitness):
       # Keep the inherited boundary results visible in both prototype profiles.
       echo "READ_CYCLE_ROLE_LEGACY,", gas, ",", remaining, ",", destination, ",", context.gas, ",",
         context.remaining, ",", context.lastCompleted, ",", context.paidRead, ",",
@@ -211,7 +236,7 @@ when NativeReadCycleEnabled:
       FirstMiss, StoreGas, StoreAttempts, TailPreflight, Outside, ReadGas, LaterMiss
 
     proc checkRoleEntry(cycle: NativeReadCycle, image: NativeImage, extraWrites: range[0..2],
-        exit: RoleExit) =
+        exit: RoleExit, quotaRefill = false) =
       ## Assert all lanes and memory after a real SysV call against a literal oracle.
       let (gas, remaining, header, finalGas, finalRemaining) = case exit
         of RoleExit.FirstMiss: (0'u64, 0'u64, readHeader, 0'u64, 0'u64)
@@ -221,6 +246,10 @@ when NativeReadCycleEnabled:
         of RoleExit.Outside: (1000'u64, 1000'u64, 100'u32, 914'u64, 948'u64)
         of RoleExit.ReadGas: (146'u64, 1000'u64, readHeader, 59'u64, 947'u64)
         of RoleExit.LaterMiss: (1000'u64, 1000'u64, readHeader, 853'u64, 923'u64)
+      assert not quotaRefill or exit == RoleExit.LaterMiss
+      # Two initial quota credits cannot cover this paid path. The later paid miss consumes 77.
+      let available = if quotaRefill: 77'u64 else: remaining
+      let expectedQuota = if quotaRefill: 0'u64 else: finalRemaining
       var registers = default(RegisterFile)
       for slot in 0..<registers.len:
         registers[slot] = RegisterValue(0x1234567800000000'u64+uint64(slot))
@@ -273,19 +302,27 @@ when NativeReadCycleEnabled:
         writable: [NativeCycleWritable(first: 0x13000),
           NativeCycleWritable(first: wordAddress, length: uint64(writable.len),
             data: cast[pointer](addr writable[0]))],
-        dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: gas, remaining: remaining,
+        dirty: cast[pointer](addr dirty), dirtyWords: 1, gas: gas, remaining: available,
         visits: [2'u64, 3, 4, 5, 6, 7, 8], lastCompleted: 9, paidRead: 9)
-      let destination = enterNativeReadCycleAbiProof(image, registers, context)
+      let destination =
+        when defined(pvmReadCycleCreditWitness):
+          let expectedImage = x86ReadCycleInstructions(cycle)
+          assert hasCreditReservation(expectedImage) == (extraWrites == 0),
+            "credit selection must match the eligible role bank"
+          enterNativeReadCycleAbiProof(image, registers, context, expectedImage)
+        else:
+          enterNativeReadCycleAbiProof(image, registers, context)
       let paid = uint64(ord(exit in {RoleExit.FirstMiss, RoleExit.LaterMiss}))
       assert destination == header and
-        context.gas == finalGas and context.remaining == finalRemaining
+        context.gas == finalGas and context.remaining == expectedQuota
       assert context.visits == visits and context.lastCompleted == last and context.paidRead == paid
-      assert validNativeCycleReceipt(cycle.layout, destination, gas, remaining, context)
+      assert validNativeCycleReceipt(cycle.layout, destination, gas, available, context)
       if last != NativeCycleNoCompleted:
         assert nativeCycleSuccessor(cycle, NativeCycleRole(last), registers) == destination
       assert registers == expected and writable == expectedMemory and dirty == initialDirty
-      echo "READ_CYCLE_ROLE,", extraWrites, ",", ord(exit), ",", destination, ",",
-        context.gas, ",", context.remaining, ",", context.visits[NativeCycleRole.Store], ",", paid
+      when not defined(pvmReadCycleCreditWitness):
+        echo "READ_CYCLE_ROLE,", extraWrites, ",", ord(exit), ",", destination, ",",
+          context.gas, ",", context.remaining, ",", context.visits[NativeCycleRole.Store], ",", paid
 
     proc runReadCycleRoleWitness() =
       ## Exercise all three capacities through the real published-image entry.
@@ -296,7 +333,12 @@ when NativeReadCycleEnabled:
         var outsideImage = lowerNativeReadCycle(outside)
         assert image.ready and image.kind == NativeKind.ConnectedReadCycle
         assert outsideImage.ready and outsideImage.kind == NativeKind.ConnectedReadCycle
-        echo "READ_CYCLE_ROLE_IMAGE,", extra, ",", image.codeBytes, ",", outsideImage.codeBytes
+        when not defined(pvmReadCycleCreditWitness):
+          echo "READ_CYCLE_ROLE_IMAGE,", extra, ",", image.codeBytes, ",", outsideImage.codeBytes
+        when defined(pvmReadCycleCreditWitness):
+          if extra == 0:
+            # The literal receipt and verified RX together witness refill and paid-Read rollback.
+            checkRoleEntry(cycle, image, extra, RoleExit.LaterMiss, quotaRefill = true)
         for exit in RoleExit:
           if exit == RoleExit.Outside:
             checkRoleEntry(outside, outsideImage, extra, exit)
@@ -348,12 +390,21 @@ proc runReadCycleExecution*() =
       const wideRemaining = groupPrice+100
       var wide = layout
       wide.sites[NativeCycleRole.Store].price = groupPrice div NativeCycleGroupVisits
-      var wideImage = lowerNativeReadCycle(cycleFixture(receiptLayout = wide))
+      let wideCycle = cycleFixture(receiptLayout = wide)
+      var wideImage = lowerNativeReadCycle(wideCycle)
       assert wideImage.ready and wideImage.kind == NativeKind.ConnectedReadCycle
+      let wideBytes =
+        when defined(pvmReadCycleCreditWitness):
+          let emitted = x86ReadCycleInstructions(wideCycle)
+          assert emitted.len > 0 and not hasCreditReservation(emitted),
+            "wide weighted Store must select exact accounting"
+          emitted
+        else:
+          newSeq[byte](0)
       checkEntry(wideImage, true, groupPrice+2, wideRemaining, storeHeader, groupPrice-1,
-        wideRemaining-4, ReadExit.UnpaidStore, receiptLayout = wide)
+        wideRemaining-4, ReadExit.UnpaidStore, receiptLayout = wide, expectedImage = wideBytes)
       checkEntry(wideImage, true, groupPrice+3, wideRemaining, tailHeader, 0, wideRemaining-24,
-        ReadExit.UnpaidTail, receiptLayout = wide)
+        ReadExit.UnpaidTail, receiptLayout = wide, expectedImage = wideBytes)
     when defined(pvmReadCycleRoleWitness):
       runReadCycleRoleWitness()
   echo "PASS shared native read cycle execution"

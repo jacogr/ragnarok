@@ -958,13 +958,27 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
     when NativeReadCycleEnabled:
       const
         readCyclePrepaid = 7'u8
-        readCycleUnpaid = 8'u8 # One return label per role in enum order.
+        readCycleUnpaid = 8'u8        # One return label per role in enum order.
         readCyclePaidMiss = 15'u8
         readCycleOutside = 16'u8
         readCycleReturn = 17'u8
-        readCycleLocal = 18'u8
+        readCycleExactLocal = 18'u8
+        readCycleCreditSlow = 18'u8   # One cold entry per role.
+        readCycleCreditResume = 25'u8 # The original post-guard boundary per role.
+        readCycleCreditExact = 32'u8  # One cold exact check per role.
+        readCycleCreditReconstruct = 39'u8
+        readCycleCreditReadUnits = 40'u8
+        readCycleCreditPublish = 41'u8
+        readCycleCreditLocal = 42'u8
+        readCycleLocal =
+          when defined(pvmX86ReadCycleCredits): readCycleCreditLocal
+          else: readCycleExactLocal
         readCycleBodyOps = 22
         readCycleSetupOps = 3
+        readCycleCreditGasShift = 7'u8
+        readCycleCreditSpanShift = 5'u8
+
+      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+6, int]
 
       proc readCycleContextOp(code: var X86Block, encoding: openArray[byte], offset: int) =
         ## Context operations use disp32 because the accounting fields follow the extent table.
@@ -1013,6 +1027,85 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         cycleWord(code, header)
         cycleEdge(code, fixes, 0, readCycleReturn)
 
+      func readCycleFitsCredits(layout: NativeCycleLayout): bool =
+        ## Check each original cost before grouping. This also bounds the emitted immediates.
+        for role in NativeCycleRole:
+          let group = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
+          if layout.sites[role].price > (1'u64 shl readCycleCreditGasShift) div group or
+              NativeCycleSpans[role] > (1'u64 shl readCycleCreditSpanShift) div group:
+            return false
+        true
+
+      proc readCycleLoadBudgets(code: var X86Block) =
+        ## The credit path keeps the original unsigned budgets in context until publication.
+        readCycleContextOp(code, [0x49'u8, 0x8b, 0x8a], NativeCycleGasOffset) # MOV RCX,[R10+gas].
+        readCycleContextOp(code, [0x49'u8, 0x8b, 0x92], NativeCycleRemainingOffset) # MOV RDX,[R10+remaining].
+
+      proc readCycleCreditCount(code: var X86Block) =
+        ## R9 = min(gas >> 7, remaining >> 5). Each remaining credit funds a whole role.
+        put(code, [0x49'u8, 0x89, 0xc9, 0x49, 0x89, 0xd0]) # MOV R9,RCX; MOV R8,RDX.
+        put(code, [0x49'u8, 0xc1, 0xe9, readCycleCreditGasShift]) # SHR R9,gas shift.
+        put(code, [0x49'u8, 0xc1, 0xe8, readCycleCreditSpanShift]) # SHR R8,span shift.
+        put(code, [0x4d'u8, 0x39, 0xc1, 0x4d, 0x0f, 0x47, 0xc8]) # CMP R9,R8; CMOVA R9,R8.
+
+      proc emitReadCycleCreditSlow(code: var X86Block, fixes: var seq[X86CycleFixup],
+          labels: var X86ReadCycleLabels, layout: NativeCycleLayout) =
+        ## Cold code owns RCX/RDX (budgets), ESI (selector), R8/R11 (receipt scratch).
+        ## The guest bank, RDI, R10, EAX (exit header), and stack stay intact.
+        for role in NativeCycleRole:
+          # Each hot borrow has a static role identity and enters before the original probe.
+          labels[int(readCycleCreditSlow)+ord(role)] = code.bytes.len
+          put(code, [0xbe'u8]) # MOV ESI,role.
+          cycleWord(code, uint32(ord(role)))
+          cycleEdge(code, fixes, 0, readCycleCreditReconstruct)
+
+        labels[int(readCycleCreditReconstruct)] = code.bytes.len
+        readCycleLoadBudgets(code)
+        for role in NativeCycleRole:
+          # Each term and partial sum fits uint64. They sum to exact funded reservations.
+          # Low-half IMUL preserves the full unsigned product. Its flags are unused.
+          readCycleContextOp(code, [0x4d'u8, 0x8b, 0x82],
+            NativeCycleVisitsOffset+8*ord(role)) # MOV R8,[R10+visits].
+          if role == NativeCycleRole.Read:
+            # A prepaid miss has no visits. Otherwise exempt the first completed Read,
+            # unless a later paid miss replaces that exemption with its own reservation.
+            put(code, [0x4d'u8, 0x85, 0xc0]) # TEST R8,R8.
+            cycleEdge(code, fixes, 0x84, readCycleCreditReadUnits)
+            readCycleContextOp(code, [0x49'u8, 0x83, 0xba], NativeCyclePaidReadOffset)
+            put(code, [0'u8]) # CMP qword [R10+paidRead],0.
+            cycleEdge(code, fixes, 0x85, readCycleCreditReadUnits)
+            put(code, [0x49'u8, 0xff, 0xc8]) # DEC R8.
+            labels[int(readCycleCreditReadUnits)] = code.bytes.len
+          let group = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
+          put(code, [0x4d'u8, 0x69, 0xd8]) # IMUL R11,R8,price.
+          cycleWord(code, uint32(layout.sites[role].price*group))
+          put(code, [0x4c'u8, 0x29, 0xd9]) # SUB RCX,R11.
+          put(code, [0x4d'u8, 0x6b, 0xd8, byte(NativeCycleSpans[role]*group)]) # IMUL R11,R8,span.
+          put(code, [0x4c'u8, 0x29, 0xda]) # SUB RDX,R11.
+
+        put(code, [0x83'u8, 0xfe, byte(NativeCycleNoCompleted)]) # CMP ESI,exit selector.
+        cycleEdge(code, fixes, 0x84, readCycleCreditPublish)
+        readCycleCreditCount(code)
+        # Consume the current role's credit if available. A zero-credit role can still
+        # resume after the exact guard below. Never resume with the unsigned borrow value.
+        put(code, [0x45'u8, 0x31, 0xdb, 0x49, 0x83, 0xe9, 1]) # XOR R11D,R11D; SUB R9,1.
+        put(code, [0x4d'u8, 0x0f, 0x42, 0xcb]) # CMOVB R9,R11.
+        for role in NativeCycleRole:
+          put(code, [0x83'u8, 0xfe, byte(ord(role))]) # CMP ESI,role.
+          cycleEdge(code, fixes, 0x84, readCycleCreditExact+byte(ord(role)))
+        put(code, [0x0f'u8, 0x0b]) # UD2. Only the seven static roles can reach dispatch.
+        for role in NativeCycleRole:
+          # An unaffordable role returns the same unpaid header without running its probe.
+          let label = byte(ord(role))
+          labels[int(readCycleCreditExact)+ord(role)] = code.bytes.len
+          let group = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
+          put(code, [0x48'u8, 0x81, 0xf9]) # CMP RCX,price.
+          cycleWord(code, uint32(layout.sites[role].price*group))
+          cycleEdge(code, fixes, 0x82, readCycleUnpaid+label)
+          put(code, [0x48'u8, 0x83, 0xfa, byte(NativeCycleSpans[role]*group)]) # CMP RDX,span.
+          cycleEdge(code, fixes, 0x82, readCycleUnpaid+label)
+          cycleEdge(code, fixes, 0, readCycleCreditResume+label)
+
       proc readCycleCompare(code: var X86Block, access: X86ResidentAccess,
           operation: NativeOperation) =
         ## Capture both original operands for the certified signed or equality branch.
@@ -1051,7 +1144,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
 
       template emitReadCycleStore(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: untyped, word: NativeCycleWord, span, unpaid: byte, price: uint64,
-          nextLabel: var byte, budgetRegisters: bool, access: X86ResidentAccess) =
+          nextLabel: var byte, budgetRegisters, credits: bool, access: X86ResidentAccess) =
         ## Preflight the existing checked word projection, then commit exactly one group.
         readAccess(code, access, word.shiftLane, false)
         put(code, [0xa8'u8, 0x1f]) # TEST AL,31: the first extraction must start at bit zero.
@@ -1092,7 +1185,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readCycleDirtyPage(code, fixes, unpaid, false)
         readCycleDirtyPage(code, fixes, unpaid, true)
 
-        readCycleDebit(code, span, price, budgetRegisters)
+        if not credits: readCycleDebit(code, span, price, budgetRegisters)
         readAccess(code, access, word.valueLane, false)
         put(code, [0x41'u8, 0x89, 0x00, 0xc1, 0xe8, 0x18]) # MOV [R8],EAX; SHR EAX,24.
         writeAccess(code, access, word.byteLane)
@@ -1103,8 +1196,6 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         readAccess(code, access, word.boundLane, true)
         put(code, [0x48'u8, 0x39, 0xc8]) # Preserve the original != backedge after the fourth visit.
         cycleEdge(code, fixes, 0x85, byte(ord(NativeCycleRole.Store)))
-
-      type X86ReadCycleLabels = array[int(readCycleLocal)+4*int(NativeReadFactLimit)+6, int]
 
       proc emitResidentCycleRead(code: var X86Block, fixes: var seq[X86CycleFixup],
           labels: var X86ReadCycleLabels, body: NativeReadBody, bank: X86ResidentAccess,
@@ -1129,7 +1220,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           fixes.add(X86CycleFixup(at: bodyStart+fix.at, target: fix.target))
         commitCheckedReadRegisters(code, bank)
 
-      proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] =
+      proc emitX86ReadCycle(cycle: NativeReadCycle, allowCredits: bool): seq[byte] =
         ## Lower the certified seven-role graph with a private checkpoint for each transactional Read.
         ## ARM retains all guest lanes across roles. The x86 role bank retains only the Read
         ## writes and Store base. Other lanes stay canonical, including writes outside Read.
@@ -1162,6 +1253,12 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         let roleMask = dirty or (1'u32 shl int(word.baseLane))
         let roleRegisters = budgetRegisters and defined(pvmX86ReadCycleRoleRegisters) and
           fitsCheckedReadBank(roleMask)
+        # The opt-off build retains the original label array and reservation emitter.
+        let credits =
+          when defined(pvmX86ReadCycleCredits):
+            allowCredits and roleRegisters and readCycleFitsCredits(cycle.layout)
+          else:
+            false
         let bank = if roleRegisters: x86ResidentAccess(roleMask)
           elif resident: x86ResidentAccess(dirty) else: default(X86ResidentAccess)
         let roleAccess = if roleRegisters: bank else: default(X86ResidentAccess)
@@ -1180,7 +1277,11 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         else:
           # R11 retains the canonical pointer while RDI addresses the private stack stage.
           put(code, [0x48'u8, 0x83, 0xec, 0x68, 0x49, 0x89, 0xf2, 0x49, 0x89, 0xfb])
-        if budgetRegisters:
+        if credits:
+          # R9 funds paid roles. The first Read bypasses it because the checked header paid.
+          readCycleLoadBudgets(code)
+          readCycleCreditCount(code)
+        elif budgetRegisters:
           # R9/R11 belong to the resident ledger across all roles. Keep scalar and guard scratch
           # out of them. The stack path needs R11 for its canonical pointer.
           readCycleContextOp(code, [0x4d'u8, 0x8b, 0x8a], NativeCycleGasOffset) # MOV R9,[R10+gas].
@@ -1199,10 +1300,17 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           let group = if role == NativeCycleRole.Store: NativeCycleGroupVisits else: 1'u64
           let span = byte(NativeCycleSpans[role]*group)
           let price = cycle.layout.sites[role].price*group
-          readCycleBudget(code, fixes, span, price, unpaid, budgetRegisters)
+          if credits:
+            # A funded credit covers both reservations. Cold checks enter at this same
+            # boundary, before Store/Tail preflight and before a later Read checkpoint.
+            put(code, [0x49'u8, 0x83, 0xe9, 1]) # SUB R9,1.
+            cycleEdge(code, fixes, 0x82, readCycleCreditSlow+label)
+            labels[int(readCycleCreditResume)+ord(role)] = code.bytes.len
+          else:
+            readCycleBudget(code, fixes, span, price, unpaid, budgetRegisters)
           case role
           of NativeCycleRole.Read:
-            readCycleDebit(code, span, price, budgetRegisters)
+            if not credits: readCycleDebit(code, span, price, budgetRegisters)
             if roleRegisters:
               # Save only the lanes this paid Read can replace. Earlier stores survive a miss.
               commitCheckedReadRegisters(code, bank, dirty)
@@ -1223,14 +1331,14 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
               put(code, [0x4c'u8, 0x89, 0xdf]) # RDI=R11 resumes canonical writes at the role boundary.
             readCycleComplete(code, role)
           of NativeCycleRole.StoreSetup:
-            readCycleDebit(code, span, price, budgetRegisters)
+            if not credits: readCycleDebit(code, span, price, budgetRegisters)
             for index in readCycleBodyOps..<readCycleBodyOps+readCycleSetupOps:
               let op = cycle.read.operation(index)
               emitX86OperationAccess(code, roleAccess, op.opcode, op.slots, op.immediate)
             readCycleComplete(code, role)
           of NativeCycleRole.Store:
             emitReadCycleStore(code, fixes, labels, word, span, unpaid, price, nextLabel,
-              budgetRegisters, roleAccess)
+              budgetRegisters, credits, roleAccess)
           of NativeCycleRole.Tail:
             # Probe the clipped readable extents before any Tail effects or debit.
             put(code, [0xba'u8]) # MOV EDX,absolute32.
@@ -1246,17 +1354,17 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             labels[int(accepted)] = code.bytes.len
             put(code, [0x48'u8, 0x63, 0x04, 0x01]) # MOVSXD RAX,dword [RCX+RAX].
             writeAccess(code, roleAccess, cycle.tailLoad.slots.aIndex)
-            readCycleDebit(code, span, price, budgetRegisters)
+            if not credits: readCycleDebit(code, span, price, budgetRegisters)
             let step = cycle.tailStep
             emitX86OperationAccess(code, roleAccess, step.opcode, step.slots, step.immediate)
             readCycleComplete(code, role)
             readCycleCompare(code, roleAccess, cycle.tailBranch)
             cycleEdge(code, fixes, 0x8c, byte(ord(NativeCycleRole.StoreSetup))) # JL signed.
           of NativeCycleRole.Jump:
-            readCycleDebit(code, span, price, budgetRegisters)
+            if not credits: readCycleDebit(code, span, price, budgetRegisters)
             readCycleComplete(code, role)
           of NativeCycleRole.Outer:
-            readCycleDebit(code, span, price, budgetRegisters)
+            if not credits: readCycleDebit(code, span, price, budgetRegisters)
             for index in 0..1:
               let op = cycle.outer[index]
               emitX86OperationAccess(code, roleAccess, op.opcode, op.slots, op.immediate)
@@ -1264,7 +1372,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
             readCycleCompare(code, roleAccess, cycle.outer[2])
             cycleEdge(code, fixes, 0x84, readCycleOutside) # JE.
           of NativeCycleRole.Gate:
-            readCycleDebit(code, span, price, budgetRegisters)
+            if not credits: readCycleDebit(code, span, price, budgetRegisters)
             readCycleComplete(code, role)
             readCycleCompare(code, roleAccess, cycle.gate)
             cycleEdge(code, fixes, 0x8e, byte(ord(NativeCycleRole.Outer))) # JLE signed.
@@ -1285,10 +1393,19 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         labels[int(readCycleOutside)] = code.bytes.len
         readCycleSelect(code, fixes, cycle.layout.outsideHeader)
         labels[int(readCycleReturn)] = code.bytes.len
+        if credits:
+          # A refused Store or Tail may have borrowed a credit but has no completed visit.
+          # Reconstruct before publication using only completed visits and the paid Read flag.
+          put(code, [0xbe'u8]) # MOV ESI,exit selector.
+          cycleWord(code, uint32(NativeCycleNoCompleted))
+          cycleEdge(code, fixes, 0, readCycleCreditReconstruct)
+          labels[int(readCycleCreditPublish)] = code.bytes.len
+          readCycleContextOp(code, [0x49'u8, 0x89, 0x8a], NativeCycleGasOffset) # MOV [R10+gas],RCX.
+          readCycleContextOp(code, [0x49'u8, 0x89, 0x92], NativeCycleRemainingOffset) # MOV [R10+remaining],RDX.
         if roleRegisters:
           # Publish the completed prefix before the caller validates the last role's predicate.
           commitCheckedReadRegisters(code, bank)
-        if budgetRegisters:
+        if budgetRegisters and not credits:
           # All exits publish the same full-width budgets without clobbering the header in EAX.
           readCycleContextOp(code, [0x4d'u8, 0x89, 0x8a], NativeCycleGasOffset) # MOV [R10+gas],R9.
           readCycleContextOp(code, [0x4d'u8, 0x89, 0x9a], NativeCycleRemainingOffset) # MOV [R10+remaining],R11.
@@ -1297,6 +1414,7 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
         else:
           put(code, [0x48'u8, 0x83, 0xc4, 0x68]) # ADD RSP,104 releases the stage.
         put(code, [0xc3'u8]) # RET preserves the checked header in EAX.
+        if credits: emitReadCycleCreditSlow(code, fixes, labels, cycle.layout)
         if code.bytes.len > NativeImageByteLimit: return @[]
         for fix in fixes:
           # The complete image ceiling proves signed rel32 for both forward and backward edges.
@@ -1304,6 +1422,18 @@ when defined(pvmX86Jit) or (defined(pvmX86MemoryCycleNativeProof) and
           for shift in 0..<4:
             code.bytes[fix.at+shift] = byte((delta shr (shift*8)) and 255)
         takeX86Instructions(code)
+
+      proc x86ReadCycleInstructions*(cycle: NativeReadCycle): seq[byte] {.inline.} =
+        ## Temporarily only opt-in x86 uses credits. ARM uses exact per-role budgets.
+        ## Both lower all seven roles natively and publish the same checked receipt.
+        ## Credits require Linux x86-64, pvmX86Jit, and pvmSharedReadCycle.
+        ## Enable pvmX86ReadCycleResident, pvmX86ReadCycleBudgetRegisters, and
+        ## pvmX86ReadCycleRoleRegisters. The Read and role masks must fit the bank.
+        when defined(pvmX86ReadCycleCredits):
+          result = emitX86ReadCycle(cycle, true)
+          if result.len != 0: return
+        # Retry the exact emitter if the credit image could not fit the native image limit.
+        result = emitX86ReadCycle(cycle, false)
 
   proc cycleBudget(code: var X86Block, fixes: var seq[X86CycleFixup],
       price: uint64, span: byte, guard: uint8) =
