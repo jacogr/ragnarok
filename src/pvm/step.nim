@@ -239,8 +239,12 @@ proc applyResponseCursor(cursor: var ExecutionCursor, item: Instruction,
   StepError.None
 
 proc applyHostResponse*(suspension: StepOutcome, response: HostResponse): StepResult =
-  ## Apply Psi_H's posterior host state to a recursive execute suspension at its causing ecalli.
-  ## The host has already selected its action and gas; this function invokes no host or guest work.
+  ## Apply a trusted reply to a recursive execute suspension at its causing ecalli.
+  ## Continue uses the decoded successor. Panic and OutOfGas keep the causing PC.
+  ## A successful reply keeps the program and paid-block flag and publishes a fresh
+  ## immutable machine with the supplied unsigned gas, registers and memory.
+  ## No host callback, guest step or gas charge occurs here. The checks bind the
+  ## reply structurally to the suspension. The caller owns host trust and replay policy.
   # Only recursive Host suspensions are valid inputs, never fault repair or terminal normalization.
   if suspension.exit != StepExit.Host:
     return StepResult(status: StepError.InvalidHostSuspension)

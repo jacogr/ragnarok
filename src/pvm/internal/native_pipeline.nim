@@ -1,9 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One shared compiler work slot, four exclusive completion credits, copied IR and a closed lifetime anchor.
-## Host-side handle ownership follows the existing sequential execution-worker contract; the compiler
-## touches only the locked mailbox/POD IR, never a session/Program/frame ARC graph.
+## Shared ARM64 and x86-64 scheduling for one compiler work slot and four image credits.
+## The host serializes handle operations. The worker receives copied IR and a scalar job key
+## through the locked mailbox, with no borrow of the session, program, frame or callbacks.
+## Parked completions belong to individual registrations, so publishing one frees the work
+## slot before the host collects it. Credits bound image owners through retirement.
 
 import std/[assertions, locks, rawthreads]
 import ../[machine, program]
@@ -470,7 +472,9 @@ proc collectNative(session: NativeSession)
   ## Exact nonblocking collection is legal only at an exclusive invocation boundary.
 
 proc beginNativeInvocation*(session: NativeSession, budget: uint64) =
-  ## Even an unregistered checked call holds the whole-public-call lease against runtime close.
+  ## Lease the runtime for the whole public call, even during unregistered checked execution.
+  ## The source epoch binds proof and nominations. A credit is acquired separately when
+  ## an eligible request can actually queue. Entry requires its own installed-image checks.
   let data {.cursor.} = session.data
   if data == nil: return
   assert not data.invocation
@@ -599,7 +603,9 @@ proc invalidateNativeStream*(session: NativeSession) =
     data.state = NativeState.Deferred
 
 proc collectNative(session: NativeSession) =
-  ## Exact ticket/source epoch only, at caller-side quiescence. No wait for unfinished compilation.
+  ## At an invocation boundary, try to collect the completion for the exact registration,
+  ## ticket, source epoch and ABI. A busy lock or unfinished job leaves checked execution
+  ## available without waiting. A failed image retires its credit and leaves Unavailable.
   let data {.cursor.} = session.data
   if data == nil or data.ticket == 0 or data.slot < 0: return
   let anchor {.cursor.} = data.runtime
@@ -664,7 +670,9 @@ proc nativeState*(session: NativeSession): NativeState =
   data.state
 
 proc finishNativeInvocation*(session: NativeSession, completedWork: uint64) =
-  ## Conservative settled public-call work gates one background job; never lifetime tiny-call accumulation.
+  ## Gate scheduling on settled work from a single public call of this source epoch.
+  ## Queue admission and active-lease release share the mutex. A busy slot or full
+  ## credit table leaves execution checked and eligible evidence available for retry.
   let data {.cursor.} = session.data
   if data == nil or not data.invocation: return
   collectNative(session)

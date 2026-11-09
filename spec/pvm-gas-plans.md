@@ -8,25 +8,9 @@ existing `GasCycleLimit` execution APIs retain dynamic pricing and their invocat
 
 ## Preparation and ownership
 
-`newGasPlan(program, limits)` checks a nonempty genuine program, native allocation bounds and the
-caller-selected byte ceiling before allocating. The direct-address table consumes eight bytes per
-code byte. The constructor walks admitted instruction boundaries and independently prices the
-initial block and each successor of a block terminator with the existing `blockGas`. The block
-ceiling bounds simulations, and the cycle ceiling applies to each simulation. Source traversal
-is bounded by the captured code length. A block ceiling of zero refuses before allocation.
-
-Only complete success publishes a plan. A failure exposes its typed reason and releases the
-private partial table; it cannot expose successful prefix prices or a fabricated owner. Preparation
-can refuse because of a block the current invocation would never visit. Callers should keep using
-bounded dynamic execution when complete preparation is inappropriate. The payload byte ceiling
-excludes the retained immutable program and normal sequence/reference headers; it is not a bound
-on the complete client resident set or a recovery guarantee for allocator exhaustion.
-
-Copied plans share an immutable table and retain the exact captured program identity and fixed
-cycle policy. A separately captured identical byte string does not match. `programOf` retains a
-child independently, and `gasPlanInfo` returns copied observations. Default handles and failed
-results expose no table, source or successful statistics. `blockGas(plan, start)` accepts only an
-exact priced block start and checks full-width addresses before narrowing.
+The [plan constructor and lookup](../src/pvm/gas/plan.nim) own the complete-pricing
+contract, payload and work limits, exact source identity and block-start validation.
+The plan is an optional local pricing policy over the existing guest gas model.
 
 ## Execution boundary
 

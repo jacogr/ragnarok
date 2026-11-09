@@ -41,13 +41,9 @@ Services starts one runtime at full-state Jit startup, binds its context, joins 
 retiring context registrations, then closes/joins the compiler. `stopPreparation` alone preserves it.
 Standalone callers must explicitly close their runtime; sessions may safely survive its closed anchor.
 
-Every open runtime-bound public invocation holds close exclusion even before it has an image
-credit. Source epochs, checked work proof and copied nominations belong to that independent
-invocation/source lifetime. A nonzero source epoch is not registration, publication or native-entry
-authority. The finish lock acquires one of the four credits only after a real eligible candidate
-and an idle compiler request can queue atomically. Capacity refusal retains the source proof and
-nomination for a later ordinary invocation. No compiler readiness wait or fairness promise against
-four legitimate queued/installed images is introduced.
+The [shared scheduler](../src/pvm/internal/native_pipeline.nim) owns the public
+invocation lease, exact source epoch, image credit and nonblocking queue admission.
+The lease excludes close even during checked execution without an image credit.
 
 One shared initial policy requires a structural span of at least2supported operations, at least4096
 conservatively completed nonterminal source instructions in ONE public invocation before scheduling,
@@ -69,19 +65,13 @@ receipts before callbacks can reset frame fields. Failed public calls never auth
 No opcode-level profiling, timer feedback, public work observer, fixture whitelist or ISA-specific
 threshold is introduced. Paid/noop/host/error accounting needs the supporting literal witnesses.
 
-The compiler alone emits/maps/publishes code. Its mailbox receives only bounded POD IR and scalar
-registration/ticket/stream epoch; no active ARC graph, registers, memory, host or callback. One
-private Idle/Queued/Running slot holds work, while each registration owns its own completion and
-exact scalar certificate. Publication immediately frees the work slot, so retained uncollected A
-cannot alone block eligible B. Collection uses only the exact owner's row, independently of other
-rows and work. There is no FIFO or general scheduling-fairness promise. Public NativePhase is an
-aggregate observation: Queued/Running work wins, otherwise Done means parked Complete rows,
-otherwise Idle. NativeRuntimeInfo.completions counts parked rows, including nil failed images.
-Public Done is never an admission predicate. An exact matching consumer nonblockingly moves its
-complete image only at invocation boundaries. Failed collection becomes Unavailable and does not
-requeue until explicit stream invalidation. Same-plan destructive repricing invalidates the epoch
-and cancels old jobs;
-ordinary stream moves preserve identity. Installation rechecks every operation/operand against the
+The [worker and collector](../src/pvm/internal/native_pipeline.nim) own mailbox
+isolation, registration-local publication and exact nonblocking collection. Public
+`NativePhase` is an aggregate observation. Queued or Running work takes precedence,
+then Done for parked completions, then Idle. `NativeRuntimeInfo.completions` includes
+parked nil images. A failed collection becomes Unavailable until explicit stream
+invalidation. Same-plan destructive repricing invalidates the epoch and cancels old
+jobs. Ordinary stream moves preserve identity. Installation rechecks every operation/operand against the
 current immutable source and validates existing node/continuation coordinates. An unchanged plan
 pointer or node count alone is not a generation certificate. Native entry proves the original paid
 full reservation and no partial barrier; the pure backend borrows only fresh registers. Invalid
