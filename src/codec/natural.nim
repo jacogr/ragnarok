@@ -1,10 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JAM general natural-number codec. See spec/codec.md for the pinned definition.
-## Allocation-free; input is borrowed only during decode and output is a value.
+## JAM general naturals over the complete uint64 domain.
 ##
-## Exposes JamNatural, encode/decode and checked value, consumption and error accessors.
+## Leading one bits in the header count little-endian tail bytes. Each added tail
+## byte leaves seven more value bits overall. The ff header carries eight payload
+## bytes and no value bits. A decoder rejects a value that fits in a shorter form
+## so accepted bytes are exactly the image of the encoder.
+##
+## The input is borrowed for a single call. Failure returns a reason without
+## value or consumed extent. See spec/codec.md for the pinned definition and tests.
 
 type
   JamNatural* = distinct uint64 ## A protocol natural, kept separate from ordinary integers to require an explicit conversion.

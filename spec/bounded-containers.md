@@ -10,20 +10,8 @@ encodings prefixed by the natural count for variable-length terms.
 Natural counts use C.1.1; scalar elements use C.1.7. All revisions remain those
 in [pins.json](pins.json).
 
-This round adds variable byte strings and homogeneous sequences of
-fixed-width unsigned integers. It does not claim a generic codec for arbitrary
-nested element types, bit sequences, options, unions, or composite JAM types.
-
-A byte string emits E(byte count) followed by its raw octets. A scalar sequence
-emits E(element count), then each E_width(value) in order. The width is supplied
-by the type's schema/caller and is **not encoded** in this sequence. Empty
-containers emit `00`; they are different from empty input, which is truncated.
-The sequence count is elements, not payload bytes. No length denotes capacity.
-
-Width 0..8 is supported, matching the existing scalar primitive. Zero-width
-sequences still carry a bounded element count. Each value must be zero and
-consumes no payload octets; decoding initializes that many output zeros and
-consumes only the count prefix.
+The [container codec](../src/codec/bounded.nim) owns the count prefix, width and
+resource bounds for byte strings and homogeneous fixed-width sequences.
 
 ## API and validation
 

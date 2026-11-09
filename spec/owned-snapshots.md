@@ -5,41 +5,9 @@ Target: Gray Paper v0.8.0 and the pinned codec definitions in [codec](codec.md),
 [work digests](work-digest.md). This compiler port changes no wire encodings or protocol pins.
 Implementation: `src/codec/owned.nim`. Scope: Bytes, Optional, Work, Preimages and Digest.
 
-## Retention and extraction
-
-`decodeOwned*` validates the complete selected prefix and deep-copies only those consumed bytes.
-Preimage record allocation remains bounded by policy, minimum wire extent and checked host size.
-Private acyclic ARC storage contains its schema, wire bytes, copied record spans and fixed values.
-No retained pointer addresses the caller's original input. That input may be mutated or released
-after the call; unrelated trailing bytes do not enter the snapshot.
-
-`OwnedFrame` copies retain the same immutable backing storage. Overwriting or dropping one handle
-cannot invalidate another. Default handles have an explicitly nullable reference and yield typed
-`InvalidOwner` errors. Accessors retain one stable local reference before testing nil so Nimony
-can prove subsequent reads; no unchecked-null compatibility feature or compiler assumptions apply.
-Last-owner ARC release frees its owned sequences and record storage.
-
-`ownedInfo` and schema-specific queries return copied scalar metadata. `ownedService` returns a
-nominal service ID; payload lengths and copies are selected by an index checked against that owner.
-`copyOwnedBlob` accepts the owner, index and destination, with **no second source buffer**. Safe
-callers cannot access mutable wire bytes or detach coordinates for use against a different pool.
-`encodeOwned` re-emits the exact validated prefix. Insufficient destinations, missing owners,
-wrong schemas and invalid indices return typed failure before changing any destination byte.
-
-## Result and metadata safety
-
-`OwnedResult[T]` has private status and payload alternatives. `error` is read-only; `value` has
-Nimony's success precondition. Default results remain `OwnershipError.Uninitialized` and cannot
-expose a default owner, metadata object, service, integer or Boolean as decoded data.
-`OwnedOptionalInfo` exposes read-only presence and guards its length on presence. `OwnedWorkInfo`
-exposes a read-only work tag and guards length on Success. All six work errors remain successful
-frame values with no readable payload length. Empty present/success payloads remain valid zeros.
-
-Sibling adapters use `ownedFailure[T]` (reason other than None) or `ownedSuccess[T]` (explicit
-completed value). Work metadata builders require a nonnegative successful length or a non-Success
-payload-free tag. These builders report a sibling operation; they do not independently validate
-arbitrary handles. Owner APIs always check the actual private backing reference, including when a
-caller explicitly wraps a default handle in a generic success result.
+The [snapshot module](../src/codec/owned.nim) owns prefix retention, owner-bound
+extraction, guarded payload access and atomic output. Its sibling constructors
+report a caller operation. Owner accessors still validate the actual backing handle.
 
 ## Verification
 

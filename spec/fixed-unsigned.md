@@ -7,21 +7,8 @@ This increment implements Gray Paper **v0.8.0**, commit
 Integer Encoding. [Pinned source](https://github.com/gavofyork/graypaper/blob/07f041dabd073f9018b418e9ee72e79dd2185401/text/serialization.tex).
 The revision and official vector snapshot remain those in [pins.json](pins.json).
 
-For a requested width l, the normative encoder maps integers
-0 <= x < 2^(8l) to exactly l octets. It emits x modulo 256 first, followed by
-the encoding of floor(x/256) in l-1 octets: ordinary little-endian order.
-For example, x = 4660 (0x1234) at width two produces `34 12`.
-
-The native API supports **every width 0..8**, using a uint64 value domain.
-The paper defines larger widths mathematically; requested widths above eight
-are outside this increment and return InvalidWidth. Larger-than-uint64 values
-are outside the native value type and require checked conversion by callers.
-Signed integer encoding is not inferred from this unsigned definition.
-No specification, compiler, formatter or dependency revisions changed.
-
-Width zero has domain N_1 = {0}. Thus encoding zero emits the empty sequence,
-encoding any nonzero value fails, and decoding consumes zero bytes and yields
-zero. This holds even when the input contains bytes for subsequent fields.
+The [fixed unsigned codec](../src/codec/fixed_unsigned.nim) owns the native width and
+zero-width behavior. The paper defines larger widths mathematically.
 
 ## API and validation
 
