@@ -18,7 +18,7 @@
 
 import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
-import ../lib/[socket_io, http_stream]
+import ../lib/[socket_io, http_stream, logging]
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./protocol
@@ -35,6 +35,7 @@ type
     input, output: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
   McpServer* = object               ## Native socket owner retains no canonical state or query contexts.
+    logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened: bool
     fd: cint
@@ -71,23 +72,27 @@ proc close(slot: var Connection) =
 
 proc close*(server: var McpServer) =
   ## Idempotent explicit shutdown retires consumers before the listener.
-  for slot in mitems(server.connections): slot.close()
+  for slot in mitems(server.connections):
+    slot.stream.close(server.logger, "MCP")
+    slot.close()
   if server.opened: discard posix.close(server.fd)
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
+  server.logger = default(LogWriter)
   server.port = 0
 
 func enabled*(server: McpServer): bool =
   ## Scalar observation is safe even while canonical graph workers run.
   server.opened
 
-proc start*(server: var McpServer, port: uint16): bool =
+proc start*(server: var McpServer, port: uint16, logger = default(LogWriter)): bool =
   ## Port zero opens nothing; every enabled listener binds only IPv4 loopback.
   if server.opened: return false
   if port == 0: return true
   server.fd = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   if server.fd < 0:
     return false
+  server.logger = logger
   server.opened = true
   var reuse = 1.cint
   if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
@@ -192,14 +197,26 @@ proc tick*(server: var McpServer, context: QueryContext) =
       if not server.connections[index].opened:
         free = index
         break # Capacity is fixed independently of public WS/UI connections.
-    if free < 0 or not nonblocking(accepted): discard posix.close(accepted)
+    if free < 0:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "MCP connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP connection setup failed: " & $int32(error))
     else:
       server.connections[free].opened = true
       server.connections[free].stream.start(accepted, MaxInput)
+      log(server.logger, LogTarget.Rpc, LogLevel.Info, "MCP connection accepted")
+  else:
+    let error = osLastError()
+    if not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "MCP accept failed: " & $int32(error))
   for slot in mitems(server.connections):
     # Retire finished workers before inspecting application state or reusing the slot.
     if not slot.opened: continue
     if slot.stream.finished:
+      slot.stream.close(server.logger, "MCP")
       slot.close()
       continue
     if not slot.stream.canSend: continue
@@ -211,5 +228,6 @@ proc tick*(server: var McpServer, context: QueryContext) =
         if available > 0: slot.stream.requestChunk(available)
         else: slot.close()
         continue
+      logHttpResponse(server.logger, "MCP", slot.output)
     if slot.opened and slot.output.len > 0:
       slot.stream.sendChunk(slot.output, true)

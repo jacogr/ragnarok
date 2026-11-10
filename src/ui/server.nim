@@ -15,7 +15,7 @@
 
 import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
-import ../lib/[socket_io, http_stream]
+import ../lib/[socket_io, http_stream, logging]
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 
@@ -37,6 +37,7 @@ type
     assetIndex, position: int
     remaining: int64
   UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
+    logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, rootOpened: bool
     fd, root: cint
@@ -87,14 +88,17 @@ proc close(slot: var Connection) =
 
 proc close*(server: var UiServer) =
   ## Explicit shutdown is idempotent; default instances never close stdin.
-  for slot in mitems(server.connections): slot.close() # Retire requests before the directory root.
+  for slot in mitems(server.connections):
+    slot.stream.close(server.logger, "UI")
+    slot.close() # Retire requests before the directory root.
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
+  server.logger = default(LogWriter)
   server.rootOpened = false
 
-proc start*(server: var UiServer, port: uint16, directory = ""): bool =
+proc start*(server: var UiServer, port: uint16, directory = "", logger = default(LogWriter)): bool =
   ## Port zero disables IO. Empty directory serves embedded assets; a development root pins disk files.
   if server.opened or server.rootOpened: return false
   if port == 0: return true
@@ -108,6 +112,7 @@ proc start*(server: var UiServer, port: uint16, directory = ""): bool =
   if server.fd < 0:
     server.close() # Root ownership must also retire on socket creation failure.
     return false
+  server.logger = logger
   server.opened = true
   var reuse = 1.cint
   if setOption(server.fd, SocketLevel, ReuseAddress, addr reuse, SockLen(sizeof(reuse))) != 0:
@@ -326,14 +331,26 @@ proc tick*(server: var UiServer) =
       if not server.connections[i].opened:
         free = i
         break
-    if free < 0 or not nonblocking(accepted): discard posix.close(accepted)
+    if free < 0:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "UI connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI connection setup failed: " & $int32(error))
     else:
       server.connections[free].opened = true
       server.connections[free].stream.start(accepted, MaxHeader + 1)
+      log(server.logger, LogTarget.Rpc, LogLevel.Info, "UI connection accepted")
+  else:
+    let error = osLastError()
+    if not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI accept failed: " & $int32(error))
   for slot in mitems(server.connections):
     # Retire finished workers before inspecting application state or reusing the slot.
     if not slot.opened: continue
     if slot.stream.finished:
+      slot.stream.close(server.logger, "UI")
       slot.close()
       continue
     if not slot.stream.canSend: continue
@@ -346,6 +363,7 @@ proc tick*(server: var UiServer) =
         if available > 0: slot.stream.requestChunk(available)
         else: slot.close()
         continue
+      logHttpResponse(server.logger, "UI", slot.output)
     if slot.opened and slot.output.len == 0 and slot.embedded:
       slot.readEmbedded() # One fixed-size asset chunk is handed to the writer.
     if slot.opened and slot.output.len == 0 and slot.fileOpened:
@@ -354,7 +372,14 @@ proc tick*(server: var UiServer) =
       if count > 0:
         for i in 0..<count: slot.output.add(bytes[i]) # Buffer at most one fixed-size chunk.
         slot.remaining -= count
-      elif count == 0 or osLastError() != OSErrorCode(EINTR): slot.close()
+      elif count == 0:
+        log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI asset ended before its advertised length")
+        slot.close()
+      else:
+        let error = osLastError()
+        if error != OSErrorCode(EINTR):
+          log(server.logger, LogTarget.Rpc, LogLevel.Warn, "UI asset read failed: " & $int32(error))
+          slot.close()
     if slot.opened and slot.output.len > 0:
       slot.stream.sendChunk(slot.output, (not slot.fileOpened and not slot.embedded) or
           slot.remaining == 0)

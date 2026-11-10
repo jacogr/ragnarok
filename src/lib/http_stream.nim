@@ -4,7 +4,8 @@
 ## Move an accepted socket into one bounded Reader/Writer task. The dispatcher
 ## exchanges owned byte chunks and keeps all service policy and application state.
 
-import std/[assertions, atomics, ioring, streamio, threadpool]
+import std/[assertions, atomics, ioring, streamio, strutils, threadpool]
+import ./logging
 
 type
   Phase = enum Read, Input, Write, Ready, Done
@@ -14,6 +15,8 @@ type
     data: string
     limit: int
     final: bool
+    failure, cleanupFailure: ErrorCode
+    operation: Phase
   HttpStream* = object
     exchange: nil ptr Exchange
 
@@ -42,15 +45,23 @@ proc run(fd: cint, deadline: Deadline, s: ptr Exchange) {.passive.} =
     while not atomicLoad(s.stopping, moAcquire):
       case s.observedPhase
       of Read:
-        if expired(deadline): break
+        s.operation = Read
+        if expired(deadline):
+          s.failure = TimeoutError
+          break
         let limit = min(s.limit, bytes.len)
         let count = reader.read(toOpenArray(bytes, 0, limit - 1))
-        if count == 0: break
+        if count == 0:
+          s.failure = EndOfStreamError
+          break
         s.data = ""
         for i in 0..<count: s.data.add(bytes[i])
         s.publish(Input)
       of Write:
-        if expired(deadline): break
+        s.operation = Write
+        if expired(deadline):
+          s.failure = TimeoutError
+          break
         let chunk = move(s.data)
         writer.write(chunk)
         if s.final:
@@ -62,13 +73,13 @@ proc run(fd: cint, deadline: Deadline, s: ptr Exchange) {.passive.} =
         yieldIo()
       of Done:
         break
-  except ErrorCode:
-    discard # EOF, timeout and peer failure retire this connection only.
+  except ErrorCode as error:
+    s.failure = error
   writer.abort()
   try:
     reader.close()
-  except ErrorCode:
-    discard
+  except ErrorCode as error:
+    s.cleanupFailure = error
   s.publish(Done)
 
 proc pollHttpStreams*() =
@@ -76,14 +87,38 @@ proc pollHttpStreams*() =
   var completions = default(array[16, IoCompletion])
   discard pollCompletions(completions)
 
-proc release(s: ptr Exchange) =
+proc release(s: ptr Exchange, logger: LogWriter, service: string) =
   ## A five-second deadline set before submission bounds outstanding I/O.
   atomicStore(s.stopping, true, moRelease)
   while s.observedPhase != Done:
     pollHttpStreams()
     discard pause(1000)
+  if s.failure != default(ErrorCode):
+    # EOF and timeouts are common client lifecycle events. Unexpected I/O failures are warnings.
+    let level = if s.failure in {EndOfStreamError, TimeoutError}: LogLevel.Debug else: LogLevel.Warn
+    let operation = if s.operation == Read: "read" else: "write"
+    log(logger, LogTarget.Rpc, level, service & " stream " & operation & " ended: " & $s.failure)
+  if s.cleanupFailure != default(ErrorCode):
+    log(logger, LogTarget.Rpc, LogLevel.Warn, service & " reader close failed: " &
+        $s.cleanupFailure)
+  log(logger, LogTarget.Rpc, LogLevel.Trace, service & " connection retired")
   `=destroy`(s[])
   dealloc(s)
+
+proc close*(stream: var HttpStream, logger: LogWriter, service: string) =
+  ## Join the task and report its outcome from the dispatcher.
+  let s = stream.exchange
+  if s != nil:
+    stream.exchange = nil
+    s.release(logger, service)
+
+proc logHttpResponse*(logger: LogWriter, service, response: string) =
+  ## Log only the server-generated status line. Request bodies and headers remain private.
+  if logger.enabled(LogTarget.Rpc, LogLevel.Debug):
+    let ending = response.find("\r\n")
+    if ending > 0:
+      log(logger, LogTarget.Rpc, LogLevel.Debug, service & " response " & response.substr(0,
+          ending - 1))
 
 proc `=copy`*(dest: var HttpStream, source: HttpStream) {.error.}
 
@@ -92,7 +127,7 @@ proc `=dup`*(source: HttpStream): HttpStream {.error.}
 proc `=destroy`*(stream: HttpStream) =
   ## Mailbox storage outlives every task borrow, including on error paths.
   let s = stream.exchange
-  if s != nil: s.release()
+  if s != nil: s.release(default(LogWriter), "")
 
 proc `=wasMoved`*(stream: var HttpStream) {.nodestroy.} =
   ## Transfer the pointer without moving the storage used by the task.

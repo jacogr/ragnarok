@@ -13,7 +13,7 @@
 
 import std/[nativesocket, oserrors, strutils]
 import std/posix/posix
-import ../lib/[socket_io, http_stream]
+import ../lib/[socket_io, http_stream, logging]
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./[protocol, file_status, resources]
@@ -39,6 +39,7 @@ type
     input, output: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
   ManagementServer* = object        ## Non-copyable local listener; an empty configuration opens nothing.
+    logger: LogWriter
     httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, bound: bool
     fd: cint
@@ -100,17 +101,21 @@ proc close(slot: var Connection) =
 
 proc close*(server: var ManagementServer) =
   ## Repeated shutdown is harmless; only an owned pathname may be removed.
-  for slot in mitems(server.connections): slot.close() # Consumers retire before the listener.
+  for slot in mitems(server.connections):
+    slot.stream.close(server.logger, "Management RPC")
+    slot.close() # Consumers retire before the listener.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
   server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
+  server.logger = default(LogWriter)
   server.bound = false
   server.path = ""
   server.resources.close()
   server.info = default(ManagementInfo)
 
-proc start*(server: var ManagementServer, path: string, info: ManagementInfo): bool =
+proc start*(server: var ManagementServer, path: string, info: ManagementInfo, logger = default(
+    LogWriter)): bool =
   ## Empty disables management. Otherwise require an absolute path in a private existing directory.
   if server.opened or server.bound: return false
   if path.len == 0: return true
@@ -132,6 +137,7 @@ proc start*(server: var ManagementServer, path: string, info: ManagementInfo): b
   let fd = socket(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   if fd < 0: return false
   server.fd = fd
+  server.logger = logger
   server.opened = true
   if not nonblocking(fd) or bindSocket(fd, addr address, SockLen(sizeof(address))) != 0:
     server.close()
@@ -216,14 +222,27 @@ proc tick*(server: var ManagementServer) =
       if not server.connections[index].opened:
         free = index
         break # Capacity is fixed independently of public WS/UI connections.
-    if free < 0 or not nonblocking(accepted): discard posix.close(accepted)
+    if free < 0:
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Debug, "Management RPC connection refused at capacity")
+    elif not nonblocking(accepted):
+      let error = osLastError()
+      discard posix.close(accepted)
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "Management RPC connection setup failed: " &
+          $int32(error))
     else:
       server.connections[free].opened = true
       server.connections[free].stream.start(accepted, MaxInput)
+      log(server.logger, LogTarget.Rpc, LogLevel.Info, "Management RPC connection accepted")
+  else:
+    let error = osLastError()
+    if not retryableSocketError(error):
+      log(server.logger, LogTarget.Rpc, LogLevel.Warn, "Management RPC accept failed: " & $int32(error))
   for slot in mitems(server.connections):
     # Retire finished workers before inspecting application state or reusing the slot.
     if not slot.opened: continue
     if slot.stream.finished:
+      slot.stream.close(server.logger, "Management RPC")
       slot.close()
       continue
     if not slot.stream.canSend: continue
@@ -235,5 +254,6 @@ proc tick*(server: var ManagementServer) =
         if available > 0: slot.stream.requestChunk(available)
         else: slot.close()
         continue
+      logHttpResponse(server.logger, "Management RPC", slot.output)
     if slot.opened and slot.output.len > 0:
       slot.stream.sendChunk(slot.output, true)

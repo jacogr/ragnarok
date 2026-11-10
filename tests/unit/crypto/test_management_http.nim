@@ -191,6 +191,10 @@ proc disconnectedPair(domain, kind, protocol: cint, fds: pointer): cint {.
     importc: "socketpair", header: "<sys/socket.h>".}
   ## Give the stock writer a local peer whose lifetime the test controls.
 
+proc collectStreamLog(context: nil pointer, batch: string) {.raises: [].} =
+  ## The logger is the only writer until close joins its sink thread.
+  cast[ptr string](context)[].add(batch)
+
 block disconnectedWriter:
   # Close the peer after the reader has handed off its request, before the writer runs.
   var pair = default(array[2, cint])
@@ -215,3 +219,10 @@ block disconnectedWriter:
     if stream.finished: break
     discard pauseMicros(1000)
   assert stream.finished, "disconnected stock writer retires without terminating the process"
+  var messages = ""
+  var logger = default(Logger)
+  assert logger.start(initLogPolicy(LogLevel.Info), collectStreamLog, addr messages)
+  stream.close(logger.writer, "Management RPC")
+  logger.close()
+  assert "Management RPC stream write ended:" in messages
+  assert "connection retired" notin messages # Trace output follows the configured filter.
