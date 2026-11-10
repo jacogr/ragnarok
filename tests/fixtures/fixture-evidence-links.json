@@ -556,23 +556,35 @@
   },
   "current-stf-trace-command.json": {
     "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-command.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-command.json",
+    "traces.source_sha256": "current-stf-trace-genesis.json"
   },
   "current-stf-trace-files.json": {
     "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-files.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-files.json",
+    "traces.source_sha256": "current-stf-trace-import.json"
   },
   "current-stf-trace-genesis.json": {
     "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-genesis.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-genesis.json",
+    "traces.source_sha256": "current-stf-trace-import.json"
   },
   "current-stf-trace-import.json": {
     "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-import.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-import.json",
+    "traces.families.0.fixture_sha256": "current-stf-bless-allowances.json",
+    "traces.families.1.fixture_sha256": "current-stf-allowance-revocation.json",
+    "traces.families.2.fixture_sha256": "current-stf-allowance-eligibility.json",
+    "traces.families.3.fixture_sha256": "current-stf-incarnation-authority.json",
+    "traces.families.4.fixture_sha256": "current-stf-foreign-creation.json",
+    "traces.families.5.fixture_sha256": "current-stf-foreign-transfers.json",
+    "traces.families.6.fixture_sha256": "current-stf-queued-incarnation.json",
+    "traces.source_sha256": "current-stf-interchange.json"
   },
   "current-stf-trace-observations.json": {
     "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-observations.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-trace-observations.json",
+    "traces.source_sha256": "current-stf-trace-command.json"
   },
   "current-stf-transfer-admission.json": {
     "base_fixture_sha256": "current-stf-transfers.json",
@@ -602,6 +614,16 @@
   "current-stf.json": {
     "historical_encoding_sha256": "historical/current-graypaper/current-stf.json"
   },
+  "jam-fuzzer-account-forks.json": {
+    "bases.child_readiness": "current-stf-child-readiness.json",
+    "bases.child_recreation": "current-stf-child-recreation.json",
+    "bases.child_retirement": "current-stf-child-retirement.json",
+    "bases.foreign_creation": "current-stf-foreign-creation.json",
+    "bases.foreign_transfers": "current-stf-foreign-transfers.json",
+    "bases.incarnation_authority": "current-stf-incarnation-authority.json",
+    "bases.queued_incarnation": "current-stf-queued-incarnation.json",
+    "bases.reserved_creation": "current-stf-reserved-creation.json"
+  },
   "jam-fuzzer-ancestry-retention.json": {
     "base_sha256": "current-stf-reporting.json"
   },
@@ -610,6 +632,18 @@
   },
   "jam-fuzzer-checkpoint-guests.json": {
     "base_sha256": "current-stf-report-guests.json"
+  },
+  "jam-fuzzer-deferred-forks.json": {
+    "bases.budget_retention": "current-stf-budget-retention.json",
+    "bases.dependency_waves": "current-stf-dependency-waves.json",
+    "bases.gas_exits": "current-stf-gas-exits.json",
+    "bases.late_code": "current-stf-late-code.json"
+  },
+  "jam-fuzzer-epoch-effect-forks.json": {
+    "bases.epoch_composition": "current-stf-epoch-composition.json",
+    "bases.epoch_drain": "current-stf-epoch-drain.json",
+    "bases.epoch_lifecycle": "current-stf-epoch-lifecycle.json",
+    "bases.ready_expiry": "current-stf-ready-expiry.json"
   },
   "jam-fuzzer-epoch-forks.json": {
     "base_sha256": "current-stf-epoch.json"
@@ -693,10 +727,33 @@
   "jam-fuzzer-parameter-aging.json": {
     "base_sha256": "current-stf-preimage-aging.json"
   },
+  "jam-fuzzer-privileged-forks.json": {
+    "bases.allowance_eligibility": "current-stf-allowance-eligibility.json",
+    "bases.allowance_revocation": "current-stf-allowance-revocation.json",
+    "bases.authorization_assign": "current-stf-authorization-assign.json",
+    "bases.bless_allowances": "current-stf-bless-allowances.json",
+    "bases.role_precedence": "current-stf-role-precedence.json",
+    "bases.validator_designation": "current-stf-validator-designation.json"
+  },
   "jam-fuzzer-report-forks.json": {
     "base_sha256": "jam-fuzzer-ancestry.json"
   },
   "jam-fuzzer-seed-guests.json": {
     "base_sha256": "current-stf-effects.json"
+  },
+  "jam-fuzzer-supervised-forks.json": {
+    "bases.supervised_conflicts": "current-stf-supervised-conflicts.json",
+    "bases.supervised_handoff": "current-stf-supervised-handoff.json",
+    "bases.supervised_requests": "current-stf-supervised-requests.json",
+    "bases.supervised_storage": "current-stf-supervised-storage.json",
+    "bases.supervised_upgrades": "current-stf-supervised-upgrades.json"
+  },
+  "jam-fuzzer-transfer-forks.json": {
+    "bases.forwarded_transfers": "current-stf-forwarded-transfers.json",
+    "bases.supervised_transfers": "current-stf-supervised-transfers.json",
+    "bases.transfer_admission": "current-stf-transfer-admission.json",
+    "bases.transfer_memos": "current-stf-transfer-memos.json",
+    "bases.transfer_pools": "current-stf-transfer-pools.json",
+    "bases.transfers": "current-stf-transfers.json"
   }
 }

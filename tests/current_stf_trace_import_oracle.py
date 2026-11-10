@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent published trace inputs drive actual authenticated current STF import and whole-map matching."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -32,5 +33,5 @@ def expected_observations(check_frozen=True):
     traces=dict(source_sha256=hashlib.sha256(current.FIXTURE.read_bytes()).hexdigest(),families=evidence['traces'],pre_state_refusals=255,post_state_refusals=255,seal_refusals=255)
     result=dict(transitions=evidence['transitions'],chains=evidence['chains'],roots=evidence['roots'],checkpoint_sha256=evidence['checkpoint_sha256'],traces=traces,refusals=765)
     if check_frozen:
-        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and frozen['traces']==traces
+        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==result['roots'] and frozen['successor_checkpoint_sha256']==result['checkpoint_sha256'] and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return requests,lines,result

@@ -7,6 +7,7 @@ import importlib
 import json
 from current_stf_oracle import Reader, decode_checkpoint, checkpoint, history, tree, sign
 from current_stf_reporting_oracle import assurances
+from frozen_fixture_results import matches_frozen_results
 from report_oracle import decode as report_decode
 from state_history_oracle import wire as history_wire
 from state_layout_oracle import chapter_key, digest
@@ -139,7 +140,7 @@ def group(families, fixture, *, check_frozen=True):
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     assert variants == chains
     if check_frozen:
-        assert json.loads(fixture.read_text()) == evidence
+        assert matches_frozen_results(fixture, evidence)
     return [], lines, evidence
 
 

@@ -83,21 +83,29 @@ class NativeFixtureContractsHarness(unittest.TestCase):
                 verify_fixture_links(folder, descriptor, digests)
 
     def test_nested_evidence_link_and_behavior(self):
-        """A trace digest belongs to the preflight and the transition count stays observable."""
+        """The preflight catches stale nested links while result checks retain transition counts."""
         from frozen_fixture_results import result_fields
         with temporary_folder() as folder:
             evidence, source = folder/'evidence.json', folder/'input.json'
             source.write_text('current input')
-            stale = {'traces': [{'fixture_sha256': '0'*64, 'transitions': 7}]}
+            stale = {
+                'traces': {'families': [{'fixture_sha256': '0'*64, 'transitions': 7}]},
+                'bases': {'reserved_creation': '0'*64},
+            }
             evidence.write_text(json.dumps(stale))
-            descriptor = folder/'links.json'
-            field = 'traces.0.fixture_sha256'
-            descriptor.write_text(json.dumps({evidence.name: {field: source.name}}))
+            fields = ('traces.families.0.fixture_sha256', 'bases.reserved_creation')
             digests = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (evidence, source)}
-            with self.assertRaisesRegex(ValueError, 'traces.0.fixture_sha256'):
-                verify_fixture_links(folder, descriptor, digests)
-            self.assertEqual(result_fields(stale, [field]), {'traces': [{'transitions': 7}]})
-            self.assertEqual(stale['traces'][0]['fixture_sha256'], '0'*64)
+            # Each stale link fails independently even when both raw file pins match.
+            for field in fields:
+                with self.subTest(field=field):
+                    descriptor = folder/(field+'.json')
+                    descriptor.write_text(json.dumps({evidence.name: {field: source.name}}))
+                    with self.assertRaisesRegex(ValueError, field):
+                        verify_fixture_links(folder, descriptor, digests)
+            self.assertEqual(result_fields(stale, fields), {
+                'traces': {'families': [{'transitions': 7}]}, 'bases': {},
+            })
+            self.assertEqual(stale, json.loads(evidence.read_text()))
 
     # A new descriptor is discovered without adding its identity to a Python registry.
     def test_new_descriptor(self):

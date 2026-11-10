@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Compare independent result fields separately from preflight-owned fixture links."""
+from copy import deepcopy
 from functools import lru_cache
 import json
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
+from fixture_link_paths import locate
 
 FIXTURES = Path(__file__).resolve().parent/'fixtures'
 
@@ -17,19 +22,14 @@ def links():
 
 def result_fields(record, fields):
     """Project out only the declared raw-file digest fields, including list members."""
-    result = dict(record)
+    if not fields:
+        return record
+    result = deepcopy(record)
     for field in fields:
-        container, _, key = field.partition('.')
-        if not key:
-            result.pop(container, None)
-        elif isinstance(result.get(container), list):
-            index, _, member = key.partition('.')
-            if index.isdecimal() and int(index) < len(result[container]):
-                rows = list(result[container])
-                if isinstance(rows[int(index)], dict):
-                    rows[int(index)] = dict(rows[int(index)])
-                    rows[int(index)].pop(member, None)
-                result[container] = rows
+        location = locate(result, field)
+        if location:
+            parent, key = location
+            del parent[key]
     return result
 
 

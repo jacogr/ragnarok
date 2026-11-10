@@ -14,6 +14,7 @@ import re
 import sys
 from pathlib import Path
 from verification_inventory import unique_object
+from fixture_link_paths import locate
 
 
 # Resolve descriptor-relative paths without accepting aliases or escapes from the fixture tree.
@@ -114,14 +115,8 @@ def verify_fixture_links(folder, descriptor, digests):
             if source not in digests:
                 # A linked historical source may lack a standalone descriptor.
                 digests[source] = hashlib.sha256(source.read_bytes()).hexdigest()
-            container, _, key = field.partition('.')
-            observed = record.get(container)
-            if key and isinstance(observed, list):
-                index, _, member = key.partition('.')
-                row = observed[int(index)] if index.isdecimal() and int(index) < len(observed) else None
-                observed = row.get(member) if isinstance(row, dict) else None
-            elif key:
-                observed = observed.get(key) if isinstance(observed, dict) else None
+            location = locate(record, field)
+            observed = location[0][location[1]] if location else None
             if observed != digests[source]:
                 raise ValueError(f'Fixture link checksum mismatch: {name} {field} -> {target}')
 
