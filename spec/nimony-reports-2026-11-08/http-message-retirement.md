@@ -1,16 +1,13 @@
 # NIM-009: retained storage after retiring HTTP messages
 
-Status: the original reproducer passes on the November 9 nightly
-`fd9742bf1939a1b754144506e89a8acb0e7b747a` pinned by #2099. It retains 0 bytes after
-100 message retirements under checked ARC/Clang/ThinLTO on macOS ARM64.
-The maintainer reported the issue as [Nimony #2940](https://github.com/nim-lang/nimony/issues/2940).
+Status: submitted by the maintainer as [Nimony #2940](https://github.com/nim-lang/nimony/issues/2940).
 The original October 28-pin investigation is retained below. A November 8 official-archive retest
 on `ad334fb80c031da5b9932e3f254c23b6dd5ccbe1` also retains 20,800 bytes per 100 retired
 messages and exits with the same assertion under checked ARC/Clang/ThinLTO.
 Latest retest receipts: ignored `build/upstream-watch/nimony/2026-11-08/probes.json`.
 Original qualification: November 8, 2026; official Nimony 0.6.3 archive at
 `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4`, macOS ARM64, `nimony c`, checked release,
-ARC/Clang/ThinLTO. The installed compiler and library remain unmodified; the candidate patch below was tested in an isolated source copy.
+ARC/Clang/ThinLTO. No compiler or library files were modified.
 
 ## Reproduction and output
 
@@ -82,48 +79,9 @@ Additional October 28-pin controls recorded in `build/probes/http-cleanup/`:
 `HttpMsg` documents a move-only message with an owned literal pool that dies with it.
 The inspected `TokenBuf` contains owning `pool`, `tags` and `openTags` fields, but its custom
 `=destroy` only releases the cursor owner or raw token data. The pinned generated C shows the
-same cleanup and does not release those fields. Adding explicit destruction of those owning fields in an isolated source copy removes the
-measured growth; the unmodified installed library retains it. Current-upstream runtime
-qualification remains outstanding.
-
-## Validated candidate patch
-
-The smallest tested candidate adds three field destructions in each conditional destructor
-variant. Cursor-owner cleanup still runs first, and the existing moved-from hook already clears
-these fields. The change is a proposed upstream patch, not part of the project toolchain.
-
-```diff
---- a/src/lib/nifcore.nim
-+++ b/src/lib/nifcore.nim
-@@ -1413,7 +1413,13 @@
-   proc `=destroy`(dest: TokenBuf) {.inline.} =
-     if dest.owner != nil: decRcAndFree(dest.owner)
-     elif dest.data != nil: dealloc(dest.data)
-+    `=destroy`(dest.tags)
-+    `=destroy`(dest.pool)
-+    `=destroy`(dest.openTags)
- else:
-   proc `=destroy`(dest: var TokenBuf) {.inline.} =
-     if dest.owner != nil: decRcAndFree(dest.owner)
-     elif dest.data != nil: dealloc(dest.data)
-+    `=destroy`(dest.tags)
-+    `=destroy`(dest.pool)
-+    `=destroy`(dest.openTags)
-```
-
-Under the unchanged pinned compiler and checked ARC/Clang profile:
-
-| Retired owners | Unmodified copy | Patched copy |
-| --- | ---: | ---: |
-| 100 empty messages | 11,200 bytes | 0 bytes |
-| 100 parsed messages | 20,800 bytes | 0 bytes |
-| 10 owners, each reused/reset 100 times | 2,080 bytes | 0 bytes |
-
-The complete reproduction above also changes from the named assertion failure to exit 0 and
-`retained bytes after 100 retired messages: 0`. Moved-message and owning-cursor-outlives-buffer
-controls pass with pinned Nimony; the host Nim 2.4.1 ARC control passes as well. The full upstream
-suite and Nimony native backend have not been run. Raw evidence is retained under
-`build/probes/tokenbuf-fix/`, including the patch, before/after results and ownership controls.
+same cleanup and does not release those fields. This is the leading ownership attribution;
+no library patch was made to claim a verified upstream fix. The exact compiler/library stage
+responsible must be rechecked on the new pin before submitting upstream.
 
 ## Application impact and next action
 
@@ -136,6 +94,6 @@ A normal UI test now requires flat memory across repeated request-owner retireme
 
 The original upstream issue search `TokenBuf leak` found no match on November 8. At that point,
 source `ad334fb80c031da5b9932e3f254c23b6dd5ccbe1` had been inspected without execution.
-The November 8 official-archive retest reproduced the leak. The November 9 retest above
-qualifies the standalone reproducer. Application qualification is tracked in
-[stock HTTP request-head parsing](../http-parser-adoption.md).
+The later official-archive retest above confirms that the standalone problem persists. Keep the
+application rollback until a fix passes the original source, controls and complete owner lifecycle;
+upstream filing does not itself establish the owning compiler/library stage.

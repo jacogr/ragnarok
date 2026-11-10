@@ -3,8 +3,9 @@
 ## Restoration
 
 This change restores stock parser adoption from #2049 after the temporary rollback in #2054.
-The November 9 Nimony nightly pinned in #2099 passes the
-[original retirement reproducer](nimony-reports-2026-11-08/http-message-retirement.md).
+The November 9 Nimony nightly pinned in #2099 fixes the leak tracked in
+[Nimony #2940](https://github.com/nim-lang/nimony/issues/2940). The original reproducer retains
+zero bytes after 100 message retirements under checked ARC/Clang/ThinLTO on macOS ARM64.
 The repeated-request UI cleanup regression from #2054 retains its original memory allowance.
 Native listener tests and the Testnet RPC/browser shutdown workload cover application ownership.
 
