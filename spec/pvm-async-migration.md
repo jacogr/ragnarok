@@ -142,10 +142,9 @@ promotion paths were the only users of the frame's six raw and clipped memory de
 Frame preparation and reuse no longer build those descriptors. The shared runtime still builds
 its own current-invocation read and writable capabilities.
 
-The independent three-block checked shape can still reach the legacy connected probe when a
-private witness supplies an old ARM64 owner. The raw ARM64 branch, region and dirty-store
-emitters and their native witnesses remain. General connected control and mixed-store coverage
-still require equivalent shared ARM64 and x86-64 qualification.
+The independent three-block checked shape later moved to shared register-loop admission. The
+raw ARM64 branch, region and dirty-store emitters and their native witnesses remain. General
+connected control and mixed-store coverage still require equivalent shared qualification.
 
 ## Shared three-header register loop
 
@@ -174,10 +173,21 @@ The direct witness ran 1,728 cases on each native Linux ISA before runtime integ
 all entry rotations, each external branch, zero and partial quotas, and full-width prices. Both
 legacy direct region suites also passed. [Direct native CI](https://github.com/jacogr/ragnarok/actions/runs/42861336730)
 
-## Remaining legacy admission witnesses
+## ARM64 synchronous region retirement
 
-The old ARM64 three-block probe is built only with its existing witness owner. Ordinary checked
-dispatch has no synchronous admission call for that path.
+The shared register loop replaces the old three-header synchronous frame path. Its only legacy
+owner initializer was a macro witness hook. The hook set a raw owner refusal flag while its
+macro source executed through checked handlers. The frame and stream no longer retain a legacy
+ARM64 owner or fallback handler table. The shared worker, checked histories, and charged
+register-loop handlers keep their source and ownership contracts.
+
+The direct ARM64 publishers still cover raw regions, the five-word region ABI, capacity and
+refusal, and the distinct mixed-memory and macro ABIs. The raw cycle witness still checks
+that an overlarge resident image leaves the same owner available for linked publication. The macro
+frame witness continues to check partial budgets and fresh checked stream reentry, with its receipt
+identified as checked reentry.
+
+## Remaining legacy admission witnesses
 
 The x86-64 cold wide probe, pending queue, boundary admission and both frame installers are retired.
 The checked frame and stream no longer retain a legacy x86 JIT owner. The seven checked source blocks

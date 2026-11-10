@@ -594,7 +594,7 @@ class QualificationTests(unittest.TestCase):
             f'ARM_MACRO_LATE_READ_REFUND,{int(macro_active)}\n'
             f'ARM_MACRO_SIGNED_BACKEDGE,{int(macro_active)}\n'
             f'ARM_MACRO_OWNER_MOVE,{int(macro_active)}\n'
-            f'ARM_MACRO_LINKED_FALLBACK_CASES,{162 if native else 0}\n'
+            f'ARM_MACRO_CHECKED_REENTRY_CASES,{162 if native else 0}\n'
             f'ARM_MACRO_RESIDENT,{int(macro_resident)}\n'
             f'ARM_MACRO_ROLLBACK_ALIAS,{int(macro_active)}\n'
             f'ARM_MACRO_IMAGE_WORDS,{image_words}\n' +
@@ -764,7 +764,7 @@ class QualificationTests(unittest.TestCase):
         markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
                    'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
                    'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
-                   'ARM_MACRO_LINKED_FALLBACK_CASES', 'ARM_MACRO_RESIDENT',
+                   'ARM_MACRO_CHECKED_REENTRY_CASES', 'ARM_MACRO_RESIDENT',
                    'ARM_MACRO_ROLLBACK_ALIAS', 'ARM_MACRO_IMAGE_WORDS')
         for mode in ('native', 'resident-refused', 'native-refused', 'macro-refused', 'interpreted'):
             complete = self.witness_receipt(mode in ('native', 'resident-refused', 'macro-refused'),
@@ -789,7 +789,7 @@ class QualificationTests(unittest.TestCase):
         markers = ('ARM_MACRO_BACKEND_CASES', 'ARM_MACRO_FRAME_CASES',
                    'ARM_MACRO_ACTIVE', 'ARM_MACRO_LATE_READ_REFUND',
                    'ARM_MACRO_SIGNED_BACKEDGE', 'ARM_MACRO_OWNER_MOVE',
-                   'ARM_MACRO_LINKED_FALLBACK_CASES', 'ARM_MACRO_RESIDENT',
+                   'ARM_MACRO_CHECKED_REENTRY_CASES', 'ARM_MACRO_RESIDENT',
                    'ARM_MACRO_ROLLBACK_ALIAS', 'ARM_MACRO_IMAGE_WORDS')
         modes = ('native', 'resident-refused', 'native-refused', 'macro-refused', 'interpreted')
         for expected in modes:

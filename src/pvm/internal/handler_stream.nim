@@ -21,14 +21,11 @@ import ./execution_types as oracle
 import ./register_ops
 import ./native_pipeline
 import ./[resident_bytes, resident_capture]
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  import ./arm64_jit
+when defined(pvmArm64Jit) and not defined(pvmX86Jit) and
+    defined(pvmArmMacroReceipt) and defined(pvmArmMacroStateTrace):
+  from ./arm64_jit import ArmMacroState
 when defined(pvmX86Jit):
   import ./x86_jit
-
-const
-  ArmRegionWitness = defined(pvmArm64Jit) and not defined(pvmX86Jit) and
-    defined(pvmArmMacroReceipt)
 
 when NativeCheckedReadEnabled:
   const
@@ -148,32 +145,26 @@ type
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64]               # Absolute physical-page bits, bounded by the highest mapped page.
+    dirtyPages: seq[uint64]       # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
-    pricingPlan: GasPlan # Optional source-bound immutable prices, selected only during cold emission.
-    pricingMemo: GasMemo                  # Optional caller-owned bounded price memo, never CPU or paid gas.
-    when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-      when ArmRegionWitness:
-        armOriginal: seq[nil FlatHandler] # Retain original checked entries for the witness owner.
-      armJit: nil ArmJit # Exclusively leased code cache retains no invocation CPU, memory or callback addresses.
+    pricingPlan: GasPlan          # Optional source-bound immutable prices, selected only during cold emission.
+    pricingMemo: GasMemo          # Optional caller-owned bounded price memo, never CPU or paid gas.
     when defined(pvmX86Jit) and defined(pvmX86CheckedStoreReceipt):
       x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
       readContext: NativeReadContext
       readContextReady: bool
       readProbe: ReadProbeState
-    nativeSession*: NativeSession         # Prepared identity only; never passed to the compiler thread.
+    nativeSession*: NativeSession # Prepared identity only; never passed to the compiler thread.
     nativeOriginal: nil FlatHandler
     when NativeCheckedReadEnabled:
-      nativeRingInstalled: bool           # Ready image rebound to this invocation's checked handlers.
+      nativeRingInstalled: bool   # Ready image rebound to this invocation's checked handlers.
     nativeEntry: uint32
     nativeInstalledEpoch: uint64
-    pricingKind: byte # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
-    when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
-      armMacroLastState: ArmMacroState    # Private receipt compares every ABI word with linked fallback.
-    rwStorage: RWStorage # Append cold ownership after existing fields; the hot RW view remains two words.
+    pricingKind: byte             # Zero dynamic, one complete plan, two lazy memo; no per-op pricing switch.
+    rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
 
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
@@ -202,10 +193,6 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.nativeSession)
   `=wasMoved`(frame.rwStorage)
   frame.rw = default(RWView)
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    when ArmRegionWitness:
-      `=wasMoved`(frame.armOriginal)
-    `=wasMoved`(frame.armJit)
   when NativeCheckedReadEnabled:
     # A moved frame cannot retain a ready context into storage now owned elsewhere.
     frame.readContext = default(NativeReadContext)
@@ -286,10 +273,6 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   ## Preserve GP sign extension with unsigned bit operations.
   if (x and 0x80000000'u32) != 0: uint64(x) or 0xffffffff00000000'u64
   else: uint64(x)
-
-when ArmRegionWitness:
-  proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
-    ## Only an observed, fully validated closed cycle may authorize a connected native loop.
 
 proc flatConsiderNative(f: var FlatFrame, origin: uint32)
 when NativeCheckedReadEnabled:
@@ -933,9 +916,6 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
       if flatObserveNativeRing(f, fixedLast, off, fixedMiddle): return off
     else:
       if flatObserveNativeRing(f, fixedMiddle, fixedLast, off): return off
-  when ArmRegionWitness:
-    # The legacy owner is installed only by the region witness.
-    if flatArmCycle(f, off, fixedMiddle, fixedLast, destination): return destination
   while true:
     # Each block retains its charge/quota check. Any changed branch outcome exits before using a different record's operands.
     flatChargedStep(f, off, First, Second, Branch, destination)
@@ -1999,8 +1979,6 @@ proc settledNativeWork*(f: FlatFrame, supplied: uint64): uint64 =
 
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   ## Restore input outside the execution clock, preserving the explicit reset boundary; cached code/links alone persist.
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
-    f.armMacroLastState = default(ArmMacroState)
   flatClearDirty(f)
   f.hostReady = false
   f.hostSnapshot = default(Memory)
@@ -2828,225 +2806,60 @@ when defined(pvmX86Jit):
       if not flatX86CycleReceiptValid(candidate, startGas, startAttempts, state, next):
         flatX86CycleAbort()
 
-when ArmRegionWitness:
-  func flatArmCachedBranch(f: FlatFrame, offset: uint32): bool =
-    ## Exact original handler identity certifies both arms already passed genuine source and preparation checks.
-    let code = f.plan.facts[int(f.sites[int(offset)])].opcode
-    case code
-    of 81: f.handlers[int(offset)] == flatBranch[81]
-    of 82: f.handlers[int(offset)] == flatBranch[82]
-    of 83: f.handlers[int(offset)] == flatBranch[83]
-    of 84: f.handlers[int(offset)] == flatBranch[84]
-    of 85: f.handlers[int(offset)] == flatBranch[85]
-    of 86: f.handlers[int(offset)] == flatBranch[86]
-    of 87: f.handlers[int(offset)] == flatBranch[87]
-    of 88: f.handlers[int(offset)] == flatBranch[88]
-    of 89: f.handlers[int(offset)] == flatBranch[89]
-    of 90: f.handlers[int(offset)] == flatBranch[90]
-    of 170: f.handlers[int(offset)] == flatBranch[170]
-    of 171: f.handlers[int(offset)] == flatBranch[171]
-    of 172: f.handlers[int(offset)] == flatBranch[172]
-    of 173: f.handlers[int(offset)] == flatBranch[173]
-    of 174: f.handlers[int(offset)] == flatBranch[174]
-    of 175: f.handlers[int(offset)] == flatBranch[175]
-    else: false
-
-  proc flatArmRegion(f: var FlatFrame, offset: uint32): uint32 =
-    ## A fresh invocation context never escapes this call; guarded returns resume the original checked header.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let active = armRegionCount(jit)
-    var headers = [flatStop, flatStop, flatStop]
-    var matched = true
-    for index in 0..<active:
-      # Read all original header coordinates before fallback; every source price/span still matches the complete cached record.
-      headers[index] = armRegionHeader(jit, range[0..2](index))
-      assert int(headers[index]) < f.arguments.len
-      let charge = f.arguments[int(headers[index])]
-      if not armRegionChargeMatches(jit, range[0..2](index), headers[index], charge.y, charge.x):
-        matched = false
-    for index in int(active)..<3:
-      # Inactive records retain the original full sentinel/zero checks, including the unused third lane of a two-block region.
-      if not armRegionChargeMatches(jit, range[0..2](index), flatStop, 0, 0): matched = false
-    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        offset != headers[0] or not matched:
-      # Already-paid, partial or differently priced execution retains its original complete ordering.
-      let original = f.armOriginal[int(offset)]
-      assert original != nil
-      if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64]
-    let destination = callArmRegion(jit, f.info.registers, state)
-    f.info.gas = MachineGas(state[0])
-    f.remaining = state[1]
-    f.info.blockCharged = false
-    assert int(destination) < f.handlers.len
-    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
-        oracle.StepError.InvalidPreparedProgram)
-    for index in 0..<active:
-      let header = headers[index]
-      if destination == header:
-        # This block has not begun: original reservation preserves gas-before-partial-prefix and exact source PC/paid flags.
-        let original = f.armOriginal[int(header)]
-        assert original != nil
-        if original != nil: return original(f, header)
-        return flatLocal(f, header, oracle.StepError.InvalidPreparedProgram)
-    destination
-
-  proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool =
-    ## One source-owned region follows an actual closed two/three-block round; all refusal paths keep checked dispatch.
-    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
-    let jit = f.armJit
-    if jit == nil: return false
-    let status = armRegionStatus(jit)
-    if status == 1: return false
-    if status == 2:
-      # A different rotation or independent loop returns to the ordinary dispatch rather than borrowing another root's code.
-      if armRegionHeader(jit, 0) != first: return false
-      destination = flatArmRegion(f, first)
-      return true
-    if f.handlers.len > 262144: return false
-    discard armEntry(jit, first, uint32(f.handlers.len))
-    let active: range[2..3] = if last == flatStop: 2 else: 3
-    let headers = [first, middle, last]
-    # Include successful regional body emission in the diagnostic bracket; full cold-call clocks already include it.
-    let before = armClock()
-    var blocks = default(array[3, ArmRegionBlock])
-    for index in 0..<active:
-      let header = headers[index]
-      let charge = f.arguments[int(header)]
-      var native = newArmRegionBody()
-      var current = header+1
-      var terminal = false
-      while int(current) < f.handlers.len and current-header <= 64:
-        # Header duplicates and an unsupported instruction stop this compiler before any publication or execution.
-        if int(current)+1 < f.sites.len and f.sites[int(current)] == f.sites[int(
-            current)+1]: return false
-        let fact = f.plan.facts[int(f.sites[int(current)])]
-        if fact.ending:
-          if not flatArmCachedBranch(f, current): return false
-          if f.sites[int(current)]+1 != f.sites[int(header)]+charge.y: return false
-          let args = f.arguments[int(current)]
-          emitArmBranch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and
-              0xffffffff'u64)), uint32(args.x shr 32), args.y)
-          blocks[index] = ArmRegionBlock(header: header, span: charge.y, operations: current-header,
-              yes: uint32(args.x shr 32), no: args.y, price: charge.x, body: move(native))
-          terminal = true
-          break
-        if not fact.fallthrough or not supportedArmOpcode(fact.opcode): return false
-        let payload = flatSourcePayload(f.plan, fact)
-        if active == 3 and fact.opcode == 151 and current-header < 64 and
-            int(current)+1 < f.handlers.len:
-          # Only genuine adjacent source nodes within this charged block can hide an overwritten intermediate shift.
-          let next = current+1
-          let nextHeader = int(next)+1 < f.sites.len and f.sites[int(next)] == f.sites[int(next)+1]
-          if not nextHeader and f.sites[int(next)] == f.sites[int(current)]+1:
-            let following = f.plan.facts[int(f.sites[int(next)])]
-            if following.opcode == 152 and not following.ending and following.fallthrough:
-              let followingPayload = flatSourcePayload(f.plan, following)
-              if emitArmShiftPair(native, payload.args.slots, followingPayload.args.slots,
-                  payload.args.x, followingPayload.args.x):
-                current+=2 # Source spans/operation counts still include both original instructions.
-                continue
-        emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
-        inc current
-      if not terminal: return false
-    let admitted = publishArmRegion(jit, blocks, active)
-    jit.compilationNs+=armClock()-before
-    if not admitted: return false
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    for index in 0..<active:
-      let header = headers[index]
-      # All active originals are retained for a guard exit at any block, but only the observed root changes dispatch.
-      f.armOriginal[int(header)] = f.handlers[int(header)]
-    f.handlers[int(first)] = flatArmRegion
-    destination = flatArmRegion(f, first)
-    true
-
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmRegionStatistics*(f: FlatFrame): array[2, uint64] =
-    ## A focused witness proves actual connected execution separately from ordinary arithmetic leaves.
-    let jit = f.armJit
-    if jit == nil: default(array[2, uint64])
-    else: armRegionStatistics(jit)
+  func flatArmRegionStatistics*(f: FlatFrame): array[2, uint64] =
+    ## Unbound checked witnesses own no legacy connected image.
+    default(array[2, uint64])
 
-  proc flatArmDirtyLoopStatistics*(f: FlatFrame): array[3, uint64] =
-    let jit = f.armJit
-    if jit == nil: default(array[3, uint64])
-    else: armDirtyLoopStatistics(jit)
+  func flatArmDirtyLoopStatistics*(f: FlatFrame): array[3, uint64] =
+    ## Raw dirty-loop receipts belong to the direct backend owner.
+    default(array[3, uint64])
 
-  # The former mixed-memory observer had no installer. Keep the raw ARM64 lowering
-  # for its paid-prefix witnesses while the shared runtime lacks equivalent mixed regions.
-  proc flatArmMixedStatistics*(f: FlatFrame): array[4, uint64] =
-    let jit = f.armJit
-    if jit == nil: default(array[4, uint64])
-    else: armMixedStatistics(jit)
+  func flatArmMixedStatistics*(f: FlatFrame): array[4, uint64] =
+    ## Raw mixed-region receipts belong to the direct backend owner.
+    default(array[4, uint64])
 
-  proc flatArmMixedGroupStatistics*(f: FlatFrame): array[3, uint64] =
-    ## Private publication/guard activity, with no retained invocation memory.
-    let jit = f.armJit
-    if jit == nil: default(array[3, uint64])
-    else: armMixedGroupStatistics(jit)
+  func flatArmMixedGroupStatistics*(f: FlatFrame): array[3, uint64] =
+    ## Unbound checked witnesses retain no legacy publication or guard activity.
+    default(array[3, uint64])
 
-  proc flatArmDirtyWordGroups*(f: FlatFrame): uint64 =
-    let jit = f.armJit
-    if jit == nil: 0'u64
-    else: armDirtyWordGroups(jit)
+  func flatArmDirtyWordGroups*(f: FlatFrame): uint64 =
+    ## Unbound checked witnesses perform no legacy native word groups.
+    0'u64
 
   when defined(pvmArmMacroReceipt):
-    proc flatArmRefuseResidentCycleReceipt*(f: var FlatFrame) =
-      ## Exercise actual source discovery, linked publication and Frame handler installation.
-      assert f.plan.allowNative
-      if f.armJit == nil: f.armJit = newArmJit(clippedReads = true)
-      let jit {.cursor.} = f.armJit
-      assert jit != nil
-      if jit != nil: armRefuseResidentCycleReceipt(jit)
-
     func flatArmMacroStatistics*(f: FlatFrame): array[7, uint64] =
-      ## Receipt-only copied activity proves actual joined execution independently of guest results.
-      let jit {.cursor.} = f.armJit
-      if jit == nil: default(array[7, uint64])
-      else: armMacroStatistics(jit)
+      ## Checked macro histories have no private image or activity.
+      default(array[7, uint64])
 
     func flatArmMacroResidentActive*(f: FlatFrame): bool =
-      ## Receipt-only kind evidence distinguishes a resident image from linked fallback.
-      let jit {.cursor.} = f.armJit
-      jit != nil and armMacroResidentActive(jit)
+      ## A checked frame owns no resident macro image.
+      false
 
     func flatArmMacroImageWords*(f: FlatFrame): uint32 =
-      ## Receipt-only length proves the emitted image stayed under the bounded word limit.
-      let jit {.cursor.} = f.armJit
-      if jit == nil: 0'u32 else: armMacroImageWords(jit)
+      ## A checked frame owns no emitted macro words.
+      0'u32
 
     when defined(pvmArmMacroStateTrace):
       func flatArmMacroLastState*(f: FlatFrame): ArmMacroState =
-        ## Copy the last native macro return state for complete linked/resident comparison.
-        f.armMacroLastState
+        ## A checked frame has no native macro return state.
+        default(ArmMacroState)
 
-  proc flatArmMemoryCycleStatistics*(f: FlatFrame): array[6, uint64] =
-    ## Copied diagnostics separate outer bridges from nested child visits and word groups.
-    let jit = f.armJit
-    if jit == nil: default(array[6, uint64])
-    else: armMemoryCycleStatistics(jit)
+  func flatArmMemoryCycleStatistics*(f: FlatFrame): array[6, uint64] =
+    ## Raw cycle activity is observed through the separate direct owner.
+    default(array[6, uint64])
 
-  proc flatArmResidentMemoryCycleActive*(f: FlatFrame): bool =
-    ## Copied diagnostics prove the resident emitter ran instead of the linked fallback.
-    let jit = f.armJit
-    if jit == nil: false
-    else: armResidentMemoryCycleActive(jit)
+  func flatArmResidentMemoryCycleActive*(f: FlatFrame): bool =
+    ## A checked frame owns no resident memory-cycle image.
+    false
 
-  proc flatArmStatistics*(f: FlatFrame): array[5, uint64] =
-    ## Explicit native coverage counters distinguish compilation, reuse, lowered operations and emitted bytes.
-    if f.armJit == nil: default(array[5, uint64])
-    else: [f.armJit.fragments, f.armJit.calls, f.armJit.operations, f.armJit.codeBytes,
-        f.armJit.compilationNs]
+  func flatArmStatistics*(f: FlatFrame): array[5, uint64] =
+    ## Private frame counters are empty. Prepared execution reports through the shared owner.
+    default(array[5, uint64])
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmControlStatistics*(f: FlatFrame): array[2, uint64] =
-    ## Native branch and checked-header entries prove the new control path executed.
-    if f.armJit == nil: default(array[2, uint64])
-    else: [f.armJit.branchCalls, f.armJit.headerCalls]
+  func flatArmControlStatistics*(f: FlatFrame): array[2, uint64] =
+    ## Unbound frame probes have no native branch or header entries.
+    default(array[2, uint64])
 
 proc flatResumePaid(f: var FlatFrame, body: uint32, start: int): uint32 =
   ## Only an actual paid execution entry reserves its cached body; target prelinking never calls this helper.
@@ -3338,11 +3151,6 @@ proc flatCommitMemoryReplacement(f: var FlatFrame, replacement: var FlatFrame) =
   replacement.nativeOriginal = f.nativeOriginal
   replacement.nativeEntry = f.nativeEntry
   replacement.nativeInstalledEpoch = f.nativeInstalledEpoch
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # A same-plan memory replacement preserves code-only capabilities together with their native handlers.
-    when ArmRegionWitness:
-      replacement.armOriginal = move(f.armOriginal)
-    replacement.armJit = move(f.armJit)
   f = move(replacement)
 
 proc replaceFlatMemoryChecked*(f: var FlatFrame, images: openArray[PageImage],
@@ -3532,10 +3340,6 @@ type FlatStream* = object
   pricingKind: byte        # Nondefault sealed headers require fresh emission when leased to another frame.
   failure: FlatError
   preparation: uint64
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    when ArmRegionWitness:
-      armOriginal: seq[nil FlatHandler]
-    armJit: nil ArmJit
 
 when defined(pvmArm64Jit) or defined(pvmX86Jit):
   proc `=copy`*(destination: var FlatStream, source: FlatStream) {.error.}
@@ -3551,11 +3355,6 @@ proc takeFlatStream*(f: var FlatFrame): FlatStream =
     failure: f.preparationFailure,
     preparation: f.preparationUsed, nativeOriginal: f.nativeOriginal, nativeEntry: f.nativeEntry,
     nativeInstalledEpoch: f.nativeInstalledEpoch)
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    # Code and original fallback entries move together with their exact immutable plan and stream coordinates.
-    when ArmRegionWitness:
-      result.armOriginal = move(f.armOriginal)
-    result.armJit = move(f.armJit)
 
 proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
   ## Restore an executable stream only for the exact immutable plan.
@@ -3572,10 +3371,6 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     invalidateNativeStream(f.nativeSession)
     stream = default(FlatStream)
     return
-  when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-    when ArmRegionWitness:
-      f.armOriginal = move(stream.armOriginal)
-    f.armJit = move(stream.armJit)
   stream.sourcePlan = nil
   f.handlers = move(stream.handlers)
   f.arguments = move(stream.arguments)
@@ -3592,19 +3387,12 @@ proc restoreFlatStream*(f: var FlatFrame, stream: var FlatStream) =
     validateFlatReadNomination(f)
   installNative(f)
 
-when defined(pvmArm64Jit) and not defined(pvmX86Jit):
+when defined(pvmArm64Jit) or defined(pvmX86Jit):
   func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
-    ## Local experiment diagnostics copy counters only; no code pointer, mutable storage or invocation state escapes.
-    let jit = stream.armJit
-    if jit == nil: return default(array[7, uint64])
-    [jit.fragments, jit.calls, jit.operations, jit.codeBytes, jit.compilationNs,
-      jit.branchCalls, jit.headerCalls]
-
-when defined(pvmX86Jit):
-  func streamNativeStatistics*(stream: FlatStream): array[7, uint64] =
-    ## Private frame counters are empty. Prepared execution reports through the shared native owner.
+    ## Private stream counters are empty. Prepared execution reports through the shared owner.
     default(array[7, uint64])
 
+when defined(pvmX86Jit):
   func flatX86Statistics*(frame: FlatFrame): array[5, uint64] =
     ## Unbound witness frames retain checked execution without a private executable cache.
     default(array[5, uint64])
@@ -3620,21 +3408,12 @@ when defined(pvmArm64JitOwnerReceipt):
 
 when defined(pvmArmMacroReceipt):
   func streamArmMacroStatistics*(stream: FlatStream): array[7, uint64] =
-    ## Private copied activity is available after the public invocation returns its cache.
-    when defined(pvmArm64Jit):
-      let jit {.cursor.} = stream.armJit
-      if jit == nil: default(array[7, uint64])
-      else: armMacroStatistics(jit)
-    else:
-      default(array[7, uint64])
+    ## A checked stream retains no private macro image or activity.
+    default(array[7, uint64])
 
   func streamArmMacroResidentActive*(stream: FlatStream): bool =
-    ## Private copied kind evidence distinguishes a resident macro on a retained owner.
-    when defined(pvmArm64Jit):
-      let jit {.cursor.} = stream.armJit
-      jit != nil and armMacroResidentActive(jit)
-    else:
-      false
+    ## A checked stream retains no resident macro image.
+    false
 
 func streamNodes*(stream: FlatStream): uint64 =
   ## Copied logical occupancy exposes neither mutable arrays nor retained invocation state.
