@@ -882,7 +882,7 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
   ## Follow only exact positive cached shape links in a nonrecursive cycle; arbitrary exits return to ordinary dispatch.
   var current = off
   var destination = flatStop
-  when Ring:
+  when NativeCheckedReadEnabled and Ring:
     if f.nativeRingInstalled and flatTryNativeRing(f, off, destination): return destination
   var middleOff = flatStop
   var lastOff = flatStop
@@ -925,7 +925,7 @@ proc flatChargedShape[First, Second, Branch: static[int]; Ring: static[bool]](f:
   if destination != off: return destination
   let fixedMiddle = middleOff
   let fixedLast = lastOff
-  when Ring:
+  when NativeCheckedReadEnabled and Ring:
     # Once the observed proof is copied, the original worker owns the remaining cold work.
     when First == 200:
       if flatObserveNativeRing(f, off, fixedMiddle, fixedLast): return off
