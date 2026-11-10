@@ -82,6 +82,23 @@ class NativeFixtureContractsHarness(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'evidence.json ring_input_sha256 -> input.json'):
                 verify_fixture_links(folder, descriptor, digests)
 
+    def test_nested_evidence_link_and_behavior(self):
+        """A trace digest belongs to the preflight and the transition count stays observable."""
+        from frozen_fixture_results import result_fields
+        with temporary_folder() as folder:
+            evidence, source = folder/'evidence.json', folder/'input.json'
+            source.write_text('current input')
+            stale = {'traces': [{'fixture_sha256': '0'*64, 'transitions': 7}]}
+            evidence.write_text(json.dumps(stale))
+            descriptor = folder/'links.json'
+            field = 'traces.0.fixture_sha256'
+            descriptor.write_text(json.dumps({evidence.name: {field: source.name}}))
+            digests = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in (evidence, source)}
+            with self.assertRaisesRegex(ValueError, 'traces.0.fixture_sha256'):
+                verify_fixture_links(folder, descriptor, digests)
+            self.assertEqual(result_fields(stale, [field]), {'traces': [{'transitions': 7}]})
+            self.assertEqual(stale['traces'][0]['fixture_sha256'], '0'*64)
+
     # A new descriptor is discovered without adding its identity to a Python registry.
     def test_new_descriptor(self):
         with temporary_folder() as folder:

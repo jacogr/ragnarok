@@ -3,7 +3,7 @@
 
 """Independent full-population offender evidence, exact header markers and complete-map atomic refusals."""
 from functools import cache
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
 from pathlib import Path

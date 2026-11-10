@@ -3,7 +3,7 @@
 
 """Independent guest checkpoint ancestry, long full-profile sessions and honest missing child-root evidence."""
 from functools import cache
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 from pathlib import Path
 import jam_fuzzer_full_profile_oracle as full

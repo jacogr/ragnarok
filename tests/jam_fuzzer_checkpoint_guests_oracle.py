@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent complete-map guest continuation after fresh checkpoint-seeded fuzz sessions."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 from pathlib import Path
 import current_stf_report_guests_oracle as guests

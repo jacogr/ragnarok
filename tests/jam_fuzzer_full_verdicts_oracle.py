@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full683-judgment verdicts, good/bad/wonky classification, opposing faults and exact atomic refusals."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
 from pathlib import Path

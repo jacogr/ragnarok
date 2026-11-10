@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent complete-map queued old-incarnation reports executed against current recreated service code cases."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -60,5 +61,5 @@ def expected_observations(check_frozen=True):
     if check_frozen:
         fixture=json.loads(FIXTURE.read_text());assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
         assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes
-        assert fixture['traces']==json.loads(json.dumps(traces))
+        assert matches_frozen_results(FIXTURE, {'traces': json.loads(json.dumps(traces))}, fields=('traces',))
     return requests,lines,dict(transitions=35,chains=5,roots=roots,checkpoint_sha256=hashes,traces=traces)

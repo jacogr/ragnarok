@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full600-slot winner markers, ticket seals, skipped-tail/epoch fallback and exact marker refusals."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path

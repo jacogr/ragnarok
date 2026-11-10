@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Issue215 expected signatures and complete maps calculated before target startup; only KZG seed roots are attributed."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from functools import cache

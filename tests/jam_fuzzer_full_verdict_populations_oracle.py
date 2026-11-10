@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent parent-selected683/681 verdict quorums, NULL positions, previous-only evidence and membership expiry."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
 from pathlib import Path

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Nonempty report siblings calculate independent complete states from one immutable original parent."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 from pathlib import Path
 from jam_fuzzer_ancestry_oracle import expected_observations as ancestry

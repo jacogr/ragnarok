@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent GP0.8 full-profile empty-body STF maps; the attributed KZG seed is an input, never an observed successor."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path

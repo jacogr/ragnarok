@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Exact metadata/header budgets bound real lookup evidence without changing independently calculated STF maps."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 from pathlib import Path
 from current_stf_reporting_oracle import original, guarantee, advance, body

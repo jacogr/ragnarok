@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent composition of supervision, privileged queues and funded lifecycle effects with epoch rotation/restart."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import importlib
 import json
@@ -51,5 +52,5 @@ def expected_observations(check_frozen=True):
     if check_frozen:
         fixture=json.loads(FIXTURE.read_text())
         assert fixture['graypaper_commit']=='fad0ded4a433052397bf7234352a57fe491883f7'
-        assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes and fixture['traces']==traces
+        assert fixture['successor_roots']==roots and fixture['successor_checkpoint_sha256']==hashes and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return requests,lines,dict(transitions=108,chains=18,roots=roots,checkpoint_sha256=hashes,traces=traces)

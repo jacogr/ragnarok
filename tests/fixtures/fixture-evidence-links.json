@@ -22,7 +22,12 @@
   },
   "current-stf-checkpoint-replay.json": {
     "base_fixture_sha256": "current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-checkpoint-replay.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-checkpoint-replay.json",
+    "traces.0.fixture_sha256": "current-stf-service-upgrades.json",
+    "traces.1.fixture_sha256": "current-stf-request-lifecycle.json",
+    "traces.2.fixture_sha256": "current-stf-preimage-provision.json",
+    "traces.3.fixture_sha256": "current-stf-service-creation.json",
+    "traces.4.fixture_sha256": "current-stf-supervisor-lifecycle.json"
   },
   "current-stf-child-readiness.json": {
     "base_fixture_sha256": "current-stf-transfers.json",
@@ -45,7 +50,25 @@
   },
   "current-stf-epoch-composition.json": {
     "base_fixture_sha256": "current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch-composition.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-epoch-composition.json",
+    "traces.0.fixture_sha256": "current-stf-supervised-storage.json",
+    "traces.1.fixture_sha256": "current-stf-supervised-storage.json",
+    "traces.10.fixture_sha256": "current-stf-child-retirement.json",
+    "traces.11.fixture_sha256": "current-stf-child-retirement.json",
+    "traces.12.fixture_sha256": "current-stf-child-retirement.json",
+    "traces.13.fixture_sha256": "current-stf-child-retirement.json",
+    "traces.14.fixture_sha256": "current-stf-child-recreation.json",
+    "traces.15.fixture_sha256": "current-stf-child-recreation.json",
+    "traces.16.fixture_sha256": "current-stf-child-recreation.json",
+    "traces.17.fixture_sha256": "current-stf-child-recreation.json",
+    "traces.2.fixture_sha256": "current-stf-supervised-storage.json",
+    "traces.3.fixture_sha256": "current-stf-authorization-assign.json",
+    "traces.4.fixture_sha256": "current-stf-authorization-assign.json",
+    "traces.5.fixture_sha256": "current-stf-authorization-assign.json",
+    "traces.6.fixture_sha256": "current-stf-reserved-creation.json",
+    "traces.7.fixture_sha256": "current-stf-reserved-creation.json",
+    "traces.8.fixture_sha256": "current-stf-reserved-creation.json",
+    "traces.9.fixture_sha256": "current-stf-reserved-creation.json"
   },
   "current-stf-epoch-drain.json": {
     "base_fixture_sha256": "current-stf-dependency-waves.json",
@@ -94,7 +117,14 @@
   },
   "current-stf-interchange.json": {
     "base_fixture_sha256": "historical/current-graypaper/current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-interchange.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-interchange.json",
+    "traces.0.fixture_sha256": "current-stf-bless-allowances.json",
+    "traces.1.fixture_sha256": "current-stf-allowance-revocation.json",
+    "traces.2.fixture_sha256": "current-stf-allowance-eligibility.json",
+    "traces.3.fixture_sha256": "current-stf-incarnation-authority.json",
+    "traces.4.fixture_sha256": "current-stf-foreign-creation.json",
+    "traces.5.fixture_sha256": "current-stf-foreign-transfers.json",
+    "traces.6.fixture_sha256": "current-stf-queued-incarnation.json"
   },
   "current-stf-late-allowances.json": {
     "historical_encoding_sha256": "historical/current-graypaper/current-stf-late-allowances.json",
@@ -295,11 +325,34 @@
   },
   "current-stf-profile-replay.json": {
     "base_fixture_sha256": "current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-profile-replay.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-profile-replay.json",
+    "traces.0.fixture_sha256": "current-stf-supervised-storage.json",
+    "traces.1.fixture_sha256": "current-stf-supervised-storage.json",
+    "traces.10.fixture_sha256": "current-stf-reserved-creation.json",
+    "traces.11.fixture_sha256": "current-stf-child-readiness.json",
+    "traces.12.fixture_sha256": "current-stf-child-readiness.json",
+    "traces.13.fixture_sha256": "current-stf-preimage-aging.json",
+    "traces.14.fixture_sha256": "current-stf-child-retirement.json",
+    "traces.15.fixture_sha256": "current-stf-child-retirement.json",
+    "traces.16.fixture_sha256": "current-stf-child-recreation.json",
+    "traces.17.fixture_sha256": "current-stf-child-recreation.json",
+    "traces.2.fixture_sha256": "current-stf-supervised-requests.json",
+    "traces.3.fixture_sha256": "current-stf-supervised-conflicts.json",
+    "traces.4.fixture_sha256": "current-stf-supervised-handoff.json",
+    "traces.5.fixture_sha256": "current-stf-authorization-assign.json",
+    "traces.6.fixture_sha256": "current-stf-authorization-assign.json",
+    "traces.7.fixture_sha256": "current-stf-role-precedence.json",
+    "traces.8.fixture_sha256": "current-stf-validator-designation.json",
+    "traces.9.fixture_sha256": "current-stf-reserved-creation.json"
   },
   "current-stf-queued-incarnation.json": {
     "base_fixture_sha256": "current-stf-transfers.json",
-    "historical_encoding_sha256": "historical/current-graypaper/current-stf-queued-incarnation.json"
+    "historical_encoding_sha256": "historical/current-graypaper/current-stf-queued-incarnation.json",
+    "traces.0.fixture_sha256": "current-stf-incarnation-authority.json",
+    "traces.1.fixture_sha256": "current-stf-incarnation-authority.json",
+    "traces.2.fixture_sha256": "current-stf-incarnation-authority.json",
+    "traces.3.fixture_sha256": "current-stf-incarnation-authority.json",
+    "traces.4.fixture_sha256": "current-stf-incarnation-authority.json"
   },
   "current-stf-ready-expiry.json": {
     "base_fixture_sha256": "current-stf-epoch-drain.json",

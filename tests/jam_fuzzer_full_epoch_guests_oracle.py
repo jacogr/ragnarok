@@ -3,7 +3,7 @@
 
 """Independent guest effects survive offender filtering, two full-profile epoch rotations and population resizing."""
 from functools import cache
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 from pathlib import Path
 import jam_fuzzer_full_population_oracle as population

@@ -103,16 +103,6 @@ def evidence_links(descriptor):
     return json.loads(descriptor.read_text(), object_pairs_hook=unique_object)
 
 
-def matches_frozen_results(fixture, evidence):
-    """Compare independently calculated results, excluding preflight-owned input links."""
-    frozen = json.loads(fixture.read_text(), object_pairs_hook=unique_object)
-    folder = ROOT/'tests/fixtures'
-    name = fixture.relative_to(folder).as_posix()
-    fields = evidence_links(folder/'fixture-evidence-links.json').get(name, {})
-    return ({key: value for key, value in frozen.items() if key not in fields}
-            == {key: value for key, value in evidence.items() if key not in fields})
-
-
 def verify_fixture_links(folder, descriptor, digests):
     """Check frozen input links against the files already verified by the preflight."""
     links = evidence_links(descriptor)
@@ -126,7 +116,11 @@ def verify_fixture_links(folder, descriptor, digests):
                 digests[source] = hashlib.sha256(source.read_bytes()).hexdigest()
             container, _, key = field.partition('.')
             observed = record.get(container)
-            if key:
+            if key and isinstance(observed, list):
+                index, _, member = key.partition('.')
+                row = observed[int(index)] if index.isdecimal() and int(index) < len(observed) else None
+                observed = row.get(member) if isinstance(row, dict) else None
+            elif key:
                 observed = observed.get(key) if isinstance(observed, dict) else None
             if observed != digests[source]:
                 raise ValueError(f'Fixture link checksum mismatch: {name} {field} -> {target}')

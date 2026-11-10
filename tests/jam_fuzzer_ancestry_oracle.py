@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent reporting STF streams distinguish actual child roots from hash/slot-only seed facts."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import copy
 import hashlib
 from pathlib import Path

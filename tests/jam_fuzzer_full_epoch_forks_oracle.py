@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent full consensus siblings diverge across an epoch boundary while retaining genuine guest effects."""
-from native_fixture_contracts import matches_frozen_results
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 from pathlib import Path
 import jam_fuzzer_full_epoch_guests_oracle as guests
