@@ -11,10 +11,12 @@
 
 import std/[strutils, base64, sha1]
 import ../lib/utf8
+import std/http/httpmsg as http_msg
+import std/http/httpparse as http_parse
 export utf8
 
 const MaxMessage* = 16384
-const MaxHeader* = 4096
+const MaxHeader* = http_parse.MaxHeadLen
 
 proc frame*(payload: string, opcode = 1): string =
   ## Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.
@@ -32,42 +34,31 @@ proc hasToken(value, expected: string): bool =
     if token.strip().toLowerAscii() == expected: return true
   false
 
-proc upgrade*(header: string, uiPort: uint16 = 0): string =
-  ## Accept only a complete RFC 6455 version-13 upgrade at /, with no body and an optional exact UI browser Origin.
+proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags()): string =
+  ## Accept a complete version-13 WebSocket upgrade at /, with no body and an optional exact UI browser Origin.
   ## Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
   result = ""
-  if header.len > MaxHeader or not header.endsWith("\r\n\r\n"): return
-  let lines = header.split("\r\n")
-  if lines.len < 3 or lines[0] != "GET / HTTP/1.1": return
-  var key, connection, protocol, version, host, origin = ""
-  var seen: seq[string] = @[]
-  for i in 1..<lines.len - 2: # Reject ambiguous duplicated headers and obsolete line folding.
-    let line = lines[i]
-    let colon = line.find(':')
-    if colon < 1 or line[0] in {' ', '\t'}: return
-    let name = line[0..<colon].toLowerAscii()
-    for c in name: # HTTP field names are tokens; whitespace cannot disguise Origin or framing headers.
-      if c notin {'a'..'z', '0'..'9', '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_',
-          '`', '|', '~'}: return
-    for c in line[colon + 1..^1]: # Bare CR/LF, NUL and other controls are not HTTP field values.
-      if (ord(c) < 32 and c != '\t') or ord(c) == 127: return
-    if name in seen: return
-    seen.add(name)
-    let value = line[colon + 1..^1].strip()
-    case name
-    of "sec-websocket-key": key = value # Exact canonical base64 challenge below.
-    of "connection": connection = value # Upgrade must be a complete list token.
-    of "upgrade": protocol = value # Only WebSocket is negotiated.
-    of "sec-websocket-version": version = value # No legacy framing dialect.
-    of "host": host = value # HTTP/1.1 requires a host.
-    of "origin":
-      # RFC 6455 uses an Origin check rather than an HTTP CORS preflight for WebSocket access.
-      let suffix = if uiPort == 80: "" else: ":" & $uiPort # Browsers omit the default HTTP port.
-      if uiPort == 0 or value notin ["http://127.0.0.1" & suffix,
-          "http://localhost" & suffix]: return
-      origin = value
-    of "content-length", "transfer-encoding": return # RPC upgrades never carry a request body.
-    else: discard # Unknown extension/subprotocol offers are not negotiated.
+  # Each handshake owns its parsed message until return. The listener reuses the vocabulary.
+  var head = http_msg.initHttpMsg(tags)
+  if http_parse.parseRequestHead(toOpenArray(header, 0, header.len - 1), head) != header.len: return
+  if head.versionOf != http_msg.tag(http_msg.tV11): return # This endpoint uses the HTTP/1.1 Upgrade handshake.
+  for field in ["host", "origin", "connection", "upgrade", "sec-websocket-key",
+      "sec-websocket-version"]:
+    if head.countHeaderByName(field) > 1: return # Handshake selectors cannot have conflicting values.
+  if head.methodOf != http_msg.tag(http_msg.mGet) or head.target != "/": return
+  if head.contains(http_msg.hContentLength) or head.contains(http_msg.hTransferEncoding): return
+  let key = head.findHeader("sec-websocket-key")
+  let connection = head.getStr(http_msg.hConnection)
+  let protocol = head.getStr(http_msg.hUpgrade)
+  let version = head.findHeader("sec-websocket-version")
+  let host = head.getStr(http_msg.hHost)
+  var origin = ""
+  if head.contains(http_msg.hOrigin):
+    # Browser origins remain an application allowlist checked before any upgrade response.
+    let suffix = if uiPort == 80: "" else: ":" & $uiPort
+    origin = head.getStr(http_msg.hOrigin)
+    if uiPort == 0 or origin notin ["http://127.0.0.1" & suffix, "http://localhost" &
+        suffix]: return
   if host.len == 0 or version != "13" or not hasToken(connection, "upgrade") or
       protocol.toLowerAscii() != "websocket" or key.len != 24: return
   try: # The standard base64 decoder reports malformed input through its public error contract.

@@ -89,3 +89,5 @@ sessions, 92 MCP messages, 86 correlated replies and 56 tool calls. Notification
 are separate HTTP 202 responses. The 68 focused SDK-harness, CI and inventory safeguards passed;
 workflow YAML parsing and inventory preflight also passed. Linux/Python 3.12 remains separate CI
 execution evidence. Detailed results and message traces are retained under `build/tests/mcp-interop/`.
+
+Request-head syntax and header limits follow the [stock HTTP parser](http-parser-adoption.md).

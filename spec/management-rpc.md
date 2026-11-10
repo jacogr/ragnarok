@@ -62,3 +62,5 @@ No bounds, cleanup or overflow checks are removed. Cross-target semantic checks 
 the management server and Services cover the Linux import boundary; native Linux CI separately
 verifies the affected modules, guard diagnostics and runtime suites. See the
 [compiler observation](../docs/nimony-compatibility.md#deferred-linux-rss-return).
+
+Request-head syntax and header limits follow the [stock HTTP parser](http-parser-adoption.md).

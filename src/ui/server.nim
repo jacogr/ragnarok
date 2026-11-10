@@ -16,23 +16,27 @@
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
+import std/http/httpmsg as http_msg
+import std/http/httpparse as http_parse
 
 # Make generates immutable path/data arrays from the staged UI; no runtime asset files are read.
 include ../../build/ui_assets
 
 const
   MaxConnections = 8
-  MaxHeader = 4096
+  MaxHeader = http_parse.MaxHeadLen
   ChunkBytes = 16384
 
 type
-  Connection = object ## Each slot owns its socket, optional file and bounded write buffer.
+  Connection = object                   ## Each slot owns its socket, optional file and bounded write buffer.
     opened, fileOpened, embedded: bool
     fd, file: cint
     input, output: string
+    headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset, assetIndex, position: int
     remaining, deadline: int64
-  UiServer* = object ## Non-copyable listener and root owner; disabled instances own no descriptors.
+  UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
+    httpTags: nil http_msg.HttpTags # One vocabulary for this listener’s synchronous parses.
     opened, rootOpened: bool
     fd, root: cint
     connections: array[MaxConnections, Connection]
@@ -58,6 +62,7 @@ proc `=wasMoved`*(server: var UiServer) {.nodestroy, inline.} =
   server.fd = -1
   server.root = -1
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Every accepted descriptor belongs to the destination, including streaming files.
@@ -73,6 +78,7 @@ proc `=destroy`*(server: UiServer) =
   for slot in server.connections: # File and socket lifetimes belong exclusively to this owner.
     if slot.opened: discard posix.close(slot.fd)
     if slot.fileOpened: discard posix.close(slot.file)
+  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
@@ -86,6 +92,7 @@ proc close*(server: var UiServer) =
   for slot in mitems(server.connections): slot.close() # Retire requests before the directory root.
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
+  server.httpTags = nil # Release the vocabulary after closing request slots.
   server.opened = false
   server.rootOpened = false
 
@@ -240,41 +247,29 @@ proc readEmbedded(slot: var Connection) =
   slot.position += count
   slot.remaining -= int64(count)
 
-proc process(slot: var Connection, root: cint) =
-  ## Parse only complete, bounded HTTP/1.1 GET/HEAD headers with no body or ambiguous framing.
-  let ending = slot.input.find("\r\n\r\n")
-  if ending < 0:
-    if slot.input.len >= MaxHeader: slot.close() # Partial headers cannot retain a slot indefinitely.
-    return
+proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
+  ## Parse complete stock HTTP GET/HEAD headers with no body or ambiguous framing.
+  let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
+  if headBytes == http_parse.ParseIncomplete: return
+  if headBytes < 0:
+    slot.close()
+    return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request", "text/plain", 0)
-  if ending + 4 > MaxHeader: return
-  let lines = slot.input[0..<ending].split("\r\n")
-  let request = lines[0].split(' ')
-  if request.len != 3 or request[2] != "HTTP/1.1": return
-  var seen: seq[string] = @[]
-  var host = false
-  var encoding = ""
-  for i in 1..<lines.len: # Duplicate, folded and control-bearing fields are rejected consistently.
-    let colon = lines[i].find(':')
-    if colon < 1: return
-    let name = lines[i][0..<colon].toLowerAscii()
-    for c in name:
-      if c notin {'a'..'z', '0'..'9', '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_',
-          '`', '|', '~'}: return
-    if name in seen: return
-    seen.add(name)
-    let value = lines[i][colon + 1..^1].strip()
-    for c in lines[i][colon + 1..^1]: # Check raw values before trimming optional whitespace.
-      if (ord(c) < 32 and c != '\t') or ord(c) == 127: return
-    if name == "transfer-encoding" or (name == "content-length" and value != "0"):
-      return # Permit the standard empty-body header without accepting request bodies.
-    if name == "host": host = value.len > 0
-    if name == "accept-encoding": encoding = value
-  if not host: return
-  if request[0] notin ["GET", "HEAD"]:
+  # The request message retires on return. The listener keeps the vocabulary for later requests.
+  var head = http_msg.initHttpMsg(tags)
+  if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
+      headBytes: return
+  for field in ["host", "accept-encoding"]:
+    if head.countHeaderByName(field) > 1: return # Application selectors must be unambiguous.
+  if head.contains(http_msg.hTransferEncoding) or head.contentLength > 0: return
+  if head.getStr(http_msg.hHost).len == 0: return
+  let isGet = head.methodOf == http_msg.tag(http_msg.mGet)
+  let isHead = head.methodOf == http_msg.tag(http_msg.mHead)
+  if not isGet and not isHead:
     slot.output = "HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, HEAD\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
     return
-  let path = staticPath(request[1])
+  let encoding = head.getStr(http_msg.hAcceptEncoding)
+  let path = staticPath(head.target)
   if path.len == 0: return
   if not acceptsGzip(encoding): # This server offers gzip only, without an identity fallback.
     slot.output = response("406 Not Acceptable", "text/plain", 0)
@@ -286,7 +281,7 @@ proc process(slot: var Connection, root: cint) =
       return
     let length = EmbeddedData[index].len
     slot.output = response("200 OK", contentType(path), int64(length), true)
-    if request[0] == "GET" and length > 0: # HEAD and empty assets need only their metadata response.
+    if isGet and length > 0: # HEAD and empty assets need only their metadata response.
       slot.embedded = true
       slot.assetIndex = index
       slot.position = 0
@@ -303,7 +298,7 @@ proc process(slot: var Connection, root: cint) =
     slot.output = response("404 Not Found", "text/plain", 0)
     return
   slot.output = response("200 OK", contentType(path), int64(stat.st_size), true)
-  if request[0] == "HEAD" or stat.st_size == 0:
+  if isHead or stat.st_size == 0:
     discard posix.close(file) # HEAD preserves metadata while sending no file bytes.
   else:
     slot.file = file
@@ -314,6 +309,14 @@ proc process(slot: var Connection, root: cint) =
 proc tick*(server: var UiServer) =
   ## One admission, bounded header read, one file chunk and one socket write per slot per turn.
   if not server.opened: return
+  let existingTags = server.httpTags
+  let tags: http_msg.HttpTags =
+    if existingTags != nil:
+      existingTags # A running listener reuses its vocabulary.
+    else:
+      let vocabulary = http_msg.newHttpTags()
+      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
+      vocabulary
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure rejects only the newly accepted socket.
@@ -328,11 +331,11 @@ proc tick*(server: var UiServer) =
   for slot in mitems(server.connections): # Fixed capacity and buffers bound each dispatcher's work.
     if slot.opened and now >= slot.deadline: slot.close()
     if slot.opened and slot.output.len == 0 and not slot.fileOpened and not slot.embedded:
-      var bytes = default(array[MaxHeader, char])
-      let count = receive(slot.fd, addr bytes[0], csize_t(MaxHeader - slot.input.len), 0)
+      var bytes = default(array[MaxHeader + 1, char])
+      let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len - slot.input.len), 0)
       if count > 0:
         for i in 0..<count: slot.input.add(bytes[i]) # Copy only initialized bytes.
-        slot.process(server.root)
+        slot.process(tags, server.root)
       elif count == 0: slot.close()
       elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len == 0 and slot.embedded:
