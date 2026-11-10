@@ -132,9 +132,12 @@ block lifecycle:
   for slot in mitems(listener.connections):
     if slot.opened:
       inc active
-      slot.deadline = 0 # Force the same absolute-deadline branch without a wall-clock sleep.
   assert active == 4
-  listener.tick()
+  for attempt in 0..<6000:
+    listener.tick()
+    if not listener.connections[0].opened and not listener.connections[MaxConnections -
+        1].opened: break
+    discard pauseMicros(1000)
   for slot in listener.connections: assert not slot.opened # Expired requests release every bounded slot.
   for peer in idle: discard posix.close(peer)
   assert unlink(path.toCString()) == 0
@@ -161,16 +164,14 @@ assert rmdir(directory.toCString()) == 0
 
 echo "Management HTTP tests passed"
 
-# Moving the listener also transfers every accepted connection cleanup obligation.
+# Moving the listener transfers descriptor cleanup to its destination.
 block moved_owner:
   var destination = default(ManagementServer)
   block:
     var source = default(ManagementServer)
     source.fd = posix.open("/dev/null", O_RDONLY)
-    source.connections[0].fd = posix.open("/dev/null", O_RDONLY)
-    assert source.fd >= 0 and source.connections[0].fd >= 0
+    assert source.fd >= 0
     source.opened = true
-    source.connections[0].opened = true
     source.connections[0].input = "owned request bytes"
     destination = move(source)
     assert not source.opened and not source.connections[0].opened
@@ -183,6 +184,34 @@ block moved_owner:
     source.close()
   # Source destruction has run; both transferred descriptor identities still belong to destination.
   assert fcntl(destination.fd, F_GETFL) >= 0
-  assert fcntl(destination.connections[0].fd, F_GETFL) >= 0
   assert destination.connections[0].input == "owned request bytes"
   destination.close()
+
+proc disconnectedPair(domain, kind, protocol: cint, fds: pointer): cint {.
+    importc: "socketpair", header: "<sys/socket.h>".}
+  ## Give the stock writer a local peer whose lifetime the test controls.
+
+block disconnectedWriter:
+  # Close the peer after the reader has handed off its request, before the writer runs.
+  var pair = default(array[2, cint])
+  assert disconnectedPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),
+      0, addr pair[0]) == 0
+  assert nonblocking(pair[0]) and nonblocking(pair[1])
+  var stream = default(HttpStream)
+  stream.start(pair[0], 64)
+  var request = "request"
+  assert sendBytes(pair[1], request.toCString(), csize_t(request.len), 0) == request.len
+  var input = ""
+  for attempt in 0..<1000:
+    pollHttpStreams()
+    if stream.receiveChunk(input): break
+    discard pauseMicros(1000)
+  assert input == "request"
+  assert posix.close(pair[1]) == 0
+  var reply = "response"
+  stream.sendChunk(reply, true)
+  for attempt in 0..<1000:
+    pollHttpStreams()
+    if stream.finished: break
+    discard pauseMicros(1000)
+  assert stream.finished, "disconnected stock writer retires without terminating the process"

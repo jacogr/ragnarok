@@ -20,3 +20,9 @@ Proof requests cross the boundary as detached selectors and exact routing author
 Full and light Services bind those requests to distinct state sources. The listener
 can deliver completion only after the source lease retires.
 [Proof extension and evidence](../../spec/rpc-state-proofs.md)
+
+
+UI, MCP, and management use a single task per accepted HTTP connection. The task owns
+Nimony's Reader and Writer under one five-second deadline. Only bounded byte chunks cross
+to the dispatcher, which retains HTTP policy, file selection, and application state.
+Service close retires its stream tasks before the process shuts down the shared reactor.
