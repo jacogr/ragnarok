@@ -19,6 +19,7 @@ import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./[wire, protocol, proof_requests]
 import ./light_source
+import ./wire_stream
 import ./transport_bridge as transport
 from ../codec/state/trie as state_trie import StateRoot
 import ../chain/[parameters, genesis, provider]
@@ -34,6 +35,8 @@ type
   Connection = object
     opened, upgraded, closing, fragmented: bool
     fd: cint
+    stream: RpcWireStream
+    streamWriting: bool
     input, output, message: string
     headScanner: http_parse.HeadScanner # Resumes the stock scan across partial reads.
     offset: int
@@ -136,8 +139,10 @@ proc `=destroy`*(server: Server) =
     # Default and detached instances never close stdin.
     discard posix.close(server.fd)
   for slot in server.connections: # Slots are owned solely by this server, without reference cycles.
-    if slot.opened and slot.bridgeEpoch == 0:
-      discard posix.close(slot.fd)
+    slot.stream.stop()
+    when declared(rpcDirectTestSockets):
+      if slot.opened and slot.bridgeEpoch == 0 and slot.fd >= 0:
+        discard posix.close(slot.fd)
 
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
   `=destroy`(server.httpTags)
@@ -169,8 +174,11 @@ proc resumeChain*(server: var Server, lease: nil RpcChainLease): bool =
 
 proc close(slot: var Connection) =
   ## Retire one slot exactly once and release queued data; close is not retried after EINTR.
-  if slot.opened and slot.bridgeEpoch == 0:
-    discard posix.close(slot.fd)
+  slot.stream.stop() # Joining happens after completion, so one stalled writer cannot block a tick.
+  slot.streamWriting = false
+  when declared(rpcDirectTestSockets):
+    if slot.opened and slot.bridgeEpoch == 0 and slot.fd >= 0:
+      discard posix.close(slot.fd)
   if slot.bridgeEpoch != 0:
     slot.retiredBridgeEpoch = slot.bridgeEpoch # The next bridge tick retires only this old generation.
   slot.bridgeEpoch = 0
@@ -185,11 +193,13 @@ proc close(slot: var Connection) =
   slot.offset = 0; slot.upgraded = false; slot.closing = false; slot.fragmented = false
 
 proc close*(server: var Server) {.requires: server.lease == nil.} =
-  ## Explicit native shutdown is idempotent; detached owners must use closeTransport.
+  ## Request retirement for every stream before joining any of them.
   assert not server.transportMode, "use closeTransport for a detached dispatcher"
   for slot in mitems(server.connections):
     # Release accepted sockets before listener.
     slot.close()
+  for slot in mitems(server.connections):
+    slot.stream = default(RpcWireStream) # Every stream has already received its stop request.
   if server.opened and server.fd >= 0:
     discard posix.close(server.fd)
   server.bridgeAddress = nil
@@ -547,19 +557,25 @@ proc tick*(server: var Server, peers: uint32) =
       let vocabulary = http_msg.newHttpTags()
       server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
       vocabulary
+  pollRpcStreams()
+  for slot in mitems(server.connections):
+    if slot.stream.finished:
+      slot.close()
+      slot.stream = default(RpcWireStream)
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure closes only the newly accepted socket.
     var free = -1
     for i in 0..<MaxConnections:
-      if not server.connections[i].opened:
+      if not server.connections[i].opened and not server.connections[i].stream.active:
         # At most one admission per dispatcher turn.
         free = i
         break
     if free < 0 or not nonblocking(accepted):
       discard posix.close(accepted)
     else:
-      server.connections[free].fd = accepted
+      server.connections[free].fd = -1
+      server.connections[free].stream.start(accepted)
       server.connections[free].opened = true
       server.connections[free].deadline = now + 5000
   let info = ClientInfo(uptimeMs: now - server.started, peers: peers, role: server.role,
@@ -574,28 +590,36 @@ proc tick*(server: var Server, peers: uint32) =
       # Partial headers/messages and blocked writes expire.
       slot.close()
       continue
-    if slot.output.len == 0 and not slot.closing:
-      var bytes = default(array[4096, char])
-      let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
-      if count == 0:
-        # Orderly EOF retires queued input.
+    if slot.streamWriting:
+      if slot.stream.writing: continue
+      slot.streamWriting = false
+      if slot.closing:
         slot.close()
         continue
-      if count < 0:
-        let error = osLastError()
-        if not retryableSocketError(error):
-          slot.close()
-          continue
+      if slot.input.len == 0 and not slot.fragmented:
+        slot.deadline = now + 30000
+    if slot.output.len == 0 and not slot.closing:
+      var chunk = ""
+      if slot.stream.active:
+        discard slot.stream.takeInput(chunk)
       else:
-        # Before upgrade, the stock scanner bounds the head and preserves bytes after it.
-        if slot.upgraded and count > MaxMessage + 14 - slot.input.len:
-          slot.reject(1009, now) # Reject before appending beyond the fixed receive allowance.
+        when declared(rpcDirectTestSockets):
+          # Directly injected descriptors are used by the native dispatcher fixtures.
+          var bytes = default(array[4096, char])
+          let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len), 0)
+          if count == 0 or (count < 0 and not retryableSocketError(osLastError())):
+            slot.close()
+            continue
+          if count > 0:
+            for i in 0..<count: chunk.add(bytes[i])
+      if chunk.len > 0:
+        # The scanner owns the HTTP limit until the upgrade has succeeded.
+        if slot.upgraded and chunk.len > MaxMessage + 14 - slot.input.len:
+          slot.reject(1009, now)
         else:
           if slot.input.len == 0 and not slot.fragmented and slot.upgraded:
-            slot.deadline = now + 5000 # Begin one fixed partial-message deadline.
-          for i in 0..<count:
-            # Copy only the initialized native prefix.
-            slot.input.add(bytes[i])
+            slot.deadline = now + 5000
+          slot.input.add(chunk)
       if slot.opened and slot.output.len == 0:
         slot.process(tags, info, now, server.uiPort)
     if slot.opened and not slot.closing and slot.output.len == 0:
@@ -606,16 +630,21 @@ proc tick*(server: var Server, peers: uint32) =
         slot.deadline = min(slot.deadline, now + 5000) # Notifications cannot extend a partial input deadline.
     if not slot.opened or slot.output.len == 0:
       continue
-    let written = writePending(slot.fd, slot.output, slot.offset)
-    if written == WriteComplete: # All response bytes were handed to the kernel.
-      slot.output = ""; slot.offset = 0
-      if slot.closing:
+    if slot.stream.active:
+      slot.stream.send(slot.output)
+      slot.streamWriting = true
+      continue
+    when declared(rpcDirectTestSockets):
+      let written = writePending(slot.fd, slot.output, slot.offset)
+      if written == WriteComplete: # All response bytes were handed to the kernel.
+        slot.output = ""; slot.offset = 0
+        if slot.closing:
+          slot.close()
+        elif slot.input.len == 0 and not slot.fragmented:
+          slot.deadline = now + 30000
+      elif written == WriteFailed:
+        # A zero-progress or permanently failed send cannot spin indefinitely.
         slot.close()
-      elif slot.input.len == 0 and not slot.fragmented:
-        slot.deadline = now + 30000
-    elif written == WriteFailed:
-      # A zero-progress or permanently failed send cannot spin indefinitely.
-      slot.close()
 
 proc startLight*(server: var Server, port: uint16, role: string, parameters: ParameterResult,
     head: RpcLightHead, disk: bool, uiPort: uint16 = 0,

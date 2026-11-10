@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from application_state_checks import mesh
+from test_quic import THREAD_BASELINES
 
 
 class ApplicationStateHarness(unittest.TestCase):
@@ -14,7 +15,7 @@ class ApplicationStateHarness(unittest.TestCase):
 
     def test_fixed_runtime_thread_baseline(self):
         """The enabled writer belongs in the fixed count; missing/extra ready threads still fail."""
-        baseline = 2 # One dispatcher plus the enabled fixed logging writer.
+        baseline = THREAD_BASELINES['nim']
         for threads in (baseline-1, baseline, baseline+1):
             children = []
 

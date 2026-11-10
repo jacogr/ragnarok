@@ -79,6 +79,8 @@ def unit_command(compiler, name=None, libraries=None):
         if not source.is_file() or not source.with_suffix('.output').is_file():
             raise FileNotFoundError('Missing native test or expected output: '+str(source))
     flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed', '--boundchecks:on']
+    if platform.system() == 'Linux':
+        flags += ['-d:nimIoringNoUring']  # Match the HTTP stream readiness backend.
     if name in UNIT_LINKS and UNIT_LINKS[name] is not None:
         # Never guess a library path or let a stale production library stand in for refusal instrumentation.
         profile = UNIT_LINKS[name]

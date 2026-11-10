@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+from test_quic import IO_POOL_THREADS
 from test_quic_soak import resources, wait_marker
 
 ROUNDS = 32
@@ -17,6 +18,7 @@ WARMUP = 8
 RSS_LIMIT = 256 * 1024 * 1024
 RSS_GROWTH = 16 * 1024 * 1024
 DESCRIPTOR_GROWTH = 2
+IDLE_THREADS = 1 + IO_POOL_THREADS  # The download driver runs without the application logger.
 
 
 def growth(samples):
@@ -26,13 +28,13 @@ def growth(samples):
         raise ValueError('Need all 33 joined download resource observations')
     for sample in samples:
         # Idle barriers have already joined the sole preparation worker and closed native endpoints.
-        if sample['threads'] != 1 or not 0 < sample['rss_bytes'] < RSS_LIMIT or sample['descriptors'] < 0:
+        if sample['threads'] != IDLE_THREADS or not 0 < sample['rss_bytes'] < RSS_LIMIT or sample['descriptors'] < 0:
             raise ValueError('Invalid joined download resource observation: '+str(sample))
     retained = samples[WARMUP:]
     rss = [row['rss_bytes'] for row in retained]
     descriptors = [row['descriptors'] for row in retained]
     result = dict(warmup=WARMUP, samples=len(samples), rss_range_bytes=max(rss)-min(rss),
-                  descriptor_range=max(descriptors)-min(descriptors), idle_threads=1,
+                  descriptor_range=max(descriptors)-min(descriptors), idle_threads=IDLE_THREADS,
                   rss_limit_bytes=RSS_LIMIT, rss_growth_limit_bytes=RSS_GROWTH,
                   descriptor_growth_limit=DESCRIPTOR_GROWTH)
     if result['rss_range_bytes'] > RSS_GROWTH or result['descriptor_range'] > DESCRIPTOR_GROWTH:
@@ -63,13 +65,13 @@ def observe(binary, directory, environment):
                         raise TimeoutError('Download resource workload deadline')
                     wait_marker({'driver': process}, {'driver': log}, 'driver',
                         f'DOWNLOAD_IDLE {iteration}', peaks, seconds=min(20, remaining),
-                        thread_limits={'driver': 2})
+                        thread_limits={'driver': IDLE_THREADS + 1})
                     sample = resources(process.pid)
                     samples.append(sample)
                     for metric, value in sample.items():
                         # Retain sampled high water observations, including the parked idle boundaries.
                         peaks['driver'][metric] = max(peaks['driver'].get(metric, 0), value)
-                    if sample['threads'] != 1 or not 0 < sample['rss_bytes'] < RSS_LIMIT:
+                    if sample['threads'] != IDLE_THREADS or not 0 < sample['rss_bytes'] < RSS_LIMIT:
                         raise ValueError('Download idle resource bound: '+str(sample))
                     (gate/str(iteration)).touch()
                 result['exit_code'] = process.wait(timeout=5)

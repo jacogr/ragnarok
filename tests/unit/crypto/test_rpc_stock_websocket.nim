@@ -1,15 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Real stock WebSocket tasks feed detached bytes to the canonical RPC dispatcher and its subscription FIFO.
+## Exercise the production RPC listener with independently encoded WebSocket clients.
 
-import std/[assertions, syncio, strutils, base64, threadpool, ioring]
-import std/websocket as ws
-import std/httpserver as http
+import std/[assertions, syncio, strutils, base64, ioring, monotimes]
 import std/socket as tcp
 import std/posix/posix as posix
-import ../../../src/rpc/[server, protocol, websocket_transport]
-import ../../../src/rpc/transport_bridge as transport
+import ../../../src/lib/socket_io as native_io
+import ../../../src/rpc/[server, protocol, wire_stream]
 import ../../../src/chain/[genesis, parameters, provider]
 from ../../../src/codec/state/layout import chapterKey, StateChapter
 from ../../../src/codec/state/trie import StateEntry
@@ -33,37 +31,7 @@ proc sendRequest(peer: var tcp.Socket, request: string, opcode: int = 1) =
   try:
     peer.write(frame)
   except ErrorCode:
-    assert false, "test client sends its complete request before bridge retirement"
-
-proc exact(peer: var tcp.Socket, size: int): string =
-  ## Finite client deadlines and a byte ceiling bound every independent frame read.
-  assert size >= 0 and size <= 65535
-  result = ""
-  while result.len < size:
-    var bytes = default(array[256, char])
-    let capacity = min(bytes.len, size - result.len)
-    let count = try:
-      peer.read(toOpenArray(bytes, 0, capacity - 1))
-    except ErrorCode:
-      assert false, "expected stock WebSocket output arrives before the client deadline"
-      0
-    assert count > 0
-    for index in 0..<count: result.add(bytes[index])
-
-proc frame(peer: var tcp.Socket, opcode: int): string =
-  ## Assert final, unmasked framing without consulting the server encoder.
-  let head = peer.exact(2)
-  assert ord(head[0]) == (128 or opcode) and (ord(head[1]) and 128) == 0
-  var size = ord(head[1])
-  assert size != 127
-  if size == 126:
-    let medium = peer.exact(2)
-    size = ord(medium[0]) * 256 + ord(medium[1])
-  peer.exact(size)
-
-proc textFrame(peer: var tcp.Socket): string =
-  ## RPC replies and unsolicited notifications use only text frames.
-  peer.frame(1)
+    assert false, "test client sends its complete request before retirement"
 
 proc child(parent: BlockSnapshot, settings: Parameters): BlockSnapshotResult =
   ## Synthetic direct-child state exercises publication ownership, not consensus validation.
@@ -79,59 +47,65 @@ proc child(parent: BlockSnapshot, settings: Parameters): BlockSnapshotResult =
   captureBlockSnapshot(header, @[StateEntry(key: chapterKey(StateChapter(8)), value: roster),
     StateEntry(key: chapterKey(StateChapter(11)), value: @[9'u8, 0, 0, 0])], settings)
 
-proc drive(owner: var Server, bridge: var transport.RpcTransportBridge,
-    writer: var WebSocketTaskState, count: uint64) =
-  ## Bounded foreground turns execute all canonical queries; tasks see only the bridge.
+proc awaitWire(owner: var Server, peer: var tcp.Socket, expected: string): string =
+  ## Tick the real listener and observe the wire independently of the server decoder.
+  result = ""
   for attempt in 0..<2000:
-    pollWebSocketTransport()
-    discard owner.dispatchTransport(bridge, 0)
-    if writer.transferred >= count: return
+    owner.tick(0)
+    var bytes = default(array[1024, char])
+    let count = native_io.receive(peer.fd, addr bytes[0], csize_t(bytes.len), 0)
+    if count > 0:
+      for index in 0..<count: result.add(bytes[index])
+      if expected in result: return
+    elif count == 0:
+      break
     discard pauseMicros(1000)
-  assert false, "stock writer frames: wanted=" & $count & " sent=" & $writer.transferred &
-    " stopped=" & $writer.completed
+  assert false, "expected RPC stream output: " & expected
 
-proc rejectUpgrade(listener: var http.HttpServer, port: uint16, target, extra: string) {.raises.} =
-  ## Endpoint admission remains application policy before the stock handshake takes the streams.
-  var peer = tcp.connect("127.0.0.1", port, afterMs(5000))
-  peer.write("GET " & target & " HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" &
-      extra & "\r\n")
-  var request = listener.accept()
-  assert request.next()
-  var refused = false
-  try:
-    var socket = upgradeRpcWebSocket(request)
-    socket.abort() # Unexpected admission still retires its halves before failing the test.
-  except ErrorCode:
-    refused = true
-  assert refused and request.isClosed
-  peer.close()
+proc socketPair(domain, kind, protocol: cint, pair: pointer): cint {.
+    importc: "socketpair", header: "<sys/socket.h>".}
+let sendBuffer {.importc: "SO_SNDBUF", header: "<sys/socket.h>".}: cint
+
+proc blockedWriter(owner: var Server, client: var tcp.Socket) =
+  ## A socket with a small send buffer and an unread peer holds the stream's output credit.
+  var pair = default(array[2, cint])
+  assert socketPair(cint(posix.AF_UNIX), cint(posix.SOCK_STREAM), 0, addr pair[0]) == 0
+  defer: discard posix.close(pair[1])
+  var capacity = 4096.cint
+  assert native_io.setOption(pair[0], native_io.SocketLevel, sendBuffer, addr capacity,
+    posix.SockLen(sizeof(capacity))) == 0
+  assert native_io.nonblocking(pair[0]) and native_io.nonblocking(pair[1])
+  var stream = default(RpcWireStream)
+  stream.start(pair[0])
+  var output = repeat('x', 65535)
+  let started = getMonoTime().ticks
+  stream.send(output)
+  var octet = '\0'
+  var count = 0
+  for attempt in 0..<1000:
+    pollRpcStreams()
+    count = native_io.receive(pair[1], addr octet, 1, 0)
+    if count == 1: break
+    discard pauseMicros(1000)
+  assert count == 1 and octet == 'x' and stream.writing
+  client.sendRequest("alive", 9)
+  assert owner.awaitWire(client, "alive") == "\x8a\x05alive"
+  assert stream.writing, "a healthy connection progresses while a writer remains blocked"
+  # The writer has made partial progress. Keep the peer open and stop without draining it.
+  stream.stop()
+  stream = default(RpcWireStream)
+  assert (getMonoTime().ticks - started) div 1_000_000 < 6000
 
 proc main() {.raises.} =
-  ## Finish handshake setup before lending stable bridge/state addresses to task callbacks.
-  var listener = listenRpcWebSocket(0)
-  assert listener.fd >= 0
+  # Discover an available loopback port before exercising normal listener startup.
+  let probe = native_io.listenLoopback(0, 1)
+  assert probe >= 0
   var address = default(posix.Sockaddr_in)
   var length = posix.SockLen(sizeof(address))
-  assert inspectBind(listener.fd, addr address, addr length) == 0
-  assert address.sin_addr.s_addr == networkAddress(0x7f000001'u32), "listener binds only IPv4 loopback"
-  let port = boundPort(listener.fd)
-  var duplicate = listenRpcWebSocket(port)
-  assert duplicate.fd < 0, "an occupied port fails without a live listener"
-  duplicate.close()
-  rejectUpgrade(listener, port, "/wrong", "")
-  rejectUpgrade(listener, port, "/", "Origin: http://untrusted\r\n")
-  rejectUpgrade(listener, port, "/", "Origin:\r\n")
-  rejectUpgrade(listener, port, "/", "Host: duplicate\r\n")
-  rejectUpgrade(listener, port, "/", "Connection: close\r\n")
-  rejectUpgrade(listener, port, "/", "Upgrade: h2c\r\n")
-  rejectUpgrade(listener, port, "/", "Content-Length: 0\r\n")
-  var peer = tcp.connect("127.0.0.1", port, afterMs(5000))
-  peer.write("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n")
-  var connection = listener.accept()
-  assert connection.next()
-  var socket = upgradeRpcWebSocket(connection)
-  assert peer.readLine().startsWith("HTTP/1.1 101 ")
-  while peer.readLine().len != 0: discard
+  assert inspectBind(probe, addr address, addr length) == 0
+  assert address.sin_addr.s_addr == networkAddress(0x7f000001'u32)
+  let port = boundPort(probe)
+  discard posix.close(probe)
   var settings = default(array[ParameterBytes, byte])
   settings[24] = 2
   settings[30] = 10
@@ -149,41 +123,38 @@ proc main() {.raises.} =
   let next = child(initial.value, parameters.value)
   assert next.error == GenesisError.None
   var owner = default(Server)
-  assert owner.startTransport(port, "bridge", parameters, initial)
-  var bridge = default(transport.RpcTransportBridge)
-  var selected = default(transport.BridgeTicket)
-  assert bridge.open(0, selected) == transport.Ready
-  var readerState, writerState = default(WebSocketTaskState)
-  submit(delay(readWebSocket(move(socket.reader), addr bridge, selected, addr readerState)), -1)
-  submit(delay(writeWebSocket(move(socket.writer), addr bridge, selected, addr writerState)), -1)
-  peer.sendRequest("{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":[],\"id\":7}")
-  owner.drive(bridge, writerState, 2)
-  assert peer.textFrame() == "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}"
   let prefix = "{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":{\"subscription\":1,\"result\":{\"header_hash\":\""
-  assert peer.textFrame() == prefix & base64.encode(array[32, byte](initial.value.blockHash)) & "\",\"slot\":7}}}"
-  assert owner.publishBlock(next) == ViewAdvanceError.None
-  owner.drive(bridge, writerState, 3)
-  assert peer.textFrame() == prefix & base64.encode(array[32, byte](next.value.blockHash)) & "\",\"slot\":9}}}"
-  peer.sendRequest("{\"jsonrpc\":\"2.0\",\"method\":\"unsubscribeBestBlock\",\"params\":[1],\"id\":8}")
-  owner.drive(bridge, writerState, 4)
-  assert peer.textFrame() == "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":true}"
-  peer.sendRequest("alive", 9)
-  owner.drive(bridge, writerState, 5)
-  assert peer.frame(10) == "alive"
-  peer.sendRequest("\x03\xe8finished", 8)
-  owner.drive(bridge, writerState, 6)
-  assert peer.frame(8) == "\x03\xe8finished", "close code and complete reason survive the split bridge"
-  assert owner.closeTransport(bridge)
-  peer.close() # Release idle recv cooperatively; local cancellation remains a documented adoption gate.
-  var retired = false
-  for attempt in 0..<2000:
-    pollWebSocketTransport()
-    retired = readerState.completed and writerState.completed
-    if retired: break
+  assert owner.start(port, "stream", parameters, initial)
+  var duplicate = default(Server)
+  assert not duplicate.start(port, "duplicate", parameters, initial)
+  var client = tcp.connect("127.0.0.1", port, afterMs(5000))
+  client.write("GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n")
+  assert owner.awaitWire(client, "\r\n\r\n").startsWith("HTTP/1.1 101 ")
+  let lease = owner.pauseChain()
+  assert lease != nil
+  client.sendRequest("{\"jsonrpc\":\"2.0\",\"method\":\"subscribeBestBlock\",\"params\":[],\"id\":7}")
+  var octet = '\0'
+  for attempt in 0..<20:
+    pollRpcStreams()
+    owner.tick(0)
+    assert native_io.receive(client.fd, addr octet, 1, 0) < 0
     discard pauseMicros(1000)
-  assert retired, "both task owners retire before bridge and state storage leave scope"
-  listener.close()
-  shutdown()
+  assert owner.resumeChain(lease)
+  let initialEvent = prefix & base64.encode(array[32, byte](initial.value.blockHash)) & "\",\"slot\":7}}}"
+  let subscribed = owner.awaitWire(client, initialEvent)
+  assert "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}" in subscribed
+  assert owner.publishBlock(next) == ViewAdvanceError.None
+  let event = prefix & base64.encode(array[32, byte](next.value.blockHash)) & "\",\"slot\":9}}}"
+  discard owner.awaitWire(client, event)
+  client.sendRequest("{\"jsonrpc\":\"2.0\",\"method\":\"unsubscribeBestBlock\",\"params\":[1],\"id\":8}")
+  discard owner.awaitWire(client, "{\"jsonrpc\":\"2.0\",\"id\":8,\"result\":true}")
+  blockedWriter(owner, client)
+  let started = getMonoTime().ticks
+  owner.close() # The idle client remains open until the dispatcher has joined its task.
+  assert (getMonoTime().ticks - started) div 1_000_000 < 1000
+  assert native_io.receive(client.fd, addr octet, 1, 0) == 0
+  client.close()
+  shutdownRpcStreams()
 
 try:
   main()

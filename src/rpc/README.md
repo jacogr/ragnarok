@@ -9,6 +9,7 @@ views. It implements part of JIP-2 plus documented diagnostic/state extensions.
 | --- | --- |
 | [`protocol.nim`](protocol.nim) | JSON-RPC parsing, dispatch, response bounds and configured chain/service queries |
 | [`wire.nim`](wire.nim) | HTTP upgrade, RFC 6455 framing, UTF-8 validation and incremental frame decoding |
+| [`wire_stream.nim`](wire_stream.nim) | Task-owned Nimony Reader and Writer with bounded byte handoff |
 | [`server.nim`](server.nim) | Optional loopback listener, bounded connections/subscriptions, publication and detached dispatcher entry points |
 | [`transport_bridge.nim`](transport_bridge.nim) | Bounded detached-byte mailboxes with generation and in-flight output credit |
 | [`websocket_transport.nim`](websocket_transport.nim) | Stock split-half IO tasks and RPC-specific upgrade admission |
@@ -26,8 +27,3 @@ algorithm. Missing-state behavior and configuration-derived placeholders are exp
 
 See the [RPC contract](../../spec/rpc.md) for the method surface, bounds, subscription lifetimes,
 publication rules and native/E2E verification.
-
-The stock transport is an [implementation draft](../../spec/websocket-adoption.md).
-Its explicit `startTransport`/`dispatchTransport`/`closeTransport` API is exercised by native
-integration tests; CLI/Services still use the existing listener. Bridge retirement does not
-cancel an idle stock receive: callers must retain storage and join both tasks before shutdown.

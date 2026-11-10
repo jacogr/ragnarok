@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from application_download_resources import observe, growth, ROUNDS, RSS_GROWTH
+from application_download_resources import observe, growth, ROUNDS, RSS_GROWTH, IDLE_THREADS
 
 
 class DownloadResourcesHarness(unittest.TestCase):
@@ -22,7 +22,7 @@ class DownloadResourcesHarness(unittest.TestCase):
 
     def samples(self):
         """Create all required joined samples, each independently mutable for negative witnesses."""
-        return [dict(rss_bytes=32*1024*1024, threads=1, descriptors=3) for _ in range(ROUNDS+1)]
+        return [dict(rss_bytes=32*1024*1024, threads=IDLE_THREADS, descriptors=3) for _ in range(ROUNDS+1)]
 
     def test_joined_samples_and_growth_boundaries(self):
         """Warmup is explicit; missing samples, live workers and excess retained resources fail."""
@@ -33,7 +33,7 @@ class DownloadResourcesHarness(unittest.TestCase):
         samples[-1]['descriptors'] += 2
         self.assertEqual(growth(samples)['descriptor_range'], 2)
         for metric, value in [('rss_bytes', 32*1024*1024+RSS_GROWTH+1), ('descriptors', 6),
-                              ('threads', 2), ('rss_bytes', 0), ('rss_bytes', 256*1024*1024)]:
+                              ('threads', IDLE_THREADS+1), ('rss_bytes', 0), ('rss_bytes', 256*1024*1024)]:
             # Every bad sample changes one independent resource contract, including warmup thread cleanup.
             broken = self.samples()
             broken[-1][metric] = value

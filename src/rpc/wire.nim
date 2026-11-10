@@ -11,6 +11,7 @@
 
 import std/[strutils, base64, sha1]
 import ../lib/utf8
+import std/websocket as stock
 import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 export utf8
@@ -20,13 +21,8 @@ const MaxHeader* = http_parse.MaxHeadLen
 
 proc frame*(payload: string, opcode = 1): string =
   ## Produce one unmasked final server frame; caller supplies a bounded payload and valid opcode.
-  result = ""
-  if payload.len > 65535: return # The server's bounded response policy never needs a 64-bit length.
-  result.add(char(128 or opcode))
-  if payload.len < 126: result.add(char(payload.len)) # Short canonical length.
-  else: # Medium canonical length is in network order.
-    result.add(char(126)); result.add(char(payload.len shr 8)); result.add(char(payload.len and 255))
-  result.add(payload)
+  if payload.len > 65535: return ""
+  stock.frameHeader(stock.WsOpcode(opcode), payload.len, false, default(array[4, char])) & payload
 
 proc hasToken(value, expected: string): bool =
   ## Match a case-insensitive comma-delimited HTTP token without accepting substring matches.
@@ -107,24 +103,18 @@ func final*(value: FrameResult): bool {.requires: value.state == complete.} =
 
 proc decodeFrame*(input: string): FrameResult =
   ## Decode one masked client frame, checking length before allocation; caller retains incomplete input.
-  if input.len < 2: return FrameResult(state: incomplete) # Wait for the fixed prefix.
-  let first = ord(input[0])
-  let second = ord(input[1])
-  let opcode = first and 15
-  if (first and 112) != 0 or (second and 128) == 0 or opcode notin [0, 1, 2, 8, 9, 10]:
-    return FrameResult(state: invalid) # Extensions are not negotiated; all client frames are masked.
-  var size = second and 127
-  var start = 2
-  if size == 127: return FrameResult(state: invalid) # Canonical 64-bit sizes exceed this endpoint's bound.
-  if size == 126: # Read network-order medium lengths only after both bytes arrive.
-    if input.len < 4: return FrameResult(state: incomplete)
-    size = ord(input[2]) * 256 + ord(input[3]); start = 4
-    if size < 126: return FrameResult(state: invalid)
-  if size > MaxMessage or (opcode >= 8 and (size > 125 or (first and 128) == 0)):
-    return FrameResult(state: invalid) # Control frames cannot be fragmented or oversized.
-  if input.len < start + 4 + size: return FrameResult(state: incomplete)
-  var payload = newString(size)
-  for i in 0..<size: # The validated extent includes the mask and complete body.
-    payload[i] = char(ord(input[start + 4 + i]) xor ord(input[start + i mod 4]))
-  FrameResult(state: complete, body: move(payload), operation: opcode,
-      length: start + 4 + size, finished: (first and 128) != 0)
+  if input.len < 2: return FrameResult(state: incomplete)
+  if (ord(input[0]) and 112) != 0 or (ord(input[1]) and 128) == 0 or
+      (ord(input[1]) and 127) == 127:
+    return FrameResult(state: invalid) # No extensions, unmasked input or 64-bit lengths.
+  var header = default(stock.WsFrame)
+  let start = stock.parseFrameHeader(toOpenArray(input, 0, input.len - 1), header)
+  if start == http_parse.ParseIncomplete: return FrameResult(state: incomplete)
+  if start < 0 or header.len > MaxMessage: return FrameResult(state: invalid)
+  if input.len < start + header.len: return FrameResult(state: incomplete)
+  var payload = ""
+  if header.len > 0:
+    payload = input.substr(start, start + header.len - 1)
+    stock.applyMask(toOpenArray(payload, 0, payload.len - 1), header.key)
+  FrameResult(state: complete, body: move(payload), operation: ord(header.opcode),
+      length: start + header.len, finished: header.fin)

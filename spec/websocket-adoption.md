@@ -1,5 +1,8 @@
 # Stock WebSocket transport implementation draft
 
+This document records the split-half prototype. The production listener uses the
+single-owner stream transport in [`src/rpc/wire_stream.nim`](../src/rpc/wire_stream.nim).
+
 ## Scope and decision
 
 Implement a bounded `std/websocket` transport bridge at the November 9 Nimony pin
