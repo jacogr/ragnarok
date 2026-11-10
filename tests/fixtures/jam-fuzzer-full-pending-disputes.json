@@ -9,8 +9,8 @@
     339,
     340
   ],
-  "full_guests_sha256": "1c737e6200940f7839ea967576fe1e49b0a3509cb3538a17fec93df14ef05d4f",
-  "verdict_fixture_sha256": "1c75922d96ecb8dc214578946e7e58279e55ac334a335e29c5a79930d3515f48",
+  "full_guests_sha256": "33bffde0ddc32a247f9c0177df4fe829fce3e769febf149c68864710023bf49a",
+  "verdict_fixture_sha256": "3d429ff82d7538868c5cd9b663c2bf973ba294e548bc1aa4c310a2b491ee51b5",
   "successor_roots": [
     [
       "a895482dca6171dc540e4eba7977efdd92983c3d5165799cf89146b3900350af",

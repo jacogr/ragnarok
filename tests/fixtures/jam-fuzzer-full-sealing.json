@@ -4,7 +4,7 @@
   "transitions": 26,
   "accepted": 22,
   "refused": 4,
-  "contest_fixture_sha256": "e34611b0e8780aae0b701351b796bfd6d83a7e86f2b9f0f91151e050e20ccfd6",
+  "contest_fixture_sha256": "baefd3573fdf6be5581bd8de26ccdb53ae470b00aa84d95859b65fbdc795f645",
   "successor_roots": [
     [
       "31882cf562a3cfba086909a6b663f8cfd98f37819fa39444a3ff01c6de1e6ae3",
