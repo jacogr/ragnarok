@@ -116,7 +116,14 @@ proc decodeFrame*(input: string): FrameResult =
   if input.len < start + header.len: return FrameResult(state: incomplete)
   var payload = ""
   if header.len > 0:
-    payload = input.substr(start, start + header.len - 1)
-    stock.applyMask(toOpenArray(payload, 0, payload.len - 1), header.key)
+    # Mask through a bulk store so the string's inline prefix reflects the decoded bytes.
+    let bytes = payload.beginStore(header.len)
+    if bytes == nil:
+      payload.endStore()
+      return FrameResult(state: invalid)
+    copyMem(bytes, input.readRawData(start), header.len)
+    var body = toOpenArray(bytes, 0, header.len - 1)
+    stock.applyMask(body, header.key)
+    payload.endStore()
   FrameResult(state: complete, body: move(payload), operation: ord(header.opcode),
       length: start + header.len, finished: header.fin)
