@@ -4,11 +4,13 @@
 # @@Verification={"arc": "application_checkpoint_bundle_arc_release"}
 
 ## The independently serialized full application envelope preserves exact aggregate ceilings and source ownership.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/chain
 import ../../../src/app/checkpoint/[codec as checkpoint_codec, identity as checkpoint_identity]
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_context, arc_evidence]
+
 proc fixtureBytes(): seq[byte] {.raises.} =
   ## The pinned golden concatenates independent metadata and exact original sorted serialized-map entries.
   let path = getEnv("RAGNAROK_APPLICATION_CHECKPOINT_BUNDLE")
@@ -17,9 +19,11 @@ proc fixtureBytes(): seq[byte] {.raises.} =
   result = newSeq[byte](text.len)
   for index, octet in text:
     result[index] = byte(octet) # Binary bytes are not reinterpreted as text or hex.
+
 proc cycle(owner: ApplicationChain, expected: seq[byte]) =
   ## All temporary encoded identity/checkpoint buffers retire between calls.
   assert encodeApplicationCheckpoint(owner, ByteLimit(uint64(expected.len))).value == expected
+
 proc main() {.raises.} =
   ## Exact complete bytes agree with an independent encoder; every short aggregate budget refuses without a prefix payload.
   let owner = checkpointFixture()

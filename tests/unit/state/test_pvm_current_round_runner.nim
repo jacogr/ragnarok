@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_round_runner_arc_release"}
 
 ## One current signed round composes selected state, yields and transfer budgets without guest replay or annulment gas refunds.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/codec/[bounded, composite, report_owned]
@@ -26,6 +28,7 @@ import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_current_guests_context,
   accumulation_current_round_context,
   pvm_accumulation_program, arc_evidence]
+
 proc main() {.raises.} =
   ## Maintained fixtures authenticate source state/header/profile before the single current orchestration path executes.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

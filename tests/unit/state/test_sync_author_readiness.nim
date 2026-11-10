@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real production UP0/CE128 serving and shared full-state evidence gate participation independently of idle work.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../../src/app/tiny_genesis
@@ -31,9 +32,11 @@ proc key(path: string): array[32, byte] {.raises.} =
   assert raw.len == 32
   result = default(array[32, byte])
   for index in 0..<32: result[index] = byte(raw[index])
+
 proc stamp(head: BlockSnapshot): AnnouncedBlock =
   ## Use actual independently installed header identities as untrusted wire target records.
   AnnouncedBlock(hash: AnnouncedHeaderHash(array[32, byte](head.blockHash)), slot: HeaderSlot(head.slot))
+
 proc sample(targets: var SyncTargets, peers: CurrentDownloadPeers, view: ChainView,
     now: uint64, pending = false): SyncTargetProgress =
   ## Every permission decision requires a new source-sampling turn against the actual full selected view.
@@ -41,6 +44,7 @@ proc sample(targets: var SyncTargets, peers: CurrentDownloadPeers, view: ChainVi
   assert targets.observePeer(DownloadPeerId(1), peers.incarnation(DownloadPeerId(1)),
     peers.announcements(DownloadPeerId(1)))
   if pending: targets.pending() else: targets.evaluate(view)
+
 proc awaitSequence(server: var DevnetNetwork, peers: var CurrentDownloadPeers, sequence: uint64) =
   ## Real TLS/frame delivery is bounded independently of the authored monotonic freshness boundary.
   let started = getMonoTime()

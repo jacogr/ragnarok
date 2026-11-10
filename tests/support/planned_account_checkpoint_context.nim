@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit restoration and complete audit policies avoid unsupported nested-constant field folding.
+
 import ./[account_audit_plan_context, state_inventory_context]
 import ../../src/state/planned/account_checkpoint as planned_account_checkpoint
 import ../../src/state/[validated_checkpoint, store, global_snapshot]

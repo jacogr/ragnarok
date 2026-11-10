@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Pair complete logical provenance with review of only its original current compact inventory and Parameters.
+
 import ../../state/current/[logical as current_logical, review as current_review]
 import ../../state/account/review/plan as account_review_plan
 type

@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Snapshot batches copy one bounded full map and preserve ordered present/absent queries.
+
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/[store, trie_proof, snapshot_proof]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc main() =
   ## A repeated query stays repeated in raw batch APIs; typed query plans impose uniqueness separately.
   let key = chapterKey(StateChapter(11))

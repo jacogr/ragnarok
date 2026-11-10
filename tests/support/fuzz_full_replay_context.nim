@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit finite full-profile test policy uses341 cores,1023 validators and600 slots without replacing source-derived GP facts.
+
 import ./fuzz_guest_replay_context
 import ../../src/app/fuzz/backend as fuzz_backend
 import ../../src/chain/genesis

@@ -3,6 +3,7 @@
 
 ## CE134 copies two bounded messages and exact FIN, then writes only a host-supplied fixed96-byte response.
 ## No canonical state, private key, cryptography or guest execution enters these native callbacks.
+
 import ./[sharing_wire, read_stream]
 import ../quic/transport
 import ../codec/bounded
@@ -21,24 +22,31 @@ type
     index, prefixUsed, remaining, offset: int
     received: uint64
     output: array[SharingResponseBytes+4, byte]
+
 func error*[T](outcome: SharingStreamResult[T]): ReadError =
   ## Inspect a refusal without writable status.
   outcome.status
+
 func value*[T](outcome: SharingStreamResult[T]): T {.requires: outcome.status == ReadError.None.} =
   ## Only two complete messages and exact request FIN can escape.
   outcome.completed
+
 func failed*(route: SharingRoute): bool =
   ## Reset/close failures revoke host response authority.
   route.configured and route.failure != ReadError.None
+
 func receivedBytes*(route: SharingRoute): uint64 =
   ## All prefix/payload credit remains charged through native retirement, including after host capture.
   route.received
+
 func writtenBytes*(route: SharingRoute): int =
   ## Detached progress drives parent activity clocks without source-owner access.
   route.offset
+
 func requestReady*(route: SharingRoute): bool =
   ## No task can precede exact request FIN or be claimed twice.
   route.configured and not route.failed and route.receivedFin and not route.taken
+
 proc refuse(route: var SharingRoute, reason: ReadError) =
   ## Parent keeps buffers/physical quota until the actual native close callback.
   route.failure = reason
@@ -46,6 +54,7 @@ proc refuse(route: var SharingRoute, reason: ReadError) =
     wantRead(route.stream, 0)
     wantWrite(route.stream, 0)
     streamAbort(route.stream)
+
 proc bindSharingStream*(route: var SharingRoute, stream: NativeStream): ReadError =
   ## The authenticated parent has consumed CE134 and admitted an incoming bidirectional validator stream.
   if route.configured or stream == NativeStream(nil): return ReadError.InvalidStream
@@ -54,6 +63,7 @@ proc bindSharingStream*(route: var SharingRoute, stream: NativeStream): ReadErro
   wantRead(stream, 1)
   wantWrite(stream, 0)
   ReadError.None
+
 proc takeRequest*(route: var SharingRoute): SharingStreamResult[SharedWorkRequest] =
   ## Copy bounded independent bytes outside the callback; later native close cannot invalidate CPU inputs.
   if not route.requestReady: return SharingStreamResult[SharedWorkRequest](
@@ -65,6 +75,7 @@ proc takeRequest*(route: var SharingRoute): SharingStreamResult[SharedWorkReques
     return SharingStreamResult[SharedWorkRequest](status: ReadError.InvalidRequest)
   route.taken = true
   SharingStreamResult[SharedWorkRequest](status: ReadError.None, completed: captured.value)
+
 proc respond*(route: var SharingRoute, response: array[SharingResponseBytes, byte]): ReadError =
   ## Only the external managed-result controller supplies bytes; a reset/duplicate response cannot succeed.
   if not route.configured or route.failed or not route.taken or not route.receivedFin or
@@ -74,6 +85,7 @@ proc respond*(route: var SharingRoute, response: array[SharingResponseBytes, byt
   route.responding = true
   wantWrite(route.stream, 1)
   ReadError.None
+
 proc event*(route: var SharingRoute, stream: NativeStream, event: cint, budget: ByteLimit) =
   ## At most one4096-byte read or one100-byte write per callback; semantic processing is never invoked here.
   if not route.configured or route.stream != stream: return

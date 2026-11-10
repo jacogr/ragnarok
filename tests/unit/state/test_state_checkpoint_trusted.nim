@@ -19,12 +19,14 @@ proc policy(): StateStoreLimits =
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(1),
     totalValueBytes: ByteLimit(1), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(1))
+
 proc cycle(bytes: seq[byte], accepted, refused: StateRoot) =
   ## Both successful and rejected complete candidates retire before allocator observation.
   assert decodeFullCheckpoint(bytes, accepted, policy(), ByteLimit(1000)).error ==
       CheckpointError.None
   assert decodeFullCheckpoint(bytes, refused, policy(), ByteLimit(1000)).error ==
       CheckpointError.RootMismatch
+
 proc main() =
   ## A canonical valid checkpoint cannot choose its own trust anchor, while equal trusted roots restore normally.
   let first = newStateStore([StateEntry(key: default(StateKey), value: @[41'u8])], policy()).value.snapshot.value

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authenticate unchanged-format detached full checkpoints against the independently selected original logical successor.
+
 import ../../../state/current/logical as current_logical
 import ../../../state/[checkpoint, store]
 import ../../../codec/bounded

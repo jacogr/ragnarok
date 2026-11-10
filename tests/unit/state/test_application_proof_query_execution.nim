@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Request execution emits independently authenticated bounded bytes with explicit selected identity.
+
 import std/[assertions, syncio]
 import ../../support/proof_query_context
 import ../../../src/app/proof/query as proof_query
@@ -10,6 +11,7 @@ import ../../../src/state/proof/[service as proof_service, view as proof_view]
 import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc main() {.raises.} =
   ## The receiving plan/root are retained independently of the produced response.
   let selected = querySelection(queryContext())

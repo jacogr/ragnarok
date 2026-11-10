@@ -2,14 +2,18 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A passing process-crash witness requires a real successful OS write, exact stop and SIGKILL reap.
+
 import std/[assertions, syncio]
 import ../../support/[storage_io, storage_crash]
+
 proc openNative(path: cstring, flags: cint): cint {.importc: "open", cdecl, header: "<fcntl.h>".}
   ## A harmless real SDK descriptor is enough to prove process-control boundaries before storage scenarios.
 let writeOnly {.importc: "O_WRONLY", header: "<fcntl.h>".}: cint
+
 proc observedWrite(fd: cint, data: pointer, size: csize_t): clong {.importc: "storage_io_write",
     cdecl, header: "observer.h".}
   ## This calls the actual same C observer used by native storage writes.
+
 proc main() =
   ## Zero and one skipped success must produce different exact receipts; a high skip is a normal baseline.
   defer: abortCrash()

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual guest provides span current blocks under explicit capture/union policy, before a conflicting mixed delivery body.
+
 import std/assertions
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

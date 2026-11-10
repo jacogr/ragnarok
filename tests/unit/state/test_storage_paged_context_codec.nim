@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent V2 context-page geometry and byte oracles preserve exact explicit V1 selection.
+
 # @@Verification={"arc":"storage_paged_context_codec_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -17,30 +18,39 @@ import ../../../src/storage/light/state_cache as light_state_cache
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Observe provider dispatch independently of structural header and policy preflight.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Invalid format/size must refuse before invoking cryptography.
+
 func policy(): PagedLimits =
   ## These explicit finite data ceilings include context pages and their complete postorder tree.
   PagedLimits(entries: ElementLimit(10000), bytes: ByteLimit(10000000))
+
 func identity(first: byte): array[32, byte] =
   ## Complete independent scalar identities differ at their first serialized octet.
   result = default(array[32, byte])
   result[0] = first
+
 proc put(bytes: var openArray[byte], offset: int, value: uint64) =
   ## Known fixture offsets provide eight addressable octets for the independent E8 equation.
   for index in 0..<8: bytes[offset+index] = byte((value shr (index*8)) and 255) # Fixed shifts and masks.
+
 proc putHash(bytes: var openArray[byte], offset: int, value: array[32, byte]) =
   ## Independent expected transport copies exactly one complete fixed-width identity.
   for index in 0..<32: bytes[offset+index] = value[index] # No production writer participates.
+
 proc label(bytes: var openArray[byte], value: string) =
   ## Explicit literal labels and initially zero output give the one canonical physical version.
   for index, character in value: bytes[index] = byte(character) # Every test literal fits its fixed slot.
+
 proc owned(input: openArray[byte]): seq[byte] =
   ## Mutation tests require independent transport rather than mutable aliases of opaque metadata.
   result = newSeq[byte](input.len)
   for index in 0..<input.len: result[index] = input[index] # Each source remains unchanged.
+
 proc full(context: uint64): FullPagedHeader =
   ## One nonempty scalar claim suffices for codec shape; it grants no complete-graph authority.
   let made = initFullPagedHeader(StorageChainId(identity(7)), StateRoot(identity(2)),
@@ -48,10 +58,12 @@ proc full(context: uint64): FullPagedHeader =
     [FullPagedRoot(root: StateRoot(identity(2)), entries: 1, nodes: 1)], policy(), context)
   assert made.error == FullPagedError.None
   made.value
+
 proc light(context: uint64): PagedHeader =
   ## One framed query proof requires at least41 payload bytes independently of its opaque context.
   initPagedHeader(StorageChainId(identity(7)), StateRoot(identity(2)), ManagedEpoch(3),
     LightDeltaSequence(4), 1, 41, policy(), context).value
+
 proc geometry() =
   ## Small independent integer equations cover empty graphs, page boundaries and exact physical ceilings.
   for context in [0'u64, 1, 4095, 4096, 4097, 12289]:
@@ -78,6 +90,7 @@ proc geometry() =
   assert pagedGeometry(0, 1, policy(), 4096).error == PagedCodecError.InvalidFormat
   assert pagedGeometry(0, 0, policy(), high(uint64)).error != PagedCodecError.None
   assert pagedGeometry(high(uint64), high(uint64), policy(), 1).error != PagedCodecError.None
+
 proc fullBytes() =
   ## Fixed offsets independently encode all4096 bytes including root claims and final reserved padding.
   let header = full(4097)
@@ -138,6 +151,7 @@ proc fullBytes() =
   assert decodeFullPagedSelection(manifest, header.chainId, header.root, policy()).error ==
       FullPagedError.InvalidFormat
   assert decodeFullPagedManifest(manifest, full(0)).error == FullPagedError.InvalidFormat
+
 proc lightBytes() =
   ## Light V2 retains its own distinct root/proof schema and the193-byte CURRENT layout.
   let header = light(4097)
@@ -194,6 +208,7 @@ proc lightBytes() =
   assert decodePagedManifest(manifest, header.chainId, header.root, policy(), ByteLimit(
       PagedManifestBytes)).error == PagedCodecError.InvalidFormat
   assert validatePagedBinding(selected, light(0)) == PagedCodecError.InvalidFormat
+
 proc unsupported() =
   ## V2 metadata alone must not enable silent zero-filled native context or partial graph admission.
   var calls = 0
@@ -230,6 +245,7 @@ proc unsupported() =
   assert buildPagedArtifact(output, next, light(1), lightLimits).error ==
       PagedStreamError.UnsupportedPolicy
   assert calls == 0
+
 proc cycle() =
   ## Every temporary header, expected buffer and manifest retires before the warmed ARC sample.
   let header = light(4097)
@@ -237,6 +253,7 @@ proc cycle() =
   assert decoded.error == PagedCodecError.None
   assert decodeFullPagedHeader(full(4097).bytes, header.chainId, header.root, policy(), ByteLimit(
       4097)).error == FullPagedError.None
+
 proc main() =
   ## Keep all checked assertions active while qualifying the two explicit physical format families.
   geometry()

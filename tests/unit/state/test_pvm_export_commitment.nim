@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_export_commitment_arc_release"}
 
 ## Independent export roots/proof bytes, final-result selection, budget preflight and immutable ownership.
@@ -22,6 +23,7 @@ proc hashPair(left, right: array[32, byte]): array[32, byte] =
   for octet in left: bytes.add(octet)
   for octet in right: bytes.add(octet)
   array[32, byte](blake2b256(bytes).value)
+
 proc verifyPage(proof: FetchSegment, page, count: int, expected: SegmentRoot) =
   ## Decode page framing and reconstruct the root bottom-up, independently of production heap addressing.
   let bytes = array[4104, byte](proof)
@@ -115,10 +117,12 @@ assert default(ExportCommitment).commitmentInfo.error == ExportCommitmentError.U
 assert default(ExportCommitment).commitmentSource.error == ExportCommitmentError.Uninitialized
 assert default(ExportCommitment).commitmentPage(ExportPageIndex(0)).error ==
     ExportCommitmentError.Uninitialized
+
 proc detached(): ExportCommitment =
   ## Original source/fixture handles retire while the immutable commitment retains its full provenance graph.
   prepareExportCommitment(zeroExportSource(3), commitmentLimits()).value
 assert detached().commitmentInfo.value.root.bytes == ZeroRoots[2]
+
 proc cycle() =
   ## Release fresh complete source/tree owners and refused candidates on each ARC iteration.
   let source = zeroExportSource(3)

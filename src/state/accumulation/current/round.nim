@@ -3,6 +3,7 @@
 
 ## Execute one authenticated current initial round once, preparing selected state, outputs and next-transfer accounting together.
 ## This complete parallel-round owner remains distinct from whole-block history/statistics/publication and recursive continuation.
+
 import ../residency
 import ../../../chain/parameters
 import ../round as accumulation_round

@@ -16,6 +16,7 @@ import ../../../src/crypto/[primitives, guarantee]
 
 # Refusal is isolated to this test observer, while successful hashes use the production bridge.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Copied counts prove one exact hash per attempted transcript, including empty raw input.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

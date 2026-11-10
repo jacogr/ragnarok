@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic default/refused root-advance outcomes and private plans have independent successful storage controls.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/storage/light/journal/[cache as light_journal_cache,
@@ -13,8 +14,10 @@ import ../../src/storage/managed/manifest as managed_manifest
 import ../../src/storage/file/errors as file_errors
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc processId(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Each positive control owns only one process-specific known fixture namespace.
+
 proc main() {.raises.} =
   ## Runtime inputs select failed/default authority before a valid destination fixture is constructed.
   let member = paramStr(1)

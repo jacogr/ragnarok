@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Known pre-dispatch and durable-Done process exit boundaries preserve exact envelopes and release native locks.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -17,11 +18,13 @@ const
   FileName = Directory & "/checkpoint"
 type ExitBoundary = enum ## These observed boundaries make no claim about unobserved mid-write interruption.
   Staged, Cancelled, Durable
+
 proc clearFiles() =
   ## Only known names are removed after native owners and children retire; final rmdir detects orphan temporaries.
   for suffix in ["", ".lock"]:
     var path = FileName & suffix
     discard posix.unlink(path.toCString())
+
 proc attempt(original, candidate: ApplicationChain, boundary: ExitBoundary) {.raises.} =
   ## A child exits without collection or joined close; the OS must release its private lock for independent parent recovery.
   clearFiles()
@@ -77,6 +80,7 @@ proc attempt(original, candidate: ApplicationChain, boundary: ExitBoundary) {.ra
   assert reader.load(other, genesisStoreLimits(), ByteLimit(100000)).error ==
       ApplicationCheckpointFileError.ContextMismatch
   assert reader.close() == ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Header, profile and map changes cross each known exit boundary without automatic adoption or self-authenticated recovery.
   var directory = Directory

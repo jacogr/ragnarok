@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Structural proof capture protects canonical framing, independent ceilings and immutable ownership.
+
 import std/[assertions, syncio]
 import ../../../src/state/trie_proof
 import ../../../src/codec/bounded

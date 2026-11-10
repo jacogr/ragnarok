@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real managed reopen validates selected snapshot/journal identity and every retained complete root.
+
 # @@Verification={"arc":"storage_managed_repository_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,6 +15,7 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc cycle(path: string, limits: ManagedLimits) =
   ## Repeated reopen must release all native and immutable graph owners.
   var repository = default(ManagedRepository)
@@ -21,6 +23,7 @@ proc cycle(path: string, limits: ManagedLimits) =
     StorageSchema.FullStateV1) == FileError.None
   assert uint64(repository.snapshot.value.generation) == 2
   assert repository.close == FileError.None
+
 proc main() {.raises.} =
   ## Preserve generation/context/history across restart and refuse a different selected chain or schema.
   let policy = storageLimits()

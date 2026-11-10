@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime guards retain actual complete empty-response and framing-failure positive controls.
+
 import std/[assertions, cmdline]
 import ../../src/app/ancestor/[response as ancestor_response, receiver as ancestor_receiver]
 import ../../src/codec/[bounded, header, block_codec]
@@ -9,12 +10,15 @@ import ../../src/codec/[bounded, header, block_codec]
 proc extract(outcome: AncestorReceiveResult[AncestorReceiveId]) =
   ## A failed/default begin result has no generation.
   discard outcome.value
+
 proc response(receiver: AncestorReceiver, id: AncestorReceiveId) =
   ## Default, receiving or cancelled owners cannot expose response bytes to the decoder.
   discard receiver.response(id, default(FrameConfig), ByteLimit(0))
+
 proc observeFailure(receiver: AncestorReceiver) =
   ## Only a terminal framing failure retains a selected reason.
   discard receiver.failure
+
 proc main() =
   ## Same helper calls exercise each refusal and its actual successful alternative.
   var receiver = default(AncestorReceiver)

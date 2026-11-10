@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_eject_arc_release"}
 
 ## Current Omega_J guests cover supervisor incarnations, empty juniors, atomic dual-balance reclamation and ARC.
@@ -22,8 +23,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 ## Fail actual maintained hashes after fixture preparation, including late private-map failures.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Count backend calls to distinguish metadata checks from publication work.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 ## Reject a selected complete-map hash without substituting a test implementation.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Staging/active/previous roster evidence retains its namespace and opaque fixed record order.
+
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
 import ../../../src/state/proof/[global as proof_global, view as proof_view]

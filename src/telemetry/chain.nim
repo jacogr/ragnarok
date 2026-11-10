@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JIP-4 registration projects bounded operator network identity into owned telemetry fields.
-## It does not validate or initialize a canonical state snapshot.
+## Project JIP-4 network identity into owned telemetry registration fields.
+##
+## Registration uses the exact fetch parameter bytes and the Blake2b-256 hash of the
+## serialized genesis header. Sharing the network identity parser keeps that hash aligned
+## with JAM ALPN even when a configuration lacks a complete genesis state.
+
 import ../chain/network_identity
 import ./wire
 

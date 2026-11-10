@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Recover a candidate only from R genuine independently proven original-coordinate CE138 shards. Authentication and actual padding failure remain distinct from local refusal and report evaluation.
+
 import std/assertions
 import ./[audit_origin, availability_proof]
 from ../codec/work/package import MaxBundleBytes
@@ -30,37 +31,46 @@ type
     of GeometryFailure: geometryReason: ErasureLayoutError
     of ReconstructionFailure: reconstructionReason: ErasureWordError
     else: discard # Local refusal carries no successful prefix.
+
 func error*[T](outcome: AuditRecoveryResult[T]): AuditRecoveryError =
   ## Observe the selected reason before extracting a complete success.
   outcome.status
+
 func value*[T](outcome: AuditRecoveryResult[T]): T {.requires: outcome.status ==
     AuditRecoveryError.None.} =
   ## Source-bearing evidence stays under the exact managed graph lease.
   outcome.completed
+
 func geometryError*[T](outcome: AuditRecoveryResult[
     T]): ErasureLayoutError {.requires: outcome.status == AuditRecoveryError.GeometryFailure.} =
   ## Preserve the actual independent geometry refusal.
   outcome.geometryReason
+
 func reconstructionError*[T](outcome: AuditRecoveryResult[
     T]): ErasureWordError {.requires: outcome.status == AuditRecoveryError.ReconstructionFailure.} =
   ## Arithmetic/local resource refusals do not become authenticated negative evidence.
   outcome.reconstructionReason
+
 func valid*(limits: AuditRecoveryLimits): bool =
   ## Defaults activate no recovery; the protocol-sized domain remains bounded before any product or allocation.
   uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 256'u64*1024*1024 and
     uint64(limits.products) > 0 and uint64(limits.products) <= 16000000000'u64
+
 func valid*(evidence: AuditRecoveryEvidence): bool =
   ## An absent owner cannot authenticate even an empty candidate.
   evidence.data != nil
+
 func matchesOrigin*(evidence: AuditRecoveryEvidence, origin: AuditReportOrigin): bool =
   ## Equal public roots do not substitute another physical private target.
   let data = evidence.data
   data != nil and sameAuditOrigin(data.origin, origin)
+
 func invalidPadding*(evidence: AuditRecoveryEvidence): bool {.requires: evidence.data != nil.} =
   ## True only after actual recovery of independently authenticated unique shards returned nonzero padding.
   let data = evidence.data
   assert data != nil
   data.invalidPadding
+
 proc recoveredBundle*(evidence: AuditRecoveryEvidence): AuditRecoveryResult[seq[byte]] =
   ## Copy only complete valid-length recovered bytes; a certified padding fault has no accepted bundle prefix.
   let data = evidence.data
@@ -69,6 +79,7 @@ proc recoveredBundle*(evidence: AuditRecoveryEvidence): AuditRecoveryResult[seq[
       status: AuditRecoveryError.InvalidPacket)
   result = AuditRecoveryResult[seq[byte]](status: AuditRecoveryError.None, completed: newSeq[byte](data.wire.len))
   for ordinal in 0..<data.wire.len: result.completed[ordinal] = data.wire[ordinal]
+
 func sameSpecifier(left, right: AvailabilitySpecifier): bool =
   ## All six original signed fields matter, including population, package identity and export commitments.
   left.packageHash.bytes == right.packageHash.bytes and
@@ -77,6 +88,7 @@ func sameSpecifier(left, right: AvailabilitySpecifier): bool =
     uint16(left.erasureShards) == uint16(right.erasureShards) and
     left.segmentRoot.bytes == right.segmentRoot.bytes and
     uint16(left.segmentCount) == uint16(right.segmentCount)
+
 proc recoverAuditBundle*(origin: AuditReportOrigin,
     packets: openArray[VerifiedAvailabilityTransfer], limits: AuditRecoveryLimits,
     control: AssuranceScanControl = default(AssuranceScanControl)): AuditRecoveryResult[

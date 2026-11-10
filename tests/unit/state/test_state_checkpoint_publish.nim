@@ -14,11 +14,13 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const FileName = "state-checkpoint-publish.bin"
+
 proc policy(): StateStoreLimits =
   ## Small complete maps make repeated durable publications bounded without protocol fixtures.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(1),
     totalValueBytes: ByteLimit(1), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(1))
+
 proc cycle(snapshot: StateStoreSnapshot) =
   ## Both a complete synchronized replacement and a preflight refusal retire their temporary owners.
   let saved = saveFullCheckpoint(FileName, snapshot, ByteLimit(1000))
@@ -26,6 +28,7 @@ proc cycle(snapshot: StateStoreSnapshot) =
   assert sameStateSnapshot(saved.value, snapshot)
   assert saveFullCheckpoint(FileName, snapshot, ByteLimit(0)).checkpointError ==
       CheckpointError.LimitExceeded
+
 proc main() {.raises.} =
   ## Publish real full snapshots and observe failures without weakening the OS synchronization path.
   var path = FileName

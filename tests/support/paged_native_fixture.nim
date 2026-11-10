@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent root-bound native paged fixtures and synchronous replayable test producers.
+
 import std/assertions
 import ../../src/storage/paged/[store as paged_store, codec as paged_codec, stream as paged_stream]
 import ../../src/storage/light/state_cache as light_state_cache
@@ -13,11 +14,13 @@ type PagedNativeFixture* = object ## Independent complete-map roots constrain tw
   config*: PagedNativeConfig
   records*: seq[LightStateProof]
   payload*: uint64
+
 func pagedKey*(first: byte): StateKey =
   ## Canonical test identities differ at the highest serialized octet.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 func pagedPolicy*(): PagedStreamLimits =
   ## Finite dataset, per-proof, scratch/cache and per-stream-phase work ceilings remain independent.
   let elements = ElementLimit(1000000)
@@ -27,6 +30,7 @@ func pagedPolicy*(): PagedStreamLimits =
     workingBytes: ByteLimit(100000), cachePages: ElementLimit(1),
     work: PagedWorkLimits(ioCalls: elements, producerCalls: elements, pageHashes: elements,
       proofs: elements, nodes: elements, readBytes: bytes, writeBytes: bytes, valueBytes: bytes))
+
 proc nativeFixture*(value: byte): PagedNativeFixture =
   ## The independent complete-map root calculator anchors trie-generated query evidence.
   var raw = newSeq[byte](33)
@@ -43,6 +47,7 @@ proc nativeFixture*(value: byte): PagedNativeFixture =
     let proof = trie.prove(pagedKey(first), pagedPolicy().proof).value
     result.payload += 41+uint64(proof.nodes.len)*64+uint64(proof.value.len)
     result.records.add(LightStateProof(key: pagedKey(first), proof: proof))
+
 proc nativeProducer*(records: seq[LightStateProof]): PagedProducer =
   ## Only test fixtures retain a batch; production consumes one stable record at each requested ordinal.
   proc next(pass: int, ordinal: uint64, output: var LightStateProof): PagedProducerStep {.closure.} =

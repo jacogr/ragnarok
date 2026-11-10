@@ -9,6 +9,7 @@
 
 import std/[cmdline, syncio]
 import ../../src/crypto/primitives
+
 # Fault injection exists only in the separately linked test observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 let useDefault = paramStr(2) == "default"

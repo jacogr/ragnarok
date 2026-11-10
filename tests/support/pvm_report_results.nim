@@ -37,6 +37,7 @@ proc reportGuest*(instructions: openArray[seq[byte]], declared = 0'u64,
   result = ReportGuest(declared: declared, credit: credit, missing: missing,
     oversized: oversized, writable: @[21'u8, 22, 23])
   for instruction in instructions: result.instructions.add(instruction)
+
 proc appendGuest(guest: ReportGuest, service: ServiceIndex, entries: var seq[
     StateEntry]): WorkItem =
   ## Build original standard code and literal availability records for a distinct service per package item.
@@ -75,6 +76,7 @@ proc appendGuest(guest: ReportGuest, service: ServiceIndex, entries: var seq[
         0])) # Literal historical availability at package anchor twenty.
   WorkItem(service: service, codeHash: CodeHash(hash), refineGas: Gas(guest.credit),
     accumulateGas: Gas(100), exports: ExportCount(guest.declared), payload: @[81'u8, byte(uint32(service))])
+
 proc reportFixture*(guests: openArray[ReportGuest]): ReportFixture =
   ## Capture complete state and canonical package snapshots; mutable sources retire before callers execute.
   result = default(ReportFixture)
@@ -95,6 +97,7 @@ proc reportFixture*(guests: openArray[ReportGuest]): ReportFixture =
   var parameterBytes = default(array[122, byte])
   for index in 0..<122: parameterBytes[index] = 255 # Valid wide bounds match the shared refinement fixtures.
   result.parameters = decodeParameters(parameterBytes).value
+
 proc reportLimits*(): RefinementReportLimits =
   ## Separate local policies admit protocol boundary tests while bounding every invocation and aggregate owner.
   result = RefinementReportLimits(items: ElementLimit(16), exports: ElementLimit(3072),
@@ -103,6 +106,7 @@ proc reportLimits*(): RefinementReportLimits =
       envelope: InitializationByteLimit(512), program: ProgramByteLimit(160),
       jumps: JumpCountLimit(0), pages: PageLimit(3))), invocation: refinementLimits())
   result.invocation.capture.trace = FetchTraceLimit(49152)
+
 proc reportRun*(fixture: ReportFixture, trace: openArray[byte], cap = reportLimits()):
     RefinementReportResult[RefinedPackage] =
   ## Execute only the captured original package/state; callers cannot substitute per-item outcomes or offsets.

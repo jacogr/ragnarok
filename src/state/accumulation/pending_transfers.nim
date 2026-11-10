@@ -3,6 +3,7 @@
 
 ## Current accseq pending transfers: prior queued records precede newly emitted records without a double gas refund.
 ## Pure owned preparation checks explicit budget facts; authenticated round integration belongs to callers.
+
 import std/assertions
 import ../../codec/[bounded, composite]
 import ../../codec/state/accounts as state_accounts

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen whole-account execution preserves semantic/backend distinctions, zero-hash early failures and exact owner lifetime.
+
 # @@Verification={"arc": "state_account_audit_execution_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_audit_plan_context, arc_evidence]
@@ -13,14 +14,18 @@ import ../../../src/state/preimage/[content as preimage_content, linkage as prei
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and optionally reject all hash primitives.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exactly when semantic execution first reaches a content hash.
+
 proc cycle(plan: StateAccountAuditPlan) =
   ## Retire successful joined certificates and failed default-plan results each cycle.
   assert executeAccountAudit(plan).error == AccountAuditError.None
   assert executeAccountAudit(default(StateAccountAuditPlan)).error == AccountAuditError.InvalidPlan
+
 proc main() {.raises.} =
   ## Capture complete structurally valid semantic faults before observing execution boundaries.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

@@ -7,32 +7,9 @@ Authority: Gray Paper 0.8.0 `07f041dabd073f9018b418e9ee72e79dd2185401`,
 
 ## Representation and public contract
 
-An initialized `FullStateTrie` owns a complete serialized full-node mapping and explicit
-`FullStateTrieLimits`. A private revision owner distinguishes empty initialized state from a
-default handle. Nodes form an immutable acyclic ARC graph. Leaves own copied complete 31-byte
-keys/raw values; branches own nullable children. Every node caches its complete hash; branches cache entry/
-nonempty-node counts and aggregate value bytes, while leaves derive one entry/node and their
-owned payload length. Only newly built unpublished nodes may
-receive hashes. Empty subtrees have the zero identity; shared-prefix unary branches remain
-real protocol nodes. A singleton is a leaf at every depth, including after deletion collapse.
-
-`newFullStateTrie(entries, limits)` accepts unsorted borrowed entries, rejects duplicates,
-and copies caller payloads. Construction applies complete-map ceilings independently of
-subsequent mutation ceilings. `commitment` returns copied `StateTrieCommitment` metadata.
-`lookup` returns a retained `TrieValue`, `MissingKey` or `Uninitialized`; present-empty values
-are successful. A value retains its leaf after all revision handles retire. Byte extraction
-copies, so neither source nor returned buffer mutation can change a retained revision.
-
-`apply(revision, writes)` returns a new immutable revision; copied source handles naturally form
-independent branches with the same policy. It accepts one Put/Delete per full key, rejects duplicate
-identities and payload-bearing Delete, and treats absent Delete as a no-op. An empty batch or a
-batch containing only absent deletions retains the original revision identity without hashing.
-`sameTrieRevision` compares initialized owner identity, never equal-root equivalence.
-
-Default/failed `TrieResult` values carry reasons alone. Private status/payload access and guarded
-success extraction prevent retagging or reading absent data. Default revision commitment and
-value reads require checked preconditions. Allocation exhaustion keeps the project's fail-stop
-policy; no recoverable OOM result is promised.
+The [trie implementation](../src/storage/full/state_trie.nim) owns revisions, node
+retention, guarded results and exact update publication. Root construction follows the
+pinned Merklization definitions above.
 
 ## Atomic update and bounds
 

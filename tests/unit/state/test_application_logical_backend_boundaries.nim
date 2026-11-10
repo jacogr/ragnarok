@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Original backend causes remain distinct across supplied matching, later raw-key capture, targeted review and proof execution; fixed capture remains hash-free.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context,
     current_logical_review_context,
@@ -20,12 +21,16 @@ import ../../../src/state/account/review/plan as account_review_plan
 import ../../../src/state/proof/plan as proof_plan
 import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset only the test observer after actual execution and before selected bounded failure boundaries.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Actual complete qualification prefix length independently locates later raw-key revalidation.
+
 proc after(successes: cint) {.importc: "ro_blake_after", cdecl.}
   ## Fail exactly the first primitive after the successful current-state matching prefix.
+
 proc main() {.raises.} =
   ## All source/update/plan authority predates faults; no refused stage can expose a successful output prefix.
   let fixture = collectedNativeFixture()

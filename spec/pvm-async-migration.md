@@ -123,6 +123,18 @@ witness adapters together. Preserve mechanical ISA encoders, arena ownership and
 still serve the shared lowerers. No native capability is considered migrated solely because its
 old fixture now passes through checked fallback.
 
+## x86-64 pure-region frame retirement
+
+Prepared programs start with a checked plan and empty stream. A runtime-bound owner reaches
+native code through the shared session. The former x86-64 pure-region frame probe had no
+installer, and its whole-block and connected handlers were reachable only from that probe.
+The private wide-parent refusal hook still creates a legacy code owner for its witness. It uses
+the exact checked charge and dirty-loop handlers to seal its source.
+
+The direct x86-64 region lowerer, publication and bridge still support the native shape, capacity,
+retained-leaf and refusal witnesses. The raw probe exhaustion control and real owner counters
+remain available. Generalized two-block control and mixed stores remain shared migration gaps.
+
 ## Initial disposition
 
 This contract records the migration architecture and required evidence. It does not qualify a new

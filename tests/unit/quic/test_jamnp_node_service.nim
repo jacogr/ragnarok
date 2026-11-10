@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_node_service_arc_release"}
 
 ## Stable full-state node owner: explicit finality, native factory failure and retirement lifetimes.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/[jamnp_topology_fixture, arc_evidence, jamnp_node_probe, jamnp_connection_pair]
 import ../../../src/jamnp-s/[node, connections, read_stream, read_client, canonical_read, identity,
@@ -22,11 +23,13 @@ proc source(): ChainView =
   let finalized = initialized.finalizeView(saved.value.blockHash)
   assert finalized.error == ViewFinalizeError.None
   finalized.value
+
 proc config(missing = false): ConnectionConfig =
   ## Startup input remains owned by the caller; no private-key bytes are read by the Nim identity helper.
   initConnectionConfig(getEnv("RAGNAROK_TEST_CERT"),
     (if missing: "missing-node-key.pem" else: getEnv("RAGNAROK_TEST_KEY")),
     "jamnp-s/1/00000000", streams = 512)
+
 proc lifetime(view: ChainView, failed: bool) =
   ## Only explicit native retirement precedes destruction of this stable callback aggregate.
   var service = default(NodeService)
@@ -39,12 +42,14 @@ proc lifetime(view: ChainView, failed: bool) =
     assert service.poll(getMonoTime(), 0)
   service.close()
   assert service.peerCount == 0 and not service.isOpen
+
 proc pump(service: var NodeService, probe: var NodeProbe, milliseconds: int) =
   ## Real bounded polling services native callbacks without acquiring a canonical alias.
   let until = getMonoTime()+initDuration(milliseconds = milliseconds)
   while getMonoTime() < until:
     assert service.poll(getMonoTime(), 0)
     probe.poll()
+
 template awaitEvent(service, probe, condition, description: untyped) =
   ## Advance both real endpoints until the expected state transition or a bounded failure.
   block:
@@ -52,18 +57,21 @@ template awaitEvent(service, probe, condition, description: untyped) =
     while not condition:
       assert getMonoTime() < until, description
       pump(service, probe, 1)
+
 proc handshake(view: ChainView): seq[byte] =
   ## Literal E4 and empty leaf count are independent of the production announcement encoder.
   result = @[0'u8, 37, 0, 0, 0]
   for octet in array[32, byte](view.bestBlock.value.blockHash): result.add(octet)
   for index in 0..<4: result.add(byte((uint32(view.bestBlock.value.slot) shr (index*8)) and 255))
   result.add(0)
+
 proc emptyBlocks(view: ChainView): seq[byte] =
   ## CE128 descending known anchor with zero maximum has exactly one empty E4 response.
   result = @[128'u8, 37, 0, 0, 0]
   for octet in array[32, byte](view.bestBlock.value.blockHash): result.add(octet)
   result.add(1)
   for index in 0..<4: result.add(0)
+
 proc transcript(view: ChainView) {.raises.} =
   ## A real authenticated peer exercises delayed lower UP0, read saturation, worker reply and cancellation.
   var service = default(NodeService)
@@ -184,6 +192,7 @@ proc transcript(view: ChainView) {.raises.} =
   awaitEvent(service, probe, service.source(peer).error == NodeError.None and
     uint64(service.source(peer).value.stream) == uint64(probe.flows[recovered].number),
     "fresh UP0 recovers the source")
+
 proc replyToOne(receiver: var NodeService, view: ChainView): int =
   ## Component host work executes outside native callbacks; Services worker exclusion has its own integration suite.
   let incoming = receiver.takeRead()
@@ -194,6 +203,7 @@ proc replyToOne(receiver: var NodeService, view: ChainView): int =
   else:
     assert receiver.reject(incoming.value.ticket) # Missing canonical data never becomes an empty successful wire.
   1
+
 proc outbound(sender, receiver: var NodeService, peer: NodePeer, view: ChainView,
     request: ReadRequest, expected: seq[byte], refused = false) =
   ## Delayed collection observes completed bytes after native retirement without opening another authenticated connection.
@@ -218,6 +228,7 @@ proc outbound(sender, receiver: var NodeService, peer: NodePeer, view: ChainView
     assert not sender.requestLive(ticket), "completed ticket cannot collect a reused stream"
     assert sender.takeReply(ticket).error == ReadError.InvalidStream
   assert sender.peerCount == 1 and receiver.peerCount == 1
+
 proc paired(ipv6: bool) =
   ## Two production owners automatically establish the preferred connection and UP0 in both directions.
   let left = certificateIdentity(getEnv("RAGNAROK_TEST_CERT")).value
@@ -364,6 +375,7 @@ proc bootstrap(finalizeNew: bool) {.raises.} =
       probe.poll()
       assert service.peerCount == 0, "unfinalized new-epoch topology must not grant a startup validator reservation"
     assert service.peerCount == 0 and probe.retiredConnections > 0 # TLS completion is not validator admission.
+
 proc demandedConnection() {.raises.} =
   ## A disconnected original assurer may be outside every current topology set; only its exact TLS key and temporary lease apply.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_A"))
@@ -483,6 +495,7 @@ proc demandedConnection() {.raises.} =
   assert not service.cancelPeerConnection(started.value), "fresh owner rejects tickets retained across storage reuse"
   assert service.peerConnectionLive(fresh.value)
   assert service.cancelPeerConnection(fresh.value)
+
 proc main() {.raises.} =
   ## Failed/default inputs cannot grant a socket, ticket or peer source; repeated full lifetimes release ARC owners.
   bootstrap(false)

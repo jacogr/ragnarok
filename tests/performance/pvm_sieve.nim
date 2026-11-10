@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute frozen checked upstream guests supplied to PolkaVM; compare complete reference outputs.
+
 import std/[assertions, syncio, monotimes, envvars]
 import ./pvm_invocation_scope
 import ../../src/pvm/[artifact, program, machine]
@@ -133,7 +134,7 @@ let preparedMode = pricing == "prepared"
 let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
 assert requestedBackend in ["", "jit", "interpreted"]
 if fullInvocation: assert requestedBackend in ["jit", "interpreted"]
-when declared(DefaultPvmBackend):
+when declared(reference.DefaultPvmBackend):
   var selectedBackend = reference.DefaultPvmBackend
   if requestedBackend.len > 0:
     assert reference.parsePvmBackend(requestedBackend, selectedBackend)
@@ -162,10 +163,10 @@ for page in 0..<pageCount:
   indices.add(PageIndex(uint32(word(data, at, 4))))
   access.add(if permission == 1: PageAccess.ReadOnly else: PageAccess.ReadWrite)
   originalBytes.add(data[at+5..<at+4101])
-let coldCall = if fullInvocation: beginInvocation() else: default(
-    InvocationClock)
-var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
-    ) else: default(InvocationRuntime)
+let ownerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit":
+    startInvocationRuntime() else: default(InvocationRuntime)
+let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
 var owner = default(Program)
 var memory = default(Memory)
 if artifactAdmission:
@@ -246,7 +247,7 @@ if preparedMode:
   # Construction admits decoded facts; sample zero includes lazy executable-node and price preparation.
   let prepareWall = if clocked: getMonoTime().ticks else: 0'i64
   let prepareCpu = if clocked: cpuNanoseconds() else: 0'i64
-  let created = when declared(DefaultPvmBackend):
+  let created = when declared(reference.DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
     reference.newPreparedProgram(owner, reference.defaultPreparedLimits(
         GasCycleLimit(1000000)), selectedBackend, invocationRuntime)
@@ -327,7 +328,7 @@ if memoMode:
   # Final bounded occupancy is observed outside execution timing and must accompany every complete memo pass.
   echo "GAS_MEMO_END,", gasMemoInfo(memo).value.pricedBlocks
 
-when declared(DefaultPvmBackend):
+when declared(reference.DefaultPvmBackend):
   if requestedBackend.len > 0:
     # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
     assert preparedMode
@@ -350,7 +351,6 @@ when defined(pvmArmMacroReceipt):
       resident),
     ",", macroStats[0], ",", macroStats[1], ",", macroStats[5], ",", macroStats[6]
 
-
 when defined(pvmArm64JitOwnerReceipt):
   # Counter publication stays outside all call clocks and proves native work survives genuine prepared-owner reuse.
   assert preparedMode
@@ -365,6 +365,6 @@ when defined(pvmArm64JitOwnerReceipt):
 if fullInvocation:
   prepared = default(reference.PreparedProgram)
   if requestedBackend == "jit":
-    closeInvocationRuntime(invocationRuntime, "guest-process", coldCall)
+    closeInvocationRuntime(invocationRuntime, "guest-process", ownerStart)
   else:
-    finishInterpretedOwner("guest-process", coldCall)
+    finishInterpretedOwner("guest-process", ownerStart)

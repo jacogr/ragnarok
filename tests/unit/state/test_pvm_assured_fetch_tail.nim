@@ -28,6 +28,7 @@ proc configFor(queue: AssuredAccumulationQueue): AssuredExecutionConfig =
   ## Bound exactly one eleven-byte guest value while retaining all original protocol and independent engine controls.
   result = assuredExecutionConfig(queue)
   result.runner.completion.batch.selfValueBytes = ByteLimit(11)
+
 proc expectedBytes(completed: CompletedBlockAccumulation, config: AssuredExecutionConfig): seq[byte] =
   ## Canonical C.2 ends with raw auth trace or its empty count; derive this independently of observed guest memory/return registers.
   let inputs = completed.executionRound.value.roundProjection.value.roundInputs.value
@@ -47,10 +48,12 @@ proc expectedBytes(completed: CompletedBlockAccumulation, config: AssuredExecuti
   let length = uint64(measured.value)
   for index in 0..<8:
     result.add(byte((length shr (8*index)) and 255)) # Eight bounded shifts retain the complete canonical length, never the clipped copied count1.
+
 proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## Inspect exact account fields from each retained canonical full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   ## Exactly one tail byte changes while the following two RW bytes survive and all eight return bytes are stored.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -59,6 +62,7 @@ proc storage(state: StateStoreSnapshot, expected: openArray[byte]) =
   let account = metadata(state)
   assert uint32(account.storageItems) == 1 and uint64(account.storageBytes) == 46
   assert uint64(account.balance) == 58
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute both genuine host fetches, arithmetic and storage under the actual retained input/parameter authority.
   let outcome = executeAssuredAccumulation(fixture.queue, configFor(fixture.queue))
@@ -68,6 +72,7 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Certify real termination and full state composition without replaying initial guest work.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -153,6 +158,7 @@ for field in low(Parameter)..high(Parameter):
       field) # Actual returned-length use cannot replace original protocol parameters.
 assert sameStateSnapshot(fixture.state.snapshot.value, original) and sameChainView(fixture.view, oldView)
 storage(original, expectedFirst)
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Execute real query/arithmetic/clipped-copy/store, compose and publish one actual successor then release every owner.
   let source = compose(execute(fixture))

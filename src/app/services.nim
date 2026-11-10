@@ -1,10 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## One non-copyable owner for telemetry, RPC, UI and optional explicitly configured canonical state.
-## The peer dispatcher borrows individual fields only while this stack owner remains stable;
-## transport callbacks must retire before close/destruction. A bounded chain snapshot is shared once.
-## After starting preparation, explicitly close to join before any borrowed input or shared alias retires.
+## Stable owner for optional listeners, telemetry and the configured canonical chain.
+##
+## Startup captures bounded chain input for the enabled consumers. Canonical startup
+## shares the selected head with RPC so the listener and application begin from the
+## same retained state version. A failed listener start rolls back earlier owners.
+##
+## The dispatcher borrows fields while this owner stays stable. Native callbacks must
+## retire before listener destruction. After starting preparation, explicitly close
+## to join before borrowed input or shared aliases retire. Detached reader snapshots
+## retain their immutable state independently.
 
 import ../state/accumulation/residency
 import ../codec/composite
@@ -286,6 +292,7 @@ func signedWorkPhase(phase: WorkSessionPhase): bool =
   phase in {WorkSessionPhase.Contributed, WorkSessionPhase.PreparingExchange,
     WorkSessionPhase.AwaitingContributions, WorkSessionPhase.CheckingContribution,
     WorkSessionPhase.CollectingGuarantee, WorkSessionPhase.Guaranteed}
+
 func exchangeWorkPhase(phase: WorkSessionPhase): bool =
   ## Prepared independent bytes and fixed targets remain usable while another graph job runs.
   phase in {WorkSessionPhase.AwaitingContributions, WorkSessionPhase.CheckingContribution,
@@ -298,9 +305,11 @@ type
     case status: WorkSigningSetupError
     of SignerFailure: reason: WorkSignerResult[WorkSigner]
     else: discard # No caller can obtain the privately installed key.
+
 func error*(outcome: WorkSigningSetupResult): WorkSigningSetupError =
   ## Observe setup status without writable result alternatives.
   outcome.status
+
 func signerError*(outcome: WorkSigningSetupResult): WorkSignerResult[
     WorkSigner] {.requires: outcome.status == WorkSigningSetupError.SignerFailure.} =
   ## Inspect only the genuine failed loader result, whose success payload is inaccessible.
@@ -325,32 +334,40 @@ type
       info: WorkEligibilityInfo
     of Refused: reason: WorkSharingResult[SignedWorkContribution]
     else: discard # No partial result or source-bearing owner escapes.
+
 func error*(outcome: WorkSharingStart): StateProofAdmissionError =
   ## Inspect admission before extracting any token.
   outcome.status
+
 func value*(outcome: WorkSharingStart): WorkSharingToken {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Tokens control only this Services namespace and admission generation.
   outcome.token
+
 func captureError*(outcome: WorkSharingStart): WorkJobError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Preserve actual independent-wire/view capture refusal.
   outcome.captureReason
+
 func workerError*(outcome: WorkSharingStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Expose the actual shared CPU admission failure.
   outcome.workerReason
+
 func kind*(outcome: WorkSharingCompletion): WorkSharingCompletionKind =
   ## Fixed status observations grant no graph or signing authority.
   outcome.status
+
 func response*(outcome: WorkSharingCompletion): array[SharingResponseBytes,
     byte] {.requires: outcome.status == WorkSharingCompletionKind.Completed.} =
   ## Copy only the complete hash/signature wire payload of an actual received package computation.
   outcome.response
+
 func sharingInfo*(outcome: WorkSharingCompletion): WorkEligibilityInfo {.requires: outcome.status ==
     WorkSharingCompletionKind.Completed.} =
   ## Detached original source/credential facts do not carry a signer alias.
   outcome.info
+
 func sharingError*(outcome: WorkSharingCompletion): WorkSharingResult[
     SignedWorkContribution] {.requires: outcome.status == WorkSharingCompletionKind.Refused.} =
   ## Refusal has only the genuine failed worker result, never a completed contribution prefix.
@@ -380,52 +397,64 @@ type
     of CacheFailure: cacheReason: read_verification.ReadVerificationResult[
         read_verification.CheckedReadReply]
     else: discard # Failure payloads contain only actual selected causes.
+
 func error*(outcome: WorkDistributionStart): StateProofAdmissionError =
   ## Read admission status before selecting its token or cause.
   outcome.status
+
 func value*(outcome: WorkDistributionStart): WorkDistributionToken {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Exact Services identity and a nonwrapping generation are required for later control.
   outcome.token
+
 func captureError*(outcome: WorkDistributionStart): WorkJobError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Return only the actual request/view capture refusal.
   outcome.captureReason
+
 func workerError*(outcome: WorkDistributionStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Preserve the actual shared worker's admission error.
   outcome.workerReason
+
 func kind*(outcome: WorkDistributionCompletion): WorkDistributionCompletionKind =
   ## Fixed completion tags are safe after exact collection and through unrelated later worker leases.
   outcome.status
+
 func distributionInfo*(outcome: WorkDistributionCompletion): WorkDistributionInfo {.requires: outcome.status ==
     WorkDistributionCompletionKind.Completed.} =
   ## Copy source/observation facts without retaining the checked canonical graph.
   outcome.info
+
 func distributionTarget*(outcome: WorkDistributionCompletion,
     index: int): StateValidator {.requires:
     outcome.status == WorkDistributionCompletionKind.Completed and index >= 0 and index <
     outcome.targets.len.} =
   ## Return an independent fixed validator record within this exact completed plan.
   outcome.targets[index]
+
 proc distributionPayload*(outcome: WorkDistributionCompletion): seq[
     byte] {.requires: outcome.status == WorkDistributionCompletionKind.Completed.} =
   ## Caller mutation of detached bytes cannot alter this immutable completion or any future transport request.
   result = newSeq[byte](outcome.payload.len)
   for index in 0..<result.len: result[index] = outcome.payload[index]
+
 func distributionReport*(outcome: WorkDistributionCompletion): read_verification.CheckedReadReply {.requires: outcome.status ==
     WorkDistributionCompletionKind.Completed.} =
   ## Independently hash-checked source-free report ownership may enter detached serving retention.
   outcome.report
+
 func distributionError*(outcome: WorkDistributionCompletion): WorkDistributionResult[
     CheckedWorkDistribution] {.requires: outcome.status ==
     WorkDistributionCompletionKind.Refused.} =
   ## Failed context/signature/policy checks cannot expose a qualified source or report.
   outcome.reason
+
 func distributionEncodingError*(outcome: WorkDistributionCompletion): OwnershipError {.requires: outcome.status ==
     WorkDistributionCompletionKind.EncodingFailure.} =
   ## Keep the actual report encoder's failed status selected.
   outcome.encodingReason
+
 func distributionCacheError*(outcome: WorkDistributionCompletion): read_verification.ReadVerificationResult[
     read_verification.CheckedReadReply] {.requires: outcome.status ==
     WorkDistributionCompletionKind.CacheFailure.} =
@@ -1018,6 +1047,7 @@ proc clearWorkExchange(services: var Services) =
   services.workExchangeState = default(WorkExchangeInfo)
   services.workGuarantee = default(CollectedWorkGuarantee)
   services.workGuaranteeBytes = @[]
+
 proc close*(services: var Services) =
   ## Idempotent retirement happens after every dispatcher/native callback has ended its borrows.
   if services.started:
@@ -1880,39 +1910,48 @@ proc finishStateProof(services: var Services, reason: ProofQueryError): StatePro
 func error*(outcome: NetworkReadStart): StateProofAdmissionError =
   ## Observe the managed start without exposing lease authority.
   outcome.status
+
 func value*(outcome: NetworkReadStart): ProofWorkerTicket {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Only successful native submission exposes its exact retirement ticket.
   outcome.ticket
+
 func readError*(outcome: NetworkReadStart): ReadError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Preserve source/admission refusal without claiming a partial reply.
   outcome.readReason
+
 func workerError*(outcome: NetworkReadStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Expose native worker admission refusal only in its matching alternative.
   outcome.workerReason
+
 func error*(outcome: ReadVerificationStart): StateProofAdmissionError =
   ## Observe admission failure without granting a partially captured verification job.
   outcome.status
+
 func value*(outcome: ReadVerificationStart): ProofWorkerTicket {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Only successful native admission grants this exact lease collection identity.
   outcome.ticket
+
 func verificationError*(outcome: ReadVerificationStart): ReadVerificationError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Capture refusals remain distinct from later CPU proof/hash failures.
   outcome.verificationReason
+
 func workerError*(outcome: ReadVerificationStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## A native admission cause exists only in its matching failed alternative.
   outcome.workerReason
+
 proc stageReadVerification(services: var Services, request: ReadRequest,
     wire: openArray[byte], limits: ReadVerificationLimits): ReadVerificationError =
   ## All canonical aliases retire with this activation; only fresh wire/fixed metadata remain for CPU work.
   let captured = captureReadVerification(services.canonical.chainView, request, wire, limits)
   if captured.error == ReadVerificationError.None: services.verificationInput = captured.value
   captured.error
+
 proc beginReadVerification*(services: var Services, request: ReadRequest,
     wire: openArray[byte], limits: ReadVerificationLimits): ReadVerificationStart {.raises.} =
   ## Full-state Services selects trusted roots before submission; partial/light state has a separate owner contract.
@@ -1943,18 +1982,22 @@ proc beginReadVerification*(services: var Services, request: ReadRequest,
 func error*(started: NetworkTicketStart): StateProofAdmissionError =
   ## Observe admission without granting a failed/default worker ticket.
   started.status
+
 func value*(started: NetworkTicketStart): ProofWorkerTicket {.requires: started.status ==
     StateProofAdmissionError.None.} =
   ## Exact accepted submission owns the shared graph/RPC lease until collection or joined close.
   started.ticket
+
 func captureFailure*(started: NetworkTicketStart): NetworkTicketResult[
     TicketSource] {.requires: started.status == StateProofAdmissionError.QueryFailure.} =
   ## Preserve actual source/input refusal and genuine failed chapter/hash causes without an accepted source.
   started.captureReason
+
 func workerError*(started: NetworkTicketStart): ProofWorkerError {.requires: started.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Only an actual failed worker admission exposes its child cause.
   started.workerReason
+
 proc stageTicketSource(services: var Services): NetworkTicketResult[TicketSource] =
   ## Canonical aliases retire in this activation; the cache owns only fresh decoded fixed metadata and immutable rosters.
   let finalized = services.canonical.chainView.finalizedBlock
@@ -1969,11 +2012,13 @@ proc stageTicketSource(services: var Services): NetworkTicketResult[TicketSource
     reuse = sameBlock and sameRoot
   if not reuse: services.ticketSource = captureTicketSource(finalized)
   services.ticketSource
+
 proc currentTicketSource*(services: var Services): NetworkTicketResult[
     TicketSource] {.requires: services.stateProofAvailable.} =
   ## This ARC owner shares the job input lease; callers retire all aliases before admitting the next worker.
   if services.light.active: return ticketFailure[TicketSource](NetworkTicketError.NoSource)
   services.stageTicketSource()
+
 proc stageNetworkTicket(services: var Services, packet: TicketPacket,
     recipient: TicketRecipient): NetworkTicketError =
   ## Only scalar status escapes staging; successful source/job aliases retire before thread submission.
@@ -1988,6 +2033,7 @@ proc stageNetworkTicket(services: var Services, packet: TicketPacket,
   services.ticketInput = captured.value
   services.ticketCaptureFailure = default(NetworkTicketResult[TicketSource])
   NetworkTicketError.None
+
 proc beginNetworkTicket*(services: var Services, packet: TicketPacket,
     recipient: TicketRecipient): NetworkTicketStart {.raises.} =
   ## Full-state source capture, RPC pause and CPU admission remain one exact bounded operation; light roots cannot substitute a complete source.
@@ -2017,16 +2063,20 @@ proc beginNetworkTicket*(services: var Services, packet: TicketPacket,
 func error*(outcome: TicketSignerConfiguration): TicketSignerError =
   ## Observe configuration without exposing seed, scalar or private signer ownership.
   outcome.status
+
 func keyError*(outcome: TicketSignerConfiguration): bs.BsError {.requires: outcome.status ==
     TicketSignerError.KeyFailure.} =
   ## A failed configuration preserves only its genuine key derivation cause.
   outcome.keyReason
+
 func hasTicketSigner*(services: Services): bool =
   ## Scalar-only availability is safe while the immutable signer is exclusively leased by CPU work.
   services.started and services.ticketSignerReady
+
 func ticketSigningVersion*(services: Services): uint64 =
   ## A nonwrapping host configuration generation carries no key material.
   if services.started and services.ticketSignerReady: services.ticketSignerVersion else: 0'u64
+
 proc configureTicketSignerSeed*(services: var Services, masterSeed: openArray[
     byte]): TicketSignerConfiguration =
   ## Explicit local configuration retains no caller seed bytes; Busy cannot replace a leased signing allocation.
@@ -2050,6 +2100,7 @@ proc configureTicketSignerSeed*(services: var Services, masterSeed: openArray[
   inc services.ticketSignerVersion
   services.ticketSignerReady = true
   TicketSignerConfiguration(status: TicketSignerError.None)
+
 proc stageTicketProduction(services: var Services, local: StateEdKey, now: StateTime,
     connectivityEpoch: uint32, attempt: TicketAttempt): NetworkTicketError =
   ## Successful source/signer staging aliases retire in this activation before native CPU submission.
@@ -2065,6 +2116,7 @@ proc stageTicketProduction(services: var Services, local: StateEdKey, now: State
   services.productionInput = captured.value
   services.ticketCaptureFailure = default(NetworkTicketResult[TicketSource])
   NetworkTicketError.None
+
 proc beginTicketProduction*(services: var Services, local: StateEdKey, now: StateTime,
     connectivityEpoch: uint32, attempt: TicketAttempt): NetworkTicketStart {.raises.} =
   ## Optional genuine signing uses the existing exact full-state RPC/worker lease and never runs inside Native callbacks.
@@ -2103,6 +2155,7 @@ func availabilityReadsMatch*(services: Services, limits: AvailabilityReadLimits)
     uint64(services.availabilityLimits.computation.hashes) == uint64(limits.computation.hashes) and
     uint64(services.availabilityLimits.computation.hashBytes) == uint64(
         limits.computation.hashBytes)
+
 proc configureAssuranceReads*(services: var Services, limits: AssuranceReadLimits): bool =
   ## Explicit durable audit serving requires an installed healthy full-state namespace, and opens no archive or key itself.
   if not services.started or services.light.active or not services.stateProofAvailable or
@@ -2111,6 +2164,7 @@ proc configureAssuranceReads*(services: var Services, limits: AssuranceReadLimit
   services.assuranceReadLimits = limits
   services.assuranceReadsEnabled = true
   true
+
 proc configureAvailabilityReads*(services: var Services, limits: AvailabilityReadLimits): bool =
   ## Explicit one-time policy activation never rebinds a live worker's source or resource contract.
   if not services.started or not services.stateProofAvailable or services.availabilityEnabled or
@@ -2119,18 +2173,21 @@ proc configureAvailabilityReads*(services: var Services, limits: AvailabilityRea
   services.availabilityLimits = limits
   services.availabilityEnabled = true
   true
+
 proc configureAvailabilityStorage*(services: var Services, limits: AvailabilityStoreLimits): bool =
   ## Optional explicit storage policy cannot rebind entries or mutate a worker-borrowed cache.
   if not services.started or services.light.active or not services.stateProofAvailable or
       not services.availabilityEnabled:
     return false
   services.availabilityStore.configure(limits)
+
 proc rememberAvailability*(services: var Services,
     transfer: VerifiedAvailabilityTransfer): AvailabilityStoreError =
   ## Private detached storage is changed only while every canonical/availability CPU borrower has retired.
   if not services.started or not services.availabilityEnabled: return AvailabilityStoreError.Unconfigured
   if not services.stateProofAvailable: return AvailabilityStoreError.Busy
   services.availabilityStore.remember(transfer)
+
 proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadError =
   ## Durable lookup stays on the worker; legacy memory-cache sources are selected only while the host owns the idle lease.
   if services.assuranceReadsEnabled:
@@ -2149,6 +2206,7 @@ proc stageAvailabilityAudit(services: var Services, request: ReadRequest): ReadE
   let captured = captureAvailabilityAudit(found.value, request, services.availabilityLimits)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
+
 proc stageOriginalSegments(services: var Services, request: ReadRequest): ReadError =
   ## Retained report roots coexist with the current unsigned original; only worker-side bounded selection/hash work interprets the batch.
   if not services.availabilityEnabled: return ReadError.Unavailable
@@ -2165,6 +2223,7 @@ proc stageOriginalSegments(services: var Services, request: ReadRequest): ReadEr
     request, services.availabilityLimits)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
+
 proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadError =
   ## Exact retained roots survive completed sessions and later signatures; staging aliases retire before CPU submission.
   if not services.availabilityEnabled: return ReadError.Unavailable
@@ -2208,6 +2267,7 @@ proc stageAvailabilityRead(services: var Services, request: ReadRequest): ReadEr
     if captured.error == ReadError.None: services.networkReadInput = captured.value
     return captured.error
   reason
+
 proc stageSegmentShardBatch(services: var Services, request: ReadRequest): ReadError =
   ## The complete bounded private cache snapshot is frozen before admission; no caller-owned transfer alias enters this job.
   if services.assuranceReadsEnabled and uint64(services.assuranceReadLimits.batchSources) > 0:
@@ -2221,6 +2281,7 @@ proc stageSegmentShardBatch(services: var Services, request: ReadRequest): ReadE
       services.availabilityLimits)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
+
 proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
   ## Every temporary canonical alias retires in this activation before native submission.
   if request.valid and request.kind in [ReadKind.SegmentShards,
@@ -2231,6 +2292,7 @@ proc stageNetworkRead(services: var Services, request: ReadRequest): ReadError =
   let captured = captureNetworkRead(services.canonical.chainView, request)
   if captured.error == ReadError.None: services.networkReadInput = captured.value
   captured.error
+
 proc beginNetworkRead*(services: var Services, request: ReadRequest): NetworkReadStart {.raises.} =
   ## Admit one full-state network read through the existing single worker and exact RPC/canonical lease.
   if not services.started: return NetworkReadStart(status: StateProofAdmissionError.Closed)
@@ -2355,6 +2417,7 @@ proc auditSource(services: Services, hash: genesis.BlockHash): ChainView =
   if selected.blockAt(hash).error == GenesisError.None: return selected
   let branch = services.auditBranches.parentView(selected, hash)
   if branch.bestBlock.error == GenesisError.None: branch else: selected
+
 proc collectSharedStateProof(services: var Services,
     ticket: ProofWorkerTicket): ProofWorkerCompletion =
   ## Only matching Done collection retires the query and reopens canonical/RPC access together.
@@ -2416,25 +2479,31 @@ proc collectAudit*(services: var Services, ticket: ProofWorkerTicket): ManagedAu
 func error*(outcome: AssuranceStorageStart): AssuranceStorageStartError =
   ## Read the selected startup refusal before accessing its ticket or child reason.
   outcome.status
+
 func value*(outcome: AssuranceStorageStart): ProofWorkerTicket {.requires: outcome.status ==
     AssuranceStorageStartError.None.} =
   ## Only successful native admission grants collection or cancellation authority.
   outcome.ticket
+
 func identityError*(outcome: AssuranceStorageStart): NetworkIdentityError {.requires: outcome.status ==
     AssuranceStorageStartError.IdentityFailure.} =
   ## Preserve actual configured-genesis identity refusal; a best head or caller-selected chain cannot replace the original network.
   outcome.identityReason
+
 func captureError*(outcome: AssuranceStorageStart): AssuranceStorageJobError {.requires: outcome.status ==
     AssuranceStorageStartError.CaptureFailure.} =
   ## Preserve bounded path/policy capture failure without opening a namespace.
   outcome.captureReason
+
 func workerError*(outcome: AssuranceStorageStart): ProofWorkerError {.requires: outcome.status ==
     AssuranceStorageStartError.WorkerFailure.} =
   ## Worker refusal leaves no live namespace job or canonical/RPC exclusion.
   outcome.workerReason
+
 func assuranceStorageInfo*(services: Services): AssuranceStorageInfo =
   ## Poll only host-owned cached accounting; the actual namespace can be mutating on the native thread.
   services.assuranceInfo
+
 proc stageAssuranceStorage(services: var Services, folder: string, chain: AssuranceChainId,
     limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageJobError =
   ## Retire the capture wrapper and its private path aliases before a native thread can execute the staged job.
@@ -2443,6 +2512,7 @@ proc stageAssuranceStorage(services: var Services, folder: string, chain: Assura
     services.assuranceStorageInput = captured.value
     services.assuranceStorageChain = chain
   captured.error
+
 proc beginAssuranceStorage*(services: var Services, folder: string,
     limits: AssuranceStoreLimits, mode: AssuranceStorageMode): AssuranceStorageStart {.raises.} =
   ## Explicit full-state startup uses the same single CPU/I/O capacity and exact RPC lease; no foreground callback scans files.
@@ -2479,18 +2549,22 @@ proc beginAssuranceStorage*(services: var Services, folder: string,
 func error*(outcome: AssuranceAcquisitionStart): AssuranceStorageStartError =
   ## Read startup/lease refusal before extracting its guarded ticket or child reason.
   outcome.status
+
 func value*(outcome: AssuranceAcquisitionStart): ProofWorkerTicket {.requires: outcome.status ==
     AssuranceStorageStartError.None.} =
   ## Exact admitted acquisition alone can be collected or cancelled.
   outcome.ticket
+
 func captureError*(outcome: AssuranceAcquisitionStart): AssuranceAcquisitionError {.requires: outcome.status ==
     AssuranceStorageStartError.CaptureFailure.} =
   ## Keep the actual bounded input/source/namespace capture refusal.
   outcome.captureReason
+
 func workerError*(outcome: AssuranceAcquisitionStart): ProofWorkerError {.requires: outcome.status ==
     AssuranceStorageStartError.WorkerFailure.} =
   ## A failed native submission retains no canonical/RPC exclusion or source owner.
   outcome.workerReason
+
 proc stageAssuranceAcquisition(services: var Services, local: StateEdKey, core: CoreIndex,
     ordinal: int, wire: openArray[byte], now: AssuranceTime,
     limits: AssuranceAcquisitionLimits, existingOnly: bool): AssuranceAcquisitionError =
@@ -2504,6 +2578,7 @@ proc stageAssuranceAcquisition(services: var Services, local: StateEdKey, core: 
   if captured.error == AssuranceAcquisitionError.None:
     services.assuranceAcquisitionInput = captured.value
   captured.error
+
 proc beginAcquisition(services: var Services, local: StateEdKey, core: CoreIndex,
     ordinal: int, wire: openArray[byte], now: AssuranceTime,
     limits: AssuranceAcquisitionLimits, existingOnly: bool): AssuranceAcquisitionStart {.raises.} =
@@ -2540,6 +2615,7 @@ proc beginAssuranceAcquisition*(services: var Services, local: StateEdKey, core:
     limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
   ## Detached actual CE137 bytes enter only fresh canonical verification and real durable publication under the shared lease.
   services.beginAcquisition(local, core, ordinal, wire, now, limits, false)
+
 proc beginAssuranceProbe*(services: var Services, local: StateEdKey, core: CoreIndex,
     ordinal: int, now: AssuranceTime, limits: AssuranceAcquisitionLimits): AssuranceAcquisitionStart {.raises.} =
   ## Full stored verification and actual restore synchronization return fixed observations only; absence never claims possession or opens a namespace implicitly.
@@ -2548,33 +2624,41 @@ proc beginAssuranceProbe*(services: var Services, local: StateEdKey, core: CoreI
 func error*(outcome: AssuranceWorkStart): StateProofAdmissionError =
   ## Read admission before selecting an exact ticket or real capture/native failure.
   outcome.status
+
 func value*(outcome: AssuranceWorkStart): ProofWorkerTicket {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Foreign/stale tickets cannot collect or cancel this receipt's lease.
   outcome.ticket
+
 func captureError*(outcome: AssuranceWorkStart): WorkJobError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Failed closed capture never retains a canonical alias.
   outcome.captureReason
+
 func workerError*(outcome: AssuranceWorkStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Native slot refusal remains distinct from raw request admission.
   outcome.workerReason
+
 func error*(outcome: AuditPlanningStart): StateProofAdmissionError =
   ## Read the selected admission branch before accessing a ticket or actual child failure.
   outcome.status
+
 func value*(outcome: AuditPlanningStart): ProofWorkerTicket {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Only exact admitted audit planning grants collection/cancellation authority.
   outcome.ticket
+
 func captureError*(outcome: AuditPlanningStart): WorkJobError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Failed closed capture cannot retain canonical source authority.
   outcome.captureReason
+
 func workerError*(outcome: AuditPlanningStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Preserve real bounded native admission refusal independently of source capture.
   outcome.workerReason
+
 proc stageAssuranceDistribution(services: var Services, request: ReadRequest,
     peer: StateEdKey, limits: AssuranceDistributionLimits): WorkJobError =
   ## Source and capture wrapper aliases retire before shared-worker publication.
@@ -2582,6 +2666,7 @@ proc stageAssuranceDistribution(services: var Services, request: ReadRequest,
   if captured.error != WorkJobError.None: return captured.error
   services.assuranceWorkInput = captured.value
   WorkJobError.None
+
 proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
   ## Staging activations have retired every temporary alias before this exact canonical/RPC admission publishes the private job.
   discard services.proofWorker.start()
@@ -2598,19 +2683,23 @@ proc admitAssuranceWork(services: var Services): AssuranceWorkStart {.raises.} =
   services.assuranceWorkInput = default(WorkSubmissionJob)
   AssuranceWorkStart(status: StateProofAdmissionError.WorkerFailure,
       workerReason: admitted.error)
+
 proc releaseDisputedAudit*(services: var Services, id: AuditOriginId): bool =
   ## Reclaim a retired exact disputed map only while the complete graph is idle.
   services.stateProofAvailable and services.audits.releaseDispute(id)
+
 proc releaseInitialAudit*(services: var Services, id: AuditOriginId): bool =
   ## Release one completed declaration pin between graph leases.
   if not services.stateProofAvailable: return false
   services.audits.drainAbandonedDeclarations()
   services.audits.releaseDeclaration(id)
+
 proc retireInitialAudit*(services: var Services, id: AuditOriginId) =
   ## A closing node hands off exactly its pin even when another controller owns the graph lease.
   if not id.valid: return
   services.audits.abandonDeclaration(id)
   if services.stateProofAvailable: services.audits.drainAbandonedDeclarations()
+
 proc expireFinalizedAudits*(services: var Services, previous: uint64): uint64 =
   ## Verdicts may still use the prior-state epoch or one earlier. Only installed finality advances this floor.
   if not services.stateProofAvailable or services.audits.occupied: return previous
@@ -2623,22 +2712,27 @@ proc expireFinalizedAudits*(services: var Services, previous: uint64): uint64 =
   if epoch <= 1 or epoch-1 <= previous: return previous
   let floor = epoch-1
   if services.audits.expireBefore(floor): floor else: previous
+
 func auditRetentionConfigured*(services: Services): bool =
   ## Host-only optional activation observation follows no full-state or worker-leased aliases.
   services.audits.configured
+
 proc configureAudits*(services: var Services, limits: AuditRegistryLimits): bool =
   ## Optional full-state retention requires explicit finite limits and an idle canonical graph.
   if not services.stateProofAvailable: return false
   services.audits.configure(limits)
+
 proc configureAuditBranches*(services: var Services, limits: AuditBranchLimits): bool =
   ## Explicit storage policy reserves bounded full-state side-branch ownership.
   if not services.stateProofAvailable: return false
   services.auditBranches.configure(limits)
+
 proc auditBranchParent*(services: Services, parent: genesis.BlockHash): ApplicationChainResult[
     ApplicationChain] =
   ## Full candidate preparation borrows only an independently retained exact parent view.
   if not services.stateProofAvailable: return initApplicationChain(default(ChainView))
   initApplicationChain(services.auditBranches.parentView(services.canonical.chainView, parent))
+
 proc beginAuditBranchInput*(services: Services, input: var CurrentBlockInput,
     parent: genesis.BlockHash, extent: ByteLimit, ancestors: openArray[OwnedHeader],
     resources: CurrentBlockInputLimits, policies: CurrentCandidateLimits): CurrentBlockInputAdmission =
@@ -2647,21 +2741,26 @@ proc beginAuditBranchInput*(services: Services, input: var CurrentBlockInput,
   if branch.error != ApplicationChainError.None:
     return default(CurrentBlockInputAdmission)
   input.begin(branch.value, extent, ancestors, resources, policies)
+
 proc retainAuditBranch*(services: var Services, prepared: PreparedCurrentChainUpdate): AuditBranchError =
   ## A validated side child never installs selected state or changes RPC/finality.
   if not services.stateProofAvailable or services.audits.occupied: return AuditBranchError.Uninitialized
   services.auditBranches.retain(services.canonical.chainView, prepared)
+
 proc knownAuditBlock*(services: Services, hash: genesis.BlockHash): bool =
   ## A leaf already present on either independently retained history needs no network request.
   if not services.stateProofAvailable: return false
   services.canonical.chainView.blockAt(hash).error == GenesisError.None or
     services.auditBranches.at(hash).bestBlock.error == GenesisError.None
+
 func auditBranchCount*(services: Services): int =
   ## Stable side-branch ordinal space is separate from selected slot order.
   services.auditBranches.len
+
 func nextAuditBranch*(services: Services, after: uint64): AuditBranchCandidate =
   ## Return a detached scheduling identity that is independent of row compaction.
   services.auditBranches.nextAfter(after)
+
 proc retainAuditOrigin*(services: var Services, origin: AuditBlockOrigin): AuditRegistryResult[
     AuditOriginId] =
   ## Backfill an already authenticated whole origin only against independently retained canonical/checkpoint trust.
@@ -2670,6 +2769,7 @@ proc retainAuditOrigin*(services: var Services, origin: AuditBlockOrigin): Audit
   services.audits.drainAbandonedDeclarations()
   services.audits.retain(origin, services.auditSource(origin.originInfo.value.blockHash).blockAt(
       origin.originInfo.value.blockHash))
+
 proc admitManagedAudit(services: var Services): AuditPlanningStart {.raises.} =
   ## Reuse exactly the ordinary fixed worker and canonical/RPC lease without translating unrelated failure alternatives.
   let admitted = services.admitAssuranceWork()
@@ -2684,6 +2784,7 @@ proc admitManagedAudit(services: var Services): AuditPlanningStart {.raises.} =
   of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
   of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
       status: StateProofAdmissionError.Uninitialized)
+
 proc stageInitialAudit(services: var Services, blockHash: genesis.BlockHash, identity: StateEdKey,
     ordinal: JudgeIndex, context: AuditContextLimits, proof: AuditProofLimits,
         discover: bool): WorkJobError =
@@ -2692,6 +2793,7 @@ proc stageInitialAudit(services: var Services, blockHash: genesis.BlockHash, ide
       services.ticketSigner, identity, ordinal, discover)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginInitialAudit*(services: var Services, blockHash: genesis.BlockHash, identity: StateEdKey,
     ordinal: JudgeIndex, context: AuditContextLimits,
         proof: AuditProofLimits, discover = false): AuditPlanningStart {.raises.} =
@@ -2706,12 +2808,14 @@ proc beginInitialAudit*(services: var Services, blockHash: genesis.BlockHash, id
   if staged != WorkJobError.None: return AuditPlanningStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.admitManagedAudit()
+
 proc stageManagedAuditOrigin(services: var Services, blockHash: genesis.BlockHash,
     context: AuditContextLimits, limits: AuditOriginLimits): WorkJobError =
   ## Temporary view wrappers retire before native admission publishes its source borrow.
   let captured = captureAuditOriginJob(services.auditSource(blockHash), blockHash, context, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHash,
     context: AuditContextLimits, limits: AuditOriginLimits,
         forDeclaration = false): AuditPlanningStart {.raises.} =
@@ -2727,6 +2831,7 @@ proc beginAuditOriginCapture*(services: var Services, blockHash: genesis.BlockHa
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitOrigin(result.value, forDeclaration)
+
 proc auditSelectorAvailable(services: var Services): bool =
   ## Check the shared lease before draining; no admission can borrow a queued abandoned selector.
   if not services.stateProofAvailable or services.audits.occupied: return false
@@ -2739,6 +2844,7 @@ proc stageManagedAuditEvaluation(services: var Services, id: AuditOriginId, ordi
   let captured = services.audits.stageEvaluation(id, ordinal, wire, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditEvaluation*(services: var Services, id: AuditOriginId, ordinal: int,
     wire: openArray[byte], limits: AuditEvaluationLimits): AuditPlanningStart {.raises.} =
   ## A source-free selector grants no signing authority and cannot replace the registered complete predecessor.
@@ -2753,12 +2859,14 @@ proc beginAuditEvaluation*(services: var Services, id: AuditOriginId, ordinal: i
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitEvaluation(result.value,
       id, ordinal)
+
 proc stageManagedAuditShard(services: var Services, plan: AuditFetchPlan, ordinal: int,
     wire: openArray[byte], limits: AvailabilityMerkleLimits): WorkJobError =
   ## Retire bounded capture temporaries before native submission; this job borrows only immutable detached routing.
   let captured = captureAuditShardVerificationJob(plan, ordinal, wire, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditShardVerification*(services: var Services, plan: AuditFetchPlan, ordinal: int,
     wire: openArray[byte], limits: AvailabilityMerkleLimits): AuditPlanningStart {.raises.} =
   ## Whole transcript proof checks run outside native callbacks through the exact managed worker lease.
@@ -2773,12 +2881,14 @@ proc beginAuditShardVerification*(services: var Services, plan: AuditFetchPlan, 
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitShard(result.value)
+
 proc stageManagedAuditFetch(services: var Services, id: AuditOriginId, ordinal: int,
     limits: AuditFetchLimits): WorkJobError =
   ## Temporary private lookup wrappers retire before source ownership crosses to the fixed worker.
   let captured = services.audits.stageFetch(id, ordinal, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditFetchPlanning*(services: var Services, id: AuditOriginId, ordinal: int,
     limits: AuditFetchLimits): AuditPlanningStart {.raises.} =
   ## Optional retrieval planning exposes only deep detached routes, never a private registry source.
@@ -2794,6 +2904,7 @@ proc beginAuditFetchPlanning*(services: var Services, id: AuditOriginId, ordinal
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None:
     services.audits.admitFetch(result.value, id, ordinal)
+
 proc stageManagedAuditRecovery(services: var Services, id: AuditOriginId, ordinal: int,
     packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
     evaluation: AuditEvaluationLimits): WorkJobError =
@@ -2801,6 +2912,7 @@ proc stageManagedAuditRecovery(services: var Services, id: AuditOriginId, ordina
   let captured = services.audits.stageRecoveryEvaluation(id, ordinal, packets, recovery, evaluation)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditRecoveryEvaluation*(services: var Services, id: AuditOriginId, ordinal: int,
     packets: openArray[VerifiedAvailabilityTransfer], recovery: AuditRecoveryLimits,
     evaluation: AuditEvaluationLimits): AuditPlanningStart {.raises.} =
@@ -2816,6 +2928,7 @@ proc beginAuditRecoveryEvaluation*(services: var Services, id: AuditOriginId, or
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitEvaluation(result.value,
       id, ordinal)
+
 proc configureAuditSigner*(services: var Services, certificate, privateKey: string,
     transportIdentity: StateEdKey): WorkSigningSetupResult =
   ## Explicit full-state setup imports one private signer, independently from builder/assurer activation, and matches the real bound TLS identity.
@@ -2834,15 +2947,18 @@ proc configureAuditSigner*(services: var Services, certificate, privateKey: stri
   services.auditSignerIdentity = identity
   services.auditSignerReady = true
   WorkSigningSetupResult(status: WorkSigningSetupError.None)
+
 func auditSigningConfigured*(services: Services): bool =
   ## Cached scalar observation never touches the private key while a native lease runs.
   services.started and services.auditSignerReady
+
 proc stageManagedAuditSigning(services: var Services, id: AuditOriginId, ordinal: int,
     validator: StateValidatorIndex): WorkJobError =
   ## Only the private completed registry slot and configured immutable key enter the fixed signing runner.
   let captured = services.audits.stageSigning(id, ordinal, services.auditSigner, validator)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditSigning*(services: var Services, id: AuditOriginId, ordinal: int,
     validator: StateValidatorIndex): AuditPlanningStart {.raises.} =
   ## A caller selects an original target/ordinal, never a purported validity bit, message or external evaluation capability.
@@ -2856,12 +2972,14 @@ proc beginAuditSigning*(services: var Services, id: AuditOriginId, ordinal: int,
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitSigning(result.value, id, ordinal)
+
 proc stageAuditPlanning(services: var Services, blockHash: genesis.BlockHash,
     limits: AuditContextLimits): WorkJobError =
   ## Retire all temporary actual-view aliases before native submission can use the captured full history.
   let captured = captureAuditPlanning(services.canonical.chainView, blockHash, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditPlanning*(services: var Services, blockHash: genesis.BlockHash,
     limits: AuditContextLimits): AuditPlanningStart {.raises.} =
   ## Only actual full-state Services history can feed this fixed audit context runner; a foreign lease is left untouched.
@@ -2885,12 +3003,14 @@ proc beginAuditPlanning*(services: var Services, blockHash: genesis.BlockHash,
   of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
   of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
       status: StateProofAdmissionError.Uninitialized) # Every selected refusal preserves its actual branch; no future child may silently default.
+
 proc stageAuditPublication(services: var Services, id: AuditOriginId, ordinal: int,
     validator: StateValidatorIndex, limits: AuditPublicationLimits): WorkJobError =
   ## Input capture selects only an already completed private registry slot and the explicitly installed signer.
   let captured = services.audits.stagePublication(id, ordinal, services.auditSigner, validator, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditPublication*(services: var Services, id: AuditOriginId, ordinal: int,
     validator: StateValidatorIndex, limits: AuditPublicationLimits): AuditPlanningStart {.raises.} =
   ## No raw report-validity flag or external computation result can authorize a public judgment or its serving bytes.
@@ -2904,10 +3024,12 @@ proc beginAuditPublication*(services: var Services, id: AuditOriginId, ordinal: 
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitSigning(result.value, id, ordinal)
+
 proc auditRoutingHead*(services: Services): genesis.BlockHash {.requires:
     services.stateProofAvailable.} =
   ## Observe only the trusted selected head that supplies current successor topology.
   services.canonical.chainView.bestBlockContext.hash
+
 proc stageAuditParticipation(services: var Services, id: AuditOriginId, ordinal: int,
     identity: StateEdKey, limits: AuditParticipationLimits): WorkJobError =
   ## Temporary actual canonical wrappers retire before native publication of the immutable private source lease.
@@ -2915,6 +3037,7 @@ proc stageAuditParticipation(services: var Services, id: AuditOriginId, ordinal:
       services.canonical.chainView.bestBlock, identity, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditParticipation*(services: var Services, id: AuditOriginId, ordinal: int,
     identity: StateEdKey, limits: AuditParticipationLimits): AuditPlanningStart {.raises.} =
   ## Explicit full-node planning preserves every original local ordinal and only actually known successor topology.
@@ -2926,12 +3049,14 @@ proc beginAuditParticipation*(services: var Services, id: AuditOriginId, ordinal
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitParticipation(result.value)
+
 proc stageAuditRoutingRefresh(services: var Services, basis: AuditRoutingBasis,
     limits: AuditParticipationLimits): WorkJobError =
   ## All selected-state wrappers retire before native submission.
   let captured = captureAuditRoutingRefresh(basis, services.canonical.chainView.bestBlock, limits)
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditRoutingRefresh*(services: var Services, basis: AuditRoutingBasis,
     limits: AuditParticipationLimits): AuditPlanningStart {.raises.} =
   ## Refresh uses the exact ordinary participation collector without retaining an execution origin.
@@ -2943,10 +3068,12 @@ proc beginAuditRoutingRefresh*(services: var Services, basis: AuditRoutingBasis,
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitParticipation(result.value)
+
 func auditSigningMatches*(services: Services, identity: StateEdKey): bool =
   ## Cached fixed public identity checks never touch the private key while another worker borrows it.
   services.auditSigningConfigured and array[32, byte](services.auditSignerIdentity) == array[32,
       byte](identity)
+
 proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
     excluded: openArray[JudgmentSourceAttempt] = [], maximumSlot = high(uint64),
     allowPrimary = true, allowAlternates = true): JudgmentSourceResult =
@@ -2959,6 +3086,7 @@ proc judgmentSource*(services: Services, claim: SignedJudgmentClaim,
   var histories = @[selected]
   for branch in alternatives: histories.add(branch)
   selectJudgmentSourceAcross(source, histories, claim, excluded, maximumSlot, allowPrimary, allowAlternates)
+
 proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the fixed worker borrows its immutable input graph.
@@ -2967,6 +3095,7 @@ proc stageJudgmentReceipt(services: var Services, claims: SignedJudgmentBatch,
       services.auditBranches.liveViews(selected))
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginJudgmentReceipt*(services: var Services, claims: SignedJudgmentBatch,
     inputs: openArray[JudgmentSourceInput], limits: JudgmentReceiptLimits): AuditPlanningStart {.raises.} =
   ## Complete negative-source preparation is optional and full-node-only; generic collection cannot steal its private origins.
@@ -2981,6 +3110,7 @@ proc beginJudgmentReceipt*(services: var Services, claims: SignedJudgmentBatch,
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   result = services.admitManagedAudit()
   if result.error == StateProofAdmissionError.None: services.audits.admitJudgmentReceipt(result.value)
+
 proc stageJudgmentClaims(services: var Services, wire: openArray[byte],
     limits: JudgmentClaimLimits): WorkJobError =
   ## Temporary canonical wrappers retire before the closed worker takes its exclusive original-roster lease.
@@ -2988,6 +3118,7 @@ proc stageJudgmentClaims(services: var Services, wire: openArray[byte],
   let captured = captureJudgmentClaimJob(selected, wire, limits, services.auditBranches.liveViews(selected))
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginJudgmentClaims*(services: var Services, wire: openArray[byte],
     limits: JudgmentClaimLimits): AuditPlanningStart {.raises.} =
   ## Optional full-state verification pauses ordinary canonical/RPC graph access; returned claims contain only detached fixed original-membership facts.
@@ -3000,6 +3131,7 @@ proc beginJudgmentClaims*(services: var Services, wire: openArray[byte],
   if staged != WorkJobError.None: return AuditPlanningStart(
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.admitManagedAudit()
+
 proc stageAuditAnnouncements(services: var Services, wire: openArray[byte],
     limits: AuditReceiptLimits): WorkJobError =
   ## Capture wrappers and copied caller bytes retire before the worker borrows actual full history.
@@ -3008,6 +3140,7 @@ proc stageAuditAnnouncements(services: var Services, wire: openArray[byte],
       services.auditBranches.liveViews(selected))
   if captured.error == WorkJobError.None: services.assuranceWorkInput = captured.value
   captured.error
+
 proc beginAuditAnnouncements*(services: var Services, wire: openArray[byte],
     limits: AuditReceiptLimits): AuditPlanningStart {.raises.} =
   ## Only the actual full-state Services history feeds whole-batch proof qualification; a foreign exact lease remains untouched.
@@ -3031,9 +3164,11 @@ proc beginAuditAnnouncements*(services: var Services, wire: openArray[byte],
   of StateProofAdmissionError.Closed: AuditPlanningStart(status: StateProofAdmissionError.Closed)
   of StateProofAdmissionError.Uninitialized: AuditPlanningStart(
       status: StateProofAdmissionError.Uninitialized) # Every selected refusal preserves its actual branch; no future child may silently default.
+
 proc auditContextCurrent*(services: Services, context: AuditContext): bool =
   ## Historical child/body and predecessor identities are compared only after every canonical lease retires.
   services.stateProofAvailable and context.matches(services.canonical.chainView)
+
 proc stageAssurancePlanning(services: var Services, local: StateEdKey,
     limits: AssuranceFetchLimits): WorkJobError =
   ## The actual selected complete source is captured independently of peers and retired temporary view wrappers.
@@ -3041,6 +3176,7 @@ proc stageAssurancePlanning(services: var Services, local: StateEdKey,
   if captured.error != WorkJobError.None: return captured.error
   services.assuranceWorkInput = captured.value
   WorkJobError.None
+
 proc beginAssurancePlanning*(services: var Services, local: StateEdKey,
     limits: AssuranceFetchLimits): AssuranceWorkStart {.raises.} =
   ## Planning requires full-state exclusion but neither a namespace nor a private signing key.
@@ -3051,9 +3187,11 @@ proc beginAssurancePlanning*(services: var Services, local: StateEdKey,
   if staged != WorkJobError.None: return AssuranceWorkStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.admitAssuranceWork()
+
 proc assurancePlanningCurrent*(services: Services, plan: AssuranceFetchPlan): bool =
   ## Host comparison touches the actual best source only after every foreign lease has retired.
   services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
+
 proc stageAssuranceSchedule(services: var Services, local: StateEdKey,
     window: AssuranceWindow, limits: AssuranceScheduleLimits): WorkJobError =
   ## The actual best complete source is captured while idle; temporary snapshot/wrapper aliases retire before native publication.
@@ -3062,6 +3200,7 @@ proc stageAssuranceSchedule(services: var Services, local: StateEdKey,
   if captured.error != WorkJobError.None: return captured.error
   services.assuranceWorkInput = captured.value
   WorkJobError.None
+
 proc beginAssuranceSchedule*(services: var Services, local: StateEdKey,
     window: AssuranceWindow, limits: AssuranceScheduleLimits): AssuranceWorkStart {.raises.} =
   ## Timed author planning uses the same exact canonical/RPC lease and requires no archive or private signer.
@@ -3072,9 +3211,11 @@ proc beginAssuranceSchedule*(services: var Services, local: StateEdKey,
   if staged != WorkJobError.None: return AssuranceWorkStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.admitAssuranceWork()
+
 proc assuranceScheduleCurrent*(services: Services, plan: AssuranceSchedule): bool =
   ## Compare the full selected source only after foreign and owned native leases have retired.
   services.stateProofAvailable and plan.matches(services.canonical.chainView.bestBlock)
+
 proc beginAssuranceDistribution*(services: var Services, request: ReadRequest,
     peer: StateEdKey, limits: AssuranceDistributionLimits): AssuranceWorkStart {.raises.} =
   ## Receipt requires full-state canonical/RPC exclusion but neither local shard storage nor a private signer.
@@ -3086,6 +3227,7 @@ proc beginAssuranceDistribution*(services: var Services, request: ReadRequest,
   if staged != WorkJobError.None: return AssuranceWorkStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.admitAssuranceWork()
+
 proc assuranceDistributionCurrent*(services: Services, checked: CheckedAssurance): bool =
   ## Fresh actual head and complete root are checked only while no foreign canonical lease exists.
   services.stateProofAvailable and checked.matches(services.canonical.chainView.bestBlock)
@@ -3093,18 +3235,22 @@ proc assuranceDistributionCurrent*(services: Services, checked: CheckedAssurance
 func error*(outcome: AssuranceSigningStart): AssuranceStorageStartError =
   ## Inspect native admission before extracting its exact ticket or capture/worker refusal.
   outcome.status
+
 func value*(outcome: AssuranceSigningStart): ProofWorkerTicket {.requires: outcome.status ==
     AssuranceStorageStartError.None.} =
   ## Only full source/key/namespace admission grants signing collection or cancellation authority.
   outcome.ticket
+
 func captureError*(outcome: AssuranceSigningStart): AssuranceSigningJobError {.requires: outcome.status ==
     AssuranceStorageStartError.CaptureFailure.} =
   ## Preserve actual source/key/storage/policy capture refusal.
   outcome.captureReason
+
 func workerError*(outcome: AssuranceSigningStart): ProofWorkerError {.requires: outcome.status ==
     AssuranceStorageStartError.WorkerFailure.} =
   ## Failed native submission retains no secret/source aliases or canonical exclusion.
   outcome.workerReason
+
 proc configureAssuranceSigner*(services: var Services, certificate, privateKey: string,
     transportIdentity: StateEdKey): WorkSigningSetupResult =
   ## Explicit full-state setup imports the private key only once and compares its certificate-derived identity with the actual bound TLS identity.
@@ -3123,13 +3269,16 @@ proc configureAssuranceSigner*(services: var Services, certificate, privateKey: 
   services.assuranceSignerIdentity = identity
   services.assuranceSignerReady = true
   WorkSigningSetupResult(status: WorkSigningSetupError.None)
+
 func assuranceSigningConfigured*(services: Services): bool =
   ## Cached scalar observation never touches a private-key ARC owner while a job holds its lease.
   services.started and services.assuranceSignerReady
+
 func assuranceSigningMatches*(services: Services, identity: StateEdKey): bool =
   ## Cached scalar identity checks do not inspect a private signer while another job owns it.
   services.started and services.assuranceSignerReady and
     array[32, byte](services.assuranceSignerIdentity) == array[32, byte](identity)
+
 proc stageAssuranceSigning(services: var Services, requested: AssuranceBits,
     now: AssuranceTime, limits: AssurancePossessionLimits): AssuranceSigningJobError =
   ## Retire every temporary canonical/signer/capture alias before native submission can access the private key.
@@ -3138,6 +3287,7 @@ proc stageAssuranceSigning(services: var Services, requested: AssuranceBits,
     services.assuranceSigner, services.assuranceInfo.chain, requested, now, limits)
   if captured.error == AssuranceSigningJobError.None: services.assuranceSigningInput = captured.value
   captured.error
+
 proc beginAssuranceSigning*(services: var Services, requested: AssuranceBits,
     now: AssuranceTime, limits: AssurancePossessionLimits): AssuranceSigningStart {.raises.} =
   ## One managed source/key/archive lease performs fresh all-local verification, actual durable renewal and the one private signature.
@@ -3167,6 +3317,7 @@ proc beginAssuranceSigning*(services: var Services, requested: AssuranceBits,
   services.assuranceSigningInput = default(AssuranceSigningJob)
   AssuranceSigningStart(status: AssuranceStorageStartError.WorkerFailure,
       workerReason: admitted.error)
+
 proc currentAssuranceBytes*(services: Services, assurance: SignedAssurance,
     maximum: ByteLimit): AssuranceSigningResult[seq[byte]] =
   ## Only the latest signature collected by this live Services instance may publish against its still-current complete source and healthy installed namespace.
@@ -3180,28 +3331,35 @@ proc currentAssuranceBytes*(services: Services, assurance: SignedAssurance,
 func error*(outcome: WorkSubmissionStart): StateProofAdmissionError =
   ## Failed starts never expose a session token.
   outcome.status
+
 func value*(outcome: WorkSubmissionStart): WorkSessionToken {.requires: outcome.status ==
     StateProofAdmissionError.None.} =
   ## Session control remains distinct from raw CPU collection authority.
   outcome.token
+
 func captureError*(outcome: WorkSubmissionStart): WorkJobError {.requires: outcome.status ==
     StateProofAdmissionError.QueryFailure.} =
   ## Only an actual failed staging operation carries its cause.
   outcome.captureReason
+
 func workerError*(outcome: WorkSubmissionStart): ProofWorkerError {.requires: outcome.status ==
     StateProofAdmissionError.WorkerFailure.} =
   ## Preserve the actual bounded worker admission refusal.
   outcome.workerReason
+
 func matchesWork(services: Services, token: WorkSessionToken): bool =
   ## Host-only namespace comparisons touch no canonical or job ARC owner.
   token.owner != nil and token.owner == services.workIdentity and token.generation != 0 and
     token.generation == services.workGeneration and services.workPhase != WorkSessionPhase.Empty
+
 func workSessionPhase*(services: Services, token: WorkSessionToken): WorkSessionPhase =
   ## Foreign, stale and default controls observe no session; Busy/Done observations remain scalar.
   if services.matchesWork(token): services.workPhase else: WorkSessionPhase.Empty
+
 func workSubmissionActive*(services: Services, token: WorkSessionToken): bool =
   ## Only this matching session can authorize joined teardown of its selected CPU turn.
   services.matchesWork(token) and services.workActive
+
 proc reapWorkSubmission*(services: var Services): bool =
   ## Deferred graph retirement never collects, cancels or joins an unrelated CPU borrower.
   if services.workPhase != WorkSessionPhase.Retired: return false
@@ -3223,13 +3381,18 @@ proc reapWorkSubmission*(services: var Services): bool =
   services.workHead = default(BlockHash)
   services.workPhase = WorkSessionPhase.Empty
   true
+
 proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmissionStart =
   ## All staging aliases are gone before this function takes the exact RPC/worker lease.
   services.rpcLease = services.rpc.pauseChain()
   if services.rpcLease == nil:
     services.workInput = default(WorkSubmissionJob)
     return WorkSubmissionStart(status: StateProofAdmissionError.Busy)
-  let admitted = services.proofWorker.submit(services.workInput)
+  let admitted = if phase == WorkSessionPhase.Completing:
+    # The proof lease excludes preparation until collection or join, so package refinement can use its compiler.
+    services.proofWorker.submit(services.workInput, services.nativeRuntime)
+  else:
+    services.proofWorker.submit(services.workInput)
   if admitted.error == ProofWorkerError.None:
     services.proofing = true
     services.workActive = true
@@ -3241,6 +3404,7 @@ proc submitWork(services: var Services, phase: WorkSessionPhase): WorkSubmission
   services.rpcLease = nil
   services.workInput = default(WorkSubmissionJob)
   WorkSubmissionStart(status: StateProofAdmissionError.WorkerFailure, workerReason: admitted.error)
+
 proc configureWorkSigner*(services: var Services, certificate, privateKey: string,
     transportIdentity: StateEdKey, storage: GuarantorStorageLimits): WorkSigningSetupResult =
   ## Import privately before any work session; the actual transport's cached public identity must match the loaded TLS key.
@@ -3261,9 +3425,11 @@ proc configureWorkSigner*(services: var Services, certificate, privateKey: strin
   services.workSignerIdentity = identity
   services.workSignerReady = true
   WorkSigningSetupResult(status: WorkSigningSetupError.None)
+
 func workSigningConfigured*(services: Services): bool =
   ## This scalar is safe to observe while any canonical/signer alias belongs to the worker.
   services.started and services.workSignerReady
+
 func workSignerMatches*(services: Services, identity: StateEdKey,
     storage: GuarantorStorageLimits): bool =
   ## Fixed cached public identity allows a reopened native host to reuse private setup without importing or inspecting the key again.
@@ -3271,12 +3437,15 @@ func workSignerMatches*(services: Services, identity: StateEdKey,
   let original = array[32, byte](services.workSignerIdentity)
   let requested = array[32, byte](identity)
   original == requested and services.guarantorStore.matches(storage)
+
 func retainedWorkBundles*(services: Services): int =
   ## A scalar count is safe during foreign work and does not expose any serving or canonical alias.
   services.guarantorStore.len
+
 func retainedWorkBytes*(services: Services): uint64 =
   ## Logical retained payload remains separate from transient worker/canonical memory.
   services.guarantorStore.byteLength
+
 proc contributionRetention(services: Services, requested: AvailabilityMerkleLimits): AvailabilityMerkleLimits =
   ## The single Services lease keeps this remaining entry/byte budget stable until exact collection or joined cancellation.
   if not requested.validGuarantorLimits: return default(AvailabilityMerkleLimits)
@@ -3285,10 +3454,12 @@ proc contributionRetention(services: Services, requested: AvailabilityMerkleLimi
   AvailabilityMerkleLimits(bytes: ByteLimit(min(uint64(requested.bytes), uint64(available.bytes))),
     hashes: ElementLimit(min(uint64(requested.hashes), uint64(available.hashes))),
     hashBytes: ByteLimit(min(uint64(requested.hashBytes), uint64(available.hashBytes))))
+
 func sameWorkSession*(left, right: WorkSessionToken): bool =
   ## Host-only exact session comparison grants no graph access or cancellation authority.
   left.owner != nil and left.owner == right.owner and left.generation != 0 and left.generation ==
       right.generation
+
 proc workDistributionCurrent*(services: Services, info: WorkDistributionInfo,
     now: StateTime): bool =
   ## Capture a fixed comparison only while canonical access is available; all temporary aliases retire before a caller submits work.
@@ -3298,6 +3469,7 @@ proc workDistributionCurrent*(services: Services, info: WorkDistributionInfo,
   let sameHead = array[32, byte](head.value.blockHash) == array[32, byte](info.head)
   let sameRoot = array[32, byte](head.value.stateRoot) == array[32, byte](info.root)
   sameHead and sameRoot
+
 proc stageWorkDistribution(services: var Services, request: ReadRequest, now: StateTime,
     limits: WorkDistributionLimits): WorkJobError =
   ## The staging activation retires all temporary canonical/job aliases before the exact shared lease is granted.
@@ -3305,6 +3477,7 @@ proc stageWorkDistribution(services: var Services, request: ReadRequest, now: St
   if captured.error != WorkJobError.None: return captured.error
   services.distributionInput = captured.value
   WorkJobError.None
+
 proc beginWorkDistribution*(services: var Services, request: ReadRequest, now: StateTime,
     limits: WorkDistributionLimits): WorkDistributionStart {.raises.} =
   ## Incoming verification can run while a primary guarantee waits; it neither signs nor replaces that primary source.
@@ -3337,16 +3510,19 @@ proc beginWorkDistribution*(services: var Services, request: ReadRequest, now: S
   services.distributionTicket = admitted.value
   WorkDistributionStart(status: StateProofAdmissionError.None, token: WorkDistributionToken(
       owner: services.distributionIdentity, generation: services.distributionGeneration))
+
 func workDistributionActive*(services: Services, token: WorkDistributionToken): bool =
   ## Host-only identity/generation checks never inspect the leased canonical/job graph.
   services.distributionActive and token.owner != nil and token.owner ==
       services.distributionIdentity and token.generation != 0 and token.generation ==
       services.distributionGeneration
+
 proc cancelWorkDistribution*(services: var Services, token: WorkDistributionToken): bool =
   ## Cancellation touches only this exact active proof ticket, leaving every alias frozen until collect or joined stop.
   if not services.workDistributionActive(token): return false
   let ticket = services.distributionTicket
   services.cancelStateProof(ticket)
+
 proc collectWorkDistribution*(services: var Services,
     token: WorkDistributionToken): WorkDistributionCompletion =
   ## Cut source-free results only after matching collection; no caller receives the worker's canonical qualification owner.
@@ -3394,6 +3570,7 @@ proc collectWorkDistribution*(services: var Services,
       status: WorkDistributionCompletionKind.InvalidResult)
   WorkDistributionCompletion(status: WorkDistributionCompletionKind.Completed, info: facts.value,
     targets: targets, payload: payload.value, report: outcome.distributionReport)
+
 proc stageWorkSharing(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
     now: StateTime, limits: WorkSharingLimits): WorkJobError =
   ## Native task aliases remain independent from the detached job; view/key staging aliases retire before admission.
@@ -3405,6 +3582,7 @@ proc stageWorkSharing(services: var Services, request: SharedWorkRequest, local,
   if captured.error != WorkJobError.None: return captured.error
   services.sharingInput = captured.value
   WorkJobError.None
+
 proc beginWorkSharing*(services: var Services, request: SharedWorkRequest, local, peer: StateEdKey,
     now: StateTime, limits: WorkSharingLimits): WorkSharingStart {.raises.} =
   ## A waiting primary builder does not monopolize idle CPU capacity or lose its original context.
@@ -3441,18 +3619,22 @@ proc beginWorkSharing*(services: var Services, request: SharedWorkRequest, local
   WorkSharingStart(status: StateProofAdmissionError.None,
     token: WorkSharingToken(owner: services.sharingIdentity,
         generation: services.sharingGeneration))
+
 func matchesSharing(services: Services, token: WorkSharingToken): bool =
   ## Sharing namespaces are host-only and independent from primary work sessions or native stream tickets.
   services.sharingActive and token.owner != nil and token.owner == services.sharingIdentity and
     token.generation != 0 and token.generation == services.sharingGeneration
+
 func workSharingActive*(services: Services, token: WorkSharingToken): bool =
   ## Host-only namespace/generation observation never touches the worker's canonical or signer graph.
   services.matchesSharing(token)
+
 proc cancelWorkSharing*(services: var Services, token: WorkSharingToken): bool =
   ## Cancellation marks only the exact sharing lease; signer/source aliases remain frozen until collect/join.
   if not services.matchesSharing(token): return false
   let ticket = services.sharingTicket
   services.cancelStateProof(ticket)
+
 proc collectWorkSharing*(services: var Services, token: WorkSharingToken): WorkSharingCompletion =
   ## Only exact Done collection installs the most recent privately retained shared bundle and exposes fixed response bytes.
   if not services.matchesSharing(token): return default(WorkSharingCompletion)
@@ -3484,6 +3666,7 @@ proc collectWorkSharing*(services: var Services, token: WorkSharingToken): WorkS
   services.sharedContribution = contribution
   WorkSharingCompletion(status: WorkSharingCompletionKind.Completed, response: encoded.value,
     info: contribution.contributionInfo.value)
+
 proc stageWorkAuthorization(services: var Services, header: WorkSubmissionHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
     recipient = default(WorkRecipient), dutyLimits = default(WorkDutyLimits),
@@ -3499,6 +3682,7 @@ proc stageWorkAuthorization(services: var Services, header: WorkSubmissionHeader
   services.workInfo = header.submissionInfo.value
   services.workHead = head.value.blockHash
   WorkJobError.None
+
 proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
     recovery = default(WorkRecoveryPolicy)): WorkSubmissionStart {.raises.} =
@@ -3520,6 +3704,7 @@ proc beginWorkSubmission*(services: var Services, header: WorkSubmissionHeader,
   inc services.workGeneration
   discard services.proofWorker.start()
   services.submitWork(WorkSessionPhase.Authorizing)
+
 proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
     recipient: WorkRecipient, dutyLimits: WorkDutyLimits,
@@ -3536,6 +3721,7 @@ proc stageWorkWire(services: var Services, header: UntrustedWorkHeader,
   let decoded = decodeWorkSubmission(header.kind, first, package, config)
   if decoded.error != WorkSubmissionError.None: return WorkJobError.InvalidInput
   services.stageWorkAuthorization(decoded.value, limits, execution, recipient, dutyLimits, recovery)
+
 proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
     limits: WorkSubmissionLimits, execution: InputRefinementLimits,
     recipient: WorkRecipient, dutyLimits: WorkDutyLimits,
@@ -3558,24 +3744,30 @@ proc beginWorkSubmission*(services: var Services, header: UntrustedWorkHeader,
   inc services.workGeneration
   discard services.proofWorker.start()
   services.submitWork(WorkSessionPhase.Authorizing)
+
 proc workSourceCurrent(services: Services): bool =
   ## Temporary head ownership retires before the caller can submit a completion job.
   let head = services.canonical.chainView.bestBlock
   head.error == GenesisError.None and array[32, byte](head.value.blockHash) == array[32, byte](
       services.workHead)
+
 proc workSubmissionCurrent*(services: Services, token: WorkSessionToken): bool =
   ## A foreign lease prevents observation; otherwise compare original captured provenance with the actual canonical best head.
   if not services.stateProofAvailable or not services.matchesWork(token): return false
   services.workSourceCurrent
+
 func workRecoveryEnabled*(services: Services, token: WorkSessionToken): bool =
   ## Cached scalar capability presence is safe even through a foreign uncollected Done lease.
   services.matchesWork(token) and services.workRecoveryEnabled
+
 func workFallbackAllowed*(services: Services, token: WorkSessionToken): bool =
   ## Only a collected remote import refusal can resume the retained original authorization for fallback.
   services.matchesWork(token) and services.workFallbackAllowed
+
 func workRecoveryInfo*(services: Services, token: WorkSessionToken): WorkRecoveryInfo {.requires: services.matchesWork(token).} =
   ## Scalar progress copies never touch private packet, catalog or grant aliases while another worker owns them.
   services.workRecoveryInfo
+
 proc activateWorkRecovery*(services: var Services, token: WorkSessionToken): ReadError =
   ## A missing preferred reply or collected peer import refusal can activate only the exact original prepared recovery context.
   if not services.matchesWork(token) or not services.workRecoveryEnabled: return ReadError.Unavailable
@@ -3589,6 +3781,7 @@ proc activateWorkRecovery*(services: var Services, token: WorkSessionToken): Rea
   services.workFallbackAllowed = false
   services.workPhase = WorkSessionPhase.Recovering
   ReadError.None
+
 proc workRecoveryRequest*(services: Services, token: WorkSessionToken,
     validator: StateValidatorIndex): WorkRecoveryResult[WorkRecoveryRequest] =
   ## Return detached request/key facts only while the private graph is idle and this exact session is ready for a packet.
@@ -3597,6 +3790,7 @@ proc workRecoveryRequest*(services: Services, token: WorkSessionToken,
   if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Recovering:
     return default(WorkRecoveryResult[WorkRecoveryRequest])
   services.workRecovery.recoveryRequest(validator)
+
 proc stageWorkRecoveryPacket(services: var Services, version: uint64,
     validator: StateValidatorIndex, wire: openArray[byte]): WorkJobError =
   ## Retire every context/progress capture alias before entering the exclusive worker.
@@ -3605,18 +3799,21 @@ proc stageWorkRecoveryPacket(services: var Services, version: uint64,
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc stageWorkRecoveryRetry(services: var Services): WorkJobError =
   ## Only the private matching progress is captured; host code cannot set its proven discriminator.
   let captured = captureWorkRecoveryRetry(services.workContext, services.workRecovery)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc stageRecoveredWorkPackage(services: var Services, extrinsics: openArray[byte]): WorkJobError =
   ## Original package/progress owners remain private until this staging activation has retired.
   let captured = captureRecoveredWorkPackage(services.workContext, services.workRecovery, extrinsics)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc beginWorkRecoveryPacket*(services: var Services, token: WorkSessionToken, version: uint64,
     validator: StateValidatorIndex, wire: openArray[byte]): WorkSubmissionStart =
   ## Admit at most the declared number of bounded proof-check turns, independent from native/peer cancellation.
@@ -3635,6 +3832,7 @@ proc beginWorkRecoveryPacket*(services: var Services, token: WorkSessionToken, v
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   inc services.workRecoveryJobs
   services.submitWork(WorkSessionPhase.CheckingRecovery)
+
 proc beginWorkRecoveryRetry*(services: var Services, token: WorkSessionToken): WorkSubmissionStart =
   ## Exhaustion can only discard unproven bytes through a closed private CPU job.
   if not services.matchesWork(token) or not services.workRecoveryEnabled:
@@ -3648,6 +3846,7 @@ proc beginWorkRecoveryRetry*(services: var Services, token: WorkSessionToken): W
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.CheckingRecovery)
+
 proc beginRecoveredWorkPackage*(services: var Services, token: WorkSessionToken,
     extrinsics: openArray[byte]): WorkSubmissionStart =
   ## Complete recovered original input tables and refine only under this fresh source's next exclusive CPU turn.
@@ -3662,6 +3861,7 @@ proc beginRecoveredWorkPackage*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Completing)
+
 proc stageWorkBundle(services: var Services, extrinsics, segments,
     proofs: openArray[byte]): WorkJobError =
   ## Every context/capture alias retires in this helper activation before native CPU admission.
@@ -3669,6 +3869,7 @@ proc stageWorkBundle(services: var Services, extrinsics, segments,
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc stageWorkPackage(services: var Services, extrinsics: openArray[byte],
     imports: openArray[seq[VerifiedImport]], lookup: openArray[SegmentLookup]): WorkJobError =
   ## Original grant and independently verified availability aliases remain private until this staging activation retires.
@@ -3676,6 +3877,7 @@ proc stageWorkPackage(services: var Services, extrinsics: openArray[byte],
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc stageFetchedWorkPackage(services: var Services, extrinsics,
     reply: openArray[byte]): WorkJobError =
   ## Retire all plan/context staging aliases before the detached job is admitted to the managed CPU worker.
@@ -3683,6 +3885,7 @@ proc stageFetchedWorkPackage(services: var Services, extrinsics,
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc workImportRequest*(services: Services, token: WorkSessionToken): WorkSubmissionResult[seq[byte]] =
   ## Detached raw request bytes may be retained during later graph leases; reading the private context itself requires idle ownership.
   if not services.started or not services.matchesWork(token):
@@ -3690,6 +3893,7 @@ proc workImportRequest*(services: Services, token: WorkSessionToken): WorkSubmis
   if not services.stateProofAvailable or services.workPhase != WorkSessionPhase.Authorized:
     return default(WorkSubmissionResult[seq[byte]])
   services.workContext.importRequest
+
 proc beginFetchedWorkPackage*(services: var Services, token: WorkSessionToken,
     extrinsics, reply: openArray[byte]): WorkSubmissionStart =
   ## Only the original live authorized session can admit fetched bytes, verification and refinement under its selected state.
@@ -3706,6 +3910,7 @@ proc beginFetchedWorkPackage*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Completing)
+
 proc beginWorkBundle*(services: var Services, token: WorkSessionToken,
     extrinsics, segments, proofs: openArray[byte]): WorkSubmissionStart =
   ## A body wait holds no CPU lease; only the original authorized session can capture the next bounded CPU turn.
@@ -3724,6 +3929,7 @@ proc beginWorkBundle*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Completing)
+
 proc beginWorkPackage*(services: var Services, token: WorkSessionToken,
     extrinsics: openArray[byte], imports: openArray[seq[VerifiedImport]],
     lookup: openArray[SegmentLookup]): WorkSubmissionStart =
@@ -3743,6 +3949,7 @@ proc beginWorkPackage*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
       status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Completing)
+
 proc stageWorkReport(services: var Services, limits: WorkReportLimits): WorkJobError =
   ## Retain only this session's original completed refinement; every temporary source alias retires before CPU submission.
   if services.workOutcome.kind != WorkJobResultKind.Refined: return WorkJobError.InvalidInput
@@ -3751,6 +3958,7 @@ proc stageWorkReport(services: var Services, limits: WorkReportLimits): WorkJobE
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc beginWorkReport*(services: var Services, token: WorkSessionToken,
     limits: WorkReportLimits, now: StateTime): WorkSubmissionStart =
   ## Only the fresh original network session chooses its actual source roster count; no caller report or shard-count replacement is accepted.
@@ -3771,6 +3979,7 @@ proc beginWorkReport*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Reporting)
+
 proc stageWorkContribution(services: var Services, local: StateEdKey, now: StateTime,
     limits: WorkEligibilityLimits, retention: AvailabilityMerkleLimits): WorkJobError =
   ## Original execution and the actual fresh canonical view retire from staging before the exclusive CPU lease begins.
@@ -3781,6 +3990,7 @@ proc stageWorkContribution(services: var Services, local: StateEdKey, now: State
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc beginWorkContribution*(services: var Services, token: WorkSessionToken,
     transportIdentity: StateEdKey, now: StateTime,
         limits: WorkEligibilityLimits, retention: AvailabilityMerkleLimits): WorkSubmissionStart =
@@ -3804,6 +4014,7 @@ proc beginWorkContribution*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None:
     return WorkSubmissionStart(status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.Signing)
+
 proc stageWorkExchange(services: var Services, maximum: ByteLimit): WorkJobError =
   ## Temporary contribution aliases retire before preparation takes its exclusive graph lease.
   if services.workOutcome.kind != WorkJobResultKind.Contributed: return WorkJobError.InvalidInput
@@ -3811,6 +4022,7 @@ proc stageWorkExchange(services: var Services, maximum: ByteLimit): WorkJobError
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc beginWorkExchange*(services: var Services, token: WorkSessionToken,
     maximum: ByteLimit): WorkSubmissionStart =
   ## Prepare only this genuine signed session; signer setup and exact prior collection are prerequisites.
@@ -3823,6 +4035,7 @@ proc beginWorkExchange*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.PreparingExchange)
+
 proc stageWorkResponse(services: var Services, position: int, peer: StateEdKey,
     response: array[96, byte]): WorkJobError =
   ## Only the private round and fixed copies enter verification, never its native raw-request cache.
@@ -3830,6 +4043,7 @@ proc stageWorkResponse(services: var Services, position: int, peer: StateEdKey,
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc beginWorkPeerResponse*(services: var Services, token: WorkSessionToken,
     position: int, transportIdentity: StateEdKey, response: array[96, byte]): WorkSubmissionStart =
   ## The ordinal selects a privately prepared target; actual TLS identity is a host observation, never packet metadata.
@@ -3845,12 +4059,14 @@ proc beginWorkPeerResponse*(services: var Services, token: WorkSessionToken,
   if staged != WorkJobError.None: return WorkSubmissionStart(
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.CheckingContribution)
+
 proc stageWorkGuarantee(services: var Services, maximum: ByteLimit): WorkJobError =
   ## Temporary round aliases retire before final canonical encoding borrows the shared graph.
   let captured = captureWorkGuarantee(services.workRound, maximum)
   if captured.error != WorkJobError.None: return captured.error
   services.workInput = captured.value
   WorkJobError.None
+
 proc beginWorkGuaranteeCollection*(services: var Services, token: WorkSessionToken,
     maximum: ByteLimit): WorkSubmissionStart =
   ## Two actual collected credentials are necessary; resource policy never supplies missing credential authority.
@@ -3866,28 +4082,34 @@ proc beginWorkGuaranteeCollection*(services: var Services, token: WorkSessionTok
   if staged != WorkJobError.None: return WorkSubmissionStart(
     status: StateProofAdmissionError.QueryFailure, captureReason: staged)
   services.submitWork(WorkSessionPhase.CollectingGuarantee)
+
 func workExchangeInfo*(services: Services, token: WorkSessionToken): WorkExchangeInfo =
   ## Fixed committed counters/status retain no alias to worker-owned canonical state.
   if services.matchesWork(token): services.workExchangeState else: default(WorkExchangeInfo)
+
 func workShareTarget*(services: Services, token: WorkSessionToken,
     position: int): WorkShareTarget {.requires:
     services.matchesWork(token) and exchangeWorkPhase(services.workPhase) and
     position >= 0 and position < services.workExchangeState.targets.} =
   ## Complete fixed target metadata can be copied through an active or unrelated CPU lease.
   services.workShareTargets[position]
+
 proc workSharingRequest*(services: Services, token: WorkSessionToken): SharedWorkRequest {.requires:
     services.matchesWork(token) and exchangeWorkPhase(services.workPhase).} =
   ## Independent raw bytes carry no canonical/signer reference and remain safe for native sends during verification.
   services.workSharedRequest
+
 proc workGuaranteePayload*(services: Services, token: WorkSessionToken): seq[byte] {.requires:
     services.matchesWork(token) and services.workPhase == WorkSessionPhase.Guaranteed.} =
   ## Copy the independent raw cache rather than the collected guarantee graph's private sequence.
   result = newSeq[byte](services.workGuaranteeBytes.len)
   for index in 0..<result.len: result[index] = services.workGuaranteeBytes[index]
+
 proc workExchangeOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
     services.stateProofAvailable and services.matchesWork(token).} =
   ## Retire every extracted source-bearing alias before admitting another shared-graph borrower.
   services.workExchangeOutcome
+
 proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): WorkSessionPhase =
   ## Exact matching Done collection installs source-bearing artifacts privately and exposes only scalar phase.
   if not services.matchesWork(token): return WorkSessionPhase.Empty
@@ -3997,6 +4219,7 @@ proc collectWorkSubmission*(services: var Services, token: WorkSessionToken): Wo
       services.workOutcome = outcome
       services.workPhase = WorkSessionPhase.Failed # Genuine failure details stay owned until explicit safe extraction or retirement.
   services.workPhase
+
 proc retireWorkSubmission*(services: var Services, token: WorkSessionToken): bool =
   ## Mark scalar retirement immediately; foreign Queued/Running/Done capacity and canonical ARC owners remain untouched.
   if not services.matchesWork(token): return false
@@ -4006,22 +4229,27 @@ proc retireWorkSubmission*(services: var Services, token: WorkSessionToken): boo
     discard services.cancelStateProof(ticket)
   discard services.reapWorkSubmission()
   true
+
 proc workSubmissionInfo*(services: Services, token: WorkSessionToken): WorkSubmissionInfo {.requires: services.matchesWork(token).} =
   ## Detached copied reader geometry remains safe to observe while any worker owns the shared graph.
   services.workInfo
+
 func workSubmissionDuty*(services: Services, token: WorkSessionToken): WorkDuty {.requires: services.matchesWork(token).} =
   ## Fixed assignment metadata stays safe to observe while another borrower owns the canonical graph; defaults have no duty claim.
   services.workDuty
+
 func workSubmissionReportInfo*(services: Services,
     token: WorkSessionToken): ComputedReportInfo {.requires:
     services.matchesWork(token) and (services.workPhase == WorkSessionPhase.ReportReady or
       signedWorkPhase(services.workPhase)).} =
   ## Fixed copied report metadata is safe during foreign graph leases; source-bearing transcript access remains gated.
   services.workReportInfo
+
 func workSignedInfo*(services: Services, token: WorkSessionToken): WorkEligibilityInfo {.requires: services.matchesWork(
     token) and signedWorkPhase(services.workPhase).} =
   ## Only fixed scalar facts escape while the genuine contribution remains private to the collected session.
   services.workContributionInfo
+
 proc workSubmissionOutcome*(services: Services, token: WorkSessionToken): WorkJobResult {.requires:
     services.stateProofAvailable and services.matchesWork(token) and
     (services.workPhase in {WorkSessionPhase.Complete, WorkSessionPhase.ReportReady,
@@ -4081,6 +4309,7 @@ proc stageAuditPreparation(services: var Services, parent: genesis.BlockHash): b
   if branch.error != ApplicationChainError.None: return false
   services.auditPreparationChain = branch.value
   true
+
 proc beginAuditBranchPreparation*(services: var Services, input: var CurrentBlockInput,
     id: CurrentBlockInputId, parent: genesis.BlockHash): PreparationAdmission {.raises.} =
   ## Use the ordinary current STF worker, retaining the original branch exclusively through exact collection.

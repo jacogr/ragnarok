@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real original-identity TLS delivery preserves another auditor's signed negative judgment unchanged. Native bare-FIN acknowledgment and finite source-free retention remain distinct from computation, block inclusion and finality.
+
 import std/[assertions, monotimes, times, posix/posix]
 import ../../src/jamnp-s/[judgment_gossip, judgment_claim, judgment_receipt, audit_origin,
   audit_context, audit_participation, audits, node, connections, read_stream, read_client]
@@ -17,6 +18,7 @@ import ../../src/jamnp-s/audit_validation
 import ../../src/quic/address
 import ./[jamnp_audit_context, jamnp_guarantee_support, jamnp_judgment_support,
   jamnp_judgment_receipt, jamnp_audit_participation, jamnp_topology_fixture, assurance_signer_context]
+
 proc initialAnnouncementCheck(relay, recipient: var NodeService, context: AuditContext) =
   ## A real original-key proof crosses a CE144 stream and completes only with the bare FIN.
   assert relay.enableAuditStreams() and recipient.enableAuditStreams()
@@ -56,6 +58,7 @@ proc initialAnnouncementCheck(relay, recipient: var NodeService, context: AuditC
       assert recipient.respond(task.ticket, captureReadReply(task.request, []).value) == ReadError.None
       inc received
   assert received == 1 and sender.acknowledged == 1
+
 proc routingSnapshot(base: BlockSnapshot, successor: StateEdKey): BlockSnapshotResult =
   ## Test-only complete topology state isolates the pending roster from other real fixture chapters.
   var pending = newSeq[StateValidator](6)
@@ -73,6 +76,7 @@ proc routingSnapshot(base: BlockSnapshot, successor: StateEdKey): BlockSnapshotR
   var wire = newSeq[byte](header.headerInfo.value.consumed)
   assert header.encodeOwnedHeader(wire).error == HeaderError.None
   captureBlockSnapshot(wire, state.snapshot.value, base.chainParameters)
+
 proc successorRefreshCheck(fixture: AuditContextFixture, origin: AuditReportOrigin,
     relay, recipient: var NodeService, original: AuditJudgment) =
   ## Produce a real local positive signature and introduce one routable successor in a later topology.
@@ -122,6 +126,7 @@ proc successorRefreshCheck(fixture: AuditContextFixture, origin: AuditReportOrig
       assert task.request.payload == wire, "new route preserves the original signature bytes"
       assert recipient.respond(task.ticket, captureReadReply(task.request, []).value) == ReadError.None
   assert gossip.attempted == 1
+
 proc judgmentGossipChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Genuine standalone qualification precedes native relay by a different actual TLS key, and duplicate offers preserve the real receiver's completed acknowledgment.
   let guarantee = unseenGuarantee(supportFixture(fixture))

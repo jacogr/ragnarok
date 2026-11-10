@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Signed verdict/fault inputs exercise complete candidate execution; only the independent oracle owns expected maps.
+
 import std/[assertions, cmdline, strutils, parseutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_namespace_context,

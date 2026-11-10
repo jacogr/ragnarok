@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Nonempty reordered service/child declarations remain original-owned after caller mutation and through genuine configured/completed current refresh.
+
 # @@Verification={"arc":"state_current_logical_permuted_inputs_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
@@ -21,6 +22,7 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     requests as state_requests]
+
 proc cycle(plan: CurrentLogicalRefreshPlan, value, code: openArray[byte]) =
   ## Retire fresh complete captures/projections while original supplied ordinals remain tied to their actual service/hash/key identities.
   let logical = executeCurrentLogicalRefresh(plan).value
@@ -32,6 +34,7 @@ proc cycle(plan: CurrentLogicalRefreshPlan, value, code: openArray[byte]) =
   for i in 0..<value.len: assert rows[0].storage[0].value[i] == value[
       i] # Actual target growth follows identity, not canonical service/child ordinal assumptions.
   for i in 0..<code.len: assert rows[0].preimages[0].value[i] == code[i]
+
 proc main() {.raises.} =
   ## The actual funded guest changes only its original storage value; all mutable logical declarations are independently reordered before capture.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

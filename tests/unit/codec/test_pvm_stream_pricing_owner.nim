@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## A reused executable stream must not carry a sealed charge across pricing policies.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/[gas, plan as gas_plan, memo as gas_memo]

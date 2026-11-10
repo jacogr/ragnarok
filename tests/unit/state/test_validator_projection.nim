@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "validator_projection_arc_release"}
 
 ## Independent literal epoch/counter witnesses, refusal boundaries and immutable ARC ownership.
@@ -12,6 +13,7 @@ import ../../support/arc_evidence
 
 # Observer refusal proves that projection never calls the hashing backend.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Policies cover exact small input work and two independent retained populations.

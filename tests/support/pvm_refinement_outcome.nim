@@ -24,6 +24,7 @@ proc refinementImmediate*(register: byte, value: uint64): seq[byte] =
   ## Independent load_imm_64 encoding preserves every high address/value bit.
   result = @[20'u8, register]
   for index in 0..<8: result.add(byte((value shr (8*index)) and 255))
+
 proc refinementInnerCreate*(length = 6'u64, pointer = 196608'u64, entry = 0'u64, suffix: seq[seq[
     byte]] = @[]): seq[seq[byte]] =
   ## Literal current ABI: compile memory in mode zero, then instantiate its returned module handle.
@@ -41,6 +42,7 @@ proc refinementInnerCreate*(length = 6'u64, pointer = 196608'u64, entry = 0'u64,
 proc refinementInputs*(): RefinementInputs =
   ## One actual package item has no extrinsic or imported-segment manifests.
   RefinementInputs(extrinsics: @[newSeq[seq[byte]]()], imports: @[newSeq[FetchSegment]()])
+
 proc refinementLimits*(): RefinementInvocationLimits =
   ## Every policy is finite and independent; tests lower one cap without changing protocol gas or output kind.
   RefinementInvocationLimits(capture: RefinementCaptureLimits(trace: FetchTraceLimit(0),
@@ -48,6 +50,7 @@ proc refinementLimits*(): RefinementInvocationLimits =
     copy: MemoryByteLimit(512), exports: ExportLimits(items: ElementLimit(2), bytes: ByteLimit(8208)),
     steps: ExecutionStepLimit(32), calls: HostCallLimit(4), cycles: GasCycleLimit(1000),
     output: OutputByteLimit(512))
+
 proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
     missing = false, oversized = false, pages = 3'u32,
     writable: seq[byte] = @[21'u8, 22, 23], worker: ExecutionWorker = default(
@@ -112,6 +115,7 @@ proc refinementFixture*(instructions: openArray[seq[byte]], credit = 10000'u64,
       initialization: InitializationLimits(envelope: InitializationByteLimit(512),
           program: ProgramByteLimit(256),
         jumps: JumpCountLimit(0), pages: PageLimit(pages))), worker).value
+
 proc refinementPrice*(bootstrap: PreparedRefinementBootstrap): uint64 =
   ## Reuse the separately verified gas component for block pricing; host prices/normalization expectations are literal.
   let cpu = bootstrap.bootstrapMachine.value

@@ -2,16 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Scoped complete snapshots, path/set/batch witnesses and decoded envelopes release every ARC owner.
+
 # @@Verification={"arc": "state_proof_lifecycle_arc_release"}
 import std/[assertions, syncio]
 import ../../../src/state/[store, trie_proof, snapshot_proof]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../support/arc_evidence
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer between success/refusal recovery stages.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse after a real completed prefix rather than inventing a typed failed result.
+
 proc cycle() =
   ## Every complete and partial immutable owner retires before this scoped workload returns.
   fail(0)

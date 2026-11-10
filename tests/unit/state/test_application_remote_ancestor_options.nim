@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Remote ancestry activation is positive, finite, download-only and atomically cleared on late failure.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
+
 proc main() =
   ## Parser boundaries remain independent of files, sockets, peers and storage startup.
   var selected = default(Options)

@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded raw/JAM deblob fuzz properties inspect copied instructions, huge indices and immutable ownership without executing guest code.
+
 import std/assertions
 import ../../src/pvm/program
 const ProgramFuzzBytes* = 1024 ## Includes the test-only profile/resource selector; no file or callback may allocate from a larger untrusted extent.
+
 proc sameInstruction(actual, expected: Instruction) =
   ## Every scalar operand and instruction identity must remain independent of caller buffer mutation.
   assert uint64(actual.address) == uint64(expected.address)
@@ -13,6 +15,7 @@ proc sameInstruction(actual, expected: Instruction) =
       actual.d) == byte(expected.d)
   assert uint64(actual.x) == uint64(expected.x) and uint64(actual.y) == uint64(expected.y)
   assert actual.displacement == expected.displacement
+
 proc exerciseProgramBytes*(data: openArray[byte]): bool {.raises: [].} =
   ## False is an ordinary complete decoder refusal; assertions expose inconsistent successful snapshots or ownership/range defects.
   if data.len == 0 or data.len > ProgramFuzzBytes: return false

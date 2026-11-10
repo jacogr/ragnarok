@@ -28,6 +28,7 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives successive writes; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot, count: byte) =
   ## Reading the original parent or leaving the disjoint destination untouched produces different final bytes.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -35,10 +36,12 @@ proc storage(state: StateStoreSnapshot, count: byte) =
   let account = metadata(state)
   assert uint32(account.storageItems) == 1 and uint64(account.storageBytes) == 38
   assert uint64(account.balance) == 50
+
 proc config(fixture: AssuredOutcomeFixture): AssuredExecutionConfig =
   ## Match the mode-specific original scheduling ceiling without changing protocol gas, host calls or capture budgets.
   result = assuredExecutionConfig(fixture.queue)
   result.runner.steps = ExecutionStepLimit(32)
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute the actual fetch/write/read/write sequence under original parameters and its bounded scheduling policy.
   let outcome = executeAssuredAccumulation(fixture.queue, config(fixture))
@@ -48,6 +51,7 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Compose actual read-derived regular storage without replaying initial guest work.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -170,6 +174,7 @@ for field in low(Parameter)..high(Parameter):
 assert sameStateSnapshot(fixture.state.snapshot.value, original) and sameChainView(fixture.view, oldView)
 storage(original, 1)
 assert uint32(metadata(original).lastAccumulation) == 2
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Execute actual write/read/write, compose and publish its final value, then release every successor owner.
   let source = compose(execute(fixture))

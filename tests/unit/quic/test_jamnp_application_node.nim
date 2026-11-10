@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual Services graph gates, worker cancellation and joined application-node shutdown over authenticated TLS.
+
 import std/[assertions, envvars, syncio, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options]
 import ../../../src/app/proof/worker
@@ -14,10 +15,12 @@ import ../../../src/state/[store, range_proof]
 import ../../../src/rpc/server
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_topology_fixture, jamnp_node_probe, jamnp_read_validation_context]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -28,6 +31,7 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     milliseconds: int, now = StateTime(7)) {.raises.} =
   ## Actor polling precedes ordinary Services ticks; all canonical CPU work stays outside native callbacks.
@@ -36,6 +40,7 @@ proc pump(host: var ApplicationNode, services: var Services, probe: var NodeProb
     assert host.poll(getMonoTime(), now, 0)
     probe.poll()
     services.tick(uint32(host.peerCount))
+
 proc main() {.raises.} =
   ## Missing finality, real read replies, cancellation and foreign worker ownership remain independent gates.
   let saved = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)])

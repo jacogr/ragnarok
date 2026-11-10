@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Checked frame histories and direct legacy ARM rejection/capacity controls retain their distinct contracts.
+
 import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine, step]

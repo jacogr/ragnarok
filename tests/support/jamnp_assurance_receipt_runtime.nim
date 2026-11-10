@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Two ordinary authenticated application loops exercise actual CE141 FINs, default refusal, shared-worker exclusion, retention and joined/foreign shutdown using a genuinely computed complete parent.
+
 import std/[assertions, monotimes, times, posix/posix]
 import ../../src/app/[services, options, node as application_node, assurance_distribution]
 import ../../src/app/proof/[worker, work_submission]
@@ -12,10 +13,12 @@ import ../../src/codec/state/safrole
 import ../../src/chain/[genesis, provider]
 import ../../src/quic/address
 import ./[jamnp_assurance_fixture, assurance_signer_context, jamnp_topology_fixture]
+
 proc pump(a, b: var ApplicationNode, now: StateTime) {.raises.} =
   ## Only production polling may admit or collect the receiver's own native/managed work.
   assert a.poll(getMonoTime(), now, 0), "CE141 sender foreground loop"
   assert b.poll(getMonoTime(), now, 0), "CE141 receiver foreground loop"
+
 proc admission(a, b: var ApplicationNode, target: NodePeer, request: ReadRequest,
     now: StateTime): NodeRequestTicket {.raises.} =
   ## Finished/closing streams keep physical charges until native retirement; bounded retries preserve exact request ownership.
@@ -26,6 +29,7 @@ proc admission(a, b: var ApplicationNode, target: NodePeer, request: ReadRequest
     assert started.error in [NodeError.Unavailable, NodeError.LimitExceeded], "CE141 request admission"
     assert getMonoTime() < deadline, "CE141 physical admission deadline"
     pump(a, b, now)
+
 proc reply(a, b: var ApplicationNode, ticket: NodeRequestTicket, now: StateTime,
     success: bool) {.raises.} =
   ## Exact two-way FIN grants an empty transport acknowledgment only after managed fresh retention; resets never grant success.
@@ -38,6 +42,7 @@ proc reply(a, b: var ApplicationNode, ticket: NodeRequestTicket, now: StateTime,
       else: assert taken.error != ReadError.None, "refused CE141 cannot acknowledge"
       return
     assert getMonoTime() < deadline, "CE141 response FIN deadline"
+
 proc assuranceReceiptRuntime*(sender: var Services, settings: Options,
     signed: SignedAssurance, fixture: AssuranceAcquisitionFixture,
     certificate, privateKey, suffix: string, limits: AssuranceDutyLimits,

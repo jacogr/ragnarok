@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Source-free bounded CE141 candidates retain verified signatures and all original roster positions; a block builder must independently apply its post-judgment admission rules.
+
 import std/assertions
 import ./services
 import ../jamnp-s/assurance_distribution
@@ -12,12 +13,15 @@ type
   AssurancePool* = object ## Rows and expanded validator positions have independent explicit admission ceilings; no canonical graph or key owner is retained.
     entries: array[MaxPendingAssurances, CheckedAssurance]
     limit, indexLimit, count, indices: int
+
 func len*(pool: AssurancePool): int =
   ## Distinct authenticated identity rows are separate from repeated original positions.
   pool.count
+
 func candidateCount*(pool: AssurancePool): int =
   ## Every original roster index counts toward the eventual canonical extrinsic budget.
   pool.indices
+
 proc configure*(pool: var AssurancePool, entries: range[1..MaxPendingAssurances],
     indices: range[1..1023]): bool =
   ## Omission/default leaves zero capacity; policy cannot be replaced while candidates exist.
@@ -25,9 +29,11 @@ proc configure*(pool: var AssurancePool, entries: range[1..MaxPendingAssurances]
   pool.limit = entries
   pool.indexLimit = indices
   true
+
 proc clear*(pool: var AssurancePool) =
   ## All retained candidates are source-free host ownership and need no foreign join.
   pool = default(AssurancePool)
+
 proc refresh*(pool: var AssurancePool, services: Services) =
   ## An occupied canonical lease postpones refresh; it cannot be interpreted as evidence of a changed source.
   if not services.stateProofAvailable: return
@@ -38,6 +44,7 @@ proc refresh*(pool: var AssurancePool, services: Services) =
       pool.indices -= checked.distributionInfo.value.duty.localIndices
       dec pool.count
       pool.entries[index] = default(CheckedAssurance)
+
 proc remember*(pool: var AssurancePool, checked: CheckedAssurance): bool =
   ## Only privately verified capabilities enter; whole expanded-index capacity is checked before replacing a same-key candidate.
   let described = checked.distributionInfo
@@ -63,6 +70,7 @@ proc remember*(pool: var AssurancePool, checked: CheckedAssurance): bool =
   pool.indices = pool.indices-prior+info.localIndices
   pool.entries[found] = checked
   true
+
 proc candidateAt*(pool: AssurancePool, ordinal: int): Assurance {.requires: ordinal >= 0 and
     ordinal < pool.indices.} =
   ## Return an independent candidate in retention order; block assembly must sort original indices and freshly validate the complete post-judgment context.

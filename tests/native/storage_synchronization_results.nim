@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard synchronization payloads after default/closed memory and file owners, with real live controls.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../support/storage_samples
@@ -9,6 +10,7 @@ import ../../src/storage/node/repository as node_repository
 import ../../src/storage/file/repository as file_repository
 import ../../src/storage/[database_identity, durability]
 import ../../src/codec/bounded
+
 proc main() =
   ## Select runtime origins without exposing or fabricating a successful durability receipt.
   let member = paramStr(1)

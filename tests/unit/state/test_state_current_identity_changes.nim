@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine preimage addition, current-service raw storage deletion and empty-junior ejection refuse identity-preserving continuation with the exact physical key.
+
 # @@Verification={"arc":"state_current_identity_changes_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
@@ -14,21 +15,26 @@ import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     requests as state_requests, service_values as state_service_values, layout as state_layout]
 import ../../../src/crypto/primitives
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original full matching and genuine actual mutation execution precede hash-free identity refusal observation.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Complete physical key comparison and selected refusal key copy cannot hash.
+
 proc verify(fixture: CurrentNamespaceTransition, key: StateKey, error: CurrentIdentityError) =
   ## Only actual producer-added/removed physical identities select the corresponding guarded reason key.
   let refused = preserveCurrentIdentities(fixture.parent, fixture.update, currentIdentityTestLimits)
   assert refused.error == error
   assert array[31, byte](refused.refusedIdentity) == array[31, byte](key)
+
 proc cycle(added, deleted, ejected: CurrentNamespaceTransition, preimage, storage,
     metadata: StateKey) =
   ## Retire admitted view/index copies and actual refusal observations without retaining partial continuation owners.
   verify(added, preimage, CurrentIdentityError.NewIdentity)
   verify(deleted, storage, CurrentIdentityError.MissingIdentity)
   verify(ejected, metadata, CurrentIdentityError.MissingIdentity)
+
 proc main() {.raises.} =
   ## Every header/root/signature and current update comes from original code/namespace inputs and actual current candidate execution.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

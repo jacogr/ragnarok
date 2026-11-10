@@ -1,16 +1,14 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Private copied read-body IR and invocation-only extent ABI for both native lowerers.
 
 import std/assertions
 import ./[jit_rules, native_ir]
 
+export native_ir.NativeCheckedReadEnabled
+
 const
-  NativeCheckedReadEnabled* =
-    (defined(pvmX86Jit) and defined(amd64) and defined(linux)) or
-    (defined(pvmArm64Jit) and not defined(pvmX86Jit) and
-      defined(arm64) and (defined(linux) or defined(macosx)))
-    ## Checked read admission requires a supported native lowerer.
   NativeReadSuccess* = 1'u32          ## Every staged register write committed.
   NativeReadRefusal* = high(uint32)   ## No guest write occurred.
   NativeReadFactLimit* = 32'u32       ## Includes the folded leading noop and checked terminal.
@@ -52,6 +50,10 @@ func nativeReadOpcode*(opcode: byte): bool =
   ## Every GP relative scalar load shares the same clipped extent and staged-register ABI.
   opcode in {124'u8..130'u8}
 
+func nativeReadEncodingOpcode*(opcode: byte): byte =
+  ## Absolute scalar loads share relative load widths and signedness, but have no base operand.
+  if opcode in {52'u8..58'u8}: opcode+72'u8 else: opcode
+
 proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
     operation: NativeOperation): bool =
   ## Reject an unsupported or discontinuous operation before updating the copied request.
@@ -60,7 +62,7 @@ proc addReadBodyOperation*(body: var NativeReadBody, node, ordinal: uint32,
       body.count >= int(info.terminal-info.header-1): return false
   let next = 1'u32+uint32(body.count)
   if node != info.header+next or ordinal != info.first+next: return false
-  if nativeReadOpcode(operation.opcode):
+  if nativeReadOpcode(nativeReadEncodingOpcode(operation.opcode)):
     if body.reads == NativeReadLoadLimit: return false
     inc body.reads
   elif not supportedScalarOpcode(operation.opcode): return false

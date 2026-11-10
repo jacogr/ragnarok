@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded larger-state lifecycle measurements verify all retained maps and record exact hash/space counters.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/managed_storage_samples
 import ../../../src/state/store
@@ -14,8 +15,10 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the existing real-primitive observer before each measured phase.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count real hash attempts without changing their results.
+
 proc hex(bytes: string): string =
   ## Preserve exact already-written digest bytes without extra hash attempts in measured phases.
   const digits = "0123456789abcdef"
@@ -23,6 +26,7 @@ proc hex(bytes: string): string =
   for octet in bytes:
     result.add(digits[int(byte(octet) shr 4)])
     result.add(digits[int(byte(octet) and 15)])
+
 proc key(number: int): StateKey =
   ## Authored indices fit two bytes and produce canonical lexical key order.
   assert number >= 0 and number < 65536
@@ -30,12 +34,14 @@ proc key(number: int): StateKey =
   raw[0] = byte(number shr 8)
   raw[1] = byte(number and 255)
   StateKey(raw)
+
 proc value(number, size, applied: int): seq[byte] =
   ## The first applied keys have their new value; all other keys retain their original bytes.
   result = newSeq[byte](size)
   let octet = if number < applied: byte(number+1) else: byte(number and 255)
   for index in 0..<size:
     result[index] = octet # Fixed authored values let map validation stay independent of repository extraction.
+
 proc checkMap(view: RepositoryView, root: StateRoot, trie: StateTrieLimits,
     count, size, applied: int) =
   ## Compare every sorted key/value against the authored history, including the separated oldest root.
@@ -46,6 +52,7 @@ proc checkMap(view: RepositoryView, root: StateRoot, trie: StateTrieLimits,
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](key(index))
     assert entry.value == value(index, size, applied)
+
 proc workload(count, size, sample: int): string {.raises.} =
   ## Sixteen sparse commits retain eight successive roots plus the initial root across replay/compaction.
   assert count in [1024, 8192] and size in [16, 256]
@@ -145,6 +152,7 @@ proc workload(count, size, sample: int): string {.raises.} =
     ",\"before_nodes\":" & $before.storedNodes & ",\"after_nodes\":" & $after.storedNodes &
     ",\"snapshot_bytes\":" & $after.snapshotBytes & ",\"occupied_with_reader\":" &
         $occupiedWithReader & ",\"checksum\":\"" & checksum & "\"}"
+
 proc main() {.raises.} =
   ## Three repetitions describe timing spread; deterministic counters must agree across each identical workload.
   var evidence = "["

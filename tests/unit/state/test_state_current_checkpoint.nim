@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current checkpoint capsules bind exact execution provenance, posterior bytes and separate explicit finality under bounded hash-free export.
+
 # @@Verification={"arc": "state_current_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, accumulation_current_chain_context, arc_evidence]
@@ -12,19 +13,24 @@ import ../../../src/state/current/checkpoint as current_checkpoint
 import ../../../src/state/[checkpoint, store]
 import ../../../src/state/accumulation/current/[update as accumulation_current_update,
     consensus as accumulation_current_consensus]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine current execution/capture has completed on the stable host graph.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Cached-root serialization and retained-owner projections must perform no hashes.
+
 proc detached(context: CurrentChainFixture): CurrentUpdateCheckpoint =
   ## Return only a capsule after local preparation aliases and application handles leave scope.
   captureCurrentUpdateCheckpoint(currentCheckpointPrepared(context), ByteLimit(524288)).value
+
 proc cycle(source: PreparedCurrentChainUpdate, expected: seq[byte]) =
   ## Retire captured bytes, copied aliases, projections and exported independent buffers every cycle.
   let captured = captureCurrentUpdateCheckpoint(source, ByteLimit(524288)).value
   let copy = captured
   assert copy.copyCurrentCheckpoint(ByteLimit(524288)).value == expected
   assert copy.currentCheckpointSource.value.ready
+
 proc main() {.raises.} =
   ## Genuine signed current fixtures establish producer authority before serialization qualification begins.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -3,6 +3,7 @@
 
 ## Source-free bounded pending guarantees retain exact canonical bytes until GP credential expiry or explicit host teardown.
 ## This is neither block admission nor the long-lived shard retention promised by an assurance.
+
 import std/assertions
 import ./services
 import ../jamnp-s/work_distribution
@@ -20,12 +21,15 @@ type
     limit: int
     budget: uint64
     count, bytes: int
+
 func len*(pool: WorkGuaranteePool): int =
   ## Scalar occupancy is safe through any foreign canonical lease.
   pool.count
+
 func byteLength*(pool: WorkGuaranteePool): int =
   ## Count exact retained canonical payload bytes, independently from framed report-cache storage.
   pool.bytes
+
 proc configure*(pool: var WorkGuaranteePool, entries: range[1..MaxPendingGuarantees],
     bytes: ByteLimit): bool =
   ## Omission/default leaves no capacity; a configured pool cannot silently replace live retention policy.
@@ -33,9 +37,11 @@ proc configure*(pool: var WorkGuaranteePool, entries: range[1..MaxPendingGuarant
   pool.limit = entries
   pool.budget = uint64(bytes)
   true
+
 proc clear*(pool: var WorkGuaranteePool) =
   ## These owners contain no worker-shared graph, so host shutdown need not borrow canonical state to retire them.
   pool = default(WorkGuaranteePool)
+
 proc expire*(pool: var WorkGuaranteePool, now: StateTime) =
   ## GP current/previous rotation credential expiry is fixed by the chain geometry used during verification.
   for index in 0..<MaxPendingGuarantees:
@@ -43,6 +49,7 @@ proc expire*(pool: var WorkGuaranteePool, now: StateTime) =
       pool.bytes -= pool.entries[index].wire.len
       dec pool.count
       pool.entries[index] = default(PendingGuarantee)
+
 func position(pool: WorkGuaranteePool, info: WorkDistributionInfo): int =
   ## A new encoded timeslot is a distinct guarantee even when its report hash is unchanged.
   for index in 0..<MaxPendingGuarantees:
@@ -50,6 +57,7 @@ func position(pool: WorkGuaranteePool, info: WorkDistributionInfo): int =
       let old = pool.entries[index].info
       if old.reportHash == info.reportHash and uint32(old.slot) == uint32(info.slot): return index
   -1
+
 func canRemember*(pool: WorkGuaranteePool, info: WorkDistributionInfo): bool =
   ## Bound persistent bytes/rows before requesting another detached payload copy.
   if pool.limit == 0 or info.wireBytes <= 0: return false
@@ -58,6 +66,7 @@ func canRemember*(pool: WorkGuaranteePool, info: WorkDistributionInfo): bool =
   if found < 0 and pool.count >= pool.limit: return false
   let used = uint64(pool.bytes-prior)
   used <= pool.budget and uint64(info.wireBytes) <= pool.budget-used
+
 proc remember*(pool: var WorkGuaranteePool, completed: WorkDistributionCompletion): bool =
   ## Only a genuine detached Services completion may populate the pool; capacity refusal never acknowledges unretained data.
   if completed.kind != WorkDistributionCompletionKind.Completed: return false
@@ -83,6 +92,7 @@ proc remember*(pool: var WorkGuaranteePool, completed: WorkDistributionCompletio
   pool.entries[found] = PendingGuarantee(used: true, info: info, wire: wire)
   pool.bytes += wire.len
   true
+
 proc payloadAt*(pool: WorkGuaranteePool, ordinal: int): seq[byte] {.requires: ordinal >= 0 and
     ordinal < pool.count.} =
   ## Return independent candidate bytes; a later block/assurer worker must perform its own fresh source-bound admission.

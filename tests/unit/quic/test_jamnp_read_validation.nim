@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Checked response strength is explicit: trusted-root contiguous state, full content hashes and query-bound structural blocks.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/[read_stream, read_validation, canonical_read]
 import ../../../src/chain/[genesis, provider]
@@ -10,11 +11,13 @@ import ../../../src/codec/state/[layout, trie]
 import ../../../src/state/range_proof
 import ../../../src/crypto/primitives
 import ../../support/jamnp_topology_fixture
+
 proc frame(body: openArray[byte]): seq[byte] =
   ## Independently supplied E4 framing is exact and has no element-count prefix.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(body.len) shr (8*index)) and 255))
   for octet in body: result.add(octet)
+
 proc limits(): ReadVerificationLimits =
   ## Trusted local ceilings do not turn decoded blocks into execution/adoption certificates.
   let maximum = ByteLimit(8388608)
@@ -22,6 +25,7 @@ proc limits(): ReadVerificationLimits =
     frame: FrameConfig(cores: CoreCount(4), validators: ValidatorCount(12), epochSlots: EpochSlots(12),
       ticketLimit: TicketLimit(16), maxBytes: maximum,
       preimages: PreimageLimits(items: ElementLimit(8), perBlob: maximum, totalBlobBytes: maximum)))
+
 proc snapshot(slot: uint32, parent = unavailableGenesis()): BlockSnapshotResult =
   ## Structural fixtures bind exact headers/body bytes and explicit parents without claiming valid execution or signatures.
   let captured = topologyCaptured([topologyRecords(0, 6), topologyRecords(1, 9), topologyRecords(2, 12)],
@@ -34,11 +38,13 @@ proc snapshot(slot: uint32, parent = unavailableGenesis()): BlockSnapshotResult 
   let complete = captured.value.withBlockBody(body)
   assert complete.error == GenesisError.None
   complete
+
 proc body(saved: BlockSnapshotResult): seq[byte] =
   ## Independently encode the known structural fixture rather than reading the verifier's output.
   result = newSeq[byte](304)
   assert encodeOwnedHeader(saved.value.header, result.toOpenArray(0, 296)).error == HeaderError.None
   for index in 297..<304: result[index] = 0
+
 proc blocks(anchor: BlockHash, direction: byte, maximum: uint32): ReadRequest =
   ## Literal fixed request identity/direction/u32 is independent of response validation.
   var payload: seq[byte] = @[]
@@ -46,6 +52,7 @@ proc blocks(anchor: BlockHash, direction: byte, maximum: uint32): ReadRequest =
   payload.add(direction)
   for index in 0..<4: payload.add(byte((maximum shr (8*index)) and 255))
   decodeReadRequest(ReadKind.Blocks, payload).value
+
 proc state(anchor: BlockHash, start, finish: StateKey, maximum = high(uint32)): ReadRequest =
   ## State bounds are inclusive31-byte serialized identities; no posterior root is supplied on the wire.
   var payload: seq[byte] = @[]
@@ -54,6 +61,7 @@ proc state(anchor: BlockHash, start, finish: StateKey, maximum = high(uint32)): 
   for octet in array[31, byte](finish): payload.add(octet)
   for index in 0..<4: payload.add(byte((maximum shr (8*index)) and 255))
   decodeReadRequest(ReadKind.State, payload).value
+
 proc main() =
   ## An invalid later component never exposes an earlier checked block/page prefix.
   let parent = snapshot(7)

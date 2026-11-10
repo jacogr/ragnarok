@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual TLS stream retirement precedes token-bound context discovery and resumed worker execution.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import "../../../src/app/block/input" as block_input
@@ -26,6 +27,7 @@ proc waitDone(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Actual execution runs outside this host activation.
+
 proc main() {.raises.} =
   ## Services owns the only canonical parent; genuine signed report preparation is reused after collection.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

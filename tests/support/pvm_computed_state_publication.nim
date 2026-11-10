@@ -12,6 +12,7 @@ import ./pvm_computed_composition
 proc statePublicationFixture*(): ComposedComputedState =
   ## Complete genuine computation, stopped accumulation and maintained composition before testing publication.
   composeComputedState(compositionFixture(), computedCompositionLimits()).value
+
 proc statePublicationParent*(source: ComposedComputedState): StateStoreSnapshot =
   ## Derive the exact original parent only through retained computed finalization authority.
   source.computedCompositionSource.value.computedFinalizationPlan.value.finalAccumulationParent.value

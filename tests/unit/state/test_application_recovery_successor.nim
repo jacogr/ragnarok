@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restored maps require fresh source-bound execution; root-equal old certificates never regain adoption authority.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[services, chain, candidate, handoff]
@@ -14,6 +15,7 @@ import ../../../src/state/accumulation/chain as accumulation_chain
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution
+
 proc main() {.raises.} =
   ## The genuine signed child is prepared independently against direct and recovered complete-map owners.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

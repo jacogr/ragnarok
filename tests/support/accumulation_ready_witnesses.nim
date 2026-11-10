@@ -14,7 +14,9 @@ import ../../src/codec/state/[safrole as state_safrole, workqueues as state_work
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc readyPolicy*(slots = 12'u64): AccumulationReadyConfig =
   ## Inspected work and complete output framing have separate finite ceilings.
   AccumulationReadyConfig(items: ElementLimit(100), dependencies: ElementLimit(40),
@@ -22,10 +24,12 @@ proc readyPolicy*(slots = 12'u64): AccumulationReadyConfig =
           perSlot: ElementLimit(10), totalItems: ElementLimit(20),
       perDependencies: ElementLimit(16), totalDependencies: ElementLimit(40),
           reportBytes: ByteLimit(2048), maxBytes: ByteLimit(20000)))
+
 func key(id: byte): PackageHash =
   ## Literal full fixed hash identity separates package membership from roots and ordinals.
   result = PackageHash(bytes: default(array[32, byte]))
   result.bytes[0] = id
+
 proc authoredReport(base: OwnedReport, id: byte, prerequisites: openArray[byte] = [],
     lookups: openArray[byte] = [], core = 0, shards = 6): OwnedReport =
   ## Capture an independently authored report with sorted prerequisite/lookup keys and a distinct non-key lookup root.
@@ -43,14 +47,17 @@ proc authoredReport(base: OwnedReport, id: byte, prerequisites: openArray[byte] 
   let encoded = encodeReportBorrowed(report, raw, 341, bytes)
   assert encoded.error == CompositeError.None
   decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 341).value
+
 proc parent(rows: seq[ReadyRow], policy: AccumulationReadyConfig): ReadySnapshot =
   ## Only input capture uses the existing codec; expected output framing is emitted literally.
   let entry = readyStateEntry(rows, policy.queues).value
   decodeReadyState(entry.value, policy.queues).value.snapshot
+
 proc history(rows: seq[AccumulatedRow], policy: AccumulationReadyConfig): AccumulatedSnapshot =
   ## Capture original accumulated membership independently of reconciliation.
   let entry = accumulatedStateEntry(rows, policy.queues).value
   decodeAccumulatedState(entry.value, policy.queues).value.snapshot
+
 proc appendRow(bytes: var seq[byte], row: ReadyRow) =
   ## All authored counts fit one natural octet; copy report bytes and fixed dependency hashes without the ready encoder.
   assert row.len < 128

@@ -34,12 +34,37 @@ class NativeUnitHarness(unittest.TestCase):
             # Every discovered positive suite owns an explicit output contract.
             self.assertTrue(path.with_suffix('.output').is_file(), str(path))
 
+    def test_credit_profile_selection_and_rejection(self):
+        # Only the x86 Linux plan schedules the separately profiled credit witness.
+        from copy import deepcopy
+        from native_requirements import CREDIT_WITNESS_FLAGS, CREDIT_WITNESS_SUITE, validate_requirements
+        name = CREDIT_WITNESS_SUITE
+        for system, machine, supported in (('Linux', 'x86_64', True), ('Linux', 'aarch64', False),
+                                            ('Darwin', 'arm64', False)):
+            with patch.object(native_tests.platform, 'system', return_value=system), \
+                    patch.object(native_tests.platform, 'machine', return_value=machine):
+                selected = {member for _, members, _ in native_tests.unit_batches() for member in members}
+                self.assertEqual(name in selected, supported)
+                if not supported:
+                    with self.assertRaisesRegex(ValueError, 'requires native Linux x86-64'):
+                        native_tests.unit_command(Path('/compiler'), name)
+        original = native_tests.NATIVE_REQUIREMENTS
+        self.assertEqual(set(original[name]['defines']), CREDIT_WITNESS_FLAGS)
+        self.assertEqual(original['pvm_read_cycle_execution_x86']['defines'],
+                         ['pvmX86Jit', 'pvmSharedAsyncWitness'])
+        for flags in (CREDIT_WITNESS_FLAGS - {'pvmX86ReadCycleRoleRegisters'},
+                      CREDIT_WITNESS_FLAGS | {'pvmArm64Jit'}):
+            records = deepcopy(original)
+            records[name]['defines'] = sorted(flags)
+            with self.assertRaisesRegex(ValueError, 'Incomplete or conflicting'):
+                validate_requirements(records)
+
     # Grouping preserves every suite once and never mixes linked/network profiles into codec discovery.
     def test_batch_inventory(self):
         batches = native_tests.unit_batches()
         names = [name for _, members, _ in batches for name in members]
         self.assertEqual(len(names), len(set(names)))
-        self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
+        self.assertEqual(set(names), {name for name in native_tests.UNIT_SUITES if native_tests.supports_unit(name)})
         for name, members, target in batches:
             if target is None:
                 # Pure directory discovery must not acquire a linked/resource-bearing suite.
@@ -55,7 +80,7 @@ class NativeUnitHarness(unittest.TestCase):
             partitions = [native_tests.unit_partition((index, count)) for index in range(1, count+1)]
             names = [name for batches, _ in partitions for _, members, _ in batches for name in members]
             self.assertEqual(len(names), len(set(names)))
-            self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
+            self.assertEqual(set(names), {name for name in native_tests.UNIT_SUITES if native_tests.supports_unit(name)})
             self.assertEqual(sum(corpora for _, corpora in partitions), 1)
             self.assertEqual(sum(batch[0] == 'codec' for batches, _ in partitions for batch in batches), int(count == 1))
             lengths = [sum(target is not None for _, _, target in batches) for batches, _ in partitions]
@@ -77,7 +102,7 @@ class NativeUnitHarness(unittest.TestCase):
                 batches = [batch for selected, _ in partitions for batch in selected]
                 names = [name for _, members, _ in batches for name in members]
                 self.assertEqual(len(names), len(set(names)))
-                self.assertEqual(set(names), set(native_tests.UNIT_SUITES))
+                self.assertEqual(set(names), {name for name in native_tests.UNIT_SUITES if native_tests.supports_unit(name)})
                 self.assertEqual(sum(corpora for _, corpora in partitions), 1)
                 self.assertEqual(sum(batch[0] == 'codec' for batch in batches), int(count == 1))
                 if count > 1:
@@ -137,6 +162,30 @@ class NativeUnitHarness(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'COMPILE_CHECK_JOBS'):
                         native_tests.unit_command(folder/'nimony')
 
+    def test_serial_codec_adapter_excludes_credit_profile(self):
+        # A one-worker directory command still follows the filtered source inventory.
+        import native_codec
+        credit = native_tests.CREDIT_WITNESS_SUITE
+        with temporary_folder('hastur') as folder, \
+                patch.dict(native_tests.os.environ, {'COMPILE_CHECK_JOBS': '1'}), \
+                patch.object(native_tests.platform, 'system', return_value='Linux'), \
+                patch.object(native_tests.platform, 'machine', return_value='x86_64'), \
+                patch.object(native_tests, 'cache_directory', return_value=folder/'cache'):
+            command = native_tests.unit_command(folder/'nimony')
+            self.assertEqual(command[:2], [sys.executable, str(ROOT/'tools/native_codec.py')])
+            self.assertIn('--jobs:1', command)
+            with patch.object(native_codec.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                    [], 0, stdout='', stderr='')) as execute:
+                self.assertEqual(native_codec.run_codec_batch(command[2:]), 0)
+            mains = {call.args[0][-1] for call in execute.call_args_list}
+            self.assertNotIn(str(native_tests.unit_source(credit)), mains)
+            self.assertIn(str(native_tests.unit_source('pvm_read_cycle_execution_x86')), mains)
+            self.assertEqual(mains, {str(native_tests.unit_source(name))
+                                     for name in native_tests.unit_batches()[0][1]})
+            profiled = native_tests.unit_command(folder/'nimony', credit, {})
+            self.assertIn('--forward:-d:pvmX86ReadCycleCredits', profiled)
+            self.assertEqual(profiled[-1], str(native_tests.unit_source(credit)))
+
     # Relative scheduling history must stay under build, isolated across relocated compiler installations.
     def test_runner_work_directory(self):
         with temporary_folder() as folder:
@@ -193,7 +242,8 @@ class NativeUnitHarness(unittest.TestCase):
         with temporary_folder('hastur') as folder:
             libraries = native_libraries(folder)
             commands = unit_plan(folder/'nimony', libraries)
-            self.assertEqual(len(commands), 1+len(native_tests.UNIT_LINKS))
+            supported = [name for name in native_tests.UNIT_LINKS if native_tests.supports_unit(name)]
+            self.assertEqual(len(commands), 1+len(supported))
             self.assertEqual(commands[0][0], sys.executable)
             self.assertIn(str(ROOT/'tools/native_codec.py'), commands[0])
             self.assertIn(str((folder/'hastur').resolve()), commands[0])
@@ -201,7 +251,7 @@ class NativeUnitHarness(unittest.TestCase):
             self.assertFalse(any('--passL:' in arg and 'flto' not in arg and 'fuse-ld' not in arg
                                  for arg in commands[0]))
             self.assertCountEqual([arguments[-1] for arguments in commands[1:]],
-                                  [str(native_tests.unit_source(name)) for name in native_tests.UNIT_LINKS])
+                                  [str(native_tests.unit_source(name)) for name in supported])
 
     # Omitting selection preserves complete batching and all existing ARC evidence checks.
     def test_complete_run_scope(self):
@@ -352,9 +402,12 @@ class NativeUnitHarness(unittest.TestCase):
             libraries = native_libraries(folder)
             for system in ('Linux', 'Darwin'):
                 # No native build occurs here; compare the planned Linux and local linking profiles explicitly.
-                with patch.object(native_tests.platform, 'system', return_value=system):
+                with patch.object(native_tests.platform, 'system', return_value=system), \
+                        patch.object(native_tests.platform, 'machine', return_value='x86_64'):
                     caches = {}
                     for name, profile in native_tests.UNIT_LINKS.items():
+                        if not native_tests.supports_unit(name):
+                            continue
                         # Each case must get exactly its selected ABI, preserving observer isolation from production roots.
                         args = native_tests.unit_command(folder/'nimony', name, libraries)
                         if profile is not None:

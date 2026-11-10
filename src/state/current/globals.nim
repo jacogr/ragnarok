@@ -3,6 +3,7 @@
 
 ## Bind exact all-chapter serialization to one genuine current producer and its derived retained profile.
 ## Global framing remains separate from complete service matching, semantic validity, root discovery and STF parity.
+
 import ./profile as current_profile
 import ../accumulation/current/update as accumulation_current_update
 import ../global_snapshot

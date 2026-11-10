@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_pages_arc_release"}
 
 ## Literal page prices, atomic memory transformations and immutable map successors verify Omega_Z.
@@ -12,6 +13,7 @@ proc pages(map: InnerMachines, regs = pageRegisters(), credit = 10000'u64):
     InnerMachineResult[InnerMachineTransition] =
   ## Use a stable caller memory distinct from every inner RAM owner.
   innerPagesResponse(map, MachineGas(credit), regs, innerMemory())
+
 proc ram(map: InnerMachines, id = 0'u64): Memory =
   ## Extract the immutable child of the selected original map without public mutable slot access.
   map.innerMachine(InnerMachineId(id)).value.memory
@@ -128,6 +130,7 @@ assert original.withPageRange(PageIndex(0), PageIndex(0x100001), PageAccess.Inac
     PageContent.Zeroed).error == MachineError.InvalidRange
 assert default(Memory).withPageRange(PageIndex(0), PageIndex(0), PageAccess.Inaccessible,
     PageContent.Zeroed).error == MachineError.InvalidOwner
+
 # Fresh atomic memory/map successors, protocol refusals and local-capacity failures all release with ARC.
 proc cycle() =
   ## Retain no source, map, response or child RAM between fresh independent lifetime iterations.

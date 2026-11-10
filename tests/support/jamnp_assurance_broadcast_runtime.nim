@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real TLS CE141 scheduled delivery is driven by ordinary application polling and genuine retained shard proofs; foreign leases and omitted clocks grant no signing or send authority.
+
 import std/[assertions, monotimes, times, dirs, paths, posix/posix]
 import ../../src/app/[services, options, node as application_node, assurance_broadcast, assurance_distribution]
 import ../../src/app/proof/[worker, assurance_storage, assurance_acquisition]
@@ -16,16 +17,19 @@ import ../../src/chain/[genesis, provider, parameters]
 import ../../src/crypto/primitives
 import ../../src/quic/address
 import ./[jamnp_assurance_fixture, jamnp_topology_fixture, assurance_signer_context, storage_io]
+
 proc waitBroadcastJob(owner: var Services) =
   ## Synchronized phase polling touches no leased source/archive/private graph.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "bounded assurance setup worker"
+
 proc keyFor(marker: byte): StateEdKey =
   ## Only known test-owned private seeds identify potential real canonical author certificates.
   var seed = default(array[32, byte])
   seed[0] = marker
   StateEdKey(array[32, byte](importSeed(seed).value.publicKey.value))
+
 proc assuranceBroadcastRuntime*(settings: Options, fixture: AssuranceAcquisitionFixture,
     suffix: string, acquisition: AssuranceAcquisitionLimits,
     storage: AssuranceStoreLimits) {.raises.} =

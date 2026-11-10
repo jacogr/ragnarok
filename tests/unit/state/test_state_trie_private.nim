@@ -15,8 +15,10 @@ include ../../../src/codec/state/trie
 
 # Sequential observer counters distinguish preflight rejection from a primitive refusal.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Refuse after completed child work so ARC cleanup is exercised beyond the first native call.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 # Observe copied call counts without retaining any native or ARC owner.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

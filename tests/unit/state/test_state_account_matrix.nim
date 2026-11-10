@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete current-pin shape matrices exercise inventory capture, frozen admission and all account predicates together.
+
 import std/[assertions, envvars, syncio]
 import ../../support/state_inventory_context
 import ../../../src/state/inventory
@@ -13,8 +14,10 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts,
     service_values as state_service_values, requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset hash counters or refuse all account content work after source capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Early dependent-field failures must not reach content hashing.
 const limits = AccountAuditLimits(planning: ElementLimit(64),
@@ -23,6 +26,7 @@ const limits = AccountAuditLimits(planning: ElementLimit(64),
       perValue: ByteLimit(3), totalBytes: ByteLimit(24)),
   linkage: PreimageLinkageLimits(services: ElementLimit(4), preimages: ElementLimit(8),
       comparisons: ElementLimit(16)))
+
 proc shape(index: int): seq[StateService] =
   ## Independently construct small exact shapes using literal preimage digests and direct safe footprint equations.
   let emptyHash = ServicePreimageHash([byte(0x0e), byte(0x57), byte(0x51), byte(0xc0), byte(0x26),
@@ -58,6 +62,7 @@ proc shape(index: int): seq[StateService] =
     row.metadata.storageBytes = AccountStorageBytes(storageBytes+uint64(81*count)+(if count ==
         2: 3'u64 else: 0'u64))
     result.add(row)
+
 proc check(fixture: seq[seq[byte]], index: int) =
   ## Full lower-encoded map provenance survives varied rows, empty values and targeted semantic mutations.
   var services = shape(index)
@@ -80,6 +85,7 @@ proc check(fixture: seq[seq[byte]], index: int) =
   assert refused.error == AccountAuditError.FootprintFailure
   assert refused.footprintFailure.error == FootprintAuditError.ItemsMismatch and calls() == 0
   fail(0)
+
 proc main() {.raises.} =
   ## Ninety-six complete maps span every small row/storage/preimage combination repeatedly with distinct raw keys.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

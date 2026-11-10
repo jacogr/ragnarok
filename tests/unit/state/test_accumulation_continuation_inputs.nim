@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_continuation_inputs_arc_release"}
 
 ## Selected suffix operands retain original queue provenance and actual privately fulfilled state.

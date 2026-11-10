@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full-container boundary, immutable ownership and bounded standalone CLI witnesses.
+
 import std/[assertions, syncio, strutils, tempfiles, paths, files]
 import ../../../src/pvm/[artifact, program, machine, step]
 import ../../../src/pvm/gas/gas
@@ -28,7 +29,9 @@ proc seal(bytes: var seq[byte]) =
     bytes[5+i] = byte((uint64(bytes.len) shr (i*8)) and 255)
 
 proc fixture(code: seq[byte] = @[0'u8, 0, 2, 50, 0, 1], entry = 0'u8,
-    version = 3'u8, malformedImports = false, overflowMemory = false): seq[byte] =
+    version = 3'u8, malformedImports = false, overflowMemory = false,
+    roData: seq[byte] = @[7'u8, 8, 9], rwData: seq[byte] = @[10'u8, 11, 12],
+    includeCode = true): seq[byte] =
   ## A real host-free dynamic halt has RO/RW data, one import, an export and optional metadata.
   result = @[byte('P'), byte('V'), byte('M'), 0, version, 0, 0, 0, 0, 0, 0, 0, 0]
   var config: seq[byte] = @[]
@@ -36,11 +39,12 @@ proc fixture(code: seq[byte] = @[0'u8, 0, 2, 50, 0, 1], entry = 0'u8,
   natural(config, 3)
   natural(config, 4096)
   section(result, 1, config)
-  section(result, 2, @[7'u8, 8, 9])
-  section(result, 3, @[10'u8, 11, 12])
+  section(result, 2, roData)
+  section(result, 3, rwData)
   section(result, 4, @[1'u8, (if malformedImports: 2'u8 else: 0'u8), 0, 0, 0, byte('h')])
   section(result, 5, @[1'u8, entry, 4, byte('m'), byte('a'), byte('i'), byte('n')])
-  section(result, 6, code)
+  if includeCode:
+    section(result, 6, code) # Missing wire and a present empty wire are distinct parser paths.
   section(result, 200, @[99'u8])
   result.add(0)
   seal(result)
@@ -85,6 +89,65 @@ assert owned.entry("main").error == ArtifactError.None, "artifact witness 76: ow
 var symbols = importSymbols(owned)
 symbols[0] = "changed"
 assert importSymbols(owned) == @["h"], "artifact witness 79: importSymbols(owned) == @[\"h\"]"
+
+block:
+  # Mutate and release the actual borrowed container, rather than a value-semantic copy of it.
+  var source = fixture()
+  let captured = decodeArtifact(source)
+  assert captured.error == ArtifactError.None
+  let retained = captured.value
+  for index in 0..<source.len:
+    source[index] = 0 # Symbols, memory prefixes and program bytes must all survive independently.
+  source = @[]
+  assert retained.entry("main").error == ArtifactError.None
+  assert uint64(retained.entry("main").value) == 0
+  assert importSymbols(retained) == @["h"]
+  let opcode = instructionOpcode(programOf(retained), CodeAddress(0))
+  assert opcode.error == ProgramError.None and opcode.value == 50'u8
+  let retainedMemory = memoryOf(retained)
+  assert uint64(load(retainedMemory, MemoryAddress(65536), AccessWidth(1)).value) == 7
+  assert uint64(load(retainedMemory, MemoryAddress(196608), AccessWidth(1)).value) == 10
+
+block:
+  # Empty data sections preserve mapped zero suffixes; an omitted data/config prefix maps no pages.
+  let emptyData = decodeArtifact(fixture(roData = @[], rwData = @[]))
+  assert emptyData.error == ArtifactError.None
+  let emptyMemory = memoryOf(emptyData.value)
+  assert uint64(load(emptyMemory, MemoryAddress(65536), AccessWidth(1)).value) == 0
+  assert uint64(load(emptyMemory, MemoryAddress(196608), AccessWidth(1)).value) == 0
+  var codeOnly = raw[0..<13]
+  section(codeOnly, 6, @[0'u8, 0, 2, 50, 0, 1])
+  codeOnly.add(0)
+  seal(codeOnly)
+  var noPages = defaultArtifactLimits()
+  noPages.pages = 0
+  let absentData = decodeArtifact(codeOnly, noPages)
+  assert absentData.error == ArtifactError.None
+  assert pageIndices(memoryOf(absentData.value)).value.len == 0
+
+block:
+  # Full framing precedes program validation; program refusal precedes all memory admission.
+  refused(fixture(code = @[]), ArtifactError.InvalidProgram)
+  refused(fixture(includeCode = false), ArtifactError.InvalidProgram)
+  refused(fixture(code = @[], overflowMemory = true), ArtifactError.InvalidProgram)
+  var trailingEmptyWire = fixture(code = @[])
+  trailingEmptyWire.add(0)
+  seal(trailingEmptyWire)
+  refused(trailingEmptyWire, ArtifactError.InvalidFormat)
+  var earlyCodeLimit = defaultArtifactLimits()
+  earlyCodeLimit.codeBytes = 0
+  var trailingInvalidWire = fixture(code = @[0'u8])
+  trailingInvalidWire.add(0)
+  seal(trailingInvalidWire)
+  assert decodeArtifact(trailingInvalidWire, earlyCodeLimit).error == ArtifactError.LimitExceeded
+  let excessData = fixture(roData = @[7'u8, 8, 9, 10])
+  refused(excessData, ArtifactError.InvalidMemory)
+  refused(fixture(rwData = @[10'u8, 11, 12, 13]), ArtifactError.InvalidMemory)
+  var noPages = defaultArtifactLimits()
+  noPages.pages = 0
+  assert decodeArtifact(excessData, noPages).error == ArtifactError.InvalidMemory
+  refused(fixture(code = @[], roData = @[7'u8, 8, 9, 10]), ArtifactError.InvalidProgram)
+
 for length in 0..<raw.len:
   # Every proper prefix is invalid both with the original length and after an attacker reseals it.
   var truncated = raw[0..<length]

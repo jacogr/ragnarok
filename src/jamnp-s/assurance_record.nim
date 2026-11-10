@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact per-shard persistence records check chain identity, complete metadata and CE137 proofs; record success alone is neither durable publication nor assurance authority.
+
 import std/assertions
 import ./availability_proof
 import ../state/availability/specifier
@@ -43,31 +44,38 @@ type
     of TransferFailure: transferReason: AvailabilityTransferResult[VerifiedAvailabilityTransfer]
     of BackendFailure: cryptoReason: CryptoError
     else: discard # A failed value never exposes bytes or a successful default record.
+
 func error*[T](outcome: AssuranceRecordResult[T]): AssuranceRecordError =
   ## Inspect the immutable status before selecting metadata, an owner or a child failure.
   outcome.status
+
 func value*[T](outcome: AssuranceRecordResult[T]): T {.requires: outcome.status ==
     AssuranceRecordError.None.} =
   ## A refused or default operation exposes no successful prefix.
   outcome.completed
+
 func planError*[T](outcome: AssuranceRecordResult[T]): AvailabilityTransferResult[
     AvailabilityVerificationInfo] {.requires: outcome.status == AssuranceRecordError.PlanFailure.} =
   ## Preserve the exact failed expected-geometry calculation, including selected child causes.
   outcome.planReason
+
 func transferError*[T](outcome: AssuranceRecordResult[T]): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] {.requires: outcome.status ==
     AssuranceRecordError.TransferFailure.} =
   ## Preserve the actual failed verification or private-detach operation.
   outcome.transferReason
+
 func cryptoError*[T](outcome: AssuranceRecordResult[T]): CryptoError {.requires: outcome.status ==
     AssuranceRecordError.BackendFailure.} =
   ## Preserve only the actual failed metadata checksum primitive.
   outcome.cryptoReason
+
 func refused[T](reason: AssuranceRecordError): AssuranceRecordResult[T] {.requires: reason notin {
     AssuranceRecordError.None, AssuranceRecordError.PlanFailure,
     AssuranceRecordError.TransferFailure, AssuranceRecordError.BackendFailure}.} =
   ## Simple refusals carry no unrelated child diagnostic or accepted prefix.
   AssuranceRecordResult[T](status: reason)
+
 func propagated[T, U](outcome: AssuranceRecordResult[U]): AssuranceRecordResult[
     T] {.requires: outcome.status != AssuranceRecordError.None.} =
   ## Translate only a genuine selected refusal; no successful child prefix is retained.
@@ -80,26 +88,31 @@ func propagated[T, U](outcome: AssuranceRecordResult[U]): AssuranceRecordResult[
       status: AssuranceRecordError.BackendFailure, cryptoReason: outcome.cryptoReason)
   of AssuranceRecordError.None: refused[T](AssuranceRecordError.Uninitialized) # The precondition excludes this unreachable branch.
   else: refused[T](outcome.status)
+
 func valid*(record: AssuranceRecord): bool =
   ## A default handle has no verified payload and cannot become a persistence candidate.
   record.data != nil
+
 proc recordInfo*(record: AssuranceRecord): AssuranceRecordResult[AssuranceRecordInfo] =
   ## Only fixed copied fields leave the immutable owner.
   let data = record.data
   if data == nil: return refused[AssuranceRecordInfo](AssuranceRecordError.Uninitialized)
   AssuranceRecordResult[AssuranceRecordInfo](status: AssuranceRecordError.None,
       completed: data.info)
+
 func valid*(limits: AssuranceRecordLimits): bool =
   ## Native extents remain below seventeen MiB; no default policy permits an allocation or checksum.
   uint64(limits.bytes) >= uint64(AssuranceRecordHeaderBytes) and uint64(limits.bytes) <=
       MaxAssuranceRecordBytes and uint64(limits.verification.bytes) > 0 and uint64(
       limits.verification.hashes) > 0 and uint64(limits.verification.hashBytes) > 0
+
 func sameSpecifier*(left, right: AvailabilitySpecifier): bool =
   ## Exact persisted context includes all six fields; root equality alone cannot replace canonical metadata.
   left.packageHash.bytes == right.packageHash.bytes and uint32(left.bundleLength) == uint32(
       right.bundleLength) and left.erasureRoot.bytes == right.erasureRoot.bytes and uint16(
       left.erasureShards) == uint16(right.erasureShards) and left.segmentRoot.bytes ==
       right.segmentRoot.bytes and uint16(left.segmentCount) == uint16(right.segmentCount)
+
 func number(wire: openArray[byte], start, width: int): uint64 {.requires: start >= 0 and width >=
     1 and width <= 8 and start <= wire.len and width <= wire.len-start.} =
   ## Fixed little-endian metadata widths are checked by whole-header admission before access.
@@ -107,12 +120,14 @@ func number(wire: openArray[byte], start, width: int): uint64 {.requires: start 
   for index in 0..<width:
     # At most eight octets make every shift fit the unsigned 64-bit accumulator.
     result = result or (uint64(wire[start+index]) shl (index*8))
+
 proc putNumber(wire: var seq[byte], start, width: int, value: uint64) =
   ## Encoder callers allocate the entire bounded record before writing fixed metadata extents.
   assert start >= 0 and width >= 1 and width <= 8 and start <= wire.len and width <= wire.len-start
   for index in 0..<width:
     # All serialized numeric domains have already been proved to fit their declared widths.
     wire[start+index] = byte((value shr (index*8)) and 255)
+
 func admitted(info: AssuranceRecordInfo, work: AvailabilityVerificationInfo,
     limits: AssuranceRecordLimits, verify: bool): bool =
   ## Charge worst-case owned extraction/input/output buffers and the exact complete checksum/proof work before allocation or hashing.
@@ -126,12 +141,14 @@ func admitted(info: AssuranceRecordInfo, work: AvailabilityVerificationInfo,
     if work.hashes > uint64(limits.verification.hashes)-1 or work.hashBytes > uint64(
         limits.verification.hashBytes)-174: return false
   true
+
 proc plannedInfo(info: AssuranceRecordInfo): AvailabilityTransferResult[
     AvailabilityVerificationInfo] =
   ## Record inputs cannot select another transfer kind or row namespace.
   availabilityVerificationInfo(info.specifier, AvailabilityRequest(
     kind: AvailabilityTransferKind.Distribution,
     root: info.specifier.erasureRoot, shard: info.shard))
+
 proc prepareAssuranceRecord*(source: VerifiedAvailabilityTransfer, chain: AssuranceChainId,
     now: AssuranceTime, limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecord] =
   ## A fresh private copy records a full 28-day obligation without claiming any I/O or signing authority.
@@ -159,6 +176,7 @@ proc prepareAssuranceRecord*(source: VerifiedAvailabilityTransfer, chain: Assura
       AssuranceRecord](status: AssuranceRecordError.TransferFailure, transferReason: detached)
   AssuranceRecordResult[AssuranceRecord](status: AssuranceRecordError.None,
     completed: AssuranceRecord(data: RecordData(info: info, transfer: detached.value)))
+
 proc renewAssuranceRecord*(record: AssuranceRecord, now: AssuranceTime,
     limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecord] =
   ## Renewal preserves every existing promise and immutable payload; all shared aliases must retire before any later worker handoff.
@@ -177,6 +195,7 @@ proc renewAssuranceRecord*(record: AssuranceRecord, now: AssuranceTime,
   info.retainUntil = AssuranceTime(max(uint64(info.retainUntil), clock+AssuranceRetentionSeconds))
   AssuranceRecordResult[AssuranceRecord](status: AssuranceRecordError.None,
     completed: AssuranceRecord(data: RecordData(info: info, transfer: data.transfer)))
+
 func contextMatches(info: AssuranceRecordInfo, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): bool =
   ## Canonical expected metadata and coordinate comparison grants no proof or durability authority by itself.
@@ -184,12 +203,14 @@ func contextMatches(info: AssuranceRecordInfo, expected: AvailabilitySpecifier,
     request.root.bytes == expected.erasureRoot.bytes and uint64(request.shard) == uint64(
         info.shard) and
     sameSpecifier(info.specifier, expected)
+
 proc recordMatches*(record: AssuranceRecord, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): bool =
   ## A self-rooted persisted proof cannot replace independently canonical metadata or the exact assigned coordinate.
   let data = record.data
   if data == nil: return false
   contextMatches(data.info, expected, request)
+
 proc encodeAssuranceRecord*(record: AssuranceRecord,
     limits: AssuranceRecordLimits): AssuranceRecordResult[seq[byte]] =
   ## Encode exact metadata and authenticated payloads only after complete size/work preflight; no partially encoded record escapes.
@@ -230,6 +251,7 @@ proc encodeAssuranceRecord*(record: AssuranceRecord,
       inc position
   assert position == wire.len
   AssuranceRecordResult[seq[byte]](status: AssuranceRecordError.None, completed: wire)
+
 proc parseHeader(header: openArray[byte], chain: AssuranceChainId,
     limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecordInfo] =
   ## Parse and preflight every fixed extent without invoking a checksum or payload primitive.
@@ -274,6 +296,7 @@ proc parseHeader(header: openArray[byte], chain: AssuranceChainId,
   if not admitted(info, work, limits, false): return refused[AssuranceRecordInfo](
       AssuranceRecordError.LimitExceeded)
   AssuranceRecordResult[AssuranceRecordInfo](status: AssuranceRecordError.None, completed: info)
+
 proc verifyMetadata(header: openArray[byte]): AssuranceRecordResult[bool] =
   ## Callers have already charged whole-operation work and admitted the fixed header before this first hash.
   assert header.len >= AssuranceRecordHeaderBytes
@@ -285,6 +308,7 @@ proc verifyMetadata(header: openArray[byte]): AssuranceRecordResult[bool] =
     if array[32, byte](checksum.value)[index] != header[174+index]: return refused[bool](
         AssuranceRecordError.ChecksumMismatch)
   AssuranceRecordResult[bool](status: AssuranceRecordError.None, completed: true)
+
 proc inspectAssuranceRecord*(header: openArray[byte], chain: AssuranceChainId,
     limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecordInfo] =
   ## Bounded directory scans verify metadata without reading shard payloads; copied metadata is not possession evidence.
@@ -293,6 +317,7 @@ proc inspectAssuranceRecord*(header: openArray[byte], chain: AssuranceChainId,
   let checksum = verifyMetadata(header)
   if checksum.error != AssuranceRecordError.None: return propagated[AssuranceRecordInfo, bool](checksum)
   parsed
+
 proc verifyPayload(wire: openArray[byte], info: AssuranceRecordInfo,
     limits: AvailabilityMerkleLimits): AvailabilityTransferResult[VerifiedAvailabilityTransfer] =
   ## Metadata shape and full file size have proved these bounded integer conversions and exact component ranges.
@@ -308,6 +333,7 @@ proc verifyPayload(wire: openArray[byte], info: AssuranceRecordInfo,
   verifyAvailabilityTransfer(info.specifier, request,
     wire.toOpenArray(AssuranceRecordHeaderBytes, bundleEnd-1),
     wire.toOpenArray(bundleEnd, segmentEnd-1), wire.toOpenArray(segmentEnd, wire.len-1), limits)
+
 proc decodeRecord(wire: openArray[byte], chain: AssuranceChainId,
     limits: AssuranceRecordLimits, bindExpected: bool, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceRecordResult[AssuranceRecord] =
@@ -335,15 +361,18 @@ proc decodeRecord(wire: openArray[byte], chain: AssuranceChainId,
       AssuranceRecord](status: AssuranceRecordError.TransferFailure, transferReason: verified)
   AssuranceRecordResult[AssuranceRecord](status: AssuranceRecordError.None,
     completed: AssuranceRecord(data: RecordData(info: info, transfer: verified.value)))
+
 proc decodeAssuranceRecord*(wire: openArray[byte], chain: AssuranceChainId,
     limits: AssuranceRecordLimits): AssuranceRecordResult[AssuranceRecord] =
   ## General restore verifies the complete self-described record; canonical callers must independently bind context before granting current possession.
   decodeRecord(wire, chain, limits, false, default(AvailabilitySpecifier), default(AvailabilityRequest))
+
 proc decodeAssuranceRecord*(wire: openArray[byte], chain: AssuranceChainId,
     limits: AssuranceRecordLimits, expected: AvailabilitySpecifier,
     request: AvailabilityRequest): AssuranceRecordResult[AssuranceRecord] =
   ## After bounded metadata checksum, reject differing canonical fields before any self-described payload proof work can exceed the caller's expected plan.
   decodeRecord(wire, chain, limits, true, expected, request)
+
 proc recordTransfer*(record: AssuranceRecord, maximum: ByteLimit): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] =
   ## Return a detached verified copy for later serving without exposing the persistence owner's ARC graph to another worker lifetime.

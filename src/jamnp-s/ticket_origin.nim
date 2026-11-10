@@ -3,6 +3,7 @@
 
 ## Two locally generated checked tickets use bounded timed CE131 delivery; self-proxies belong to the separate CE132 scheduler.
 ## This owner retains no secret, canonical graph or CPU cancellation authority.
+
 import std/[assertions, monotimes, times]
 import ./[node, connections, read_stream, read_client, ticket_packet, ticket_validation]
 import ../codec/[bounded, header, tickets]
@@ -27,38 +28,48 @@ type
     local: StateEdKey
     applied, first, finish, observed: uint64
     delivered: uint64
+
 proc `=copy`*(destination: var TicketOrigins, source: TicketOrigins) {.error.}
   ## Copies would duplicate cancellation of the same stream.
+
 proc `=dup`*(source: TicketOrigins): TicketOrigins {.error.}
   ## Initialization must preserve exclusive Native ownership too.
+
 proc `=wasMoved`*(owner: var TicketOrigins) {.nodestroy, requires: owner.active == 0.} =
   ## Detached proof/namespace owners may move only after exact Native retirement.
   `=wasMoved`(owner.rows)
   `=wasMoved`(owner.included)
   owner.count = 0
   owner.configured = false
+
 proc requireClosed(owner: TicketOrigins) {.requires: owner.active == 0.} =
   ## Destruction cannot silently abandon an owned request.
   discard
+
 proc `=destroy`*(owner: TicketOrigins) =
   ## Explicit close precedes proof/peer namespace release.
   requireClosed(owner)
   `=destroy`(owner.rows)
   `=destroy`(owner.included)
+
 func len*(owner: TicketOrigins): int =
   ## Retained completed rows suppress duplicate offers through the same epoch context.
   owner.count
+
 func sending*(owner: TicketOrigins): int =
   ## At most two exact requests are charged to the shared read pool.
   owner.active
+
 func acknowledged*(owner: TicketOrigins): uint64 =
   ## Bare FIN is a delivery observation without canonical inclusion authority.
   owner.delivered
+
 proc clearExchange(owner: var TicketOrigins, index: int) =
   ## Caller already collected/cancelled this exact request.
   owner.rows[index].active = false
   owner.rows[index].ticket = default(NodeRequestTicket)
   dec owner.active
+
 proc remove(owner: var TicketOrigins, streams: var NodeService, index: int) =
   ## Inclusion/context retirement cancels only a request owned by this fixed row.
   if owner.rows[index].active:
@@ -67,12 +78,14 @@ proc remove(owner: var TicketOrigins, streams: var NodeService, index: int) =
   if owner.rows[index].proof.valid:
     owner.rows[index] = default(OriginRow)
     dec owner.count
+
 proc close*(owner: var TicketOrigins, streams: var NodeService) =
   ## Foreign network requests and every Services CPU lease remain untouched.
   for index in 0..<MaxOriginTickets: owner.remove(streams, index)
   owner.included = @[]
   owner.cursor = 0
   owner.configured = false
+
 proc expire*(owner: var TicketOrigins, streams: var NodeService, now: StateTime) =
   ## Scalar clock retirement can run while an unrelated CPU job owns immutable canonical state.
   if not owner.configured: return
@@ -81,6 +94,7 @@ proc expire*(owner: var TicketOrigins, streams: var NodeService, now: StateTime)
     owner.close(streams)
     return
   owner.observed = observed
+
 proc advance*(owner: var TicketOrigins, streams: var NodeService, source: TicketSource,
     now: StateTime, applied: StateTime): bool =
   ## Refresh under the graph gate and retire all selected-source aliases before the next shared CPU admission.
@@ -118,6 +132,7 @@ proc advance*(owner: var TicketOrigins, streams: var NodeService, source: Ticket
     owner.lastBlock = blockHash
     owner.lastRoot = root
   true
+
 proc offer*(owner: var TicketOrigins, proof: CheckedNetworkTicket): bool =
   ## Raw packets, finalized IDs, wrong contexts and self-proxy proofs cannot create first-step work.
   if not owner.configured or not proof.valid: return false
@@ -135,6 +150,7 @@ proc offer*(owner: var TicketOrigins, proof: CheckedNetworkTicket): bool =
       inc owner.count
       return true
   false
+
 proc poll*(owner: var TicketOrigins, streams: var NodeService, clock: MonoTime) =
   ## Observe at most two exact acknowledgments without borrowing secret/source state.
   for index in 0..<MaxOriginTickets:
@@ -149,6 +165,7 @@ proc poll*(owner: var TicketOrigins, streams: var NodeService, clock: MonoTime) 
     else:
       discard streams.cancelRequest(owner.rows[index].ticket) # Native failures retain finite retry ownership only within the same window.
     owner.clearExchange(index)
+
 proc dispatch*(owner: var TicketOrigins, streams: var NodeService, now: StateTime,
     clock: MonoTime): bool =
   ## Fresh source eligibility precedes at most two candidates and one admitted first-step exchange.

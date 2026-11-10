@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual current forget/restore guests refresh same-identity request histories and exact new wire extents without dropping preimages.
+
 # @@Verification={"arc":"state_current_refresh_history_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
@@ -20,10 +21,13 @@ import ../../../src/state/accumulation/current/update as accumulation_current_up
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
     service_values as state_service_values]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual signed current host execution and original key capture finish before hash-free admission/projection assertions.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Cached history extents, fixed decoders and detached projection need no primitive.
+
 proc historyCode(hash: ServicePreimageHash, restore: bool): seq[byte] =
   ## Existing current host26 forget and optional funded host25 restoration use actual invocation time and the same declared one-byte preimage.
   let raw = array[32, byte](hash)
@@ -39,6 +43,7 @@ proc historyCode(hash: ServicePreimageHash, restore: bool): seq[byte] =
   result = @[0'u8]
   for octet in guestEnvelope(instructions, writable): result.add(
       octet) # Maintained whole-code framing owns every instruction/memory byte.
+
 proc fixture(base: OwnedReport, restore: bool): CurrentNamespaceTransition =
   ## Original available history, code request and funded99 enter the original root and genuine signatures.
   let seeds = namespaceSeeds()
@@ -48,6 +53,7 @@ proc fixture(base: OwnedReport, restore: bool): CurrentNamespaceTransition =
   options.secondBalance = 1000000
   options.signed.serviceNamespaces = seeds
   namespaceTransitionFixture(base, options)
+
 proc verify(logical: CurrentLogicalState, restore: bool) =
   ## Old logical hash/length identity stays fixed while all current history slots come from the actual authenticated successor.
   let inventory = logical.currentLogicalInventory.value.suppliedInventory.value
@@ -60,12 +66,14 @@ proc verify(logical: CurrentLogicalState, restore: bool) =
   else:
     assert request.history.state == RequestState.Unavailable
     assert uint32(request.history.availableFrom) == 1 and uint32(request.history.unavailableFrom) == 2
+
 proc cycle(plan: CurrentLogicalRefreshPlan, restore: bool) =
   ## Retire complete current captures and detached request-history/code payload copies on both actual transition branches.
   let logical = executeCurrentLogicalRefresh(plan).value
   verify(logical, restore)
   assert copySuppliedServices(logical.currentLogicalInventory.value,
       suppliedServicesTestLimits).value[1].preimages[1].value == @[77'u8]
+
 proc main() {.raises.} =
   ## Neither branch creates/removes physical identities; even unavailable content stays present until the distinct later expunge rule.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

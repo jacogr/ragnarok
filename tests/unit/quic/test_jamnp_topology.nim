@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete-state roster projection checked against an independent pairwise grid oracle.
+
 import std/[assertions, syncio]
 import ../../support/jamnp_topology_fixture
 import ../../../src/jamnp-s/[topology, endpoints]
@@ -12,6 +13,7 @@ import ../../../src/codec/state/[safrole, consensus, layout, trie]
 proc same(left, right: StateEdKey): bool =
   ## Independent test identity comparison.
   array[32, byte](left) == array[32, byte](right)
+
 proc oracle(rosters: array[3, seq[StateValidator]], left, right: StateEdKey): bool =
   ## Deliberately quadratic reference uses literal widths for these independently sized grids.
   if same(left, right) or same(left, nullValidator().ed25519) or same(right, nullValidator().ed25519): return false

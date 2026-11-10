@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Stable managed directory locks and descriptor-relative files preserve exclusive ownership and exact bytes.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/repository as file_repository
 import ../../../src/codec/bounded
+
 proc renamePath(source, destination: cstring): cint {.importc: "rename", cdecl,
     header: "<stdio.h>".}
   ## Exercise held-directory relative IO after an external rename without native production hooks.
+
 proc main() {.raises.} =
   ## Competing owners, overwrite, short reads and refused names leave the selected namespace unchanged.
   var path = "storage-managed-directory"

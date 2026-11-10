@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Custom HALT guests use complete signed namespaces and explicit existing code-preimage/request linkage.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_execution_context, accumulation_execution_context,
     parent_profile_context, parent_globals_context, supplied_logical_context, state_inventory_context]
@@ -14,6 +15,7 @@ import ../../../src/state/supplied/logical_inventory as supplied_logical_invento
 import ../../../src/state/inventory
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/accounts as state_accounts
+
 proc main() {.raises.} =
   ## No account metadata override, synthetic current update or duplicate C255/code preimage is used.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

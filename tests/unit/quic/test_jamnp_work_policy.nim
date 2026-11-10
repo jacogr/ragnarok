@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict complete work-policy parsing refuses malformed files and values without inferring resource ceilings or engine identities.
+
 import std/[assertions, strutils, syncio]
 import ../../../src/app/work_policy
 import ../../../src/app/[node_work_policy, work_exchange, work_distribution]
@@ -13,6 +14,7 @@ import ../../../src/pvm/backend
 import ../../support/jamnp_node_work_policy
 import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_report_fixture,
   jamnp_work_recovery_fixture, pvm_input_refinement]
+
 proc baseline(): string =
   ## Explicit local inputs select outer bounds; unused child zero budgets remain explicit numeric values rather than defaults.
   var admission = default(WorkSubmissionLimits)
@@ -24,6 +26,7 @@ proc baseline(): string =
   execution.inputBytes = ByteLimit(65536)
   encodeWorkPolicy(admission, execution, WorkDutyLimits(chapterBytes: ByteLimit(1048576),
     disputeItems: ElementLimit(1023)), timeoutMs = 120000)
+
 proc guarantor() {.raises.} =
   ## Complete v2 is explicit opt-in; every missing leaf fails, and legacy/default policies cannot load a signer or activate signed controllers.
   assert not default(NodeWorkPolicy).valid and not default(NodeWorkPolicy).guaranteeing
@@ -68,6 +71,7 @@ proc guarantor() {.raises.} =
   writeFile("guarantor.policy", text)
   assert loadNodeWorkPolicy("guarantor.policy").error == WorkPolicyError.None
   assert loadNodeWorkPolicy("absent-guarantor.policy").error == WorkPolicyError.FileFailure
+
 proc main() {.raises.} =
   ## Whole-schema refusal tests complement live dispatch with actual decoded PVM budgets in the application suite.
   guarantor()

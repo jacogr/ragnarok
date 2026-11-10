@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_memory_directory_arc_release"}
 ## Public snapshot checks exercise directory boundaries, sparse batches and retained writer epochs.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/machine
 import ../../support/arc_evidence
@@ -146,6 +148,7 @@ assert copyMemoryPage(original, MemoryPageSlot(129), output).error == MachineErr
 for value in output: assert value == 0x5a
 assert memoryPageCount(captureMemory([], PageLimit(0)).value).error == MachineError.None
 assert memoryPageCount(default(Memory)).error == MachineError.InvalidOwner
+
 proc zeroProvenance() =
   ## Only construction facts prove zero; imported bytes and a write followed by clearing remain unknown.
   let empty = captureMemory([], PageLimit(2)).value

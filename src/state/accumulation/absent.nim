@@ -3,6 +3,7 @@
 
 ## Psi_A's absent-account branch retains exact prior state and zero effects before incoming credit or code lookup.
 ## Pure and initial block-bound certificates never fabricate resolved services or executed outcomes.
+
 import ../../codec/[composite, header]
 import ../../codec/state/[accounts as state_accounts, layout as state_layout]
 import ../../codec/work/digest as work_digest

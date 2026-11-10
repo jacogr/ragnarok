@@ -7,6 +7,7 @@
 import ../codec/composite
 import ../codec/work/[digest as work_digest, report as work_report]
 import ../pvm/host/fetch as host_fetch
+from ../pvm/step import NativeRuntime
 import ./authorization/invocation as authorization_invocation
 import ./refinement/[report as refinement_report, dispatch as refinement_dispatch,
     digest as refinement_digest]
@@ -98,8 +99,9 @@ proc authorizedDigests*(prepared: AuthorizedRefinement): AuthorizedRefinementRes
       completed: data.digests)
 
 proc prepareAuthorizedRefinement*(authorization: AuthorizationInvocation, inputs: RefinementInputs,
-    limits: AuthorizedRefinementLimits): AuthorizedRefinementResult[AuthorizedRefinement] =
-  ## Select source identity and trace internally; borrowed input descriptions remain stable until this synchronous call returns.
+    limits: AuthorizedRefinementLimits, nativeRuntime: NativeRuntime = default(
+        NativeRuntime)): AuthorizedRefinementResult[AuthorizedRefinement] =
+  ## Select source identity and trace internally. Borrow inputs and the package runtime for this call.
   template fail(reason: AuthorizedRefinementError) =
     return AuthorizedRefinementResult[AuthorizedRefinement](status: reason)
   let selected = authorization.authorizationInfo
@@ -115,7 +117,8 @@ proc prepareAuthorizedRefinement*(authorization: AuthorizationInvocation, inputs
   let trace = authorization.authorizationTrace.value
   let refined = refinePackage(authorization.authorizationState.value,
     authorization.authorizationPackage.value,
-    auth.core, authorization.authorizationParameters.value, trace, inputs, limits.refinement)
+    auth.core, authorization.authorizationParameters.value, trace, inputs, limits.refinement,
+    nativeRuntime)
   if refined.error != RefinementReportError.None:
     return AuthorizedRefinementResult[AuthorizedRefinement](
       status: AuthorizedRefinementError.RefinementFailure,

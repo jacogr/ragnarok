@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual stopped-child deaths qualify combined threshold compaction/cleanup and cleanup-only continuation without head fallback.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[storage_io, storage_crash, storage_light_root, storage_light_journal, storage_light_maintenance]
 import ../../../src/storage/light/[snapshot as light_snapshot, state_cache as light_state_cache]
@@ -11,19 +12,23 @@ import ../../../src/storage/light/delta as light_delta
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only exact test-owned canonical names; no directory scan creates head or cleanup authority.
+
 proc exists(path: string): bool =
   ## Separate absent staging from an empty canonical prefix.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc prefix(path, authored: string) {.raises.} =
   ## Every candidate that exists must contain only the bounded independently authored transport prefix.
   if exists(path):
     let input = readFile(path)
     assert input.len <= authored.len, "bounded maintenance candidate"
     for index in 0..<input.len: assert input[index] == authored[index], "authored maintenance candidate prefix"
+
 proc writeExtent(path, authored: string, remaining: var int, chunk: int) {.raises.} =
   ## Count successful actual writes independently of production frame/image admission.
   let steps = if chunk == 0: 1 else: (authored.len+chunk-1) div chunk
@@ -32,6 +37,7 @@ proc writeExtent(path, authored: string, remaining: var int, chunk: int) {.raise
   if used > 0: assert exists(path) and readFile(path).len == extent, "exact maintenance write extent"
   elif exists(path): assert readFile(path).len == 0, "unwritten candidate is empty"
   remaining -= used
+
 proc captured(path: string): seq[string] {.raises.} =
   ## Snapshot existence and bytes of every known child before strict reopen.
   result = @[]
@@ -40,6 +46,7 @@ proc captured(path: string): seq[string] {.raises.} =
       "journal-0000000000000002.wal"]:
     let child = path & "/" & name
     result.add(if exists(child): "present:" & readFile(child) else: "absent")
+
 proc scenario(fixture: LightRootFixture, cleanupOnly: bool, operation, skip: cint,
     chunk: int): uint64 {.raises.} =
   ## Each exact child starts from one confirmed independent-root source with a real preceding ordinary update.
@@ -166,6 +173,7 @@ proc scenario(fixture: LightRootFixture, cleanupOnly: bool, operation, skip: cin
   assert owner.close == FileError.None
   retireRootEpoch(path, ManagedEpoch(2))
   retireLightJournal(path)
+
 proc main() {.raises.} =
   ## Measure positive controls first, then kill every actual boundary for combined and cleanup-only maintenance.
   let fixture = rootFixture()

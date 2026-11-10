@@ -3,6 +3,7 @@
 
 ## Validate supplied logical declarations against the exact qualified current successor and retain compact inventory.
 ## This is supplied completeness evidence, not producer-exported provenance, semantic validity or adoption authority.
+
 import ../../codec/state/composition as state_composition
 import ./globals as current_globals
 import ../[global_snapshot, manifest, inventory]

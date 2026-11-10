@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual complete namespace shapes independently qualify exact output ledgers, present-empty facts and high-domain policy arithmetic.
+
 # @@Verification={"arc":"state_current_refresh_resource_corpus_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_namespace_transition_context, current_namespace_execution_context,
@@ -20,10 +21,13 @@ import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Every actual original/current source and cached request key precedes independent hash-free copy admission.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Policy ledgers and resource refusals inspect only fixed facts/cached extents.
+
 proc seeds(mode: int): seq[ServiceNamespaceSeed] =
   ## Five bounded authored shapes cover no children, present-empty namespaces, ordinary mixed data,65-byte keys/values and several storage rows.
   if mode == 2: return namespaceSeeds()
@@ -56,12 +60,14 @@ proc seeds(mode: int): seq[ServiceNamespaceSeed] =
           history: availableHistory(RequestSlot(1))), StateRequestItem(hash: hash,
           length: RequestLength(3), history: availableHistory(RequestSlot(1)))]
     result.add(seed)
+
 proc cycle(plans: openArray[CurrentLogicalRefreshPlan]) =
   ## Retire genuine complete captures and detached descriptors/payloads across all independently authored shape boundaries.
   for plan in plans:
     let logical = executeCurrentLogicalRefresh(plan).value
     assert copySuppliedServices(logical.currentLogicalInventory.value,
         suppliedServicesTestLimits).value.len == 2
+
 proc main() {.raises.} =
   ## Missing code selects genuine zero-gas skips; no mutable post-map or fake current completion supplies the corpus.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

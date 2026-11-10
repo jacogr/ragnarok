@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Paid host continuations reuse admitted bodies without suffix growth, repricing or target-prelink side effects.
+
 import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]

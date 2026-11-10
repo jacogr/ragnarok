@@ -27,11 +27,13 @@ proc recentPolicy*(): AccumulationRecentConfig =
     totalPackages: ElementLimit(16), peaks: ElementLimit(64), maxBytes: ByteLimit(4096)),
     outputs: OutputLogConfig(items: ElementLimit(4), maxBytes: ByteLimit(145)),
         headerBytes: ByteLimit(100000))
+
 proc recentYieldProgram*(): seq[byte] =
   ## Actual guest yields the 32-byte padded bootstrap tuple and halts without a return override.
   result = @[0'u8]
   let raw = @[0'u8, 0, 9, 0, 0, 0, 0, 0, 10, 27, 50, 0, 191, 0]
   for octet in pvmEnvelope(raw): result.add(octet)
+
 proc leaf(service: uint32, count: byte): seq[byte] =
   ## Independently frame E4(service) plus the literal yielded slot/service/count and zero padding.
   result = newSeq[byte](36)
@@ -39,6 +41,7 @@ proc leaf(service: uint32, count: byte): seq[byte] =
   result[4] = 2
   result[5] = byte(service)
   result[6] = count
+
 proc expectedRoot(): array[32, byte] =
   ## Four literal leaves have two 76-byte internal nodes and one 68-byte root; no production tree routine is used.
   var left = @[110'u8, 111, 100, 101]
@@ -53,6 +56,7 @@ proc expectedRoot(): array[32, byte] =
   for octet in a: root.add(octet)
   for octet in b: root.add(octet)
   array[32, byte](keccak256(root).value)
+
 proc appendBlock(bytes: var seq[byte], header, peak, state: array[32, byte], slot: uint32,
     packages: seq[ReportedPackage]) =
   ## Literal field order is header, super-peak, state, E4 slot and a one-octet package count in these tiny fixtures.

@@ -9,6 +9,7 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/state/[store, trie_proof]
 import ../../../src/state/proof/service as proof_service
 import ../../support/application_candidate_context
+
 proc run() {.raises.} =
   ## Use the actual signed fixture's immutable selected posterior state.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

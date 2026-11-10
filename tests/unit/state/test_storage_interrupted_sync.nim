@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual file and directory barriers must finish after consumed EINTR without publishing uncertainty.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io]
@@ -12,6 +13,7 @@ import ../../../src/storage/managed/[repository as managed_repository, manifest 
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc scenario(managed: bool) {.raises.} =
   ## Both layouts keep exact generation/maps and held readers through interrupted publication and sync.
   resetIo()

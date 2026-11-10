@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_import_inputs_arc_release"}
 
 ## Bind every ordered package import to real verified leaf owners, with exact dictionaries and bounded ownership.
@@ -15,11 +16,14 @@ import ../../support/[pvm_import_inputs, pvm_import_justification, pvm_import_ve
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Select a refusal to prove that binding immutable proofs does no additional hashing.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exact hash call counts after all genuine input preparation finishes.
+
 proc expect[T](outcome: ImportInputsResult[T], reason: ImportInputsError) =
   ## Check exact reasons without extracting failed alternatives.
   assert outcome.error == reason, "import binding reason mismatch"
+
 proc input(inputs: VerifiedImportInputs, item, index: uint64): ImportInputsResult[VerifiedImport] =
   ## Keep full-width ordinal fixtures concise while preserving public nominal domains.
   inputs.importInput(FetchItemIndex(item), ImportInputIndex(index))
@@ -173,11 +177,13 @@ assert bound.importInputsLookup.value[0].packageHash.bytes == inputKey(1).bytes
 assert bound.importInputsLookup.value[0].segmentRoot.bytes == ThreeRoot
 assert bound.input(0, 0).value.verifiedImportProof.value[0] == 2
 assert bound.importInputsInfo.value.entries == 5
+
 proc detached(): VerifiedImportInputs =
   ## Retire all package, row and proof temporaries while retaining both original input kinds.
   bindImportInputs(inputSource([@[rootImport(SegmentRoot(bytes: ThreeRoot), ImportIndex(0))]]),
     [@[inputProof(0)]], [], inputLimits()).value
 assert detached().input(0, 0).value.verifiedImportInfo.value.root.bytes == ThreeRoot
+
 proc cycle() =
   ## Release successful retained owners, copied dictionary/proof bytes and refused candidates on each iteration.
   let done = detached()

@@ -2,18 +2,23 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supervision rejects missed hooks, unmarked stops, early exits and deadlines without losing child ownership.
+
 import std/[assertions, syncio]
 import ../../support/[storage_io, storage_crash]
 type
   Control = enum ## Each control must retain a different failed-witness or explicit baseline disposition.
     Baseline, UnmarkedStop, EarlyExit, Deadline, Cancelled
 let stopSignal {.importc: "SIGSTOP", header: "<signal.h>".}: cint
+
 proc stopNative(signal: cint): cint {.importc: "raise", cdecl, header: "<signal.h>".}
   ## An unrelated kernel stop supplies no observer receipt and must fail verification.
+
 proc idleNative(): cint {.importc: "pause", cdecl, header: "<unistd.h>".}
   ## A child deliberately waiting without an IO hook must hit the parent's monotonic deadline.
+
 proc rawExit(status: cint) {.importc: "_exit", cdecl, header: "<unistd.h>".}
   ## A successful process exit without the explicit observer completion receipt is not a valid baseline.
+
 proc scenario(control: Control) =
   ## Refused controller changes preserve the first exact child; all expected failure paths must reap it.
   defer: abortCrash()
@@ -48,6 +53,7 @@ proc scenario(control: Control) =
   of Cancelled:
     abortCrash()
   assert finishCrash() == crashInvalid # Reaped children grant no further ownership of a potentially reused PID.
+
 proc main() =
   ## Repeat all dispositions to expose leaked controller pipes/children rather than relying on process exit.
   for repetition in 0..<4:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real source-bound standalone negative support uses genuinely published full predecessor state and separately signed unpublished report bytes; no availability assignment or private computation result is fabricated.
+
 import std/assertions
 import ../../src/jamnp-s/[audits, judgment_claim, judgment_support, audit_context]
 import ../../src/jamnp-s/assurance_store
@@ -11,12 +12,14 @@ import ../../src/codec/state/[safrole, disputes as state_disputes]
 import ../../src/chain/[genesis, provider]
 import ../../src/crypto/primitives
 import ./[jamnp_audit_context, jamnp_guarantee_support, jamnp_judgment_claim]
+
 proc actualClaimLimits*(): JudgmentClaimLimits =
   ## The genuine three-core nine-current/six-previous chain keeps its maximum domains distinct from the independent role-seed tests.
   result = claimLimits()
   result.message.cores = CoreCount(3)
   result.message.validators = ValidatorCount(9)
   result.rosters = auditLimits().availability.rosters
+
 proc actualSupportLimits*(): JudgmentSupportLimits =
   ## Every source chapter, actual assignment expansion and output row is reserved before verification.
   JudgmentSupportLimits(support: supportLimits(), rosters: auditLimits().availability.rosters,
@@ -25,6 +28,7 @@ proc actualSupportLimits*(): JudgmentSupportLimits =
     readBytes: ByteLimit(4000000), workspaceBytes: ByteLimit(64000000), retainedBytes: ByteLimit(
         4000000),
     hashBytes: ByteLimit(8000000), hashes: ElementLimit(4096))
+
 proc actualNegativeClaim*(fixture: AuditContextFixture, guarantee: Guarantee,
     auditor = 1): SignedJudgmentClaim =
   ## A real original auditor signs the hash of separately certified raw work, while supporting credentials stay outside the GP judgment signature domain.
@@ -49,9 +53,11 @@ proc actualNegativeClaim*(fixture: AuditContextFixture, guarantee: Guarantee,
   let checked = verifyJudgmentClaims(fixture.view, wire, actualClaimLimits())
   assert checked.error == JudgmentClaimError.None
   checked.value.claimAt(0).value
+
 proc stopSupport(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Execution-only cancellation stores no caller closure in a queued source job.
   true
+
 proc judgmentSupportChecks*(fixture: AuditContextFixture) =
   ## Unknown report support must match every real original credential and actual independently selected source; metadata copies cannot substitute an availability block.
   let source = supportFixture(fixture)

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Actual first-RW owners preserve complete zeroed bytes, moves, refusal and exact lifetime charges.
+
 # @@Verification={"arc":"pvm_resident_bytes_arc_release"}
 
 import std/[assertions, syncio]
@@ -15,6 +17,7 @@ type
 
 proc `=copy`(destination: var StorageCellData, source: StorageCellData) {.error.}
   ## A heap payload must transfer, rather than duplicate, its actual owning storage child.
+
 proc `=dup`(source: StorageCellData): StorageCellData {.error.}
   ## Direct payload duplication is forbidden independently of the managed handle's identity.
 

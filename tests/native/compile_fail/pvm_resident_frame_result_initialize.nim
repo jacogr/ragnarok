@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Actual exclusive frame ownership must survive ordinary caller assignment.
+
 # @@Verification={"group":"ownership_compile","build_name":"pvm-resident-frame-result-initialize","expected":"'=dup' is not available for type <FlatResult[FlatFrame]>","rationale":"The actual FlatResult[FlatFrame] owns resident bytes and borrowed execution descriptors; an ordinary borrowed initialize would duplicate release authority across live frame lifetimes.","reference":"src/pvm/internal/handler_stream.nim"}
 import std/assertions
 import ../../../src/pvm/machine

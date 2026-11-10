@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed actual current collection qualifies complete logical state before explicit host adoption and repeated preparation.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[current_repeated_logical_context, collected_logical_context,
@@ -31,8 +32,10 @@ import ../../../src/state/trie_proof
 import ../../../src/chain/[provider, genesis]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/layout as state_layout
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound scalar-only polling of the actual managed proof worker.
+
 proc main() {.raises.} =
   ## Configured startup, real preparation, complete logical refresh and adoption retain one exact physical chain.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

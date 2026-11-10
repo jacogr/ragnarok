@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real bounded shared dispatch, fair UDP batches and native TLS admission beyond the legacy16 slots.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/quic/[io, transport]
 import ../../../src/jamnp-s/protocol
@@ -14,8 +15,10 @@ type Party = object ## Stable callback owner; all native engines close before an
   pin: array[32, byte]
   live: array[Peers, bool]
   admitted, retired: int
+
 proc `=copy`(destination: var Party, source: Party) {.error.}
   ## Copying the aggregate would leave native callbacks pointing into a different enclosing owner.
+
 proc `=dup`(source: Party): Party {.error.}
   ## Duplication cannot create another retirement authority for an existing endpoint.
 
@@ -24,9 +27,11 @@ proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, r
   let owner = cast[ptr Party](user)
   if owner.anyKey: return cint(validPeer(cast[ptr byte](der), length, []))
   cint(validPeer(cast[ptr byte](der), length, owner.pin))
+
 proc stream(user: pointer, handle: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Admission requires no application streams; unsolicited streams retain no test payload.
   if event == 0: streamAbort(handle)
+
 proc peer(user: pointer, slot: cuint, event: cint, der: ptr ConstByte,
     length: csize_t) {.cdecl, raises: [].} =
   ## Each accepted slot remains occupied until its genuine close callback, including after reuse.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Both authenticated sealer variants preserve nested roster/schedule/ticket scope and complete extents.
+
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
 import ../../../src/state/proof/[global as proof_global, view as proof_view]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real authenticated current command downloads adopt two genuine successors and preserve one confirmed prefix on later resource refusal.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/current/download/command as current_download_command

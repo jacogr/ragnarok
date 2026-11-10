@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_batch_arc_release"}
 
 ## Real shared-context batches prove canonical wire, reporter union, bounded refusal and immutable lifetime behavior.
@@ -15,11 +16,14 @@ import ../../support/[pvm_computed_batch, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reject new hashing after original computation and real signature verification complete.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe real hashing counters without manufacturing successful crypto.
+
 proc expect[T](outcome: ComputedBatchResult[T], reason: ComputedBatchError) =
   ## Check exact refusal alternatives before any successful extraction.
   assert outcome.error == reason, "batch reason mismatch"
+
 proc checkWire(sources: seq[ComputedGuaranteeEnvelope], batch: ComputedGuaranteeBatch) =
   ## Independently frame small count and concatenate unchanged standalone tuples, then check maintained codec roundtrip.
   var expected = @[byte(sources.len)]
@@ -35,6 +39,7 @@ proc checkWire(sources: seq[ComputedGuaranteeEnvelope], batch: ComputedGuarantee
   var encoded = newSeq[byte](wire.len)
   assert encodeOwnedGuarantees(decoded.owner, encoded).value == wire.len
   assert encoded == wire
+
 proc compare(a, b: StateEdKey): int =
   ## Independent first-difference order witness for copied full keys.
   let left = array[32, byte](a)
@@ -109,11 +114,13 @@ reset(1)
 expect(prepareComputedBatch(sources, broad), ComputedBatchError.None)
 assert hashes() == 0, "composition and retained source queries perform no hashing"
 reset(0)
+
 proc detached(): ComputedGuaranteeBatch =
   ## Retain every source after all original caller-owned lists and fixtures retire.
   prepareComputedBatch(batchEnvelopes(), batchLimits()).value
 let retained = detached()
 assert retained.computedBatchInfo.value.reporters == 6
+
 proc cycle(sources: seq[ComputedGuaranteeEnvelope], limits: ComputedBatchLimits) =
   ## Release batch wire, reporter set, source list, copies and a late union-budget refusal.
   let batch = prepareComputedBatch(sources, limits).value

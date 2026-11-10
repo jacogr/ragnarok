@@ -14,9 +14,11 @@ proc run(source: PreparedRefinementBootstrap, cap = refinementLimits()): Refinem
     RefinementInvocation] =
   ## Exercise the genuine runner rather than constructing synthetic tagged results or terminal machines.
   runRefinementInvocation(source, [], refinementInputs(), ExportOffset(7), cap)
+
 proc checkSuccess(outcome: RefinementInvocationResult[RefinementInvocation]) =
   ## Selected success exposes only normalized data and its exact bootstrap source.
   assert outcome.error == RefinementInvocationError.None
+
 proc checkStage(outcome: RefinementInvocationResult[RefinementInvocation],
     expected: RefinementInvocationError) =
   ## Hide positive alternative knowledge from misuse call sites while confirming the intended refusal first.

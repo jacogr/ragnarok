@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact supplied-inventory qualification on genuine complete current successors refuses substitutions and detaches inputs.
+
 # @@Verification={"arc": "state_current_state_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_typed_context,
@@ -12,21 +13,26 @@ import ../../../src/state/[global_snapshot, manifest, inventory, store]
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Query assertions disable hashing only after mandatory exact matching/capture completes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Retained accessors cannot rehash original current state.
 const
   projection = CurrentProfileLimits(validators: ElementLimit(1024), bytes: ByteLimit(65536))
   globalsLimits = GlobalStateLimits(chapter: StateChapterPolicy(items: ElementLimit(10000),
       maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144))
+
 proc qualified(source: PreparedCurrentChainUpdate): CurrentGlobalSerialization =
   ## Derive the profile from this exact authenticated update before all-global validation.
   qualifyCurrentGlobals(captureCurrentProfile(source, projection).value, globalsLimits).value
+
 proc cycle(source: CurrentGlobalSerialization, services: openArray[StateService]) =
   ## Retire detached compact rows and both retained owners on every iteration.
   let state = qualifyCurrentState(source, services, inventoryCaptureLimits).value
   assert state.currentStateInventory.value.inventoryInfo.value.services == 2
+
 proc verify(source: PreparedCurrentChainUpdate) =
   ## Supplied authored services are verified against the original complete successor, never a stripped replacement map.
   let globals = qualified(source)
@@ -67,6 +73,7 @@ proc verify(source: PreparedCurrentChainUpdate) =
       CurrentProfileError.None
   assert calls() == 0
   fail(0)
+
 proc main() {.raises.} =
   ## Genuine signed current candidates supply the producer boundary; default and rollback-sentinel sources refuse precisely.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

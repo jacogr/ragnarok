@@ -15,7 +15,8 @@ mechanics only. They contain no independent hotness, minimum-span, probe or retr
 The first supported item is one non-exiting pure register span per prepared identity, at most64
 original source operations/coordinates and4096bytes of complete code. Each image uses the
 maintained1MiB arena; installed, queued/running, parked and reclaiming owners consume the same four
-credits. These bound backing owners, not resident memory usage.
+credits. Deferred source identities and failed owners without images do not consume a credit.
+These bound backing image owners, not checked prepared owners or resident memory usage.
 This first slice does not claim the previous8192-fragment or connected/memory/macro coverage.
 Unported features remain checked; they do not invoke legacy eager preparation to satisfy receipts.
 
@@ -36,9 +37,20 @@ cannot physically move, including after close; only the uninitialized storage se
 No runtime means checked execution even for requested Jit. There is no new CLI/JIT mode or hidden
 per-Program worker. Program decoding/initialization, prepared-fact construction, input CPU/RAM
 restoration and immutable result publication retain their normal APIs and real costs.
-Services starts one runtime at full-state Jit startup, binds its context, joins preparation before
-retiring context registrations, then closes/joins the compiler. `stopPreparation` alone preserves it.
-Standalone callers must explicitly close their runtime; sessions may safely survive its closed anchor.
+Services starts one runtime at full-state Jit startup and binds its accumulation context.
+The managed work-submission completion turn also lends this runtime to the outer package worker.
+Proof and preparation turns exclude each other until collection or joined stop. The package worker
+reuses one prepared source across items and retires it before the proof worker publishes Done.
+The shared compiler queue and four image credits apply to both routes. A full queue or all credits
+in use leaves package execution on the checked path. Authorization and inner machine execution
+use their separate invocation lifetimes.
+Services joins both workers and retires retained accumulation code before closing the compiler.
+`stopPreparation` alone preserves it. Standalone callers explicitly close their runtime.
+Session handles can safely outlive the closed runtime anchor.
+
+The [shared scheduler](../src/pvm/internal/native_pipeline.nim) owns the public
+invocation lease, exact source epoch, image credit and nonblocking queue admission.
+The lease excludes close even during checked execution without an image credit.
 
 One shared initial policy requires a structural span of at least2supported operations, at least4096
 conservatively completed nonterminal source instructions in ONE public invocation before scheduling,
@@ -60,19 +72,13 @@ receipts before callbacks can reset frame fields. Failed public calls never auth
 No opcode-level profiling, timer feedback, public work observer, fixture whitelist or ISA-specific
 threshold is introduced. Paid/noop/host/error accounting needs the supporting literal witnesses.
 
-The compiler alone emits/maps/publishes code. Its mailbox receives only bounded POD IR and scalar
-registration/ticket/stream epoch; no active ARC graph, registers, memory, host or callback. One
-private Idle/Queued/Running slot holds work, while each registration owns its own completion and
-exact scalar certificate. Publication immediately frees the work slot, so retained uncollected A
-cannot alone block eligible B. Collection uses only the exact owner's row, independently of other
-rows and work. There is no FIFO or general scheduling-fairness promise. Public NativePhase is an
-aggregate observation: Queued/Running work wins, otherwise Done means parked Complete rows,
-otherwise Idle. NativeRuntimeInfo.completions counts parked rows, including nil failed images.
-Public Done is never an admission predicate. An exact matching consumer nonblockingly moves its
-complete image only at invocation boundaries. Failed collection becomes Unavailable and does not
-requeue until explicit stream invalidation. Same-plan destructive repricing invalidates the epoch
-and cancels old jobs;
-ordinary stream moves preserve identity. Installation rechecks every operation/operand against the
+The [worker and collector](../src/pvm/internal/native_pipeline.nim) own mailbox
+isolation, registration-local publication and exact nonblocking collection. Public
+`NativePhase` is an aggregate observation. Queued or Running work takes precedence,
+then Done for parked completions, then Idle. `NativeRuntimeInfo.completions` includes
+parked nil images. A failed collection becomes Unavailable until explicit stream
+invalidation. Same-plan destructive repricing invalidates the epoch and cancels old
+jobs. Ordinary stream moves preserve identity. Installation rechecks every operation/operand against the
 current immutable source and validates existing node/continuation coordinates. An unchanged plan
 pointer or node count alone is not a generation certificate. Native entry proves the original paid
 full reservation and no partial barrier; the pure backend borrows only fresh registers. Invalid
@@ -86,8 +92,11 @@ stays worker-owned even if stream invalidation cleared the session ticket. Close
 unlocks/joins, then detaches at most four parked images and destroys them outside the mutex.
 Worker-owned Reclaiming is recognized by the still-Running global work slot and exact row key:
 another serialized host invalidation or final drop may occur during its unlocked image disposal.
-It leaves cleanup to the worker, with final drop marking Retiring so credit returns only after
-physical destruction. Only an actual overlapping host-owned retirement violates the host contract.
+It leaves cleanup to the worker. Invalidation detaches the old session registration and marks
+Retiring immediately, so the credit returns only after physical destruction; a new source epoch
+cannot reuse an old pending key. Empty failed completions use this same exact retirement path and
+release their credit while their retained source remains Unavailable without automatic retry.
+Only an actual overlapping host-owned retirement violates the host contract.
 Installed images remain in closed surviving sessions; those registrations prevent restart until
 final drop. Registration has explicit noncopyable/move/destruction hooks; no owning row is copied
 for observation or reset as an array. The compiler holds
@@ -142,8 +151,8 @@ shared worker. On a supported selected ISA, the existing matching `pvmArm64JitRe
 `pvmX86JitRefuse` define returns nil at the worker's arena-allocation boundary, preserving platform
 capability and successful startup. Exactly one queued job finishes with an empty image; its owner
 collects Unavailable, returns full literal checked CPU/gas/RAM/source/history, and never requeues
-across three further eligible calls. All native counters/occupancy remain zero; final owner drop
-returns its credit before close/join. Normal profiles call the same maintained C constructor.
+across three further eligible calls. All native counters/occupancy remain zero; exact empty
+collection returns its credit before final owner drop. Normal profiles call the same maintained C constructor.
 Unsupported hosts retain checked/start-refusal controls and are not allocation-refusal qualification.
 This injection proves allocation refusal only, not publication failure or all resource-failure paths.
 
@@ -319,9 +328,29 @@ nor replaces it with the weaker pure prefix. Retry still requires the existing s
 work floor, current invocation horizon and idle compiler work slot. A certified closed loop keeps
 its existing higher priority. Submission fixes the request ABI and copied payload; pending and
 ready jobs remain immutable. Epoch invalidation clears the deferred certificate. Close prevents
-another invocation/submission, and final drop returns a nomination-only registration without
-waiting for unrelated work. Queued/running read images retain normal cancellation and physical
+another invocation/submission, and a nomination-only source owns no image registration to return
+or wait for. Queued/running read images retain normal cancellation and physical
 retirement rules.
+
+## Image-credit admission regression
+
+The shared ARM/x86 lifecycle suite retains four independent sources, each making two calls that
+settle3000 facts. Those calls cannot aggregate into the4096 proof or reserve image credits. A
+fifth source settling6144 facts must queue through the real compiler and later enter native code,
+with unchanged literal CPU/gas/RAM histories. Four real parked images still block a fifth until
+physical retirement; the cancellation witness uses real parked filler images rather than cold
+source registrations. The forced-allocation-refusal profile retains five Unavailable owners and
+requires every next source to queue, while preserving no retry through explicit close/restart.
+Independent controls cover a creditless active call refusing close, source-epoch invalidation
+without registration and generation/ticket exhaustion without wrap or stranded credits.
+
+`tests/models/pvm_native_credit_lease.nif` isolates lease versus credit ownership with the real
+four-credit cap. Its original-admission variant exposes four cold registrations starving the
+fifth eligible request. Guard mutants cover missing creditless close exclusion, premature credit
+return before disposal, failed-empty-credit retention and a fifth image exceeding capacity; a
+reachability witness requires actual fifth-source installation. Numeric work/gas and full
+namespace/close windows remain source-confirmed by the native suite, not claims of the small
+model. This is correctness/admission evidence, not timing or caller-wiring qualification.
 
 The read arbitration suite covers occupied-slot retention, repeated restored-stream calls,
 short/failed non-admission, loop precedence, retained optional continuations, source-epoch reset,

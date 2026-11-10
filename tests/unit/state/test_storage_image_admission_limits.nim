@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Physical union budgets and every retained complete-root policy remain independent during staged image admission.
+
 # @@Verification={"arc": "storage_image_admission_limits_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[admission_samples, storage_samples, arc_evidence]
@@ -11,10 +12,13 @@ import ../../../src/storage/record_codec
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observed work without substituting cryptographic identities.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Distinguish metadata/physical preflight from complete graph policy rejection.
+
 proc refused(source: AdmissionFixture, body: seq[byte], limits: RepositoryLimits,
     error: RepositoryError, reason: RecordError, hashes: int,
     rootLimit = ElementLimit(2), encoded = ByteLimit(500000)) =
@@ -27,6 +31,7 @@ proc refused(source: AdmissionFixture, body: seq[byte], limits: RepositoryLimits
   if error == RepositoryError.InvalidRecords:
     assert failed.recordError == reason # Codec extent/union limits retain their existing nested reason.
   assert int(calls()) == hashes and getOccupiedMem() == before
+
 proc historicalFixture(): AdmissionFixture =
   ## The current root has one leaf, while a retained historical root needs two leaves and three nodes.
   let limits = storageLimits()
@@ -43,6 +48,7 @@ proc historicalFixture(): AdmissionFixture =
   AdmissionFixture(image: exportRepositoryImage(selected, limits.codec.records, ElementLimit(
       2)).value,
     limits: limits)
+
 proc cycle() =
   ## Exact union and per-root boundaries accept; tightening the corresponding independent dimension refuses.
   let source = admissionFixture()

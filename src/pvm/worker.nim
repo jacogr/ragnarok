@@ -45,3 +45,17 @@ proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Conte
   let data = worker.data
   if data == nil: return executeWithHost(source, context, handler, steps, calls, cycles, selected)
   executeWithHost(source, context, handler, steps, calls, cycles, selected, data.prepared)
+
+proc executeWithHost*[Context; Reason: enum](source: Machine, context: var Context,
+    handler: proc(context: var Context, suspension: StepOutcome): HostResult[Reason]
+      {.nimcall, raises: [].},
+    steps: ExecutionStepLimit, calls: HostCallLimit, cycles: GasCycleLimit,
+    selected: PvmBackend, worker: ExecutionWorker, scalarCalls: ScalarHostSelector,
+    scalarHandler: FallibleScalarHostCallback[Context, Reason]): HostExecutionResult[Reason] =
+  ## Scalar capability selection changes no retained key, callback lifetime or busy-owner contract.
+  let data = worker.data
+  if data == nil:
+    return executeWithHost(source, context, handler, steps, calls, cycles, selected,
+      scalarCalls, scalarHandler)
+  executeWithHost(source, context, handler, steps, calls, cycles, selected, data.prepared,
+    scalarCalls, scalarHandler)

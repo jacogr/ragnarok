@@ -1,13 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_availability_merkle_arc_release"}
 
 ## Independent GP hashlib witnesses, exact NP node tags and hostile trace boundaries validate availability Merkle computation.
+
 import std/[assertions, rawthreads, syncio]
 import ../../../src/jamnp-s/availability_merkle
 import ../../../src/codec/bounded
 import ../../../src/crypto/primitives
 import ../../support/arc_evidence
+
 proc root(hex: string): Blake2bHash =
   ## Frozen independent Python hashlib.blake2b(digest_size=32) witnesses use one exact lowercase hexadecimal representation.
   assert hex.len == 64
@@ -17,15 +20,18 @@ proc root(hex: string): Blake2bHash =
     assert nibble >= 0 and nibble < 16
     bytes[index div 2] = (bytes[index div 2] shl 4) or byte(nibble)
   Blake2bHash(bytes)
+
 proc leaves(width, count: int): seq[byte] =
   ## Distinct raw rows permit independent shape/coordinate checks without calling production encoders.
   result = newSeq[byte](width*count)
   for row in 0..<count:
     for position in 0..<width: result[row*width+position] = byte(row mod 251+1)
+
 proc limits(): AvailabilityMerkleLimits =
   ## Maximum geometry still has a finite independent payload/hash/call policy.
   AvailabilityMerkleLimits(bytes: ByteLimit(6000000), hashBytes: ByteLimit(16000000),
       hashes: ElementLimit(10000))
+
 proc releaseCycle(flat: seq[byte]) =
   ## Newly retained proof bytes and independent caller copies retire completely on every cycle.
   let encoded = prepareAvailabilityTrace(flat, 64, 6, 0, 1, limits())
@@ -40,6 +46,7 @@ type StackContext = object
   ## The caller leaves this entire graph untouched from create through join.
   flat: seq[byte]
   passed: bool
+
 proc boundedStack(context: pointer) =
   ## Maximum-width deepest traces must also fit the smaller management-worker stack.
   let selected = cast[ptr StackContext](context)
@@ -59,6 +66,7 @@ proc boundedStack(context: pointer) =
     assert cached.error == AvailabilityMerkleError.None
     assert cached.value.bytes == trace.value.bytes
   selected.passed = true
+
 proc main() {.raises.} =
   ## Hash/node/singleton distinctions are checked against frozen independent roots, not only production round trips.
   let flat = leaves(64, 3)

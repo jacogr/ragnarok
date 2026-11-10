@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared reporting corpus resource policy and exact nested failure projection; no executable entry point.
+
 import std/assertions
 import ./current_consecutive_context
 import ../../src/app/[chain, candidate]

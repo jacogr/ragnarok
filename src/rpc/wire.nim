@@ -1,10 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded RFC 6455 framing and UTF-8 validation; owned strings never retain socket buffers.
+## Bounded RFC 6455 upgrade and frame decoding for loopback RPC.
 ##
-## Exposes UTF-8 validation, WebSocket upgrade/framing and incremental frame decoding with
-## checked payload/status access.
+## HTTP is the version-13 upgrade boundary. The peer dispatcher supplies the enabled
+## UI port, which limits browser Origin to the matching IPv4 loopback or localhost
+## origin. Nonbrowser clients can omit Origin. The decoder requires masked client
+## frames and canonical lengths, returning owned bytes for message reassembly. The
+## dispatcher validates text after reassembly so fragments can split a UTF-8 scalar.
 
 import std/[strutils, base64, sha1]
 import ../lib/utf8
@@ -31,11 +34,11 @@ proc hasToken(value, expected: string): bool =
     if token.strip().toLowerAscii() == expected: return true
   false
 
-proc upgrade*(header: string, uiPort: uint16 = 0): string =
+proc upgrade*(header: string, uiPort: uint16 = 0, tags = http_msg.newHttpTags()): string =
   ## Accept a complete version-13 WebSocket upgrade at /, with no body and an optional exact UI browser Origin.
   ## Empty output means invalid. SHA-1 is used solely for RFC 6455's public handshake challenge.
   result = ""
-  var head = http_msg.initHttpMsg(http_msg.newHttpTags())
+  var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(header, 0, header.len - 1), head) != header.len: return
   for field in ["host", "origin", "connection", "upgrade", "sec-websocket-key",
       "sec-websocket-version"]:

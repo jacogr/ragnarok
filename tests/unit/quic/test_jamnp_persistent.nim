@@ -25,6 +25,7 @@ type
 
 # Composite fixtures cannot relocate their retained native callback addresses.
 proc `=copy`(destination: var RawClient, source: RawClient) {.error.}
+
 # Duplication has the same stable-address constraint.
 proc `=dup`(source: RawClient): RawClient {.error.}
 

@@ -8,12 +8,8 @@ revision, primitive backend or toolchain changes.
 
 ## Scope and state keys
 
-`src/codec/state/layout.nim` implements fixed state-key/node layout and node hashing. It does **not**
-construct a trie/root from entries, serialize state components T(state), derive service storage
-namespace prefixes automatically, build proofs, execute transitions or implement persistence.
-Root construction is now covered separately in [state-trie.md](state-trie.md); the other
-responsibilities remain future increments. In particular, hashing a zero-filled branch node is not
-the empty-trie's zero identity rule; empty-trie handling belongs to trie construction.
+The [layout codec](../src/codec/state/layout.nim) owns fixed state keys, node layouts
+and node hashing. [Trie construction](state-trie.md) owns the empty-root rule.
 
 `StateKey` owns exactly 31 bytes. `StateChapter` is a nominal octet, and service identifiers reuse
 the existing E4 `ServiceIndex` domain. Constructors follow the three exact C alternatives:
@@ -67,19 +63,6 @@ and all inline padding before success. It can re-emit a regular leaf from its co
 without claiming the long value is available. `hashStateNode(encoded)` validates canonical
 layout, then returns raw Blake2b-256 of those exact 64 bytes as a distinct `StateNodeHash`.
 Manually constructing a nominal encoding cannot bypass header/padding checks before hashing.
-
-## Results and lifetimes
-
-These APIs return new fixed values rather than writing caller buffers, so source/destination
-alias management and mutable backing-buffer ownership are unnecessary. Changing caller input,
-a returned copy or another copied metadata object cannot alter earlier results. Source values
-are stable during the call. No metadata pointer, partial hash upgraded to full identity, borrowed
-span, allocator handle or secret material is exported.
-
-`StateLayoutResult[T]` carries data/progress only in `None`; every failure/default carries its
-reason alone. Node metadata is independently tagged, retaining runtime guards for inactive
-branch/embedded/hashed fields. Blake2b failure maps to `BackendFailure` without a default digest.
-The exceptional-point Ed25519/Bandersnatch gates are unaffected by this layout increment.
 
 ## Evidence and reproduction
 

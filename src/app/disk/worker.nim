@@ -4,6 +4,7 @@
 ## One fixed-address native worker serializes distinct full/light publication and retirement or full maintenance under an exclusive ARC graph lease.
 ## The host pauses RPC and all aliases, collects the actual IO outcome, then installs canonical/RPC state.
 ## There is no cancel-as-rollback operation: joined shutdown preserves every operation that entered IO.
+
 import std/[assertions, locks, rawthreads]
 import ./chain as disk_chain
 import ../light/store as light_store

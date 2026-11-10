@@ -14,6 +14,7 @@ proc transferRegisters*(caller = 69630'u64, inner = 69631'u64, size = 4'u64,
   result[8] = RegisterValue(caller)
   result[9] = RegisterValue(inner)
   result[10] = RegisterValue(size)
+
 proc transferMemory*(): Memory =
   ## Two read-only source pages and two writable sentinel pages expose opposite endpoint permissions.
   var pages: seq[PageImage] = @[]
@@ -30,6 +31,7 @@ proc transferMemory*(): Memory =
       page.bytes[1] = 72
     pages.add(page)
   captureMemory(pages, PageLimit(4)).value
+
 proc transferMachines*(): InnerMachines =
   ## Allocate two writable pages through genuine machine/pages hosts; no detached RAM setter exists.
   innerPagesResponse(pageMachines(), MachineGas(10000), pageRegisters(count = 2), innerMemory()).value.machines

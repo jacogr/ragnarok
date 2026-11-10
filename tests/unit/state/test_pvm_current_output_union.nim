@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_output_union_arc_release"}
 
 ## Terminal output union preserves full pair identity across real current entries and excludes original annulled yields.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/outputs as state_outputs
@@ -10,8 +12,11 @@ import ../../../src/state/accumulation/current/[outputs as accumulation_current_
     driver as accumulation_current_driver]
 import ../../../src/state/history
 import ../../support/[accumulation_current_outputs_context, accumulation_current_statistics_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc main() {.raises.} =
   ## Original signed input remains the authority for each actual terminal fixture.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

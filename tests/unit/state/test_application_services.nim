@@ -35,7 +35,9 @@ import ../../support/rpc_socket
 
 # Backend faults begin after all authored source/context bytes are independently retained.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type SeedFixture = object ## Test text comes from a genuine signed original parent; its original certificate remains a separate owner.
@@ -85,7 +87,6 @@ proc execution(owner: var Services, context: SeedFixture): PreparedFinalAccumula
   let stopped = driveAccumulation(initial, parameters, completionDriverLimits()).value
   result = prepareFinalAccumulation(stopped, completionLimits().finalization).value
   assert sameStateSnapshot(result.finalAccumulationParent.value, owner.stateSnapshot.value)
-
 
 const SeedPath = "application-services-chain.json"
 const DiskPath = "application-services-state.db" # Every mode chooses one explicit isolated fixture journal.

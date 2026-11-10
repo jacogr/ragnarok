@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## SHA-pinned test-only fixed-word hex transport keeps independent arithmetic expectations outside production algorithms.
+
 import std/[assertions, strutils, parseutils, syncio]
+
 proc arithmeticCorpus*(path: string, rows, width: int): seq[seq[byte]] {.raises.} =
   ## Require exact fixed rows/width before decoding trusted fixture records; malformed setup fails the suite.
   let text = readFile(path)
@@ -17,6 +19,7 @@ proc arithmeticCorpus*(path: string, rows, width: int): seq[seq[byte]] {.raises.
       record[i] = octet # Exact complete octets, no normalization or alternate framing.
     result.add(record)
   assert result.len == rows
+
 proc corpusWord*(record: openArray[byte], offset: int): uint64 =
   ## Decode one exact E8 test word after a subtraction-based extent check.
   assert record.len >= 8 and offset >= 0 and offset <= record.len-8

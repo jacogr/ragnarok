@@ -1,9 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded management observations without retaining a database or canonical graph owner.
-## Current process RSS and filesystem space are sampled once per second. Database sizes are
-## sampled every ten seconds; flat directories advance by at most sixteen entries per turn.
+## Sample local resource observations outside request dispatch.
+##
+## Process RSS covers all threads and resident foreign allocations. Dispatcher heap
+## counters describe the calling allocator and overlap process RSS. Filesystem free
+## bytes include reserved blocks, while available bytes report unprivileged capacity.
+##
+## Database scans count regular files in the selected layout. Logical size is file
+## length and allocated size uses st_blocks in 512-byte units, so sparse files can
+## differ. The bounded scan advances over dispatcher turns and can see concurrent
+## changes. While it runs, the last complete sample and its age remain available.
+## A refused or failed sample reports null sizes with a diagnostic status.
 
 import std/[strutils, monotimes]
 import std/posix/posix

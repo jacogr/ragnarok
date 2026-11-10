@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_recovery_trust_files_arc_release"}
 
 ## Separate operator trust files are bounded and captured once before any checkpoint recovery.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/chain
@@ -15,11 +16,13 @@ import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[application_checkpoint_context, arc_evidence]
 const IdentityPath = "application-recovery-operator-identity"
 const HeaderPath = "application-recovery-operator-header"
+
 proc cycle(envelope: seq[byte], expected: ApplicationCheckpointIdentity) =
   ## File descriptors, captured header and complete recovered graph all retire on this host.
   let trust = loadCheckpointTrust(IdentityPath, HeaderPath, ByteLimit(300000)).value
   let owner = decodeTrustedCheckpoint(envelope, trust, genesisStoreLimits(), ByteLimit(high(uint64))).value
   assert sameApplicationCheckpoint(captureApplicationCheckpointIdentity(owner).value, expected)
+
 proc main() {.raises.} =
   ## Bounded regular-file reads never infer trust from checkpoint metadata or repair failed input.
   var identityPath = IdentityPath

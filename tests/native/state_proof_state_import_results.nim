@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Full, partial, absent and present-empty authenticated views exercise the checked completeness boundary and independent copy/store policies.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/arc_evidence
 import ../../src/state/proof/[state_import as proof_state_import, view as proof_view]
 import ../../src/state/[trie_proof, store]
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine root-construction refusal cannot become a successful complete import.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Whole-view copy admission precedes all commitment hashing.
 const
@@ -20,6 +23,7 @@ const
       valueBytes: ByteLimit(512))
   importLimits = ProofStateImportLimits(lookups: ElementLimit(4), copyBytes: ByteLimit(4096),
       store: StateStoreLimits(trie: mapLimits, writes: ElementLimit(8), writeValueBytes: ByteLimit(512)))
+
 proc evidence(entries: seq[StateEntry], keys: seq[StateKey], root: StateRoot): ProofView =
   ## Generate and independently verify each selected witness before the conversion under test sees its immutable view.
   let proofs = generateStateProofs(entries, keys, mapLimits, proofLimits, batchLimits).value
@@ -28,11 +32,13 @@ proc evidence(entries: seq[StateEntry], keys: seq[StateKey], root: StateRoot): P
       i).value # Copy only immutable proof owners with their exact requested identities.
   captureProofView(verifyStateProofs(queries, root, proofLimits, batchLimits).value, root,
     ProofViewLimits(items: ElementLimit(16), valueBytes: ByteLimit(512))).value
+
 proc escaped(): StateStore =
   ## Retire original values, proof objects and verified views before using the independently owned imported map.
   let entries = @[StateEntry(key: chapterKey(StateChapter(1)), value: @[7'u8])]
   let root = stateTrieRoot(entries, mapLimits).value.root
   importProofState(evidence(entries, @[entries[0].key], root), root, importLimits).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(ProofStateImportResult)

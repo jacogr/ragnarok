@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Load the existing independently encoded report fixture for authenticated global chapter tests.
+
 import std/[assertions, envvars, syncio]
 import ../../src/codec/[report_owned, owned]
+
 proc globalReport*(): OwnedReport {.raises.} =
   ## Fail setup explicitly if fixture transport/decoding is unavailable; no generated fallback is permitted.
   let path = getEnv("RAGNAROK_STATE_REPORT")

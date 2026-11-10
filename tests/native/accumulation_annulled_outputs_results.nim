@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused selected yield owners cannot reveal source, accounting, pair values or encoded log bytes.
+
 import std/cmdline
 import ../../src/state/accumulation/[annulled_outputs as accumulation_annulled_outputs,
     annulment as accumulation_annulment]

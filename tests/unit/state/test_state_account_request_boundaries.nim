@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current request-length reservation boundaries remain finite complete-account facts without allocating absent advertised payloads.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, economic_profile_context]
 import ../../../src/chain/parameters
@@ -16,14 +17,17 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     requests as state_requests]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing after exact complete source capture for each advertised length.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## No absent content may be copied or hashed merely because its request advertises a large length.
 const limits = AccountAuditLimits(planning: ElementLimit(2),
   footprints: FootprintAuditLimits(services: ElementLimit(1), checks: ElementLimit(2)),
   content: PreimageContentLimits(services: ElementLimit(1)),
   linkage: PreimageLinkageLimits(services: ElementLimit(1)))
+
 proc main() {.raises.} =
   ## Fixed account metadata reserves exact footprint across current canonical small/maximal request lengths.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual collected storage identity creation/deletion refuses logical continuation before any host enqueue or durable publication.
+
 import std/[assertions, envvars, syncio]
 import std/posix/posix
 import ../../support/[current_namespace_execution_context, current_application_context,
@@ -23,6 +24,7 @@ import ../../../src/state/store
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/report/admission as report_admission
 import ../../../src/storage/managed/manifest as managed_manifest
+
 proc mutationCode(key: byte, value: seq[byte]): seq[byte] =
   ## Real write host appends an identity for absent key7, or removes existing key5 when the supplied value has zero length.
   var payload = @[key]
@@ -33,6 +35,7 @@ proc mutationCode(key: byte, value: seq[byte]): seq[byte] =
       @[10'u8, 5], @[50'u8, 0]]
   result = @[0'u8]
   for octet in guestEnvelope(instructions, payload): result.add(octet)
+
 proc scenario(fixture: NamespaceExecutionFixture, layout: int, added: bool) {.raises.} =
   ## The exact configured owner seeds State before genuine native execution; identity refusal must leave this canonical/durable parent unmodified.
   var path = "pvm-current-logical-mutation-chain"
@@ -80,6 +83,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, added: bool) {.ra
     assert owner.chainView.retainedCount == 1
     equalCurrentDiskMap(owner.stateSnapshot.value, before)
     owner.close()
+
 proc main() {.raises.} =
   ## Both genuinely executed mutations use complete signed original code/request/storage namespaces and funded existing service99.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

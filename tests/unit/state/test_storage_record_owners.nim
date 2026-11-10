@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Private record sharing must preserve independent forks and fully detached mutable public transports.
+
 # @@Verification={"arc": "storage_record_owners_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -9,11 +10,13 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/[records as node_records, repository as node_repository]
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc check(view: RepositoryView, value: byte) =
   ## Both complete entries remain exact under the selected root, independent of table sharing.
   let entries = restoreStateEntries(view, view.commitment.root, storageLimits().codec.trie).value
   assert entries.len == 2
   assert entries[0].value == @[value] and entries[1].value == @[9'u8]
+
 proc detachedClone(limits: RepositoryLimits): NodeRepository =
   ## Return a clone after the source owner, source views and selection all retire at this boundary.
   let a = storageTrie(7)
@@ -26,6 +29,7 @@ proc detachedClone(limits: RepositoryLimits): NodeRepository =
       ElementLimit(2)).value
   result = cloneRepositorySelection(selection, limits).value
   assert source.close == RepositoryError.None
+
 proc cycle() =
   ## Separate mutable handles share only immutable predecessors; every public byte array stays detached.
   let limits = storageLimits()

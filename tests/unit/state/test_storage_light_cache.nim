@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent root authority and a flat known-key model witness bounded atomic immutable light lookup retention.
+
 # @@Verification={"arc": "storage_light_cache_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -10,27 +11,34 @@ import ../../../src/storage/state_proof
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual provider refusal must preserve every retained cache and never create absence.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Fail after a complete first proof to exercise retirement of private validated lookup scratch.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Quota/duplicate preflight and forgetting must make zero primitive calls.
 const Queries = [0, 64, 128, 192, 250, 251, 252, 253]
+
 proc key(number: int): StateKey =
   ## Full fixed identities spread the known/unknown model across both root directions.
   var raw = default(array[31, byte])
   raw[0] = byte(number)
   StateKey(raw)
+
 proc bytes(index: int): seq[byte] =
   ## Independent model values include present-empty, inline and long payloads.
   let size = [33, 0, 1, 256][index]
   result = newSeq[byte](size)
   for offset in 0..<size: result[offset] = byte((index+offset) and 255)
+
 proc policy(): LightCacheLimits =
   ## Retained values, positive/negative entries and input proof work have distinct ceilings.
   LightCacheLimits(items: ElementLimit(8), writes: ElementLimit(8), valueBytes: ByteLimit(512),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256)))
+
 proc fixture(): FullStateTrie =
   ## A flat complete-map calculation establishes root authority independently of cache or proof traversal.
   var entries: seq[StateEntry] = @[]
@@ -44,9 +52,11 @@ proc fixture(): FullStateTrie =
   let trie = newFullStateTrie(entries, limits).value
   assert array[32, byte](trie.commitment.root) == array[32, byte](expected)
   trie
+
 proc request(trie: FullStateTrie, number: int): LightStateProof =
   ## Detached producer output never grants cache authority until admission verifies it against the fixed root.
   LightStateProof(key: key(number), proof: trie.prove(key(number), policy().proof).value)
+
 proc matches(cache: LightStateCache, known: array[8, bool], root: StateRoot) =
   ## Flat authored slots model local knowledge; complete-map membership alone never makes a slot known.
   var count = 0
@@ -68,6 +78,7 @@ proc matches(cache: LightStateCache, known: array[8, bool], root: StateRoot) =
     else:
       assert found.error == LightCacheError.UnknownKey
   assert cache.len == count and cache.valueBytes == total
+
 proc semantics() =
   ## Admit unsorted positive/negative evidence, mutate caller/output bytes, then forget without changing retained views.
   let trie = fixture()
@@ -101,6 +112,7 @@ proc semantics() =
   assert getOccupiedMem() == before and unchanged.len == forgotten.len and calls() == 0
   assert populated.forget([key(7), key(7)]).error == LightCacheError.DuplicateKey
   assert populated.forget([key(7)]).value.len == populated.len and calls() == 0
+
 proc boundaries() =
   ## Combined invalidities establish count/shape/duplicate/final-map precedence without hashing.
   let trie = fixture()
@@ -151,6 +163,7 @@ proc boundaries() =
   let smaller = newLightStateCache(trie.commitment.root, limits).admit([one]).value
   let freed = smaller.forget([key(0)]).value.admit([large]).value
   assert smaller.valueBytes == 33 and freed.valueBytes == 256
+
 proc atomicity() =
   ## A valid first proof must not leak into the old snapshot when later evidence or hashing fails.
   let trie = fixture()
@@ -180,6 +193,7 @@ proc atomicity() =
   let refreshed = newRoot.admit([request(changed, 250)]).value
   assert refreshed.lookup(key(250)).value.bytes == @[55'u8]
   assert recovered.lookup(key(250)).error == LightCacheError.UnknownKey
+
 proc sequence() =
   ## Deterministic finite known-key slots independently model batch merge/replacement and local forgetting.
   let trie = fixture()
@@ -202,6 +216,7 @@ proc sequence() =
     known[removed] = false
     matches(current, known, trie.commitment.root)
     matches(prior, oldKnown, trie.commitment.root)
+
 proc detached(): VerifiedStateLookup =
   ## Only a verified value survives retirement of source proofs, tries and every cache revision.
   let trie = fixture()
@@ -211,6 +226,7 @@ proc detached(): VerifiedStateLookup =
   let retained = populated.lookup(key(0)).value
   assert populated.forget([key(0)]).value.lookup(key(0)).error == LightCacheError.UnknownKey
   retained
+
 proc lifecycle() =
   ## Exact repeated owner retirement includes failed private proof scratch and retained detached values.
   atomicity()

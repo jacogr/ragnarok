@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal Blake2b-256 content, malformed complete maps and observer budgets qualify source-bound content checks.
+
 # @@Verification={"arc": "state_preimage_content_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
@@ -9,17 +10,21 @@ import ../../../src/state/preimage/content as preimage_content
 import ../../../src/state/[inventory, manifest, store]
 import ../../../src/codec/bounded
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset counters and optionally reject all primitive hash calls.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe zero-hash preflight and exactly one content hash independently.
 const limits = PreimageContentLimits(services: ElementLimit(2), preimages: ElementLimit(1),
   perValue: ByteLimit(3), totalBytes: ByteLimit(3))
+
 proc cycle(source: StateInventory) =
   ## Retire detached payloads, results and retained source handles each iteration.
   let result = auditPreimageContent(source, limits)
   assert result.error == PreimageContentError.None
   assert result.value.contentInfo.value.bytes == 3
+
 proc main() {.raises.} =
   ## Capture independent complete maps before measuring only content validation calls.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

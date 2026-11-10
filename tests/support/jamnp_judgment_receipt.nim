@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole-message qualification and atomic private retention are exercised with real original signatures and independently computed complete state; a late failure never installs an accepted prefix.
+
 import std/[assertions, monotimes, times, syncio, posix/posix]
 import ../../src/app/[services, options, audit_state]
 import ../../src/app/proof/worker
@@ -20,26 +21,32 @@ import ../../src/state/store
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_guarantee_support,
   jamnp_judgment_support, jamnp_audit_participation, current_application_context, assurance_signer_context]
 import ./jamnp_judgment_claim
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Temporary checkpoint names are private to the native runner process.
+
 proc receiptLimits*(): JudgmentReceiptLimits =
   ## Whole two-negative work reservations are separate from each per-record policy and full-map registry capacity.
   JudgmentReceiptLimits(support: actualSupportLimits(), origin: auditOriginLimits(),
     readBytes: ByteLimit(8000000), workspaceBytes: ByteLimit(128000000),
     hashBytes: ByteLimit(16000000), retainedBytes: ByteLimit(16000000),
     hashes: ElementLimit(8192), signatures: ElementLimit(6))
+
 proc waitReceipt(owner: var Services) =
   ## Bound actual native worker completion independently of protocol timeout policy.
   let deadline = getMonoTime()+initDuration(seconds = 10)
   while owner.stateProofPhase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline
+
 proc claimBatch(view: ChainView, records: openArray[AuditJudgment]): SignedJudgmentBatch =
   ## The real maintained Ed25519 verifier authenticates every original claim before support qualification starts.
   let wire = encodeJudgments(records, actualClaimLimits().message).value
   verifyJudgmentClaims(view, wire, actualClaimLimits()).value
+
 proc stopReceipt(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Execution-only cancellation publishes neither a qualified record nor a private origin.
   true
+
 proc fullEpochLedgerChecks(view: ChainView) =
   ## A single genuine judgment per slot in the full profile exceeds the former local ceiling.
   var ledger = default(JudgmentStore)
@@ -60,6 +67,7 @@ proc fullEpochLedgerChecks(view: ChainView) =
   assert ledger.len == 600
   ledger.expireBefore(2)
   assert ledger.len == 0
+
 proc sameKeyBranchSupport(fixture: AuditContextFixture, claim: SignedJudgmentClaim,
     report: OwnedReport) =
   ## Selected membership has the correct signing key but lacks the guaranteed reporting context.
@@ -130,6 +138,7 @@ proc retryOriginLimit(fixture: AuditContextFixture, claim: SignedJudgmentClaim,
       membership: fixture.view.bestBlock.value.blockHash, report: report)
   assert prepareJudgmentReceipt(primary, claims, [alternative], limits,
       alternatives = [fixture.view]).error == JudgmentReceiptError.None
+
 proc judgmentReceiptChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Duplicate sources retain their first exact owner; late invalid support, source, aggregate quota and native Done cancellation expose no successful prefix.
   let selectedRoster = claimView(repeated = true)

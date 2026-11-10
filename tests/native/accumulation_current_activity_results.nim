@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current C13 exposes neither partial activity nor inactive child causes.
+
 import std/cmdline
 import ../../src/state/accumulation/current/activity as accumulation_current_activity
 import ../../src/state/accumulation/activity as accumulation_activity

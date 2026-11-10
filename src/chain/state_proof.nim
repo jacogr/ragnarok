@@ -3,6 +3,7 @@
 
 ## Bind proof generation and verification to one selected immutable block's posterior complete state.
 ## Header prior-state roots and transport-supplied identities never substitute for this explicit selection.
+
 import ./genesis
 import ../state/[trie_proof, snapshot_proof]
 import ../state/proof/[service as proof_service, plan as proof_plan]

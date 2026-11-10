@@ -3,6 +3,7 @@
 
 ## Current GP fnpartitionxfers: stable deferred-transfer scheduling with incarnation-bound supervision.
 ## Pure owned plans retain exact input records/prior; round selection and publication belong to their callers.
+
 import std/assertions
 import ../../codec/bounded
 import ../../codec/state/[accounts as state_accounts, layout as state_layout]

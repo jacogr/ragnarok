@@ -3,6 +3,7 @@
 
 ## Preserve authenticated initial-round provision ownership around the reusable explicit-input phase.
 ## Pure phase success cannot construct this bound owner or replace its admitted source chain.
+
 import ./phase as accumulation_provision_phase
 import ../account/stage as accumulation_account_stage
 import ../provisions as accumulation_provisions

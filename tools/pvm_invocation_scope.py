@@ -7,6 +7,9 @@ BOUNDARY = 'full-invocation-v1'
 OUTPUT = 'consume-before-reuse-v1'
 CPU_CLOCK = 'process-cpu'
 INPUT = 'program-state-host-inputs-v1'
+PRESTARTED = 'prestarted'
+DEMAND_STARTED = 'demand-started'
+RUNTIME_START_POLICIES = (DEMAND_STARTED, PRESTARTED)
 SCOPE_HEADER = f'PVM_MEASURE_SCOPE,1,{BOUNDARY},{OUTPUT},{CPU_CLOCK}'
 
 
@@ -49,7 +52,8 @@ def scope_diagnostics(output, role):
                 raise ValueError('Invalid invocation lifecycle integer')
             return int(text)
         if kind == 'PVM_RUNTIME_OWNER' and len(fields) == 6:
-            if fields[3:5] != ['application-process', 'demand-started'] or not 1 <= number(fields[5]) <= 11:
+            if (fields[3] != 'application-process' or fields[4] not in RUNTIME_START_POLICIES or
+                    not 1 <= number(fields[5]) <= 11):
                 raise ValueError('Foreign runtime lifecycle ownership')
             value = dict(ownership=fields[3], creation=fields[4], code_owners=number(fields[5]))
         elif kind == 'PVM_RUNTIME_NONE' and len(fields) == 5:
@@ -103,7 +107,7 @@ def validate_scope_observations(value, role):
             if kind == 'runtime_owner':
                 if (set(observation) != {'ownership', 'creation', 'code_owners'} or
                         observation['ownership'] != 'application-process' or
-                        observation['creation'] != 'demand-started'):
+                        observation['creation'] not in RUNTIME_START_POLICIES):
                     raise ValueError('Foreign application runtime ownership')
                 integer(observation['code_owners'])
                 if not 1 <= observation['code_owners'] <= 11:

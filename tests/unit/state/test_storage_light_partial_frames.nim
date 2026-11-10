@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded enumeration independently checks whether incomplete local frame fields can have a completion.
+
 import std/[assertions, syncio]
 import ../../../src/storage/light/journal/[replay as light_journal_replay,
     manifest as light_journal_manifest]
@@ -12,15 +13,18 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc put(input: var seq[byte], offset: int, value: uint64) =
   ## Fixture integers use the format's exact eight little-endian bytes.
   for index in 0..<8: input[offset+index] = byte((value shr (8*index)) and 255)
+
 proc matches(input: seq[byte], cut, offset: int, value: int, width: int = 8): bool =
   ## Compare available bytes directly against a small enumerated candidate, without parser arithmetic.
   for index in 0..<width:
     if offset+index < cut and input[offset+index] != byte((uint64(value) shr (8*index)) and 255):
       return false
   true
+
 proc oracle(input: seq[byte], cut, maximum: int): bool =
   ## Exhaust all policy-permitted edit counts and total node/raw combinations, rather than deriving interval formulas.
   for count in 0..2:
@@ -30,6 +34,7 @@ proc oracle(input: seq[byte], cut, maximum: int): bool =
         if body+208 <= maximum and matches(input, cut, 160, count) and matches(input, cut, 168, body):
           return true
   false
+
 proc plan(input: seq[byte], cut: int, anchor: seq[byte], image: PreparedLightSnapshot,
     manifest: LightJournalManifest, maximum: int): bool =
   ## Planning may retain only the original authenticated checkpoint when all available fields are still possible.
@@ -43,6 +48,7 @@ proc plan(input: seq[byte], cut: int, anchor: seq[byte], image: PreparedLightSna
     assert outcome.value.prefix.byteLength == anchor.len, "incomplete edits changed retained extent"
     return true
   false
+
 proc main() =
   ## A genuine empty-root frame supplies fixed identity bytes; enumeration edits only local count/body fields.
   let policy = LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(

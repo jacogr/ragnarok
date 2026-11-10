@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Mixed existing/new addresses merge independently of transport order and retained repository branches.
+
 import std/[assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/[records as node_records, repository as node_repository]
 import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 import ../../../src/codec/bounded
+
 proc run() =
   ## Independently track every distinct full physical address across shuffled full/delta publications.
   let limits = storageLimits()

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_services_arc_release"}
 
 ## Genuine full-state Services owns the namespace at its final address and retires mutable startup leases before cached accounting, RPC resumption or descriptor cleanup.
+
 import std/[assertions, syncio, dirs, paths, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -14,14 +16,17 @@ import ../../../src/rpc/server
 import ../../../src/lib/atomic/file
 import ../../support/[proof_query_context, arc_evidence]
 from ../../support/storage_io import storageProcessId
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between synchronized worker-state observations under one bounded deadline.
+
 proc limits(): AssuranceStoreLimits =
   ## Independent explicit retention capacity and verification ceilings enable no namespace implicitly.
   AssuranceStoreLimits(entries: ElementLimit(4), scanEntries: ElementLimit(300),
     bytes: ByteLimit(64000000), record: AssuranceRecordLimits(bytes: ByteLimit(16000000),
       verification: AvailabilityMerkleLimits(bytes: ByteLimit(64000000),
         hashes: ElementLimit(10000), hashBytes: ByteLimit(64000000))))
+
 proc waitDone(owner: var Services) =
   ## Host ticks remain available but must not read the mutable namespace or canonical graph.
   let deadline = getMonoTime()+initDuration(seconds = 20)
@@ -30,6 +35,7 @@ proc waitDone(owner: var Services) =
     assert not owner.assuranceStorageInfo.opened, "cached accounting cannot publish a running owner"
     owner.tick(0)
     discard pauseMicros(100)
+
 proc namespace(folder: string, chain: AssuranceChainId, busy: bool) =
   ## An independent owner witnesses actual descriptor exclusion or release after exact collection/join.
   var contender = default(AssuranceStore)
@@ -43,6 +49,7 @@ proc namespace(folder: string, chain: AssuranceChainId, busy: bool) =
     # A cancelled completed open must release the real lock, not merely clear a host boolean.
     assert opened.error == AssuranceStoreError.None, "native namespace lease released"
     assert contender.len == 0 and contender.byteLength == 0, "cancellation preserves empty published namespace"
+
 proc cycle(owner: var Services, missing: string, index: int) {.raises.} =
   ## Failed I/O and Done cancellation both keep shared capacity until the matching exact ticket retires.
   let admitted = owner.beginAssuranceStorage(missing, limits(), AssuranceStorageMode.Open)
@@ -60,6 +67,7 @@ proc cycle(owner: var Services, missing: string, index: int) {.raises.} =
     assert completed.assuranceStorageValue.error == AssuranceStoreError.InvalidNamespace, "actual I/O refusal preserved"
   assert not owner.assuranceStorageInfo.opened and not owner.stateProofActive and
       not owner.rpc.chainPaused, "exact failure retirement resumes canonical access"
+
 proc main() {.raises.} =
   ## Configured original genesis independently binds the namespace; no raw chain parameter can substitute a later head.
   let context = queryContext()

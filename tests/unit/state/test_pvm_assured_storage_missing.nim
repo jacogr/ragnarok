@@ -28,6 +28,7 @@ proc metadata(state: StateStoreSnapshot): ServiceMetadata =
   ## The account survives successive writes; decode its exact canonical fields at each retained full-map owner.
   decodeServiceMetadata(state.lookup(chapterServiceKey(StateChapter(255), ServiceIndex(
       42))).value.bytes, ByteLimit(ServiceMetadataBytes)).value.metadata
+
 proc storage(state: StateStoreSnapshot) =
   ## The unchanged initial prefix and full eight-byte NONE distinguish absence from stale-parent or truncated returns.
   let key = serviceStorageKey(ServiceIndex(42), @[11'u8], ByteLimit(1)).value
@@ -35,11 +36,13 @@ proc storage(state: StateStoreSnapshot) =
   let account = metadata(state)
   assert uint32(account.storageItems) == 1 and uint64(account.storageBytes) == 46
   assert uint64(account.balance) == 58
+
 proc config(fixture: AssuredOutcomeFixture): AssuredExecutionConfig =
   ## Match original eleven-byte capture without changing protocol gas, instruction scheduling or host calls.
   result = assuredExecutionConfig(fixture.queue)
   result.runner.steps = ExecutionStepLimit(22) # Two explicit current write selectors extend the original twenty-step path.
   result.runner.completion.batch.selfValueBytes = ByteLimit(11)
+
 proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
   ## Execute actual deletion, absent read and return-word storage under the original parameters and local ceilings.
   let outcome = executeAssuredAccumulation(fixture.queue, config(fixture))
@@ -49,6 +52,7 @@ proc execute(fixture: AssuredOutcomeFixture): ExecutedAssuredAccumulation =
         outcome.runnerFailure.error
   assert outcome.error == AssuredExecutionError.None
   outcome.value
+
 proc compose(source: ExecutedAssuredAccumulation): ComposedAssuredState =
   ## Compose actual read-derived regular storage without replaying initial guest work.
   let outcome = composeAssuredState(source, assuredCompositionConfig())
@@ -171,6 +175,7 @@ for field in low(Parameter)..high(Parameter):
 assert sameStateSnapshot(fixture.state.snapshot.value, original) and sameChainView(fixture.view, oldView)
 storage(original)
 assert uint32(metadata(original).lastAccumulation) == 2
+
 proc cycle(fixture: AssuredOutcomeFixture) =
   ## Execute deletion/read/restoration, compose and publish the actual NONE word, then release every successor owner.
   let source = compose(execute(fixture))

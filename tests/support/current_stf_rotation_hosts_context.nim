@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit bounded large-code/copy policy for literal privilege guests across changing rosters.
+
 import ./current_stf_population_reporting_context
 import ../../src/app/candidate
 import ../../src/codec/bounded

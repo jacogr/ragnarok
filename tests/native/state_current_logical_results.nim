@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Guard current logical parent/source extraction with a genuine signed complete successor positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[current_checkpoint_context, current_state_context, current_typed_context,
     accumulation_current_chain_context, supplied_logical_context]
@@ -9,18 +10,23 @@ import ../../src/state/current/[logical as current_logical, state as current_sta
 import ../../src/state/supplied/logical_inventory as supplied_logical_inventory
 import ../../src/state/[inventory, manifest]
 import ../../src/codec/report_owned
+
 proc extract(outcome: CurrentLogicalResult[CurrentLogicalState]) {.noinline.} =
   ## Failed/default results grant no logical owner.
   discard outcome.value
+
 proc reason(outcome: CurrentLogicalResult[CurrentLogicalState]) {.noinline.} =
   ## Only actual failed capture grants its nested reason.
   discard outcome.logicalFailure
+
 proc source(owner: CurrentLogicalState) {.noinline.} =
   ## Default owners grant no current parameter/producer provenance.
   discard owner.currentLogicalSource.value
+
 proc logical(owner: CurrentLogicalState) {.noinline.} =
   ## Default owners grant no supplied raw-key owner.
   discard owner.currentLogicalInventory.value
+
 proc main() {.raises.} =
   ## Fixture I/O is outside strict negative guard verdicts.
   case paramStr(1)

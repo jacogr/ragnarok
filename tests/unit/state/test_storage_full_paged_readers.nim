@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real native full-graph readers validate independent fixture bytes, epoch pins, IO refusal and explicit retirement.
+
 # @@Verification={"arc":"storage_full_paged_readers_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, full_paged_reference]
@@ -13,19 +14,23 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/records as node_records
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc text(bytes: openArray[byte]): string =
   ## Test-only conversion writes complete independent oracle files, not production memory materialization.
   result = newString(bytes.len)
   for index in 0..<bytes.len: result[index] = char(bytes[index]) # Exact fixture bytes.
+
 proc write(path: string, bytes: openArray[byte]) =
   ## Fixture setup is outside observed native operations and never supplies a durability receipt.
   try:
     writeFile(path, text(bytes))
   except:
     assert false, "test fixture write failed"
+
 proc path(label: string): string =
   ## Each suite process owns its native fixture directory under the ignored runner working tree.
   "full-paged-readers-" & $storageProcessId() & "-" & label
+
 proc seed(directory: string, fixture: FullPagedFixture) =
   ## A real stable LOCK and independent full-format bytes allow strict-reader tests before writer implementation.
   var owner = default(PagedDirectory)
@@ -33,6 +38,7 @@ proc seed(directory: string, fixture: FullPagedFixture) =
   assert owner.close == FileError.None
   write(directory & "/" & epochName(ManagedEpoch(1)).value, fixture.io.bytes)
   write(directory & "/CURRENT", fixture.manifest.bytes.value)
+
 func config(fixture: FullPagedFixture): FullPagedNativeConfig =
   ## Expected chain/root originate from the independent test fixture, not disk selection.
   FullPagedNativeConfig(chain: fixture.header.chainId, root: fixture.header.root, limits: policy())

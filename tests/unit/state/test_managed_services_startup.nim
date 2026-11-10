@@ -2,17 +2,20 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual Services startup selects a managed directory explicitly and resumes only its intact selected local head.
+
 import std/[assertions, syncio, envvars]
 import ../../support/managed_storage_samples
 import ../../../src/app/[services, options]
 import ../../../src/chain/[genesis, provider]
 import ../../../src/storage/managed/manifest as managed_manifest
+
 proc configured(path: string, layout: string): Options =
   ## Harness-owned configured genesis is captured before listeners or storage become observable.
   result = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", getEnv(
       "RAGNAROK_APPLICATION_CHECKPOINT"),
     "--state-storage", "disk", "--state-db", path, "--state-layout", layout], result)
+
 proc main() {.raises.} =
   ## Exclusive locking and wrong-layout/corrupt-CURRENT refusals never replace an existing selected epoch.
   let path = "managed-services-startup"

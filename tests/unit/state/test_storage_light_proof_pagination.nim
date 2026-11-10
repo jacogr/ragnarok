@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable evidence cursors bound every page, preserve progress and outlive selected image/file owners.
+
 # @@Verification={"arc":"storage_light_proof_pagination_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,35 +15,43 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Iteration must use retained authenticated evidence even when every hash would refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## No page traversal or detached copy may rehash proofs or checksums.
+
 proc key(first: byte): StateKey =
   ## Canonical identities cover two long values, small and empty presence, and retained absence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## Fixture image policy bounds complete retained evidence independently of page output.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(5),
     writes: ElementLimit(5), valueBytes: ByteLimit(68),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc budget(items = 5): LightProofPageLimits =
   ## Each page separately bounds descriptor count and individual/aggregate output.
   LightProofPageLimits(items: ElementLimit(items), nodes: ElementLimit(1245),
     valueBytes: ByteLimit(68), proof: policy().cache.proof)
+
 proc same(actual, expected: StateProof) =
   ## Compare exact proof transport without assuming value length distinguishes presence from absence.
   assert actual.value == expected.value and actual.nodes.len == expected.nodes.len
   for index in 0..<actual.nodes.len:
     assert array[64, byte](actual.nodes[index]) == array[64, byte](expected.nodes[index])
+
 proc transferred(image: PreparedLightSnapshot): LightProofCursor =
   ## The cursor retains a temporary restored image after its source and local handle retire.
   var bytes = image.bytes
   let restored = takeLightSnapshot(bytes, image.chainId, image.root, image.limits).value
   assert bytes.len == 0
   restored.proofCursor.value
+
 proc cycle(image: PreparedLightSnapshot) =
   ## Retire page payloads, retained continuations and failed reads before the ARC observation.
   let start = image.proofCursor.value
@@ -58,6 +67,7 @@ proc cycle(image: PreparedLightSnapshot) =
   assert page.proofs[0].proof.value[0] == 0
   assert start.readPage(budget(2)).value.proofs[0].proof.value[0] == 0
   assert next.readPage(budget()).value.nextCursor.finished
+
 proc prepared(image: PreparedLightSnapshot, trie: FullStateTrie) =
   ## Every cardinality and exact payload ceiling preserves canonical order, progress, retry and root binding.
   let identities = [key(0), key(64), key(128), key(192), key(255)]
@@ -126,6 +136,7 @@ proc prepared(image: PreparedLightSnapshot, trie: FullStateTrie) =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("storage_light_proof_pagination", 1000, before, after)
+
 proc empty() =
   ## Empty images are terminal immediately; retained zero-node absences remain real pageable entries.
   let blank = prepareLightSnapshot(default(StorageChainId), default(StateRoot), [], policy()).value
@@ -141,6 +152,7 @@ proc empty() =
   assert first.nextCursor.readPage(zero).value.nextCursor.finished
   assert calls() == 0
   resetHash(0)
+
 proc files(image: PreparedLightSnapshot) {.raises.} =
   ## A cursor retained from a reopened file owns no directory lease and survives complete file removal.
   let path = "storage-light-proof-pagination"
@@ -163,6 +175,7 @@ proc files(image: PreparedLightSnapshot) {.raises.} =
   resetHash(1)
   assert cursor.readPage(budget()).value.len == 5 and calls() == 0
   resetHash(0)
+
 proc main() {.raises.} =
   ## Complete independent flat-map hashing fixes authority before building the retained evidence fixture.
   resetHash(0)

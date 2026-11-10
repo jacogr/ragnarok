@@ -15,12 +15,16 @@ include ../../../src/crypto/primitives
 
 # Test-only bridge counters contain no secret bytes or retained ARC owners.
 proc watch(address: pointer, length: csize_t) {.importc: "ro_watch", cdecl.}
+
 # The observer counts wipes of the exact watched storage address.
 proc calls(): cint {.importc: "ro_calls", cdecl.}
+
 # Nonzero public fixtures distinguish real seed storage from an already-cleared temporary.
 proc beforeNonzero(): cint {.importc: "ro_before_nonzero", cdecl.}
+
 # Zero checks occur only inside the callback before allocation release.
 proc afterZero(): cint {.importc: "ro_after_zero", cdecl.}
+
 # Failure injection applies only to this observer-linked test process.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
 

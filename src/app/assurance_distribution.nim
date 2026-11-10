@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional CE141 receipt owns detached raw requests and exact native/managed tokens; native callbacks never verify signatures or touch canonical graphs.
+
 import std/[monotimes, times]
 import ./services
 import ./assurance_pool
@@ -23,6 +24,7 @@ type
     proof: ProofWorkerTicket
     started: MonoTime
     received: uint64
+
 func assuranceReceiptPolicy*(limits: AssuranceDistributionLimits,
     entries: range[1..MaxPendingAssurances], indices: range[1..1023],
     timeoutMs: range[1..120000] = 30000): AssuranceReceiptPolicy =
@@ -30,16 +32,21 @@ func assuranceReceiptPolicy*(limits: AssuranceDistributionLimits,
   if not limits.valid: return default(AssuranceReceiptPolicy)
   AssuranceReceiptPolicy(ready: true, limits: limits, entries: entries, indices: indices,
       timeout: timeoutMs)
+
 func valid*(policy: AssuranceReceiptPolicy): bool =
   ## Default policy never activates a selector.
   policy.ready
+
 proc `=copy`*(destination: var AssuranceDispatcher, source: AssuranceDispatcher) {.error.}
   ## Copies could retire another controller's live exact lease or native stream.
+
 proc `=dup`*(source: AssuranceDispatcher): AssuranceDispatcher {.error.}
   ## Construction cannot duplicate a live token owner.
+
 proc requireClosed(owner: AssuranceDispatcher) {.requires: not owner.held and not owner.active.} =
   ## Explicit retirement must precede destruction of any callback/controller storage.
   discard
+
 proc `=wasMoved`*(owner: var AssuranceDispatcher) {.nodestroy, requires: not owner.held and
     not owner.active.} =
   ## Only an inactive controller moves; delegate all potentially owned children.
@@ -48,6 +55,7 @@ proc `=wasMoved`*(owner: var AssuranceDispatcher) {.nodestroy, requires: not own
   `=wasMoved`(owner.ticket)
   `=wasMoved`(owner.request)
   `=wasMoved`(owner.proof)
+
 proc `=destroy`*(owner: AssuranceDispatcher) =
   ## The foreground host joins exact borrowed work before dropping this controller.
   requireClosed(owner)
@@ -56,16 +64,20 @@ proc `=destroy`*(owner: AssuranceDispatcher) =
   `=destroy`(owner.ticket)
   `=destroy`(owner.request)
   `=destroy`(owner.proof)
+
 func received*(owner: AssuranceDispatcher): uint64 =
   ## Count retained fresh candidates for which the native route accepted the bare acknowledgment FIN.
   owner.received
+
 func pendingCount*(owner: AssuranceDispatcher): int =
   ## Return expanded candidate occupancy independently from distinct peer rows.
   owner.pool.candidateCount
+
 proc pendingAt*(owner: AssuranceDispatcher, ordinal: int): Assurance {.requires: ordinal >= 0 and
     ordinal < owner.pool.candidateCount.} =
   ## A copied unadmitted block candidate grants no current canonical authority.
   owner.pool.candidateAt(ordinal)
+
 proc configure*(owner: var AssuranceDispatcher, streams: var NodeService,
     policy: AssuranceReceiptPolicy): bool =
   ## Install bounded retention before explicitly enabling the separately optional validator selector.
@@ -81,6 +93,7 @@ proc configure*(owner: var AssuranceDispatcher, streams: var NodeService,
   owner.policy = policy
   owner.received = 0 # A newly configured incarnation starts its own historical acceptance counter.
   true
+
 proc clearClaim(owner: var AssuranceDispatcher) =
   ## Only exact managed retirement or proven joined revocation permits dropping the detached request/token owners.
   owner.held = false
@@ -89,10 +102,12 @@ proc clearClaim(owner: var AssuranceDispatcher) =
   owner.ticket = default(NodeReadTicket)
   owner.request = default(ReadRequest)
   owner.proof = default(ProofWorkerTicket)
+
 proc reject(owner: var AssuranceDispatcher, streams: var NodeService) =
   ## Reject only this physical request; no success FIN or partial candidate escapes.
   discard streams.reject(owner.ticket)
   owner.clearClaim()
+
 proc poll*(owner: var AssuranceDispatcher, services: var Services,
     streams: var NodeService, clock: MonoTime) =
   ## Retire completions before another actor submits work; source-free pool refresh never borrows a foreign canonical graph.
@@ -132,6 +147,7 @@ proc poll*(owner: var AssuranceDispatcher, services: var Services,
     if owner.received < high(uint64): inc owner.received
     owner.clearClaim()
   else: owner.reject(streams) # A valid locally retained candidate may survive a transport reset.
+
 proc submit*(owner: var AssuranceDispatcher, services: var Services,
     streams: var NodeService, clock: MonoTime): bool {.raises.} =
   ## One exact FIN-complete upload waits under its original deadline; actual TLS identity comes only from its live native ticket.
@@ -157,6 +173,7 @@ proc submit*(owner: var AssuranceDispatcher, services: var Services,
   owner.active = true
   owner.cancelled = false
   true
+
 proc close*(owner: var AssuranceDispatcher, services: var Services, streams: var NodeService) =
   ## Shutdown retires only this exact lease; an unrelated actor's worker must not be cancelled or joined.
   if owner.active and services.stateProofActive(owner.proof): services.stopStateProofs()

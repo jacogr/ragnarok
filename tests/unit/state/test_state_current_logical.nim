@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Supplied logical current descriptions retain exact original physical/profile provenance and refuse altered/incomplete declarations.
+
 # @@Verification={"arc": "state_current_logical_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_state_context, current_typed_context,
@@ -14,10 +15,13 @@ import ../../../src/state/supplied/[logical_inventory as supplied_logical_invent
 import ../../../src/state/[inventory, manifest, store, economic_profile]
 import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[composition as state_composition, accounts as state_accounts]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Original producer preparation and complete matching happen before hash-free source/query probes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Retaining provenance and copying already-qualified declarations cannot hash.
+
 proc verify(source: CurrentStateSerialization) =
   ## Original current compact capture and the raw-key companion are different inventories bound to the same original snapshot.
   let original = source.currentStateInventory.value
@@ -52,10 +56,12 @@ proc verify(source: CurrentStateSerialization) =
   assert sameStateSnapshot(owner.currentLogicalSource.value.currentStateInventory.value.inventorySource.value.manifestSource.value, snapshot)
   assert calls() == 0
   fail(0)
+
 proc cycle(source: CurrentStateSerialization, services: openArray[StateService]) =
   ## Retire every new raw-key/compact owner and retained current producer alias on each cycle.
   let owner = captureCurrentLogicalState(source, services, suppliedLogicalTestLimits).value
   assert owner.currentLogicalInventory.value.suppliedLogicalInfo.value.services == 2
+
 proc main() {.raises.} =
   ## Complete authored ordinary/disputed/ticketed/epoch successors are actual signed current producer outputs.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

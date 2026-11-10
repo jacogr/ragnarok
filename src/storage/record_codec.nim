@@ -410,7 +410,6 @@ proc decodeRecords(input: openArray[byte], limits: RecordLimits, collection: boo
   if validated != RecordError.None: return RecordResult[TrieExport](status: validated)
   RecordResult[TrieExport](status: RecordError.None, completed: batch)
 
-
 proc validateTrieExport*(batch: TrieExport, limits: RecordLimits): RecordError =
   ## Preserve exact single-target metadata, record and complete-map byte ceilings.
   validateRecords(batch, batch.records, limits, false)
@@ -421,9 +420,11 @@ proc encodeTrieExport*(batch: TrieExport, limits: RecordLimits): RecordResult[se
 
 proc encodeFramedTrieExport*(batch: TrieExport, limits: RecordLimits,
     prefixBytes, suffixBytes: uint64, outputLimit: ByteLimit): RecordResult[seq[byte]] =
-  ## Strictly validate borrowed mutable records, then encode into one owned buffer with zero-filled reservations.
-  ## Requested nonnegative extents and the independent whole-output ceiling are proved before allocation/hashing.
-  ## Body policy, duplicate rejection and every local hash remain mandatory; reservations grant no graph authority.
+  ## Validate borrowed records and write into an owned buffer with zero-filled reservations.
+  ## The independent output ceiling covers both reservations and the body. Prove
+  ## all extents before narrowing, hashing or allocation. Duplicate and local hash
+  ## checks still precede output allocation. The caller can fill the reservations
+  ## in place, avoiding a separate body buffer and copy.
   encodeRecords(batch, batch.records, limits, false, prefixBytes, suffixBytes, outputLimit)
 
 proc decodeTrieExport*(input: openArray[byte], limits: RecordLimits): RecordResult[TrieExport] =

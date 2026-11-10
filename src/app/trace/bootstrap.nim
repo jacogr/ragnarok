@@ -3,6 +3,7 @@
 
 ## Initialize a trace replay chain only from independently supplied header/state anchors and full Parameters.
 ## The published Genesis file cannot select its own trust or infer a chain profile.
+
 import std/assertions
 import ../chain
 import ../../chain/[genesis, parameters, provider]

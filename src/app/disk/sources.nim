@@ -3,6 +3,7 @@
 
 ## Shared live-graph root selection preserves rolling validation snapshots and independently selected finality.
 ## Historical record files are self-contained and never expand this paged/managed live-root inventory.
+
 import ../chain
 import ../../chain/[genesis, provider]
 import ../../state/store

@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Conditional and dynamic control transfers preserve local preparation refusals rather than guest panic.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -49,7 +52,6 @@ proc sameCpu(left, right: MachineInfo) =
   for index in 0..<13:
     # Compare every register, including operands intentionally aliased by a witness.
     assert uint64(left.registers[index]) == uint64(right.registers[index])
-
 
 let cycles = GasCycleLimit(100000)
 let empty = captureMemory([], PageLimit(0)).value

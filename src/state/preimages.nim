@@ -188,7 +188,6 @@ proc preparePreimages(prior: StateStoreSnapshot, source: OwnedFrame,
   PreimageTransitionResult[PreimageData](status: PreimageTransitionError.None,
     completed: data)
 
-
 proc admitPreimages*(prior: StateStoreSnapshot, source: OwnedFrame,
     limits: PreimageLimits): PreimageTransitionResult[AdmittedPreimages] =
   ## Admit only an ordered, unique and prior-requested extrinsic; relaxed preparation never exposes this certificate.
@@ -266,7 +265,6 @@ proc integratePrepared(state: var StateStore, current: StateStoreSnapshot, data:
       published.error)) # Store preserves all-or-neither writes/root publication.
   PreimageTransitionResult[StateStoreSnapshot](status: PreimageTransitionError.None,
       completed: published.value)
-
 
 proc integratePreimages*(state: var StateStore, plan: AdmittedPreimages,
     slot: HeaderSlot): PreimageTransitionResult[StateStoreSnapshot] =

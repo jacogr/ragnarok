@@ -3,6 +3,7 @@
 
 ## Bounded canonical content checks and exact bare-FIN upload acknowledgments; protocol-specific publication verification stays in its managed consumer.
 ## Checked blocks remain structural/query-bound inputs for GP admission; partial state never becomes a full map here.
+
 import std/assertions
 import ./read_stream
 import ../chain/[genesis, parameters, reports]
@@ -53,34 +54,43 @@ type
     data: nil ReplyData
   FrameParts = object ## Private checked offsets never escape independently of the synchronous input owner.
     firstStart, firstStop, secondStart, secondStop: int
+
 func error*[T](outcome: ReadVerificationResult[T]): ReadVerificationError =
   ## Only the private result tag is unconditionally readable.
   outcome.status
+
 func value*[T](outcome: ReadVerificationResult[T]): T {.requires: outcome.status ==
     ReadVerificationError.None.} =
   ## Extract only a complete source or checked response after successful selection.
   outcome.completed
+
 func stateError*[T](outcome: ReadVerificationResult[
     T]): RangeProofError {.requires: outcome.status == ReadVerificationError.StateFailure.} =
   ## Read the actual failed state verifier's reason, not a fabricated default cause.
   outcome.stateReason
+
 proc blockFailure*[T](outcome: ReadVerificationResult[T]): FrameResult[
     BlockRead] {.requires: outcome.status == ReadVerificationError.BlockFailure.} =
   ## Preserve precise component/limit errors from the actual failed block codec.
   outcome.blockReason
+
 func reportError*[T](outcome: ReadVerificationResult[
     T]): OwnershipError {.requires: outcome.status == ReadVerificationError.ReportFailure.} =
   ## Preserve only the actual failed complete report decoder's cause, never an earlier decoded prefix.
   outcome.reportReason
+
 func valid*(source: ReadSource): bool =
   ## A default source never supplies a state root or decoding profile.
   source.available
+
 func blockHash*(source: ReadSource): BlockHash {.requires: source.available.} =
   ## The hash remains bound to its independently captured posterior root.
   source.hash
+
 func stateRoot*(source: ReadSource): StateRoot {.requires: source.available.} =
   ## This is the complete selected snapshot's posterior commitment, never a root carried by response bytes.
   source.posterior
+
 proc captureReadSource*(saved: BlockSnapshotResult): ReadVerificationResult[ReadSource] =
   ## Copy fixed context in a staging activation; no map/header ARC alias survives into CPU verification.
   if saved.error != GenesisError.None: return ReadVerificationResult[ReadSource](
@@ -94,14 +104,17 @@ proc captureReadSource*(saved: BlockSnapshotResult): ReadVerificationResult[Read
   ReadVerificationResult[ReadSource](status: ReadVerificationError.None, completed: ReadSource(
     available: true, hash: snapshot.blockHash, posterior: snapshot.stateRoot,
     cores: snapshot.cores, population: snapshot.activeValidators, epoch: EpochSlots(profile.get(epochPeriod))))
+
 func valid*(reply: CheckedReadReply): bool =
   ## Default checked replies grant neither decoded blocks nor authenticated content.
   reply.data != nil
+
 proc checkedData(reply: CheckedReadReply): ReplyData {.requires: reply.valid.} =
   ## Refine one stable private immutable owner before success-only extraction.
   let data = reply.data
   assert data != nil
   data
+
 proc kind*(reply: CheckedReadReply): ReadKind {.requires: reply.valid.} =
   ## The kind identifies the checks performed and the remaining downstream authority boundary.
   case reply.checkedData.kind
@@ -110,63 +123,77 @@ proc kind*(reply: CheckedReadReply): ReadKind {.requires: reply.valid.} =
   of CheckedKind.State: ReadKind.State
   of CheckedKind.Preimage: ReadKind.Preimage
   of CheckedKind.Acknowledgment: reply.checkedData.request.kind
+
 proc request*(reply: CheckedReadReply): ReadRequest {.requires: reply.valid.} =
   ## Retain the exact query whose count, direction, range or content identity was checked.
   reply.checkedData.request
+
 proc blockCount*(reply: CheckedReadReply): int {.requires: reply.valid and reply.kind ==
     ReadKind.Blocks.} =
   ## Structural blocks still require ordinary GP execution/consensus admission before adoption.
   reply.checkedData.blocks.len
+
 proc blockAt*(reply: CheckedReadReply, index: int): OwnedBlock {.requires: reply.valid and
     reply.kind == ReadKind.Blocks and index >= 0 and index < reply.blockCount.} =
   ## Return an immutable exact decoded block, without claiming a state transition certificate.
   reply.checkedData.blocks[index]
+
 proc hashAt*(reply: CheckedReadReply, index: int): BlockHash {.requires: reply.valid and
     reply.kind == ReadKind.Blocks and index >= 0 and index < reply.blockCount.} =
   ## Sealed-header hashes bind the sequence to the requested anchor and parent links.
   reply.checkedData.hashes[index]
+
 proc workReport*(reply: CheckedReadReply): OwnedReport {.requires: reply.valid and reply.kind ==
     ReadKind.Report.} =
   ## Full-hash-bound complete report ownership grants no guarantee, judgment, execution or availability certificate.
   reply.checkedData.report
+
 proc statePage*(reply: CheckedReadReply): VerifiedStateRange {.requires: reply.valid and
     reply.kind == ReadKind.State.} =
   ## A verified partial page is distinct from a complete StateStore snapshot.
   reply.checkedData.page
+
 proc preimageHash*(reply: CheckedReadReply): ServicePreimageHash {.requires: reply.valid and
     reply.kind == ReadKind.Preimage.} =
   ## This full digest was checked over the entire returned blob.
   reply.checkedData.hash
+
 proc preimageByteLength*(reply: CheckedReadReply): int {.requires: reply.valid and reply.kind ==
     ReadKind.Preimage.} =
   ## Length observation avoids a blob copy during bounded offer/cache admission.
   reply.checkedData.blob.len
+
 proc preimageBytes*(reply: CheckedReadReply): seq[byte] {.requires: reply.valid and reply.kind ==
     ReadKind.Preimage.} =
   ## Copy immutable verified content; no mutable response storage escapes.
   let data = reply.checkedData
   result = @[]
   for index in 0..<data.blob.len: result.add(data.blob[index])
+
 func e4(input: openArray[byte], offset: int): uint64 {.requires: offset >= 0 and offset <=
     input.len and input.len-offset >= 4.} =
   ## Widen before shifts; callers prove four complete bytes before decoding a length or maximum.
   result = 0
   for index in 0..<4: result = result or (uint64(input[offset+index]) shl (index*8))
+
 func hash(input: openArray[byte]): array[32, byte] {.requires: input.len >= 32.} =
   ## Fixed request extents were admitted by ReadRequest before any content identity extraction.
   result = default(array[32, byte])
   for index in 0..<32: result[index] = input[index]
+
 func key(input: openArray[byte], offset: int): StateKey {.requires: offset >= 0 and offset <=
     input.len and input.len-offset >= 31.} =
   ## Serialized state identities are exactly31 bytes, without a reconstructed final key byte.
   var copied = default(array[31, byte])
   for index in 0..<31: copied[index] = input[offset+index]
   StateKey(copied)
+
 proc copyBytes(input: openArray[byte], first, stop: int): seq[byte] {.requires: first >= 0 and
     stop >= first and stop <= input.len.} =
   ## Capture only an already bounded exact extent after all arithmetic checks.
   result = newSeq[byte](stop-first)
   for index in 0..<result.len: result[index] = input[first+index]
+
 proc parts(wire: openArray[byte], count: int): ReadVerificationResult[FrameParts] =
   ## Parse exactly one/two E4 messages with no suffix; all offsets remain bounded by the caller's hard wire ceiling.
   if wire.len < 4: return ReadVerificationResult[FrameParts](
@@ -187,6 +214,7 @@ proc parts(wire: openArray[byte], count: int): ReadVerificationResult[FrameParts
       status: ReadVerificationError.InvalidFormat)
   ReadVerificationResult[FrameParts](status: ReadVerificationError.None, completed: FrameParts(
     firstStart: 4, firstStop: stop, secondStart: stop+4, secondStop: wire.len))
+
 proc checkState(request: ReadRequest, wire: openArray[byte], source: ReadSource,
     limits: ReadVerificationLimits): ReadVerificationResult[CheckedReadReply] =
   ## Decode exact bare node/pair sequences, then authenticate every covered subtree against caller trust.
@@ -248,6 +276,7 @@ proc checkState(request: ReadRequest, wire: openArray[byte], source: ReadSource,
   ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.None,
     completed: CheckedReadReply(
     data: ReplyData(kind: CheckedKind.State, request: request, page: checked.value)))
+
 proc checkPreimage(request: ReadRequest, wire: openArray[byte]): ReadVerificationResult[
     CheckedReadReply] =
   ## Match the full requested hash, including empty blobs; transport identity alone supplies no content authority.
@@ -266,6 +295,7 @@ proc checkPreimage(request: ReadRequest, wire: openArray[byte]): ReadVerificatio
     completed: CheckedReadReply(
     data: ReplyData(kind: CheckedKind.Preimage, request: request, hash: ServicePreimageHash(
         expected), blob: copyBytes(wire, span.firstStart, span.firstStop))))
+
 proc checkReport(request: ReadRequest, wire: openArray[byte],
     source: ReadSource): ReadVerificationResult[CheckedReadReply] =
   ## Hash the exact one-message body and validate the complete canonical report under the local core profile.
@@ -295,6 +325,7 @@ proc checkReport(request: ReadRequest, wire: openArray[byte],
   ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.None,
     completed: CheckedReadReply(data: ReplyData(kind: CheckedKind.Report, request: request,
         report: parsed.value)))
+
 proc checkBlocks(request: ReadRequest, wire: openArray[byte], source: ReadSource,
     limits: ReadVerificationLimits): ReadVerificationResult[CheckedReadReply] =
   ## Capture every exact GP block and bind hashes/slots/links/count to the query; ordinary execution/consensus remains downstream.
@@ -385,6 +416,7 @@ proc checkBlocks(request: ReadRequest, wire: openArray[byte], source: ReadSource
   ReadVerificationResult[CheckedReadReply](status: ReadVerificationError.None,
     completed: CheckedReadReply(
     data: ReplyData(kind: CheckedKind.Blocks, request: request, blocks: blocks, hashes: hashes)))
+
 proc verifyReadReply*(request: ReadRequest, wire: openArray[byte], source: ReadSource,
     limits: ReadVerificationLimits): ReadVerificationResult[CheckedReadReply] =
   ## Verify all supplied bytes atomically; no earlier block/page/blob survives a later failure.

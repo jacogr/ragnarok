@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_work_digests_arc_release"}
 
 ## Original source-bound report guests verify C's field derivation, literal hash/wire witnesses and ownership.
@@ -25,6 +26,7 @@ let fixture = digestFixture([reportGuest(returning), reportGuest(empty)], payloa
 let report = digestReportFixture(fixture, [])
 let digests = prepareRefinementDigests(report, digestLimits()).value
 assert digests.digestCount.value == 2
+
 proc check(digests: RefinementDigests, index: uint64, kind: WorkKind): RefinedDigest =
   ## Compare source-derived fields and borrowed-codec decoding against the genuine final item and original manifest.
   let digest = digests.digestAt(FetchItemIndex(index)).value
@@ -147,11 +149,13 @@ assert first.digestBytes.value[0] == 42 and first.digestOutput.value[0] == 21
 assert array[32, byte](first.digestInfo.value.payloadHash) == payloadHash
 assert prepareRefinementDigests(report, digestLimits()).value.digestAt(FetchItemIndex(
     0)).value.digestBytes.value == first.digestBytes.value
+
 proc detached(): RefinedDigest =
   ## An extracted digest keeps original item/source and output alive after all caller/report/collection handles retire.
   let report = digestReportFixture(digestFixture([reportGuest(returning)], [payloads[0]]), [])
   prepareRefinementDigests(report, digestLimits()).value.digestAt(FetchItemIndex(0)).value
 assert detached().digestOutput.value == @[21'u8, 22, 23]
+
 proc cycle() =
   ## Release fresh complete state/package/report, hashing scratch and both successful and rejected projections each cycle.
   let source = digestReportFixture(digestFixture([reportGuest(returning), reportGuest(empty, 1)],

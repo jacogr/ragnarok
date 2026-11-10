@@ -16,11 +16,13 @@ let policy = OperandLimits(outputBytes: ByteLimit(1024), authBytes: ByteLimit(10
     totalBlobBytes: ByteLimit(1024), maxBytes: ByteLimit(4096))
 let config = AvailabilityConfig(cores: CoreCount(2), maxBytes: ByteLimit(104))
 var output: seq[byte] = @[]
+
 # Hand-authored empty tagged operands select each existing work-error alternative without source-encoder round trips.
 proc errorInfo(kind: WorkKind): OperandInfo =
   var wire = newSeq[byte](132)
   wire[130] = byte(ord(kind))
   operandInfo(decodeOperand(wire, policy).value.owner).value
+
 # A valid fixed transfer selects the opposite decoded branch without exposing a private discriminator.
 proc decodedTransfer(): AccumulationValue =
   var wire = newSeq[byte](154)

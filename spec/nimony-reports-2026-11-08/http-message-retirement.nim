@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Standalone pinned-library retirement probe; not a passing application test or submitted issue.
+
 import std/[assertions, syncio]
 import std/http/httpmsg as msg
 import std/http/httpparse as parser

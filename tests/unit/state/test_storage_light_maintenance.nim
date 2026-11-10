@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent threshold/range models and real faults qualify exact-source maintenance receipts, bounded continuation and maximum counters.
+
 # @@Verification={"arc":"storage_light_maintenance_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, storage_light_root, storage_light_journal, storage_light_maintenance]
@@ -12,12 +13,16 @@ import ../../../src/storage/light/delta as light_delta
 import ../../../src/storage/managed/[io as managed_io, manifest as managed_manifest]
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Separate pure policy decisions and metadata preparation from selected-head revalidation.
+
 proc refuseAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Consume each preparation hash and a cleanup-only validation refusal independently.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## No-action and invalid-source preparation performs no crypto.
+
 proc cycle(owner: LightJournalCache) =
   ## Copied compaction plans and late metadata refusal retire all private state before each ARC sample.
   let prepared = prepareLightMaintenance(owner, owner.epoch.value, owner.sequence.value,
@@ -29,6 +34,7 @@ proc cycle(owner: LightJournalCache) =
       maintenanceLimits())
   assert refused.error == FileError.BackendFailure, "late maintenance metadata refusal"
   resetHash(0)
+
 proc normal(fixture: LightRootFixture) {.raises.} =
   ## Confirm compaction before retirement, then prove exact progress, no-action idempotence and a following retained admission.
   let path = "maintenance-normal-" & $storageProcessId()
@@ -93,6 +99,7 @@ proc normal(fixture: LightRootFixture) {.raises.} =
   assert owner.close == FileError.None
   retireRootEpoch(path, ManagedEpoch(3))
   retireLightJournal(path)
+
 proc model(fixture: LightRootFixture) {.raises.} =
   ## Enumerate retirement eligibility independently over selected epoch four and prospective compacted epoch five.
   let path = "maintenance-model-" & $storageProcessId()
@@ -163,6 +170,7 @@ proc model(fixture: LightRootFixture) {.raises.} =
   assert owner.close == FileError.None
   retireRootEpoch(path, ManagedEpoch(4))
   retireLightJournal(path)
+
 proc stale(fixture: LightRootFixture) {.raises.} =
   ## Exact policy, ordinary append and same-image physical/root return cycles refuse a previously prepared action without IO.
   let path = "maintenance-stale-" & $storageProcessId()
@@ -205,6 +213,7 @@ proc stale(fixture: LightRootFixture) {.raises.} =
   assert owner.close == FileError.None
   retireRootEpoch(path, ManagedEpoch(4))
   retireLightJournal(path)
+
 proc failures(fixture: LightRootFixture) {.raises.} =
   ## Publication, confirmed retirement and post-selection cleanup failures have distinct receipts and explicit safe continuation.
   for mode in 0..8:
@@ -263,6 +272,7 @@ proc failures(fixture: LightRootFixture) {.raises.} =
     assert owner.close == FileError.None
     retireRootEpoch(path, ManagedEpoch(2))
     retireLightJournal(path)
+
 proc readOnly() {.raises.} =
   ## A zero-mutation snapshot may compact a durable no-op frame without losing any independently verified knowledge.
   let fixture = rootFixture(ElementLimit(0))
@@ -285,6 +295,7 @@ proc readOnly() {.raises.} =
   assert owner.close == FileError.None
   retireRootEpoch(path, ManagedEpoch(2))
   retireLightJournal(path)
+
 proc maxima(fixture: LightRootFixture) {.raises.} =
   ## Independently authored strict selections place counters at their boundaries without unchecked production constructors.
   for maxEpoch in [false, true]:
@@ -340,6 +351,7 @@ proc maxima(fixture: LightRootFixture) {.raises.} =
     assert owner.close == FileError.None
     retireRootEpoch(path, finalEpoch)
     retireLightJournal(path)
+
 proc main() {.raises.} =
   ## Keep resource fixtures serial and require independent models, lifecycle and exact boundary failures before process qualification.
   let fixture = rootFixture()

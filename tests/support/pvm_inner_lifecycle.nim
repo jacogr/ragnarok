@@ -11,9 +11,11 @@ proc innerLimits*(): InnerMachineLimits =
   InnerMachineLimits(items: InnerMachineLimit(63), program: ProgramByteLimit(8192),
     total: InnerProgramLimit(65536), jumps: JumpCountLimit(32), pages: PageLimit(4),
         steps: ExecutionStepLimit(100), cycles: GasCycleLimit(1000))
+
 proc innerBlob*(): seq[byte] =
   ## Empty jump table, two code bytes (jump_ind r0) and a single marked opcode, all authored literally.
   @[0'u8, 0, 2, 50, 0, 1]
+
 proc innerMemory*(blob = innerBlob()): Memory =
   ## Copy supplied bytes into independent read-only pages; later caller mutation cannot change the owner.
   var pages: seq[PageImage] = @[]
@@ -23,6 +25,7 @@ proc innerMemory*(blob = innerBlob()): Memory =
       page.bytes[offset] = blob[index*4096+offset] # Every unused byte remains explicit zero storage.
     pages.add(page)
   captureMemory(pages, PageLimit(3)).value
+
 proc innerRegisters*(size = 6'u64, pointer = 65536'u64, entry = 0'u64): RegisterFile =
   ## Sentinel registers catch unwanted mutations outside r7; all fields are initialized explicitly.
   result = default(RegisterFile)

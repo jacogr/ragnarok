@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_fetch_arc_release"}
 
 ## Genuine canonical pending reports and explicitly structural epoch/roster variants test source-free CE137 plans, whole output admission and exact managed ownership.
+
 import std/[assertions, syncio, monotimes, times]
 import ../../../src/jamnp-s/[assurance_fetch, assurance_duty, availability_proof]
 import ../../../src/app/proof/[worker, work_submission]
@@ -14,13 +16,16 @@ import ../../../src/state/store
 import ../../../src/state/availability/specifier
 import ../../support/[jamnp_assurance_fixture, jamnp_import_recovery_fixture,
     jamnp_topology_fixture, arc_evidence]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only under bounded native completion deadlines without accessing any leased graph.
+
 proc limits(): AssuranceFetchLimits =
   ## Independent canonical-copy and owned-output ceilings cover the complete fixture without implicit defaults.
   AssuranceFetchLimits(duty: AssuranceDutyLimits(chapterBytes: ByteLimit(1000000),
       readBytes: ByteLimit(4000000),
     reports: ElementLimit(341), requests: ElementLimit(341*1023)), plannedBytes: ByteLimit(1000000))
+
 proc replaced(source: BlockSnapshotResult, entry: StateEntry): BlockSnapshotResult =
   ## Recommit one explicitly trusted structural chapter while preserving the exact sealed header; this does not establish GP admission.
   let saved = source.value
@@ -34,6 +39,7 @@ proc replaced(source: BlockSnapshotResult, entry: StateEntry): BlockSnapshotResu
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
   assert saved.header.encodeOwnedHeader(wire).error == HeaderError.None, "exact structural header encoding"
   captureBlockSnapshot(wire, entries, saved.chainParameters)
+
 proc atEvaluation(source: BlockSnapshotResult, slot: uint32): BlockSnapshotResult =
   ## Structural evaluation-time variants isolate roster selection; their unchanged credential bytes are not asserted to verify against the changed slot.
   let saved = source.value
@@ -53,6 +59,7 @@ proc atEvaluation(source: BlockSnapshotResult, slot: uint32): BlockSnapshotResul
   let entry = availabilityStateEntry(assignments, policy)
   assert entry.error == AvailabilityError.None, "bounded structural C10 encoding"
   replaced(source, entry.value)
+
 proc repeated(source: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResult =
   ## The explicitly structural C8 variant preserves null gaps and three original positions of one real local key.
   let saved = source.value
@@ -67,6 +74,7 @@ proc repeated(source: BlockSnapshotResult, local: StateEdKey): BlockSnapshotResu
   roster[2].ed25519 = local
   roster[8].ed25519 = local
   replaced(source, validatorEntry(ValidatorChapter.Active, roster, policy).value)
+
 proc genuine(fixture: AssuranceAcquisitionFixture) =
   ## Literal original-index coordinates and independently decoded C8/C9 records check genuine C10 target provenance, not a self-rooted peer claim.
   let captured = captureAssuranceFetch(fixture.source, fixture.local, limits())
@@ -130,6 +138,7 @@ proc genuine(fixture: AssuranceAcquisitionFixture) =
       let selected = many.value.requestAt(row, local).value
       assert uint16(selected.validator) == originals[local] and uint64(selected.request.shard) ==
           coordinates[core][local], "literal repeated-key coordinates"
+
 proc epochs(fixture: AssuranceAcquisitionFixture): BlockSnapshotResult =
   ## Explicit independently trusted structural maps distinguish original current/prior epoch keys and unknown history without claiming new GP credential validity.
   let source = registrationSnapshot(fixture.availability, slot = 40, active = 9, previous = 12,
@@ -188,11 +197,13 @@ proc epochs(fixture: AssuranceAcquisitionFixture): BlockSnapshotResult =
   let future = captureAssuranceFetch(atEvaluation(source, 41), topologyKey(61), limits())
   assert future.error == AssuranceFetchError.DutyFailure, "future evaluation refuses canonical qualification"
   unknown
+
 proc staged(source: BlockSnapshotResult, local: StateEdKey): WorkSubmissionJob =
   ## Retire the capture wrapper and source aliases before moved publication to the native worker.
   let captured = captureAssurancePlanning(source, local, limits())
   assert captured.error == WorkJobError.None, "bounded closed planning capture"
   captured.value
+
 proc cycle(worker: var StateProofWorker, source: BlockSnapshotResult, local: StateEdKey, index: int,
     failure = false) =
   ## The exact generation retains source capacity through Done and completed cancellation; no partially planned prefix escapes.
@@ -218,6 +229,7 @@ proc cycle(worker: var StateProofWorker, source: BlockSnapshotResult, local: Sta
       assert outcome.kind == WorkJobResultKind.AssurancePlanned and
           outcome.plannedAssurance.matches(source), "source-free native plan after exact collection"
   assert not worker.active(started.value), "stale planning generation cannot revive"
+
 proc main() {.raises.} =
   ## Genuine report execution precedes source-qualified plans; structural epoch cases remain labelled and managed lifetime has fresh ARC evidence.
   assert not default(AssuranceFetchPlan).valid and default(AssuranceFetchPlan).fetchInfo.error ==

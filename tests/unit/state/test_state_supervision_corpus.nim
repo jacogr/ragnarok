@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent dictionary expectations qualify sparse full-domain supervisor resolution and batch lookup across all declaration orders.
+
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, fixed_arithmetic_corpus]
 import ../../../src/state/inventory
@@ -11,10 +12,13 @@ import ../../../src/state/supervision_table
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashes only after each independent complete directory is built.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Supervisor readers and batch observations must remain hash-free.
+
 proc order(rank: int): array[3, int] =
   ## Enumerate all six original declaration orders without aliased in-place swaps.
   result = default(array[3, int])
@@ -31,6 +35,7 @@ proc order(rank: int): array[3, int] =
           used[candidate] = true
           break # Choose each remaining identity once.
         choice -= 1
+
 proc check(fixture: seq[seq[byte]], row: seq[byte], rank: int) =
   ## Source encoding/sorting is independent of the reference dictionary's authored decision columns.
   var services: seq[StateService] = @[]
@@ -66,6 +71,7 @@ proc check(fixture: seq[seq[byte]], row: seq[byte], rank: int) =
       ServiceSupervisionError.NoService
   assert calls() == 0
   fail(0)
+
 proc main() {.raises.} =
   ## Each512-row independent configuration is checked against all six complete declaration orders.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

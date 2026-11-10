@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_ready_arc_release"}
 
 ## Independent ready expiry/edit witnesses and genuine stopped-source private publication with ARC release evidence.

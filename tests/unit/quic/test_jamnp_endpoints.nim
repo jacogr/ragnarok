@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed endpoint identities, validator metadata, real UDP source tuples and addressed QUIC TLS.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../../src/quic/[address, io, transport]
 import ../../../src/jamnp-s/[protocol, endpoints]
@@ -10,18 +11,23 @@ type Party = object ## Stable callback storage retires only after both native en
   transport: Transport
   server: bool
   expected: array[32, byte]
+
 proc `=copy`(destination: var Party, source: Party) {.error.}
   ## A copied endpoint cannot retain another owner's callback address.
+
 proc `=dup`(source: Party): Party {.error.}
   ## Implicit duplication is forbidden along with assignment.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Incoming peers discover valid key/SAN identities; the dialer still pins the server.
   let party = cast[ptr Party](user)
   if party.server: return cint(validPeer(cast[ptr byte](der), length, []))
   cint(validPeer(cast[ptr byte](der), length, party.expected))
+
 proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].} =
   ## Address routing is tested independently of application messages.
   if kind == 0: streamAbort(stream)
+
 proc endpointCycle(certificate, privateKey: string) =
   ## Scope destruction follows explicit callback-engine retirement for each fresh endpoint.
   var owner = default(Party)
@@ -44,6 +50,7 @@ proc parsed(text: string): NetworkAddress =
   ## Test literals have explicit families and exact bytes; no DNS/environment route is consulted.
   result = default(NetworkAddress)
   assert parseNetworkAddress(text, result)
+
 proc key(path: string): array[32, byte] {.raises.} =
   ## Fixtures bind exact raw Ed25519 keys independently from endpoint data.
   let raw = readFile(path)

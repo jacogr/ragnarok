@@ -177,6 +177,7 @@ proc computedStorageInstructions*(mode: ComputedStorageMode): seq[seq[byte]] =
   for instruction in body: result.add(instruction) # Every operand remains unmarked in the real program mask.
   result.add(refinementImmediate(8, 0))
   result.add(@[50'u8, 0])
+
 proc computedStorageBudget*(fixture: InputFixture, mode: ComputedStorageMode): InputFixture =
   ## Re-author the single empty-manifest original package with enough accumulation gas before its first refinement/report.
   result = fixture

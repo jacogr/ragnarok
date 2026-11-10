@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-prefix addresses cannot bypass full equality, canonical image order, graph uniqueness or limits.
+
 import std/[assertions, syncio]
 import ../../support/storage_growth_samples
 import ../../../src/storage/node/[repository as node_repository, records as node_records]

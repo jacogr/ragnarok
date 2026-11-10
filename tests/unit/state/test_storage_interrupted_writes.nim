@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Interrupted real short writes preserve exact frame bytes; later partial EIO requires explicit prefix repair.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io]
@@ -13,10 +14,12 @@ import ../../../src/storage/managed/[repository as managed_repository, manifest 
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc check(view: RepositoryView, expected: byte) =
   ## Held views remain complete and independent across retry, poisoned owner and explicit repair.
   let entries = restoreStateEntries(view, view.commitment.root, storageLimits().codec.trie).value
   assert entries.len == 2 and entries[0].value == @[expected] and entries[1].value == @[9'u8]
+
 proc scenario(managed: bool) {.raises.} =
   ## Both backends resume after actual8-byte progress plus two EINTR returns, without duplication.
   resetIo()

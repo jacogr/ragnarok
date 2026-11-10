@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "core_service_activity_arc_release"}
 
 ## Literal core/service tuples, distinct report roles, checked sums and independent immutable ARC ownership.
@@ -15,6 +16,7 @@ import ../../support/arc_evidence
 
 # The entire pure workload runs with both maintained hash backends disabled.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Exact independent populations of the literal mixed fixture.
@@ -70,15 +72,19 @@ proc provisions(): seq[PreimageProvision] =
         bytes: preimages.ProvisionBytes(0)),
     PreimageProvision(service: ServiceIndex(high(uint32)), count: preimages.ProvisionCount(3),
         bytes: preimages.ProvisionBytes(73))]
+
 proc accumulation(): seq[ServiceStatisticsEntry] =
   @[accumulated(0, count = 2), accumulated(42, count = 5, transfers = 7, gas = 59),
     accumulated(257, transfers = 3), accumulated(65536, gas = 61)]
+
 proc incoming(): seq[OwnedReport] =
   @[report(2, [256'u32, 1], [load(11, 2, 3, 5, 7), load(13, 17, 19, 23, 29)], 101, 63),
     report(0, [256'u32, 42], [load(31, 37, 41, 43, 47), default(RefineLoad)], 103, 64)]
+
 proc available(): seq[OwnedReport] =
   let huge = load(high(uint64), high(uint64), high(uint64), high(uint64), high(uint64))
   @[report(2, [999'u32], [huge], 107, 1), report(1, [1000'u32], [huge], 109, 65)]
+
 proc votes(): seq[Assurance] =
   @[vote(1, 5), vote(4, 6), vote(7, 2)]
 

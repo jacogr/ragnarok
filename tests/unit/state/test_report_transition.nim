@@ -26,8 +26,10 @@ import ../../support/[report_context, report_admission_context, arc_evidence]
 
 ## Reset observed primitive calls/refusal without substituting successful hashes or signatures.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Fail one exact hash after a measured accepted prefix, including the final publication's last digest.
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Separate fixture construction hashes from actual transition/publication work.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently encoded parameter fields prove exact rate selection, full snapshot equality and detached fixed ownership.
+
 import std/[assertions, syncio]
 import ../../support/economic_profile_context
 import ../../../src/chain/parameters

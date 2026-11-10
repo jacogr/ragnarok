@@ -3,6 +3,7 @@
 
 ## Bounded validator/builder/other admission and canonical epoch gating. TLS callbacks supply
 ## authenticated identities; this module grants capacity only, never stream-specific privileges.
+
 import std/assertions
 import ./topology
 import ../chain/[genesis, provider]
@@ -37,27 +38,35 @@ type
 func error*[T](outcome: AdmissionResult[T]): AdmissionError =
   ## Inspect failure without acquiring a payload.
   outcome.status
+
 func value*[T](outcome: AdmissionResult[T]): T {.requires: outcome.status == AdmissionError.None.} =
   ## Extract a selected success only.
   outcome.completed
+
 func ready*(policy: ValidatorAdmission): bool =
   ## Default policy is unavailable, never a zero-capacity live listener.
   policy.initialized
+
 func capacity*(policy: ValidatorAdmission): int =
   ## Return the exact native slot budget; default policy has no slots.
   policy.slots.len
+
 func count*(policy: ValidatorAdmission, category: PeerClass): int =
   ## Closing slots remain physically owned but no longer consume a desired class reservation.
   policy.counts[category]
+
 func topology*(policy: ValidatorAdmission): ValidatorTopology {.requires: policy.ready.} =
   ## Return an immutable accepted projection, with no pending topology authority.
   policy.accepted
+
 func same(left, right: StateEdKey): bool =
   ## Compare Ed25519 identities only.
   array[32, byte](left) == array[32, byte](right)
+
 func validIdentity(identity: StateEdKey): bool =
   ## Null validator identity cannot request an ordinary or builder reservation either.
   not same(identity, nullValidator().ed25519)
+
 func initValidatorAdmission*(topology: ValidatorTopology, local: StateEdKey,
     validators: ValidatorConnectionBudget, builders: GuestConnectionBudget = 20,
     others: GuestConnectionBudget = 20): AdmissionResult[ValidatorAdmission] =
@@ -71,11 +80,13 @@ func initValidatorAdmission*(topology: ValidatorTopology, local: StateEdKey,
   AdmissionResult[ValidatorAdmission](status: AdmissionError.None,
     completed: ValidatorAdmission(initialized: true, local: local, accepted: topology,
       slots: newSeq[AdmittedPeer](total), ceilings: [int(validators), int(builders), int(others)]))
+
 proc classify(topology: ValidatorTopology, identity: StateEdKey, builder: bool): PeerClass =
   ## Validator membership takes priority over a reservation request.
   if topology.contains(identity): PeerClass.Validator
   elif builder: PeerClass.Builder
   else: PeerClass.Other # Unauthenticated caller claims never reach this internal decision.
+
 proc admitAuthenticated*(policy: var ValidatorAdmission, slot: PeerSlot,
     identity: StateEdKey, builder: bool): AdmissionResult[PeerClass] =
   ## Commit a synchronous authenticated callback decision; native retention follows success atomically.
@@ -97,6 +108,7 @@ proc admitAuthenticated*(policy: var ValidatorAdmission, slot: PeerSlot,
       category: category)
   inc policy.counts[category] # Preceding comparison proves this increment remains within the typed ceiling.
   AdmissionResult[PeerClass](status: AdmissionError.None, completed: category)
+
 proc release*(policy: var ValidatorAdmission, slot: PeerSlot): bool =
   ## Observe a genuine native close once; premature/fabricated/duplicate closure is rejected.
   if not policy.ready or uint64(slot) >= uint64(policy.slots.len): return false
@@ -108,10 +120,12 @@ proc release*(policy: var ValidatorAdmission, slot: PeerSlot): bool =
     dec policy.counts[category] # Closing entries were already removed from desired-role counts.
   policy.slots[index] = default(AdmittedPeer)
   true
+
 func retiring*(policy: ValidatorAdmission, slot: PeerSlot): bool =
   ## The runtime must close marked peers, then release only after their actual close callback.
   uint64(slot) < uint64(policy.slots.len) and policy.slots[int(uint64(slot))].occupied and
       policy.slots[int(uint64(slot))].closing
+
 proc announcements*(policy: ValidatorAdmission, slot: PeerSlot): bool =
   ## Accepted grid membership determines UP0; builder reservation does not change protocol eligibility.
   if not policy.ready or uint64(slot) >= uint64(policy.slots.len): return false
@@ -121,6 +135,7 @@ proc announcements*(policy: ValidatorAdmission, slot: PeerSlot): bool =
   if not policy.accepted.contains(policy.local) or not policy.accepted.contains(
       identity): return true
   policy.accepted.neighbours(policy.local, identity)
+
 proc replace(policy: var ValidatorAdmission, topology: ValidatorTopology) =
   ## Reclassify deterministically in native-slot order; no unchecked state remains after validation.
   policy.counts = default(array[PeerClass, int])
@@ -133,6 +148,7 @@ proc replace(policy: var ValidatorAdmission, topology: ValidatorTopology) =
         policy.slots[index].category = category
         inc policy.counts[category] # Ceiling comparison bounds each desired count.
   policy.accepted = topology
+
 proc advance*(policy: var ValidatorAdmission, view: ChainView, now: StateTime,
     limits: SafroleStateConfig): AdmissionResult[EpochUpdate] =
   ## Capture the caller's canonical best atomically; a new epoch requires both finality and delay.

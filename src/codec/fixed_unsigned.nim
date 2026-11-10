@@ -1,11 +1,13 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## JAM fixed-width unsigned integers, Gray Paper v0.8.0 C.1.7. See spec/fixed-unsigned.md for
-## domain, error and ownership details.
+## JAM fixed-width unsigned integers, Gray Paper v0.8.0 C.1.7.
 ##
-## Exposes FixedUnsigned and ByteWidth domains, encodeFixed/decodeFixed and checked
-## value/consumption results.
+## Widths zero through eight select little-endian byte counts. At width zero the
+## only value is zero, encoded as an empty sequence. Decoding succeeds without
+## advancing even when later fields follow. Callers choose width from the schema.
+##
+## See spec/fixed-unsigned.md for the pinned definition and verification.
 
 type
   FixedUnsigned* = distinct uint64 ## An unsigned wire value, distinct from both ordinary uint64 and general JAM naturals.

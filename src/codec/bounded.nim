@@ -1,10 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded containers: Gray Paper v0.8.0 C.1.2/C.1.3, with C.1.1/C.1.7 primitives.
+## Bounded byte strings and homogeneous fixed-width sequences.
 ##
-## Exposes byte/element limits, borrowed byte spans and bounded byte-string/fixed-width sequence
-## encoders and decoders.
+## A natural prefix counts bytes for a blob and elements for a sequence. The schema
+## supplies the element width. Zero-width elements still require a bounded count
+## because a decoder initializes that many output values. Empty containers have
+## a zero prefix, so an empty input is truncated.
+##
+## Validate count, extent and output capacity before writing. Preflight uses
+## full-width checks before multiplication or host-size narrowing, since a
+## malicious prefix can exceed both the wire extent and the caller's buffer.
 
 import ./natural
 import ./fixed_unsigned

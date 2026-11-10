@@ -24,6 +24,7 @@ import ../../support/[pvm_assured_queue, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Force genuine retained-ancestry hashing failure after predecessor and successor authentication complete.
+
 proc expect[T](outcome: AssuredQueueResult[T], reason: AssuredQueueError) =
   ## Preserve originating maintained refusal diagnostics without accepting another local or protocol alternative.
   if outcome.error != reason:
@@ -32,6 +33,7 @@ proc expect[T](outcome: AssuredQueueResult[T], reason: AssuredQueueError) =
         outcome.admissionFailure.error
     if outcome.error == AssuredQueueError.QueueFailure: echo "queue ", outcome.queueFailure.error
   assert outcome.error == reason, "assured queue reason"
+
 proc reportBytes(report: OwnedReport): seq[byte] =
   ## Independent complete encodings catch report substitution beyond matching core or package metadata.
   result = newSeq[byte](report.ownedReportInfo.value.consumed)
@@ -149,12 +151,14 @@ expect(default(AssuredAccumulationQueue).assuredQueueParameters, AssuredQueueErr
 var copied = queue.assuredQueuePlan.value
 copied = default(BlockAccumulationQueue)
 assert queue.assuredQueuePlan.value.accumulationProjection.value.accumulationCount.value == 2
+
 proc detached(): AssuredAccumulationQueue =
   ## Retain authenticated source, genuine zero-new-report admission, priority and original tuple after fixture handles retire.
   let source = assuredQueueFixture()
   prepareAssuredQueue(source, assuredQueueConfig(source)).value
 let held = detached()
 assert held.assuredQueuePlan.value.accumulationProjection.value.accumulationImmediateCount.value == 2
+
 proc cycle(source: AssuredComputedReports, config: AssuredQueueConfig) =
   ## Release a complete queue and a later queue refusal after genuine report admission has already succeeded.
   let queue = prepareAssuredQueue(source, config).value

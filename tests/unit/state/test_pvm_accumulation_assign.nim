@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_assign_arc_release"}
 
 ## Authored assign programs exercise ordered queue capture, current authority and atomic checkpoints.
@@ -23,8 +24,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject a failed hash only after authentic fixture construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Observe whether input/authorization refusals attempted state Merklization.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Refuse after completed child hashes to exercise cleanup of a partly built candidate tree.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

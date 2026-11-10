@@ -1,8 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Translate peer/transport observations into bounded telemetry events without reading CLI state.
-## Incoming tables own copied identities and correlation IDs through native transport teardown.
+## Translate transport observations into bounded JIP-3 events.
+##
+## Incoming handshake slots correlate TLS start and outcome through SSL destruction.
+## The separate admitted-peer table retains copied certificate identities until a close
+## is observed. TLS success can precede a capacity refusal, so it cannot establish that a
+## peer was admitted. Keeping the tables separate lets a handshake observation be dropped
+## without assigning an unrelated identity to a later close.
+##
+## The exporter and callback tables outlive native teardown. Overflow or missing metadata
+## accounts for dropped observations without changing admission. Callbacks copy usable
+## borrowed data before returning and only queue frames.
 
 import std/[times, monotimes]
 import ./[wire, client]
@@ -99,7 +108,9 @@ type IncomingPeers* = object
 
 proc observePeer*(client: var Client, peers: var IncomingPeers, slot: cuint,
     event: cint, der: ptr ConstByte, length: csize_t) =
-  ## Admission only retains identity; a separately observed close produces JIP-3 event 27 exactly once.
+  ## Retain the admitted identity for event 27, which requires a close observed while the
+  ## transport is alive. Failed handshakes and capacity refusals have no admitted identity.
+  ## Clear the slot before emitting so a repeated callback cannot report another closure.
   if slot >= cuint(IncomingPeerSlots): return # Native registration proves this bound; reject invalid callbacks.
   let index = int(slot)
   if event == PeerAccepted:

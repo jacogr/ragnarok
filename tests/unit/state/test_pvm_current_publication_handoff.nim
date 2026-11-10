@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_publication_handoff_arc_release"}
 
 ## Publishing freezes one genuine current update; only its exact installed child can complete the bounded host handoff.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/chain
 import ../../../src/app/current/handoff as current_handoff
@@ -11,10 +13,13 @@ import ../../../src/codec/[bounded, report_owned]
 import ../../../src/state/store
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../support/[accumulation_current_chain_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Host publication bookkeeping cannot repeat primitive work.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Actual primitive counts distinguish cached authority checks from recomputation.
+
 proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   ## External canonical installation is acknowledged without granting any storage receipt authority.
   var owner = original
@@ -32,6 +37,7 @@ proc cycle(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   assert result.error == CurrentHandoffError.None
   assert sameStateSnapshot(result.value.stateSnapshot, update.currentUpdateState)
   assert slot.phase == CurrentHandoffPhase.Idle
+
 proc transitions(original: ApplicationChain, update: PreparedCurrentChainUpdate) =
   ## Publishing and Finished retain capacity; actual refusal needs acknowledgment and never becomes cancellation rollback.
   var owner = original
@@ -61,6 +67,7 @@ proc transitions(original: ApplicationChain, update: PreparedCurrentChainUpdate)
   cycle(original, update)
   assert hashCalls() == 0, "publication handoff neither hashes nor executes"
   failHash(0)
+
 proc foreignReceipt(original: ApplicationChain, update: PreparedCurrentChainUpdate,
     foreignOriginal: ApplicationChain, foreignUpdate: PreparedCurrentChainUpdate) =
   ## Equal complete roots and sealed hashes still cannot replace the expected exact state owner.
@@ -80,6 +87,7 @@ proc foreignReceipt(original: ApplicationChain, update: PreparedCurrentChainUpda
   assert slot.take.error == CurrentHandoffError.StaleState
   assert sameStateSnapshot(original.stateSnapshot.value, update.currentUpdateView.parentOf(
     update.currentUpdateChild.blockHash).value.stateSnapshot)
+
 proc main() {.raises.} =
   ## Independently constructed genuine current fixtures provide exact and equal-hash/different-owner outcomes.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

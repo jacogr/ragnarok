@@ -3,6 +3,7 @@
 
 ## Fresh wire plus detached selected-root/profile facts enter one bounded CPU verification job.
 ## No canonical map/header alias, native handle or peer assertion is retained by the worker input.
+
 import ../../jamnp-s/[read_stream, read_validation as read_verification]
 import ../../chain/[provider, genesis]
 import ../../codec/bounded
@@ -19,16 +20,20 @@ type
     case status: ReadVerificationError
     of None: completed: ReadVerificationJob
     else: discard # Capture failures contain only their reason, not an alias or wire prefix.
+
 func error*(outcome: ReadVerificationAdmission): ReadVerificationError =
   ## Read capture status without extracting a job.
   outcome.status
+
 func value*(outcome: ReadVerificationAdmission): ReadVerificationJob {.requires: outcome.status ==
     ReadVerificationError.None.} =
   ## Transfer only a fully captured immutable request.
   outcome.completed
+
 func valid*(job: ReadVerificationJob): bool =
   ## Job validity reads a scalar owner pointer, not any concurrently borrowed data.
   job.data != nil
+
 proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openArray[byte],
     limits: ReadVerificationLimits): ReadVerificationAdmission =
   ## Bound input before copying, then retire all temporary canonical owners before the caller submits this job.
@@ -75,6 +80,7 @@ proc captureReadVerification*(view: ChainView, request: ReadRequest, wire: openA
   ReadVerificationAdmission(status: ReadVerificationError.None, completed: ReadVerificationJob(
     data: VerificationData(request: detachedReadRequest(request), source: source, wire: copied,
         limits: limits)))
+
 proc executeReadVerification*(job: ReadVerificationJob): ReadVerificationResult[CheckedReadReply] =
   ## All CPU parsing/hash/proof work uses fresh input; no canonical adoption or native I/O runs here.
   let data = job.data

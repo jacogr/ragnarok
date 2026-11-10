@@ -21,6 +21,10 @@ calling it. A continuation is applied through `applyHostResponse` and starts ano
 guest segment. Host terminal outcomes return immediately with posterior state at the
 causing PC; they are not normalized again as guest halts or panics.
 
+These owned-snapshot overloads remain the default. The explicit scalar callback source
+prototype below adds a different capability contract without inferring that an existing
+handler does not retain its suspension.
+
 One `ExecutionStepLimit` covers the entire invocation, including host instructions.
 The internal guest loop consumes this shared remaining budget before each attempt.
 It is never replenished by a callback. `HostCallLimit` independently bounds dispatch;
@@ -47,10 +51,84 @@ application must stage their own context and commit only after successful execut
 Failed `StepResult` values still expose no machine or partial execution payload.
 Invalid machine roots, gas-simulation limits and existing semantic gates propagate.
 
-The loop retains one invocation-owned CPU/program/memory cursor and publishes an
-immutable machine for each actual callback or terminal observation. It does not
+The loop retains one invocation-owned CPU/program/memory cursor. The default owned
+callback path publishes an immutable machine for each callback or terminal observation. It does not
 recurse or retain execution history. Program and memory ownership remain
 acyclic. Callback implementations own any context-specific resource lifetimes.
+
+## Explicit scalar host callbacks: source prototype, 2026-11-07
+
+This increment is authored for source review on master
+`315ac66eb428aa7e848baae3cfa0ab18eca02e10`. Compiler, native correctness, ownership
+lowering and performance qualification are pending. It is separate from the resident
+allocation change, cheap instruction headers, inline replacement batch and tiny-directory
+proposals. Prior measurements continue to describe their original callback contracts.
+
+An explicit `executeWithHost` overload takes the existing owned handler plus both a
+`ScalarHostSelector` and a scalar handler. Selection receives only the full-width
+`HostCallId`, is pure, and occurs after normal host-budget admission but before invoking
+either callback. A selected scalar handler receives copied `MachineInfo` and the host
+identifier, never a `Machine`, `Memory`, resident view or frame pointer. Copied CPU values
+may be retained indefinitely. A false selection uses the existing owned handler, which
+may retain its complete immutable suspension exactly as before. There is no speculative
+callback, declined-response replay or engine-specific host-identifier list.
+
+Private compile-time capability specialization uses two fixed callback records: the original
+two-slot owned record and a five-slot scalar-capable record. Only explicit scalar overloads
+select the scalar record and scalar branch of the same generic driver; a successful scalar
+continuation returns directly to its engine loop. Neither record has conditional fields.
+
+`ScalarHostResponse` supplies only action, unsigned gas, reserved-zero deficit and copied
+registers. It cannot select code, successor PC, paid status, memory, mapping or permissions.
+`ScalarHostResult[Reason]` retains the same response/typed-failure/default distinction as
+the owned API. A malformed/default result, nonzero deficit or unsupported action returns
+`InvalidHostResponse` before applying posterior CPU state. Typed callback refusal exposes
+no partial machine. Context/external effects already performed by the callback follow
+the existing failure contract and are not rolled back by the engine.
+
+The common driver and stopped-host continuation helpers preserve genuine causing-PC
+binding, decoder-owned successors, paid gas, attempt refunds and invocation-wide guest/
+host limits. The original overloads and their callback-retention tests remain unchanged.
+Prepared/worker/service-lease adapters preserve exclusive admission and full cache keys.
+Optional PolkaVM policies explicitly use the supplied owned fallback; the independent
+interpreted/JIT policies use the scalar selection. This does not change engine identity.
+
+A scalar Continue preserves all guest dirty-page membership against the original immutable
+baseline. It does not publish or clear those bytes. Before any later owned callback, the
+existing complete immutable publication includes every accumulated guest write. Accepted
+owned replies retain full map/page-limit/delta validation and transactional replacement;
+only a complete accepted posterior permits rebasing and dirty clearing. Scalar Panic or
+OutOfGas still publishes complete final CPU/memory at the causing host PC inside the
+normal invocation boundary. Invocation scratch restoration includes unpublished dirties
+after local refusal and subsequent reuse.
+
+Actual accumulation dispatch selects scalar capability for gas0 and effects-only checkpoint19.
+One private classifier supplies both capability selection and scalar dispatch; unknown and
+newly implemented identifiers retain the owned fallback by default. The same helpers own
+protocol prices and register assignments
+for scalar and owned fallback routes. Checkpoint preserves its affordability-before-effects
+ordering; yield27 and all known memory/heap/log operations retain owned observations.
+The existing dispatcher and service/worker entry points consume this selection, without
+changing effect publication or transaction boundaries.
+
+The modern canonical synthetic producer explicitly opts its register-only host callbacks
+into scalar capability. Its old/foreign handler remains the owned fallback; legacy producer
+modes keep their old callback selection. The capability is declared by the producer source
+and this contract, bound through existing source provenance. No wire/report schema, alternate
+driver or timing boundary is introduced. The unchanged guest still performs 6001 attempts
+and 2000 callbacks per host fixture, with the same callback arithmetic, final immutable memory,
+complete oracle checks and context work inside the original full cold/reused call boundaries.
+Old owned-callback reports must not be relabeled as scalar-capability measurements.
+
+Authored maintained fixtures cover mixed scalar/owned delivery, copied CPU and retained
+owned observations, complete final bytes, exact guest/host budgets, scalar terminal and
+typed/malformed replies, and owned replacement refusal/retry after accumulated scalar dirties.
+The real accumulation fixture checks scalar gas/checkpoint and owned unknown/yield mixtures,
+literal effect
+commitments, independent host charges, reused input and terminal checkpoint publication.
+These fixtures are not yet executed. Existing host retention, memory reentry, pricing-owner,
+service residency and accumulation effect suites remain qualification obligations. No new
+language, privacy, enum-format or compiler-guard matrix is added.
 
 ## Evidence and next boundary
 

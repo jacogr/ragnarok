@@ -3,6 +3,7 @@
 
 ## Explicit immutable valid parameter snapshots bind deposit rates without selecting a network or trusted root.
 ## Existing parameter validity remains its documented population/clock subset, not full protocol configuration validation.
+
 import ../chain/parameters
 import ../codec/state/accounts as state_accounts
 import ./account/deposit as account_deposit

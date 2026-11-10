@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Retained raw keys and detached complete declarations reproduce independent whole-map checkpoints across full-width/empty shapes.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/[state_complete_serialization_context, state_inventory_context,
     supplied_logical_context, supplied_services_context]
@@ -11,8 +12,10 @@ import ../../../src/state/supplied/[logical_inventory as supplied_logical_invent
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, composition as state_composition,
     requests as state_requests]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Full raw-key/payload projection must work after matching with the hash backend disabled.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Projection/copy queries and all early resource refusals hash nothing.
 const
@@ -23,6 +26,7 @@ const
       globals: GlobalStateLimits(chapter: StateChapterPolicy(items: ElementLimit(1000),
       maxBytes: ByteLimit(65536)), totalBytes: ByteLimit(262144)), manifest: StateManifestLimits(
       services: ElementLimit(4), serialized: mapLimits, storageKeyBytes: ByteLimit(65)))
+
 proc check(input: seq[byte], services: seq[StateService]) =
   ## Independently authored root and full envelope are restored before any native key retention or detached reconstruction.
   fail(0)
@@ -87,6 +91,7 @@ proc check(input: seq[byte], services: seq[StateService]) =
   assert copySuppliedServices(logical, exactCopy).value[0].storage[0].key == services[0].storage[0].key
   assert calls() == 0
   fail(0)
+
 proc main() {.raises.} =
   ## Forty independently authored maps are qualified in single and both multi-service declaration orders, without skipping empty raw keys.
   var row = 0

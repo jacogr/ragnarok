@@ -3,6 +3,7 @@
 
 ## Bounded immutable service identity lookup retains one exact complete logical inventory.
 ## Proven absence belongs to this source; the directory grants no trusted root or STF authority.
+
 import ../../codec/bounded
 import ../../codec/state/accounts as state_accounts
 import ../inventory

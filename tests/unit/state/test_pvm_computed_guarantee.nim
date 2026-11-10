@@ -13,11 +13,14 @@ import ../../support/[pvm_computed_report, pvm_computed_report_vectors, pvm_comp
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset primitive observations or refuse only after full original source preparation.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe real Blake attempts through the maintained test bridge.
+
 proc expect[T](outcome: ComputedGuaranteeResult[T], reason: ComputedGuaranteeError) =
   ## Compare exact alternatives before any guarded payload access.
   assert outcome.error == reason, "computed guarantee reason"
+
 proc verify(kind: int, expected: openArray[byte], hash: array[32,
     byte]): ComputedGuaranteeTranscript =
   ## Independent complete wire witnesses bind the expected transcript to the actual original computed report.
@@ -83,6 +86,7 @@ reset(0)
 assert array[45, byte](prepareComputedGuarantee(report, ByteLimit(
     exact)).value.computedGuaranteeMessage.value) == expectedGuarantee(ContextHash), "backend recovery"
 assert hashes() == 1, "one fresh recovered attempt"
+
 proc detached(): ComputedGuaranteeTranscript =
   ## The transcript owns the original report after every source-preparation temporary retires.
   let original = prepareComputedReport(computedAvailability(0), ByteLimit(100000)).value
@@ -90,6 +94,7 @@ proc detached(): ComputedGuaranteeTranscript =
 let retained = detached()
 assert retained.computedGuaranteeReport.value.computedReportBytes.value == @EmptyReport, "detached original lifetime"
 assert array[45, byte](retained.computedGuaranteeMessage.value) == expectedGuarantee(EmptyHash), "detached message lifetime"
+
 proc cycle() =
   ## Release successful owners, temporary wire copies and failed candidates within each warmed iteration.
   reset(0)

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Configured/completed frozen plans and final logical owners retain actual source graphs after every constructing fixture/key/temporary scope retires.
+
 # @@Verification={"arc":"state_current_logical_scope_lifetime_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
@@ -16,20 +17,24 @@ import ../../../src/state/supplied/[logical_inventory as supplied_logical_invent
 import ../../../src/state/[inventory, manifest, store]
 import ../../../src/state/accumulation/current/update as accumulation_current_update
 import ../../../src/codec/[bounded, report_owned]
+
 proc planOnly(base: OwnedReport, completed: bool): CurrentLogicalRefreshPlan =
   ## All genuine signatures, original fixtures, full prior results and temporary stage records are local; only the frozen plan may escape.
   let fixture = repeatedLogicalFixture(base)
   if completed:
     return namespaceRefreshStages(fixture.logical, fixture.next).complete
   namespaceRefreshStages(fixture.first).complete
+
 proc keysOnly(base: OwnedReport, completed: bool): CurrentRequestKeys =
   ## Dropping the local full plan must not invalidate the immutable cached request/original/actual-target graph it projected.
   let plan = planOnly(base, completed)
   plan.logicalRefreshPlanSource.value.refreshPlanSource.value
+
 proc logicalOnly(base: OwnedReport, completed: bool): CurrentLogicalState =
   ## No constructing plan, original logical parent or temporary service reconstruction remains live after this real successful return.
   let plan = planOnly(base, completed)
   executeCurrentLogicalRefresh(plan).value
+
 proc verify(logical: CurrentLogicalState, slot: uint32) =
   ## Final current/global/profile/raw-key owners retain only valid actual original producer handles and complete namespace payloads.
   let inventory = logical.currentLogicalInventory.value.suppliedInventory.value
@@ -45,12 +50,14 @@ proc verify(logical: CurrentLogicalState, slot: uint32) =
       suppliedServicesTestLimits).value
   assert detached[0].storage[1].key.len == 2 and detached[0].preimages[1].value.len == 3
   assert detached[1].storage[0].key.len == 0 and detached[1].preimages[0].value.len == 0
+
 proc cycle(first, second: CurrentLogicalRefreshPlan, configured, current: CurrentLogicalState) =
   ## Retire fresh returned captures/copies while independently escaped final owners remain usable after their original scopes are gone.
   verify(executeCurrentLogicalRefresh(first).value, 2)
   verify(executeCurrentLogicalRefresh(second).value, 3)
   verify(configured, 2)
   verify(current, 3)
+
 proc main() {.raises.} =
   ## The only common caller input is immutable report bytes; it retains no parent/state/view or logical namespace graph.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

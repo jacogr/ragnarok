@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real managed current execution crosses Services exclusion and deferred canonical/RPC installation with bounded acknowledgment.
+
 import std/[assertions, syncio, envvars, monotimes, times, base64, strutils]
 import std/posix/posix
 import ../../../src/app/[services, options, preparation_worker]
@@ -20,10 +21,13 @@ import ../../../src/state/accumulation/[finalization as accumulation_finalizatio
     completion as accumulation_completion]
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   current_application_context, rpc_socket]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Prove the current host handoff does not repeat hashing or guest work.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe primitive calls independently of API status.
+
 proc config(path: string, port = 0'u16): Options =
   ## Canonical startup and any listener remain explicit local policy.
   var args = @["server", "--with-state", "--chain", path]
@@ -33,6 +37,7 @@ proc config(path: string, port = 0'u16): Options =
     args.add($port) # A test-only ephemeral reservation selects the actual loopback listener.
   result = default(Options)
   assert parseCanonicalOptions(args, result)
+
 proc receive(owner: Services, input: var CurrentBlockInput, wire: openArray[byte],
     discover = false): CurrentBlockInputId =
   ## Bind the actual Services head before any exclusive native lease begins.
@@ -42,6 +47,7 @@ proc receive(owner: Services, input: var CurrentBlockInput, wire: openArray[byte
   assert admitted.error == CurrentBlockInputError.None
   result = admitted.value
   assert input.append(result, wire, true) == CurrentBlockInputError.None
+
 proc waitDone(owner: var Services) =
   ## Only scalar worker state and permitted independent dispatcher work are observed during exclusion.
   let started = getMonoTime()
@@ -51,11 +57,13 @@ proc waitDone(owner: var Services) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield without touching any retained input/canonical alias.
+
 proc childBytes(context: CurrentChainFixture): seq[byte] =
   ## Retain the actual signed child wire bytes before startup or native borrowing.
   let child = context.source.currentChainAdmission.reportBlockStage.value.value.admitted.admittedBlock
   result = newSeq[byte](child.blockInfo.value.consumed)
   assert child.encodeOwnedBlock(result).error == FrameError.None
+
 proc scenario(context: CurrentChainFixture, network: bool, refuseRpc = false) {.raises.} =
   ## Startup reconstructs the complete original map; only the Services-owned graph is leased to its worker.
   var path = "pvm-current-services-memory-chain"
@@ -153,6 +161,7 @@ proc scenario(context: CurrentChainFixture, network: bool, refuseRpc = false) {.
   assert not owner.preparationActive and not owner.rpc.chainPaused
   assert owner.currentAccumulationPhase == CurrentHandoffPhase.Idle
   discard input.cancel(joined)
+
 proc main() {.raises.} =
   ## Exact signed fixtures exercise disabled/enabled RPC and enabled-listener refusal through actual Services.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

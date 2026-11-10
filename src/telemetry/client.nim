@@ -1,11 +1,16 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded optional TCP exporter. One owner, no threads, DNS, blocking connect or retained
-## callbacks.
+## Dispatcher-driven JIP-3 delivery over one nonblocking TCP socket and a fixed send buffer.
 ##
-## Exposes exporter configuration/close/tick and incoming/outgoing connection event reporting
-## over one retained client owner.
+## Each connection starts with registration. The exporter counts observation positions across
+## connections, including omitted events. On reconnect a dropped prefix advances the new
+## collector to the current position, so a handshake outcome can still reference its original
+## attempt. The exporter disables delivery when the ID space is exhausted to prevent ID reuse.
+##
+## Collector failures discard queued bytes and schedule a retry without interrupting peer
+## work. Shutdown retires the descriptor without waiting for delivery. Wire layout belongs
+## to wire.nim and transport observations enter through observer.nim.
 
 import std/[strutils, oserrors, nativesocket]
 import std/posix/posix
@@ -155,8 +160,10 @@ proc configure*(client: var Client, endpoint: string, metadata: Metadata,
   true
 
 proc failed(client: var Client, now: int64) =
-  ## Retire a failed stream and retry later with a new registration and event-ID namespace.
-  # An established or in-progress descriptor has exactly one close on this path.
+  ## Retire a failed stream and schedule a retry.
+  ## A new stream needs fresh registration, but pending handshakes retain their attempt IDs.
+  ## Keep the exporter position so reconnect can account for discarded frames.
+  ## An established or in-progress descriptor has exactly one close on this path.
   if client.opened: discard posix.close(client.fd)
   client.opened = false
   client.connecting = false
@@ -261,7 +268,11 @@ proc begin(client: var Client, now: int64, timestamp: Timestamp) =
   client.queue(frames, now)
 
 proc tick*(client: var Client, now: int64, timestamp: Timestamp, peers: uint32) =
-  ## Perform at most one poll and send per dispatcher turn. Times are caller-provided for deterministic tests.
+  ## Perform at most one zero-timeout poll and one send per dispatcher turn.
+  ## Caller-provided monotonic time controls retry, status and connect/write deadlines.
+  ## Partial writes resume at the exact suffix, and queued events share the batch deadline
+  ## so fresh observations cannot keep a stalled collector alive.
+
   # Disabled telemetry has no socket, clock, allocation or network work.
   if not client.enabled: return
   if not client.opened:

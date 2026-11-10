@@ -15,8 +15,10 @@ import ../../../src/codec/state/[trie as state_trie, layout as state_layout]
 
 ## Reset primitive counters or refuse the first hash; the production profile contains no observer.
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Refuse after a complete child has been committed privately, before publishing the new store head.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Count only attempted hash operations to distinguish validation/policy failure from backend refusal.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

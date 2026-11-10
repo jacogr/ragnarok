@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored immutable maps and exact frame bytes qualify strict reopen after a real child process dies.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ./[storage_samples, managed_storage_samples, storage_io, storage_crash]
@@ -12,6 +13,7 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../src/storage/database_identity
 import ../../src/codec/bounded
+
 proc checkCrashMap*(view: RepositoryView, value: byte) =
   ## An independently constructed complete root and authored leaves constrain every selected or held view.
   let expected = storageTrie(value)
@@ -19,6 +21,7 @@ proc checkCrashMap*(view: RepositoryView, value: byte) =
   assert restored.error == RepositoryError.None
   let entries = restored.value
   assert entries.len == 2 and entries[0].value == @[value] and entries[1].value == @[9'u8]
+
 proc appendCrashCase*(label: string, managed: bool, operation, skip: cint,
     shortWrites = false, contextual = false): uint64 {.raises.} =
   ## Child setup acquires the real lease before arming one publication; the parent owns no native file at fork.

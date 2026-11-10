@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Structural complete-map topology fixtures, with explicit chain clocks and parent commitments.
+
 import std/assertions
 import ../../src/chain/[genesis, parameters]
 import ../../src/codec/[bounded, header, assurances]
@@ -19,18 +20,21 @@ proc topologySettings*(cores = 4, duration = 12): Parameters =
   let selected = decodeParameters(wire)
   assert selected.ok
   selected.value
+
 proc topologyLimits*(cores = 4, duration = 12): SafroleStateConfig =
   ## Exact chain dimensions with finite per-chapter budgets.
   SafroleStateConfig(validators: ValidatorStateConfig(cores: CoreCount(uint64(cores)),
       validators: ElementLimit(uint64(cores)*3),
     maxBytes: ByteLimit(uint64(cores)*1008+9)), epochSlots: EpochSlots(uint64(duration)),
         maxAccumulator: ElementLimit(12), maxBytes: ByteLimit(1024*1024))
+
 proc topologyKey*(id: int): StateEdKey =
   ## Two bytes distinguish fixture identities without relying on production key projection.
   var raw = default(array[32, byte])
   raw[0] = byte(id mod 256)
   raw[1] = byte(id div 256)
   StateEdKey(raw)
+
 proc topologyRecords*(epoch, count: int): seq[StateValidator] =
   ## Keep roles distinct by default; individual tests deliberately introduce aliases/nulls.
   result = newSeq[StateValidator](count)
@@ -40,11 +44,13 @@ proc topologyRecords*(epoch, count: int): seq[StateValidator] =
     metadata[16] = 55
     result[index] = StateValidator(ed25519: topologyKey(20+epoch*40+index),
         metadata: StateValidatorMetadata(metadata))
+
 proc topologyChapter(roster: seq[StateValidator], which: ValidatorChapter): StateEntry =
   ## Encode trusted structural fixtures synchronously.
   let encoded = validatorEntry(which, roster, topologyLimits().validators)
   assert encoded.error == StateComponentError.None
   encoded.value
+
 proc topologyCaptured*(rosters: array[3, seq[StateValidator]], omit = false,
     suffix = false, cores = 4, duration = 12, atSlot = 7'u32,
     parent: BlockSnapshotResult = unavailableGenesis()): BlockSnapshotResult =

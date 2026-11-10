@@ -1,10 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Browser WebSocket JSON-RPC client: bounded concurrent calls and independently routed subscriptions.
-## Reply IDs and subscription IDs have separate lifetimes. Capture-free callbacks own no browser handles.
-## Call/subscribe/unsubscribe return zero when disconnected, invalid or full; accepted calls settle once.
-## Subscription callbacks receive Success updates or one terminal error/disconnect, then retire.
+## Browser WebSocket JSON-RPC calls and subscriptions.
+##
+## Request IDs identify pending acknowledgments. Subscription selectors identify streams
+## by both server ID and notification method, even when a request uses the same number.
+## Installing or retiring stream state before invoking callbacks lets a callback submit
+## another request against the current state.
+##
+## A timed-out ordinary call can retire on its own. A lost subscription acknowledgment
+## leaves remote ownership ambiguous, so the client retires the socket and its streams.
+## Calls rejected locally return zero. Accepted calls settle once, and stream callbacks
+## carry updates or a terminal outcome.
 
 when defined(ragnarokBrowser):
   const MaxPendingRequests* = 16

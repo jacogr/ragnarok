@@ -3,6 +3,7 @@
 
 ## Bounded synchronous file adapters preserve whole application envelopes and independently supplied recovery context.
 ## Startup/offline callers own scheduling; these APIs never run in transport callbacks or adopt a canonical chain.
+
 import ../chain
 import ./[identity as checkpoint_identity, codec as checkpoint_codec,
     transfer as checkpoint_transfer]

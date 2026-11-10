@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Same-source review joins preserve targeted validity and economic observation scopes without accepting equal-root substitutions.
+
 # @@Verification={"arc": "state_account_review_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_review_context, arc_evidence]
@@ -9,14 +10,18 @@ import ../../../src/state/account/[review as account_review, invariants as accou
 import ../../../src/state/[supervision_table, economics_table, inventory, economic_profile]
 import ../../../src/codec/state/accounts as state_accounts
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after constructing real component evidence.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Review joining is fixed retained-owner work without rehashing.
+
 proc cycle(source: AccountReviewTestEvidence) =
   ## Retire one complete review and component/source extractions each cycle.
   let review = joinAccountReview(source.invariants, source.supervision, source.economics).value
   assert review.accountReviewInfo.value.economics.uncovered == 1
+
 proc main() {.raises.} =
   ## Equal complete sources intentionally produce different capture owners while undercoverage remains a valid observation.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

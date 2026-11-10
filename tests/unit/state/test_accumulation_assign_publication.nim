@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_assign_publication_arc_release"}
 
 ## Real parallel assign outcomes merge only original-owner queue/role rows under terminal selection, quotas and complete-map rollback.
@@ -19,9 +20,13 @@ import ../../support/[accumulation_batch_context, pvm_accumulation_context,
 
 type Ending = enum ## Authored guest control flow selects normal, discarded, frozen or restored assignments.
   Halt, Panic, CheckpointPanic, Restore
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc parameters(): Parameters =
   ## Assign validates the tiny core domain and eighty-entry queue before reading the real guest memory.
   var wire = encodeParameters(pvmParameters())
@@ -31,6 +36,7 @@ proc parameters(): Parameters =
   wire[82] = 80
   wire[83] = 0
   decodeParameters(wire).value
+
 proc envelope(core: uint64, original: uint32, marker: byte, ending: Ending): seq[byte] =
   ## Place independently varied queue bytes in slot two; the rest of the mapped page is zero padded.
   var payload = newSeq[byte](96)
@@ -49,11 +55,13 @@ proc envelope(core: uint64, original: uint32, marker: byte, ending: Ending): seq
       0'u8]) # Genuine guest trap selects the exceptional implication.
   instructions.add(@[50'u8, 0])
   guestEnvelope(instructions, writable = payload)
+
 proc policy(): AccumulationBatchLimits =
   ## Exactly two complete queue rows and the twenty-one-byte privilege record authorize four total writes including credits.
   result = batchPolicy()
   result.assignCores = ElementLimit(2)
   result.assignBytes = ByteLimit(5141)
+
 proc expected(fixture: BatchFixture, first, second: Ending): seq[StateEntry] =
   ## Literal chapter offsets plus independent credited metadata build a whole-map oracle without running the merger.
   result = @[]
@@ -75,6 +83,7 @@ proc expected(fixture: BatchFixture, first, second: Ending): seq[StateEntry] =
           for offset in 0..<4: row.value[4+index*4+offset] = byte((uint32(77+index) shr (
               offset*8)) and 255)
     result.add(row)
+
 proc check(first, second: Ending, reverse = false) =
   ## Every selected row is source-bound and independent of borrowed execution order or later caller changes.
   let fixture = batchFixture(firstEnvelope = envelope(0, 42, 1, first),
@@ -141,6 +150,7 @@ proc check(first, second: Ending, reverse = false) =
     assert array[32, byte](applyAccumulationBatch(private, local).value.commitment.root) == array[
         32, byte](wanted.root)
   assert before == getOccupiedMem(), "assignment plan/publication ARC release" # Plans, selected handles, core row scratch and unpublished complete maps all release.
+
 proc checkSubset() =
   ## An explicit executed subset retains an absent original assigner's row and grants credits only to the executed service.
   let fixture = batchFixture(firstEnvelope = envelope(0, 42, 1, Halt),
@@ -159,6 +169,7 @@ proc checkSubset() =
   var caller = fixture.state
   let published = applyAccumulationBatch(caller, plan).value
   assert array[32, byte](published.commitment.root) == array[32, byte](wanted.root), "subset retains absent original assigner and metadata"
+
 proc checkStoreLimit() =
   ## Host assign fits the inherited store, but the complete two-credit/two-global batch must still honor its four-write requirement.
   let fixture = batchFixture(writes = 3, firstEnvelope = envelope(0, 42, 1, Halt),
@@ -173,6 +184,7 @@ proc checkStoreLimit() =
   assert refused.error == AccumulationBatchError.StoreFailure and refused.storeError ==
       StateStoreError.LimitExceeded
   assert sameStateSnapshot(state.snapshot.value, prior)
+
 proc checkManagerGate() =
   ## A real bless followed by assign retains manager provenance and requires an explicit publication budget.
   var payload = newSeq[byte](96)
@@ -194,6 +206,7 @@ proc checkManagerGate() =
   assert selected.effectInfo.value.hasPrivileges, "assign preserves bless provenance"
   assert prepareCompleteAccumulationBatch(fixture.inputs, fixture.state.snapshot.value, [a, b], [],
       HeaderSlot(128), policy()).error == AccumulationBatchError.LimitExceeded
+
 proc main() =
   ## Exercise both original core owners, distinct terminal branches and restored-equal provenance.
   check(Halt, Halt)

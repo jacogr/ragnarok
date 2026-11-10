@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Raw authenticated TLS transcripts drive canonical reads outside native callbacks.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../src/jamnp-s/[read_stream, canonical_read, protocol]
 import ../../src/chain/provider
@@ -20,21 +21,28 @@ type
     offset: int
     finAllowed, sentFin, receivedFin, reset, opened: bool
     expected: array[32, byte]
+
 proc `=copy`(destination: var Server, source: Server) {.error.}
   ## Native contexts must never follow a copied stack address.
+
 proc `=dup`(source: Server): Server {.error.}
   ## Copy prevention applies to initialization lowering as well.
+
 proc `=copy`(destination: var Client, source: Client) {.error.}
   ## Client storage remains fixed until transport retirement.
+
 proc `=dup`(source: Client): Client {.error.}
   ## Duplication cannot acquire a second native callback context.
+
 proc serverVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Maintained certificate validation is independent of these read-only protocol assertions.
   cint(validPeer(cast[ptr byte](der), length, []))
+
 proc clientVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## Pin the configured server identity, never its endpoint or a claimed request hash.
   let owner = cast[ptr Client](user)
   cint(validPeer(cast[ptr byte](der), length, owner.expected))
+
 proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Fixed multiplexer consumes exactly one selector before binding the shared route.
   let owner = cast[ptr Server](user)
@@ -69,6 +77,7 @@ proc serverEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     if owner.routes[index].handle == stream:
       owner.routes[index].event(stream, event)
       return # One event belongs to one exact still-live native handle.
+
 proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, raises: [].} =
   ## Independently assembled bytes and observed FIN test the production responder, not its encoder.
   let owner = cast[ptr Client](user)
@@ -112,6 +121,7 @@ proc clientEvent(user: pointer, stream: NativeStream, event: cint) {.cdecl, rais
     wantRead(stream, 0)
     wantWrite(stream, 0)
   else: discard # No other events imply protocol progress.
+
 proc rawKey(path: string): array[32, byte] {.raises.} =
   ## Raw fixture identities do not depend on production certificate extraction.
   let bytes = readFile(path)

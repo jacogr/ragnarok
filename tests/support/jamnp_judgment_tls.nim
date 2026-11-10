@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Ordinary ApplicationNode receipt and real original-identity TLS peers exercise positive acknowledgment, previously unseen negative-report CE136 acquisition, complete support qualification and late-failure atomicity.
+
 import std/[assertions, monotimes, times, syncio, posix/posix]
 import ../../src/app/[services, options, node as application_node, judgment_distribution, audit_state]
 import ../../src/jamnp-s/[node, connections, read_stream, judgment_claim, judgment_receipt,
@@ -14,12 +15,14 @@ import ../../src/quic/address
 import ./[jamnp_audit_context, jamnp_audit_evaluation, jamnp_guarantee_support,
   jamnp_judgment_support, jamnp_judgment_receipt, jamnp_read_validation_context,
   jamnp_topology_fixture, current_application_context, assurance_signer_context]
+
 proc reportWire(report: OwnedReport): seq[byte] =
   ## Independently frame complete canonical raw report bytes without forging a checked-read or private source capability.
   let info = report.ownedReportInfo.value
   result = newSeq[byte](info.consumed+4)
   for index in 0..<4: result[index] = byte((uint32(info.consumed) shr (index*8)) and 255)
   assert report.encodeOwnedReport(result.toOpenArray(4, result.len-1)).error == OwnershipError.None
+
 proc positiveRecord(negative: AuditJudgment): AuditJudgment =
   ## A distinct actual Ed25519 transcript makes the original auditor accountable for its opposite signed claims.
   result = negative
@@ -33,6 +36,7 @@ proc positiveRecord(negative: AuditJudgment): AuditJudgment =
   for character in "jam_valid": message.add(byte(ord(character)))
   for octet in array[32, byte](result.report): message.add(octet)
   result.signature = DisputeSignature(array[64, byte](sign(importSeed(raw).value, message).value))
+
 proc exchange(receiver: var ApplicationNode, sender: var NodeService, peer: NodePeer,
     records: openArray[AuditJudgment], reports: array[2, Guarantee], hashes: array[2, DisputeHash],
     now: StateTime, acknowledged: bool): int {.raises.} =
@@ -78,6 +82,7 @@ proc exchange(receiver: var ApplicationNode, sender: var NodeService, peer: Node
     else:
       assert completed.error != ReadError.None, "late bad supporting guarantee cannot acknowledge an earlier accepted prefix"
     return queries
+
 proc judgmentTlsChecks*(fixture: AuditContextFixture) {.raises.} =
   ## No raw validity flag, fabricated availability assignment or source injection reaches the foreground judgment pipeline.
   let first = unseenGuarantee(supportFixture(fixture))

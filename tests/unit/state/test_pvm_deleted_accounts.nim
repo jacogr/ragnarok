@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_deleted_accounts_arc_release"}
 
 ## Real eligible ejections publish bounded selected removals/credits and gate conflicts with participating service work.
@@ -23,11 +24,13 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Observe/inject genuine backend refusals after actual executions and prepared publication plans exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 let slot = HeaderSlot(50000)
 let blob = @[5'u8, 7, 9]
 let hash = ServicePreimageHash(array[32, byte](blake2b256(blob).value))
+
 # Literal flat funding and 19,200-slot expiry make old targets eligible independently of current host observations.
 proc profile(): Parameters =
   var bytes = encodeParameters(pvmParameters())

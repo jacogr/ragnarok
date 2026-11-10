@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused drivers and terminal owners cannot reveal successful prefixes or inactive parent payloads.
+
 import std/cmdline
 import ../../src/chain/parameters
 import ../../src/state/accumulation/current/[driver as accumulation_current_driver,

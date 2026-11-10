@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded private detached storage accepts only complete authenticated CE137 distributions; it confers no assurance duty.
+
 import std/assertions
 import ./availability_proof
 import ../codec/bounded
@@ -28,22 +29,28 @@ type
     entries: array[MaxAvailabilityEntries, Entry]
     count: int
     bytes, next: uint64
+
 func error*(outcome: AvailabilityStoreResult): AvailabilityStoreError =
   ## Inspect the private status before selecting a capability.
   outcome.status
+
 func value*(outcome: AvailabilityStoreResult): VerifiedAvailabilityTransfer {.requires: outcome.status ==
     AvailabilityStoreError.None.} =
   ## A successful lookup does not transfer assurance, chain or signing authority.
   outcome.completed
+
 func len*(store: AvailabilityStore): int =
   ## Scalar accounting remains available without borrowing any entry owner.
   store.count
+
 func byteLength*(store: AvailabilityStore): uint64 =
   ## Count retained payload bytes independently of allocator bookkeeping and metadata.
   store.bytes
+
 proc clear*(store: var AvailabilityStore) =
   ## The caller must retire the managed CPU lease before dropping private shared entries.
   store = default(AvailabilityStore)
+
 proc configure*(store: var AvailabilityStore, limits: AvailabilityStoreLimits): bool =
   ## One explicit policy bounds all later replacement; a live policy cannot be rebound.
   if store.configured or uint64(limits.entries) < 1 or uint64(limits.entries) > uint64(
@@ -52,12 +59,14 @@ proc configure*(store: var AvailabilityStore, limits: AvailabilityStoreLimits): 
   store.limits = limits
   store.configured = true
   true
+
 func sameSpecifier(a, b: AvailabilitySpecifier): bool =
   ## Duplicate roots cannot silently replace independently selected package, geometry or export context.
   a.packageHash.bytes == b.packageHash.bytes and a.erasureRoot.bytes == b.erasureRoot.bytes and
     a.segmentRoot.bytes == b.segmentRoot.bytes and uint32(a.bundleLength) == uint32(
         b.bundleLength) and
     uint16(a.erasureShards) == uint16(b.erasureShards) and uint16(a.segmentCount) == uint16(b.segmentCount)
+
 proc removeOldest(store: var AvailabilityStore) =
   ## A bounded scan selects the oldest insertion/access before freeing one complete entry.
   var oldest = -1
@@ -68,6 +77,7 @@ proc removeOldest(store: var AvailabilityStore) =
   store.bytes -= store.entries[oldest].bytes
   store.entries[oldest] = default(Entry)
   dec store.count
+
 proc remember*(store: var AvailabilityStore, transfer: VerifiedAvailabilityTransfer): AvailabilityStoreError =
   ## Preflight all refusals before cloning or eviction; private clones isolate external ARC lifetimes from later workers.
   if not store.configured: return AvailabilityStoreError.Unconfigured
@@ -103,6 +113,7 @@ proc remember*(store: var AvailabilityStore, transfer: VerifiedAvailabilityTrans
   store.bytes += bytes
   inc store.count
   AvailabilityStoreError.None
+
 proc find*(store: var AvailabilityStore, request: AvailabilityRequest): AvailabilityStoreResult =
   ## Exact root/shard lookup supplies only the distribution for later bounded audit computation.
   if not store.configured: return AvailabilityStoreResult(
@@ -122,6 +133,7 @@ proc find*(store: var AvailabilityStore, request: AvailabilityRequest): Availabi
 func configured*(store: AvailabilityStore): bool =
   ## Scalar policy observation remains safe while a worker borrows immutable entries.
   store.configured
+
 proc snapshot*(store: AvailabilityStore): seq[VerifiedAvailabilityTransfer] =
   ## The caller freezes all store aliases through CPU retirement; only module-private Services uses this graph handoff.
   result = @[]

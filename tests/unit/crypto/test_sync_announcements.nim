@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent UP0 body/framing witnesses preserve peer claims without granting chain trust.
+
 import std/[assertions, syncio]
 import "../../../src/jamnp-s/announcements"
 import ../../../src/codec/[bounded, header]
@@ -17,6 +18,7 @@ proc limits(): AnnouncementLimits =
   var config = fullHeaderConfig(ByteLimit(4096))
   config.epochSlots = EpochSlots(12)
   AnnouncementLimits(leaves: ElementLimit(4), bytes: ByteLimit(8192), header: config)
+
 proc claim(marker: byte, slot: uint32): AnnouncedBlock =
   ## Independent fixed identity and E4 slot pair; a claimed slot is never a block count.
   result = default(AnnouncedBlock)
@@ -24,11 +26,13 @@ proc claim(marker: byte, slot: uint32): AnnouncedBlock =
   hash[0] = marker
   result.hash = AnnouncedHeaderHash(hash)
   result.slot = HeaderSlot(slot)
+
 proc wireRecord(value: AnnouncedBlock): seq[byte] =
   ## Literal protocol order avoids using the production handshake encoder as its own oracle.
   result = newSeq[byte](36)
   for index in 0..<32: result[index] = array[32, byte](value.hash)[index]
   for index in 0..<4: result[32 + index] = byte((uint32(value.slot) shr (index * 8)) and 255)
+
 proc frame(body: seq[byte]): seq[byte] =
   ## E4 message length is separate from the GP compact leaf count inside a handshake.
   result = newSeq[byte](body.len + 4)

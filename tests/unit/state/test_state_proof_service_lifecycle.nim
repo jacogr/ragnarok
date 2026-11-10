@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Repeated full-source generation, partial typed reads, transport and refused work release every ARC owner.
+
 # @@Verification={"arc": "state_proof_service_lifecycle_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[proof_service_helpers, arc_evidence]
@@ -12,10 +13,13 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Restore the real primitive after each deliberately refused operation.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse after successful verification prefix work, exercising rollback ownership.
+
 proc cycle() =
   ## Every complete store, immutable plan, proof, view, response and failure temporary dies within this scope.
   let service = ServiceIndex(7)

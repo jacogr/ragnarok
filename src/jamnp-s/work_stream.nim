@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded CE133/146 native framing pauses exactly at the authorization boundary and retains no canonical source owner.
+
 import std/assertions
 import ./[work_submission, read_stream]
 import ../quic/transport
@@ -33,72 +34,90 @@ type
     prefix: array[4, byte]
     prefixUsed, index, remaining: int
     received: uint64
+
 func error*[T](outcome: WorkStreamResult[T]): ReadError =
   ## Inspect framing status before selecting a complete transcript.
   outcome.status
+
 func value*[T](outcome: WorkStreamResult[T]): T {.requires: outcome.status == ReadError.None.} =
   ## Framing success is still untrusted input for the actual Services CPU jobs.
   outcome.completed
+
 func valid*(header: UntrustedWorkHeader): bool =
   ## Default header handles contain no completed transcript.
   header.data != nil
+
 func valid*(body: UntrustedWorkBody): bool =
   ## A body exists only after exact message framing and request FIN.
   body.data != nil
+
 proc copied(input: openArray[byte]): seq[byte] =
   ## Private transcripts never expose a mutable alias to retained native framing storage.
   result = newSeq[byte](input.len)
   for index in 0..<input.len: result[index] = input[index]
+
 proc firstMessage*(header: UntrustedWorkHeader): seq[byte] {.requires: header.data != nil.} =
   ## Return detached core/package or core/mappings bytes for host-side admission.
   let data = header.data
   assert data != nil
   copied(data.first)
+
 proc packageMessage*(header: UntrustedWorkHeader): seq[byte] {.requires: header.data != nil.} =
   ## CE133 has no second header payload; CE146 retains exactly its bounded package message.
   let data = header.data
   assert data != nil
   copied(data.package)
+
 func kind*(header: UntrustedWorkHeader): WorkSubmissionKind {.requires: header.data != nil.} =
   ## Retain the selector's exact independently framed form.
   let data = header.data
   assert data != nil
   data.kind
+
 proc extrinsics*(body: UntrustedWorkBody): seq[byte] {.requires: body.data != nil.} =
   ## Detached bytes still require original-package commitment verification.
   let data = body.data
   assert data != nil
   copied(data.extrinsics)
+
 proc segments*(body: UntrustedWorkBody): seq[byte] {.requires: body.data != nil.} =
   ## CE133 supplies no imported bytes on this stream; CE146 raw leaves remain untrusted.
   let data = body.data
   assert data != nil
   copied(data.segments)
+
 proc proofs*(body: UntrustedWorkBody): seq[byte] {.requires: body.data != nil.} =
   ## Neither canonical hash-path framing nor inclusion is implied by stream completion.
   let data = body.data
   assert data != nil
   copied(data.proofs)
+
 func headerCount(route: WorkRoute): int =
   ## CE133 has one small header; CE146 separates mappings from its package.
   if route.kind == WorkSubmissionKind.Package: 1 else: 2
+
 func messageCount(route: WorkRoute): int =
   ## The body forms differ independently from the common outer E4 framing.
   if route.kind == WorkSubmissionKind.Package: 2 else: 5
+
 func failed*(route: WorkRoute): bool =
   ## Parent teardown revokes a reset/failed route before host acknowledgment.
   route.configured and route.failure != ReadError.None
+
 func receivedBytes*(route: WorkRoute): uint64 =
   ## Credit remains charged for all copied E4/payload bytes until actual parent/native retirement.
   route.received
+
 func headerReady*(route: WorkRoute): bool =
   ## Only a complete exact small header can become one host task.
   route.configured and not route.failed and route.index == route.headerCount and
     not route.permitted and not route.headerTaken
+
 func bodyReady*(route: WorkRoute): bool =
   ## Request FIN and all exact body messages precede host-visible completion.
   route.configured and not route.failed and route.permitted and route.receivedFin and
       not route.bodyTaken
+
 proc refuse(route: var WorkRoute, reason: ReadError) =
   ## Abort only this native stream; the parent retains physical quota and buffers until actual close.
   route.failure = reason
@@ -106,6 +125,7 @@ proc refuse(route: var WorkRoute, reason: ReadError) =
     wantRead(route.stream, 0)
     wantWrite(route.stream, 0)
     streamAbort(route.stream)
+
 proc bindWorkStream*(route: var WorkRoute, stream: NativeStream,
     kind: WorkSubmissionKind): ReadError =
   ## The authenticated parent consumes the selector and binds only a live bidirectional peer-initiated route.
@@ -116,6 +136,7 @@ proc bindWorkStream*(route: var WorkRoute, stream: NativeStream,
   wantRead(stream, 1)
   wantWrite(stream, 0)
   ReadError.None
+
 proc takeHeader*(route: var WorkRoute): WorkStreamResult[UntrustedWorkHeader] =
   ## Freeze independent raw header bytes; no graph owner or native pointer reaches the host.
   if not route.headerReady: return WorkStreamResult[UntrustedWorkHeader](
@@ -126,6 +147,7 @@ proc takeHeader*(route: var WorkRoute): WorkStreamResult[UntrustedWorkHeader] =
   WorkStreamResult[UntrustedWorkHeader](status: ReadError.None,
     completed: UntrustedWorkHeader(data: HeaderBytes(kind: route.kind,
       first: copied(route.messages[0]), package: package)))
+
 proc permitBody*(route: var WorkRoute, info: WorkSubmissionInfo): ReadError =
   ## Trusted host dispatch calls this only after actual grant collection; independent hard bounds protect transport memory.
   if not route.configured or route.failed or not route.headerTaken or route.permitted or
@@ -147,6 +169,7 @@ proc permitBody*(route: var WorkRoute, info: WorkSubmissionInfo): ReadError =
   route.permitted = true
   wantRead(route.stream, 1)
   ReadError.None
+
 proc lengthAllowed(route: WorkRoute, length: uint64): bool =
   ## Validate the complete E4 extent before allocation or native-int narrowing.
   if route.index < route.headerCount:
@@ -161,6 +184,7 @@ proc lengthAllowed(route: WorkRoute, length: uint64): bool =
   if body == 1: return length == uint64(route.info.segmentBytes)
   let available = 13904950-route.info.packageBytes-route.info.extrinsicBytes-route.info.segmentBytes
   length <= uint64(min(route.info.importCount*385, available))
+
 proc nextMessage(route: var WorkRoute) =
   ## Completion advances at most one bounded message and pauses exactly before any unauthorized body prefix.
   inc route.index
@@ -168,6 +192,7 @@ proc nextMessage(route: var WorkRoute) =
   route.remaining = 0
   route.prefix = default(array[4, byte])
   if route.index == route.headerCount and not route.permitted: wantRead(route.stream, 0)
+
 proc takeBody*(route: var WorkRoute): WorkStreamResult[UntrustedWorkBody] =
   ## Exact FIN grants only a complete untrusted transcript for host-side commitment/proof/execution verification.
   if not route.bodyReady: return WorkStreamResult[UntrustedWorkBody](status: ReadError.Unavailable)
@@ -180,6 +205,7 @@ proc takeBody*(route: var WorkRoute): WorkStreamResult[UntrustedWorkBody] =
   WorkStreamResult[UntrustedWorkBody](status: ReadError.None,
     completed: UntrustedWorkBody(data: BodyBytes(kind: route.kind,
       extrinsics: copied(route.messages[start]), segments: segments, proofs: proofs)))
+
 proc acknowledge*(route: var WorkRoute): ReadError =
   ## The host must have verified and accepted the whole original-bound body before requesting the bare response FIN.
   if not route.configured or route.failed or not route.receivedFin or not route.bodyTaken or
@@ -187,6 +213,7 @@ proc acknowledge*(route: var WorkRoute): ReadError =
   route.acknowledging = true
   wantWrite(route.stream, 1)
   ReadError.None
+
 proc event*(route: var WorkRoute, stream: NativeStream, event: cint,
     budget: ByteLimit) =
   ## Copy at most one 4096-byte chunk, never overread a message/header boundary, and perform no semantic or canonical work.

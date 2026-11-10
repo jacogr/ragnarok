@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_guarantee_arc_release"}
 
 ## Three actual TLS identities independently compute/sign one original shared bundle; only checked unique responses assemble canonical guarantees.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/app/startup
 import ../../../src/jamnp-s/[work_guarantee, work_signer, work_duty, work_eligibility,
@@ -19,14 +21,17 @@ import ../../../src/state/computed/guarantee
 import ../../../src/crypto/primitives
 import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_report_fixture,
   pvm_input_refinement, arc_evidence]
+
 proc policy(raw: WorkFixture): WorkSharingLimits =
   ## Actual source consensus limits remain independent from explicit local execution and byte budgets.
   WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes), bundleBytes: ByteLimit(MaxBundleBytes),
     submission: raw.limits, execution: executionLimits(), report: workReportLimits(),
         eligibility: guaranteeLimits(), retention: guarantorLimits())
+
 proc refused(outcome: WorkGuaranteeResult[WorkGuaranteeRound], reason: WorkGuaranteeError) =
   ## A rejected reply never extracts an accepted prefix or changes the caller's original immutable round.
   assert outcome.error == reason
+
 proc signed(fixture: GuaranteeFixture, signer: WorkSigner, identity: StateEdKey,
     atSlot = 21'u32): SignedWorkContribution =
   ## Only genuine original/fresh-source qualification and the actual matching private TLS key can supply a local credential.
@@ -36,6 +41,7 @@ proc signed(fixture: GuaranteeFixture, signer: WorkSigner, identity: StateEdKey,
   let signedResult = signer.signWorkContribution(eligible.value, guarantorLimits())
   assert signedResult.error == WorkSignerError.None
   signedResult.value
+
 proc checkedPayload(collected: CollectedWorkGuarantee, expectedCount: int): seq[byte] =
   ## Independently decode standalone GP bytes and verify strict original-index ordering after reverse arrival.
   let output = collected.guaranteePayload
@@ -54,6 +60,7 @@ proc checkedPayload(collected: CollectedWorkGuarantee, expectedCount: int): seq[
     assert uint16(guarantee.credentials[1].validator) == 2
     assert uint16(guarantee.credentials[2].validator) == 5
   output.value
+
 proc cycle(local: SignedWorkContribution, second, third: WorkShareTarget,
     secondKey, thirdKey: StateEdKey, secondReply, thirdReply: array[96, byte]) =
   ## Success and late refusal release every immutable intermediate round and complete encoded owner.
@@ -74,6 +81,7 @@ proc cycle(local: SignedWorkContribution, second, third: WorkShareTarget,
   assert tiny.error == WorkGuaranteeError.CodecFailure
   assert tiny.codecError == GuaranteeError.LimitExceeded
   refused(addWorkResponse(full.value, second, secondKey, secondReply), WorkGuaranteeError.Duplicate)
+
 proc verifyRepeated(fixture: GuaranteeFixture, value: Guarantee, reporters: int) =
   ## The ordinary GP verifier proves genuine repeated-key credentials, using actual complete roster/entropy and distinct original indices.
   let source = fixture.view.bestBlock.value.stateSnapshot
@@ -93,6 +101,7 @@ proc verifyRepeated(fixture: GuaranteeFixture, value: Guarantee, reporters: int)
   let verified = verifyGuaranteeCredentials([value], active, previous, entropy, StateTime(22), [], config)
   assert verified.error == GuaranteeCredentialError.None, "ordinary GP repeated-key credentials"
   assert verified.value.verifiedReporterCount.value == reporters, "reporters count keys independently of original credential indices"
+
 proc repeatedKeys(a, b: WorkSigner) =
   ## A key shared by another core must not hide its valid local positions on this core; signature reuse follows the pinned GP transcript.
   let aKey = a.signerIdentity.value
@@ -142,6 +151,7 @@ proc repeatedKeys(a, b: WorkSigner) =
   assert accepted.error == WorkGuaranteeError.None and accepted.value.credentialCount == 3, "one authenticated remote response covers its two original positions"
   verifyRepeated(remote, decodeGuarantee(collectWorkGuarantee(accepted.value, ByteLimit(
       20000)).value.checkedPayload(3), wire).value.value, 2)
+
 proc main() {.raises.} =
   ## Generate only test-owned third credentials; original provider identities and pinned crypto implementations remain unchanged.
   let a = loadWorkSigner(getEnv("RAGNAROK_TEST_CERT"), getEnv("RAGNAROK_TEST_KEY"))

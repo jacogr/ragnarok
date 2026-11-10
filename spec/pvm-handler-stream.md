@@ -8,6 +8,10 @@ instruction evaluator, decoded-instruction spill, dynamic block-price replacemen
 LRU prepared-segment engine are removed. Optional complete/lazy price owners remain pricing
 policies over the same engine, rather than separate opcode implementations.
 
+Public prepared `jit` execution uses the shared native session pipeline and source-bound
+handler bridge. The unreferenced private ARM/x86 automatic preparation entry points are removed;
+ISA emitters, explicit raw/proof installers and checked handlers retain their existing roles.
+
 Gray Paper commit `1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d`, recorded vectors and existing scoped
 PVM discrepancy decisions remain authoritative. Dependency/compiler pins, arithmetic semantics,
 checked memory ordering and runtime assertions/bounds checks are unchanged. Execution organization

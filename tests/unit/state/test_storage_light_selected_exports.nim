@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Selective canonical exports enforce explicit output policies without changing complete-root trust or source knowledge.
+
 # @@Verification={"arc":"storage_light_selected_exports_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -14,22 +15,28 @@ import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## All selection/quota refusals precede encoding checksum and selected-proof restoration.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Every encoding checksum, restoration checksum and selected-proof hash can independently refuse.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Export deliberately revalidates its new image instead of adopting unchecked cached lookups.
+
 proc key(first: byte): StateKey =
   ## Canonical query identities distinguish retained values, absence and local unknown evidence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## The source image retains five queries at one independently trusted complete root.
   LightSnapshotLimits(bytes: ByteLimit(4096), cache: LightCacheLimits(items: ElementLimit(5),
     writes: ElementLimit(5), valueBytes: ByteLimit(68),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc cycle(image: PreparedLightSnapshot) =
   ## Selected images and failed restoration scratch retire together before occupied-memory observations.
   let selected = image.select([key(255), key(0)], policy(), ElementLimit(5)).value
@@ -40,6 +47,7 @@ proc cycle(image: PreparedLightSnapshot) =
   assert failed.error == LightSnapshotError.BackendFailure and calls() == 3
   resetHash(0)
   assert image.select([key(255), key(0)], policy(), ElementLimit(5)).value.bytes == selected.bytes
+
 proc prepared(image: PreparedLightSnapshot, trie: FullStateTrie) =
   ## Every subset exports exact independent canonical bytes under a tightened read-only output policy.
   let identities = [key(0), key(64), key(128), key(192), key(255)]
@@ -134,6 +142,7 @@ proc prepared(image: PreparedLightSnapshot, trie: FullStateTrie) =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("storage_light_selected_exports", 1000, before, after)
+
 proc empty() =
   ## Empty selection preserves a nonzero complete root; zero-node absence remains explicit retained evidence.
   let proofs = [LightStateProof(key: key(128)), LightStateProof(key: key(0))]
@@ -147,6 +156,7 @@ proc empty() =
   let blank = image.select([], target, ElementLimit(0)).value
   assert blank.byteLength == 128 and blank.cache.len == 0
   assert blank.select([key(0)], policy(), ElementLimit(0)).proofError == LightCacheError.UnknownKey
+
 proc files(image: PreparedLightSnapshot) {.raises.} =
   ## Explicit export policy needs its own namespace; a selected partial image retains its complete root after reopen.
   let path = "storage-light-selected-exports"
@@ -186,6 +196,7 @@ proc files(image: PreparedLightSnapshot) {.raises.} =
     assert posix.unlink(lock.toCString()) == 0
     assert posix.rmdir(directory.toCString()) == 0
   assert held.cache.lookup(key(0)).value.bytes.len == 33
+
 proc main() {.raises.} =
   ## Complete independent flat-map hashing supplies root authority; export only changes local retained evidence.
   resetHash(0)

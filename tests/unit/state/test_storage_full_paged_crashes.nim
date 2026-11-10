@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real successful syscall stops qualify complete full-graph publication, explicit replay recovery and exact retired-epoch cleanup.
+
 import std/[assertions, syncio, envvars]
 import ../../support/[full_paged_native_fixture, full_paged_reference, storage_io, storage_crash]
 import ../../../src/storage/full/paged/store as full_paged_store
@@ -10,17 +11,21 @@ import ../../../src/storage/full/paged/[codec as full_paged_codec, stream as ful
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/file/errors as file_errors
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only fixed test-owned names; discovery never grants recovery authority.
+
 proc exists(path: string): bool =
   ## Absence remains distinct from a created zero-byte artifact.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc text(bytes: openArray[byte]): string =
   ## Fixture-sized independent oracle bytes may be resident only in these tests.
   result = newString(bytes.len)
   for index, value in bytes: result[index] = char(value)
+
 proc prefix(path, expected: string) {.raises.} =
   ## Interrupted files must be absent or exact bounded prefixes of independently authored bytes.
   if not exists(path): return
@@ -28,6 +33,7 @@ proc prefix(path, expected: string) {.raises.} =
   assert actual.len <= expected.len, "prefix extent " & path
   for index in 0..<actual.len: assert actual[index] == expected[index], "prefix byte " & path &
       " " & $index
+
 proc capture(path: string): seq[string] {.raises.} =
   ## Strict reopen must preserve all known names and their complete forensic bytes.
   result = @[]
@@ -35,6 +41,7 @@ proc capture(path: string): seq[string] {.raises.} =
       "paged-0000000000000002.bin"]:
     let child = path & "/" & name
     result.add(if exists(child): "present:" & readFile(child) else: "absent")
+
 proc prepare(writer: var FullPagedWriter, candidate: var FullPagedCandidate, mode: int,
     target: FullPagedFixture) =
   ## Source-derived compaction preserves generation; all complete replacements advance once with explicit root inventory.
@@ -42,6 +49,7 @@ proc prepare(writer: var FullPagedWriter, candidate: var FullPagedCandidate, mod
     else: prepareFullPagedReplacement(writer, candidate, target.header.root, target.roots,
       target.records.producer, uint64(target.records.len), target.header.geometry.payloadBytes)
   assert checked.error == FullPagedNativeError.None
+
 proc trial(old, fresh: FullPagedFixture, mode: int, operation, skip: cint,
     chunk: int): uint64 {.raises.} =
   ## Every trial owns one exact child and namespace; the parent releases its writer before fork.
@@ -215,6 +223,7 @@ proc trial(old, fresh: FullPagedFixture, mode: int, operation, skip: cint,
     assert retained.selected.value.bytes.value == source.bytes.value
     assert retained.close == FileError.None
   if mode != 0: assert readFile(path & "/KEEP") == "preserved full paged crash sibling"
+
 proc main() {.raises.} =
   ## Positive completion controls measure genuine operations; every observed successful boundary gets an exact kill trial.
   let old = sample(7)

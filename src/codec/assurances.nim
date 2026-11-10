@@ -43,6 +43,10 @@ type
       # Failed decodes expose neither a default record nor consumed metadata.
       discard
 
+func `==`*(left, right: ValidatorIndex): bool {.inline.} =
+  ## Compare encoded validator identities without admitting roster counts or other indices.
+  uint16(left) == uint16(right)
+
 func error*(value: AssuranceWriteResult): AssuranceError =
   ## Read encoder outcomes without allowing safe callers to retag the private result.
   value.status

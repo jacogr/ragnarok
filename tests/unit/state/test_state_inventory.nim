@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable logical facts retain exact complete source provenance with independent preflight and ARC checks.
+
 # @@Verification={"arc": "state_inventory_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, arc_evidence]
@@ -10,18 +11,23 @@ import ../../../src/codec/[bounded, composite]
 import ../../../src/codec/state/[accounts as state_accounts, requests as state_requests,
     composition as state_composition, service_values as state_service_values]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer counters and optionally refuse all hashes.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Measure precise preflight/backend boundaries independently of result tags.
+
 proc after(successes: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse only after the whole existing manifest matcher has completed.
+
 proc cycle(source: ValidatedStateManifest, services: seq[StateService]) =
   ## Retire captured facts and rejected inputs before allocator observation.
   let inventory = captureStateInventory(source, services, inventoryCaptureLimits).value
   assert inventory.inventoryInfo.value.facts == 5
   assert inventory.inventoryServiceAt(InventoryServiceIndex(high(uint64))).error ==
       StateInventoryError.InvalidIndex
+
 proc main() {.raises.} =
   ## Authenticate authored logical declarations once, then exercise each bound public fact family.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_inner_invoke_arc_release"}
 
 ## Original raw guests verify all invoke exits, exact reservation/refund and immutable resumable machine state.
@@ -13,6 +14,7 @@ proc run(map: InnerMachines, memory = invokeMemory(), args = invokeArgs(), credi
     InnerMachineResult[InnerMachineTransition] =
   ## Invoke only the supplied immutable map and frame, with independent outer gas for accounting witnesses.
   innerInvokeResponse(map, MachineGas(credit), args, memory)
+
 proc price(map: InnerMachines): uint64 =
   ## Block pricing is independently verified by its own suite; host fee/refund/frame expectations remain literal.
   uint64(blockGas(map.innerMachine(InnerMachineId(0)).value.program, CodeAddress(0), GasCycleLimit(1000)).value)
@@ -182,6 +184,7 @@ for limit in 0..<2:
   assert refused.executionError == (if limit == 0: StepError.StepLimitExceeded else: StepError.GasCycleLimitExceeded)
 assert run(default(InnerMachines)).error == InnerMachineError.InvalidContext
 assert run(source, default(Memory)).error == InnerMachineError.InvalidMemory
+
 # Fresh success, resumable host/fault owners and local engine refusals release all frame, code and RAM generations with ARC.
 proc cycle() =
   ## No original input or completed/failed segment owner survives one independent lifetime iteration.

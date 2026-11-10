@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_created_accounts_arc_release"}
 
 ## Genuine new-service executions publish selected children/debits and refuse colliding or broader account effects.
@@ -22,6 +23,7 @@ import ../../support/[accumulation_batch_context, accumulation_provision_integra
 
 # Fail real backend work only after the guest and prepared batch exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # One unit flat deposit gives a literal nonzero debit/child balance while retaining the fixed fixture profile.
@@ -36,6 +38,7 @@ proc profile(): Parameters =
   decodeParameters(bytes).value
 
 let hash = ServicePreimageHash(array[32, byte](blake2b256([81'u8]).value))
+
 # Offer a genuine one-byte preimage hash plus the actual raw byte for later provision to the child.
 proc guestInput(): seq[byte] =
   result = newSeq[byte](61)

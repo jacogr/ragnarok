@@ -5,20 +5,8 @@ Baseline: unreleased Gray Paper v0.8.0, commit
 [Cryptography](https://github.com/gavofyork/graypaper/blob/1fa8cbc7e7ec3e60d09f8e704911a89c6837ce1d/text/notation.tex#L163).
 Toolchain/dependency/vector revisions are in [crypto-pins.json](crypto-pins.json).
 
-| Operation | Contract |
-| --- | --- |
-| Blake2b-256 | Unkeyed raw-byte input, digest length configured as 32 bytes. Never truncate Blake2b-512. |
-| Keccak-256 | Legacy Ethereum-style Keccak: rate 1088, capacity 512 bits, suffix 0x01, 32-byte digest. Never SHA3-256's 0x06 suffix. |
-| Ed25519 key derivation | Exact 32-byte RFC 8032 seed to 32-byte encoded public key. All-zero seed is valid when explicitly imported. |
-| Ed25519 signing | Ordinary deterministic Ed25519 over the exact raw message, 64-byte signature. No implicit domain, prehash, Ed25519ctx or Ed25519ph. |
-| Ed25519 verification | Exact 32/64-byte encoded key/signature import, then backend verification. Wrong sizes fail import; correctly sized invalid encodings/signatures return false. |
-
-Domain construction and codec serialization remain caller responsibilities in
-Nim. Hashes, keys and signatures have distinct nominal types. Public-key
-import proves width/ownership only; it does not assert subgroup membership.
-Hash/key/signature values own bytes. Seed handles hide their private retained
-copy and cannot silently substitute a default seed. Failed results carry only
-a reason; defaults fail. Checked success selection remains enabled in release.
+The [primitive module](../src/crypto/primitives.nim) owns the digest, seed, signing and
+verification contracts. Its comments describe the shared ZIP215 verification policy.
 
 ## Current ZIP215 verification policy
 

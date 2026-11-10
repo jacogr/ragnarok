@@ -32,33 +32,40 @@ type
   ComputedLookupFixture* = object ## Caller-owned chain handles may be replaced without altering any completed source or accepted owner.
     source*: RecentComputedReport
     older*: seq[OwnedHeader]
+
 proc lookupLimits*(): ComputedLookupLimits =
   ## Independent local count/per-header/aggregate policies cover the authored three-header sequence.
   ComputedLookupLimits(headers: ElementLimit(8), headerBytes: ByteLimit(4096), bytes: ByteLimit(32768))
+
 proc lookupHeaderConfig(): HeaderConfig =
   ## Exact original core/epoch profile with a structural six-validator author ceiling.
   HeaderConfig(cores: CoreCount(2), authorValidators: ValidatorCount(6), epochSlots: EpochSlots(12),
       maxBytes: ByteLimit(4096))
+
 proc lookupWire*(owner: OwnedHeader): seq[byte] =
   ## Copy exact full sealed bytes for independent identity checks and isolated test-only mutation.
   result = newSeq[byte](headerInfo(owner).value.consumed)
   assert encodeOwnedHeader(owner, result).error == HeaderError.None
+
 proc lookupOwner(value: Header): OwnedHeader =
   ## Capture one complete canonical header with no signature/consensus verification claim.
   var wire = newSeq[byte](4096)
   let written = encodeHeader(value, lookupHeaderConfig(), wire).value
   decodeHeader(wire.toOpenArray(0, written-1), lookupHeaderConfig()).value.owner
+
 proc authoredHeader(slot: uint32, root, seal: byte, parent: array[32, byte]): OwnedHeader =
   ## Literal root/seal markers distinguish posterior-root direction and sealed-hash identity.
   var signature = default(array[96, byte])
   signature[0] = seal
   lookupOwner(Header(unsigned: UnsignedHeader(slot: HeaderSlot(slot), parent: HeaderParent(parent),
     priorState: PriorStateRoot(recentHash(root))), seal: HeaderSeal(signature)))
+
 proc alteredLookupHeader*(owner: OwnedHeader, offset: int, value: byte): OwnedHeader =
   ## Replace a single test-owned serialized byte and recapture syntactically valid hostile chain input.
   var wire = lookupWire(owner)
   wire[offset] = value
   decodeHeader(wire, lookupHeaderConfig()).value.owner
+
 proc lookupReport(execution: InputRefinement): ComputedReportLinks =
   ## Complete original computation/availability/transcript before any admission or anchor certificate can be constructed.
   let bundle = prepareAuditableBundle(execution, ByteLimit(20000)).value
@@ -70,6 +77,7 @@ proc lookupReport(execution: InputRefinement): ComputedReportLinks =
   let report = prepareComputedReport(available, ByteLimit(100000)).value
   let transcript = prepareComputedGuarantee(report, ByteLimit(100000)).value
   prepareComputedLinks(transcript, [], ElementLimit(0)).value
+
 proc lookupFixture*(mode = 0): ComputedLookupFixture =
   ## Author chain18/19/20, commit C3/C11 before context capture, then execute/admit/check the exact original source.
   let tail = authoredHeader(18, 6, 13, default(array[32, byte]))

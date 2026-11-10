@@ -12,6 +12,7 @@ import ../../src/state/store
 
 type CheckpointFixtureVariant* {.pure.} = enum ## Each independent mismatch changes exactly one persistence-relevant fact.
   Original, Header, Profile, State, ExplicitExpunge
+
 proc checkpointFixture*(variant = CheckpointFixtureVariant.Original): ApplicationChain {.raises.} =
   ## Read only the harness-supplied hash-checked source and retain complete original entries.
   let path = getEnv("RAGNAROK_APPLICATION_CHECKPOINT")

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real signed guarantees, ancestor lookup and current PVM effects reach native durability, RPC notification and strict restart.
+
 import std/[assertions, envvars, syncio, base64, strutils]
 import std/posix/posix
 import ../../../src/app/[chain, candidate]
@@ -21,10 +22,13 @@ import ../../../src/storage/managed/[repository as managed_repository, manifest 
 import ../../support/[accumulation_current_chain_context, accumulation_current_candidate_context,
   accumulation_current_disk_context, accumulation_provision_integration,
   pvm_accumulation_provision, managed_storage_samples, rpc_socket]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 const Subscribe = """{"jsonrpc":"2.0","method":"subscribeBestBlock","params":[],"id":2}"""
 const Best = """{"jsonrpc":"2.0","method":"bestBlock","id":1}"""
+
 proc listener(rpc: var Server, view: ChainView): uint16 =
   ## Actual loopback RPC uses bounded ephemeral reservation retries.
   let parameters = decodeParameters(currentChainSettings().encodeParameters)
@@ -34,6 +38,7 @@ proc listener(rpc: var Server, view: ChainView): uint16 =
     if rpc.start(selected.port, "current-durable-path-test", parameters, view): return selected.port
   assert false, "current durable-path RPC startup failed"
   0
+
 proc foreignContext(update: PreparedCurrentChainUpdate, publication: PreparedCurrentDiskPublication,
     generation: RepositoryGeneration) {.raises.} =
   ## Exact state identity and equal generation still cannot replace the prepared full application context.
@@ -50,6 +55,7 @@ proc foreignContext(update: PreparedCurrentChainUpdate, publication: PreparedCur
   assert uint64(disk.generation.value) == uint64(generation)
   assert sameStateSnapshot(disk.snapshot.value, update.currentUpdateState)
   assert not disk.confirmsCurrentDiskPublication(publication, generation)
+
 proc witness(context: CurrentChainFixture, managed: bool) {.raises.} =
   ## The host freezes every shared ARC alias between native submission and exact receipt collection.
   let original = initApplicationChain(context.currentChainSeeded).value
@@ -147,6 +153,7 @@ proc witness(context: CurrentChainFixture, managed: bool) {.raises.} =
     removeManagedSample(path, [ManagedEpoch(1)]) # No maintenance/compaction creates another physical epoch in this witness.
   else:
     assert posix.unlink(path.toCString()) == 0 # The next backend witness begins with absent physical storage.
+
 proc main() {.raises.} =
   ## Real incoming guarantees need the original lookup headers; no ancestry or state certificate is synthesized.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

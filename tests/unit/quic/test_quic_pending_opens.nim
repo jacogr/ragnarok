@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real pinned LSQUIC stream credit distinguishes queued opens from live streams during cancellation.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/quic/transport
 import ../../../src/jamnp-s/protocol
@@ -13,15 +14,19 @@ type
     expected: array[32, byte]
     handles: array[16, NativeStream]
     opened: int
+
 proc `=copy`(destination: var Party, source: Party) {.error.}
   ## Native engines borrow the original party's address.
+
 proc `=dup`(source: Party): Party {.error.}
   ## ARC initialization cannot duplicate the enclosing transport owner.
+
 proc verify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cdecl, raises: [].} =
   ## The client independently pins the server's raw public fixture key.
   let party = cast[ptr Party](user)
   if party.client: cint(validPeer(cast[ptr byte](der), length, party.expected))
   else: cint(validPeer(cast[ptr byte](der), length, []))
+
 proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].} =
   ## A one-byte flushed prefix exposes the stream remotely while deliberately retaining both directions.
   let party = cast[ptr Party](user)
@@ -64,11 +69,13 @@ proc event(user: pointer, stream: NativeStream, kind: cint) {.cdecl, raises: [].
     wantWrite(stream, 0)
     streamAbort(stream) # Both application directions retire before the fixed slot can be reused.
   else: discard # Other callbacks do not mint or complete an open request.
+
 proc pump(server, client: var Party, milliseconds: int) =
   ## One serial event loop keeps all raw callback owners and shared native libraries stable.
   let deadline = getMonoTime()+initDuration(milliseconds = milliseconds)
   while getMonoTime() < deadline:
     assert server.transport.pollTransport(0) and client.transport.pollTransport(0)
+
 proc main() {.raises.} =
   ## Cancelling delayed opens must not close eight live streams or later create phantom requests as credit returns.
   var server = default(Party)

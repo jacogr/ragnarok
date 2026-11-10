@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact authenticated activity reads preserve independent epoch populations and accepted compact gas.
+
 import std/[assertions, syncio]
 import ../../support/proof_global_helpers
 import ../../../src/state/proof/[global as proof_global, view as proof_view]

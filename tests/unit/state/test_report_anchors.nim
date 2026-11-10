@@ -26,6 +26,7 @@ import ../../support/[arc_evidence, report_context]
 
 ## Observe deterministic backend refusal without replacing any production hash calculation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Permit a complete first ancestor hash before refusing the next one.
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
 

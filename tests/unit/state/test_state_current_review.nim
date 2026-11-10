@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Current review preserves original full parameters, exact inventory and stage/resource reasons on real signed successors.
+
 # @@Verification={"arc": "state_current_review_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_checkpoint_context, current_state_context,
@@ -13,10 +14,13 @@ import ../../../src/state/account/review as account_review
 import ../../../src/state/economic_profile
 import ../../../src/state/account/review/plan as account_review_plan
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Disable hashing only after complete source qualification.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Empty authored child namespaces need no content hashes during review.
+
 proc verify(source: CurrentStateSerialization) =
   ## The reviewed profile must preserve all original parameters, not just the three selected rates.
   let original = captureEconomicProfile(source.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedParameters.value).value
@@ -46,10 +50,12 @@ proc verify(source: CurrentStateSerialization) =
     assert refused.preparationFailure.error == expected[phase]
   assert calls() == 0
   fail(0)
+
 proc cycle(source: CurrentStateSerialization) =
   ## Retire all reports and original owner aliases after one complete targeted review.
   let review = reviewCurrentState(source, reviewPlanTestLimits).value
   assert review.currentAccountReview.value.accountReviewInfo.value.economics.services == 2
+
 proc main() {.raises.} =
   ## Genuine ordinary/disputed/ticketed/epoch inputs qualify before observer resets and ARC measurements.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

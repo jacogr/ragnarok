@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Detached CE144 uploads fan out to original auditors through bounded native request and demand-dial slots.
+
 import std/[monotimes, times]
 import ./proof/work_submission
 import ../jamnp-s/[node, connections, endpoints, read_stream, read_client]
@@ -26,28 +27,35 @@ type
 
 proc `=copy`*(destination: var AuditAnnouncementSend, source: AuditAnnouncementSend) {.error.}
   ## Cancellation authority is unique to the foreground controller.
+
 proc `=dup`*(source: AuditAnnouncementSend): AuditAnnouncementSend {.error.}
   ## Copying an active or pending fan-out would duplicate native authority.
+
 proc requireIdle(owner: AuditAnnouncementSend) {.requires: not owner.active.} =
   ## All native authorities must be retired or cancelled explicitly before destruction.
   discard
+
 proc `=wasMoved`*(owner: var AuditAnnouncementSend) {.nodestroy, requires: not owner.active.} =
   ## Only idle, detached storage may move.
   `=wasMoved`(owner.request)
   `=wasMoved`(owner.recipients)
   `=wasMoved`(owner.slots)
+
 proc `=destroy`*(owner: AuditAnnouncementSend) =
   ## The application closes the actor before closing its native node.
   requireIdle(owner)
   `=destroy`(owner.request)
   `=destroy`(owner.recipients)
   `=destroy`(owner.slots)
+
 func sending*(owner: AuditAnnouncementSend): bool =
   ## Delivery is active until all targets have acknowledged or exhausted their attempts.
   owner.active
+
 func acknowledged*(owner: AuditAnnouncementSend): int =
   ## Bare FIN confirms receipt only.
   owner.acknowledged
+
 proc begin*(owner: var AuditAnnouncementSend, produced: ProducedInitialAudit,
     attempts, timeoutMs, retryMs: int): bool =
   ## An empty selection has no wire obligation and never enters the delivery actor.
@@ -67,6 +75,7 @@ proc begin*(owner: var AuditAnnouncementSend, produced: ProducedInitialAudit,
   owner.attempts = attempts
   owner.active = owner.recipients.len > 0
   true
+
 proc finish(owner: var AuditAnnouncementSend, slot: var Delivery, streams: var NodeService,
     clock: MonoTime, received: bool) =
   ## Release the exact request and schedule a retry only after any demand dial has retired.
@@ -78,6 +87,7 @@ proc finish(owner: var AuditAnnouncementSend, slot: var Delivery, streams: var N
   if received:
     inc owner.acknowledged
     slot.attempts = owner.attempts
+
 proc advance(owner: var AuditAnnouncementSend, slot: var Delivery, streams: var NodeService,
     clock: MonoTime) =
   ## Each turn observes one request or one dial; deadlines also bound waits for native capacity.
@@ -124,6 +134,7 @@ proc advance(owner: var AuditAnnouncementSend, slot: var Delivery, streams: var 
       slot.dialing = true
     elif dial.error != DialError.Unavailable:
       owner.finish(slot, streams, clock, false)
+
 proc poll*(owner: var AuditAnnouncementSend, streams: var NodeService, clock: MonoTime) =
   ## Rotate through a fixed number of independent slots and never traverse the original roster in the node loop.
   if not owner.active or not streams.isOpen: return
@@ -140,6 +151,7 @@ proc poll*(owner: var AuditAnnouncementSend, streams: var NodeService, clock: Mo
     owner.active = false
     owner.request = default(ReadRequest)
     owner.recipients = @[]
+
 proc close*(owner: var AuditAnnouncementSend, streams: var NodeService) =
   ## Native buffers remain owned by NodeService while physical cancellations finish.
   for slot in owner.slots:

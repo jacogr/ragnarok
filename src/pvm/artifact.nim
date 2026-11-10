@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded standalone JamV1 PolkaVM containers; see spec/pvm-artifacts.md.
-## Decoding copies symbols and data into immutable program/memory owners. File loading is explicit; no application host ABI is inferred.
+## Section bytes are borrowed until capture into immutable program/memory owners; symbols are copied.
+## File loading is explicit; no application host ABI is inferred.
+
 import std/syncio
 import ../codec/natural
 import ./[program, machine]
@@ -30,6 +32,8 @@ type
   Cursor = object ## Borrow-free parser state: integer extents and first-error status only.
     offset, finish: int
     error: ArtifactError
+  SectionSpan = object ## Validated input extents stay local; no borrowed address is retained.
+    first, past: int
 
 func error*[T](answer: ArtifactResult[T]): ArtifactError =
   ## Inspection never grants access to an unsuccessful payload.
@@ -105,9 +109,11 @@ proc symbol(input: openArray[byte], cursor: var Cursor, count: int): string =
     result[i] = char(input[cursor.offset+i]) # No caller-owned address survives the decode.
   cursor.offset += count
 
-proc initialMemory(ro, rw, stack: uint32, roData, rwData: seq[byte],
+proc initialMemory(ro, rw, stack: uint32, input: openArray[byte], roData, rwData: SectionSpan,
     limit: uint32): ArtifactResult[Memory] =
   ## Derive the pinned ABI with widened arithmetic; prove overlap and counts before materialization.
+  let roLength = roData.past-roData.first
+  let rwLength = rwData.past-rwData.first
   let roPages = (uint64(ro)+4095) div 4096
   let rwPages = (uint64(rw)+4095) div 4096
   let stackPages = (uint64(stack)+4095) div 4096
@@ -116,22 +122,22 @@ proc initialMemory(ro, rw, stack: uint32, roData, rwData: seq[byte],
   let stackSpace = ((uint64(stack)+65535) div 65536)*65536
   if stackSpace > 0xfffe0000'u64 or lowerEnd > 0xfffe0000'u64-stackSpace:
     return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
-  if uint64(roData.len) > uint64(ro) or uint64(rwData.len) > uint64(rw):
+  if uint64(roLength) > uint64(ro) or uint64(rwLength) > uint64(rw):
     return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   let count = roPages+rwPages+stackPages
   if count > uint64(limit): return ArtifactResult[Memory](status: ArtifactError.LimitExceeded)
-  # Explicit source choices preserve independent RO/RW prefixes without a temporary page-image vector.
+  # Checked section offsets select independent prefixes in the same call-scoped borrowed container.
   let regions = [
     InitializationRegion(first: PageIndex(16), past: PageIndex(uint32(16+roPages)),
-      access: PageAccess.ReadOnly, source: InitializationSource.First, offset: 0,
-      length: roData.len),
+      access: PageAccess.ReadOnly, source: InitializationSource.First, offset: roData.first,
+      length: roLength),
     InitializationRegion(first: PageIndex(uint32(rwStart div 4096)),
       past: PageIndex(uint32(rwStart div 4096+rwPages)), access: PageAccess.ReadWrite,
-      source: InitializationSource.Second, offset: 0, length: rwData.len),
+      source: InitializationSource.Second, offset: rwData.first, length: rwLength),
     InitializationRegion(first: PageIndex(uint32(0xfffe0000'u64 div 4096-stackPages)),
       past: PageIndex(uint32(0xfffe0000'u64 div 4096)), access: PageAccess.ReadWrite,
       source: InitializationSource.First, offset: 0, length: 0)]
-  let memory = captureInitializationMemory(regions, roData, rwData, PageLimit(limit))
+  let memory = captureInitializationMemory(regions, input, input, PageLimit(limit))
   if memory.error != MachineError.None:
     return ArtifactResult[Memory](status: ArtifactError.InvalidMemory)
   ArtifactResult[Memory](status: ArtifactError.None, completed: memory.value)
@@ -149,7 +155,7 @@ proc decodeArtifact*(input: openArray[byte], limits: ArtifactLimits =
   if little(input, 5, 8) != uint64(input.len): refuse(ArtifactError.InvalidFormat)
   var cursor = Cursor(offset: 13, finish: input.len, error: ArtifactError.None)
   var ro, rw, stack: uint32 = 0
-  var roData, rwData, wire: seq[byte] = @[]
+  var roData, rwData, wire = SectionSpan(first: 0, past: 0)
   var imports: seq[string] = @[]
   var exports: seq[ArtifactExport] = @[]
   var previous = 0
@@ -178,13 +184,12 @@ proc decodeArtifact*(input: openArray[byte], limits: ArtifactLimits =
       rw = number(input, part)
       stack = number(input, part)
     of 2, 3, 6:
-      # The outer byte limit bounds data copies; code has a separate decoder ceiling.
+      # Keep only admitted extents; final owners copy these bytes after complete container framing.
       if section == 6 and uint64(length) > limits.codeBytes: refuse(ArtifactError.LimitExceeded)
-      var bytes = newSeq[byte](int(length))
-      for i in 0..<int(length): bytes[i] = input[start+i]
-      if section == 2: roData = bytes
-      elif section == 3: rwData = bytes
-      else: wire = bytes
+      let span = SectionSpan(first: start, past: finish)
+      if section == 2: roData = span
+      elif section == 3: rwData = span
+      else: wire = span
       part.offset = finish
     of 4:
       let count = number(input, part)
@@ -225,13 +230,14 @@ proc decodeArtifact*(input: openArray[byte], limits: ArtifactLimits =
     if part.offset != finish: refuse(ArtifactError.InvalidFormat)
     cursor.offset = finish
   if not ended or cursor.offset != cursor.finish: refuse(ArtifactError.InvalidFormat)
-  let decoded = decodeJamProgram(wire, CodeAddress(0), ProgramByteLimit(limits.codeBytes),
-      JumpCountLimit(limits.codeBytes))
+  # Absent/empty wire yields an empty view and the same decoder refusal; successful bytes are owned.
+  let decoded = decodeJamProgram(input.toOpenArray(wire.first, wire.past-1), CodeAddress(0),
+      ProgramByteLimit(limits.codeBytes), JumpCountLimit(limits.codeBytes))
   if decoded.error != ProgramError.None: refuse(ArtifactError.InvalidProgram)
   for exported in exports:
     if instructionOpcode(decoded.value, exported.address).error != ProgramError.None:
       refuse(ArtifactError.InvalidProgram)
-  let memory = initialMemory(ro, rw, stack, roData, rwData, limits.pages)
+  let memory = initialMemory(ro, rw, stack, input, roData, rwData, limits.pages)
   if memory.error != ArtifactError.None: refuse(memory.error)
   ArtifactResult[Artifact](status: ArtifactError.None, completed: Artifact(initialized: true,
       source: decoded.value, memory: memory.value, imports: imports, exports: exports))

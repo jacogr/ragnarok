@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent literal E4/group construction and GP segment verification support component and actual TLS serving witnesses.
+
 import std/assertions
 import ../../src/jamnp-s/read_stream
 import ../../src/state/availability/specifier
@@ -10,6 +11,7 @@ import ../../src/codec/[bounded, natural]
 from ../../src/codec/work/package import ImportIndex
 from ../../src/codec/work/report import SegmentRoot
 from ../../src/pvm/host/fetch import FetchSegment
+
 proc segmentGroup*(kind: ReadKind, root: array[32, byte], shard: uint16, rows: openArray[
     uint16]): seq[byte] =
   ## Construct exact request order; canonical naturals have independent codec witnesses elsewhere.
@@ -23,6 +25,7 @@ proc segmentGroup*(kind: ReadKind, root: array[32, byte], shard: uint16, rows: o
   for row in rows:
     result.add(byte(row and 255))
     result.add(byte(row shr 8))
+
 proc segmentMessages*(wire: seq[byte]): seq[seq[byte]] =
   ## Independent E4 parsing requires exact complete messages and no suffix.
   result = @[]
@@ -37,6 +40,7 @@ proc segmentMessages*(wire: seq[byte]): seq[seq[byte]] =
     for index in 0..<payload.len: payload[index] = wire[offset+index]
     offset += payload.len
     result.add(payload)
+
 proc verifyOriginalSegments*(expected: AvailabilitySpecifier, rows: openArray[uint16], parts: seq[
     seq[byte]]) =
   ## Every returned original segment is checked against an independent selected segment root using the GP verifier.

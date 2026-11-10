@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Fragmented permission regions, exact whole-range faults, host continuation and immutable aliases.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -50,7 +53,6 @@ proc sameCpu(left, right: MachineInfo) =
     # Compare every register, including operands intentionally aliased by a witness.
     assert uint64(left.registers[index]) == uint64(right.registers[index])
 
-
 proc same(frame: FlatFrame, wanted: StepResult, images: openArray[PageImage]) =
   ## Compare every mapped byte/access tag and complete CPU/exit metadata after private execution.
   assert frame.reason == wanted.error
@@ -78,6 +80,7 @@ var images = [PageImage(index: PageIndex(16), access: PageAccess.ReadWrite),
 for page in 0..<images.len:
   for at in 0..<4096: images[page].bytes[at] = byte((at*17+page*31) mod 251)
 let captured = captureMemory(images, PageLimit(8)).value
+
 proc immediate(part: var seq[byte], value: uint64) =
   ## Explicit little-endian operands make the fixture independent of the production decoder.
   for i in 0..<4: part.add(byte((value shr (8*i)) and 255'u64))

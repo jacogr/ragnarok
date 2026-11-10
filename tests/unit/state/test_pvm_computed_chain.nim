@@ -22,6 +22,7 @@ assert parent.error == GenesisError.None
 assert uint64(parent.value.activeValidators) == 9
 let candidate = source.computedCompositionPlan.value.accumulationConsensusState.value
 let initial = genesisView(parent).finalizeView(parent.value.blockHash).value
+
 proc unchanged(state: StateStore, view: ChainView, before: StateStoreSnapshot, prior: ChainView) =
   ## Verify exact state owner, whole retained view and explicit finality after every refusing phase.
   assert sameStateSnapshot(state.snapshot.value, before)
@@ -122,6 +123,7 @@ assert default(AdvancedComputedChain).computedChainBlock.error == ComputedChainE
 var copied = receipt.computedChainPublication.value
 copied = default(PublishedComputedState)
 assert sameStateSnapshot(receipt.computedChainPublication.value.computedPublishedSnapshot.value, candidate)
+
 proc detached(): AdvancedComputedChain =
   ## Actual installed child retains its state, original computation and sealed-header owner after all live fixture handles retire.
   let local = chainFixture()
@@ -133,6 +135,7 @@ let held = detached()
 assert held.computedChainBlock.value.slot == 2
 assert held.computedChainBlock.value.stateSnapshot.lookup(chapterKey(StateChapter(
     16))).value.bytes == @[0'u8]
+
 proc cycle() =
   ## Release fresh receipts, captured child indexes, private publication and view histories per successful/refused iteration.
   var canonical = forkStateStore(parent.value.stateSnapshot).value

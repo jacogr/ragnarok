@@ -3,6 +3,7 @@
 
 ## Bounded main-thread retention of complete hash-checked reports, independent of canonical state graphs.
 ## Cached content has no guarantee, execution, availability or judgment authority.
+
 import std/assertions
 import ./[read_stream, read_validation]
 import ../chain/reports
@@ -31,25 +32,31 @@ type
 func error*(outcome: ReportCacheResult): ReportCacheError =
   ## Observe a miss without extracting an empty successful reply.
   outcome.status
+
 func value*(outcome: ReportCacheResult): ReadReply {.requires: outcome.status ==
     ReportCacheError.None.} =
   ## Frozen request facts still require a live exact node read ticket before sending.
   outcome.completed
+
 func len*(cache: ReportCache): int =
   ## Scalar capacity observation never accesses a worker-owned graph.
   cache.count
+
 func byteLength*(cache: ReportCache): int =
   ## Count logical framed bytes, including each E4 prefix.
   cache.bytes
+
 proc clear*(cache: var ReportCache) =
   ## Retire all detached owners; replacement generations have no externally exposed ticket authority.
   cache = default(ReportCache)
+
 proc identity(request: ReadRequest): array[32, byte] {.requires: request.valid and request.kind ==
     ReadKind.Report.} =
   ## Complete fixed requests provide exactly one full report hash.
   let payload = request.payload
   result = default(array[32, byte])
   for index in 0..<32: result[index] = payload[index]
+
 proc removeOldest(cache: var ReportCache) =
   ## One bounded scan removes the least recently inserted/accessed owner before retaining the replacement.
   var oldest = -1
@@ -60,6 +67,7 @@ proc removeOldest(cache: var ReportCache) =
   cache.bytes -= cache.entries[oldest].reply.byteLength
   dec cache.count
   cache.entries[oldest] = default(CacheEntry)
+
 proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheError =
   ## Only a complete sealed verifier result can enter retention; peer bytes and guessed hashes cannot populate it directly.
   if not checked.valid: return ReportCacheError.InvalidReport
@@ -99,6 +107,7 @@ proc remember*(cache: var ReportCache, checked: CheckedReadReply): ReportCacheEr
   inc cache.count
   cache.bytes += wire.len
   ReportCacheError.None
+
 proc find*(cache: var ReportCache, request: ReadRequest): ReportCacheResult =
   ## Full method/hash binding protects both lookup and later native response matching.
   if not request.valid: return ReportCacheResult(status: ReportCacheError.InvalidReport)

@@ -214,6 +214,9 @@ func fits(needed, available: Units): bool =
   for i in 0..<5:
     if needed[i] > available[i]: return false
 
+func lowestEntryIndex(mask: uint32): cint {.importc: "__builtin_ctz", nodecl.}
+  ## Count trailing zeros of a nonzero mask on the supported C toolchain.
+
 proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasResult =
   ## Compute the whole block charge, with no register/memory/gas mutation or retained allocation.
   ## start must be a block boundary; the cycle ceiling is local work policy, not guest gas.
@@ -224,6 +227,8 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
   var rob = default(array[32, Entry])
   var count = 0
   var busy = 0'u32 # A bit is set exactly while that active entry has nonzero remaining latency.
+  var waiting = 0'u32 # Bits mark exactly the active entries in Stage.Waiting.
+  var transitioning = 0'u32 # Bits mark exactly the active Decoding and Executing entries.
   var pc = uint64(start)
   var ended = false
   var cycles = 0'u64
@@ -269,6 +274,7 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
           rob[count] = Entry(stage: Stage.Decoding, left: cost.cycles,
             dependencies: deps, clobbers: cost.destinations, units: cost.units)
           if cost.cycles != 0: busy = busy or (1'u32 shl count) # The enclosing count<32 guard proves this shift.
+          transitioning = transitioning or (1'u32 shl count)
           inc count
         ended = terminatesBlock(item.opcode)
         pc += 1 + uint64(item.skip)
@@ -276,16 +282,23 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     if starts > 0:
       # Pick the oldest waiting entry whose dependencies have finished and resources fit.
       var selected = -1
-      for i in 0..<count:
-        if rob[i].stage == Stage.Waiting and fits(rob[i].units, available):
+      var candidates = waiting
+      while candidates != 0:
+        # The lowest bit is the oldest remaining candidate and is in the active prefix.
+        let i = int(lowestEntryIndex(candidates))
+        if fits(rob[i].units, available):
           if (rob[i].dependencies and busy) == 0:
             # One bounded mask intersection replaces rescanning every retained dependency on each issue attempt.
             selected = i
             break
+        candidates = candidates and (candidates - 1'u32)
       if selected >= 0:
         # Resource occupancy persists until the last executing cycle, not merely this issue slot.
         for i in 0..<5: available[i] -= rob[selected].units[i]
         rob[selected].stage = Stage.Executing
+        let bit = 1'u32 shl selected
+        waiting = waiting and not bit
+        transitioning = transitioning or bit
         dec starts
         continue
     if ended and count == 0:
@@ -298,35 +311,44 @@ proc blockGas*(program: Program, start: CodeAddress, limit: GasCycleLimit): GasR
     inc cycles
     slots = 4
     starts = 5
-    var retired = 0
-    var prefix = true
-    # All transition decisions use the old stage; retirement waits an extra cycle after execution.
-    for i in 0..<count:
-      let old = rob[i].stage
-      if prefix and old == Stage.Executed:
-        inc retired
-      else:
-        # The first unexecuted entry prevents retirement of every later entry this cycle.
-        prefix = false
-      if old == Stage.Decoding:
+    # Only entries already Executed before this cycle can retire.
+    let unexecuted = waiting or transitioning
+    let retired = if unexecuted == 0: count else: int(lowestEntryIndex(unexecuted))
+    var transitions = transitioning
+    while transitions != 0:
+      # Process the old Decoding and Executing entries in buffer order.
+      let i = int(lowestEntryIndex(transitions))
+      let bit = 1'u32 shl i
+      transitions = transitions and (transitions - 1'u32)
+      if rob[i].stage == Stage.Decoding:
         rob[i].stage = Stage.Waiting
-      elif old == Stage.Executing:
+        waiting = waiting or bit
+        transitioning = transitioning and not bit
+      else:
+        # Executing entries stay in the mask through their zero-latency cycle.
         if rob[i].left == 1:
           # Release resources on the transition to zero remaining latency.
           for j in 0..<5: available[j] += rob[i].units[j]
-          busy = busy and not (1'u32 shl i) # Readiness changes at the same one-to-zero latency transition, before the next issue cycle.
+          busy = busy and not bit # Readiness changes at the same one-to-zero latency transition, before the next issue cycle.
         if rob[i].left > 0:
           dec rob[i].left
         else:
           # Zero remaining latency becomes executed only on the following cycle.
           rob[i].stage = Stage.Executed
+          transitioning = transitioning and not bit
     if retired > 0:
       # Removed dependencies already have zero latency; reindex the remaining dependency bits.
       for i in retired..<count:
         rob[i - retired] = rob[i]
         rob[i - retired].dependencies = rob[i].dependencies shr retired
       if retired == 32:
-        busy = 0 # A complete buffer retirement must never shift by the word width.
+        # A complete buffer retirement must never shift by the word width.
+        busy = 0
+        waiting = 0
+        transitioning = 0
       else:
-        busy = busy shr retired # Active entry indices move by the same retired prefix as their dependency masks.
+        # Active entry indices move by the same retired prefix as their dependency masks.
+        busy = busy shr retired
+        waiting = waiting shr retired
+        transitioning = transitioning shr retired
       count -= retired

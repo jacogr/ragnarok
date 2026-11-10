@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restored canonical maps cross real managed native execution leases without early publication or alias retirement.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[services, chain]
@@ -15,6 +16,7 @@ import ../../../src/state/accumulation/finalization as accumulation_finalization
 import ../../support/application_candidate_context as candidate_context
 import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution
+
 proc main() {.raises.} =
   ## Independent fixture graphs remain idle; only the freshly restored canonical graph is leased to native execution.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

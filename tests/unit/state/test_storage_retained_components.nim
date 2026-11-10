@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Calibrated payload and independent-clone observations separate retained graph components through public APIs.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/records as node_records

@@ -1,11 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Owned snapshots over the pinned C.1.2/C.1.3/C.2 borrowed codecs. Input must be stable during
-## a call; successful snapshots retain only the consumed prefix.
+## Immutable snapshots over the pinned C.1.2/C.1.3/C.2 borrowed codecs.
 ##
-## Exposes OwnedFrame snapshots for bytes, optionals, work, preimages and digests, with bounded
-## copy and re-encoding operations.
+## Decode borrows stable input and copies only the validated prefix. Frame copies
+## retain that private ARC owner, so replacing one handle cannot invalidate another.
+## Indices are checked against the selected owner. Extraction takes that owner and
+## a destination, keeping coordinates bound to the bytes they were validated against.
+##
+## Copy and re-encoding preflight schema, extent and capacity before writing. Metadata
+## accessors return copied values and require the corresponding variant payload.
 
 import ./[natural, bounded, composite]
 import ./work/digest as work_digest

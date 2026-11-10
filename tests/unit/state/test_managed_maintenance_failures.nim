@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual exclusive-create refusal and kernel short writes preserve confirmed heads and report maintenance failure separately.
+
 import std/[assertions, syncio, envvars, monotimes, times]
 import std/posix/posix
 import ../../support/[application_recovery_execution, accumulation_completion_context, managed_storage_samples]
@@ -25,15 +26,19 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before selecting a smaller soft limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Change only the isolated child, never the native runner's resource budget.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep SIGXFSZ as a typed write error rather than accepting signal termination as evidence.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## Signal handling performs no allocation, output or storage operation.
   discard
@@ -43,6 +48,7 @@ proc configured(chainPath, path, threshold: string): Options =
   result = default(Options)
   assert parseCanonicalOptions(@["server", "--with-state", "--chain", chainPath, "--state-storage", "disk",
     "--state-db", path, "--state-layout", "managed", "--state-compact-bytes", threshold], result)
+
 proc waitFinished(owner: var Services) =
   ## Only scalar phase and dispatcher ticks run during native publication or maintenance.
   let started = getMonoTime()
@@ -53,6 +59,7 @@ proc waitFinished(owner: var Services) =
     var request = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(request, remaining)
+
 proc collision(fixture: RecoveryExecutionFixture) {.raises.} =
   ## A real CURRENT.next O_EXCL refusal occurs after the genuine child's journal publication is already confirmed.
   var chainPath = "managed-failure-chain"
@@ -92,6 +99,7 @@ proc collision(fixture: RecoveryExecutionFixture) {.raises.} =
   assert owner.chainView.retainedCount == 2
   owner.close()
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
+
 proc kernelFailure() {.raises.} =
   ## Fork before starting any Services worker; only the child's native snapshot writes receive the zero file ceiling.
   let chainPath = getEnv("RAGNAROK_APPLICATION_CHECKPOINT")
@@ -124,6 +132,7 @@ proc kernelFailure() {.raises.} =
   assert owner.chainView.retainedCount == 1 and not owner.diskMaintenanceFailed
   owner.close()
   removeManagedSample(path, [ManagedEpoch(1), ManagedEpoch(2)])
+
 proc main() {.raises.} =
   ## Genuine signed execution covers post-publication failure; a separate real kernel limit covers partial staging.
   kernelFailure() # Fork before any Services worker or genuine guest fixture has started in the parent.

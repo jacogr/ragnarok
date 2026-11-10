@@ -15,15 +15,18 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-worker-retry"
+
 proc policy(): StateStoreLimits =
   ## Complete-map restoration remains bounded separately from the worker request's immutable byte ceiling.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc detached(value: byte): PreparedCheckpoint =
   ## Only private encoded bytes survive source retirement; retry has no original map to re-encode or borrow.
   let snapshot = newStateStore([StateEntry(key: default(StateKey), value: @[value])], policy()).value.snapshot.value
   prepareFullCheckpoint(snapshot, ByteLimit(1000))
+
 proc waitDone(worker: var CheckpointWorker) =
   ## A monotonic test deadline bounds scalar-only scheduling waits for real I/O completion.
   let started = getMonoTime()
@@ -32,6 +35,7 @@ proc waitDone(worker: var CheckpointWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Production remains condition-driven and does not poll.
+
 proc cycle(worker: var CheckpointWorker, head: var CheckpointHead) =
   ## Peek retains capacity; fresh retry reuses the same encoded owner and invalidates every old ticket.
   var source = detached(3)
@@ -60,6 +64,7 @@ proc cycle(worker: var CheckpointWorker, head: var CheckpointHead) =
   let completed = worker.collect(ticket)
   head = completed.value.value
   assert array[32, byte](head.root) == array[32, byte](root)
+
 proc main() {.raises.} =
   ## Closed/foreign/default/cancelled/actual-success receipts never gain stale-refusal retry authority.
   for suffix in [".head", ".0", ".1"]:

@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit logical namespace declarations for genuine signed complete parents and untouched successors.
+
 import std/assertions
 import ./[service_namespace_seed, current_typed_context]
 import ../../src/state/store
 import ../../src/codec/state/[accounts as state_accounts, service_values as state_service_values,
     requests as state_requests, composition as state_composition]
 import ../../src/crypto/primitives
+
 proc namespaceSeeds*(): seq[ServiceNamespaceSeed] =
   ## Independent known contents include empty raw keys, present-empty values/preimages and available histories.
   result = @[]
@@ -25,6 +27,7 @@ proc namespaceSeeds*(): seq[ServiceNamespaceSeed] =
           RequestSlot(1))),
         StateRequestItem(hash: hash, length: RequestLength(uint32(payload.len)),
             history: availableHistory(RequestSlot(1)))]))
+
 proc currentNamespaceServices*(source: StateStoreSnapshot, seeds: openArray[
     ServiceNamespaceSeed]): seq[StateService] =
   ## Metadata comes from the actual original map; explicit raw identities are declarations that whole-map matching must verify.

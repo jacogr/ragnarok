@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute independently authored initial maps and signed block scenarios through genuine candidate completion and publication.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/[current_stf_population_context, current_stf_population_reporting_context,

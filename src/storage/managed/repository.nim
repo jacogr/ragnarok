@@ -3,6 +3,7 @@
 
 ## A stable directory lease selects one complete snapshot and its exact append journal.
 ## Opening validates every selected byte and graph; no directory scan or older-epoch fallback grants authority.
+
 import std/assertions
 import ../file/errors as file_errors
 import ./[io as managed_io, manifest as managed_manifest]

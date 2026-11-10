@@ -3,6 +3,7 @@
 
 ## Fixed checked workload for A/B crypto-work and live-memory observations through StateStore's public API.
 ## Compile the identical source against baseline/candidate trees; output is JSON lines, not timing claims.
+
 import std/[assertions, syncio]
 import ../../src/state/store
 import ../../src/codec/state/[trie as state_trie, layout as state_layout]
@@ -10,14 +11,17 @@ import ../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer without changing protocol hashing behavior.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count exact Blake2b calls; setup and final independent root validation are outside the update region.
+
 proc key(index: int): StateKey =
   ## Spread complete keys across early bits rather than measuring only a maximum-depth prefix.
   var raw = default(array[31, byte])
   raw[0] = byte(index mod 256)
   raw[1] = byte(index div 256)
   StateKey(raw)
+
 proc sample(count, retained: int) =
   ## Freeze map size, 33-byte leaves, 64 sparse updates and a bounded snapshot-retention window.
   reset(0)

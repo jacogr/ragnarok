@@ -11,6 +11,7 @@ import ../support/pvm_export_erasure
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse actual hashing only after the genuine original bundle and a successful export encoding exist.
+
 proc check[T](outcome: ExportErasureResult[T], reason: ExportErasureError) =
   ## Observe exact runtime reasons before attempting deliberately refused extraction.
   assert outcome.error == reason, "export erasure guard control"

@@ -17,8 +17,10 @@ import ../../support/[pvm_computed_profile, pvm_computed_lookup, pvm_computed_lo
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing only after original execution and configured context capture have completed.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual primitive attempts rather than manufacturing successful commitments.
+
 proc expect[T](outcome: ComputedProfileResult[T], reason: ComputedProfileError) =
   ## Compare precise alternatives before guarded application extraction.
   assert outcome.error == reason, "computed profile reason"
@@ -88,6 +90,7 @@ expect(bindComputedProfile(source, foreignParent), ComputedProfileError.ParentMi
 discard configured.blockSnapshotContext
 assert hashes() == 0, "projection and profile binding perform no hashes"
 reset(0)
+
 proc detached(): ConfiguredComputedReport =
   ## Preserve exact original source/map/header/parameters after the complete snapshot and RPC indexes retire.
   let fixture = profileFixture()
@@ -95,6 +98,7 @@ proc detached(): ConfiguredComputedReport =
 let retained = detached()
 assert array[32, byte](retained.computedProfileContext.value.hash) == ParentHash, "detached parent context lifetime"
 assert retained.computedProfileSource.value.computedLookupInfo.value.headers == 3, "detached source lifetime"
+
 proc cycle() =
   ## Release fixed ownership and refused alternatives while projecting only immutable fixed facts.
   let value = bindComputedProfile(source, configured).value

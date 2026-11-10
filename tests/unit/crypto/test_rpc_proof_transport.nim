@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Listener routing binds completions to original sessions and isolates slow consumers without canonical access.
+
 import std/[assertions, syncio, base64]
 include ../../../src/rpc/server
 
@@ -9,6 +10,7 @@ proc descriptor(): cint =
   ## Use an actual owned native descriptor so every close path exercises real listener/slot retirement.
   result = socket(cint(ord(nativesocket.AF_INET)), cint(ord(nativesocket.SOCK_STREAM)), 0)
   assert result >= 0
+
 proc attach(owner: var Server, index: int) =
   ## Routing-only tests bypass HTTP framing; the integration suite uses real WebSocket upgrades.
   owner.connections[index].fd = descriptor()

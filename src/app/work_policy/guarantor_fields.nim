@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit guarantor-profile schema extends the unchanged v1 submission leaves; every resource value must be present.
+
 template guarantorPolicyFields(profile, context, visit: untyped) {.untyped.} =
   ## Reading and serialization share this reviewed scalar schema without runtime reflection or hidden fixture-derived budgets.
   workPolicyFields(profile, context, visit)

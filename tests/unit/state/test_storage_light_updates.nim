@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Incremental evidence edits preserve canonical bytes, exact quotas, immutable owners and durable reopen authority.
+
 # @@Verification={"arc":"storage_light_updates_arc_release"}
 import std/[assertions, syncio]
 import std/posix/posix
@@ -16,25 +17,32 @@ import ../../../src/storage/durability
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Shape/duplicate/quota refusal must precede any actual hash call.
+
 proc refuseAfter(successes: cint) {.importc: "ro_blake_after", cdecl.}
   ## Each incoming proof and final checksum can independently fail after earlier private work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Retained proof bytes must not be hashed again during an edit.
+
 proc key(first: byte): StateKey =
   ## Fixed distinct identities select present-long, present-empty and independent absent queries.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc policy(): LightSnapshotLimits =
   ## Three two-node proofs and one33-byte value exactly fill the item/value/file limits.
   LightSnapshotLimits(bytes: ByteLimit(668), cache: LightCacheLimits(items: ElementLimit(3),
     writes: ElementLimit(2), valueBytes: ByteLimit(33),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(33))))
+
 proc proof(trie: FullStateTrie, first: byte): LightStateProof =
   ## Complete-trie producers provide transport; a separate flat-map root determines expected authority.
   LightStateProof(key: key(first), proof: trie.prove(key(first), policy().cache.proof).value)
+
 proc cycle(first: PreparedLightSnapshot, additions: openArray[LightStateProof]) =
   ## Every successful edit, private partial verification failure and recovery must release ARC ownership.
   resetHash(0)
@@ -47,6 +55,7 @@ proc cycle(first: PreparedLightSnapshot, additions: openArray[LightStateProof]) 
   assert failed.error == LightSnapshotError.BackendFailure and calls() == 3
   resetHash(0)
   assert first.admit(additions).value.cache.len == 3
+
 proc edits(trie: FullStateTrie, root: StateRoot) =
   ## Canonical incremental output equals independent full preparation, without rehashing old evidence.
   resetHash(0)
@@ -142,6 +151,7 @@ proc edits(trie: FullStateTrie, root: StateRoot) =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("storage_light_updates", 1000, before, after)
+
 proc model(trie: FullStateTrie, root: StateRoot) =
   ## A tiny independent known-key model checks every merge position, empty set and complete removal across48 edits.
   resetHash(0)
@@ -173,6 +183,7 @@ proc model(trie: FullStateTrie, root: StateRoot) =
   let failed = restoreLightSnapshot(corrupt, default(StorageChainId), root, policy())
   assert failed.error == LightSnapshotError.ProofFailure
   assert failed.proofError == LightCacheError.ValueMismatch
+
 proc files(trie: FullStateTrie, root: StateRoot) {.raises.} =
   ## Opening retains proof bytes for later edits; unsuccessful preparation and uncertain publication have distinct lifetimes.
   resetHash(0)
@@ -230,6 +241,7 @@ proc files(trie: FullStateTrie, root: StateRoot) {.raises.} =
   assert posix.unlink(current.toCString()) == 0
   assert posix.unlink(lock.toCString()) == 0
   assert posix.rmdir(directory.toCString()) == 0
+
 proc retainedSpans() =
   ## Variable payload widths exercise first/middle/last source spans against independent complete-image preparation.
   resetHash(0)
@@ -270,6 +282,7 @@ proc retainedSpans() =
       assert reader.lookup(entry.key).value.bytes == entry.value
     let decoded = restoreLightSnapshot(next.encodedBytes, default(StorageChainId), root, limits).value
     assert decoded.encodedBytes == canonical.encodedBytes
+
 proc main() {.raises.} =
   ## The independent flat map establishes the complete root before any partial-cache operation.
   resetHash(0)

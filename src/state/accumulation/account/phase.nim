@@ -4,6 +4,7 @@
 ## Apply complete current M/n account selection to a private fork of the explicit complete prior.
 ## Explicit coverage does not authenticate its frame or grant block publication; bound wrappers retain that authority separately.
 ## This reusable phase trusts explicit coverage/frame configuration; it cannot construct an authenticated Stage owner.
+
 import std/algorithm
 import ../../../codec/[bounded, composite]
 import ../../../codec/state/[layout as state_layout, trie as state_trie]

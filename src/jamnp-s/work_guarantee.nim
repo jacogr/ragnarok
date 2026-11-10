@@ -3,6 +3,7 @@
 
 ## Collect genuine CE134 responses under the managed CPU lease; private targets bind transport identities to the signed source assignment.
 ## Two/three unique verified credentials can produce a canonical CE135 payload; this module does not schedule its distribution.
+
 import ./[work_signer, work_duty, work_eligibility]
 import ../codec/[bounded, guarantees, assurances]
 import ../codec/state/safrole
@@ -38,23 +39,29 @@ type
     of None: completed: T
     of CodecFailure: codecReason: GuaranteeError
     else: discard # No failed branch carries an accepted prefix.
+
 func error*[T](outcome: WorkGuaranteeResult[T]): WorkGuaranteeError =
   ## Inspect a reason without writable result alternatives.
   outcome.status
+
 func value*[T](outcome: WorkGuaranteeResult[T]): T {.requires: outcome.status ==
     WorkGuaranteeError.None.} =
   ## Extract only a successful target, immutable round, complete guarantee or detached byte payload.
   outcome.completed
+
 func codecError*[T](outcome: WorkGuaranteeResult[T]): GuaranteeError {.requires: outcome.status ==
     WorkGuaranteeError.CodecFailure.} =
   ## Only an actual failed structural codec operation has this child.
   outcome.codecReason
+
 func valid*(target: WorkShareTarget): bool =
   ## Defaults carry no request recipient or response-verification authority.
   target.ready
+
 func participant*(target: WorkShareTarget): WorkParticipant {.requires: target.ready.} =
   ## Return an independently mutable full record, preserving its exact original nominal ordinal.
   target.member
+
 proc sharingTarget*(contribution: SignedWorkContribution, position: int): WorkGuaranteeResult[
     WorkShareTarget] =
   ## Execute with exclusive graph ownership; neither a caller index nor packet key supplies assignment authority.
@@ -73,6 +80,7 @@ proc sharingTarget*(contribution: SignedWorkContribution, position: int): WorkGu
   WorkGuaranteeResult[WorkShareTarget](status: WorkGuaranteeError.None,
     completed: WorkShareTarget(ready: true, member: selected.value, message: message,
       root: array[32, byte](duty.sourceRoot), info: info.value))
+
 proc beginWorkGuarantee*(contribution: SignedWorkContribution): WorkGuaranteeResult[
     WorkGuaranteeRound] =
   ## One signer-produced signature certifies each distinct same-core index owned by its actual local key; public facts cannot manufacture that signature.
@@ -100,11 +108,13 @@ proc beginWorkGuarantee*(contribution: SignedWorkContribution): WorkGuaranteeRes
     completed: WorkGuaranteeRound(data: WorkGuaranteeData(local: contribution, message: message,
         root: array[32, byte](duty.sourceRoot),
       info: info.value, credentials: credentials, count: count)))
+
 proc credentialCount*(round: WorkGuaranteeRound): int =
   ## Call only while owning the graph lease; a default collection has no implicit all-zero local signature.
   let data = round.data
   if data == nil: return 0
   data.count
+
 func targetMatches(target: WorkShareTarget, data: WorkGuaranteeData): bool =
   ## Fixed report/slot/core/head/root bindings reject targets issued for a different report or complete qualification source.
   if not target.ready or target.message != data.message: return false
@@ -114,6 +124,7 @@ func targetMatches(target: WorkShareTarget, data: WorkGuaranteeData): bool =
   let originalHead = array[32, byte](data.info.head)
   let targetHead = array[32, byte](target.info.head)
   originalHead == targetHead
+
 proc addWorkResponse*(round: WorkGuaranteeRound, target: WorkShareTarget,
     transportIdentity: StateEdKey,
 
@@ -164,6 +175,7 @@ reply: openArray[byte]): WorkGuaranteeResult[WorkGuaranteeRound] =
     completed: WorkGuaranteeRound(data: WorkGuaranteeData(local: data.local, message: data.message,
       root: data.root,
       info: data.info, credentials: credentials, count: count)))
+
 proc collectWorkGuarantee*(round: WorkGuaranteeRound, maximum: ByteLimit): WorkGuaranteeResult[
     CollectedWorkGuarantee] =
   ## Structural output budgets are independent of credential authority; this step does not promise next-block inclusion or assurance retention.
@@ -194,6 +206,7 @@ proc collectWorkGuarantee*(round: WorkGuaranteeRound, maximum: ByteLimit): WorkG
   WorkGuaranteeResult[CollectedWorkGuarantee](status: WorkGuaranteeError.None,
     completed: CollectedWorkGuarantee(data: CollectedGuaranteeData(round: data,
         wire: encoded.value)))
+
 proc guaranteePayload*(guarantee: CollectedWorkGuarantee): WorkGuaranteeResult[seq[byte]] =
   ## Copy the exact complete CE135 payload without a stream selector or E4 prefix; mutable returned bytes cannot alter the verified owner.
   let data = guarantee.data

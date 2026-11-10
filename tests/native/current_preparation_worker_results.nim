@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Runtime guard probes require actual extraction/destruction defects and a nonfailing control.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/preparation_worker
 

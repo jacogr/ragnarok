@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed complete-map selections support snapshot encoding ownership and separate-process peak probes.
+
 import std/assertions
 import ../../src/storage/full/state_trie as full_state_trie
 import ../../src/storage/node/[repository as node_repository, records as node_records]

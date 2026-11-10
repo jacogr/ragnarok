@@ -13,6 +13,7 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const FileName = "state-atomic-file-writer.bin"
+
 proc cycle() =
   ## Serial open/contend/close/reopen cycles retain one stable lock inode and no payload graph.
   var first = default(AtomicFileWriter)
@@ -24,6 +25,7 @@ proc cycle() =
   assert first.close() == AtomicFileError.None
   assert second.openAtomicFileWriter(FileName) == AtomicFileError.None
   assert second.close() == AtomicFileError.None
+
 proc main() =
   ## Exact raw binary/empty data, caller path mutation and refusal recovery remain independent of state format.
   var path = FileName

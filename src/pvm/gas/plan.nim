@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Immutable complete block prices bound to one captured program and one local cycle policy.
+
 import ../program
 import ./gas
 
@@ -39,7 +40,12 @@ func value*[T](r: GasPlanResult[T]): T {.inline, requires: r.status == GasPlanEr
   r.completed
 
 proc newGasPlan*(source: Program, limits: GasPlanLimits): GasPlanResult[GasPlan] =
-  ## Borrow during preparation, then retain the exact immutable program only after complete successful pricing.
+  ## Price every block start before publishing a plan for the exact program owner.
+  ## Each code byte reserves eight table bytes. The byte cap counts this payload,
+  ## excluding the retained program and allocator overhead. The block cap bounds the
+  ## number of simulations, and the cycle cap applies separately to each block.
+  ## A refusal anywhere discards the private table, even for blocks the guest would
+  ## never visit. Bounded dynamic pricing remains available to the caller.
   let extent = codeLength(source)
   if extent.error != ProgramError.None:
     return GasPlanResult[GasPlan](status: GasPlanError.InvalidProgram)

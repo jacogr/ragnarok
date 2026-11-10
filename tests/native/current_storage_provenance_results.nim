@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual native preparation freezes selected raw-storage history on its own update and refuses failed optional retention atomically.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context,
     current_namespace_transition_context, current_namespace_execution_context,
@@ -19,6 +20,7 @@ import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/codec/state/layout as state_layout
 import ../../src/chain/[provider, genesis]
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(CurrentChainPreparationResult)

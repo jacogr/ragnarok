@@ -4,6 +4,7 @@
 # @@Verification={"arc": "jamnp_preimage_gossip_arc_release"}
 
 ## Actual third-peer TLS delivery follows verified requested content and effective validator grid admission.
+
 import std/[assertions, syncio, envvars, strutils, monotimes, times]
 import ../../../src/app/[node as application_node, services, options, startup]
 import ../../../src/app/proof/worker
@@ -17,10 +18,12 @@ import ../../../src/jamnp-s/[node as node_streams, connections, read_stream, rea
 import ../../../src/lib/json/writer as json_writer
 import ../../support/[jamnp_preimage_fixture, jamnp_topology_fixture, jamnp_node_probe,
     jamnp_read_validation_context, arc_evidence]
+
 proc hex(input: openArray[byte]): string =
   ## Independent canonical chainspec encoding does not use a production configuration serializer.
   result = ""
   for octet in input: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc chainText(saved: BlockSnapshot): string =
   ## Retain the complete fixture's original opaque chapters and exact header/profile.
   var wire = newSeq[byte](saved.header.headerInfo.value.consumed)
@@ -31,15 +34,18 @@ proc chainText(saved: BlockSnapshot): string =
     entries.add(hex(array[31, byte](key)), json(hex(saved.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hex(topologySettings().encodeParameters))),
     ("genesis_header", json(hex(wire))), ("genesis_state", json(entries))])
+
 proc frame(body: seq[byte]): seq[byte] =
   ## Independent E4 framing includes a zero length for an empty preimage, but not for CE142 acknowledgment.
   result = @[]
   for index in 0..<4: result.add(byte((uint32(body.len) shr (8*index)) and 255))
   for octet in body: result.add(octet)
+
 proc wireRequest(request: ReadRequest): seq[byte] =
   ## Independent selector and fixed payload extent precede the unchanged claim/hash.
   result = @[byte(request.kind), byte(request.payload.len), 0, 0, 0]
   for octet in request.payload: result.add(octet)
+
 proc checked(body: seq[byte]): CheckedReadReply =
   ## Only the real full-hash verifier creates cache input authority.
   let hash = blake2b256(body).value
@@ -47,6 +53,7 @@ proc checked(body: seq[byte]): CheckedReadReply =
   let verified = verifyReadReply(query, frame(body), default(ReadSource), readVerificationLimits())
   assert verified.error == ReadVerificationError.None
   verified.value
+
 proc cycle() =
   ## Detached scheduling namespaces and peer observations retire before the next ARC sample.
   var streams = default(NodeService)
@@ -56,6 +63,7 @@ proc cycle() =
   assert gossip.offer(streams, notice)
   assert gossip.candidate.valid and gossip.len == 1
   gossip.close(streams)
+
 proc pure() =
   ## Capacity and opaque owner/row generations guard foreign, evicted and reopened candidates.
   var streams = default(NodeService)
@@ -89,6 +97,7 @@ proc pure() =
   let after = getOccupiedMem()
   assert before == after
   recordArcRelease("jamnp_preimage_gossip", 1000, before, after)
+
 proc poll(host: var ApplicationNode, services: var Services, source, neighbour: var NodeProbe,
     clock: MonoTime) {.raises.} =
   ## Only the host may acquire a canonical gate; probes retain independent literal transcripts.
@@ -96,6 +105,7 @@ proc poll(host: var ApplicationNode, services: var Services, source, neighbour: 
   source.poll()
   neighbour.poll()
   services.tick(uint32(host.peerCount))
+
 proc connect(host: var ApplicationNode, services: var Services, probe: var NodeProbe,
     selectedAlpn: string, hash: genesis.BlockHash, identity: array[32, byte], certFile = "",
         keyFile = "", sendHello = true) {.raises.} =
@@ -121,12 +131,14 @@ proc connect(host: var ApplicationNode, services: var Services, probe: var NodeP
       let peer = host.peerAt(index)
       if peer.error == NodeError.None and array[32, byte](peer.value.identity) == identity:
         if not sendHello or host.source(peer.value).error == NodeError.None: ready = true
+
 proc publicKey(path: string): array[32, byte] {.raises.} =
   ## Fixture public identities are copied without exporting any private key bytes.
   let wire = readFile(path)
   assert wire.len == 32
   result = default(array[32, byte])
   for index in 0..<32: result[index] = byte(wire[index])
+
 proc seen(host: ApplicationNode, identity: array[32, byte]): bool =
   ## Historical peer facts never stand in for an active authenticated generation.
   for index in 0..<host.peerCount:
@@ -134,6 +146,7 @@ proc seen(host: ApplicationNode, identity: array[32, byte]): bool =
     if peer.error == NodeError.None and array[32, byte](peer.value.identity) ==
         identity: return true
   false
+
 proc live(holdFin = false, rejectAck = false, nonGrid = false, corruptBlob = false,
     secondService = false) {.raises.} =
   ## A non-validator introduces requested bytes; a separate grid validator receives possession only after verification.
@@ -290,6 +303,7 @@ proc live(holdFin = false, rejectAck = false, nonGrid = false, corruptBlob = fal
   assert host.preimageGossipCount == 0 and not host.preimageGossipSending
   assert services.stateProofActive
   assert services.collectStateProof(foreign.value).kind == ProofWorkerCompletionKind.ReadCompleted
+
 proc main() {.raises.} =
   ## Independent pure ownership and actual three-party network witnesses cover success, withheld FIN and finite rejection.
   pure()

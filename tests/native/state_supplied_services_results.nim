@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict detached projection guards use a genuine captured complete logical source as positive control.
+
 import std/[assertions, cmdline]
 import ../support/[state_inventory_context, supplied_logical_context, supplied_services_context]
 import ../../src/state/supplied/[services as supplied_services,
     logical_inventory as supplied_logical_inventory]
 include ./composition_fixture
+
 proc extract(outcome: SuppliedServicesResult) {.noinline.} =
   ## Failed/default projection never becomes an empty successful declaration sequence.
   discard outcome.value
+
 proc main() {.raises.} =
   ## Complete source construction occurs only for positive control and actual short-budget witness.
   case paramStr(1)

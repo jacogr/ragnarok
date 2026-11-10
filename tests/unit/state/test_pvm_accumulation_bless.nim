@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_bless_arc_release"}
 
 ## Authored bless programs verify exact charging, authority, dictionary capture and checkpoint ownership.
@@ -21,6 +22,7 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 ## Refuse only the first Merklization hash after authentic fixture construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Count hashes to distinguish pure authorization/input refusals from attempted publication.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 

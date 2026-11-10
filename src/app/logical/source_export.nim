@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Export original qualified raw identities to the existing logical startup source syntax without materializing service payload values.
+
 import ../current/logical/startup as current_logical_startup
 import ../../state/current/logical as current_logical
 import ../../state/supplied/logical_inventory as supplied_logical_inventory

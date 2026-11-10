@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Deterministic sustained-publication fixtures keep preparation separate from timed physical IO.
+
 import std/assertions
 import ../../src/storage/full/state_trie as full_state_trie
 import ../../src/storage/node/[repository as node_repository, records as node_records]
@@ -24,6 +25,7 @@ proc growthKey*(index: int): StateKey =
   raw[0] = byte(index shr 8)
   raw[1] = byte(index and 255)
   StateKey(raw)
+
 proc growthValue*(index, revision: int): seq[byte] =
   ## Four revision bytes keep generation256 distinct from the seed even when low bytes wrap.
   assert index >= 0 and index < 65536 and revision >= 0 and revision <= 256
@@ -32,6 +34,7 @@ proc growthValue*(index, revision: int): seq[byte] =
     result[position] = byte((index+position) and 255) # Deterministic full payload is checked after timing.
   for position in 0..<4:
     result[position] = byte((revision shr (position*8)) and 255) # Independent complete revision encoding.
+
 proc growthRevision*(index, count, publications: int, hot = false): int =
   ## Closed-form latest write ordinal is independent of the mutation-preparation loop.
   assert count in [1024, 8192, 32768] and publications >= 0 and publications <= 256
@@ -41,6 +44,7 @@ proc growthRevision*(index, count, publications: int, hot = false): int =
   if index >= min(writes, period): return 0 # Untouched entries retain their exact seed payload.
   let ordinal = index+((writes-1-index) div period)*period
   ordinal div 4+1
+
 proc growthLimits*(): RepositoryLimits =
   ## Bound complete graphs and accumulated revisions without weakening production admission checks.
   let trie = StateTrieLimits(items: ElementLimit(32768), perValue: ByteLimit(256),
@@ -48,6 +52,7 @@ proc growthLimits*(): RepositoryLimits =
   RepositoryLimits(codec: RecordLimits(trie: trie,
     records: TrieExportLimits(records: TrieNodeLimit(100000), valueBytes: ByteLimit(16777216)),
     encoded: ByteLimit(67108864)), records: ElementLimit(200000), valueBytes: ByteLimit(33554432))
+
 proc prepareGrowth*(count, publications: int, hot = false): StorageGrowthFixture =
   ## Prepare Merklized seed/changes once, outside all measured publication/reopen/retention intervals.
   assert count in [1024, 8192, 32768] and publications in [64, 256]
@@ -75,12 +80,14 @@ proc prepareGrowth*(count, publications: int, hot = false): StorageGrowthFixture
     if record.kind == TrieRecordKind.Leaf:
       result.reads.add(record.digest) # Prepare only final complete-map leaf addresses, outside timing.
   assert result.reads.len == count
+
 proc checkGrowthEntries*(entries: openArray[StateEntry], count, publications: int, hot = false) =
   ## Independently validate already returned complete maps without hiding a second extraction in timing.
   assert entries.len == count
   for index, entry in entries:
     assert array[31, byte](entry.key) == array[31, byte](growthKey(index))
     assert entry.value == growthValue(index, growthRevision(index, count, publications, hot))
+
 proc checkGrowth*(view: RepositoryView, root: StateRoot, count, publications: int,
     hot = false) =
   ## Historical reachability remains explicitly selected and does not imply canonical/finality authority.

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_selected_account_stage_arc_release"}
 
 ## Genuine current creation and complete prior inventory apply selected account writes atomically on a private fork.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/parameters
 import ../../../src/pvm/[machine, step]
@@ -20,7 +22,9 @@ import ../../../src/state/accumulation/[creation_union as accumulation_creation_
 import ../../../src/state/store
 import ../../support/[accumulation_execution_context, accumulation_runner_context,
   accumulation_current_guests_context, pvm_accumulation_program, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc createProgram(): seq[byte] =
   ## A genuine automatic new host creates metadata and its empty code request before halting.
   var payload = newSeq[byte](60)
@@ -30,6 +34,7 @@ proc createProgram(): seq[byte] =
         writable = payload)
   result = @[0'u8]
   for octet in code: result.add(octet) # Complete service preimage retains its canonical metadata prefix.
+
 proc main() {.raises.} =
   ## Every fixture is signed/admitted through production; source maps never publish a prepared account stage.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

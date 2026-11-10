@@ -7,10 +7,12 @@
 import std/[assertions, syncio]
 include ../../../src/ui/server
 
+let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
+
 proc retireHttpRequest() =
   ## Parsing and retiring a request must release its metadata and response ownership each time.
   var slot = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
-  slot.process(-1)
+  slot.process(requestTags, -1)
   assert "200 OK" in slot.output
   slot.close()
 
@@ -35,7 +37,7 @@ let index = embeddedIndex("index.html.gz")
 assert index >= 0
 for verb in ["GET", "HEAD"]:
   var embedded = Connection(input: verb & " / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
-  embedded.process(-1)
+  embedded.process(requestTags, -1)
   assert "200 OK" in embedded.output and not embedded.fileOpened
   assert "Content-Encoding: gzip\r\n" in embedded.output
   assert "Vary: Accept-Encoding\r\n" in embedded.output
@@ -52,7 +54,7 @@ for verb in ["GET", "HEAD"]:
     assert body == EmbeddedData[index]
   embedded.close()
 var absent = Connection(input: "GET /not-in-bundle HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
-absent.process(-1)
+absent.process(requestTags, -1)
 assert "404 Not Found" in absent.output and not absent.embedded
 
 # Gzip-only serving rejects missing/empty/excluded codings and respects explicit wildcard overrides.
@@ -60,17 +62,17 @@ assert "404 Not Found" in absent.output and not absent.embedded
 for extra in ["X-Client: a\tb\r\n"]:
   var refused = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n" &
       extra & "\r\n")
-  refused.process(-1)
+  refused.process(requestTags, -1)
   assert "400 Bad Request" in refused.output
 var normalized = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nContent-Length: 000000\r\n\r\n")
-normalized.process(-1)
+normalized.process(requestTags, -1)
 assert "200 OK" in normalized.output
 normalized.close()
 for wire in ["GET / HTTP/1.0\nHost: localhost\nAccept-Encoding: gzip\n\n",
     "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nX-Client: a\r\nx-client: b\r\n\r\n"]:
   # Stock version/framing behavior is used directly; it is independent of asset selection.
   var accepted = Connection(input: wire)
-  accepted.process(-1)
+  accepted.process(requestTags, -1)
   assert "200 OK" in accepted.output
   accepted.close()
 
@@ -81,11 +83,11 @@ for value in ["", "br", "identity", "gzip;q=0", "gzip;q=0.000", "*;q=0", "*;q=1,
   assert not acceptsGzip(value)
   var rejected = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: " &
       value & "\r\n\r\n")
-  rejected.process(-1)
+  rejected.process(requestTags, -1)
   assert "406 Not Acceptable" in rejected.output and not rejected.embedded
   assert "Vary: Accept-Encoding" in rejected.output
 var unspecified = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
-unspecified.process(-1)
+unspecified.process(requestTags, -1)
 assert "406 Not Acceptable" in unspecified.output
 for value in ["gzip", "GZip; Q=1.000", "gzip;q=0.001", "br, gzip", "*", "*;q=0, gzip;q=1",
     "identity;q=1, gzip;q=0.1", "x-gzip"]:
@@ -122,19 +124,19 @@ for path in ["missing.gz", "escape.gz", "linked/app.js.gz"]:
 
 # GET owns a bounded file stream; HEAD sends the same metadata without keeping its descriptor.
 var get = Connection(input: "GET / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
-get.process(root)
+get.process(requestTags, root)
 assert get.output.startsWith("HTTP/1.1 200 OK\r\n") and "Content-Length: 25\r\n" in get.output
 assert get.fileOpened and get.remaining == 25
 get.close()
 for verb in ["GET", "HEAD"]:
   var head = Connection(input: verb & " /assets/app.js HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nContent-Length: 0\r\n\r\n")
-  head.process(root)
+  head.process(requestTags, root)
   assert "200 OK" in head.output and "text/javascript" in head.output
   assert head.fileOpened == (verb == "GET")
   head.close()
 for target in ["/escape", "/linked/app.js", "/assets", "/missing"]:
   var missing = Connection(input: "GET " & target & " HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\n\r\n")
-  missing.process(root)
+  missing.process(requestTags, root)
   assert "404 Not Found" in missing.output and not missing.fileOpened
 for request in ["GET / HTTP/1.1\r\n\r\n", "GET / HTTP/1.1\r\nHost: a\r\nHost: b\r\n\r\n",
     "GET / HTTP/1.1\r\nHost: a\r\nContent-Length: 1\r\n\r\nx",
@@ -143,10 +145,10 @@ for request in ["GET / HTTP/1.1\r\n\r\n", "GET / HTTP/1.1\r\nHost: a\r\nHost: b\
     "GET / HTTP/1.1\r\nHost: a\r\r\n\r\n",
     "GET /../secret HTTP/1.1\r\nHost: a\r\n\r\n"]:
   var bad = Connection(input: request)
-  bad.process(root)
+  bad.process(requestTags, root)
   assert "400 Bad Request" in bad.output and not bad.fileOpened
 var post = Connection(input: "POST / HTTP/1.1\r\nHost: localhost\r\nAccept-Encoding: gzip\r\nContent-Length: 0\r\n\r\n")
-post.process(root)
+post.process(requestTags, root)
 assert "405 Method Not Allowed" in post.output and "Allow: GET, HEAD" in post.output
 assert posix.close(root) == 0
 # Remove owned fixtures after descriptors retire, preserving repeatable native runs.

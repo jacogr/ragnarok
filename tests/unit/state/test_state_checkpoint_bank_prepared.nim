@@ -16,23 +16,27 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-bank-prepared"
+
 proc policy(): StateStoreLimits =
   ## Full-map restore policy remains separate from publication's explicit byte ceiling.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc detached(value: byte): PreparedCheckpoint =
   ## All original snapshot/store aliases retire before a prepared bank caller receives its sole buffer.
   var key = default(array[31, byte])
   key[0] = 1
   let snapshot = newStateStore([StateEntry(key: StateKey(key), value: @[value])], policy()).value.snapshot.value
   prepareFullCheckpoint(snapshot, ByteLimit(1000))
+
 proc cycle(bank: var CheckpointBank, prepared: PreparedCheckpoint) =
   ## Reuse one stable private buffer synchronously while each generation's metadata and restoration retire.
   let old = bank.selectedHead().value
   let head = bank.advance(old, prepared, ByteLimit(1000)).value
   assert uint64(head.generation) == uint64(old.generation) + 1
   assert bank.restore(prepared.root, policy(), ByteLimit(1000)).error == CheckpointBankError.None
+
 proc main() =
   ## Failed/default/moved/narrowed buffers cannot alter selector or selected file; successful publication needs no re-encoding.
   for suffix in [".head", ".0", ".1"]:

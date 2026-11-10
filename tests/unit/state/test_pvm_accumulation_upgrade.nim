@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_upgrade_arc_release"}
 
 ## Authored upgrade programs verify self/supervised metadata replacement and unchanged current execution/checkpoints.
@@ -25,8 +26,10 @@ import ../../support/[pvm_accumulation_program, pvm_accumulation_context, arc_ev
 
 # Inject backend refusal after authentic fixture construction.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Count attempts to distinguish memory/store preflight from actual Merklization.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Exercise atomic cleanup after successful child hashes.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

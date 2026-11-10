@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Detached CE147/138 routing plans derive original identities and shard coordinates from an authenticated audit source. Plans carry no full-state, report, evaluation or private-key aliases and grant no judgment authority.
+
 import ./[audit_origin, audit_context, availability_proof, read_stream, endpoints]
 import ../codec/[bounded, guarantees, report_owned]
 import ../codec/state/safrole
@@ -37,35 +38,44 @@ type
     of None: completed: T
     of TransferFailure: transferReason: AvailabilityTransferResult[VerifiedAvailabilityTransfer]
     else: discard               # No source, successful prefix or judgment capability survives refusal.
+
 func error*[T](outcome: AuditFetchResult[T]): AuditFetchError =
   ## Inspect the selected status before reading a completed plan or fixed routing record.
   outcome.status
+
 func value*[T](outcome: AuditFetchResult[T]): T {.requires: outcome.status ==
     AuditFetchError.None.} =
   ## Success exposes only detached immutable routing and exact request bytes.
   outcome.completed
+
 func transferError*[T](outcome: AuditFetchResult[T]): AvailabilityTransferResult[
     VerifiedAvailabilityTransfer] {.requires: outcome.status == AuditFetchError.TransferFailure.} =
   ## Preserve the actual original-coordinate proof refusal, without replacing a backend failure with a report judgment.
   outcome.transferReason
+
 func hasAuditedBlock*(info: AuditFetchInfo): bool =
   ## A disputed-only fetch plan carries no fabricated availability-block identity.
   info.blockReference.present
+
 func blockHash*(info: AuditFetchInfo): genesis.BlockHash {.requires: info.blockReference.present.} =
   ## Genuine available-report plans preserve their original guarded copied block identity.
   info.blockReference.value
+
 func valid*(limits: AuditFetchLimits): bool =
   ## Default caps never activate retrieval; the wire bound includes the largest legal original bundle and framing.
   uint64(limits.bytes) > 0 and uint64(limits.bytes) <= 4'u64*1024*1024 and
     uint64(limits.replyBytes) >= 8 and uint64(limits.replyBytes) <= 16'u64*1024*1024
+
 func valid*(plan: AuditFetchPlan): bool =
   ## Missing plans cannot authorize even an empty network request.
   plan.data != nil
+
 proc fetchInfo*(plan: AuditFetchPlan): AuditFetchResult[AuditFetchInfo] =
   ## Fixed source observations remain safe while Services leases its separate private state to a worker.
   let data = plan.data
   if data == nil: return AuditFetchResult[AuditFetchInfo](status: AuditFetchError.Uninitialized)
   AuditFetchResult[AuditFetchInfo](status: AuditFetchError.None, completed: data.info)
+
 proc targetAt*(plan: AuditFetchPlan, recovery: bool, ordinal: int): AuditFetchResult[
     AuditFetchTarget] =
   ## Recovery selects original assurer coordinates; direct requests select original credential identities.
@@ -76,6 +86,7 @@ proc targetAt*(plan: AuditFetchPlan, recovery: bool, ordinal: int): AuditFetchRe
     return AuditFetchResult[AuditFetchTarget](status: AuditFetchError.InvalidIndex)
   let target = if recovery: data.assurers[ordinal] else: data.guarantors[ordinal]
   AuditFetchResult[AuditFetchTarget](status: AuditFetchError.None, completed: target)
+
 proc requestAt*(plan: AuditFetchPlan, recovery: bool, ordinal: int): AuditFetchResult[ReadRequest] =
   ## Independent original coordinates determine the exact CE138 request; no caller-supplied root or shard can replace them.
   let selected = plan.targetAt(recovery, ordinal)
@@ -94,12 +105,14 @@ proc requestAt*(plan: AuditFetchPlan, recovery: bool, ordinal: int): AuditFetchR
   if request.error != ReadError.None:
     return AuditFetchResult[ReadRequest](status: AuditFetchError.InvalidOrigin)
   AuditFetchResult[ReadRequest](status: AuditFetchError.None, completed: request.value)
+
 func replyLimit*(plan: AuditFetchPlan, recovery = false): ByteLimit =
   ## A missing plan grants zero response storage; native controllers independently enforce this cap before copying bytes.
   let data = plan.data
   if data == nil: return ByteLimit(0)
   if recovery and uint64(data.replyBytes) > uint64(MaxReadReplyBytes): return ByteLimit(MaxReadReplyBytes)
   data.replyBytes
+
 proc captureAuditFetch*(origin: AuditReportOrigin, limits: AuditFetchLimits): AuditFetchResult[
     AuditFetchPlan] =
   ## Run under the source's exclusive lease: reserve all detached rows before copying any keys, metadata or allocating a target prefix.
@@ -159,10 +172,12 @@ proc captureAuditFetch*(origin: AuditReportOrigin, limits: AuditFetchLimits): Au
       guarantors: guarantors.len, assurers: assurers.len,
       threshold: int(geometry.value.originalShards), retainedBytes: reservation),
       guarantors: move(guarantors), assurers: move(assurers), replyBytes: limits.replyBytes)))
+
 proc frameLength(wire: openArray[byte], offset: int): uint64 {.requires: offset >= 0 and offset <= wire.len-4.} =
   ## Exact E4 reads require the complete prefix, avoiding arithmetic on an untrusted announced length.
   uint64(wire[offset]) or (uint64(wire[offset+1]) shl 8) or
     (uint64(wire[offset+2]) shl 16) or (uint64(wire[offset+3]) shl 24)
+
 proc directBundle*(plan: AuditFetchPlan, wire: openArray[byte]): AuditFetchResult[seq[byte]] =
   ## Complete CE147 framing produces untrusted candidate bytes only; genuine private reproduction decides whether they are useful.
   let data = plan.data
@@ -176,6 +191,7 @@ proc directBundle*(plan: AuditFetchPlan, wire: openArray[byte]): AuditFetchResul
   var bytes = newSeq[byte](wire.len-4)
   for index in 0..<bytes.len: bytes[index] = wire[index+4]
   AuditFetchResult[seq[byte]](status: AuditFetchError.None, completed: move(bytes))
+
 proc verifyAuditFetchShard*(plan: AuditFetchPlan, ordinal: int, wire: openArray[byte],
     limits: AvailabilityMerkleLimits): AuditFetchResult[VerifiedAvailabilityTransfer] =
   ## Validate both exact response extents before hashing, copying or accepting the original expected root and coordinate. Native callbacks must not call this CPU operation.

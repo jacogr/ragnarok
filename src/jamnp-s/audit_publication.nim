@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Prepare one genuine original-key audit judgment and independently owned CE136 serving bytes under a single private worker lease. No full execution, evaluation or key graph escapes the complete source-free output.
+
 import ./[audit_origin, audit_evaluation, work_signer, read_stream, assurance_store]
 import ../codec/[bounded, report_owned, owned]
 from ../codec/state/safrole import StateValidatorIndex
@@ -23,38 +24,48 @@ type
     of EncodingFailure: encodingReason: OwnershipError
     of ReadFailure: readReason: ReadError
     else: discard # Defaults and ordinary refusals carry no completed publication or unrelated child.
+
 func error*[T](outcome: AuditPublicationResult[T]): AuditPublicationError =
   ## Inspect the selected reason before extracting complete output.
   outcome.status
+
 func value*[T](outcome: AuditPublicationResult[T]): T {.requires: outcome.status ==
     AuditPublicationError.None.} =
   ## Success transfers detached public wire facts only after source/key borrowers retire through exact collection.
   outcome.completed
+
 func signingError*[T](outcome: AuditPublicationResult[T]): AuditSigningResult[
     SignedAuditJudgment] {.requires: outcome.status == AuditPublicationError.SigningFailure.} =
   ## Preserve actual original-key identity, cancellation or crypto failure without a signature prefix.
   outcome.signingReason
+
 func encodingError*[T](outcome: AuditPublicationResult[
     T]): OwnershipError {.requires: outcome.status == AuditPublicationError.EncodingFailure.} =
   ## Preserve actual complete original report encoding refusal.
   outcome.encodingReason
+
 func readError*[T](outcome: AuditPublicationResult[T]): ReadError {.requires: outcome.status ==
     AuditPublicationError.ReadFailure.} =
   ## Preserve actual exact report request/reply framing failure.
   outcome.readReason
+
 func valid*(limits: AuditPublicationLimits): bool =
   ## Default local policy cannot allocate output or sign anything.
   uint64(limits.wireBytes) in 4'u64..uint64(MaxReadReplyBytes) and
     uint64(limits.workspaceBytes) in 1'u64..64'u64*1024*1024
+
 func valid*(publication: AuditPublication): bool =
   ## A default object is not an initialized empty report or a completed signature.
   publication.ready
+
 func signedJudgment*(publication: AuditPublication): SignedAuditJudgment {.requires: publication.ready.} =
   ## Fixed signed records do not alias the private evaluator, original state or signer.
   publication.signed
+
 proc reportReply*(publication: AuditPublication): ReadReply {.requires: publication.ready.} =
   ## Independently frozen raw serving bytes share no OwnedReport or complete-state alias with the leased input graph.
   publication.report
+
 proc prepareAuditPublication*(signer: WorkSigner, evaluation: AuditEvaluation,
     validator: StateValidatorIndex, limits: AuditPublicationLimits,
     control: AssuranceScanControl = default(AssuranceScanControl)): AuditPublicationResult[

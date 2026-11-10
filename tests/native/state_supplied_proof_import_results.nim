@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent chapter fixtures and complete authenticated source facts test atomic typed proof restoration, root/schema/declaration separation and isolated retained-owner release.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[state_inventory_context, supplied_logical_context, arc_evidence]
 import ../../src/state/supplied/proof_import as supplied_proof_import
@@ -16,8 +17,10 @@ import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, composition as state_composition,
     trie as state_trie]
 include ./composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine complete-root reconstruction cannot succeed through a refusing backend.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Whole import admission and root mismatch refuse before hashing.
 const limits = SuppliedProofImportLimits(restoration: ProofStateImportLimits(lookups: ElementLimit(
@@ -29,6 +32,7 @@ const perProof = StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimi
 const aggregate = StateProofBatchLimits(items: ElementLimit(64), nodes: ElementLimit(15936),
     valueBytes: ByteLimit(262144))
 const viewLimits = ProofViewLimits(items: ElementLimit(64), valueBytes: ByteLimit(262144))
+
 proc authenticated(source: StateStoreSnapshot): ProofView =
   ## Independently authenticate all exact physical keys through existing proof generation/verification before exercising typed restoration.
   var keys = newSeq[StateKey](source.commitment.entries)
@@ -38,9 +42,11 @@ proc authenticated(source: StateStoreSnapshot): ProofView =
   var queries = newSeq[StateProofQuery](proofs.len)
   for i in 0..<queries.len: queries[i] = proofs.queryAt(i).value
   verifyPlannedProofs(plan, queries, source.commitment.root, perProof, aggregate, viewLimits).value
+
 proc restoredSource(source: SuppliedLogicalInventory): StateStoreSnapshot =
   ## Recover only the successful independently owned complete physical source through existing guarded provenance APIs.
   source.suppliedInventory.value.inventorySource.value.manifestSource.value
+
 proc exercise(source: ProofView, root: StateRoot, rows: seq[StateService]) =
   ## One whole success/refusal/recovery cycle retires every new owner before the next isolated ARC measurement boundary.
   let imported = importSuppliedProofState(source, root, inventoryProfile, rows, limits).value
@@ -53,6 +59,7 @@ proc exercise(source: ProofView, root: StateRoot, rows: seq[StateService]) =
       SuppliedProofImportError.LogicalFailure
   assert importSuppliedProofState(source, root, inventoryProfile, rows, limits).error ==
       SuppliedProofImportError.None
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(SuppliedProofImportResult)

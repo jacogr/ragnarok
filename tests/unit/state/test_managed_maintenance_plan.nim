@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque maintenance binds canonical state/context/generation/epoch and retains rolling roots plus explicit finality.
+
 import std/[assertions, syncio]
 import ../../support/[disk_history_context, managed_storage_samples, managed_disk_history_context]
 import ../../../src/app/chain
@@ -13,6 +14,7 @@ import ../../../src/storage/managed/[repository as managed_repository, manifest 
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
+
 proc main() {.raises.} =
   ## An unselected old map becomes reclaimable while the exact canonical source remains immutable.
   let fixture = diskHistoryFixture()

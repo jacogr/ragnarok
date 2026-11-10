@@ -3,6 +3,7 @@
 
 ## Source-bound deposit observations use certified footprints and complete same-inventory service lookup.
 ## Caller-selected rates and insufficient coverage are observations, never automatic valid-state or root authority.
+
 import ../../codec/state/accounts as state_accounts
 import ../inventory
 import ./directory as service_directory

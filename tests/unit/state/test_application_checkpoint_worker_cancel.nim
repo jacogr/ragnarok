@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_worker_cancel_arc_release"}
 
 ## Staged-only cancellation cannot overwrite an actual publication and keeps backpressure until explicit acknowledgement.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../../src/app/checkpoint/[worker as checkpoint_worker, transfer as checkpoint_transfer,
@@ -12,6 +13,7 @@ import ../../../src/chain/genesis
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-worker-cancel"
+
 proc cycle(worker: var ApplicationCheckpointWorker) {.raises.} =
   ## Cancelled buffers retire on their allocating host without ever entering native I/O.
   var source = detachedApplicationCheckpoint()
@@ -20,6 +22,7 @@ proc cycle(worker: var ApplicationCheckpointWorker) {.raises.} =
   assert worker.peek(ticket).kind == ApplicationCheckpointCompletionKind.Cancelled
   assert worker.collect(ticket).kind == ApplicationCheckpointCompletionKind.Cancelled
   assert worker.peek(ticket).kind == ApplicationCheckpointCompletionKind.Uninitialized
+
 proc main() {.raises.} =
   ## Wrong/default/stale tickets cannot cancel or observe another request, and Done retains capacity.
   defer:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Receiving service responses reject truncation, mutation, scope substitution and a failed later witness atomically.
+
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/proof/[service as proof_service, view as proof_view]
@@ -9,6 +10,7 @@ import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values]
+
 proc main() =
   ## Two authentic requested facts make a late proof failure observable without accepting an earlier prefix.
   let service = ServiceIndex(7)

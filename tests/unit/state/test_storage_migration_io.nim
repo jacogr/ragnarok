@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Destination syscall refusals never change a locked legacy source, retained maps or detached context.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io, storage_bootstrap_faults]
@@ -11,6 +12,7 @@ import ../../../src/storage/file/repository as file_repository
 import ../../../src/storage/managed/repository as managed_repository
 import ../../../src/storage/file/migration as file_migration
 import ../../../src/storage/database_identity
+
 proc scenario(writeFault: bool, skip, failures: cint, permanent = false): uint64 {.raises.} =
   ## Capture one exact contextual source revision and independently observe every destination boundary.
   resetIo()
@@ -89,6 +91,7 @@ proc scenario(writeFault: bool, skip, failures: cint, permanent = false): uint64
   assert source.close == FileError.None
   removeBootstrapSample(path, true)
   assert posix.unlink(sourcePath.toCString()) == 0
+
 proc main() {.raises.} =
   ## Bound genuine writes and syncs before independently testing resumed and refused copies.
   for writeFault in [false, true]:

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_composition_arc_release"}
 
 ## Real computed state composition preserves pending guarantees and authenticated prefix while consuming historical work once.
@@ -27,6 +28,7 @@ import ../../support/[pvm_computed_composition, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse real private map/root work after the full genuine source execution completes.
+
 proc expect[T](outcome: ComputedCompositionResult[T], reason: ComputedCompositionError) =
   ## Print the originating maintained phase only on unexpected failure, without weakening the exact expected outcome.
   if outcome.error != reason:
@@ -142,11 +144,13 @@ expect(default(ComposedComputedState).computedCompositionSource,
     ComputedCompositionError.Uninitialized)
 expect(default(ComposedComputedState).computedCompositionPlan,
     ComputedCompositionError.Uninitialized)
+
 proc detached(): ComposedComputedState =
   ## Retain actual composed state and original computed/terminal provenance after fixture handles retire.
   composeComputedState(compositionFixture(), computedCompositionLimits()).value
 let held = detached()
 assert held.computedCompositionPlan.value.accumulationConsensusInfo.value.chapters == 7
+
 proc cycle(source: FinalizedComputedAccumulation, limits: AccumulationCompositionLimits) =
   ## Release all private maintained phase maps and retained computed source references each iteration.
   let composed = composeComputedState(source, limits).value

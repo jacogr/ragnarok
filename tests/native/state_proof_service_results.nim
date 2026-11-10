@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict runtime failures forbid typed reads, plans and responses from yielding failed/default payloads.
+
 import std/[assertions, cmdline]
 import ../support/proof_service_helpers
 import ../../src/state/proof/[service as proof_service, view as proof_view]
@@ -9,12 +10,15 @@ import ../../src/state/trie_proof
 import ../../src/codec/bounded
 import ../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values, requests as state_requests]
+
 proc extract[T](outcome: ServiceProofResult[T]) =
   ## Runtime result selection is mandatory even for default and failed generic payloads.
   discard outcome.value
+
 proc reason[T](outcome: ServiceProofResult[T]) =
   ## Only an actual proof-failure alternative owns a nested proof reason.
   discard outcome.proofError
+
 proc main() =
   ## Genuine verified sources provide positive controls before a dynamic negative case is selected.
   let service = ServiceIndex(7)

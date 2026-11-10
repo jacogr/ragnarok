@@ -1,9 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Optional HTTP management listener over a permission-controlled Unix domain socket.
-## Four nonblocking slots, fixed request budgets and deadlines bound dispatcher work.
-## This listener never imports the public WS method registry or canonical state.
+## Local HTTP management over a permission-controlled Unix domain socket.
+##
+## The owned private parent directory and mode-0600 socket form the authorization
+## boundary. Existing paths are refused, and cleanup compares device and inode before
+## unlinking so a replacement endpoint survives. The operator supplies trusted ancestry.
+##
+## One request per connection, fixed byte ceilings, and absolute deadlines bound
+## dispatcher work. Reject ambiguous framing before entering the private registry.
+## Only copied startup and resource observations cross into management dispatch.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -34,7 +40,8 @@ type
     headScanner: http_parse.HeadScanner
     offset: int
     deadline: int64
-  ManagementServer* = object ## Non-copyable local listener; an empty configuration opens nothing.
+  ManagementServer* = object        ## Non-copyable local listener; an empty configuration opens nothing.
+    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
     opened, bound: bool
     fd: cint
     path: string
@@ -58,7 +65,6 @@ proc removeSocket(server: ManagementServer) =
         current.st_dev == server.identity.st_dev and current.st_ino == server.identity.st_ino:
       discard unlink(path.toCString()) # Device/inode equality confines cleanup to the owned socket.
 
-
 proc `=copy`*(destination: var ManagementServer, source: ManagementServer) {.error: "ManagementServer owns sockets".}
   ## Copying an aggregate must not duplicate native ownership.
 
@@ -74,6 +80,7 @@ proc `=wasMoved`*(server: var ManagementServer) {.nodestroy, inline.} =
   `=wasMoved`(server.info)
   `=wasMoved`(server.resources)
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Every accepted descriptor belongs to the destination, including streaming files.
@@ -86,6 +93,7 @@ proc `=destroy`*(server: ManagementServer) =
     if slot.opened: discard posix.close(slot.fd) # A default slot never closes stdin.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
+  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
   `=destroy`(server.resources)
   `=destroy`(server.info)
@@ -101,6 +109,7 @@ proc close*(server: var ManagementServer) =
   for slot in mitems(server.connections): slot.close() # Consumers retire before the listener.
   if server.opened: discard posix.close(server.fd)
   server.removeSocket()
+  server.httpTags = nil
   server.opened = false
   server.bound = false
   server.path = ""
@@ -154,7 +163,7 @@ proc response(status, body = ""): string =
   "HTTP/1.1 " & status & "\r\nContent-Type: application/json\r\nContent-Length: " & $body.len &
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n" & body
 
-proc process(slot: var Connection, info: ManagementInfo) =
+proc process(slot: var Connection, tags: http_msg.HttpTags, info: ManagementInfo) =
   ## Parse stock HTTP POST / with one explicit length; no upgrade, chunking or pipelining.
   let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
   if headBytes == http_parse.ParseIncomplete: return
@@ -162,7 +171,7 @@ proc process(slot: var Connection, info: ManagementInfo) =
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
-  var head = http_msg.initHttpMsg(http_msg.newHttpTags())
+  var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
       headBytes: return
   for field in ["host", "content-type"]:
@@ -194,6 +203,14 @@ proc tick*(server: var ManagementServer) =
   if not server.opened: return
   server.resources.tick() # Scalar/path observations remain independent of every canonical lease.
   server.info.resources = server.resources.snapshot()
+  let existingTags = server.httpTags
+  let tags: http_msg.HttpTags =
+    if existingTags != nil:
+      existingTags # A running listener reuses its vocabulary.
+    else:
+      let vocabulary = http_msg.newHttpTags()
+      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
+      vocabulary
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:
@@ -211,7 +228,7 @@ proc tick*(server: var ManagementServer) =
       let count = receive(slot.fd, addr bytes[0], csize_t(MaxInput - slot.input.len), 0)
       if count > 0:
         for index in 0..<count: slot.input.add(bytes[index]) # Only initialized receive bytes enter owned storage.
-        slot.process(server.info)
+        slot.process(tags, server.info)
       elif count == 0: slot.close()
       elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len > 0:

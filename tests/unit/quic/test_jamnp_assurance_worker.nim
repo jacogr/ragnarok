@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_assurance_worker_arc_release"}
 
 ## Actual reusable-worker namespace jobs keep native owners frozen through exact collection and cooperate with Running cancellation and joined close.
+
 import std/[assertions, syncio, dirs, paths, strutils, monotimes, times]
 import ../../../src/app/proof/[worker, assurance_storage]
 import ../../../src/jamnp-s/[assurance_store, assurance_record, availability_proof]
@@ -10,8 +12,10 @@ import ../../../src/codec/bounded
 import ../../../src/state/erasure/words
 import ../../../src/lib/atomic/file as atomic_file
 import ../../support/[pvm_computed_report, storage_io, arc_evidence]
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield only between mutex-protected scalar worker observations under a fixed test deadline.
+
 proc limits(): AssuranceStoreLimits =
   ## A real full-population archive has explicit disk, scan and per-record work ceilings; none comes from a native default.
   AssuranceStoreLimits(entries: ElementLimit(1023), scanEntries: ElementLimit(2000),
@@ -19,27 +23,32 @@ proc limits(): AssuranceStoreLimits =
     record: AssuranceRecordLimits(bytes: ByteLimit(16000000),
         verification: AvailabilityMerkleLimits(
       bytes: ByteLimit(64000000), hashes: ElementLimit(10000), hashBytes: ByteLimit(64000000))))
+
 proc chain(): AssuranceChainId =
   ## Complete chain identity is selected independently of an incoming record.
   var bytes = default(array[32, byte])
   bytes[0] = 41
   AssuranceChainId(bytes)
+
 proc clean(folder: string) =
   ## Only process-specific private fixture directories are removed after all native borrowers have joined or collected.
   try: removeDir(path(folder))
   except: assert false, "worker fixture cleanup"
+
 proc staged(owner: var AssuranceStore, folder: string,
     mode: AssuranceStorageMode): AssuranceStorageJob =
   ## The temporary admission/result and path aliases retire before native submission starts any non-atomic ARC borrow.
   let captured = captureAssuranceStorage(owner, folder, chain(), limits(), mode)
   assert captured.error == AssuranceStorageJobError.None, "complete job capture"
   captured.value
+
 proc waitDone(worker: var StateProofWorker) =
   ## No job, path, outcome or mutable store alias is touched while the worker retains its lease.
   let deadline = getMonoTime()+initDuration(seconds = 20)
   while worker.phase != ProofWorkerPhase.Done:
     assert getMonoTime() < deadline, "assurance worker completion deadline"
     discard pauseMicros(100)
+
 proc waitRunning(worker: var StateProofWorker) =
   ## Byte-limited real reads make the admitted archive scan long enough to observe actual execution before requesting cancellation.
   let deadline = getMonoTime()+initDuration(seconds = 20)
@@ -47,6 +56,7 @@ proc waitRunning(worker: var StateProofWorker) =
     assert getMonoTime() < deadline, "assurance worker start deadline"
     discard pauseMicros(100)
   assert worker.phase == ProofWorkerPhase.Running, "observe Running before cancellation/join"
+
 proc create(worker: var StateProofWorker, owner: var AssuranceStore, folder: string) =
   ## Only exact uncancelled collection grants access to the namespace mutation performed on the native thread.
   var job = staged(owner, folder, AssuranceStorageMode.Create)
@@ -59,6 +69,7 @@ proc create(worker: var StateProofWorker, owner: var AssuranceStore, folder: str
   assert completed.kind == ProofWorkerCompletionKind.AssuranceCompleted, "exact assurance completion kind"
   assert completed.assuranceStorageValue.error == AssuranceStoreError.None, "actual managed creation succeeded"
   assert owner.opened and owner.len == 0, "observe native owner only after collection"
+
 proc fill(folder: string) =
   ## All 1023 per-shard records come from genuine execution and proofs; fixture construction ends before asynchronous store borrowing.
   let source = computedAvailabilityAtCore(0, 1, 1023)
@@ -78,6 +89,7 @@ proc fill(folder: string) =
     let encoded = encodeAssuranceRecord(record, limits().record).value
     let name = folder & "/" & root.substr(0, 1) & "/" & root & "-" & toHex(index, 4).toLowerAscii() & ".shard"
     assert replaceAtomicFile(name, encoded, limits().record.bytes) == AtomicFileError.None, "actual offline record publication"
+
 proc active(worker: var StateProofWorker, owner: var AssuranceStore, folder: string,
     joining: bool) =
   ## Cancellation must interrupt real bounded header reads; a full uninterruptible scan would read all 1023 headers and leave an open owner.
@@ -101,6 +113,7 @@ proc active(worker: var StateProofWorker, owner: var AssuranceStore, folder: str
   assert not owner.opened, "cooperative scan unwinds its namespace lease before Done/join"
   resetIo()
   assert owner.close().error == AssuranceStoreError.None, "idempotent cancelled-owner cleanup"
+
 proc cycle(worker: var StateProofWorker, owner: var AssuranceStore, missing: string, index: int) =
   ## A moved private path and completed failure retire before the next CPU job; Done cancellation retains capacity until matching collection.
   var job = staged(owner, missing, AssuranceStorageMode.Open)
@@ -115,6 +128,7 @@ proc cycle(worker: var StateProofWorker, owner: var AssuranceStore, missing: str
     assert completed.kind == ProofWorkerCompletionKind.AssuranceCompleted, "ARC closed job completed"
     assert completed.assuranceStorageValue.error == AssuranceStoreError.InvalidNamespace, "missing directory preserves actual I/O refusal"
   assert worker.phase == ProofWorkerPhase.Idle and not owner.opened, "ARC exact retirement"
+
 proc main() {.raises.} =
   ## Real Running and Done cases distinguish cooperative worker cancellation from merely hiding an already completed result.
   let folder = "assurance-worker-" & $storageProcessId()

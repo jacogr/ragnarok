@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bounded selected-chain parent profile retains the original full view, parameters and exact physical head without inventing an execution certificate.
+
 import ../../chain/[genesis, provider, parameters]
 import ../../codec/[bounded, assurances]
 import ../../codec/state/[composition as state_composition, layout as state_layout,

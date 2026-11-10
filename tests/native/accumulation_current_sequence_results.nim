@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current sequences and plans expose no successful source/history/input or inactive parent reason.
+
 import std/cmdline
 import ../../src/state/accumulation/current/[sequence as accumulation_current_sequence,
     round as accumulation_current_round]

@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Isolated x86 owner-state profile: local rejection preserves later regions and strict probe/storage bounds.
+
 import std/[assertions, syncio]
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]

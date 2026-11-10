@@ -3,6 +3,7 @@
 
 ## Genuine finite signed chains derive each child from the previous complete composed state.
 ## This authored ordinary-epoch fixture never substitutes certificates or bypasses admission/execution.
+
 import std/[assertions, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent fixed-format witnesses, malformed input, postorder schedules and bounded scalar ownership.
+
 # @@Verification={"arc":"storage_paged_codec_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -11,12 +12,16 @@ import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/light/delta as light_delta
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Maintained observer makes provider refusal and structural preflight independently observable.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Fail at each hash boundary after a known number of successful primitive calls.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count primitive invocations without replacing production codec logic.
+
 proc hex(input: string): seq[byte] =
   ## Decode independent hexadecimal literals without production serialization helpers.
   result = newSeq[byte](input.len div 2)
@@ -29,6 +34,7 @@ proc hex(input: string): seq[byte] =
       assert digit >= 0 and digit < 16
       value = value*16+digit
     result[index] = byte(value)
+
 proc digestHex(input: string): PagedDigest =
   ## Turn a 32-byte independent witness into its nominal local-digest role.
   let bytes = hex(input)
@@ -36,14 +42,17 @@ proc digestHex(input: string): PagedDigest =
   var raw = default(array[32, byte])
   for index in 0..<32: raw[index] = bytes[index]
   PagedDigest(raw)
+
 proc prefix(input: seq[byte], size: int): seq[byte] =
   ## Copy a bounded prefix without the pinned compiler's unsupported slicing helper.
   assert size >= 0 and size <= input.len
   result = newSeq[byte](size)
   for index in 0..<size: result[index] = input[index]
+
 proc put(input: var seq[byte], offset: int, number: uint64) =
   ## Test-only byte construction is independent of production codec writes.
   for index in 0..<8: input[offset+index] = byte((number shr (index*8)) and 255)
+
 proc headerBytes(count, payload: uint64): seq[byte] =
   ## Independent struct witness uses explicit zero chain/root, epoch one and sequence zero.
   result = newSeq[byte](4096)
@@ -52,19 +61,23 @@ proc headerBytes(count, payload: uint64): seq[byte] =
   result[88] = 1
   put(result, 104, count)
   put(result, 112, payload)
+
 proc rowBytes(first: byte, offset, length: uint64): seq[byte] =
   ## Fixed descriptors leave every remaining key and reserved octet zero.
   result = newSeq[byte](64)
   result[0] = first
   put(result, 31, offset)
   put(result, 39, length)
+
 func policy(bytes = high(uint64), entries = high(uint64)): PagedLimits =
   ## Tests vary total dataset ceilings independently from per-record proof bounds.
   PagedLimits(entries: ElementLimit(entries), bytes: ByteLimit(bytes))
+
 proc header(count, payload: uint64): PagedHeader =
   ## Native decoding consumes independently built bytes before any successful encoding comparison.
   decodePagedHeader(headerBytes(count, payload), default(StorageChainId), default(StateRoot),
       policy()).value
+
 proc metadata() =
   ## Exhaust fixed-width prefixes, reserved fields, identity and byte/count/address limits.
   let source = headerBytes(2, 82)
@@ -139,6 +152,7 @@ proc metadata() =
   resetHash(0)
   discard decodePagedHeader(source, checked.chainId, checked.root, policy(0))
   assert calls() == 0
+
 proc descriptors() =
   ## Scan exact ordering/coverage with first-error state, and preflight one proof prefix before allocation.
   let shape = header(2, 82).geometry
@@ -243,6 +257,7 @@ proc descriptors() =
 type TreeNode = object
   ## Test-only explicit child/parent and page identities permit an independent upward walk.
   left, right, parent, page: int
+
 proc appendTree(nodes: var seq[TreeNode], first, count: int): int =
   ## Recursively emit complete child records before their parent, without production offset formulas.
   if count == 1:
@@ -255,6 +270,7 @@ proc appendTree(nodes: var seq[TreeNode], first, count: int): int =
   nodes[left].parent = parent
   nodes[right].parent = parent
   parent
+
 proc paths() =
   ## Enumerated postorder topology independently checks every real leaf across power-of-two boundaries.
   for pages in [1, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 65, 129]:
@@ -413,6 +429,7 @@ proc emptyWitness() =
   let golden = hex("5241474e41524f4b2d4c494748542d50414745442d4d414e49464553542d56310a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000010000000000000020100000000000004fc34f4e3d1af70566cfc84c0f513c2f538adeb511f93f890df921bd85d1f093d0a672190bbc37ce48e0944a04cabd5dfaca4a8ae87ca4477221f2b4ca573146")
   let tree = hex("4fc34f4e3d1af70566cfc84c0f513c2f538adeb511f93f890df921bd85d1f093")
   witness(selected, golden, tree)
+
 proc absenceWitness() =
   ## Fixed Python hashlib/struct bytes independently anchor the canonical local format.
   let selected = header(2, 82)
@@ -425,7 +442,6 @@ proc absenceWitness() =
   resetHash(1)
   assert pagedPaddingDigest(shape, PageOrdinal(3)).error == PagedCodecError.BackendFailure
   resetHash(0)
-
 
 proc cycle() =
   ## All detached fixed buffers and scalar results retire before each next ARC sample.
@@ -447,6 +463,7 @@ proc cycle() =
   discard scan.admit(rowBytes(0, 0, 41)).value
   discard scan.admit(rowBytes(128, 41, 41)).value
   assert scan.finish == PagedCodecError.None
+
 proc standaloneManifest() =
   ## CURRENT can be shape-checked before opening an epoch; exact header binding follows independently.
   let selected = header(2, 82)

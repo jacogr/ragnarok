@@ -3,6 +3,7 @@
 
 ## Typed service reads consume authenticated partial evidence without claiming a complete account map.
 ## Missing witnesses, proven absence and malformed present bytes remain separate outcomes.
+
 import ./plan as proof_plan
 import ../preimage/history as preimage_history
 import ./view as proof_view

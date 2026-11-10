@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual TLS CE135 framing stays optional and validator-only; complete opaque bodies and exact bare FIN precede any semantic authority.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/startup
 import ../../../src/jamnp-s/[node, connections, read_stream, read_client]
@@ -10,6 +11,7 @@ import ../../../src/codec/[bounded, assurances]
 import ../../../src/codec/state/safrole
 import ../../../src/chain/[provider, genesis]
 import ../../support/[jamnp_topology_fixture, jamnp_node_probe]
+
 proc publicKey(name: string): StateEdKey {.raises.} =
   ## Fixture files provide only the authenticated public identity; the native TLS backend alone imports private keys.
   let raw = readFile(getEnv(name))
@@ -17,6 +19,7 @@ proc publicKey(name: string): StateEdKey {.raises.} =
   var bytes = default(array[32, byte])
   for index in 0..<32: bytes[index] = byte(raw[index])
   StateEdKey(bytes)
+
 proc source(a, b: StateEdKey): ChainView =
   ## This structural trusted complete fixture supplies transport roles only; no report, execution or block-admission certificate is invented.
   var current = topologyRecords(0, 6)
@@ -27,10 +30,12 @@ proc source(a, b: StateEdKey): ChainView =
   let selected = genesisView(saved).finalizeView(saved.value.blockHash)
   assert selected.error == ViewFinalizeError.None
   selected.value
+
 proc config(second = false): ConnectionConfig =
   ## Each stable owner has a different genuine certificate and the same fixed test-only protocol domain.
   initConnectionConfig(getEnv(if second: "RAGNAROK_TEST_CERT_B" else: "RAGNAROK_TEST_CERT"), getEnv(
       if second: "RAGNAROK_TEST_KEY_B" else: "RAGNAROK_TEST_KEY"), "jamnp-s/1/00000000", streams = 512)
+
 proc reject(view: ChainView, enabled, guest: bool) {.raises.} =
   ## Default-disabled or non-validator peers cannot allocate a variable guarantee body or receive an acknowledgment.
   var server = default(NodeService)
@@ -55,6 +60,7 @@ proc reject(view: ChainView, enabled, guest: bool) {.raises.} =
     assert server.poll(getMonoTime(), 0)
     probe.poll()
   assert server.takeRead().error == NodeError.Unavailable
+
 proc inputBoundaries(view: ChainView) {.raises.} =
   ## Exact E4/body/FIN completion is required independently of any report decoder or canonical graph.
   var server = default(NodeService)
@@ -99,10 +105,12 @@ proc inputBoundaries(view: ChainView) {.raises.} =
     assert task.error == NodeError.Unavailable and getMonoTime() < deadline
     assert server.poll(getMonoTime(), 0)
     probe.poll()
+
 proc pump(a, b: var NodeService) =
   ## Only the ordinary bounded native loops drive stream opens, body transfers, FIN and retirement.
   assert a.poll(getMonoTime(), 0)
   assert b.poll(getMonoTime(), 0)
+
 proc transfer(view: ChainView, keyB: StateEdKey) =
   ## One maximal opaque request holds both copies until collection; another cannot overrun the shared output budget.
   var a, b = default(NodeService)
@@ -167,6 +175,7 @@ proc transfer(view: ChainView, keyB: StateEdKey) =
   assert a.takeReply(renewed.value).error == ReadError.InvalidStream
   body.add(0)
   assert decodeReadRequest(ReadKind.Guarantee, body).error == ReadError.LimitExceeded
+
 proc ordinarySelection(view: ChainView) {.raises.} =
   ## Excluding a dedicated method never claims/deadline-refreshes it, and ordinary work remains selectable beside that ready backlog.
   var server = default(NodeService)
@@ -210,6 +219,7 @@ proc ordinarySelection(view: ChainView) {.raises.} =
   assert remaining.error == NodeError.None and remaining.value.request.payload == @[7'u8]
   assert not server.readLive(guarantee.value.ticket)
   assert server.reject(ordinary.value.ticket) and server.reject(remaining.value.ticket)
+
 proc main() {.raises.} =
   ## Frame completion is deliberately opaque here; only the separate managed qualification pipeline may accept actual report credentials.
   var diagnostic = ""

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Genuine fresh first-RW capture bound to immutable page provenance.
 ## Only whole known-zero pages may be skipped; unknown pages are copied completely before publication.
 
@@ -20,11 +21,14 @@ type
 
 proc `=copy`*(destination: var FreshRWCapture, source: FreshRWCapture) {.error.}
   ## Directly reject copying the actual resource-bearing capture result.
+
 proc `=dup`*(source: FreshRWCapture): FreshRWCapture {.error.}
   ## A successful capture cannot be duplicated through wrapper assignment.
+
 proc `=wasMoved`*(captured: var FreshRWCapture) {.nodestroy, inline.} =
   ## Reset is also used before first assignment; never inspect an uninitialized success tag.
   captured.status = FreshRWStatus.Uninitialized
+
 proc `=destroy`*(captured: FreshRWCapture) =
   ## Failed and declined alternatives have no mapping to retire.
   if captured.status == FreshRWStatus.Owned: `=destroy`(captured.completed)

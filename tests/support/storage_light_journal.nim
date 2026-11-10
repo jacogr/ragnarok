@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent complete-root light journal fixtures support real IO and process-crash qualification without application integration.
+
 import std/assertions
 import std/posix/posix
 import ./storage_io
@@ -22,11 +23,13 @@ type
     initial*: PreparedLightSnapshot
     next*: PreparedLightDelta
     following*: PreparedLightDelta
+
 proc lightKey*(first: byte): StateKey =
   ## Fixed query identities distinguish inclusion, known absence and forgotten evidence.
   var raw = default(array[31, byte])
   raw[0] = first
   StateKey(raw)
+
 proc lightFixture*(): LightJournalFixture =
   ## Independently hash a complete two-key map before deriving partial evidence and forward/reverse transitions.
   var value = newSeq[byte](33)
@@ -52,13 +55,16 @@ proc lightFixture*(): LightJournalFixture =
   let following = prepareLightDelta(next.snapshot, LightDeltaSequence(2), [known], [absent.key],
       config.journal.frame).value
   LightJournalFixture(config: config, initial: initial, next: next, following: following)
+
 proc lightChild*(path: string, kind: ManagedFileKind, epoch = ManagedEpoch(1)): string =
   ## Only exact canonical fixture epochs supply filenames; no directory scan establishes selection.
   path & "/" & managedFileName(kind, epoch).value
+
 proc lightText*(bytes: openArray[byte]): string =
   ## Independent copied comparison transport never retains a mutable borrow from prepared authority.
   result = newString(bytes.len)
   for index in 0..<bytes.len: result[index] = char(bytes[index])
+
 proc seedLightJournal*(path: string, fixture: LightJournalFixture, partial = false) =
   ## Build a real synchronized namespace; optional partial evidence comes from a witnessed successful 64-byte write before refusal.
   var owner = default(LightJournalCache)
@@ -75,6 +81,7 @@ proc seedLightJournal*(path: string, fixture: LightJournalFixture, partial = fal
     assert pendingIo() == 0
     resetIo()
   assert owner.close == FileError.None
+
 proc retireLightJournal*(path: string) =
   ## Remove only exact owned fixture children after every native owner and child process has retired.
   for name in ["CURRENT.next", "CURRENT", "snapshot-0000000000000001.bin",

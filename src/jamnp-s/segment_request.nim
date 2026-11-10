@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Incremental bounded CE139/140/148 group grammar shares no heap or canonical state with native callbacks.
+
 import std/assertions
 import ../codec/natural
 
@@ -27,25 +28,32 @@ type
   SegmentSelection* = object ## Detached copied coordinates retain exact input order, including duplicate requests.
     root*: array[32, byte]
     shard*, index*: uint16
+
 func maximumItems*(kind: SegmentRequestKind): int =
   ## Pinned NP maxima apply to the complete stream, not to each group separately.
   if kind == SegmentRequestKind.Segments: 3072 else: 6144
+
 func maximumPayload*(kind: SegmentRequestKind): int =
   ## Group count is independently capped even when groups contain no indices.
   kind.maximumItems*45
+
 func initSegmentRequestCursor*(kind: SegmentRequestKind): SegmentRequestCursor =
   ## Empty input is a complete empty sequence; no guessed group or element exists by default.
   SegmentRequestCursor(ready: true, kind: kind, failure: SegmentRequestError.None)
+
 func complete*(cursor: SegmentRequestCursor): bool =
   ## Exact group boundaries distinguish successful empty sequences from truncated roots/counts/indices.
   cursor.ready and cursor.failure == SegmentRequestError.None and cursor.phase == Phase.Root and
       cursor.used == 0
+
 func itemCount*(cursor: SegmentRequestCursor): int =
   ## Detached scalar metadata is safe to inspect without retaining a partial payload.
   cursor.items
+
 func groupCount*(cursor: SegmentRequestCursor): int =
   ## Empty-list groups still consume a finite independent parser resource.
   cursor.groups
+
 proc consume*(cursor: var SegmentRequestCursor, octet: byte): SegmentRequestError =
   ## Validate one byte without allocation; failures remain terminal and never yield an accepted prefix.
   if not cursor.ready: return SegmentRequestError.Uninitialized
@@ -95,6 +103,7 @@ proc consume*(cursor: var SegmentRequestCursor, octet: byte): SegmentRequestErro
       dec cursor.remaining
       if cursor.remaining == 0: cursor.phase = Phase.Root
   SegmentRequestError.None
+
 proc segmentSelections*(kind: SegmentRequestKind, payload: openArray[byte]): SegmentRequestResult[
     seq[SegmentSelection]] =
   ## Call only after exact cursor validation; copied ordered coordinates contain no payload alias or native pointer.
@@ -125,9 +134,11 @@ proc segmentSelections*(kind: SegmentRequestKind, payload: openArray[byte]): Seg
       inc ordinal
   SegmentRequestResult[seq[SegmentSelection]](status: SegmentRequestError.None,
       completed: selections)
+
 func error*[T](outcome: SegmentRequestResult[T]): SegmentRequestError =
   ## Inspect the status before selecting any complete ordered coordinates.
   outcome.status
+
 func value*[T](outcome: SegmentRequestResult[T]): T {.requires: outcome.status ==
     SegmentRequestError.None.} =
   ## A default/truncated request cannot expose an accepted prefix.

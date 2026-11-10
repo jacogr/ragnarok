@@ -20,12 +20,14 @@ proc bytes(text: string): seq[byte] =
   result = @[]
   # Copy complete byte pairs, with no integer narrowing of a full encoded field.
   for i in countup(0, text.len-1, 2): result.add octet(text[i..i+1])
+
 # Display exact completed bytes, with no output shortened to a round-trip-only commitment.
 proc emit(raw: openArray[byte]) =
   var text = ""
   # Every public byte is rendered in canonical lowercase hexadecimal.
   for b in raw: text.add(toHex(int(b), 2).toLowerAscii())
   echo text
+
 # Encode only a successfully selected owned fixed result.
 proc output[T](value: BsResult[T]) =
   # Failed imports/equations carry no default proof/hash to print.
@@ -41,6 +43,7 @@ proc output[T](value: BsResult[T]) =
     emit(array[144, byte](value.value)) # Every compressed root byte remains visible.
   else:
     emit(array[32, byte](value.value)) # Public encodings and verified hashes retain all fixed bytes.
+
 # Prove retained-key scope, input-copy stability, checked defaults and alias invalidation under ARC.
 proc ownership() =
   var empty = default(BsKey)
@@ -79,6 +82,7 @@ proc ownership() =
   var initial = default(BsResult[BsOutput])
   assert initial.error == BsError.Uninitialized
   echo "ok"
+
 # Exercise Rust-backed signing concurrently without sharing retained scalar owners between workers.
 proc worker(argument: pointer) {.nimcall.} =
   let id = cast[ptr int](argument)[] # Borrowed identity storage remains alive until this worker is joined.
@@ -93,6 +97,7 @@ proc worker(argument: pointer) {.nimcall.} =
     let sig = sign(key.value, scalar, [])
     assert sig.error == BsError.None
     assert verify(pub.value, sig.value, scalar, []).error == BsError.None
+
 # Join all OS workers before releasing their native/ARC lifetime state.
 proc concurrent() {.raises.} =
   var threads {.noinit.}: array[4, RawThread]
@@ -107,6 +112,7 @@ proc concurrent() {.raises.} =
     # Even partial thread creation must join the workers that already borrowed caller storage.
     for i in 0..<started: join(threads[i])
   echo "ok"
+
 # Dispatch one trusted command
 # every owner has a scoped release and every failed import has no value.
 proc main() {.raises.} =

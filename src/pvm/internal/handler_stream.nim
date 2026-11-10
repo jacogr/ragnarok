@@ -1,7 +1,9 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## GP 0.8.0 checked handler-stream execution with invocation-owned regions and bounded preparation.
 ## Public immutable snapshot and host adapters live in pvm/step; see spec/pvm-execution.md.
+
 import std/[algorithm, assertions]
 when defined(pvmArmMixedGroupReceipt):
   import std/syncio
@@ -17,7 +19,9 @@ when defined(pvmX86Jit):
   import ./x86_jit
 
 when NativeCheckedReadEnabled:
-  const ReadProbeSlots = 4 ## Fixed call-local candidate capacity.
+  const
+    ReadProbeSlots = 4 ## Fixed ordinary call-local candidate capacity.
+    ReadProbeCapacity = when NativeReadCycleEnabled: ReadProbeSlots+1 else: ReadProbeSlots
   type
     ReadProbeCandidate = object ## Exact sealed terminal and its invocation-local evidence.
       pc, header, terminal, sourceFacts: uint32
@@ -25,10 +29,13 @@ when NativeCheckedReadEnabled:
       eligible: uint64
       resolved: bool
     ReadProbeState = object ## Scalar-only state carried across validated memory replacements.
-      candidates: array[ReadProbeSlots, ReadProbeCandidate]
+      candidates: array[ReadProbeCapacity, ReadProbeCandidate]
       count, inspected: int
       epoch, segmentBudget: uint64
       observing: bool
+      when NativeReadCycleEnabled:
+        protectedTried, protectedInstalled: bool
+        protectedRemainingLimit: uint64
 
 type
   FlatFactLimit* = distinct uint64 ## Caller-selected decoded-fact admission policy, separate from guest gas.
@@ -85,10 +92,11 @@ type
     limits: FlatLimits # Cold admission policy follows the existing hot plan fields.
     allowNative: bool  # Immutable cold policy; forced interpretation never creates native handlers.
     singleStep: bool   # A bounded adapter plan owns one instruction and never enters whole-program emission.
-  FlatRegion = ref object ## Additional fragmented regions retain private bytes and immutable access metadata.
+  FlatRegion = ref object ## Extra regions read the containing immutable owner until their first complete store.
     first: uint64
     access: PageAccess
-    bytes: seq[byte]
+    size, sourceFirst: int # Logical bytes and genuine sorted source slot survive optional payload allocation.
+    bytes: seq[byte] # Empty means baseline-backed; otherwise every logical byte is privately owned.
   FlatMemoryScratchData = object
     ## One exclusive idle byte lease; immutable baseline and dirty ordinals restore each new input completely.
     baseline: Memory
@@ -99,7 +107,7 @@ type
     stack: seq[byte]
     extra: seq[FlatRegion]
     dirty: seq[uint32]
-    dirtyPages: seq[uint64] # Bounded 128 KiB bitmap; its set bits match dirty exactly.
+    dirtyPages: seq[uint64] # Bitmap through the highest mapped page, at most 128 KiB.
     payloadBytes: uint64    # Logical baseline and private payload charged to the idle retention limit.
     rwStorage: RWStorage    # Cold exclusive backing follows its view through active and idle leases.
   FlatMemoryScratch* = ref FlatMemoryScratchData
@@ -110,6 +118,8 @@ type
     count: uint8
     probes: array[16, FlatX86WideProbe]
     seen: seq[byte]             # One lazy bit per source byte prevents repeat enrollment after refusal.
+  FlatDynamicOffsets = ref object ## Invocation-owned positive ordinal tags and stable offsets.
+    slots: array[256, uint64]
   FlatFrame* = object ## One exclusive active execution; CPU, budgets, callbacks and borrowed native descriptors start afresh.
     plan: FlatPlan
     info*: MachineInfo
@@ -135,12 +145,12 @@ type
     barrier: uint32
     barrierFact: uint32
     savedHandler: nil FlatHandler
-    dynamicOffsets: array[256, uint64] # Full positive ordinal tag plus stable offset; no invocation state is retained.
+    dynamicOffsets: nil FlatDynamicOffsets
     hostSnapshot: Memory
     hostReady: bool
     hostSnapshotPc: CodeAddress
     fastResumes, fallbackResumes, hostCopiedPages: uint64
-    dirtyPages: seq[uint64]       # One bounded 128 KiB bitmap covers all 32-bit guest pages.
+    dirtyPages: seq[uint64]       # Absolute physical-page bits, bounded by the highest mapped page.
     dirtyIndices: seq[uint32] # Unique written pages; capacity is admitted with the mapping, never grown by a store.
     preparationFailure: FlatError # Rare admission state leaves all existing hot-frame coordinates unchanged.
     preparationUsed: uint64 # Cold source-span reservations persist with the emitted cache across resets/reentry.
@@ -153,8 +163,6 @@ type
       x86Original: seq[nil FlatHandler] # Exact checked entries survive every partial reservation and native refusal.
       x86Jit: nil X86Jit          # Exclusive code-only owner; never contains an invocation address.
       x86WideAdmission: FlatX86WideAdmission # Source PCs and retry counts persist with the exact code owner.
-      x86PreviousHeader, x86PreviousNext: uint32 # Observed invocation-local edges discover only closed pure loops.
-      x86PreviousValid: bool
       when defined(pvmX86CheckedStoreReceipt):
         x86CheckedStoreSelections, x86CheckedByteBlocks, x86CheckedWordGroups: uint64
     when NativeCheckedReadEnabled:
@@ -174,13 +182,12 @@ type
         armMacroLastState: ArmMacroState # Private receipt compares every ABI word with linked fallback.
     rwStorage: RWStorage          # Append cold ownership after existing fields; the hot RW view remains two words.
 
-
-
-
 proc `=copy`*(destination: var FlatFrame, source: FlatFrame) {.error.}
   ## Every profile rejects copying exclusive byte storage and any native children.
+
 proc `=dup`*(source: FlatFrame): FlatFrame {.error.}
   ## Interpreted execution carries the same exclusive resident-owner contract as native execution.
+
 proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   ## Delegate every owning child and remove source views without retiring transferred storage.
   `=wasMoved`(frame.plan)
@@ -193,6 +200,7 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
   `=wasMoved`(frame.ro)
   `=wasMoved`(frame.stack)
   `=wasMoved`(frame.extra)
+  `=wasMoved`(frame.dynamicOffsets)
   `=wasMoved`(frame.hostSnapshot)
   `=wasMoved`(frame.dirtyPages)
   `=wasMoved`(frame.dirtyIndices)
@@ -218,16 +226,20 @@ proc `=wasMoved`*(frame: var FlatFrame) {.nodestroy, inline.} =
 
 proc `=copy`*(destination: var FlatResult[FlatFrame], source: FlatResult[FlatFrame]) {.error.}
   ## The success wrapper is itself noncopyable, independently of its exclusive child.
+
 proc `=dup`*(source: FlatResult[FlatFrame]): FlatResult[FlatFrame] {.error.}
   ## Reject duplication of the actual successful frame result in every profile.
+
 proc `=wasMoved`*(outcome: var FlatResult[FlatFrame]) {.nodestroy, inline.} =
   ## Initialization also calls this hook: select the payload-free neutral state without reading old storage.
   outcome.status = FlatError.Uninitialized
 
 proc `=copy`*(destination: var FlatMemoryScratchData, source: FlatMemoryScratchData) {.error.}
   ## Reference-handle identity may be shared; the actual owning heap payload cannot be cloned.
+
 proc `=dup`*(source: FlatMemoryScratchData): FlatMemoryScratchData {.error.}
   ## Reject a second independent owner of a retained resident mapping.
+
 proc `=wasMoved`*(scratch: var FlatMemoryScratchData) {.nodestroy, inline.} =
   ## Disarm all moved children and the old view while preserving automatic complete destruction.
   `=wasMoved`(scratch.baseline)
@@ -291,15 +303,10 @@ func flatSext32(x: uint32): uint64 {.inline.} =
   else: uint64(x)
 
 when defined(pvmArm64Jit) and not defined(pvmX86Jit):
-  proc flatArmPrepare(f: var FlatFrame, origin: uint32)
-    ## Cold suffix preparation may replace eligible entries with native fragments.
-
   proc flatArmCycle(f: var FlatFrame, first, middle, last: uint32, destination: var uint32): bool
     ## Only an observed, fully validated closed cycle may authorize a connected native loop.
 
 when defined(pvmX86Jit):
-  proc flatX86Prepare(f: var FlatFrame, origin: uint32)
-    ## Cold source emission alone can replace complete pure spans with native entries.
   proc flatX86ColdWideAdmission(f: var FlatFrame, tail: uint32)
     ## Record one positive backedge or settle bounded source candidates at a safe call boundary.
 
@@ -336,7 +343,7 @@ proc flatBudget(f: var FlatFrame, off: uint32): uint32 =
   f.info.pc = CodeAddress(f.plan.facts[int(f.barrierFact)].pc)
   flatLocal(f, off, oracle.StepError.StepLimitExceeded)
 
-template flatReserve(f: var FlatFrame, off: uint32) =
+template flatReserveImpl(f: var FlatFrame, off: uint32, observeProtected: static[bool]) =
   ## Reserve a whole straight-line block once; a partial source budget changes one exclusive frame-owned handler temporarily.
   if f.remaining == 0:
     f.info.pc = CodeAddress(f.plan.facts[int(f.sites[int(off)])].pc)
@@ -351,6 +358,11 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     # Whole-block exits are rare: retain its stable header instead of reading the source index on every entry.
     # Emitted offsets are below2^31; raw source ends are at most the four-MiB fact ceiling.
     f.reservation = off or flatReservationHeaderFlag
+    when NativeReadCycleEnabled:
+      when observeProtected:
+        # This header owns disjoint complete reservations in one checked segment.
+        if f.remaining <= f.readProbe.protectedRemainingLimit:
+          inc f.readProbe.candidates[ReadProbeSlots].eligible
   else:
     let reserved = f.remaining
     f.remaining = 0
@@ -366,6 +378,10 @@ template flatReserve(f: var FlatFrame, off: uint32) =
     f.barrier = boundary
     f.savedHandler = f.handlers[int(f.barrier)]
     f.handlers[int(f.barrier)] = flatBudget
+
+template flatReserve(f: var FlatFrame, off: uint32) =
+  ## Ordinary headers reserve without read observation.
+  flatReserveImpl(f, off, false)
 
 proc flatReserveHeader(f: var FlatFrame, off: uint32): uint32 {.alwaysInline.} =
   ## The dispatch loop reserves ordinary headers with the exact shared checks, then selects the patched body.
@@ -594,16 +610,55 @@ func flatDirty(f: FlatFrame, index: PageIndex): bool {.inline.} =
   if word >= uint64(f.dirtyPages.len): return true
   (f.dirtyPages[int(word)] and (1'u64 shl int(page and 63))) != 0
 
-proc flatByte(f: FlatFrame, address: uint64): byte =
-  ## Slow paths and observers find the latest private byte only after complete genuine scalar preflight.
+proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
+    output: var openArray[byte]) =
+  ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
+  let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
+  assert copied.error == MachineError.None
+  assert copied.value.index == expected.index and copied.value.access == expected.access
+
+proc flatMaterializeStore[W: static[int]](f: var FlatFrame, address: uint64) =
+  ## Whole-store preflight has succeeded; adjacent equal-permission pages belong to one captured run.
+  for index in 0..<f.extra.len:
+    let region {.cursor.} = f.extra[index]
+    if address >= region.first and address-region.first < uint64(region.size):
+      assert region.access == PageAccess.ReadWrite
+      assert region.size >= W and address-region.first <= uint64(region.size-W)
+      if region.bytes.len == 0:
+        # Ordinary managed OOM can now occur on first write; no guest byte or dirty bit changed yet.
+        assert region.size > 0 and region.size mod 4096 == 0
+        let pages = region.size div 4096
+        assert region.sourceFirst >= 0 and pages <= f.sourcePages.len
+        assert region.sourceFirst <= f.sourcePages.len-pages
+        var bytes = newSeqUninit[byte](region.size)
+        # Managed refusal may return empty bytes; reject the actual extent before constructing any span.
+        assert bytes.len == region.size
+        for page in 0..<pages:
+          # Fill the complete temporary from this frame's retained owner before installing any payload.
+          let source = region.sourceFirst+page
+          let offset = page*4096
+          assert f.sourcePages[source].access == region.access
+          assert uint64(uint32(f.sourcePages[source].index))*4096 == region.first+uint64(offset)
+          flatCopySourcePage(f.sourceMemory, source, f.sourcePages[source],
+            bytes.toOpenArray(offset, offset+4095))
+        region.bytes = move(bytes)
+      else:
+        # Repeated stores retain the already materialized whole-run allocation.
+        assert region.bytes.len == region.size
+      return
+
+proc flatByte(f: FlatFrame, address: uint64, baseline: byte): byte =
+  ## The caller supplies a genuine checked scalar/page byte; logical membership selects any private overlay.
   if address >= f.stackBase and address-f.stackBase < uint64(f.stack.len): return f.stack[int(
       address-f.stackBase)]
   if address >= f.rwBase and address-f.rwBase < uint64(f.rw.len): return f.rw[int(address-f.rwBase)]
   if address >= f.roBase and address-f.roBase < uint64(f.ro.len): return f.ro[int(address-f.roBase)]
   for i in 0..<f.extra.len:
     let r {.cursor.} = f.extra[i]
-    if address >= r.first and address-r.first < uint64(r.bytes.len): return r.bytes[int(
-        address-r.first)]
+    if address >= r.first and address-r.first < uint64(r.size):
+      if r.bytes.len == 0: return baseline
+      assert r.bytes.len == r.size
+      return r.bytes[int(address-r.first)]
   assert false, "validated readable byte must belong to a captured private region"
   0
 
@@ -615,14 +670,15 @@ proc flatSetByte(f: var FlatFrame, address: uint64, value: byte) =
       address-f.rwBase)] = value; return
   for i in 0..<f.extra.len:
     let r {.cursor.} = f.extra[i]
-    if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.bytes.len):
+    if r.access == PageAccess.ReadWrite and address >= r.first and address-r.first < uint64(r.size):
+      assert r.bytes.len == r.size # The whole store installed its complete payload before dirty marking.
       r.bytes[int(address-r.first)] = value
       return
   assert false, "validated writable byte must belong to a captured writable region"
 
 proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64,
     value: var uint64): bool =
-  ## The original immutable memory preflight preserves every protected/overflow/permission/fault ordering; its old byte value is not used.
+  ## Canonical preflight provides baseline bytes; private overlays preserve later stores without repeating source reads.
   let checked = load(f.sourceMemory, MemoryAddress(address), AccessWidth(byte(W)))
   if checked.error != MachineError.None:
     if checked.error == MachineError.Fault:
@@ -633,8 +689,12 @@ proc flatLoadSlow[W: static[int]](f: var FlatFrame, off: uint32, address: uint64
         oracle.StepError.AmbiguousAccessOrder)
     else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
     return false
+  let baseline = uint64(checked.value)
   value = 0
-  for i in 0..<W: value = value or (uint64(flatByte(f, address+uint64(i))) shl (8*i))
+  for i in 0..<W:
+    # Each baseline lane is genuine even when only part of this load has a private overlay.
+    let original = byte((baseline shr (8*i)) and 255'u64)
+    value = value or (uint64(flatByte(f, address+uint64(i), original)) shl (8*i))
   true
 
 proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value: uint64): bool =
@@ -649,6 +709,7 @@ proc flatStoreSlow[W: static[int]](f: var FlatFrame, off: uint32, address, value
         oracle.StepError.AmbiguousAccessOrder)
     else: discard flatLocal(f, off, oracle.StepError.InvalidMachine)
     return false
+  flatMaterializeStore[W](f, address)
   flatMarkStore[W](f, address)
   for i in 0..<W: flatSetByte(f, address+uint64(i), byte((value shr (8*i)) and 255'u64))
   true
@@ -1066,10 +1127,14 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   if address == 0 or (address and 1) != 0: return flatStopExit(f, off, oracle.StepExit.Panic)
   let index = address div 2-1
   let slot = int(index and 255'u64)
-  let known = f.dynamicOffsets[slot]
-  if (known shr 32) == index+1:
-    f.info.blockCharged = false
-    return uint32(known and 0xffffffff'u64)-1
+  when not Single:
+    # A one-step frame cannot reuse a cached target.
+    let cache {.cursor.} = f.dynamicOffsets
+    if cache != nil:
+      let known = cache.slots[slot]
+      if (known shr 32) == index+1:
+        f.info.blockCharged = false
+        return uint32(known and 0xffffffff'u64)-1
   var target = FlatTarget(pc: 0, valid: false)
   when Single:
     # A single instruction checks only its chosen original table ordinal; it never decodes the full table.
@@ -1085,7 +1150,16 @@ proc flatDynamic[Code: static[int]; Single: static[bool]](f: var FlatFrame, off:
   if not target.valid: return flatStopExit(f, off, oracle.StepExit.Panic)
   let resolved = flatResolve(f, target.pc)
   if resolved == flatStop: return flatResolutionFailure(f, off)
-  f.dynamicOffsets[slot] = ((index+1) shl 32) or uint64(resolved+1)
+  when not Single:
+    # A refusal or halt never allocates. Only successful resolution can install a tag.
+    let cache {.cursor.} = f.dynamicOffsets
+    let tag = ((index+1) shl 32) or uint64(resolved+1)
+    if cache == nil:
+      let fresh = FlatDynamicOffsets(slots: default(array[256, uint64]))
+      fresh.slots[slot] = tag
+      f.dynamicOffsets = fresh
+    else:
+      cache.slots[slot] = tag
   f.info.blockCharged = false
   resolved
 
@@ -1377,7 +1451,7 @@ func flatMemoryPairHandler(code: byte): nil FlatHandler =
   of 130: flatMemoryWorker[8, true, false, true, false, true, true]
   else: nil
 
-proc flatFact(decoded: ProgramResult[Instruction], priceIndex: uint32): FlatFact =
+proc flatFact(decoded: ProgramResult[InstructionHeader], priceIndex: uint32): FlatFact =
   ## Retain the same eagerly validated source boundaries and logical admission units without rich payload storage.
   assert decoded.error == ProgramError.None
   let item = decoded.value
@@ -1449,7 +1523,7 @@ proc prepareFlatPlan*(source: Program, cycles: GasCycleLimit, limits: FlatLimits
   while pc < extent.value:
     if uint64(owner.facts.len) >= uint64(limits.facts):
       return FlatResult[FlatPlan](status: FlatError.FactLimitExceeded)
-    let decoded = instruction(source, CodeAddress(pc))
+    let decoded = instructionHeader(source, CodeAddress(pc))
     if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
         status: FlatError.InvalidProgram)
     let item = decoded.value
@@ -1499,7 +1573,7 @@ proc prepareSingleFlatPlan*(source: Program, pc: CodeAddress,
       status: FlatError.InvalidProgram)
   if extent.value > uint64(limits.codeBytes): return FlatResult[FlatPlan](
       status: FlatError.CodeLimitExceeded)
-  let decoded = instruction(source, pc)
+  let decoded = instructionHeader(source, pc)
   if decoded.error != ProgramError.None: return FlatResult[FlatPlan](
       status: FlatError.InvalidProgram)
   var fact = flatFact(decoded, 0)
@@ -1686,6 +1760,10 @@ proc flatResolve(f: var FlatFrame, pc: uint32): uint32 =
             elif fact.opcode == 200 and second == 139: selected = flatFusedRegisters[200, 139]
             elif fact.opcode == 149 and second == 149: selected = flatFusedRegisters[149, 149]
             elif fact.opcode == 131 and second == 88: selected = flatRegisterBranchCold[131, 88]
+            elif fact.opcode == 131 and second == 83 and not f.plan.allowNative:
+              # The ADD worker can fuse after resolution while the original branch node
+              # remains addressable for partial attempts and shared native certification.
+              selected = flatRegisterBranchCold[131, 83]
           inc continuations
         else: continuations = 0
       else: continuations = 0
@@ -1818,10 +1896,17 @@ proc flatNativeLoop(f: var FlatFrame, off: uint32): uint32 =
 
 when NativeCheckedReadEnabled:
   proc installFlatReadBody(f: var FlatFrame, info: NativeReadBodyInfo)
+when NativeReadCycleEnabled:
+  proc installFlatReadCycle(f: var FlatFrame, info: NativeReadBodyInfo)
 
 proc installNative(f: var FlatFrame) =
   ## Only the caller mutates its exclusively held stream; each image uses its own certificate.
   if f.pricingKind != 0 or f.nativeOriginal != nil: return
+  when NativeReadCycleEnabled:
+    let cycle = nativeReadCycleInfo(f.nativeSession)
+    if cycle.epoch != 0:
+      installFlatReadCycle(f, cycle)
+      return
   when NativeCheckedReadEnabled:
     let read = nativeReadInfo(f.nativeSession)
     if read.epoch != 0:
@@ -1904,13 +1989,6 @@ proc settledNativeWork*(f: FlatFrame, supplied: uint64): uint64 =
   if attempted == 0: return 0
   attempted-1
 
-proc flatCopySourcePage(memory: Memory, slot: int, expected: PageDescription,
-    output: var openArray[byte]) =
-  ## The retained mapping bounds this positional copy; matching metadata binds it to the same immutable owner.
-  let copied = copyMemoryPage(memory, MemoryPageSlot(uint32(slot)), output)
-  assert copied.error == MachineError.None
-  assert copied.value.index == expected.index and copied.value.access == expected.access
-
 proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
   ## Restore input outside the execution clock, preserving the explicit reset boundary; cached code/links alone persist.
   when defined(pvmArm64Jit) and not defined(pvmX86Jit) and defined(pvmArmMacroStateTrace):
@@ -1941,9 +2019,12 @@ proc resetFlatFrame*(f: var FlatFrame, info: MachineInfo) =
       var found = false
       for i in 0..<f.extra.len:
         let region {.cursor.} = f.extra[i]
-        if address >= region.first and address-region.first+4096 <= uint64(region.bytes.len):
-          let offset = int(address-region.first)
-          flatCopySourcePage(memory, page, image, region.bytes.toOpenArray(offset, offset+4095))
+        if address >= region.first and address-region.first+4096 <= uint64(region.size):
+          if region.bytes.len != 0:
+            # A baseline-backed extra is already restored through this immutable source owner.
+            assert region.bytes.len == region.size
+            let offset = int(address-region.first)
+            flatCopySourcePage(memory, page, image, region.bytes.toOpenArray(offset, offset+4095))
           found = true
           break
       assert found
@@ -2003,15 +2084,15 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     f.armMemory[5] = flatArmClippedReadRegion(f.roBase, f.ro)
 
 proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Memory,
-    info: MachineInfo, pageCount: int): FlatFrame =
+    info: MachineInfo, pageCount, dirtyWordCount: int): FlatFrame =
   ## Both paths initialize every execution field afresh; the memory lease never supplies execution state.
   result = FlatFrame(plan: plan,
       preparationFailure: FlatError.None, preparationUsed: 0, hostSnapshot: default(Memory),
           hostReady: false,
     hostSnapshotPc: CodeAddress(0), fastResumes: 0, fallbackResumes: 0, hostCopiedPages: 0,
-    # No store can succeed in an empty genuine map; a later host remap rebuilds this frame and its bitmap.
+    # The admitted map bounds this bitmap; a later host remap rebuilds both capabilities together.
     dirtyPages: (when reuseDirtyMetadata: default(seq[uint64])
-      else: (if pageCount == 0: @[] else: newSeq[uint64](16384))),
+      else: (if dirtyWordCount == 0: @[] else: newSeq[uint64](dirtyWordCount))),
     dirtyIndices: (when reuseDirtyMetadata: default(seq[uint32])
       else: newSeqOfCap[uint32](pageCount)),
         info: info, reason: oracle.StepError.None,
@@ -2023,16 +2104,10 @@ proc flatFrameShell[reuseDirtyMetadata: static[bool]](plan: FlatPlan, memory: Me
         RWView), stack: @[], extra: @[], rwStorage: initRWStorage(),
     remaining: 0, reservation: 0, stoppedAt: 0, attemptedExit: false, barrier: flatStop,
         barrierFact: 0, savedHandler: nil)
-  result.dynamicOffsets = default(array[256, uint64])
-  when defined(pvmX86Jit):
-    result.x86PreviousHeader = flatStop
-    result.x86PreviousNext = flatStop
-    result.x86PreviousValid = false
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     result.armPreviousHeader = flatStop
     result.armPreviousNext = flatStop
     result.armPreviousValid = false
-
 
 proc flatRegionPast(images: openArray[PageDescription], first: int): int =
   ## Group only genuinely adjacent pages with equal permission before any region payload allocation.
@@ -2047,7 +2122,10 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
   ## Classify first, then construct one complete frame; failure owns no partial public payload.
   assert plan != nil
   assert images.len <= high(int) div sizeof(PageDescription)
-  var frame = flatFrameShell[false](plan, memory, info, images.len)
+  # Sorted genuine descriptions bound every physical bit, including RO and inaccessible observations.
+  let dirtyWordCount = if images.len == 0: 0
+    else: int((uint64(uint32(images[images.len-1].index)) shr 6)+1)
+  var frame = flatFrameShell[false](plan, memory, info, images.len, dirtyWordCount)
   var firstRO = -1
   var firstRW = -1
   var lastRW = -1
@@ -2064,7 +2142,8 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       lastRW = ordinal
     first = flatRegionPast(images, first)
     inc ordinal
-  var regions: seq[FlatRegion] = @[]
+  # Classification already counted every accessible run; reserve only their reference slots.
+  var regions = newSeqOfCap[FlatRegion](ordinal)
   var residentRW = false
   first = 0
   while first < images.len:
@@ -2084,7 +2163,8 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
         var resident = resident_capture.takeOwned(captured)
         frame.rwStorage = takeResident(resident)
         residentRW = true
-        regions.add(FlatRegion(first: address, access: image.access, bytes: @[]))
+        regions.add(FlatRegion(first: address, access: image.access,
+          size: pages*4096, sourceFirst: first, bytes: @[]))
       of FreshRWStatus.NotSelected:
         discard # The unchanged managed construction below is the only fallback path.
       of FreshRWStatus.AllocationRefused:
@@ -2094,15 +2174,27 @@ proc buildFlatFrame(plan: FlatPlan, images: var seq[PageDescription], info: Mach
       if residentRW:
         first = after
         continue
-    let region = FlatRegion(first: address, access: image.access, bytes: newSeq[byte](pages*4096))
+    if regions.len != firstRO and regions.len != firstRW and regions.len != lastRW:
+      # Extras retain logical coordinates under the frame's immutable owner without allocating payload bytes.
+      regions.add(FlatRegion(first: address, access: image.access,
+        size: pages*4096, sourceFirst: first, bytes: @[]))
+      first = after
+      continue
+    # Preserve eager primary allocation and complete fill before deriving any frame/native view.
+    let region = FlatRegion(first: address, access: image.access,
+      size: pages*4096, sourceFirst: first, bytes: newSeqUninit[byte](pages*4096))
     for page in first..<after:
-      # All managed/unknown paths still restore complete pages; no allocation-origin promise survives here.
+      # All managed primary paths still restore complete pages before installing the final owner.
       let offset = (page-first)*4096
       assert offset >= 0 and offset <= region.bytes.len-4096
       flatCopySourcePage(memory, page, images[page], region.bytes.toOpenArray(offset, offset+4095))
     regions.add(region)
     first = after
   frame.sourcePages = move(images)
+  # A sole writable run fills RW only; count its last-RW role once before reserving extra references.
+  let primaryCount = int(firstRO >= 0) + int(firstRW >= 0) +
+    int(lastRW >= 0 and lastRW != firstRW)
+  frame.extra = newSeqOfCap[FlatRegion](ordinal-primaryCount)
   for i in 0..<regions.len:
     # Preserve firstRO/firstRW/lastRW precedence, including a sole writable run remaining RW.
     let region {.cursor.} = regions[i]
@@ -2157,7 +2249,11 @@ func flatSourceIntervalAt(f: FlatFrame, header, maxSpan: uint32,
 
 include ./handler_trace_source
 when NativeCheckedReadEnabled:
+  when NativeReadCycleEnabled:
+    proc buildFlatReadCycle(f: FlatFrame, read: NativeReadBody): NativeReadCycle
   include ./handler_read_body
+  when NativeReadCycleEnabled:
+    include ./handler_read_cycle
   include ./read_admission_probe
 
 when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
@@ -2177,100 +2273,6 @@ when defined(pvmArmMacroReceipt) or defined(pvmX86MemoryCycleSealWitness):
     true
 
 when defined(pvmX86Jit):
-  proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool
-    ## Cold admission is defined after exact branch-capability checking.
-
-  proc flatX86Execute(f: var FlatFrame, offset: uint32): uint32 =
-    ## Partial attempt prefixes always use the original checked node; native arithmetic has no intermediate exit.
-    if f.barrier == flatStop:
-      block:
-        # Release the disjoint register borrow before any original fallback can mutate the frame.
-        let jit {.cursor.} = f.x86Jit
-        assert jit != nil
-        if jit != nil:
-          let ending = callX86Entry(jit, offset, f.info.registers)
-          if ending != flatStop: return ending
-    let original = f.x86Original[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatX86RunNext[ClearPaid: static[bool]](f: var FlatFrame, offset: uint32): uint32 =
-    ## Only complete reserved pure prefixes enter native control; the cache borrow ends before an error can materialize frame state.
-    var destination = flatStop
-    block:
-      let jit {.cursor.} = f.x86Jit
-      assert jit != nil
-      if jit != nil: destination = callX86Branch(jit, offset, f.info.registers)
-    if destination == flatStop or int(destination) >= f.handlers.len:
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    when ClearPaid: f.info.blockCharged = false
-    destination
-
-  proc flatX86Branch(f: var FlatFrame, offset: uint32): uint32 =
-    ## A partial source reservation must stop through original handlers, including its exact temporary barrier.
-    if f.barrier != flatStop:
-      let original = f.x86Original[int(offset)]
-      assert original != nil
-      if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    flatX86RunNext[true](f, offset)
-
-  proc flatX86Enter(f: var FlatFrame, offset: uint32): uint32 =
-    ## Preserve canonical zero-budget, gas, resumed-block and partial-prefix ordering before the native handoff.
-    flatReserve(f, offset)
-    if f.barrier != flatStop:
-      let selected = f.handlers[int(offset+1)]
-      return selected(f, offset+1)
-    block:
-      let jit {.cursor.} = f.x86Jit
-      assert jit != nil
-      if jit != nil: inc jit.headerCalls
-    flatX86RunNext[true](f, offset+1)
-
-  proc flatX86Whole(f: var FlatFrame, offset: uint32): uint32 =
-    ## A complete pure block observes neither intermediate paid state nor a source PC; every partial/resumed/error path stays checked.
-    let args = f.arguments[int(offset)]
-    if f.barrier != flatStop or f.info.blockCharged or f.remaining < uint64(args.y) or
-        uint64(f.info.gas) < args.x:
-      return flatX86Enter(f, offset)
-    f.info.gas = MachineGas(uint64(f.info.gas)-args.x)
-    f.remaining -= uint64(args.y)
-    f.reservation = offset or flatReservationHeaderFlag
-    block:
-      let jit {.cursor.} = f.x86Jit
-      assert jit != nil
-      if jit != nil: inc jit.headerCalls
-    flatX86RunNext[false](f, offset+1)
-
-  proc flatX86ProbeWhole(f: var FlatFrame, offset: uint32): uint32 =
-    ## At most eight complete visits discover an actual one/two-block round; exhaustion restores ordinary dispatch.
-    let jit = f.x86Jit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if f.pricingKind != 0 or x86RegionStatus(jit) != 0:
-      if f.handlers[int(offset)] == flatX86ProbeWhole: f.handlers[int(offset)] = flatX86Whole
-      return flatX86Whole(f, offset)
-    let args = f.arguments[int(offset)]
-    let complete = f.barrier == flatStop and not f.info.blockCharged and
-        f.remaining >= uint64(args.y) and uint64(f.info.gas) >= args.x
-    let destination = flatX86Whole(f, offset)
-    if not complete: return destination
-    let previous = f.x86PreviousHeader
-    let paired = f.x86PreviousValid and f.x86PreviousNext == offset and destination == previous and
-        previous != offset
-    f.x86PreviousHeader = offset
-    f.x86PreviousNext = destination
-    f.x86PreviousValid = true
-    if destination == offset or paired:
-      var connected = destination
-      let first = if paired: previous else: offset
-      let second = if paired: offset else: flatStop
-      if flatX86Cycle(f, first, second, connected): return connected
-    if x86RegionStatus(jit) != 0 or x86FinishProbe(jit, offset):
-      if f.handlers[int(offset)] == flatX86ProbeWhole: f.handlers[int(offset)] = flatX86Whole
-    destination
-
   func flatX86CachedBranch(f: FlatFrame, offset: uint32): bool =
     ## Exact original worker identity certifies that both scalar destinations passed checked source/target admission.
     let opcode = f.plan.facts[int(f.sites[int(offset)])].opcode
@@ -2293,186 +2295,11 @@ when defined(pvmX86Jit):
     of 175: f.handlers[int(offset)] == flatBranch[175]
     else: false
 
-  proc flatX86Upgrade(f: var FlatFrame, offset: uint32): bool =
-    ## Promote one existing arithmetic leaf only after both original branch arms have positive cached capabilities.
-    let jit = f.x86Jit
-    if jit == nil: return false
-    let ending = x86Ending(jit, offset)
-    if not flatX86CachedBranch(f, ending): return false
-    let before = x86Clock()
-    var native = default(X86Block)
-    var current = offset
-    while current < ending:
-      # Rebuild only immutable pure facts already admitted by this exact source record.
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      let payload = flatSourcePayload(f.plan, fact)
-      emitX86Operation(native, fact.opcode, payload.args.slots, payload.args.x)
-      inc current
-    let args = f.arguments[int(ending)]
-    let branch = f.plan.facts[int(f.sites[int(ending)])]
-    emitX86Branch(native, branch.opcode, args.slots, flatSext32(uint32(args.x and 0xffffffff'u64)),
-        uint32(args.x shr 32), args.y)
-    let promoted = publishX86Entry(jit, offset, ending, ending-offset+1, native, conditional = true)
-    jit.compilationNs += x86Clock()-before
-    if not promoted:
-      # A full/refused arena preserves its already working arithmetic leaf and removes repeated promotion attempts.
-      f.handlers[int(offset)] = flatX86Execute
-      return false
-    f.handlers[int(offset)] = flatX86Branch
-    if offset > 0:
-      let header = offset-1
-      let plain: FlatHandler = flatCharge
-      if f.handlers[int(header)] == plain and
-          f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y:
-        # Only an exact ordinary header owning this entire pure source suffix may fold its complete reservation.
-        f.x86Original[int(header)] = plain
-        assert f.arguments[int(header)].y > 0
-        if f.pricingKind == 0 and x86RegionStatus(jit) == 0:
-          x86StartProbe(jit, header)
-          f.handlers[int(header)] = flatX86ProbeWhole
-        else:
-          f.handlers[int(header)] = flatX86Whole
-    true
-
-  proc flatX86Region(f: var FlatFrame, offset: uint32): uint32 =
-    ## Every call borrows fresh state; a guard reenters the original header before that block has any effects.
-    let jit = f.x86Jit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let active = x86RegionCount(jit)
-    var headers = default(array[2, uint32])
-    var spans = default(array[2, uint32])
-    var prices = default(array[2, uint64])
-    for index in 0..<active:
-      headers[index] = x86RegionHeader(jit, range[0..1](index))
-      assert int(headers[index]) < f.arguments.len
-      spans[index] = f.arguments[int(headers[index])].y
-      prices[index] = f.arguments[int(headers[index])].x
-    if f.pricingKind != 0 or f.info.blockCharged or f.barrier != flatStop or
-        offset != headers[0] or not x86RegionMatches(jit, headers, spans, prices):
-      return flatX86Whole(f, offset)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, uint64(flatStop)]
-    let destination = callX86Region(jit, f.info.registers, state)
-    f.info.gas = MachineGas(state[0])
-    f.remaining = state[1]
-    f.info.blockCharged = false
-    if state[4] != uint64(flatStop):
-      # Retain the last completed header even when the next entry returns on a quota/gas guard.
-      assert state[4] < uint64(f.arguments.len)
-      let last = uint32(state[4])
-      f.reservation = last or flatReservationHeaderFlag
-    assert int(destination) < f.handlers.len
-    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
-        oracle.StepError.InvalidPreparedProgram)
-    for index in 0..<active:
-      if destination == headers[index]: return flatX86Enter(f, destination)
-    destination
-
-  proc flatX86Cycle(f: var FlatFrame, first, second: uint32, destination: var uint32): bool =
-    ## Capture only complete positively resolved pure blocks; refusal retains every original source worker.
-    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged: return false
-    let jit = f.x86Jit
-    if jit == nil or x86RegionStatus(jit) == 1: return false
-    if x86RegionStatus(jit) == 2:
-      if x86RegionHeader(jit, 0) != first: return false
-      destination = flatX86Region(f, first)
-      return true
-    let active: range[1..2] = if second == flatStop: 1 else: 2
-    let headers = [first, second]
-    let before = x86Clock()
-    var blocks = default(array[2, X86RegionBlock])
-    for index in 0..<active:
-      let header = headers[index]
-      if int(header) >= f.handlers.len: return false
-      if f.handlers[int(header)] != flatX86Whole and f.handlers[int(header)] !=
-          flatX86ProbeWhole: return false
-      let charge = f.arguments[int(header)]
-      var native = default(X86Block)
-      var current = header+1
-      var terminal = false
-      while int(current) < f.handlers.len and current-header <= 65:
-        if int(current)+1 < f.sites.len and f.sites[int(current)] == f.sites[int(
-            current+1)]: return false
-        let fact = f.plan.facts[int(f.sites[int(current)])]
-        if fact.ending:
-          if not flatX86CachedBranch(f, current) or
-              f.sites[int(current)]+1 != f.sites[int(header)]+charge.y: return false
-          let args = f.arguments[int(current)]
-          emitX86Branch(native, fact.opcode, args.slots, flatSext32(uint32(args.x and
-              0xffffffff'u64)), uint32(args.x shr 32), args.y)
-          blocks[index] = X86RegionBlock(header: header, span: charge.y, operations: current-header,
-              yes: uint32(args.x shr 32), no: args.y, price: charge.x, body: move(native))
-          terminal = true
-          break
-        if not fact.fallthrough or not supportedX86Opcode(fact.opcode): return false
-        let payload = flatSourcePayload(f.plan, fact)
-        emitX86Operation(native, fact.opcode, payload.args.slots, payload.args.x)
-        inc current
-      if not terminal: return false
-    let admitted = publishX86Region(jit, blocks, active)
-    jit.compilationNs += x86Clock()-before
-    if not admitted: return false
-    f.handlers[int(first)] = flatX86Region
-    destination = flatX86Region(f, first)
-    true
-
   proc flatX86RegionStatistics*(f: FlatFrame): array[2, uint64] =
-    ## A witness requires real connected execution separately from normal arithmetic/conditional leaves.
+    ## Copy real region counters when a witness frame owns the legacy code cache.
     let jit = f.x86Jit
     if jit == nil: default(array[2, uint64])
     else: x86RegionStatistics(jit)
-
-  proc flatX86Pending(f: var FlatFrame, offset: uint32): uint32 =
-    ## Original first execution admits both branch arms; only a later full reservation may promote native control.
-    if f.barrier == flatStop and flatX86Upgrade(f, offset): return flatX86Branch(f, offset)
-    flatX86Execute(f, offset)
-
-  proc flatX86Prepare(f: var FlatFrame, origin: uint32) =
-    ## Compile bounded same-block pure spans only, leaving pricing, branches, memory, hosts and faults checked.
-    if not f.plan.allowNative: return
-    let before = x86Clock()
-    if f.x86Jit == nil: f.x86Jit = newX86Jit()
-    let jit = f.x86Jit
-    assert jit != nil
-    if jit == nil: return
-    var offset = origin
-    while int(offset) < f.handlers.len:
-      # Duplicate source sites are synthetic charge headers and never authorize native source operations.
-      if x86Entry(jit, offset, uint32(f.handlers.len)) != 0 or
-          (int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset+1)]):
-        inc offset
-        continue
-      var ending = offset
-      var count = 0'u32
-      var fragment = default(X86Block)
-      while int(ending) < f.handlers.len and count < 64:
-        if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending+1)]: break
-        let fact = f.plan.facts[int(f.sites[int(ending)])]
-        if fact.ending or not fact.fallthrough or not supportedX86Opcode(fact.opcode): break
-        let payload = flatSourcePayload(f.plan, fact)
-        emitX86Operation(fragment, fact.opcode, payload.args.slots, payload.args.x)
-        inc ending
-        inc count
-      let terminal = if int(ending) < f.sites.len:
-          f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
-      let conditional = terminal in {81'u8..90, 170..175}
-      var whole = false
-      if conditional and offset > 0 and int(ending) < f.sites.len:
-        # Short native handoffs pay off only with a complete ordinary charge entry; interior prefixes retain fused checked workers.
-        let header = offset-1
-        let plain: FlatHandler = flatCharge
-        whole = f.handlers[int(header)] == plain and
-            f.sites[int(ending)]+1 == f.sites[int(header)]+f.arguments[int(header)].y
-      if count == 0 or (count < 4 and not whole) or
-          not publishX86Entry(jit, offset, ending, count, fragment, shortPrefix = whole):
-        refuseX86Entry(jit, offset)
-        inc offset
-        continue
-      if f.x86Original.len < f.handlers.len: f.x86Original.setLen(f.handlers.len)
-      f.x86Original[int(offset)] = f.handlers[int(offset)]
-      f.handlers[int(offset)] = if conditional: flatX86Pending else: flatX86Execute
-      offset = ending
-    jit.compilationNs += x86Clock()-before
 
   when defined(pvmX86Jit) or defined(pvmX86MemoryCycleSeal):
     func flatX86CompleteSource(f: FlatFrame, pc: uint32,
@@ -2489,9 +2316,6 @@ when defined(pvmX86Jit):
       let handler = f.handlers[int(header)]
       let kind = if handler == flatCharge: X86MemoryCycleHandlerKind.Ordinary
         elif handler == flatChargedWordLoop: X86MemoryCycleHandlerKind.CheckedWord
-        elif handler == flatX86Whole: X86MemoryCycleHandlerKind.NativeWhole
-        elif handler == flatX86ProbeWhole: X86MemoryCycleHandlerKind.NativeProbe
-        elif handler == flatX86Region: X86MemoryCycleHandlerKind.NativeRegion
         else: X86MemoryCycleHandlerKind.Other
       found = X86MemoryCycleHeader(pc: pc, header: header, ordinal: ordinal, span: source.span,
         terminal: summary.terminal, price: source.price,
@@ -2520,10 +2344,7 @@ when defined(pvmX86Jit):
         return false
       var prefix = default(X86MemoryCycleHeader)
       if not flatX86CompleteSource(f, prefixPc, prefix): return false
-      if prefix.kind notin {X86MemoryCycleHandlerKind.Ordinary,
-          X86MemoryCycleHandlerKind.NativeWhole, X86MemoryCycleHandlerKind.NativeProbe,
-          X86MemoryCycleHandlerKind.NativeRegion} or
-          prefix.opcode != 1 or
+      if prefix.kind != X86MemoryCycleHandlerKind.Ordinary or prefix.opcode != 1 or
           f.handlers[int(prefix.terminal)] != flatCachedJump[1]: return false
       var dirty = default(X86MemoryCycleHeader)
       if not flatX86CompleteTarget(f, f.arguments[int(prefix.terminal)].y, dirty): return false
@@ -2681,10 +2502,7 @@ when defined(pvmX86Jit):
         var guard = default(X86MemoryCycleHeader)
         if not flatX86CompleteTarget(f, f.arguments[int(outside.terminal)].y, guard) or
             guard.span != 3 or guard.opcode != 81 or
-            guard.kind notin {X86MemoryCycleHandlerKind.Ordinary,
-              X86MemoryCycleHandlerKind.NativeWhole,
-              X86MemoryCycleHandlerKind.NativeProbe,
-              X86MemoryCycleHandlerKind.NativeRegion} or
+            guard.kind != X86MemoryCycleHandlerKind.Ordinary or
             not flatX86CachedBranch(f, guard.terminal): return false
         for index, opcode in [131'u8, 149, 81]:
           if f.plan.facts[int(guard.ordinal)+index].opcode != opcode: return false
@@ -2791,16 +2609,10 @@ when defined(pvmX86Jit):
       ## An impossible post-native receipt cannot be rolled back or replayed through checked code.
 
     func flatX86CyclePrefixMatches(f: FlatFrame, candidate: X86MemoryCycleCandidate): bool =
-      ## A cheap exact handler-class check retires persistent pure promotions without rescanning source.
-      let header = candidate.prefix.header
-      if int(header) >= f.handlers.len: return false
-      let handler = f.handlers[int(header)]
-      case candidate.prefix.kind
-      of X86MemoryCycleHandlerKind.Ordinary: handler == flatCharge
-      of X86MemoryCycleHandlerKind.NativeWhole: handler == flatX86Whole
-      of X86MemoryCycleHandlerKind.NativeProbe: handler == flatX86ProbeWhole
-      of X86MemoryCycleHandlerKind.NativeRegion: handler == flatX86Region
-      else: false
+      ## Reuse the seal only while its prefix still has the exact checked charge handler.
+      let prefix = candidate.prefix
+      prefix.kind == X86MemoryCycleHandlerKind.Ordinary and
+        int(prefix.header) < f.handlers.len and f.handlers[int(prefix.header)] == flatCharge
 
     proc flatX86CycleReadRegionSpan(first: uint64, bytes: openArray[byte], address: uint64,
         width: uint8, memory: var X86CycleMemory) =
@@ -3119,17 +2931,8 @@ when defined(pvmX86Jit):
             f.handlers[int(candidate.loopBranch.terminal)] != flatBranch[88] or
             f.handlers[int(candidate.readBlock.terminal)] != flatCachedJump[1]:
           return false
-        let guard = f.handlers[int(candidate.loopGuard.header)]
-        case candidate.loopGuard.kind
-        of X86MemoryCycleHandlerKind.Ordinary:
-          if guard != flatCharge: return false
-        of X86MemoryCycleHandlerKind.NativeWhole:
-          if guard != flatX86Whole: return false
-        of X86MemoryCycleHandlerKind.NativeProbe:
-          if guard != flatX86ProbeWhole: return false
-        of X86MemoryCycleHandlerKind.NativeRegion:
-          if guard != flatX86Region: return false
-        else: return false
+        if candidate.loopGuard.kind != X86MemoryCycleHandlerKind.Ordinary or
+            f.handlers[int(candidate.loopGuard.header)] != flatCharge: return false
         let outside = f.arguments[int(cycle.outside.terminal)]
         let guardArms = f.arguments[int(candidate.loopGuard.terminal)]
         let branchArms = f.arguments[int(candidate.loopBranch.terminal)]
@@ -3357,10 +3160,7 @@ when defined(pvmX86Jit):
         var prefix = default(X86MemoryCycleHeader)
         let target = uint32(f.arguments[int(tail)].x shr 32)
         if not flatX86CompleteTarget(f, target, prefix) or prefix.opcode != 1 or
-            prefix.span < 4 or prefix.kind notin {X86MemoryCycleHandlerKind.Ordinary,
-              X86MemoryCycleHandlerKind.NativeWhole,
-              X86MemoryCycleHandlerKind.NativeProbe,
-              X86MemoryCycleHandlerKind.NativeRegion}: return
+            prefix.span < 4 or prefix.kind != X86MemoryCycleHandlerKind.Ordinary: return
         var opcodes = default(array[4, byte])
         var operations = 0
         for ordinal in prefix.ordinal..<prefix.ordinal+prefix.span:
@@ -3926,55 +3726,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
       f.handlers[int(header)] = original
     original(f, header)
 
-  proc flatArmTryMixedProbe(f: var FlatFrame, terminal: uint32) =
-    ## Discover one general mixed source block when its terminal first enters the sealed stream.
-    if f.pricingKind != 0: return # Priced headers cannot promote; retain their ordinary checked dispatch.
-    if int(terminal) >= f.sites.len: return
-    let ending = f.plan.facts[int(f.sites[int(terminal)])]
-    if not ending.ending or ending.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
-      return
-    var header = flatStop
-    var candidate = terminal
-    while candidate > 0 and terminal-candidate < uint32(armMixedMaximumSourceSpan):
-      dec candidate
-      if f.handlers[int(candidate)] != flatCharge: continue
-      let charge = f.arguments[int(candidate)]
-      if charge.y == 0 or charge.y > uint32(armMixedMaximumSourceSpan): continue
-      let source = f.sites[int(candidate)]
-      let sourceEnd = uint64(source)+uint64(charge.y)
-      if sourceEnd != uint64(f.sites[int(terminal)])+1 or
-          sourceEnd > uint64(f.plan.facts.len) or sourceEnd > uint64(high(uint32)) or
-          f.plan.facts[int(source)].sourceCount != charge.y: continue
-      # A folded noop has no body node. Every remaining node must cover this exact
-      # ordinary header's ordered source facts, ending at the observed branch.
-      var node = candidate+1
-      var valid = true
-      for ordinal in source..<uint32(sourceEnd):
-        if f.plan.facts[int(ordinal)].opcode == 2: continue
-        if node > terminal or f.sites[int(node)] != ordinal:
-          valid = false
-          break
-        inc node
-      if valid and node == terminal+1:
-        header = candidate
-        break
-    if header == flatStop or terminal <= header+2: return
-    var loads = 0
-    var stores = 0
-    for current in header+1..<terminal:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      if fact.ending or not fact.fallthrough: return
-      if fact.opcode in 120'u8..123'u8: inc stores
-      elif fact.opcode in 124'u8..130'u8: inc loads
-      elif not supportedArmOpcode(fact.opcode): return
-    if loads < 1 or stores < 1 or loads+stores < 2 or loads+stores > 16: return
-    let jit = f.armJit
-    if jit == nil or not armStartMixedProbe(jit, header, uint32(f.handlers.len),
-        terminal): return
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(header)] = flatCharge
-    f.handlers[int(header)] = flatArmMixedProbe
-
   proc flatArmUpgrade(f: var FlatFrame, offset: uint32): bool =
     ## Rebuild immutable arithmetic facts only after both existing scalar branch arms are admitted; no pricing/resolve is moved.
     let jit = f.armJit
@@ -4177,403 +3928,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     if jit == nil: 0'u64
     else: armDirtyWordGroups(jit)
 
-  proc flatArmMemory(f: var FlatFrame, offset: uint32): uint32 =
-    ## A partial reservation uses the original source nodes; native guard refusal replays the untouched checked memory operation.
-    if f.barrier == flatStop:
-      block:
-        # End all descriptor/register borrows before a guard failure invokes the full mutable checked worker.
-        let jit {.cursor.} = f.armJit
-        assert jit != nil
-        if jit != nil:
-          let destination = callArmMemoryContext(jit, offset, f.info.registers, f.armMemory)
-          if destination != flatStop: return destination
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatArmReadBody(f: FlatFrame, offset, ending: uint32): ArmReadSpan {.noinline.}
-  proc flatArmReadSpanBody(f: FlatFrame, offset, ending: uint32,
-      native: var ArmReadSpan): bool {.noinline.}
-    ## Cold shared read IR is defined with the standalone read publisher below.
-
-  proc flatArmMemoryCycleShape(f: FlatFrame, readEntry, prefix: uint32,
-      item: var ArmMemoryCycleBlock, prefixHandler: FlatHandler = flatCharge): bool =
-    ## Capture a complete default-priced source graph with sealed targets and live native children.
-    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged:
-      return false
-    let jit = f.armJit
-    if jit == nil or armDirtyLoopStatus(jit) != 2 or readEntry == 0: return false
-    let tail = readEntry-1
-    if int(prefix) >= f.handlers.len or f.handlers[int(prefix)] != prefixHandler or
-        f.handlers[int(tail)] != flatCharge: return false
-    let prefixCharge = f.arguments[int(prefix)]
-    let first = f.sites[int(prefix)]
-    let endingSource = uint64(first)+uint64(prefixCharge.y)
-    if prefixCharge.y < 2 or prefixCharge.y > 64 or endingSource > uint64(f.plan.facts.len):
-      return false
-    var node = prefix+1
-    var pure = 0'u32
-    var dirty = flatStop
-    for ordinal in uint64(first)..<endingSource:
-      let fact = f.plan.facts[int(ordinal)]
-      if fact.opcode == 2: continue
-      if int(node) >= f.handlers.len or f.sites[int(node)] != uint32(ordinal): return false
-      if ordinal+1 == endingSource:
-        if fact.opcode != 1 or not fact.ending or
-            f.handlers[int(node)] != flatCachedJump[1]: return false
-        dirty = f.arguments[int(node)].y
-      else:
-        if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): return false
-        inc pure
-      inc node
-    if pure == 0 or dirty == flatStop or int(dirty) >= f.handlers.len or
-        f.handlers[int(dirty)] != flatArmDirtyLoop or not flatArmDirtyShape(f, dirty): return false
-    let dirtyCharge = f.arguments[int(dirty)]
-    if not armDirtyLoopChargeMatches(jit, dirty, dirtyCharge.y, dirtyCharge.x): return false
-    let dirtyArms = f.arguments[int(dirty+5)]
-    let yes = uint32(dirtyArms.x shr 32)
-    let no = dirtyArms.y
-    if not ((yes == dirty and no == tail) or (no == dirty and yes == tail)): return false
-    let terminal = armEnding(jit, readEntry)
-    if terminal <= readEntry or int(terminal) >= f.sites.len or not flatArmCachedBranch(f, terminal):
-      return false
-    let readFact = f.plan.facts[int(f.sites[int(readEntry)])]
-    if readFact.opcode notin {52'u8..58'u8}: return false
-    let tailCharge = f.arguments[int(tail)]
-    if uint64(f.sites[int(tail)])+uint64(tailCharge.y) != uint64(f.sites[int(terminal)])+1:
-      return false
-    let arms = f.arguments[int(terminal)]
-    let left = uint32(arms.x shr 32)
-    let right = arms.y
-    if (left == prefix) == (right == prefix): return false
-    let outside = if left == prefix: right else: left
-    if outside == dirty or outside == tail: return false
-    var body = newArmRegionBody()
-    for ordinal in uint64(first)..<endingSource-1:
-      let fact = f.plan.facts[int(ordinal)]
-      if fact.opcode == 2: continue
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(body, fact.opcode, payload.args.slots, payload.args.x)
-    let dirtyPayload = flatSourcePayload(f.plan, f.plan.facts[int(f.sites[int(dirty+2)])])
-    item = ArmMemoryCycleBlock(prefixHeader: prefix, dirtyHeader: dirty, tailHeader: tail,
-      tailEntry: readEntry, other: outside,
-      prefixSpan: prefixCharge.y, tailSpan: tailCharge.y, prefixOperations: pure+1,
-      tailOperations: terminal-readEntry+1, prefixPrice: prefixCharge.x,
-      tailPrice: tailCharge.x, prefixBody: move(body),
-      dirty: flatArmDirtyBody(f, dirty),
-      dirtyBaseSlot: dirtyPayload.args.slots.bIndex,
-      dirtyDisplacement: uint32(dirtyPayload.args.x and 0xffffffff'u64),
-      dirtyWord: flatArmWordShape(f, dirty), tailRead: flatArmReadBody(f, readEntry, terminal))
-    true
-
-  proc flatArmMemoryCycle(f: var FlatFrame, offset: uint32): uint32 =
-    ## All native pointers belong only to this call; unstarted headers use their original checked reservations.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    let prefix = armMemoryCycleHeader(jit, 0)
-    let dirty = armMemoryCycleHeader(jit, 1)
-    let tail = armMemoryCycleHeader(jit, 2)
-    assert offset == prefix
-    let prefixCharge = f.arguments[int(prefix)]
-    let dirtyCharge = f.arguments[int(dirty)]
-    let tailCharge = f.arguments[int(tail)]
-    if f.pricingKind != 0 or f.barrier != flatStop or f.info.blockCharged or offset != prefix or
-        not armMemoryCycleChargeMatches(jit, 0, prefix, prefixCharge.y, prefixCharge.x) or
-        not armMemoryCycleChargeMatches(jit, 1, tail, tailCharge.y, tailCharge.x) or
-        not armDirtyLoopChargeMatches(jit, dirty, dirtyCharge.y, dirtyCharge.x):
-      let original = f.armOriginal[int(prefix)]
-      assert original != nil
-      if original != nil: return original(f, offset)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    var state = [uint64(f.info.gas), f.remaining, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64,
-      0'u64, 0'u64, 0'u64, 0'u64, 0'u64, 0'u64, uint64(flatStop)]
-    let destination = callArmMemoryCycleContext(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
-    f.info.gas = MachineGas(state[0])
-    f.remaining = state[1]
-    f.info.blockCharged = false
-    if state[13] != uint64(flatStop):
-      assert state[13] == uint64(prefix) or state[13] == uint64(dirty) or state[13] == uint64(tail)
-      f.reservation = uint32(state[13]) or flatReservationHeaderFlag
-    assert int(destination) < f.handlers.len
-    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
-        oracle.StepError.InvalidPreparedProgram)
-    if destination == prefix:
-      let original = f.armOriginal[int(prefix)]
-      assert original != nil
-      if original != nil: return original(f, prefix)
-      return flatLocal(f, prefix, oracle.StepError.InvalidPreparedProgram)
-    if destination == dirty: return flatArmCheckedTail(f, dirty)
-    if destination == tail: return flatCharge(f, tail)
-    destination
-
-  type FlatArmMacroHeader = object
-    first, last, span: uint32
-    price: uint64
-
-  func flatArmMacroHeader(f: FlatFrame, offset: uint32,
-      header: var FlatArmMacroHeader): bool =
-    ## A known header handler binds its source span even when leading noops have no body node.
-    if uint64(offset)+1 >= uint64(f.handlers.len) or int(offset)+1 >= f.sites.len: return false
-    var source = default(FlatSourceInterval)
-    # The first prototype admits one bounded observed graph; larger source spans retain ordinary dispatch.
-    if not flatSourceIntervalAt(f, offset, 64, source): return false
-    for current in source.first..<source.last:
-      if f.plan.facts[int(current)].ending: return false
-    let body = f.sites[int(offset)+1]
-    if body < source.first or body > source.last: return false
-    for skipped in source.first..<body:
-      let fact = f.plan.facts[int(skipped)]
-      if fact.opcode != 2 or fact.ending: return false
-    header = FlatArmMacroHeader(first: source.first, last: source.last, span: source.span,
-      price: source.price)
-    true
-
-  func flatArmMacroRead(f: FlatFrame, jit: ArmJit, offset: uint32,
-      shape: var ArmMacroShape): bool =
-    var source = default(FlatArmMacroHeader)
-    if not flatArmMacroHeader(f, offset, source) or f.handlers[int(offset)] != flatCharge or
-        f.plan.facts[int(source.last)].opcode != 1: return false
-    let body = offset+1
-    if f.handlers[int(body)] != flatArmMemory: return false
-    let entry = armMacroChildRecord(jit, body)
-    if entry.code < 2 or int(entry.ending) >= f.handlers.len or
-        entry.ending <= body or f.handlers[int(entry.ending)] != flatCachedJump[1] or
-        f.sites[int(entry.ending)] != source.last: return false
-    var nextSource = source.first
-    var operations = 0'u32
-    var reads = 0'u32
-    for current in body..<entry.ending:
-      if int(current) >= f.sites.len: return false
-      let site = f.sites[int(current)]
-      if site < nextSource or site >= source.last: return false
-      for skipped in nextSource..<site:
-        let fact = f.plan.facts[int(skipped)]
-        if fact.opcode != 2 or fact.ending: return false
-      let fact = f.plan.facts[int(site)]
-      if fact.ending or not fact.fallthrough: return false
-      if fact.opcode in {52'u8..58'u8, 124'u8..130'u8}:
-        inc reads
-      elif not supportedArmOpcode(fact.opcode):
-        return false
-      inc operations
-      nextSource = site+1
-    for skipped in nextSource..<source.last:
-      let fact = f.plan.facts[int(skipped)]
-      if fact.opcode != 2 or fact.ending: return false
-    if reads < 2 or operations < 4 or operations != entry.operations: return false
-    let target = f.arguments[int(entry.ending)].y
-    if target != shape.cycleHeader: return false
-    shape.readHeader = offset
-    shape.readBody = body
-    shape.readTerminal = entry.ending
-    shape.terminalTarget = target
-    shape.readSpan = source.span
-    shape.readPrice = source.price
-    true
-
-  func flatArmMacroBranch(f: FlatFrame, jit: ArmJit, offset: uint32,
-      shape: var ArmMacroShape): bool =
-    var source = default(FlatArmMacroHeader)
-    if not flatArmMacroHeader(f, offset, source) or source.span != 1 or
-        f.handlers[int(offset)] != flatCharge or
-        f.plan.facts[int(source.first)].opcode != 88: return false
-    let body = offset+1
-    if f.sites[int(body)] != source.first or f.handlers[int(body)] != flatBranch[88]:
-      return false
-    let args = f.arguments[int(body)]
-    let yes = uint32(args.x shr 32)
-    let no = args.y
-    if int(yes) >= f.handlers.len or int(no) >= f.handlers.len or yes == no: return false
-    var read = flatStop
-    if yes == shape.pureHeader: read = no
-    elif no == shape.pureHeader: read = yes
-    else: return false
-    if not flatArmMacroRead(f, jit, read, shape): return false
-    shape.branchHeader = offset
-    shape.branchYes = yes
-    shape.branchNo = no
-    shape.branchSlot = args.slots.aIndex
-    shape.branchImmediate = flatSext32(uint32(args.x and 0xffffffff'u64))
-    shape.branchSpan = source.span
-    shape.branchPrice = source.price
-    true
-
-  proc flatArmMacroDiscover(f: FlatFrame, shape: var ArmMacroShape): bool {.noinline.} =
-    ## ABI-tagged existing children and genuine cached source edges define one small closed graph.
-    if f.pricingKind != 0 or not f.plan.allowNative: return false
-    let jit {.cursor.} = f.armJit
-    if jit == nil or armMemoryCycleStatus(jit) != 2 or
-        not armResidentMemoryCycleActive(jit): return false
-    let cycle = armMemoryCycleHeader(jit, 0)
-    let dirty = armMemoryCycleHeader(jit, 1)
-    let tail = armMemoryCycleHeader(jit, 2)
-    var cycleSource = default(FlatArmMacroHeader)
-    var dirtySource = default(FlatArmMacroHeader)
-    var tailSource = default(FlatArmMacroHeader)
-    if not flatArmMacroHeader(f, cycle, cycleSource) or
-        not flatArmMacroHeader(f, dirty, dirtySource) or
-        not flatArmMacroHeader(f, tail, tailSource): return false
-    if not armMemoryCycleChargeMatches(jit, 0, cycle, cycleSource.span, cycleSource.price) or
-        not armMemoryCycleChargeMatches(jit, 1, tail, tailSource.span, tailSource.price) or
-        not armDirtyLoopChargeMatches(jit, dirty, dirtySource.span,
-            dirtySource.price): return false
-    let outside = armMacroCycleExit(jit)
-    var staticSource = default(FlatArmMacroHeader)
-    if not flatArmMacroHeader(f, outside, staticSource) or staticSource.span != 1 or
-        f.handlers[int(outside)] != flatCharge or
-        f.plan.facts[int(staticSource.first)].opcode != 40: return false
-    let jump = outside+1
-    if f.sites[int(jump)] != staticSource.first or
-        f.handlers[int(jump)] != flatCachedJump[40]: return false
-    let pure = f.arguments[int(jump)].y
-    var pureSource = default(FlatArmMacroHeader)
-    if not flatArmMacroHeader(f, pure, pureSource) or pureSource.span != 3 or
-        f.handlers[int(pure)] != flatArmWhole: return false
-    if f.plan.facts[int(pureSource.first)].opcode != 131 or
-        f.plan.facts[int(pureSource.first)+1].opcode != 149 or
-        f.plan.facts[int(pureSource.last)].opcode != 81: return false
-    let body = pure+1
-    let terminal = pure+3
-    if int(terminal) >= f.handlers.len or f.sites[int(body)] != pureSource.first or
-        f.sites[int(pure)+2] != pureSource.first+1 or
-        f.sites[int(terminal)] != pureSource.last or
-        f.handlers[int(body)] != flatArmBranch or
-        f.handlers[int(terminal)] != flatBranch[81]: return false
-    let native = armMacroChildRecord(jit, body)
-    if native.code < 2 or native.operations != 3 or native.ending != terminal: return false
-    let args = f.arguments[int(terminal)]
-    let yes = uint32(args.x shr 32)
-    let no = args.y
-    if yes == no or int(yes) >= f.handlers.len or int(no) >= f.handlers.len: return false
-    var base = ArmMacroShape(cycleHeader: cycle, cycleExit: outside,
-      staticHeader: outside, staticTarget: pure, pureHeader: pure, pureBody: body,
-      pureTerminal: terminal, pureYes: yes, pureNo: no, staticSpan: staticSource.span,
-      pureSpan: pureSource.span, staticPrice: staticSource.price, purePrice: pureSource.price)
-    var found = false
-    for target in [yes, no]:
-      var candidate = base
-      if flatArmMacroBranch(f, jit, target, candidate):
-        if found: return false
-        shape = candidate
-        found = true
-    if not found: return false
-    let headers = [cycle, dirty, tail, outside, pure, shape.branchHeader, shape.readHeader]
-    for first in 0..<headers.len:
-      for second in first+1..<headers.len:
-        if headers[first] == headers[second]: return false
-    let rare = if shape.pureYes == shape.branchHeader: shape.pureNo else: shape.pureYes
-    for header in headers:
-      if rare == header: return false
-    true
-
-  proc flatArmMacroPureBody(f: FlatFrame, shape: ArmMacroShape,
-      body: var ArmBlock): bool {.noinline.} =
-    ## Rebuild the existing pure child's source operations and conditional from sealed facts.
-    if shape.pureBody >= shape.pureTerminal or int(shape.pureTerminal) >= f.sites.len:
-      return false
-    body = default(ArmBlock)
-    for current in shape.pureBody..<shape.pureTerminal:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode):
-        return false
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(body, fact.opcode, payload.args.slots, payload.args.x)
-    let terminal = f.plan.facts[int(f.sites[int(shape.pureTerminal)])]
-    let args = f.arguments[int(shape.pureTerminal)]
-    if not terminal.ending or terminal.opcode notin {81'u8..90'u8, 170'u8..175'u8}:
-      return false
-    emitArmBranch(body, terminal.opcode, args.slots,
-        flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
-    true
-
-  proc flatArmMacro(f: var FlatFrame, offset: uint32): uint32 =
-    ## One native call owns no frame capability; canonical replay starts only after all borrows end.
-    var shape = default(ArmMacroShape)
-    var dirty = flatStop
-    var tail = flatStop
-    var destination = flatStop
-    var admitted = false
-    var state = default(ArmMacroState)
-    state[0] = uint64(f.info.gas)
-    state[1] = f.remaining
-    state[13] = uint64(flatStop)
-    state[24] = uint64(flatStop)
-    block:
-      let jit {.cursor.} = f.armJit
-      if jit != nil and armMacroStatus(jit) == 2:
-        shape = armMacroShape(jit)
-        dirty = armMemoryCycleHeader(jit, 1)
-        tail = armMemoryCycleHeader(jit, 2)
-        let headers = [shape.cycleHeader, dirty, tail, shape.staticHeader,
-          shape.pureHeader, shape.branchHeader, shape.readHeader]
-        var complete = true
-        for header in headers:
-          if int(header) >= f.arguments.len: complete = false
-        if complete and f.pricingKind == 0 and f.barrier == flatStop and
-            not f.info.blockCharged and offset == shape.cycleHeader:
-          let prefixCharge = f.arguments[int(shape.cycleHeader)]
-          let dirtyCharge = f.arguments[int(dirty)]
-          let tailCharge = f.arguments[int(tail)]
-          if armMemoryCycleChargeMatches(jit, 0, shape.cycleHeader, prefixCharge.y,
-              prefixCharge.x) and armMemoryCycleChargeMatches(jit, 1, tail,
-              tailCharge.y, tailCharge.x) and armDirtyLoopChargeMatches(jit, dirty,
-              dirtyCharge.y, dirtyCharge.x):
-            var current = shape
-            current.staticSpan = f.arguments[int(shape.staticHeader)].y
-            current.staticPrice = f.arguments[int(shape.staticHeader)].x
-            current.pureSpan = f.arguments[int(shape.pureHeader)].y
-            current.purePrice = f.arguments[int(shape.pureHeader)].x
-            current.branchSpan = f.arguments[int(shape.branchHeader)].y
-            current.branchPrice = f.arguments[int(shape.branchHeader)].x
-            current.readSpan = f.arguments[int(shape.readHeader)].y
-            current.readPrice = f.arguments[int(shape.readHeader)].x
-            let staticBody = shape.staticHeader+1
-            let branchBody = shape.branchHeader+1
-            if int(staticBody) < f.arguments.len and int(branchBody) < f.arguments.len and
-                int(shape.pureTerminal) < f.arguments.len and
-                int(shape.readTerminal) < f.arguments.len:
-              current.staticTarget = f.arguments[int(staticBody)].y
-              current.pureYes = uint32(f.arguments[int(shape.pureTerminal)].x shr 32)
-              current.pureNo = f.arguments[int(shape.pureTerminal)].y
-              current.branchYes = uint32(f.arguments[int(branchBody)].x shr 32)
-              current.branchNo = f.arguments[int(branchBody)].y
-              current.branchSlot = f.arguments[int(branchBody)].slots.aIndex
-              current.branchImmediate = flatSext32(uint32(
-                  f.arguments[int(branchBody)].x and 0xffffffff'u64))
-              current.terminalTarget = f.arguments[int(shape.readTerminal)].y
-            else:
-              complete = false
-            if complete and armMacroMatches(jit, current):
-              destination = callArmMacroContext(jit, f.info.registers, f.armMemory, f.dirtyPages, state)
-              admitted = true
-    if not admitted: return flatArmMemoryCycle(f, offset)
-    when defined(pvmArmMacroStateTrace):
-      f.armMacroLastState = state
-    f.info.gas = MachineGas(state[0])
-    f.remaining = state[1]
-    f.info.blockCharged = false
-    if state[24] != uint64(flatStop):
-      var known = false
-      for header in [shape.cycleHeader, dirty, tail, shape.staticHeader,
-          shape.pureHeader, shape.branchHeader, shape.readHeader]:
-        if state[24] == uint64(header): known = true
-      assert known
-      if not known: return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-      f.reservation = uint32(state[24]) or flatReservationHeaderFlag
-    assert int(destination) < f.handlers.len
-    if int(destination) >= f.handlers.len: return flatLocal(f, offset,
-      oracle.StepError.InvalidPreparedProgram)
-    if destination == shape.cycleHeader:
-      let original = f.armOriginal[int(shape.cycleHeader)]
-      assert original != nil
-      if original != nil: return original(f, shape.cycleHeader)
-      return flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-    if destination == dirty: return flatArmCheckedTail(f, dirty)
-    if destination == tail: return flatCharge(f, tail)
-    destination
-
   when defined(pvmArmMacroReceipt):
     proc flatArmRefuseResidentCycleReceipt*(f: var FlatFrame) =
       ## Exercise actual source discovery, linked publication and Frame handler installation.
@@ -4604,61 +3958,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
         ## Copy the last native macro return state for complete linked/resident comparison.
         f.armMacroLastState
 
-  proc flatArmMacroProbe(f: var FlatFrame, offset: uint32): uint32 =
-    ## Eight real cycle exits bound the cold search; a refusal keeps every existing child usable.
-    let eligible = f.pricingKind == 0 and f.barrier == flatStop and not f.info.blockCharged
-    let destination = flatArmMemoryCycle(f, offset)
-    if not eligible or destination == flatStop or f.reason != oracle.StepError.None:
-      return destination
-    var decide = false
-    block:
-      let jit {.cursor.} = f.armJit
-      if jit != nil and armResidentMemoryCycleActive(jit) and
-          armMacroStatus(jit) == 0 and destination == armMacroCycleExit(jit):
-        decide = armMacroProbeReady(jit)
-    if not decide: return destination
-    let before = armClock()
-    var shape = default(ArmMacroShape)
-    let matched = flatArmMacroDiscover(f, shape)
-    var published = false
-    block:
-      let jit {.cursor.} = f.armJit
-      if jit != nil:
-        if matched:
-          var cycle = default(ArmMemoryCycleBlock)
-          var pure = default(ArmBlock)
-          var read = default(ArmReadSpan)
-          let tail = armMemoryCycleHeader(jit, 2)
-          if tail < high(uint32) and
-              flatArmMemoryCycleShape(f, tail+1, shape.cycleHeader, cycle,
-                  flatArmMacroProbe) and cycle.other == shape.staticHeader and
-              flatArmMacroPureBody(f, shape, pure) and
-              flatArmReadSpanBody(f, shape.readBody, shape.readTerminal, read):
-            published = publishArmResidentMacro(jit, shape, cycle, pure, read)
-          if not published: published = publishArmMacro(jit, shape)
-        else: refuseArmMacro(jit)
-        jit.compilationNs+=armClock()-before
-    if published: f.handlers[int(offset)] = flatArmMacro
-    else: f.handlers[int(offset)] = flatArmMemoryCycle
-    destination
-
-  proc flatArmTryMemoryCycle(f: var FlatFrame, readEntry, prefix: uint32) {.noinline.} =
-    ## Existing hot child publication proves observation; one bounded source graph can install a driver.
-    let jit = f.armJit
-    if jit == nil or armMemoryCycleStatus(jit) != 0: return
-    var item = default(ArmMemoryCycleBlock)
-    if not flatArmMemoryCycleShape(f, readEntry, prefix, item): return
-    let before = armClock()
-    let published = if publishArmResidentMemoryCycle(jit, item): true
-      else: publishArmMemoryCycle(jit, item)
-    jit.compilationNs+=armClock()-before
-    if not published: return
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    assert f.handlers[int(prefix)] == flatCharge
-    f.armOriginal[int(prefix)] = f.handlers[int(prefix)]
-    f.handlers[int(prefix)] = if armResidentMemoryCycleActive(jit): flatArmMacroProbe
-      else: flatArmMemoryCycle
-
   proc flatArmMemoryCycleStatistics*(f: FlatFrame): array[6, uint64] =
     ## Copied diagnostics separate outer bridges from nested child visits and word groups.
     let jit = f.armJit
@@ -4670,321 +3969,6 @@ when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     let jit = f.armJit
     if jit == nil: false
     else: armResidentMemoryCycleActive(jit)
-
-  proc flatArmReadBranch(f: var FlatFrame, offset: uint32): uint32 =
-    ## End every descriptor/register borrow before discovering a source graph or using checked fallback.
-    var destination = flatStop
-    var discover = false
-    if f.barrier == flatStop:
-      block:
-        let jit {.cursor.} = f.armJit
-        assert jit != nil
-        if jit != nil:
-          let ending = armEnding(jit, offset)
-          let args = f.arguments[int(ending)]
-          destination = callArmMemoryBranchContext(jit, offset, uint32(args.x shr 32), args.y,
-            f.info.registers, f.armMemory)
-          discover = armMemoryCycleStatus(jit) == 0
-    if destination != flatStop:
-      assert int(destination) < f.handlers.len
-      f.info.blockCharged = false
-      if discover: flatArmTryMemoryCycle(f, offset, destination)
-      return destination
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatArmReadBody(f: FlatFrame, offset, ending: uint32): ArmReadSpan {.noinline.} =
-    ## Rebuild the same admitted direct-read, pure suffix and cached branch IR.
-    let first = f.plan.facts[int(f.sites[int(offset)])]
-    let readOpcode = int(first.opcode)
-    assert readOpcode >= 52 and readOpcode <= 58
-    let firstPayload = flatSourcePayload(f.plan, first)
-    var native = default(ArmReadSpan)
-    armUseClippedReads(native, f.armJit)
-    emitArmDirectRead(native, firstPayload.args.slots, uint32(firstPayload.args.x and
-        0xffffffff'u64), range[52..58](readOpcode))
-    for current in offset+1..<ending:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      assert supportedArmOpcode(fact.opcode)
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
-    let branch = f.plan.facts[int(f.sites[int(ending)])]
-    let args = f.arguments[int(ending)]
-    emitArmReadBranch(native, branch.opcode, args.slots,
-        flatSext32(uint32(args.x and 0xffffffff'u64)), uint32(args.x shr 32), args.y)
-    move(native)
-
-  proc flatArmUpgradeReadBranch(f: var FlatFrame, offset: uint32): bool =
-    ## Rebuild one direct-load prefix only after the original conditional has cached both positive arms.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return false
-    let ending = armEnding(jit, offset)
-    let before = armClock()
-    let native = flatArmReadBody(f, offset, ending)
-    var words = armReadInstructionsForOwner(jit, native, ending, true)
-    if words.len >= 1024: return false
-    let published = publishArmEntry(jit, offset, ending, ending-offset+1, words)
-    jit.compilationNs+=armClock()-before
-    if not published: return false
-    f.handlers[int(offset)] = flatArmReadBranch
-    true
-
-  proc flatArmPendingReadBranch(f: var FlatFrame, offset: uint32): uint32 =
-    ## Keep the original checked pair until the branch arms are valid; a failed publication retires the probe.
-    let jit = f.armJit
-    assert jit != nil
-    let original = f.armOriginal[int(offset)]
-    assert original != nil
-    if jit != nil and f.barrier == flatStop and flatArmCachedBranch(f, armEnding(jit, offset)):
-      if flatArmUpgradeReadBranch(f, offset): return flatArmReadBranch(f, offset)
-      if original != nil: f.handlers[int(offset)] = original
-    if original != nil: return original(f, offset)
-    flatLocal(f, offset, oracle.StepError.InvalidPreparedProgram)
-
-  proc flatArmCompileDirectReadBranch(f: var FlatFrame, offset: uint32): uint32 =
-    ## Defer one direct load and pure suffix ending in a conditional, avoiding a superseded branch publication.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
-    var ending = offset+1
-    var count = 1'u32
-    while int(ending) < f.sites.len and count < 64:
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]:
-        break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      inc ending
-      inc count
-    if count < 2 or int(ending) >= f.sites.len: return offset
-    let terminal = f.plan.facts[int(f.sites[int(ending)])]
-    if terminal.opcode notin {81'u8..90'u8, 170'u8..175'u8} or not terminal.ending:
-      return offset
-    armPendingMemoryEnding(jit, offset, ending)
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmPendingReadBranch
-    ending+1
-
-  proc flatArmReadSpanBody(f: FlatFrame, offset, ending: uint32,
-      native: var ArmReadSpan): bool {.noinline.} =
-    ## Reconstruct the standalone child's exact guarded window or individual-read body from source.
-    if ending <= offset or ending-offset > 64 or int(ending) > f.sites.len: return false
-    var written = 0'u32
-    var window = true
-    let base = flatSourcePayload(f.plan, f.plan.facts[int(f.sites[int(offset)])]).args.slots.bIndex
-    var first = high(uint32)
-    var last = 0'u32
-    var reads = 0'u32
-    for current in offset..<ending:
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      if fact.ending or not fact.fallthrough: return false
-      let payload = flatSourcePayload(f.plan, fact)
-      if fact.opcode in 124'u8..130'u8:
-        let displacement = uint32(payload.args.x and 0xffffffff'u64)
-        if fact.opcode != 130: window = false # Narrow/signed reads retain their own individual guards, never the scaled word window.
-        if payload.args.slots.bIndex != base or (written and (1'u32 shl int(base))) != 0:
-          window = false # Derived or overwritten address bases retain the accepted individual guards.
-        if displacement < first: first = displacement
-        if displacement > last: last = displacement
-        written = written or (1'u32 shl int(payload.args.slots.aIndex))
-        inc reads
-      elif supportedArmOpcode(fact.opcode):
-        written = written or (1'u32 shl int(payload.args.slots.destinationIndex))
-      else: return false
-    if reads < 2 or ending-offset < 4: return false
-    if last-first > 4088: window = false
-    native = default(ArmReadSpan)
-    if window:
-      # Relative scaled loads need equal low displacement bits; the initial effective address may still be unaligned.
-      for current in offset..<ending:
-        let fact = f.plan.facts[int(f.sites[int(current)])]
-        if fact.opcode == 130:
-          let payload = flatSourcePayload(f.plan, fact)
-          if (uint32(payload.args.x and 0xffffffff'u64)-first) mod 8 != 0:
-            window = false
-    if window: beginArmReadWindow(native, base, first, last)
-    else: armUseClippedReads(native, f.armJit)
-    for current in offset..<ending:
-      # Only a proved stable base uses the shared window; all other mixed spans preserve their original lowering.
-      let fact = f.plan.facts[int(f.sites[int(current)])]
-      let payload = flatSourcePayload(f.plan, fact)
-      if fact.opcode in 124'u8..130'u8:
-        let displacement = uint32(payload.args.x and 0xffffffff'u64)
-        if window: emitArmWindowRead(native, payload.args.slots.aIndex, displacement-first)
-        else:
-          # Restate the sealed source predicate on a local scalar before the closed opcode conversion.
-          let readOpcode = int(fact.opcode)
-          assert readOpcode >= 124 and readOpcode <= 130
-          emitArmRead(native, payload.args.slots, displacement, range[124..130](readOpcode))
-      else:
-        emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
-    true
-
-  proc flatArmCompileReadSpan(f: var FlatFrame, offset: uint32): uint32 =
-    ## Combine multiple selected-width reads and pure arithmetic within one already-reserved source block.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
-    var ending = offset
-    var count = 0'u32
-    var reads = 0'u32
-    while int(ending) < f.sites.len and count < 64:
-      # Headers, stores, branches, hosts and every observable exit end the speculative prefix.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough: break
-      if fact.opcode in 124'u8..130'u8: inc reads
-      elif not supportedArmOpcode(fact.opcode): break
-      inc ending
-      inc count
-    if reads < 2 or count < 4: return offset
-    var native = default(ArmReadSpan)
-    if not flatArmReadSpanBody(f, offset, ending, native): return offset
-    var words = armReadInstructionsForOwner(jit, native, ending)
-    if words.len >= 1024: return offset # Oversized spans retain the accepted first-read leaf, without poisoning its admission.
-    if not publishArmEntry(jit, offset, ending, count, words): return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmMemory
-    ending
-
-  proc flatArmCompileMemory(f: var FlatFrame, offset: uint32): uint32 =
-    ## Admit a first selected-width indirect read with at least three pure suffix operations, preserving every source coordinate.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
-    var native = default(ArmBlock)
-    var ending = offset+1
-    var count = 1'u32
-    while int(ending) < f.sites.len and count < 64:
-      # Duplicate header sites, branches and all further memory/host/error boundaries stop the arithmetic suffix.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
-      inc ending
-      inc count
-    if int(ending) < f.sites.len and f.plan.facts[int(f.sites[int(ending)])].opcode in
-        124'u8..130'u8:
-      # Only an encountered second admitted read can justify the transactional span builder.
-      let combined = flatArmCompileReadSpan(f, offset)
-      if combined != offset: return combined
-    if count < 4:
-      refuseArmEntry(jit, offset)
-      return offset
-    let args = f.arguments[int(offset)]
-    let readOpcode = int(f.plan.facts[int(f.sites[int(offset)])].opcode)
-    assert readOpcode >= 124 and readOpcode <= 130 # The caller admitted a sealed load; keep its conversion proof local.
-    var words = armMemoryInstructionsForOwner(jit, native, args.slots, uint32(args.x and
-        0xffffffff'u64), ending,
-      range[124..130](readOpcode))
-    if not publishArmEntry(jit, offset, ending, count, words): return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmMemory
-    ending
-
-  proc flatArmCompilePrefixReadSpan(f: var FlatFrame, offset: uint32): uint32 {.noinline.} =
-    ## One speculative read-only register span can include its already admitted arithmetic prefix.
-    let jit = f.armJit
-    assert jit != nil
-    if jit == nil: return offset
-    var native = default(ArmReadSpan)
-    armUseClippedReads(native, jit)
-    var ending = offset
-    var count = 0'u32
-    var reads = 0'u32
-    while int(ending) < f.sites.len and count < 64:
-      # Keep the existing charge/header and source-terminal boundaries intact.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough: break
-      let payload = flatSourcePayload(f.plan, fact)
-      let displacement = uint32(payload.args.x and 0xffffffff'u64)
-      let readOpcode = int(fact.opcode) # Prove the converted value passed to each emitter.
-      if readOpcode >= 52 and readOpcode <= 58:
-        emitArmDirectRead(native, payload.args.slots, displacement, range[52..58](readOpcode))
-        inc reads
-      elif readOpcode >= 124 and readOpcode <= 130:
-        emitArmRead(native, payload.args.slots, displacement, range[124..130](readOpcode))
-        inc reads
-      elif supportedArmOpcode(fact.opcode):
-        emitArmReadArithmetic(native, fact.opcode, payload.args.slots, payload.args.x)
-      else:
-        break # Stores, host work and unsupported semantics keep the complete original prefix.
-      inc ending
-      inc count
-    if reads == 0 or count < 4: return offset
-    var words = armReadInstructionsForOwner(jit, native, ending)
-    if words.len >= 1024: return offset # Preserve the existing pure publisher on bounded refusal.
-    if jit.fragments >= 8191 or jit.codeBytes > 1048576 or
-        uint64(words.len+1)*4 > 1048576-jit.codeBytes:
-      return offset # A smaller original pure leaf may still fit; do not mutate its refusal record.
-    if not publishArmEntry(jit, offset, ending, count, words): return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = flatArmMemory
-    ending
-
-  proc flatArmCompile(f: var FlatFrame, offset: uint32): uint32 =
-    ## Compilation happens only during lazy stream emission, never as a universal dispatch probe.
-    if f.armJit == nil: f.armJit = newArmJit(clippedReads = true)
-    let jit = f.armJit
-    if jit == nil: return offset
-    let entry = armEntry(jit, offset, uint32(f.handlers.len))
-    if entry != 0: return offset
-    if int(offset)+1 < f.sites.len and f.sites[int(offset)] == f.sites[int(offset)+1]: return offset
-    if f.plan.facts[int(f.sites[int(offset)])].opcode in 52'u8..58'u8:
-      return flatArmCompileDirectReadBranch(f, offset)
-    if f.plan.facts[int(f.sites[int(offset)])].opcode in
-        124'u8..130'u8: return flatArmCompileMemory(f, offset)
-    var native = default(ArmBlock)
-    var ending = offset
-    var count = 0'u32
-    while int(ending) < f.handlers.len and count < 64:
-      # Headers share their source site with the immediately following operation; never bypass charging.
-      if int(ending)+1 < f.sites.len and f.sites[int(ending)] == f.sites[int(ending)+1]: break
-      let fact = f.plan.facts[int(f.sites[int(ending)])]
-      if fact.ending or not fact.fallthrough or not supportedArmOpcode(fact.opcode): break
-      let payload = flatSourcePayload(f.plan, fact)
-      emitArmOperation(native, fact.opcode, payload.args.slots, payload.args.x)
-      inc ending
-      inc count
-    let terminal = if int(ending) < f.sites.len:
-        f.plan.facts[int(f.sites[int(ending)])].opcode else: 0'u8
-    if count > 0 and (terminal in 52'u8..58'u8 or terminal in 124'u8..130'u8):
-      # A failed speculative admission leaves the established pure leaf available below.
-      let combined = flatArmCompilePrefixReadSpan(f, offset)
-      if combined > offset: return combined
-    # Short conditional suffixes can fuse their checked header after genuine branch admission.
-    # Other short leaves retain the original floor; isolated calls would add an extra native transition.
-    if count < 4 and (count == 0 or terminal notin {81'u8..90'u8, 170'u8..175'u8}):
-      refuseArmEntry(jit, offset)
-      return offset
-    var words = armInstructions(native)
-    let published = publishArmEntry(jit, offset, ending, count, words)
-    if not published: return offset
-    if f.armOriginal.len < f.handlers.len: f.armOriginal.setLen(f.handlers.len)
-    f.armOriginal[int(offset)] = f.handlers[int(offset)]
-    f.handlers[int(offset)] = if terminal in {81'u8..90'u8,
-        170'u8..175'u8}: flatArmPending else: flatArmExecute
-    ending
-
-  proc flatArmPrepare(f: var FlatFrame, origin: uint32) =
-    ## Only newly emitted suffix nodes are examined. Unsupported nodes keep the ordinary hot loop unchanged.
-    if not f.plan.allowNative: return # Decide before scanning, allocating storage or consulting a native cache.
-    let before = armClock()
-    var offset = origin
-    while int(offset) < f.handlers.len:
-      let ending = flatArmCompile(f, offset)
-      offset = if ending > offset: ending else: offset+1
-    for candidate in origin..<uint32(f.handlers.len): flatArmTryMixedProbe(f, candidate)
-    let jit = f.armJit
-    if jit != nil: jit.compilationNs+=armClock()-before
 
   proc flatArmStatistics*(f: FlatFrame): array[5, uint64] =
     ## Explicit native coverage counters distinguish compilation, reuse, lowered operations and emitted bytes.
@@ -5033,8 +4017,6 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   f.barrier = flatStop
   f.savedHandler = nil
   f.attemptedExit = false
-  when defined(pvmX86Jit):
-    f.x86PreviousValid = false
   when defined(pvmArm64Jit) and not defined(pvmX86Jit):
     # No observed edge can bridge an invocation or host stop; cached code itself remains source-owned.
     f.armPreviousValid = false
@@ -5054,9 +4036,10 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # A reset or same-plan stream lease supplies an uncharged cold boundary after warmup.
     flatX86ColdWideAdmission(f, flatStop)
-  if f.plan.jumps.len > 0:
-    # Only table-bearing plans can populate the cache; tableless frames retain their initialized zeros.
-    f.dynamicOffsets = default(array[256, uint64])
+  let cache {.cursor.} = f.dynamicOffsets
+  if cache != nil:
+    # A resumed segment starts with empty tags and may reuse its existing private allocation.
+    cache.slots = default(array[256, uint64])
   let pc = uint32(uint64(f.info.pc) and 0xffffffff'u64)
   var offset = flatStop
   if f.info.blockCharged and uint64(pc) < uint64(f.plan.factAt.len) and f.compiledForPc.len > 0:
@@ -5104,6 +4087,9 @@ proc runFlat*(f: var FlatFrame, limit: uint64) =
       reservedEnd = f.sites[int(header)]+f.arguments[int(header)].y
     if reservedEnd > sourceFact+1:
       f.remaining+=uint64(reservedEnd-sourceFact-1)
+  when NativeReadCycleEnabled:
+    # Boundary classifiers require the original handler identity, including on exit edges.
+    settleProtectedReadSegment(f)
   when defined(pvmX86Jit) and not defined(pvmX86WideManualProof):
     # A restored partial barrier or final cached jump can make a pending graph admissible.
     flatX86ColdWideAdmission(f, flatStop)
@@ -5166,7 +4152,8 @@ proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatc
   for slot in 0..<f.extra.len:
     let region {.cursor.} = f.extra[slot]
     if region.access == PageAccess.ReadWrite and address >= region.first and
-        address-region.first+4096 <= uint64(region.bytes.len):
+        address-region.first+4096 <= uint64(region.size):
+      assert region.bytes.len == region.size # Only a completed materialized payload can become dirty.
       let offset = int(address-region.first)
       flatCollectResidentPage(f, page, region.bytes.toOpenArray(offset, offset+4095), batch)
       return
@@ -5174,7 +4161,7 @@ proc flatCollectPage(f: FlatFrame, page: int, batch: var ResidentReplacementBatc
   var original = PageImage(index: description.index, access: description.access)
   flatCopySourcePage(f.sourceMemory, page, description, original.bytes)
   var image = original
-  for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at))
+  for at in 0..<4096: image.bytes[at] = flatByte(f, address+uint64(at), original.bytes[at])
   flatCollectResidentPage(f, page, image.bytes, batch)
 
 proc flatPublishMemory(f: FlatFrame): Memory =
@@ -5223,6 +4210,14 @@ proc observeFlatHostMemory*(f: var FlatFrame): Memory =
   f.hostReady = true
   f.hostSnapshot
 
+proc observeFlatHostScalars*(f: var FlatFrame): MachineInfo =
+  ## Bind a genuine host stop without publishing memory; the callback receives only copied CPU state.
+  assert f.reason == oracle.StepError.None and f.exit == oracle.StepExit.Host
+  f.hostSnapshot = default(Memory)
+  f.hostSnapshotPc = f.info.pc
+  f.hostReady = true
+  f.info
+
 func flatNodes*(f: FlatFrame): int =
   ## A copied observation reports stream size without exposing mutable cache arrays.
   f.handlers.len
@@ -5251,7 +4246,7 @@ proc checkFlatReference*(f: FlatFrame, expected: string, offset: int = 120) =
     for at in 0..<4096:
       # Inaccessible bytes have no resident region and remain solely in their immutable source page.
       let current = if description.access == PageAccess.Inaccessible: image.bytes[at]
-        else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at))
+        else: flatByte(f, uint64(uint32(description.index))*4096+uint64(at), image.bytes[at])
       assert current == byte(expected[offset+page*4096+at])
 
 proc prepareFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: MachineInfo): FlatResult[FlatFrame] =
@@ -5334,34 +4329,40 @@ proc resumeFlatHost*(f: var FlatFrame, images: openArray[PageImage], gas: Machin
   replaceFlatMemory(f, images, info)
 
 proc flatHostPage(f: var FlatFrame, posterior: Memory, slot: MemoryPageSlot,
-    apply: bool): bool =
-  ## The complete posterior map check binds this slot to the frame's existing description.
+    apply: bool, copiedPages: var uint64): bool =
+  ## Valid destination and physical copy count are distinct; preflight never changes bytes or the count.
   let page = int(uint32(slot))
   let description = f.sourcePages[page]
   if description.access != PageAccess.ReadWrite: return false
   let address = uint64(uint32(description.index))*4096
   if address >= f.stackBase and address-f.stackBase+4096 <= uint64(f.stack.len):
     let offset = int(address-f.stackBase)
-    if apply: flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
+    if apply:
+      flatCopySourcePage(posterior, page, description, f.stack.toOpenArray(offset, offset+4095))
+      inc copiedPages
     return true
   if address >= f.rwBase and address-f.rwBase+4096 <= uint64(f.rw.len):
     let offset = int(address-f.rwBase)
-    if apply: flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
+    if apply:
+      flatCopySourcePage(posterior, page, description, f.rw.toOpenArray(offset, offset+4095))
+      inc copiedPages
     return true
   for i in 0..<f.extra.len:
     # Fragmented mappings retain their own immutable access metadata and full-span checks.
     let region {.cursor.} = f.extra[i]
     if region.access == PageAccess.ReadWrite and address >= region.first and
-        address-region.first+4096 <= uint64(region.bytes.len):
-      let offset = int(address-region.first)
-      if apply: flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
+        address-region.first+4096 <= uint64(region.size):
+      assert region.bytes.len == 0 or region.bytes.len == region.size
+      if apply and region.bytes.len != 0:
+        # Baseline-backed extras accept the changed owner without allocating or physically copying bytes.
+        let offset = int(address-region.first)
+        flatCopySourcePage(posterior, page, description, region.bytes.toOpenArray(offset, offset+4095))
+        inc copiedPages
       return true
   false
 
-proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
-    registers: RegisterFile): oracle.StepError =
-  ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
-  ## Refused responses leave the complete stopped invocation and observation usable for repair/retry.
+template requireFlatHostFact(f: FlatFrame, fact: var int) =
+  ## Bind both host observations to the stopped PC and resolve its immutable fact.
   if f.reason != oracle.StepError.None or f.exit != oracle.StepExit.Host or not f.hostReady or
       f.info.pc != f.hostSnapshotPc or not f.info.blockCharged or uint64(f.info.gasDeficit) != 0:
     return oracle.StepError.InvalidHostSuspension
@@ -5369,46 +4370,82 @@ proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
   if pc >= uint64(f.plan.factAt.len): return oracle.StepError.InvalidHostSuspension
   let packed = f.plan.factAt[int(pc)]
   if packed == 0: return oracle.StepError.InvalidHostSuspension
-  let fact = int(packed - 1)
+  fact = int(packed - 1)
+
+func flatHostContinuation(f: FlatFrame, gas: MachineGas, registers: RegisterFile,
+    info: var MachineInfo): oracle.StepError {.noinline.} =
+  ## Keep the owned CPU stage separate from the mutable memory transaction.
+  var fact = 0
+  requireFlatHostFact(f, fact)
+  info = f.info
+  info.pc = CodeAddress(f.plan.facts[fact].next)
+  info.gas = gas
+  info.registers = registers
+  oracle.StepError.None
+
+template resetFlatHostSegment(f: var FlatFrame) =
+  ## Finish the validated continuation and retire its stopped observation.
+  f.reason = oracle.StepError.None
+  f.exit = oracle.StepExit.Continued
+  f.faultPage = PageAddress(0)
+  f.hostCall = oracle.HostCallId(0)
+  f.remaining = 0
+  f.reservation = 0
+  f.stoppedAt = 0
+  f.attemptedExit = false
+  f.barrier = flatStop
+  f.barrierFact = 0
+  f.savedHandler = nil
+  # The next runFlat entry applies the same paid-interior and jump-cache rules for either capability.
+  f.hostReady = false
+  f.hostSnapshot = default(Memory)
+  inc f.fastResumes
+
+proc flatCommitHostContinuation(f: var FlatFrame, info: MachineInfo) =
+  ## Publish the CPU state staged for the completed owned-memory transaction.
+  f.info = info
+  resetFlatHostSegment(f)
+
+proc resumeFlatHostScalars*(f: var FlatFrame, gas: MachineGas,
+    registers: RegisterFile): oracle.StepError =
+  ## Commit the scalar reply while retaining dirty membership against the old baseline.
+  var fact = 0
+  requireFlatHostFact(f, fact)
+  let nextPc = CodeAddress(f.plan.facts[fact].next)
+  f.info.pc = nextPc
+  f.info.gas = gas
+  f.info.registers = registers
+  resetFlatHostSegment(f)
+  oracle.StepError.None
+
+proc resumeFlatHostMemory*(f: var FlatFrame, posterior: Memory, gas: MachineGas,
+    registers: RegisterFile): oracle.StepError =
+  ## The host supplies immutable posterior memory and scalar CPU changes, never a successor PC/paid flag.
+  ## Refused responses leave the complete stopped invocation and observation usable for repair/retry.
+  var info = default(MachineInfo)
+  let checked = flatHostContinuation(f, gas, registers, info)
+  if checked != oracle.StepError.None: return checked
   # Reject oversized host mappings before extracting changed pages or allocating replacement storage.
   let count = memoryPageCount(posterior)
   if count.error != MachineError.None or uint32(count.value) > uint32(f.plan.limits.pages):
     return oracle.StepError.InvalidHostResponse
   var delta = changedMemoryPageSlots(f.hostSnapshot, posterior)
   if delta.error == MachineError.InvalidOwner: return oracle.StepError.InvalidHostResponse
-  var info = f.info
-  info.pc = CodeAddress(f.plan.facts[fact].next)
-  info.gas = gas
-  info.registers = registers
   var replace = delta.error != MachineError.None
   if not replace:
     let changes = machine.takeValue(delta)
+    var copiedPages = 0'u64
     for i in 0..<changes.len:
       # Complete preflight precedes the first host-byte mutation; unusual capabilities take the slow path.
-      if not flatHostPage(f, posterior, changes[i], false): replace = true
+      if not flatHostPage(f, posterior, changes[i], false, copiedPages): replace = true
     if not replace:
       for i in 0..<changes.len:
-        let applied = flatHostPage(f, posterior, changes[i], true)
+        let applied = flatHostPage(f, posterior, changes[i], true, copiedPages)
         assert applied
       f.sourceMemory = posterior
       flatClearDirty(f)
-      f.info = info
-      f.reason = oracle.StepError.None
-      f.exit = oracle.StepExit.Continued
-      f.faultPage = PageAddress(0)
-      f.hostCall = oracle.HostCallId(0)
-      f.remaining = 0
-      f.reservation = 0
-      f.stoppedAt = 0
-      f.attemptedExit = false
-      f.barrier = flatStop
-      f.barrierFact = 0
-      f.savedHandler = nil
-      # The next runFlat entry clears jump offsets before any resumed dispatch.
-      f.hostReady = false
-      f.hostSnapshot = default(Memory)
-      inc f.fastResumes
-      f.hostCopiedPages+=uint64(changes.len)
+      flatCommitHostContinuation(f, info)
+      f.hostCopiedPages+=copiedPages
       return oracle.StepError.None
   # Mapping/permission/RO replacement rebuilds all capabilities from a genuine validated snapshot.
   let fast = f.fastResumes
@@ -5598,9 +4635,12 @@ proc flatRestoreScratchPage(f: var FlatFrame, page: int) =
     var found = false
     for index in 0..<f.extra.len:
       let region = f.extra[index]
-      if address >= region.first and address-region.first+4096 <= uint64(region.bytes.len):
-        let offset = int(address-region.first)
-        flatCopySourcePage(f.sourceMemory, page, description, region.bytes.toOpenArray(offset, offset+4095))
+      if address >= region.first and address-region.first+4096 <= uint64(region.size):
+        if region.bytes.len != 0:
+          # Lazy extras use the already installed incoming baseline; materialized bytes need restoration.
+          assert region.bytes.len == region.size
+          let offset = int(address-region.first)
+          flatCopySourcePage(f.sourceMemory, page, description, region.bytes.toOpenArray(offset, offset+4095))
         found = true
         break
     assert found
@@ -5621,7 +4661,7 @@ proc prepareReusedFlatMemoryFrame*(plan: FlatPlan, memory: Memory, info: Machine
     held = nil
     return prepareFlatMemoryFrame(plan, memory, info)
   var changes = machine.takeValue(delta)
-  var frame = flatFrameShell[true](plan, memory, info, held.pages.len)
+  var frame = flatFrameShell[true](plan, memory, info, held.pages.len, 0)
   frame.sourcePages = move(held.pages)
   frame.roBase = held.roBase
   frame.rwBase = held.rwBase
@@ -5660,8 +4700,8 @@ proc takeFlatMemoryScratch*(f: var FlatFrame, payloadLimit: uint64): nil FlatMem
   if payloadLimit == 0: return nil
   var bytes = uint64(f.ro.len)+uint64(f.rw.len)+uint64(f.stack.len)
   for region in f.extra:
-    # Disjoint captured regions own exactly their accessible page bytes, including fragmented layouts.
-    bytes += uint64(region.bytes.len)
+    # Charge complete logical extents even when an untouched extra has no private payload yet.
+    bytes += uint64(region.size)
   if bytes == 0: return nil
   let total = bytes+uint64(f.sourcePages.len)*4096
   if total > payloadLimit: return nil

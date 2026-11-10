@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Test-only fuzzer request construction composes exact existing immutable child encodings.
+
 import std/assertions
 import ./[fuzz_protocol_context, current_consecutive_context, accumulation_current_chain_context]
 import ../../src/app/fuzz/backend as fuzz_backend
@@ -9,10 +10,12 @@ import ../../src/state/fuzz/protocol as fuzz_protocol
 import ../../src/state/store
 import ../../src/codec/[bounded, header, block_codec]
 import ../../src/crypto/primitives
+
 proc fuzzBackendTestConfig*(): FuzzBackendConfig =
   ## Keep the independently frozen current STF profile and explicit resource policies.
   FuzzBackendConfig(parameters: currentChainSettings(), candidate: currentConsecutiveLimits(),
       wire: fuzzProtocolTestLimits())
+
 proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot, ancestry: openArray[
     FuzzAncestor] = [], limits: FuzzLimits = fuzzProtocolTestLimits()): FuzzMessage =
   ## An Initialize contains exact header bytes, a rootless complete map and explicit test membership.
@@ -31,6 +34,7 @@ proc fuzzInitialize*(header: OwnedHeader, state: StateStoreSnapshot, ancestry: o
   let decoded = decodeFuzzMessage(wire, limits)
   assert decoded.error == FuzzError.None
   decoded.value
+
 proc fuzzImport*(body: OwnedBlock, limits: FuzzLimits = fuzzProtocolTestLimits()): FuzzMessage =
   ## ImportBlock contains the exact current sealed header and extrinsic bytes.
   var bytes = newSeq[byte](body.blockInfo.value.consumed)
@@ -40,6 +44,7 @@ proc fuzzImport*(body: OwnedBlock, limits: FuzzLimits = fuzzProtocolTestLimits()
   let decoded = decodeFuzzMessage(wire, limits)
   assert decoded.error == FuzzError.None
   decoded.value
+
 proc fuzzGetState*(header: OwnedHeader, limits: FuzzLimits = fuzzProtocolTestLimits()): FuzzMessage =
   ## State lookup uses the full sealed header identity, independently of its prior-state field.
   var bytes = newSeq[byte](header.headerInfo.value.consumed)

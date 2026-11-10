@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_erasure_words_arc_release"}
 
 ## Independent full parity witnesses, exact field-work bounds and immutable scalar-code ownership.
@@ -13,9 +14,11 @@ import ../../support/[pvm_erasure_vectors, arc_evidence]
 proc generous(): ErasureWordLimits =
   ## Permit every valid scalar geometry while remaining an explicit local policy.
   ErasureWordLimits(bytes: ByteLimit(10000), products: FieldProductLimit(1000000))
+
 proc expect[T](outcome: ErasureWordResult[T], reason: ErasureWordError) =
   ## Compare exact refusals without extracting incomplete output words.
   assert outcome.error == reason, "erasure word reason"
+
 proc check(validators: uint16, expected: openArray[uint16]) =
   ## Build independent arithmetic message words and compare every systematic and parity coordinate.
   let bound = int(validators) div 3+1
@@ -79,12 +82,14 @@ expect(default(ErasureWordResult[ErasureWordCode]), ErasureWordError.Uninitializ
 let code = encodeErasureWords(input, ErasureShards(6), generous()).value
 assert code.wordCodeInfo.value.products == 102, "independent exact small work count"
 assert code.wordCodeInfo.value.workspaceBytes == 14, "independent small workspace"
+
 proc detached(): ErasureWordCode =
   ## Return a code after its original local input descriptor has retired.
   let local = [ErasureWord(0), ErasureWord(1), ErasureWord(65535)]
   encodeErasureWords(local, ErasureShards(6), generous()).value
 assert uint16(detached().codeWord(ErasureShardIndex(5)).value) == uint16(code.codeWord(
     ErasureShardIndex(5)).value), "detached lifetime"
+
 proc cycle() =
   ## Release completed output, coefficient workspace, inverse table and refused candidates.
   let done = encodeErasureWords(input, ErasureShards(6), generous()).value

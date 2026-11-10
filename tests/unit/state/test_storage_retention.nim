@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit bounded pins remain independent across catalog copies, repository revisions and close.
+
 # @@Verification={"arc": "storage_retention_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]

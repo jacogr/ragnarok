@@ -69,6 +69,7 @@ func validPolicyConfig(config: ReportPolicyConfig): bool =
   ## All callers use the same bounded core/account domains before any source copy or report traversal.
   uint64(config.pools.cores) >= 2 and uint64(config.pools.cores) <= 341 and
     uint64(config.accountBytes) >= uint64(ServiceMetadataBytes)
+
 proc capturePolicyPools(parent: StateStoreSnapshot,
     config: ReportPolicyConfig): ReportPolicyResult[AuthorizationSnapshot] =
   ## Decode the exact bounded parent pool once; unsigned inspection grants no admission certificate.
@@ -94,6 +95,7 @@ proc capturePolicyPools(parent: StateStoreSnapshot,
         status: ReportPolicyError.InvalidState) # A chapter is an exact value, not a prefix.
   ReportPolicyResult[AuthorizationSnapshot](status: ReportPolicyError.None,
       completed: pools.value.snapshot)
+
 proc inspectPolicyReport(report: OwnedReport, parent: StateStoreSnapshot,
     pools: AuthorizationSnapshot, config: ReportPolicyConfig): ReportPolicyError =
   ## Share every gas/service/code/pool rule between pre-signing inspection and certified report admission.
@@ -162,6 +164,7 @@ proc inspectPolicyReport(report: OwnedReport, parent: StateStoreSnapshot,
   if exports != uint64(info.header.segmentCount):
     return ReportPolicyError.RefinementLoadExceeded # Availability must commit exactly the declared exported segments.
   ReportPolicyError.None
+
 proc inspectReportPolicy*(report: OwnedReport, parent: StateStoreSnapshot,
     config: ReportPolicyConfig): ReportPolicyError =
   ## Reason-only checks on one unsigned computed report cannot create credentials or a policy certificate.
@@ -170,6 +173,7 @@ proc inspectReportPolicy*(report: OwnedReport, parent: StateStoreSnapshot,
   let pools = capturePolicyPools(parent, config)
   if pools.error != ReportPolicyError.None: return pools.error
   inspectPolicyReport(report, parent, pools.value, config)
+
 proc checkReportPolicy*(credentials: VerifiedGuaranteeCredentials, parent: StateStoreSnapshot,
     config: ReportPolicyConfig): ReportPolicyResult[PolicyCheckedReports] =
   ## Only genuine credentials can construct this certificate; all reports share one exact decoded parent pool.

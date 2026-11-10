@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused absence alternatives cannot expose state, input/slot observations or block authority.
+
 import std/cmdline
 import ../../src/state/accumulation/[absent as accumulation_absent, inputs as accumulation_inputs]
 import ../../src/state/store

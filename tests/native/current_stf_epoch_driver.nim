@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete current epoch/ticket chains use six distinct fixture scalars and immutable replayed RingVRF inputs.
+
 import std/[assertions, algorithm, cmdline, strutils, parseutils, syncio]
 import ../../src/app/[chain, candidate]
 import ../../src/chain/[genesis, provider]

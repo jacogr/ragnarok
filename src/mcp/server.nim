@@ -1,8 +1,20 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded loopback Streamable HTTP endpoint. One request per connection; no SSE or HTTP sessions.
-## Only serialized bytes survive a tick. Query contexts are borrowed synchronously and never retained.
+## Local Streamable HTTP transport for MCP chain queries.
+##
+## The listener trusts local processes and binds IPv4 loopback. The accepted Host names
+## are the configured loopback address and localhost with the selected port. Rejecting
+## Origin-bearing requests keeps browser traffic outside that trust boundary.
+##
+## POST carries one request per connection. Replies use JSON, with HTTP 202 for valid
+## notifications. Clients advertise both JSON and event-stream support for MCP negotiation.
+## Connections close after the response and clients can reconnect within the same logical
+## lifecycle. Explicit protocol-version headers must match the supported revision.
+##
+## Fixed slots, byte ceilings and absolute deadlines bound work by each dispatcher turn.
+## Only serialized bytes survive a turn, so slow clients cannot extend a query borrow.
+## See spec/mcp.md for protocol references and verification.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -24,7 +36,8 @@ type
     headScanner: http_parse.HeadScanner
     offset: int
     deadline: int64
-  McpServer* = object ## Native socket owner retains no canonical state or query contexts.
+  McpServer* = object               ## Native socket owner retains no canonical state or query contexts.
+    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
     opened: bool
     fd: cint
     port: uint16
@@ -42,6 +55,7 @@ proc `=wasMoved`*(server: var McpServer) {.nodestroy, inline.} =
   server.fd = -1
   server.port = 0
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Every accepted descriptor belongs to the destination, including streaming files.
@@ -53,6 +67,7 @@ proc `=destroy`*(server: McpServer) =
   for slot in server.connections:
     if slot.opened: discard posix.close(slot.fd)
   if server.opened: discard posix.close(server.fd)
+  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
@@ -64,6 +79,7 @@ proc close*(server: var McpServer) =
   ## Idempotent explicit shutdown retires consumers before the listener.
   for slot in mitems(server.connections): slot.close()
   if server.opened: discard posix.close(server.fd)
+  server.httpTags = nil
   server.opened = false
   server.port = 0
 
@@ -110,7 +126,7 @@ proc response(status: string, body = "", extra = ""): string =
     "\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n" &
         extra & "\r\n" & body
 
-proc process(slot: var Connection, port: uint16, context: QueryContext) =
+proc process(slot: var Connection, tags: http_msg.HttpTags, port: uint16, context: QueryContext) =
   ## Strict single-message HTTP framing rejects ambiguous lengths, browser origins and upgrades.
   let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
   if headBytes == http_parse.ParseIncomplete: return
@@ -118,7 +134,7 @@ proc process(slot: var Connection, port: uint16, context: QueryContext) =
     slot.output = response("431 Request Header Fields Too Large")
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request")
-  var head = http_msg.initHttpMsg(http_msg.newHttpTags())
+  var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
       headBytes: return
   for field in ["host", "content-type", "accept", "mcp-protocol-version"]:
@@ -163,6 +179,14 @@ proc process(slot: var Connection, port: uint16, context: QueryContext) =
 proc tick*(server: var McpServer, context: QueryContext) =
   ## One accept/read/write per slot and a five-second absolute deadline bound each turn.
   if not server.opened: return
+  let existingTags = server.httpTags
+  let tags: http_msg.HttpTags =
+    if existingTags != nil:
+      existingTags # A running listener reuses its vocabulary.
+    else:
+      let vocabulary = http_msg.newHttpTags()
+      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
+      vocabulary
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0:
@@ -180,7 +204,7 @@ proc tick*(server: var McpServer, context: QueryContext) =
       let count = receive(slot.fd, addr bytes[0], csize_t(MaxInput - slot.input.len), 0)
       if count > 0:
         for index in 0..<count: slot.input.add(bytes[index]) # Only initialized receive bytes enter owned storage.
-        slot.process(server.port, context)
+        slot.process(tags, server.port, context)
       elif count == 0: slot.close()
       elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len > 0:

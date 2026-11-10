@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## The application copies already trusted light metadata into an acyclic RPC transport without exporting proof/state ownership.
+
 import ./head as light_head
 import ../checkpoint/identity as checkpoint_identity
 import ../../rpc/light_source

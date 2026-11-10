@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real contextual journals restore retained history and explicit finality with the current exact owner.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/disk_history_context
@@ -14,6 +15,7 @@ import ../../../src/storage/node/[repository as node_repository, records as node
 import ../../../src/storage/[record_codec, database_identity]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc main() {.raises.} =
   ## Populate authentic complete roots before context selection; modified fixture headers are structural only.
   let fixture = diskHistoryFixture()
@@ -166,6 +168,7 @@ proc main() {.raises.} =
   assert restoreDiskHistory(missing, chain, RepositoryGeneration(1),
     fixture.view.bestBlock.value.chainParameters, disk, fixture.policy, limit).error ==
         DiskHistoryError.StoreFailure
+
 proc wideWitness() {.raises.} =
   ## A real 256-entry journal proves count/finality ordinals no longer truncate to a single byte.
   let fixture = diskHistoryFixture(255, false, ElementLimit(300))

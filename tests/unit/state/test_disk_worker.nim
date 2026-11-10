@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual native durable commits preserve graph leases, receipts and bounded slot ownership through shutdown.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../support/[durable_chain_context, accumulation_completion_context]
@@ -16,8 +17,10 @@ import ../../../src/storage/[record_codec, database_identity]
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
 import ../../../src/codec/report_owned
+
 proc workerPid(): cint {.importc: "getpid", cdecl, header: "<unistd.h>".}
   ## Process-private paged namespaces never replace another native test's artifact.
+
 proc journalLimits(): JournalLimits =
   ## Explicit broad fixture ceilings bound all physical records, individual batches and history context.
   JournalLimits(repository: RepositoryLimits(codec: RecordLimits(trie: StateTrieLimits(
@@ -26,6 +29,7 @@ proc journalLimits(): JournalLimits =
       valueBytes: ByteLimit(16777216)), encoded: ByteLimit(33554432)),
     records: ElementLimit(2000000), valueBytes: ByteLimit(67108864)),
     bytes: ByteLimit(134217728), contextBytes: ByteLimit(1048576))
+
 proc waitDone(worker: var DiskPublicationWorker) =
   ## Only scalar worker state is touched while every leased ARC alias remains frozen.
   let started = getMonoTime()
@@ -34,6 +38,7 @@ proc waitDone(worker: var DiskPublicationWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield under a monotonic bounded test deadline.
+
 proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int,
     paged = false, replay = false) {.raises.} =
   ## Modes collect normally, join a completed operation, or race joined shutdown against native entry.
@@ -100,6 +105,7 @@ proc cycle(seed: ApplicationChain, prepared: PreparedChainUpdate, mode: int,
   assert worker.start(), "closed worker can restart"
   assert worker.collect(ticket).kind == DiskCompletionKind.Uninitialized, "old ticket cannot retire restarted worker"
   assert worker.close.kind == DiskCompletionKind.Uninitialized, "idle joined shutdown has no receipt"
+
 proc main() {.raises.} =
   ## Repeat complete start/commit/join/close lifetimes; public allocator counters are per-thread, not process totals.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

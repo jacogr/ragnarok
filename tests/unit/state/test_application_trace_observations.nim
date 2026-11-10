@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default observation owners and unrelated command controls cannot expose prepared state.
+
 import std/[assertions, syncio]
 import ../../support/[trace_step_context, current_consecutive_context]
 import "../../../src/app/trace/import" as trace_import
 import ../../../src/app/[chain, options]
 import ../../../src/state/trace/[step as trace_step, state as trace_state]
 import ../../../src/codec/bounded
+
 proc main() =
   ## Validate default ownership and atomic option refusal; real positive complete maps live in the independent corpus.
   let chain = default(ApplicationChain)

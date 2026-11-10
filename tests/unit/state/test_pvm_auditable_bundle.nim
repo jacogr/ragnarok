@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_auditable_bundle_arc_release"}
 
 ## Independent full-wire witnesses, exact budgets and immutable original execution provenance.
@@ -21,11 +22,14 @@ import ../../support/[pvm_auditable_bundle, pvm_bundle_vectors, pvm_import_vecto
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse primitive work after original execution to prove assembly is pure serialization.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe exact copied counters without inventing a backend success.
+
 proc expect[T](outcome: AuditableBundleResult[T], reason: AuditableBundleError) =
   ## Check precise alternatives without extracting a refused partial bundle.
   assert outcome.error == reason, "auditable bundle reason"
+
 proc samePrefix(bytes: openArray[byte], prefix: openArray[byte]): bool =
   ## Compare independently frozen canonical package bytes without production re-encoding.
   if bytes.len < prefix.len: return false
@@ -38,6 +42,7 @@ proc decodingLimits(): AuditBundleLimits =
   AuditBundleLimits(package: fullPackageConfig(ByteLimit(8192)), extrinsics: ElementLimit(16),
     imports: ElementLimit(16), hashes: ElementLimit(64), bytes: ByteLimit(32768),
     workspaceBytes: ByteLimit(8*1024*1024), hashBytes: ByteLimit(128000))
+
 proc decoded(source: InputRefinement, bundle: AuditableBundle): DecodedAuditBundle =
   ## Decode actual assembled bytes and compare every retained original occurrence, including repeated and empty rows, without accepting a replaceable package or proof.
   let info = bundle.bundleInfo.value
@@ -72,6 +77,7 @@ proc decoded(source: InputRefinement, bundle: AuditableBundle): DecodedAuditBund
           after.verifiedImportSegment.value), "original imported segment occurrence"
       assert before.verifiedImportProof.value == after.verifiedImportProof.value, "original root-first proof occurrence"
   return outcome.value
+
 proc replayDecoded(source: InputRefinement, bundle: AuditableBundle) =
   ## Execute decoded commitments against the original real complete state and parameters; every final digest byte and authorization trace must reproduce, rather than trusting a caller's expected validity bit.
   let identity = source.inputRefinementIdentity.value
@@ -93,6 +99,7 @@ proc replayDecoded(source: InputRefinement, bundle: AuditableBundle) =
       after.digestAt(FetchItemIndex(uint64(ordinal))).value.digestBytes.value, "actual complete canonical item digest reproduction"
   assert prepareAuditableBundle(executed.value, ByteLimit(32768)).value.bundleBytes.value ==
       bundle.bundleBytes.value, "executed decoded inputs reassemble the exact original bundle"
+
 proc decodingFailures(source: InputRefinement, bundle: AuditableBundle) =
   ## Untrusted section boundaries, commitments, canonical path counts and whole-work policies produce precise failures without authenticated prefixes.
   let info = bundle.bundleInfo.value
@@ -245,10 +252,12 @@ assert bundle.bundleBytes.value == wire, "bundle byte copy isolation"
 assert uint32(bundle.bundleInfo.value.length) == uint32(OrdinaryLength), "bundle metadata copy isolation"
 let replay = prepareAuditableBundle(bundle.bundleSource.value, ByteLimit(OrdinaryLength)).value
 assert replay.bundleBytes.value == wire, "replay preserves original executed inputs"
+
 proc detached(): AuditableBundle =
   ## Retire original code/state/input/execution temporaries before extracting the retained auditable bytes.
   prepareAuditableBundle(bundleExecution(), ByteLimit(OrdinaryLength)).value
 assert detached().bundleBytes.value == wire, "detached bundle lifetime"
+
 proc cycle() =
   ## Release owned buffers and extracted copies while retaining no successful prefix from refused local candidates.
   let done = prepareAuditableBundle(source, ByteLimit(OrdinaryLength)).value

@@ -3,6 +3,7 @@
 
 ## Frozen bounded actual-successor service reconstruction, preserving original logical identities and raw keys.
 ## Planning copies no payload and hashes nothing; mutable output declarations and full current qualification are later stages.
+
 import ../[request_keys as current_request_keys, identities as current_identities]
 import ../../supplied/[logical_inventory as supplied_logical_inventory,
     services as supplied_services]

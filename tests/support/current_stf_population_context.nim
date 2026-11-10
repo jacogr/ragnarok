@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit three-core policies separate bounded decoding capacity from actual six/nine-validator chapter populations.
+
 import std/assertions
 import ../../src/app/candidate
 import ../../src/chain/parameters

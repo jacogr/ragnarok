@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused global phases expose no inactive owner, component or failure payload.
+
 import std/cmdline
 import ../../src/state/accumulation/global/stage as accumulation_global_stage
 import ../../src/state/accumulation/provision/stage as accumulation_provision_stage

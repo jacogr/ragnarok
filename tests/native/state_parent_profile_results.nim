@@ -2,35 +2,45 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/source/reason/view guards use an actual signed selected parent as genuine positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/[accumulation_current_chain_context, parent_profile_context]
 import ../../src/state/parent/profile as parent_profile
 import ../../src/chain/[provider, genesis]
 import ../../src/codec/[bounded, report_owned]
+
 proc extract(outcome: ParentProfileResult[SelectedParentProfile]) {.noinline.} =
   ## No default/failed result grants a configured selected parent.
   discard outcome.value
+
 proc reason(outcome: ParentProfileResult[SelectedParentProfile]) {.noinline.} =
   ## Only an actual previous-roster refusal grants its nested reason.
   discard outcome.previousError
+
 proc profile(owner: SelectedParentProfile) {.noinline.} =
   ## Default owners grant no selected cardinalities.
   discard owner.parentStateProfile.value
+
 proc context(owner: SelectedParentProfile) {.noinline.} =
   ## Default owners grant no selected physical/configuration facts.
   discard owner.parentContext.value
+
 proc info(owner: SelectedParentProfile) {.noinline.} =
   ## Default owners grant no successful copied extent observations.
   discard owner.parentProfileInfo.value
+
 proc view(owner: SelectedParentProfile) {.noinline.} =
   ## Default owners grant no original full view.
   discard owner.copyParentView(ByteLimit(high(uint64))).value
+
 proc rawContext(original: ChainView) {.noinline.} =
   ## The allocation-free head context projection still requires a selected head.
   discard original.bestBlockContext
+
 proc rawRetention(original: BlockSnapshotResult) {.noinline.} =
   ## Fixed index observations still require genuine successful structural capture.
   discard original.blockSnapshotRetention
+
 proc main() {.raises.} =
   ## Positive setup runs original signed parent preparation, never a fabricated current update.
   case paramStr(1)

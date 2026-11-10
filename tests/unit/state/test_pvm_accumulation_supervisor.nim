@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_accumulation_supervisor_arc_release"}
 
 ## Genuine supervisor guests check incarnation-bound authority, atomic metadata and checkpoint ownership.
@@ -21,8 +22,10 @@ import ../../support/[pvm_accumulation_context, pvm_accumulation_program, arc_ev
 
 # Inject refusal only after authentic account/guest preparation.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 # Count backend attempts to distinguish protocol refusal from store hashing.
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 # Refuse after successful internal hashes to protect late atomicity.
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
 

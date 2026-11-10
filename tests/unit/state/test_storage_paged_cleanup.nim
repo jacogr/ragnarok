@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independently replayed candidate/staging prefixes constrain explicit sealed and partial cleanup authority.
+
 # @@Verification={"arc":"storage_paged_cleanup_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[paged_native_fixture, paged_reference, storage_io, arc_evidence]
@@ -14,9 +15,11 @@ import ../../../src/storage/durability
 import ../../../src/storage/light/state_cache as light_state_cache
 import ../../../src/storage/state_proof
 import ../../../src/codec/bounded
+
 proc path(label: string): string =
   ## Each process/trial uses a new test-owned namespace without directory sweeps.
   "paged-cleanup-" & $storageProcessId() & "-" & label
+
 proc writePrefix(path: string, bytes: seq[byte], count: int) =
   ## Independent fixture writes deliberately stop inside pages and digest/checksum words.
   var text = newString(count)
@@ -25,27 +28,33 @@ proc writePrefix(path: string, bytes: seq[byte], count: int) =
     writeFile(path, text)
   except:
     assert false, "write partial fixture"
+
 proc existsNative(path: cstring, mode: cint): cint {.importc: "access", cdecl,
     header: "<unistd.h>".}
   ## Observe only exact test-owned names; directory scans never grant cleanup authority.
+
 proc exists(path: string): bool =
   ## Keep absence distinct from an explicitly created zero-byte candidate.
   var name = path
   existsNative(name.toCString(), 0) == 0
+
 proc seed(writer: var PagedWriter, directory: string, fixture: PagedNativeFixture) =
   ## Start every independent trial from a confirmed source and exact expected policies.
   assert initializePagedWriter(writer, directory, fixture.config, fixture.records.nativeProducer,
     uint64(fixture.records.len), fixture.payload).error == PagedNativeError.None
+
 proc target(fixture: PagedNativeFixture): PagedHeader =
   ## Target root/counts/sequence come from fixture authority, never partially authored candidate metadata.
   initPagedHeader(fixture.config.chain, fixture.config.root, ManagedEpoch(2), LightDeltaSequence(1),
     uint64(fixture.records.len), fixture.payload, fixture.config.limits.dataset).value
+
 proc reference(fixture: PagedNativeFixture): PagedReference =
   ## Recompute the complete target independently before cutting arbitrary native prefixes.
   result = pagedReference(fixture.config.chain, fixture.config.root, fixture.records)
   result.bytes.put(88, 2)
   result.bytes.put(96, 1)
   result.recommit()
+
 proc sealed(fixture: PagedNativeFixture) =
   ## A live sealed capability can be discarded without a caller producer, then the same next epoch can be authored safely.
   let directory = path("sealed")
@@ -68,6 +77,7 @@ proc sealed(fixture: PagedNativeFixture) =
     uint64(fixture.records.len), fixture.payload).error == PagedNativeError.None
   assert writer.publish(candidate).error == PagedNativeError.None
   assert writer.close == FileError.None
+
 proc sealedStaging(fixture: PagedNativeFixture) =
   ## Full seals can validate staging directly; a failed comparison never grants authority on a second attempt.
   for bad in [false, true]:
@@ -100,6 +110,7 @@ proc sealedStaging(fixture: PagedNativeFixture) =
       assert not exists(directory & "/CURRENT.next")
     resetIo()
     assert writer.close == FileError.None
+
 proc partial(fixture: PagedNativeFixture, bytes, pending: int) =
   ## Complete replay preflights both files before any unlink and never grants publication authority to partial bytes.
   let directory = path("prefix-" & $bytes & "-" & $pending)
@@ -127,6 +138,7 @@ proc partial(fixture: PagedNativeFixture, bytes, pending: int) =
   assert not candidate.opened and not exists(epoch) and not exists(directory & "/CURRENT.next")
   assert writer.selected.value.bytes == source.bytes
   assert writer.close == FileError.None
+
 proc cycle(writer: var PagedWriter, fixture: PagedNativeFixture) =
   ## All anonymous scratch and prepared owner resources retire before each ARC sample.
   var candidate = default(PagedCandidate)
@@ -134,6 +146,7 @@ proc cycle(writer: var PagedWriter, fixture: PagedNativeFixture) =
   assert preparePagedCleanup(writer, candidate, source, target(fixture),
       fixture.records.nativeProducer).error == PagedNativeError.None
   assert discardPagedCandidate(writer, candidate, source).value.alreadyAbsent
+
 proc captured(path: string): string =
   ## Preserve exact forensic bytes and absence independently of any cleanup outcome.
   if not exists(path): return "absent"
@@ -141,6 +154,7 @@ proc captured(path: string): string =
     return "present:" & readFile(path)
   except:
     assert false, "capture cleanup fixture"
+
 proc mismatches(fixture, fresh: PagedNativeFixture) =
   ## Wrong target authority and mismatched pending prefixes cannot delete even an otherwise matching epoch.
   for mode in 0..<5:
@@ -182,6 +196,7 @@ proc mismatches(fixture, fresh: PagedNativeFixture) =
     resetIo()
     assert before == [captured(epoch), captured(directory & "/CURRENT.next"), captured(directory & "/CURRENT")]
     assert writer.close == FileError.None
+
 proc stale(fixture: PagedNativeFixture) =
   ## Neither reopened writer incarnations nor a newly created inode can be removed by a passive old capability.
   for mode in 0..<3:
@@ -217,6 +232,7 @@ proc stale(fixture: PagedNativeFixture) =
     assert candidate.close == FileError.None
     if authored.opened: assert authored.close == FileError.None
     assert writer.close == FileError.None
+
 proc lateMutation(fixture: PagedNativeFixture) =
   ## A prepared staging inode/version is checked again before deleting either captured file.
   let directory = path("late-mutation")
@@ -241,6 +257,7 @@ proc lateMutation(fixture: PagedNativeFixture) =
   assert ioCalls(unlinkIo) == 0 and exists(epoch)
   resetIo()
   assert candidate.close == FileError.None and writer.close == FileError.None
+
 proc rootModes(fixture, fresh: PagedNativeFixture) =
   ## Explicit root-advance cleanup preserves sequence; compaction replay additionally requires exact source knowledge.
   for mode in 0..<3:
@@ -280,6 +297,7 @@ proc rootModes(fixture, fresh: PagedNativeFixture) =
       # Same-root/same-sequence recovery cannot reinterpret discarded query knowledge as compaction.
       assert replayed.error == PagedNativeError.InvalidTransition and not candidate.opened
     assert writer.close == FileError.None
+
 proc faultTrial(fixture: PagedNativeFixture, phase: int, operation: cint, skip: int): array[5, uint64] =
   ## Each prepare/discard syscall fault must fire; fresh replay after close/reopen completes any confirmed partial unlink progress.
   result = default(array[5, uint64])
@@ -328,6 +346,7 @@ proc faultTrial(fixture: PagedNativeFixture, phase: int, operation: cint, skip: 
   assert discardPagedCandidate(writer, candidate, source).error == PagedNativeError.None
   assert not exists(epoch) and not exists(directory & "/CURRENT.next")
   assert writer.close == FileError.None
+
 proc faultSchedule(fixture: PagedNativeFixture) =
   ## Only actual observed operations are scheduled; syscall absence is not silently counted as a successful injected case.
   for phase in 0..<2:
@@ -342,6 +361,7 @@ proc faultSchedule(fixture: PagedNativeFixture) =
       else:
         assert counts[index] > 0
         for skip in 0..<int(counts[index]): discard faultTrial(fixture, phase, operations[index], skip)
+
 proc bootstrap(fixture: PagedNativeFixture) =
   ## Reproducible failed bootstrap prefixes can resume only while CURRENT remains absent under an existing stable LOCK.
   for operation in [writeIo, renameIo]:
@@ -375,6 +395,7 @@ proc bootstrap(fixture: PagedNativeFixture) =
     assert writer.selected.error == PagedNativeError.RecoveryRequired
     resetIo()
     assert writer.close == FileError.None
+
 proc selectedUncertainty(fixture: PagedNativeFixture) =
   ## A rename followed by directory-sync uncertainty may select the target; stale recovery authority never deletes it.
   let directory = path("selected-uncertainty")
@@ -407,10 +428,13 @@ proc selectedUncertainty(fixture: PagedNativeFixture) =
 
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider failures retain checked source authority independently of IO poison.
+
 proc failHashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Select a genuine late replay hash without substituting a production provider.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Baseline observations size bounded provider-failure controls.
+
 proc providerAndQuota(fixture: PagedNativeFixture) =
   ## Early/late provider refusals and preflight write quota cannot create a deletion capability or alter source/candidates.
   var total = 0.cint
@@ -460,6 +484,7 @@ proc providerAndQuota(fixture: PagedNativeFixture) =
     assert ioCalls(writeIo) == 0 and ioCalls(unlinkIo) == 0 and not candidate.opened
     resetIo()
     assert writer.selected.value.bytes == source.bytes and writer.close == FileError.None
+
 proc changingReplay(records: seq[LightStateProof]): PagedProducer =
   ## Test-only stable individual passes deliberately change one valid empty-root query between separate builds.
   var builds = 0
@@ -470,6 +495,7 @@ proc changingReplay(records: seq[LightStateProof]): PagedProducer =
     if builds > 1 and ordinal == 0: output.key = pagedKey(1)
     PagedProducerStep.Item
   next
+
 proc changedBootstrap() =
   ## Resume binds new authorship to the complete replay witness, not just independent validity at the same JAM root.
   let config = PagedNativeConfig(limits: pagedPolicy())

@@ -21,25 +21,31 @@ type
 let fileLimit {.importc: "RLIMIT_FSIZE", header: "<sys/resource.h>".}: cint
 let sizeSignal {.importc: "SIGXFSZ", header: "<signal.h>".}: cint
 let signalError {.importc: "SIG_ERR", header: "<signal.h>".}: SignalHandler
+
 proc getLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "getrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Inspect the inherited hard ceiling before changing the child's soft file-size limit.
+
 proc setLimit(resource: cint, value: ptr ResourceLimit): cint {.importc: "setrlimit", cdecl,
     header: "<sys/resource.h>".}
   ## Restrict only this child; no parent/global resource budget is changed.
+
 proc install(signal: cint, handler: SignalHandler): SignalHandler {.importc: "signal", cdecl,
     header: "<signal.h>".}
   ## Keep the real kernel size violation as a return value instead of process termination.
+
 proc ignore(value: cint) {.cdecl, raises: [].} =
   ## The signal handler performs no allocation, output or state access.
   discard
 
 const FileName = "state-checkpoint-write-failure.bin"
+
 proc policy(): StateStoreLimits =
   ## One multi-chunk value permits failures near the beginning and final byte of publication.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(1), perValue: ByteLimit(5000),
     totalValueBytes: ByteLimit(5000), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(5000))
+
 proc attempt(prior, next: StateStoreSnapshot, size: uint64, succeeds: bool) =
   ## A real forked writer must publish everything or preserve the exact prior trusted checkpoint.
   assert saveFullCheckpoint(FileName, prior, ByteLimit(10000)).error == CheckpointFileError.None
@@ -79,6 +85,7 @@ proc attempt(prior, next: StateStoreSnapshot, size: uint64, succeeds: bool) =
   assert restored.error == CheckpointFileError.None
   assert encodeFullCheckpoint(restored.value.snapshot.value, ByteLimit(10000)).value ==
     encodeFullCheckpoint(expected, ByteLimit(10000)).value # Parent observation independently verifies complete exact bytes.
+
 proc main() =
   ## Zero/partial/final-byte failures and exact/ample controls exercise real temporary-file rollback.
   var path = FileName

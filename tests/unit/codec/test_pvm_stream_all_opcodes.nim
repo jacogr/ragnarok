@@ -1,12 +1,15 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Full 139-opcode, alias, gas and exit matrix across direct and public snapshot execution boundaries.
+
 import std/[assertions, syncio]
 import ../../../src/pvm/internal/handler_stream
 import ../../../src/codec/natural
 import ../../../src/pvm/[program, machine]
 import ../../../src/pvm/gas/gas
 import ../../../src/pvm/step
+
 proc appendNatural(bytes: var seq[byte], value: uint64) =
   ## Test framing uses the independent natural codec without borrowing program storage.
   let encoded = encode(JamNatural(value))
@@ -59,7 +62,6 @@ proc memory(): Memory =
     for at in 0..<4096:
       pages[index].bytes[at] = byte((at*17+index*31+3) mod 256)
   captureMemory(pages, PageLimit(2)).value
-
 
 proc cache(source: Program): FlatPlan =
   ## Program facts and prices are sealed once; executable stream and input memory remain frame-local.
@@ -124,7 +126,6 @@ for op in 0..255:
           echo "CASE,", op, ",", pattern, ",", paid, ",", gas
           compare(source, prepared, 16, 100000)
 assert opcodes == 139
-
 
 echo "PASS Interpreter all 139 opcodes / fresh+reused / full CPU-memory-source-exit state"
 # Every prefix of a folded-noop and arithmetic sequence checks synthetic budget barriers and their restoration.
@@ -196,7 +197,6 @@ proc firstMemoryPart(code: byte, address: uint64): seq[byte] =
     result.add(if code < 120: 1'u8 else: 17'u8)
     immediate(result, if code < 120: address else: 0'u64)
 
-
 proc targetWorkingProgram(count: int, aliasedLoad: bool): Program =
   ## Three complete rounds visit every dynamic destination; final probes collide with valid ordinal tags after the cache is warm.
   var parts: seq[seq[byte]] = @[]
@@ -243,7 +243,6 @@ proc targetWorkingSource(program: Program, count: int, aliasedLoad: bool,
   initial[6] = RegisterValue(if aliasedLoad: uint64(count*2) else: 0'u64)
   initial[8] = RegisterValue(uint64(count*3))
   captureMachine(program, mapped, MachineInfo(gas: MachineGas(1000000), registers: initial)).value
-
 
 for count in [5, 17, 65, 257, 513]:
   for alias in [false, true]:

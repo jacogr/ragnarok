@@ -22,16 +22,19 @@ import ../../support/[application_candidate_context, accumulation_completion_con
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Make any accidental native-callback preparation fail deterministically.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Reception, barriers and stale-event rejection must perform no hashes.
 
 proc policies(): DownloadScheduleLimits =
   ## Explicit retry ceilings cover the entire real transport matrix.
   DownloadScheduleLimits(peers: ElementLimit(1), attempts: 10, retryDelay: DownloadRetryDelay(1))
+
 proc resources(): BlockInputLimits =
   ## The signed fixture and zero ancestors fit this explicit host policy.
   BlockInputLimits(blockBytes: ByteLimit(100000), ancestors: ElementLimit(0),
       ancestorBytes: ByteLimit(0))
+
 proc begin(session: var BlockDownloadSession, owner: Services,
     now: uint64): DownloadSessionAttempt =
   ## Successful admission exposes an immutable token, not mutable receiver or schedule storage.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete restoration prepares reports before content work and preserves root authority, precise phase errors and retired ownership.
+
 # @@Verification={"arc": "state_planned_review_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, planned_review_checkpoint_context,
@@ -18,18 +19,23 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, composition as state_composition,
     accounts as state_accounts]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset observer work and optionally refuse all hash operations.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Compare mandatory restoration/capture work separately from one content hash.
+
 proc after(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Allow exactly the measured mandatory hashes, then refuse the first account-content operation.
+
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService],
     profile: StateEconomicProfile) =
   ## Restore and retire one full prepared-review graph per cycle, preserving successful coverage observations.
   let review = decodePlannedReviewCheckpoint(wire, root, services, inventoryProfile, profile,
       plannedReviewCheckpointTestLimits).value
   assert review.accountReviewInfo.value.economics.uncovered == 1
+
 proc main() {.raises.} =
   ## Genuine complete typed sources include an undercovered account; that observation remains successful.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

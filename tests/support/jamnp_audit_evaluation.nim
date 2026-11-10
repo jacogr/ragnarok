@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual available reports and their original computed bundles reproduce through private complete-state origins; damaged direct bytes and local resource/cancellation failures never become negative evidence.
+
 import std/[assertions, syncio]
 import ../../src/jamnp-s/[audit_origin, audit_context, audit_evaluation, audit_registry,
     work_report, audit_fetch, read_stream]
@@ -15,12 +16,14 @@ from ../../src/codec/state/trie import TrieNodeLimit
 import ../../src/chain/[genesis, provider]
 import ../../src/codec/work/[package as work_package, digest as work_digest]
 import ./[jamnp_audit_context, jamnp_work_report_fixture, pvm_input_refinement]
+
 proc evaluationLimits*(): AuditEvaluationLimits =
   ## Independent explicit child policies cover the genuine small reports; package prefixes can occupy the entire permitted wire.
   AuditEvaluationLimits(bundle: AuditBundleLimits(package: fullPackageConfig(ByteLimit(20000)),
     extrinsics: ElementLimit(16), imports: ElementLimit(16), hashes: ElementLimit(1000),
     bytes: ByteLimit(20000), workspaceBytes: ByteLimit(8*1024*1024), hashBytes: ByteLimit(1000000)),
     execution: executionLimits(), report: workReportLimits(), comparisonBytes: ByteLimit(100000))
+
 proc originalWire*(fixture: AuditContextFixture, target: AuditReportOrigin): seq[byte] =
   ## Select only bytes retained from the exact original computed report, independently of available-core or batch ordering.
   let expected = array[32, byte](target.originReportHash.value)
@@ -28,6 +31,7 @@ proc originalWire*(fixture: AuditContextFixture, target: AuditReportOrigin): seq
     if array[32, byte](bundle.reportHash) == expected: return bundle.wire
   assert false, "actual original computed bundle missing for selected report"
   return @[]
+
 proc diagnose(outcome: AuditEvaluationResult[AuditEvaluation]) =
   ## Bounded typed failure diagnostics appear only if the actual positive reproduction unexpectedly fails, never dumping source state or code.
   if outcome.error == AuditEvaluationError.None: return
@@ -37,15 +41,18 @@ proc diagnose(outcome: AuditEvaluationResult[AuditEvaluation]) =
   of AuditEvaluationError.ExecutionFailure: echo "execution: ", outcome.executionError.error
   of AuditEvaluationError.ReportFailure: echo "report: ", outcome.reportError.error
   else: discard # The top-level type already explains resource, source, cancellation or canonical mismatch.
+
 proc fetchLimits*(): AuditFetchLimits =
   ## Test-owned routing and reply caps independently cover the genuine nine-validator original reports.
   AuditFetchLimits(bytes: ByteLimit(1000000), replyBytes: ByteLimit(1000000))
+
 proc framedAuditTransfer(packet: PreparedAvailabilityTransfer): seq[byte] =
   ## Independently frame the genuine original bundle shard and Merkle path with exact E4 lengths.
   result = @[]
   for bytes in [packet.bundleShard, packet.justification]:
     for index in 0..<4: result.add(byte((uint32(bytes.len) shr (index*8)) and 255))
     for octet in bytes: result.add(octet)
+
 proc fetchChecks*(fixture: AuditContextFixture) =
   ## Real original credentials and literal cR+v vectors distinguish roster positions from both dense report order and shard indices.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
@@ -117,6 +124,7 @@ proc fetchChecks*(fixture: AuditContextFixture) =
     limited = fetchLimits()
     limited.replyBytes = ByteLimit(8)
     assert captureAuditFetch(target, limited).error == AuditFetchError.LimitExceeded
+
 proc evaluationCycle*(fixture: AuditContextFixture) =
   ## Real authorization/refinement and all availability/report fields must equal the originally guaranteed report before an opaque positive capability exists.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value
@@ -128,9 +136,11 @@ proc evaluationCycle*(fixture: AuditContextFixture) =
   assert checked.valid and checked.matchesOrigin(target) and checked.evaluationInfo.value.positive, "only exact source-bound equality grants a positive capability"
   assert array[32, byte](checked.evaluationInfo.value.reportHash) == array[32, byte](
       target.originReportHash.value), "whole signed canonical report identity"
+
 proc stopNow(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Immediate trusted execution cancellation retains no external callback graph.
   true
+
 proc evaluationChecks*(fixture: AuditContextFixture) =
   ## Both original available reports, private source identity, input corruption and local quota refusals use genuine execution rather than caller-provided validity flags.
   evaluationCycle(fixture)
@@ -183,6 +193,7 @@ proc registryLimits*(): AuditRegistryLimits =
   ## Aggregate private pins have explicit whole-map and detached-context ceilings independent from per-origin limits.
   AuditRegistryLimits(blocks: ElementLimit(2), entries: ElementLimit(20000), nodes: TrieNodeLimit(2000000),
     valueBytes: ByteLimit(16000000), contextBytes: ByteLimit(16000000))
+
 proc registryChecks*(fixture: AuditContextFixture) =
   ## Genuine full origins bind trusted checkpoints, and namespace/aggregate/source checks prevent stale selectors or public metadata from installing private evaluation authority.
   let captured = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(),
@@ -266,14 +277,15 @@ proc registryChecks*(fixture: AuditContextFixture) =
   other.clear()
   limited.clear() # All complete-map/evaluation aliases retire only while no native borrower exists.
 
-
 proc recoveryLimits*(): AuditRecoveryLimits =
   ## Finite independent arithmetic and whole-copy credit cover this genuine small four-original-shard fixture.
   AuditRecoveryLimits(bytes: ByteLimit(16000000), products: FieldProductLimit(10000000))
+
 proc proofLimits(): AvailabilityMerkleLimits =
   ## Full packet verification happens independently before threshold reconstruction.
   AvailabilityMerkleLimits(bytes: ByteLimit(1000000), hashes: ElementLimit(10000),
       hashBytes: ByteLimit(1000000))
+
 proc originalShards(fixture: AuditContextFixture, target: AuditReportOrigin): seq[
     PreparedAvailabilityTransfer] =
   ## Source selection follows the full original canonical report identity rather than trusting an ordinal or a detached root alone.
@@ -282,12 +294,14 @@ proc originalShards(fixture: AuditContextFixture, target: AuditReportOrigin): se
     if array[32, byte](bundle.reportHash) == expected: return bundle.auditShards
   assert false, "genuine original availability source missing"
   return @[]
+
 proc verifiedPacket(packet: PreparedAvailabilityTransfer): VerifiedAvailabilityTransfer =
   ## The maintained CE138 verifier binds original coordinate/root and every exact message extent before returning a private checked handle.
   let verified = verifyAvailabilityTransfer(packet.specifier, packet.request,
     packet.bundleShard, packet.segmentShards, packet.justification, proofLimits())
   assert verified.error == AvailabilityTransferError.None, "actual original CE138 Merkle authentication"
   verified.value
+
 proc recoveryChecks*(fixture: AuditContextFixture) =
   ## Original and nonconsecutive parity coordinates recover genuine bytes, while foreign metadata, duplicate points, bad proofs, local quotas and cancellation expose no evidence prefix.
   let origin = captureAuditOrigin(fixture.view, fixture.blockHash, auditLimits(), auditOriginLimits()).value

@@ -15,10 +15,13 @@ import ../../support/validator_rotation_fixture
 
 ## Refuse setup (bit 2) or verification (bit 8) through the test-only native observer.
 proc reset(flags: cint) {.importc: "bo_reset", cdecl.}
+
 ## Native setup allocations must be released before every success/refusal call returns.
 proc liveSetups(): cint {.importc: "bo_live_setups", cdecl.}
+
 ## Observe proof work so early policy/order-state failures cannot conceal native verification.
 proc verifies(): cint {.importc: "bo_verifies", cdecl.}
+
 ## Observe setup work independently from successful proof verification.
 proc setups(): cint {.importc: "bo_setup_news", cdecl.}
 

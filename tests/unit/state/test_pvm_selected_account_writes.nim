@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_selected_account_writes_arc_release"}
 
 ## Genuine account mutations prove selected physical key/value ownership across M, n, cancellation and skipped credits.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[selected_writes as accumulation_selected_writes,
     annulment as accumulation_annulment]
@@ -21,13 +23,17 @@ import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,
   pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc profile(): Parameters =
   ## Zero deposits isolate genuine logical ownership without changing actual host gas or opcode execution.
   var wire = encodeParameters(pvmParameters())
   for index in 0..<24: wire[index] = 0 # Complete deposit words are independently authored.
   decodeParameters(wire).value
+
 proc run(fixture: BatchFixture, index: uint64, facts = 8'u64): AccumulationOutcome =
   ## Enable complete independent creation and physical facts before any actual guest mutation.
   let execution = batchExecution(fixture, index, parameters = profile(),
@@ -37,23 +43,28 @@ proc run(fixture: BatchFixture, index: uint64, facts = 8'u64): AccumulationOutco
         serviceProbes = ServiceProbeLimit(1))
   assert execution.error == AccumulationDispatchError.None, $execution.error
   normalizeAccumulationOutcome(execution).value
+
 proc previous(source: PreparedAccumulationAnnulment, ids: openArray[
     ServiceIndex]): PreparedAccumulationAccountSelection =
   ## This explicit subset is not a claim that all prior accounts or input groups have been covered.
   prepareAccumulationAccountSelection(source, ids, AccumulationAccountSelectionLimits(
     accounts: ElementLimit(2), outcomes: ElementLimit(2), checks: ElementLimit(256))).value
+
 proc added(source: PreparedAccumulationAnnulment): PreparedAccumulationCreationUnion =
   ## Strict enabled membership proves the complete new-account contribution of surviving original outcomes.
   prepareAccumulationCreationUnion(source, AccumulationCreationLimits(outcomes: ElementLimit(2),
     creations: ElementLimit(2), accounts: ElementLimit(2), checks: ElementLimit(128))).value
+
 proc policy(): SelectedAccountWriteLimits =
   ## Account/fact/descriptor/payload/predicate ceilings are independent and explicit.
   SelectedAccountWriteLimits(accounts: ElementLimit(4), facts: ElementLimit(32),
     writes: ElementLimit(8), checks: ElementLimit(256), valueBytes: ByteLimit(1024))
+
 proc paired(fixture: BatchFixture, facts = 8'u64): PreparedAccumulationAnnulment =
   ## Bind normalized actual executions to the exact common input and prior owners.
   prepareAccumulationAnnulment(fixture.inputs, fixture.state.snapshot.value,
     [run(fixture, 0, facts), run(fixture, 1, facts)], annulmentPolicy()).value
+
 proc checkSupervisor(supervisor: uint32) =
   ## Own selected writes win unless the real original supervisor conflict annuls that self mutation.
   let fixture = annulmentFixture(supervisor = supervisor, emit = false)

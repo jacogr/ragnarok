@@ -21,6 +21,7 @@ proc roundFixture*(withReady = true, withRound = true,
   prepareComputedPublication(publicationFixture(withReady = withReady, withRound = withRound,
       withExecution = withExecution, invalidEntry = invalidEntry,
       withComposition = withComposition, withChain = withChain, storage = storage), ByteLimit(100000)).value
+
 proc computedRoundConfig*(source: ComputedReportSuccessor): ComputedRoundConfig =
   ## Keep semantic gas exactly original while independently bounding queue, privilege and invocation-input work.
   let batch = source.computedSuccessorSource.value.computedAdmissionSource.value.computedInclusionSource.value

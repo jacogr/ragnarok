@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed/default decodes grant no register-coordinate query; genuine coordinates survive raw-copy changes and owner release.
+
 import std/[assertions, cmdline]
 import ../../src/pvm/program
 let origin = paramStr(1)

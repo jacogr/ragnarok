@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Native lease interruptions preserve nonblocking competition and exact one-owner retirement.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples, storage_io]
@@ -11,6 +12,7 @@ import ../../../src/storage/file/repository as file_repository
 import ../../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
+
 proc scenario(managed: bool) {.raises.} =
   ## Both layouts resume acquisition/unlock, retain real Busy, and stop permanently refused operations.
   resetIo()

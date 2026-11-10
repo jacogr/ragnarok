@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## External publication transitions require an admitted pending/current job, never a default slot.
+
 import std/cmdline
 import ../../src/app/current/handoff as current_handoff
 import ../../src/app/chain

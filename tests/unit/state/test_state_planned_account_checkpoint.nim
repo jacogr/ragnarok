@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Whole-account admission precedence and content-hash boundaries survive unchanged expected-root checkpoint restoration.
+
 # @@Verification={"arc": "state_planned_account_checkpoint_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, planned_account_checkpoint_context, arc_evidence]
@@ -14,16 +15,21 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[trie as state_trie, accounts as state_accounts,
     composition as state_composition]
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset hash counters or reject all primitive calls.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Separate mandatory restoration/capture hashes from account content hashes.
+
 proc after(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Allow exact restoration/capture and reject the first content hash after successful planning.
+
 proc cycle(wire: seq[byte], root: StateRoot, services: seq[StateService]) =
   ## Retire a complete restored audit graph inside one activation.
   let result = decodePlannedAccountCheckpoint(wire, root, services, inventoryProfile, plannedCheckpointTestLimits)
   assert result.error == PlannedAccountCheckpointError.None
+
 proc main() {.raises.} =
   ## Build independent complete source and semantic-fault checkpoint before observer measurements.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

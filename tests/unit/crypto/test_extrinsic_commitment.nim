@@ -13,8 +13,10 @@ import ../../../src/codec/[block_codec, bounded, composite, header, disputes]
 
 ## Test-only primitive refusal preserves successful production digests.
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Refuse after a complete prefix of blob/report/family hashes.
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 ## Every default/preflight refusal must reach zero hash calls.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

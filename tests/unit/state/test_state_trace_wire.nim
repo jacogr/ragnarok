@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Published RawState prefix framing, detached ownership and atomic resource/root refusals.
+
 import std/[assertions, syncio]
 import ../../../src/state/trace/state as trace_state
 import ../../../src/state/store
@@ -13,11 +14,13 @@ proc policy(): StateStoreLimits =
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(200),
       totalValueBytes: ByteLimit(300), nodes: TrieNodeLimit(1024)),
       writes: ElementLimit(4), writeValueBytes: ByteLimit(300))
+
 proc key(value: byte): StateKey =
   ## Authored complete keys differ in their first octet.
   var bytes = default(array[31, byte])
   bytes[0] = value
   StateKey(bytes)
+
 proc main() =
   ## Wire and map owners survive destructive input/output mutations; no failed alternative grants an owner.
   let absentOutcome = default(TraceStateResult[TraceState])

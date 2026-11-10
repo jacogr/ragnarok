@@ -21,6 +21,7 @@ proc computedAssuranceConfig*(): ComputedAssuranceConfig =
     safrole: config.safrole,
     availability: config.availability, reports: ElementLimit(3), reportBytes: ByteLimit(100000),
         totalReportBytes: ByteLimit(400000))
+
 proc assurancePrior*(): AdvancedComputedChain =
   ## Execute and publish the real first block before authoring any later assurance or header.
   let source = chainFixture(storage = ComputedStorageMode.Commit)
@@ -28,11 +29,13 @@ proc assurancePrior*(): AdvancedComputedChain =
   var state = forkStateStore(source.statePublicationParent).value
   var view = genesisView(parent)
   advanceComputedChain(state, view, source).value
+
 proc context(domain: string, seed: array[32, byte]): seq[byte] =
   ## Independently encode literal signing domain followed by exactly one raw fixed entropy/output word.
   result = newSeq[byte](domain.len+32)
   for index, octet in domain: result[index] = byte(octet) # No terminator, token dollar sign or length prefix.
   for index in 0..<32: result[domain.len+index] = seed[index]
+
 proc assuranceCandidate*(source: AdvancedComputedChain, votes = 7, badSignature = false,
     badAnchor = false, badSeal = false): OwnedBlock =
   ## Sign each actual parent validator's three-core bit vector, commit the entire body, then sign the real successor header.

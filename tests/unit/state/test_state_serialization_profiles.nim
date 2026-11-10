@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete current-schema maps qualify every chapter under tiny/full and resized profiles.
+
 import std/[assertions, envvars, strutils, syncio]
 import ../../support/state_complete_serialization_context
 import ../../../src/state/[checkpoint, store, manifest, global_snapshot, validated_checkpoint]
@@ -17,9 +18,11 @@ const
     globals: GlobalStateLimits(chapter: policy, totalBytes: ByteLimit(8000000)),
     manifest: StateManifestLimits(services: ElementLimit(1), serialized: mapLimits,
       storageKeyBytes: ByteLimit(65)))
+
 proc reason(error: StateCompositionError): string =
   ## Match the oracle's stable typed reason names without weakening the native success contract.
   ($error).toLowerAscii
+
 proc check(fields: seq[string], ordinal: int) {.raises.} =
   ## Exact complete bytes and independent root must survive composition and typed checkpoint restoration.
   assert fields.len == 24
@@ -66,6 +69,7 @@ proc check(fields: seq[string], ordinal: int) {.raises.} =
   assert restored.error == ValidatedCheckpointError.None
   assert encodeFullCheckpoint(restored.value.manifestSource.value,
       limits.checkpointBytes).value == expected
+
 proc main() {.raises.} =
   ## Every generated profile/schedule row is mandatory; setup failure is never a negative-test pass.
   var count = 0

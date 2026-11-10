@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_computed_execution_arc_release"}
 
 ## Genuine historical service execution retains original computed parameters and never fabricates engine outcomes.
@@ -97,11 +98,13 @@ expect(default(ExecutedComputedAccumulation).computedExecutionSource,
     ComputedExecutionError.Uninitialized)
 expect(default(ExecutedComputedAccumulation).computedExecutionCompleted,
     ComputedExecutionError.Uninitialized)
+
 proc detached(): ExecutedComputedAccumulation =
   ## Retain actual terminal/gas/source owners after every caller's original fixture and policy retires.
   executeComputedAccumulation(computedExecutionFixture(), computedExecutionLimits()).value
 let held = detached()
 assert held.computedExecutionCompleted.value.executionInfo.value.services == 1
+
 proc cycle(source: ComputedAccumulationRound, limits: AccumulationRunnerLimits) =
   ## Execute and release actual service contexts, machine snapshots, completed batch and source sharing.
   let value = executeComputedAccumulation(source, limits).value

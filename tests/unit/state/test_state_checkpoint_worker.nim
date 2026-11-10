@@ -15,15 +15,18 @@ import ../../../src/codec/bounded
 import ../../support/arc_evidence
 
 const Prefix = "state-checkpoint-worker"
+
 proc policy(): StateStoreLimits =
   ## Small complete maps provide distinct roots without unrelated block execution or protocol assumptions.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(4), perValue: ByteLimit(100),
     totalValueBytes: ByteLimit(200), nodes: TrieNodeLimit(1024)), writes: ElementLimit(4),
         writeValueBytes: ByteLimit(200))
+
 proc detached(value: byte): PreparedCheckpoint =
   ## Every original complete-map alias retires before the independent encoded owner is staged.
   let snapshot = newStateStore([StateEntry(key: default(StateKey), value: @[value])], policy()).value.snapshot.value
   prepareFullCheckpoint(snapshot, ByteLimit(1000))
+
 proc waitDone(worker: var CheckpointWorker) =
   ## Scalar-only test polling yields to the actual I/O thread under a monotonic deadline.
   let started = getMonoTime()
@@ -32,6 +35,7 @@ proc waitDone(worker: var CheckpointWorker) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # This is test scheduling, never production polling or a storage latency guarantee.
+
 proc cycle(worker: var CheckpointWorker, head: var CheckpointHead) =
   ## Host-created private buffers return to their own allocator thread only after worker-local aliases retire.
   var prepared = detached(3)
@@ -46,6 +50,7 @@ proc cycle(worker: var CheckpointWorker, head: var CheckpointHead) =
       CheckpointBankError.None
   head = completed.value.value
   assert array[32, byte](head.root) == array[32, byte](expectedRoot)
+
 proc main() {.raises.} =
   ## No live canonical graph is borrowed; foreign/stale tickets, Done capacity and shutdown outcomes stay explicit.
   for suffix in [".head", ".0", ".1", "-foreign.head", "-foreign.0", "-foreign.1"]:

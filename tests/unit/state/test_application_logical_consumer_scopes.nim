@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Checkpoint, original-current review and proof query owners outlive genuine collected fixture scopes; detached bytes survive all canonical source retirement.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_supplied_context,
     current_logical_review_context,
@@ -26,6 +27,7 @@ type DetachedConsumers = object ## Only independent bytes, semantic keys, fixed 
   plan: StateProofPlan
   root: StateRoot
   profile: StateProfile
+
 proc detached(): DetachedConsumers {.raises.} =
   ## Native fixtures and all logical/current/query/report/capsule owners retire before the caller authenticates detached output.
   let fixture = collectedNativeFixture()
@@ -42,6 +44,7 @@ proc detached(): DetachedConsumers {.raises.} =
     checkpoint: capsule.copyCurrentCheckpoint(ByteLimit(1048576)).value, plan: plan,
     root: logical.currentLogicalContext.value.state.commitment.root,
     profile: logical.currentLogicalSource.value.currentStateGlobals.value.qualifiedCurrentProfile.value.derivedStateProfile.value)
+
 proc main() {.raises.} =
   ## Independent expected roots and schemas are retained before original owners leave scope; response bytes never choose their own trust.
   let outside = detached()

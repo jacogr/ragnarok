@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Failed/default memo values grant no selectable payload; successful mode checks genuine lazy facts and copied children.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/pvm/program
 import ../../src/pvm/gas/[gas, memo as gas_memo]

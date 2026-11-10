@@ -2,32 +2,42 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared real loopback WebSocket controls retain bounded polling and explicit native descriptor ownership.
+
 import std/[assertions, strutils, nativesocket, monotimes, times]
 import std/posix/posix
 import ../../src/rpc/server
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Bound local polling pauses through the host SDK.
+
 proc openSocket(domain, kind, protocol: cint): cint {.importc: "socket", header: "<sys/socket.h>".}
   ## Create a real native loopback descriptor for tests.
+
 proc bindPort(fd: cint, address: pointer, length: SockLen): cint {.importc: "bind",
     header: "<sys/socket.h>".}
   ## Bind explicit initialized native addresses.
+
 proc socketName(fd: cint, address: pointer, length: ptr SockLen): cint {.importc: "getsockname",
     header: "<sys/socket.h>".}
   ## Read the actual ephemeral port assigned by the kernel.
+
 proc connectPort(fd: cint, address: pointer, length: SockLen): cint {.importc: "connect",
     header: "<sys/socket.h>".}
   ## Connect a client only to the selected local endpoint.
+
 proc networkPort(port: uint16): uint16 {.importc: "htons", header: "<netinet/in.h>".}
   ## Convert the configured port to network byte order.
+
 proc hostPort(port: uint16): uint16 {.importc: "ntohs", header: "<netinet/in.h>".}
   ## Convert the kernel-selected port to host byte order.
+
 proc ipv4(text: cstring): uint32 {.importc: "inet_addr", header: "<arpa/inet.h>".}
   ## Use the SDK IPv4 parser for fixed loopback text.
+
 proc sendBytes(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "send",
     header: "<sys/socket.h>".}
   ## Send only the initialized test frame extent.
+
 proc receive(fd: cint, data: pointer, length: csize_t, flags: cint): int {.importc: "recv",
     header: "<sys/socket.h>".}
   ## Receive into bounded explicitly initialized test storage.
@@ -124,6 +134,7 @@ proc assertPortReleased*(port: uint16) =
   defer: discard posix.close(probe)
   var released = address(port)
   assert bindPort(probe, addr released, SockLen(sizeof(released))) == 0, "RPC refusal releases the opened UI listener"
+
 proc upgrade*(rpc: var Server, peer: cint, pending: var string) =
   ## Exercise the real HTTP upgrade before sending masked JSON-RPC requests.
   sendText(peer, "GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", false)

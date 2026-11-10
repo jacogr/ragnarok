@@ -3,6 +3,7 @@
 
 ## JAMNP-S CE134 shard populations derive from the H slots after the authenticated anchor, not only the present roster.
 ## Fixed copied facts retain no map/roster aliases and grant no report-signing authority.
+
 import ./[work_submission, work_anchors]
 import ../chain/[provider, genesis, parameters]
 import ../codec/bounded
@@ -29,21 +30,26 @@ type
       codecChapter: StateChapter
     of InvalidState: invalidChapter: StateChapter
     else: discard # Local/source refusals never expose guessed counts.
+
 func error*[T](outcome: WorkPopulationResult[T]): WorkPopulationError =
   ## Inspect the refusal without writable discriminators.
   outcome.status
+
 func value*[T](outcome: WorkPopulationResult[T]): T {.requires: outcome.status ==
     WorkPopulationError.None.} =
   ## Only a fully bounded established window has extractable facts.
   outcome.completed
+
 func stateError*[T](outcome: WorkPopulationResult[T]): StateStoreError {.requires: outcome.status ==
     WorkPopulationError.StateFailure.} =
   ## Missing chapters remain genuine source lookup failures.
   outcome.storeReason
+
 func componentError*[T](outcome: WorkPopulationResult[
     T]): StateComponentError {.requires: outcome.status == WorkPopulationError.ComponentFailure.} =
   ## Retain exact decoder resource/framing causes.
   outcome.codecReason
+
 func chapter*[T](outcome: WorkPopulationResult[T]): StateChapter {.requires: outcome.status in {
     WorkPopulationError.StateFailure, WorkPopulationError.ComponentFailure,
     WorkPopulationError.InvalidState}.} =
@@ -52,19 +58,24 @@ func chapter*[T](outcome: WorkPopulationResult[T]): StateChapter {.requires: out
   of WorkPopulationError.StateFailure: outcome.storeChapter
   of WorkPopulationError.ComponentFailure: outcome.codecChapter
   else: outcome.invalidChapter
+
 func accepts*(window: WorkShardWindow, shards: ErasureShards): bool =
   ## A default or a roster absent from every candidate slot cannot authorize this erasure population.
   window.ready and ((window.current and uint16(shards) == uint16(window.active)) or
     (window.next and uint16(shards) == uint16(window.pending)))
+
 func accepts*(window: WorkShardWindow, shards: ErasureShards, core: CoreIndex): bool =
   ## GP reporting_assurance limits active cores to population/3; a future acceptable count cannot activate a higher core.
   window.accepts(shards) and uint64(core) < uint64(uint16(shards)) div 3
+
 func firstSlot*(window: WorkShardWindow): StateTime {.requires: window.ready.} =
   ## The anchor slot itself is excluded by the protocol's following-slot window.
   window.first
+
 func lastSlot*(window: WorkShardWindow): StateTime {.requires: window.ready.} =
   ## The Hth following slot is included, with overflow proved before construction.
   window.last
+
 proc captureWorkPopulation*(context: AnchoredWorkContext, original: WorkSubmissionHeader,
     view: ChainView, config: SafroleStateConfig): WorkPopulationResult[WorkShardWindow] =
   ## Use exact qualified head/package identity and the trusted retained anchor's complete C8/C4 state.

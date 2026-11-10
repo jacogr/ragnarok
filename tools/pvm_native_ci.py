@@ -69,6 +69,7 @@ def host_identity():
 
 
 RESIDENT_SUITES = ('pvm_fresh_resident', 'pvm_resident_bytes')
+SCALAR_SUITES = ('pvm_accumulation_scalar_host', 'pvm_scalar_host')
 
 
 def resident_source_paths():
@@ -83,8 +84,20 @@ def resident_source_paths():
     return paths
 
 
+def scalar_source_paths():
+    """Bind both registered scalar mains, full output/profile contracts and their actual local support."""
+    paths = [ROOT/'tests/support/arc_evidence.nim',
+             ROOT/'tests/support/pvm_accumulation_context.nim',
+             ROOT/'tests/support/pvm_accumulation_program.nim']
+    for suite in SCALAR_SUITES:
+        source = unit_source(suite)
+        paths.extend((source, source.with_suffix('.output'),
+                      ROOT/'tools/native_requirements'/NATIVE_REQUIREMENTS[suite]['directory']/(suite+'.json')))
+    return paths
+
+
 def qualify_policy(checks, compiler, shared_refusal=False):
-    """Require registered lease/resident policy checks and retain fresh resident ARC proof in this artifact."""
+    """Require registered policy/scalar checks and retain their source-bound fresh ARC contracts."""
     for suite in RESIDENT_SUITES:
         # Presence selects compatibility even for '=0' or '=false'; benign profile additions remain valid.
         profile = NATIVE_REQUIREMENTS[suite]
@@ -93,15 +106,17 @@ def qualify_policy(checks, compiler, shared_refusal=False):
         if 'pvmResidentWitness' not in keys or keys & compatibility:
             raise ValueError('Resident qualification registration changed: '+suite)
     identities = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
-                  for path in resident_source_paths()}
+                  for path in resident_source_paths()+scalar_source_paths()}
     rows = []
-    suites = ('pvm_memory_reuse', 'pvm_runtime_policy', *RESIDENT_SUITES)
+    suites = ('pvm_memory_reuse', 'pvm_runtime_policy', *RESIDENT_SUITES, *SCALAR_SUITES)
     if not shared_refusal:
         # Unsupported hosts retain the registered fallback check; a real selected refusal replaces it.
         suites += ('pvm_runtime_policy_refused',)
     for suite in suites:
         resident = suite in RESIDENT_SUITES
-        if resident:
+        bound = resident or suite in SCALAR_SUITES
+        retain_arc = resident or suite == 'pvm_scalar_host'
+        if retain_arc:
             # Retire only this suite's prior original and retained ARC file before the maintained launcher runs.
             original = unit_evidence_directory(compiler)/(suite+'.json')
             retained = checks.folder/(suite+'.json')
@@ -110,20 +125,22 @@ def qualify_policy(checks, compiler, shared_refusal=False):
         checked = checks.command([sys.executable, ROOT/'tools/native_tests.py', '--suite', suite],
                                  suite, timeout=900)
         row = dict(suite=suite, run=checked)
-        if resident and original.is_file():
+        if retain_arc and original.is_file():
             # The launcher can reject fresh ARC itself; retain its raw first failure before checking exit.
             retained.write_bytes(original.read_bytes())
         if checked['exit_code']:
             raise RuntimeError('PVM memory/policy qualification failed: '+checked['log'])
-        if resident:
+        if retain_arc:
             # Top-level JSON follows the existing artifact glob; a green child still requires fresh evidence.
             proof = unit_evidence(compiler, suite, checks.folder)
+            row.update(arc=proof, arc_evidence=str(retained),
+                arc_evidence_sha256=hashlib.sha256(retained.read_bytes()).hexdigest())
+        if bound:
+            # Actual state scalar execution owns its registered observer preparation, without an invented ARC record.
             if any(hashlib.sha256((ROOT/path).read_bytes()).hexdigest() != digest
                    for path, digest in identities.items()):
-                raise ValueError('Resident qualification source changed')
-            row.update(arc=proof, arc_evidence=str(retained),
-                arc_evidence_sha256=hashlib.sha256(retained.read_bytes()).hexdigest(),
-                registered_defines=NATIVE_REQUIREMENTS[suite]['defines'], sources=identities)
+                raise ValueError('Policy qualification source changed')
+            row.update(registered_defines=NATIVE_REQUIREMENTS[suite]['defines'], sources=identities)
         rows.append(row)
     return rows
 
@@ -325,7 +342,8 @@ def run():
                  *sorted((ROOT/'tests/unit/state').glob('test_pvm_runtime_policy*')),
                  *sorted((ROOT/'tools').glob('native_*.py')),
                  *sorted((ROOT/'tools/native_requirements/state').glob('pvm_runtime_policy*.json'))]
-        paths += shared_source_paths()+resident_source_paths()+read_width_source_paths()
+        paths += (shared_source_paths()+resident_source_paths()+scalar_source_paths()+
+                  read_width_source_paths())
         report['sources'] = {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
                              for path in paths if path.is_file()}
         destination.write_text(json.dumps(report, indent=2)+'\n')

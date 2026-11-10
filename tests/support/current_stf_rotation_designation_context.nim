@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit nine-member staging copies and retained ancestor proofs for four-epoch designation histories.
+
 import ./current_stf_rotation_hosts_context
 import ../../src/app/candidate
 import ../../src/codec/bounded

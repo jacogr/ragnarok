@@ -15,6 +15,7 @@ proc compositionFixture*(withComposition = true, withChain = false,
   let source = finalizationFixture(withComposition = withComposition, withChain = withChain,
       storage = storage)
   finalizeComputedAccumulation(source, computedFinalizationConfig()).value
+
 proc computedCompositionLimits*(): AccumulationCompositionLimits =
   ## Adapt only the actual three-core domains and independent aggregate reporter/queue resource ceilings.
   result = completionLimits().composition

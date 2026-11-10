@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Authored malformed extents and limits must refuse before preparation, hashing or provisional delivery.
+
 import std/[algorithm, assertions, syncio]
 import ../../support/storage_samples
 import ../../../src/storage/full/state_trie as full_state_trie
@@ -11,19 +12,24 @@ import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
 type Trace = object ## Callback counters remain independent of codec metadata and native hash counters.
   starts, records: int
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Retain real hashing while observing exact zero-work preflight boundaries.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Capture local crypto work without substituting digests.
+
 proc prepare(state: var Trace, info: RecordCollectionInfo) =
   ## The callback's common name intentionally matches the API formal; private binding must remain unambiguous.
   assert state.starts == 0 and int(calls()) == 0
   inc state.starts
+
 proc consume(state: var Trace, record: var TrieRecord): bool =
   ## The common consumer name also matches the API formal and cannot shadow its bound procedure value.
   assert state.starts == 1 and state.records < 16
   inc state.records
   true
+
 proc exercise(input: openArray[byte], limits: RecordLimits, collection: bool,
     expected: RecordError, records = 0) =
   ## Invalid structures leave both callbacks and crypto untouched and retire all local scratch.
@@ -40,11 +46,13 @@ proc exercise(input: openArray[byte], limits: RecordLimits, collection: bool,
   else:
     assert state.starts == 0 and state.records == 0 and int(calls()) == 0
   assert getOccupiedMem() == before
+
 proc putNumber(input: var seq[byte], offset: int, value: uint64) =
   ## The corpus owns exact fixed-width edits; prove every destination before writing little-endian bytes.
   assert offset >= 0 and offset <= input.len-8
   for index in 0..<8:
     input[offset+index] = byte((value shr (index*8)) and 255)
+
 proc compareRecord(a, b: TrieRecord): int =
   ## Independent canonical fixture order uses complete address bytes, never an exported trusted scan token.
   let left = array[32, byte](a.digest)

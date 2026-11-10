@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen whole-account policies preflight complete work while granting no successful semantic invariants.
+
 # @@Verification={"arc": "state_account_audit_plan_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[state_inventory_context, account_audit_plan_context, arc_evidence]
@@ -9,17 +10,22 @@ import ../../../src/state/account/audit/plan as account_audit_plan
 import ../../../src/state/inventory
 import ../../../src/codec/bounded
 include ../../native/composition_fixture
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashes after real complete source capture.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Planning must never hash or copy a preimage payload.
+
 proc expect(source: StateInventory, limits: AccountAuditLimits, phase: AccountAuditRefusal) =
   ## Check both bounded refusal and its exact guarded policy boundary.
   let refused = planAccountAudit(source, limits)
   assert refused.error == AccountAuditPlanError.LimitExceeded and refused.refusedPhase == phase
+
 proc cycle(source: StateInventory) =
   ## Retire a fixed frozen plan and retained source handle each cycle.
   assert planAccountAudit(source, accountAuditTestLimits).value.accountPlanInfo.value.planningChecks == 5
+
 proc main() {.raises.} =
   ## Capture complete valid and wrong-content sources before disabling all hashing.
   let fixture = compositionFixture(getEnv("RAGNAROK_COMPOSITION_FIXTURE"))

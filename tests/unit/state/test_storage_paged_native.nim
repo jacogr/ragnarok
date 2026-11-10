@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real directory/file/pin owners qualify durable selection, retained readers and guarded epoch reclamation.
+
 # @@Verification={"arc":"storage_paged_native_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, storage_crash, paged_native_fixture, paged_reference]
@@ -11,13 +12,17 @@ import ../../../src/storage/file/errors as file_errors
 import ../../../src/storage/managed/manifest as managed_manifest
 import ../../../src/storage/light/delta as light_delta
 import ../../../src/storage/[durability, state_proof]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Provider refusal is independent of native IO instrumentation.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Counter exhaustion refuses before dispatching the observed hash provider.
+
 proc path(label: string): string =
   ## Each suite process owns an isolated ignored native working directory.
   "paged-native-" & $storageProcessId() & "-" & label
+
 proc normal(old, fresh: PagedNativeFixture) =
   ## Independent reader descriptors/pins survive writer close, same-root replacement and explicit root advancement.
   let directory = path("normal")
@@ -81,15 +86,18 @@ proc normal(old, fresh: PagedNativeFixture) =
   assert not reader.opened
   assert openPagedWriter(writer, directory, fresh.config).error == PagedNativeError.None
   assert writer.close == FileError.None
+
 proc seeded(writer: var PagedWriter, label: string, fixture: PagedNativeFixture): string =
   ## Every fault trial starts from a separately created, synchronized namespace.
   result = path(label)
   assert initializePagedWriter(writer, result, fixture.config, fixture.records.nativeProducer,
     uint64(fixture.records.len), fixture.payload).error == PagedNativeError.None
+
 proc prepare(writer: var PagedWriter, candidate: var PagedCandidate, fixture: PagedNativeFixture) =
   ## Exercise the real append/fsync path before isolating publication faults.
   assert preparePagedReplacement(writer, candidate, fixture.records.nativeProducer,
     uint64(fixture.records.len), fixture.payload).error == PagedNativeError.None
+
 proc policies(fixture: PagedNativeFixture) =
   ## Pure quota/provider refusal preserves reader authority; independent writer opens remain exclusive.
   var writer = default(PagedWriter)
@@ -127,6 +135,7 @@ proc policies(fixture: PagedNativeFixture) =
   assert openPagedReader(reader, directory, fixture.config).error == PagedNativeError.None
   assert reader.close == FileError.None
   assert writer.close == FileError.None
+
 proc staleCandidate(fixture: PagedNativeFixture) =
   ## Closing/reopening an equal head creates a new writer incarnation; forensic epochs are never overwritten.
   var writer = default(PagedWriter)
@@ -147,6 +156,7 @@ proc staleCandidate(fixture: PagedNativeFixture) =
   assert not candidate.opened
   assert uint64(writer.selected.value.epoch) == 1
   assert writer.close == FileError.None
+
 proc publicationFault(fixture: PagedNativeFixture, operation: cint, skip: int) =
   ## Inject one observed native boundary; strict reopen alone decides the actual old/new synchronized manifest.
   var writer = default(PagedWriter)
@@ -178,6 +188,7 @@ proc publicationFault(fixture: PagedNativeFixture, operation: cint, skip: int) =
   assert sequence == 0 or sequence == 1
   if publication.error == PagedNativeError.None: assert sequence == 1
   assert writer.close == FileError.None
+
 proc publicationFaults(fixture: PagedNativeFixture) =
   ## Measure the normal path once, then require every injected read/write/barrier/rename/retirement/pin to fire.
   let operations = [readIo, writeIo, syncIo, renameIo, closeIo, lockIo]
@@ -195,6 +206,7 @@ proc publicationFaults(fixture: PagedNativeFixture) =
   for index in 0..<operations.len:
     assert counts[index] > 0 and counts[index] < 1000
     for skip in 0..<int(counts[index]): publicationFault(fixture, operations[index], skip)
+
 proc shortAndInterrupted(fixture: PagedNativeFixture) =
   ## Positive short reads/writes and EINTR retry the same unfinished syscall, while close is never retried.
   var writer = default(PagedWriter)
@@ -229,6 +241,7 @@ proc shortAndInterrupted(fixture: PagedNativeFixture) =
   assert not reader.opened and reader.close == FileError.Uninitialized
   resetIo()
   assert writer.close == FileError.None
+
 proc authoringFailure(fixture: PagedNativeFixture) =
   ## Zero-progress authoring preserves an explicit-close forensic candidate and leaves the source usable.
   var writer = default(PagedWriter)
@@ -249,6 +262,7 @@ proc authoringFailure(fixture: PagedNativeFixture) =
   assert uint64(writer.selected.value.sequence) == 0
   assert candidate.close == FileError.None
   assert writer.close == FileError.None
+
 proc readerCycle(directory: string, fixture: PagedNativeFixture) =
   ## Real independent native resources, owned lookups and moves all retire before each allocation sample.
   var source = default(PagedReader)
@@ -258,6 +272,7 @@ proc readerCycle(directory: string, fixture: PagedNativeFixture) =
   assert moved.lookup(pagedKey(0), pagedPolicy().work).value.bytes[0] == 7
   assert moved.lookup(pagedKey(64), pagedPolicy().work).error == PagedNativeError.UnknownKey
   assert moved.close == FileError.None
+
 proc cycles(fixture: PagedNativeFixture) =
   ## One thousand complete open/verify/lookup/move/close lifetimes also exercise reacquisition after every pin retirement.
   var writer = default(PagedWriter)
@@ -279,6 +294,7 @@ proc writeFixture(name: string, bytes: seq[byte]) =
     writeFile(name, text)
   except:
     assert false, "native fixture write"
+
 proc counterExhaustion(fixture: PagedNativeFixture) =
   ## Independently rehashed max counters must refuse before producer, hash or build IO is dispatched.
   for mode in 0..<2:
@@ -304,6 +320,7 @@ proc counterExhaustion(fixture: PagedNativeFixture) =
     assert ioCalls(readIo) == 0 and ioCalls(writeIo) == 0 and ioCalls(syncIo) == 0
     assert hashCalls() == 0 and not candidate.opened
     assert writer.close == FileError.None
+
 proc reclamationTrial(fixture: PagedNativeFixture, operation: cint, skip: int): array[3, uint64] =
   ## Retired cleanup separately qualifies pre-unlink failure, uncertain directory sync and post-confirmation close.
   result = default(array[3, uint64])
@@ -341,6 +358,7 @@ proc reclamationTrial(fixture: PagedNativeFixture, operation: cint, skip: int): 
   assert openPagedWriter(writer, directory, fixture.config).error == PagedNativeError.None
   assert writer.reclaim(receipt, writer.selected.value).error == PagedNativeError.None
   assert writer.close == FileError.None
+
 proc reclamationFaults(fixture: PagedNativeFixture) =
   ## Baseline observation sizes each independent barrier/unlink/retirement fault schedule.
   let counts = reclamationTrial(fixture, 0, 0)
@@ -348,6 +366,7 @@ proc reclamationFaults(fixture: PagedNativeFixture) =
   for index in 0..<operations.len:
     assert counts[index] > 0 and counts[index] < 20
     for skip in 0..<int(counts[index]): discard reclamationTrial(fixture, operations[index], skip)
+
 proc crossProcessPin(fixture: PagedNativeFixture) =
   ## An exact stopped child holds a real shared epoch pin while the parent publishes and attempts reclamation.
   var writer = default(PagedWriter)
@@ -382,6 +401,7 @@ proc crossProcessPin(fixture: PagedNativeFixture) =
   resetIo()
   assert writer.reclaim(receipt, writer.selected.value).error == PagedNativeError.None
   assert writer.close == FileError.None
+
 proc namespaceGuards(fixture: PagedNativeFixture) =
   ## Unknown staging bytes and receipts from another directory never authorize publication or deletion.
   var writer = default(PagedWriter)
@@ -415,6 +435,7 @@ proc namespaceGuards(fixture: PagedNativeFixture) =
 proc renameNative(source, destination: cstring): cint {.importc: "rename", cdecl,
     header: "<stdio.h>".}
   ## Test-only namespace substitution keeps the original inode alive under a different name.
+
 proc inodeSubstitution(fixture: PagedNativeFixture) =
   ## Equal independently valid bytes under another inode cannot revive an already captured reader or writer.
   var writer = default(PagedWriter)

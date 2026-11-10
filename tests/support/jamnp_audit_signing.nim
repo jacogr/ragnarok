@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual PEM/certificate imports, independent literal judgment domains and exact original credentials test private audit signing without a production raw-seed or arbitrary-message interface.
+
 import std/[assertions, monotimes, times, posix/posix]
 import ../../src/jamnp-s/[work_signer, audit_evaluation, audit_origin, audit_context, audits]
 import ../../src/jamnp-s/assurance_store
@@ -11,8 +12,10 @@ from ../../src/codec/assurances import ValidatorCount
 import ../../src/codec/state/safrole
 import ../../src/crypto/primitives
 import ./[assurance_signer_context, jamnp_audit_context, jamnp_audit_evaluation]
+
 proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Names are confined to this test process's native-runner directory.
+
 proc verifySignedAudit*(signed: SignedAuditJudgment, target: AuditReportOrigin, positive: bool) =
   ## Verify raw wire fields and real Ed25519 signatures independently; changing the validity domain or whole report identity must fail.
   assert signed.valid
@@ -56,9 +59,11 @@ proc verifySignedAudit*(signed: SignedAuditJudgment, target: AuditReportOrigin, 
       if positive: 103 else: 108+66*record.credentialCount), "exact CE145 record layout"
   let decoded = decodeJudgments(wire.value, limits)
   assert decoded.error == AuditError.None and decoded.value.judgmentAt(0).value.valid == positive, "canonical complete message roundtrip"
+
 proc stopNow(raw: nil pointer): bool {.nimcall, raises: [].} =
   ## Trusted execution cancellation callback has no external graph or production identity injection.
   true
+
 proc auditSigningChecks*(fixture: AuditContextFixture) {.raises.} =
   ## Real positive evaluation, actual key import and fixed native signing preserve exact source/key ownership through cancellation and Done.
   var key = "audit-signing-key-" & $processId() & ".pem"

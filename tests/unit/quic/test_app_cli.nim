@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Named CLI witnesses verify help/default agreement, ordered groups, canonical names, failures and owner release.
+
 # @@Verification={"arc": "app_cli_arc_release"}
 
 import std/[assertions, syncio, strutils]

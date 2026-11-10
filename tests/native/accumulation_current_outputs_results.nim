@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused output owners cannot expose pairs, wire, source or roots.
+
 import std/cmdline
 import ../../src/codec/state/outputs as state_outputs
 import ../../src/state/accumulation/current/[outputs as accumulation_current_outputs,

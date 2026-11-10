@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal transfer guests exercise actual terminal selection and recipient re-entry.
+
 import ./pvm_accumulation_program
 
 proc transferCode*(mode: int): seq[byte] =

@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_annulled_creation_union_arc_release"}
 
 ## Real new/supervisor/eject guests prove final n membership, original cancellation and same-frame collision invalidity.
+
 import std/[assertions, syncio]
 import ../../../src/state/accumulation/[creation_union as accumulation_creation_union,
     annulment as accumulation_annulment, dispatch as accumulation_dispatch,
@@ -16,13 +18,17 @@ import ../../../src/chain/parameters
 import ../../../src/pvm/machine
 import ../../support/[accumulation_batch_context, accumulation_annulment_context,
   pvm_accumulation_context, pvm_accumulation_program, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc profile(): Parameters =
   ## Zero deposits isolate membership while every host still executes under the real gas schedule.
   var wire = encodeParameters(pvmParameters())
   for index in 0..<24: wire[index] = 0 # Complete flat/item/byte deposit words.
   decodeParameters(wire).value
+
 proc program(foreignTarget = 0'u64, supervisor = 0'u64, panic = false,
     checkpoint = false, recreate = false): seq[byte] =
   ## Literal packed request and opcode boundaries invoke genuine allocation and account membership mutations.
@@ -44,10 +50,12 @@ proc program(foreignTarget = 0'u64, supervisor = 0'u64, panic = false,
   if panic: code.add(@[0'u8]) # Actual panic selects the exceptional context.
   code.add(@[50'u8, 0])
   guestEnvelope(code, writable = payload)
+
 proc put(fixture: var BatchFixture, entry: StateEntry) =
   ## Author complete prior rows before either outcome captures their ownership.
   assert fixture.state.apply([StateWrite(key: entry.key, kind: StateWriteKind.Put,
     value: entry.value)]).error == StateStoreError.None, "genuine complete prior amendment"
+
 proc supervisor(fixture: var BatchFixture, service, owner: uint32) =
   ## Seed exact prior incarnation without changing any runtime decision.
   let key = chapterServiceKey(StateChapter(255), ServiceIndex(service))
@@ -56,6 +64,7 @@ proc supervisor(fixture: var BatchFixture, service, owner: uint32) =
   metadata.supervisor = ServiceIndex(owner)
   fixture.put(serviceMetadataEntry(ServiceIndex(service), metadata, ByteLimit(
       ServiceMetadataBytes)).value)
+
 proc source(cancelA = false, cancelB = false, panic = false, checkpoint = false,
     disabled = false, reverse = false, collision = false,
         recreate = false): PreparedAccumulationAnnulment =
@@ -108,10 +117,12 @@ proc source(cancelA = false, cancelB = false, panic = false, checkpoint = false,
   let original = if reverse: @[second, first] else: @[first, second]
   prepareAccumulationAnnulment(fixture.inputs, fixture.state.snapshot.value, original,
       annulmentPolicy()).value
+
 proc policy(): AccumulationCreationLimits =
   ## Bound all source traversal, enabled facts, final rows and predicate comparisons explicitly.
   AccumulationCreationLimits(outcomes: ElementLimit(2), creations: ElementLimit(2),
     accounts: ElementLimit(2), checks: ElementLimit(128))
+
 proc check(cancelA, cancelB: bool, reverse = false) =
   ## Genuine cancellations remove complete child contributions, never just raw fact counters.
   let original = source(cancelA, cancelB, reverse = reverse)

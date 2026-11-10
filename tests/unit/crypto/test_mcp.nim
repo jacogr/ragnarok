@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Fixed MCP registry, stateless lifecycle, bounded HTTP framing and actual loopback request exchange.
+
 import std/[assertions, syncio, base64]
 import ../../../src/mcp/protocol
 import ../../../src/rpc/protocol as rpc
@@ -11,22 +12,27 @@ import ../../support/rpc_socket as sockets
 import ../../support/mcp_context
 include ../../../src/mcp/server
 
+let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
+
 proc request(methodName: string, params = "{}", id = "1"): string =
   ## Independent wire authoring keeps malformed-envelope tests outside the production encoder.
   "{\"jsonrpc\":\"2.0\",\"id\":" & id & ",\"method\":\"" & methodName & "\",\"params\":" & params & "}"
+
 proc call(name: string, arguments = "{}"): string =
   ## Author a fixed MCP tool call with explicit named arguments.
   request("tools/call", "{\"name\":\"" & name & "\",\"arguments\":" & arguments & "}")
+
 proc http(body: string, port = 14141'u16, extra = ""): string =
   ## Include both standard MCP response media types and exact byte framing.
   "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:" & $port &
     "\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\n" &
     extra & "Content-Length: " & $body.len & "\r\n\r\n" & body
+
 proc processed(packet: string): string =
   ## Pure HTTP processing never opens a socket and returns the fully serialized response.
   var slot = Connection(input: packet)
   let context = default(QueryContext)
-  slot.process(14141, context)
+  slot.process(requestTags, 14141, context)
   slot.output
 
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
@@ -109,10 +115,10 @@ assert "400 Bad Request" in processed(http(ping, extra = "Host: localhost:14141\
 for splitAt in 0..<http(ping).len:
   # Resume the library scanner across every packet boundary, including inside the terminator.
   var partial = Connection(input: http(ping).substr(0, splitAt - 1))
-  partial.process(14141, empty)
+  partial.process(requestTags, 14141, empty)
   assert partial.output.len == 0
   partial.input.add(http(ping).substr(splitAt))
-  partial.process(14141, empty)
+  partial.process(requestTags, 14141, empty)
   assert "200 OK" in partial.output
 assert "202 Accepted" in processed(http("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
 assert "403 Forbidden" in processed(http(ping, extra = "Origin: https://evil.example\r\n"))

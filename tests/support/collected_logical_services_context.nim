@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete authored chainspec startup and selected logical capture use the actual Services-owned physical parent.
+
 import std/[assertions, syncio, strutils, monotimes, times]
 import ./[current_repeated_logical_context, parent_profile_context, parent_globals_context,
     supplied_logical_context]
@@ -15,12 +16,15 @@ import ../../src/state/accumulation/current/update as accumulation_current_updat
 import ../../src/chain/[provider, genesis, parameters]
 import ../../src/codec/[bounded, header, block_codec]
 import ../../src/lib/json/writer as json_writer
+
 proc pauseMicros(value: cuint): cint {.importc: "usleep", header: "<unistd.h>".}
   ## Yield scalar native phase polling under an explicit monotonic deadline.
+
 proc hexBytes(value: openArray[byte]): string =
   ## Test-owned chainspec text uses independent lowercase hexadecimal encoding.
   result = ""
   for octet in value: result.add(toHex(int(octet), 2).toLowerAscii())
+
 proc logicalServicesText*(fixture: CurrentRepeatedLogicalFixture): string =
   ## Serialize the original complete authored signed parent; no successor map is repaired or installed.
   let parent = fixture.first.update.currentUpdatePriorView.bestBlock.value
@@ -33,6 +37,7 @@ proc logicalServicesText*(fixture: CurrentRepeatedLogicalFixture): string =
     entries.add(hexBytes(array[31, byte](key)), json(hexBytes(state.lookup(key).value.bytes)))
   $jsonObject([("protocol_parameters", json(hexBytes(parent.chainParameters.encodeParameters))),
     ("genesis_header", json(hexBytes(headerBytes))), ("genesis_state", json(entries))])
+
 proc startLogicalServices*(owner: var Services, fixture: CurrentRepeatedLogicalFixture,
     path: string, database = "", managed = false): SelectedLogicalParent {.raises.} =
   ## Reparse actual configured state, then validate supplied declarations against that exact new physical Services owner.
@@ -49,6 +54,7 @@ proc startLogicalServices*(owner: var Services, fixture: CurrentRepeatedLogicalF
   let profile = captureParentProfile(owner.chainView, parentProfileTestLimits).value
   let globals = qualifyParentGlobals(profile, parentGlobalsTestLimits).value
   captureLogicalParent(globals, fixture.first.services, suppliedLogicalTestLimits).value
+
 proc waitManagedPreparation*(owner: var Services) {.raises.} =
   ## Tick only supported dispatcher/scalar work while canonical aliases remain exclusively borrowed.
   let start = getMonoTime()
@@ -56,6 +62,7 @@ proc waitManagedPreparation*(owner: var Services) {.raises.} =
     assert (getMonoTime()-start).inSeconds < 20
     owner.tick(0)
     discard pauseMicros(1000)
+
 proc beginManagedCurrent*(owner: var Services, input: var CurrentBlockInput,
     wire: openArray[byte], ancestors: openArray[OwnedHeader],
     policies: CurrentCandidateLimits): PreparationTicket {.raises.} =

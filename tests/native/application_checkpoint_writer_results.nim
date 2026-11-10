@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Composite writer retirement and closed result extraction retain real native contracts.
+
 import std/[assertions, cmdline, syncio]
 import std/posix/posix
 import ../../src/app/chain
@@ -11,14 +12,17 @@ import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/chain/genesis
 import ../support/application_checkpoint_context
+
 proc extract(outcome: ApplicationCheckpointFileResult[ApplicationCheckpointIdentity]) =
   ## Only durable publication supplies a fixed identity receipt.
   discard outcome.value
+
 proc forgotten() =
   ## Actual native opening makes forgotten retirement a genuine destructor violation.
   var writer = default(ApplicationCheckpointWriter)
   assert writer.openApplicationCheckpointWriter("build/application-checkpoint-writer-guard") ==
       ApplicationCheckpointFileError.None
+
 proc main() {.raises.} =
   ## Default and closed writers cannot authorize success; the same helper passes for genuine publication.
   let mode = paramStr(1)

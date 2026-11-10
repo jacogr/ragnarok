@@ -3,6 +3,7 @@
 
 ## Bounded source-bound account footprint equations certify only dependent metadata fields.
 ## Complete inventory provenance survives; preimage content, economics and STF validity remain separate.
+
 import ../codec/bounded
 import ../codec/state/accounts as state_accounts
 import ./inventory

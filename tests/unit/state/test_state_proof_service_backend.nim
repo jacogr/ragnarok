@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Every actual primitive prefix fails without fabricated typed values or partial verified views.
+
 import std/[assertions, syncio]
 import ../../support/proof_service_helpers
 import ../../../src/state/proof/[service as proof_service, view as proof_view]
@@ -10,12 +11,16 @@ import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, layout as state_layout,
     trie as state_trie, service_values as state_service_values, requests as state_requests]
 import ../../../src/crypto/primitives
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Reset the maintained primitive observer and optionally refuse every hash attempt.
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Refuse the next primitive after exactly this many successful calls.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Measure actual backend attempts rather than predicting them from loop shapes.
+
 proc read(view: ProofView, hash: ServicePreimageHash, kind: int): ServiceProofResult[
     VerifiedStateLookup] =
   ## Exercise each public composed content read with stable immutable input evidence.
@@ -25,6 +30,7 @@ proc read(view: ProofView, hash: ServicePreimageHash, kind: int): ServiceProofRe
   of 1: view.readProofPreimage(ServiceIndex(7), hash, ByteLimit(3))
   of 2: view.readProofHistoricalPreimage(ServiceIndex(7), hash, RequestSlot(4), ByteLimit(3))
   else: view.readProofCode(ServiceIndex(7), RequestSlot(4), ByteLimit(3))
+
 proc main() =
   ## Prepare all authentic state before injecting real primitive failures.
   let service = ServiceIndex(7)

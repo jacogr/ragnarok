@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Select metadata and every declared service namespace from original logical provenance under whole key/work admission.
+
 import ../../state/current/logical as current_logical
 import ../../state/supplied/logical_inventory as supplied_logical_inventory
 import ../../state/inventory

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_refinement_export_arc_release"}
 
 ## Literal export bytes, host ordering, immutable forks and generic host execution verify Omega_E.
@@ -23,19 +24,23 @@ proc source(): Memory =
       image.bytes[index] = byte((uint64(page-16)*4096+uint64(index)) mod 251+1) # Independent source pattern.
     pages.add(image)
   captureMemory(pages, PageLimit(2)).value
+
 proc registers(length = 12'u64, address = 65536'u64): RegisterFile =
   ## Every nonargument register carries a sentinel to catch accidental host mutations.
   result = default(RegisterFile)
   for index in 0..<13: result[index] = RegisterValue(uint64(index+100))
   result[7] = RegisterValue(address)
   result[8] = RegisterValue(length)
+
 proc limits(items = 3072'u64, bytes = 12607488'u64): ExportLimits =
   ## Local policy is distinct from the package-wide protocol capacity.
   ExportLimits(items: ElementLimit(items), bytes: ByteLimit(bytes))
+
 proc run(owner: RefinementExports, regs: RegisterFile, memory: Memory,
     credit = 10000'u64, cap = limits()): RefinementExportResult =
   ## Direct evaluation leaves host selection to the invocation dispatcher.
   exportResponse(owner, MachineGas(credit), regs, memory, cap)
+
 proc checkUnchanged(response: HostResponse, before: RegisterFile, memory: Memory) =
   ## Export changes only r7 and gas; even the retained readable pages keep exact prior contents.
   for index in 0..<13:
@@ -43,6 +48,7 @@ proc checkUnchanged(response: HostResponse, before: RegisterFile, memory: Memory
   for page in 16'u32..17'u32:
     assert response.memory.pageImage(PageIndex(page)).value.bytes == memory.pageImage(PageIndex(
         page)).value.bytes
+
 proc respond(owner: var RefinementExports, stopped: StepOutcome): HostResult[
     RefinementExportError] {.raises: [].} =
   ## A genuine callback installs only a completed matching response/successor pair.
@@ -138,6 +144,7 @@ assert uint64(first.exports.count) == 1 and uint64(fork.exports.count) == 2
 assert array[4104, byte](second.exports.segment(ExportCount(0)))[0] == 1
 assert array[4104, byte](second.exports.segment(ExportCount(1)))[0] == 1
 assert array[4104, byte](fork.exports.segment(ExportCount(1)))[0] == 2
+
 # A genuine ecalli-8/halt retains the host output after the temporary callback context is gone.
 proc hosted(): RefinementExports =
   ## Assemble a tiny guest without claiming a fully authenticated refinement invocation.
@@ -155,6 +162,7 @@ proc hosted(): RefinementExports =
   owner
 let detached = hosted()
 assert uint64(detached.count) == 1 and array[4104, byte](detached.segment(ExportCount(0)))[0] == 1
+
 # Fresh roots, immutable forks and refused successor allocations retire on every ARC cycle.
 proc cycle() =
   ## Each iteration owns distinct segment payloads and metadata, including a successful branch and local refusal.

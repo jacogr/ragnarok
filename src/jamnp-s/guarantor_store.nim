@@ -3,6 +3,7 @@
 
 ## Explicit bounded guarantor serving storage never evicts a signed source to admit later work.
 ## Services owns this cache and freezes every alias through exact worker collection or joined shutdown.
+
 import ./availability_proof
 import ../codec/bounded
 from ../codec/work/report import ErasureRoot
@@ -28,47 +29,58 @@ type
     entries: array[MaxGuarantorEntries, GuarantorEntry]
     count: int
     bytes: uint64
+
 func error*(outcome: GuarantorStoreResult): GuarantorStoreError =
   ## Select a complete lookup only after observing this private reason.
   outcome.status
+
 func value*(outcome: GuarantorStoreResult): GuarantorAvailability {.requires: outcome.status ==
     GuarantorStoreError.None.} =
   ## A retained serving source confers neither assurance nor canonical report admission.
   outcome.completed
+
 func valid*(limits: GuarantorStorageLimits): bool =
   ## Defaults cannot enable signed-source storage or borrow unbounded capture work.
   uint64(limits.entries) > 0 and uint64(limits.entries) <= uint64(MaxGuarantorEntries) and
     limits.computation.validGuarantorLimits
+
 func configured*(store: GuarantorStore): bool =
   ## Scalar configuration observation does not touch a frozen source owner.
   store.ready
+
 func matches*(store: GuarantorStore, limits: GuarantorStorageLimits): bool =
   ## Reopening an existing host may reuse only its original explicit storage and capture ceilings.
   store.ready and uint64(store.limits.entries) == uint64(limits.entries) and
     uint64(store.limits.computation.bytes) == uint64(limits.computation.bytes) and
     uint64(store.limits.computation.hashes) == uint64(limits.computation.hashes) and
     uint64(store.limits.computation.hashBytes) == uint64(limits.computation.hashBytes)
+
 func len*(store: GuarantorStore): int =
   ## A fixed counter is independent of any worker's immutable serving aliases.
   store.count
+
 func byteLength*(store: GuarantorStore): uint64 =
   ## Logical retained payload excludes bounded metadata and allocator bookkeeping.
   store.bytes
+
 proc configure*(store: var GuarantorStore, limits: GuarantorStorageLimits): bool =
   ## Validate once before signing begins; a live policy cannot be rebound or silently erase earlier reports.
   if store.ready or not limits.valid: return false
   store.limits = limits
   store.ready = true
   true
+
 proc clear*(store: var GuarantorStore) =
   ## Explicit shutdown only: the owner must first join or exactly collect every worker borrowing stored sources.
   store = default(GuarantorStore)
+
 func captureLimits*(store: GuarantorStore): AvailabilityMerkleLimits =
   ## Inspect free entry and whole-cache bytes before signing admission; Services must keep this budget stable through collection.
   if not store.ready or uint64(store.count) >= uint64(store.limits.entries):
     return default(AvailabilityMerkleLimits)
   result = store.limits.computation
   result.bytes = ByteLimit(uint64(store.limits.computation.bytes)-store.bytes)
+
 func sameSpecifier(left, right: AvailabilitySpecifier): bool =
   ## Equal root bytes cannot replace independently selected package, bundle, export or validator geometry.
   left.packageHash.bytes == right.packageHash.bytes and
@@ -77,6 +89,7 @@ func sameSpecifier(left, right: AvailabilitySpecifier): bool =
     uint32(left.bundleLength) == uint32(right.bundleLength) and
     uint16(left.erasureShards) == uint16(right.erasureShards) and
     uint16(left.segmentCount) == uint16(right.segmentCount)
+
 proc remember*(store: var GuarantorStore, source: GuarantorAvailability): GuarantorStoreError =
   ## Call only after exact collection; every refusal precedes mutation and no later report displaces a promised source.
   if not store.ready: return GuarantorStoreError.Unconfigured
@@ -97,10 +110,12 @@ proc remember*(store: var GuarantorStore, source: GuarantorAvailability): Guaran
   inc store.count # Configured bounds prove the fixed entry index and increment above.
   store.bytes += info.retainedBytes
   GuarantorStoreError.None
+
 proc snapshot*(store: GuarantorStore): seq[GuarantorAvailability] =
   ## Services captures at most sixty-four private immutable byte owners, retiring temporary table aliases before the worker lease begins.
   result = newSeq[GuarantorAvailability](store.count)
   for index in 0..<store.count: result[index] = store.entries[index].source
+
 proc find*(store: GuarantorStore, root: ErasureRoot): GuarantorStoreResult =
   ## Exact-root lookup never updates LRU counters or drops a source while another operation might borrow it.
   if not store.ready: return GuarantorStoreResult(status: GuarantorStoreError.Unconfigured)

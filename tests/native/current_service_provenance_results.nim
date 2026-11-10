@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Actual native receipts freeze selected creation/ejection identities, retain cancelled originals separately, and refuse incomplete capture without adopting a private candidate.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[collected_native_context, collected_logical_context,
   current_namespace_transition_context, current_namespace_execution_context,
@@ -24,12 +25,15 @@ import ../../src/state/store
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, accounts as state_accounts]
 import ../../src/chain/[provider, genesis]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Fixed history capture admits its complete output without cryptographic work.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Quotas and immutable row projection never invoke a hash.
 const historyLimits = ServiceIdentityHistoryLimits(entries: ElementLimit(8), outcomes: ElementLimit(16),
   creations: ElementLimit(16), deletions: ElementLimit(16), bytes: ByteLimit(65536))
+
 proc creationCode(checkpoint = false, panic = false): seq[byte] =
   ## A genuine zero-deposit automatic new seeds an exact one-byte code request; optional checkpoint selects its actual retained lineage.
   var payload = newSeq[byte](60)
@@ -40,12 +44,14 @@ proc creationCode(checkpoint = false, panic = false): seq[byte] =
   code.add(if panic: @[0'u8] else: @[50'u8, 0])
   result = @[0'u8]
   for octet in guestEnvelope(code, writable = payload): result.add(octet)
+
 proc supervisorCode(): seq[byte] =
   ## Supervisor42 modifies junior99 while the genuine concurrent junior creates, so only the latter's original membership is cancelled.
   result = @[0'u8]
   for octet in guestEnvelope([registerImmediate(7, 99), registerImmediate(8, 196608),
       registerImmediate(9, 17), @[10'u8, 25], @[50'u8, 0]], writable = newSeq[byte](32)):
     result.add(octet)
+
 proc origin(eject = false, annul = false, checkpoint = false, panic = false,
     halt = false): CurrentNamespaceTransition {.raises.} =
   ## Complete original code and raw namespaces enter roots and signatures before genuine current preparation.
@@ -65,6 +71,7 @@ proc origin(eject = false, annul = false, checkpoint = false, panic = false,
   var policy = currentCandidateLimits()
   policy.completion.composition.validators.services = ElementLimit(4)
   namespaceTransitionFixture(nativeBase(), options, ElementLimit(4), policy)
+
 proc candidatePolicy(): CurrentCandidateLimits =
   ## Freeze independent producer membership quotas and final selected history retention on actual native inputs.
   result = currentCandidateLimits()
@@ -72,6 +79,7 @@ proc candidatePolicy(): CurrentCandidateLimits =
   result.completion.composition.validators.services = ElementLimit(4)
   result.completion.execution.initial.guests.deletedAccounts = ElementLimit(4)
   result.completion.execution.execution.round.guests.deletedAccounts = ElementLimit(4)
+
 proc capture(source: CurrentNamespaceTransition): PreparedCurrentChainUpdate {.raises.} =
   ## Join the native worker before inspecting immutable evidence; collection alone never adopts its staged candidate.
   var owner = initApplicationChain(source.update.currentUpdatePriorView).value
@@ -85,6 +93,7 @@ proc capture(source: CurrentNamespaceTransition): PreparedCurrentChainUpdate {.r
   assert not sameStateSnapshot(update.currentUpdateState,
       owner.chainView.bestBlock.value.stateSnapshot)
   update
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(CurrentChainPreparationResult)

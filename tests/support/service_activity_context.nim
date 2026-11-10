@@ -14,6 +14,7 @@ import ../../src/codec/state/statistics as state_statistics
 import ./report_context
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 proc activityPolicy*(): ServiceActivityConfig =
@@ -21,19 +22,23 @@ proc activityPolicy*(): ServiceActivityConfig =
   ServiceActivityConfig(reports: ElementLimit(3), digests: ElementLimit(3), preimages: ElementLimit(3),
     accumulation: ElementLimit(4), services: ElementLimit(4), preimageFrameBytes: ByteLimit(64),
         preimageBytes: ByteLimit(3))
+
 proc activityPreimages*(): seq[byte] =
   ## Three literal canonical records: service 42 has empty/[1,2] blobs and service 77 has [3].
   @[3'u8, 42, 0, 0, 0, 0, 42, 0, 0, 0, 2, 1, 2, 77, 0, 0, 0, 1, 3]
+
 proc widePolicy(): ServiceActivityConfig =
   ## Full-width ceilings constrain actual bounded inputs without becoming allocation sizes themselves.
   ServiceActivityConfig(reports: ElementLimit(high(uint64)), digests: ElementLimit(high(uint64)),
     preimages: ElementLimit(high(uint64)), accumulation: ElementLimit(high(uint64)),
     services: ElementLimit(high(uint64)), preimageFrameBytes: ByteLimit(high(uint64)),
         preimageBytes: ByteLimit(high(uint64)))
+
 proc captured(bytes: seq[byte]): OwnedFrame =
   ## Capture known authored framing; production coordination never reads payload bytes.
   decodeOwnedPreimages(bytes, PreimageLimits(items: ElementLimit(3), perBlob: ByteLimit(2),
       totalBlobBytes: ByteLimit(3))).value
+
 proc incoming(base: OwnedReport, service: uint32, gas = 11'u64, imports = 13'u64,
     failed = false): OwnedReport =
   ## Encode authored independent refinement metrics with the unchanged original borrowed payload owner.
@@ -50,12 +55,14 @@ proc incoming(base: OwnedReport, service: uint32, gas = 11'u64, imports = 13'u64
   let encoded = encodeReportBorrowed(report, raw, 2, bytes)
   assert encoded.error == CompositeError.None
   decodeOwnedReport(bytes.toOpenArray(0, encoded.written-1), 2).value
+
 proc delta(service: uint32, count, transfers, gas: uint64): ServiceStatisticsEntry =
   ## Author only the three accumulation fields; unrelated activity starts at zero.
   var value = ServiceActivity(accumulationGas: ActivityGas(gas))
   value.counters[ServiceMeasure.AccumulationCount] = ActivityNatural(count)
   value.counters[ServiceMeasure.TransferCount] = ActivityNatural(transfers)
   ServiceStatisticsEntry(service: ServiceIndex(service), statistics: value)
+
 proc sameActivity(left, right: ServiceActivity) =
   ## Compare all eleven fields, including explicit zeros in unrelated families.
   assert uint64(left.refinementGas) == uint64(right.refinementGas)

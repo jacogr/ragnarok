@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict bounded light journal replay separates complete immutable publication from exact-byte partial-tail plans.
+
 import std/assertions
 import ../[snapshot as light_snapshot, state_cache as light_state_cache, delta as light_delta]
 import ./manifest as light_journal_manifest

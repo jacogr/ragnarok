@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Shared signed current Services setup and scalar-only native waits preserve exact disk publication ownership.
+
 import std/[assertions, monotimes, times]
 import std/posix/posix
 import ../../src/app/[services, options, preparation_worker]
@@ -15,11 +16,13 @@ import ../../src/state/accumulation/current/update as accumulation_current_updat
 import "../../src/state/block/admission" as block_admission
 import ../../src/state/report/admission as report_admission
 import ./[accumulation_current_chain_context, accumulation_current_candidate_context]
+
 proc yieldCurrentDiskThread*() =
   ## Yield within bounded waits without creating or retiring any leased graph alias.
   var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
   var remaining = default(Timespec)
   discard nanosleep(requested, remaining)
+
 proc currentDiskOptions*(path, database: string, managed: bool, port: uint16): Options =
   ## Explicit local startup selects either strict disk layout and the original complete parent map.
   var args = @["server", "--with-state", "--chain", path, "--state-storage", "disk",
@@ -35,11 +38,13 @@ proc currentDiskOptions*(path, database: string, managed: bool, port: uint16): O
     args.add($port) # Only the test-owned loopback reservation chooses this listener.
   result = default(Options)
   assert parseCanonicalOptions(args, result)
+
 proc currentDiskChildBytes*(context: CurrentChainFixture): seq[byte] =
   ## Capture signed wire bytes before native Services ownership can be borrowed.
   let child = context.source.currentChainAdmission.reportBlockStage.value.value.admitted.admittedBlock
   result = newSeq[byte](child.blockInfo.value.consumed)
   assert child.encodeOwnedBlock(result).error == FrameError.None
+
 proc prepareCurrentServicesUpdate*(owner: var Services, input: var CurrentBlockInput,
     wire: openArray[byte]): PreparedCurrentChainUpdate {.raises.} =
   ## Actual execution returns a current update without installing or changing the durable parent.
@@ -60,12 +65,14 @@ proc prepareCurrentServicesUpdate*(owner: var Services, input: var CurrentBlockI
   assert completion.kind == PreparationCompletionKind.CurrentCompleted
   assert completion.currentValue.error == CurrentBlockInputError.None
   completion.currentValue.value
+
 proc waitCurrentDiskDone*(owner: var Services) =
   ## Done alone never releases the exclusive native lease; deliberately do not tick/collect here.
   let started = getMonoTime()
   while owner.diskPublicationPhase != DiskWorkerPhase.Done:
     assert (getMonoTime()-started).inSeconds < 20
     yieldCurrentDiskThread()
+
 proc equalCurrentDiskMap*(actual, expected: StateStoreSnapshot) =
   ## Every reopened entry and byte value is compared against independently composed current state.
   assert actual.commitment.entries == expected.commitment.entries

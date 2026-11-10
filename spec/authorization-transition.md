@@ -8,23 +8,8 @@ The first bounded non-PVM execution slice implements Gray Paper **0.8.0**, revis
 
 ## Behavior and scheduling
 
-`src/state/authorization.nim` consumes immutable pool/queue snapshots, an explicit core profile,
-a nominal header slot and the core/authorizer projection of already validated guarantees.
-For each core it removes the oldest matching used authorizer, appends the queue item indexed by
-`slot mod 80`, and retains the newest eight hashes. Duplicates and ordering are preserved.
-Subtraction with no matching hash leaves the original sequence intact; this does not establish
-that the originating guarantee is valid. Duplicate core projections and out-of-range cores reject.
-
-Queues must be **post-accumulation**. `advanceAuthorizationState` reads C(1)/C(2) from the working
-store, requires exact component decoding, computes the complete replacement and atomically writes
-only C(1). It does not rotate or rewrite C(2). Accumulation is responsible for queue changes.
-A future block executor must schedule this stage accordingly and publish its working state only
-when the entire block succeeds. A successful subsystem call is not whole-block validation.
-
-`advanceAuthorization` returns a caller-owned serialized C(1) entry. The store adapter returns
-an immutable committed snapshot; historical snapshots and retained values remain valid. Failure
-and default result alternatives expose no entry, root or progress. Success extraction requires
-checking `error == None`; discriminators and payload fields are private.
+The [transition module](../src/state/authorization.nim) owns pool ordering, post-accumulation
+queue selection and atomic C(1) publication.
 
 ## Boundaries and resources
 

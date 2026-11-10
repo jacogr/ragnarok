@@ -16,20 +16,24 @@ proc key(number: byte): StateKey =
   var raw = default(array[31, byte])
   raw[0] = number
   StateKey(raw)
+
 proc policy(): StateStoreLimits =
   ## Bound both restored complete-map storage and later mutation batches explicitly.
   StateStoreLimits(trie: StateTrieLimits(items: ElementLimit(2), perValue: ByteLimit(1),
     totalValueBytes: ByteLimit(2), nodes: TrieNodeLimit(1024)),
     writes: ElementLimit(1), writeValueBytes: ByteLimit(1))
+
 proc cloned(input: seq[byte]): seq[byte] =
   ## Deliberately deep-copy each tampering witness without depending on sequence copy lowering.
   result = newSeq[byte](input.len)
   for index, octet in input:
     result[index] = octet # Every malformed case starts from the original exact envelope.
+
 proc cycle(input: seq[byte]) =
   ## Full restoration and malformed refusal must release every temporary byte/map owner.
   assert decodeFullCheckpoint(input, policy(), ByteLimit(1000)).error == CheckpointError.None
   assert decodeFullCheckpoint([], policy(), ByteLimit(1000)).error == CheckpointError.InvalidFormat
+
 proc main() =
   ## Decode exact complete roots, reject all one-byte tampering, and preserve independent state ownership.
   let original = newStateStore([StateEntry(key: key(2), value: @[22'u8]),

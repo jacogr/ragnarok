@@ -1,0 +1,86 @@
+(stmts#Copyright (c) 2026 Ragnarök contributors
+SPDX-License-Identifier: MIT OR Apache-2.0
+Hypothesis: four cold source leases hoard image credits, or an unregistered invocation loses
+close exclusion, or cancellation/failure returns a credit before its physical owner retires.
+Source: native_pipeline.nim beginNativeInvocation/registerSession/finishNativeInvocation,
+collectNative/releaseNativeCredit/retireOwner/finishRetirement and close.
+Keep the actual four-credit limit. cold counts four distinct retained short-call sources;
+others counts legitimate installed images. The fifth caller has a real eligible copied candidate
+and a qualifying single-call receipt; numeric source/gas proofs are checked by the Nim suite.
+caller 0 before invocation, 1 active public call, 2 returned; work 0 empty,1 queued,2 claimed,
+3 lowered,4 reclaiming,5 Complete,6 Installed,7 collected failed. physical is this request's
+actual image, charged its credit. Caller actions are externally serialized; compiler actions
+split claim/build/publication/destruction/reclamation at their real unlocked boundaries.
+Close models the active-unregistered callback window only; full queued/installed close and
+generation/ticket namespaces remain covered by the native gate tests, not abstracted away here.#
+  (variables :cold.0. :others.0. :credits.0. :caller.0. :active.0. :open.0.
+    :work.0. :physical.0. :charged.0. :cancelled.0. :err.0.)
+  (assign Fix.0. (true))
+  (assign Mut.0. 0)
+  (assign Witness.0. (false))
+  (def :Legacy.0. (or (not Fix.0.) (eq Mut.0. 5)))
+  (def :Init.0.
+    (and (prime cold.0. 0) (prime others.0. 0) (prime credits.0. 0)
+      (prime caller.0. 0) (prime active.0. (false)) (prime open.0. (true))
+      (prime work.0. 0) (prime physical.0. (false)) (prime charged.0. (false))
+      (prime cancelled.0. (false)) (prime err.0. 0)))
+  (def :OtherImage.0.#Other already completed source: its installed credit legitimately limits capacity.#
+    (and open.0. (eq caller.0. 0) (eq cold.0. 0) (lt others.0. 4)
+      (prime others.0. (plus others.0. 1)) (prime credits.0. (plus credits.0. 1))))
+  (def :ColdCall.0.#Four sequential begin/finish pairs; each short source remains retained and ineligible.#
+    (and open.0. (eq caller.0. 0) (lt cold.0. 4)
+      (prime cold.0. (plus cold.0. 1))
+      (prime credits.0. (if (and Legacy.0. (lt credits.0. 4)) (plus credits.0. 1) credits.0.))))
+  (def :Begin.0.#begin: active invocation lease is independent of any image-credit acquisition.#
+    (and open.0. (eq caller.0. 0) (eq cold.0. 4)
+      (prime caller.0. 1)
+      (prime active.0. (not (or (eq Mut.0. 1) (and Legacy.0. (eq credits.0. 4)))))
+      (prime charged.0. (and Legacy.0. (lt credits.0. 4)))
+      (prime credits.0. (if (and Legacy.0. (lt credits.0. 4)) (plus credits.0. 1) credits.0.))))
+  (def :CloseDuringCall.0.#close: fixed bound calls require the lease; old credit-refused calls had none.#
+    (and open.0. (eq caller.0. 1) (not active.0.)
+      (prime open.0. (false)) (prime err.0. (if Legacy.0. 0 2))))
+  (def :Finish.0.#finish lock: proof/candidate exist, Idle request; only now reserve a credit and queue.#
+    (and open.0. (eq caller.0. 1) (prime caller.0. 2) (prime active.0. (false))
+      (if (or charged.0. (lt credits.0. 4) (eq Mut.0. 4))
+        (and (prime charged.0. (true)) (prime work.0. 1)
+          (prime credits.0. (if charged.0. credits.0. (plus credits.0. 1))))
+        (prime err.0. (if (eq others.0. 4) 0 1)))))
+  (def :Claim.0.#compiler claim holds lock; no host graph crosses this request boundary.#
+    (and (eq work.0. 1) (prime work.0. 2)))
+  (def :Lower.0.#Unlocked compiler emission can return either a real image or nil lowering failure.#
+    (and (eq work.0. 2) (prime work.0. 3)
+      (exists :made.0 (set (false) (true)) (prime physical.0. made.0))))
+  (def :Publish.0.#Publication lock: cancellation retains the credit through unlocked destruction.#
+    (and (eq work.0. 3)
+      (prime work.0. (if cancelled.0. 4 5))
+      (prime charged.0. (if (and cancelled.0. (eq Mut.0. 2)) (false) charged.0.))
+      (prime credits.0. (if (and cancelled.0. (eq Mut.0. 2)) (minus credits.0. 1) credits.0.))))
+  (def :Invalidate.0.#Caller drops its old registration; worker-owned queued/running images retain credit.#
+    (and (eq caller.0. 2) (not cancelled.0.) (le 1 work.0.) (le work.0. 6)
+      (prime cancelled.0. (true))
+      (prime work.0. (if (or (eq work.0. 5) (eq work.0. 6)) 4 work.0.))))
+  (def :Collect.0.#collect: successful image installs; nil completion retires without permitting retry.#
+    (and (eq work.0. 5) (not cancelled.0.)
+      (prime work.0. (if physical.0. 6 4))))
+  (def :Destroy.0.#Actual image destruction is outside the lock; credit remains occupied until it ends.#
+    (and (eq work.0. 4) physical.0. (prime physical.0. (false))))
+  (def :Retire.0.#finishRetirement: after physical destruction, failed/cancelled exact row becomes Free.#
+    (and (eq work.0. 4) (not physical.0.)
+      (prime work.0. (if cancelled.0. 0 7))
+      (prime charged.0. (and (not cancelled.0.) (eq Mut.0. 3)))
+      (prime credits.0. (if (or (not charged.0.) (and (not cancelled.0.) (eq Mut.0. 3)))
+        credits.0. (minus credits.0. 1)))))
+  (def :Next.0.
+    (and (eq err.0. 0) (or OtherImage.0. ColdCall.0. Begin.0. CloseDuringCall.0.
+      Finish.0. Claim.0. Lower.0. Publish.0. Invalidate.0. Collect.0. Destroy.0. Retire.0.)))
+  (def :Safe.0.
+    (and (eq err.0. 0) (le 0 credits.0.) (le credits.0. 4)
+      (implies physical.0. charged.0.) (implies (eq work.0. 7) (not charged.0.))))
+  (def :Reached.0.
+    (and (eq cold.0. 4) (eq others.0. 0) (eq caller.0. 2)
+      (eq work.0. 6) charged.0. physical.0.))
+  (spec (always-stutter Init.0. Next.0.
+    (tuple cold.0. others.0. credits.0. caller.0. active.0. open.0. work.0.
+      physical.0. charged.0. cancelled.0. err.0.)))
+  (check (if Witness.0. (not Reached.0.) Safe.0.)))

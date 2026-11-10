@@ -4,6 +4,7 @@
 # @@Verification={"arc": "application_checkpoint_session_arc_release"}
 
 ## Joined outcomes survive repeated close and block restart until explicit receipt acknowledgement.
+
 import std/[assertions, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/checkpoint/[session as checkpoint_session, worker as checkpoint_worker,
@@ -11,6 +12,7 @@ import ../../../src/app/checkpoint/[session as checkpoint_session, worker as che
 import ../../../src/codec/bounded
 import ../../support/[application_checkpoint_worker_context, application_checkpoint_context, arc_evidence]
 const FileName = "application-checkpoint-session"
+
 proc waitDone(session: var ApplicationCheckpointSession) =
   ## Bounded test polling observes scalar lifecycle only.
   let started = getMonoTime()
@@ -19,6 +21,7 @@ proc waitDone(session: var ApplicationCheckpointSession) =
     var requested = Timespec(tv_sec: posix.Time(0), tv_nsec: 1_000_000)
     var remaining = default(Timespec)
     discard nanosleep(requested, remaining) # Yield only in this native test.
+
 proc cycle(session: var ApplicationCheckpointSession) {.raises.} =
   ## Close on staged work retains Cancelled until explicit acknowledgement; every restart receives fresh identity.
   assert session.start(FileName) == ApplicationCheckpointFileError.None
@@ -29,6 +32,7 @@ proc cycle(session: var ApplicationCheckpointSession) {.raises.} =
   assert session.shutdown.completion.kind == ApplicationCheckpointCompletionKind.Cancelled
   assert session.takeShutdown().retirementError == ApplicationCheckpointFileError.None
   assert not session.shutdownPending
+
 proc main() {.raises.} =
   ## Real completed I/O cannot be forgotten by idempotent aggregate cleanup or overwritten by restart.
   defer:

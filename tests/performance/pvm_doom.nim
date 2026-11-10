@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
+
 import std/[assertions, syncio, envvars, monotimes]
 import ./pvm_invocation_scope
 import ../../src/pvm/[program, machine]
@@ -144,7 +145,7 @@ let preparedMode = pricing == "prepared"
 let requestedBackend = getEnv("RAGNAROK_PVM_BACKEND")
 assert requestedBackend in ["", "jit", "interpreted"]
 if fullInvocation: assert requestedBackend in ["jit", "interpreted"]
-when declared(DefaultPvmBackend):
+when declared(step.DefaultPvmBackend):
   var selectedBackend = DefaultPvmBackend
   if requestedBackend.len > 0:
     assert parsePvmBackend(requestedBackend, selectedBackend)
@@ -155,10 +156,10 @@ let requestedPreparation = getEnv("RAGNAROK_PVM_DOOM_PREPARATION")
 assert requestedPreparation in ["", "0", "1"]
 let performance = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
 
-let coldCall = if fullInvocation: beginInvocation() else: default(
-    InvocationClock)
-var invocationRuntime = if fullInvocation and requestedBackend == "jit": startInvocationRuntime(
-    ) else: default(InvocationRuntime)
+let ownerStart = if fullInvocation: beginInvocation() else: default(InvocationClock)
+var invocationRuntime = if fullInvocation and requestedBackend == "jit":
+    startInvocationRuntime() else: default(InvocationRuntime)
+let coldCall = if fullInvocation: beginInvocation() else: default(InvocationClock)
 var context = HostContext(rom: newSeq[byte](rom.len), events: @[],
     outputBytes: 0, hosts: default(array[5, uint64]))
 # Deliver the checked, nonempty WAD to the host owner within the enclosing cold call.
@@ -197,7 +198,7 @@ var plan = default(GasPlan)
 var prepared = default(PreparedProgram)
 if preparedMode:
   # Canonical owner admission is nested inside the enclosing cold call; stream work stays lazy.
-  let created = when declared(DefaultPvmBackend):
+  let created = when declared(step.DefaultPvmBackend):
     # The owner captures selection and prepares capabilities inside the existing constructor clock.
     newPreparedProgram(owner, defaultPreparedLimits(GasCycleLimit(1000000)),
         selectedBackend, invocationRuntime)
@@ -296,7 +297,7 @@ for sample in 0..<samples:
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
 
-when declared(DefaultPvmBackend):
+when declared(step.DefaultPvmBackend):
   if requestedBackend.len > 0:
     # Copied cumulative diagnostics certify policy after all full-state checks, outside all clocks.
     assert preparedMode
@@ -318,7 +319,6 @@ when defined(pvmArmMacroReceipt):
   echo "ARM_MACRO_APPLICATION,", phase, ",", int(resident), ",", macroStats[0], ",",
     macroStats[1], ",", macroStats[5], ",", macroStats[6]
 
-
 when defined(pvmArm64JitOwnerReceipt):
   # Genuine host callbacks and immutable publication finish before copied cache diagnostics are emitted.
   if fullInvocation:
@@ -331,6 +331,6 @@ when defined(pvmArm64JitOwnerReceipt):
 if fullInvocation:
   prepared = default(PreparedProgram)
   if requestedBackend == "jit":
-    closeInvocationRuntime(invocationRuntime, "doom-process", coldCall)
+    closeInvocationRuntime(invocationRuntime, "doom-process", ownerStart)
   else:
-    finishInterpretedOwner("doom-process", coldCall)
+    finishInterpretedOwner("doom-process", ownerStart)

@@ -14,6 +14,7 @@ proc forgotten() =
   var writer = default(CheckpointWriter)
   assert writer.openCheckpointWriter("build/state-checkpoint-writer-result.bin") ==
       CheckpointFileError.None
+
 proc main() =
   ## The same executable provides real initialized success and default/closed extraction refusals.
   let mode = paramStr(1)

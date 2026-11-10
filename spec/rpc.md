@@ -286,56 +286,11 @@ service map after startup file mutation. A `rpc_` compiler probe protects the pr
 
 ## Protocol and bounds
 
-Only WebSocket version 13 is supported; HTTP is used solely for the RFC 6455 upgrade handshake.
-POST bodies are never dispatched as RPC. Non-browser tooling may omit Origin. With `--with-ui`,
-only the enabled UI origins described in [UI scope](ui.md) are accepted for browser upgrades.
-Other Origin-bearing requests are rejected. TLS, remote binding, arbitrary browser origins,
-compression, binary messages and subprotocol negotiation are outside this increment.
-
-Input JSON is validated strictly before dispatch, including number spelling, object keys,
-escapes, surrogate pairs, trailing data and duplicate envelope members. Parameters are positional
-arrays or omitted. IDs preserve their numeric lexemes or decoded string values without machine
-integer/float narrowing. Parse errors use `-32700`, invalid envelopes/batches `-32600`, unavailable
-methods `-32601`, and invalid parameters `-32602`. Valid notifications never receive replies,
-including errors and notification-only batches.
-
-Parsing uses the pinned Nimony `std/parsejson` streaming API, which also underlies `std/json`.
-The tree API converts numbers to integers/floats (including a lossy float fallback for large
-integers), so RPC uses streaming numeric lexemes to preserve IDs. The stdlib owns structural
-parsing and string decoding; a lexical policy rejects its non-JSON extensions (comments,
-trailing commas, permissive escapes/numbers). The event adapter enforces string object keys,
-a single root and resource limits before retaining each event. Decoded strings are checked
-for valid UTF-8, and stdlib error state is checked even when it emits a string event.
-
-Output uses [`src/lib/json/writer.nim`](../src/lib/json/writer.nim) to build typed values,
-ordered objects and arrays. String escaping and punctuation belong to that module; integer
-serialization keeps the original
-signed/unsigned width. `trustedJson` embeds only parser-validated IDs or complete internally
-serialized replies/notification payloads. RPC retains its existing pre-allocation blob limits,
-list/page budgets, final response bounds and subscription commit checks. The pinned Nimony
-`std/json` typed writer lacks full-width unsigned and raw-number support, so it cannot replace
-this boundary without narrowing values or normalizing request IDs. Browser requests use native
-`JSON.stringify`. Telemetry reads chainspec JSON with `std/parsejson`; JIP-3 output is binary.
-
-The server accepts masked client frames, fragmented text with interleaved ping/pong, and valid
-close handshakes. UTF-8 validation covers the complete reassembled text, so a fragment may split
-one Unicode scalar. Server frames are unmasked. Framing violations close with 1002, binary data
-with 1003, invalid UTF-8 with 1007, and cumulative oversized messages with 1009. Extended 64-bit
-frame lengths are rejected because their canonical minimum exceeds the configured limit.
-
-Resource limits are eight connections, 4 KiB upgrade headers, 16 KiB messages, 16 nesting levels,
-2048 JSON values and 16 requests per batch. Input/output is owned per connection. Each dispatcher
-turn performs at most one accept and one read (4 KiB), frame dispatch and write per slot. Responses
-share a 65,535-byte budget, including escaped request IDs, envelopes and batch punctuation.
-Responses that exceed their remaining allowance return a reserved error envelope.
-Backpressure pauses reads until the outstanding response is delivered. Handshakes, partial
-messages, fragmented messages and queued writes have five-second budgets; idle upgraded
-connections expire after thirty seconds. Ping/pong cannot extend a fragmented message's budget.
-
-The listener/connection composite is explicitly non-copyable. ARC destruction and explicit close
-retire native descriptors and owned strings; no foreign callback borrows RPC data. Mesh borrows
-one stable stack owner only during its synchronous dispatcher loop. All sockets are nonblocking
-and close-on-exec, and SIGPIPE is suppressed per socket/send.
+The [wire decoder](../src/rpc/wire.nim) owns RFC 6455 framing and browser Origin checks.
+The [dispatcher](../src/rpc/server.nim) owns per-slot lifetimes and backpressure.
+The [JSON-RPC registry](../src/rpc/protocol.nim) owns request validation and response limits.
+Shared [JSON reading](../src/lib/json/reader.nim) and [writing](../src/lib/json/writer.nim)
+preserve the numeric and UTF-8 representation at those boundaries.
 
 ## Verification
 
@@ -551,88 +506,37 @@ after chainspec mutation and independently hash its bytes to the advertised bloc
 
 ## Immutable chain-view boundary
 
-RPC selects blocks through `ChainView` (`src/chain/provider.nim`) rather than comparing each
-request with the configured genesis hash itself. `bestBlock`, exact `blockAt`, `parentOf` and
-bounded `reportAt` form the typed read interface. The initial `genesisView` adapter owns the
-existing genesis snapshot. Empty/invalid configuration supplies no block; unknown hashes never
-fall back to the best block, and raw parent-header bytes never invent a parent descriptor.
+The [provider](../src/chain/provider.nim) owns exact retained identities and immutable
+views. RPC owns JSON/Base64 parsing and JIP-2 error mapping.
 
-The provider accepts nominal binary hashes; JSON/Base64 parsing and JIP-2 error mapping stay in
-RPC. Successful block and report results retain immutable owners after the originating view is
-released. Each dispatcher tick captures one `ClientInfo` read view, and a batch uses that same
-view throughout. Copies have acyclic ARC ownership; private provider storage cannot be mutated
-by consumers. Parameters remain the separately captured startup configuration.
-
-This is an internal boundary refactor with unchanged WS methods, result/error shapes, response
-budgets and genesis-only scope under the pinned JIP-2 references above. It does not introduce a
-live importer, persistent historical storage, finality or subscriptions.
-The bounded history and dispatcher handoff below extend this initial boundary.
 Native tests cover empty/invalid/unknown lookup, unavailable parents, report-budget propagation,
 retained-result lifetime and copied request/batch isolation. Existing native and live WS suites
 remain regression coverage; a compiler rejection probe protects private provider storage.
 
 ## Bounded block-snapshot history
 
-`BlockSnapshot` is the immutable header/posterior-map owner previously named `Genesis`.
-`Genesis` and `GenesisResult` remain compatibility names; `BlockSnapshotResult` and
-`captureBlockSnapshot` support non-genesis capture with the same framing, roster/time checks,
-map completeness assumption and existing resource ceilings. Capture copies the parent hash,
-header prior-state root and complete 29-field protocol tuple alongside the existing metadata.
-No execution or consensus validity follows from structural capture.
+[Snapshot capture](../src/chain/genesis.nim) and [view advancement](../src/chain/provider.nim)
+own history policy. Linkage and time-order checks follow GP 0.8.0 revision
+`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/header.tex` parent linkage, time-slot
+ordering and prior-state-root definitions. Full parameter tuple equality is a local policy.
 
-`advanceView(view, child)` returns a guarded success containing a **new** `ChainView`, or a
-failure reason without a replacement view. It requires an initialized view and successful child
-capture, rejects retained duplicate identities, and checks that the child names the selected head,
-has a strictly greater slot, commits to the head’s posterior state as its prior root, and uses the
-same complete protocol tuple. Slot gaps are allowed. This follows GP 0.8.0 revision
-`07f041dabd073f9018b418e9ee72e79dd2185401`, `text/header.tex` parent linkage, time-slot ordering
-and prior-state-root definitions. Tuple equality is this adapter’s policy, not a protocol-upgrade
-mechanism. It performs no wall-clock, signature, execution or fork-choice validation.
-
-A view retains at most eight snapshots, oldest to newest. Appending the ninth evicts exactly the
-oldest from the new view. Exact block lookup and parent resolution scan at most eight identities;
-a parent is available only while both the child and parent are retained. Historical state/header
-queries continue through the existing RPC paths; unknown or evicted hashes keep JIP-2 error 1.
-The selected head supplies `bestBlock` and the state-derived parameter fields. Retained-report
-lookup stays head-only, preserving its existing decoder-work bound rather than searching all eight
-maps. No persistent block or report archive is introduced.
-
-Each view owns a separate private sequence of immutable owner handles. Prior views, batch contexts
-and extracted results survive subsequent append/eviction. Eight is a **per-view** retention limit:
-callers that keep old views also keep their state, so future import integration must bound outstanding
-readers. Each snapshot retains the existing map/header/trie resource ceilings. The append API copies
-at most eight handles and does not duplicate maps, decode chapters or run consensus.
-
-The CLI still initializes a genesis-only view; no RPC method accepts arbitrary blocks. The
-dispatcher handoff below provides publication, while a future importer must supply execution-validated
-snapshots and manage head selection/events. Tests exercise two-block best/parent/state/header/raw-value reads,
-slot gaps, every rejection reason, full-tuple mismatch beyond core/epoch fields, eight-block capacity,
-eviction, unavailable evicted parents, and retained old-view/result/batch lifetime. Compiler probes
-protect the append discriminator and reject extracting a known failed result.
+Original tests exercise two-block best/parent/state/header/raw-value reads, slot gaps,
+full-tuple mismatch, bounded eviction and retained old-view/result/batch lifetime.
+Compiler probes protect the append discriminator and failed-result extraction.
 
 ## Dispatcher publication handoff
 
-`Server.publishBlock(child)` installs a new bounded history between dispatcher ticks. The caller
-must run it on the listener's dispatcher thread and supply an execution-validated snapshot; the
-method performs only the existing `advanceView` linkage/configuration checks described above.
-This is an internal application API, not a JSON-RPC method or a claim of block-import validation.
-No JIP-2 wire method or result shape changes.
-
-Default, disabled, closed and unseeded servers return `ViewAdvanceError.Uninitialized`. Other
-rejections forward the provider's reason and leave the selected view intact. Successful publication
-copies at most eight snapshot handles, replaces the server's chain view and preserves listener,
-connections, startup parameters and queued response bytes/offsets, except when the subscription
-queue overflow policy below disconnects a slow consumer. Each following tick captures
-the new view once for all its request contexts. Already serialized replies keep their original
-bytes; incomplete incoming requests use the view of the tick that completes their processing.
-There are no cross-thread calls, locks or callbacks. Best-block subscription delivery is described below.
+The [dispatcher publication boundary](../src/rpc/server.nim) installs a validated child
+between ticks and preserves pending serialized replies. [The provider](../src/chain/provider.nim)
+owns linkage validation and exact history selection.
 
 Native tests use a real ephemeral listener and connected nonblocking sockets carrying masked WS
 frames to check publication while a reply is partly written, subsequent batch queries on the same
 connection, historical lookup, old-context lifetime, all append rejection reasons, repeated
 publication, incomplete input across an update and default/disabled/unseeded/closed lifecycle behavior.
-The complete importer must still call this boundary after successful execution and head selection; CLI startup remains
-genesis-only until that integration exists. Finality and reorgs remain separate work.
+These original checks used genesis-only startup. Current Services can also restore retained
+history and start RPC with the complete selected view, including explicit finality. See
+[finalized-head publication](#explicit-finalized-head-publication) for its separate evidence.
 
 
 ## Best-block WebSocket subscriptions
@@ -641,42 +545,11 @@ genesis-only until that integration exists. Finality and reorgs remain separate 
 Subscriptions and Methods / subscribeBestBlock sections. Successful subscription returns a JSON
 Number. Updates are JSON-RPC notifications with method `subscribeBestBlock` and object parameters
 `{"subscription": id, "result": {"header_hash": "…", "slot": n}}`; there is no request ID on an update.
-Best-block, best-chain statistics, service-data, service-value, service-preimage and service-request methods are enabled; finalized subscriptions use explicitly published finality as described below.
-`ragnarok_clientInfo` advertises the two methods and `subscriptions: true` on live WS connections.
-The stateless internal `respond(text, info)` adapter retains query-only behavior; the server uses
-`respond(text, info, session)` with its connection-owned `RpcSession`.
-
-Each connection owns at most eight subscriptions across supported families. IDs are increasing uint32 integers starting at
-one, never reused within that connection; exhaustion returns JIP-2 error 0 without wrapping.
-Unsubscribe accepts exactly one nonnegative integer lexeme within uint32 range, returns `true` if
-that connection owned the ID and `false` otherwise. Default/unconfigured chain views cannot be
-subscribed to and return error 0. Invalid positional arguments return `-32602`. A connection with
-configured genesis can subscribe immediately, even though the current CLI has no live importer.
-
-JIP-2 does not specify an initial update or unsubscribe result. This implementation queues the
-current head immediately after subscription, and uses the boolean cancellation result above.
-The subscription response (or whole batch response) is written before its initial update. Batch
-members execute in order, so subscribe followed by unsubscribe can cancel that initial update.
-Valid JSON-RPC notifications execute subscription/cancellation changes without replying; a
-notification-form subscribe identifies its subscription through the initial update. Invalid JSON,
-oversized batches and malformed envelopes cannot create subscriptions. Changes are committed only
-if their response fits the existing aggregate output budget.
-
-Successful `publishBlock` enqueues the new descriptor for every active subscriber. Rejected
-publication emits nothing. Each connection owns a FIFO of at most sixteen serialized updates and 65,535 queued bytes;
-these retain no state maps or views. The byte ceiling was added with statistics subscriptions below. One dispatcher tick still writes at most one frame per slot,
-servicing request replies before queued updates. Already queued transport bytes and partial-write
-offsets remain intact. Cancellation removes pending updates for that ID but cannot retract a frame
-already handed to the transport buffer. Closing/reusing a connection releases its subscriptions,
-notifications and ID namespace. Each notification frame gets the existing five-second write
-budget without extending an earlier partial-input deadline.
-
-Publication preflights queue capacity per connection. A consumer that cannot hold all its updates
-is disconnected immediately, releasing its FIFO; publication and other connections continue.
-No updates are silently coalesced or dropped on a surviving connection. Immediate socket closure
-also avoids splicing an error/close frame into a partly written response. Capacity exhaustion when
-creating an additional subscription instead returns error 0 and preserves existing subscriptions.
-These limits are local resource policies, not JIP-2 constants or claims of finality.
+The [session registry](../src/rpc/protocol.nim) owns IDs, initial updates, cancellation,
+and publication queue limits. JIP-2 leaves the initial update and unsubscribe result
+unspecified. The implementation queues an initial snapshot and uses a Boolean cancellation
+result. The [dispatcher](../src/rpc/server.nim) delivers replies before queued updates and
+disconnects overflowing consumers independently of publication.
 
 Native tests cover exact envelopes, initial/current-head updates, per-connection ID isolation,
 monotonic reuse prevention, invalid arguments/envelopes, parse/batch atomicity, notification-form

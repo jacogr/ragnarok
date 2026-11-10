@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Stable root inventories cover large distinct/duplicate sets, tight bounds, source retirement and late refusal.
+
 # @@Verification={"arc": "storage_root_inventory_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_root_samples, arc_evidence]
@@ -11,6 +12,7 @@ import ../../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Selection must not hash immutable already-admitted records, even with the backend refusing.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe actual primitive attempts rather than assuming graph traversal never hashes.
 

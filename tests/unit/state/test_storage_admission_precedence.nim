@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze raw/encoded policy ordering and private atomic refusal across quotas, real edge conflicts and late hashes.
+
 # @@Verification={"arc": "storage_admission_precedence_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -14,14 +15,17 @@ import ../../../src/codec/bounded
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Observe real hashing without substituting digests or weakening physical integrity.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Keep ordering evidence distinct from repository and returned-view metadata.
+
 proc unchanged(owner: NodeRepository, expected: RepositoryView) =
   ## Refused staging cannot publish even a correct-looking root under another generation or inventory.
   let current = owner.snapshot.value
   assert uint64(current.generation) == uint64(expected.generation)
   assert current.storedNodes == expected.storedNodes
   assert array[32, byte](current.commitment.root) == array[32, byte](expected.commitment.root)
+
 proc quotaCycle() =
   ## Genuine masked-edge hash equivalence makes quota-before-conflict reachable without mocked primitives.
   var limits = storageLimits()
@@ -98,6 +102,7 @@ proc quotaCycle() =
   assert int(calls()) == 0
   assert restoreStateEntries(first, a.commitment.root, limits.codec.trie).value[0].value == @[7'u8]
   assert restoreStateEntries(head, b.commitment.root, limits.codec.trie).value[0].value == @[8'u8]
+
 proc generationCycle() =
   ## Generation exhaustion follows encoded integrity and precedes a valid extra-record quota refusal.
   var limits = storageLimits()
@@ -127,6 +132,7 @@ proc generationCycle() =
   assert late.error == RepositoryError.InvalidRecords
   assert late.recordError == RecordError.HashMismatch and int(calls()) == 1
   unchanged(owner, head)
+
 proc cycle() =
   ## Every staged success prefix, immutable prior view and refusal owner must retire together.
   quotaCycle()

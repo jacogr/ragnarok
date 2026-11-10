@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Real managed epoch replacement fixtures expose bounded syscall boundaries and retained map witnesses.
+
 import std/[assertions, syncio]
 import ./[storage_samples, managed_storage_samples, storage_io]
 import ../../src/storage/full/state_trie as full_state_trie
@@ -10,6 +11,7 @@ import ../../src/storage/file/repository as file_repository
 import ../../src/storage/managed/[repository as managed_repository, manifest as managed_manifest]
 import ../../src/storage/database_identity
 import ../../src/codec/bounded
+
 proc compactionCase*(label: string, skip, failures: cint, permanent = false,
     writeFault = false): uint64 {.raises.} =
   ## Prepare an obsolete seed, then compact only the selected complete successor under a real directory lease.

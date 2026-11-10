@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Exact joined shutdown receipts distinguish uncollected durable completion from pending cancellation, raw success and refused qualification using actual TLS/native workers.
+
 import std/[assertions, syncio, envvars, cmdline, monotimes, times, strutils]
 import std/posix/posix
 import ../support/[current_namespace_execution_context, current_namespace_transition_context,
@@ -34,6 +35,7 @@ import ../../src/chain/[provider, genesis]
 import ../../src/storage/managed/manifest as managed_manifest
 type Witness {.pure.} = enum ## Independently selected legal ownership boundaries require no probabilistic sleep or guessed worker timing.
   Pending, NativeDone, Finished, Observed, Raw, Refused
+
 proc peerKey(): CurrentDownloadPeerKey {.raises.} =
   ## The real independent peer certificate supplies only its explicitly retained 32-byte public identity.
   let raw = readFile(getEnv("RAGNAROK_TEST_PEER_B"))
@@ -41,6 +43,7 @@ proc peerKey(): CurrentDownloadPeerKey {.raises.} =
   var key = default(array[32, byte])
   for i in 0..<32: key[i] = byte(raw[i])
   CurrentDownloadPeerKey(key)
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage) =
   ## Scalar stages and native polling alone select exact execution/adoption boundaries while graph leases remain untouched.
@@ -50,6 +53,7 @@ proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponder
     assert servers.poll()
     assert dispatcher.tick(CurrentDownloadLoopTick(0)) == CurrentDownloadLoopError.None
     yieldCurrentDiskThread()
+
 proc scenario(fixture: NamespaceExecutionFixture, layout: int, witness: Witness) {.raises.} =
   ## Real original qualification and signed TLS reception precede every controlled native completion/close alternative.
   var path = "current-logical-shutdown-chain"
@@ -142,6 +146,7 @@ proc scenario(fixture: NamespaceExecutionFixture, layout: int, witness: Witness)
         owner.close()
   assert dispatcher.closeAndCaptureLogical().error !=
       CurrentDownloadSessionError.None # A closed dispatcher grants no second logical receipt or stale prefix.
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "main"
   if mode in ["value", "control"]:

@@ -2,18 +2,22 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Dynamic guarded audit extraction rejects defaults and preserves a genuine source-bound positive control.
+
 import std/[assertions, cmdline, syncio]
 import ../support/state_inventory_context
 import ../../src/state/[footprint_audit, inventory]
 import ../../src/codec/bounded
 import ../../src/codec/state/accounts as state_accounts
 include ./composition_fixture
+
 proc extract(outcome: FootprintAuditResult[CheckedAccountFootprints]): CheckedAccountFootprints {.noinline.} =
   ## Prevent static simplification of the guarded complete audit payload.
   outcome.value
+
 proc offender(outcome: FootprintAuditResult[CheckedAccountFootprints]): ServiceIndex {.noinline.} =
   ## Offending accounts exist only for arithmetic or dependent-field failures.
   outcome.failedService
+
 proc location(outcome: FootprintAuditResult[CheckedAccountFootprints]): InventoryServiceIndex {.noinline.} =
   ## No default or resource refusal has an inventory failure coordinate.
   outcome.failedOrdinal

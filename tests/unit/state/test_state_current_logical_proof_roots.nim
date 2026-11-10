@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Detached authentic successor responses survive source retirement but old/new evidence cannot cross independently retained actual roots.
+
 # @@Verification={"arc":"state_current_logical_proof_roots_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
@@ -21,6 +22,7 @@ type Detached = object ## Only independent scalar expectation, detached transpor
   expected: StateRoot
   response: ProofResponse
   plan: StateProofPlan
+
 proc detached(base: OwnedReport, later: bool): Detached =
   ## All original/current canonical graphs retire on return; the root is selected from the actual producer before response generation.
   let fixture = repeatedLogicalFixture(base)
@@ -44,6 +46,7 @@ proc detached(base: OwnedReport, later: bool): Detached =
   assert proofRefused.error == ProofQueryError.ProofFailure and proofRefused.proofError ==
       StateProofError.LimitExceeded
   Detached(expected: root, response: response, plan: plan)
+
 proc verify(first, second: Detached) =
   ## Both complete authentications use independent saved expectations; successful old evidence remains old and cannot authorize the later state.
   let limits = logicalProofLimits()
@@ -62,6 +65,7 @@ proc verify(first, second: Detached) =
       limits.proof, limits.aggregate, limits.wireBytes)
   assert newAsOld.error == ProofViewError.ProofFailure and newAsOld.proofError ==
       StateProofError.RootMismatch
+
 proc main() {.raises.} =
   ## Independent local fixture activations must expire before either detached response is consumed.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

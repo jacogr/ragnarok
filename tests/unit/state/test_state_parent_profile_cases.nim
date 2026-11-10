@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Complete selected parent profile refusals, independent previous population and detached full-view/context ownership.
+
 # @@Verification={"arc": "state_parent_profile_cases_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[accumulation_current_chain_context, current_checkpoint_context,
@@ -14,10 +15,13 @@ import ../../../src/codec/[bounded, report_owned]
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie,
     safrole as state_safrole, consensus as state_consensus, composition as state_composition]
 import ../../../src/codec/[assurances, header]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## All changed maps and genuine transitions are constructed before hash-free qualification begins.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Malformed/absent C9 refusal and independent population decoding hash nothing.
+
 proc altered(context: CurrentChainFixture, mode: int): ChainView =
   ## Structural negative sources recompute complete maps honestly; they are not signed-valid transitions or replacement execution certificates.
   let original = context.parent.value
@@ -52,10 +56,12 @@ proc altered(context: CurrentChainFixture, mode: int): ChainView =
   let captured = captureBlockSnapshot(currentChainBytes(original.header), state, parameters)
   assert captured.error == GenesisError.None
   genesisView(captured).finalizeView(captured.value.blockHash).value
+
 proc cycle(view: ChainView, previous: uint64) =
   ## Retire all original-view/index copies and independent previous9 decode arrays each cycle.
   let captured = captureParentProfile(view, parentProfileTestLimits).value
   assert uint64(captured.parentStateProfile.value.previous) == previous
+
 proc main() {.raises.} =
   ## Preserve full genuine history/finality separately from explicitly constructed structural negative-map witnesses.
   let text = readFile(getEnv("RAGNAROK_STATE_REPORT"))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default and refused role owners cannot expose identities, source outcomes, snapshots or wire storage.
+
 import std/cmdline
 import ../../src/state/accumulation/global/roles as accumulation_global_roles
 import ../../src/state/accumulation/annulment as accumulation_annulment

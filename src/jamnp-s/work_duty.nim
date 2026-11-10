@@ -3,6 +3,7 @@
 
 ## Derive current-source guarantor eligibility from actual GP rosters, entropy, offenders and local observed time.
 ## Detached success records assignment facts only; callers supply a complete canonical source, never a partial light map.
+
 import ../codec/[bounded, assurances, guarantees]
 import ../codec/state/[safrole, disputes as state_disputes, layout as state_layout,
     trie as state_trie]
@@ -50,28 +51,35 @@ type
     of DisputeFailure: disputeReason: DisputeStateError
     of AssignmentFailure: assignmentReason: GuarantorError
     else: discard # Simple default/local refusals carry only their reason.
+
 func error*[T](outcome: WorkDutyResult[T]): WorkDutyError =
   ## Inspect a reason without writable result alternatives.
   outcome.status
+
 func value*[T](outcome: WorkDutyResult[T]): T {.requires: outcome.status == WorkDutyError.None.} =
   ## Extract only genuine complete eligibility facts.
   outcome.completed
+
 func stateError*[T](outcome: WorkDutyResult[T]): StateStoreError {.requires: outcome.status ==
     WorkDutyError.StateFailure.} =
   ## Only an actual failed original-state lookup exposes a store cause.
   outcome.stateReason
+
 func componentError*[T](outcome: WorkDutyResult[T]): StateComponentError {.requires: outcome.status ==
     WorkDutyError.ComponentFailure.} =
   ## Preserve the actual time/entropy/roster decoder's refusal.
   outcome.componentReason
+
 func disputeError*[T](outcome: WorkDutyResult[T]): DisputeStateError {.requires: outcome.status ==
     WorkDutyError.DisputeFailure.} =
   ## C(5) decoding has its own genuine failure domain.
   outcome.disputeReason
+
 func assignmentError*[T](outcome: WorkDutyResult[T]): GuarantorError {.requires: outcome.status ==
     WorkDutyError.AssignmentFailure.} =
   ## Preserve a failed GP assignment planner without inventing an eligible validator.
   outcome.assignmentReason
+
 func chapter*[T](outcome: WorkDutyResult[T]): StateChapter {.requires: outcome.status in {
     WorkDutyError.InvalidState, WorkDutyError.StateFailure, WorkDutyError.ComponentFailure}.} =
   ## A real selected chapter failure is distinct from any service or validator ordinal.
@@ -79,9 +87,11 @@ func chapter*[T](outcome: WorkDutyResult[T]): StateChapter {.requires: outcome.s
   of WorkDutyError.InvalidState: outcome.invalidChapter
   of WorkDutyError.StateFailure: outcome.stateChapter
   else: outcome.componentChapter
+
 func valid*(recipient: WorkRecipient): bool =
   ## Defaults and vacant identities never request network guarantor authority.
   recipient.ready
+
 func workRecipient*(local: StateEdKey, now: StateTime): WorkRecipient =
   ## Copy the authenticated local identity and host's clock observation; never accept a zero key or the GP null-validator sentinel.
   let bytes = array[32, byte](local)
@@ -89,48 +99,62 @@ func workRecipient*(local: StateEdKey, now: StateTime): WorkRecipient =
   let vacant = nullValidator().ed25519
   if bytes == array[32, byte](vacant): return default(WorkRecipient)
   WorkRecipient(ready: true, local: local, now: now)
+
 func valid*(duty: WorkDuty): bool =
   ## A default record cannot certify assignment, including core zero.
   duty.ready
+
 func localIdentity*(duty: WorkDuty): StateEdKey {.requires: duty.ready.} =
   ## This exact copied identity occupied the requested core in the original source's actual assignment.
   duty.local
+
 func core*(duty: WorkDuty): CoreIndex {.requires: duty.ready.} =
   ## The nominal core remains inseparable from source/time and identity.
   duty.core
+
 func validatorIndex*(duty: WorkDuty): GuarantorIndex {.requires: duty.ready.} =
   ## Retain the actual original roster ordinal used by the assignment planner, never the shuffled permutation index.
   duty.validator
+
 func observedTime*(duty: WorkDuty): StateTime {.requires: duty.ready.} =
   ## Assignment was checked at this host observation, not at a builder-provided timestamp.
   duty.observed
+
 func sourceTime*(duty: WorkDuty): StateTime {.requires: duty.ready.} =
   ## Original C(11) time explains refused unknown-epoch observations.
   duty.sourceTime
+
 func sourceRoot*(duty: WorkDuty): StateRoot {.requires: duty.ready.} =
   ## The copied commitment identifies the supplied complete source; no partial-light conversion occurs here.
   duty.sourceRoot
+
 func epochDuration*(duty: WorkDuty): uint64 {.requires: duty.ready.} =
   ## Runtime expiry can inspect fixed geometry without touching the selected-state graph.
   duty.epoch
+
 func rotationDuration*(duty: WorkDuty): uint64 {.requires: duty.ready.} =
   ## A current-source duty record has explicit positive rotation geometry.
   duty.rotation
+
 func shardCount*(duty: WorkDuty): ErasureShards {.requires: duty.ready.} =
   ## Actual current source roster population differs from configured core capacity; inclusion eligibility remains a separate check.
   duty.shards
+
 func coreCapacity*(duty: WorkDuty): CoreCount {.requires: duty.ready.} =
   ## Preserve configured core capacity independently from the smaller actual active validator population.
   duty.capacity
+
 func participantCount*(duty: WorkDuty): int =
   ## A complete assignment contains exactly three original positions, including any GP-null offender positions.
   if duty.ready: 3 else: 0
+
 func participantAt*(duty: WorkDuty, index: int): WorkDutyResult[WorkParticipant] =
   ## Copy a fixed complete record; defaults/out-of-range requests cannot expose an apparent member.
   if not duty.ready: return default(WorkDutyResult[WorkParticipant])
   if index < 0 or index >= 3:
     return WorkDutyResult[WorkParticipant](status: WorkDutyError.InvalidIndex)
   WorkDutyResult[WorkParticipant](status: WorkDutyError.None, completed: duty.participants[index])
+
 func activeAt*(duty: WorkDuty, now: StateTime): bool =
   ## Fixed metadata can refuse backwards/changed-rotation observations during any canonical worker lease.
   if not duty.ready: return false
@@ -138,6 +162,7 @@ func activeAt*(duty: WorkDuty, now: StateTime): bool =
   let actual = uint64(uint32(now))
   if actual < observed: return false
   actual div duty.rotation == observed div duty.rotation
+
 proc readChapter(source: StateStoreSnapshot, chapter: StateChapter, limit: ByteLimit,
     bytes: var seq[byte], failure: var WorkDutyResult[WorkDuty]): bool =
   ## Validate the original stored extent before copying, preserving only actual failed store causes.
@@ -151,6 +176,7 @@ proc readChapter(source: StateStoreSnapshot, chapter: StateChapter, limit: ByteL
     return false
   bytes = entry.value.bytes
   true
+
 proc captureWorkDuty*(source: StateStoreSnapshot, parameters: Parameters,
     recipient: WorkRecipient, core: CoreIndex, limits: WorkDutyLimits): WorkDutyResult[WorkDuty] =
   ## Execute under the managed CPU graph lease; all source/decoder/planner aliases retire before the fixed result escapes.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Independent epoch-boundary report bodies exercise roster credentials, availability and complete-state publication.
+
 import std/[assertions, cmdline, strutils, syncio]
 import ../support/current_stf_epoch_context as epoch
 import ../support/current_stf_reporting_context

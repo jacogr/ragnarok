@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_refinement_outcome_arc_release"}
 
 ## Real package-bound guests verify Psi_R result selection, gas normalization, output policy and immutable final owners.
@@ -19,6 +20,7 @@ proc run(bootstrap: PreparedRefinementBootstrap, limits = refinementLimits()):
     RefinementInvocationResult[RefinementInvocation] =
   ## Only a genuine original bootstrap enters the production runner; terminal triples are never supplied.
   runRefinementInvocation(bootstrap, [], refinementInputs(), ExportOffset(7), limits)
+
 proc check(invocation: RefinementInvocation, kind: WorkKind, used: uint64, exports = 0'u64) =
   ## Validate copied normalized facts and enforce absence of successful bytes on every protocol work error.
   let info = invocation.refinementInfo.value
@@ -166,6 +168,7 @@ assert default(RefinementInvocation).refinementExports.error ==
     RefinementInvocationError.Uninitialized
 assert default(RefinementInvocation).refinementBootstrap.error ==
     RefinementInvocationError.Uninitialized
+
 # Fresh bootstraps, final copied bytes and export successors retire each cycle, including a later output refusal.
 proc cycle() =
   ## No original mutable source or transient terminal CPU survives the complete normalized owner lifetime.

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Three ordinary ApplicationNode loops drive CE146 through managed report/signing and independent CE134 receivers to canonical credential collection.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import ../../../src/app/[node as application_node, services, options, startup, work_dispatch,
     work_exchange, work_distribution as distribution_host]
@@ -27,12 +28,14 @@ import ../../support/[jamnp_guarantee_fixture, jamnp_work_fixture, jamnp_work_re
 type Variant {.pure.} = enum ## The same real builder source proves optional activation, three credentials, bounded third-peer grace and joined cancellation.
   Three, Two, Foreign, CloseDone, ReceiverClose, Refused, Deliver, DeliveryForeign, DeliveryRefresh,
     DeliveryClose, DeliveryRefused, DeliveryConcurrent, DeliveryCloseForeign, Segments, Startup
+
 proc policy(raw: WorkFixture): WorkExchangePolicy =
   ## Every cryptographic/execution/copy ceiling is explicit; only peer response timing differs from the production default.
   let limits = WorkSharingLimits(packageBytes: ByteLimit(MaxBundleBytes),
     bundleBytes: ByteLimit(MaxBundleBytes), submission: raw.limits, execution: executionLimits(),
     report: workReportLimits(), eligibility: guaranteeLimits(), retention: guarantorLimits())
   workExchangePolicy(limits, ByteLimit(20000), guarantorStorageLimits(), guarantorReadLimits())
+
 proc start(services: var Services, host: var ApplicationNode, certificate,
     privateKey: string) {.raises.} =
   ## Each Services instance decodes independent complete canonical ownership before this host borrows its stable address.
@@ -43,6 +46,7 @@ proc start(services: var Services, host: var ApplicationNode, certificate,
       ViewFinalizeError.None
   let config = initConnectionConfig(certificate, privateKey, services.nodeProtocol, streams = 512)
   assert host.open(services, config, topologyLimits(2), StateTime(20)) == NodeError.None
+
 proc pump(a, b, c: var ApplicationNode, sa, sb, sc: var Services, probe: var NodeProbe,
     clock: MonoTime, now = StateTime(20)) {.raises.} =
   ## The production poll entry owns all admission and collection; the test never calls a worker stage or computes a remote response itself.
@@ -53,11 +57,13 @@ proc pump(a, b, c: var ApplicationNode, sa, sb, sc: var Services, probe: var Nod
   sa.tick(uint32(a.peerCount))
   sb.tick(uint32(b.peerCount))
   sc.tick(uint32(c.peerCount))
+
 proc packet(fixture: GuaranteeFixture, raw: WorkFixture): seq[byte] =
   ## Literal two-header CE146 plus original bodies uses independent E4 bytes and the genuine anchored package.
   result = @[146'u8]
   for message in [raw.first, fixture.package, raw.extrinsics, raw.segments, raw.proofs]:
     for octet in frame(message): result.add(octet)
+
 proc verify(bytes: seq[byte], count: int) =
   ## Decode the actual runtime output with the independent canonical GP codec and inspect original sorted validator positions.
   let decoded = decodeGuarantee(bytes, GuaranteeConfig(cores: CoreCount(2),
@@ -68,6 +74,7 @@ proc verify(bytes: seq[byte], count: int) =
   assert uint16(value.credentials[0].validator) == 1
   assert uint16(value.credentials[1].validator) == 2
   if count == 3: assert uint16(value.credentials[2].validator) == 5
+
 proc peer(host: ApplicationNode, key: StateEdKey): NodePeer =
   ## Compare actual authenticated identities rather than relying on connection arrival order.
   for index in 0..<host.peerCount:
@@ -76,6 +83,7 @@ proc peer(host: ApplicationNode, key: StateEdKey): NodePeer =
       if array[32, byte](found.value.identity) == array[32, byte](key): return found.value
   assert false, "missing authenticated distribution peer"
   default(NodePeer)
+
 proc retainedRequests(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     probe: var NodeProbe, fixture: GuaranteeFixture) {.raises.} =
   ## Actual authenticated CE137/147/148 requests must still succeed after the source's completed signed session is gone.
@@ -123,6 +131,7 @@ proc retainedRequests(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
       assert getMonoTime() < deadline, "retained native response FIN"
       pump(a, b, c, sa, sb, sc, probe, getMonoTime())
   assert sa.retainedWorkBundles == 1
+
 proc otherSlot(bytes: seq[byte]): seq[byte] =
   ## The GP signature transcript omits the slot: a second structurally valid current-rotation candidate tests distinct retention capacity.
   let config = GuaranteeConfig(cores: CoreCount(2), validators: ValidatorCount(6),
@@ -130,6 +139,7 @@ proc otherSlot(bytes: seq[byte]): seq[byte] =
   var value = decodeGuarantee(bytes, config).value.value
   value.slot = GuaranteeSlot(21)
   encodeGuaranteeValue(value, config).value
+
 proc distributionRequest(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     probe: var NodeProbe, target: NodePeer, request: ReadRequest, now: StateTime): NodeResult[
         NodeRequestTicket] {.raises.} =
@@ -140,6 +150,7 @@ proc distributionRequest(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     if admitted.error notin [NodeError.Unavailable, NodeError.LimitExceeded]: return admitted
     assert getMonoTime() < deadline, "distribution request backpressure deadline"
     pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
+
 proc distributionReceipt(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     probe: var NodeProbe, bytes: seq[byte], keyB, keyC: StateEdKey) {.raises.} =
   ## Ordinary host admission proves default refusal, exclusive worker waiting, exact retention before FIN, duplicate handling and bounded refusal.
@@ -274,12 +285,14 @@ proc distributionReceipt(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
       sb.nodeProtocol, streams = 512)
   assert b.open(sb, reopened, topologyLimits(2), StateTime(21)) == NodeError.None
   assert b.configureWorkDistribution(selected)
+
 proc deliveryPolicy(outgoing: bool): WorkDistributionPolicy =
   ## Genuine roster contains three real peers and nine unreachable fixture endpoints; bounded refusals must remain distinct from two remote acknowledgments.
   let limits = WorkDistributionLimits(eligibility: guaranteeLimits(), wireBytes: ByteLimit(20000),
       targets: ElementLimit(12))
   workDistributionPolicy(limits, 4, ByteLimit(80000), timeoutMs = 8000,
       peerTimeoutMs = 500, parallel = 16, deliver = outgoing)
+
 proc deliver(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     probe: var NodeProbe, variant: Variant, original: seq[byte],
         source: BlockHash, origin: StateEdKey): StateTime {.raises.} =
@@ -367,6 +380,7 @@ proc deliver(a, b, c: var ApplicationNode, sa, sb, sc: var Services,
     pump(a, b, c, sa, sb, sc, probe, getMonoTime(), now)
   assert a.workDeliveryRounds == 1 and a.workDeliveryAttempts == attempts
   now
+
 proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKey) {.raises.} =
   ## A fresh trio gives every case independent native sockets, worker namespaces and private signing owners.
   let raw = workFixture(exported = variant == Variant.Segments)
@@ -523,6 +537,7 @@ proc scenario(variant: Variant, fixture: GuaranteeFixture, keyB, keyC: StateEdKe
   assert a.open(sa, reopened, topologyLimits(2), StateTime(20)) == NodeError.None
   assert a.configureWorkExchange(selected, "unused", "unused")
   assert a.workExchangePhase == WorkExchangePhase.Idle
+
 proc repeatedRuntime(fixture: GuaranteeFixture, keyB, keyC: StateEdKey, remote: int) {.raises.} =
   ## Physical peer discovery must retain all GP indices while issuing zero self requests and one request per distinct remote key.
   let raw = workFixture()
@@ -571,6 +586,7 @@ proc repeatedRuntime(fixture: GuaranteeFixture, keyB, keyC: StateEdKey, remote: 
   while a.workExchangePhase != WorkExchangePhase.Idle:
     assert getMonoTime() < deadline, "repeated-key retirement"
     pump(a, b, c, sa, sb, sc, probe, getMonoTime())
+
 proc main() {.raises.} =
   ## Only public identity leaves the temporary signer scopes; private production setup subsequently imports its own independent owner from paths.
   var diagnostic = ""

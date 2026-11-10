@@ -3,6 +3,7 @@
 
 ## Complete canonical CE128/129/136/143 read backends. Run outside native callbacks under a host read
 ## lease; only frozen bounded wire replies survive publication. No light-state map is accepted.
+
 import std/assertions
 import ./[read_stream, block_service, preimage_announcement]
 import ../chain/[genesis, provider, reports]
@@ -12,6 +13,7 @@ import ../state/[store, snapshot_proof, trie_proof]
 import ../crypto/primitives
 
 const BoundaryBudget = 512*64 ## Two at-most256-node paths cover the 248-bit serialized-key space.
+
 func compare(left, right: StateKey): int =
   ## Compare exact 31-byte serialized keys, independent of host endian or signed char ordering.
   let a = array[31, byte](left)
@@ -20,16 +22,19 @@ func compare(left, right: StateKey): int =
     if a[index] < b[index]: return -1
     if a[index] > b[index]: return 1
   0
+
 func hashAt(payload: openArray[byte]): BlockHash {.requires: payload.len >= 32.} =
   ## Fixed hash bytes are copied only after request framing has proved the extent.
   var raw = default(array[32, byte])
   for index in 0..<32: raw[index] = payload[index]
   BlockHash(raw)
+
 proc appendFrame(output: var seq[byte], payload: seq[byte]) =
   ## Callers preflight the aggregate ceiling; each message has one E4 and no count prefix.
   assert payload.len <= MaxReadReplyBytes-4 and output.len <= MaxReadReplyBytes-payload.len-4
   for index in 0..<4: output.add(byte((uint32(payload.len) shr (8*index)) and 255))
   for octet in payload: output.add(octet)
+
 proc stateReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## Select a contiguous sorted range first, then build both boundary witnesses in one map pass.
   let payload = request.payload
@@ -100,6 +105,7 @@ proc stateReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   appendFrame(wire, boundaries)
   appendFrame(wire, pairs)
   captureReadReply(request, wire)
+
 proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## Resolve from canonical service preimages, never the CE136 report DB or a development bank.
   let source = view.bestBlock
@@ -129,6 +135,7 @@ proc preimageReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply]
     appendFrame(wire, bytes)
     return captureReadReply(request, wire)
   readFailure[ReadReply](ReadError.Unavailable)
+
 proc announcementReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## Validate canonical outstanding request state before planning a same-connection fetch; acknowledgment has no E4 body.
   let decoded = decodeAnnouncement(request.payload)
@@ -142,6 +149,7 @@ proc announcementReply(view: ChainView, request: ReadRequest): ReadResult[ReadRe
   of ReadError.None: captureReadReply(request, []) # Canonical possession suppresses a redundant remote fetch.
   of ReadError.Unavailable: captureReadReply(request, [], ReadEffect.FetchPreimage)
   else: readFailure[ReadReply](held.error) # Integrity/resource failures never masquerade as missing local content.
+
 proc reportReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## Reuse bounded selected-head C10/C14 retention; no report archive or peer-provided state authority is inferred.
   if view.fuzzOnly: return readFailure[ReadReply](ReadError.InvalidRequest)
@@ -168,6 +176,7 @@ proc reportReply(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   of ReportReadError.LimitExceeded: readFailure[ReadReply](ReadError.LimitExceeded)
   of ReportReadError.Malformed, ReportReadError.BackendFailure:
     readFailure[ReadReply](ReadError.BackendFailure) # Malformed authoritative state cannot be hidden as an ordinary miss.
+
 proc serveCanonicalRead*(view: ChainView, request: ReadRequest): ReadResult[ReadReply] =
   ## One full-view host entry point returns only frozen transport bytes, never a retained graph.
   if not request.valid: return readFailure[ReadReply](ReadError.InvalidRequest)

@@ -22,7 +22,9 @@ import ../../support/[accumulation_activity_context, accumulation_completion_con
 
 # Inject failures only after genuine signed finalized owners and structural parent views exist.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc failAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 type ChainFixture = object ## Retained real execution authority and its exact structurally captured original parent.

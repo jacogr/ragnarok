@@ -1,6 +1,8 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Prove the shared x86 leaf/region publication budget and refusal preservation at its boundaries.
+
 import std/[assertions, syncio]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/internal/x86_jit

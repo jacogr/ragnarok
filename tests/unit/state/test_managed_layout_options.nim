@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit managed layout and finite compaction thresholds preserve legacy defaults and atomic parser refusals.
+
 import std/[assertions, syncio]
 import ../../../src/app/options
 import ../../../src/codec/bounded
+
 proc main() =
   ## Omitted layout remains journal; managed policy is available only with an explicitly selected disk backend.
   let base = @["server", "--with-state", "--chain", "chain.json", "--state-storage", "disk",

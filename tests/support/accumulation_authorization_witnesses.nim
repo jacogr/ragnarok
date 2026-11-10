@@ -26,6 +26,7 @@ import ./[report_context, block_activity_context, accumulation_execution_context
 type AuthorizationFixture* = object ## Authored original entries and genuine terminal owner support independent complete-map expectations.
   finalized*: PreparedFinalAccumulation
   entries*: seq[StateEntry]
+
 proc assignProgram(): seq[byte] =
   ## The full 2560-byte queue is read from mapped zero-padded RW memory; slot two has independently varied literal bytes.
   var payload = newSeq[byte](96)
@@ -34,6 +35,7 @@ proc assignProgram(): seq[byte] =
   let code = guestEnvelope([registerImmediate(7, 0), registerImmediate(8, 196608),
     registerImmediate(9, 42), @[10'u8, 17], @[50'u8, 0]], writable = payload)
   for octet in code: result.add(octet)
+
 proc managerProgram(): seq[byte] =
   ## The signed manager guest hands off its role and removes both original allowances without changing queues.
   let code = guestEnvelope([registerImmediate(7, 99), registerImmediate(8, 196608),
@@ -42,6 +44,7 @@ proc managerProgram(): seq[byte] =
     writable = @[42'u8, 0, 0, 0, 99, 0, 0, 0])
   result = @[0'u8]
   for octet in code: result.add(octet) # Stored service code retains the empty metadata prefix.
+
 proc assignParameters(): Parameters =
   ## Real assign validates both chain core count and the pinned eighty-member queue length.
   var bytes = encodeParameters(pvmParameters())
@@ -50,6 +53,7 @@ proc assignParameters(): Parameters =
   bytes[82] = 80
   bytes[83] = 0
   decodeParameters(bytes).value
+
 proc checkAssignPublication*(base: OwnedReport) =
   ## Real assign requires explicit batch quotas and publishes its queue with the selected assigner while preserving original source state.
   var executionOptions0 = executionFixtureConfig()
@@ -81,6 +85,7 @@ proc checkAssignPublication*(base: OwnedReport) =
   assert snapshot.lookup(chapterKey(StateChapter(2))).value.bytes == queue
   assert sameStateSnapshot(fixture.state.snapshot.value,
       prior) # Private publication never mutates the original signed source.
+
 proc authorizationFixture*(base: OwnedReport, guarantees, copies: int,
     empty = false, assigned = false, managed = false): AuthorizationFixture =
   ## Execute one genuine initial round, then certify the stopped continuation without replaying any effects.
@@ -121,6 +126,7 @@ proc authorizationFixture*(base: OwnedReport, guarantees, copies: int,
     rounds: ElementLimit(2), executions: ElementLimit(2), log: OutputLogConfig(items: ElementLimit(
         0), maxBytes: ByteLimit(1)))).value
   AuthorizationFixture(finalized: finalized, entries: fixture.entries)
+
 proc checkBlockAuthorization*(source: PreparedAccumulationConsensus,
     guarantees, copies: int, assigned = false, managed = false) =
   ## Literal C(1) expectations distinguish original guaranteed uses from actual posterior assign/manager effects.

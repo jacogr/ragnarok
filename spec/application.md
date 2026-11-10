@@ -15,41 +15,15 @@ and reports exact-map agreement; listener, disk, recovery and download controls 
 refused for this command.
 
 
-Commands use the [named CLI](../docs/cli.md). `src/app/cli/catalog.nim` owns the shared option
-metadata and grouping; `src/app/cli/defaults.nim` owns typed defaults and bounds.
-`src/app/cli/commands.nim` admits strict named inputs and supplies an owned normalized representation to existing bounded handlers.
-`src/app/cli/help.nim` renders overview and command-specific help from the same catalog.
-Long positional command forms are rejected. Networking fields use `--net-*`;
-download, trace, devnet and conformance fields use their own descriptive prefixes.
-Dedicated conformance budgets retain separate defaults. Syntax inspection precedes
-file IO, logging and service startup; explicit help wins over conformance environment activation.
-
-`app/options.nim` parses shared controls atomically. Its output is cleared on any failure;
-ports are bounded before narrowing and nonrepeatable controls are unique.
-`--with-telemetry` requires `--telemetry-endpoint HOST:PORT --chain FILE`; `--with-rpc`
-enables RPC; `--with-ui` enables UI and RPC together. Each enable switch precedes its
-related settings in help, and configuration alone never enables a service. Named flags
-may be interleaved and value options accept `--name=value`. Existing lifecycle markers,
-exit meanings, protocol policies and owned cleanup remain unchanged. Internal component
-fixtures may validate normalized configuration through `parseCanonicalOptions`; this is
-not a process-input compatibility path. See the CLI guide for examples and migration.
-
-`app/services.nim` centralizes listener startup, bounded chain capture, RPC validation and actual
-certificate/socket-based telemetry setup. Its composite owner forbids copying. Both session
-shapes borrow these fields only while the owner remains stable; all native callbacks finish
-before service retirement. Startup errors close partially opened services, with the caller's
-cleanup covering raising filesystem failures. One captured chain snapshot feeds both services.
-The exporter adapter reads that exporter's enabled state instead of global CLI flags.
+The [CLI guide](../docs/cli.md) describes public commands and setup.
+[Named admission](../src/app/cli/commands.nim) and [options](../src/app/options.nim)
+own validation and enable rules. [Services](../src/app/services.nim) owns startup
+and cleanup for optional listeners and configured state.
 
 ## Build identity
 
-`build/ragnarok --version` prints the application version and full source revision, then
-`Nimony <version> <full compiler revision>` and `Built <UTC timestamp>`. Both CLI and
-`ragnarok_clientInfo` use immutable constants from `src/version.nim`, generated into ignored `build/build_info.nim` by Make.
-RPC `version` is the application label, `revision` its source identity, and `compilerVersion` /
-`compilerRevision` identify the validated nightly in `spec/toolchain.json`.
-`buildTimestamp` is a UTC ISO 8601 instant compiled into the app, unchanged across runs/requests.
-No runtime Git or compiler installation is needed to query a shipped binary.
+The [build identity module](../src/version.nim) owns the immutable CLI and RPC metadata
+interface. Run `build/ragnarok --version` to inspect a built executable.
 
 The checked-in [`src/version.json`](../src/version.json) owns the application version
 (currently `development` until release numbering is chosen). Packaging can override it with
@@ -195,11 +169,9 @@ Neither paths nor configuration controls activate services. Full/light database 
 physical schemas remain separate. Remote identities, light authority and execution policies are
 not invented. Startup creates selected parent directories only after syntax validation.
 
-Identity creation uses the bundled TLS implementation and existing Nim JAM peer-name formula.
-One private namespace lock serializes first-use publication. Key bytes are written privately and
-secret scratch is erased; complete bundles are reused and partial bundles refuse without key
-rotation. Explicit TLS paths are not generated or changed. Foreground signal handling only sets
-an atomic scalar; ordinary deferred cleanup retires transport, services and diagnostic producers.
+[Startup](../src/app/startup.nim) owns first-use identity publication. The
+[entry point](../src/ragnarok.nim) retires services and transport through ordinary
+cleanup after a foreground signal.
 
 Completion checks cover pure defaults/overrides and refusal, default identity creation/reuse and
 partial-bundle refusal, a real bare server with graceful signal shutdown, a pinned client exchange,

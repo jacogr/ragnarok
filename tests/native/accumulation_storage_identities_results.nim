@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine storage calls retain bounded original raw identities through immutable effects and actual terminal selection.
+
 import std/[assertions, syncio, envvars, cmdline]
 import ../support/[pvm_accumulation_program, pvm_accumulation_context, arc_evidence]
 import ../../src/state/accumulation/[effects as accumulation_effects,
@@ -15,14 +16,18 @@ import ../../src/codec/state/[accounts as state_accounts, layout as state_layout
 import ../../src/pvm/[machine, step]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/host/fetch as host_fetch
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Genuine backend failure leaves original effect and raw fact ownership unchanged.
+
 proc failAfter(count: cint) {.importc: "ro_blake_after", cdecl.}
   ## Fail a required map hash after physical-key derivation and private phase preparation.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Per-key resource refusal must precede namespace hashing.
 const policy = AccumulationStorageFactLimits(items: ElementLimit(2), perKey: ByteLimit(2),
     totalKeyBytes: ByteLimit(2))
+
 proc schedule(): Parameters =
   ## Literal small E8 deposit fields keep storage funding independent of maximal unrelated fixture parameters.
   var wire = encodeParameters(pvmParameters())
@@ -30,6 +35,7 @@ proc schedule(): Parameters =
     for i in 0..<8:
       wire[field*8+i] = byte((amount shr (8*i)) and 255) # Three leading E8 deposit fields retain canonical width.
   decodeParameters(wire).value
+
 proc initial(limits: AccumulationStorageFactLimits, lifecycle = false): AccumulationEffects =
   ## Authentic machine bootstrap supplies original input provenance; no result or private source is forged.
   let prepared = guestProgram([@[50'u8, 0]], account = ServiceMetadata(balance: AccountBalance(
@@ -39,6 +45,7 @@ proc initial(limits: AccumulationStorageFactLimits, lifecycle = false): Accumula
       pvmContextConfig()).value, storageFacts = limits,
     createdAccounts = ElementLimit(if lifecycle: 2 else: 0),
     deletedAccounts = ElementLimit(if lifecycle: 2 else: 0)).value
+
 proc run(checkpoint, panic: bool, limits: AccumulationStorageFactLimits,
     credit = 100000'u64): AccumulationOutcome =
   ## Actual guest writes one raw byte then either halts or panics, optionally preserving it through the real checkpoint host call.
@@ -53,6 +60,7 @@ proc run(checkpoint, panic: bool, limits: AccumulationStorageFactLimits,
       HostCallLimit(10), GasCycleLimit(1000), pvmContextConfig(), storageFacts = limits)
   assert done.error == AccumulationDispatchError.None
   normalizeAccumulationOutcome(done).value
+
 proc main() {.raises.} =
   let mode = if paramCount() > 0: paramStr(1) else: "control"
   let empty = default(AccumulationEffectResult[AccumulationStorageFact])

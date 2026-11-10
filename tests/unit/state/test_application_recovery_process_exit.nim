@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Known staged/durable process exits after recovered execution preserve exact complete files and release child-only native locks.
+
 import std/[assertions, syncio, envvars]
 import std/posix/posix
 import ../../../src/app/[services, chain, candidate]
@@ -16,6 +17,7 @@ import ../../support/accumulation_completion_context
 import ../../support/application_recovery_execution
 const ChainPath = "application-recovery-exit-chain"
 const FileName = "application-recovery-exit"
+
 proc childWork(fixture: RecoveryExecutionFixture, durable: bool) {.raises.} =
   ## Every worker/lock is created after fork; normal exit deliberately skips collection, join and all copied-parent destructors.
   var owner = default(Services)
@@ -39,6 +41,7 @@ proc childWork(fixture: RecoveryExecutionFixture, durable: bool) {.raises.} =
   else:
     assert owner.checkpointExportPhase == ApplicationCheckpointWorkerPhase.Staged # No I/O dispatch has been granted.
   posix.exitnow(0)
+
 proc scenario(fixture: RecoveryExecutionFixture, next: ApplicationCheckpointIdentity,
     nextHeader, nextBytes: seq[byte], durable: bool) {.raises.} =
   ## Parent owns no native worker or cooperative lock at fork; independent trusted context determines post-exit recovery.
@@ -84,6 +87,7 @@ proc scenario(fixture: RecoveryExecutionFixture, next: ApplicationCheckpointIden
   assert refused.fileFailure.error == ApplicationCheckpointFileError.ContextMismatch
   assert readBoundedFile(FileName, ByteLimit(1000000)).value ==
       bytes # Failed trust never rewrites the file selected at the observed process boundary.
+
 proc main() {.raises.} =
   ## The independently executed direct child supplies expected trust; exported file metadata never authenticates itself.
   defer:

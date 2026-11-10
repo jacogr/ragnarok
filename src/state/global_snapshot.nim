@@ -1,8 +1,12 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Validate all global chapter serializations from one complete immutable map without hashing.
-## Retained source identity and typed chapters confer no valid-state or trusted-root authority.
+## Validate global chapter serializations from one complete immutable map.
+##
+## The result retains the exact source and its typed chapter captures. Opaque service
+## rows stay in the original map. This preserves source identity without rehashing or
+## reconstructing state. Valid-state consistency and root trust require separate checks.
+
 import ../codec/bounded
 import ../codec/state/[layout as state_layout, composition as state_composition]
 import ./store
@@ -56,7 +60,10 @@ func chapterError*[T](outcome: GlobalStateResult[T]): StateCompositionError {.in
 
 proc validateGlobalState*(source: StateStoreSnapshot, profile: StateProfile,
     limits: GlobalStateLimits): GlobalStateResult[ValidatedGlobalState] =
-  ## Preflight every complete chapter length before copying or decoding any input value.
+  ## Preflight all sixteen required keys and cached lengths before copying any chapter.
+  ## Separate chapter and aggregate ceilings bound the detached codec work. Exact
+  ## capture preserves the failing chapter and decoder reason, and failure publishes
+  ## no certificate or validated prefix.
   if not sameStateSnapshot(source, source):
     return GlobalStateResult[ValidatedGlobalState](
         status: GlobalStateError.InvalidSource) # A default owner cannot supply a complete map.

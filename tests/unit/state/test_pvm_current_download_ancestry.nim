@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Genuine current lookup demand drains native connections, resumes original input once, preserves deadlines and rejects a changed canonical parent.
+
 import std/[assertions, envvars, syncio, monotimes, times]
 import std/posix/posix
 import ../../../src/app/[services, options]
@@ -22,12 +23,15 @@ import ../../../src/state/accumulation/current/[update as accumulation_current_u
     consensus as accumulation_current_consensus]
 import ../../support/[current_application_context, current_services_disk_samples,
   accumulation_current_chain_context, accumulation_current_candidate_context, block_download_transport]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Resumption only validates/copies certified original context; it never hashes or repeats guest work.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe primitive work independently of state flags.
 type AncestryWitness {.pure.} = enum ## Each authored mode preserves actual selected authority or produces a typed refusal.
   Resume, Expire, ChangedParent
+
 proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponders,
     target: CurrentDownloadLoopStage, now = 0'u64) =
   ## The caller's explicit host clock is stable while bounded actual native callbacks retire or execute.
@@ -37,6 +41,7 @@ proc advance(dispatcher: var CurrentDownloadLoop, servers: var DownloadResponder
     assert servers.poll()
     assert dispatcher.tick(CurrentDownloadLoopTick(now)) == CurrentDownloadLoopError.None
     yieldCurrentDiskThread()
+
 proc scenario(context: CurrentChainFixture, witness: AncestryWitness) {.raises.} =
   ## Each real signed two-guarantee response starts without required ancestry and reserves one unchanged attempt.
   var path = "pvm-current-download-ancestry-chain"
@@ -140,6 +145,7 @@ proc scenario(context: CurrentChainFixture, witness: AncestryWitness) {.raises.}
     assert dispatcher.completed and dispatcher.adoption.error == CurrentHandoffError.None
     assert servers.requestCount(true) == 1, "resumption never repeats the original block request"
     equalCurrentDiskMap(owner.stateSnapshot.value, context.source.currentConsensusState.value)
+
 proc main() {.raises.} =
   ## Actual report lookups and original complete current state prevent fabricated discovery or resumed-prefix evidence.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

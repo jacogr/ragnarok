@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Valid outer checksums never authorize corrupt inner records, implicit repair or leaked replay locks.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[storage_samples, managed_storage_samples]
@@ -18,14 +19,17 @@ proc processId(): cint {.importc: "getpid", header: "<unistd.h>".}
   ## Give finite real-file fixtures a process-owned namespace.
 type FrameSlice = object ## Exact source-owned final frame bounds are independent of the later mutated bytes.
   offset, extent: int
+
 proc bytes(text: string): seq[byte] =
   ## Test-owned files preserve all binary octets, including embedded zeroes.
   result = newSeq[byte](text.len)
   for index, value in text: result[index] = byte(value)
+
 proc text(input: openArray[byte]): string =
   ## Ordinary file helpers receive a detached binary string without changing encoding or extent.
   result = newString(input.len)
   for index, value in input: result[index] = char(value)
+
 proc reseal(input: var seq[byte]): StorageChecksum =
   ## Refresh only the outer integrity envelope, deliberately granting no local-record or graph authority.
   assert input.len > 32
@@ -34,6 +38,7 @@ proc reseal(input: var seq[byte]): StorageChecksum =
   let checksum = array[32, byte](digest.value)
   for index in 0..<32: input[input.len-32+index] = checksum[index]
   StorageChecksum(checksum)
+
 proc lastFrame(input: seq[byte], start: int, limit: ByteLimit): FrameSlice =
   ## Walk only the closed valid fixture, proving exact bounded progress before authoring corruption.
   assert start >= 0 and start < input.len
@@ -46,6 +51,7 @@ proc lastFrame(input: seq[byte], start: int, limit: ByteLimit): FrameSlice =
     result = FrameSlice(offset: offset, extent: extent.value)
     offset += extent.value
   assert offset == input.len and result.extent > 48
+
 proc reopen(owner: var FileRepository, path: string, managed: bool, legacy: JournalLimits,
     policy: ManagedLimits, repair: bool, generation: RepositoryGeneration,
         root: StateRoot): FileError =
@@ -60,6 +66,7 @@ proc reopen(owner: var FileRepository, path: string, managed: bool, legacy: Jour
       recoverFileRepository(owner, path, default(StorageChainId), legacy, generation, root)
     else:
       openFileRepository(owner, path, default(StorageChainId), legacy)
+
 proc attempt(managed: bool) {.raises.} =
   ## Author late inner corruption after valid revisions and prove strict refusal, byte preservation and reusable locks.
   let policy = managedStorageLimits()
@@ -168,6 +175,7 @@ proc attempt(managed: bool) {.raises.} =
       0].value == @[8'u8]
   assert restoreStateEntries(held, c.commitment.root, policy.repository.codec.trie).value[
       0].value == @[10'u8]
+
 proc main() {.raises.} =
   ## Keep this real-fsync corruption matrix finite; pure staged owner suites carry the 1,000-cycle ARC proofs.
   attempt(false)

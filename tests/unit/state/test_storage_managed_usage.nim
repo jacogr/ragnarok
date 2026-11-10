@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Selected-file usage exposes exact bounded maintenance counters; a fixed checked workload records reclamation cost.
+
 # @@Verification={"arc":"storage_managed_usage_arc_release"}
 import std/[assertions, syncio, envvars, monotimes, times]
 import ../../support/[storage_samples, managed_storage_samples, arc_evidence]
@@ -11,10 +12,12 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/database_identity
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/state/trie as state_trie
+
 proc sample(repository: ManagedRepository) =
   ## Scalar usage queries allocate no detached graphs or buffers.
   let usage = repository.usage.value
   assert usage.storedNodes > 0 and usage.snapshotBytes > 0
+
 proc main() {.raises.} =
   ## Fixed 64 changed-root commits retain the last eight revisions plus one explicit older root.
   let limits = managedStorageLimits()

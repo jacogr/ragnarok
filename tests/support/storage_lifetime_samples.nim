@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Isolated lifetime controls retire prepared fixtures before measuring retained repository objects.
+
 import std/assertions
 import ./[storage_growth_samples, storage_allocations]
 import ../../src/storage/node/[records as node_records, repository as node_repository]

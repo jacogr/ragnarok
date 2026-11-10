@@ -17,6 +17,7 @@ import ../../support/validator_rotation_fixture
 
 ## Test-library hashes can be refused after map construction to prove validation performs no backend work.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 ## Observe all primitive attempts, including refused calls.
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
 

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frame-sized strict reopen matches whole-buffer admission over every valid prefix, byte mutation and observed IO refusal.
+
 # @@Verification={"arc":"storage_light_streaming_reopen_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[arc_evidence, storage_io, storage_light_journal]
@@ -14,11 +15,13 @@ import ../../../src/storage/managed/[io as managed_io, manifest as managed_manif
 import ../../../src/storage/file/errors as file_errors
 import ../../../src/codec/bounded
 import ../../../src/codec/state/trie as state_trie
+
 proc joined(anchor: seq[byte], one, two: PreparedLightDelta, cut: int): seq[byte] =
   ## Independently concatenate a complete first frame and an explicitly selected second-frame prefix.
   result = anchor
   for octet in one.encodedBytes: result.add(octet)
   for index in 0..<cut: result.add(two.encodedBytes[index])
+
 func expectedFile(outcome: LightReplayResult[LightJournalReplay]): FileError =
   ## The documented storage translation preserves identity, stale-position, policy/provider and incomplete distinctions.
   case outcome.error
@@ -34,6 +37,7 @@ func expectedFile(outcome: LightReplayResult[LightJournalReplay]): FileError =
     of LightDeltaError.BackendFailure: FileError.BackendFailure
     else: FileError.InvalidBatch
   else: FileError.InvalidJournal
+
 proc checkInput(path: string, input: seq[byte], fixture: LightJournalFixture,
     manifest: LightJournalManifest) {.raises.} =
   ## The filesystem consumer independently segments the same bytes and must preserve exact forensic input on every verdict.
@@ -67,6 +71,7 @@ proc checkInput(path: string, input: seq[byte], fixture: LightJournalFixture,
   else:
     assert not owner.opened, "refused stream publishes no owner"
   assert readFile(lightChild(path, ManagedFileKind.Journal)) == lightText(input), "strict read preserves exact journal bytes"
+
 proc openCycle(path: string, fixture: LightJournalFixture) =
   ## Native owners, immutable prefixes, frame buffers and result temporaries retire before the next memory sample.
   var owner = default(LightJournalCache)
@@ -75,6 +80,7 @@ proc openCycle(path: string, fixture: LightJournalFixture) =
   let retained = owner.preparedSnapshot.value
   assert owner.close == FileError.None, "strict cycle retirement"
   assert retained.encodedBytes == fixture.following.snapshot.encodedBytes, "scoped replay successor survives owner retirement"
+
 proc main() {.raises.} =
   ## Independently authored fixture transitions anchor exact progress, malformed boundaries and all actual native read/barrier refusals.
   let fixture = lightFixture()

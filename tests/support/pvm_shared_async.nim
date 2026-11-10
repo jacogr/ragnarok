@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Real bounded compiler barrier, complete literal CPU/RAM histories, checked work receipts and final-drop cleanup.
 
 import std/[assertions, syncio, envvars]
@@ -272,10 +273,104 @@ when defined(pvmSharedAsyncWitness):
     waitNativeCompiler(runtime)
     assert runtime.runtimeInfo.phase == NativePhase.Idle, "staleStreamEpoch.5: runtime.runtimeInfo.phase == NativePhase.Idle"
     assert nativeState(session) == NativeState.Deferred and nativeSpanInfo(session).len == 0, "staleStreamEpoch.6: nativeState(session) == NativeState.Deferred and nativeSpanInfo(session).len == 0"
+    assert runtime.runtimeInfo.registered == 0,
+      "staleStreamEpoch: retained invalidated owner releases its physically retired credit"
     assert runtime.runtimeInfo.completed == 0, "staleStreamEpoch.7: runtime.runtimeInfo.completed == 0"
     assert runtime.close(), "staleStreamEpoch.8: runtime.close()"
 
 when defined(pvmSharedAsyncWitness):
+  proc unregisteredInvocationLease() =
+    ## Source identity/close exclusion survive without borrowing an image credit, including restart.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime), "unregistered lease: start"
+    let session = newNativeSession(runtime)
+    assert nativeEpoch(session) == 1, "unregistered lease: source epoch precedes credit"
+    beginNativeInvocation(session, 64)
+    assert runtime.runtimeInfo.registered == 0 and runtime.runtimeInfo.active == 1,
+      "unregistered lease: active invocation does not reserve image capacity"
+    assert not runtime.close(), "unregistered lease: active checked call prevents close"
+    recordNativeWork(session, 4)
+    assert observedNativeWork(session) == 4, "unregistered lease: actual work accrues without credit"
+    finishNativeInvocation(session, observedNativeWork(session))
+    invalidateNativeStream(session)
+    assert nativeEpoch(session) == 2 and runtime.runtimeInfo.registered == 0,
+      "unregistered lease: source invalidation requires no registration"
+    assert runtime.close(), "unregistered lease: idle source does not prevent close"
+    beginNativeInvocation(session, 64)
+    assert nativeState(session) == NativeState.Closed and runtime.runtimeInfo.active == 0,
+      "unregistered lease: closed anchor cannot admit or execute"
+    finishNativeInvocation(session, 0)
+    assert launch(runtime), "unregistered lease: explicit empty namespace restart"
+    beginNativeInvocation(session, 64)
+    assert runtime.runtimeInfo.active == 1 and runtime.runtimeInfo.registered == 0,
+      "unregistered lease: restarted source still holds only invocation exclusion"
+    assert not runtime.close(), "unregistered lease: restarted active call prevents close"
+    finishNativeInvocation(session, 0)
+    assert runtime.close(), "unregistered lease: final joined close"
+
+  proc deferredCreditProgress() =
+    ## Four retained short-call owners cannot starve a fifth real long source or aggregate tiny proofs.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime), "deferred credit: start"
+    pauseNativeCompiler(runtime, true)
+    var codes = default(array[5, PreparedProgram])
+    var sources = default(array[5, Machine])
+    for index in 0..<5:
+      sources[index] = input(loopOwner(), if index < 4: 1000'u64 else: 2048'u64)
+      codes[index] = prepared(sources[index].programOf.value, runtime)
+    for repetition in 0..<2:
+      # Each call settles3000 original facts; summing two calls would wrongly exceed the4096 floor.
+      for index in 0..<4:
+        let done = execute(sources[index], ExecutionStepLimit(3001), codes[index])
+        verify(done, sources[index], 1000)
+        assert done.value.backend == PvmBackend.Interpreted,
+          "deferred credit: repeated tiny calls stay checked"
+    assert runtime.runtimeInfo.submitted == 0, "deferred credit: no lifetime proof aggregation"
+    let first = execute(sources[4], ExecutionStepLimit(6145), codes[4])
+    verify(first, sources[4], 2048)
+    assert first.value.backend == PvmBackend.Interpreted,
+      "deferred credit: first qualifying call is checked"
+    # Old begin-time registration leaves all four cold owners Live and fails this bounded assertion;
+    # check before any compiler wait so that the regression fails rather than hanging on a missing job.
+    assert runtime.runtimeInfo.submitted == 1 and runtime.runtimeInfo.phase == NativePhase.Queued,
+      "deferred credit: fifth qualifying source queues while four cold owners remain retained"
+    pauseNativeCompiler(runtime, false)
+    waitNativeCompiler(runtime)
+    let ready = execute(sources[4], ExecutionStepLimit(6145), codes[4])
+    verify(ready, sources[4], 2048)
+    assert ready.value.backend == PvmBackend.Jit and
+      preparedInfo(codes[4]).value.nativeOperations == 6144,
+      "deferred credit: real fifth-source native work preserves literal CPU/RAM history"
+    for index in 0..<4:
+      assert preparedInfo(codes[index]).value.nativeOperations == 0 and
+        preparedNativeState(codes[index]).value == NativeState.Deferred,
+        "deferred credit: cold owners remain available without invented work"
+    for index in 0..<5: codes[index] = default(PreparedProgram)
+    assert runtime.runtimeInfo.registered == 0 and runtime.close(),
+      "deferred credit: exact final image retirement releases capacity"
+
+  proc exhaustedCreditNamespace() =
+    ## Exhausted generation/ticket counters cannot wrap or strand a partially acquired empty credit.
+    if not nativePlatformSupported(): return
+    for tickets in [false, true]:
+      let runtime = newNativeRuntime()
+      assert launch(runtime), "exhausted credit: start"
+      exhaustNativeNamespace(runtime, tickets)
+      let source = input(loopOwner(), 2048)
+      let code = prepared(source.programOf.value, runtime)
+      for repetition in 0..<2:
+        let checked = execute(source, ExecutionStepLimit(6145), code)
+        verify(checked, source, 2048)
+        assert checked.value.backend == PvmBackend.Interpreted and
+          preparedNativeState(code).value == NativeState.Deferred,
+          "exhausted credit: exact checked fallback without a wrapped request"
+        let observed = runtime.runtimeInfo
+        assert observed.active == 0 and observed.registered == 0 and observed.submitted == 0,
+          "exhausted credit: counter exhaustion leaks neither a lease nor an unused credit"
+      assert runtime.close(), "exhausted credit: joined close"
+
   proc asyncLifecycle() =
     ## No per-call readiness wait: blocked compiler permits first AND second checked outputs; real ready image follows.
     let runtime = newNativeRuntime()
@@ -354,7 +449,6 @@ when defined(pvmSharedAsyncWitness):
     assert observed.nativeFragments > 0 and observed.nativeCalls > 0 and observed.nativeOperations > 0,
       "supported common qualification requires real publication and entry"
     recordNativeQualification("positive", runtime, observed)
-
 
   proc cancelledFinalDrop() =
     ## Retained output keeps only immutable guest state; it cannot pin a cancelled prepared/native owner.
@@ -524,7 +618,6 @@ when defined(pvmSharedAsyncWitness):
       checkedStream = takeFlatStream(checked)
     assert runtime.close(), "readyReservations: compiler shutdown"
 
-
   proc immediateLoopOwner(immediate: array[4, byte]): Program =
     ## The canonical arithmetic wire has ADDs at PC0/3, opcode 83 at PC6 and halt at PC16.
     let wire = @[0'u8, 0, 18, 131, 0x77, 3, 131, 0xaa, 1, 83, 0x4a,
@@ -555,6 +648,35 @@ when defined(pvmSharedAsyncWitness):
     assert after.nativeBranchCalls-before.nativeBranchCalls == 1 and
       after.nativeHeaderCalls-before.nativeHeaderCalls == 1
     assert machineInfo(input).value == initial, "opcode 83: immutable input CPU"
+
+  proc checkedImmediateSuffix(source: Machine, code: PreparedProgram) =
+    ## Exercise the attempt boundary and each original interior entry of the bound checked pair.
+    let initial = machineInfo(source).value
+    let owner = programOf(source).value
+    let memory = memoryOf(source).value
+    assert execute(source, ExecutionStepLimit(2), code).error == StepError.StepLimitExceeded
+    for paid in [false, true]:
+      for pc in [3'u64, 6]:
+        # Finish the final visit from the ADD or from the independently addressable branch.
+        var cpu = initial
+        cpu.pc = CodeAddress(pc)
+        cpu.blockCharged = paid
+        cpu.gas = MachineGas(if paid: 29'u64 else: 51'u64)
+        cpu.registers[10] = RegisterValue(if pc == 3: 9999'u64 else: 10000'u64)
+        let suffix = captureMachine(owner, memory, cpu)
+        assert suffix.error == MachineError.None
+        let attempts = if pc == 3: 3'u64 else: 2'u64
+        assert execute(suffix.value, ExecutionStepLimit(attempts-1), code).error ==
+          StepError.StepLimitExceeded
+        var expected = cpu
+        expected.pc = CodeAddress(0)
+        expected.gas = MachineGas(7)
+        expected.blockCharged = true
+        expected.registers[10] = RegisterValue(10000)
+        checkImmediateResult(execute(suffix.value, ExecutionStepLimit(attempts), code), expected,
+          StepExit.Halt, PvmBackend.Interpreted)
+        assert machineInfo(suffix.value).value == cpu, "opcode 83: immutable suffix CPU"
+    assert machineInfo(source).value == initial, "opcode 83: immutable source CPU"
 
   proc immediateLoops() =
     ## Qualify the unchanged arithmetic-10000 fixture and a separate signed-word boundary.
@@ -596,6 +718,10 @@ when defined(pvmSharedAsyncWitness):
       expected.registers[10] = RegisterValue(if highBit: 0xffffffff80000800'u64 else: 10000'u64)
       checkImmediateResult(execute(source.value, budget, native.value), expected, StepExit.Halt,
         PvmBackend.Interpreted)
+      if not highBit:
+        # The queued image must survive reuse of the checked stream at both interior PCs.
+        checkedImmediateSuffix(source.value, native.value)
+        assert runtime.runtimeInfo.phase == NativePhase.Queued
       assert runtime.runtimeInfo.submitted == 1
       pauseNativeCompiler(runtime, false)
       waitNativeCompiler(runtime)
@@ -621,6 +747,9 @@ when defined(pvmSharedAsyncWitness):
       else:
         readyImmediate(source.value, budget, expected, StepExit.Halt, 30000, checked.value,
           native.value)
+        # A ready image cannot consume the short interior-entry budgets.
+        checkedImmediateSuffix(source.value, native.value)
+        assert preparedInfo(native.value).value.nativeOperations == 30000
       assert runtime.close()
 
   proc foldedLoopOwner(): Program =
@@ -693,8 +822,48 @@ when defined(pvmSharedAsyncWitness):
     verify(history, source, 2048)
     assert runtime.close(), "doneFinalDrop.5: runtime.close()"
 
-
 when defined(pvmSharedAsyncWitness):
+  proc failedCreditProgress() =
+    ## Five retained failed owners release empty credits without retry, including a closed-anchor restart.
+    if not nativePlatformSupported(): return
+    let runtime = newNativeRuntime()
+    assert launch(runtime), "failed credit: start"
+    var codes = default(array[5, PreparedProgram])
+    var sources = default(array[5, Machine])
+    for index in 0..<5:
+      sources[index] = input(loopOwner(), 2048)
+      codes[index] = prepared(sources[index].programOf.value, runtime)
+      let first = execute(sources[index], ExecutionStepLimit(6145), codes[index])
+      verify(first, sources[index], 2048)
+      assert runtime.runtimeInfo.submitted == uint64(index+1),
+        "failed credit: next real job queues despite retained Unavailable predecessors"
+      waitNativeCompiler(runtime)
+      let collected = execute(sources[index], ExecutionStepLimit(6145), codes[index])
+      verify(collected, sources[index], 2048)
+      assert collected.value.backend == PvmBackend.Interpreted and
+        preparedNativeState(codes[index]).value == NativeState.Unavailable,
+        "failed credit: actual nil lowering remains terminal for its source epoch"
+      assert runtime.runtimeInfo.registered == 0 and runtime.runtimeInfo.completions == 0,
+        "failed credit: empty completion physically retires its exact registration"
+    assert runtime.close(), "failed credit: closed anchor with retained failed owners"
+    let closed = execute(sources[0], ExecutionStepLimit(6145), codes[0])
+    verify(closed, sources[0], 2048)
+    assert preparedNativeState(codes[0]).value == NativeState.Closed,
+      "failed credit: closed observation remains checked"
+    assert launch(runtime),
+      "failed credit: creditless closed survivors do not prevent explicit empty restart"
+    for index in 0..<5:
+      let checked = execute(sources[index], ExecutionStepLimit(6145), codes[index])
+      verify(checked, sources[index], 2048)
+      assert preparedNativeState(codes[index]).value == NativeState.Unavailable,
+        "failed credit: close observation must not erase no-retry state"
+      let info = preparedInfo(codes[index]).value
+      assert info.nativeFragments == 0 and info.nativeCalls == 0 and info.nativeOperations == 0,
+        "failed credit: neither nil image nor restart fabricates native progress"
+    assert runtime.runtimeInfo.submitted == 5 and runtime.runtimeInfo.registered == 0,
+      "failed credit: no automatic retry after restart"
+    assert runtime.close(), "failed credit: joined final close"
+
   proc runSharedAsyncRefusal*() =
     ## A real eligible worker job refuses allocation once; exact collection is permanently checked for this owner.
     when defined(pvmX86Jit):
@@ -702,6 +871,7 @@ when defined(pvmSharedAsyncWitness):
     else:
       assert defined(pvmArm64Jit) and defined(pvmArm64JitRefuse),
           "refusal requires the selected ARM allocation control"
+    failedCreditProgress()
     let runtime = newNativeRuntime()
     let owner = loopOwner()
     let source = input(owner, 2048)
@@ -758,9 +928,9 @@ when defined(pvmSharedAsyncWitness):
           assert idle.phase == NativePhase.Idle and idle.submitted == 1 and idle.completed == 1,
               "refusal: exact empty collection frees mailbox without retry"
           assert idle.completions == 0, "refusal: empty collection retires the parked completion"
-          assert idle.registered == 1 and idle.active == 0,
-              "refusal: live owner retains only its credit"
-      assert runtime.runtimeInfo.registered == 0, "refusal: final owner drop returns credit"
+          assert idle.registered == 0 and idle.active == 0,
+              "refusal: retained failed owner releases its unused image credit"
+      assert runtime.runtimeInfo.registered == 0, "refusal: final owner drop leaves capacity free"
       assert history.len == 5, "refusal: five full literal outputs retained"
     else:
       # Nonmatching hosts still exercise truthful checked fallback; this is not an allocation-refusal receipt.
@@ -1001,15 +1171,22 @@ when defined(pvmSharedAsyncWitness):
       verify(historyB, sourceB, 2048)
       assert waitNativeCompilerGate(runtime).hasImage, "workerRetirementDrop.2"
       releaseNativeCompilerGate(runtime)
-      let sourceC = input(loopOwner(), 16)
-      let sourceD = input(loopOwner(5), 16)
+      let sourceC = input(loopOwner(), 2048)
+      let sourceD = input(loopOwner(5), 2048)
       var codeC = prepared(sourceC.programOf.value, runtime)
       var codeD = prepared(sourceD.programOf.value, runtime)
-      let historyC = execute(sourceC, ExecutionStepLimit(49), codeC)
-      let historyD = execute(sourceD, ExecutionStepLimit(49), codeD)
-      verify(historyC, sourceC, 16)
-      verify(historyD, sourceD, 16, 5)
-      assert runtime.runtimeInfo.registered == 3 and runtime.runtimeInfo.submitted == 1, "workerRetirementDrop.3"
+      # Capacity pressure must come from real images, not short/ineligible source registrations.
+      armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+      let historyC = execute(sourceC, ExecutionStepLimit(6145), codeC)
+      verify(historyC, sourceC, 2048)
+      assert waitNativeCompilerGate(runtime).hasImage, "workerRetirementDrop.C image"
+      releaseNativeCompilerGate(runtime)
+      armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
+      let historyD = execute(sourceD, ExecutionStepLimit(6145), codeD)
+      verify(historyD, sourceD, 2048, 5)
+      assert waitNativeCompilerGate(runtime).hasImage, "workerRetirementDrop.D image"
+      releaseNativeCompilerGate(runtime)
+      assert runtime.runtimeInfo.registered == 3 and runtime.runtimeInfo.submitted == 3, "workerRetirementDrop.3"
       let sourceA = input(loopOwner(), 2048)
       var session = newNativeSession(runtime)
       armNativeCompilerGate(runtime, point)
@@ -1028,7 +1205,7 @@ when defined(pvmSharedAsyncWitness):
       invalidateNativeStream(session) # Actual second public invalidation occurs with row Reclaiming.
       assert nativeEpoch(session) == old.epoch+2 and nativeState(session) == NativeState.Deferred, "workerRetirementDrop.10"
       session = default(NativeSession) # Actual final drop must mark Retiring, not assert overlapping host cleanup.
-      assert runtime.runtimeInfo.registered == 4 and runtime.runtimeInfo.completions == 1, "workerRetirementDrop.11"
+      assert runtime.runtimeInfo.registered == 4 and runtime.runtimeInfo.completions == 3, "workerRetirementDrop.11"
       assert runtime.runtimeInfo.phase == NativePhase.Running, "workerRetirementDrop.12"
       let sourceNew = input(loopOwner(5), 2048)
       var codeNew = prepared(sourceNew.programOf.value, runtime)
@@ -1036,18 +1213,18 @@ when defined(pvmSharedAsyncWitness):
       verify(blocked, sourceNew, 2048, 5)
       assert blocked.value.backend == PvmBackend.Interpreted, "workerRetirementDrop.13"
       assert preparedNativeState(codeNew).value == NativeState.Deferred, "workerRetirementDrop.14"
-      assert runtime.runtimeInfo.submitted == 2 and runtime.runtimeInfo.completed == 1, "workerRetirementDrop.15"
+      assert runtime.runtimeInfo.submitted == 4 and runtime.runtimeInfo.completed == 3, "workerRetirementDrop.15"
       assert runtime.runtimeInfo.registered == 4, "workerRetirementDrop.16" # The fifth owner cannot borrow the not-yet-disposed credit.
       releaseNativeCompilerGate(runtime)
       waitNativeCompiler(runtime)
-      assert runtime.runtimeInfo.registered == 3 and runtime.runtimeInfo.completions == 1, "workerRetirementDrop.17"
-      assert runtime.runtimeInfo.submitted == 2 and runtime.runtimeInfo.completed == 1, "workerRetirementDrop.18"
+      assert runtime.runtimeInfo.registered == 3 and runtime.runtimeInfo.completions == 3, "workerRetirementDrop.17"
+      assert runtime.runtimeInfo.submitted == 4 and runtime.runtimeInfo.completed == 3, "workerRetirementDrop.18"
       armNativeCompilerGate(runtime, NativeCompilerPoint.AfterPublish)
       let retry = execute(sourceNew, ExecutionStepLimit(6145), codeNew)
       verify(retry, sourceNew, 2048, 5)
       let fresh = waitNativeCompilerGate(runtime)
       assert fresh.hasImage and fresh.slot == old.slot and fresh.generation == old.generation+1, "workerRetirementDrop.19"
-      assert fresh.ticket > old.ticket and runtime.runtimeInfo.completions == 2, "workerRetirementDrop.20"
+      assert fresh.ticket > old.ticket and runtime.runtimeInfo.completions == 4, "workerRetirementDrop.20"
       releaseNativeCompilerGate(runtime)
       let ready = execute(sourceNew, ExecutionStepLimit(6145), codeNew)
       verify(ready, sourceNew, 2048, 5)
@@ -1056,7 +1233,7 @@ when defined(pvmSharedAsyncWitness):
       let readyB = execute(sourceB, ExecutionStepLimit(6145), codeB)
       verify(readyB, sourceB, 2048)
       assert readyB.value.backend == PvmBackend.Jit, "workerRetirementDrop.23"
-      assert runtime.runtimeInfo.submitted == 3 and runtime.runtimeInfo.completed == 2, "workerRetirementDrop.24"
+      assert runtime.runtimeInfo.submitted == 5 and runtime.runtimeInfo.completed == 4, "workerRetirementDrop.24"
       codeB = default(PreparedProgram)
       codeC = default(PreparedProgram)
       codeD = default(PreparedProgram)
@@ -1065,8 +1242,8 @@ when defined(pvmSharedAsyncWitness):
       assert runtime.close(), "workerRetirementDrop.26"
       verifyState(historyA, sourceA, 2048)
       verify(historyB, sourceB, 2048)
-      verify(historyC, sourceC, 16)
-      verify(historyD, sourceD, 16, 5)
+      verify(historyC, sourceC, 2048)
+      verify(historyD, sourceD, 2048, 5)
       verify(blocked, sourceNew, 2048, 5)
       verify(ready, sourceNew, 2048, 5)
 
@@ -1160,6 +1337,9 @@ proc runSharedAsync*() =
     diagnosticPhase("staleStreamEpoch")
     staleStreamEpoch()
     diagnosticPhase("asyncLifecycle")
+    unregisteredInvocationLease()
+    deferredCreditProgress()
+    exhaustedCreditNamespace()
     asyncLifecycle()
     diagnosticPhase("retainedCompletionFairness")
     retainedCompletionFairness()

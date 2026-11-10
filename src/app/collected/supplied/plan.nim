@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Freeze the genuine collected target and explicit policies for later complete supplied successor qualification.
+
 import ../../[chain, preparation_worker]
 import ../update as collected_update
 import ../../../state/current/[profile as current_profile, globals as current_globals]

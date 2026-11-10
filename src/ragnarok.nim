@@ -1,11 +1,11 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Consolidated application entry point for networking, telemetry, RPC and the embedded UI.
-## Every run returns through native/ARC cleanup before exit.
+## Shared native entry point for production and executable-level verification.
 ##
-## Parses one explicit configuration and selects peer/mesh workloads, bounded selftests or offline trace checking.
-## This is the production build and E2E entry point; full node execution remains future work.
+## Command selection runs from one normalized configuration. Tests that launch the
+## executable use the same service activation and shutdown path as operator runs.
+## Return through native and ARC cleanup before publishing the process exit code.
 
 import std/[os, strutils, monotimes, times, syncio, envvars]
 import std/posix/posix
@@ -117,7 +117,6 @@ proc main(): int =
         return 2
       stdout.writeLine(report)
       return 0 # Standalone execution retires all prepared/native owners before process teardown.
-
 
     if options.argumentCount() == 1 and options.argument(1) == "history":
       let outcome = runHistoricalQuery(options)

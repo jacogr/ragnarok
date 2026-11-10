@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Explicit retention plans count shared physical records and preserve immutable source ownership.
+
 # @@Verification={"arc": "storage_retention_plan_arc_release"}
 import std/[assertions, syncio]
 import ../../support/[storage_samples, arc_evidence]
@@ -9,6 +10,7 @@ import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/storage/node/[records as node_records, repository as node_repository]
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/codec/bounded
+
 proc cycle() =
   ## Three revisions share one leaf; selecting first/last retains five of seven physical records.
   let limits = storageLimits()

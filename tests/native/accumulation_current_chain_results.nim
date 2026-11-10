@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Default/refused current chain coordination exposes no child or inactive nested stage reason.
+
 import std/cmdline
 import ../../src/chain/provider
 import ../../src/codec/bounded

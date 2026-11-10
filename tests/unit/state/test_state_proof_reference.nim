@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Frozen independent Python/hashlib commitments and raw paths cross-check production verification and generation.
+
 import std/[assertions, envvars, parseutils, strutils, syncio]
 import ../../../src/state/trie_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc unhex(text: string): seq[byte] =
   ## Fixture byte tokens are exact lowercase hexadecimal; a dash is present-empty storage.
   if text == "-": return @[]
@@ -16,6 +18,7 @@ proc unhex(text: string): seq[byte] =
     var value = 0'u8
     assert parseHex(text[2*i..2*i+1], value) == 2
     result[i] = value
+
 proc key(text: string): StateKey =
   ## Preserve all 248 key bits exactly.
   let bytes = unhex(text)
@@ -23,6 +26,7 @@ proc key(text: string): StateKey =
   var raw = default(array[31, byte])
   for i in 0..<31: raw[i] = bytes[i]
   StateKey(raw)
+
 proc check(line: string) {.raises.} =
   ## Compare literal oracle roots/paths with both separately called production directions.
   let fields = line.splitWhitespace()
@@ -59,6 +63,7 @@ proc check(line: string) {.raises.} =
   assert generated.len == count and generated.suppliedValue.value == supplied
   for i in 0..<count:
     assert array[64, byte](generated.nodeAt(i).value) == array[64, byte](nodes[i]) # Exact canonical path parity.
+
 proc main() {.raises.} =
   ## Missing fixture input must fail instead of silently passing a zero-case corpus.
   let lines = readFile(getEnv("RAGNAROK_STATE_PROOF")).splitLines()

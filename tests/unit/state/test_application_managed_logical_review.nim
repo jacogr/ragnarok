@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Managed original-current review follows genuine collected supplied qualification and remains stable across separate adoption and joined shutdown.
+
 import std/[assertions, syncio]
 import std/posix/posix
 import ../../support/[collected_native_context, collected_logical_services_context,
@@ -15,6 +16,7 @@ import ../../../src/state/current/[logical as current_logical, state as current_
     review as current_review]
 import ../../../src/state/account/review as account_review
 import ../../../src/state/[inventory, manifest, store]
+
 proc main() {.raises.} =
   ## Genuine current preparation finishes its actual managed lease before any logical predicate or report work begins.
   let fixture = collectedNativeFixture()

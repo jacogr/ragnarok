@@ -1,12 +1,18 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Owned in-memory serialized JAM state with atomic sorted mappings and incremental GP 0.8.0 commitments.
-## Single-threaded handles publish complete immutable snapshots; borrowed write inputs stay
-## stable for apply. Snapshot retention is caller-controlled; storage remains in memory.
+## Owned in-memory store for complete serialized JAM mappings.
 ##
-## Exposes StateStore/StateStoreSnapshot handles, snapshot, lookup, sorted keyAt, commitment and atomic apply over
-## complete serialized mappings, bounded owner-bound copySlice, plus forkStateStore with inherited ceilings for private working branches.
+## A published head pairs a sorted mapping with its incremental trie revision.
+## Single-threaded store handles can branch independently while sharing immutable
+## old versions. Snapshots and retained values keep their exact owner alive after
+## later writes or store destruction. An empty value is a successful lookup.
+##
+## The store accepts already serialized state and commits the complete map.
+## Partial light-state observations require separate proof-backed storage.
+## Borrowed initial entries and writes must remain stable for the entire call.
+## Construction and mutation can reread payloads while preparing the matching map
+## and trie. Policy ceilings apply per map and batch. Callers bound retained history.
 
 import std/[algorithm, assertions]
 import ../codec/state/[trie as state_trie, layout as state_layout]
@@ -203,7 +209,8 @@ proc copySlice*(view: StateValue, offset, length: uint64,
     limit: ByteLimit): StateStoreResult[seq[byte]] =
   ## Copy exactly one owner-bound raw byte interval without materializing the remaining value.
   ## Generic storage coordinates are uint64; validate by subtraction before narrowing or allocation.
-  ## Default owners, invalid ranges and policy refusal expose no bytes or partial progress.
+  ## An empty interval at the value end is valid. Invalid ranges fail without clipping.
+  ## Default owners and policy refusal expose no byte payload or partial progress.
   let data = view.owner.data
   if data == nil:
     return StateStoreResult[seq[byte]](status: StateStoreError.Uninitialized) # Empty copies still need an owner.
@@ -219,8 +226,11 @@ proc copySlice*(view: StateValue, offset, length: uint64,
 
 proc apply*(store: var StateStore, writes: openArray[StateWrite]): StateStoreResult[
     StateStoreSnapshot] =
-  ## Merge unique sorted mutations into a private candidate, then publish only after the root succeeds.
-  ## Empty batches retain the existing version. Failure leaves the store and every old snapshot unchanged.
+  ## Validate a batch and publish the matching mapping and trie head together.
+  ## Reject duplicate keys and payload-bearing deletes so request order cannot select
+  ## a different mutation. Preflight the final map before copying caller values.
+  ## The candidate stays private until its root succeeds. Empty batches retain the
+  ## current version without hashing, and failure preserves prior readers.
   let head = store.head
   if head == nil:
     # Initialization is required even for a no-op batch.

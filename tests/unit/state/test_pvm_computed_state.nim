@@ -16,8 +16,10 @@ import ../../support/[pvm_computed_state, arc_evidence]
 
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse all new hashes only after completing original execution and genuine block commitment admissions.
+
 proc hashes(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Count actual backend attempts without replacing successful primitive behavior.
+
 proc expect[T](outcome: ComputedStateResult[T], reason: ComputedStateError) =
   ## Compare typed alternatives before guarded extraction.
   assert outcome.error == reason, "computed state reason"
@@ -80,6 +82,7 @@ expect(bindComputedState(source, staleAdmission), ComputedStateError.StateMismat
 expect(bindComputedState(source, failed), ComputedStateError.InvalidAdmission)
 assert hashes() == 0, "state binding performs no hashes or state publication"
 reset(0)
+
 proc detached(): StateBoundComputedReport =
   ## One retained owner preserves original computation, both sealed headers and exact map after fixture locals retire.
   let temporary = stateFixture()
@@ -90,6 +93,7 @@ assert sameStateSnapshot(retained.computedStateSnapshot.value,
 assert retained.computedStateSource.value.computedLinkCount.value == 0, "detached source lifetime"
 assert uint32(headerInfo(retained.computedStateAdmission.value.admittedHeader).value.unsigned.slot) ==
     21, "detached admitted header lifetime"
+
 proc cycle() =
   ## Release fixed source/admission sharing every iteration, including refused state substitutions and failed admissions.
   let done = bindComputedState(source, admission).value

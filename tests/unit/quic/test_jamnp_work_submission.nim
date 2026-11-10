@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "jamnp_work_submission_arc_release"}
 
 ## Actual authorizer execution gates exact builder messages and independent imported-segment proofs.
+
 import std/[assertions, syncio]
 import ../../../src/jamnp-s/work_submission
 import ../../../src/codec/[bounded, composite, assurances]
@@ -26,6 +28,7 @@ type
     input: InputFixture
     package, first, extrinsics, segments, proofs: seq[byte]
     limits: WorkSubmissionLimits
+
 proc fixture(external = true, rejected = false, wrongPool = false, wrongMapping = false,
     missingMapping = false, conflictingMapping = false): Fixture =
   ## Commit genuine PVM code, selected C(1) authorizer and C(3) package mapping into a private original source.
@@ -81,17 +84,20 @@ proc fixture(external = true, rejected = false, wrongPool = false, wrongMapping 
       let proof = inputProof(index)
       for octet in array[4104, byte](proof.verifiedImportSegment.value): result.segments.add(octet)
       for octet in proof.verifiedImportProof.value: result.proofs.add(octet)
+
 proc header(f: Fixture): WorkSubmissionHeader =
   ## Headers are independently decoded from the actual separate CE146 payloads.
   let decoded = decodeWorkSubmission(WorkSubmissionKind.Bundle, f.first, f.package,
     fullPackageConfig(ByteLimit(204800)))
   assert decoded.error == WorkSubmissionError.None, "CE146 header: " & $decoded.error
   decoded.value
+
 proc grant(f: Fixture): AuthorizedWorkSubmission =
   ## No test-issued grant bit or fake PVM success enters the body verifier.
   let checked = authorizeWorkSubmission(f.header, f.input.state, f.input.parameters, f.limits)
   assert checked.error == WorkSubmissionError.None, "real authorization: " & $checked.error
   checked.value
+
 proc complete(f: Fixture): VerifiedImportInputs =
   ## Original manifests partition all three independently framed body payloads.
   let checked = completeBundleSubmission(f.grant, f.extrinsics, f.segments, f.proofs, f.limits)
@@ -125,6 +131,7 @@ assert completeBundleSubmission(packageGrant, full.extrinsics, full.segments, fu
     full.limits).error == WorkSubmissionError.InvalidMessage
 assert completePackageSubmission(full.grant, full.extrinsics, [], [], full.limits).error ==
     WorkSubmissionError.InvalidMessage
+
 proc grantedPackage(f: Fixture): AuthorizedWorkSubmission =
   ## Independent CE133 framing retains the same actual package and source authorizer as the bundle control.
   var wire = @[0'u8, 0]
@@ -132,6 +139,7 @@ proc grantedPackage(f: Fixture): AuthorizedWorkSubmission =
   let header = decodeWorkSubmission(WorkSubmissionKind.Package, wire, [], fullPackageConfig(
       ByteLimit(204800))).value
   authorizeWorkSubmission(header, f.input.state, f.input.parameters, f.limits).value
+
 proc fetchedReply(f: Fixture): seq[byte] =
   ## Independent literal E4 prefixes frame frozen segment/proof witnesses rather than using the production response encoder.
   result = @[]
@@ -307,6 +315,7 @@ replaced.package = @[]
 replaced.first = @[]
 assert completeBundleSubmission(retained, full.extrinsics, full.segments, full.proofs,
     full.limits).value.importInputsInfo.value.entries == 2
+
 proc cycle(bad: seq[byte]) =
   ## Release source-bearing grant, successful inputs and late failed proof prefixes on every iteration.
   let selected = full.grantedPackage

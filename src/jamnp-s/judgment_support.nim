@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Bind a signed negative CE145 claim to genuine standalone guarantor support under an explicitly selected retained canonical reporting context. This worker capability carries public detached provenance/report/rosters, never an invented availability block or full-map authority.
+
 import ./judgment_claim
 from ./assurance_store import AssuranceScanControl, stopped
 import ../chain/[genesis, provider, parameters]
@@ -49,37 +50,46 @@ type
     of AssignmentFailure: assignmentReason: GuarantorError
     of SupportFailure: supportReason: GuaranteeSupportResult[VerifiedGuaranteeSupport]
     else: discard # Simple/default outcomes contain no report, roster, state or partial support.
+
 func error*[T](outcome: JudgmentSupportResult[T]): JudgmentSupportError =
   ## Inspect the selected status before any extraction.
   outcome.status
+
 func value*[T](outcome: JudgmentSupportResult[T]): T {.requires: outcome.status ==
     JudgmentSupportError.None.} =
   ## Complete success alone exposes a provenance capability or copied metadata.
   outcome.completed
+
 func hashError*[T](outcome: JudgmentSupportResult[T]): CryptoError {.requires: outcome.status ==
     JudgmentSupportError.HashFailure.} =
   ## Preserve the actual whole-roster identity hash failure without publishing a partial original cohort.
   outcome.hashReason
+
 func stateError*[T](outcome: JudgmentSupportResult[
     T]): StateStoreError {.requires: outcome.status == JudgmentSupportError.StateFailure.} =
   ## Missing actual full-state chapters are not replaced with empty rosters or offenders.
   outcome.stateReason
+
 func componentError*[T](outcome: JudgmentSupportResult[
     T]): StateComponentError {.requires: outcome.status == JudgmentSupportError.ComponentFailure.} =
   ## Preserve the original clock/entropy/validator decoder refusal.
   outcome.componentReason
+
 func disputeError*[T](outcome: JudgmentSupportResult[
     T]): DisputeStateError {.requires: outcome.status == JudgmentSupportError.DisputeFailure.} =
   ## Offender state retains its own whole canonical decoder cause.
   outcome.disputeReason
+
 func assignmentError*[T](outcome: JudgmentSupportResult[
     T]): GuarantorError {.requires: outcome.status == JudgmentSupportError.AssignmentFailure.} =
   ## Actual rotation/roster planning never fabricates a usable default table.
   outcome.assignmentReason
+
 func supportError*[T](outcome: JudgmentSupportResult[T]): GuaranteeSupportResult[
     VerifiedGuaranteeSupport] {.requires: outcome.status == JudgmentSupportError.SupportFailure.} =
   ## Keep actual canonical shape, coordinate and Ed25519 failure separate from data unavailability or report truth.
   outcome.supportReason
+
 func valid*(limits: JudgmentSupportLimits): bool =
   ## Caller settings cannot change the chain's epoch/rotation; they only bound whole input/output and the maintained actual-source planner.
   limits.support.valid and uint64(limits.rosters.cores) == uint64(limits.support.wire.cores) and
@@ -94,9 +104,11 @@ func valid*(limits: JudgmentSupportLimits): bool =
     uint64(limits.retainedBytes) > 0 and uint64(limits.retainedBytes) <= 16'u64*1024*1024 and
     uint64(limits.hashBytes) > 0 and uint64(limits.hashBytes) <= 16'u64*1024*1024 and
     uint64(limits.hashes) > 0 and uint64(limits.hashes) <= 4096
+
 func valid*(support: VerifiedJudgmentSupport): bool =
   ## Copied source/hash/validity metadata cannot initialize this private tag.
   support.data != nil
+
 proc supportInfo*(support: VerifiedJudgmentSupport): JudgmentSupportResult[JudgmentSupportInfo] =
   ## Read fixed provenance facts only while every alias is idle or under the same exact worker lease.
   let data = support.data
@@ -104,6 +116,7 @@ proc supportInfo*(support: VerifiedJudgmentSupport): JudgmentSupportResult[Judgm
       status: JudgmentSupportError.Uninitialized)
   JudgmentSupportResult[JudgmentSupportInfo](status: JudgmentSupportError.None,
       completed: data.info)
+
 proc supportClaim*(support: VerifiedJudgmentSupport): JudgmentSupportResult[SignedJudgmentClaim] =
   ## A plain fixed signed claim retains no graph aliases or replacement signature-valid flag.
   let data = support.data
@@ -111,6 +124,7 @@ proc supportClaim*(support: VerifiedJudgmentSupport): JudgmentSupportResult[Sign
       status: JudgmentSupportError.Uninitialized)
   JudgmentSupportResult[SignedJudgmentClaim](status: JudgmentSupportError.None,
       completed: data.claim)
+
 proc supportCertificate*(support: VerifiedJudgmentSupport): JudgmentSupportResult[
     VerifiedGuaranteeSupport] =
   ## This narrower report/role owner cannot substitute for full inclusion or a private completed evaluation.
@@ -119,6 +133,7 @@ proc supportCertificate*(support: VerifiedJudgmentSupport): JudgmentSupportResul
       status: JudgmentSupportError.Uninitialized)
   JudgmentSupportResult[VerifiedGuaranteeSupport](status: JudgmentSupportError.None,
       completed: data.certificate)
+
 proc supportAuditors*(support: VerifiedJudgmentSupport): JudgmentSupportResult[
     ValidatorStateSnapshot] =
   ## Preserve the actual independently selected judgment epoch, including every original null/repeated position.
@@ -127,12 +142,14 @@ proc supportAuditors*(support: VerifiedJudgmentSupport): JudgmentSupportResult[
       status: JudgmentSupportError.Uninitialized)
   JudgmentSupportResult[ValidatorStateSnapshot](status: JudgmentSupportError.None,
       completed: data.auditors)
+
 proc supportParameters*(support: VerifiedJudgmentSupport): JudgmentSupportResult[Parameters] =
   ## Exact fixed source parameters stay independent of later heads and caller replacement geometry.
   let data = support.data
   if data == nil: return JudgmentSupportResult[Parameters](
       status: JudgmentSupportError.Uninitialized)
   JudgmentSupportResult[Parameters](status: JudgmentSupportError.None, completed: data.parameters)
+
 proc supportRoster*(support: VerifiedJudgmentSupport, previous: bool): JudgmentSupportResult[
     ValidatorStateSnapshot] =
   ## These are explicitly named actual reporting-context rosters, not a guessed historical assurer epoch selected only by population.
@@ -141,6 +158,7 @@ proc supportRoster*(support: VerifiedJudgmentSupport, previous: bool): JudgmentS
       status: JudgmentSupportError.Uninitialized)
   JudgmentSupportResult[ValidatorStateSnapshot](status: JudgmentSupportError.None,
     completed: if previous: data.previous else: data.current)
+
 proc matchesSource*(support: VerifiedJudgmentSupport, source: BlockSnapshotResult): bool =
   ## A private origin must independently bind this qualified reporting context to its own canonical full map and whole parameter profile.
   let data = support.data
@@ -150,6 +168,7 @@ proc matchesSource*(support: VerifiedJudgmentSupport, source: BlockSnapshotResul
     array[32, byte](actual.stateRoot) == array[32, byte](data.info.sourceRoot) and
     actual.slot == uint64(uint32(data.info.sourceTime)) and
     data.parameters.sameParameterProfile(actual.chainParameters)
+
 proc qualifyJudgmentSupportAt*(view: ChainView, sourceHash: genesis.BlockHash,
     claim: SignedJudgmentClaim, report: OwnedReport, limits: JudgmentSupportLimits,
     control: AssuranceScanControl = default(AssuranceScanControl),

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Optional timed CE141 fanout owns only detached plans, collected signatures and exact native/worker tickets; fresh managed storage checks remain the sole signing authority.
+
 import std/[monotimes, times]
 import ./services
 import ./proof/[worker, work_submission]
@@ -44,6 +45,7 @@ type
     cursor: int
     usedRequests, usedDials, usedBytes: uint64
     attempted, acknowledged, rounds: uint64
+
 func assuranceBroadcastPolicy*(planning: AssuranceScheduleLimits,
     signing: AssurancePossessionLimits, period: uint64, requests, dials: ElementLimit,
     bytes: ByteLimit, parallel: range[1..64] = 8,
@@ -59,28 +61,37 @@ func assuranceBroadcastPolicy*(planning: AssuranceScheduleLimits,
   AssuranceBroadcastPolicy(ready: true, planning: planning, signing: signing,
     period: period, requests: uint64(requests), dials: uint64(dials), bytes: uint64(bytes),
     parallel: parallel, peerTimeout: peerTimeoutMs, jobTimeout: jobTimeoutMs)
+
 func valid*(policy: AssuranceBroadcastPolicy): bool =
   ## Default policies cannot enable a wire selector or worker.
   policy.ready
+
 func phase*(owner: AssuranceBroadcaster): AssuranceBroadcastPhase =
   ## Fixed source-free progress remains safe during another worker's exclusive lease.
   owner.phase
+
 func attempted*(owner: AssuranceBroadcaster): uint64 =
   ## Only actual admitted native requests increment this counter.
   owner.attempted
+
 func acknowledged*(owner: AssuranceBroadcaster): uint64 =
   ## A remote bare FIN acknowledgment is not block inclusion.
   owner.acknowledged
+
 func rounds*(owner: AssuranceBroadcaster): uint64 =
   ## Count fully retired bounded opportunities, including unsuccessful attempts.
   owner.rounds
+
 proc `=copy`*(destination: var AssuranceBroadcaster, source: AssuranceBroadcaster) {.error.}
   ## Copies would duplicate exact cancellation and collection authority.
+
 proc `=dup`*(source: AssuranceBroadcaster): AssuranceBroadcaster {.error.}
   ## Initialization cannot duplicate a live owner either.
+
 proc requireClosed(owner: AssuranceBroadcaster) {.requires: not owner.active and owner.peers.len == 0.} =
   ## Explicit host retirement precedes dropping callback/worker controls.
   discard
+
 proc `=wasMoved`*(owner: var AssuranceBroadcaster) {.nodestroy, requires: not owner.active and
     owner.peers.len == 0.} =
   ## Only a closed owner transfers its acyclic detached children.
@@ -89,6 +100,7 @@ proc `=wasMoved`*(owner: var AssuranceBroadcaster) {.nodestroy, requires: not ow
   `=wasMoved`(owner.proof)
   `=wasMoved`(owner.request)
   `=wasMoved`(owner.peers)
+
 proc `=destroy`*(owner: AssuranceBroadcaster) =
   ## Neither destruction nor default values silently abandon a live lease.
   requireClosed(owner)
@@ -97,6 +109,7 @@ proc `=destroy`*(owner: AssuranceBroadcaster) =
   `=destroy`(owner.proof)
   `=destroy`(owner.request)
   `=destroy`(owner.peers)
+
 proc configure*(owner: var AssuranceBroadcaster, services: Services,
     streams: var NodeService, policy: AssuranceBroadcastPolicy): bool =
   ## The healthy installed archive and explicitly imported signer must match the actual TLS owner; receipt remains independent.
@@ -108,6 +121,7 @@ proc configure*(owner: var AssuranceBroadcaster, services: Services,
   if not streams.enableAssuranceSending(): return false
   owner.policy = policy
   true
+
 proc retireDial(owner: var AssuranceBroadcaster, streams: var NodeService,
     index: int, force: bool) =
   ## Cancellation requests keep their concurrency charge until actual native retirement.
@@ -118,20 +132,24 @@ proc retireDial(owner: var AssuranceBroadcaster, streams: var NodeService,
   elif not owner.peers[index].closing:
     if force or not streams.peerBusy(owner.peers[index].member.identity):
       owner.peers[index].closing = streams.cancelPeerConnection(owner.peers[index].dial)
+
 proc retire(owner: var AssuranceBroadcaster, streams: var NodeService, force: bool) =
   ## Cancel only exact owned request/dial tokens, preserving every pre-existing connection.
   for index in 0..<owner.peers.len:
     discard streams.cancelRequest(owner.peers[index].request)
     owner.retireDial(streams, index, force)
   owner.phase = AssuranceBroadcastPhase.Retiring
+
 func expired(owner: AssuranceBroadcaster, clock: MonoTime): bool =
   ## A finite monotonic upper bound still retires resources when a caller stops supplying wall time.
   (clock-owner.started).inMilliseconds >= owner.deadlineMs
+
 func healthySigning(services: Services, streams: NodeService): bool =
   ## Only cached host scalars are observed during a foreign borrow; a collected namespace fault immediately revokes future disclosure.
   if not streams.isOpen or not services.assuranceSigningMatches(streams.localIdentity): return false
   let storage = services.assuranceStorageInfo
   storage.opened and not storage.faulted
+
 proc beforePoll*(owner: var AssuranceBroadcaster, services: var Services,
     streams: var NodeService, clock: MonoTime, hasTime: bool, now: AssuranceTime) =
   ## Revoke known-stale queued output before native callbacks flush it; an exclusive foreign job leaves the installed canonical stamp unchanged and grants no new-send authority.
@@ -146,6 +164,7 @@ proc beforePoll*(owner: var AssuranceBroadcaster, services: var Services,
     elif services.stateProofAvailable:
       if not services.assuranceScheduleCurrent(owner.plan):
         owner.retire(streams, false) # Foreign exclusion alone is not a source change; actual canonical installation is checked as soon as its gate opens.
+
 proc finish(owner: var AssuranceBroadcaster) =
   ## Exact collection and physical dial retirement precede dropping public plan/wire storage.
   owner.plan = default(AssuranceSchedule)
@@ -155,6 +174,7 @@ proc finish(owner: var AssuranceBroadcaster) =
   owner.cursor = 0
   owner.phase = AssuranceBroadcastPhase.Idle
   if owner.rounds < high(uint64): inc owner.rounds
+
 proc poll*(owner: var AssuranceBroadcaster, services: var Services,
     streams: var NodeService, clock: MonoTime) =
   ## Collection never admits another job; matching tokens and finite deadlines remain independent of foreign work.
@@ -229,6 +249,7 @@ proc poll*(owner: var AssuranceBroadcaster, services: var Services,
     else:
       pending = true # Unscheduled or active destinations remain inside this same finite opportunity.
   if not pending: owner.retire(streams, false)
+
 proc startPeer(owner: var AssuranceBroadcaster, streams: var NodeService,
     index: int, clock: MonoTime) =
   ## Prefer existing authenticated transport; new dials consume explicit whole-window reservations.
@@ -265,6 +286,7 @@ proc startPeer(owner: var AssuranceBroadcaster, streams: var NodeService,
     owner.peers[index].started = clock
     owner.peers[index].phase = BroadcastPeerPhase.Connecting
     inc owner.usedDials
+
 proc submit*(owner: var AssuranceBroadcaster, services: var Services,
     streams: var NodeService, clock: MonoTime, now: AssuranceTime): bool {.raises.} =
   ## An explicit Common Era observation and idle canonical gate are mandatory for new planning, private signing and native output.
@@ -347,6 +369,7 @@ proc submit*(owner: var AssuranceBroadcaster, services: var Services,
         if owner.peers[index].dialing or owner.peers[index].phase ==
             BroadcastPeerPhase.Requested: inc active
   false
+
 proc close*(owner: var AssuranceBroadcaster, services: var Services, streams: var NodeService) =
   ## Join only this exact worker and ask native retirement only for this controller's tokens; the enclosing host then closes transport.
   if owner.active and services.stateProofActive(owner.proof): services.stopStateProofs()

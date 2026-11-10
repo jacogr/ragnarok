@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque current updates stage fallible child capture before durable handoff and guarded installation.
+
 import std/assertions
 import ../../store
 import ./[chain as accumulation_current_chain, consensus as accumulation_current_consensus,

@@ -1,17 +1,22 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 ## Frozen full-state benchmark with the same decoded-fact/reset boundary as the historical local control.
+
 import std/[assertions, syncio, envvars]
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/gas
 import ../../src/pvm/internal/handler_stream
 import ../../src/pvm/step as oracle
+
 proc cpuNanoseconds(): int64 {.importc: "pvm_sieve_cpu_nanoseconds", header: "pvm_sieve_clock.h".}
+
 proc word(data: string, at, width: int): uint64 =
   ## All local fixture words are bounded before shifts or narrowing.
   assert at >= 0 and width >= 1 and width <= 8 and at <= data.len-width
   result = 0
   for i in 0..<width: result = result or (uint64(byte(data[at+i])) shl (8*i))
+
 proc local(path: string): string =
   ## A fixture I/O refusal aborts before any valid result row.
   try: result = readFile(path)

@@ -12,6 +12,7 @@ import ../support/[pvm_assured_chain, pvm_computed_chain]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Cause real child capture failure after private publication, preserving both live handles.
+
 proc expect[T](outcome: AssuredChainResult[T], reason: AssuredChainError) =
   ## Confirm selected alternatives opaquely so runtime misuse is not a static contradiction.
   assert outcome.error == reason, "assured chain runtime control"

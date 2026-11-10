@@ -1,14 +1,21 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Optional loopback WebSocket server driven by the peer dispatcher. No threads or blocking IO.
+## Dispatcher-owned loopback WebSocket connections and publication handoffs.
 ##
-## Exposes the Server owner, publishBlock/publishAccumulation/publishFinalized handoffs and start/tick/close lifecycle.
-## The caller services bounded connection slots and per-connection chain subscription queues.
+## Each slot owns its upgrade, message assembly, reply and subscription queue. Reads
+## pause while an output is pending so slow clients cannot accumulate replies. A
+## fragmented message keeps its original deadline across control frames, and a slow
+## write gets its own absolute deadline.
+##
+## A canonical worker lease pauses dispatch. The caller installs or resumes the
+## selected view before serving chain queries again. Destruction and close release
+## the socket owner and per-connection state.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
 import ../lib/socket_io
+import std/http/httpmsg as http_msg
 import std/http/httpparse as http_parse
 import ./[wire, protocol, proof_requests]
 import ./light_source
@@ -34,19 +41,20 @@ type
   RpcChainLease* = ref object ## Opaque host-only identity authorizing one chain pause; never shared with a worker.
     marker: uint8
   Server* = object ## Non-copyable listener; an exclusive chain pause retains sockets without exposing request contexts.
+    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
     opened, proofs: bool
-    proofCursor: int            # Fair bounded scan advances after each successfully claimed connection.
+    proofCursor: int                # Fair bounded scan advances after each successfully claimed connection.
     lease: nil RpcChainLease
     fd: cint
     connections: array[MaxConnections, Connection]
     started: int64
     port, uiPort: uint16
     role: string
-    light: RpcLightHead         # Distinct immutable partial source shares no complete provider state.
+    light: RpcLightHead             # Distinct immutable partial source shares no complete provider state.
     lightDisk: bool
-    chain: ChainView            # Retained immutable provider view shared by one dispatcher tick.
-    identity: ChainIdentity     # Fixed configured genesis identity is independent of selected/restarted history.
-    parameters: ParameterResult # Fixed-size owned configuration shared by all connections.
+    chain: ChainView                # Retained immutable provider view shared by one dispatcher tick.
+    identity: ChainIdentity # Fixed configured genesis identity is independent of selected/restarted history.
+    parameters: ParameterResult     # Fixed-size owned configuration shared by all connections.
 
 type RpcProofDispatch* = object ## Host-only routing retains a detached request namespace, never a canonical snapshot.
   index: int
@@ -105,6 +113,7 @@ proc `=wasMoved`*(server: var Server) {.nodestroy, inline.} =
   `=wasMoved`(server.light)
   `=wasMoved`(server.chain)
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Every accepted descriptor belongs to the destination, including streaming files.
@@ -122,6 +131,7 @@ proc `=destroy`*(server: Server) =
       discard posix.close(slot.fd)
 
   # Custom destruction must release dynamic ARC fields as well as native descriptors.
+  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
   `=destroy`(server.role)
   `=destroy`(server.light)
@@ -166,6 +176,7 @@ proc close*(server: var Server) {.requires: server.lease == nil.} =
     slot.close()
   if server.opened:
     discard posix.close(server.fd)
+  server.httpTags = nil
   server.opened = false
   server.light = default(RpcLightHead)
   server.lightDisk = false
@@ -291,7 +302,8 @@ proc publishBlock*(server: var Server, child: BlockSnapshotResult): ViewAdvanceE
   ## Closed/disabled listeners and missing seeds return Uninitialized; other failures preserve the
   ## current view and forward advanceView's reason. Success replaces the chain and queues subscription updates,
   ## preserving sockets, queued replies and startup parameters unless a subscriber FIFO overflows.
-  ## This is not a thread-safe import/validation API.
+  ## Serialized replies keep their original view's bytes. Incomplete incoming
+  ## requests observe the view of the tick that finishes processing them.
   if not server.opened or server.lease != nil:
     return ViewAdvanceError.Uninitialized # Shutdown cannot be bypassed by publishing another snapshot.
   let update = server.chain.advanceView(child)
@@ -403,7 +415,8 @@ proc reject(slot: var Connection, code: int, now: int64) =
   slot.closing = true
   slot.deadline = now + 5000
 
-proc process(slot: var Connection, info: ClientInfo, now: int64, uiPort: uint16 = 0) =
+proc process(slot: var Connection, tags: http_msg.HttpTags, info: ClientInfo, now: int64,
+    uiPort: uint16 = 0) =
   ## Process at most one frame per slot/turn, including control frames interleaved with fragmented text.
   if not slot.upgraded: # The only HTTP operation is an explicit WebSocket upgrade, never RPC over POST.
     let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
@@ -411,7 +424,7 @@ proc process(slot: var Connection, info: ClientInfo, now: int64, uiPort: uint16 
     if headBytes < 0:
       slot.close() # The library's scanner refuses an oversized incomplete upgrade.
       return
-    let response = upgrade(slot.input.substr(0, headBytes - 1), uiPort)
+    let response = upgrade(slot.input.substr(0, headBytes - 1), uiPort, tags)
     if response.len == 0:
       # Invalid upgrades close without dispatching their body.
       slot.close()
@@ -492,6 +505,14 @@ proc tick*(server: var Server, peers: uint32) =
   if not server.opened or server.lease != nil:
     # Default peer operation does no additional syscall or clock work.
     return
+  let existingTags = server.httpTags
+  let tags: http_msg.HttpTags =
+    if existingTags != nil:
+      existingTags # A running listener reuses its vocabulary.
+    else:
+      let vocabulary = http_msg.newHttpTags()
+      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
+      vocabulary
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure closes only the newly accepted socket.
@@ -541,7 +562,7 @@ proc tick*(server: var Server, peers: uint32) =
             # Copy only the initialized native prefix.
             slot.input.add(bytes[i])
       if slot.opened and slot.output.len == 0:
-        slot.process(info, now, server.uiPort)
+        slot.process(tags, info, now, server.uiPort)
     if slot.opened and not slot.closing and slot.output.len == 0:
       let update = slot.session.nextUpdate()
       if update.len > 0:

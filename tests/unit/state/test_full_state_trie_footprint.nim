@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Public trie-owner measurements preserve independently checked roots, copied paths and retained singleton values.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/storage/full/state_trie as full_state_trie
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]

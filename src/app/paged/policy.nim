@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Finite full paged application policy retains existing complete-state, physical, export and context ceilings.
+
 import ../../state/paged/state as paged_state
 import ../../state/disk_store
 import ../../storage/full/paged/[store as full_paged_store, stream as full_paged_stream]

@@ -3,6 +3,7 @@
 
 ## Derive structural state cardinalities and retain full parameters from one genuine current update.
 ## Bounded exact C9 decoding never falls back to the current population or substitutes an equal-root map.
+
 import ../accumulation/current/update as accumulation_current_update
 import ../store
 import ../../chain/[genesis, parameters]

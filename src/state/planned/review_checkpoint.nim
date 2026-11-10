@@ -3,6 +3,7 @@
 
 ## Explicit-root restoration prepares complete account reports before any account-content work.
 ## This synchronous unchanged-format adapter performs no I/O, canonical installation or root discovery.
+
 import ../../codec/state/[trie as state_trie, composition as state_composition]
 import ../[validated_checkpoint, inventory]
 import ../account/review/plan as account_review_plan

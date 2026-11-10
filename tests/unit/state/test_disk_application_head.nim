@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Local head context preserves exact state ownership and rejects mismatched chain/profile/header/revision facts.
+
 import std/[assertions, syncio]
 import ../../support/application_checkpoint_context
 import ../../../src/app/chain
@@ -12,6 +13,7 @@ import ../../../src/state/store
 import ../../../src/storage/database_identity
 import ../../../src/storage/node/repository as node_repository
 import ../../../src/codec/[bounded, header]
+
 proc main() {.raises.} =
   ## The contextual journal supplies local authority; every application fact still has to match exactly.
   let owner = checkpointFixture()
@@ -64,6 +66,7 @@ proc main() {.raises.} =
   for index in DiskHeadPrefixBytes-8..<DiskHeadPrefixBytes: modified[index] = 255
   assert restoreDiskHead(modified, chain, generation, identity.parameters, state, limit).error ==
       DiskHeadError.InvalidFormat
+
 proc bodyWitness() {.raises.} =
   ## A structural empty extrinsic exercises V2 framing; genuine accepted bytes are checked by disk_chain.
   let owner = checkpointFixture()

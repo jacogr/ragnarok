@@ -10,9 +10,11 @@ import ../support/pvm_accumulation_provision
 
 ## Inject backend refusal only after the complete guest/source fixture exists.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc checkReason(outcome: AccumulationDispatchResult, expected: AccumulationDispatchError) =
   ## Confirm the real alternative in a separate procedure so intentional misuse remains a runtime contract probe.
   assert outcome.error == expected, "actual provide alternative: " & $outcome.error
+
 proc checkOog(outcome: AccumulationDispatchResult) =
   ## A completed unsigned OOG remains a valid owner with zero gas and no local engine-failure reason.
   checkReason(outcome, AccumulationDispatchError.None)

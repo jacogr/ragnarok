@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_staging_publication_arc_release"}
 
 ## Real designate/bless executions prove original-delegator roster selection, bounded work and atomic whole-map publication.
@@ -19,9 +20,13 @@ import ../../support/[accumulation_batch_context, pvm_accumulation_context,
 
 type Ending = enum ## Genuine terminal branches select regular, checkpoint or initial staging snapshots.
   Halt, Panic, CheckpointPanic, Restore, HashReturn
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc hashAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
+
 proc parameters(): Parameters =
   ## Match the three-core host profile without charging unrelated fixture deposits.
   var wire = encodeParameters(pvmParameters())
@@ -29,11 +34,13 @@ proc parameters(): Parameters =
   wire[24] = 3
   wire[25] = 0
   decodeParameters(wire).value
+
 proc payload(count: int, seed: int): seq[byte] =
   ## Independently vary every opaque record field and ordinal while keeping all arithmetic small.
   result = newSeq[byte](count*336)
   for index in 0..<result.len:
     result[index] = byte((index*7+seed) mod 256) # All four opaque fields and duplicate records retain their wire order.
+
 proc designateProgram(count, original: int, ending: Ending): seq[byte] =
   ## The real host reads complete mapped memory; zero-padded memory after the payload can restore the original roster.
   var instructions = @[registerImmediate(7, 196608), registerImmediate(8, uint64(count)), @[10'u8, 18]]
@@ -50,6 +57,7 @@ proc designateProgram(count, original: int, ending: Ending): seq[byte] =
     instructions.add(registerImmediate(8, 32)) # Hash-return normalization retains the regular staging mutation.
   instructions.add(@[50'u8, 0])
   guestEnvelope(instructions, writable = payload(count, 41))
+
 proc managerProgram(): seq[byte] =
   ## The original manager grants itself delegation and designates a competing roster in its independent execution.
   var bytes = newSeq[byte](12)
@@ -58,6 +66,7 @@ proc managerProgram(): seq[byte] =
     registerImmediate(9, 42), registerImmediate(10, 0), registerImmediate(11, 0),
     registerImmediate(12, 0), @[10'u8, 16], registerImmediate(7, 196620),
     registerImmediate(8, 9), @[10'u8, 18], @[50'u8, 0]], writable = bytes)
+
 proc policy(count, original: int): AccumulationBatchLimits =
   ## Exact aggregate original/output C(7) bytes are independent of the manager/queue publication policy.
   result = batchPolicy()
@@ -66,15 +75,18 @@ proc policy(count, original: int): AccumulationBatchLimits =
   result.assignCores = ElementLimit(3)
   result.assignBytes = ByteLimit(7705)
   result.managerBytes = ByteLimit(50)
+
 proc fixture(count, original: int, ending: Ending, handoff: bool, writes = 64'u64): BatchFixture =
   ## Both independent guests share the genuine immutable three-core source and original delegator 99.
   batchFixture(firstEnvelope = (if handoff: managerProgram() else: guestEnvelope([@[50'u8, 0]])),
     secondEnvelope = designateProgram(count, original, ending), manager = 42,
     delegator = 99, cores = 3, stagingCount = original, writes = writes)
+
 proc run(source: BatchFixture, index: uint64, original: int): AccumulationDispatchResult =
   ## Every terminal observation comes from the real engine with explicit core/population and byte policies.
   batchExecution(source, index, parameters = parameters(), copyLimit = MemoryByteLimit(3024),
     cores = 3, stagingCount = original, codeBytes = 4096, preimageBytes = 4096)
+
 proc expected(source: BatchFixture, count, original: int, ending: Ending,
     handoff: bool, subset = 0): seq[StateEntry] =
   ## Literal C(7), C(12) role offsets and independent incoming credits define a full-map oracle.
@@ -101,6 +113,7 @@ proc expected(source: BatchFixture, count, original: int, ending: Ending,
         row = serviceMetadataEntry(service, account, ByteLimit(
             ServiceMetadataBytes)).value # A subset receives only its actual invoking service credit.
     result.add(row)
+
 proc check(count, original: int, ending: Ending, handoff = false, reverse = false) =
   ## Exact budgets publish complete-map roots; refusals, hash failures and stale callers preserve all prior owners.
   let source = fixture(count, original, ending, handoff)
@@ -174,6 +187,7 @@ proc check(count, original: int, ending: Ending, handoff = false, reverse = fals
     assert array[32, byte](applyAccumulationBatch(private, local).value.commitment.root) == array[
         32, byte](wanted.root)
   assert before == getOccupiedMem(), "staging plan/publication ARC release"
+
 proc checkSubsets() =
   ## Absent original delegators retain C(7); absent managers cannot donate their independently executed handoff.
   let source = fixture(9, 6, Halt, true)
@@ -186,6 +200,7 @@ proc checkSubsets() =
     let published = applyAccumulationBatch(caller, plan).value
     for entry in expected(source, 9, 6, Halt, true, subset):
       assert published.lookup(entry.key).value.bytes == entry.value, "absent authority retains its own component"
+
 proc checkStoreLimit() =
   ## Individual one-key host writes fit, while the five-write account/global batch honors inherited limits.
   let source = fixture(9, 6, Halt, true, writes = 4)
@@ -197,6 +212,7 @@ proc checkStoreLimit() =
   assert refused.error == AccumulationBatchError.StoreFailure and refused.storeError ==
       StateStoreError.LimitExceeded
   assert sameStateSnapshot(caller.snapshot.value, source.state.snapshot.value)
+
 proc checkUnsupported() =
   ## An untracked storage write followed by designate cannot erase unsupported account ancestry.
   let code = guestEnvelope([@[51'u8, 7, 255], registerImmediate(8, 196608), registerImmediate(9, 1),
@@ -213,6 +229,7 @@ proc checkUnsupported() =
   assert selected.effectAccountScope.value == AccumulationAccountScope.Unsupported
   assert prepareCompleteAccumulationBatch(source.inputs, source.state.snapshot.value, [a, b], [],
       HeaderSlot(128), policy(9, 6)).error == AccumulationBatchError.UnsupportedAccountEffects
+
 proc main() =
   ## Exercise growth/shrinkage, original-delegator authority, terminal branches and restored-equal occurrence.
   check(9, 6, Halt)

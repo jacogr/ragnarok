@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "pvm_current_chain_coordinator_arc_release"}
 
 ## Current composed state and chain view install together only after exact ownership/profile and all private child stages succeed.
+
 import std/[assertions, envvars, syncio]
 import ../../../src/chain/[genesis, provider, parameters]
 import ../../../src/codec/[bounded, header, report_owned, block_codec]
@@ -13,12 +15,16 @@ import "../../../src/state/block/transition" as block_transition
 import "../../../src/state/block/admission" as block_admission
 import ../../../src/state/store
 import ../../support/[accumulation_current_chain_context, arc_evidence]
+
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
+
 proc unchanged(state: StateStore, view: ChainView, prior: StateStoreSnapshot, old: ChainView) =
   ## Every refused private stage preserves both exact live owners, complete history and finality.
   assert sameStateSnapshot(state.snapshot.value, prior)
   assert sameChainView(view, old)
+
 proc witness(context: CurrentChainFixture) =
   ## Independently spell private adoption, header/body capture and direct-child append without guest replay.
   let parent = context.parent.value.stateSnapshot
@@ -63,6 +69,7 @@ proc witness(context: CurrentChainFixture) =
   unchanged(state, view, installed, selected)
   assert hashCalls() == 0, "replay refuses before all hashing"
   failHash(0)
+
 proc refusals(context, foreign: CurrentChainFixture) =
   ## Original owner, selected head and exact parameter fields are independent preconditions.
   let parent = context.parent.value.stateSnapshot
@@ -125,12 +132,14 @@ proc refusals(context, foreign: CurrentChainFixture) =
   assert capture.error == CurrentAccumulationChainError.CaptureFailure
   unchanged(state, view, parent, original)
   failHash(0)
+
 proc cycle(context: CurrentChainFixture) =
   ## Scoped child captures and both live-handle copies release before the next iteration.
   var state = forkStateStore(context.parent.value.stateSnapshot).value
   var view = context.currentChainSeeded
   let applied = applyCurrentAccumulationChain(state, view, context.source, ByteLimit(100000))
   assert applied.error == CurrentAccumulationChainError.None
+
 proc main() {.raises.} =
   ## Real signed current scenarios cover all consensus components alongside guest-provided and lookup effects.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

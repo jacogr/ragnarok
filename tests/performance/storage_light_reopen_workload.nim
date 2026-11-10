@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Separate bounded fixture producers from fresh light-file reopen consumers and exact ARC/hash witnesses.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/storage/light/[file_cache as light_file_cache, snapshot as light_snapshot,
     state_cache as light_state_cache]
@@ -11,28 +12,34 @@ import ../../src/storage/file/errors as file_errors
 import ../../src/storage/durability
 import ../../src/codec/bounded
 import ../../src/codec/state/[layout as state_layout, trie as state_trie]
+
 proc resetHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## A clean observer counts only actual reopen proof/checksum attempts, excluding fixture production.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Every consumer must authenticate exactly the same complete evidence set.
 const Count = 4096
+
 proc key(index: int): StateKey =
   ## Leading big-endian two-byte ordinals create exactly17-node proof paths for these4096 entries.
   var raw = default(array[31, byte])
   raw[0] = byte(index shr 8)
   raw[1] = byte(index and 255)
   StateKey(raw)
+
 proc policy(size: int): LightSnapshotLimits =
   ## The benchmark fixes all production limits; command arguments cannot widen the workload.
   LightSnapshotLimits(bytes: ByteLimit(16777216), cache: LightCacheLimits(items: ElementLimit(Count),
     writes: ElementLimit(1), valueBytes: ByteLimit(Count*size),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(size))))
+
 proc hex(root: StateRoot): string =
   ## Serialize only the independently calculated expected root passed explicitly to later consumer processes.
   result = ""
   for octet in array[32, byte](root):
     result.add("0123456789abcdef"[int(octet shr 4)])
     result.add("0123456789abcdef"[int(octet and 15)])
+
 proc root(text: string): StateRoot =
   ## Parse exactly64 trusted benchmark argument characters without accepting alternate encodings.
   assert text.len == 64
@@ -46,6 +53,7 @@ proc root(text: string): StateRoot =
       value = value*16+digit
     raw[index] = byte(value)
   StateRoot(raw)
+
 proc produce(path: string, size: int) =
   ## Producer RSS is excluded from every consumer observation; flat-map hashing independently sets root authority.
   var entries = newSeq[StateEntry](Count)
@@ -74,6 +82,7 @@ type
   Observation = object ## Copied scalar checkpoints outlive all native/cache resources.
     hashes: cint
     opened, closed: int
+
 proc observe(path: string, size: int, expected: StateRoot): Observation =
   ## Whole-child RSS includes reopen and lookup validation; ARC checkpoints describe only simultaneously live owners.
   var file = default(LightFileCache)
@@ -94,6 +103,7 @@ proc observe(path: string, size: int, expected: StateRoot): Observation =
   let closed = getOccupiedMem()
   assert view.lookup(key(Count-1)).value.bytes.len == size
   Observation(hashes: hashes, opened: opened, closed: closed)
+
 proc consume(path: string, size: int, expected: StateRoot) =
   ## Sample final ARC retirement only after all extraction temporaries and result owners leave their scope.
   let baseline = getOccupiedMem()
@@ -102,6 +112,7 @@ proc consume(path: string, size: int, expected: StateRoot) =
   assert released == baseline, "ARC release: " & $baseline & " -> " & $released
   echo "reopen\t", size, "\t", measured.hashes, "\t", baseline, "\t", measured.opened, "\t",
       measured.closed, "\t", released
+
 proc main() =
   ## Fixed input identities and one mode keep production, observer and consumer ownership separate.
   assert paramCount() in [3, 4]

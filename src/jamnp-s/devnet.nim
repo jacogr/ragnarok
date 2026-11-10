@@ -89,7 +89,11 @@ proc clientVerify(user: pointer, der: ptr ConstByte, length: csize_t): cint {.cd
   cint(validPeer(cast[ptr byte](der), length, owner.expected))
 
 proc selectPersistent(owner: ptr DevnetNetwork, stream: NativeStream): bool {.raises: [].} =
-  ## Reject stale UP0 arrivals before replacing any live route on this same authenticated connection.
+  ## Reject stale UP0 arrivals before replacing routes on the same connection.
+  ## Check every existing route on this connection before revoking any. A pending
+  ## route participates before its handshake is parsed so delayed bytes cannot establish
+  ## a second owner. Revoke older claims before requesting reset, with slot ownership
+  ## retained until native close. A malformed replacement cannot revive old claims.
   let candidate = stream.streamId
   if not persistentInitiator(candidate): return false
   # Inspect every retained route first so slot ordering cannot revoke an older route for a rejected candidate.

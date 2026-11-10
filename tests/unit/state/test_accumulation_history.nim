@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_history_arc_release"}
 
 ## Literal ring shifts and genuine finalized prefixes advance only C(15), retaining immutable full-state provenance.
@@ -20,6 +21,7 @@ import ../../support/[accumulation_reentry_context, accumulation_execution_conte
 
 # Disable hashes after genuine source construction to distinguish pure projection from private map publication.
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
 
 # Fixed independent identity expectations make all ring ordering and duplicate behavior visible.

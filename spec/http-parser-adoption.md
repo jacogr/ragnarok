@@ -1,24 +1,12 @@
 # Stock HTTP request-head parsing
 
-## Draft restoration gate
+## Restoration
 
-This draft restores the reviewed stock parser adoption from #2049 after the temporary master
-repair in #2054. It is blocked on NIM-009: retiring `HttpMsg` owners retains memory on the
-unchanged Nimony pin. Keep this PR draft until a stock upstream compiler/library passes the
-shared-vocabulary reproducer, complete owner cleanup and E2E / Testnet RPC/browser shutdown.
-No compiler/library patch, private hook or pin change is included here.
-
-The repeated-request UI cleanup regression added by #2054 is retained. It intentionally still
-fails on the current pin; its failure must not be suppressed or replaced with a larger allowance.
-RPC, MCP and management HTTP behavior suites, formatting and inventory remain required.
-Track the [upstream investigation and suggested field-cleanup patch](nimony-reports-2026-11-08/http-message-retirement.md)
-and [reproducer](nimony-reports-2026-11-08/http-message-retirement.nim). The suggested patch was
-validated only in an isolated source copy; it has not been applied to this project's toolchain.
-
-The standalone shared-vocabulary reproduction separates the library retirement failure from
-per-request vocabulary construction in this restored implementation. Review vocabulary sharing
-against the stock API's documented initialization lifecycle before marking the adoption ready.
-
+This change restores stock parser adoption from #2049 after the temporary rollback in #2054.
+The November 9 Nimony nightly pinned in #2099 passes the
+[original retirement reproducer](nimony-reports-2026-11-08/http-message-retirement.md).
+The repeated-request UI cleanup regression from #2054 retains its original memory allowance.
+Native listener tests and the Testnet RPC/browser shutdown workload cover application ownership.
 
 RPC WebSocket upgrades, UI HTTP, MCP Streamable HTTP and Unix-socket management use the
 unmodified Nimony head scanner and parser. There is no compatibility layer or custom generic
@@ -26,10 +14,10 @@ HTTP admission policy. Socket ownership, dispatcher scheduling, deadlines, appli
 Host/Origin access checks and request-body budgets remain with each existing service. Telemetry's
 binary TCP protocol and QUIC are unaffected.
 
-The compiler/library pin remains `63fed6cb4b2f59d34c9fbb18f1796e671e2024e4` in
+The compiler/library pin remains `fd9742bf1939a1b754144506e89a8acb0e7b747a` in
 [toolchain.json](toolchain.json). Public APIs are
-[`std/http/httpparse`](https://github.com/nim-lang/nimony/blob/63fed6cb4b2f59d34c9fbb18f1796e671e2024e4/lib/std/http/httpparse.nim)
-and [`std/http/httpmsg`](https://github.com/nim-lang/nimony/blob/63fed6cb4b2f59d34c9fbb18f1796e671e2024e4/lib/std/http/httpmsg.nim).
+[`std/http/httpparse`](https://github.com/nim-lang/nimony/blob/fd9742bf1939a1b754144506e89a8acb0e7b747a/lib/std/http/httpparse.nim)
+and [`std/http/httpmsg`](https://github.com/nim-lang/nimony/blob/fd9742bf1939a1b754144506e89a8acb0e7b747a/lib/std/http/httpmsg.nim).
 No upstream source patches or dependency upgrades are included. Revisit compatibility only for
 an observed supported-client issue, and report relevant limitations upstream then.
 
@@ -47,10 +35,10 @@ Ordinary duplicate fields use library behavior. Fields interpreted by the existi
 or handshake policies must remain unambiguous; unrelated extension fields acquire no new policy.
 The library rejects ambiguous Content-Length/Transfer-Encoding framing and decimal overflow.
 
-A fresh `HttpMsg` and its vocabulary belong to one synchronous parse attempt. Services inspect
-it only after a complete successful parse. Neither the message nor borrowed input survives a
-dispatcher turn; failed messages retire through the library's destructor. No HTTP I/O runtime,
-worker pool or scheduler is imported.
+Each enabled listener owns one built-in vocabulary and shares it across synchronous parse
+attempts. Each attempt owns a fresh `HttpMsg`, and services inspect it after a complete
+successful parse. Messages and borrowed input stay within the dispatcher turn. The library
+destructor retires each message, and listener close releases the shared vocabulary.
 
 MCP and management require Content-Length and bound its decoded value before body arithmetic
 or dispatch. UI permits only absent or zero length and refuses Transfer-Encoding. RPC refuses

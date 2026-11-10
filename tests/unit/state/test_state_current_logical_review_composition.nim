@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Existing targeted review composes with genuine refreshed logical provenance without cross-capture joins or replacing original Parameters.
+
 # @@Verification={"arc":"state_current_logical_review_composition_arc_release"}
 import std/[assertions, envvars, syncio]
 import ../../support/[current_repeated_logical_context, current_namespace_refresh_context,
@@ -20,14 +21,18 @@ import ../../../src/state/preimage/content as preimage_content
 import ../../../src/state/[economic_profile, economics_table]
 import ../../../src/chain/[parameters, provider]
 import ../../../src/codec/[bounded, report_owned]
+
 proc fail(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Actual source/full refresh completes before isolated review planning, predicate hashing and joins.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Resource refusals and exact-owner joins must precede all content work.
+
 proc cycle(logical: CurrentLogicalState) =
   ## Retire only the existing review reports/predicates and same-current source aliases; no new public certificate or validity rule is introduced.
   let pair = composeLogicalReview(logical)
   assert pair.reviewed.currentAccountReview.value.accountReviewInfo.value.invariants.content.preimages == 6
+
 proc main() {.raises.} =
   ## A real completed source advances to its next signed/current child before targeted review is composed at the host-idle handoff scope.
   let raw = readFile(getEnv("RAGNAROK_STATE_REPORT"))

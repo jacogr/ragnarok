@@ -1,5 +1,6 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
+
 # @@Verification={"arc": "accumulation_continuation_arc_release"}
 
 ## Actual initial gas releases reserved capacity for a bounded original-queue report suffix.

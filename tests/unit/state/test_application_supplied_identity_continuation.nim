@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## A fully supplied identity-changing native successor becomes the exact logical source for later identity-preserving actual children.
+
 import std/[assertions, syncio]
 import ../../support/[collected_native_context, collected_mutation_context,
     collected_logical_context, current_namespace_context, current_namespace_transition_context,
@@ -25,6 +26,7 @@ import ../../../src/state/planned/proof as planned_proof
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[accounts as state_accounts, composition as state_composition,
     service_values as state_service_values]
+
 proc main() {.raises.} =
   ## Raw key7 is supplied after its genuine creation, then retained unchanged across three later actual collected children.
   let value = @[91'u8, 92, 93]

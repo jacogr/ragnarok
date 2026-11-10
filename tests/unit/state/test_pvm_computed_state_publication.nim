@@ -16,6 +16,7 @@ import ../../support/[pvm_computed_state_publication, arc_evidence]
 
 proc failHash(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Refuse hashing after genuine composition so publication cannot hide replay or reconstruction.
+
 proc hashCalls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Observe the maintained primitive independently of state identity assertions.
 let source = statePublicationFixture()
@@ -51,6 +52,7 @@ assert publishComputedState(fresh, default(ComposedComputedState)).error ==
 assert sameStateSnapshot(fresh.snapshot.value, parent)
 assert hashCalls() == 0
 failHash(0)
+
 proc stale(target: var StateStore) =
   ## Every wrong owner refuses before mutation, even when hashing cannot work.
   let before = target.snapshot.value
@@ -87,6 +89,7 @@ assert default(PublishedComputedState).computedPublishedSource.error ==
     ComputedStatePublicationError.Uninitialized
 assert default(PublishedComputedState).computedPublishedSnapshot.error ==
     ComputedStatePublicationError.Uninitialized
+
 proc detached(): PublishedComputedState =
   ## Keep provenance and adopted map alive after every preparation and target handle leaves scope.
   let local = statePublicationFixture()
@@ -94,6 +97,7 @@ proc detached(): PublishedComputedState =
   publishComputedState(canonical, local).value
 let held = detached()
 assert held.computedPublishedSnapshot.value.lookup(chapterKey(StateChapter(16))).value.bytes == @[0'u8]
+
 proc cycle() =
   ## Release independent receipt, target, replay and missing-target refusals on each bounded iteration.
   var canonical = forkStateStore(parent).value

@@ -3,6 +3,7 @@
 
 ## Bounded whole-source supervision observations reuse complete-directory incarnation checks.
 ## Failed batch construction exposes no prefix table or selected authority.
+
 import ../codec/bounded
 import ../codec/state/accounts as state_accounts
 import ./inventory

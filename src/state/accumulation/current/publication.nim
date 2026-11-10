@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Install a genuine current composed successor only over its exact retained original parent, without hashing or replay.
+
 import ./[consensus as accumulation_current_consensus,
     authorization as accumulation_current_authorization,
     preimages as accumulation_current_preimages, activity as accumulation_current_activity]

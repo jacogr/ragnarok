@@ -1,11 +1,17 @@
 # Copyright (c) 2026 Ragnarök contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-## Bounded static HTTP server with a separate loopback listener, driven by the peer dispatcher.
-## UiServer owns eight connections and optional development root/file descriptors; release assets
-## are immutable gzip data embedded by the build. Requests must accept gzip; no runtime compression
-## or uncompressed fallback is provided. Only GET
-## and HEAD are supported; paths cannot traverse parents or follow symlinks. No directory listing.
+## Dispatcher-driven loopback HTTP delivery for the browser console.
+##
+## Release assets are immutable gzip bytes embedded at build time. Development selects
+## a separate root of precompressed sidecars, so a missing sidecar returns 404 instead
+## of hiding an incomplete build with an embedded asset. Both sources keep the same URL
+## and MIME type. Clients must accept gzip to use either source.
+##
+## Fixed connection slots, bounded reads and writes, and absolute request deadlines
+## constrain work per turn. The owner holds the listener, connections and optional
+## development descriptors until close. Development reads are synchronous regular-file
+## reads, so storage latency can still delay the dispatcher.
 
 import std/[nativesocket, oserrors, strutils, monotimes]
 import std/posix/posix
@@ -29,7 +35,8 @@ type
     headScanner: http_parse.HeadScanner
     offset, assetIndex, position: int
     remaining, deadline: int64
-  UiServer* = object ## Non-copyable listener and root owner; disabled instances own no descriptors.
+  UiServer* = object                ## Non-copyable listener and root owner; disabled instances own no descriptors.
+    httpTags: nil http_msg.HttpTags # Shared by synchronous parses for this listener.
     opened, rootOpened: bool
     fd, root: cint
     connections: array[MaxConnections, Connection]
@@ -55,6 +62,7 @@ proc `=wasMoved`*(server: var UiServer) {.nodestroy, inline.} =
   server.fd = -1
   server.root = -1
   # Generated object/array hooks clear managed bytes but leave scalar descriptor flags intact.
+  `=wasMoved`(server.httpTags)
   `=wasMoved`(server.connections)
   for slot in mitems(server.connections):
     # Every accepted descriptor belongs to the destination, including streaming files.
@@ -70,6 +78,7 @@ proc `=destroy`*(server: UiServer) =
   for slot in server.connections: # File and socket lifetimes belong exclusively to this owner.
     if slot.opened: discard posix.close(slot.fd)
     if slot.fileOpened: discard posix.close(slot.file)
+  `=destroy`(server.httpTags)
   `=destroy`(server.connections)
 
 proc close(slot: var Connection) =
@@ -83,6 +92,7 @@ proc close*(server: var UiServer) =
   for slot in mitems(server.connections): slot.close() # Retire requests before the directory root.
   if server.opened: discard posix.close(server.fd)
   if server.rootOpened: discard posix.close(server.root)
+  server.httpTags = nil
   server.opened = false
   server.rootOpened = false
 
@@ -147,7 +157,9 @@ proc staticPath(target: string): string =
   decoded[1..^1]
 
 proc openFile(root: cint, path: string): cint =
-  ## Walk descriptor-relative components with O_NOFOLLOW to prevent symlink and rename escapes.
+  ## Open the asset relative to the held root with O_NOFOLLOW at each component.
+  ## Checking a path separately from opening it would let a concurrent rename
+  ## change the file served.
   var parent = root
   var owned = false
   defer:
@@ -235,7 +247,7 @@ proc readEmbedded(slot: var Connection) =
   slot.position += count
   slot.remaining -= int64(count)
 
-proc process(slot: var Connection, root: cint) =
+proc process(slot: var Connection, tags: http_msg.HttpTags, root: cint) =
   ## Parse complete stock HTTP GET/HEAD headers with no body or ambiguous framing.
   let headBytes = slot.headScanner.findHeadEnd(toOpenArray(slot.input, 0, slot.input.len - 1))
   if headBytes == http_parse.ParseIncomplete: return
@@ -243,7 +255,7 @@ proc process(slot: var Connection, root: cint) =
     slot.close()
     return # Upstream scanning owns incomplete and oversized head handling.
   slot.output = response("400 Bad Request", "text/plain", 0)
-  var head = http_msg.initHttpMsg(http_msg.newHttpTags())
+  var head = http_msg.initHttpMsg(tags)
   if http_parse.parseRequestHead(toOpenArray(slot.input, 0, headBytes - 1), head) !=
       headBytes: return
   for field in ["host", "accept-encoding"]:
@@ -296,6 +308,14 @@ proc process(slot: var Connection, root: cint) =
 proc tick*(server: var UiServer) =
   ## One admission, bounded header read, one file chunk and one socket write per slot per turn.
   if not server.opened: return
+  let existingTags = server.httpTags
+  let tags: http_msg.HttpTags =
+    if existingTags != nil:
+      existingTags # A running listener reuses its vocabulary.
+    else:
+      let vocabulary = http_msg.newHttpTags()
+      server.httpTags = vocabulary # Seed the vocabulary once before serving requests.
+      vocabulary
   let now = getMonoTime().ticks div 1_000_000
   let accepted = acceptSocket(server.fd, nil, nil)
   if accepted >= 0: # Capacity pressure rejects only the newly accepted socket.
@@ -314,7 +334,7 @@ proc tick*(server: var UiServer) =
       let count = receive(slot.fd, addr bytes[0], csize_t(bytes.len - slot.input.len), 0)
       if count > 0:
         for i in 0..<count: slot.input.add(bytes[i]) # Copy only initialized bytes.
-        slot.process(server.root)
+        slot.process(tags, server.root)
       elif count == 0: slot.close()
       elif not retryableSocketError(osLastError()): slot.close()
     if slot.opened and slot.output.len == 0 and slot.embedded:

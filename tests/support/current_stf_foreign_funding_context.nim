@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Literal foreign-funded creation and parallel junior self-write inputs for independently calculated N/M selection cases.
+
 import ./pvm_accumulation_program
 
 proc foreignFundingJuniorCode*(): seq[byte] =

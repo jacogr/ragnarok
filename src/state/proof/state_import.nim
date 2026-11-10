@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Restore an independently selected complete map from verified partial evidence only after full-map root equality proves completeness.
+
 import ./view as proof_view
 import ../[trie_proof, store]
 import ../../codec/bounded

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Strict light images use independent chain/root expectations, canonical finite grammar and reverified proof authority.
+
 # @@Verification={"arc": "storage_light_snapshot_arc_release"}
 import std/[assertions, syncio]
 import ../../support/arc_evidence
@@ -12,25 +13,31 @@ import ../../../src/storage/database_identity
 import ../../../src/codec/bounded
 import ../../../src/codec/state/[layout as state_layout, trie as state_trie]
 import ../../../src/crypto/primitives
+
 proc reset(flags: cint) {.importc: "ro_fail", cdecl.}
   ## Quota/identity/shape refusal must precede all real checksum and proof hashes.
+
 proc refuseAfter(successful: cint) {.importc: "ro_blake_after", cdecl.}
   ## Exercise every checksum/proof prefix and retire completed private lookup scratch on refusal.
+
 proc calls(): cint {.importc: "ro_blake_calls", cdecl.}
   ## Complete fixed-fixture preparation/restoration requires exactly eight primitive attempts.
 const
   Magic = "RAGNAROK-LIGHT-CACHE-V1\n"
   Header = Magic.len+72
+
 proc key(index: int): StateKey =
   ## Every serialized key octet remains fixed and canonical; root polarity is selected by the first.
   var raw = default(array[31, byte])
   raw[0] = byte(index)
   StateKey(raw)
+
 proc limits(): LightSnapshotLimits =
   ## Snapshot restoration is independent of the returned cache's zero mutation allowance.
   LightSnapshotLimits(bytes: ByteLimit(8192), cache: LightCacheLimits(items: ElementLimit(8),
     writes: ElementLimit(0), valueBytes: ByteLimit(256),
     proof: StateProofLimits(nodes: ElementLimit(249), valueBytes: ByteLimit(256))))
+
 proc fixture(): FullStateTrie =
   ## A separate complete-map calculator supplies the trusted root without consulting stored metadata.
   reset(0)
@@ -41,11 +48,13 @@ proc fixture(): FullStateTrie =
   let trie = newFullStateTrie(entries, FullStateTrieLimits(trie: policy)).value
   assert array[32, byte](expected.root) == array[32, byte](trie.commitment.root)
   trie
+
 proc proofs(trie: FullStateTrie): seq[LightStateProof] =
   ## Deliberately unsorted transport contains present-empty, present-long and authenticated absence.
   result = @[]
   for number in [255, 128, 0]:
     result.add(LightStateProof(key: key(number), proof: trie.prove(key(number), limits().cache.proof).value))
+
 proc matches(cache: LightStateCache, root: StateRoot) =
   ## A restored partial cache has three known queries, no invented knowledge and the exact original policy.
   assert array[32, byte](cache.root) == array[32, byte](root)
@@ -57,15 +66,18 @@ proc matches(cache: LightStateCache, root: StateRoot) =
   assert cache.lookup(key(64)).error == LightCacheError.UnknownKey
   assert uint64(cache.limits.writes) == 0
   assert cache.admit([LightStateProof(key: key(0))]).error == LightCacheError.LimitExceeded
+
 proc put(output: var seq[byte], offset: int, value: uint64, width = 8) =
   ## Test mutations use documented fixed widths, independently of the production parser.
   for index in 0..<width: output[offset+index] = byte((value shr (8*index)) and 255)
+
 proc rechecksum(input: var seq[byte]) =
   ## Deliberate attackers may recompute file integrity; proof/root authority still has to reject false contents.
   reset(0)
   let stop = input.len-32
   let digest = array[32, byte](blake2b256(input.toOpenArray(0, stop-1)).value)
   for index in 0..<32: input[stop+index] = digest[index]
+
 proc golden() =
   ## A two-query empty-root image has a fixed checksum independently computed with Python hashlib Blake2b-256.
   reset(0)
@@ -85,6 +97,7 @@ proc golden() =
   let decoded = decodeLightSnapshot(encoded, default(StorageChainId), default(StateRoot), limits()).value
   assert decoded.len == 2 and decoded.valueBytes == 0
   assert decoded.lookup(key(0)).value.kind == StateLookupKind.Absent
+
 proc roundtrip() =
   ## Prepared and decoded caches remain independent of every caller-owned transport and output buffer.
   let trie = fixture()
@@ -109,6 +122,7 @@ proc roundtrip() =
   var copiedPolicy = prepared.limits
   copiedPolicy.cache.writes = ElementLimit(8)
   assert uint64(prepared.cache.limits.writes) == 0
+
 proc malformed() =
   ## Every proper prefix and extra suffix refuses before it can expose a cache or partial proof set.
   let trie = fixture()
@@ -167,6 +181,7 @@ proc malformed() =
   let checkedSnapshot7 = decodeLightSnapshot(changed, default(StorageChainId), trie.commitment.root, generous)
   assert checkedSnapshot7.error == LightSnapshotError.LimitExceeded
   assert calls() == 0
+
 proc boundaries() =
   ## Count/shape/output budgets and independent identity mismatch all refuse before checksum/proof work.
   let trie = fixture()
@@ -222,6 +237,7 @@ proc boundaries() =
   assert checkedSnapshot14.error == LightSnapshotError.InvalidFormat
   assert decodeDatabaseIdentity(prepared.bytes, default(StorageChainId), ByteLimit(8192)).error ==
       IdentityError.InvalidFormat
+
 proc refusalPrefixes() =
   ## Each of the eight actual primitive attempts is refused once in both preparation and restoration.
   let trie = fixture()
@@ -238,6 +254,7 @@ proc refusalPrefixes() =
         trie.commitment.root, limits())
     assert checkedSnapshot16.error == LightSnapshotError.BackendFailure
     assert calls() == cint(successful+1)
+
 proc lifecycle() =
   ## Successful images/caches and refusal after completed private lookup scratch retire within each isolated call.
   let trie = fixture()

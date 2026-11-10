@@ -2,23 +2,29 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 ## Opaque access helpers exercise the same runtime contracts on invalid and genuine prepared owners.
+
 import std/[assertions, cmdline, syncio]
 import ../../src/app/chain
 import ../../src/app/checkpoint/[identity as checkpoint_identity, transfer as checkpoint_transfer]
 import ../../src/codec/bounded
 import ../support/application_checkpoint_context
+
 proc inspectLength(prepared: PreparedApplicationCheckpoint) =
   ## Only ready bytes grant an observable extent.
   discard prepared.byteLength
+
 proc inspectIdentity(prepared: PreparedApplicationCheckpoint) =
   ## Only ready bytes carry captured application context.
   discard prepared.identity
+
 proc inspectReason(prepared: PreparedApplicationCheckpoint) =
   ## Only capture refusal carries its typed cause.
   discard prepared.identityError
+
 proc inspectCheckpoint(prepared: PreparedApplicationCheckpoint) =
   ## Default objects cannot invent a checkpoint refusal.
   discard prepared.checkpointError
+
 proc main() {.raises.} =
   ## Genuine preparation and selected missing-head refusal also pass the checked access paths.
   let mode = paramStr(1)
