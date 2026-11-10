@@ -16,6 +16,12 @@ and [native admission](../../src/pvm/internal/native_pipeline.nim) own their res
 pricing, invocation and reuse contracts. The [engine record](../../spec/pvm-engines.md)
 keeps the scope and qualification of the available engine identities.
 
+The [Services owner](../../src/app/services.nim) inventories production runtime consumers and
+the ownership, aggregate retention and competition contract required before wider integration.
+The [scheduler](../../src/pvm/internal/native_pipeline.nim) documents current image capacity
+and selection limits. The [migration record](../../spec/pvm-async-migration.md#selection-and-resource-work)
+tracks the remaining integration boundary.
+
 ## Accumulation successor boundary
 
 Execution owns stopped continuation and the immutable finalized successor. State

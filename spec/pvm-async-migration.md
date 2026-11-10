@@ -68,11 +68,13 @@ compiler jobs never retain them.
 
 ## Selection and resource work
 
-The initial session retains one image, while the runtime's four registration credits cover idle,
-deferred, queued, running, installed and retiring owners. These are deliberate initial limits,
-not a general adaptive region cache. Whole-invocation eligibility does not prove that the first
-materialized pure prefix is profitable. Future multi-region admission must separate candidate
-evidence, source identity lifetime, outstanding compilation capacity and installed-code budgets.
+Each session selects one immutable request/image per source epoch, with no later region
+replacement or expansion. Only eligible work that can queue claims one of the runtime's four
+image credits. Queued, running, parked, installed and retiring images retain those credits;
+cold/deferred identities do not. These are deliberate initial limits. Whole-invocation eligibility
+does not prove that the first materialized pure prefix is profitable. Future multi-region admission
+must separate candidate evidence, source identity lifetime, outstanding compilation capacity and
+installed-code budgets.
 Increasing the constants alone does not establish useful coverage or fairness.
 
 The first bounded selection change preserves a qualified read nomination across an occupied
@@ -83,11 +85,14 @@ source and epoch. Pending and ready requests remain immutable. Invalidation, clo
 must leave no stale nomination or executable authority. The single finish-lock boundary introduced
 by PR #2032 remains intact.
 
-Production runtime wiring is a separate integration obligation. Full-state accumulation currently
-binds a runtime; authorization, package refinement and inner-machine construction also have
-runtime-less routes. Requested JIT may truthfully finish interpreted on those routes. Expanding
-coverage requires an explicitly owned execution environment and bounded retention across consumers,
-not a global runtime or an implicit compiler thread per program.
+The [Services owner](../src/app/services.nim) records production runtime wiring and the required
+environment contract before extending it. Accumulation residency and managed package completion
+share its runtime. Authorization, inner modules, and the JAMNP-S audit/work-sharing adapters have
+runtime-less execution routes. Four installed accumulation images can deny a package compilation
+credit even with no active invocation. Checked fallback is expected at that bound; fairness is
+not implied. Per-owner idle memory ceilings do not establish an aggregate prepared-storage bound.
+Future wiring requires explicit ownership/shutdown, aggregate retention budgets and a competition
+policy across the existing consumers before increasing availability or image capacity.
 
 ## Qualification and retirement
 

@@ -3,6 +3,13 @@
 
 ## GP 0.8.0 refinement hosts 9..14 own immutable inner-machine lifecycle, memory and bounded raw invocation.
 ## Exposes bounded capture, copied inspection and atomic lifecycle/page/transfer/invocation transitions.
+## Each module lazily retains one prepared owner shared by its instances and immutable
+## snapshots. Backend selection propagates from the outer call; a compiler runtime does not.
+## The 63-instance limit and 128-handle catalogue/live-instance union bound different owners.
+## Program-byte and per-machine page limits do not aggregate prepared facts or idle scratch.
+## Every admitted module currently uses the separate defaultPreparedLimits memory ceiling.
+## Broader runtime wiring must first bound that aggregate and preserve a distinct child
+## prepared lease while the outer prepared owner remains busy across the invocation host.
 
 import ./[machine, program, step]
 import ./gas/gas
@@ -570,6 +577,7 @@ proc innerInvokeResponse*(machines: InnerMachines, gas: MachineGas, registers: R
   if code == nil: fail(InnerMachineError.InvalidContext)
   if code.prepared.error == PreparationError.Uninitialized:
     # Defer admission until the first affordable, valid invocation, preserving lifecycle-host refusal order.
+    # This map supplies backend policy only; its module cache has no shared compiler runtime.
     code.prepared = newPreparedProgram(source.program, defaultPreparedLimits(data.limits.cycles),
         data.limits.backend)
     when defined(pvmInnerPreparedReceipt): inc code.preparations

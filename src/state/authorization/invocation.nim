@@ -3,6 +3,10 @@
 
 ## Execute pinned Psi_I from an original package's historical authorizer code and retain immutable provenance.
 ## Local policy refusals are distinct from protocol work errors; report composition/publication is separate.
+## Initialization and execution use fresh invocation owners. The selected backend reaches
+## the one-shot prepared API without a compiler runtime or a retained ExecutionWorker.
+## Managed package refinement's runtime argument does not extend to this authorization step.
+## Host segments share this invocation's frame; its prepared scratch retires when the call returns.
 
 import ../../lib/logging
 
