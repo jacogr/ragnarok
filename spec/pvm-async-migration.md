@@ -135,6 +135,18 @@ The direct x86-64 region lowerer, publication and bridge still support the nativ
 retained-leaf and refusal witnesses. The raw probe exhaustion control and real owner counters
 remain available. Generalized two-block control and mixed stores remain shared migration gaps.
 
+## ARM64 pending branch retirement
+
+The former ARM64 pending branch handler had no installer. Its private branch and dirty-loop
+promotion paths were the only users of the frame's six raw and clipped memory descriptors.
+Frame preparation and reuse no longer build those descriptors. The shared runtime still builds
+its own current-invocation read and writable capabilities.
+
+The independent three-block checked shape can still reach the legacy connected probe when a
+private witness supplies an old ARM64 owner. The raw ARM64 branch, region and dirty-store
+emitters and their native witnesses remain. General connected control and mixed-store coverage
+still require equivalent shared ARM64 and x86-64 qualification.
+
 ## Initial disposition
 
 This contract records the migration architecture and required evidence. It does not qualify a new
