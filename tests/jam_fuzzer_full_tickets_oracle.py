@@ -3,6 +3,7 @@
 
 """Independent full-profile ticket admission and complete STF maps over attributed RingVRF inputs."""
 from functools import cache
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -36,7 +37,6 @@ def bank():
     """Validate attributed membership inputs against independent Thin output/context and the existing ring witness."""
     value = json.loads(INPUT.read_text()); records = guests.roster_records()
     assert value['graypaper_commit'] == full.GP and value['capacity'] == 1023
-    assert value['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     assert value['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in records)).hexdigest()
     assert value['commitment'] == json.loads(guests.RING.read_text())['commitment']
     rows = value['tickets']
@@ -117,5 +117,5 @@ def expected_observations(check_frozen=True):
                     successor_roots=roots,successor_checkpoint_sha256=hashes,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     # Fixed complete-map pins are compared before invoking a client; native output cannot repair expectations.
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

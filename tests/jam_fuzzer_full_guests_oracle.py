@@ -3,6 +3,7 @@
 
 """Independent full-profile guarantees, strict683/684 quorums and nonempty storage/yield/rollback guest siblings."""
 from functools import cache
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from pathlib import Path
@@ -67,7 +68,6 @@ def original(mode):
     assert witness['capacity'] == full.VALIDATORS
     assert witness['members_sha256'] == hashlib.sha256(b''.join(row[:32] for row in records)).hexdigest()
     assert witness['records_sha256'] == hashlib.sha256(b''.join(records)).hexdigest()
-    assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     # Initial staging, active and previous rosters share identical distinct ordinal records.
     for chapter in (7,8,9): parent[chapter_key(chapter)] = roster
     schedule = b''.join(records[int.from_bytes(digest(bytes(32)+slot.to_bytes(4,'little'))[:4],'little') % full.VALIDATORS][:32] for slot in range(full.EPOCH))
@@ -214,5 +214,5 @@ def expected_observations(check_frozen=True):
                     ring_input_sha256=hashlib.sha256(RING.read_bytes()).hexdigest(),successor_roots=roots,original_checkpoint_sha256=hashes,
                     guest_gas={mode:guest_gas(mode) for mode in MODES},expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     # Never substitute a native observation for the precommitted independent stream digest.
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

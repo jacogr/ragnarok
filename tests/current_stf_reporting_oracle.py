@@ -309,7 +309,6 @@ def expected_observations(check_frozen=True):
     """Generate all expected blocks/maps and negative verdicts before native compilation or execution."""
     fixture = json.loads(FIXTURE.read_text())
     assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-    assert hashlib.sha256(BASE.read_bytes()).hexdigest() == fixture['base_fixture_sha256']
     initial = original()
     requests, lines, roots, hashes, refusals = [], [], [], [], []
     for case in range(2):

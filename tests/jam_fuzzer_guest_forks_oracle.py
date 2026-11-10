@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent report-driven guest sibling maps with original-last continuation."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
-import json
 from pathlib import Path
 import current_stf_report_guests_oracle as guests
 from current_stf_oracle import checkpoint, tree
@@ -40,5 +40,5 @@ def expected_observations(check_frozen=True):
                     original_last=35, original_roots=roots, sibling_roots=sibling_roots,
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
     if check_frozen:
-        assert json.loads(FIXTURE.read_text()) == evidence # Authored evidence is frozen before native execution.
+        assert matches_frozen_results(FIXTURE, evidence) # Authored evidence is frozen before native execution.
     return [], lines, evidence

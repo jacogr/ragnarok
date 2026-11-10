@@ -122,7 +122,6 @@ def expected_observations(check_frozen=True):
     """Generate every original, signed child and full successor before any native execution."""
     fixture = json.loads(FIXTURE.read_text())
     assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-    assert fixture['base_fixture_sha256'] == hashlib.sha256(pipeline.FIXTURE.read_bytes()).hexdigest()
     requests, lines, roots, hashes, plans = [], [], [], [], []
     invocations = processed_count = 0
     for mode, cycle in CASES:

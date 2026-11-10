@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent raw-identity interchange across current-profile allowance and incarnation STF maps."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import importlib
 import json
@@ -79,5 +80,5 @@ def expected_observations(check_frozen=True):
         roots.extend(evidence['roots']);hashes.extend(evidence['checkpoint_sha256'])
         traces.append(dict(family=family,fixture_sha256=hashlib.sha256(source.FIXTURE.read_bytes()).hexdigest(),transitions=evidence['transitions']))
     if check_frozen:
-        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==roots and frozen['successor_checkpoint_sha256']==hashes and frozen['traces']==traces
+        frozen=json.loads(FIXTURE.read_text());assert frozen['successor_roots']==roots and frozen['successor_checkpoint_sha256']==hashes and matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return requests,lines,dict(transitions=sum(t['transitions'] for t in traces),chains=len(roots),roots=roots,checkpoint_sha256=hashes,traces=traces)

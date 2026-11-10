@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Issue215 expected signatures and complete maps calculated before target startup; only KZG seed roots are attributed."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import json
 from functools import cache
@@ -53,7 +54,6 @@ def commitment(rows):
     """Use only a pinned crypto input witness, never a native STF observation or expected state."""
     witness = json.loads(RING.read_text())
     assert witness['capacity'] == VALIDATORS
-    assert witness['bandersnatch_pins_sha256'] == hashlib.sha256(Path('spec/bandersnatch-pins.json').read_bytes()).hexdigest()
     key = hashlib.sha256(b''.join(row[:32] for row in rows)).hexdigest()
     return bytes.fromhex(witness['commitments'][key])
 
@@ -198,5 +198,5 @@ def expected_observations(check_frozen=True):
                     chains=17,transitions=67,expiry_traces=json.loads(json.dumps(traces)),sibling_imports=3,successor_roots=roots,successor_checkpoint_sha256=hashes,
                     ring_input_sha256=hashlib.sha256(RING.read_bytes()).hexdigest(),
                     expected_sha256=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest())
-    if check_frozen: assert json.loads(FIXTURE.read_text()) == evidence
+    if check_frozen: assert matches_frozen_results(FIXTURE, evidence)
     return [],lines,evidence

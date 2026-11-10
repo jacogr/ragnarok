@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 """Independent complete-map current-profile checkpoint continuation across supervision, privileges and complete service lifecycles."""
+from frozen_fixture_results import matches_frozen_results
 import hashlib
 import importlib
 import json
@@ -47,8 +48,7 @@ def expected_observations(check_frozen=True):
     if check_frozen:
         fixture = json.loads(FIXTURE.read_text())
         assert fixture['graypaper_commit'] == 'fad0ded4a433052397bf7234352a57fe491883f7'
-        assert fixture['base_fixture_sha256'] == hashlib.sha256(transfers.FIXTURE.read_bytes()).hexdigest()
         assert fixture['successor_roots'] == roots and fixture['successor_checkpoint_sha256'] == hashes
-        assert fixture['traces'] == traces
+        assert matches_frozen_results(FIXTURE, {'traces': traces}, fields=('traces',))
     return requests, lines, dict(transitions=sum(len(row) for row in roots), chains=len(CASES),
                                 roots=roots, checkpoint_sha256=hashes, traces=traces)

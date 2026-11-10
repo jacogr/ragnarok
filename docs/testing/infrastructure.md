@@ -146,8 +146,8 @@ no shared manifest entry or central provenance-path addition is needed.
 
 For `make unit SUITE=<name>`, the native launcher selects those requirements before preparing
 libraries or generated fixtures. Only requested library-provider families run; shared production/
-observer outputs still come from their existing provider. Static fixtures retain their checked-in
-hash contracts. Prepared suites use their existing feature provider and keep only the selected
+observer outputs still come from their existing provider. Focused runs require the selected static
+fixtures to exist. The full test chain verifies their checked-in hashes up front. Prepared suites use their existing feature provider and keep only the selected
 manifest, including every required byte source. QUIC transport prepares certificate inputs;
 QUIC integration prepares CE/reload inputs independently. Missing selected providers or manifests
 fail before execution. With no suite selected, aggregate provider order, nested fixture evidence
@@ -280,8 +280,14 @@ All declared entries join the shared expansion without additional runner filenam
 vendor-directory sweep. Duplicate JSON keys, conflicting pins, malformed tables and escaping paths fail
 preflight. Missing local files and incomplete evidence lists also fail preflight; missing vendor
 bytes remain listed and must be present when runtime, E2E or guard reports hash their inputs.
-Vendor provisioning remains separate, and fixture-specific hash/revision checks retain ownership
-of the expected bytes.
+`make check-fixture-provenance` verifies declared checked-in fixture checksums once, including the
+shared manifest links in JAM input witnesses and the frozen evidence links declared in
+`tests/fixtures/fixture-evidence-links.json`. That table also covers file digests embedded in
+individual trace rows. Oracles still compare the transition data in those rows. `make check`, full CI and CI requests that include
+Smoke run it before starting their workloads. Full CI runs the gate once for all jobs, including
+Smoke. A stale checksum stops that run at the gate. Other focused targets can run directly.
+Vendor download checks, generated fixture checks and comparisons against independent expected
+outputs remain with their respective consumers.
 
 Run `make check-inventory` for a fast, Python-only preflight before opening a verification PR.
 It validates per-family fields, build profiles, source paths, case counts, diagnostics and global

@@ -100,8 +100,8 @@ def upstream_sources(root):
 
 
 # Pin tables own exact fixture membership; adding a pinned input must not require a runner edit.
-def pinned_fixture_sources(root):
-    """Return declared JAM/Bandersnatch fixture paths, retaining missing bytes for later hashing."""
+def pinned_fixture_digests(root):
+    """Return declared fixture paths and digests, including not-yet-provisioned vendor files."""
     from verification_inventory import unique_object
     root = Path(root)
     files = {}
@@ -126,7 +126,12 @@ def pinned_fixture_sources(root):
                 # Overlapping pin tables may agree on an input, but conflicting expectations must fail preflight.
                 raise ValueError('Conflicting pinned fixture checksums: '+name)
             files[name] = digest
-    return sorted(root/name for name in files)
+    return {root/name: digest for name, digest in files.items()}
+
+
+def pinned_fixture_sources(root):
+    """Return the deterministic path inventory shared by runtime evidence producers."""
+    return sorted(pinned_fixture_digests(root))
 
 
 # Keep preflight and runtime hashing on the same sorted, unique expansion without a literal file manifest.
