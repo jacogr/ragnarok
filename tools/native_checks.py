@@ -23,10 +23,11 @@ class NativeChecks:
     """Own one group's output directory; callers prepare it before running commands."""
 
     # Store a group-owned workspace without doing I/O during import or command planning.
-    def __init__(self, folder, reuse_builds=False, lto=True):
+    def __init__(self, folder, reuse_builds=False, lto=True, *, stream_io=False):
         self.folder = Path(folder)
         self.reuse_builds = reuse_builds
         self.lto = lto
+        self.stream_io = stream_io
 
     # Retain exact arguments, elapsed time, exit status and diagnostics, including expected failures.
     def command(self, arguments, name, environment=None, cwd=ROOT, timeout=180):
@@ -59,8 +60,9 @@ class NativeChecks:
     def build(self, compiler, source, name, crypto_library=None, native_libraries=(), cflags=(), quic_library=None, defines=(), link_flags=(), environment=None, lto=None, profile_directory=None, *, timeout=180):
         flags = ['--mm:arc', '--cc:clang', '-d:release', '--opt:speed',
                  '--boundchecks:on']
-        if platform.system() == 'Linux':
-            flags += ['-d:nimIoringNoUring']  # Match the HTTP stream readiness backend.
+        if self.stream_io and platform.system() == 'Linux':
+            # Stream workloads match production epoll without changing standalone build receipts.
+            flags += ['-d:nimIoringNoUring']
         effective_lto = self.lto if lto is None else lto
         if type(effective_lto) is not bool:
             raise ValueError("Native LTO profile must be boolean")

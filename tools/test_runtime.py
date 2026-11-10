@@ -27,7 +27,7 @@ from native_preparation import prepare_libraries, prepare_integration, prepare_u
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT/'build/tests/runtime'
 # Each selected workload owns its workspace; other jobs use independent native-check instances.
-checks = NativeChecks(BUILD, reuse_builds=True, lto=False)
+checks = NativeChecks(BUILD, reuse_builds=True, lto=False, stream_io=True)
 command, build = checks.command, checks.build
 
 
@@ -222,7 +222,7 @@ def main():
     BUILD = ROOT/('build/tests/'+directory if args.group == 'unit' else 'build/tests/failures')
     if args.corpus_shard is not None:
         BUILD = corpus_directory(BUILD, args.corpus_shard)
-    checks = NativeChecks(BUILD, reuse_builds=True, lto=False)
+    checks = NativeChecks(BUILD, reuse_builds=True, lto=False, stream_io=True)
     command, build = checks.command, checks.build
     compiler = args.compiler.resolve()
     BUILD.mkdir(parents=True, exist_ok=True)

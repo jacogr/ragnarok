@@ -123,7 +123,7 @@ def main():
     report = dict(status='failed',cases={},engine_validation='pending',scope='fixed issue215 target readiness only')
     try:
         sys.path.insert(0,str(ROOT/'tests'))
-        compiler,_ = installed(); checks = NativeChecks(BUILD,reuse_builds=True)
+        compiler,_ = installed(); checks = NativeChecks(BUILD,reuse_builds=True, stream_io=True)
         from nimony_crypto import prepare as crypto_prepare
         from bandersnatch_native import prepare as bs_prepare
         from nimony_quic import prepare as quic_prepare
