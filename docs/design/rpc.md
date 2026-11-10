@@ -27,5 +27,5 @@ Nimony's Reader and Writer under one five-second deadline. Only bounded byte chu
 to the dispatcher, which retains HTTP policy, file selection, and application state.
 Service close retires its stream tasks before the process shuts down the shared reactor.
 Linux builds select Nimony's epoll backend so retryable writes retain their progress.
-The pinned I/O module initializes the shared pool at import, including for commands
-that never open an HTTP listener. Lazy runtime initialization remains an upstream concern.
+The pinned I/O module starts a fixed CPU-sized pool on import. Resource tests account
+for that pool and continue to check for additional workers during service activity.
