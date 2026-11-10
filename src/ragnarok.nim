@@ -26,6 +26,7 @@ import ./pvm/step
 import ./version
 import ./lib/logging
 from ./lib/http_stream import shutdownHttpStreams
+from ./lib/stop_signal import ignorePipeSignal
 import ./lib/json/writer as json_writer
 import ./storage/history/index as history_index
 
@@ -243,6 +244,11 @@ proc main(): int =
     close(logger) # Every command retires its service/producer borrows before the application writer joins.
 
 when isMainModule:
-  let status = main() # All service owners retire before the shared I/O runtime.
+  let status =
+    if ignorePipeSignal():
+      main() # All service owners retire before the shared I/O runtime.
+    else:
+      stderr.writeLine("Cannot configure SIGPIPE handling for service streams")
+      2
   shutdownHttpStreams()
   quit(status)

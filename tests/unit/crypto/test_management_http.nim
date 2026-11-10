@@ -5,6 +5,7 @@
 
 import std/[assertions, syncio]
 import ../../../src/rpc/protocol as public_protocol
+from ../../../src/lib/stop_signal import ignorePipeSignal
 include ../../../src/management/server
 
 let requestTags = http_msg.newHttpTags() # Share the listener vocabulary across fixture requests.
@@ -121,6 +122,12 @@ block lifecycle:
   assert "HTTP/1.1 200 OK" in output and "Cache-Control: no-store" in output
   assert "\"pid\":" & $processId() in output and "\"result\"" in output
   discard posix.close(peer)
+  # The client can see EOF before the dispatcher observes the worker's completion.
+  for attempt in 0..<1000:
+    listener.tick()
+    if not listener.connections[0].opened: break
+    discard pauseMicros(1000)
+  assert not listener.connections[0].opened, "response worker retires before filling idle slots"
   # Capacity and absolute timeout retirement use real idle consumers, independently of JSON parsing.
   var idle = default(array[5, cint])
   for index in 0..<idle.len:
@@ -132,13 +139,15 @@ block lifecycle:
   for slot in mitems(listener.connections):
     if slot.opened:
       inc active
-  assert active == 4
+  assert active == 4, "four idle management clients occupy the slots"
   for attempt in 0..<6000:
     listener.tick()
-    if not listener.connections[0].opened and not listener.connections[MaxConnections -
-        1].opened: break
+    var remaining = false
+    for slot in listener.connections:
+      if slot.opened: remaining = true
+    if not remaining: break
     discard pauseMicros(1000)
-  for slot in listener.connections: assert not slot.opened # Expired requests release every bounded slot.
+  for slot in listener.connections: assert not slot.opened, "idle management stream expires"
   for peer in idle: discard posix.close(peer)
   assert unlink(path.toCString()) == 0
   let replacement = posix.open(path.toCString(), O_CREAT or O_EXCL or O_WRONLY, Mode(0o600))
@@ -196,6 +205,7 @@ proc collectStreamLog(context: nil pointer, batch: string) {.raises: [].} =
   cast[ptr string](context)[].add(batch)
 
 block disconnectedWriter:
+  assert ignorePipeSignal() # Match the executable’s Linux writer policy.
   # Close the peer after the reader has handed off its request, before the writer runs.
   var pair = default(array[2, cint])
   assert disconnectedPair(cint(ord(nativesocket.AF_UNIX)), cint(ord(nativesocket.SOCK_STREAM)),

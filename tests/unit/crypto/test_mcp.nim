@@ -188,7 +188,10 @@ block boundedConnections:
   # The stream deadline retires idle slots while the clients stay connected.
   for attempt in 0..<6000:
     server.tick(context)
-    if not server.connections[0].opened and not server.connections[MaxConnections - 1].opened: break
+    var remaining = false
+    for slot in server.connections:
+      if slot.opened: remaining = true
+    if not remaining: break
     discard pauseMicros(1000)
   for slot in server.connections: assert not slot.opened, "Expired MCP slot retires"
   for client in clients: discard posix.close(client)
