@@ -4,6 +4,8 @@
 ## Execute one bounded pinned DOOM call from shared complete input; validate memory, CPU and output events.
 
 import std/[assertions, syncio, envvars, monotimes]
+when defined(pvmAuxLoop):
+  import std/os
 import ./pvm_invocation_scope
 import ../../src/pvm/[program, machine]
 import ../../src/pvm/gas/[gas, plan as gas_plan]
@@ -108,6 +110,23 @@ proc runPreparedDoom(source: Machine, context: var HostContext,
     # Ordinary timing images preserve the existing wrapper without any collection markers.
     executeWithHost(source, context, respond, ExecutionStepLimit(1000000000),
         HostCallLimit(4096), prepared)
+
+when defined(pvmAuxLoop):
+  const
+    AuxiliaryWarmSamples = 11
+    AuxiliaryWarmupLimit = 8
+
+  proc settledAuxiliaryOwner(runtime: NativeRuntime): NativeRuntimeInfo =
+    ## Wait at an exclusive driver boundary for admitted compiler work to park or retire.
+    let start = getMonoTime().ticks
+    result = runtimeInfo(runtime)
+    assert result.active == 0
+    while result.phase in {NativePhase.Queued, NativePhase.Running} or
+        (result.registered == 2 and result.completions == 0):
+      assert getMonoTime().ticks-start < 5_000_000_000'i64, "DOOM compiler readiness deadline"
+      sleep(1)
+      result = runtimeInfo(runtime)
+      assert result.active == 0
 
 let fullInvocation = getEnv("RAGNAROK_PVM_PERFORMANCE") == "1"
 if fullInvocation: fullInvocationHeader()
@@ -226,17 +245,27 @@ when defined(pvmAuxLoop):
   assert requestedAuxiliary in ["", "1"]
   let qualifyAuxiliary = requestedAuxiliary == "1"
   if qualifyAuxiliary:
-    # Verify the exact product image outside the invocation clocks.
+    # Qualification has its own bounded warmup and reports no performance samples.
     assert fullInvocation and preparedMode and requestedBackend == "jit" and phase == "tick"
+    assert not timing
+  var auxiliaryWarmSamples = 0
+  var auxiliaryRendererStart = default(PreparedInfo)
+  let samples = if qualifyAuxiliary: AuxiliaryWarmupLimit+AuxiliaryWarmSamples
+    elif timing: 13 else: 1
 else:
-  const qualifyAuxiliary = false
-let samples = if timing or qualifyAuxiliary: 13 else: 1
+  let samples = if timing: 13 else: 1
 for sample in 0..<samples:
   when defined(pvmAuxLoop):
-    if qualifyAuxiliary and sample >= 2:
+    var auxiliaryReady = false
+    if qualifyAuxiliary:
+      let owner = settledAuxiliaryOwner(invocationRuntime)
       # The primary is installed and the auxiliary owns the only parked completion.
-      let owner = runtimeInfo(invocationRuntime)
-      assert owner.active == 0 and owner.registered == 2 and owner.completions == 1
+      auxiliaryReady = owner.registered == 2 and owner.completions == 1
+      if auxiliaryReady and auxiliaryWarmSamples == 0:
+        auxiliaryRendererStart = preparedInfo(prepared).value
+      if not auxiliaryReady:
+        assert auxiliaryWarmSamples == 0 and sample < AuxiliaryWarmupLimit,
+          "DOOM auxiliary did not remain resident after bounded warmup"
   # Fresh host output and invocation-local execution state preserve equal sample starts.
   let residentCall = if fullInvocation and sample != 0: beginInvocation() else: default(InvocationClock)
   let cpuStart = if fullInvocation: (if sample ==
@@ -309,10 +338,22 @@ for sample in 0..<samples:
         ",", cpuElapsed, ",", wallElapsed
     assert cpuElapsed > 0 and wallElapsed > 0
     echo "DOOM_SAMPLE,native,", phase, ",", sample, ",", cpuElapsed, ",", wallElapsed
+  when defined(pvmAuxLoop):
+    if qualifyAuxiliary and auxiliaryReady:
+      inc auxiliaryWarmSamples
+      if auxiliaryWarmSamples == AuxiliaryWarmSamples: break
 echo "DOOM_OK,native,", phase, ",", context.outputBytes
 when defined(pvmAuxLoop):
   if qualifyAuxiliary:
-    echo "AUX_LOOP_RESIDENT,", samples-2
+    assert auxiliaryWarmSamples == AuxiliaryWarmSamples
+    let renderer = preparedInfo(prepared).value
+    echo "AUX_LOOP_RESIDENT,", auxiliaryWarmSamples
+    echo "AUX_LOOP_RENDERER,", renderer.nativeFragments, ",",
+      renderer.nativeCalls-auxiliaryRendererStart.nativeCalls, ",",
+      renderer.nativeOperations-auxiliaryRendererStart.nativeOperations, ",",
+      renderer.nativeCodeBytes, ",",
+      renderer.nativeBranchCalls-auxiliaryRendererStart.nativeBranchCalls, ",",
+      renderer.nativeHeaderCalls-auxiliaryRendererStart.nativeHeaderCalls
 
 when declared(step.DefaultPvmBackend):
   if requestedBackend.len > 0:

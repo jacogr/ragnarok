@@ -87,7 +87,7 @@ type
     when NativeAuxLoopEnabled:
       auxKey, auxOwner: JobKey ## Independent optional mailbox and exact primary generation.
       auxBody: NativeReadBody
-      auxBorrowed: bool ## One bounded execution borrow; the runtime keeps the image.
+      auxBorrowed: bool        ## One bounded execution borrow; the runtime keeps the image.
     when defined(pvmSharedAsyncWitness):
       paused, gateReached, gateReleased: bool
       gate, followingGate: NativeCompilerPoint

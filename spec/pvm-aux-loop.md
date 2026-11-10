@@ -27,7 +27,8 @@ on both ISAs before promotion.
 
 For the prepared DOOM tick check, compile the maintained driver with the matching native JIT,
 `pvmAuxLoop` and `pvmArm64JitOwnerReceipt`, and set `RAGNAROK_PVM_DOOM_AUX=1` together
-with the standard prepared JIT environment and frozen tick fixtures. The driver checks the
-parked auxiliary before the eleven warm invocations and validates terminal state, gas, complete
-memory, source immutability, and host events before reporting `AUX_LOOP_RESIDENT,11`.
-The ordinary owner receipt continues to describe the incumbent renderer.
+with the standard prepared JIT environment and frozen tick fixtures. The untimed driver allows
+up to eight warmup invocations. It waits for admitted compiler work at the boundary with a
+five-second deadline, then checks the parked auxiliary before each of the eleven warm invocations.
+It validates terminal state, gas, complete memory, source immutability, and host events before
+reporting `AUX_LOOP_RESIDENT,11` and the incumbent renderer's warm-work delta.
