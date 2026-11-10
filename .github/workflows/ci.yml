@@ -64,7 +64,7 @@ env:
 jobs:
   # A stale fixture pin stops Smoke or full verification before compilation.
   fixture-provenance:
-    name: Fixture provenance
+    name: Build / Provenance
     if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.suite == 'smoke' || inputs.suite == 'unit' || inputs.suite == 'full')) || (github.event_name == 'pull_request' && github.event.pull_request.state == 'open' && (github.event.action != 'labeled' || github.event.label.name == 'lgtm' || github.event.label.name == 'ci:unit' || github.event.label.name == 'ci:full')) }}
     runs-on: &ubuntu-x86-version ubuntu-26.04
     timeout-minutes: 5
